@@ -46,7 +46,7 @@ logs/
 # Generated files
 api/gen/
 api/openapi/
-internal/infrastructure/database/db/
+internal/infrastructure/database/ent/
 
 # Buf build cache (optional - you may want to cache this)
 .buf/
