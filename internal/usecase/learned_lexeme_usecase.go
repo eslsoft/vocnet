@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -18,16 +19,18 @@ type LearnedLexemeUsecase interface {
 }
 
 // NewLearnedLexemeUsecase wires the repository with default behaviour.
-func NewLearnedLexemeUsecase(repo repository.LearnedLexemeRepository) LearnedLexemeUsecase {
+func NewLearnedLexemeUsecase(repo repository.LearnedLexemeRepository, wordRepo repository.WordRepository) LearnedLexemeUsecase {
 	return &learnedLexemeUsecase{
-		repo:  repo,
-		clock: time.Now,
+		repo:     repo,
+		wordRepo: wordRepo,
+		clock:    time.Now,
 	}
 }
 
 type learnedLexemeUsecase struct {
-	repo  repository.LearnedLexemeRepository
-	clock func() time.Time
+	repo     repository.LearnedLexemeRepository
+	wordRepo repository.WordRepository
+	clock    func() time.Time
 }
 
 func (u *learnedLexemeUsecase) CollectLexeme(ctx context.Context, userID int64, lexeme *entity.LearnedLexeme) (*entity.LearnedLexeme, error) {
@@ -57,7 +60,14 @@ func (u *learnedLexemeUsecase) CollectLexeme(ctx context.Context, userID int64, 
 		existing.Mastery = lexeme.Mastery
 		existing.Review = lexeme.Review
 		existing.Normalize(now)
-		return u.repo.Update(ctx, existing)
+		updated, err := u.repo.Update(ctx, existing)
+		if err != nil {
+			return nil, err
+		}
+		if err := u.autoCollectStandardForms(ctx, userID, updated); err != nil {
+			return nil, err
+		}
+		return updated, nil
 	}
 
 	copy := *lexeme
@@ -73,6 +83,9 @@ func (u *learnedLexemeUsecase) CollectLexeme(ctx context.Context, userID int64, 
 
 	created, err := u.repo.Create(ctx, &copy)
 	if err != nil {
+		return nil, err
+	}
+	if err := u.autoCollectStandardForms(ctx, userID, created); err != nil {
 		return nil, err
 	}
 	return created, nil
@@ -107,4 +120,85 @@ func (u *learnedLexemeUsecase) DeleteLearnedLexeme(ctx context.Context, userID, 
 		return entity.ErrLearnedLexemeNotFound
 	}
 	return u.repo.Delete(ctx, userID, id)
+}
+
+func (u *learnedLexemeUsecase) autoCollectStandardForms(ctx context.Context, userID int64, base *entity.LearnedLexeme) error {
+	if u.wordRepo == nil || base == nil {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	lang := entity.NormalizeLanguage(base.Language)
+	dictEntry, err := u.wordRepo.Lookup(ctx, base.Term, lang)
+	if err != nil || dictEntry == nil {
+		return err
+	}
+
+	lemma := dictEntry.Text
+	if dictEntry.WordType != entity.WordTypeLemma && dictEntry.Lemma != nil {
+		lemma = *dictEntry.Lemma
+	}
+	lemma = strings.TrimSpace(lemma)
+	if lemma == "" {
+		return nil
+	}
+
+	forms, err := u.wordRepo.ListFormsByLemma(ctx, lemma, lang)
+	if err != nil {
+		return err
+	}
+
+	seen := map[string]struct{}{strings.ToLower(base.Term): {}}
+	now := u.clock()
+	for _, form := range forms {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		term := strings.TrimSpace(form.Text)
+		if term == "" {
+			continue
+		}
+		norm := strings.ToLower(term)
+		if _, ok := seen[norm]; ok {
+			continue
+		}
+		seen[norm] = struct{}{}
+
+		formWord, err := u.wordRepo.Lookup(ctx, term, lang)
+		if err != nil {
+			return err
+		}
+		if formWord == nil || !formWord.IsStandardRule {
+			continue
+		}
+
+		existing, err := u.repo.FindByTerm(ctx, userID, formWord.Text)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			continue
+		}
+
+		autoLexeme := &entity.LearnedLexeme{
+			Term:       formWord.Text,
+			UserID:     userID,
+			Language:   base.Language,
+			CreatedBy:  base.CreatedBy,
+			QueryCount: 1,
+			Mastery:    base.Mastery,
+			Review:     base.Review,
+		}
+		autoLexeme.Normalize(now)
+
+		if _, err := u.repo.Create(ctx, autoLexeme); err != nil {
+			if errors.Is(err, entity.ErrDuplicateLearnedLexeme) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
 }

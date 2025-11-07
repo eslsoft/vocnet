@@ -183,9 +183,99 @@ func cloneLearnedLexeme(src *entity.LearnedLexeme) *entity.LearnedLexeme {
 	return &copy
 }
 
+type stubWordRepo struct {
+	mu    sync.RWMutex
+	words map[string]*entity.Word
+	forms map[string][]entity.WordFormRef
+}
+
+func newStubWordRepo() *stubWordRepo {
+	return &stubWordRepo{
+		words: make(map[string]*entity.Word),
+		forms: make(map[string][]entity.WordFormRef),
+	}
+}
+
+func (r *stubWordRepo) storeWord(word *entity.Word) {
+	if word == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.words[r.key(word.Language, word.Text)] = cloneWord(word)
+}
+
+func (r *stubWordRepo) storeForms(lemma string, lang entity.Language, forms []entity.WordFormRef) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := r.key(lang, lemma)
+	r.forms[key] = append([]entity.WordFormRef(nil), forms...)
+}
+
+func (r *stubWordRepo) key(lang entity.Language, text string) string {
+	return entity.NormalizeLanguage(lang).Code() + "|" + strings.ToLower(strings.TrimSpace(text))
+}
+
+func (r *stubWordRepo) Create(context.Context, *entity.Word) (*entity.Word, error) {
+	panic("not implemented")
+}
+
+func (r *stubWordRepo) Update(context.Context, *entity.Word) (*entity.Word, error) {
+	panic("not implemented")
+}
+
+func (r *stubWordRepo) GetByID(context.Context, int64) (*entity.Word, error) {
+	panic("not implemented")
+}
+
+func (r *stubWordRepo) Lookup(ctx context.Context, text string, language entity.Language) (*entity.Word, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if w, ok := r.words[r.key(language, text)]; ok {
+		return cloneWord(w), nil
+	}
+	return nil, nil
+}
+
+func (r *stubWordRepo) List(context.Context, *repository.ListWordQuery) ([]*entity.Word, int64, error) {
+	panic("not implemented")
+}
+
+func (r *stubWordRepo) Delete(context.Context, int64) error {
+	panic("not implemented")
+}
+
+func (r *stubWordRepo) ListFormsByLemma(ctx context.Context, lemma string, language entity.Language) ([]entity.WordFormRef, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	key := r.key(language, lemma)
+	forms := r.forms[key]
+	out := make([]entity.WordFormRef, len(forms))
+	copy(out, forms)
+	return out, nil
+}
+
+func cloneWord(src *entity.Word) *entity.Word {
+	if src == nil {
+		return nil
+	}
+	copy := *src
+	if src.Lemma != nil {
+		lemma := *src.Lemma
+		copy.Lemma = &lemma
+	}
+	return &copy
+}
+
 func TestCollectLexemeCreatesNewEntry(t *testing.T) {
 	repo := newFakeLearnedLexemeRepo()
-	uc := NewLearnedLexemeUsecase(repo)
+	uc := NewLearnedLexemeUsecase(repo, nil)
 	impl := uc.(*learnedLexemeUsecase)
 	fixed := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	impl.clock = func() time.Time { return fixed }
@@ -216,7 +306,7 @@ func TestCollectLexemeCreatesNewEntry(t *testing.T) {
 
 func TestCollectLexemeDuplicateUpdatesExisting(t *testing.T) {
 	repo := newFakeLearnedLexemeRepo()
-	uc := NewLearnedLexemeUsecase(repo)
+	uc := NewLearnedLexemeUsecase(repo, nil)
 	impl := uc.(*learnedLexemeUsecase)
 	first := time.Date(2024, 1, 2, 8, 0, 0, 0, time.UTC)
 	impl.clock = func() time.Time { return first }
@@ -250,9 +340,67 @@ func TestCollectLexemeDuplicateUpdatesExisting(t *testing.T) {
 	}
 }
 
+func TestCollectLexemeAutoCollectsStandardForms(t *testing.T) {
+	ctx := context.Background()
+	lexRepo := newFakeLearnedLexemeRepo()
+	wordRepo := newStubWordRepo()
+
+	lemmaText := "apple"
+	wordRepo.storeWord(&entity.Word{Text: lemmaText, Language: entity.LanguageEnglish, WordType: entity.WordTypeLemma})
+	wordRepo.storeWord(&entity.Word{
+		Text:           "apples",
+		Language:       entity.LanguageEnglish,
+		WordType:       "plural",
+		Lemma:          &lemmaText,
+		IsStandardRule: true,
+	})
+	wordRepo.storeWord(&entity.Word{
+		Text:           "appled",
+		Language:       entity.LanguageEnglish,
+		WordType:       "past",
+		Lemma:          &lemmaText,
+		IsStandardRule: false,
+	})
+	wordRepo.storeForms(lemmaText, entity.LanguageEnglish, []entity.WordFormRef{
+		{Text: "apples", WordType: "plural"},
+		{Text: "appled", WordType: "past"},
+	})
+
+	uc := NewLearnedLexemeUsecase(lexRepo, wordRepo)
+	impl := uc.(*learnedLexemeUsecase)
+	fixed := time.Date(2024, 2, 1, 7, 30, 0, 0, time.UTC)
+	impl.clock = func() time.Time { return fixed }
+
+	if _, err := uc.CollectLexeme(ctx, 55, &entity.LearnedLexeme{Term: lemmaText, CreatedBy: "tester"}); err != nil {
+		t.Fatalf("CollectLexeme failed: %v", err)
+	}
+
+	plural, err := lexRepo.FindByTerm(ctx, 55, "apples")
+	if err != nil {
+		t.Fatalf("FindByTerm returned error: %v", err)
+	}
+	if plural == nil {
+		t.Fatalf("expected plural form to be auto-collected")
+	}
+	if plural.CreatedBy != "tester" {
+		t.Errorf("expected CreatedBy to carry over, got %q", plural.CreatedBy)
+	}
+	if !plural.CreatedAt.Equal(fixed) {
+		t.Errorf("expected created_at to equal %v, got %v", fixed, plural.CreatedAt)
+	}
+
+	irregular, err := lexRepo.FindByTerm(ctx, 55, "appled")
+	if err != nil {
+		t.Fatalf("FindByTerm irregular returned error: %v", err)
+	}
+	if irregular != nil {
+		t.Fatalf("expected irregular form to be skipped, but got %+v", irregular)
+	}
+}
+
 func TestUpdateMastery(t *testing.T) {
 	repo := newFakeLearnedLexemeRepo()
-	uc := NewLearnedLexemeUsecase(repo)
+	uc := NewLearnedLexemeUsecase(repo, nil)
 	impl := uc.(*learnedLexemeUsecase)
 	impl.clock = func() time.Time { return time.Date(2024, 1, 4, 10, 0, 0, 0, time.UTC) }
 
@@ -281,7 +429,7 @@ func TestUpdateMastery(t *testing.T) {
 
 func TestListLearnedLexemesFiltersByKeyword(t *testing.T) {
 	repo := newFakeLearnedLexemeRepo()
-	uc := NewLearnedLexemeUsecase(repo)
+	uc := NewLearnedLexemeUsecase(repo, nil)
 	impl := uc.(*learnedLexemeUsecase)
 	impl.clock = time.Now
 

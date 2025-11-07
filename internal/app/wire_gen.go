@@ -38,7 +38,7 @@ func Initialize() (*Container, func(), error) {
 	wordUsecase := usecase.NewWordUsecase(wordRepository)
 	wordServiceServer := grpc.NewWordServiceServer(wordUsecase)
 	learnedLexemeRepository := repository.NewLearnedLexemeRepository(client)
-	learnedLexemeUsecase := usecase.NewLearnedLexemeUsecase(learnedLexemeRepository)
+	learnedLexemeUsecase := usecase.NewLearnedLexemeUsecase(learnedLexemeRepository, wordRepository)
 	learningServiceServer := grpc.NewLearningServiceServer(learnedLexemeUsecase)
 	serverServer := server.NewServer(configConfig, logger, wordServiceServer, learningServiceServer)
 	container := &Container{
