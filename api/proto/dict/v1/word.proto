@@ -30,6 +30,10 @@ message Word {
   repeated WordFormRef forms = 30;
   repeated WordRelation relations = 31; // Relationships to other words (e.g. synonyms, antonyms)
 
+  int32 completeness = 32; // Data completeness 0-100, calculated from core fields
+  bool is_standard_rule = 33; // True if inflection follows standard morphological rules
+  bool is_manual_edited = 34; // True if manually edited, false if auto-imported
+
   google.protobuf.Timestamp created_at = 100; // Creation timestamp
   google.protobuf.Timestamp updated_at = 101; // Last update timestamp
 }

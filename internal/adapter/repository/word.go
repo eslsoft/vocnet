@@ -48,7 +48,10 @@ func (r *wordRepository) Create(ctx context.Context, word *entity.Word) (*entity
 		SetPhrases(word.Phrases).
 		SetSentences(word.Sentences).
 		SetRelations(word.Relations).
-		SetCategories(word.Categories)
+		SetCategories(word.Categories).
+		SetCompleteness(word.Completeness).
+		SetIsStandardRule(word.IsStandardRule).
+		SetIsManualEdited(word.IsManualEdited)
 
 	rec, err := builder.Save(ctx)
 	if err != nil {
@@ -69,7 +72,10 @@ func (r *wordRepository) Update(ctx context.Context, word *entity.Word) (*entity
 		SetPhrases(word.Phrases).
 		SetSentences(word.Sentences).
 		SetRelations(word.Relations).
-		SetCategories(word.Categories)
+		SetCategories(word.Categories).
+		SetCompleteness(word.Completeness).
+		SetIsStandardRule(word.IsStandardRule).
+		SetIsManualEdited(word.IsManualEdited)
 
 	if lemma := normalizeLemma(word.Lemma); lemma != nil {
 		mutation.SetLemma(*lemma)
@@ -285,18 +291,21 @@ func mapEntWord(rec *entdb.Word) *entity.Word {
 		return nil
 	}
 	word := &entity.Word{
-		ID:          int64(rec.ID),
-		Text:        rec.Text,
-		Language:    entity.ParseLanguage(rec.Language),
-		WordType:    rec.WordType,
-		Phonetics:   rec.Phonetics,
-		Definitions: rec.Definitions,
-		Categories:  rec.Categories,
-		Phrases:     rec.Phrases,
-		Sentences:   rec.Sentences,
-		Relations:   rec.Relations,
-		CreatedAt:   rec.CreatedAt,
-		UpdatedAt:   rec.UpdatedAt,
+		ID:             int64(rec.ID),
+		Text:           rec.Text,
+		Language:       entity.ParseLanguage(rec.Language),
+		WordType:       rec.WordType,
+		Phonetics:      rec.Phonetics,
+		Definitions:    rec.Definitions,
+		Categories:     rec.Categories,
+		Phrases:        rec.Phrases,
+		Sentences:      rec.Sentences,
+		Relations:      rec.Relations,
+		Completeness:   rec.Completeness,
+		IsStandardRule: rec.IsStandardRule,
+		IsManualEdited: rec.IsManualEdited,
+		CreatedAt:      rec.CreatedAt,
+		UpdatedAt:      rec.UpdatedAt,
 	}
 	if rec.Lemma != nil {
 		lemma := *rec.Lemma

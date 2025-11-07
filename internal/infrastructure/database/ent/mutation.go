@@ -1994,6 +1994,10 @@ type WordMutation struct {
 	appendrelations        []entity.WordRelation
 	categories             *[]string
 	appendcategories       []string
+	completeness           *int32
+	addcompleteness        *int32
+	is_standard_rule       *bool
+	is_manual_edited       *bool
 	created_at             *time.Time
 	updated_at             *time.Time
 	clearedFields          map[string]struct{}
@@ -2602,6 +2606,134 @@ func (m *WordMutation) ResetCategories() {
 	m.appendcategories = nil
 }
 
+// SetCompleteness sets the "completeness" field.
+func (m *WordMutation) SetCompleteness(i int32) {
+	m.completeness = &i
+	m.addcompleteness = nil
+}
+
+// Completeness returns the value of the "completeness" field in the mutation.
+func (m *WordMutation) Completeness() (r int32, exists bool) {
+	v := m.completeness
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompleteness returns the old "completeness" field's value of the Word entity.
+// If the Word object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WordMutation) OldCompleteness(ctx context.Context) (v int32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompleteness is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompleteness requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompleteness: %w", err)
+	}
+	return oldValue.Completeness, nil
+}
+
+// AddCompleteness adds i to the "completeness" field.
+func (m *WordMutation) AddCompleteness(i int32) {
+	if m.addcompleteness != nil {
+		*m.addcompleteness += i
+	} else {
+		m.addcompleteness = &i
+	}
+}
+
+// AddedCompleteness returns the value that was added to the "completeness" field in this mutation.
+func (m *WordMutation) AddedCompleteness() (r int32, exists bool) {
+	v := m.addcompleteness
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCompleteness resets all changes to the "completeness" field.
+func (m *WordMutation) ResetCompleteness() {
+	m.completeness = nil
+	m.addcompleteness = nil
+}
+
+// SetIsStandardRule sets the "is_standard_rule" field.
+func (m *WordMutation) SetIsStandardRule(b bool) {
+	m.is_standard_rule = &b
+}
+
+// IsStandardRule returns the value of the "is_standard_rule" field in the mutation.
+func (m *WordMutation) IsStandardRule() (r bool, exists bool) {
+	v := m.is_standard_rule
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsStandardRule returns the old "is_standard_rule" field's value of the Word entity.
+// If the Word object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WordMutation) OldIsStandardRule(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsStandardRule is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsStandardRule requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsStandardRule: %w", err)
+	}
+	return oldValue.IsStandardRule, nil
+}
+
+// ResetIsStandardRule resets all changes to the "is_standard_rule" field.
+func (m *WordMutation) ResetIsStandardRule() {
+	m.is_standard_rule = nil
+}
+
+// SetIsManualEdited sets the "is_manual_edited" field.
+func (m *WordMutation) SetIsManualEdited(b bool) {
+	m.is_manual_edited = &b
+}
+
+// IsManualEdited returns the value of the "is_manual_edited" field in the mutation.
+func (m *WordMutation) IsManualEdited() (r bool, exists bool) {
+	v := m.is_manual_edited
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsManualEdited returns the old "is_manual_edited" field's value of the Word entity.
+// If the Word object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WordMutation) OldIsManualEdited(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsManualEdited is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsManualEdited requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsManualEdited: %w", err)
+	}
+	return oldValue.IsManualEdited, nil
+}
+
+// ResetIsManualEdited resets all changes to the "is_manual_edited" field.
+func (m *WordMutation) ResetIsManualEdited() {
+	m.is_manual_edited = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *WordMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -2762,7 +2894,7 @@ func (m *WordMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WordMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 16)
 	if m.text != nil {
 		fields = append(fields, word.FieldText)
 	}
@@ -2795,6 +2927,15 @@ func (m *WordMutation) Fields() []string {
 	}
 	if m.categories != nil {
 		fields = append(fields, word.FieldCategories)
+	}
+	if m.completeness != nil {
+		fields = append(fields, word.FieldCompleteness)
+	}
+	if m.is_standard_rule != nil {
+		fields = append(fields, word.FieldIsStandardRule)
+	}
+	if m.is_manual_edited != nil {
+		fields = append(fields, word.FieldIsManualEdited)
 	}
 	if m.created_at != nil {
 		fields = append(fields, word.FieldCreatedAt)
@@ -2832,6 +2973,12 @@ func (m *WordMutation) Field(name string) (ent.Value, bool) {
 		return m.Relations()
 	case word.FieldCategories:
 		return m.Categories()
+	case word.FieldCompleteness:
+		return m.Completeness()
+	case word.FieldIsStandardRule:
+		return m.IsStandardRule()
+	case word.FieldIsManualEdited:
+		return m.IsManualEdited()
 	case word.FieldCreatedAt:
 		return m.CreatedAt()
 	case word.FieldUpdatedAt:
@@ -2867,6 +3014,12 @@ func (m *WordMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldRelations(ctx)
 	case word.FieldCategories:
 		return m.OldCategories(ctx)
+	case word.FieldCompleteness:
+		return m.OldCompleteness(ctx)
+	case word.FieldIsStandardRule:
+		return m.OldIsStandardRule(ctx)
+	case word.FieldIsManualEdited:
+		return m.OldIsManualEdited(ctx)
 	case word.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case word.FieldUpdatedAt:
@@ -2957,6 +3110,27 @@ func (m *WordMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCategories(v)
 		return nil
+	case word.FieldCompleteness:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompleteness(v)
+		return nil
+	case word.FieldIsStandardRule:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsStandardRule(v)
+		return nil
+	case word.FieldIsManualEdited:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsManualEdited(v)
+		return nil
 	case word.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -2978,13 +3152,21 @@ func (m *WordMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *WordMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addcompleteness != nil {
+		fields = append(fields, word.FieldCompleteness)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *WordMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case word.FieldCompleteness:
+		return m.AddedCompleteness()
+	}
 	return nil, false
 }
 
@@ -2993,6 +3175,13 @@ func (m *WordMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *WordMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case word.FieldCompleteness:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCompleteness(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Word numeric field %s", name)
 }
@@ -3061,6 +3250,15 @@ func (m *WordMutation) ResetField(name string) error {
 		return nil
 	case word.FieldCategories:
 		m.ResetCategories()
+		return nil
+	case word.FieldCompleteness:
+		m.ResetCompleteness()
+		return nil
+	case word.FieldIsStandardRule:
+		m.ResetIsStandardRule()
+		return nil
+	case word.FieldIsManualEdited:
+		m.ResetIsManualEdited()
 		return nil
 	case word.FieldCreatedAt:
 		m.ResetCreatedAt()

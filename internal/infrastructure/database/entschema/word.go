@@ -47,6 +47,12 @@ func (Word) Fields() []ent.Field {
 		field.JSON("categories", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		field.Int32("completeness").
+			Default(0),
+		field.Bool("is_standard_rule").
+			Default(false),
+		field.Bool("is_manual_edited").
+			Default(false),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),

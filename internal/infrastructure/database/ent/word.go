@@ -41,6 +41,12 @@ type Word struct {
 	Relations []entity.WordRelation `json:"relations,omitempty"`
 	// Categories holds the value of the "categories" field.
 	Categories []string `json:"categories,omitempty"`
+	// Completeness holds the value of the "completeness" field.
+	Completeness int32 `json:"completeness,omitempty"`
+	// IsStandardRule holds the value of the "is_standard_rule" field.
+	IsStandardRule bool `json:"is_standard_rule,omitempty"`
+	// IsManualEdited holds the value of the "is_manual_edited" field.
+	IsManualEdited bool `json:"is_manual_edited,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -76,7 +82,9 @@ func (*Word) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case word.FieldPhonetics, word.FieldDefinitions, word.FieldPhrases, word.FieldSentences, word.FieldRelations, word.FieldCategories:
 			values[i] = new([]byte)
-		case word.FieldID:
+		case word.FieldIsStandardRule, word.FieldIsManualEdited:
+			values[i] = new(sql.NullBool)
+		case word.FieldID, word.FieldCompleteness:
 			values[i] = new(sql.NullInt64)
 		case word.FieldText, word.FieldNormalized, word.FieldLanguage, word.FieldWordType, word.FieldLemma:
 			values[i] = new(sql.NullString)
@@ -182,6 +190,24 @@ func (w *Word) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field categories: %w", err)
 				}
 			}
+		case word.FieldCompleteness:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field completeness", values[i])
+			} else if value.Valid {
+				w.Completeness = int32(value.Int64)
+			}
+		case word.FieldIsStandardRule:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field is_standard_rule", values[i])
+			} else if value.Valid {
+				w.IsStandardRule = value.Bool
+			}
+		case word.FieldIsManualEdited:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field is_manual_edited", values[i])
+			} else if value.Valid {
+				w.IsManualEdited = value.Bool
+			}
 		case word.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -269,6 +295,15 @@ func (w *Word) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("categories=")
 	builder.WriteString(fmt.Sprintf("%v", w.Categories))
+	builder.WriteString(", ")
+	builder.WriteString("completeness=")
+	builder.WriteString(fmt.Sprintf("%v", w.Completeness))
+	builder.WriteString(", ")
+	builder.WriteString("is_standard_rule=")
+	builder.WriteString(fmt.Sprintf("%v", w.IsStandardRule))
+	builder.WriteString(", ")
+	builder.WriteString("is_manual_edited=")
+	builder.WriteString(fmt.Sprintf("%v", w.IsManualEdited))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(w.CreatedAt.Format(time.ANSIC))

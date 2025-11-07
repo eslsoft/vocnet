@@ -49,6 +49,7 @@ func (u *wordUsecase) Update(ctx context.Context, word *entity.Word) (*entity.Wo
 	if norm.ID <= 0 {
 		return nil, entity.ErrInvalidVocID
 	}
+	norm.IsManualEdited = true
 	return u.repo.Update(ctx, norm)
 }
 
@@ -118,5 +119,59 @@ func normalizeVocForUpsert(in *entity.Word) (*entity.Word, error) {
 		out.Lemma = nil
 	}
 
+	out.Completeness = calculateCompleteness(&out)
+	out.IsStandardRule = checkStandardRule(&out)
+
 	return &out, nil
+}
+
+func calculateCompleteness(w *entity.Word) int32 {
+	total := int32(5)
+	score := int32(0)
+
+	if w.Text != "" {
+		score++
+	}
+	if len(w.Phonetics) > 0 {
+		score++
+	}
+	if len(w.Definitions) > 0 {
+		score++
+	}
+	if w.WordType == entity.WordTypeLemma && len(w.Categories) > 0 {
+		score++
+	}
+	if w.WordType != entity.WordTypeLemma && w.Lemma != nil {
+		score++
+	}
+
+	return (score * 100) / total
+}
+
+func checkStandardRule(w *entity.Word) bool {
+	if w.WordType == entity.WordTypeLemma || w.Lemma == nil {
+		return false
+	}
+
+	lemma := strings.ToLower(strings.TrimSpace(*w.Lemma))
+	text := strings.ToLower(w.Text)
+
+	switch w.WordType {
+	case "plural":
+		return text == lemma+"s" || text == lemma+"es" || text == lemma+"ies"
+	case "past":
+		return text == lemma+"ed" || text == lemma+"d"
+	case "pp":
+		return text == lemma+"ed" || text == lemma+"d"
+	case "ing":
+		return text == lemma+"ing"
+	case "3sg":
+		return text == lemma+"s" || text == lemma+"es"
+	case "comparative":
+		return text == lemma+"er"
+	case "superlative":
+		return text == lemma+"est"
+	default:
+		return false
+	}
 }

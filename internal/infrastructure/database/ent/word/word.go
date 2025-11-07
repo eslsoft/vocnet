@@ -37,6 +37,12 @@ const (
 	FieldRelations = "relations"
 	// FieldCategories holds the string denoting the categories field in the database.
 	FieldCategories = "categories"
+	// FieldCompleteness holds the string denoting the completeness field in the database.
+	FieldCompleteness = "completeness"
+	// FieldIsStandardRule holds the string denoting the is_standard_rule field in the database.
+	FieldIsStandardRule = "is_standard_rule"
+	// FieldIsManualEdited holds the string denoting the is_manual_edited field in the database.
+	FieldIsManualEdited = "is_manual_edited"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -68,6 +74,9 @@ var Columns = []string{
 	FieldSentences,
 	FieldRelations,
 	FieldCategories,
+	FieldCompleteness,
+	FieldIsStandardRule,
+	FieldIsManualEdited,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -103,6 +112,12 @@ var (
 	DefaultRelations []entity.WordRelation
 	// DefaultCategories holds the default value on creation for the "categories" field.
 	DefaultCategories []string
+	// DefaultCompleteness holds the default value on creation for the "completeness" field.
+	DefaultCompleteness int32
+	// DefaultIsStandardRule holds the default value on creation for the "is_standard_rule" field.
+	DefaultIsStandardRule bool
+	// DefaultIsManualEdited holds the default value on creation for the "is_manual_edited" field.
+	DefaultIsManualEdited bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -142,6 +157,21 @@ func ByWordType(opts ...sql.OrderTermOption) OrderOption {
 // ByLemma orders the results by the lemma field.
 func ByLemma(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLemma, opts...).ToFunc()
+}
+
+// ByCompleteness orders the results by the completeness field.
+func ByCompleteness(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCompleteness, opts...).ToFunc()
+}
+
+// ByIsStandardRule orders the results by the is_standard_rule field.
+func ByIsStandardRule(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsStandardRule, opts...).ToFunc()
+}
+
+// ByIsManualEdited orders the results by the is_manual_edited field.
+func ByIsManualEdited(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsManualEdited, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

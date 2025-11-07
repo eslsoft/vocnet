@@ -129,12 +129,24 @@ func init() {
 	wordDescCategories := wordFields[10].Descriptor()
 	// word.DefaultCategories holds the default value on creation for the categories field.
 	word.DefaultCategories = wordDescCategories.Default.([]string)
+	// wordDescCompleteness is the schema descriptor for completeness field.
+	wordDescCompleteness := wordFields[11].Descriptor()
+	// word.DefaultCompleteness holds the default value on creation for the completeness field.
+	word.DefaultCompleteness = wordDescCompleteness.Default.(int32)
+	// wordDescIsStandardRule is the schema descriptor for is_standard_rule field.
+	wordDescIsStandardRule := wordFields[12].Descriptor()
+	// word.DefaultIsStandardRule holds the default value on creation for the is_standard_rule field.
+	word.DefaultIsStandardRule = wordDescIsStandardRule.Default.(bool)
+	// wordDescIsManualEdited is the schema descriptor for is_manual_edited field.
+	wordDescIsManualEdited := wordFields[13].Descriptor()
+	// word.DefaultIsManualEdited holds the default value on creation for the is_manual_edited field.
+	word.DefaultIsManualEdited = wordDescIsManualEdited.Default.(bool)
 	// wordDescCreatedAt is the schema descriptor for created_at field.
-	wordDescCreatedAt := wordFields[11].Descriptor()
+	wordDescCreatedAt := wordFields[14].Descriptor()
 	// word.DefaultCreatedAt holds the default value on creation for the created_at field.
 	word.DefaultCreatedAt = wordDescCreatedAt.Default.(func() time.Time)
 	// wordDescUpdatedAt is the schema descriptor for updated_at field.
-	wordDescUpdatedAt := wordFields[12].Descriptor()
+	wordDescUpdatedAt := wordFields[15].Descriptor()
 	// word.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	word.DefaultUpdatedAt = wordDescUpdatedAt.Default.(func() time.Time)
 	// word.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

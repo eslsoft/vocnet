@@ -80,6 +80,21 @@ func Lemma(v string) predicate.Word {
 	return predicate.Word(sql.FieldEQ(FieldLemma, v))
 }
 
+// Completeness applies equality check predicate on the "completeness" field. It's identical to CompletenessEQ.
+func Completeness(v int32) predicate.Word {
+	return predicate.Word(sql.FieldEQ(FieldCompleteness, v))
+}
+
+// IsStandardRule applies equality check predicate on the "is_standard_rule" field. It's identical to IsStandardRuleEQ.
+func IsStandardRule(v bool) predicate.Word {
+	return predicate.Word(sql.FieldEQ(FieldIsStandardRule, v))
+}
+
+// IsManualEdited applies equality check predicate on the "is_manual_edited" field. It's identical to IsManualEditedEQ.
+func IsManualEdited(v bool) predicate.Word {
+	return predicate.Word(sql.FieldEQ(FieldIsManualEdited, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Word {
 	return predicate.Word(sql.FieldEQ(FieldCreatedAt, v))
@@ -423,6 +438,66 @@ func LemmaEqualFold(v string) predicate.Word {
 // LemmaContainsFold applies the ContainsFold predicate on the "lemma" field.
 func LemmaContainsFold(v string) predicate.Word {
 	return predicate.Word(sql.FieldContainsFold(FieldLemma, v))
+}
+
+// CompletenessEQ applies the EQ predicate on the "completeness" field.
+func CompletenessEQ(v int32) predicate.Word {
+	return predicate.Word(sql.FieldEQ(FieldCompleteness, v))
+}
+
+// CompletenessNEQ applies the NEQ predicate on the "completeness" field.
+func CompletenessNEQ(v int32) predicate.Word {
+	return predicate.Word(sql.FieldNEQ(FieldCompleteness, v))
+}
+
+// CompletenessIn applies the In predicate on the "completeness" field.
+func CompletenessIn(vs ...int32) predicate.Word {
+	return predicate.Word(sql.FieldIn(FieldCompleteness, vs...))
+}
+
+// CompletenessNotIn applies the NotIn predicate on the "completeness" field.
+func CompletenessNotIn(vs ...int32) predicate.Word {
+	return predicate.Word(sql.FieldNotIn(FieldCompleteness, vs...))
+}
+
+// CompletenessGT applies the GT predicate on the "completeness" field.
+func CompletenessGT(v int32) predicate.Word {
+	return predicate.Word(sql.FieldGT(FieldCompleteness, v))
+}
+
+// CompletenessGTE applies the GTE predicate on the "completeness" field.
+func CompletenessGTE(v int32) predicate.Word {
+	return predicate.Word(sql.FieldGTE(FieldCompleteness, v))
+}
+
+// CompletenessLT applies the LT predicate on the "completeness" field.
+func CompletenessLT(v int32) predicate.Word {
+	return predicate.Word(sql.FieldLT(FieldCompleteness, v))
+}
+
+// CompletenessLTE applies the LTE predicate on the "completeness" field.
+func CompletenessLTE(v int32) predicate.Word {
+	return predicate.Word(sql.FieldLTE(FieldCompleteness, v))
+}
+
+// IsStandardRuleEQ applies the EQ predicate on the "is_standard_rule" field.
+func IsStandardRuleEQ(v bool) predicate.Word {
+	return predicate.Word(sql.FieldEQ(FieldIsStandardRule, v))
+}
+
+// IsStandardRuleNEQ applies the NEQ predicate on the "is_standard_rule" field.
+func IsStandardRuleNEQ(v bool) predicate.Word {
+	return predicate.Word(sql.FieldNEQ(FieldIsStandardRule, v))
+}
+
+// IsManualEditedEQ applies the EQ predicate on the "is_manual_edited" field.
+func IsManualEditedEQ(v bool) predicate.Word {
+	return predicate.Word(sql.FieldEQ(FieldIsManualEdited, v))
+}
+
+// IsManualEditedNEQ applies the NEQ predicate on the "is_manual_edited" field.
+func IsManualEditedNEQ(v bool) predicate.Word {
+	return predicate.Word(sql.FieldNEQ(FieldIsManualEdited, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -44,12 +44,15 @@ type Word struct {
 	// When this entry is a non-lemma form, forms is empty; the original lemma text can be
 	// obtained from the `lemma` field. We return structured objects instead of plain strings
 	// so the client knows which type each form is without extra lookups.
-	Forms         []*WordFormRef         `protobuf:"bytes,30,rep,name=forms,proto3" json:"forms,omitempty"`
-	Relations     []*WordRelation        `protobuf:"bytes,31,rep,name=relations,proto3" json:"relations,omitempty"`                   // Relationships to other words (e.g. synonyms, antonyms)
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,100,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // Creation timestamp
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,101,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"` // Last update timestamp
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Forms          []*WordFormRef         `protobuf:"bytes,30,rep,name=forms,proto3" json:"forms,omitempty"`
+	Relations      []*WordRelation        `protobuf:"bytes,31,rep,name=relations,proto3" json:"relations,omitempty"`                                    // Relationships to other words (e.g. synonyms, antonyms)
+	Completeness   int32                  `protobuf:"varint,32,opt,name=completeness,proto3" json:"completeness,omitempty"`                             // Data completeness 0-100, calculated from core fields
+	IsStandardRule bool                   `protobuf:"varint,33,opt,name=is_standard_rule,json=isStandardRule,proto3" json:"is_standard_rule,omitempty"` // True if inflection follows standard morphological rules
+	IsManualEdited bool                   `protobuf:"varint,34,opt,name=is_manual_edited,json=isManualEdited,proto3" json:"is_manual_edited,omitempty"` // True if manually edited, false if auto-imported
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,100,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                  // Creation timestamp
+	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,101,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`                  // Last update timestamp
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Word) Reset() {
@@ -164,6 +167,27 @@ func (x *Word) GetRelations() []*WordRelation {
 		return x.Relations
 	}
 	return nil
+}
+
+func (x *Word) GetCompleteness() int32 {
+	if x != nil {
+		return x.Completeness
+	}
+	return 0
+}
+
+func (x *Word) GetIsStandardRule() bool {
+	if x != nil {
+		return x.IsStandardRule
+	}
+	return false
+}
+
+func (x *Word) GetIsManualEdited() bool {
+	if x != nil {
+		return x.IsManualEdited
+	}
+	return false
 }
 
 func (x *Word) GetCreatedAt() *timestamppb.Timestamp {
@@ -675,7 +699,7 @@ var File_dict_v1_word_proto protoreflect.FileDescriptor
 
 const file_dict_v1_word_proto_rawDesc = "" +
 	"\n" +
-	"\x12dict/v1/word.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x14dict/v1/phrase.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xc9\x04\n" +
+	"\x12dict/v1/word.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x14dict/v1/phrase.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xc1\x05\n" +
 	"\x04Word\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12/\n" +
@@ -691,7 +715,10 @@ const file_dict_v1_word_proto_rawDesc = "" +
 	"\tsentences\x18\n" +
 	" \x03(\v2\x11.dict.v1.SentenceR\tsentences\x12*\n" +
 	"\x05forms\x18\x1e \x03(\v2\x14.dict.v1.WordFormRefR\x05forms\x123\n" +
-	"\trelations\x18\x1f \x03(\v2\x15.dict.v1.WordRelationR\trelations\x129\n" +
+	"\trelations\x18\x1f \x03(\v2\x15.dict.v1.WordRelationR\trelations\x12\"\n" +
+	"\fcompleteness\x18  \x01(\x05R\fcompleteness\x12(\n" +
+	"\x10is_standard_rule\x18! \x01(\bR\x0eisStandardRule\x12(\n" +
+	"\x10is_manual_edited\x18\" \x01(\bR\x0eisManualEdited\x129\n" +
 	"\n" +
 	"created_at\x18d \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +

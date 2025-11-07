@@ -75,6 +75,9 @@ var (
 		{Name: "sentences", Type: field.TypeJSON},
 		{Name: "relations", Type: field.TypeJSON},
 		{Name: "categories", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "completeness", Type: field.TypeInt32, Default: 0},
+		{Name: "is_standard_rule", Type: field.TypeBool, Default: false},
+		{Name: "is_manual_edited", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}

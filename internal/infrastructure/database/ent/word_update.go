@@ -179,6 +179,55 @@ func (wu *WordUpdate) AppendCategories(s []string) *WordUpdate {
 	return wu
 }
 
+// SetCompleteness sets the "completeness" field.
+func (wu *WordUpdate) SetCompleteness(i int32) *WordUpdate {
+	wu.mutation.ResetCompleteness()
+	wu.mutation.SetCompleteness(i)
+	return wu
+}
+
+// SetNillableCompleteness sets the "completeness" field if the given value is not nil.
+func (wu *WordUpdate) SetNillableCompleteness(i *int32) *WordUpdate {
+	if i != nil {
+		wu.SetCompleteness(*i)
+	}
+	return wu
+}
+
+// AddCompleteness adds i to the "completeness" field.
+func (wu *WordUpdate) AddCompleteness(i int32) *WordUpdate {
+	wu.mutation.AddCompleteness(i)
+	return wu
+}
+
+// SetIsStandardRule sets the "is_standard_rule" field.
+func (wu *WordUpdate) SetIsStandardRule(b bool) *WordUpdate {
+	wu.mutation.SetIsStandardRule(b)
+	return wu
+}
+
+// SetNillableIsStandardRule sets the "is_standard_rule" field if the given value is not nil.
+func (wu *WordUpdate) SetNillableIsStandardRule(b *bool) *WordUpdate {
+	if b != nil {
+		wu.SetIsStandardRule(*b)
+	}
+	return wu
+}
+
+// SetIsManualEdited sets the "is_manual_edited" field.
+func (wu *WordUpdate) SetIsManualEdited(b bool) *WordUpdate {
+	wu.mutation.SetIsManualEdited(b)
+	return wu
+}
+
+// SetNillableIsManualEdited sets the "is_manual_edited" field if the given value is not nil.
+func (wu *WordUpdate) SetNillableIsManualEdited(b *bool) *WordUpdate {
+	if b != nil {
+		wu.SetIsManualEdited(*b)
+	}
+	return wu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (wu *WordUpdate) SetUpdatedAt(t time.Time) *WordUpdate {
 	wu.mutation.SetUpdatedAt(t)
@@ -349,6 +398,18 @@ func (wu *WordUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, word.FieldCategories, value)
 		})
+	}
+	if value, ok := wu.mutation.Completeness(); ok {
+		_spec.SetField(word.FieldCompleteness, field.TypeInt32, value)
+	}
+	if value, ok := wu.mutation.AddedCompleteness(); ok {
+		_spec.AddField(word.FieldCompleteness, field.TypeInt32, value)
+	}
+	if value, ok := wu.mutation.IsStandardRule(); ok {
+		_spec.SetField(word.FieldIsStandardRule, field.TypeBool, value)
+	}
+	if value, ok := wu.mutation.IsManualEdited(); ok {
+		_spec.SetField(word.FieldIsManualEdited, field.TypeBool, value)
 	}
 	if value, ok := wu.mutation.UpdatedAt(); ok {
 		_spec.SetField(word.FieldUpdatedAt, field.TypeTime, value)
@@ -566,6 +627,55 @@ func (wuo *WordUpdateOne) AppendCategories(s []string) *WordUpdateOne {
 	return wuo
 }
 
+// SetCompleteness sets the "completeness" field.
+func (wuo *WordUpdateOne) SetCompleteness(i int32) *WordUpdateOne {
+	wuo.mutation.ResetCompleteness()
+	wuo.mutation.SetCompleteness(i)
+	return wuo
+}
+
+// SetNillableCompleteness sets the "completeness" field if the given value is not nil.
+func (wuo *WordUpdateOne) SetNillableCompleteness(i *int32) *WordUpdateOne {
+	if i != nil {
+		wuo.SetCompleteness(*i)
+	}
+	return wuo
+}
+
+// AddCompleteness adds i to the "completeness" field.
+func (wuo *WordUpdateOne) AddCompleteness(i int32) *WordUpdateOne {
+	wuo.mutation.AddCompleteness(i)
+	return wuo
+}
+
+// SetIsStandardRule sets the "is_standard_rule" field.
+func (wuo *WordUpdateOne) SetIsStandardRule(b bool) *WordUpdateOne {
+	wuo.mutation.SetIsStandardRule(b)
+	return wuo
+}
+
+// SetNillableIsStandardRule sets the "is_standard_rule" field if the given value is not nil.
+func (wuo *WordUpdateOne) SetNillableIsStandardRule(b *bool) *WordUpdateOne {
+	if b != nil {
+		wuo.SetIsStandardRule(*b)
+	}
+	return wuo
+}
+
+// SetIsManualEdited sets the "is_manual_edited" field.
+func (wuo *WordUpdateOne) SetIsManualEdited(b bool) *WordUpdateOne {
+	wuo.mutation.SetIsManualEdited(b)
+	return wuo
+}
+
+// SetNillableIsManualEdited sets the "is_manual_edited" field if the given value is not nil.
+func (wuo *WordUpdateOne) SetNillableIsManualEdited(b *bool) *WordUpdateOne {
+	if b != nil {
+		wuo.SetIsManualEdited(*b)
+	}
+	return wuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (wuo *WordUpdateOne) SetUpdatedAt(t time.Time) *WordUpdateOne {
 	wuo.mutation.SetUpdatedAt(t)
@@ -766,6 +876,18 @@ func (wuo *WordUpdateOne) sqlSave(ctx context.Context) (_node *Word, err error) 
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, word.FieldCategories, value)
 		})
+	}
+	if value, ok := wuo.mutation.Completeness(); ok {
+		_spec.SetField(word.FieldCompleteness, field.TypeInt32, value)
+	}
+	if value, ok := wuo.mutation.AddedCompleteness(); ok {
+		_spec.AddField(word.FieldCompleteness, field.TypeInt32, value)
+	}
+	if value, ok := wuo.mutation.IsStandardRule(); ok {
+		_spec.SetField(word.FieldIsStandardRule, field.TypeBool, value)
+	}
+	if value, ok := wuo.mutation.IsManualEdited(); ok {
+		_spec.SetField(word.FieldIsManualEdited, field.TypeBool, value)
 	}
 	if value, ok := wuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(word.FieldUpdatedAt, field.TypeTime, value)

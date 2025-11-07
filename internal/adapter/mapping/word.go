@@ -61,7 +61,10 @@ func FromPbWord(in *dictv1.Word) *entity.Word {
 				RelationType: int32(rel.GetRelationType()),
 			}
 		}),
-		Categories: in.GetCategories(),
+		Categories:     in.GetCategories(),
+		Completeness:   in.GetCompleteness(),
+		IsStandardRule: in.GetIsStandardRule(),
+		IsManualEdited: in.GetIsManualEdited(),
 	}
 	if lemma := strings.TrimSpace(in.GetLemma()); lemma != "" {
 		word.Lemma = &lemma
@@ -102,8 +105,11 @@ func ToPbWord(v *entity.Word) *dictv1.Word {
 		Relations: lo.Map(v.Relations, func(rel entity.WordRelation, _ int) *dictv1.WordRelation {
 			return &dictv1.WordRelation{Word: rel.Word, RelationType: commonv1.RelationType(rel.RelationType)}
 		}),
-		CreatedAt: timestamppb.New(v.CreatedAt),
-		UpdatedAt: timestamppb.New(v.UpdatedAt),
+		Completeness:   v.Completeness,
+		IsStandardRule: v.IsStandardRule,
+		IsManualEdited: v.IsManualEdited,
+		CreatedAt:      timestamppb.New(v.CreatedAt),
+		UpdatedAt:      timestamppb.New(v.UpdatedAt),
 	}
 
 	if v.Lemma != nil {

@@ -122,6 +122,48 @@ func (wc *WordCreate) SetCategories(s []string) *WordCreate {
 	return wc
 }
 
+// SetCompleteness sets the "completeness" field.
+func (wc *WordCreate) SetCompleteness(i int32) *WordCreate {
+	wc.mutation.SetCompleteness(i)
+	return wc
+}
+
+// SetNillableCompleteness sets the "completeness" field if the given value is not nil.
+func (wc *WordCreate) SetNillableCompleteness(i *int32) *WordCreate {
+	if i != nil {
+		wc.SetCompleteness(*i)
+	}
+	return wc
+}
+
+// SetIsStandardRule sets the "is_standard_rule" field.
+func (wc *WordCreate) SetIsStandardRule(b bool) *WordCreate {
+	wc.mutation.SetIsStandardRule(b)
+	return wc
+}
+
+// SetNillableIsStandardRule sets the "is_standard_rule" field if the given value is not nil.
+func (wc *WordCreate) SetNillableIsStandardRule(b *bool) *WordCreate {
+	if b != nil {
+		wc.SetIsStandardRule(*b)
+	}
+	return wc
+}
+
+// SetIsManualEdited sets the "is_manual_edited" field.
+func (wc *WordCreate) SetIsManualEdited(b bool) *WordCreate {
+	wc.mutation.SetIsManualEdited(b)
+	return wc
+}
+
+// SetNillableIsManualEdited sets the "is_manual_edited" field if the given value is not nil.
+func (wc *WordCreate) SetNillableIsManualEdited(b *bool) *WordCreate {
+	if b != nil {
+		wc.SetIsManualEdited(*b)
+	}
+	return wc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (wc *WordCreate) SetCreatedAt(t time.Time) *WordCreate {
 	wc.mutation.SetCreatedAt(t)
@@ -236,6 +278,18 @@ func (wc *WordCreate) defaults() {
 		v := word.DefaultCategories
 		wc.mutation.SetCategories(v)
 	}
+	if _, ok := wc.mutation.Completeness(); !ok {
+		v := word.DefaultCompleteness
+		wc.mutation.SetCompleteness(v)
+	}
+	if _, ok := wc.mutation.IsStandardRule(); !ok {
+		v := word.DefaultIsStandardRule
+		wc.mutation.SetIsStandardRule(v)
+	}
+	if _, ok := wc.mutation.IsManualEdited(); !ok {
+		v := word.DefaultIsManualEdited
+		wc.mutation.SetIsManualEdited(v)
+	}
 	if _, ok := wc.mutation.CreatedAt(); !ok {
 		v := word.DefaultCreatedAt()
 		wc.mutation.SetCreatedAt(v)
@@ -282,6 +336,15 @@ func (wc *WordCreate) check() error {
 	}
 	if _, ok := wc.mutation.Categories(); !ok {
 		return &ValidationError{Name: "categories", err: errors.New(`ent: missing required field "Word.categories"`)}
+	}
+	if _, ok := wc.mutation.Completeness(); !ok {
+		return &ValidationError{Name: "completeness", err: errors.New(`ent: missing required field "Word.completeness"`)}
+	}
+	if _, ok := wc.mutation.IsStandardRule(); !ok {
+		return &ValidationError{Name: "is_standard_rule", err: errors.New(`ent: missing required field "Word.is_standard_rule"`)}
+	}
+	if _, ok := wc.mutation.IsManualEdited(); !ok {
+		return &ValidationError{Name: "is_manual_edited", err: errors.New(`ent: missing required field "Word.is_manual_edited"`)}
 	}
 	if _, ok := wc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Word.created_at"`)}
@@ -359,6 +422,18 @@ func (wc *WordCreate) createSpec() (*Word, *sqlgraph.CreateSpec) {
 	if value, ok := wc.mutation.Categories(); ok {
 		_spec.SetField(word.FieldCategories, field.TypeJSON, value)
 		_node.Categories = value
+	}
+	if value, ok := wc.mutation.Completeness(); ok {
+		_spec.SetField(word.FieldCompleteness, field.TypeInt32, value)
+		_node.Completeness = value
+	}
+	if value, ok := wc.mutation.IsStandardRule(); ok {
+		_spec.SetField(word.FieldIsStandardRule, field.TypeBool, value)
+		_node.IsStandardRule = value
+	}
+	if value, ok := wc.mutation.IsManualEdited(); ok {
+		_spec.SetField(word.FieldIsManualEdited, field.TypeBool, value)
+		_node.IsManualEdited = value
 	}
 	if value, ok := wc.mutation.CreatedAt(); ok {
 		_spec.SetField(word.FieldCreatedAt, field.TypeTime, value)
@@ -571,6 +646,48 @@ func (u *WordUpsert) SetCategories(v []string) *WordUpsert {
 // UpdateCategories sets the "categories" field to the value that was provided on create.
 func (u *WordUpsert) UpdateCategories() *WordUpsert {
 	u.SetExcluded(word.FieldCategories)
+	return u
+}
+
+// SetCompleteness sets the "completeness" field.
+func (u *WordUpsert) SetCompleteness(v int32) *WordUpsert {
+	u.Set(word.FieldCompleteness, v)
+	return u
+}
+
+// UpdateCompleteness sets the "completeness" field to the value that was provided on create.
+func (u *WordUpsert) UpdateCompleteness() *WordUpsert {
+	u.SetExcluded(word.FieldCompleteness)
+	return u
+}
+
+// AddCompleteness adds v to the "completeness" field.
+func (u *WordUpsert) AddCompleteness(v int32) *WordUpsert {
+	u.Add(word.FieldCompleteness, v)
+	return u
+}
+
+// SetIsStandardRule sets the "is_standard_rule" field.
+func (u *WordUpsert) SetIsStandardRule(v bool) *WordUpsert {
+	u.Set(word.FieldIsStandardRule, v)
+	return u
+}
+
+// UpdateIsStandardRule sets the "is_standard_rule" field to the value that was provided on create.
+func (u *WordUpsert) UpdateIsStandardRule() *WordUpsert {
+	u.SetExcluded(word.FieldIsStandardRule)
+	return u
+}
+
+// SetIsManualEdited sets the "is_manual_edited" field.
+func (u *WordUpsert) SetIsManualEdited(v bool) *WordUpsert {
+	u.Set(word.FieldIsManualEdited, v)
+	return u
+}
+
+// UpdateIsManualEdited sets the "is_manual_edited" field to the value that was provided on create.
+func (u *WordUpsert) UpdateIsManualEdited() *WordUpsert {
+	u.SetExcluded(word.FieldIsManualEdited)
 	return u
 }
 
@@ -789,6 +906,55 @@ func (u *WordUpsertOne) SetCategories(v []string) *WordUpsertOne {
 func (u *WordUpsertOne) UpdateCategories() *WordUpsertOne {
 	return u.Update(func(s *WordUpsert) {
 		s.UpdateCategories()
+	})
+}
+
+// SetCompleteness sets the "completeness" field.
+func (u *WordUpsertOne) SetCompleteness(v int32) *WordUpsertOne {
+	return u.Update(func(s *WordUpsert) {
+		s.SetCompleteness(v)
+	})
+}
+
+// AddCompleteness adds v to the "completeness" field.
+func (u *WordUpsertOne) AddCompleteness(v int32) *WordUpsertOne {
+	return u.Update(func(s *WordUpsert) {
+		s.AddCompleteness(v)
+	})
+}
+
+// UpdateCompleteness sets the "completeness" field to the value that was provided on create.
+func (u *WordUpsertOne) UpdateCompleteness() *WordUpsertOne {
+	return u.Update(func(s *WordUpsert) {
+		s.UpdateCompleteness()
+	})
+}
+
+// SetIsStandardRule sets the "is_standard_rule" field.
+func (u *WordUpsertOne) SetIsStandardRule(v bool) *WordUpsertOne {
+	return u.Update(func(s *WordUpsert) {
+		s.SetIsStandardRule(v)
+	})
+}
+
+// UpdateIsStandardRule sets the "is_standard_rule" field to the value that was provided on create.
+func (u *WordUpsertOne) UpdateIsStandardRule() *WordUpsertOne {
+	return u.Update(func(s *WordUpsert) {
+		s.UpdateIsStandardRule()
+	})
+}
+
+// SetIsManualEdited sets the "is_manual_edited" field.
+func (u *WordUpsertOne) SetIsManualEdited(v bool) *WordUpsertOne {
+	return u.Update(func(s *WordUpsert) {
+		s.SetIsManualEdited(v)
+	})
+}
+
+// UpdateIsManualEdited sets the "is_manual_edited" field to the value that was provided on create.
+func (u *WordUpsertOne) UpdateIsManualEdited() *WordUpsertOne {
+	return u.Update(func(s *WordUpsert) {
+		s.UpdateIsManualEdited()
 	})
 }
 
@@ -1175,6 +1341,55 @@ func (u *WordUpsertBulk) SetCategories(v []string) *WordUpsertBulk {
 func (u *WordUpsertBulk) UpdateCategories() *WordUpsertBulk {
 	return u.Update(func(s *WordUpsert) {
 		s.UpdateCategories()
+	})
+}
+
+// SetCompleteness sets the "completeness" field.
+func (u *WordUpsertBulk) SetCompleteness(v int32) *WordUpsertBulk {
+	return u.Update(func(s *WordUpsert) {
+		s.SetCompleteness(v)
+	})
+}
+
+// AddCompleteness adds v to the "completeness" field.
+func (u *WordUpsertBulk) AddCompleteness(v int32) *WordUpsertBulk {
+	return u.Update(func(s *WordUpsert) {
+		s.AddCompleteness(v)
+	})
+}
+
+// UpdateCompleteness sets the "completeness" field to the value that was provided on create.
+func (u *WordUpsertBulk) UpdateCompleteness() *WordUpsertBulk {
+	return u.Update(func(s *WordUpsert) {
+		s.UpdateCompleteness()
+	})
+}
+
+// SetIsStandardRule sets the "is_standard_rule" field.
+func (u *WordUpsertBulk) SetIsStandardRule(v bool) *WordUpsertBulk {
+	return u.Update(func(s *WordUpsert) {
+		s.SetIsStandardRule(v)
+	})
+}
+
+// UpdateIsStandardRule sets the "is_standard_rule" field to the value that was provided on create.
+func (u *WordUpsertBulk) UpdateIsStandardRule() *WordUpsertBulk {
+	return u.Update(func(s *WordUpsert) {
+		s.UpdateIsStandardRule()
+	})
+}
+
+// SetIsManualEdited sets the "is_manual_edited" field.
+func (u *WordUpsertBulk) SetIsManualEdited(v bool) *WordUpsertBulk {
+	return u.Update(func(s *WordUpsert) {
+		s.SetIsManualEdited(v)
+	})
+}
+
+// UpdateIsManualEdited sets the "is_manual_edited" field to the value that was provided on create.
+func (u *WordUpsertBulk) UpdateIsManualEdited() *WordUpsertBulk {
+	return u.Update(func(s *WordUpsert) {
+		s.UpdateIsManualEdited()
 	})
 }
 

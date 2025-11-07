@@ -7,28 +7,37 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 
+	"entgo.io/ent/dialect/sql"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // NewEntClient constructs an ent.Client configured for the application's database.
 func NewEntClient(cfg *config.Config) (*ent.Client, func(), error) {
-	driver, err := cfg.DatabaseDriver()
+	driverName, err := cfg.DatabaseDriver()
 	if err != nil {
 		return nil, nil, fmt.Errorf("determine database driver: %w", err)
 	}
 
-	dsn, err := cfg.DatabaseURL()
+	dataSourceName, err := cfg.DatabaseURL()
 	if err != nil {
 		return nil, nil, fmt.Errorf("determine database dsn: %w", err)
 	}
 
-	client, err := ent.Open(driver, dsn, ent.Debug())
+	drv, err := sql.Open(driverName, dataSourceName)
 	if err != nil {
 		return nil, nil, err
 	}
+	drv.DB().SetMaxIdleConns(5)
+	drv.DB().SetMaxOpenConns(25)
+
+	opts := []ent.Option{ent.Driver(drv)}
+	if cfg.Database.LogSQL {
+		opts = append(opts, ent.Debug())
+	}
 
 	ctx := context.Background()
+	client := ent.NewClient(opts...)
 	if err := client.Schema.Create(ctx); err != nil {
 		return nil, func() { client.Close() }, fmt.Errorf("migrate schema: %w", err)
 	}
