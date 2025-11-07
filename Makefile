@@ -58,8 +58,12 @@ generate: buf-deps ## Generate code from protobuf files using buf
 	@mkdir -p $(GEN_DIR) $(OPENAPI_DIR)
 	buf generate
 	@echo "Protobuf generation completed"
-	go generate ./...
-	@echo "Go code generation completed"
+	@echo "Generating Ent client..."
+	go generate ./internal/infrastructure/database/entschema
+	@echo "Ent client generation completed"
+	@echo "Generating Wire bindings..."
+	go generate ./internal/app
+	@echo "Wire generation completed"
 
 .PHONY: build
 build: generate ## Build the unified CLI binary
