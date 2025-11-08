@@ -35,15 +35,20 @@ func (Word) Fields() []ent.Field {
 		field.String("word_type").Default("lemma"),
 		field.String("lemma").Optional().Nillable(),
 		field.JSON("phonetics", []entity.WordPhonetic{}).
-			Default([]entity.WordPhonetic{}),
+			Default([]entity.WordPhonetic{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("definitions", []entity.WordDefinition{}).
-			Default([]entity.WordDefinition{}),
+			Default([]entity.WordDefinition{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("phrases", []entity.Phrase{}).
-			Default([]entity.Phrase{}),
+			Default([]entity.Phrase{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("sentences", []entity.Sentence{}).
-			Default([]entity.Sentence{}),
+			Default([]entity.Sentence{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("relations", []entity.WordRelation{}).
-			Default([]entity.WordRelation{}),
+			Default([]entity.WordRelation{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("categories", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
