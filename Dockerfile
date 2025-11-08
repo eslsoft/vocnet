@@ -9,6 +9,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+RUN make setup
 
 # Build linux binary inside the container to ensure compatibility
 ARG TARGETOS TARGETARCH
