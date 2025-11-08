@@ -292,12 +292,6 @@ func (s *Service) resolveImportTables(names []string) ([]*schema.Table, map[stri
 	return tables, tableFilter, nil
 }
 
-func rollbackUnlessCommitted(tx *sql.Tx, committed *bool) {
-	if !*committed {
-		_ = tx.Rollback()
-	}
-}
-
 func (s *Service) consumeImportRecordsInBatches(ctx context.Context, br *bufio.Reader, db *sql.DB, tableFilter map[string]*schema.Table, reporter ProgressReporter, stats sequenceStats) (rawRecord, error) {
 	batchCount := s.txBatchCount
 	if batchCount <= 0 {
