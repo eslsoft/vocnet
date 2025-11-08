@@ -36,10 +36,11 @@ import (
 )
 
 const (
-	importInputKey  = "backup.import.input"
-	importGzipKey   = "backup.import.gzip"
-	importTablesKey = "backup.import.tables"
-	importBatchKey  = "backup.import.batch_size"
+	importInputKey   = "backup.import.input"
+	importGzipKey    = "backup.import.gzip"
+	importTablesKey  = "backup.import.tables"
+	importBatchKey   = "backup.import.batch_size"
+	importTxBatchKey = "backup.import.tx_batch_count"
 )
 
 var importCmd = &cobra.Command{
@@ -67,6 +68,7 @@ var importCmd = &cobra.Command{
 		gzipEnabled := viper.GetBool(importGzipKey)
 		tableList := tablesFromConfig(importTablesKey)
 		batchSize := viper.GetInt(importBatchKey)
+		txBatchCount := viper.GetInt(importTxBatchKey)
 
 		if inputPath == "" {
 			return fmt.Errorf("请通过 --input 指定备份文件或使用 - 表示标准输入")
@@ -88,6 +90,7 @@ var importCmd = &cobra.Command{
 			driver,
 			dsn,
 			backup.WithBatchSize(batchSize),
+			backup.WithTxBatchCount(txBatchCount),
 		)
 		if err != nil {
 			return fmt.Errorf("创建备份服务失败: %w", err)
@@ -129,6 +132,9 @@ var importCmd = &cobra.Command{
 			importOpts = append(importOpts, backup.WithImportTables(tableList))
 		}
 
+		progress := newBackupProgress(cmd.OutOrStdout(), "导入")
+		importOpts = append(importOpts, backup.WithImportProgressReporter(progress))
+
 		if err := service.Import(ctx, reader, importOpts...); err != nil {
 			return fmt.Errorf("导入备份失败: %w", err)
 		}
@@ -149,6 +155,7 @@ func init() {
 	importCmd.Flags().Bool("gzip", false, "输入为 gzip 压缩格式")
 	importCmd.Flags().StringSlice("tables", nil, "仅导入指定表，逗号分隔或重复指定")
 	importCmd.Flags().Int("batch-size", 0, "导入批处理大小 (默认 512)")
+	importCmd.Flags().Int("tx-batch-count", 0, "每个事务处理的记录数 (默认 100，设置更大可提高性能但占用更多内存)")
 
 	bindImportConfig()
 }
@@ -158,4 +165,5 @@ func bindImportConfig() {
 	bindFlagToViper(importGzipKey, importCmd.Flags().Lookup("gzip"))
 	bindFlagToViper(importTablesKey, importCmd.Flags().Lookup("tables"))
 	bindFlagToViper(importBatchKey, importCmd.Flags().Lookup("batch-size"))
+	bindFlagToViper(importTxBatchKey, importCmd.Flags().Lookup("tx-batch-count"))
 }

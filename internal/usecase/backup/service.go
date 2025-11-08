@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	defaultBatchSize = 512
-	formatVersion    = 1
+	defaultBatchSize    = 512
+	defaultTxBatchCount = 100
+	formatVersion       = 1
 )
 
 var errNoTablesSelected = errors.New("backup: no tables selected")
@@ -44,12 +45,13 @@ func (noopProgress) Increment(string, int)  {}
 func (noopProgress) FinishTable(string)     {}
 
 type Service struct {
-	driver     string
-	dsn        string
-	batchSize  int
-	tables     []*schema.Table
-	tableIndex map[string]*schema.Table
-	schemaHash string
+	driver       string
+	dsn          string
+	batchSize    int
+	txBatchCount int
+	tables       []*schema.Table
+	tableIndex   map[string]*schema.Table
+	schemaHash   string
 }
 
 type Option func(*Service)
@@ -58,6 +60,14 @@ func WithBatchSize(size int) Option {
 	return func(s *Service) {
 		if size > 0 {
 			s.batchSize = size
+		}
+	}
+}
+
+func WithTxBatchCount(count int) Option {
+	return func(s *Service) {
+		if count > 0 {
+			s.txBatchCount = count
 		}
 	}
 }
@@ -83,12 +93,13 @@ func NewService(driver, dsn string, opts ...Option) (*Service, error) {
 	}
 
 	svc := &Service{
-		driver:     driver,
-		dsn:        dsn,
-		batchSize:  defaultBatchSize,
-		tables:     tables,
-		tableIndex: tableIndex,
-		schemaHash: computeSchemaHash(tables),
+		driver:       driver,
+		dsn:          dsn,
+		batchSize:    defaultBatchSize,
+		txBatchCount: defaultTxBatchCount,
+		tables:       tables,
+		tableIndex:   tableIndex,
+		schemaHash:   computeSchemaHash(tables),
 	}
 	for _, opt := range opts {
 		opt(svc)
@@ -96,51 +107,50 @@ func NewService(driver, dsn string, opts ...Option) (*Service, error) {
 	return svc, nil
 }
 
-type ExportOption func(*exportConfig)
-
-type exportConfig struct {
+type operationConfig struct {
 	tables   []string
 	reporter ProgressReporter
 }
 
-// WithTables restricts export to the provided table names (snake_case as in DB).
-func WithTables(tables []string) ExportOption {
-	return func(cfg *exportConfig) {
-		if len(tables) == 0 {
-			return
-		}
-		cfg.tables = append([]string{}, tables...)
-	}
-}
-
-// WithProgressReporter registers a reporter that receives progress callbacks during export.
-func WithProgressReporter(reporter ProgressReporter) ExportOption {
-	return func(cfg *exportConfig) {
-		cfg.reporter = reporter
-	}
-}
-
-type ImportOption func(*importConfig)
-
-type importConfig struct {
-	tables []string
-}
-
-func newImportConfig(opts ...ImportOption) importConfig {
-	cfg := importConfig{}
+func newOperationConfig(opts ...func(*operationConfig)) operationConfig {
+	cfg := operationConfig{}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return cfg
 }
 
-// WithImportTables restricts import to the provided table names.
-func WithImportTables(tables []string) ImportOption {
-	return func(cfg *importConfig) {
+type ExportOption func(*operationConfig)
+
+func WithTables(tables []string) ExportOption {
+	return func(cfg *operationConfig) {
 		if len(tables) == 0 {
 			return
 		}
 		cfg.tables = append([]string{}, tables...)
+	}
+}
+
+func WithProgressReporter(reporter ProgressReporter) ExportOption {
+	return func(cfg *operationConfig) {
+		cfg.reporter = reporter
+	}
+}
+
+type ImportOption func(*operationConfig)
+
+func WithImportTables(tables []string) ImportOption {
+	return func(cfg *operationConfig) {
+		if len(tables) == 0 {
+			return
+		}
+		cfg.tables = append([]string{}, tables...)
+	}
+}
+
+func WithImportProgressReporter(reporter ProgressReporter) ImportOption {
+	return func(cfg *operationConfig) {
+		cfg.reporter = reporter
 	}
 }
 
@@ -172,10 +182,13 @@ type sequenceKey struct {
 type sequenceStats map[sequenceKey]int64
 
 func (s *Service) Export(ctx context.Context, w io.Writer, opts ...ExportOption) error {
-	cfg := exportConfig{}
+	var optsGeneric []func(*operationConfig)
 	for _, opt := range opts {
-		opt(&cfg)
+		optsGeneric = append(optsGeneric, func(cfg *operationConfig) {
+			opt(cfg)
+		})
 	}
+	cfg := newOperationConfig(optsGeneric...)
 	tables, err := s.selectTables(cfg.tables)
 	if err != nil {
 		return err
@@ -228,10 +241,21 @@ func (s *Service) Export(ctx context.Context, w io.Writer, opts ...ExportOption)
 }
 
 func (s *Service) Import(ctx context.Context, r io.Reader, opts ...ImportOption) error {
-	cfg := newImportConfig(opts...)
+	var optsGeneric []func(*operationConfig)
+	for _, opt := range opts {
+		optsGeneric = append(optsGeneric, func(cfg *operationConfig) {
+			opt(cfg)
+		})
+	}
+	cfg := newOperationConfig(optsGeneric...)
 	_, tableFilter, err := s.resolveImportTables(cfg.tables)
 	if err != nil {
 		return err
+	}
+
+	reporter := cfg.reporter
+	if reporter == nil {
+		reporter = noopProgress{}
 	}
 
 	db, err := s.openDB(ctx)
@@ -240,27 +264,15 @@ func (s *Service) Import(ctx context.Context, r io.Reader, opts ...ImportOption)
 	}
 	defer db.Close()
 
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	commit := false
-	defer rollbackUnlessCommitted(tx, &commit)
-
 	br := bufio.NewReader(r)
 	stats := make(sequenceStats)
-	meta, err := s.consumeImportRecords(ctx, br, tx, tableFilter, stats)
+	meta, err := s.consumeImportRecordsInBatches(ctx, br, db, tableFilter, reporter, stats)
 	if err != nil {
 		return err
 	}
 	if err := validateImportMeta(meta); err != nil {
 		return err
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit import: %w", err)
-	}
-	commit = true
 
 	if err := s.syncSequences(ctx, db, stats); err != nil {
 		return err
@@ -286,39 +298,144 @@ func rollbackUnlessCommitted(tx *sql.Tx, committed *bool) {
 	}
 }
 
-func (s *Service) consumeImportRecords(ctx context.Context, br *bufio.Reader, tx *sql.Tx, tableFilter map[string]*schema.Table, stats sequenceStats) (rawRecord, error) {
+func (s *Service) consumeImportRecordsInBatches(ctx context.Context, br *bufio.Reader, db *sql.DB, tableFilter map[string]*schema.Table, reporter ProgressReporter, stats sequenceStats) (rawRecord, error) {
+	batchCount := s.txBatchCount
+	if batchCount <= 0 {
+		batchCount = defaultTxBatchCount
+	}
+
+	mgr := &txManager{db: db, ctx: ctx, batchSize: batchCount}
+	defer mgr.rollback()
+
+	if err := mgr.begin(); err != nil {
+		return rawRecord{}, err
+	}
+
+	meta, tableStarted, err := s.processImportRecords(ctx, br, mgr, tableFilter, reporter, stats)
+	if err != nil {
+		return rawRecord{}, err
+	}
+
+	if err := mgr.commit(); err != nil {
+		return rawRecord{}, err
+	}
+
+	for table := range tableStarted {
+		reporter.FinishTable(table)
+	}
+
+	return meta, nil
+}
+
+type txManager struct {
+	db        *sql.DB
+	ctx       context.Context
+	tx        *sql.Tx
+	count     int
+	batchSize int
+}
+
+func (m *txManager) begin() error {
+	var err error
+	m.tx, err = m.db.BeginTx(m.ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	m.count = 0
+	return nil
+}
+
+func (m *txManager) commit() error {
+	if m.tx == nil {
+		return nil
+	}
+	if err := m.tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	m.tx = nil
+	return nil
+}
+
+func (m *txManager) rollback() {
+	if m.tx != nil {
+		_ = m.tx.Rollback()
+		m.tx = nil
+	}
+}
+
+func (m *txManager) increment() error {
+	m.count++
+	if m.count >= m.batchSize {
+		if err := m.commit(); err != nil {
+			return err
+		}
+		return m.begin()
+	}
+	return nil
+}
+
+func (s *Service) processImportRecords(ctx context.Context, br *bufio.Reader, mgr *txManager, tableFilter map[string]*schema.Table, reporter ProgressReporter, stats sequenceStats) (rawRecord, map[string]bool, error) {
 	var (
-		meta     rawRecord
-		metaSeen bool
+		meta         rawRecord
+		metaSeen     bool
+		tableStarted = make(map[string]bool)
 	)
 
 	for {
 		line, err := br.ReadBytes('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
-			return rawRecord{}, fmt.Errorf("read backup: %w", err)
+			return rawRecord{}, nil, fmt.Errorf("read backup: %w", err)
 		}
+
 		line = bytes.TrimSpace(line)
 		if len(line) > 0 {
 			var rec rawRecord
 			if err := json.Unmarshal(line, &rec); err != nil {
-				return rawRecord{}, fmt.Errorf("decode record: %w", err)
+				return rawRecord{}, nil, fmt.Errorf("decode record: %w", err)
 			}
+
 			if rec.Type == "meta" {
 				metaSeen = true
 				meta = rec
-			} else if err := s.importDataRecord(ctx, tx, tableFilter, rec, stats); err != nil {
-				return rawRecord{}, err
+				s.startTablesProgress(meta, tableFilter, reporter, tableStarted)
+			} else {
+				if err := s.processDataRecord(ctx, mgr, tableFilter, rec, reporter, stats); err != nil {
+					return rawRecord{}, nil, err
+				}
 			}
 		}
+
 		if errors.Is(err, io.EOF) {
 			break
 		}
 	}
 
 	if !metaSeen {
-		return rawRecord{}, errors.New("backup: missing meta record")
+		return rawRecord{}, nil, errors.New("backup: missing meta record")
 	}
-	return meta, nil
+	return meta, tableStarted, nil
+}
+
+func (s *Service) startTablesProgress(meta rawRecord, tableFilter map[string]*schema.Table, reporter ProgressReporter, tableStarted map[string]bool) {
+	for _, tbl := range meta.Tables {
+		if _, ok := tableFilter[tbl]; ok {
+			total := meta.RowCounts[tbl]
+			reporter.StartTable(tbl, total)
+			tableStarted[tbl] = true
+		}
+	}
+}
+
+func (s *Service) processDataRecord(ctx context.Context, mgr *txManager, tableFilter map[string]*schema.Table, rec rawRecord, reporter ProgressReporter, stats sequenceStats) error {
+	if err := s.importDataRecord(ctx, mgr.tx, tableFilter, rec, stats); err != nil {
+		return err
+	}
+
+	if _, ok := tableFilter[rec.Type]; ok {
+		reporter.Increment(rec.Type, 1)
+	}
+
+	return mgr.increment()
 }
 
 func (s *Service) importDataRecord(ctx context.Context, tx *sql.Tx, tableFilter map[string]*schema.Table, rec rawRecord, stats sequenceStats) error {

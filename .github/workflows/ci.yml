@@ -104,4 +104,4 @@ jobs:
         name: generated-code
         path: .
     - name: Build
-      run: make build
+      run: go build -o bin/vocnet main.go

@@ -24,7 +24,6 @@ package cmd
 import (
 	"compress/gzip"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,7 +114,7 @@ var exportCmd = &cobra.Command{
 			}
 		}()
 
-		progress := newCLIProgress(cmd.ErrOrStderr())
+		progress := newBackupProgress(cmd.OutOrStdout(), "导出")
 		exportOpts := []backup.ExportOption{backup.WithProgressReporter(progress)}
 		if len(tableList) > 0 {
 			exportOpts = append(exportOpts, backup.WithTables(tableList))
@@ -159,90 +158,4 @@ func bindExportConfig() {
 	bindFlagToViper(exportGzipKey, exportCmd.Flags().Lookup("gzip"))
 	bindFlagToViper(exportTablesKey, exportCmd.Flags().Lookup("tables"))
 	bindFlagToViper(exportBatchKey, exportCmd.Flags().Lookup("batch-size"))
-}
-
-type cliProgress struct {
-	out         io.Writer
-	totals      map[string]int
-	counts      map[string]int
-	lastPrinted map[string]int
-	steps       map[string]int
-}
-
-func newCLIProgress(out io.Writer) *cliProgress {
-	return &cliProgress{
-		out:         out,
-		totals:      make(map[string]int),
-		counts:      make(map[string]int),
-		lastPrinted: make(map[string]int),
-		steps:       make(map[string]int),
-	}
-}
-
-func (p *cliProgress) StartTable(table string, total int) {
-	if total < 0 {
-		total = 0
-	}
-	p.totals[table] = total
-	p.counts[table] = 0
-	p.lastPrinted[table] = 0
-	p.steps[table] = progressStep(total)
-	fmt.Fprintf(p.out, "开始导出 %s (共 %d 行)\n", table, total)
-}
-
-func (p *cliProgress) Increment(table string, delta int) {
-	if delta <= 0 {
-		return
-	}
-	current := p.counts[table] + delta
-	p.counts[table] = current
-	total := p.totals[table]
-	step := p.steps[table]
-	if step <= 0 {
-		step = 1
-	}
-	last := p.lastPrinted[table]
-	if current == total || last == 0 || current-last >= step {
-		p.printProgress(table, current, total)
-		p.lastPrinted[table] = current
-	}
-}
-
-func (p *cliProgress) FinishTable(table string) {
-	current := p.counts[table]
-	total := p.totals[table]
-	if current != p.lastPrinted[table] {
-		p.printProgress(table, current, total)
-	}
-	if total > 0 {
-		fmt.Fprintf(p.out, "完成导出 %s: %d/%d 行\n", table, current, total)
-	} else {
-		fmt.Fprintf(p.out, "完成导出 %s: %d 行\n", table, current)
-	}
-	delete(p.counts, table)
-	delete(p.totals, table)
-	delete(p.lastPrinted, table)
-	delete(p.steps, table)
-}
-
-func (p *cliProgress) printProgress(table string, current, total int) {
-	if total > 0 {
-		fmt.Fprintf(p.out, "导出进度 %s: %d/%d\n", table, current, total)
-	} else {
-		fmt.Fprintf(p.out, "导出进度 %s: 已处理 %d 行\n", table, current)
-	}
-}
-
-func progressStep(total int) int {
-	if total <= 0 {
-		return 1000
-	}
-	step := total / 20
-	if step < 1 {
-		step = 1
-	}
-	if step > 1000 {
-		step = 1000
-	}
-	return step
 }
