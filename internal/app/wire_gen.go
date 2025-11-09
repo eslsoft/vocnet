@@ -34,13 +34,14 @@ func Initialize() (*Container, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	wordRepository := repository.NewWordRepository(client)
-	wordUsecase := usecase.NewWordUsecase(wordRepository)
-	wordServiceServer := grpc.NewWordServiceServer(wordUsecase)
+	wordGroupRepository := repository.NewWordGroupRepository(client)
+	lexemeRepository := repository.NewLexemeRepository(client)
+	wordUsecase := usecase.NewWordUsecase(wordGroupRepository, lexemeRepository)
+	dictServiceServer := grpc.NewDictServiceServer(wordUsecase)
 	learnedLexemeRepository := repository.NewLearnedLexemeRepository(client)
-	learnedLexemeUsecase := usecase.NewLearnedLexemeUsecase(learnedLexemeRepository, wordRepository)
+	learnedLexemeUsecase := usecase.NewLearnedLexemeUsecase(learnedLexemeRepository, lexemeRepository)
 	learningServiceServer := grpc.NewLearningServiceServer(learnedLexemeUsecase)
-	serverServer := server.NewServer(configConfig, logger, wordServiceServer, learningServiceServer)
+	serverServer := server.NewServer(configConfig, logger, dictServiceServer, learningServiceServer)
 	container := &Container{
 		Logger:    logger,
 		Server:    serverServer,
@@ -57,10 +58,10 @@ var configSet = wire.NewSet(config.Load)
 
 var databaseSet = wire.NewSet(database.NewEntClient)
 
-var repositorySet = wire.NewSet(repository.NewWordRepository, repository.NewLearnedLexemeRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedLexemeRepository, repository.NewWordGroupRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewWordUsecase, usecase.NewLearnedLexemeUsecase)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedLexemeUsecase)
 
-var serviceSet = wire.NewSet(grpc.NewWordServiceServer, grpc.NewLearningServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*grpc.LearningServiceServer)), wire.Bind(new(dictv1connect.WordServiceHandler), new(*grpc.WordServiceServer)))
+var serviceSet = wire.NewSet(grpc.NewDictServiceServer, grpc.NewLearningServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*grpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*grpc.DictServiceServer)))
 
 var serverSet = wire.NewSet(server.NewLogger, server.NewServer)

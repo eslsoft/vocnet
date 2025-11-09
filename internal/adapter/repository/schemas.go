@@ -2,22 +2,23 @@ package repository
 
 import "github.com/eslsoft/vocnet/pkg/filterexpr"
 
-var listWordsSchema = filterexpr.ResourceSchema{
+var listLexemesSchema = filterexpr.ResourceSchema{
 	Filter: map[string]filterexpr.FilterField{
 		"keyword": {
 			Kind: filterexpr.KindString,
 			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "Keyword"},
 		},
-		"word": {
+		"lexeme_id": {
 			Kind: filterexpr.KindString,
-			Ops: map[filterexpr.Op]string{
-				filterexpr.OpSW: "Keyword",
-				filterexpr.OpIN: "Words",
-			},
+			Ops:  map[filterexpr.Op]string{filterexpr.OpIN: "LexemeIDs"},
 		},
-		"word_type": {
+		"entry_type": {
 			Kind: filterexpr.KindString,
-			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "WordType"},
+			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "LexemeEntryType"},
+		},
+		"language": {
+			Kind: filterexpr.KindString,
+			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "Language"},
 		},
 	},
 	Order: filterexpr.OrderSchema{
@@ -28,8 +29,31 @@ var listWordsSchema = filterexpr.ResourceSchema{
 		Fields: map[string]filterexpr.OrderField{
 			"created_at": {Expr: "created_at", Nulls: "last"},
 			"updated_at": {Expr: "updated_at", Nulls: "last"},
-			"text":       {Expr: "text", Nulls: "last"},
+			"lemma":      {Expr: "lemma", Nulls: "last"},
 			"id":         {Expr: "id", Nulls: "last"},
+		},
+	},
+}
+
+var listWordGroupsSchema = filterexpr.ResourceSchema{
+	Filter: map[string]filterexpr.FilterField{
+		"language": {
+			Kind: filterexpr.KindString,
+			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "Language"},
+		},
+		"keyword": {
+			Kind: filterexpr.KindString,
+			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "Keyword"},
+		},
+	},
+	Order: filterexpr.OrderSchema{
+		DefaultPrimary:     "updated_at",
+		DefaultPrimaryDesc: true,
+		FallbackKey:        "lemma",
+		FallbackDesc:       false,
+		Fields: map[string]filterexpr.OrderField{
+			"updated_at": {Expr: "updated_at", Nulls: "last"},
+			"lemma":      {Expr: "lemma", Nulls: "last"},
 		},
 	},
 }
@@ -40,12 +64,9 @@ var listLearnedLexemesSchema = filterexpr.ResourceSchema{
 			Kind: filterexpr.KindString,
 			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "Keyword"},
 		},
-		"lexeme": {
+		"lexeme_id": {
 			Kind: filterexpr.KindString,
-			Ops: map[filterexpr.Op]string{
-				filterexpr.OpSW: "Keyword",
-				filterexpr.OpIN: "Lexemes",
-			},
+			Ops:  map[filterexpr.Op]string{filterexpr.OpIN: "LexemeIDs"},
 		},
 		"tag": {
 			Kind: filterexpr.KindString,
@@ -64,7 +85,7 @@ var listLearnedLexemesSchema = filterexpr.ResourceSchema{
 		Fields: map[string]filterexpr.OrderField{
 			"created_at":      {Expr: "created_at", Nulls: "last"},
 			"updated_at":      {Expr: "updated_at", Nulls: "last"},
-			"lexeme":          {Expr: "lexeme", Nulls: "last"},
+			"display_term":    {Expr: "display_term", Nulls: "last"},
 			"mastery_overall": {Expr: "mastery_overall", Nulls: "last"},
 			"id":              {Expr: "id", Nulls: "last"},
 		},

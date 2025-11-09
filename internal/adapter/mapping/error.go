@@ -13,11 +13,13 @@ func ToPbError(err error) error {
 	switch {
 	case err == nil:
 		return nil
-	case errors.Is(err, entity.ErrInvalidVocText), errors.Is(err, entity.ErrInvalidVocID):
+	case errors.Is(err, entity.ErrInvalidLexemeText), errors.Is(err, entity.ErrInvalidLexemeID):
 		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, entity.ErrVocNotFound):
+	case errors.Is(err, entity.ErrLexemeNotFound):
 		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, entity.ErrDuplicateWord):
+	case errors.Is(err, entity.ErrWordNotFound):
+		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, entity.ErrDuplicateLexeme):
 		return status.Error(codes.AlreadyExists, err.Error())
 	default:
 		return status.Error(codes.Internal, err.Error())

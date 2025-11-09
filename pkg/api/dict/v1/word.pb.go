@@ -12,7 +12,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	_ "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -26,33 +26,107 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type FormType int32
+
+const (
+	FormType_FORM_TYPE_UNSPECIFIED           FormType = 0
+	FormType_FORM_TYPE_LEMMA                 FormType = 1
+	FormType_FORM_TYPE_PLURAL                FormType = 2
+	FormType_FORM_TYPE_PAST                  FormType = 3
+	FormType_FORM_TYPE_PAST_PARTICIPLE       FormType = 4
+	FormType_FORM_TYPE_PRESENT_PARTICIPLE    FormType = 5
+	FormType_FORM_TYPE_THIRD_PERSON_SINGULAR FormType = 6
+	FormType_FORM_TYPE_COMPARATIVE           FormType = 7
+	FormType_FORM_TYPE_SUPERLATIVE           FormType = 8
+	FormType_FORM_TYPE_IMPERATIVE            FormType = 9
+	FormType_FORM_TYPE_SUBJUNCTIVE           FormType = 10
+	FormType_FORM_TYPE_GERUND                FormType = 11
+	FormType_FORM_TYPE_SHORT_FORM            FormType = 12
+)
+
+// Enum value maps for FormType.
+var (
+	FormType_name = map[int32]string{
+		0:  "FORM_TYPE_UNSPECIFIED",
+		1:  "FORM_TYPE_LEMMA",
+		2:  "FORM_TYPE_PLURAL",
+		3:  "FORM_TYPE_PAST",
+		4:  "FORM_TYPE_PAST_PARTICIPLE",
+		5:  "FORM_TYPE_PRESENT_PARTICIPLE",
+		6:  "FORM_TYPE_THIRD_PERSON_SINGULAR",
+		7:  "FORM_TYPE_COMPARATIVE",
+		8:  "FORM_TYPE_SUPERLATIVE",
+		9:  "FORM_TYPE_IMPERATIVE",
+		10: "FORM_TYPE_SUBJUNCTIVE",
+		11: "FORM_TYPE_GERUND",
+		12: "FORM_TYPE_SHORT_FORM",
+	}
+	FormType_value = map[string]int32{
+		"FORM_TYPE_UNSPECIFIED":           0,
+		"FORM_TYPE_LEMMA":                 1,
+		"FORM_TYPE_PLURAL":                2,
+		"FORM_TYPE_PAST":                  3,
+		"FORM_TYPE_PAST_PARTICIPLE":       4,
+		"FORM_TYPE_PRESENT_PARTICIPLE":    5,
+		"FORM_TYPE_THIRD_PERSON_SINGULAR": 6,
+		"FORM_TYPE_COMPARATIVE":           7,
+		"FORM_TYPE_SUPERLATIVE":           8,
+		"FORM_TYPE_IMPERATIVE":            9,
+		"FORM_TYPE_SUBJUNCTIVE":           10,
+		"FORM_TYPE_GERUND":                11,
+		"FORM_TYPE_SHORT_FORM":            12,
+	}
+)
+
+func (x FormType) Enum() *FormType {
+	p := new(FormType)
+	*p = x
+	return p
+}
+
+func (x FormType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FormType) Descriptor() protoreflect.EnumDescriptor {
+	return file_dict_v1_word_proto_enumTypes[0].Descriptor()
+}
+
+func (FormType) Type() protoreflect.EnumType {
+	return &file_dict_v1_word_proto_enumTypes[0]
+}
+
+func (x FormType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FormType.Descriptor instead.
+func (FormType) EnumDescriptor() ([]byte, []int) {
+	return file_dict_v1_word_proto_rawDescGZIP(), []int{0}
+}
+
 type Word struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Id          int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                     // Auto-increment ID (CRUD only)
-	Text        string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`                                  // Surface form (lemma or inflected/variant form)
+	Lemma       string                 `protobuf:"bytes,2,opt,name=lemma,proto3" json:"lemma,omitempty"`                                // Surface form (lemma or inflected/variant form)
 	Language    v1.Language            `protobuf:"varint,3,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"` // Language of the entry
-	WordType    string                 `protobuf:"bytes,4,opt,name=word_type,json=wordType,proto3" json:"word_type,omitempty"`          // Allowed values: lemma, past, pp (past participle), ing (present participle / gerund), 3sg (third person singular), plural, comparative, superlative, variant, derived, other
-	Lemma       string                 `protobuf:"bytes,5,opt,name=lemma,proto3" json:"lemma,omitempty"`                                // Present only if word_type != lemma; empty when this is the lemma itself
 	Phonetics   []*Phonetic            `protobuf:"bytes,6,rep,name=phonetics,proto3" json:"phonetics,omitempty"`                        // IPAs for this word
 	Definitions []*Definition          `protobuf:"bytes,7,rep,name=definitions,proto3" json:"definitions,omitempty"`                    // Possibly multiple languages' definitions
 	Categories  []string               `protobuf:"bytes,8,rep,name=categories,proto3" json:"categories,omitempty"`                      // Level / topic tags
 	Phrases     []*Phrase              `protobuf:"bytes,9,rep,name=phrases,proto3" json:"phrases,omitempty"`                            // Common phrases/idioms containing this word
-	Sentences   []*Sentence            `protobuf:"bytes,10,rep,name=sentences,proto3" json:"sentences,omitempty"`                       // Example sentences
 	// When this entry is a lemma (word_type == "lemma"), forms lists all other surface forms
 	// (e.g. past, past_participle, plural, etc.) referencing this lemma. It MUST NOT include
 	// the lemma itself.
 	// When this entry is a non-lemma form, forms is empty; the original lemma text can be
 	// obtained from the `lemma` field. We return structured objects instead of plain strings
 	// so the client knows which type each form is without extra lookups.
-	Forms          []*WordFormRef         `protobuf:"bytes,30,rep,name=forms,proto3" json:"forms,omitempty"`
-	Relations      []*WordRelation        `protobuf:"bytes,31,rep,name=relations,proto3" json:"relations,omitempty"`                                    // Relationships to other words (e.g. synonyms, antonyms)
-	Completeness   int32                  `protobuf:"varint,32,opt,name=completeness,proto3" json:"completeness,omitempty"`                             // Data completeness 0-100, calculated from core fields
-	IsStandardRule bool                   `protobuf:"varint,33,opt,name=is_standard_rule,json=isStandardRule,proto3" json:"is_standard_rule,omitempty"` // True if inflection follows standard morphological rules
-	IsManualEdited bool                   `protobuf:"varint,34,opt,name=is_manual_edited,json=isManualEdited,proto3" json:"is_manual_edited,omitempty"` // True if manually edited, false if auto-imported
-	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,100,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                  // Creation timestamp
-	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,101,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`                  // Last update timestamp
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	Forms         []*WordForm            `protobuf:"bytes,30,rep,name=forms,proto3" json:"forms,omitempty"`
+	Relations     []*WordRelation        `protobuf:"bytes,31,rep,name=relations,proto3" json:"relations,omitempty"`                   // Relationships to other words (e.g. synonyms, antonyms)
+	Completeness  int32                  `protobuf:"varint,32,opt,name=completeness,proto3" json:"completeness,omitempty"`            // Data completeness 0-100, calculated from core fields
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,100,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // Creation timestamp
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,101,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"` // Last update timestamp
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Word) Reset() {
@@ -92,9 +166,9 @@ func (x *Word) GetId() int64 {
 	return 0
 }
 
-func (x *Word) GetText() string {
+func (x *Word) GetLemma() string {
 	if x != nil {
-		return x.Text
+		return x.Lemma
 	}
 	return ""
 }
@@ -104,20 +178,6 @@ func (x *Word) GetLanguage() v1.Language {
 		return x.Language
 	}
 	return v1.Language(0)
-}
-
-func (x *Word) GetWordType() string {
-	if x != nil {
-		return x.WordType
-	}
-	return ""
-}
-
-func (x *Word) GetLemma() string {
-	if x != nil {
-		return x.Lemma
-	}
-	return ""
 }
 
 func (x *Word) GetPhonetics() []*Phonetic {
@@ -148,14 +208,7 @@ func (x *Word) GetPhrases() []*Phrase {
 	return nil
 }
 
-func (x *Word) GetSentences() []*Sentence {
-	if x != nil {
-		return x.Sentences
-	}
-	return nil
-}
-
-func (x *Word) GetForms() []*WordFormRef {
+func (x *Word) GetForms() []*WordForm {
 	if x != nil {
 		return x.Forms
 	}
@@ -174,20 +227,6 @@ func (x *Word) GetCompleteness() int32 {
 		return x.Completeness
 	}
 	return 0
-}
-
-func (x *Word) GetIsStandardRule() bool {
-	if x != nil {
-		return x.IsStandardRule
-	}
-	return false
-}
-
-func (x *Word) GetIsManualEdited() bool {
-	if x != nil {
-		return x.IsManualEdited
-	}
-	return false
 }
 
 func (x *Word) GetCreatedAt() *timestamppb.Timestamp {
@@ -258,9 +297,9 @@ func (x *Phonetic) GetDialect() string {
 
 type Definition struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pos           string                 `protobuf:"bytes,1,opt,name=pos,proto3" json:"pos,omitempty"`                                    // Part of speech, e.g. n., v., adj.
-	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`                                  // Definition text
-	Language      v1.Language            `protobuf:"varint,3,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"` // Language of the translation
+	Pos           string                 `protobuf:"bytes,1,opt,name=pos,proto3" json:"pos,omitempty"`       // Part of speech, e.g. n., v., adj.
+	Senses        []*LexemeSense         `protobuf:"bytes,2,rep,name=senses,proto3" json:"senses,omitempty"` // Definition text
+	Examples      []*Sentence            `protobuf:"bytes,4,rep,name=examples,proto3" json:"examples,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -302,43 +341,42 @@ func (x *Definition) GetPos() string {
 	return ""
 }
 
-func (x *Definition) GetText() string {
+func (x *Definition) GetSenses() []*LexemeSense {
 	if x != nil {
-		return x.Text
+		return x.Senses
 	}
-	return ""
+	return nil
 }
 
-func (x *Definition) GetLanguage() v1.Language {
+func (x *Definition) GetExamples() []*Sentence {
 	if x != nil {
-		return x.Language
+		return x.Examples
 	}
-	return v1.Language(0)
+	return nil
 }
 
-// Minimal reference for an inflected / variant form; no id to keep payload light.
-type WordFormRef struct {
+type LexemeSense struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`                         // The surface form text
-	WordType      string                 `protobuf:"bytes,2,opt,name=word_type,json=wordType,proto3" json:"word_type,omitempty"` // The specific form type (same value domain as Word.word_type)
+	Language      v1.Language            `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`
+	Gloss         string                 `protobuf:"bytes,3,opt,name=gloss,proto3" json:"gloss,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *WordFormRef) Reset() {
-	*x = WordFormRef{}
+func (x *LexemeSense) Reset() {
+	*x = LexemeSense{}
 	mi := &file_dict_v1_word_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *WordFormRef) String() string {
+func (x *LexemeSense) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*WordFormRef) ProtoMessage() {}
+func (*LexemeSense) ProtoMessage() {}
 
-func (x *WordFormRef) ProtoReflect() protoreflect.Message {
+func (x *LexemeSense) ProtoReflect() protoreflect.Message {
 	mi := &file_dict_v1_word_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -350,37 +388,98 @@ func (x *WordFormRef) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use WordFormRef.ProtoReflect.Descriptor instead.
-func (*WordFormRef) Descriptor() ([]byte, []int) {
+// Deprecated: Use LexemeSense.ProtoReflect.Descriptor instead.
+func (*LexemeSense) Descriptor() ([]byte, []int) {
 	return file_dict_v1_word_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *WordFormRef) GetText() string {
+func (x *LexemeSense) GetLanguage() v1.Language {
 	if x != nil {
-		return x.Text
+		return x.Language
+	}
+	return v1.Language(0)
+}
+
+func (x *LexemeSense) GetGloss() string {
+	if x != nil {
+		return x.Gloss
 	}
 	return ""
 }
 
-func (x *WordFormRef) GetWordType() string {
+// Minimal reference for an inflected / variant form; no id to keep payload light.
+type WordForm struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Word          string                 `protobuf:"bytes,1,opt,name=word,proto3" json:"word,omitempty"`                        // Surface form text
+	Type          FormType               `protobuf:"varint,2,opt,name=type,proto3,enum=dict.v1.FormType" json:"type,omitempty"` // The specific form type (same value domain as Word.word_type)
+	Irregular     bool                   `protobuf:"varint,3,opt,name=irregular,proto3" json:"irregular,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WordForm) Reset() {
+	*x = WordForm{}
+	mi := &file_dict_v1_word_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WordForm) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WordForm) ProtoMessage() {}
+
+func (x *WordForm) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_word_proto_msgTypes[4]
 	if x != nil {
-		return x.WordType
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WordForm.ProtoReflect.Descriptor instead.
+func (*WordForm) Descriptor() ([]byte, []int) {
+	return file_dict_v1_word_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *WordForm) GetWord() string {
+	if x != nil {
+		return x.Word
 	}
 	return ""
+}
+
+func (x *WordForm) GetType() FormType {
+	if x != nil {
+		return x.Type
+	}
+	return FormType_FORM_TYPE_UNSPECIFIED
+}
+
+func (x *WordForm) GetIrregular() bool {
+	if x != nil {
+		return x.Irregular
+	}
+	return false
 }
 
 // Word-to-word relationship for building vocabulary networks
 type WordRelation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Word          string                 `protobuf:"bytes,1,opt,name=word,proto3" json:"word,omitempty"`
-	RelationType  v1.RelationType        `protobuf:"varint,2,opt,name=relation_type,json=relationType,proto3,enum=common.v1.RelationType" json:"relation_type,omitempty"` // Type of relationship
+	Relation      v1.RelationType        `protobuf:"varint,2,opt,name=relation,proto3,enum=common.v1.RelationType" json:"relation,omitempty"` // Type of relationship
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WordRelation) Reset() {
 	*x = WordRelation{}
-	mi := &file_dict_v1_word_proto_msgTypes[4]
+	mi := &file_dict_v1_word_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -392,7 +491,7 @@ func (x *WordRelation) String() string {
 func (*WordRelation) ProtoMessage() {}
 
 func (x *WordRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_word_proto_msgTypes[4]
+	mi := &file_dict_v1_word_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -405,7 +504,7 @@ func (x *WordRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WordRelation.ProtoReflect.Descriptor instead.
 func (*WordRelation) Descriptor() ([]byte, []int) {
-	return file_dict_v1_word_proto_rawDescGZIP(), []int{4}
+	return file_dict_v1_word_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *WordRelation) GetWord() string {
@@ -415,9 +514,9 @@ func (x *WordRelation) GetWord() string {
 	return ""
 }
 
-func (x *WordRelation) GetRelationType() v1.RelationType {
+func (x *WordRelation) GetRelation() v1.RelationType {
 	if x != nil {
-		return x.RelationType
+		return x.Relation
 	}
 	return v1.RelationType(0)
 }
@@ -433,7 +532,7 @@ type Sentence struct {
 
 func (x *Sentence) Reset() {
 	*x = Sentence{}
-	mi := &file_dict_v1_word_proto_msgTypes[5]
+	mi := &file_dict_v1_word_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -445,7 +544,7 @@ func (x *Sentence) String() string {
 func (*Sentence) ProtoMessage() {}
 
 func (x *Sentence) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_word_proto_msgTypes[5]
+	mi := &file_dict_v1_word_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -458,7 +557,7 @@ func (x *Sentence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Sentence.ProtoReflect.Descriptor instead.
 func (*Sentence) Descriptor() ([]byte, []int) {
-	return file_dict_v1_word_proto_rawDescGZIP(), []int{5}
+	return file_dict_v1_word_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Sentence) GetText() string {
@@ -482,293 +581,66 @@ func (x *Sentence) GetSourceRef() string {
 	return ""
 }
 
-// CreateWord request (creates either a lemma entry or a derived/inflected form)
-type CreateWordRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Word          *Word                  `protobuf:"bytes,1,opt,name=word,proto3" json:"word,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CreateWordRequest) Reset() {
-	*x = CreateWordRequest{}
-	mi := &file_dict_v1_word_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CreateWordRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CreateWordRequest) ProtoMessage() {}
-
-func (x *CreateWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_word_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CreateWordRequest.ProtoReflect.Descriptor instead.
-func (*CreateWordRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_word_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *CreateWordRequest) GetWord() *Word {
-	if x != nil {
-		return x.Word
-	}
-	return nil
-}
-
-// ListWords request
-type ListWordsRequest struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	Pagination *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
-	// filtering options using CEL expressions
-	Filter string `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	// ordering options. e.g. "word asc", "mastery.overall desc"
-	OrderBy       string `protobuf:"bytes,3,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListWordsRequest) Reset() {
-	*x = ListWordsRequest{}
-	mi := &file_dict_v1_word_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListWordsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListWordsRequest) ProtoMessage() {}
-
-func (x *ListWordsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_word_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListWordsRequest.ProtoReflect.Descriptor instead.
-func (*ListWordsRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_word_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *ListWordsRequest) GetPagination() *v1.PaginationRequest {
-	if x != nil {
-		return x.Pagination
-	}
-	return nil
-}
-
-func (x *ListWordsRequest) GetFilter() string {
-	if x != nil {
-		return x.Filter
-	}
-	return ""
-}
-
-func (x *ListWordsRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
-	}
-	return ""
-}
-
-type ListWordsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pagination    *v1.PaginationResponse `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
-	Words         []*Word                `protobuf:"bytes,2,rep,name=words,proto3" json:"words,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListWordsResponse) Reset() {
-	*x = ListWordsResponse{}
-	mi := &file_dict_v1_word_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListWordsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListWordsResponse) ProtoMessage() {}
-
-func (x *ListWordsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_word_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListWordsResponse.ProtoReflect.Descriptor instead.
-func (*ListWordsResponse) Descriptor() ([]byte, []int) {
-	return file_dict_v1_word_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *ListWordsResponse) GetPagination() *v1.PaginationResponse {
-	if x != nil {
-		return x.Pagination
-	}
-	return nil
-}
-
-func (x *ListWordsResponse) GetWords() []*Word {
-	if x != nil {
-		return x.Words
-	}
-	return nil
-}
-
-// LookupWordRequest performs an exact text lookup in specified language (default en)
-type LookupWordRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Word          string                 `protobuf:"bytes,1,opt,name=word,proto3" json:"word,omitempty"`
-	Language      v1.Language            `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"` // optional; if unspecified, server default language
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LookupWordRequest) Reset() {
-	*x = LookupWordRequest{}
-	mi := &file_dict_v1_word_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LookupWordRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LookupWordRequest) ProtoMessage() {}
-
-func (x *LookupWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_word_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LookupWordRequest.ProtoReflect.Descriptor instead.
-func (*LookupWordRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_word_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *LookupWordRequest) GetWord() string {
-	if x != nil {
-		return x.Word
-	}
-	return ""
-}
-
-func (x *LookupWordRequest) GetLanguage() v1.Language {
-	if x != nil {
-		return x.Language
-	}
-	return v1.Language(0)
-}
-
 var File_dict_v1_word_proto protoreflect.FileDescriptor
 
 const file_dict_v1_word_proto_rawDesc = "" +
 	"\n" +
-	"\x12dict/v1/word.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x14dict/v1/phrase.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xc1\x05\n" +
+	"\x12dict/v1/word.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x14dict/v1/phrase.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\x88\x04\n" +
 	"\x04Word\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
-	"\x04text\x18\x02 \x01(\tR\x04text\x12/\n" +
-	"\blanguage\x18\x03 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x1b\n" +
-	"\tword_type\x18\x04 \x01(\tR\bwordType\x12\x14\n" +
-	"\x05lemma\x18\x05 \x01(\tR\x05lemma\x12/\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x14\n" +
+	"\x05lemma\x18\x02 \x01(\tR\x05lemma\x12/\n" +
+	"\blanguage\x18\x03 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12/\n" +
 	"\tphonetics\x18\x06 \x03(\v2\x11.dict.v1.PhoneticR\tphonetics\x125\n" +
 	"\vdefinitions\x18\a \x03(\v2\x13.dict.v1.DefinitionR\vdefinitions\x12\x1e\n" +
 	"\n" +
 	"categories\x18\b \x03(\tR\n" +
 	"categories\x12)\n" +
-	"\aphrases\x18\t \x03(\v2\x0f.dict.v1.PhraseR\aphrases\x12/\n" +
-	"\tsentences\x18\n" +
-	" \x03(\v2\x11.dict.v1.SentenceR\tsentences\x12*\n" +
-	"\x05forms\x18\x1e \x03(\v2\x14.dict.v1.WordFormRefR\x05forms\x123\n" +
+	"\aphrases\x18\t \x03(\v2\x0f.dict.v1.PhraseR\aphrases\x12'\n" +
+	"\x05forms\x18\x1e \x03(\v2\x11.dict.v1.WordFormR\x05forms\x123\n" +
 	"\trelations\x18\x1f \x03(\v2\x15.dict.v1.WordRelationR\trelations\x12\"\n" +
-	"\fcompleteness\x18  \x01(\x05R\fcompleteness\x12(\n" +
-	"\x10is_standard_rule\x18! \x01(\bR\x0eisStandardRule\x12(\n" +
-	"\x10is_manual_edited\x18\" \x01(\bR\x0eisManualEdited\x129\n" +
+	"\fcompleteness\x18  \x01(\x05R\fcompleteness\x129\n" +
 	"\n" +
 	"created_at\x18d \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"6\n" +
 	"\bPhonetic\x12\x10\n" +
 	"\x03ipa\x18\x01 \x01(\tR\x03ipa\x12\x18\n" +
-	"\adialect\x18\x02 \x01(\tR\adialect\"c\n" +
+	"\adialect\x18\x02 \x01(\tR\adialect\"{\n" +
 	"\n" +
 	"Definition\x12\x10\n" +
-	"\x03pos\x18\x01 \x01(\tR\x03pos\x12\x12\n" +
-	"\x04text\x18\x02 \x01(\tR\x04text\x12/\n" +
-	"\blanguage\x18\x03 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\">\n" +
-	"\vWordFormRef\x12\x12\n" +
-	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1b\n" +
-	"\tword_type\x18\x02 \x01(\tR\bwordType\"`\n" +
+	"\x03pos\x18\x01 \x01(\tR\x03pos\x12,\n" +
+	"\x06senses\x18\x02 \x03(\v2\x14.dict.v1.LexemeSenseR\x06senses\x12-\n" +
+	"\bexamples\x18\x04 \x03(\v2\x11.dict.v1.SentenceR\bexamples\"T\n" +
+	"\vLexemeSense\x12/\n" +
+	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x14\n" +
+	"\x05gloss\x18\x03 \x01(\tR\x05gloss\"c\n" +
+	"\bWordForm\x12\x12\n" +
+	"\x04word\x18\x01 \x01(\tR\x04word\x12%\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x11.dict.v1.FormTypeR\x04type\x12\x1c\n" +
+	"\tirregular\x18\x03 \x01(\bR\tirregular\"W\n" +
 	"\fWordRelation\x12\x12\n" +
-	"\x04word\x18\x01 \x01(\tR\x04word\x12<\n" +
-	"\rrelation_type\x18\x02 \x01(\x0e2\x17.common.v1.RelationTypeR\frelationType\"l\n" +
+	"\x04word\x18\x01 \x01(\tR\x04word\x123\n" +
+	"\brelation\x18\x02 \x01(\x0e2\x17.common.v1.RelationTypeR\brelation\"l\n" +
 	"\bSentence\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12-\n" +
 	"\x06source\x18\x02 \x01(\x0e2\x15.common.v1.SourceTypeR\x06source\x12\x1d\n" +
 	"\n" +
-	"source_ref\x18\x03 \x01(\tR\tsourceRef\"@\n" +
-	"\x11CreateWordRequest\x12+\n" +
-	"\x04word\x18\x01 \x01(\v2\r.dict.v1.WordB\b\xfaB\x05\x8a\x01\x02\x10\x01R\x04word\"\x83\x01\n" +
-	"\x10ListWordsRequest\x12<\n" +
-	"\n" +
-	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
-	"pagination\x12\x16\n" +
-	"\x06filter\x18\x02 \x01(\tR\x06filter\x12\x19\n" +
-	"\border_by\x18\x03 \x01(\tR\aorderBy\"w\n" +
-	"\x11ListWordsResponse\x12=\n" +
-	"\n" +
-	"pagination\x18\x01 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
-	"pagination\x12#\n" +
-	"\x05words\x18\x02 \x03(\v2\r.dict.v1.WordR\x05words\"a\n" +
-	"\x11LookupWordRequest\x12\x1b\n" +
-	"\x04word\x18\x01 \x01(\tB\a\xfaB\x04r\x02\x10\x01R\x04word\x12/\n" +
-	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage2\x81\x04\n" +
-	"\vWordService\x12Q\n" +
-	"\n" +
-	"CreateWord\x12\x1a.dict.v1.CreateWordRequest\x1a\r.dict.v1.Word\"\x18\x82\xd3\xe4\x93\x02\x12:\x01*\"\r/api/v1/words\x12I\n" +
-	"\n" +
-	"UpdateWord\x12\r.dict.v1.Word\x1a\r.dict.v1.Word\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\x1a\x12/api/v1/words/{id}\x12J\n" +
-	"\aGetWord\x12\x14.common.v1.IDRequest\x1a\r.dict.v1.Word\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/api/v1/words/{id}\x12Y\n" +
-	"\tListWords\x12\x19.dict.v1.ListWordsRequest\x1a\x1a.dict.v1.ListWordsResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/api/v1/words\x12U\n" +
-	"\n" +
-	"LookupWord\x12\x1a.dict.v1.LookupWordRequest\x1a\r.dict.v1.Word\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/api/v1/words:lookup\x12V\n" +
-	"\n" +
-	"DeleteWord\x12\x14.common.v1.IDRequest\x1a\x16.google.protobuf.Empty\"\x1a\x82\xd3\xe4\x93\x02\x14*\x12/api/v1/words/{id}B\x87\x01\n" +
+	"source_ref\x18\x03 \x01(\tR\tsourceRef*\xe5\x02\n" +
+	"\bFormType\x12\x19\n" +
+	"\x15FORM_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
+	"\x0fFORM_TYPE_LEMMA\x10\x01\x12\x14\n" +
+	"\x10FORM_TYPE_PLURAL\x10\x02\x12\x12\n" +
+	"\x0eFORM_TYPE_PAST\x10\x03\x12\x1d\n" +
+	"\x19FORM_TYPE_PAST_PARTICIPLE\x10\x04\x12 \n" +
+	"\x1cFORM_TYPE_PRESENT_PARTICIPLE\x10\x05\x12#\n" +
+	"\x1fFORM_TYPE_THIRD_PERSON_SINGULAR\x10\x06\x12\x19\n" +
+	"\x15FORM_TYPE_COMPARATIVE\x10\a\x12\x19\n" +
+	"\x15FORM_TYPE_SUPERLATIVE\x10\b\x12\x18\n" +
+	"\x14FORM_TYPE_IMPERATIVE\x10\t\x12\x19\n" +
+	"\x15FORM_TYPE_SUBJUNCTIVE\x10\n" +
+	"\x12\x14\n" +
+	"\x10FORM_TYPE_GERUND\x10\v\x12\x18\n" +
+	"\x14FORM_TYPE_SHORT_FORM\x10\fB\x87\x01\n" +
 	"\vcom.dict.v1B\tWordProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
 
 var (
@@ -783,63 +655,43 @@ func file_dict_v1_word_proto_rawDescGZIP() []byte {
 	return file_dict_v1_word_proto_rawDescData
 }
 
-var file_dict_v1_word_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_dict_v1_word_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_dict_v1_word_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_dict_v1_word_proto_goTypes = []any{
-	(*Word)(nil),                  // 0: dict.v1.Word
-	(*Phonetic)(nil),              // 1: dict.v1.Phonetic
-	(*Definition)(nil),            // 2: dict.v1.Definition
-	(*WordFormRef)(nil),           // 3: dict.v1.WordFormRef
-	(*WordRelation)(nil),          // 4: dict.v1.WordRelation
-	(*Sentence)(nil),              // 5: dict.v1.Sentence
-	(*CreateWordRequest)(nil),     // 6: dict.v1.CreateWordRequest
-	(*ListWordsRequest)(nil),      // 7: dict.v1.ListWordsRequest
-	(*ListWordsResponse)(nil),     // 8: dict.v1.ListWordsResponse
-	(*LookupWordRequest)(nil),     // 9: dict.v1.LookupWordRequest
-	(v1.Language)(0),              // 10: common.v1.Language
-	(*Phrase)(nil),                // 11: dict.v1.Phrase
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	(v1.RelationType)(0),          // 13: common.v1.RelationType
-	(v1.SourceType)(0),            // 14: common.v1.SourceType
-	(*v1.PaginationRequest)(nil),  // 15: common.v1.PaginationRequest
-	(*v1.PaginationResponse)(nil), // 16: common.v1.PaginationResponse
-	(*v1.IDRequest)(nil),          // 17: common.v1.IDRequest
-	(*emptypb.Empty)(nil),         // 18: google.protobuf.Empty
+	(FormType)(0),                 // 0: dict.v1.FormType
+	(*Word)(nil),                  // 1: dict.v1.Word
+	(*Phonetic)(nil),              // 2: dict.v1.Phonetic
+	(*Definition)(nil),            // 3: dict.v1.Definition
+	(*LexemeSense)(nil),           // 4: dict.v1.LexemeSense
+	(*WordForm)(nil),              // 5: dict.v1.WordForm
+	(*WordRelation)(nil),          // 6: dict.v1.WordRelation
+	(*Sentence)(nil),              // 7: dict.v1.Sentence
+	(v1.Language)(0),              // 8: common.v1.Language
+	(*Phrase)(nil),                // 9: dict.v1.Phrase
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(v1.RelationType)(0),          // 11: common.v1.RelationType
+	(v1.SourceType)(0),            // 12: common.v1.SourceType
 }
 var file_dict_v1_word_proto_depIdxs = []int32{
-	10, // 0: dict.v1.Word.language:type_name -> common.v1.Language
-	1,  // 1: dict.v1.Word.phonetics:type_name -> dict.v1.Phonetic
-	2,  // 2: dict.v1.Word.definitions:type_name -> dict.v1.Definition
-	11, // 3: dict.v1.Word.phrases:type_name -> dict.v1.Phrase
-	5,  // 4: dict.v1.Word.sentences:type_name -> dict.v1.Sentence
-	3,  // 5: dict.v1.Word.forms:type_name -> dict.v1.WordFormRef
-	4,  // 6: dict.v1.Word.relations:type_name -> dict.v1.WordRelation
-	12, // 7: dict.v1.Word.created_at:type_name -> google.protobuf.Timestamp
-	12, // 8: dict.v1.Word.updated_at:type_name -> google.protobuf.Timestamp
-	10, // 9: dict.v1.Definition.language:type_name -> common.v1.Language
-	13, // 10: dict.v1.WordRelation.relation_type:type_name -> common.v1.RelationType
-	14, // 11: dict.v1.Sentence.source:type_name -> common.v1.SourceType
-	0,  // 12: dict.v1.CreateWordRequest.word:type_name -> dict.v1.Word
-	15, // 13: dict.v1.ListWordsRequest.pagination:type_name -> common.v1.PaginationRequest
-	16, // 14: dict.v1.ListWordsResponse.pagination:type_name -> common.v1.PaginationResponse
-	0,  // 15: dict.v1.ListWordsResponse.words:type_name -> dict.v1.Word
-	10, // 16: dict.v1.LookupWordRequest.language:type_name -> common.v1.Language
-	6,  // 17: dict.v1.WordService.CreateWord:input_type -> dict.v1.CreateWordRequest
-	0,  // 18: dict.v1.WordService.UpdateWord:input_type -> dict.v1.Word
-	17, // 19: dict.v1.WordService.GetWord:input_type -> common.v1.IDRequest
-	7,  // 20: dict.v1.WordService.ListWords:input_type -> dict.v1.ListWordsRequest
-	9,  // 21: dict.v1.WordService.LookupWord:input_type -> dict.v1.LookupWordRequest
-	17, // 22: dict.v1.WordService.DeleteWord:input_type -> common.v1.IDRequest
-	0,  // 23: dict.v1.WordService.CreateWord:output_type -> dict.v1.Word
-	0,  // 24: dict.v1.WordService.UpdateWord:output_type -> dict.v1.Word
-	0,  // 25: dict.v1.WordService.GetWord:output_type -> dict.v1.Word
-	8,  // 26: dict.v1.WordService.ListWords:output_type -> dict.v1.ListWordsResponse
-	0,  // 27: dict.v1.WordService.LookupWord:output_type -> dict.v1.Word
-	18, // 28: dict.v1.WordService.DeleteWord:output_type -> google.protobuf.Empty
-	23, // [23:29] is the sub-list for method output_type
-	17, // [17:23] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	8,  // 0: dict.v1.Word.language:type_name -> common.v1.Language
+	2,  // 1: dict.v1.Word.phonetics:type_name -> dict.v1.Phonetic
+	3,  // 2: dict.v1.Word.definitions:type_name -> dict.v1.Definition
+	9,  // 3: dict.v1.Word.phrases:type_name -> dict.v1.Phrase
+	5,  // 4: dict.v1.Word.forms:type_name -> dict.v1.WordForm
+	6,  // 5: dict.v1.Word.relations:type_name -> dict.v1.WordRelation
+	10, // 6: dict.v1.Word.created_at:type_name -> google.protobuf.Timestamp
+	10, // 7: dict.v1.Word.updated_at:type_name -> google.protobuf.Timestamp
+	4,  // 8: dict.v1.Definition.senses:type_name -> dict.v1.LexemeSense
+	7,  // 9: dict.v1.Definition.examples:type_name -> dict.v1.Sentence
+	8,  // 10: dict.v1.LexemeSense.language:type_name -> common.v1.Language
+	0,  // 11: dict.v1.WordForm.type:type_name -> dict.v1.FormType
+	11, // 12: dict.v1.WordRelation.relation:type_name -> common.v1.RelationType
+	12, // 13: dict.v1.Sentence.source:type_name -> common.v1.SourceType
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_dict_v1_word_proto_init() }
@@ -853,13 +705,14 @@ func file_dict_v1_word_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_word_proto_rawDesc), len(file_dict_v1_word_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   10,
+			NumEnums:      1,
+			NumMessages:   7,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   0,
 		},
 		GoTypes:           file_dict_v1_word_proto_goTypes,
 		DependencyIndexes: file_dict_v1_word_proto_depIdxs,
+		EnumInfos:         file_dict_v1_word_proto_enumTypes,
 		MessageInfos:      file_dict_v1_word_proto_msgTypes,
 	}.Build()
 	File_dict_v1_word_proto = out.File

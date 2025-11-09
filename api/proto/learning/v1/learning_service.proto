@@ -7,44 +7,43 @@ import "google/protobuf/empty.proto";
 import "learning/v1/learning.proto";
 import "validate/validate.proto";
 
-// User lexeme management service for personal vocabulary learning
-service LearningService {
-  // CollectLexeme collects a term to user's vocabulary (creates global lexeme if needed)
-  rpc CollectLexeme(CollectLexemeRequest) returns (LearnedLexeme) {}
-
-  // UncollectLexeme removes a lexeme from user's vocabulary
-  rpc UncollectLexeme(common.v1.IDRequest) returns (google.protobuf.Empty) {}
-
-  // List user's lexemes with filtering and sorting
-  rpc ListLearnedLexemes(ListLearnedLexemesRequest) returns (ListLearnedLexemesResponse) {}
-
-  // Update mastery level and learning status
-  rpc UpdateMastery(UpdateMasteryRequest) returns (LearnedLexeme) {}
+// Key for identifying a learned lexeme entry.
+message LearnedLexemeKey {
+  int64 lexeme_id = 1 [(validate.rules).int64.gt = 0];
 }
 
-// CollectLexeme request - main API for adding lexemes to user vocabulary
+// CollectLexeme request - main API for adding lexemes to the user's vocabulary.
 message CollectLexemeRequest {
-  LearnedLexeme lexeme = 1;
+  LearnedLexeme lexeme = 1 [(validate.rules).message.required = true];
 }
 
-// UpdateLearnedLexemeMasteryRequest request
+// UpdateMasteryRequest updates mastery, review schedule, and optional form mastery.
 message UpdateMasteryRequest {
   int64 lexeme_id = 1 [(validate.rules).int64.gt = 0];
   learning.v1.MasteryBreakdown mastery = 2;
-  string notes = 3;
+  learning.v1.ReviewTiming review = 3;
+  map<string, learning.v1.FormMastery> form_status = 4;
+  string note = 5;
 }
 
-// ListLearnedLexemesRequest request with comprehensive filtering
+// ListLearnedLexemesRequest request with comprehensive filtering.
 message ListLearnedLexemesRequest {
-  // pagination parameters
   common.v1.PaginationRequest pagination = 1;
-  // filtering options using CEL expressions
   string filter = 2;
-  // ordering options. e.g. "lexeme asc", "mastery.overall desc"
   string order_by = 3;
+  repeated string lexeme_ids = 4;
+  repeated string surface_terms = 5;
 }
 
 message ListLearnedLexemesResponse {
   common.v1.PaginationResponse pagination = 1;
   repeated LearnedLexeme lexemes = 2;
+}
+
+// User lexeme management service for personal vocabulary learning.
+service LearningService {
+  rpc CollectLexeme(CollectLexemeRequest) returns (LearnedLexeme) {}
+  rpc UncollectLexeme(LearnedLexemeKey) returns (google.protobuf.Empty) {}
+  rpc ListLearnedLexemes(ListLearnedLexemesRequest) returns (ListLearnedLexemesResponse) {}
+  rpc UpdateMastery(UpdateMasteryRequest) returns (LearnedLexeme) {}
 }

@@ -25,20 +25,22 @@ var databaseSet = wire.NewSet(
 )
 
 var repositorySet = wire.NewSet(
-	repository.NewWordRepository,
+	repository.NewLexemeRepository,
 	repository.NewLearnedLexemeRepository,
+	repository.NewWordGroupRepository,
 )
 
 var usecaseSet = wire.NewSet(
+	usecase.NewLexemeUsecase,
 	usecase.NewWordUsecase,
 	usecase.NewLearnedLexemeUsecase,
 )
 
 var serviceSet = wire.NewSet(
-	adaptergrpc.NewWordServiceServer,
+	adaptergrpc.NewDictServiceServer,
 	adaptergrpc.NewLearningServiceServer,
 	wire.Bind(new(learningv1connect.LearningServiceHandler), new(*adaptergrpc.LearningServiceServer)),
-	wire.Bind(new(dictv1connect.WordServiceHandler), new(*adaptergrpc.WordServiceServer)),
+	wire.Bind(new(dictv1connect.DictServiceHandler), new(*adaptergrpc.DictServiceServer)),
 )
 
 var serverSet = wire.NewSet(

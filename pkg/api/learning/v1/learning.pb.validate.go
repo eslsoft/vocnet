@@ -63,6 +63,8 @@ func (m *LearnedLexeme) validate(all bool) error {
 
 	// no validation rules for Id
 
+	// no validation rules for LexemeId
+
 	if all {
 		switch v := interface{}(m.GetSpec()).(type) {
 		case interface{ ValidateAll() error }:
@@ -221,11 +223,11 @@ func (m *LearnedLexemeSpec) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for Term
+	// no validation rules for DisplayTerm
 
 	// no validation rules for Language
 
-	// no validation rules for MasteryLevel
+	// no validation rules for Note
 
 	for idx, item := range m.GetRelations() {
 		_, _ = idx, item
@@ -253,40 +255,6 @@ func (m *LearnedLexemeSpec) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return LearnedLexemeSpecValidationError{
 					field:  fmt.Sprintf("Relations[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
-
-	for idx, item := range m.GetSentences() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, LearnedLexemeSpecValidationError{
-						field:  fmt.Sprintf("Sentences[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, LearnedLexemeSpecValidationError{
-						field:  fmt.Sprintf("Sentences[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return LearnedLexemeSpecValidationError{
-					field:  fmt.Sprintf("Sentences[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -452,6 +420,52 @@ func (m *LearnedLexemeStatus) validate(all bool) error {
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
+		}
+	}
+
+	{
+		sorted_keys := make([]string, len(m.GetFormStatus()))
+		i := 0
+		for key := range m.GetFormStatus() {
+			sorted_keys[i] = key
+			i++
+		}
+		sort.Slice(sorted_keys, func(i, j int) bool { return sorted_keys[i] < sorted_keys[j] })
+		for _, key := range sorted_keys {
+			val := m.GetFormStatus()[key]
+			_ = val
+
+			// no validation rules for FormStatus[key]
+
+			if all {
+				switch v := interface{}(val).(type) {
+				case interface{ ValidateAll() error }:
+					if err := v.ValidateAll(); err != nil {
+						errors = append(errors, LearnedLexemeStatusValidationError{
+							field:  fmt.Sprintf("FormStatus[%v]", key),
+							reason: "embedded message failed validation",
+							cause:  err,
+						})
+					}
+				case interface{ Validate() error }:
+					if err := v.Validate(); err != nil {
+						errors = append(errors, LearnedLexemeStatusValidationError{
+							field:  fmt.Sprintf("FormStatus[%v]", key),
+							reason: "embedded message failed validation",
+							cause:  err,
+						})
+					}
+				}
+			} else if v, ok := interface{}(val).(interface{ Validate() error }); ok {
+				if err := v.Validate(); err != nil {
+					return LearnedLexemeStatusValidationError{
+						field:  fmt.Sprintf("FormStatus[%v]", key),
+						reason: "embedded message failed validation",
+						cause:  err,
+					}
+				}
+			}
+
 		}
 	}
 
@@ -867,6 +881,140 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ReviewTimingValidationError{}
+
+// Validate checks the field values on FormMastery with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *FormMastery) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on FormMastery with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in FormMasteryMultiError, or
+// nil if none found.
+func (m *FormMastery) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *FormMastery) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for FormId
+
+	// no validation rules for Strength
+
+	// no validation rules for Exposure
+
+	if all {
+		switch v := interface{}(m.GetMetadata()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, FormMasteryValidationError{
+					field:  "Metadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, FormMasteryValidationError{
+					field:  "Metadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMetadata()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return FormMasteryValidationError{
+				field:  "Metadata",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return FormMasteryMultiError(errors)
+	}
+
+	return nil
+}
+
+// FormMasteryMultiError is an error wrapping multiple validation errors
+// returned by FormMastery.ValidateAll() if the designated constraints aren't met.
+type FormMasteryMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FormMasteryMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FormMasteryMultiError) AllErrors() []error { return m }
+
+// FormMasteryValidationError is the validation error returned by
+// FormMastery.Validate if the designated constraints aren't met.
+type FormMasteryValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e FormMasteryValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e FormMasteryValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e FormMasteryValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e FormMasteryValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e FormMasteryValidationError) ErrorName() string { return "FormMasteryValidationError" }
+
+// Error satisfies the builtin error interface
+func (e FormMasteryValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sFormMastery.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = FormMasteryValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = FormMasteryValidationError{}
 
 // Validate checks the field values on LearnedLexemeRelation with the rules
 // defined in the proto definition for this message. If any rules are

@@ -1,0 +1,18 @@
+syntax = "proto3";
+package dict.v1;
+import "common/v1/types.proto";
+import "google/protobuf/empty.proto";
+import "dict/v1/word.proto";
+message CreateWordRequest { dict.v1.Word word = 1; }
+message LookupWordRequest { string word = 1; }
+message ListWordsRequest {}
+message ListWordsResponse { repeated dict.v1.Word words = 1; }
+message WordIDRequest { int64 word_id = 1; }
+service DictService {
+  rpc CreateWord(CreateWordRequest) returns (dict.v1.Word);
+  rpc UpdateWord(dict.v1.Word) returns (dict.v1.Word);
+  rpc GetWord(WordIDRequest) returns (dict.v1.Word);
+  rpc ListWords(ListWordsRequest) returns (ListWordsResponse);
+  rpc LookupWord(LookupWordRequest) returns (dict.v1.Word);
+  rpc DeleteWord(WordIDRequest) returns (google.protobuf.Empty);
+}

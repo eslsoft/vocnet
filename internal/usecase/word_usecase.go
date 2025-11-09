@@ -2,176 +2,140 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
-// WordUsecase defines business logic for words.
+// WordUsecase exposes read operations for aggregated words.
 type WordUsecase interface {
-	Create(ctx context.Context, word *entity.Word) (*entity.Word, error)
-	Update(ctx context.Context, word *entity.Word) (*entity.Word, error)
-	Get(ctx context.Context, id int64) (*entity.Word, error)
-	Lookup(ctx context.Context, lemma string, language entity.Language) (*entity.Word, error)
-	List(ctx context.Context, filter *repository.ListWordQuery) ([]*entity.Word, int64, error)
-	Delete(ctx context.Context, id int64) error
+	Get(ctx context.Context, wordID int64) (*entity.Word, error)
+	List(ctx context.Context, filter *repository.ListWordGroupQuery) ([]*entity.Word, int64, error)
+	Lookup(ctx context.Context, surface string, language entity.Language) (*entity.Word, error)
 }
-
-const (
-	_defaultLanguage = entity.LanguageEnglish
-	_defaultLimit    = int32(20)
-	_maxLimit        = int32(10000)
-)
 
 type wordUsecase struct {
-	repo repository.WordRepository
+	groups  repository.WordGroupRepository
+	lexemes repository.LexemeRepository
 }
 
-func NewWordUsecase(repo repository.WordRepository) WordUsecase {
-	return &wordUsecase{repo: repo}
+func NewWordUsecase(groups repository.WordGroupRepository, lexemes repository.LexemeRepository) WordUsecase {
+	return &wordUsecase{
+		groups:  groups,
+		lexemes: lexemes,
+	}
 }
 
-func (u *wordUsecase) Create(ctx context.Context, word *entity.Word) (*entity.Word, error) {
-	norm, err := normalizeVocForUpsert(word)
+func (u *wordUsecase) Get(ctx context.Context, wordID int64) (*entity.Word, error) {
+	word, err := u.groups.GetByID(ctx, wordID)
 	if err != nil {
 		return nil, err
 	}
-	return u.repo.Create(ctx, norm)
+	return u.populateLexemes(ctx, word)
 }
 
-func (u *wordUsecase) Update(ctx context.Context, word *entity.Word) (*entity.Word, error) {
-	norm, err := normalizeVocForUpsert(word)
+func (u *wordUsecase) List(ctx context.Context, filter *repository.ListWordGroupQuery) ([]*entity.Word, int64, error) {
+	if filter == nil {
+		filter = &repository.ListWordGroupQuery{
+			Pagination: repository.Pagination{PageNo: 1, PageSize: 20},
+		}
+	}
+	words, total, err := u.groups.List(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	lexemeMap, err := u.fetchLexemeMap(ctx, words)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	all := make([]*entity.Word, 0, len(words))
+	for _, item := range words {
+		all = append(all, u.buildWordFromCache(item, lexemeMap))
+	}
+	return all, total, nil
+}
+
+func (u *wordUsecase) Lookup(ctx context.Context, surface string, language entity.Language) (*entity.Word, error) {
+	surface = strings.TrimSpace(surface)
+	if surface == "" {
+		return nil, entity.ErrInvalidLexemeText
+	}
+	// Try to match lemma directly via WID
+	wid := makeWID(language, surface)
+	wordMeta, err := u.groups.GetByWID(ctx, wid)
+	if err == nil {
+		return u.populateLexemes(ctx, wordMeta)
+	}
+
+	// Try lexeme lookup
+	lexeme, err := u.lexemes.Lookup(ctx, surface, language)
 	if err != nil {
 		return nil, err
 	}
-	if norm.ID <= 0 {
-		return nil, entity.ErrInvalidVocID
+	if lexeme == nil {
+		return nil, nil
 	}
-	norm.IsManualEdited = true
-	return u.repo.Update(ctx, norm)
+	// Get word by WordID
+	if lexeme.WordID == 0 {
+		return nil, nil
+	}
+	wordMeta, err = u.groups.GetByID(ctx, lexeme.WordID)
+	if err != nil {
+		return nil, err
+	}
+	return u.populateLexemes(ctx, wordMeta)
 }
 
-func (u *wordUsecase) Get(ctx context.Context, id int64) (*entity.Word, error) {
-	if id <= 0 {
-		return nil, entity.ErrInvalidVocID
+func (u *wordUsecase) populateLexemes(ctx context.Context, word *entity.Word) (*entity.Word, error) {
+	// Query lexemes by WordID
+	lexemes, err := u.lexemes.ListByWordID(ctx, word.ID)
+	if err != nil {
+		return nil, err
 	}
-	return u.repo.GetByID(ctx, id)
+	result := *word
+	result.Lexemes = lexemes
+	return &result, nil
 }
 
-func (u *wordUsecase) Lookup(ctx context.Context, lemma string, language entity.Language) (*entity.Word, error) {
-	lemma = strings.TrimSpace(lemma)
-	if lemma == "" {
-		return nil, entity.ErrInvalidVocText
-	}
-	if language == entity.LanguageUnspecified {
-		language = _defaultLanguage
-	}
-	v, err := u.repo.Lookup(ctx, lemma, language)
-	if err != nil || v == nil {
-		return v, err
-	}
-	if v.WordType == entity.WordTypeLemma {
-		forms, ferr := u.repo.ListFormsByLemma(ctx, v.Text, v.Language)
-		if ferr == nil {
-			v.Forms = forms
+func (u *wordUsecase) fetchLexemeMap(ctx context.Context, groups []*entity.Word) (map[int64]*entity.Lexeme, error) {
+	ids := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	for _, group := range groups {
+		// Get all lexemes for this word
+		lexemes, err := u.lexemes.ListByWordID(ctx, group.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, lex := range lexemes {
+			if _, ok := seen[lex.ID]; ok {
+				continue
+			}
+			seen[lex.ID] = struct{}{}
+			ids = append(ids, lex.ID)
 		}
 	}
-	return v, nil
+	lexemes, err := u.lexemes.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64]*entity.Lexeme, len(lexemes))
+	for _, lex := range lexemes {
+		result[lex.ID] = lex
+	}
+	return result, nil
 }
 
-func (u *wordUsecase) List(ctx context.Context, query *repository.ListWordQuery) ([]*entity.Word, int64, error) {
-	return u.repo.List(ctx, query)
-}
-
-func (u *wordUsecase) Delete(ctx context.Context, id int64) error {
-	if id <= 0 {
-		return entity.ErrInvalidVocID
-	}
-	return u.repo.Delete(ctx, id)
-}
-
-func normalizeVocForUpsert(in *entity.Word) (*entity.Word, error) {
-	if in == nil {
-		return nil, errors.New("word payload required")
-	}
-	text := strings.TrimSpace(in.Text)
-	if text == "" {
-		return nil, entity.ErrInvalidVocText
-	}
-	out := *in
-	out.Text = text
-	if out.Language == entity.LanguageUnspecified {
-		out.Language = _defaultLanguage
-	}
-	out.WordType = strings.TrimSpace(out.WordType)
-	if out.WordType == "" {
-		out.WordType = entity.WordTypeLemma
-	}
-	if out.WordType != entity.WordTypeLemma {
-		if out.Lemma == nil || strings.TrimSpace(*out.Lemma) == "" {
-			return nil, errors.New("lemma reference required for non-lemma entries")
+func (u *wordUsecase) buildWordFromCache(meta *entity.Word, lexemeMap map[int64]*entity.Lexeme) *entity.Word {
+	// Note: Since we don't have LexemeIDs stored anymore, we need to get them from the lexemeMap
+	lexemes := make([]*entity.Lexeme, 0)
+	for _, lex := range lexemeMap {
+		if lex.WordID == meta.ID {
+			lexemes = append(lexemes, lex)
 		}
-		lemma := strings.TrimSpace(*out.Lemma)
-		out.Lemma = &lemma
-	} else {
-		out.Lemma = nil
 	}
-
-	out.Completeness = calculateCompleteness(&out)
-	out.IsStandardRule = checkStandardRule(&out)
-
-	return &out, nil
-}
-
-func calculateCompleteness(w *entity.Word) int32 {
-	total := int32(5)
-	score := int32(0)
-
-	if w.Text != "" {
-		score++
-	}
-	if len(w.Phonetics) > 0 {
-		score++
-	}
-	if len(w.Definitions) > 0 {
-		score++
-	}
-	if w.WordType == entity.WordTypeLemma && len(w.Categories) > 0 {
-		score++
-	}
-	if w.WordType != entity.WordTypeLemma && w.Lemma != nil {
-		score++
-	}
-
-	return (score * 100) / total
-}
-
-func checkStandardRule(w *entity.Word) bool {
-	if w.WordType == entity.WordTypeLemma || w.Lemma == nil {
-		return false
-	}
-
-	lemma := strings.ToLower(strings.TrimSpace(*w.Lemma))
-	text := strings.ToLower(w.Text)
-
-	switch w.WordType {
-	case "plural":
-		return text == lemma+"s" || text == lemma+"es" || text == lemma+"ies"
-	case "past":
-		return text == lemma+"ed" || text == lemma+"d"
-	case "pp":
-		return text == lemma+"ed" || text == lemma+"d"
-	case "ing":
-		return text == lemma+"ing"
-	case "3sg":
-		return text == lemma+"s" || text == lemma+"es"
-	case "comparative":
-		return text == lemma+"er"
-	case "superlative":
-		return text == lemma+"est"
-	default:
-		return false
-	}
+	result := *meta
+	result.Lexemes = lexemes
+	return &result
 }

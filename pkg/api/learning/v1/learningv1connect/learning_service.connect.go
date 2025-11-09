@@ -8,7 +8,6 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	v11 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	v1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	http "net/http"
@@ -51,13 +50,9 @@ const (
 
 // LearningServiceClient is a client for the learning.v1.LearningService service.
 type LearningServiceClient interface {
-	// CollectLexeme collects a term to user's vocabulary (creates global lexeme if needed)
 	CollectLexeme(context.Context, *connect.Request[v1.CollectLexemeRequest]) (*connect.Response[v1.LearnedLexeme], error)
-	// UncollectLexeme removes a lexeme from user's vocabulary
-	UncollectLexeme(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
-	// List user's lexemes with filtering and sorting
+	UncollectLexeme(context.Context, *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error)
 	ListLearnedLexemes(context.Context, *connect.Request[v1.ListLearnedLexemesRequest]) (*connect.Response[v1.ListLearnedLexemesResponse], error)
-	// Update mastery level and learning status
 	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedLexeme], error)
 }
 
@@ -78,7 +73,7 @@ func NewLearningServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(learningServiceMethods.ByName("CollectLexeme")),
 			connect.WithClientOptions(opts...),
 		),
-		uncollectLexeme: connect.NewClient[v11.IDRequest, emptypb.Empty](
+		uncollectLexeme: connect.NewClient[v1.LearnedLexemeKey, emptypb.Empty](
 			httpClient,
 			baseURL+LearningServiceUncollectLexemeProcedure,
 			connect.WithSchema(learningServiceMethods.ByName("UncollectLexeme")),
@@ -102,7 +97,7 @@ func NewLearningServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 // learningServiceClient implements LearningServiceClient.
 type learningServiceClient struct {
 	collectLexeme      *connect.Client[v1.CollectLexemeRequest, v1.LearnedLexeme]
-	uncollectLexeme    *connect.Client[v11.IDRequest, emptypb.Empty]
+	uncollectLexeme    *connect.Client[v1.LearnedLexemeKey, emptypb.Empty]
 	listLearnedLexemes *connect.Client[v1.ListLearnedLexemesRequest, v1.ListLearnedLexemesResponse]
 	updateMastery      *connect.Client[v1.UpdateMasteryRequest, v1.LearnedLexeme]
 }
@@ -113,7 +108,7 @@ func (c *learningServiceClient) CollectLexeme(ctx context.Context, req *connect.
 }
 
 // UncollectLexeme calls learning.v1.LearningService.UncollectLexeme.
-func (c *learningServiceClient) UncollectLexeme(ctx context.Context, req *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error) {
+func (c *learningServiceClient) UncollectLexeme(ctx context.Context, req *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error) {
 	return c.uncollectLexeme.CallUnary(ctx, req)
 }
 
@@ -129,13 +124,9 @@ func (c *learningServiceClient) UpdateMastery(ctx context.Context, req *connect.
 
 // LearningServiceHandler is an implementation of the learning.v1.LearningService service.
 type LearningServiceHandler interface {
-	// CollectLexeme collects a term to user's vocabulary (creates global lexeme if needed)
 	CollectLexeme(context.Context, *connect.Request[v1.CollectLexemeRequest]) (*connect.Response[v1.LearnedLexeme], error)
-	// UncollectLexeme removes a lexeme from user's vocabulary
-	UncollectLexeme(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
-	// List user's lexemes with filtering and sorting
+	UncollectLexeme(context.Context, *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error)
 	ListLearnedLexemes(context.Context, *connect.Request[v1.ListLearnedLexemesRequest]) (*connect.Response[v1.ListLearnedLexemesResponse], error)
-	// Update mastery level and learning status
 	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedLexeme], error)
 }
 
@@ -193,7 +184,7 @@ func (UnimplementedLearningServiceHandler) CollectLexeme(context.Context, *conne
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.CollectLexeme is not implemented"))
 }
 
-func (UnimplementedLearningServiceHandler) UncollectLexeme(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error) {
+func (UnimplementedLearningServiceHandler) UncollectLexeme(context.Context, *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.UncollectLexeme is not implemented"))
 }
 

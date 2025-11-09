@@ -12,11 +12,11 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlearnedlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedlexeme"
+	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/samber/lo"
 )
 
 type LearnedLexemeRepository struct {
@@ -37,7 +37,7 @@ func NewLearnedLexemeRepository(client *entdb.Client) repository.LearnedLexemeRe
 
 type listLearnedLexemesParams struct {
 	Keyword       string
-	Lexemes       []string
+	LexemeIDs     []int64
 	Tags          []string
 	Categories    []string
 	PrimaryKey    string
@@ -64,14 +64,17 @@ func (r *LearnedLexemeRepository) Create(ctx context.Context, lexeme *entity.Lea
 		return nil, err
 	}
 
-	normalizedTerm := entity.NormalizeWordToken(lexeme.Term)
 	languageCode := entity.NormalizeLanguage(lexeme.Language).Code()
 
 	builder := r.client.LearnedLexeme.Create().
 		SetUserID(lexeme.UserID).
-		SetTerm(lexeme.Term).
-		SetNormalized(normalizedTerm).
+		SetLexemeLid(strings.TrimSpace(lexeme.LexemeLID)).
+		SetDisplayTerm(strings.TrimSpace(lexeme.DisplayTerm)).
 		SetLanguage(languageCode).
+		SetTags(append([]string{}, lexeme.Tags...)).
+		SetNote(strings.TrimSpace(lexeme.Note)).
+		SetRelations(append([]entity.LearnedLexemeRelation{}, lexeme.Relations...)).
+		SetFormStatus(copyFormStatus(lexeme.FormStatus)).
 		SetMasteryListen(listen).
 		SetMasteryRead(read).
 		SetMasterySpell(spell).
@@ -80,18 +83,12 @@ func (r *LearnedLexemeRepository) Create(ctx context.Context, lexeme *entity.Lea
 		SetReviewIntervalDays(lexeme.Review.IntervalDays).
 		SetReviewFailCount(lexeme.Review.FailCount).
 		SetQueryCount(lexeme.QueryCount).
-		SetSentences(lexeme.Sentences).
-		SetRelations(lexeme.Relations).
 		SetCreatedBy(lexeme.CreatedBy).
 		SetCreatedAt(lexeme.CreatedAt).
 		SetUpdatedAt(lexeme.UpdatedAt)
 
-	if lexeme.Tags != nil {
-		builder.SetTags(append([]string{}, lexeme.Tags...))
-	}
-
-	if err := r.attachDictionaryWord(ctx, builder.Mutation(), languageCode, normalizedTerm); err != nil {
-		return nil, err
+	if lexeme.LexemeID > 0 {
+		builder.SetLexemeID(lexeme.LexemeID)
 	}
 
 	if !lexeme.Review.LastReviewAt.IsZero() {
@@ -99,9 +96,6 @@ func (r *LearnedLexemeRepository) Create(ctx context.Context, lexeme *entity.Lea
 	}
 	if !lexeme.Review.NextReviewAt.IsZero() {
 		builder.SetReviewNextReviewAt(lexeme.Review.NextReviewAt)
-	}
-	if lexeme.Notes != "" {
-		builder.SetNotes(lexeme.Notes)
 	}
 
 	rec, err := builder.Save(ctx)
@@ -129,14 +123,17 @@ func (r *LearnedLexemeRepository) Update(ctx context.Context, lexeme *entity.Lea
 		return nil, err
 	}
 
-	normalizedTerm := entity.NormalizeWordToken(lexeme.Term)
 	languageCode := entity.NormalizeLanguage(lexeme.Language).Code()
 
 	mutation := r.client.LearnedLexeme.UpdateOneID(int(lexeme.ID)).
 		Where(entlearnedlexeme.UserIDEQ(lexeme.UserID)).
-		SetTerm(lexeme.Term).
-		SetNormalized(normalizedTerm).
+		SetLexemeLid(strings.TrimSpace(lexeme.LexemeLID)).
+		SetDisplayTerm(strings.TrimSpace(lexeme.DisplayTerm)).
 		SetLanguage(languageCode).
+		SetTags(append([]string{}, lexeme.Tags...)).
+		SetNote(strings.TrimSpace(lexeme.Note)).
+		SetRelations(append([]entity.LearnedLexemeRelation{}, lexeme.Relations...)).
+		SetFormStatus(copyFormStatus(lexeme.FormStatus)).
 		SetMasteryListen(listen).
 		SetMasteryRead(read).
 		SetMasterySpell(spell).
@@ -145,17 +142,13 @@ func (r *LearnedLexemeRepository) Update(ctx context.Context, lexeme *entity.Lea
 		SetReviewIntervalDays(lexeme.Review.IntervalDays).
 		SetReviewFailCount(lexeme.Review.FailCount).
 		SetQueryCount(lexeme.QueryCount).
-		SetSentences(lexeme.Sentences).
-		SetRelations(lexeme.Relations).
 		SetCreatedBy(lexeme.CreatedBy).
 		SetUpdatedAt(lexeme.UpdatedAt)
 
-	if lexeme.Tags != nil {
-		mutation.SetTags(append([]string{}, lexeme.Tags...))
-	}
-
-	if err := r.attachDictionaryWord(ctx, mutation.Mutation(), languageCode, normalizedTerm); err != nil {
-		return nil, err
+	if lexeme.LexemeID > 0 {
+		mutation.SetLexemeID(lexeme.LexemeID)
+	} else {
+		mutation.ClearLexemeID()
 	}
 
 	if !lexeme.Review.LastReviewAt.IsZero() {
@@ -169,12 +162,6 @@ func (r *LearnedLexemeRepository) Update(ctx context.Context, lexeme *entity.Lea
 		mutation.ClearReviewNextReviewAt()
 	}
 
-	if lexeme.Notes != "" {
-		mutation.SetNotes(lexeme.Notes)
-	} else {
-		mutation.ClearNotes()
-	}
-
 	rec, err := mutation.Save(ctx)
 	if err != nil {
 		if entdb.IsNotFound(err) {
@@ -186,11 +173,11 @@ func (r *LearnedLexemeRepository) Update(ctx context.Context, lexeme *entity.Lea
 	return mapEntLearnedLexeme(rec), nil
 }
 
-func (r *LearnedLexemeRepository) GetByID(ctx context.Context, userID, id int64) (*entity.LearnedLexeme, error) {
+func (r *LearnedLexemeRepository) GetByLexemeID(ctx context.Context, userID int64, lexemeID int64) (*entity.LearnedLexeme, error) {
 	rec, err := r.client.LearnedLexeme.Query().
 		Where(
-			entlearnedlexeme.IDEQ(int(id)),
 			entlearnedlexeme.UserIDEQ(userID),
+			entlearnedlexeme.LexemeIDEQ(lexemeID),
 		).
 		First(ctx)
 	if err != nil {
@@ -202,15 +189,15 @@ func (r *LearnedLexemeRepository) GetByID(ctx context.Context, userID, id int64)
 	return mapEntLearnedLexeme(rec), nil
 }
 
-func (r *LearnedLexemeRepository) FindByTerm(ctx context.Context, userID int64, term string) (*entity.LearnedLexeme, error) {
-	if term == "" {
+func (r *LearnedLexemeRepository) FindByLexemeID(ctx context.Context, userID int64, lexemeID int64) (*entity.LearnedLexeme, error) {
+	if lexemeID == 0 {
 		return nil, nil
 	}
 
 	rec, err := r.client.LearnedLexeme.Query().
 		Where(
 			entlearnedlexeme.UserIDEQ(userID),
-			entlearnedlexeme.TermEQ(term),
+			entlearnedlexeme.LexemeIDEQ(lexemeID),
 		).
 		First(ctx)
 	if err != nil {
@@ -263,11 +250,11 @@ func (r *LearnedLexemeRepository) List(ctx context.Context, query *repository.Li
 	return results, int64(total), nil
 }
 
-func (r *LearnedLexemeRepository) Delete(ctx context.Context, userID, id int64) error {
+func (r *LearnedLexemeRepository) DeleteByLexemeID(ctx context.Context, userID int64, lexemeID int64) error {
 	affected, err := r.client.LearnedLexeme.Delete().
 		Where(
-			entlearnedlexeme.IDEQ(int(id)),
 			entlearnedlexeme.UserIDEQ(userID),
+			entlearnedlexeme.LexemeIDEQ(lexemeID),
 		).
 		Exec(ctx)
 	if err != nil {
@@ -281,10 +268,10 @@ func (r *LearnedLexemeRepository) Delete(ctx context.Context, userID, id int64) 
 
 func applyLearnedLexemeFilters(q *entdb.LearnedLexemeQuery, params listLearnedLexemesParams) {
 	if params.Keyword != "" {
-		q.Where(entlearnedlexeme.TermContainsFold(params.Keyword))
+		q.Where(entlearnedlexeme.DisplayTermContainsFold(params.Keyword))
 	}
-	if lexemes := uniqueFolded(params.Lexemes); len(lexemes) > 0 {
-		q.Where(entlearnedlexeme.NormalizedIn(lo.Map(lexemes, func(term string, _ int) string { return strings.ToLower(term) })...))
+	if len(params.LexemeIDs) > 0 {
+		q.Where(entlearnedlexeme.LexemeIDIn(params.LexemeIDs...))
 	}
 	if tags := uniqueFolded(params.Tags); len(tags) > 0 {
 		q.Where(func(s *sql.Selector) {
@@ -295,12 +282,22 @@ func applyLearnedLexemeFilters(q *entdb.LearnedLexemeQuery, params listLearnedLe
 		})
 	}
 	if categories := uniqueFolded(params.Categories); len(categories) > 0 {
-		q.Where(entlearnedlexeme.HasWordWith(func(s *sql.Selector) {
-			column := s.C(entword.FieldCategories)
+		q.Where(func(sel *sql.Selector) {
+			// Join with lexemes to get word_id, then with words to check categories
+			lex := sql.Table(entlexeme.Table)
+			word := sql.Table(entword.Table)
+			sub := sql.Select().
+				From(lex).
+				Join(word).On(lex.C(entlexeme.FieldWordID), word.C(entword.FieldID)).
+				Where(sql.ColumnsEQ(
+					lex.C(entlexeme.FieldID),
+					sel.C(entlearnedlexeme.FieldLexemeID),
+				))
 			for _, category := range categories {
-				s.Where(sqljson.ValueContains(column, category))
+				sub.Where(sqljson.ValueContains(word.C(entword.FieldCategories), category))
 			}
-		}))
+			sel.Where(sql.Exists(sub))
+		})
 	}
 }
 
@@ -328,11 +325,11 @@ func applyLearnedLexemeOrdering(q *entdb.LearnedLexemeQuery, params listLearnedL
 			} else {
 				q.Order(entlearnedlexeme.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
-		case "word":
+		case "display_term":
 			if term.desc {
-				q.Order(entlearnedlexeme.ByTerm(sql.OrderDesc(), sql.OrderNullsLast()))
+				q.Order(entlearnedlexeme.ByDisplayTerm(sql.OrderDesc(), sql.OrderNullsLast()))
 			} else {
-				q.Order(entlearnedlexeme.ByTerm(sql.OrderAsc(), sql.OrderNullsLast()))
+				q.Order(entlearnedlexeme.ByDisplayTerm(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
 		case "mastery_overall":
 			if term.desc {
@@ -352,44 +349,17 @@ func applyLearnedLexemeOrdering(q *entdb.LearnedLexemeQuery, params listLearnedL
 	q.Order(entlearnedlexeme.ByID())
 }
 
-func (r *LearnedLexemeRepository) attachDictionaryWord(ctx context.Context, mut *entdb.LearnedLexemeMutation, languageCode, normalizedTerm string) error {
-	if mut == nil {
-		return nil
-	}
-
-	if normalizedTerm == "" || languageCode == "" {
-		mut.ClearWord()
-		return nil
-	}
-
-	dictWord, err := r.client.Word.Query().
-		Where(
-			entword.LanguageEQ(languageCode),
-			entword.NormalizedEQ(normalizedTerm),
-		).
-		First(ctx)
-	if err != nil {
-		if entdb.IsNotFound(err) {
-			mut.ClearWord()
-			return nil
-		}
-		return fmt.Errorf("lookup dictionary word: %w", err)
-	}
-
-	mut.SetWordID(dictWord.ID)
-	return nil
-}
-
 func mapEntLearnedLexeme(rec *entdb.LearnedLexeme) *entity.LearnedLexeme {
 	if rec == nil {
 		return nil
 	}
 
 	out := &entity.LearnedLexeme{
-		ID:       int64(rec.ID),
-		UserID:   rec.UserID,
-		Term:     rec.Term,
-		Language: entity.ParseLanguage(rec.Language),
+		ID:          int64(rec.ID),
+		UserID:      rec.UserID,
+		LexemeLID:   rec.LexemeLid,
+		DisplayTerm: rec.DisplayTerm,
+		Language:    entity.ParseLanguage(rec.Language),
 		Mastery: entity.MasteryBreakdown{
 			Listen:    int32(rec.MasteryListen),
 			Read:      int32(rec.MasteryRead),
@@ -403,16 +373,16 @@ func mapEntLearnedLexeme(rec *entdb.LearnedLexeme) *entity.LearnedLexeme {
 		},
 		QueryCount: rec.QueryCount,
 		Tags:       append([]string{}, rec.Tags...),
-		Sentences:  rec.Sentences,
-		Relations:  rec.Relations,
+		Note:       rec.Note,
+		Relations:  append([]entity.LearnedLexemeRelation{}, rec.Relations...),
+		FormStatus: copyFormStatus(rec.FormStatus),
 		CreatedBy:  rec.CreatedBy,
 		CreatedAt:  rec.CreatedAt,
 		UpdatedAt:  rec.UpdatedAt,
 	}
 
-	if rec.WordID != nil {
-		id := int64(*rec.WordID)
-		out.WordID = &id
+	if rec.LexemeID != nil {
+		out.LexemeID = *rec.LexemeID
 	}
 
 	if rec.ReviewLastReviewAt != nil {
@@ -421,11 +391,19 @@ func mapEntLearnedLexeme(rec *entdb.LearnedLexeme) *entity.LearnedLexeme {
 	if rec.ReviewNextReviewAt != nil {
 		out.Review.NextReviewAt = *rec.ReviewNextReviewAt
 	}
-	if rec.Notes != nil {
-		out.Notes = *rec.Notes
-	}
 
 	return out
+}
+
+func copyFormStatus(src map[string]entity.FormMastery) map[string]entity.FormMastery {
+	if len(src) == 0 {
+		return map[string]entity.FormMastery{}
+	}
+	dst := make(map[string]entity.FormMastery, len(src))
+	for key, val := range src {
+		dst[key] = val
+	}
+	return dst
 }
 
 func translateLearnedLexemeError(err error) error {

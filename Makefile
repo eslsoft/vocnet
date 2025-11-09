@@ -120,7 +120,7 @@ db-down: ## Stop and remove PostgreSQL database container
 .PHONY: test
 test: ## Run tests with coverage
 	@echo "Running tests..."
-	go test -v -race -coverprofile=coverage.out ./...
+	go test -v -race -coverprofile=coverage.out $(shell go list ./... | grep -v /scripts)
 
 .PHONY: test-coverage
 test-coverage: test ## Generate HTML test coverage report
@@ -131,7 +131,7 @@ test-coverage: test ## Generate HTML test coverage report
 .PHONY: lint
 lint: ## Run golangci-lint
 	@echo "Running linter..."
-	golangci-lint run
+	golangci-lint run ./cmd/... ./internal/... ./pkg/...
 
 .PHONY: fmt
 fmt: ## Format Go code

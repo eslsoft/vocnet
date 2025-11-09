@@ -35,6 +35,117 @@ var (
 	_ = sort.Sort
 )
 
+// Validate checks the field values on LearnedLexemeKey with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *LearnedLexemeKey) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LearnedLexemeKey with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LearnedLexemeKeyMultiError, or nil if none found.
+func (m *LearnedLexemeKey) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LearnedLexemeKey) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if m.GetLexemeId() <= 0 {
+		err := LearnedLexemeKeyValidationError{
+			field:  "LexemeId",
+			reason: "value must be greater than 0",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return LearnedLexemeKeyMultiError(errors)
+	}
+
+	return nil
+}
+
+// LearnedLexemeKeyMultiError is an error wrapping multiple validation errors
+// returned by LearnedLexemeKey.ValidateAll() if the designated constraints
+// aren't met.
+type LearnedLexemeKeyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LearnedLexemeKeyMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LearnedLexemeKeyMultiError) AllErrors() []error { return m }
+
+// LearnedLexemeKeyValidationError is the validation error returned by
+// LearnedLexemeKey.Validate if the designated constraints aren't met.
+type LearnedLexemeKeyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LearnedLexemeKeyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LearnedLexemeKeyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LearnedLexemeKeyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LearnedLexemeKeyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LearnedLexemeKeyValidationError) ErrorName() string { return "LearnedLexemeKeyValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LearnedLexemeKeyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLearnedLexemeKey.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LearnedLexemeKeyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LearnedLexemeKeyValidationError{}
+
 // Validate checks the field values on CollectLexemeRequest with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
@@ -56,6 +167,17 @@ func (m *CollectLexemeRequest) validate(all bool) error {
 	}
 
 	var errors []error
+
+	if m.GetLexeme() == nil {
+		err := CollectLexemeRequestValidationError{
+			field:  "Lexeme",
+			reason: "value is required",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
 
 	if all {
 		switch v := interface{}(m.GetLexeme()).(type) {
@@ -228,7 +350,82 @@ func (m *UpdateMasteryRequest) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for Notes
+	if all {
+		switch v := interface{}(m.GetReview()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, UpdateMasteryRequestValidationError{
+					field:  "Review",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, UpdateMasteryRequestValidationError{
+					field:  "Review",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetReview()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return UpdateMasteryRequestValidationError{
+				field:  "Review",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	{
+		sorted_keys := make([]string, len(m.GetFormStatus()))
+		i := 0
+		for key := range m.GetFormStatus() {
+			sorted_keys[i] = key
+			i++
+		}
+		sort.Slice(sorted_keys, func(i, j int) bool { return sorted_keys[i] < sorted_keys[j] })
+		for _, key := range sorted_keys {
+			val := m.GetFormStatus()[key]
+			_ = val
+
+			// no validation rules for FormStatus[key]
+
+			if all {
+				switch v := interface{}(val).(type) {
+				case interface{ ValidateAll() error }:
+					if err := v.ValidateAll(); err != nil {
+						errors = append(errors, UpdateMasteryRequestValidationError{
+							field:  fmt.Sprintf("FormStatus[%v]", key),
+							reason: "embedded message failed validation",
+							cause:  err,
+						})
+					}
+				case interface{ Validate() error }:
+					if err := v.Validate(); err != nil {
+						errors = append(errors, UpdateMasteryRequestValidationError{
+							field:  fmt.Sprintf("FormStatus[%v]", key),
+							reason: "embedded message failed validation",
+							cause:  err,
+						})
+					}
+				}
+			} else if v, ok := interface{}(val).(interface{ Validate() error }); ok {
+				if err := v.Validate(); err != nil {
+					return UpdateMasteryRequestValidationError{
+						field:  fmt.Sprintf("FormStatus[%v]", key),
+						reason: "embedded message failed validation",
+						cause:  err,
+					}
+				}
+			}
+
+		}
+	}
+
+	// no validation rules for Note
 
 	if len(errors) > 0 {
 		return UpdateMasteryRequestMultiError(errors)

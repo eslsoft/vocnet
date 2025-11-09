@@ -5,7 +5,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
-	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
@@ -44,10 +43,12 @@ func (s *LearningServiceServer) CollectLexeme(ctx context.Context, req *connect.
 	return connect.NewResponse(mapping.ToPbLearnedLexeme(result)), nil
 }
 
-func (s *LearningServiceServer) UncollectLexeme(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
-	msg := req.Msg
+func (s *LearningServiceServer) UncollectLexeme(ctx context.Context, req *connect.Request[learningv1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error) {
+	if req.Msg == nil {
+		return nil, status.Error(codes.InvalidArgument, "lexeme id required")
+	}
 	userID := int64(1000)
-	if err := s.uc.DeleteLearnedLexeme(ctx, userID, msg.GetId()); err != nil {
+	if err := s.uc.DeleteLearnedLexeme(ctx, userID, req.Msg.GetLexemeId()); err != nil {
 		return nil, err
 	}
 
@@ -97,7 +98,15 @@ func (s *LearningServiceServer) UpdateMastery(ctx context.Context, req *connect.
 
 	msg := req.Msg
 	userID := int64(1000)
-	result, err := s.uc.UpdateMastery(ctx, userID, msg.GetLexemeId(), mapping.FromPbMastery(msg.GetMastery()), entity.ReviewTiming{}, msg.GetNotes())
+	result, err := s.uc.UpdateMastery(
+		ctx,
+		userID,
+		msg.GetLexemeId(),
+		mapping.FromPbMastery(msg.GetMastery()),
+		mapping.FromPbReview(msg.GetReview()),
+		mapping.FromPbFormStatusMap(msg.GetFormStatus()),
+		msg.GetNote(),
+	)
 	if err != nil {
 		return nil, err
 	}

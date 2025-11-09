@@ -9,7 +9,6 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
-	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -19,14 +18,28 @@ type LearnedLexeme struct {
 	ent.Schema
 }
 
-// Fields of the LearnedLexeme.
 func (LearnedLexeme) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("user_id"),
-		field.String("term").NotEmpty(),
-		field.String("normalized").Default(""),
-		field.String("language").Default("en"),
-		field.Int("word_id").Optional().Nillable(),
+		field.Int64("lexeme_id").
+			Optional().
+			Nillable().
+			Comment("Current association to lexemes.id, nullable for migration"),
+		field.String("lexeme_lid").
+			NotEmpty().
+			Comment("Stable identifier for lexeme, format: {language}:{lemma}:{pos}"),
+		field.String("display_term").Default(""),
+		field.String("language").Default(entity.LanguageEnglish.CodeOrDefault()),
+		field.JSON("tags", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		field.String("note").Default(""),
+		field.JSON("relations", []entity.LearnedLexemeRelation{}).
+			Default([]entity.LearnedLexemeRelation{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		field.JSON("form_status", map[string]entity.FormMastery{}).
+			Default(map[string]entity.FormMastery{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Int16("mastery_listen").Default(0),
 		field.Int16("mastery_read").Default(0),
 		field.Int16("mastery_spell").Default(0),
@@ -37,14 +50,6 @@ func (LearnedLexeme) Fields() []ent.Field {
 		field.Int32("review_interval_days").Default(0),
 		field.Int32("review_fail_count").Default(0),
 		field.Int64("query_count").Default(0),
-		field.String("notes").Optional().Nillable(),
-		field.JSON("sentences", []entity.Sentence{}).
-			Default([]entity.Sentence{}),
-		field.JSON("relations", []entity.LearnedLexemeRelation{}).
-			Default([]entity.LearnedLexemeRelation{}),
-		field.JSON("tags", []string{}).
-			Default([]string{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("created_by").Default(""),
 		field.Time("created_at").
 			Default(time.Now).
@@ -55,29 +60,20 @@ func (LearnedLexeme) Fields() []ent.Field {
 	}
 }
 
-// Edges of the LearnedLexeme.
-func (LearnedLexeme) Edges() []ent.Edge {
-	return []ent.Edge{
-		edge.From("word", Word.Type).
-			Ref("learned_lexemes").
-			Field("word_id").
-			Unique(),
-	}
-}
+func (LearnedLexeme) Edges() []ent.Edge { return nil }
 
-// Indexes of the Lexeme.
 func (LearnedLexeme) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("user_id", "language", "term").Unique(),
-		index.Fields("language", "normalized"),
+		index.Fields("user_id", "lexeme_lid").Unique(),
+		index.Fields("user_id", "language", "display_term"),
+		index.Fields("lexeme_id"),
 	}
 }
 
-// Annotations of the LearnedLexeme.
 func (LearnedLexeme) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entsql.Annotation{
-			Table: "learned_words",
+			Table: "learned_lexemes",
 		},
 	}
 }

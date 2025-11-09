@@ -8,9 +8,9 @@ package learningv1
 
 import (
 	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
-	v11 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -24,12 +24,13 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// User's personal lexeme record with learning context
+// LearnedLexeme captures a user's personalised link to a lexeme.
 type LearnedLexeme struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Spec          *LearnedLexemeSpec     `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
-	Status        *LearnedLexemeStatus   `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	LexemeId      int64                  `protobuf:"varint,2,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"`
+	Spec          *LearnedLexemeSpec     `protobuf:"bytes,3,opt,name=spec,proto3" json:"spec,omitempty"`
+	Status        *LearnedLexemeStatus   `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -71,6 +72,13 @@ func (x *LearnedLexeme) GetId() int64 {
 	return 0
 }
 
+func (x *LearnedLexeme) GetLexemeId() int64 {
+	if x != nil {
+		return x.LexemeId
+	}
+	return 0
+}
+
 func (x *LearnedLexeme) GetSpec() *LearnedLexemeSpec {
 	if x != nil {
 		return x.Spec
@@ -85,16 +93,14 @@ func (x *LearnedLexeme) GetStatus() *LearnedLexemeStatus {
 	return nil
 }
 
-// Spec is user-provided data for the lexeme
+// LearnedLexemeSpec stores user-authored metadata.
 type LearnedLexemeSpec struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Term          string                   `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
-	Language      v1.Language              `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`     // Language of the word
-	MasteryLevel  int32                    `protobuf:"varint,3,opt,name=mastery_level,json=masteryLevel,proto3" json:"mastery_level,omitempty"` // Mastery level (0-5), self-assessed by user
-	Relations     []*LearnedLexemeRelation `protobuf:"bytes,5,rep,name=relations,proto3" json:"relations,omitempty"`                            // Relationships to other lexemes
-	Sentences     []*v11.Sentence          `protobuf:"bytes,6,rep,name=sentences,proto3" json:"sentences,omitempty"`                            // Contextual example sentences
-	Tags          []string                 `protobuf:"bytes,7,rep,name=tags,proto3" json:"tags,omitempty"`                                      // User-defined tags
-	Notes         []string                 `protobuf:"bytes,8,rep,name=notes,proto3" json:"notes,omitempty"`                                    // User's personal notes
+	DisplayTerm   string                   `protobuf:"bytes,1,opt,name=display_term,json=displayTerm,proto3" json:"display_term,omitempty"`
+	Language      v1.Language              `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`
+	Tags          []string                 `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
+	Note          string                   `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
+	Relations     []*LearnedLexemeRelation `protobuf:"bytes,5,rep,name=relations,proto3" json:"relations,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -129,9 +135,9 @@ func (*LearnedLexemeSpec) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *LearnedLexemeSpec) GetTerm() string {
+func (x *LearnedLexemeSpec) GetDisplayTerm() string {
 	if x != nil {
-		return x.Term
+		return x.DisplayTerm
 	}
 	return ""
 }
@@ -143,11 +149,18 @@ func (x *LearnedLexemeSpec) GetLanguage() v1.Language {
 	return v1.Language(0)
 }
 
-func (x *LearnedLexemeSpec) GetMasteryLevel() int32 {
+func (x *LearnedLexemeSpec) GetTags() []string {
 	if x != nil {
-		return x.MasteryLevel
+		return x.Tags
 	}
-	return 0
+	return nil
+}
+
+func (x *LearnedLexemeSpec) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
 }
 
 func (x *LearnedLexemeSpec) GetRelations() []*LearnedLexemeRelation {
@@ -157,36 +170,16 @@ func (x *LearnedLexemeSpec) GetRelations() []*LearnedLexemeRelation {
 	return nil
 }
 
-func (x *LearnedLexemeSpec) GetSentences() []*v11.Sentence {
-	if x != nil {
-		return x.Sentences
-	}
-	return nil
-}
-
-func (x *LearnedLexemeSpec) GetTags() []string {
-	if x != nil {
-		return x.Tags
-	}
-	return nil
-}
-
-func (x *LearnedLexemeSpec) GetNotes() []string {
-	if x != nil {
-		return x.Notes
-	}
-	return nil
-}
-
-// Status is read-only, maintained by the system
+// LearnedLexemeStatus is maintained by the system to reflect learning progress.
 type LearnedLexemeStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mastery       *MasteryBreakdown      `protobuf:"bytes,3,opt,name=mastery,proto3" json:"mastery,omitempty"`                               // Detailed mastery scores
-	ReviewTiming  *ReviewTiming          `protobuf:"bytes,4,opt,name=review_timing,json=reviewTiming,proto3" json:"review_timing,omitempty"` // Review scheduling info
-	QueryCount    int64                  `protobuf:"varint,5,opt,name=query_count,json=queryCount,proto3" json:"query_count,omitempty"`      // How many times user looked up this word
-	CreatedBy     string                 `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`         // Owner username (read-only)
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Mastery       *MasteryBreakdown       `protobuf:"bytes,1,opt,name=mastery,proto3" json:"mastery,omitempty"`
+	ReviewTiming  *ReviewTiming           `protobuf:"bytes,2,opt,name=review_timing,json=reviewTiming,proto3" json:"review_timing,omitempty"`
+	FormStatus    map[string]*FormMastery `protobuf:"bytes,3,rep,name=form_status,json=formStatus,proto3" json:"form_status,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	QueryCount    int64                   `protobuf:"varint,4,opt,name=query_count,json=queryCount,proto3" json:"query_count,omitempty"`
+	CreatedBy     string                  `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	CreatedAt     *timestamppb.Timestamp  `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp  `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -231,6 +224,13 @@ func (x *LearnedLexemeStatus) GetMastery() *MasteryBreakdown {
 func (x *LearnedLexemeStatus) GetReviewTiming() *ReviewTiming {
 	if x != nil {
 		return x.ReviewTiming
+	}
+	return nil
+}
+
+func (x *LearnedLexemeStatus) GetFormStatus() map[string]*FormMastery {
+	if x != nil {
+		return x.FormStatus
 	}
 	return nil
 }
@@ -409,6 +409,75 @@ func (x *ReviewTiming) GetFailCount() int32 {
 	return 0
 }
 
+// Mastery signals for a specific surface form of a lexeme.
+type FormMastery struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FormId        string                 `protobuf:"bytes,1,opt,name=form_id,json=formId,proto3" json:"form_id,omitempty"`
+	Strength      int32                  `protobuf:"varint,2,opt,name=strength,proto3" json:"strength,omitempty"`
+	Exposure      int32                  `protobuf:"varint,3,opt,name=exposure,proto3" json:"exposure,omitempty"`
+	Metadata      *structpb.Struct       `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FormMastery) Reset() {
+	*x = FormMastery{}
+	mi := &file_learning_v1_learning_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FormMastery) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FormMastery) ProtoMessage() {}
+
+func (x *FormMastery) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_learning_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FormMastery.ProtoReflect.Descriptor instead.
+func (*FormMastery) Descriptor() ([]byte, []int) {
+	return file_learning_v1_learning_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *FormMastery) GetFormId() string {
+	if x != nil {
+		return x.FormId
+	}
+	return ""
+}
+
+func (x *FormMastery) GetStrength() int32 {
+	if x != nil {
+		return x.Strength
+	}
+	return 0
+}
+
+func (x *FormMastery) GetExposure() int32 {
+	if x != nil {
+		return x.Exposure
+	}
+	return 0
+}
+
+func (x *FormMastery) GetMetadata() *structpb.Struct {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
 // Lexeme-to-lexeme relationship for building vocabulary networks
 type LearnedLexemeRelation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -423,7 +492,7 @@ type LearnedLexemeRelation struct {
 
 func (x *LearnedLexemeRelation) Reset() {
 	*x = LearnedLexemeRelation{}
-	mi := &file_learning_v1_learning_proto_msgTypes[5]
+	mi := &file_learning_v1_learning_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -435,7 +504,7 @@ func (x *LearnedLexemeRelation) String() string {
 func (*LearnedLexemeRelation) ProtoMessage() {}
 
 func (x *LearnedLexemeRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_learning_v1_learning_proto_msgTypes[5]
+	mi := &file_learning_v1_learning_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -448,7 +517,7 @@ func (x *LearnedLexemeRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LearnedLexemeRelation.ProtoReflect.Descriptor instead.
 func (*LearnedLexemeRelation) Descriptor() ([]byte, []int) {
-	return file_learning_v1_learning_proto_rawDescGZIP(), []int{5}
+	return file_learning_v1_learning_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *LearnedLexemeRelation) GetWord() string {
@@ -490,30 +559,34 @@ var File_learning_v1_learning_proto protoreflect.FileDescriptor
 
 const file_learning_v1_learning_proto_rawDesc = "" +
 	"\n" +
-	"\x1alearning/v1/learning.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x12dict/v1/word.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8d\x01\n" +
+	"\x1alearning/v1/learning.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaa\x01\n" +
 	"\rLearnedLexeme\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x122\n" +
-	"\x04spec\x18\x02 \x01(\v2\x1e.learning.v1.LearnedLexemeSpecR\x04spec\x128\n" +
-	"\x06status\x18\x03 \x01(\v2 .learning.v1.LearnedLexemeStatusR\x06status\"\x9a\x02\n" +
-	"\x11LearnedLexemeSpec\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\tR\x04term\x12/\n" +
-	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12#\n" +
-	"\rmastery_level\x18\x03 \x01(\x05R\fmasteryLevel\x12@\n" +
-	"\trelations\x18\x05 \x03(\v2\".learning.v1.LearnedLexemeRelationR\trelations\x12/\n" +
-	"\tsentences\x18\x06 \x03(\v2\x11.dict.v1.SentenceR\tsentences\x12\x12\n" +
-	"\x04tags\x18\a \x03(\tR\x04tags\x12\x14\n" +
-	"\x05notes\x18\b \x03(\tR\x05notes\"\xc4\x02\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
+	"\tlexeme_id\x18\x02 \x01(\x03R\blexemeId\x122\n" +
+	"\x04spec\x18\x03 \x01(\v2\x1e.learning.v1.LearnedLexemeSpecR\x04spec\x128\n" +
+	"\x06status\x18\x04 \x01(\v2 .learning.v1.LearnedLexemeStatusR\x06status\"\xd1\x01\n" +
+	"\x11LearnedLexemeSpec\x12!\n" +
+	"\fdisplay_term\x18\x01 \x01(\tR\vdisplayTerm\x12/\n" +
+	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x12\n" +
+	"\x04tags\x18\x03 \x03(\tR\x04tags\x12\x12\n" +
+	"\x04note\x18\x04 \x01(\tR\x04note\x12@\n" +
+	"\trelations\x18\x05 \x03(\v2\".learning.v1.LearnedLexemeRelationR\trelations\"\xf0\x03\n" +
 	"\x13LearnedLexemeStatus\x127\n" +
-	"\amastery\x18\x03 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x12>\n" +
-	"\rreview_timing\x18\x04 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12\x1f\n" +
-	"\vquery_count\x18\x05 \x01(\x03R\n" +
+	"\amastery\x18\x01 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x12>\n" +
+	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12Q\n" +
+	"\vform_status\x18\x03 \x03(\v20.learning.v1.LearnedLexemeStatus.FormStatusEntryR\n" +
+	"formStatus\x12\x1f\n" +
+	"\vquery_count\x18\x04 \x01(\x03R\n" +
 	"queryCount\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\x14 \x01(\tR\tcreatedBy\x129\n" +
 	"\n" +
 	"created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x8c\x01\n" +
+	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1aW\n" +
+	"\x0fFormStatusEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
+	"\x05value\x18\x02 \x01(\v2\x18.learning.v1.FormMasteryR\x05value:\x028\x01\"\x8c\x01\n" +
 	"\x10MasteryBreakdown\x12\x16\n" +
 	"\x06listen\x18\x01 \x01(\x05R\x06listen\x12\x12\n" +
 	"\x04read\x18\x02 \x01(\x05R\x04read\x12\x14\n" +
@@ -525,7 +598,12 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\x0enext_review_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\fnextReviewAt\x12#\n" +
 	"\rinterval_days\x18\x03 \x01(\x05R\fintervalDays\x12\x1d\n" +
 	"\n" +
-	"fail_count\x18\x04 \x01(\x05R\tfailCount\"\xf3\x01\n" +
+	"fail_count\x18\x04 \x01(\x05R\tfailCount\"\x93\x01\n" +
+	"\vFormMastery\x12\x17\n" +
+	"\aform_id\x18\x01 \x01(\tR\x06formId\x12\x1a\n" +
+	"\bstrength\x18\x02 \x01(\x05R\bstrength\x12\x1a\n" +
+	"\bexposure\x18\x03 \x01(\x05R\bexposure\x123\n" +
+	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\xf3\x01\n" +
 	"\x15LearnedLexemeRelation\x12\x12\n" +
 	"\x04word\x18\x01 \x01(\tR\x04word\x12<\n" +
 	"\rrelation_type\x18\x02 \x01(\x0e2\x17.common.v1.RelationTypeR\frelationType\x12\x12\n" +
@@ -548,39 +626,43 @@ func file_learning_v1_learning_proto_rawDescGZIP() []byte {
 	return file_learning_v1_learning_proto_rawDescData
 }
 
-var file_learning_v1_learning_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_learning_v1_learning_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_learning_v1_learning_proto_goTypes = []any{
 	(*LearnedLexeme)(nil),         // 0: learning.v1.LearnedLexeme
 	(*LearnedLexemeSpec)(nil),     // 1: learning.v1.LearnedLexemeSpec
 	(*LearnedLexemeStatus)(nil),   // 2: learning.v1.LearnedLexemeStatus
 	(*MasteryBreakdown)(nil),      // 3: learning.v1.MasteryBreakdown
 	(*ReviewTiming)(nil),          // 4: learning.v1.ReviewTiming
-	(*LearnedLexemeRelation)(nil), // 5: learning.v1.LearnedLexemeRelation
-	(v1.Language)(0),              // 6: common.v1.Language
-	(*v11.Sentence)(nil),          // 7: dict.v1.Sentence
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
-	(v1.RelationType)(0),          // 9: common.v1.RelationType
+	(*FormMastery)(nil),           // 5: learning.v1.FormMastery
+	(*LearnedLexemeRelation)(nil), // 6: learning.v1.LearnedLexemeRelation
+	nil,                           // 7: learning.v1.LearnedLexemeStatus.FormStatusEntry
+	(v1.Language)(0),              // 8: common.v1.Language
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),       // 10: google.protobuf.Struct
+	(v1.RelationType)(0),          // 11: common.v1.RelationType
 }
 var file_learning_v1_learning_proto_depIdxs = []int32{
 	1,  // 0: learning.v1.LearnedLexeme.spec:type_name -> learning.v1.LearnedLexemeSpec
 	2,  // 1: learning.v1.LearnedLexeme.status:type_name -> learning.v1.LearnedLexemeStatus
-	6,  // 2: learning.v1.LearnedLexemeSpec.language:type_name -> common.v1.Language
-	5,  // 3: learning.v1.LearnedLexemeSpec.relations:type_name -> learning.v1.LearnedLexemeRelation
-	7,  // 4: learning.v1.LearnedLexemeSpec.sentences:type_name -> dict.v1.Sentence
-	3,  // 5: learning.v1.LearnedLexemeStatus.mastery:type_name -> learning.v1.MasteryBreakdown
-	4,  // 6: learning.v1.LearnedLexemeStatus.review_timing:type_name -> learning.v1.ReviewTiming
-	8,  // 7: learning.v1.LearnedLexemeStatus.created_at:type_name -> google.protobuf.Timestamp
-	8,  // 8: learning.v1.LearnedLexemeStatus.updated_at:type_name -> google.protobuf.Timestamp
-	8,  // 9: learning.v1.ReviewTiming.last_review_at:type_name -> google.protobuf.Timestamp
-	8,  // 10: learning.v1.ReviewTiming.next_review_at:type_name -> google.protobuf.Timestamp
-	9,  // 11: learning.v1.LearnedLexemeRelation.relation_type:type_name -> common.v1.RelationType
-	8,  // 12: learning.v1.LearnedLexemeRelation.created_at:type_name -> google.protobuf.Timestamp
-	8,  // 13: learning.v1.LearnedLexemeRelation.updated_at:type_name -> google.protobuf.Timestamp
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	8,  // 2: learning.v1.LearnedLexemeSpec.language:type_name -> common.v1.Language
+	6,  // 3: learning.v1.LearnedLexemeSpec.relations:type_name -> learning.v1.LearnedLexemeRelation
+	3,  // 4: learning.v1.LearnedLexemeStatus.mastery:type_name -> learning.v1.MasteryBreakdown
+	4,  // 5: learning.v1.LearnedLexemeStatus.review_timing:type_name -> learning.v1.ReviewTiming
+	7,  // 6: learning.v1.LearnedLexemeStatus.form_status:type_name -> learning.v1.LearnedLexemeStatus.FormStatusEntry
+	9,  // 7: learning.v1.LearnedLexemeStatus.created_at:type_name -> google.protobuf.Timestamp
+	9,  // 8: learning.v1.LearnedLexemeStatus.updated_at:type_name -> google.protobuf.Timestamp
+	9,  // 9: learning.v1.ReviewTiming.last_review_at:type_name -> google.protobuf.Timestamp
+	9,  // 10: learning.v1.ReviewTiming.next_review_at:type_name -> google.protobuf.Timestamp
+	10, // 11: learning.v1.FormMastery.metadata:type_name -> google.protobuf.Struct
+	11, // 12: learning.v1.LearnedLexemeRelation.relation_type:type_name -> common.v1.RelationType
+	9,  // 13: learning.v1.LearnedLexemeRelation.created_at:type_name -> google.protobuf.Timestamp
+	9,  // 14: learning.v1.LearnedLexemeRelation.updated_at:type_name -> google.protobuf.Timestamp
+	5,  // 15: learning.v1.LearnedLexemeStatus.FormStatusEntry.value:type_name -> learning.v1.FormMastery
+	16, // [16:16] is the sub-list for method output_type
+	16, // [16:16] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_learning_v1_learning_proto_init() }
@@ -594,7 +676,7 @@ func file_learning_v1_learning_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_learning_v1_learning_proto_rawDesc), len(file_learning_v1_learning_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

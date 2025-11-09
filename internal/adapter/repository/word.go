@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -12,277 +11,144 @@ import (
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/samber/lo"
 )
 
-type wordRepository struct {
+type wordGroupRepository struct {
 	client *entdb.Client
 }
 
-// NewWordRepository constructs an ent-backed word repository.
-func NewWordRepository(client *entdb.Client) repository.WordRepository {
-	return &wordRepository{client: client}
+// NewWordGroupRepository constructs an ent-backed word group repository.
+func NewWordGroupRepository(client *entdb.Client) repository.WordGroupRepository {
+	return &wordGroupRepository{client: client}
 }
 
-type listWordsParams struct {
-	Language      string
-	Keyword       string
-	WordType      string
-	Words         []string
-	PrimaryKey    string
-	PrimaryDesc   bool
-	SecondaryKey  string
-	SecondaryDesc bool
-}
+func (r *wordGroupRepository) Upsert(ctx context.Context, group *entity.Word) (*entity.Word, error) {
+	if group == nil || strings.TrimSpace(group.WID) == "" {
+		return nil, fmt.Errorf("word wid required")
+	}
 
-func (r *wordRepository) Create(ctx context.Context, word *entity.Word) (*entity.Word, error) {
 	builder := r.client.Word.Create().
-		SetText(word.Text).
-		SetNormalized(entity.NormalizeWordToken(word.Text)).
-		SetLanguage(entity.NormalizeLanguage(word.Language).Code()).
-		SetWordType(defaultWordType(word.WordType)).
-		SetNillableLemma(normalizeLemma(word.Lemma)).
-		SetPhonetics(word.Phonetics).
-		SetDefinitions(word.Definitions).
-		SetPhrases(word.Phrases).
-		SetSentences(word.Sentences).
-		SetRelations(word.Relations).
-		SetCategories(word.Categories).
-		SetCompleteness(word.Completeness).
-		SetIsStandardRule(word.IsStandardRule).
-		SetIsManualEdited(word.IsManualEdited)
+		SetWid(strings.TrimSpace(group.WID)).
+		SetLemma(strings.TrimSpace(group.Lemma)).
+		SetLanguage(group.Language.CodeOrDefault()).
+		SetPhonetics(append([]entity.Phonetic{}, group.Phonetics...)).
+		SetCategories(append([]string{}, group.Categories...)).
+		SetCompleteness(group.Completeness)
 
-	rec, err := builder.Save(ctx)
+	newID, err := builder.
+		OnConflict(
+			sql.ConflictColumns(entword.FieldWid),
+		).
+		UpdateNewValues().
+		ID(ctx)
 	if err != nil {
-		return nil, translateWordError(err)
+		return nil, fmt.Errorf("upsert word: %w", err)
 	}
-
-	return mapEntWord(rec), nil
+	return r.GetByID(ctx, newID)
 }
 
-func (r *wordRepository) Update(ctx context.Context, word *entity.Word) (*entity.Word, error) {
-	mutation := r.client.Word.UpdateOneID(int(word.ID)).
-		SetText(word.Text).
-		SetNormalized(entity.NormalizeWordToken(word.Text)).
-		SetLanguage(entity.NormalizeLanguage(word.Language).Code()).
-		SetWordType(defaultWordType(word.WordType)).
-		SetPhonetics(word.Phonetics).
-		SetDefinitions(word.Definitions).
-		SetPhrases(word.Phrases).
-		SetSentences(word.Sentences).
-		SetRelations(word.Relations).
-		SetCategories(word.Categories).
-		SetCompleteness(word.Completeness).
-		SetIsStandardRule(word.IsStandardRule).
-		SetIsManualEdited(word.IsManualEdited)
-
-	if lemma := normalizeLemma(word.Lemma); lemma != nil {
-		mutation.SetLemma(*lemma)
-	} else {
-		mutation.ClearLemma()
-	}
-
-	rec, err := mutation.Save(ctx)
+func (r *wordGroupRepository) GetByID(ctx context.Context, wordID int64) (*entity.Word, error) {
+	rec, err := r.client.Word.Get(ctx, wordID)
 	if err != nil {
 		if entdb.IsNotFound(err) {
-			return nil, entity.ErrVocNotFound
+			return nil, entity.ErrWordNotFound
 		}
-		return nil, translateWordError(err)
-	}
-
-	return mapEntWord(rec), nil
-}
-
-func (r *wordRepository) GetByID(ctx context.Context, id int64) (*entity.Word, error) {
-	rec, err := r.client.Word.Get(ctx, int(id))
-	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, entity.ErrVocNotFound
-		}
-		return nil, fmt.Errorf("get word: %w", err)
-	}
-
-	return mapEntWord(rec), nil
-}
-
-func (r *wordRepository) Lookup(ctx context.Context, text string, language entity.Language) (*entity.Word, error) {
-	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	return mapEntWord(rec), nil
+}
 
-	normalizedLang := entity.NormalizeLanguage(language).Code()
+func (r *wordGroupRepository) GetByWID(ctx context.Context, wid string) (*entity.Word, error) {
 	rec, err := r.client.Word.Query().
-		Where(
-			entword.TextEQ(text),
-			entword.LanguageEQ(normalizedLang),
-		).
-		Order(func(s *sql.Selector) {
-			s.OrderExpr(sql.ExprFunc(func(b *sql.Builder) {
-				b.WriteString("CASE WHEN ")
-				b.WriteString(s.C(entword.FieldWordType))
-				b.WriteString(" = ")
-				b.Arg(entity.WordTypeLemma)
-				b.WriteString(" THEN 0 ELSE 1 END")
-			}))
-			s.OrderBy(s.C(entword.FieldID))
-		}).
+		Where(entword.WidEQ(strings.TrimSpace(wid))).
 		First(ctx)
 	if err != nil {
 		if entdb.IsNotFound(err) {
-			return nil, nil
+			return nil, entity.ErrWordNotFound
 		}
-		return nil, fmt.Errorf("lookup word: %w", err)
+		return nil, err
 	}
-
 	return mapEntWord(rec), nil
 }
 
-func (r *wordRepository) List(ctx context.Context, query *repository.ListWordQuery) ([]*entity.Word, int64, error) {
-	var params listWordsParams
-	if err := filterexpr.Bind(query, &params, listWordsSchema); err != nil {
+func (r *wordGroupRepository) List(ctx context.Context, query *repository.ListWordGroupQuery) ([]*entity.Word, int64, error) {
+	var params listWordGroupParams
+	if err := filterexpr.Bind(query, &params, listWordGroupsSchema); err != nil {
 		return nil, 0, err
 	}
 
-	wordsQuery := r.client.Word.Query()
-	applyListFilters(wordsQuery, params)
+	q := r.client.Word.Query()
+	applyWordGroupFilters(q, params)
 
-	total, err := wordsQuery.Clone().Count(ctx)
+	total, err := q.Clone().Count(ctx)
 	if err != nil {
-		return nil, 0, fmt.Errorf("count words: %w", err)
+		return nil, 0, fmt.Errorf("count word groups: %w", err)
 	}
 
-	applyListOrdering(wordsQuery, params)
+	applyWordGroupOrdering(q, params)
 
-	offset := query.Offset()
-	if offset > 0 {
-		wordsQuery.Offset(int(offset))
+	if offset := query.Offset(); offset > 0 {
+		q.Offset(int(offset))
 	}
 	if query.PageSize > 0 {
-		wordsQuery.Limit(int(query.PageSize))
+		q.Limit(int(query.PageSize))
 	}
 
-	rows, err := wordsQuery.All(ctx)
+	rows, err := q.All(ctx)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list words: %w", err)
+		return nil, 0, fmt.Errorf("list word groups: %w", err)
 	}
 
-	results := make([]*entity.Word, 0, len(rows))
+	out := make([]*entity.Word, 0, len(rows))
 	for _, row := range rows {
-		results = append(results, mapEntWord(row))
+		out = append(out, mapEntWord(row))
 	}
-
-	return results, int64(total), nil
+	return out, int64(total), nil
 }
 
-func (r *wordRepository) Delete(ctx context.Context, id int64) error {
-	err := r.client.Word.DeleteOneID(int(id)).Exec(ctx)
-	if err != nil {
-		if entdb.IsNotFound(err) {
-			return entity.ErrVocNotFound
-		}
-		return fmt.Errorf("delete word: %w", err)
+func (r *wordGroupRepository) DeleteByWID(ctx context.Context, wid string) error {
+	if strings.TrimSpace(wid) == "" {
+		return fmt.Errorf("word wid required")
 	}
-	return nil
+	_, err := r.client.Word.Delete().
+		Where(entword.WidEQ(strings.TrimSpace(wid))).
+		Exec(ctx)
+	return err
 }
 
-// ListFormsByLemma returns all non-lemma forms (text + voc_type) for a lemma.
-func (r *wordRepository) ListFormsByLemma(ctx context.Context, lemma string, language entity.Language) ([]entity.WordFormRef, error) {
-	if strings.TrimSpace(lemma) == "" {
-		return []entity.WordFormRef{}, nil
-	}
-
-	rows, err := r.client.Word.Query().
-		Where(
-			entword.LanguageEQ(entity.NormalizeLanguage(language).Code()),
-			entword.LemmaEQ(lemma),
-		).
-		Order(entword.ByText()).
-		All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list forms: %w", err)
-	}
-
-	forms := make([]entity.WordFormRef, 0, len(rows))
-	for _, row := range rows {
-		if row.WordType == entity.WordTypeLemma {
-			continue
-		}
-		forms = append(forms, entity.WordFormRef{
-			Text:     row.Text,
-			WordType: row.WordType,
-		})
-	}
-	return forms, nil
+type listWordGroupParams struct {
+	Language    string
+	Keyword     string
+	PrimaryKey  string
+	PrimaryDesc bool
 }
 
-func applyListFilters(q *entdb.WordQuery, params listWordsParams) {
-	if params.Language == "" {
-		params.Language = entity.LanguageEnglish.CodeOrDefault()
+func applyWordGroupFilters(q *entdb.WordQuery, params listWordGroupParams) {
+	if params.Language != "" {
+		q.Where(entword.LanguageEQ(params.Language))
 	}
-	q.Where(entword.LanguageEQ(params.Language))
 	if params.Keyword != "" {
-		q.Where(entword.TextContainsFold(params.Keyword))
-	}
-	if params.WordType != "" {
-		q.Where(entword.WordTypeEQ(params.WordType))
-	}
-	if words := uniqueFolded(params.Words); len(words) > 0 {
-		q.Where(entword.NormalizedIn(lo.Map(words, func(word string, _ int) string { return strings.ToLower(word) })...))
+		q.Where(entword.LemmaContainsFold(params.Keyword))
 	}
 }
 
-func applyListOrdering(q *entdb.WordQuery, params listWordsParams) {
-	if params.Keyword != "" {
-		q.Order(func(s *sql.Selector) {
-			s.OrderExpr(sql.ExprFunc(func(b *sql.Builder) {
-				b.WriteString("CASE WHEN ")
-				b.WriteString(s.C(entword.FieldText))
-				b.WriteString(" = ")
-				b.Arg(params.Keyword)
-				b.WriteString(" THEN 0 ELSE 1 END")
-			}))
-		})
-	}
-
-	for _, term := range []struct {
-		key  string
-		desc bool
-	}{
-		{key: params.PrimaryKey, desc: params.PrimaryDesc},
-		{key: params.SecondaryKey, desc: params.SecondaryDesc},
-	} {
-		if term.key == "" {
-			continue
+func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
+	switch params.PrimaryKey {
+	case "lemma":
+		if params.PrimaryDesc {
+			q.Order(entword.ByLemma(sql.OrderDesc()))
+		} else {
+			q.Order(entword.ByLemma())
 		}
-		switch term.key {
-		case "created_at":
-			if term.desc {
-				q.Order(entword.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
-			} else {
-				q.Order(entword.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
-			}
-		case "updated_at":
-			if term.desc {
-				q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
-			} else {
-				q.Order(entword.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
-			}
-		case "text":
-			if term.desc {
-				q.Order(entword.ByText(sql.OrderDesc(), sql.OrderNullsLast()))
-			} else {
-				q.Order(entword.ByText(sql.OrderAsc(), sql.OrderNullsLast()))
-			}
-		case "id":
-			if term.desc {
-				q.Order(entword.ByID(sql.OrderDesc()))
-			} else {
-				q.Order(entword.ByID())
-			}
+	case "updated_at":
+		if params.PrimaryDesc {
+			q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+		} else {
+			q.Order(entword.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 		}
+	default:
+		q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 	}
-
 	q.Order(entword.ByID())
 }
 
@@ -290,63 +156,15 @@ func mapEntWord(rec *entdb.Word) *entity.Word {
 	if rec == nil {
 		return nil
 	}
-	word := &entity.Word{
-		ID:             int64(rec.ID),
-		Text:           rec.Text,
-		Language:       entity.ParseLanguage(rec.Language),
-		WordType:       rec.WordType,
-		Phonetics:      rec.Phonetics,
-		Definitions:    rec.Definitions,
-		Categories:     rec.Categories,
-		Phrases:        rec.Phrases,
-		Sentences:      rec.Sentences,
-		Relations:      rec.Relations,
-		Completeness:   rec.Completeness,
-		IsStandardRule: rec.IsStandardRule,
-		IsManualEdited: rec.IsManualEdited,
-		CreatedAt:      rec.CreatedAt,
-		UpdatedAt:      rec.UpdatedAt,
+	return &entity.Word{
+		ID:           rec.ID,
+		WID:          rec.Wid,
+		Lemma:        rec.Lemma,
+		Language:     entity.ParseLanguage(rec.Language),
+		Phonetics:    append([]entity.Phonetic{}, rec.Phonetics...),
+		Categories:   append([]string{}, rec.Categories...),
+		Completeness: rec.Completeness,
+		CreatedAt:    rec.CreatedAt,
+		UpdatedAt:    rec.UpdatedAt,
 	}
-	if rec.Lemma != nil {
-		lemma := *rec.Lemma
-		word.Lemma = &lemma
-	}
-	return word
-}
-
-func normalizeLemma(lemma *string) *string {
-	if lemma == nil {
-		return nil
-	}
-	val := strings.TrimSpace(*lemma)
-	if val == "" {
-		return nil
-	}
-	return &val
-}
-
-func defaultWordType(vt string) string {
-	if vt == "" {
-		return entity.WordTypeLemma
-	}
-	return vt
-}
-
-func translateWordError(err error) error {
-	if err == nil {
-		return nil
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505":
-			return entity.ErrDuplicateWord
-		case "23503":
-			return entity.ErrVocNotFound
-		}
-	}
-	if entdb.IsNotFound(err) {
-		return entity.ErrVocNotFound
-	}
-	return err
 }

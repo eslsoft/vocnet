@@ -3,35 +3,34 @@ syntax = "proto3";
 package learning.v1;
 
 import "common/v1/types.proto";
-import "dict/v1/word.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
-// User's personal lexeme record with learning context
+// LearnedLexeme captures a user's personalised link to a lexeme.
 message LearnedLexeme {
   int64 id = 1;
-  LearnedLexemeSpec spec = 2;
-  LearnedLexemeStatus status = 3;
+  int64 lexeme_id = 2;
+  LearnedLexemeSpec spec = 3;
+  LearnedLexemeStatus status = 4;
 }
 
-// Spec is user-provided data for the lexeme
+// LearnedLexemeSpec stores user-authored metadata.
 message LearnedLexemeSpec {
-  string term = 1;
-  common.v1.Language language = 2; // Language of the word
-  int32 mastery_level = 3; // Mastery level (0-5), self-assessed by user
-
-  repeated LearnedLexemeRelation relations = 5; // Relationships to other lexemes
-  repeated dict.v1.Sentence sentences = 6; // Contextual example sentences
-  repeated string tags = 7; // User-defined tags
-  repeated string notes = 8; // User's personal notes
+  string display_term = 1;
+  common.v1.Language language = 2;
+  repeated string tags = 3;
+  string note = 4;
+  repeated LearnedLexemeRelation relations = 5;
 }
 
-// Status is read-only, maintained by the system
+// LearnedLexemeStatus is maintained by the system to reflect learning progress.
 message LearnedLexemeStatus {
-  MasteryBreakdown mastery = 3; // Detailed mastery scores
-  ReviewTiming review_timing = 4; // Review scheduling info
-  int64 query_count = 5; // How many times user looked up this word
+  MasteryBreakdown mastery = 1;
+  ReviewTiming review_timing = 2;
+  map<string, FormMastery> form_status = 3;
+  int64 query_count = 4;
 
-  string created_by = 20; // Owner username (read-only)
+  string created_by = 20;
   google.protobuf.Timestamp created_at = 21;
   google.protobuf.Timestamp updated_at = 22;
 }
@@ -51,6 +50,14 @@ message ReviewTiming {
   google.protobuf.Timestamp next_review_at = 2;
   int32 interval_days = 3; // Current review interval
   int32 fail_count = 4; // Consecutive failure count
+}
+
+// Mastery signals for a specific surface form of a lexeme.
+message FormMastery {
+  string form_id = 1;
+  int32 strength = 2;
+  int32 exposure = 3;
+  google.protobuf.Struct metadata = 4;
 }
 
 // Lexeme-to-lexeme relationship for building vocabulary networks

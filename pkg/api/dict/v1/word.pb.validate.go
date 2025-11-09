@@ -62,13 +62,9 @@ func (m *Word) validate(all bool) error {
 
 	// no validation rules for Id
 
-	// no validation rules for Text
+	// no validation rules for Lemma
 
 	// no validation rules for Language
-
-	// no validation rules for WordType
-
-	// no validation rules for Lemma
 
 	for idx, item := range m.GetPhonetics() {
 		_, _ = idx, item
@@ -172,40 +168,6 @@ func (m *Word) validate(all bool) error {
 
 	}
 
-	for idx, item := range m.GetSentences() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Sentences[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Sentences[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return WordValidationError{
-					field:  fmt.Sprintf("Sentences[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
-
 	for idx, item := range m.GetForms() {
 		_, _ = idx, item
 
@@ -275,10 +237,6 @@ func (m *Word) validate(all bool) error {
 	}
 
 	// no validation rules for Completeness
-
-	// no validation rules for IsStandardRule
-
-	// no validation rules for IsManualEdited
 
 	if all {
 		switch v := interface{}(m.GetCreatedAt()).(type) {
@@ -542,9 +500,73 @@ func (m *Definition) validate(all bool) error {
 
 	// no validation rules for Pos
 
-	// no validation rules for Text
+	for idx, item := range m.GetSenses() {
+		_, _ = idx, item
 
-	// no validation rules for Language
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, DefinitionValidationError{
+						field:  fmt.Sprintf("Senses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, DefinitionValidationError{
+						field:  fmt.Sprintf("Senses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return DefinitionValidationError{
+					field:  fmt.Sprintf("Senses[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetExamples() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, DefinitionValidationError{
+						field:  fmt.Sprintf("Examples[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, DefinitionValidationError{
+						field:  fmt.Sprintf("Examples[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return DefinitionValidationError{
+					field:  fmt.Sprintf("Examples[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
 
 	if len(errors) > 0 {
 		return DefinitionMultiError(errors)
@@ -623,45 +645,45 @@ var _ interface {
 	ErrorName() string
 } = DefinitionValidationError{}
 
-// Validate checks the field values on WordFormRef with the rules defined in
+// Validate checks the field values on LexemeSense with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
-func (m *WordFormRef) Validate() error {
+func (m *LexemeSense) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on WordFormRef with the rules defined in
+// ValidateAll checks the field values on LexemeSense with the rules defined in
 // the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in WordFormRefMultiError, or
+// result is a list of violation errors wrapped in LexemeSenseMultiError, or
 // nil if none found.
-func (m *WordFormRef) ValidateAll() error {
+func (m *LexemeSense) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *WordFormRef) validate(all bool) error {
+func (m *LexemeSense) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
 	var errors []error
 
-	// no validation rules for Text
+	// no validation rules for Language
 
-	// no validation rules for WordType
+	// no validation rules for Gloss
 
 	if len(errors) > 0 {
-		return WordFormRefMultiError(errors)
+		return LexemeSenseMultiError(errors)
 	}
 
 	return nil
 }
 
-// WordFormRefMultiError is an error wrapping multiple validation errors
-// returned by WordFormRef.ValidateAll() if the designated constraints aren't met.
-type WordFormRefMultiError []error
+// LexemeSenseMultiError is an error wrapping multiple validation errors
+// returned by LexemeSense.ValidateAll() if the designated constraints aren't met.
+type LexemeSenseMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m WordFormRefMultiError) Error() string {
+func (m LexemeSenseMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -670,11 +692,11 @@ func (m WordFormRefMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m WordFormRefMultiError) AllErrors() []error { return m }
+func (m LexemeSenseMultiError) AllErrors() []error { return m }
 
-// WordFormRefValidationError is the validation error returned by
-// WordFormRef.Validate if the designated constraints aren't met.
-type WordFormRefValidationError struct {
+// LexemeSenseValidationError is the validation error returned by
+// LexemeSense.Validate if the designated constraints aren't met.
+type LexemeSenseValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -682,22 +704,22 @@ type WordFormRefValidationError struct {
 }
 
 // Field function returns field value.
-func (e WordFormRefValidationError) Field() string { return e.field }
+func (e LexemeSenseValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e WordFormRefValidationError) Reason() string { return e.reason }
+func (e LexemeSenseValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e WordFormRefValidationError) Cause() error { return e.cause }
+func (e LexemeSenseValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e WordFormRefValidationError) Key() bool { return e.key }
+func (e LexemeSenseValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e WordFormRefValidationError) ErrorName() string { return "WordFormRefValidationError" }
+func (e LexemeSenseValidationError) ErrorName() string { return "LexemeSenseValidationError" }
 
 // Error satisfies the builtin error interface
-func (e WordFormRefValidationError) Error() string {
+func (e LexemeSenseValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -709,14 +731,14 @@ func (e WordFormRefValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sWordFormRef.%s: %s%s",
+		"invalid %sLexemeSense.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = WordFormRefValidationError{}
+var _ error = LexemeSenseValidationError{}
 
 var _ interface {
 	Field() string
@@ -724,7 +746,112 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = WordFormRefValidationError{}
+} = LexemeSenseValidationError{}
+
+// Validate checks the field values on WordForm with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *WordForm) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on WordForm with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in WordFormMultiError, or nil
+// if none found.
+func (m *WordForm) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *WordForm) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Word
+
+	// no validation rules for Type
+
+	// no validation rules for Irregular
+
+	if len(errors) > 0 {
+		return WordFormMultiError(errors)
+	}
+
+	return nil
+}
+
+// WordFormMultiError is an error wrapping multiple validation errors returned
+// by WordForm.ValidateAll() if the designated constraints aren't met.
+type WordFormMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m WordFormMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m WordFormMultiError) AllErrors() []error { return m }
+
+// WordFormValidationError is the validation error returned by
+// WordForm.Validate if the designated constraints aren't met.
+type WordFormValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e WordFormValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e WordFormValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e WordFormValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e WordFormValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e WordFormValidationError) ErrorName() string { return "WordFormValidationError" }
+
+// Error satisfies the builtin error interface
+func (e WordFormValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sWordForm.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = WordFormValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = WordFormValidationError{}
 
 // Validate checks the field values on WordRelation with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
@@ -750,7 +877,7 @@ func (m *WordRelation) validate(all bool) error {
 
 	// no validation rules for Word
 
-	// no validation rules for RelationType
+	// no validation rules for Relation
 
 	if len(errors) > 0 {
 		return WordRelationMultiError(errors)
@@ -933,558 +1060,3 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = SentenceValidationError{}
-
-// Validate checks the field values on CreateWordRequest with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// first error encountered is returned, or nil if there are no violations.
-func (m *CreateWordRequest) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on CreateWordRequest with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// CreateWordRequestMultiError, or nil if none found.
-func (m *CreateWordRequest) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *CreateWordRequest) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if m.GetWord() == nil {
-		err := CreateWordRequestValidationError{
-			field:  "Word",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
-
-	if all {
-		switch v := interface{}(m.GetWord()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, CreateWordRequestValidationError{
-					field:  "Word",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, CreateWordRequestValidationError{
-					field:  "Word",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetWord()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return CreateWordRequestValidationError{
-				field:  "Word",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	if len(errors) > 0 {
-		return CreateWordRequestMultiError(errors)
-	}
-
-	return nil
-}
-
-// CreateWordRequestMultiError is an error wrapping multiple validation errors
-// returned by CreateWordRequest.ValidateAll() if the designated constraints
-// aren't met.
-type CreateWordRequestMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m CreateWordRequestMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m CreateWordRequestMultiError) AllErrors() []error { return m }
-
-// CreateWordRequestValidationError is the validation error returned by
-// CreateWordRequest.Validate if the designated constraints aren't met.
-type CreateWordRequestValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e CreateWordRequestValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e CreateWordRequestValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e CreateWordRequestValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e CreateWordRequestValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e CreateWordRequestValidationError) ErrorName() string {
-	return "CreateWordRequestValidationError"
-}
-
-// Error satisfies the builtin error interface
-func (e CreateWordRequestValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sCreateWordRequest.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = CreateWordRequestValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = CreateWordRequestValidationError{}
-
-// Validate checks the field values on ListWordsRequest with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// first error encountered is returned, or nil if there are no violations.
-func (m *ListWordsRequest) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on ListWordsRequest with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// ListWordsRequestMultiError, or nil if none found.
-func (m *ListWordsRequest) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *ListWordsRequest) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if all {
-		switch v := interface{}(m.GetPagination()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ListWordsRequestValidationError{
-					field:  "Pagination",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, ListWordsRequestValidationError{
-					field:  "Pagination",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetPagination()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return ListWordsRequestValidationError{
-				field:  "Pagination",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	// no validation rules for Filter
-
-	// no validation rules for OrderBy
-
-	if len(errors) > 0 {
-		return ListWordsRequestMultiError(errors)
-	}
-
-	return nil
-}
-
-// ListWordsRequestMultiError is an error wrapping multiple validation errors
-// returned by ListWordsRequest.ValidateAll() if the designated constraints
-// aren't met.
-type ListWordsRequestMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m ListWordsRequestMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m ListWordsRequestMultiError) AllErrors() []error { return m }
-
-// ListWordsRequestValidationError is the validation error returned by
-// ListWordsRequest.Validate if the designated constraints aren't met.
-type ListWordsRequestValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e ListWordsRequestValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e ListWordsRequestValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e ListWordsRequestValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e ListWordsRequestValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e ListWordsRequestValidationError) ErrorName() string { return "ListWordsRequestValidationError" }
-
-// Error satisfies the builtin error interface
-func (e ListWordsRequestValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sListWordsRequest.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = ListWordsRequestValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = ListWordsRequestValidationError{}
-
-// Validate checks the field values on ListWordsResponse with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// first error encountered is returned, or nil if there are no violations.
-func (m *ListWordsResponse) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on ListWordsResponse with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// ListWordsResponseMultiError, or nil if none found.
-func (m *ListWordsResponse) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *ListWordsResponse) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if all {
-		switch v := interface{}(m.GetPagination()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ListWordsResponseValidationError{
-					field:  "Pagination",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, ListWordsResponseValidationError{
-					field:  "Pagination",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetPagination()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return ListWordsResponseValidationError{
-				field:  "Pagination",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	for idx, item := range m.GetWords() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, ListWordsResponseValidationError{
-						field:  fmt.Sprintf("Words[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, ListWordsResponseValidationError{
-						field:  fmt.Sprintf("Words[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return ListWordsResponseValidationError{
-					field:  fmt.Sprintf("Words[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
-
-	if len(errors) > 0 {
-		return ListWordsResponseMultiError(errors)
-	}
-
-	return nil
-}
-
-// ListWordsResponseMultiError is an error wrapping multiple validation errors
-// returned by ListWordsResponse.ValidateAll() if the designated constraints
-// aren't met.
-type ListWordsResponseMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m ListWordsResponseMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m ListWordsResponseMultiError) AllErrors() []error { return m }
-
-// ListWordsResponseValidationError is the validation error returned by
-// ListWordsResponse.Validate if the designated constraints aren't met.
-type ListWordsResponseValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e ListWordsResponseValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e ListWordsResponseValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e ListWordsResponseValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e ListWordsResponseValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e ListWordsResponseValidationError) ErrorName() string {
-	return "ListWordsResponseValidationError"
-}
-
-// Error satisfies the builtin error interface
-func (e ListWordsResponseValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sListWordsResponse.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = ListWordsResponseValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = ListWordsResponseValidationError{}
-
-// Validate checks the field values on LookupWordRequest with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// first error encountered is returned, or nil if there are no violations.
-func (m *LookupWordRequest) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on LookupWordRequest with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// LookupWordRequestMultiError, or nil if none found.
-func (m *LookupWordRequest) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *LookupWordRequest) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if utf8.RuneCountInString(m.GetWord()) < 1 {
-		err := LookupWordRequestValidationError{
-			field:  "Word",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
-
-	// no validation rules for Language
-
-	if len(errors) > 0 {
-		return LookupWordRequestMultiError(errors)
-	}
-
-	return nil
-}
-
-// LookupWordRequestMultiError is an error wrapping multiple validation errors
-// returned by LookupWordRequest.ValidateAll() if the designated constraints
-// aren't met.
-type LookupWordRequestMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m LookupWordRequestMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m LookupWordRequestMultiError) AllErrors() []error { return m }
-
-// LookupWordRequestValidationError is the validation error returned by
-// LookupWordRequest.Validate if the designated constraints aren't met.
-type LookupWordRequestValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e LookupWordRequestValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e LookupWordRequestValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e LookupWordRequestValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e LookupWordRequestValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e LookupWordRequestValidationError) ErrorName() string {
-	return "LookupWordRequestValidationError"
-}
-
-// Error satisfies the builtin error interface
-func (e LookupWordRequestValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sLookupWordRequest.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = LookupWordRequestValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = LookupWordRequestValidationError{}

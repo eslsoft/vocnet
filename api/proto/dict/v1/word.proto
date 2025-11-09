@@ -11,15 +11,12 @@ import "validate/validate.proto";
 
 message Word {
   int64 id = 1; // Auto-increment ID (CRUD only)
-  string text = 2; // Surface form (lemma or inflected/variant form)
+  string lemma = 2; // Surface form (lemma or inflected/variant form)
   common.v1.Language language = 3; // Language of the entry
-  string word_type = 4; // Allowed values: lemma, past, pp (past participle), ing (present participle / gerund), 3sg (third person singular), plural, comparative, superlative, variant, derived, other
-  string lemma = 5; // Present only if word_type != lemma; empty when this is the lemma itself
   repeated Phonetic phonetics = 6; // IPAs for this word
   repeated Definition definitions = 7; // Possibly multiple languages' definitions
   repeated string categories = 8; // Level / topic tags
   repeated Phrase phrases = 9; // Common phrases/idioms containing this word
-  repeated Sentence sentences = 10; // Example sentences
 
   // When this entry is a lemma (word_type == "lemma"), forms lists all other surface forms
   // (e.g. past, past_participle, plural, etc.) referencing this lemma. It MUST NOT include
@@ -27,12 +24,10 @@ message Word {
   // When this entry is a non-lemma form, forms is empty; the original lemma text can be
   // obtained from the `lemma` field. We return structured objects instead of plain strings
   // so the client knows which type each form is without extra lookups.
-  repeated WordFormRef forms = 30;
+  repeated WordForm forms = 30;
   repeated WordRelation relations = 31; // Relationships to other words (e.g. synonyms, antonyms)
 
   int32 completeness = 32; // Data completeness 0-100, calculated from core fields
-  bool is_standard_rule = 33; // True if inflection follows standard morphological rules
-  bool is_manual_edited = 34; // True if manually edited, false if auto-imported
 
   google.protobuf.Timestamp created_at = 100; // Creation timestamp
   google.protobuf.Timestamp updated_at = 101; // Last update timestamp
@@ -45,20 +40,26 @@ message Phonetic {
 
 message Definition {
   string pos = 1; // Part of speech, e.g. n., v., adj.
-  string text = 2; // Definition text
-  common.v1.Language language = 3; // Language of the translation
+  repeated LexemeSense senses = 2; // Definition text
+  repeated Sentence examples = 4;
+}
+
+message LexemeSense {
+  common.v1.Language language = 2;
+  string gloss = 3;
 }
 
 // Minimal reference for an inflected / variant form; no id to keep payload light.
-message WordFormRef {
-  string text = 1; // The surface form text
-  string word_type = 2; // The specific form type (same value domain as Word.word_type)
+message WordForm {
+  string word = 1; // Surface form text
+  FormType type = 2; // The specific form type (same value domain as Word.word_type)
+  bool irregular = 3;
 }
 
 // Word-to-word relationship for building vocabulary networks
 message WordRelation {
   string word = 1;
-  common.v1.RelationType relation_type = 2; // Type of relationship
+  common.v1.RelationType relation = 2; // Type of relationship
 }
 
 message Sentence {
@@ -67,68 +68,18 @@ message Sentence {
   string source_ref = 3; // Optional reference (book or article title)
 }
 
-// CreateWord request (creates either a lemma entry or a derived/inflected form)
-message CreateWordRequest {
-  Word word = 1 [(validate.rules).message.required = true];
-}
-
-// ListWords request
-message ListWordsRequest {
-  common.v1.PaginationRequest pagination = 1;
-  // filtering options using CEL expressions
-  string filter = 2;
-  // ordering options. e.g. "word asc", "mastery.overall desc"
-  string order_by = 3;
-}
-
-message ListWordsResponse {
-  common.v1.PaginationResponse pagination = 1;
-  repeated Word words = 2;
-}
-
-// LookupWordRequest performs an exact text lookup in specified language (default en)
-message LookupWordRequest {
-  string word = 1 [(validate.rules).string.min_len = 1];
-  common.v1.Language language = 2; // optional; if unspecified, server default language
-}
-
-service WordService {
-  // Create a new wordabulary entry (admin/system use)
-  rpc CreateWord(CreateWordRequest) returns (Word) {
-    option (google.api.http) = {
-      post: "/api/v1/words"
-      body: "*"
-    };
-  }
-
-  // Update a wordabulary entry by id (admin/system use)
-  rpc UpdateWord(Word) returns (Word) {
-    option (google.api.http) = {
-      put: "/api/v1/words/{id}"
-      body: "*"
-    };
-  }
-
-  // Get wordabulary entry details by id or composite key
-  rpc GetWord(common.v1.IDRequest) returns (Word) {
-    option (google.api.http) = {
-      // Prefer id path; fallback composite path
-      get: "/api/v1/words/{id}"
-    };
-  }
-
-  // List wordabulary entries with filtering and pagination
-  rpc ListWords(ListWordsRequest) returns (ListWordsResponse) {
-    option (google.api.http) = {get: "/api/v1/words"};
-  }
-
-  // Lookup wordabulary entry by exact text match in specified language
-  rpc LookupWord(LookupWordRequest) returns (Word) {
-    option (google.api.http) = {get: "/api/v1/words:lookup"};
-  }
-
-  // Delete a wordabulary entry by id (admin/system use)
-  rpc DeleteWord(common.v1.IDRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/api/v1/words/{id}"};
-  }
+enum FormType {
+  FORM_TYPE_UNSPECIFIED = 0;
+  FORM_TYPE_LEMMA = 1;
+  FORM_TYPE_PLURAL = 2;
+  FORM_TYPE_PAST = 3;
+  FORM_TYPE_PAST_PARTICIPLE = 4;
+  FORM_TYPE_PRESENT_PARTICIPLE = 5;
+  FORM_TYPE_THIRD_PERSON_SINGULAR = 6;
+  FORM_TYPE_COMPARATIVE = 7;
+  FORM_TYPE_SUPERLATIVE = 8;
+  FORM_TYPE_IMPERATIVE = 9;
+  FORM_TYPE_SUBJUNCTIVE = 10;
+  FORM_TYPE_GERUND = 11;
+  FORM_TYPE_SHORT_FORM = 12;
 }
