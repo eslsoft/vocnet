@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -112,14 +113,16 @@ func normalizeLexemePayload(in *entity.Lexeme) (*entity.Lexeme, error) {
 		out.EntryType = entity.LexemeEntryTypeWord
 	}
 	out.Lemma = strings.TrimSpace(out.Lemma)
-	// Generate LID if not already set
-	if out.LID == "" {
-		out.LID = makeLID(out.Language, out.Lemma, out.POS)
+
+	// ExternalID must be provided (from Wikidata)
+	if out.ExternalID == "" {
+		return nil, fmt.Errorf("lexeme external_id is required")
 	}
+
 	// Note: WordID will be set later when associating with Word
 	// Forms will be handled separately after lexeme is created
-	out.Senses = normalizeLexemeSenses(out.LID, out.Senses)
-	out.Relations = normalizeLexemeRelations(out.LID, out.Relations)
+	out.Senses = normalizeLexemeSenses(out.ExternalID, out.Senses)
+	out.Relations = normalizeLexemeRelations(out.ExternalID, out.Relations)
 
 	return &out, nil
 }

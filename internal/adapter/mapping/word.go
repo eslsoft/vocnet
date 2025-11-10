@@ -16,10 +16,12 @@ func ToPbWord(word *entity.Word) *dictv1.Word {
 		return nil
 	}
 
+	pbLang := ToPbLanguage(word.Language)
+
 	out := &dictv1.Word{
 		Id:           word.ID,
 		Lemma:        word.Lemma,
-		Language:     ToPbLanguage(word.Language),
+		Language:     pbLang,
 		Completeness: word.Completeness,
 		Forms:        aggregateForms(word.Lexemes),
 		Definitions:  aggregateDefinitions(word.Lexemes),
@@ -34,8 +36,9 @@ func ToPbWord(word *entity.Word) *dictv1.Word {
 
 func aggregateForms(lexemes []*entity.Lexeme) []*dictv1.WordForm {
 	type formKey struct {
-		Text string
-		Type entity.LexemeFormType
+		LexemeID string // External Lexeme ID
+		Text     string
+		Type     entity.LexemeFormType
 	}
 	bucket := make(map[formKey]*dictv1.WordForm)
 
@@ -46,12 +49,14 @@ func aggregateForms(lexemes []*entity.Lexeme) []*dictv1.WordForm {
 				continue
 			}
 			key := formKey{
-				Text: strings.ToLower(text),
-				Type: defaultFormType(form.FormType),
+				LexemeID: lex.ExternalID,
+				Text:     strings.ToLower(text),
+				Type:     defaultFormType(form.FormType),
 			}
 			entry, ok := bucket[key]
 			if !ok {
 				entry = &dictv1.WordForm{
+					LexemeId:  lex.ExternalID,
 					Word:      text,
 					Type:      toPbFormType(key.Type),
 					Irregular: form.IsIrregular,
@@ -68,6 +73,9 @@ func aggregateForms(lexemes []*entity.Lexeme) []*dictv1.WordForm {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].LexemeID != keys[j].LexemeID {
+			return keys[i].LexemeID < keys[j].LexemeID
+		}
 		if keys[i].Text == keys[j].Text {
 			return strings.Compare(string(keys[i].Type), string(keys[j].Type)) < 0
 		}
@@ -86,30 +94,24 @@ func aggregateDefinitions(lexemes []*entity.Lexeme) []*dictv1.Definition {
 		definition *dictv1.Definition
 		index      int
 	}
-	defs := make(map[string]*bucket)
+	defs := make(map[string]*bucket) // key: external_id
 	order := make([]string, 0)
 
-	getPOS := func(lex *entity.Lexeme, sense entity.LexemeSense) string {
-		if strings.TrimSpace(sense.PartOfSpeech) != "" {
-			return strings.TrimSpace(sense.PartOfSpeech)
-		}
-		if strings.TrimSpace(lex.POS) != "" {
-			return strings.TrimSpace(lex.POS)
-		}
-		return ""
-	}
-
 	for _, lex := range lexemes {
-		for _, sense := range lex.Senses {
-			pos := getPOS(lex, sense)
-			if _, ok := defs[pos]; !ok {
-				defs[pos] = &bucket{
-					definition: &dictv1.Definition{Pos: pos},
-					index:      len(order),
-				}
-				order = append(order, pos)
+		externalID := lex.ExternalID
+		if _, ok := defs[externalID]; !ok {
+			defs[externalID] = &bucket{
+				definition: &dictv1.Definition{
+					LexemeId: externalID,
+					Pos:      lex.POS,
+				},
+				index: len(order),
 			}
-			target := defs[pos].definition
+			order = append(order, externalID)
+		}
+		target := defs[externalID].definition
+
+		for _, sense := range lex.Senses {
 			target.Senses = append(target.Senses, &dictv1.LexemeSense{
 				Language: ToPbLanguage(sense.Language),
 				Gloss:    sense.Gloss,
@@ -123,8 +125,8 @@ func aggregateDefinitions(lexemes []*entity.Lexeme) []*dictv1.Definition {
 	}
 
 	out := make([]*dictv1.Definition, 0, len(order))
-	for _, pos := range order {
-		out = append(out, defs[pos].definition)
+	for _, externalID := range order {
+		out = append(out, defs[externalID].definition)
 	}
 	return out
 }
@@ -198,6 +200,130 @@ func defaultFormType(ft entity.LexemeFormType) entity.LexemeFormType {
 		return entity.LexemeFormTypeLemma
 	}
 	return ft
+}
+
+// ToEntityWord converts a proto Word to an entity Word
+func ToEntityWord(pb *dictv1.Word) *entity.Word {
+	if pb == nil {
+		return nil
+	}
+
+	word := &entity.Word{
+		ID:           pb.GetId(),
+		Lemma:        pb.GetLemma(),
+		Language:     FromPbLanguage(pb.GetLanguage()),
+		Completeness: pb.GetCompleteness(),
+		Categories:   pb.GetCategories(),
+	}
+
+	// Map phonetics
+	if len(pb.GetPhonetics()) > 0 {
+		word.Phonetics = make([]entity.Phonetic, 0, len(pb.GetPhonetics()))
+		for _, p := range pb.GetPhonetics() {
+			word.Phonetics = append(word.Phonetics, entity.Phonetic{
+				IPA:     p.GetIpa(),
+				Dialect: p.GetDialect(),
+			})
+		}
+	}
+
+	// Convert definitions to lexemes
+	word.Lexemes = definitionsToLexemes(pb, word.Language)
+
+	return word
+}
+
+// definitionsToLexemes converts proto Definitions to entity Lexemes
+func definitionsToLexemes(pb *dictv1.Word, wordLang entity.Language) []*entity.Lexeme {
+	definitions := pb.GetDefinitions()
+	if len(definitions) == 0 {
+		return nil
+	}
+
+	lexemes := make([]*entity.Lexeme, 0, len(definitions))
+
+	for _, def := range definitions {
+		lex := &entity.Lexeme{
+			ExternalID: def.GetLexemeId(),
+			Language:   wordLang,
+			Lemma:      pb.GetLemma(),
+			POS:        def.GetPos(),
+		}
+
+		// Filter forms that belong to this lexeme
+		if len(pb.GetForms()) > 0 {
+			for _, pbForm := range pb.GetForms() {
+				if pbForm.GetLexemeId() == def.GetLexemeId() {
+					lex.Forms = append(lex.Forms, entity.LexemeForm{
+						Text:        pbForm.GetWord(),
+						FormType:    fromPbFormType(pbForm.GetType()),
+						IsIrregular: pbForm.GetIrregular(),
+					})
+				}
+			}
+		}
+
+		// Convert senses and examples
+		// Note: In proto, examples are at Definition level, but in entity they're at Sense level
+		// We attach examples to the first sense for simplicity
+		if len(def.GetSenses()) > 0 {
+			lex.Senses = make([]entity.LexemeSense, 0, len(def.GetSenses()))
+			for i, sense := range def.GetSenses() {
+				entitySense := entity.LexemeSense{
+					Language: FromPbLanguage(sense.GetLanguage()),
+					Gloss:    sense.GetGloss(),
+				}
+
+				// Attach examples only to the first sense to avoid duplication
+				if i == 0 && len(def.GetExamples()) > 0 {
+					entitySense.Examples = make([]entity.SenseExample, 0, len(def.GetExamples()))
+					for _, ex := range def.GetExamples() {
+						entitySense.Examples = append(entitySense.Examples, entity.SenseExample{
+							Text: ex.GetText(),
+						})
+					}
+				}
+
+				lex.Senses = append(lex.Senses, entitySense)
+			}
+		}
+
+		lexemes = append(lexemes, lex)
+	}
+
+	return lexemes
+}
+
+// fromPbFormType converts proto FormType to entity LexemeFormType
+func fromPbFormType(pbType dictv1.FormType) entity.LexemeFormType {
+	switch pbType {
+	case dictv1.FormType_FORM_TYPE_LEMMA:
+		return entity.LexemeFormTypeLemma
+	case dictv1.FormType_FORM_TYPE_PLURAL:
+		return entity.LexemeFormTypePlural
+	case dictv1.FormType_FORM_TYPE_PAST:
+		return entity.LexemeFormTypePast
+	case dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:
+		return entity.LexemeFormTypePastParticiple
+	case dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:
+		return entity.LexemeFormTypePresentParticiple
+	case dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR:
+		return entity.LexemeFormTypeThirdPersonSingular
+	case dictv1.FormType_FORM_TYPE_COMPARATIVE:
+		return entity.LexemeFormTypeComparative
+	case dictv1.FormType_FORM_TYPE_SUPERLATIVE:
+		return entity.LexemeFormTypeSuperlative
+	case dictv1.FormType_FORM_TYPE_IMPERATIVE:
+		return entity.LexemeFormTypeImperative
+	case dictv1.FormType_FORM_TYPE_SUBJUNCTIVE:
+		return entity.LexemeFormTypeSubjunctive
+	case dictv1.FormType_FORM_TYPE_GERUND:
+		return entity.LexemeFormTypeGerund
+	case dictv1.FormType_FORM_TYPE_SHORT_FORM:
+		return entity.LexemeFormTypeShortForm
+	default:
+		return entity.LexemeFormTypeUnspecified
+	}
 }
 
 // Currently unused but left for completeness if we reintroduce relation mapping later.

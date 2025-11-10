@@ -12,7 +12,10 @@ type ListWordGroupQuery struct {
 }
 
 type WordGroupRepository interface {
+	Create(ctx context.Context, group *entity.Word) (*entity.Word, error)
+	Update(ctx context.Context, group *entity.Word) (*entity.Word, error)
 	Upsert(ctx context.Context, group *entity.Word) (*entity.Word, error)
+	Delete(ctx context.Context, wordID int64) error
 	GetByID(ctx context.Context, wordID int64) (*entity.Word, error)
 	GetByWID(ctx context.Context, wid string) (*entity.Word, error)
 	List(ctx context.Context, query *ListWordGroupQuery) ([]*entity.Word, int64, error)

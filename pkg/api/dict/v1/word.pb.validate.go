@@ -498,6 +498,8 @@ func (m *Definition) validate(all bool) error {
 
 	var errors []error
 
+	// no validation rules for LexemeId
+
 	// no validation rules for Pos
 
 	for idx, item := range m.GetSenses() {
@@ -769,6 +771,8 @@ func (m *WordForm) validate(all bool) error {
 	}
 
 	var errors []error
+
+	// no validation rules for LexemeId
 
 	// no validation rules for Word
 

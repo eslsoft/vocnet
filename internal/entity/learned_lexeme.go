@@ -7,22 +7,22 @@ import (
 
 // LearnedLexeme represents a user's personalised vocabulary entry.
 type LearnedLexeme struct {
-	ID          int64
-	UserID      int64
-	LexemeID    int64  // Current association to lexemes.id, nullable for migration
-	LexemeLID   string // Stable identifier: {language}:{lemma}:{pos}
-	DisplayTerm string
-	Language    Language
-	Tags        []string
-	Note        string
-	Relations   []LearnedLexemeRelation
-	Mastery     MasteryBreakdown
-	Review      ReviewTiming
-	FormStatus  map[string]FormMastery
-	QueryCount  int64
-	CreatedBy   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID               int64
+	UserID           int64
+	LexemeID         int64  // Current association to lexemes.id, nullable for migration
+	LexemeExternalID string // Wikidata Lexeme ID (e.g. "L123456")
+	DisplayTerm      string
+	Language         Language
+	Tags             []string
+	Note             string
+	Relations        []LearnedLexemeRelation
+	Mastery          MasteryBreakdown
+	Review           ReviewTiming
+	FormStatus       map[string]FormMastery
+	QueryCount       int64
+	CreatedBy        string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // MasteryBreakdown captures skill-specific mastery scores for a user word.
@@ -62,7 +62,7 @@ type FormMastery struct {
 
 // Normalize ensures defaults & constraints before persistence.
 func (uw *LearnedLexeme) Normalize(now time.Time) {
-	uw.LexemeLID = strings.TrimSpace(uw.LexemeLID)
+	uw.LexemeExternalID = strings.TrimSpace(uw.LexemeExternalID)
 	uw.DisplayTerm = strings.TrimSpace(uw.DisplayTerm)
 	if uw.CreatedAt.IsZero() {
 		uw.CreatedAt = now

@@ -2,14 +2,18 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
-// WordUsecase exposes read operations for aggregated words.
+// WordUsecase exposes CRUD and query operations for aggregated words.
 type WordUsecase interface {
+	Create(ctx context.Context, word *entity.Word) (*entity.Word, error)
+	Update(ctx context.Context, word *entity.Word) (*entity.Word, error)
+	Delete(ctx context.Context, wordID int64) error
 	Get(ctx context.Context, wordID int64) (*entity.Word, error)
 	List(ctx context.Context, filter *repository.ListWordGroupQuery) ([]*entity.Word, int64, error)
 	Lookup(ctx context.Context, surface string, language entity.Language) (*entity.Word, error)
@@ -25,6 +29,112 @@ func NewWordUsecase(groups repository.WordGroupRepository, lexemes repository.Le
 		groups:  groups,
 		lexemes: lexemes,
 	}
+}
+
+func (u *wordUsecase) Create(ctx context.Context, word *entity.Word) (*entity.Word, error) {
+	if word == nil {
+		return nil, entity.ErrInvalidInput
+	}
+
+	// Normalize and generate WID if not set
+	word.Lemma = strings.TrimSpace(word.Lemma)
+	if word.Lemma == "" {
+		return nil, entity.ErrInvalidInput
+	}
+	if word.WID == "" {
+		word.WID = makeWID(word.Language, word.Lemma)
+	}
+
+	// 1. Create word in repository
+	created, err := u.groups.Create(ctx, word)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Create lexemes for this word (from word.Lexemes if provided)
+	if len(word.Lexemes) > 0 {
+		for _, lex := range word.Lexemes {
+			// Set word association
+			lex.WordID = created.ID
+			lex.Language = created.Language
+			lex.Lemma = created.Lemma
+
+			// ExternalID must be provided (from Wikidata)
+			if lex.ExternalID == "" {
+				return nil, fmt.Errorf("lexeme external_id is required")
+			}
+
+			// Create lexeme with forms
+			_, err := u.lexemes.Create(ctx, lex)
+			if err != nil {
+				// Return error instead of continuing silently
+				return nil, fmt.Errorf("failed to create lexeme (POS: %s): %w", lex.POS, err)
+			}
+		}
+	}
+
+	// Return word with lexemes populated
+	return u.populateLexemes(ctx, created)
+}
+
+func (u *wordUsecase) Update(ctx context.Context, word *entity.Word) (*entity.Word, error) {
+	if word == nil || word.ID == 0 {
+		return nil, entity.ErrInvalidInput
+	}
+
+	// Normalize lemma
+	word.Lemma = strings.TrimSpace(word.Lemma)
+	if word.Lemma == "" {
+		return nil, entity.ErrInvalidInput
+	}
+
+	// 1. Update word basic info in repository
+	updated, err := u.groups.Update(ctx, word)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Delete old lexemes (will cascade delete forms)
+	oldLexemes, err := u.lexemes.ListByWordID(ctx, word.ID)
+	if err == nil {
+		for _, lex := range oldLexemes {
+			_ = u.lexemes.Delete(ctx, lex.ID) // Best effort
+		}
+	}
+
+	// 3. Create new lexemes (from word.Lexemes if provided)
+	if len(word.Lexemes) > 0 {
+		for _, lex := range word.Lexemes {
+			// Set word association
+			lex.WordID = updated.ID
+			lex.Language = updated.Language
+			lex.Lemma = updated.Lemma
+
+			// ExternalID must be provided (from Wikidata)
+			if lex.ExternalID == "" {
+				return nil, fmt.Errorf("lexeme external_id is required")
+			}
+
+			// Create lexeme with forms
+			_, err := u.lexemes.Create(ctx, lex)
+			if err != nil {
+				// Log error but continue (partial success)
+				continue
+			}
+		}
+	}
+
+	// Return word with lexemes populated
+	return u.populateLexemes(ctx, updated)
+}
+
+func (u *wordUsecase) Delete(ctx context.Context, wordID int64) error {
+	if wordID == 0 {
+		return entity.ErrInvalidInput
+	}
+
+	// Delete word (associated lexemes will have word_id set to NULL)
+	return u.groups.Delete(ctx, wordID)
 }
 
 func (u *wordUsecase) Get(ctx context.Context, wordID int64) (*entity.Word, error) {

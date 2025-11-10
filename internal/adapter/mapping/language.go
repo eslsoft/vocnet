@@ -31,19 +31,19 @@ func FromPbLanguage(lang commonv1.Language) entity.Language {
 
 func ToPbLanguage(lang entity.Language) commonv1.Language {
 	switch strings.ToUpper(lang.CodeOrDefault()) {
-	case entity.LanguageEnglish.Code():
+	case strings.ToUpper(entity.LanguageEnglish.Code()):
 		return commonv1.Language_LANGUAGE_ENGLISH
-	case entity.LanguageChinese.Code():
+	case strings.ToUpper(entity.LanguageChinese.Code()):
 		return commonv1.Language_LANGUAGE_CHINESE
-	case entity.LanguageSpanish.Code():
+	case strings.ToUpper(entity.LanguageSpanish.Code()):
 		return commonv1.Language_LANGUAGE_SPANISH
-	case entity.LanguageFrench.Code():
+	case strings.ToUpper(entity.LanguageFrench.Code()):
 		return commonv1.Language_LANGUAGE_FRENCH
-	case entity.LanguageGerman.Code():
+	case strings.ToUpper(entity.LanguageGerman.Code()):
 		return commonv1.Language_LANGUAGE_GERMAN
-	case entity.LanguageJapanese.Code():
+	case strings.ToUpper(entity.LanguageJapanese.Code()):
 		return commonv1.Language_LANGUAGE_JAPANESE
-	case entity.LanguageKorean.Code():
+	case strings.ToUpper(entity.LanguageKorean.Code()):
 		return commonv1.Language_LANGUAGE_KOREAN
 	default:
 		return commonv1.Language_LANGUAGE_UNSPECIFIED

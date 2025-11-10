@@ -22,6 +22,52 @@ func NewWordGroupRepository(client *entdb.Client) repository.WordGroupRepository
 	return &wordGroupRepository{client: client}
 }
 
+func (r *wordGroupRepository) Create(ctx context.Context, group *entity.Word) (*entity.Word, error) {
+	if group == nil || strings.TrimSpace(group.WID) == "" {
+		return nil, fmt.Errorf("word wid required")
+	}
+	if strings.TrimSpace(group.Lemma) == "" {
+		return nil, fmt.Errorf("word lemma required")
+	}
+
+	rec, err := r.client.Word.Create().
+		SetWid(strings.TrimSpace(group.WID)).
+		SetLemma(strings.TrimSpace(group.Lemma)).
+		SetLanguage(group.Language.CodeOrDefault()).
+		SetPhonetics(append([]entity.Phonetic{}, group.Phonetics...)).
+		SetCategories(append([]string{}, group.Categories...)).
+		SetCompleteness(group.Completeness).
+		Save(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create word: %w", err)
+	}
+	return mapEntWord(rec), nil
+}
+
+func (r *wordGroupRepository) Update(ctx context.Context, group *entity.Word) (*entity.Word, error) {
+	if group == nil || group.ID == 0 {
+		return nil, fmt.Errorf("word id required")
+	}
+	if strings.TrimSpace(group.Lemma) == "" {
+		return nil, fmt.Errorf("word lemma required")
+	}
+
+	rec, err := r.client.Word.UpdateOneID(group.ID).
+		SetLemma(strings.TrimSpace(group.Lemma)).
+		SetLanguage(group.Language.CodeOrDefault()).
+		SetPhonetics(append([]entity.Phonetic{}, group.Phonetics...)).
+		SetCategories(append([]string{}, group.Categories...)).
+		SetCompleteness(group.Completeness).
+		Save(ctx)
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return nil, entity.ErrWordNotFound
+		}
+		return nil, fmt.Errorf("update word: %w", err)
+	}
+	return mapEntWord(rec), nil
+}
+
 func (r *wordGroupRepository) Upsert(ctx context.Context, group *entity.Word) (*entity.Word, error) {
 	if group == nil || strings.TrimSpace(group.WID) == "" {
 		return nil, fmt.Errorf("word wid required")
@@ -106,14 +152,38 @@ func (r *wordGroupRepository) List(ctx context.Context, query *repository.ListWo
 	return out, int64(total), nil
 }
 
+func (r *wordGroupRepository) Delete(ctx context.Context, wordID int64) error {
+	if wordID == 0 {
+		return fmt.Errorf("word id required")
+	}
+
+	// Delete word (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
+	err := r.client.Word.DeleteOneID(wordID).Exec(ctx)
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return entity.ErrWordNotFound
+		}
+		return fmt.Errorf("delete word: %w", err)
+	}
+	return nil
+}
+
 func (r *wordGroupRepository) DeleteByWID(ctx context.Context, wid string) error {
 	if strings.TrimSpace(wid) == "" {
 		return fmt.Errorf("word wid required")
 	}
-	_, err := r.client.Word.Delete().
+
+	// Delete word (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
+	affected, err := r.client.Word.Delete().
 		Where(entword.WidEQ(strings.TrimSpace(wid))).
 		Exec(ctx)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete word by wid: %w", err)
+	}
+	if affected == 0 {
+		return entity.ErrWordNotFound
+	}
+	return nil
 }
 
 type listWordGroupParams struct {
@@ -176,11 +246,12 @@ func mapEntWord(rec *entdb.Word) *entity.Word {
 	if rec == nil {
 		return nil
 	}
+	parsedLang := entity.ParseLanguage(rec.Language)
 	return &entity.Word{
 		ID:           rec.ID,
 		WID:          rec.Wid,
 		Lemma:        rec.Lemma,
-		Language:     entity.ParseLanguage(rec.Language),
+		Language:     parsedLang,
 		Phonetics:    append([]entity.Phonetic{}, rec.Phonetics...),
 		Categories:   append([]string{}, rec.Categories...),
 		Completeness: rec.Completeness,

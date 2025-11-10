@@ -21,11 +21,10 @@ type Lexeme struct {
 func (Lexeme) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.String("lid").
+		field.String("external_id").
 			NotEmpty().
 			Unique().
-			Immutable().
-			Comment("Stable business identifier: {language}:{lemma}:{pos}"),
+			Comment("Wikidata Lexeme ID (e.g. L123456)"),
 		field.Int64("word_id").
 			Optional().
 			Nillable().

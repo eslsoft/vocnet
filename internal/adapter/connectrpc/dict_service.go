@@ -30,11 +30,46 @@ func NewDictServiceServer(wordUC usecase.WordUsecase) *DictServiceServer {
 }
 
 func (s *DictServiceServer) CreateWord(ctx context.Context, req *connect.Request[dictv1.CreateWordRequest]) (*connect.Response[dictv1.Word], error) {
-	return nil, status.Error(codes.Unimplemented, "CreateWord not supported")
+	if req.Msg == nil || req.Msg.GetWord() == nil {
+		return nil, status.Error(codes.InvalidArgument, "word required")
+	}
+
+	// Convert proto to entity
+	entityWord := mapping.ToEntityWord(req.Msg.GetWord())
+	if entityWord == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid word")
+	}
+
+	// Create word via usecase
+	created, err := s.wordUC.Create(ctx, entityWord)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	return connect.NewResponse(mapping.ToPbWord(created)), nil
 }
 
 func (s *DictServiceServer) UpdateWord(ctx context.Context, req *connect.Request[dictv1.Word]) (*connect.Response[dictv1.Word], error) {
-	return nil, status.Error(codes.Unimplemented, "UpdateWord not supported")
+	if req.Msg == nil {
+		return nil, status.Error(codes.InvalidArgument, "word required")
+	}
+	if req.Msg.GetId() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "word id required")
+	}
+
+	// Convert proto to entity
+	entityWord := mapping.ToEntityWord(req.Msg)
+	if entityWord == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid word")
+	}
+
+	// Update word via usecase
+	updated, err := s.wordUC.Update(ctx, entityWord)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	return connect.NewResponse(mapping.ToPbWord(updated)), nil
 }
 
 func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[dictv1.WordIDRequest]) (*connect.Response[dictv1.Word], error) {
@@ -77,5 +112,18 @@ func (s *DictServiceServer) LookupWord(ctx context.Context, req *connect.Request
 }
 
 func (s *DictServiceServer) DeleteWord(ctx context.Context, req *connect.Request[dictv1.WordIDRequest]) (*connect.Response[emptypb.Empty], error) {
-	return nil, status.Error(codes.Unimplemented, "DeleteWord not supported")
+	if req.Msg == nil {
+		return nil, status.Error(codes.InvalidArgument, "word id required")
+	}
+	if req.Msg.GetWordId() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "word id required")
+	}
+
+	// Delete word via usecase
+	err := s.wordUC.Delete(ctx, req.Msg.GetWordId())
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	return connect.NewResponse(&emptypb.Empty{}), nil
 }

@@ -68,7 +68,7 @@ func (r *LearnedLexemeRepository) Create(ctx context.Context, lexeme *entity.Lea
 
 	builder := r.client.LearnedLexeme.Create().
 		SetUserID(lexeme.UserID).
-		SetLexemeLid(strings.TrimSpace(lexeme.LexemeLID)).
+		SetLexemeExternalID(strings.TrimSpace(lexeme.LexemeExternalID)).
 		SetDisplayTerm(strings.TrimSpace(lexeme.DisplayTerm)).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, lexeme.Tags...)).
@@ -127,7 +127,7 @@ func (r *LearnedLexemeRepository) Update(ctx context.Context, lexeme *entity.Lea
 
 	mutation := r.client.LearnedLexeme.UpdateOneID(lexeme.ID).
 		Where(entlearnedlexeme.UserIDEQ(lexeme.UserID)).
-		SetLexemeLid(strings.TrimSpace(lexeme.LexemeLID)).
+		SetLexemeExternalID(strings.TrimSpace(lexeme.LexemeExternalID)).
 		SetDisplayTerm(strings.TrimSpace(lexeme.DisplayTerm)).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, lexeme.Tags...)).
@@ -355,11 +355,11 @@ func mapEntLearnedLexeme(rec *entdb.LearnedLexeme) *entity.LearnedLexeme {
 	}
 
 	out := &entity.LearnedLexeme{
-		ID:          int64(rec.ID),
-		UserID:      rec.UserID,
-		LexemeLID:   rec.LexemeLid,
-		DisplayTerm: rec.DisplayTerm,
-		Language:    entity.ParseLanguage(rec.Language),
+		ID:               int64(rec.ID),
+		UserID:           rec.UserID,
+		LexemeExternalID: rec.LexemeExternalID,
+		DisplayTerm:      rec.DisplayTerm,
+		Language:         entity.ParseLanguage(rec.Language),
 		Mastery: entity.MasteryBreakdown{
 			Listen:    int32(rec.MasteryListen),
 			Read:      int32(rec.MasteryRead),

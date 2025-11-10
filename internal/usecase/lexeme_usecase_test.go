@@ -61,8 +61,9 @@ func TestLexemeUsecase_CreateNormalizesData(t *testing.T) {
 	uc := NewLexemeUsecase(repo, nil)
 
 	payload := &entity.Lexeme{
-		Lemma:    "Run",
-		Language: entity.LanguageUnspecified,
+		ExternalID: "L999",
+		Lemma:      "Run",
+		Language:   entity.LanguageUnspecified,
 		Forms: []entity.LexemeForm{
 			{Text: "running"},
 		},

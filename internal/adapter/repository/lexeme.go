@@ -32,7 +32,7 @@ type listLexemeParams struct {
 	Language      string
 	Keyword       string
 	EntryType     string
-	LexemeLIDs    []string
+	ExternalIDs   []string
 	PrimaryKey    string
 	PrimaryDesc   bool
 	SecondaryKey  string
@@ -40,7 +40,7 @@ type listLexemeParams struct {
 }
 
 func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
-	if lexeme == nil || strings.TrimSpace(lexeme.LID) == "" {
+	if lexeme == nil || strings.TrimSpace(lexeme.ExternalID) == "" {
 		return nil, entity.ErrInvalidLexemeID
 	}
 
@@ -52,7 +52,7 @@ func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*
 
 	// Create lexeme record (without forms - forms are in separate table now)
 	main := tx.Lexeme.Create().
-		SetLid(strings.TrimSpace(lexeme.LID)).
+		SetExternalID(strings.TrimSpace(lexeme.ExternalID)).
 		SetLanguage(entity.NormalizeLanguage(lexeme.Language).Code()).
 		SetPos(strings.TrimSpace(lexeme.POS)).
 		SetEntryType(string(lexeme.EntryType)).
@@ -248,10 +248,15 @@ func (r *lexemeRepository) Delete(ctx context.Context, lexemeID int64) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.LearnedLexeme.Delete().Where(entlearnedlexeme.LexemeIDEQ(lexemeID)).Exec(ctx); err != nil {
-		return fmt.Errorf("delete learned lexemes: %w", err)
+	// Preserve user data: set lexeme_id to NULL instead of deleting LearnedLexeme records
+	if err := tx.LearnedLexeme.Update().
+		Where(entlearnedlexeme.LexemeIDEQ(lexemeID)).
+		ClearLexemeID().
+		Exec(ctx); err != nil {
+		return fmt.Errorf("clear lexeme references: %w", err)
 	}
 
+	// Delete lexeme (LexemeForm will be cascade deleted automatically)
 	if err := tx.Lexeme.DeleteOneID(lexemeID).Exec(ctx); err != nil {
 		if entdb.IsNotFound(err) {
 			return entity.ErrLexemeNotFound
@@ -285,15 +290,15 @@ func applyLexemeListFilters(q *entdb.LexemeQuery, params listLexemeParams) {
 	if params.EntryType != "" {
 		q.Where(entlexeme.EntryTypeEQ(params.EntryType))
 	}
-	if len(params.LexemeLIDs) > 0 {
-		lids := make([]string, 0, len(params.LexemeLIDs))
-		for _, lid := range params.LexemeLIDs {
-			if trimmed := strings.TrimSpace(lid); trimmed != "" {
-				lids = append(lids, trimmed)
+	if len(params.ExternalIDs) > 0 {
+		externalIDs := make([]string, 0, len(params.ExternalIDs))
+		for _, externalID := range params.ExternalIDs {
+			if trimmed := strings.TrimSpace(externalID); trimmed != "" {
+				externalIDs = append(externalIDs, trimmed)
 			}
 		}
-		if len(lids) > 0 {
-			q.Where(entlexeme.LidIn(lids...))
+		if len(externalIDs) > 0 {
+			q.Where(entlexeme.ExternalIDIn(externalIDs...))
 		}
 	}
 }
@@ -343,14 +348,14 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 	}
 
 	lex := &entity.Lexeme{
-		ID:        rec.ID,
-		LID:       rec.Lid,
-		Language:  entity.ParseLanguage(rec.Language),
-		POS:       rec.Pos,
-		EntryType: entity.LexemeEntryType(rec.EntryType),
-		Lemma:     rec.Lemma,
-		CreatedAt: rec.CreatedAt,
-		UpdatedAt: rec.UpdatedAt,
+		ID:         rec.ID,
+		ExternalID: rec.ExternalID,
+		Language:   entity.ParseLanguage(rec.Language),
+		POS:        rec.Pos,
+		EntryType:  entity.LexemeEntryType(rec.EntryType),
+		Lemma:      rec.Lemma,
+		CreatedAt:  rec.CreatedAt,
+		UpdatedAt:  rec.UpdatedAt,
 	}
 
 	if rec.WordID != nil {
@@ -416,10 +421,7 @@ func (r *lexemeRepository) upsertForms(ctx context.Context, client *entdb.Client
 			SetIsIrregular(f.IsIrregular))
 	}
 
-	if err := client.LexemeForm.CreateBulk(bulk...).
-		OnConflict().
-		Ignore().
-		Exec(ctx); err != nil {
+	if err := client.LexemeForm.CreateBulk(bulk...).Exec(ctx); err != nil {
 		return fmt.Errorf("bulk create forms: %w", err)
 	}
 

@@ -297,8 +297,9 @@ func (x *Phonetic) GetDialect() string {
 
 type Definition struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pos           string                 `protobuf:"bytes,1,opt,name=pos,proto3" json:"pos,omitempty"`       // Part of speech, e.g. n., v., adj.
-	Senses        []*LexemeSense         `protobuf:"bytes,2,rep,name=senses,proto3" json:"senses,omitempty"` // Definition text
+	LexemeId      string                 `protobuf:"bytes,1,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"` // Wikidata Lexeme ID (e.g. "L123456")
+	Pos           string                 `protobuf:"bytes,2,opt,name=pos,proto3" json:"pos,omitempty"`                           // Part of speech, e.g. n., v., adj.
+	Senses        []*LexemeSense         `protobuf:"bytes,3,rep,name=senses,proto3" json:"senses,omitempty"`                     // Definition text
 	Examples      []*Sentence            `protobuf:"bytes,4,rep,name=examples,proto3" json:"examples,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -332,6 +333,13 @@ func (x *Definition) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Definition.ProtoReflect.Descriptor instead.
 func (*Definition) Descriptor() ([]byte, []int) {
 	return file_dict_v1_word_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Definition) GetLexemeId() string {
+	if x != nil {
+		return x.LexemeId
+	}
+	return ""
 }
 
 func (x *Definition) GetPos() string {
@@ -410,9 +418,10 @@ func (x *LexemeSense) GetGloss() string {
 // Minimal reference for an inflected / variant form; no id to keep payload light.
 type WordForm struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Word          string                 `protobuf:"bytes,1,opt,name=word,proto3" json:"word,omitempty"`                        // Surface form text
-	Type          FormType               `protobuf:"varint,2,opt,name=type,proto3,enum=dict.v1.FormType" json:"type,omitempty"` // The specific form type (same value domain as Word.word_type)
-	Irregular     bool                   `protobuf:"varint,3,opt,name=irregular,proto3" json:"irregular,omitempty"`
+	LexemeId      string                 `protobuf:"bytes,1,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"` // Associated Lexeme ID (links to Definition.lexeme_id)
+	Word          string                 `protobuf:"bytes,2,opt,name=word,proto3" json:"word,omitempty"`                         // Surface form text
+	Type          FormType               `protobuf:"varint,3,opt,name=type,proto3,enum=dict.v1.FormType" json:"type,omitempty"`  // The specific form type (same value domain as Word.word_type)
+	Irregular     bool                   `protobuf:"varint,4,opt,name=irregular,proto3" json:"irregular,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -445,6 +454,13 @@ func (x *WordForm) ProtoReflect() protoreflect.Message {
 // Deprecated: Use WordForm.ProtoReflect.Descriptor instead.
 func (*WordForm) Descriptor() ([]byte, []int) {
 	return file_dict_v1_word_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *WordForm) GetLexemeId() string {
+	if x != nil {
+		return x.LexemeId
+	}
+	return ""
 }
 
 func (x *WordForm) GetWord() string {
@@ -605,19 +621,21 @@ const file_dict_v1_word_proto_rawDesc = "" +
 	"updated_at\x18e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"6\n" +
 	"\bPhonetic\x12\x10\n" +
 	"\x03ipa\x18\x01 \x01(\tR\x03ipa\x12\x18\n" +
-	"\adialect\x18\x02 \x01(\tR\adialect\"{\n" +
+	"\adialect\x18\x02 \x01(\tR\adialect\"\x98\x01\n" +
 	"\n" +
-	"Definition\x12\x10\n" +
-	"\x03pos\x18\x01 \x01(\tR\x03pos\x12,\n" +
-	"\x06senses\x18\x02 \x03(\v2\x14.dict.v1.LexemeSenseR\x06senses\x12-\n" +
+	"Definition\x12\x1b\n" +
+	"\tlexeme_id\x18\x01 \x01(\tR\blexemeId\x12\x10\n" +
+	"\x03pos\x18\x02 \x01(\tR\x03pos\x12,\n" +
+	"\x06senses\x18\x03 \x03(\v2\x14.dict.v1.LexemeSenseR\x06senses\x12-\n" +
 	"\bexamples\x18\x04 \x03(\v2\x11.dict.v1.SentenceR\bexamples\"T\n" +
 	"\vLexemeSense\x12/\n" +
 	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x14\n" +
-	"\x05gloss\x18\x03 \x01(\tR\x05gloss\"c\n" +
-	"\bWordForm\x12\x12\n" +
-	"\x04word\x18\x01 \x01(\tR\x04word\x12%\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x11.dict.v1.FormTypeR\x04type\x12\x1c\n" +
-	"\tirregular\x18\x03 \x01(\bR\tirregular\"W\n" +
+	"\x05gloss\x18\x03 \x01(\tR\x05gloss\"\x80\x01\n" +
+	"\bWordForm\x12\x1b\n" +
+	"\tlexeme_id\x18\x01 \x01(\tR\blexemeId\x12\x12\n" +
+	"\x04word\x18\x02 \x01(\tR\x04word\x12%\n" +
+	"\x04type\x18\x03 \x01(\x0e2\x11.dict.v1.FormTypeR\x04type\x12\x1c\n" +
+	"\tirregular\x18\x04 \x01(\bR\tirregular\"W\n" +
 	"\fWordRelation\x12\x12\n" +
 	"\x04word\x18\x01 \x01(\tR\x04word\x123\n" +
 	"\brelation\x18\x02 \x01(\x0e2\x17.common.v1.RelationTypeR\brelation\"l\n" +

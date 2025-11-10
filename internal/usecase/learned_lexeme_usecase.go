@@ -74,7 +74,7 @@ func (u *learnedLexemeUsecase) CollectLexeme(ctx context.Context, userID int64, 
 		return u.repo.Update(ctx, existing)
 	}
 
-	// Fetch lexeme to get LID
+	// Fetch lexeme to get ExternalID
 	lex, err := u.lexemeRepo.GetByID(ctx, lexemeID)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func (u *learnedLexemeUsecase) CollectLexeme(ctx context.Context, userID int64, 
 	// Create new learned lexeme
 	copy := *lexeme
 	copy.LexemeID = lexemeID
-	copy.LexemeLID = lex.LID  // Copy LID from lexeme for migration safety
+	copy.LexemeExternalID = lex.ExternalID // Copy ExternalID from lexeme
 	copy.UserID = userID
 	if copy.QueryCount == 0 {
 		copy.QueryCount = 1

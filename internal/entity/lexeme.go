@@ -32,16 +32,16 @@ const (
 
 // Lexeme captures a normalized lemma plus its forms, senses, and metadata.
 type Lexeme struct {
-	ID        int64
-	LID       string // Stable business identifier: {language}:{lemma}:{pos}
-	WordID    int64
-	POS       string
-	Language  Language
-	EntryType LexemeEntryType
-	Lemma     string
-	Forms     []LexemeForm
-	Senses    []LexemeSense
-	Relations []LexemeRelation
+	ID         int64
+	ExternalID string // Wikidata Lexeme ID (e.g. "L123456")
+	WordID     int64
+	POS        string
+	Language   Language
+	EntryType  LexemeEntryType
+	Lemma      string
+	Forms      []LexemeForm
+	Senses     []LexemeSense
+	Relations  []LexemeRelation
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

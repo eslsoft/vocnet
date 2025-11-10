@@ -39,8 +39,9 @@ message Phonetic {
 }
 
 message Definition {
-  string pos = 1; // Part of speech, e.g. n., v., adj.
-  repeated LexemeSense senses = 2; // Definition text
+  string lexeme_id = 1; // Wikidata Lexeme ID (e.g. "L123456")
+  string pos = 2; // Part of speech, e.g. n., v., adj.
+  repeated LexemeSense senses = 3; // Definition text
   repeated Sentence examples = 4;
 }
 
@@ -51,9 +52,10 @@ message LexemeSense {
 
 // Minimal reference for an inflected / variant form; no id to keep payload light.
 message WordForm {
-  string word = 1; // Surface form text
-  FormType type = 2; // The specific form type (same value domain as Word.word_type)
-  bool irregular = 3;
+  string lexeme_id = 1; // Associated Lexeme ID (links to Definition.lexeme_id)
+  string word = 2; // Surface form text
+  FormType type = 3; // The specific form type (same value domain as Word.word_type)
+  bool irregular = 4;
 }
 
 // Word-to-word relationship for building vocabulary networks

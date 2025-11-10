@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -26,9 +27,9 @@ func (LearnedLexeme) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Current association to lexemes.id, nullable for migration"),
-		field.String("lexeme_lid").
+		field.String("lexeme_external_id").
 			NotEmpty().
-			Comment("Stable identifier for lexeme, format: {language}:{lemma}:{pos}"),
+			Comment("Wikidata Lexeme ID (e.g. L123456)"),
 		field.String("display_term").Default(""),
 		field.String("language").Default(entity.LanguageEnglish.CodeOrDefault()),
 		field.JSON("tags", []string{}).
@@ -61,11 +62,19 @@ func (LearnedLexeme) Fields() []ent.Field {
 	}
 }
 
-func (LearnedLexeme) Edges() []ent.Edge { return nil }
+func (LearnedLexeme) Edges() []ent.Edge {
+	return []ent.Edge{
+		// LearnedLexeme -> Lexeme (多对一，可选关系)
+		edge.To("lexeme", Lexeme.Type).
+			Field("lexeme_id").
+			Unique().
+			Annotations(entsql.OnDelete(entsql.SetNull)), // Lexeme删除时设为NULL
+	}
+}
 
 func (LearnedLexeme) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("user_id", "lexeme_lid").Unique(),
+		index.Fields("user_id", "lexeme_external_id").Unique(),
 		index.Fields("user_id", "language", "display_term"),
 		index.Fields("lexeme_id"),
 		// 优化复习查询：查找需要复习的词条
