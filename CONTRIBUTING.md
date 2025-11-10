@@ -75,12 +75,24 @@ feat: add sentence similarity ranking usecase
 |------|----------|
 | `.proto` | `make generate` |
 | `internal/infrastructure/database/entschema/*.go` | `make ent-generate` |
-| 接口定义 (需 mock) | `make mocks` |
+| 接口定义 (需 mock) | `make mock-generate` |
 
 可合并执行：
 ```bash
-make generate mocks
+make generate
 ```
+
+注意：`make generate` 会自动生成 protobuf、ent schema、mocks 和 wire 绑定。
+
+## Mock 生成
+
+项目使用 [gomock](https://github.com/golang/mock) 自动生成测试 mocks。
+
+- Mock 文件位于 `internal/mocks/`
+- 通过 `go:generate` 指令自动生成
+- 修改接口后运行 `make mock-generate` 重新生成
+- 详见 `internal/mocks/README.md`
+
 
 ## 风格与静态检查
 

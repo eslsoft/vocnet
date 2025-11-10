@@ -9,6 +9,8 @@ import (
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
+//go:generate mockgen -source=word_usecase.go -destination=../mocks/mock_word_usecase.go -package=mocks
+
 // WordUsecase exposes CRUD and query operations for aggregated words.
 type WordUsecase interface {
 	Create(ctx context.Context, word *entity.Word) (*entity.Word, error)

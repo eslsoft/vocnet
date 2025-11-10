@@ -47,6 +47,7 @@ logs/
 api/gen/
 api/openapi/
 internal/infrastructure/database/ent/
+internal/mocks/
 
 # Buf build cache (optional - you may want to cache this)
 .buf/

@@ -11,6 +11,8 @@ type ListLexemeQuery struct {
 	FilterOrder
 }
 
+//go:generate mockgen -source=lexeme.go -destination=../mocks/mock_lexeme_repository.go -package=mocks
+
 // LexemeRepository defines data access for lexeme entries.
 type LexemeRepository interface {
 	Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error)

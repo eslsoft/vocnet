@@ -10,6 +10,8 @@ import (
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
+//go:generate mockgen -source=lexeme_usecase.go -destination=../mocks/mock_lexeme_usecase.go -package=mocks
+
 // LexemeUsecase exposes high-level dictionary operations backed by lexemes.
 type LexemeUsecase interface {
 	Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error)

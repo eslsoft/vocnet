@@ -11,6 +11,8 @@ type ListWordGroupQuery struct {
 	FilterOrder
 }
 
+//go:generate mockgen -source=word_group.go -destination=../mocks/mock_word_group_repository.go -package=mocks
+
 type WordGroupRepository interface {
 	Create(ctx context.Context, group *entity.Word) (*entity.Word, error)
 	Update(ctx context.Context, group *entity.Word) (*entity.Word, error)

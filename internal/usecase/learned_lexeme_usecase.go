@@ -8,6 +8,8 @@ import (
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
+//go:generate mockgen -source=learned_lexeme_usecase.go -destination=../mocks/mock_learned_lexeme_usecase.go -package=mocks
+
 // LearnedLexemeUsecase encapsulates business logic for managing user vocabulary entries.
 type LearnedLexemeUsecase interface {
 	CollectLexeme(ctx context.Context, userID int64, lexeme *entity.LearnedLexeme) (*entity.LearnedLexeme, error)

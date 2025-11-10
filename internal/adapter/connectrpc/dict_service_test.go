@@ -6,20 +6,16 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
-	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent/enttest"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	_ "github.com/lib/pq"
 )
 
 func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
-	// Setup
-	client := enttest.Open(t, "postgres", "host=localhost port=5432 user=postgres password=postgres dbname=vocnet_test sslmode=disable")
-	defer client.Close()
+	// Setup - each test gets its own isolated SQLite database
+	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
 	wordRepo := repository.NewWordGroupRepository(client)
@@ -224,8 +220,7 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 }
 
 func TestDictService_CreateWord_ValidationErrors(t *testing.T) {
-	client := enttest.Open(t, "postgres", "host=localhost port=5432 user=postgres password=postgres dbname=vocnet_test sslmode=disable")
-	defer client.Close()
+	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
 	wordRepo := repository.NewWordGroupRepository(client)
@@ -284,8 +279,7 @@ func TestDictService_CreateWord_ValidationErrors(t *testing.T) {
 }
 
 func TestDictService_UpdateWord_ValidationErrors(t *testing.T) {
-	client := enttest.Open(t, "postgres", "host=localhost port=5432 user=postgres password=postgres dbname=vocnet_test sslmode=disable")
-	defer client.Close()
+	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
 	wordRepo := repository.NewWordGroupRepository(client)
@@ -345,8 +339,7 @@ func TestDictService_UpdateWord_ValidationErrors(t *testing.T) {
 }
 
 func TestDictService_WordIDGeneration(t *testing.T) {
-	client := enttest.Open(t, "postgres", "host=localhost port=5432 user=postgres password=postgres dbname=vocnet_test sslmode=disable")
-	defer client.Close()
+	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
 	wordRepo := repository.NewWordGroupRepository(client)

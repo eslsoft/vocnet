@@ -14,6 +14,8 @@ type ListLearnedLexemeQuery struct {
 	UserID int64
 }
 
+//go:generate mockgen -source=learned_lexeme.go -destination=../mocks/mock_learned_lexeme_repository.go -package=mocks
+
 // LearnedLexemeRepository abstracts persistence for user lexemes to keep usecases storage agnostic.
 type LearnedLexemeRepository interface {
 	Create(ctx context.Context, lexeme *entity.LearnedLexeme) (*entity.LearnedLexeme, error)

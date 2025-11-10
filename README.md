@@ -187,13 +187,22 @@ LOG_LEVEL=info
 
 ## 开发常用命令 (Developer Tasks)
 ```bash
-make help
-make run            # 启动服务
-make test           # 运行测试
-make generate       # 生成 gRPC / Gateway / OpenAPI
-make mocks          # 生成 gomock
-make migrate        # ent schema 迁移
+make help            # 显示所有可用命令
+make run             # 启动服务
+make test            # 运行测试
+make generate        # 生成 protobuf, ent, mocks, wire
+make mock-generate   # 仅生成 mocks
+make migrate         # ent schema 迁移
+make lint            # 代码检查
+make fmt             # 格式化代码
 ```
+
+**代码生成说明**：
+- `make generate` - 生成所有代码（protobuf、ent、mocks、wire）
+- `make mock-generate` - 仅重新生成 mock 文件
+- Mock 文件使用 [gomock](https://github.com/golang/mock) 自动生成
+- 修改接口定义后需要重新生成 mocks
+
 
 ## 相关文档 (Docs)
 
