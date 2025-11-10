@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type LearnedLexemeRepository struct {
@@ -406,16 +404,7 @@ func copyFormStatus(src map[string]entity.FormMastery) map[string]entity.FormMas
 	return dst
 }
 
+// Deprecated: Use translateDBError from errors.go instead
 func translateLearnedLexemeError(err error) error {
-	if err == nil {
-		return nil
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return entity.ErrDuplicateLearnedLexeme
-	}
-	if entdb.IsNotFound(err) {
-		return entity.ErrLearnedLexemeNotFound
-	}
-	return err
+	return translateDBError(err, "learned_lexeme")
 }

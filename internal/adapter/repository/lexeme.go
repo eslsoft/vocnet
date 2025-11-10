@@ -2,11 +2,8 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -384,18 +381,9 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 	return lex
 }
 
+// Deprecated: Use translateDBError from errors.go instead
 func translateLexemeError(err error) error {
-	if err == nil {
-		return nil
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return entity.ErrDuplicateLexeme
-	}
-	if entdb.IsNotFound(err) {
-		return entity.ErrLexemeNotFound
-	}
-	return err
+	return translateDBError(err, "lexeme")
 }
 
 // upsertForms replaces all forms for a lexeme with the given list

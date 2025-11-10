@@ -39,7 +39,7 @@ func (r *wordGroupRepository) Create(ctx context.Context, group *entity.Word) (*
 		SetCompleteness(group.Completeness).
 		Save(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("create word: %w", err)
+		return nil, translateDBError(err, "word")
 	}
 	return mapEntWord(rec), nil
 }
@@ -60,10 +60,7 @@ func (r *wordGroupRepository) Update(ctx context.Context, group *entity.Word) (*
 		SetCompleteness(group.Completeness).
 		Save(ctx)
 	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, entity.ErrWordNotFound
-		}
-		return nil, fmt.Errorf("update word: %w", err)
+		return nil, translateDBError(err, "word")
 	}
 	return mapEntWord(rec), nil
 }
@@ -96,10 +93,7 @@ func (r *wordGroupRepository) Upsert(ctx context.Context, group *entity.Word) (*
 func (r *wordGroupRepository) GetByID(ctx context.Context, wordID int64) (*entity.Word, error) {
 	rec, err := r.client.Word.Get(ctx, wordID)
 	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, entity.ErrWordNotFound
-		}
-		return nil, err
+		return nil, translateDBError(err, "word")
 	}
 	return mapEntWord(rec), nil
 }
@@ -109,10 +103,7 @@ func (r *wordGroupRepository) GetByWID(ctx context.Context, wid string) (*entity
 		Where(entword.WidEQ(strings.TrimSpace(wid))).
 		First(ctx)
 	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, entity.ErrWordNotFound
-		}
-		return nil, err
+		return nil, translateDBError(err, "word")
 	}
 	return mapEntWord(rec), nil
 }

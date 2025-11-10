@@ -21,6 +21,10 @@ func ToPbError(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, entity.ErrDuplicateLexeme):
 		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, entity.ErrDuplicateWord):
+		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, entity.ErrDuplicateLearnedLexeme):
+		return status.Error(codes.AlreadyExists, err.Error())
 	default:
 		return status.Error(codes.Internal, err.Error())
 	}

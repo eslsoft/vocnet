@@ -74,13 +74,22 @@ func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServic
 		lexeme, err := convertWikidataLexeme(raw)
 		if err != nil {
 			atomic.AddInt64(&skipped, 1)
-			if idx < 5 || idx%5000 == 0 {
-				log.Printf("[wikidata] skipping %s: %v", raw.ID, err)
-			}
+			// Always log skipped lexemes for debugging
+			log.Printf("[wikidata] skipping %s: %v", raw.ID, err)
 			continue
 		}
 		if s.enricher != nil {
 			s.enricher.Enrich(lexeme)
+		}
+		// Debug: log the lexeme senses after enrichment
+		if idx < 3 { // Only log first 3 for debugging
+			log.Printf("[wikidata] DEBUG %s: %d definitions, senses:", raw.ID, len(lexeme.GetDefinitions()))
+			for i, def := range lexeme.GetDefinitions() {
+				log.Printf("  Definition[%d]: POS=%s, %d senses", i, def.GetPos(), len(def.GetSenses()))
+				for j, sense := range def.GetSenses() {
+					log.Printf("    Sense[%d]: lang=%s, gloss=%s", j, sense.GetLanguage(), sense.GetGloss())
+				}
+			}
 		}
 		jobCh <- wikidataJob{id: raw.ID, lemma: lexeme.GetLemma(), lexeme: lexeme}
 		if (idx+1)%5000 == 0 {
@@ -119,22 +128,193 @@ func (s *wikidataStage) loadLexemes() ([]WikidataLexeme, error) {
 	return lexemes, nil
 }
 
-func (s *wikidataStage) createOrUpdate(ctx context.Context, client dictv1connect.DictServiceClient, lexeme *dictv1.Word) error {
-	req := connect.NewRequest(&dictv1.CreateWordRequest{Word: lexeme})
-	if _, err := client.CreateWord(ctx, req); err != nil {
-		if connect.CodeOf(err) != connect.CodeAlreadyExists {
+func (s *wikidataStage) createOrUpdate(ctx context.Context, client dictv1connect.DictServiceClient, newWord *dictv1.Word) error {
+	// Try to create first
+	req := connect.NewRequest(&dictv1.CreateWordRequest{Word: newWord})
+	resp, err := client.CreateWord(ctx, req)
+	if err != nil {
+		// If already exists, merge with existing
+		// Note: We check both the connect code and the error message because
+		// Connect-RPC error propagation can sometimes wrap the original error code
+		errCode := connect.CodeOf(err)
+		isAlreadyExists := errCode == connect.CodeAlreadyExists ||
+			strings.Contains(err.Error(), "AlreadyExists") ||
+			strings.Contains(err.Error(), "word already exists")
+
+		if !isAlreadyExists {
 			return err
 		}
-		_, updateErr := client.UpdateWord(ctx, connect.NewRequest(lexeme))
-		return updateErr
+
+		log.Printf("[wikidata] Word %s already exists, merging...", newWord.GetLemma())
+
+		// Lookup existing word by lemma
+		lookupReq := connect.NewRequest(&dictv1.LookupWordRequest{Word: newWord.GetLemma()})
+		lookupResp, lookupErr := client.LookupWord(ctx, lookupReq)
+		if lookupErr != nil {
+			return fmt.Errorf("lookup existing word: %w", lookupErr)
+		}
+
+		existingWord := lookupResp.Msg
+		if existingWord == nil {
+			return fmt.Errorf("existing word not found after AlreadyExists error")
+		}
+
+		log.Printf("[wikidata] Existing word has %d definitions, new has %d", len(existingWord.GetDefinitions()), len(newWord.GetDefinitions()))
+
+		// Merge new lexeme data into existing word
+		merged := mergeWords(existingWord, newWord)
+
+		log.Printf("[wikidata] Merged word has %d definitions", len(merged.GetDefinitions()))
+
+		// Update with merged data
+		_, updateErr := client.UpdateWord(ctx, connect.NewRequest(merged))
+		if updateErr != nil {
+			return fmt.Errorf("update merged word: %w", updateErr)
+		}
+
+		return nil
 	}
+	log.Printf("[wikidata] Created word %s with %d definitions", resp.Msg.GetLemma(), len(resp.Msg.GetDefinitions()))
 	return nil
+}
+
+// mergeWords merges newWord's definitions and forms into existingWord
+func mergeWords(existing, new *dictv1.Word) *dictv1.Word {
+	// Keep existing ID and metadata
+	merged := &dictv1.Word{
+		Id:           existing.GetId(),
+		Lemma:        existing.GetLemma(),
+		Language:     existing.GetLanguage(),
+		Phonetics:    existing.GetPhonetics(),
+		Categories:   existing.GetCategories(),
+		Completeness: existing.GetCompleteness(),
+		CreatedAt:    existing.GetCreatedAt(),
+		UpdatedAt:    existing.GetUpdatedAt(),
+	}
+
+	// Merge phonetics (deduplicate by IPA+Dialect)
+	phoneticMap := make(map[string]*dictv1.Phonetic)
+	for _, p := range existing.GetPhonetics() {
+		key := p.GetIpa() + "|" + p.GetDialect()
+		phoneticMap[key] = p
+	}
+	for _, p := range new.GetPhonetics() {
+		key := p.GetIpa() + "|" + p.GetDialect()
+		if _, exists := phoneticMap[key]; !exists {
+			phoneticMap[key] = p
+		}
+	}
+	merged.Phonetics = make([]*dictv1.Phonetic, 0, len(phoneticMap))
+	for _, p := range phoneticMap {
+		merged.Phonetics = append(merged.Phonetics, p)
+	}
+
+	// Merge categories (deduplicate)
+	catMap := make(map[string]bool)
+	for _, cat := range existing.GetCategories() {
+		catMap[cat] = true
+	}
+	for _, cat := range new.GetCategories() {
+		catMap[cat] = true
+	}
+	merged.Categories = make([]string, 0, len(catMap))
+	for cat := range catMap {
+		merged.Categories = append(merged.Categories, cat)
+	}
+
+	// Merge forms (deduplicate by LexemeId+Word text)
+	formMap := make(map[string]*dictv1.WordForm)
+	for _, f := range existing.GetForms() {
+		key := f.GetLexemeId() + "|" + strings.ToLower(f.GetWord())
+		formMap[key] = f
+	}
+	for _, f := range new.GetForms() {
+		key := f.GetLexemeId() + "|" + strings.ToLower(f.GetWord())
+		if _, exists := formMap[key]; !exists {
+			formMap[key] = f
+		}
+	}
+	merged.Forms = make([]*dictv1.WordForm, 0, len(formMap))
+	for _, f := range formMap {
+		merged.Forms = append(merged.Forms, f)
+	}
+
+	// Merge definitions (deduplicate by LexemeId+POS, merge senses within same POS)
+	defMap := make(map[string]*dictv1.Definition)
+	for _, def := range existing.GetDefinitions() {
+		key := def.GetLexemeId() + "|" + strings.ToLower(strings.TrimSpace(def.GetPos()))
+		defMap[key] = def
+	}
+	for _, def := range new.GetDefinitions() {
+		key := def.GetLexemeId() + "|" + strings.ToLower(strings.TrimSpace(def.GetPos()))
+		if existingDef, exists := defMap[key]; exists {
+			// Merge senses from new into existing (deduplicate by gloss)
+			senseMap := make(map[string]*dictv1.LexemeSense)
+			for _, s := range existingDef.GetSenses() {
+				senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+				senseMap[senseKey] = s
+			}
+			for _, s := range def.GetSenses() {
+				senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+				if _, ok := senseMap[senseKey]; !ok {
+					senseMap[senseKey] = s
+				}
+			}
+			existingDef.Senses = make([]*dictv1.LexemeSense, 0, len(senseMap))
+			for _, s := range senseMap {
+				existingDef.Senses = append(existingDef.Senses, s)
+			}
+		} else {
+			defMap[key] = def
+		}
+	}
+	merged.Definitions = make([]*dictv1.Definition, 0, len(defMap))
+	for _, def := range defMap {
+		merged.Definitions = append(merged.Definitions, def)
+	}
+
+	// Merge relations (deduplicate by word+relation type)
+	relMap := make(map[string]*dictv1.WordRelation)
+	for _, rel := range existing.GetRelations() {
+		key := rel.GetWord() + "|" + rel.GetRelation().String()
+		relMap[key] = rel
+	}
+	for _, rel := range new.GetRelations() {
+		key := rel.GetWord() + "|" + rel.GetRelation().String()
+		if _, exists := relMap[key]; !exists {
+			relMap[key] = rel
+		}
+	}
+	merged.Relations = make([]*dictv1.WordRelation, 0, len(relMap))
+	for _, rel := range relMap {
+		merged.Relations = append(merged.Relations, rel)
+	}
+
+	// Merge phrases (deduplicate by phrase text)
+	phraseMap := make(map[string]*dictv1.Phrase)
+	for _, phrase := range existing.GetPhrases() {
+		// Use phrase.Text or some unique identifier
+		key := fmt.Sprintf("%v", phrase) // Simple approach
+		phraseMap[key] = phrase
+	}
+	for _, phrase := range new.GetPhrases() {
+		key := fmt.Sprintf("%v", phrase)
+		if _, exists := phraseMap[key]; !exists {
+			phraseMap[key] = phrase
+		}
+	}
+	merged.Phrases = make([]*dictv1.Phrase, 0, len(phraseMap))
+	for _, phrase := range phraseMap {
+		merged.Phrases = append(merged.Phrases, phrase)
+	}
+
+	return merged
 }
 
 type wikidataJob struct {
 	id     string
 	lemma  string
-	lexeme *dictv1.DictionaryEntry
+	lexeme *dictv1.Word
 }
 
 // WikidataLexeme mirrors the dump structure for lexemes.
@@ -177,26 +357,57 @@ type WikidataClaim struct {
 	} `json:"mainsnak"`
 }
 
-func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.DictionaryEntry, error) {
+func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.Word, error) {
 	lemma := extractLemma(wd.Lemmas)
 	if lemma == "" {
 		return nil, errors.New("lemma missing")
 	}
 
-	forms := make([]*dictv1.LexemeForm, 0, len(wd.Forms))
+	// wd.ID is the Wikidata Lexeme ID (e.g., "L123456")
+	lexemeID := wd.ID
+
+	// Use a map to deduplicate forms by text (lexeme_id + text must be unique)
+	// Keep the first occurrence of each unique text
+	formMap := make(map[string]*dictv1.WordForm)
 	for _, form := range wd.Forms {
-		converted, err := convertWikidataForm(form, lemma)
+		converted, err := convertWikidataForm(form, lemma, lexemeID)
 		if err != nil {
 			continue
 		}
-		forms = append(forms, converted)
+		// Normalize the text for deduplication (case-sensitive as DB uses lowercase comparison)
+		text := strings.ToLower(strings.TrimSpace(converted.Word))
+		if text == "" {
+			continue
+		}
+		// Only keep the first occurrence of each unique text
+		// Prioritize LEMMA type if multiple forms have the same text
+		if existing, ok := formMap[text]; ok {
+			// Keep lemma form if either is lemma type
+			if converted.Type == dictv1.FormType_FORM_TYPE_LEMMA {
+				formMap[text] = converted
+			} else if existing.Type != dictv1.FormType_FORM_TYPE_LEMMA {
+				// Keep the first non-lemma form (arbitrary but consistent)
+				continue
+			}
+		} else {
+			formMap[text] = converted
+		}
 	}
-	if !hasLemmaForm(forms) {
-		forms = append([]*dictv1.LexemeForm{{
-			Id:       fmt.Sprintf("%s-lemma", sanitizeID(lemma)),
-			Text:     lemma,
-			FormType: dictv1.FormType_FORM_TYPE_LEMMA,
-		}}, forms...)
+
+	// Ensure lemma form exists
+	lemmaText := strings.ToLower(strings.TrimSpace(lemma))
+	if _, hasLemma := formMap[lemmaText]; !hasLemma {
+		formMap[lemmaText] = &dictv1.WordForm{
+			LexemeId: lexemeID,
+			Word:     lemma,
+			Type:     dictv1.FormType_FORM_TYPE_LEMMA,
+		}
+	}
+
+	// Convert map to slice
+	forms := make([]*dictv1.WordForm, 0, len(formMap))
+	for _, form := range formMap {
+		forms = append(forms, form)
 	}
 
 	posLabel := mapLexicalCategoryToPOS(wd.LexicalCategory)
@@ -210,18 +421,21 @@ func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.DictionaryEntry, error) {
 	if len(senses) == 0 {
 		return nil, errors.New("no senses")
 	}
-	definitionID := fmt.Sprintf("wikidata-%s-def-1", strings.ToLower(wd.ID))
+
+	// If POS is empty, try to infer it from glosses
+	if posLabel == "" {
+		posLabel = inferPOSFromGlosses(wd.Senses)
+	}
+
 	definitions := []*dictv1.Definition{{
-		Id:           definitionID,
-		PartOfSpeech: posLabel,
-		Senses:       senses,
+		LexemeId: lexemeID,
+		Pos:      posLabel,
+		Senses:   senses,
 	}}
 
-	return &dictv1.DictionaryEntry{
-		Id:          fmt.Sprintf("wikidata-%s", strings.ToLower(wd.ID)),
-		Language:    commonv1.Language_LANGUAGE_ENGLISH,
-		LexemeEntryType:   determineLexemeEntryType(wd.LexicalCategory),
+	return &dictv1.Word{
 		Lemma:       lemma,
+		Language:    commonv1.Language_LANGUAGE_ENGLISH,
 		Forms:       forms,
 		Definitions: definitions,
 	}, nil
@@ -239,7 +453,7 @@ func extractLemma(lemmas map[string]WikidataValue) string {
 	return ""
 }
 
-func convertWikidataForm(wdForm WikidataForm, lemma string) (*dictv1.LexemeForm, error) {
+func convertWikidataForm(wdForm WikidataForm, lemma string, lexemeID string) (*dictv1.WordForm, error) {
 	text := ""
 	for _, key := range []string{"en", "en-us", "en-gb"} {
 		if value, ok := wdForm.Representations[key]; ok {
@@ -258,10 +472,10 @@ func convertWikidataForm(wdForm WikidataForm, lemma string) (*dictv1.LexemeForm,
 	}
 
 	formType := mapGrammaticalFeaturesToFormType(wdForm.GrammaticalFeatures, text, lemma)
-	return &dictv1.LexemeForm{
-		Id:       sanitizeID(strings.ToLower(wdForm.ID)),
-		Text:     text,
-		FormType: formType,
+	return &dictv1.WordForm{
+		LexemeId: lexemeID, // Use the parent Lexeme ID (e.g., "L123456")
+		Word:     text,
+		Type:     formType,
 	}, nil
 }
 
@@ -287,7 +501,6 @@ func convertWikidataSense(wdSense WikidataSense) *dictv1.LexemeSense {
 	}
 
 	return &dictv1.LexemeSense{
-		Id:       sanitizeID(strings.ToLower(wdSense.ID)),
 		Language: mapLanguageCode(lang),
 		Gloss:    gloss,
 	}
@@ -343,15 +556,6 @@ func mapLanguageCode(code string) commonv1.Language {
 	}
 }
 
-func determineLexemeEntryType(lexicalCategory string) dictv1.LexemeEntryType {
-	switch lexicalCategory {
-	case "Q134830", "Q4833830", "Q7250170":
-		return dictv1.LexemeEntryType_ENTRY_TYPE_PHRASE
-	default:
-		return dictv1.LexemeEntryType_ENTRY_TYPE_WORD
-	}
-}
-
 func mapLexicalCategoryToPOS(lexicalCategory string) string {
 	switch lexicalCategory {
 	case "Q1084":
@@ -364,7 +568,7 @@ func mapLexicalCategoryToPOS(lexicalCategory string) string {
 		return "adverb"
 	case "Q36224":
 		return "pronoun"
-	case "Q177545":
+	case "Q177545", "Q576271": // Q177545=numeral, Q576271=cardinal numeral
 		return "numeral"
 	case "Q10432772":
 		return "preposition"
@@ -372,22 +576,86 @@ func mapLexicalCategoryToPOS(lexicalCategory string) string {
 		return "interjection"
 	case "Q11471":
 		return "article"
+	case "Q814722": // determiner
+		return "determiner"
+	case "Q184943": // conjunction
+		return "conjunction"
 	default:
 		return ""
 	}
 }
 
-func hasLemmaForm(forms []*dictv1.LexemeForm) bool {
-	for _, form := range forms {
-		if form.FormType == dictv1.FormType_FORM_TYPE_LEMMA {
-			return true
+// inferPOSFromGlosses attempts to infer the part-of-speech from sense glosses
+// This is particularly useful for proper nouns and other words where Wikidata
+// doesn't provide a lexicalCategory but the gloss contains clear indicators
+func inferPOSFromGlosses(senses []WikidataSense) string {
+	// Collect all glosses
+	var glosses []string
+	for _, sense := range senses {
+		for _, glossValue := range sense.Glosses {
+			if glossValue.Value != "" {
+				glosses = append(glosses, strings.ToLower(glossValue.Value))
+			}
 		}
 	}
-	return false
-}
 
-func sanitizeID(input string) string {
-	input = strings.ReplaceAll(input, "-", "_")
-	input = strings.ReplaceAll(input, "/", "_")
-	return input
+	if len(glosses) == 0 {
+		return ""
+	}
+
+	// Check each gloss for patterns
+	for _, gloss := range glosses {
+		// Proper nouns (all are nouns)
+		if strings.Contains(gloss, "family name") ||
+			strings.Contains(gloss, "surname") ||
+			strings.Contains(gloss, "given name") ||
+			strings.Contains(gloss, "male given name") ||
+			strings.Contains(gloss, "female given name") ||
+			strings.Contains(gloss, "unisex given name") ||
+			strings.Contains(gloss, "first name") {
+			return "noun"
+		}
+
+		if strings.Contains(gloss, "place name") ||
+			strings.Contains(gloss, "city in") ||
+			strings.Contains(gloss, "town in") ||
+			strings.Contains(gloss, "village in") ||
+			strings.Contains(gloss, "municipality in") ||
+			strings.Contains(gloss, "country") ||
+			strings.Contains(gloss, "capital of") ||
+			strings.Contains(gloss, "river in") ||
+			strings.Contains(gloss, "mountain") ||
+			strings.Contains(gloss, "lake in") ||
+			strings.Contains(gloss, "island") ||
+			strings.Contains(gloss, "region") ||
+			strings.Contains(gloss, "province") ||
+			strings.Contains(gloss, "state in") {
+			return "noun"
+		}
+
+		// Other entity types that are nouns
+		if strings.Contains(gloss, "company") ||
+			strings.Contains(gloss, "organization") ||
+			strings.Contains(gloss, "university") ||
+			strings.Contains(gloss, "language") ||
+			strings.Contains(gloss, "ethnic group") ||
+			strings.Contains(gloss, "dog breed") ||
+			strings.Contains(gloss, "cat breed") {
+			return "noun"
+		}
+
+		// Phrases/idioms - typically don't have a single POS
+		// But if we must assign one, check the structure
+		if strings.Contains(gloss, "phrase") ||
+			strings.Contains(gloss, "idiom") ||
+			strings.Contains(gloss, "saying") ||
+			strings.Contains(gloss, "proverb") {
+			// These could be phrases, keep empty or return a special marker
+			// For now, we'll leave them empty
+			continue
+		}
+	}
+
+	// No pattern matched, return empty
+	return ""
 }

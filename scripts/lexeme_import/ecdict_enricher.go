@@ -61,7 +61,7 @@ func newECDICTEnricher(cfg pipelineConfig) (*ecdictEnricher, error) {
 	}, nil
 }
 
-func (e *ecdictEnricher) Enrich(lexeme *dictv1.DictionaryEntry) {
+func (e *ecdictEnricher) Enrich(lexeme *dictv1.Word) {
 	if lexeme == nil {
 		return
 	}
@@ -205,7 +205,7 @@ func loadECDICTEntries(cfg pipelineConfig) (map[string]*ecdictEnrichment, int, e
 	return entries, total, nil
 }
 
-func mergeEnrichment(lexeme *dictv1.DictionaryEntry, enrich *ecdictEnrichment) bool {
+func mergeEnrichment(lexeme *dictv1.Word, enrich *ecdictEnrichment) bool {
 	if enrich == nil || enrich.isEmpty() {
 		return false
 	}
@@ -253,7 +253,7 @@ func (e *ecdictEnrichment) isEmpty() bool {
 	return len(e.phonetics) == 0 && len(e.categories) == 0 && len(e.senses) == 0
 }
 
-func addPhonetics(lexeme *dictv1.DictionaryEntry, additions []*dictv1.Phonetic) bool {
+func addPhonetics(lexeme *dictv1.Word, additions []*dictv1.Phonetic) bool {
 	existing := make(map[string]struct{}, len(lexeme.Phonetics))
 	for _, p := range lexeme.Phonetics {
 		existing[phoneticKey(p)] = struct{}{}
@@ -274,7 +274,7 @@ func addPhonetics(lexeme *dictv1.DictionaryEntry, additions []*dictv1.Phonetic) 
 	return changed
 }
 
-func addCategories(lexeme *dictv1.DictionaryEntry, categories []string) bool {
+func addCategories(lexeme *dictv1.Word, categories []string) bool {
 	if len(categories) == 0 {
 		return false
 	}
@@ -298,31 +298,30 @@ func addCategories(lexeme *dictv1.DictionaryEntry, categories []string) bool {
 	return changed
 }
 
-func addSenses(lexeme *dictv1.DictionaryEntry, additions []sensePayload) bool {
+func addSenses(lexeme *dictv1.Word, additions []sensePayload) bool {
 	if len(additions) == 0 {
 		return false
 	}
 	existing := make(map[string]struct{})
 	for _, def := range lexeme.GetDefinitions() {
-		pos := def.GetPartOfSpeech()
+		pos := def.GetPos()
 		for _, sense := range def.GetSenses() {
 			existing[senseKey(sense.GetLanguage(), pos, sense.GetGloss())] = struct{}{}
 		}
 	}
 
 	changed := false
-	allowEnglish := !lexemeHasEnglishSense(lexeme)
+	// Allow both Wikidata glosses (English) and ECDICT definitions (English + Chinese)
+	// Wikidata glosses are typically brief semantic descriptions
+	// ECDICT definitions are more detailed dictionary entries
+	// Both have value and should be preserved (deduplicated by exact gloss match)
 	for _, add := range additions {
-		if add.language == commonv1.Language_LANGUAGE_ENGLISH && !allowEnglish {
-			continue
-		}
 		key := senseKey(add.language, add.partOfSpeech, add.gloss)
 		if _, ok := existing[key]; ok {
 			continue
 		}
 		def := ensureDefinition(lexeme, add.partOfSpeech)
 		def.Senses = append(def.Senses, &dictv1.LexemeSense{
-			Id:       generateSenseID(lexeme.GetId(), key),
 			Language: add.language,
 			Gloss:    add.gloss,
 		})
@@ -332,30 +331,87 @@ func addSenses(lexeme *dictv1.DictionaryEntry, additions []sensePayload) bool {
 	return changed
 }
 
-func ensureDefinition(lexeme *dictv1.DictionaryEntry, pos string) *dictv1.Definition {
+func ensureDefinition(lexeme *dictv1.Word, pos string) *dictv1.Definition {
 	pos = strings.TrimSpace(pos)
+
+	// First try exact POS match
 	for _, def := range lexeme.GetDefinitions() {
-		if strings.EqualFold(strings.TrimSpace(def.GetPartOfSpeech()), pos) {
+		if strings.EqualFold(strings.TrimSpace(def.GetPos()), pos) {
 			return def
 		}
 	}
+
+	// If no exact match, try fuzzy POS matching
+	// ECDICT uses abbreviated forms like "n.", "v.", "adj."
+	// Wikidata uses full forms like "noun", "verb", "adjective"
+	normalizedPos := normalizePOSForMatching(pos)
+	for _, def := range lexeme.GetDefinitions() {
+		if normalizePOSForMatching(def.GetPos()) == normalizedPos {
+			return def
+		}
+	}
+
+	// No matching definition found, create a new one
+	// Try to reuse existing LexemeId from other definitions if available
+	lexemeID := ""
+	if len(lexeme.GetDefinitions()) > 0 {
+		lexemeID = lexeme.GetDefinitions()[0].GetLexemeId()
+	}
+
+	// If we still don't have a lexemeID, we need to generate one
+	// This should rarely happen (only if ECDICT has data for a word without any Wikidata definitions)
+	if lexemeID == "" {
+		// Use lemma as fallback identifier
+		lexemeID = fmt.Sprintf("ecdict-%s-%s", strings.ToLower(lexeme.GetLemma()), normalizedPos)
+	}
+
 	def := &dictv1.Definition{
-		Id:           fmt.Sprintf("%s-ecdict-def-%d", lexeme.GetId(), len(lexeme.GetDefinitions())+1),
-		PartOfSpeech: pos,
+		LexemeId: lexemeID,
+		Pos:      pos,
 	}
 	lexeme.Definitions = append(lexeme.Definitions, def)
 	return def
 }
 
-func lexemeHasEnglishSense(lexeme *dictv1.DictionaryEntry) bool {
-	for _, def := range lexeme.GetDefinitions() {
-		for _, sense := range def.GetSenses() {
-			if sense.GetLanguage() == commonv1.Language_LANGUAGE_ENGLISH {
-				return true
-			}
-		}
+// normalizePOSForMatching converts POS tags to a normalized form for fuzzy matching
+// This should match the logic in normalizePOS() to ensure consistency
+func normalizePOSForMatching(pos string) string {
+	pos = strings.ToLower(strings.TrimSpace(pos))
+	pos = strings.TrimSuffix(pos, ".")
+
+	// Use the same mapping as normalizePOS
+	switch pos {
+	case "n", "noun":
+		return "noun"
+	case "v", "verb", "vt", "vi":
+		return "verb"
+	case "adj", "adjective":
+		return "adjective"
+	case "adv", "adverb":
+		return "adverb"
+	case "prep", "preposition":
+		return "preposition"
+	case "pron", "pronoun":
+		return "pronoun"
+	case "conj", "conjunction":
+		return "conjunction"
+	case "interj", "int", "interjection":
+		return "interjection"
+	case "art", "article":
+		return "article"
+	case "num", "numeral":
+		return "numeral"
+	case "aux", "auxiliary":
+		return "auxiliary"
+	case "abbr", "abbreviation":
+		return "abbreviation"
+	case "pref", "prefix":
+		return "prefix"
+	case "suf", "suffix":
+		return "suffix"
+	default:
+		return pos
 	}
-	return false
 }
 
 func phoneticKey(p *dictv1.Phonetic) string {
@@ -364,11 +420,6 @@ func phoneticKey(p *dictv1.Phonetic) string {
 
 func senseKey(lang commonv1.Language, pos, gloss string) string {
 	return fmt.Sprintf("%d|%s|%s", lang, strings.ToLower(strings.TrimSpace(pos)), strings.ToLower(strings.TrimSpace(gloss)))
-}
-
-func generateSenseID(lexemeID, key string) string {
-	sum := crc32.ChecksumIEEE([]byte(key))
-	return fmt.Sprintf("%s-ecdict-%08x", lexemeID, sum)
 }
 
 func buildPhonetics(ns sql.NullString) []*dictv1.Phonetic {
@@ -422,9 +473,23 @@ func buildSensePayloads(w wordRecord) []sensePayload {
 		return nil
 	}
 
+	// Extract POS from the dedicated pos field if available
+	// ECDICT uses WordNet format: "n:100", "v:5/n:95", "j:100", etc.
+	// where n=noun, v=verb, j=adjective, r=adverb, m=numeral
+	// and numbers represent confidence/probability percentages
+	var fallbackPOS string
+	if w.Pos.Valid && strings.TrimSpace(w.Pos.String) != "" {
+		fallbackPOS = parseWordNetPOS(w.Pos.String)
+	}
+
 	var results []sensePayload
 	for _, line := range defLines {
 		pos, rest := extractLeadingPOS(line)
+		// If no POS found in the line, use the fallback from pos field
+		if pos == "" && fallbackPOS != "" {
+			pos = fallbackPOS
+			rest = removeDomainMarkers(line) // Still need to remove domain markers
+		}
 		if rest == "" {
 			continue
 		}
@@ -436,6 +501,11 @@ func buildSensePayloads(w wordRecord) []sensePayload {
 	}
 	for _, line := range transLines {
 		pos, rest := extractLeadingPOS(line)
+		// If no POS found in the line, use the fallback from pos field
+		if pos == "" && fallbackPOS != "" {
+			pos = fallbackPOS
+			rest = removeDomainMarkers(line) // Still need to remove domain markers
+		}
 		if rest == "" {
 			continue
 		}
@@ -468,6 +538,14 @@ func extractLeadingPOS(line string) (string, string) {
 	if s == "" {
 		return "", ""
 	}
+
+	// Remove domain/category markers like [计], [法], [医], etc.
+	// These are NOT part-of-speech tags but domain indicators
+	s = removeDomainMarkers(s)
+	if s == "" {
+		return "", ""
+	}
+
 	lower := strings.ToLower(s)
 	candidates := []string{"vt", "vi", "adj", "adv", "prep", "pron", "conj", "interj", "int", "num", "art", "aux", "abbr", "pref", "suf", "noun", "n", "v"}
 	for _, cand := range candidates {
@@ -484,17 +562,162 @@ func extractLeadingPOS(line string) (string, string) {
 				continue
 			}
 			rest = strings.TrimSpace(strings.TrimPrefix(rest, "."))
+			// Remove domain markers from the rest of the text as well
+			rest = removeDomainMarkers(rest)
 			return normalizePOS(cand), rest
 		}
 	}
 	return "", s
 }
 
-func normalizePOS(pos string) string {
-	if pos == "noun" {
-		pos = "n"
+// removeDomainMarkers removes domain/category markers like [计], [法], [医], etc.
+// These markers indicate the domain (computing, law, medicine) but are not part-of-speech tags
+func removeDomainMarkers(s string) string {
+	s = strings.TrimSpace(s)
+	for {
+		// Find patterns like [x], [xx], [xxx] at the beginning
+		if len(s) < 3 {
+			break
+		}
+		if s[0] != '[' {
+			break
+		}
+		closeIdx := strings.Index(s, "]")
+		if closeIdx == -1 || closeIdx > 10 { // Domain markers are usually short
+			break
+		}
+		// Remove the marker and continue
+		s = strings.TrimSpace(s[closeIdx+1:])
 	}
-	return pos + "."
+	return s
+}
+
+// parseWordNetPOS parses ECDICT's WordNet-style POS format
+// Examples: "n:100" -> "noun", "v:5/n:95" -> "noun" (takes the highest probability)
+// WordNet POS codes: n=noun, v=verb, j=adjective, r=adverb, m=numeral
+func parseWordNetPOS(posStr string) string {
+	posStr = strings.TrimSpace(posStr)
+	if posStr == "" {
+		return ""
+	}
+
+	// Parse formats like "n:100" or "v:5/n:95"
+	// For mixed POS, take the one with highest probability
+	var bestPOS string
+	var bestProb int
+
+	// Split by slash for mixed POS
+	parts := strings.Split(posStr, "/")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Split by colon to get pos:probability
+		colonIdx := strings.Index(part, ":")
+		if colonIdx == -1 {
+			// No colon, treat the whole thing as POS
+			return wordNetPOSToStandard(part)
+		}
+
+		posCode := strings.TrimSpace(part[:colonIdx])
+		probStr := strings.TrimSpace(part[colonIdx+1:])
+
+		// Parse probability
+		var prob int
+		fmt.Sscanf(probStr, "%d", &prob)
+
+		if prob > bestProb {
+			bestProb = prob
+			bestPOS = posCode
+		}
+	}
+
+	if bestPOS == "" {
+		return ""
+	}
+
+	return wordNetPOSToStandard(bestPOS)
+}
+
+// wordNetPOSToStandard converts WordNet POS codes to standard full forms
+// Complete WordNet POS codes from ECDICT:
+// n=noun, v=verb, j=adjective, r=adverb, m=numeral, s=adjective satellite
+// a=article, i=preposition, p=pronoun, d=determiner, u=interjection, c=conjunction
+func wordNetPOSToStandard(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+
+	switch code {
+	case "n":
+		return "noun"
+	case "v":
+		return "verb"
+	case "j", "s": // j=adjective, s=adjective satellite
+		return "adjective"
+	case "r":
+		return "adverb"
+	case "m":
+		return "numeral"
+	case "a":
+		return "article"
+	case "i":
+		return "preposition"
+	case "p":
+		return "pronoun"
+	case "d":
+		return "determiner"
+	case "u":
+		return "interjection"
+	case "c":
+		return "conjunction"
+	default:
+		// If not a WordNet code, try normal normalization
+		return normalizePOS(code)
+	}
+}
+
+// normalizePOS converts POS abbreviations to their canonical full form
+// This ensures consistency across Wikidata (uses full forms) and ECDICT (uses abbreviations)
+func normalizePOS(pos string) string {
+	pos = strings.ToLower(strings.TrimSpace(pos))
+	pos = strings.TrimSuffix(pos, ".") // Remove trailing period if present
+
+	// Map all variants to canonical full forms (matching Wikidata's convention)
+	switch pos {
+	case "n", "noun":
+		return "noun"
+	case "v", "verb", "vt", "vi":
+		return "verb"
+	case "adj", "adjective":
+		return "adjective"
+	case "adv", "adverb":
+		return "adverb"
+	case "prep", "preposition":
+		return "preposition"
+	case "pron", "pronoun":
+		return "pronoun"
+	case "conj", "conjunction":
+		return "conjunction"
+	case "interj", "int", "interjection":
+		return "interjection"
+	case "art", "article":
+		return "article"
+	case "det", "determiner":
+		return "determiner"
+	case "num", "numeral":
+		return "numeral"
+	case "aux", "auxiliary":
+		return "auxiliary"
+	case "abbr", "abbreviation":
+		return "abbreviation"
+	case "pref", "prefix":
+		return "prefix"
+	case "suf", "suffix":
+		return "suffix"
+	default:
+		return pos
+	}
 }
 
 func prepareCachePath(url, cacheDirFlag string, noCache bool) (string, string, bool, error) {
