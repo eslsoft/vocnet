@@ -34,8 +34,6 @@ func (Lexeme) Fields() []ent.Field {
 			Default(entity.LanguageEnglish.CodeOrDefault()),
 		field.String("pos").
 			Default(""),
-		field.String("source").
-			Default(""),
 		field.String("entry_type").
 			Default(string(entity.LexemeEntryTypeWord)),
 		field.String("lemma").
@@ -57,14 +55,16 @@ func (Lexeme) Fields() []ent.Field {
 
 func (Lexeme) Edges() []ent.Edge {
 	return []ent.Edge{
-		// Lexeme -> LexemeForm (一对多)
-		edge.To("forms", LexemeForm.Type),
+		// Lexeme -> LexemeForm (一对多，级联删除)
+		edge.To("forms", LexemeForm.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 
-		// Lexeme -> Word (多对一，无外键约束)
+		// Lexeme -> Word (多对一，Word删除时设为NULL)
 		edge.From("word", Word.Type).
 			Ref("lexemes").
 			Field("word_id").
-			Unique(),
+			Unique().
+			Annotations(entsql.OnDelete(entsql.SetNull)),
 	}
 }
 

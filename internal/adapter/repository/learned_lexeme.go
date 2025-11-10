@@ -125,7 +125,7 @@ func (r *LearnedLexemeRepository) Update(ctx context.Context, lexeme *entity.Lea
 
 	languageCode := entity.NormalizeLanguage(lexeme.Language).Code()
 
-	mutation := r.client.LearnedLexeme.UpdateOneID(int(lexeme.ID)).
+	mutation := r.client.LearnedLexeme.UpdateOneID(lexeme.ID).
 		Where(entlearnedlexeme.UserIDEQ(lexeme.UserID)).
 		SetLexemeLid(strings.TrimSpace(lexeme.LexemeLID)).
 		SetDisplayTerm(strings.TrimSpace(lexeme.DisplayTerm)).

@@ -10,6 +10,40 @@ import (
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
+type stubLexemeRepo struct{}
+
+func (r *stubLexemeRepo) Create(_ context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
+	return lexeme, nil
+}
+
+func (r *stubLexemeRepo) Update(_ context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
+	return lexeme, nil
+}
+
+func (r *stubLexemeRepo) GetByID(_ context.Context, lexemeID int64) (*entity.Lexeme, error) {
+	return &entity.Lexeme{ID: lexemeID}, nil
+}
+
+func (r *stubLexemeRepo) Lookup(_ context.Context, surfaceForm string, language entity.Language) (*entity.Lexeme, error) {
+	return nil, nil
+}
+
+func (r *stubLexemeRepo) List(_ context.Context, filter *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
+	return nil, 0, nil
+}
+
+func (r *stubLexemeRepo) ListByWordID(_ context.Context, wordID int64) ([]*entity.Lexeme, error) {
+	return nil, nil
+}
+
+func (r *stubLexemeRepo) ListByIDs(_ context.Context, ids []int64) ([]*entity.Lexeme, error) {
+	return nil, nil
+}
+
+func (r *stubLexemeRepo) Delete(_ context.Context, lexemeID int64) error {
+	return nil
+}
+
 type inMemoryLearnedRepo struct {
 	store map[string]*entity.LearnedLexeme
 }
@@ -33,7 +67,7 @@ func (r *inMemoryLearnedRepo) Update(_ context.Context, lexeme *entity.LearnedLe
 	return &copy, nil
 }
 
-func (r *inMemoryLearnedRepo) GetByLexemeID(_ context.Context, userID int64, lexemeID string) (*entity.LearnedLexeme, error) {
+func (r *inMemoryLearnedRepo) GetByLexemeID(_ context.Context, userID int64, lexemeID int64) (*entity.LearnedLexeme, error) {
 	rec, ok := r.store[userKey(userID, lexemeID)]
 	if !ok {
 		return nil, entity.ErrLearnedLexemeNotFound
@@ -42,7 +76,7 @@ func (r *inMemoryLearnedRepo) GetByLexemeID(_ context.Context, userID int64, lex
 	return &copy, nil
 }
 
-func (r *inMemoryLearnedRepo) FindByLexemeID(_ context.Context, userID int64, lexemeID string) (*entity.LearnedLexeme, error) {
+func (r *inMemoryLearnedRepo) FindByLexemeID(_ context.Context, userID int64, lexemeID int64) (*entity.LearnedLexeme, error) {
 	rec, ok := r.store[userKey(userID, lexemeID)]
 	if !ok {
 		return nil, nil
@@ -55,7 +89,7 @@ func (r *inMemoryLearnedRepo) List(context.Context, *repository.ListLearnedLexem
 	return nil, 0, nil
 }
 
-func (r *inMemoryLearnedRepo) DeleteByLexemeID(_ context.Context, userID int64, lexemeID string) error {
+func (r *inMemoryLearnedRepo) DeleteByLexemeID(_ context.Context, userID int64, lexemeID int64) error {
 	delete(r.store, userKey(userID, lexemeID))
 	return nil
 }
@@ -64,16 +98,17 @@ func key(lexeme *entity.LearnedLexeme) string {
 	return userKey(lexeme.UserID, lexeme.LexemeID)
 }
 
-func userKey(userID int64, lexemeID string) string {
-	return fmt.Sprintf("%d:%s", userID, lexemeID)
+func userKey(userID int64, lexemeID int64) string {
+	return fmt.Sprintf("%d:%d", userID, lexemeID)
 }
 
 func TestCollectLexemeCreatesAndUpdates(t *testing.T) {
 	repo := newInMemoryLearnedRepo()
-	uc := NewLearnedLexemeUsecase(repo)
+	lexemeRepo := &stubLexemeRepo{}
+	uc := NewLearnedLexemeUsecase(repo, lexemeRepo)
 
 	payload := &entity.LearnedLexeme{
-		LexemeID:    "L-test",
+		LexemeID:    1,
 		DisplayTerm: "Test",
 		Language:    entity.LanguageEnglish,
 		CreatedBy:   "user",
@@ -107,11 +142,12 @@ func TestCollectLexemeCreatesAndUpdates(t *testing.T) {
 
 func TestUpdateMasteryUsesLexemeID(t *testing.T) {
 	repo := newInMemoryLearnedRepo()
-	uc := NewLearnedLexemeUsecase(repo)
+	lexemeRepo := &stubLexemeRepo{}
+	uc := NewLearnedLexemeUsecase(repo, lexemeRepo)
 
 	entry := &entity.LearnedLexeme{
 		UserID:    2,
-		LexemeID:  "L-42",
+		LexemeID:  42,
 		CreatedBy: "user",
 	}
 	entry.Normalize(time.Now())
@@ -119,7 +155,7 @@ func TestUpdateMasteryUsesLexemeID(t *testing.T) {
 		t.Fatalf("seed create failed: %v", err)
 	}
 
-	result, err := uc.UpdateMastery(context.Background(), 2, "L-42", entity.MasteryBreakdown{Overall: 10}, entity.ReviewTiming{IntervalDays: 3}, map[string]entity.FormMastery{
+	result, err := uc.UpdateMastery(context.Background(), 2, 42, entity.MasteryBreakdown{Overall: 10}, entity.ReviewTiming{IntervalDays: 3}, map[string]entity.FormMastery{
 		"form": {FormID: "form", Strength: 1},
 	}, "note")
 	if err != nil {

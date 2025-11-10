@@ -117,10 +117,12 @@ func (r *wordGroupRepository) DeleteByWID(ctx context.Context, wid string) error
 }
 
 type listWordGroupParams struct {
-	Language    string
-	Keyword     string
-	PrimaryKey  string
-	PrimaryDesc bool
+	Language      string
+	Keyword       string
+	PrimaryKey    string
+	PrimaryDesc   bool
+	SecondaryKey  string
+	SecondaryDesc bool
 }
 
 func applyWordGroupFilters(q *entdb.WordQuery, params listWordGroupParams) {
@@ -133,6 +135,7 @@ func applyWordGroupFilters(q *entdb.WordQuery, params listWordGroupParams) {
 }
 
 func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
+	// Apply primary ordering
 	switch params.PrimaryKey {
 	case "lemma":
 		if params.PrimaryDesc {
@@ -149,7 +152,24 @@ func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
 	default:
 		q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 	}
-	q.Order(entword.ByID())
+
+	// Apply secondary ordering
+	if params.SecondaryKey != "" && params.SecondaryKey != params.PrimaryKey {
+		switch params.SecondaryKey {
+		case "lemma":
+			if params.SecondaryDesc {
+				q.Order(entword.ByLemma(sql.OrderDesc()))
+			} else {
+				q.Order(entword.ByLemma())
+			}
+		case "updated_at":
+			if params.SecondaryDesc {
+				q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+			} else {
+				q.Order(entword.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
+			}
+		}
+	}
 }
 
 func mapEntWord(rec *entdb.Word) *entity.Word {

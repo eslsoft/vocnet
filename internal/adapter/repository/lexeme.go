@@ -55,7 +55,6 @@ func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*
 		SetLid(strings.TrimSpace(lexeme.LID)).
 		SetLanguage(entity.NormalizeLanguage(lexeme.Language).Code()).
 		SetPos(strings.TrimSpace(lexeme.POS)).
-		SetSource(strings.TrimSpace(lexeme.Source)).
 		SetEntryType(string(lexeme.EntryType)).
 		SetLemma(strings.TrimSpace(lexeme.Lemma)).
 		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
@@ -96,7 +95,6 @@ func (r *lexemeRepository) Update(ctx context.Context, lexeme *entity.Lexeme) (*
 	update := tx.Lexeme.UpdateOneID(lexeme.ID).
 		SetLanguage(entity.NormalizeLanguage(lexeme.Language).Code()).
 		SetPos(strings.TrimSpace(lexeme.POS)).
-		SetSource(strings.TrimSpace(lexeme.Source)).
 		SetEntryType(string(lexeme.EntryType)).
 		SetLemma(strings.TrimSpace(lexeme.Lemma)).
 		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
@@ -349,7 +347,6 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 		LID:       rec.Lid,
 		Language:  entity.ParseLanguage(rec.Language),
 		POS:       rec.Pos,
-		Source:    rec.Source,
 		EntryType: entity.LexemeEntryType(rec.EntryType),
 		Lemma:     rec.Lemma,
 		CreatedAt: rec.CreatedAt,
@@ -365,7 +362,7 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 		lex.Forms = make([]entity.LexemeForm, 0, len(rec.Edges.Forms))
 		for _, f := range rec.Edges.Forms {
 			lex.Forms = append(lex.Forms, entity.LexemeForm{
-				ID:          fmt.Sprintf("%d", f.ID),
+				ID:          f.ID,
 				LexemeID:    f.LexemeID,
 				Text:        f.Text,
 				FormType:    entity.LexemeFormType(f.FormType),
@@ -381,7 +378,6 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 
 	return lex
 }
-
 
 func translateLexemeError(err error) error {
 	if err == nil {

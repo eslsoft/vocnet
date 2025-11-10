@@ -9,51 +9,55 @@ import (
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
-type stubLexemeRepo struct {
+type testLexemeRepo struct {
 	created *entity.Lexeme
 }
 
-func (s *stubLexemeRepo) Create(_ context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
+func (s *testLexemeRepo) Create(_ context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
+	// Simulate ID generation
+	if lexeme.ID == 0 {
+		lexeme.ID = 123
+	}
 	s.created = lexeme
 	return lexeme, nil
 }
 
-func (s *stubLexemeRepo) Update(_ context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
+func (s *testLexemeRepo) Update(_ context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
 	return lexeme, nil
 }
 
-func (s *stubLexemeRepo) GetByID(_ context.Context, lexemeID string) (*entity.Lexeme, error) {
-	if lexemeID == "" {
+func (s *testLexemeRepo) GetByID(_ context.Context, lexemeID int64) (*entity.Lexeme, error) {
+	if lexemeID == 0 {
 		return nil, entity.ErrLexemeNotFound
 	}
 	return &entity.Lexeme{ID: lexemeID}, nil
 }
 
-func (s *stubLexemeRepo) Lookup(_ context.Context, surface string, _ entity.Language) (*entity.Lexeme, error) {
+func (s *testLexemeRepo) Lookup(_ context.Context, surface string, _ entity.Language) (*entity.Lexeme, error) {
 	if surface == "" {
 		return nil, nil
 	}
-	return &entity.Lexeme{ID: "LX1"}, nil
+	return &entity.Lexeme{ID: 1}, nil
 }
 
-func (s *stubLexemeRepo) List(_ context.Context, _ *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
+func (s *testLexemeRepo) List(_ context.Context, _ *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
 	return nil, 0, nil
 }
 
-func (s *stubLexemeRepo) ListByWordKey(_ context.Context, _ string) ([]*entity.Lexeme, error) {
+func (s *testLexemeRepo) ListByWordID(_ context.Context, _ int64) ([]*entity.Lexeme, error) {
 	return nil, nil
 }
 
-func (s *stubLexemeRepo) ListByIDs(_ context.Context, _ []string) ([]*entity.Lexeme, error) {
+func (s *testLexemeRepo) ListByIDs(_ context.Context, _ []int64) ([]*entity.Lexeme, error) {
 	return nil, nil
 }
 
-func (s *stubLexemeRepo) Delete(_ context.Context, _ string) error {
+func (s *testLexemeRepo) Delete(_ context.Context, _ int64) error {
 	return nil
 }
 
 func TestLexemeUsecase_CreateNormalizesData(t *testing.T) {
-	repo := &stubLexemeRepo{}
+	repo := &testLexemeRepo{}
 	uc := NewLexemeUsecase(repo, nil)
 
 	payload := &entity.Lexeme{
@@ -69,7 +73,7 @@ func TestLexemeUsecase_CreateNormalizesData(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	if created.ID == "" {
+	if created.ID == 0 {
 		t.Fatalf("expected generated lexeme ID")
 	}
 	if created.Language != entity.LanguageEnglish {
@@ -81,8 +85,8 @@ func TestLexemeUsecase_CreateNormalizesData(t *testing.T) {
 }
 
 func TestLexemeUsecase_GetValidatesIdentifier(t *testing.T) {
-	uc := NewLexemeUsecase(&stubLexemeRepo{}, nil)
-	if _, err := uc.Get(context.Background(), ""); !errors.Is(err, entity.ErrInvalidLexemeID) {
+	uc := NewLexemeUsecase(&testLexemeRepo{}, nil)
+	if _, err := uc.Get(context.Background(), 0); !errors.Is(err, entity.ErrInvalidLexemeID) {
 		t.Fatalf("expected ErrInvalidLexemeID, got %v", err)
 	}
 }

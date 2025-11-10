@@ -36,7 +36,6 @@ type Lexeme struct {
 	LID       string // Stable business identifier: {language}:{lemma}:{pos}
 	WordID    int64
 	POS       string
-	Source    string
 	Language  Language
 	EntryType LexemeEntryType
 	Lemma     string
@@ -50,7 +49,7 @@ type Lexeme struct {
 
 // LexemeForm captures a surfaced variant of a lexeme's lemma.
 type LexemeForm struct {
-	ID          string
+	ID          int64
 	LexemeID    int64
 	Text        string
 	FormType    LexemeFormType

@@ -35,9 +35,6 @@ func (Word) Fields() []ent.Field {
 		field.JSON("categories", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
-		field.JSON("lexeme_ids", []string{}).
-			Default([]string{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Int32("completeness").
 			Default(0),
 		field.Time("created_at").
@@ -51,14 +48,17 @@ func (Word) Fields() []ent.Field {
 
 func (Word) Edges() []ent.Edge {
 	return []ent.Edge{
-		// Word -> Lexeme (一对多，通过 word_id 字段关联)
+		// Word -> Lexeme (一对多，删除Word时Lexeme.word_id设为NULL)
+		// 注：级联策略在Lexeme端的edge.From中定义
 		edge.To("lexemes", Lexeme.Type),
 	}
 }
 
 func (Word) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("language", "lemma"),
+		// 唯一约束：同一语言下的同一 lemma 只能有一个 Word 记录
+		// 因为 wid = {language}:{lemma} 是唯一的
+		index.Fields("language", "lemma").Unique(),
 	}
 }
 

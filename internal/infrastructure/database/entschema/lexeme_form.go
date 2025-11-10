@@ -18,6 +18,7 @@ type LexemeForm struct {
 
 func (LexemeForm) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("lexeme_id").
 			Comment("Foreign key to lexemes.id"),
 		field.String("text").
@@ -53,9 +54,8 @@ func (LexemeForm) Indexes() []ent.Index {
 		// 高效查找：通过 text 查找对应的 lexeme
 		index.Fields("text"),
 		// 唯一约束：同一个 lexeme 不能有重复的 form text
+		// 注意：这个复合索引已经覆盖了单独的 lexeme_id 索引查询
 		index.Fields("lexeme_id", "text").Unique(),
-		// 复合索引：支持按 lexeme_id 快速获取所有 forms
-		index.Fields("lexeme_id"),
 	}
 }
 

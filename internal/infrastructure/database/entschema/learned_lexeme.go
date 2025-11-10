@@ -20,6 +20,7 @@ type LearnedLexeme struct {
 
 func (LearnedLexeme) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.Int64("lexeme_id").
 			Optional().
@@ -67,6 +68,8 @@ func (LearnedLexeme) Indexes() []ent.Index {
 		index.Fields("user_id", "lexeme_lid").Unique(),
 		index.Fields("user_id", "language", "display_term"),
 		index.Fields("lexeme_id"),
+		// 优化复习查询：查找需要复习的词条
+		index.Fields("user_id", "review_next_review_at"),
 	}
 }
 

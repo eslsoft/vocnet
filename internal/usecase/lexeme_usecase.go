@@ -34,10 +34,14 @@ func (u *lexemeUsecase) Create(ctx context.Context, lexeme *entity.Lexeme) (*ent
 	if err != nil {
 		return nil, err
 	}
+	// Normalize forms with lexeme ID after creation
+	norm.Forms = normalizeLexemeForms(norm.ID, norm.Forms)
 	created, err := u.repo.Create(ctx, norm)
 	if err != nil {
 		return nil, err
 	}
+	// Update forms with the created lexeme's ID
+	created.Forms = normalizeLexemeForms(created.ID, created.Forms)
 	if created.WordID > 0 {
 		_ = u.refreshWordGroup(ctx, created.WordID) // best-effort
 	}
@@ -127,7 +131,7 @@ func normalizeLexemeForms(lexemeID int64, forms []entity.LexemeForm) []entity.Le
 	out := make([]entity.LexemeForm, 0, len(forms))
 	for _, form := range forms {
 		out = append(out, entity.LexemeForm{
-			ID:          strings.TrimSpace(form.ID),
+			ID:          form.ID,
 			LexemeID:    lexemeID,
 			Text:        strings.TrimSpace(form.Text),
 			FormType:    defaultFormType(form.FormType),
