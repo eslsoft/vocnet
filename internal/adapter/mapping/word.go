@@ -164,6 +164,7 @@ func setTimestamps(word *dictv1.Word, lexemes []*entity.Lexeme) {
 	}
 }
 
+//nolint:dupl // Bidirectional mapping naturally has similar structure to fromPbFormType
 func toPbFormType(in entity.LexemeFormType) dictv1.FormType {
 	switch in {
 	case entity.LexemeFormTypeLemma:
@@ -295,6 +296,8 @@ func definitionsToLexemes(pb *dictv1.Word, wordLang entity.Language) []*entity.L
 }
 
 // fromPbFormType converts proto FormType to entity LexemeFormType
+//
+//nolint:dupl // Bidirectional mapping naturally has similar structure to toPbFormType
 func fromPbFormType(pbType dictv1.FormType) entity.LexemeFormType {
 	switch pbType {
 	case dictv1.FormType_FORM_TYPE_LEMMA:

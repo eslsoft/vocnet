@@ -353,7 +353,7 @@ func mapEntLearnedLexeme(rec *entdb.LearnedLexeme) *entity.LearnedLexeme {
 	}
 
 	out := &entity.LearnedLexeme{
-		ID:               int64(rec.ID),
+		ID:               rec.ID,
 		UserID:           rec.UserID,
 		LexemeExternalID: rec.LexemeExternalID,
 		DisplayTerm:      rec.DisplayTerm,
