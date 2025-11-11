@@ -10,7 +10,7 @@ import (
 	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	structpb "google.golang.org/protobuf/types/known/structpb"
+	_ "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -24,31 +24,32 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// LearnedLexeme captures a user's personalised link to a lexeme.
-type LearnedLexeme struct {
+// LearnedWord captures a user's personalised vocabulary entry.
+// This represents a user's learning record for a word (word-level, not lexeme-level).
+type LearnedWord struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	LexemeId      int64                  `protobuf:"varint,2,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"`
-	Spec          *LearnedLexemeSpec     `protobuf:"bytes,3,opt,name=spec,proto3" json:"spec,omitempty"`
-	Status        *LearnedLexemeStatus   `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	WordId        int64                  `protobuf:"varint,2,opt,name=word_id,json=wordId,proto3" json:"word_id,omitempty"` // Reference to words.id
+	Spec          *LearnedWordSpec       `protobuf:"bytes,3,opt,name=spec,proto3" json:"spec,omitempty"`
+	Status        *LearnedWordStatus     `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LearnedLexeme) Reset() {
-	*x = LearnedLexeme{}
+func (x *LearnedWord) Reset() {
+	*x = LearnedWord{}
 	mi := &file_learning_v1_learning_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LearnedLexeme) String() string {
+func (x *LearnedWord) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LearnedLexeme) ProtoMessage() {}
+func (*LearnedWord) ProtoMessage() {}
 
-func (x *LearnedLexeme) ProtoReflect() protoreflect.Message {
+func (x *LearnedWord) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -60,65 +61,66 @@ func (x *LearnedLexeme) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LearnedLexeme.ProtoReflect.Descriptor instead.
-func (*LearnedLexeme) Descriptor() ([]byte, []int) {
+// Deprecated: Use LearnedWord.ProtoReflect.Descriptor instead.
+func (*LearnedWord) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *LearnedLexeme) GetId() int64 {
+func (x *LearnedWord) GetId() int64 {
 	if x != nil {
 		return x.Id
 	}
 	return 0
 }
 
-func (x *LearnedLexeme) GetLexemeId() int64 {
+func (x *LearnedWord) GetWordId() int64 {
 	if x != nil {
-		return x.LexemeId
+		return x.WordId
 	}
 	return 0
 }
 
-func (x *LearnedLexeme) GetSpec() *LearnedLexemeSpec {
+func (x *LearnedWord) GetSpec() *LearnedWordSpec {
 	if x != nil {
 		return x.Spec
 	}
 	return nil
 }
 
-func (x *LearnedLexeme) GetStatus() *LearnedLexemeStatus {
+func (x *LearnedWord) GetStatus() *LearnedWordStatus {
 	if x != nil {
 		return x.Status
 	}
 	return nil
 }
 
-// LearnedLexemeSpec stores user-authored metadata.
-type LearnedLexemeSpec struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	DisplayTerm   string                   `protobuf:"bytes,1,opt,name=display_term,json=displayTerm,proto3" json:"display_term,omitempty"`
-	Language      v1.Language              `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`
-	Tags          []string                 `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
-	Note          string                   `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
-	Relations     []*LearnedLexemeRelation `protobuf:"bytes,5,rep,name=relations,proto3" json:"relations,omitempty"`
+// LearnedWordSpec stores user-authored metadata.
+type LearnedWordSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DisplayTerm   string                 `protobuf:"bytes,1,opt,name=display_term,json=displayTerm,proto3" json:"display_term,omitempty"` // The surface form user encountered (e.g. "ran" when learning "run")
+	Language      v1.Language            `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`
+	Tags          []string               `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
+	Note          string                 `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
+	Relations     []*LearnedWordRelation `protobuf:"bytes,5,rep,name=relations,proto3" json:"relations,omitempty"`
+	Contexts      []*LearnedWordContext  `protobuf:"bytes,6,rep,name=contexts,proto3" json:"contexts,omitempty"` // Context sentences where user encountered this word
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LearnedLexemeSpec) Reset() {
-	*x = LearnedLexemeSpec{}
+func (x *LearnedWordSpec) Reset() {
+	*x = LearnedWordSpec{}
 	mi := &file_learning_v1_learning_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LearnedLexemeSpec) String() string {
+func (x *LearnedWordSpec) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LearnedLexemeSpec) ProtoMessage() {}
+func (*LearnedWordSpec) ProtoMessage() {}
 
-func (x *LearnedLexemeSpec) ProtoReflect() protoreflect.Message {
+func (x *LearnedWordSpec) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -130,74 +132,80 @@ func (x *LearnedLexemeSpec) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LearnedLexemeSpec.ProtoReflect.Descriptor instead.
-func (*LearnedLexemeSpec) Descriptor() ([]byte, []int) {
+// Deprecated: Use LearnedWordSpec.ProtoReflect.Descriptor instead.
+func (*LearnedWordSpec) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *LearnedLexemeSpec) GetDisplayTerm() string {
+func (x *LearnedWordSpec) GetDisplayTerm() string {
 	if x != nil {
 		return x.DisplayTerm
 	}
 	return ""
 }
 
-func (x *LearnedLexemeSpec) GetLanguage() v1.Language {
+func (x *LearnedWordSpec) GetLanguage() v1.Language {
 	if x != nil {
 		return x.Language
 	}
 	return v1.Language(0)
 }
 
-func (x *LearnedLexemeSpec) GetTags() []string {
+func (x *LearnedWordSpec) GetTags() []string {
 	if x != nil {
 		return x.Tags
 	}
 	return nil
 }
 
-func (x *LearnedLexemeSpec) GetNote() string {
+func (x *LearnedWordSpec) GetNote() string {
 	if x != nil {
 		return x.Note
 	}
 	return ""
 }
 
-func (x *LearnedLexemeSpec) GetRelations() []*LearnedLexemeRelation {
+func (x *LearnedWordSpec) GetRelations() []*LearnedWordRelation {
 	if x != nil {
 		return x.Relations
 	}
 	return nil
 }
 
-// LearnedLexemeStatus is maintained by the system to reflect learning progress.
-type LearnedLexemeStatus struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Mastery       *MasteryBreakdown       `protobuf:"bytes,1,opt,name=mastery,proto3" json:"mastery,omitempty"`
-	ReviewTiming  *ReviewTiming           `protobuf:"bytes,2,opt,name=review_timing,json=reviewTiming,proto3" json:"review_timing,omitempty"`
-	FormStatus    map[string]*FormMastery `protobuf:"bytes,3,rep,name=form_status,json=formStatus,proto3" json:"form_status,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	QueryCount    int64                   `protobuf:"varint,4,opt,name=query_count,json=queryCount,proto3" json:"query_count,omitempty"`
-	CreatedBy     string                  `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
-	CreatedAt     *timestamppb.Timestamp  `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp  `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+func (x *LearnedWordSpec) GetContexts() []*LearnedWordContext {
+	if x != nil {
+		return x.Contexts
+	}
+	return nil
+}
+
+// LearnedWordStatus is maintained by the system to reflect learning progress.
+type LearnedWordStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Mastery       *MasteryBreakdown      `protobuf:"bytes,1,opt,name=mastery,proto3" json:"mastery,omitempty"`
+	ReviewTiming  *ReviewTiming          `protobuf:"bytes,2,opt,name=review_timing,json=reviewTiming,proto3" json:"review_timing,omitempty"`
+	QueryCount    int64                  `protobuf:"varint,3,opt,name=query_count,json=queryCount,proto3" json:"query_count,omitempty"`
+	CreatedBy     string                 `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LearnedLexemeStatus) Reset() {
-	*x = LearnedLexemeStatus{}
+func (x *LearnedWordStatus) Reset() {
+	*x = LearnedWordStatus{}
 	mi := &file_learning_v1_learning_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LearnedLexemeStatus) String() string {
+func (x *LearnedWordStatus) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LearnedLexemeStatus) ProtoMessage() {}
+func (*LearnedWordStatus) ProtoMessage() {}
 
-func (x *LearnedLexemeStatus) ProtoReflect() protoreflect.Message {
+func (x *LearnedWordStatus) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -209,54 +217,47 @@ func (x *LearnedLexemeStatus) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LearnedLexemeStatus.ProtoReflect.Descriptor instead.
-func (*LearnedLexemeStatus) Descriptor() ([]byte, []int) {
+// Deprecated: Use LearnedWordStatus.ProtoReflect.Descriptor instead.
+func (*LearnedWordStatus) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *LearnedLexemeStatus) GetMastery() *MasteryBreakdown {
+func (x *LearnedWordStatus) GetMastery() *MasteryBreakdown {
 	if x != nil {
 		return x.Mastery
 	}
 	return nil
 }
 
-func (x *LearnedLexemeStatus) GetReviewTiming() *ReviewTiming {
+func (x *LearnedWordStatus) GetReviewTiming() *ReviewTiming {
 	if x != nil {
 		return x.ReviewTiming
 	}
 	return nil
 }
 
-func (x *LearnedLexemeStatus) GetFormStatus() map[string]*FormMastery {
-	if x != nil {
-		return x.FormStatus
-	}
-	return nil
-}
-
-func (x *LearnedLexemeStatus) GetQueryCount() int64 {
+func (x *LearnedWordStatus) GetQueryCount() int64 {
 	if x != nil {
 		return x.QueryCount
 	}
 	return 0
 }
 
-func (x *LearnedLexemeStatus) GetCreatedBy() string {
+func (x *LearnedWordStatus) GetCreatedBy() string {
 	if x != nil {
 		return x.CreatedBy
 	}
 	return ""
 }
 
-func (x *LearnedLexemeStatus) GetCreatedAt() *timestamppb.Timestamp {
+func (x *LearnedWordStatus) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *LearnedLexemeStatus) GetUpdatedAt() *timestamppb.Timestamp {
+func (x *LearnedWordStatus) GetUpdatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.UpdatedAt
 	}
@@ -409,77 +410,8 @@ func (x *ReviewTiming) GetFailCount() int32 {
 	return 0
 }
 
-// Mastery signals for a specific surface form of a lexeme.
-type FormMastery struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	FormId        string                 `protobuf:"bytes,1,opt,name=form_id,json=formId,proto3" json:"form_id,omitempty"`
-	Strength      int32                  `protobuf:"varint,2,opt,name=strength,proto3" json:"strength,omitempty"`
-	Exposure      int32                  `protobuf:"varint,3,opt,name=exposure,proto3" json:"exposure,omitempty"`
-	Metadata      *structpb.Struct       `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *FormMastery) Reset() {
-	*x = FormMastery{}
-	mi := &file_learning_v1_learning_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *FormMastery) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*FormMastery) ProtoMessage() {}
-
-func (x *FormMastery) ProtoReflect() protoreflect.Message {
-	mi := &file_learning_v1_learning_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use FormMastery.ProtoReflect.Descriptor instead.
-func (*FormMastery) Descriptor() ([]byte, []int) {
-	return file_learning_v1_learning_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *FormMastery) GetFormId() string {
-	if x != nil {
-		return x.FormId
-	}
-	return ""
-}
-
-func (x *FormMastery) GetStrength() int32 {
-	if x != nil {
-		return x.Strength
-	}
-	return 0
-}
-
-func (x *FormMastery) GetExposure() int32 {
-	if x != nil {
-		return x.Exposure
-	}
-	return 0
-}
-
-func (x *FormMastery) GetMetadata() *structpb.Struct {
-	if x != nil {
-		return x.Metadata
-	}
-	return nil
-}
-
-// Lexeme-to-lexeme relationship for building vocabulary networks
-type LearnedLexemeRelation struct {
+// Word-to-word relationship for building vocabulary networks
+type LearnedWordRelation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Word          string                 `protobuf:"bytes,1,opt,name=word,proto3" json:"word,omitempty"`
 	RelationType  v1.RelationType        `protobuf:"varint,2,opt,name=relation_type,json=relationType,proto3,enum=common.v1.RelationType" json:"relation_type,omitempty"` // Type of relationship
@@ -490,20 +422,96 @@ type LearnedLexemeRelation struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LearnedLexemeRelation) Reset() {
-	*x = LearnedLexemeRelation{}
+func (x *LearnedWordRelation) Reset() {
+	*x = LearnedWordRelation{}
+	mi := &file_learning_v1_learning_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LearnedWordRelation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LearnedWordRelation) ProtoMessage() {}
+
+func (x *LearnedWordRelation) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_learning_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LearnedWordRelation.ProtoReflect.Descriptor instead.
+func (*LearnedWordRelation) Descriptor() ([]byte, []int) {
+	return file_learning_v1_learning_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *LearnedWordRelation) GetWord() string {
+	if x != nil {
+		return x.Word
+	}
+	return ""
+}
+
+func (x *LearnedWordRelation) GetRelationType() v1.RelationType {
+	if x != nil {
+		return x.RelationType
+	}
+	return v1.RelationType(0)
+}
+
+func (x *LearnedWordRelation) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *LearnedWordRelation) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *LearnedWordRelation) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+// LearnedWordContext stores a sentence/context where user encountered the word
+type LearnedWordContext struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sentence      string                 `protobuf:"bytes,1,opt,name=sentence,proto3" json:"sentence,omitempty"`                          // The sentence containing the word
+	Source        v1.SourceType          `protobuf:"varint,2,opt,name=source,proto3,enum=common.v1.SourceType" json:"source,omitempty"`   // How this context was added (article, book, manual, etc.)
+	SourceRef     string                 `protobuf:"bytes,3,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`       // Optional reference (article title, book name, URL, etc.)
+	CollectedAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=collected_at,json=collectedAt,proto3" json:"collected_at,omitempty"` // When this context was collected
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LearnedWordContext) Reset() {
+	*x = LearnedWordContext{}
 	mi := &file_learning_v1_learning_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LearnedLexemeRelation) String() string {
+func (x *LearnedWordContext) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LearnedLexemeRelation) ProtoMessage() {}
+func (*LearnedWordContext) ProtoMessage() {}
 
-func (x *LearnedLexemeRelation) ProtoReflect() protoreflect.Message {
+func (x *LearnedWordContext) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -515,42 +523,35 @@ func (x *LearnedLexemeRelation) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LearnedLexemeRelation.ProtoReflect.Descriptor instead.
-func (*LearnedLexemeRelation) Descriptor() ([]byte, []int) {
+// Deprecated: Use LearnedWordContext.ProtoReflect.Descriptor instead.
+func (*LearnedWordContext) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *LearnedLexemeRelation) GetWord() string {
+func (x *LearnedWordContext) GetSentence() string {
 	if x != nil {
-		return x.Word
+		return x.Sentence
 	}
 	return ""
 }
 
-func (x *LearnedLexemeRelation) GetRelationType() v1.RelationType {
+func (x *LearnedWordContext) GetSource() v1.SourceType {
 	if x != nil {
-		return x.RelationType
+		return x.Source
 	}
-	return v1.RelationType(0)
+	return v1.SourceType(0)
 }
 
-func (x *LearnedLexemeRelation) GetNote() string {
+func (x *LearnedWordContext) GetSourceRef() string {
 	if x != nil {
-		return x.Note
+		return x.SourceRef
 	}
 	return ""
 }
 
-func (x *LearnedLexemeRelation) GetCreatedAt() *timestamppb.Timestamp {
+func (x *LearnedWordContext) GetCollectedAt() *timestamppb.Timestamp {
 	if x != nil {
-		return x.CreatedAt
-	}
-	return nil
-}
-
-func (x *LearnedLexemeRelation) GetUpdatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.UpdatedAt
+		return x.CollectedAt
 	}
 	return nil
 }
@@ -559,34 +560,30 @@ var File_learning_v1_learning_proto protoreflect.FileDescriptor
 
 const file_learning_v1_learning_proto_rawDesc = "" +
 	"\n" +
-	"\x1alearning/v1/learning.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaa\x01\n" +
-	"\rLearnedLexeme\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
-	"\tlexeme_id\x18\x02 \x01(\x03R\blexemeId\x122\n" +
-	"\x04spec\x18\x03 \x01(\v2\x1e.learning.v1.LearnedLexemeSpecR\x04spec\x128\n" +
-	"\x06status\x18\x04 \x01(\v2 .learning.v1.LearnedLexemeStatusR\x06status\"\xd1\x01\n" +
-	"\x11LearnedLexemeSpec\x12!\n" +
+	"\x1alearning/v1/learning.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x01\n" +
+	"\vLearnedWord\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x17\n" +
+	"\aword_id\x18\x02 \x01(\x03R\x06wordId\x120\n" +
+	"\x04spec\x18\x03 \x01(\v2\x1c.learning.v1.LearnedWordSpecR\x04spec\x126\n" +
+	"\x06status\x18\x04 \x01(\v2\x1e.learning.v1.LearnedWordStatusR\x06status\"\x8a\x02\n" +
+	"\x0fLearnedWordSpec\x12!\n" +
 	"\fdisplay_term\x18\x01 \x01(\tR\vdisplayTerm\x12/\n" +
 	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x12\n" +
 	"\x04tags\x18\x03 \x03(\tR\x04tags\x12\x12\n" +
-	"\x04note\x18\x04 \x01(\tR\x04note\x12@\n" +
-	"\trelations\x18\x05 \x03(\v2\".learning.v1.LearnedLexemeRelationR\trelations\"\xf0\x03\n" +
-	"\x13LearnedLexemeStatus\x127\n" +
+	"\x04note\x18\x04 \x01(\tR\x04note\x12>\n" +
+	"\trelations\x18\x05 \x03(\v2 .learning.v1.LearnedWordRelationR\trelations\x12;\n" +
+	"\bcontexts\x18\x06 \x03(\v2\x1f.learning.v1.LearnedWordContextR\bcontexts\"\xc2\x02\n" +
+	"\x11LearnedWordStatus\x127\n" +
 	"\amastery\x18\x01 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x12>\n" +
-	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12Q\n" +
-	"\vform_status\x18\x03 \x03(\v20.learning.v1.LearnedLexemeStatus.FormStatusEntryR\n" +
-	"formStatus\x12\x1f\n" +
-	"\vquery_count\x18\x04 \x01(\x03R\n" +
+	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12\x1f\n" +
+	"\vquery_count\x18\x03 \x01(\x03R\n" +
 	"queryCount\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\x14 \x01(\tR\tcreatedBy\x129\n" +
 	"\n" +
 	"created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1aW\n" +
-	"\x0fFormStatusEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.learning.v1.FormMasteryR\x05value:\x028\x01\"\x8c\x01\n" +
+	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x8c\x01\n" +
 	"\x10MasteryBreakdown\x12\x16\n" +
 	"\x06listen\x18\x01 \x01(\x05R\x06listen\x12\x12\n" +
 	"\x04read\x18\x02 \x01(\x05R\x04read\x12\x14\n" +
@@ -598,20 +595,21 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\x0enext_review_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\fnextReviewAt\x12#\n" +
 	"\rinterval_days\x18\x03 \x01(\x05R\fintervalDays\x12\x1d\n" +
 	"\n" +
-	"fail_count\x18\x04 \x01(\x05R\tfailCount\"\x93\x01\n" +
-	"\vFormMastery\x12\x17\n" +
-	"\aform_id\x18\x01 \x01(\tR\x06formId\x12\x1a\n" +
-	"\bstrength\x18\x02 \x01(\x05R\bstrength\x12\x1a\n" +
-	"\bexposure\x18\x03 \x01(\x05R\bexposure\x123\n" +
-	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadata\"\xf3\x01\n" +
-	"\x15LearnedLexemeRelation\x12\x12\n" +
+	"fail_count\x18\x04 \x01(\x05R\tfailCount\"\xf1\x01\n" +
+	"\x13LearnedWordRelation\x12\x12\n" +
 	"\x04word\x18\x01 \x01(\tR\x04word\x12<\n" +
 	"\rrelation_type\x18\x02 \x01(\x0e2\x17.common.v1.RelationTypeR\frelationType\x12\x12\n" +
 	"\x04note\x18\x03 \x01(\tR\x04note\x129\n" +
 	"\n" +
 	"created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\xa7\x01\n" +
+	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xbd\x01\n" +
+	"\x12LearnedWordContext\x12\x1a\n" +
+	"\bsentence\x18\x01 \x01(\tR\bsentence\x12-\n" +
+	"\x06source\x18\x02 \x01(\x0e2\x15.common.v1.SourceTypeR\x06source\x12\x1d\n" +
+	"\n" +
+	"source_ref\x18\x03 \x01(\tR\tsourceRef\x12=\n" +
+	"\fcollected_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vcollectedAtB\xa7\x01\n" +
 	"\x0fcom.learning.v1B\rLearningProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (
@@ -626,38 +624,37 @@ func file_learning_v1_learning_proto_rawDescGZIP() []byte {
 	return file_learning_v1_learning_proto_rawDescData
 }
 
-var file_learning_v1_learning_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_learning_v1_learning_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_learning_v1_learning_proto_goTypes = []any{
-	(*LearnedLexeme)(nil),         // 0: learning.v1.LearnedLexeme
-	(*LearnedLexemeSpec)(nil),     // 1: learning.v1.LearnedLexemeSpec
-	(*LearnedLexemeStatus)(nil),   // 2: learning.v1.LearnedLexemeStatus
+	(*LearnedWord)(nil),           // 0: learning.v1.LearnedWord
+	(*LearnedWordSpec)(nil),       // 1: learning.v1.LearnedWordSpec
+	(*LearnedWordStatus)(nil),     // 2: learning.v1.LearnedWordStatus
 	(*MasteryBreakdown)(nil),      // 3: learning.v1.MasteryBreakdown
 	(*ReviewTiming)(nil),          // 4: learning.v1.ReviewTiming
-	(*FormMastery)(nil),           // 5: learning.v1.FormMastery
-	(*LearnedLexemeRelation)(nil), // 6: learning.v1.LearnedLexemeRelation
-	nil,                           // 7: learning.v1.LearnedLexemeStatus.FormStatusEntry
-	(v1.Language)(0),              // 8: common.v1.Language
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),       // 10: google.protobuf.Struct
-	(v1.RelationType)(0),          // 11: common.v1.RelationType
+	(*LearnedWordRelation)(nil),   // 5: learning.v1.LearnedWordRelation
+	(*LearnedWordContext)(nil),    // 6: learning.v1.LearnedWordContext
+	(v1.Language)(0),              // 7: common.v1.Language
+	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+	(v1.RelationType)(0),          // 9: common.v1.RelationType
+	(v1.SourceType)(0),            // 10: common.v1.SourceType
 }
 var file_learning_v1_learning_proto_depIdxs = []int32{
-	1,  // 0: learning.v1.LearnedLexeme.spec:type_name -> learning.v1.LearnedLexemeSpec
-	2,  // 1: learning.v1.LearnedLexeme.status:type_name -> learning.v1.LearnedLexemeStatus
-	8,  // 2: learning.v1.LearnedLexemeSpec.language:type_name -> common.v1.Language
-	6,  // 3: learning.v1.LearnedLexemeSpec.relations:type_name -> learning.v1.LearnedLexemeRelation
-	3,  // 4: learning.v1.LearnedLexemeStatus.mastery:type_name -> learning.v1.MasteryBreakdown
-	4,  // 5: learning.v1.LearnedLexemeStatus.review_timing:type_name -> learning.v1.ReviewTiming
-	7,  // 6: learning.v1.LearnedLexemeStatus.form_status:type_name -> learning.v1.LearnedLexemeStatus.FormStatusEntry
-	9,  // 7: learning.v1.LearnedLexemeStatus.created_at:type_name -> google.protobuf.Timestamp
-	9,  // 8: learning.v1.LearnedLexemeStatus.updated_at:type_name -> google.protobuf.Timestamp
-	9,  // 9: learning.v1.ReviewTiming.last_review_at:type_name -> google.protobuf.Timestamp
-	9,  // 10: learning.v1.ReviewTiming.next_review_at:type_name -> google.protobuf.Timestamp
-	10, // 11: learning.v1.FormMastery.metadata:type_name -> google.protobuf.Struct
-	11, // 12: learning.v1.LearnedLexemeRelation.relation_type:type_name -> common.v1.RelationType
-	9,  // 13: learning.v1.LearnedLexemeRelation.created_at:type_name -> google.protobuf.Timestamp
-	9,  // 14: learning.v1.LearnedLexemeRelation.updated_at:type_name -> google.protobuf.Timestamp
-	5,  // 15: learning.v1.LearnedLexemeStatus.FormStatusEntry.value:type_name -> learning.v1.FormMastery
+	1,  // 0: learning.v1.LearnedWord.spec:type_name -> learning.v1.LearnedWordSpec
+	2,  // 1: learning.v1.LearnedWord.status:type_name -> learning.v1.LearnedWordStatus
+	7,  // 2: learning.v1.LearnedWordSpec.language:type_name -> common.v1.Language
+	5,  // 3: learning.v1.LearnedWordSpec.relations:type_name -> learning.v1.LearnedWordRelation
+	6,  // 4: learning.v1.LearnedWordSpec.contexts:type_name -> learning.v1.LearnedWordContext
+	3,  // 5: learning.v1.LearnedWordStatus.mastery:type_name -> learning.v1.MasteryBreakdown
+	4,  // 6: learning.v1.LearnedWordStatus.review_timing:type_name -> learning.v1.ReviewTiming
+	8,  // 7: learning.v1.LearnedWordStatus.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 8: learning.v1.LearnedWordStatus.updated_at:type_name -> google.protobuf.Timestamp
+	8,  // 9: learning.v1.ReviewTiming.last_review_at:type_name -> google.protobuf.Timestamp
+	8,  // 10: learning.v1.ReviewTiming.next_review_at:type_name -> google.protobuf.Timestamp
+	9,  // 11: learning.v1.LearnedWordRelation.relation_type:type_name -> common.v1.RelationType
+	8,  // 12: learning.v1.LearnedWordRelation.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 13: learning.v1.LearnedWordRelation.updated_at:type_name -> google.protobuf.Timestamp
+	10, // 14: learning.v1.LearnedWordContext.source:type_name -> common.v1.SourceType
+	8,  // 15: learning.v1.LearnedWordContext.collected_at:type_name -> google.protobuf.Timestamp
 	16, // [16:16] is the sub-list for method output_type
 	16, // [16:16] is the sub-list for method input_type
 	16, // [16:16] is the sub-list for extension type_name
@@ -676,7 +673,7 @@ func file_learning_v1_learning_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_learning_v1_learning_proto_rawDesc), len(file_learning_v1_learning_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

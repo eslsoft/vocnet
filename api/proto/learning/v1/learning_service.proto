@@ -7,43 +7,41 @@ import "google/protobuf/empty.proto";
 import "learning/v1/learning.proto";
 import "validate/validate.proto";
 
-// Key for identifying a learned lexeme entry.
-message LearnedLexemeKey {
-  int64 lexeme_id = 1 [(validate.rules).int64.gt = 0];
+// Key for identifying a learned word entry.
+message LearnedWordKey {
+  int64 word_id = 1 [(validate.rules).int64.gt = 0];
 }
 
-// CollectLexeme request - main API for adding lexemes to the user's vocabulary.
-message CollectLexemeRequest {
-  LearnedLexeme lexeme = 1 [(validate.rules).message.required = true];
+// CollectWord request - main API for adding words to the user's vocabulary.
+message CollectWordRequest {
+  LearnedWord word = 1 [(validate.rules).message.required = true];
 }
 
-// UpdateMasteryRequest updates mastery, review schedule, and optional form mastery.
+// UpdateMasteryRequest updates mastery and review schedule.
 message UpdateMasteryRequest {
-  int64 lexeme_id = 1 [(validate.rules).int64.gt = 0];
+  int64 word_id = 1 [(validate.rules).int64.gt = 0];
   learning.v1.MasteryBreakdown mastery = 2;
   learning.v1.ReviewTiming review = 3;
-  map<string, learning.v1.FormMastery> form_status = 4;
-  string note = 5;
+  string note = 4;
 }
 
-// ListLearnedLexemesRequest request with comprehensive filtering.
-message ListLearnedLexemesRequest {
+// ListLearnedWordsRequest request with comprehensive filtering.
+message ListLearnedWordsRequest {
   common.v1.PaginationRequest pagination = 1;
   string filter = 2;
   string order_by = 3;
-  repeated string lexeme_ids = 4;
-  repeated string surface_terms = 5;
 }
 
-message ListLearnedLexemesResponse {
+message ListLearnedWordsResponse {
   common.v1.PaginationResponse pagination = 1;
-  repeated LearnedLexeme lexemes = 2;
+  repeated LearnedWord words = 2;
 }
 
-// User lexeme management service for personal vocabulary learning.
+// User vocabulary management service for personal word learning.
 service LearningService {
-  rpc CollectLexeme(CollectLexemeRequest) returns (LearnedLexeme) {}
-  rpc UncollectLexeme(LearnedLexemeKey) returns (google.protobuf.Empty) {}
-  rpc ListLearnedLexemes(ListLearnedLexemesRequest) returns (ListLearnedLexemesResponse) {}
-  rpc UpdateMastery(UpdateMasteryRequest) returns (LearnedLexeme) {}
+  rpc CollectWord(CollectWordRequest) returns (LearnedWord) {}
+  rpc UncollectWord(LearnedWordKey) returns (google.protobuf.Empty) {}
+  rpc GetLearnedWord(LearnedWordKey) returns (LearnedWord) {}
+  rpc ListLearnedWords(ListLearnedWordsRequest) returns (ListLearnedWordsResponse) {}
+  rpc UpdateMastery(UpdateMasteryRequest) returns (LearnedWord) {}
 }

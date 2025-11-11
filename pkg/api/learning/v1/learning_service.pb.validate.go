@@ -35,31 +35,31 @@ var (
 	_ = sort.Sort
 )
 
-// Validate checks the field values on LearnedLexemeKey with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// first error encountered is returned, or nil if there are no violations.
-func (m *LearnedLexemeKey) Validate() error {
+// Validate checks the field values on LearnedWordKey with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LearnedWordKey) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on LearnedLexemeKey with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// LearnedLexemeKeyMultiError, or nil if none found.
-func (m *LearnedLexemeKey) ValidateAll() error {
+// ValidateAll checks the field values on LearnedWordKey with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LearnedWordKeyMultiError,
+// or nil if none found.
+func (m *LearnedWordKey) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *LearnedLexemeKey) validate(all bool) error {
+func (m *LearnedWordKey) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
 	var errors []error
 
-	if m.GetLexemeId() <= 0 {
-		err := LearnedLexemeKeyValidationError{
-			field:  "LexemeId",
+	if m.GetWordId() <= 0 {
+		err := LearnedWordKeyValidationError{
+			field:  "WordId",
 			reason: "value must be greater than 0",
 		}
 		if !all {
@@ -69,19 +69,19 @@ func (m *LearnedLexemeKey) validate(all bool) error {
 	}
 
 	if len(errors) > 0 {
-		return LearnedLexemeKeyMultiError(errors)
+		return LearnedWordKeyMultiError(errors)
 	}
 
 	return nil
 }
 
-// LearnedLexemeKeyMultiError is an error wrapping multiple validation errors
-// returned by LearnedLexemeKey.ValidateAll() if the designated constraints
+// LearnedWordKeyMultiError is an error wrapping multiple validation errors
+// returned by LearnedWordKey.ValidateAll() if the designated constraints
 // aren't met.
-type LearnedLexemeKeyMultiError []error
+type LearnedWordKeyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m LearnedLexemeKeyMultiError) Error() string {
+func (m LearnedWordKeyMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -90,11 +90,11 @@ func (m LearnedLexemeKeyMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m LearnedLexemeKeyMultiError) AllErrors() []error { return m }
+func (m LearnedWordKeyMultiError) AllErrors() []error { return m }
 
-// LearnedLexemeKeyValidationError is the validation error returned by
-// LearnedLexemeKey.Validate if the designated constraints aren't met.
-type LearnedLexemeKeyValidationError struct {
+// LearnedWordKeyValidationError is the validation error returned by
+// LearnedWordKey.Validate if the designated constraints aren't met.
+type LearnedWordKeyValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -102,22 +102,22 @@ type LearnedLexemeKeyValidationError struct {
 }
 
 // Field function returns field value.
-func (e LearnedLexemeKeyValidationError) Field() string { return e.field }
+func (e LearnedWordKeyValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e LearnedLexemeKeyValidationError) Reason() string { return e.reason }
+func (e LearnedWordKeyValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e LearnedLexemeKeyValidationError) Cause() error { return e.cause }
+func (e LearnedWordKeyValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e LearnedLexemeKeyValidationError) Key() bool { return e.key }
+func (e LearnedWordKeyValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e LearnedLexemeKeyValidationError) ErrorName() string { return "LearnedLexemeKeyValidationError" }
+func (e LearnedWordKeyValidationError) ErrorName() string { return "LearnedWordKeyValidationError" }
 
 // Error satisfies the builtin error interface
-func (e LearnedLexemeKeyValidationError) Error() string {
+func (e LearnedWordKeyValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -129,14 +129,14 @@ func (e LearnedLexemeKeyValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sLearnedLexemeKey.%s: %s%s",
+		"invalid %sLearnedWordKey.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = LearnedLexemeKeyValidationError{}
+var _ error = LearnedWordKeyValidationError{}
 
 var _ interface {
 	Field() string
@@ -144,33 +144,33 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = LearnedLexemeKeyValidationError{}
+} = LearnedWordKeyValidationError{}
 
-// Validate checks the field values on CollectLexemeRequest with the rules
+// Validate checks the field values on CollectWordRequest with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
-func (m *CollectLexemeRequest) Validate() error {
+func (m *CollectWordRequest) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on CollectLexemeRequest with the rules
+// ValidateAll checks the field values on CollectWordRequest with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the result is a list of violation errors wrapped in
-// CollectLexemeRequestMultiError, or nil if none found.
-func (m *CollectLexemeRequest) ValidateAll() error {
+// CollectWordRequestMultiError, or nil if none found.
+func (m *CollectWordRequest) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *CollectLexemeRequest) validate(all bool) error {
+func (m *CollectWordRequest) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
 	var errors []error
 
-	if m.GetLexeme() == nil {
-		err := CollectLexemeRequestValidationError{
-			field:  "Lexeme",
+	if m.GetWord() == nil {
+		err := CollectWordRequestValidationError{
+			field:  "Word",
 			reason: "value is required",
 		}
 		if !all {
@@ -180,28 +180,28 @@ func (m *CollectLexemeRequest) validate(all bool) error {
 	}
 
 	if all {
-		switch v := interface{}(m.GetLexeme()).(type) {
+		switch v := interface{}(m.GetWord()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, CollectLexemeRequestValidationError{
-					field:  "Lexeme",
+				errors = append(errors, CollectWordRequestValidationError{
+					field:  "Word",
 					reason: "embedded message failed validation",
 					cause:  err,
 				})
 			}
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
-				errors = append(errors, CollectLexemeRequestValidationError{
-					field:  "Lexeme",
+				errors = append(errors, CollectWordRequestValidationError{
+					field:  "Word",
 					reason: "embedded message failed validation",
 					cause:  err,
 				})
 			}
 		}
-	} else if v, ok := interface{}(m.GetLexeme()).(interface{ Validate() error }); ok {
+	} else if v, ok := interface{}(m.GetWord()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return CollectLexemeRequestValidationError{
-				field:  "Lexeme",
+			return CollectWordRequestValidationError{
+				field:  "Word",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
@@ -209,19 +209,19 @@ func (m *CollectLexemeRequest) validate(all bool) error {
 	}
 
 	if len(errors) > 0 {
-		return CollectLexemeRequestMultiError(errors)
+		return CollectWordRequestMultiError(errors)
 	}
 
 	return nil
 }
 
-// CollectLexemeRequestMultiError is an error wrapping multiple validation
-// errors returned by CollectLexemeRequest.ValidateAll() if the designated
-// constraints aren't met.
-type CollectLexemeRequestMultiError []error
+// CollectWordRequestMultiError is an error wrapping multiple validation errors
+// returned by CollectWordRequest.ValidateAll() if the designated constraints
+// aren't met.
+type CollectWordRequestMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m CollectLexemeRequestMultiError) Error() string {
+func (m CollectWordRequestMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -230,11 +230,11 @@ func (m CollectLexemeRequestMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m CollectLexemeRequestMultiError) AllErrors() []error { return m }
+func (m CollectWordRequestMultiError) AllErrors() []error { return m }
 
-// CollectLexemeRequestValidationError is the validation error returned by
-// CollectLexemeRequest.Validate if the designated constraints aren't met.
-type CollectLexemeRequestValidationError struct {
+// CollectWordRequestValidationError is the validation error returned by
+// CollectWordRequest.Validate if the designated constraints aren't met.
+type CollectWordRequestValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -242,24 +242,24 @@ type CollectLexemeRequestValidationError struct {
 }
 
 // Field function returns field value.
-func (e CollectLexemeRequestValidationError) Field() string { return e.field }
+func (e CollectWordRequestValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e CollectLexemeRequestValidationError) Reason() string { return e.reason }
+func (e CollectWordRequestValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e CollectLexemeRequestValidationError) Cause() error { return e.cause }
+func (e CollectWordRequestValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e CollectLexemeRequestValidationError) Key() bool { return e.key }
+func (e CollectWordRequestValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e CollectLexemeRequestValidationError) ErrorName() string {
-	return "CollectLexemeRequestValidationError"
+func (e CollectWordRequestValidationError) ErrorName() string {
+	return "CollectWordRequestValidationError"
 }
 
 // Error satisfies the builtin error interface
-func (e CollectLexemeRequestValidationError) Error() string {
+func (e CollectWordRequestValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -271,14 +271,14 @@ func (e CollectLexemeRequestValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sCollectLexemeRequest.%s: %s%s",
+		"invalid %sCollectWordRequest.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = CollectLexemeRequestValidationError{}
+var _ error = CollectWordRequestValidationError{}
 
 var _ interface {
 	Field() string
@@ -286,7 +286,7 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = CollectLexemeRequestValidationError{}
+} = CollectWordRequestValidationError{}
 
 // Validate checks the field values on UpdateMasteryRequest with the rules
 // defined in the proto definition for this message. If any rules are
@@ -310,9 +310,9 @@ func (m *UpdateMasteryRequest) validate(all bool) error {
 
 	var errors []error
 
-	if m.GetLexemeId() <= 0 {
+	if m.GetWordId() <= 0 {
 		err := UpdateMasteryRequestValidationError{
-			field:  "LexemeId",
+			field:  "WordId",
 			reason: "value must be greater than 0",
 		}
 		if !all {
@@ -376,52 +376,6 @@ func (m *UpdateMasteryRequest) validate(all bool) error {
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
-		}
-	}
-
-	{
-		sorted_keys := make([]string, len(m.GetFormStatus()))
-		i := 0
-		for key := range m.GetFormStatus() {
-			sorted_keys[i] = key
-			i++
-		}
-		sort.Slice(sorted_keys, func(i, j int) bool { return sorted_keys[i] < sorted_keys[j] })
-		for _, key := range sorted_keys {
-			val := m.GetFormStatus()[key]
-			_ = val
-
-			// no validation rules for FormStatus[key]
-
-			if all {
-				switch v := interface{}(val).(type) {
-				case interface{ ValidateAll() error }:
-					if err := v.ValidateAll(); err != nil {
-						errors = append(errors, UpdateMasteryRequestValidationError{
-							field:  fmt.Sprintf("FormStatus[%v]", key),
-							reason: "embedded message failed validation",
-							cause:  err,
-						})
-					}
-				case interface{ Validate() error }:
-					if err := v.Validate(); err != nil {
-						errors = append(errors, UpdateMasteryRequestValidationError{
-							field:  fmt.Sprintf("FormStatus[%v]", key),
-							reason: "embedded message failed validation",
-							cause:  err,
-						})
-					}
-				}
-			} else if v, ok := interface{}(val).(interface{ Validate() error }); ok {
-				if err := v.Validate(); err != nil {
-					return UpdateMasteryRequestValidationError{
-						field:  fmt.Sprintf("FormStatus[%v]", key),
-						reason: "embedded message failed validation",
-						cause:  err,
-					}
-				}
-			}
-
 		}
 	}
 
@@ -507,22 +461,22 @@ var _ interface {
 	ErrorName() string
 } = UpdateMasteryRequestValidationError{}
 
-// Validate checks the field values on ListLearnedLexemesRequest with the rules
+// Validate checks the field values on ListLearnedWordsRequest with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
-func (m *ListLearnedLexemesRequest) Validate() error {
+func (m *ListLearnedWordsRequest) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on ListLearnedLexemesRequest with the
+// ValidateAll checks the field values on ListLearnedWordsRequest with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the result is a list of violation errors wrapped in
-// ListLearnedLexemesRequestMultiError, or nil if none found.
-func (m *ListLearnedLexemesRequest) ValidateAll() error {
+// ListLearnedWordsRequestMultiError, or nil if none found.
+func (m *ListLearnedWordsRequest) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *ListLearnedLexemesRequest) validate(all bool) error {
+func (m *ListLearnedWordsRequest) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
@@ -533,7 +487,7 @@ func (m *ListLearnedLexemesRequest) validate(all bool) error {
 		switch v := interface{}(m.GetPagination()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ListLearnedLexemesRequestValidationError{
+				errors = append(errors, ListLearnedWordsRequestValidationError{
 					field:  "Pagination",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -541,7 +495,7 @@ func (m *ListLearnedLexemesRequest) validate(all bool) error {
 			}
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
-				errors = append(errors, ListLearnedLexemesRequestValidationError{
+				errors = append(errors, ListLearnedWordsRequestValidationError{
 					field:  "Pagination",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -550,7 +504,7 @@ func (m *ListLearnedLexemesRequest) validate(all bool) error {
 		}
 	} else if v, ok := interface{}(m.GetPagination()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return ListLearnedLexemesRequestValidationError{
+			return ListLearnedWordsRequestValidationError{
 				field:  "Pagination",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -563,19 +517,19 @@ func (m *ListLearnedLexemesRequest) validate(all bool) error {
 	// no validation rules for OrderBy
 
 	if len(errors) > 0 {
-		return ListLearnedLexemesRequestMultiError(errors)
+		return ListLearnedWordsRequestMultiError(errors)
 	}
 
 	return nil
 }
 
-// ListLearnedLexemesRequestMultiError is an error wrapping multiple validation
-// errors returned by ListLearnedLexemesRequest.ValidateAll() if the
-// designated constraints aren't met.
-type ListLearnedLexemesRequestMultiError []error
+// ListLearnedWordsRequestMultiError is an error wrapping multiple validation
+// errors returned by ListLearnedWordsRequest.ValidateAll() if the designated
+// constraints aren't met.
+type ListLearnedWordsRequestMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m ListLearnedLexemesRequestMultiError) Error() string {
+func (m ListLearnedWordsRequestMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -584,11 +538,11 @@ func (m ListLearnedLexemesRequestMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m ListLearnedLexemesRequestMultiError) AllErrors() []error { return m }
+func (m ListLearnedWordsRequestMultiError) AllErrors() []error { return m }
 
-// ListLearnedLexemesRequestValidationError is the validation error returned by
-// ListLearnedLexemesRequest.Validate if the designated constraints aren't met.
-type ListLearnedLexemesRequestValidationError struct {
+// ListLearnedWordsRequestValidationError is the validation error returned by
+// ListLearnedWordsRequest.Validate if the designated constraints aren't met.
+type ListLearnedWordsRequestValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -596,24 +550,24 @@ type ListLearnedLexemesRequestValidationError struct {
 }
 
 // Field function returns field value.
-func (e ListLearnedLexemesRequestValidationError) Field() string { return e.field }
+func (e ListLearnedWordsRequestValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e ListLearnedLexemesRequestValidationError) Reason() string { return e.reason }
+func (e ListLearnedWordsRequestValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e ListLearnedLexemesRequestValidationError) Cause() error { return e.cause }
+func (e ListLearnedWordsRequestValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e ListLearnedLexemesRequestValidationError) Key() bool { return e.key }
+func (e ListLearnedWordsRequestValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e ListLearnedLexemesRequestValidationError) ErrorName() string {
-	return "ListLearnedLexemesRequestValidationError"
+func (e ListLearnedWordsRequestValidationError) ErrorName() string {
+	return "ListLearnedWordsRequestValidationError"
 }
 
 // Error satisfies the builtin error interface
-func (e ListLearnedLexemesRequestValidationError) Error() string {
+func (e ListLearnedWordsRequestValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -625,14 +579,14 @@ func (e ListLearnedLexemesRequestValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sListLearnedLexemesRequest.%s: %s%s",
+		"invalid %sListLearnedWordsRequest.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = ListLearnedLexemesRequestValidationError{}
+var _ error = ListLearnedWordsRequestValidationError{}
 
 var _ interface {
 	Field() string
@@ -640,24 +594,24 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = ListLearnedLexemesRequestValidationError{}
+} = ListLearnedWordsRequestValidationError{}
 
-// Validate checks the field values on ListLearnedLexemesResponse with the
-// rules defined in the proto definition for this message. If any rules are
+// Validate checks the field values on ListLearnedWordsResponse with the rules
+// defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
-func (m *ListLearnedLexemesResponse) Validate() error {
+func (m *ListLearnedWordsResponse) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on ListLearnedLexemesResponse with the
+// ValidateAll checks the field values on ListLearnedWordsResponse with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the result is a list of violation errors wrapped in
-// ListLearnedLexemesResponseMultiError, or nil if none found.
-func (m *ListLearnedLexemesResponse) ValidateAll() error {
+// ListLearnedWordsResponseMultiError, or nil if none found.
+func (m *ListLearnedWordsResponse) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *ListLearnedLexemesResponse) validate(all bool) error {
+func (m *ListLearnedWordsResponse) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
@@ -668,7 +622,7 @@ func (m *ListLearnedLexemesResponse) validate(all bool) error {
 		switch v := interface{}(m.GetPagination()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ListLearnedLexemesResponseValidationError{
+				errors = append(errors, ListLearnedWordsResponseValidationError{
 					field:  "Pagination",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -676,7 +630,7 @@ func (m *ListLearnedLexemesResponse) validate(all bool) error {
 			}
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
-				errors = append(errors, ListLearnedLexemesResponseValidationError{
+				errors = append(errors, ListLearnedWordsResponseValidationError{
 					field:  "Pagination",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -685,7 +639,7 @@ func (m *ListLearnedLexemesResponse) validate(all bool) error {
 		}
 	} else if v, ok := interface{}(m.GetPagination()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return ListLearnedLexemesResponseValidationError{
+			return ListLearnedWordsResponseValidationError{
 				field:  "Pagination",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -693,23 +647,23 @@ func (m *ListLearnedLexemesResponse) validate(all bool) error {
 		}
 	}
 
-	for idx, item := range m.GetLexemes() {
+	for idx, item := range m.GetWords() {
 		_, _ = idx, item
 
 		if all {
 			switch v := interface{}(item).(type) {
 			case interface{ ValidateAll() error }:
 				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, ListLearnedLexemesResponseValidationError{
-						field:  fmt.Sprintf("Lexemes[%v]", idx),
+					errors = append(errors, ListLearnedWordsResponseValidationError{
+						field:  fmt.Sprintf("Words[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
 					})
 				}
 			case interface{ Validate() error }:
 				if err := v.Validate(); err != nil {
-					errors = append(errors, ListLearnedLexemesResponseValidationError{
-						field:  fmt.Sprintf("Lexemes[%v]", idx),
+					errors = append(errors, ListLearnedWordsResponseValidationError{
+						field:  fmt.Sprintf("Words[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
 					})
@@ -717,8 +671,8 @@ func (m *ListLearnedLexemesResponse) validate(all bool) error {
 			}
 		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
-				return ListLearnedLexemesResponseValidationError{
-					field:  fmt.Sprintf("Lexemes[%v]", idx),
+				return ListLearnedWordsResponseValidationError{
+					field:  fmt.Sprintf("Words[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -728,19 +682,19 @@ func (m *ListLearnedLexemesResponse) validate(all bool) error {
 	}
 
 	if len(errors) > 0 {
-		return ListLearnedLexemesResponseMultiError(errors)
+		return ListLearnedWordsResponseMultiError(errors)
 	}
 
 	return nil
 }
 
-// ListLearnedLexemesResponseMultiError is an error wrapping multiple
-// validation errors returned by ListLearnedLexemesResponse.ValidateAll() if
-// the designated constraints aren't met.
-type ListLearnedLexemesResponseMultiError []error
+// ListLearnedWordsResponseMultiError is an error wrapping multiple validation
+// errors returned by ListLearnedWordsResponse.ValidateAll() if the designated
+// constraints aren't met.
+type ListLearnedWordsResponseMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m ListLearnedLexemesResponseMultiError) Error() string {
+func (m ListLearnedWordsResponseMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -749,11 +703,11 @@ func (m ListLearnedLexemesResponseMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m ListLearnedLexemesResponseMultiError) AllErrors() []error { return m }
+func (m ListLearnedWordsResponseMultiError) AllErrors() []error { return m }
 
-// ListLearnedLexemesResponseValidationError is the validation error returned
-// by ListLearnedLexemesResponse.Validate if the designated constraints aren't met.
-type ListLearnedLexemesResponseValidationError struct {
+// ListLearnedWordsResponseValidationError is the validation error returned by
+// ListLearnedWordsResponse.Validate if the designated constraints aren't met.
+type ListLearnedWordsResponseValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -761,24 +715,24 @@ type ListLearnedLexemesResponseValidationError struct {
 }
 
 // Field function returns field value.
-func (e ListLearnedLexemesResponseValidationError) Field() string { return e.field }
+func (e ListLearnedWordsResponseValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e ListLearnedLexemesResponseValidationError) Reason() string { return e.reason }
+func (e ListLearnedWordsResponseValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e ListLearnedLexemesResponseValidationError) Cause() error { return e.cause }
+func (e ListLearnedWordsResponseValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e ListLearnedLexemesResponseValidationError) Key() bool { return e.key }
+func (e ListLearnedWordsResponseValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e ListLearnedLexemesResponseValidationError) ErrorName() string {
-	return "ListLearnedLexemesResponseValidationError"
+func (e ListLearnedWordsResponseValidationError) ErrorName() string {
+	return "ListLearnedWordsResponseValidationError"
 }
 
 // Error satisfies the builtin error interface
-func (e ListLearnedLexemesResponseValidationError) Error() string {
+func (e ListLearnedWordsResponseValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -790,14 +744,14 @@ func (e ListLearnedLexemesResponseValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sListLearnedLexemesResponse.%s: %s%s",
+		"invalid %sListLearnedWordsResponse.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = ListLearnedLexemesResponseValidationError{}
+var _ error = ListLearnedWordsResponseValidationError{}
 
 var _ interface {
 	Field() string
@@ -805,4 +759,4 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = ListLearnedLexemesResponseValidationError{}
+} = ListLearnedWordsResponseValidationError{}

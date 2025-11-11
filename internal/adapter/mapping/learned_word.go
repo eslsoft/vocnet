@@ -10,23 +10,23 @@ import (
 	learningv1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 )
 
-func FromPbLearnedLexeme(in *learningv1.LearnedLexeme) *entity.LearnedLexeme {
+func FromPbLearnedWord(in *learningv1.LearnedWord) *entity.LearnedWord {
 	if in == nil {
 		return nil
 	}
 	spec := in.GetSpec()
 	status := in.GetStatus()
-	return &entity.LearnedLexeme{
+	return &entity.LearnedWord{
 		ID:          in.GetId(),
-		LexemeID:    in.GetLexemeId(),
+		WordID:      in.GetWordId(),
 		DisplayTerm: strings.TrimSpace(spec.GetDisplayTerm()),
 		Language:    FromPbLanguage(spec.GetLanguage()),
 		Tags:        append([]string{}, spec.GetTags()...),
 		Note:        strings.TrimSpace(spec.GetNote()),
-		Relations:   fromPbLearnedRelations(spec.GetRelations()),
+		Relations:   fromPbLearnedWordRelations(spec.GetRelations()),
+		Contexts:    fromPbLearnedWordContexts(spec.GetContexts()),
 		Mastery:     FromPbMastery(status.GetMastery()),
 		Review:      FromPbReview(status.GetReviewTiming()),
-		FormStatus:  FromPbFormStatusMap(status.GetFormStatus()),
 		QueryCount:  status.GetQueryCount(),
 		CreatedBy:   status.GetCreatedBy(),
 		CreatedAt:   status.GetCreatedAt().AsTime(),
@@ -34,33 +34,33 @@ func FromPbLearnedLexeme(in *learningv1.LearnedLexeme) *entity.LearnedLexeme {
 	}
 }
 
-func ToPbLearnedLexeme(in *entity.LearnedLexeme) *learningv1.LearnedLexeme {
+func ToPbLearnedWord(in *entity.LearnedWord) *learningv1.LearnedWord {
 	if in == nil {
 		return nil
 	}
-	return &learningv1.LearnedLexeme{
-		Id:       in.ID,
-		LexemeId: in.LexemeID,
-		Spec:     toPbLearnedSpec(in),
-		Status:   toPbLearnedStatus(in),
+	return &learningv1.LearnedWord{
+		Id:     in.ID,
+		WordId: in.WordID,
+		Spec:   toPbLearnedWordSpec(in),
+		Status: toPbLearnedWordStatus(in),
 	}
 }
 
-func toPbLearnedSpec(in *entity.LearnedLexeme) *learningv1.LearnedLexemeSpec {
-	return &learningv1.LearnedLexemeSpec{
+func toPbLearnedWordSpec(in *entity.LearnedWord) *learningv1.LearnedWordSpec {
+	return &learningv1.LearnedWordSpec{
 		DisplayTerm: in.DisplayTerm,
 		Language:    ToPbLanguage(in.Language),
 		Tags:        append([]string{}, in.Tags...),
 		Note:        in.Note,
-		Relations:   toPbLearnedRelations(in.Relations),
+		Relations:   toPbLearnedWordRelations(in.Relations),
+		Contexts:    toPbLearnedWordContexts(in.Contexts),
 	}
 }
 
-func toPbLearnedStatus(in *entity.LearnedLexeme) *learningv1.LearnedLexemeStatus {
-	return &learningv1.LearnedLexemeStatus{
+func toPbLearnedWordStatus(in *entity.LearnedWord) *learningv1.LearnedWordStatus {
+	return &learningv1.LearnedWordStatus{
 		Mastery:      ToPbMastery(in.Mastery),
 		ReviewTiming: ToPbReview(in.Review),
-		FormStatus:   ToPbFormStatusMap(in.FormStatus),
 		QueryCount:   in.QueryCount,
 		CreatedBy:    in.CreatedBy,
 		CreatedAt:    timestamppb.New(in.CreatedAt),
@@ -68,10 +68,10 @@ func toPbLearnedStatus(in *entity.LearnedLexeme) *learningv1.LearnedLexemeStatus
 	}
 }
 
-func fromPbLearnedRelations(items []*learningv1.LearnedLexemeRelation) []entity.LearnedLexemeRelation {
-	out := make([]entity.LearnedLexemeRelation, 0, len(items))
+func fromPbLearnedWordRelations(items []*learningv1.LearnedWordRelation) []entity.LearnedWordRelation {
+	out := make([]entity.LearnedWordRelation, 0, len(items))
 	for _, rel := range items {
-		out = append(out, entity.LearnedLexemeRelation{
+		out = append(out, entity.LearnedWordRelation{
 			Word:         strings.TrimSpace(rel.GetWord()),
 			RelationType: int32(rel.GetRelationType()),
 			Note:         strings.TrimSpace(rel.GetNote()),
@@ -82,10 +82,10 @@ func fromPbLearnedRelations(items []*learningv1.LearnedLexemeRelation) []entity.
 	return out
 }
 
-func toPbLearnedRelations(items []entity.LearnedLexemeRelation) []*learningv1.LearnedLexemeRelation {
-	out := make([]*learningv1.LearnedLexemeRelation, 0, len(items))
+func toPbLearnedWordRelations(items []entity.LearnedWordRelation) []*learningv1.LearnedWordRelation {
+	out := make([]*learningv1.LearnedWordRelation, 0, len(items))
 	for _, rel := range items {
-		out = append(out, &learningv1.LearnedLexemeRelation{
+		out = append(out, &learningv1.LearnedWordRelation{
 			Word:         rel.Word,
 			RelationType: commonv1.RelationType(rel.RelationType),
 			Note:         rel.Note,
@@ -96,37 +96,37 @@ func toPbLearnedRelations(items []entity.LearnedLexemeRelation) []*learningv1.Le
 	return out
 }
 
-func FromPbFormStatusMap(items map[string]*learningv1.FormMastery) map[string]entity.FormMastery {
-	if len(items) == 0 {
-		return map[string]entity.FormMastery{}
-	}
-	out := make(map[string]entity.FormMastery, len(items))
-	for key, value := range items {
-		out[key] = entity.FormMastery{
-			FormID:   value.GetFormId(),
-			Strength: value.GetStrength(),
-			Exposure: value.GetExposure(),
-		}
+func fromPbLearnedWordContexts(items []*learningv1.LearnedWordContext) []entity.LearnedWordContext {
+	out := make([]entity.LearnedWordContext, 0, len(items))
+	for _, ctx := range items {
+		out = append(out, entity.LearnedWordContext{
+			Sentence:    strings.TrimSpace(ctx.GetSentence()),
+			Source:      int32(ctx.GetSource()),
+			SourceRef:   strings.TrimSpace(ctx.GetSourceRef()),
+			CollectedAt: ctx.GetCollectedAt().AsTime(),
+		})
 	}
 	return out
 }
 
-func ToPbFormStatusMap(items map[string]entity.FormMastery) map[string]*learningv1.FormMastery {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make(map[string]*learningv1.FormMastery, len(items))
-	for key, value := range items {
-		out[key] = &learningv1.FormMastery{
-			FormId:   value.FormID,
-			Strength: value.Strength,
-			Exposure: value.Exposure,
-		}
+func toPbLearnedWordContexts(items []entity.LearnedWordContext) []*learningv1.LearnedWordContext {
+	out := make([]*learningv1.LearnedWordContext, 0, len(items))
+	for _, ctx := range items {
+		out = append(out, &learningv1.LearnedWordContext{
+			Sentence:    ctx.Sentence,
+			Source:      commonv1.SourceType(ctx.Source),
+			SourceRef:   ctx.SourceRef,
+			CollectedAt: timestamppb.New(ctx.CollectedAt),
+		})
 	}
 	return out
 }
 
+// FromPbMastery converts protobuf MasteryBreakdown to entity.
 func FromPbMastery(in *learningv1.MasteryBreakdown) entity.MasteryBreakdown {
+	if in == nil {
+		return entity.MasteryBreakdown{}
+	}
 	return entity.MasteryBreakdown{
 		Listen:    in.GetListen(),
 		Read:      in.GetRead(),
@@ -136,6 +136,7 @@ func FromPbMastery(in *learningv1.MasteryBreakdown) entity.MasteryBreakdown {
 	}
 }
 
+// ToPbMastery converts entity MasteryBreakdown to protobuf.
 func ToPbMastery(in entity.MasteryBreakdown) *learningv1.MasteryBreakdown {
 	return &learningv1.MasteryBreakdown{
 		Listen:    in.Listen,
@@ -146,15 +147,7 @@ func ToPbMastery(in entity.MasteryBreakdown) *learningv1.MasteryBreakdown {
 	}
 }
 
-func ToPbReview(in entity.ReviewTiming) *learningv1.ReviewTiming {
-	return &learningv1.ReviewTiming{
-		LastReviewAt: timestamppb.New(in.LastReviewAt),
-		NextReviewAt: timestamppb.New(in.NextReviewAt),
-		IntervalDays: in.IntervalDays,
-		FailCount:    in.FailCount,
-	}
-}
-
+// FromPbReview converts protobuf ReviewTiming to entity.
 func FromPbReview(in *learningv1.ReviewTiming) entity.ReviewTiming {
 	if in == nil {
 		return entity.ReviewTiming{}
@@ -164,5 +157,15 @@ func FromPbReview(in *learningv1.ReviewTiming) entity.ReviewTiming {
 		NextReviewAt: in.GetNextReviewAt().AsTime(),
 		IntervalDays: in.GetIntervalDays(),
 		FailCount:    in.GetFailCount(),
+	}
+}
+
+// ToPbReview converts entity ReviewTiming to protobuf.
+func ToPbReview(in entity.ReviewTiming) *learningv1.ReviewTiming {
+	return &learningv1.ReviewTiming{
+		LastReviewAt: timestamppb.New(in.LastReviewAt),
+		NextReviewAt: timestamppb.New(in.NextReviewAt),
+		IntervalDays: in.IntervalDays,
+		FailCount:    in.FailCount,
 	}
 }

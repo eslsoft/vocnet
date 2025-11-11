@@ -24,28 +24,28 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Key for identifying a learned lexeme entry.
-type LearnedLexemeKey struct {
+// Key for identifying a learned word entry.
+type LearnedWordKey struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	LexemeId      int64                  `protobuf:"varint,1,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"`
+	WordId        int64                  `protobuf:"varint,1,opt,name=word_id,json=wordId,proto3" json:"word_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LearnedLexemeKey) Reset() {
-	*x = LearnedLexemeKey{}
+func (x *LearnedWordKey) Reset() {
+	*x = LearnedWordKey{}
 	mi := &file_learning_v1_learning_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LearnedLexemeKey) String() string {
+func (x *LearnedWordKey) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LearnedLexemeKey) ProtoMessage() {}
+func (*LearnedWordKey) ProtoMessage() {}
 
-func (x *LearnedLexemeKey) ProtoReflect() protoreflect.Message {
+func (x *LearnedWordKey) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -57,40 +57,40 @@ func (x *LearnedLexemeKey) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LearnedLexemeKey.ProtoReflect.Descriptor instead.
-func (*LearnedLexemeKey) Descriptor() ([]byte, []int) {
+// Deprecated: Use LearnedWordKey.ProtoReflect.Descriptor instead.
+func (*LearnedWordKey) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_service_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *LearnedLexemeKey) GetLexemeId() int64 {
+func (x *LearnedWordKey) GetWordId() int64 {
 	if x != nil {
-		return x.LexemeId
+		return x.WordId
 	}
 	return 0
 }
 
-// CollectLexeme request - main API for adding lexemes to the user's vocabulary.
-type CollectLexemeRequest struct {
+// CollectWord request - main API for adding words to the user's vocabulary.
+type CollectWordRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Lexeme        *LearnedLexeme         `protobuf:"bytes,1,opt,name=lexeme,proto3" json:"lexeme,omitempty"`
+	Word          *LearnedWord           `protobuf:"bytes,1,opt,name=word,proto3" json:"word,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CollectLexemeRequest) Reset() {
-	*x = CollectLexemeRequest{}
+func (x *CollectWordRequest) Reset() {
+	*x = CollectWordRequest{}
 	mi := &file_learning_v1_learning_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CollectLexemeRequest) String() string {
+func (x *CollectWordRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CollectLexemeRequest) ProtoMessage() {}
+func (*CollectWordRequest) ProtoMessage() {}
 
-func (x *CollectLexemeRequest) ProtoReflect() protoreflect.Message {
+func (x *CollectWordRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -102,26 +102,25 @@ func (x *CollectLexemeRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CollectLexemeRequest.ProtoReflect.Descriptor instead.
-func (*CollectLexemeRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CollectWordRequest.ProtoReflect.Descriptor instead.
+func (*CollectWordRequest) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *CollectLexemeRequest) GetLexeme() *LearnedLexeme {
+func (x *CollectWordRequest) GetWord() *LearnedWord {
 	if x != nil {
-		return x.Lexeme
+		return x.Word
 	}
 	return nil
 }
 
-// UpdateMasteryRequest updates mastery, review schedule, and optional form mastery.
+// UpdateMasteryRequest updates mastery and review schedule.
 type UpdateMasteryRequest struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	LexemeId      int64                   `protobuf:"varint,1,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"`
-	Mastery       *MasteryBreakdown       `protobuf:"bytes,2,opt,name=mastery,proto3" json:"mastery,omitempty"`
-	Review        *ReviewTiming           `protobuf:"bytes,3,opt,name=review,proto3" json:"review,omitempty"`
-	FormStatus    map[string]*FormMastery `protobuf:"bytes,4,rep,name=form_status,json=formStatus,proto3" json:"form_status,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Note          string                  `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WordId        int64                  `protobuf:"varint,1,opt,name=word_id,json=wordId,proto3" json:"word_id,omitempty"`
+	Mastery       *MasteryBreakdown      `protobuf:"bytes,2,opt,name=mastery,proto3" json:"mastery,omitempty"`
+	Review        *ReviewTiming          `protobuf:"bytes,3,opt,name=review,proto3" json:"review,omitempty"`
+	Note          string                 `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -156,9 +155,9 @@ func (*UpdateMasteryRequest) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *UpdateMasteryRequest) GetLexemeId() int64 {
+func (x *UpdateMasteryRequest) GetWordId() int64 {
 	if x != nil {
-		return x.LexemeId
+		return x.WordId
 	}
 	return 0
 }
@@ -177,13 +176,6 @@ func (x *UpdateMasteryRequest) GetReview() *ReviewTiming {
 	return nil
 }
 
-func (x *UpdateMasteryRequest) GetFormStatus() map[string]*FormMastery {
-	if x != nil {
-		return x.FormStatus
-	}
-	return nil
-}
-
 func (x *UpdateMasteryRequest) GetNote() string {
 	if x != nil {
 		return x.Note
@@ -191,32 +183,30 @@ func (x *UpdateMasteryRequest) GetNote() string {
 	return ""
 }
 
-// ListLearnedLexemesRequest request with comprehensive filtering.
-type ListLearnedLexemesRequest struct {
+// ListLearnedWordsRequest request with comprehensive filtering.
+type ListLearnedWordsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Pagination    *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	Filter        string                 `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	OrderBy       string                 `protobuf:"bytes,3,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
-	LexemeIds     []string               `protobuf:"bytes,4,rep,name=lexeme_ids,json=lexemeIds,proto3" json:"lexeme_ids,omitempty"`
-	SurfaceTerms  []string               `protobuf:"bytes,5,rep,name=surface_terms,json=surfaceTerms,proto3" json:"surface_terms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListLearnedLexemesRequest) Reset() {
-	*x = ListLearnedLexemesRequest{}
+func (x *ListLearnedWordsRequest) Reset() {
+	*x = ListLearnedWordsRequest{}
 	mi := &file_learning_v1_learning_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListLearnedLexemesRequest) String() string {
+func (x *ListLearnedWordsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListLearnedLexemesRequest) ProtoMessage() {}
+func (*ListLearnedWordsRequest) ProtoMessage() {}
 
-func (x *ListLearnedLexemesRequest) ProtoReflect() protoreflect.Message {
+func (x *ListLearnedWordsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -228,68 +218,54 @@ func (x *ListLearnedLexemesRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListLearnedLexemesRequest.ProtoReflect.Descriptor instead.
-func (*ListLearnedLexemesRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListLearnedWordsRequest.ProtoReflect.Descriptor instead.
+func (*ListLearnedWordsRequest) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *ListLearnedLexemesRequest) GetPagination() *v1.PaginationRequest {
+func (x *ListLearnedWordsRequest) GetPagination() *v1.PaginationRequest {
 	if x != nil {
 		return x.Pagination
 	}
 	return nil
 }
 
-func (x *ListLearnedLexemesRequest) GetFilter() string {
+func (x *ListLearnedWordsRequest) GetFilter() string {
 	if x != nil {
 		return x.Filter
 	}
 	return ""
 }
 
-func (x *ListLearnedLexemesRequest) GetOrderBy() string {
+func (x *ListLearnedWordsRequest) GetOrderBy() string {
 	if x != nil {
 		return x.OrderBy
 	}
 	return ""
 }
 
-func (x *ListLearnedLexemesRequest) GetLexemeIds() []string {
-	if x != nil {
-		return x.LexemeIds
-	}
-	return nil
-}
-
-func (x *ListLearnedLexemesRequest) GetSurfaceTerms() []string {
-	if x != nil {
-		return x.SurfaceTerms
-	}
-	return nil
-}
-
-type ListLearnedLexemesResponse struct {
+type ListLearnedWordsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Pagination    *v1.PaginationResponse `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
-	Lexemes       []*LearnedLexeme       `protobuf:"bytes,2,rep,name=lexemes,proto3" json:"lexemes,omitempty"`
+	Words         []*LearnedWord         `protobuf:"bytes,2,rep,name=words,proto3" json:"words,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListLearnedLexemesResponse) Reset() {
-	*x = ListLearnedLexemesResponse{}
+func (x *ListLearnedWordsResponse) Reset() {
+	*x = ListLearnedWordsResponse{}
 	mi := &file_learning_v1_learning_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListLearnedLexemesResponse) String() string {
+func (x *ListLearnedWordsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListLearnedLexemesResponse) ProtoMessage() {}
+func (*ListLearnedWordsResponse) ProtoMessage() {}
 
-func (x *ListLearnedLexemesResponse) ProtoReflect() protoreflect.Message {
+func (x *ListLearnedWordsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_learning_v1_learning_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -301,21 +277,21 @@ func (x *ListLearnedLexemesResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListLearnedLexemesResponse.ProtoReflect.Descriptor instead.
-func (*ListLearnedLexemesResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListLearnedWordsResponse.ProtoReflect.Descriptor instead.
+func (*ListLearnedWordsResponse) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_service_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *ListLearnedLexemesResponse) GetPagination() *v1.PaginationResponse {
+func (x *ListLearnedWordsResponse) GetPagination() *v1.PaginationResponse {
 	if x != nil {
 		return x.Pagination
 	}
 	return nil
 }
 
-func (x *ListLearnedLexemesResponse) GetLexemes() []*LearnedLexeme {
+func (x *ListLearnedWordsResponse) GetWords() []*LearnedWord {
 	if x != nil {
-		return x.Lexemes
+		return x.Words
 	}
 	return nil
 }
@@ -324,40 +300,33 @@ var File_learning_v1_learning_service_proto protoreflect.FileDescriptor
 
 const file_learning_v1_learning_service_proto_rawDesc = "" +
 	"\n" +
-	"\"learning/v1/learning_service.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1alearning/v1/learning.proto\x1a\x17validate/validate.proto\"8\n" +
-	"\x10LearnedLexemeKey\x12$\n" +
-	"\tlexeme_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\blexemeId\"T\n" +
-	"\x14CollectLexemeRequest\x12<\n" +
-	"\x06lexeme\x18\x01 \x01(\v2\x1a.learning.v1.LearnedLexemeB\b\xfaB\x05\x8a\x01\x02\x10\x01R\x06lexeme\"\xe9\x02\n" +
-	"\x14UpdateMasteryRequest\x12$\n" +
-	"\tlexeme_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\blexemeId\x127\n" +
+	"\"learning/v1/learning_service.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1alearning/v1/learning.proto\x1a\x17validate/validate.proto\"2\n" +
+	"\x0eLearnedWordKey\x12 \n" +
+	"\aword_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x06wordId\"L\n" +
+	"\x12CollectWordRequest\x126\n" +
+	"\x04word\x18\x01 \x01(\v2\x18.learning.v1.LearnedWordB\b\xfaB\x05\x8a\x01\x02\x10\x01R\x04word\"\xb8\x01\n" +
+	"\x14UpdateMasteryRequest\x12 \n" +
+	"\aword_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x06wordId\x127\n" +
 	"\amastery\x18\x02 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x121\n" +
-	"\x06review\x18\x03 \x01(\v2\x19.learning.v1.ReviewTimingR\x06review\x12R\n" +
-	"\vform_status\x18\x04 \x03(\v21.learning.v1.UpdateMasteryRequest.FormStatusEntryR\n" +
-	"formStatus\x12\x12\n" +
-	"\x04note\x18\x05 \x01(\tR\x04note\x1aW\n" +
-	"\x0fFormStatusEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.learning.v1.FormMasteryR\x05value:\x028\x01\"\xd0\x01\n" +
-	"\x19ListLearnedLexemesRequest\x12<\n" +
+	"\x06review\x18\x03 \x01(\v2\x19.learning.v1.ReviewTimingR\x06review\x12\x12\n" +
+	"\x04note\x18\x04 \x01(\tR\x04note\"\x8a\x01\n" +
+	"\x17ListLearnedWordsRequest\x12<\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
 	"pagination\x12\x16\n" +
 	"\x06filter\x18\x02 \x01(\tR\x06filter\x12\x19\n" +
-	"\border_by\x18\x03 \x01(\tR\aorderBy\x12\x1d\n" +
-	"\n" +
-	"lexeme_ids\x18\x04 \x03(\tR\tlexemeIds\x12#\n" +
-	"\rsurface_terms\x18\x05 \x03(\tR\fsurfaceTerms\"\x91\x01\n" +
-	"\x1aListLearnedLexemesResponse\x12=\n" +
+	"\border_by\x18\x03 \x01(\tR\aorderBy\"\x89\x01\n" +
+	"\x18ListLearnedWordsResponse\x12=\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
-	"pagination\x124\n" +
-	"\alexemes\x18\x02 \x03(\v2\x1a.learning.v1.LearnedLexemeR\alexemes2\xea\x02\n" +
-	"\x0fLearningService\x12P\n" +
-	"\rCollectLexeme\x12!.learning.v1.CollectLexemeRequest\x1a\x1a.learning.v1.LearnedLexeme\"\x00\x12J\n" +
-	"\x0fUncollectLexeme\x12\x1d.learning.v1.LearnedLexemeKey\x1a\x16.google.protobuf.Empty\"\x00\x12g\n" +
-	"\x12ListLearnedLexemes\x12&.learning.v1.ListLearnedLexemesRequest\x1a'.learning.v1.ListLearnedLexemesResponse\"\x00\x12P\n" +
-	"\rUpdateMastery\x12!.learning.v1.UpdateMasteryRequest\x1a\x1a.learning.v1.LearnedLexeme\"\x00B\xae\x01\n" +
+	"pagination\x12.\n" +
+	"\x05words\x18\x02 \x03(\v2\x18.learning.v1.LearnedWordR\x05words2\xa3\x03\n" +
+	"\x0fLearningService\x12J\n" +
+	"\vCollectWord\x12\x1f.learning.v1.CollectWordRequest\x1a\x18.learning.v1.LearnedWord\"\x00\x12F\n" +
+	"\rUncollectWord\x12\x1b.learning.v1.LearnedWordKey\x1a\x16.google.protobuf.Empty\"\x00\x12I\n" +
+	"\x0eGetLearnedWord\x12\x1b.learning.v1.LearnedWordKey\x1a\x18.learning.v1.LearnedWord\"\x00\x12a\n" +
+	"\x10ListLearnedWords\x12$.learning.v1.ListLearnedWordsRequest\x1a%.learning.v1.ListLearnedWordsResponse\"\x00\x12N\n" +
+	"\rUpdateMastery\x12!.learning.v1.UpdateMasteryRequest\x1a\x18.learning.v1.LearnedWord\"\x00B\xae\x01\n" +
 	"\x0fcom.learning.v1B\x14LearningServiceProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (
@@ -372,44 +341,42 @@ func file_learning_v1_learning_service_proto_rawDescGZIP() []byte {
 	return file_learning_v1_learning_service_proto_rawDescData
 }
 
-var file_learning_v1_learning_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_learning_v1_learning_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_learning_v1_learning_service_proto_goTypes = []any{
-	(*LearnedLexemeKey)(nil),           // 0: learning.v1.LearnedLexemeKey
-	(*CollectLexemeRequest)(nil),       // 1: learning.v1.CollectLexemeRequest
-	(*UpdateMasteryRequest)(nil),       // 2: learning.v1.UpdateMasteryRequest
-	(*ListLearnedLexemesRequest)(nil),  // 3: learning.v1.ListLearnedLexemesRequest
-	(*ListLearnedLexemesResponse)(nil), // 4: learning.v1.ListLearnedLexemesResponse
-	nil,                                // 5: learning.v1.UpdateMasteryRequest.FormStatusEntry
-	(*LearnedLexeme)(nil),              // 6: learning.v1.LearnedLexeme
-	(*MasteryBreakdown)(nil),           // 7: learning.v1.MasteryBreakdown
-	(*ReviewTiming)(nil),               // 8: learning.v1.ReviewTiming
-	(*v1.PaginationRequest)(nil),       // 9: common.v1.PaginationRequest
-	(*v1.PaginationResponse)(nil),      // 10: common.v1.PaginationResponse
-	(*FormMastery)(nil),                // 11: learning.v1.FormMastery
-	(*emptypb.Empty)(nil),              // 12: google.protobuf.Empty
+	(*LearnedWordKey)(nil),           // 0: learning.v1.LearnedWordKey
+	(*CollectWordRequest)(nil),       // 1: learning.v1.CollectWordRequest
+	(*UpdateMasteryRequest)(nil),     // 2: learning.v1.UpdateMasteryRequest
+	(*ListLearnedWordsRequest)(nil),  // 3: learning.v1.ListLearnedWordsRequest
+	(*ListLearnedWordsResponse)(nil), // 4: learning.v1.ListLearnedWordsResponse
+	(*LearnedWord)(nil),              // 5: learning.v1.LearnedWord
+	(*MasteryBreakdown)(nil),         // 6: learning.v1.MasteryBreakdown
+	(*ReviewTiming)(nil),             // 7: learning.v1.ReviewTiming
+	(*v1.PaginationRequest)(nil),     // 8: common.v1.PaginationRequest
+	(*v1.PaginationResponse)(nil),    // 9: common.v1.PaginationResponse
+	(*emptypb.Empty)(nil),            // 10: google.protobuf.Empty
 }
 var file_learning_v1_learning_service_proto_depIdxs = []int32{
-	6,  // 0: learning.v1.CollectLexemeRequest.lexeme:type_name -> learning.v1.LearnedLexeme
-	7,  // 1: learning.v1.UpdateMasteryRequest.mastery:type_name -> learning.v1.MasteryBreakdown
-	8,  // 2: learning.v1.UpdateMasteryRequest.review:type_name -> learning.v1.ReviewTiming
-	5,  // 3: learning.v1.UpdateMasteryRequest.form_status:type_name -> learning.v1.UpdateMasteryRequest.FormStatusEntry
-	9,  // 4: learning.v1.ListLearnedLexemesRequest.pagination:type_name -> common.v1.PaginationRequest
-	10, // 5: learning.v1.ListLearnedLexemesResponse.pagination:type_name -> common.v1.PaginationResponse
-	6,  // 6: learning.v1.ListLearnedLexemesResponse.lexemes:type_name -> learning.v1.LearnedLexeme
-	11, // 7: learning.v1.UpdateMasteryRequest.FormStatusEntry.value:type_name -> learning.v1.FormMastery
-	1,  // 8: learning.v1.LearningService.CollectLexeme:input_type -> learning.v1.CollectLexemeRequest
-	0,  // 9: learning.v1.LearningService.UncollectLexeme:input_type -> learning.v1.LearnedLexemeKey
-	3,  // 10: learning.v1.LearningService.ListLearnedLexemes:input_type -> learning.v1.ListLearnedLexemesRequest
-	2,  // 11: learning.v1.LearningService.UpdateMastery:input_type -> learning.v1.UpdateMasteryRequest
-	6,  // 12: learning.v1.LearningService.CollectLexeme:output_type -> learning.v1.LearnedLexeme
-	12, // 13: learning.v1.LearningService.UncollectLexeme:output_type -> google.protobuf.Empty
-	4,  // 14: learning.v1.LearningService.ListLearnedLexemes:output_type -> learning.v1.ListLearnedLexemesResponse
-	6,  // 15: learning.v1.LearningService.UpdateMastery:output_type -> learning.v1.LearnedLexeme
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	5,  // 0: learning.v1.CollectWordRequest.word:type_name -> learning.v1.LearnedWord
+	6,  // 1: learning.v1.UpdateMasteryRequest.mastery:type_name -> learning.v1.MasteryBreakdown
+	7,  // 2: learning.v1.UpdateMasteryRequest.review:type_name -> learning.v1.ReviewTiming
+	8,  // 3: learning.v1.ListLearnedWordsRequest.pagination:type_name -> common.v1.PaginationRequest
+	9,  // 4: learning.v1.ListLearnedWordsResponse.pagination:type_name -> common.v1.PaginationResponse
+	5,  // 5: learning.v1.ListLearnedWordsResponse.words:type_name -> learning.v1.LearnedWord
+	1,  // 6: learning.v1.LearningService.CollectWord:input_type -> learning.v1.CollectWordRequest
+	0,  // 7: learning.v1.LearningService.UncollectWord:input_type -> learning.v1.LearnedWordKey
+	0,  // 8: learning.v1.LearningService.GetLearnedWord:input_type -> learning.v1.LearnedWordKey
+	3,  // 9: learning.v1.LearningService.ListLearnedWords:input_type -> learning.v1.ListLearnedWordsRequest
+	2,  // 10: learning.v1.LearningService.UpdateMastery:input_type -> learning.v1.UpdateMasteryRequest
+	5,  // 11: learning.v1.LearningService.CollectWord:output_type -> learning.v1.LearnedWord
+	10, // 12: learning.v1.LearningService.UncollectWord:output_type -> google.protobuf.Empty
+	5,  // 13: learning.v1.LearningService.GetLearnedWord:output_type -> learning.v1.LearnedWord
+	4,  // 14: learning.v1.LearningService.ListLearnedWords:output_type -> learning.v1.ListLearnedWordsResponse
+	5,  // 15: learning.v1.LearningService.UpdateMastery:output_type -> learning.v1.LearnedWord
+	11, // [11:16] is the sub-list for method output_type
+	6,  // [6:11] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_learning_v1_learning_service_proto_init() }
@@ -424,7 +391,7 @@ func file_learning_v1_learning_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_learning_v1_learning_service_proto_rawDesc), len(file_learning_v1_learning_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

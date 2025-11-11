@@ -34,15 +34,18 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// LearningServiceCollectLexemeProcedure is the fully-qualified name of the LearningService's
-	// CollectLexeme RPC.
-	LearningServiceCollectLexemeProcedure = "/learning.v1.LearningService/CollectLexeme"
-	// LearningServiceUncollectLexemeProcedure is the fully-qualified name of the LearningService's
-	// UncollectLexeme RPC.
-	LearningServiceUncollectLexemeProcedure = "/learning.v1.LearningService/UncollectLexeme"
-	// LearningServiceListLearnedLexemesProcedure is the fully-qualified name of the LearningService's
-	// ListLearnedLexemes RPC.
-	LearningServiceListLearnedLexemesProcedure = "/learning.v1.LearningService/ListLearnedLexemes"
+	// LearningServiceCollectWordProcedure is the fully-qualified name of the LearningService's
+	// CollectWord RPC.
+	LearningServiceCollectWordProcedure = "/learning.v1.LearningService/CollectWord"
+	// LearningServiceUncollectWordProcedure is the fully-qualified name of the LearningService's
+	// UncollectWord RPC.
+	LearningServiceUncollectWordProcedure = "/learning.v1.LearningService/UncollectWord"
+	// LearningServiceGetLearnedWordProcedure is the fully-qualified name of the LearningService's
+	// GetLearnedWord RPC.
+	LearningServiceGetLearnedWordProcedure = "/learning.v1.LearningService/GetLearnedWord"
+	// LearningServiceListLearnedWordsProcedure is the fully-qualified name of the LearningService's
+	// ListLearnedWords RPC.
+	LearningServiceListLearnedWordsProcedure = "/learning.v1.LearningService/ListLearnedWords"
 	// LearningServiceUpdateMasteryProcedure is the fully-qualified name of the LearningService's
 	// UpdateMastery RPC.
 	LearningServiceUpdateMasteryProcedure = "/learning.v1.LearningService/UpdateMastery"
@@ -50,10 +53,11 @@ const (
 
 // LearningServiceClient is a client for the learning.v1.LearningService service.
 type LearningServiceClient interface {
-	CollectLexeme(context.Context, *connect.Request[v1.CollectLexemeRequest]) (*connect.Response[v1.LearnedLexeme], error)
-	UncollectLexeme(context.Context, *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error)
-	ListLearnedLexemes(context.Context, *connect.Request[v1.ListLearnedLexemesRequest]) (*connect.Response[v1.ListLearnedLexemesResponse], error)
-	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedLexeme], error)
+	CollectWord(context.Context, *connect.Request[v1.CollectWordRequest]) (*connect.Response[v1.LearnedWord], error)
+	UncollectWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error)
+	GetLearnedWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error)
+	ListLearnedWords(context.Context, *connect.Request[v1.ListLearnedWordsRequest]) (*connect.Response[v1.ListLearnedWordsResponse], error)
+	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedWord], error)
 }
 
 // NewLearningServiceClient constructs a client for the learning.v1.LearningService service. By
@@ -67,25 +71,31 @@ func NewLearningServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 	baseURL = strings.TrimRight(baseURL, "/")
 	learningServiceMethods := v1.File_learning_v1_learning_service_proto.Services().ByName("LearningService").Methods()
 	return &learningServiceClient{
-		collectLexeme: connect.NewClient[v1.CollectLexemeRequest, v1.LearnedLexeme](
+		collectWord: connect.NewClient[v1.CollectWordRequest, v1.LearnedWord](
 			httpClient,
-			baseURL+LearningServiceCollectLexemeProcedure,
-			connect.WithSchema(learningServiceMethods.ByName("CollectLexeme")),
+			baseURL+LearningServiceCollectWordProcedure,
+			connect.WithSchema(learningServiceMethods.ByName("CollectWord")),
 			connect.WithClientOptions(opts...),
 		),
-		uncollectLexeme: connect.NewClient[v1.LearnedLexemeKey, emptypb.Empty](
+		uncollectWord: connect.NewClient[v1.LearnedWordKey, emptypb.Empty](
 			httpClient,
-			baseURL+LearningServiceUncollectLexemeProcedure,
-			connect.WithSchema(learningServiceMethods.ByName("UncollectLexeme")),
+			baseURL+LearningServiceUncollectWordProcedure,
+			connect.WithSchema(learningServiceMethods.ByName("UncollectWord")),
 			connect.WithClientOptions(opts...),
 		),
-		listLearnedLexemes: connect.NewClient[v1.ListLearnedLexemesRequest, v1.ListLearnedLexemesResponse](
+		getLearnedWord: connect.NewClient[v1.LearnedWordKey, v1.LearnedWord](
 			httpClient,
-			baseURL+LearningServiceListLearnedLexemesProcedure,
-			connect.WithSchema(learningServiceMethods.ByName("ListLearnedLexemes")),
+			baseURL+LearningServiceGetLearnedWordProcedure,
+			connect.WithSchema(learningServiceMethods.ByName("GetLearnedWord")),
 			connect.WithClientOptions(opts...),
 		),
-		updateMastery: connect.NewClient[v1.UpdateMasteryRequest, v1.LearnedLexeme](
+		listLearnedWords: connect.NewClient[v1.ListLearnedWordsRequest, v1.ListLearnedWordsResponse](
+			httpClient,
+			baseURL+LearningServiceListLearnedWordsProcedure,
+			connect.WithSchema(learningServiceMethods.ByName("ListLearnedWords")),
+			connect.WithClientOptions(opts...),
+		),
+		updateMastery: connect.NewClient[v1.UpdateMasteryRequest, v1.LearnedWord](
 			httpClient,
 			baseURL+LearningServiceUpdateMasteryProcedure,
 			connect.WithSchema(learningServiceMethods.ByName("UpdateMastery")),
@@ -96,38 +106,45 @@ func NewLearningServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 
 // learningServiceClient implements LearningServiceClient.
 type learningServiceClient struct {
-	collectLexeme      *connect.Client[v1.CollectLexemeRequest, v1.LearnedLexeme]
-	uncollectLexeme    *connect.Client[v1.LearnedLexemeKey, emptypb.Empty]
-	listLearnedLexemes *connect.Client[v1.ListLearnedLexemesRequest, v1.ListLearnedLexemesResponse]
-	updateMastery      *connect.Client[v1.UpdateMasteryRequest, v1.LearnedLexeme]
+	collectWord      *connect.Client[v1.CollectWordRequest, v1.LearnedWord]
+	uncollectWord    *connect.Client[v1.LearnedWordKey, emptypb.Empty]
+	getLearnedWord   *connect.Client[v1.LearnedWordKey, v1.LearnedWord]
+	listLearnedWords *connect.Client[v1.ListLearnedWordsRequest, v1.ListLearnedWordsResponse]
+	updateMastery    *connect.Client[v1.UpdateMasteryRequest, v1.LearnedWord]
 }
 
-// CollectLexeme calls learning.v1.LearningService.CollectLexeme.
-func (c *learningServiceClient) CollectLexeme(ctx context.Context, req *connect.Request[v1.CollectLexemeRequest]) (*connect.Response[v1.LearnedLexeme], error) {
-	return c.collectLexeme.CallUnary(ctx, req)
+// CollectWord calls learning.v1.LearningService.CollectWord.
+func (c *learningServiceClient) CollectWord(ctx context.Context, req *connect.Request[v1.CollectWordRequest]) (*connect.Response[v1.LearnedWord], error) {
+	return c.collectWord.CallUnary(ctx, req)
 }
 
-// UncollectLexeme calls learning.v1.LearningService.UncollectLexeme.
-func (c *learningServiceClient) UncollectLexeme(ctx context.Context, req *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error) {
-	return c.uncollectLexeme.CallUnary(ctx, req)
+// UncollectWord calls learning.v1.LearningService.UncollectWord.
+func (c *learningServiceClient) UncollectWord(ctx context.Context, req *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error) {
+	return c.uncollectWord.CallUnary(ctx, req)
 }
 
-// ListLearnedLexemes calls learning.v1.LearningService.ListLearnedLexemes.
-func (c *learningServiceClient) ListLearnedLexemes(ctx context.Context, req *connect.Request[v1.ListLearnedLexemesRequest]) (*connect.Response[v1.ListLearnedLexemesResponse], error) {
-	return c.listLearnedLexemes.CallUnary(ctx, req)
+// GetLearnedWord calls learning.v1.LearningService.GetLearnedWord.
+func (c *learningServiceClient) GetLearnedWord(ctx context.Context, req *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error) {
+	return c.getLearnedWord.CallUnary(ctx, req)
+}
+
+// ListLearnedWords calls learning.v1.LearningService.ListLearnedWords.
+func (c *learningServiceClient) ListLearnedWords(ctx context.Context, req *connect.Request[v1.ListLearnedWordsRequest]) (*connect.Response[v1.ListLearnedWordsResponse], error) {
+	return c.listLearnedWords.CallUnary(ctx, req)
 }
 
 // UpdateMastery calls learning.v1.LearningService.UpdateMastery.
-func (c *learningServiceClient) UpdateMastery(ctx context.Context, req *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedLexeme], error) {
+func (c *learningServiceClient) UpdateMastery(ctx context.Context, req *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedWord], error) {
 	return c.updateMastery.CallUnary(ctx, req)
 }
 
 // LearningServiceHandler is an implementation of the learning.v1.LearningService service.
 type LearningServiceHandler interface {
-	CollectLexeme(context.Context, *connect.Request[v1.CollectLexemeRequest]) (*connect.Response[v1.LearnedLexeme], error)
-	UncollectLexeme(context.Context, *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error)
-	ListLearnedLexemes(context.Context, *connect.Request[v1.ListLearnedLexemesRequest]) (*connect.Response[v1.ListLearnedLexemesResponse], error)
-	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedLexeme], error)
+	CollectWord(context.Context, *connect.Request[v1.CollectWordRequest]) (*connect.Response[v1.LearnedWord], error)
+	UncollectWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error)
+	GetLearnedWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error)
+	ListLearnedWords(context.Context, *connect.Request[v1.ListLearnedWordsRequest]) (*connect.Response[v1.ListLearnedWordsResponse], error)
+	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedWord], error)
 }
 
 // NewLearningServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -137,22 +154,28 @@ type LearningServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewLearningServiceHandler(svc LearningServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	learningServiceMethods := v1.File_learning_v1_learning_service_proto.Services().ByName("LearningService").Methods()
-	learningServiceCollectLexemeHandler := connect.NewUnaryHandler(
-		LearningServiceCollectLexemeProcedure,
-		svc.CollectLexeme,
-		connect.WithSchema(learningServiceMethods.ByName("CollectLexeme")),
+	learningServiceCollectWordHandler := connect.NewUnaryHandler(
+		LearningServiceCollectWordProcedure,
+		svc.CollectWord,
+		connect.WithSchema(learningServiceMethods.ByName("CollectWord")),
 		connect.WithHandlerOptions(opts...),
 	)
-	learningServiceUncollectLexemeHandler := connect.NewUnaryHandler(
-		LearningServiceUncollectLexemeProcedure,
-		svc.UncollectLexeme,
-		connect.WithSchema(learningServiceMethods.ByName("UncollectLexeme")),
+	learningServiceUncollectWordHandler := connect.NewUnaryHandler(
+		LearningServiceUncollectWordProcedure,
+		svc.UncollectWord,
+		connect.WithSchema(learningServiceMethods.ByName("UncollectWord")),
 		connect.WithHandlerOptions(opts...),
 	)
-	learningServiceListLearnedLexemesHandler := connect.NewUnaryHandler(
-		LearningServiceListLearnedLexemesProcedure,
-		svc.ListLearnedLexemes,
-		connect.WithSchema(learningServiceMethods.ByName("ListLearnedLexemes")),
+	learningServiceGetLearnedWordHandler := connect.NewUnaryHandler(
+		LearningServiceGetLearnedWordProcedure,
+		svc.GetLearnedWord,
+		connect.WithSchema(learningServiceMethods.ByName("GetLearnedWord")),
+		connect.WithHandlerOptions(opts...),
+	)
+	learningServiceListLearnedWordsHandler := connect.NewUnaryHandler(
+		LearningServiceListLearnedWordsProcedure,
+		svc.ListLearnedWords,
+		connect.WithSchema(learningServiceMethods.ByName("ListLearnedWords")),
 		connect.WithHandlerOptions(opts...),
 	)
 	learningServiceUpdateMasteryHandler := connect.NewUnaryHandler(
@@ -163,12 +186,14 @@ func NewLearningServiceHandler(svc LearningServiceHandler, opts ...connect.Handl
 	)
 	return "/learning.v1.LearningService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case LearningServiceCollectLexemeProcedure:
-			learningServiceCollectLexemeHandler.ServeHTTP(w, r)
-		case LearningServiceUncollectLexemeProcedure:
-			learningServiceUncollectLexemeHandler.ServeHTTP(w, r)
-		case LearningServiceListLearnedLexemesProcedure:
-			learningServiceListLearnedLexemesHandler.ServeHTTP(w, r)
+		case LearningServiceCollectWordProcedure:
+			learningServiceCollectWordHandler.ServeHTTP(w, r)
+		case LearningServiceUncollectWordProcedure:
+			learningServiceUncollectWordHandler.ServeHTTP(w, r)
+		case LearningServiceGetLearnedWordProcedure:
+			learningServiceGetLearnedWordHandler.ServeHTTP(w, r)
+		case LearningServiceListLearnedWordsProcedure:
+			learningServiceListLearnedWordsHandler.ServeHTTP(w, r)
 		case LearningServiceUpdateMasteryProcedure:
 			learningServiceUpdateMasteryHandler.ServeHTTP(w, r)
 		default:
@@ -180,18 +205,22 @@ func NewLearningServiceHandler(svc LearningServiceHandler, opts ...connect.Handl
 // UnimplementedLearningServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedLearningServiceHandler struct{}
 
-func (UnimplementedLearningServiceHandler) CollectLexeme(context.Context, *connect.Request[v1.CollectLexemeRequest]) (*connect.Response[v1.LearnedLexeme], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.CollectLexeme is not implemented"))
+func (UnimplementedLearningServiceHandler) CollectWord(context.Context, *connect.Request[v1.CollectWordRequest]) (*connect.Response[v1.LearnedWord], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.CollectWord is not implemented"))
 }
 
-func (UnimplementedLearningServiceHandler) UncollectLexeme(context.Context, *connect.Request[v1.LearnedLexemeKey]) (*connect.Response[emptypb.Empty], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.UncollectLexeme is not implemented"))
+func (UnimplementedLearningServiceHandler) UncollectWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.UncollectWord is not implemented"))
 }
 
-func (UnimplementedLearningServiceHandler) ListLearnedLexemes(context.Context, *connect.Request[v1.ListLearnedLexemesRequest]) (*connect.Response[v1.ListLearnedLexemesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.ListLearnedLexemes is not implemented"))
+func (UnimplementedLearningServiceHandler) GetLearnedWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.GetLearnedWord is not implemented"))
 }
 
-func (UnimplementedLearningServiceHandler) UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedLexeme], error) {
+func (UnimplementedLearningServiceHandler) ListLearnedWords(context.Context, *connect.Request[v1.ListLearnedWordsRequest]) (*connect.Response[v1.ListLearnedWordsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.ListLearnedWords is not implemented"))
+}
+
+func (UnimplementedLearningServiceHandler) UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedWord], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.UpdateMastery is not implemented"))
 }
