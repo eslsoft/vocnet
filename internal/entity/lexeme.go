@@ -32,16 +32,16 @@ const (
 
 // Lexeme captures a normalized lemma plus its forms, senses, and metadata.
 type Lexeme struct {
-	ID         int64
-	ExternalID string // Wikidata Lexeme ID (e.g. "L123456")
-	WordID     int64
-	POS        string
-	Language   Language
-	EntryType  LexemeEntryType
-	Lemma      string
-	Forms      []LexemeForm
-	Senses     []LexemeSense
-	Relations  []LexemeRelation
+	ID           int64
+	ExternalID   string // Wikidata Lexeme ID (e.g. "L123456")
+	WordID       int64
+	PartOfSpeech string
+	Language     Language
+	EntryType    LexemeEntryType
+	Lemma        string
+	Forms        []LexemeForm
+	Senses       []LexemeSense
+	Relations    []LexemeRelation
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -67,15 +67,9 @@ type Phonetic struct {
 
 // LexemeSense models a language-specific gloss for a particular part of speech.
 type LexemeSense struct {
-	ID           string
-	LexemeID     string
-	Language     Language
-	PartOfSpeech string
-	Gloss        string
-	Examples     []SenseExample
-
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Language Language       `json:"language"`
+	Gloss    string         `json:"gloss"`
+	Examples []SenseExample `json:"examples,omitempty"`
 }
 
 // SenseExample illustrates a particular sense.

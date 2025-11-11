@@ -51,7 +51,7 @@ func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*
 	main := tx.Lexeme.Create().
 		SetExternalID(strings.TrimSpace(lexeme.ExternalID)).
 		SetLanguage(entity.NormalizeLanguage(lexeme.Language).Code()).
-		SetPos(strings.TrimSpace(lexeme.POS)).
+		SetPos(strings.TrimSpace(lexeme.PartOfSpeech)).
 		SetEntryType(string(lexeme.EntryType)).
 		SetLemma(strings.TrimSpace(lexeme.Lemma)).
 		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
@@ -91,7 +91,7 @@ func (r *lexemeRepository) Update(ctx context.Context, lexeme *entity.Lexeme) (*
 	// Update lexeme record (without forms)
 	update := tx.Lexeme.UpdateOneID(lexeme.ID).
 		SetLanguage(entity.NormalizeLanguage(lexeme.Language).Code()).
-		SetPos(strings.TrimSpace(lexeme.POS)).
+		SetPos(strings.TrimSpace(lexeme.PartOfSpeech)).
 		SetEntryType(string(lexeme.EntryType)).
 		SetLemma(strings.TrimSpace(lexeme.Lemma)).
 		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
@@ -345,14 +345,14 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 	}
 
 	lex := &entity.Lexeme{
-		ID:         rec.ID,
-		ExternalID: rec.ExternalID,
-		Language:   entity.ParseLanguage(rec.Language),
-		POS:        rec.Pos,
-		EntryType:  entity.LexemeEntryType(rec.EntryType),
-		Lemma:      rec.Lemma,
-		CreatedAt:  rec.CreatedAt,
-		UpdatedAt:  rec.UpdatedAt,
+		ID:           rec.ID,
+		ExternalID:   rec.ExternalID,
+		Language:     entity.ParseLanguage(rec.Language),
+		PartOfSpeech: rec.Pos,
+		EntryType:    entity.LexemeEntryType(rec.EntryType),
+		Lemma:        rec.Lemma,
+		CreatedAt:    rec.CreatedAt,
+		UpdatedAt:    rec.UpdatedAt,
 	}
 
 	if rec.WordID != nil {

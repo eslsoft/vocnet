@@ -153,12 +153,9 @@ func normalizeLexemeSenses(lexemeLID string, senses []entity.LexemeSense) []enti
 	out := make([]entity.LexemeSense, 0, len(senses))
 	for _, sense := range senses {
 		out = append(out, entity.LexemeSense{
-			ID:           strings.TrimSpace(sense.ID),
-			LexemeID:     lexemeLID,
-			Language:     sense.Language,
-			PartOfSpeech: strings.TrimSpace(sense.PartOfSpeech),
-			Gloss:        strings.TrimSpace(sense.Gloss),
-			Examples:     append([]entity.SenseExample{}, sense.Examples...),
+			Language: sense.Language,
+			Gloss:    strings.TrimSpace(sense.Gloss),
+			Examples: append([]entity.SenseExample{}, sense.Examples...),
 		})
 	}
 	return out

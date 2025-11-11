@@ -70,7 +70,7 @@ func (u *wordUsecase) Create(ctx context.Context, word *entity.Word) (*entity.Wo
 			_, err := u.lexemes.Create(ctx, lex)
 			if err != nil {
 				// Return error instead of continuing silently
-				return nil, fmt.Errorf("failed to create lexeme (POS: %s): %w", lex.POS, err)
+				return nil, fmt.Errorf("failed to create lexeme (POS: %s): %w", lex.PartOfSpeech, err)
 			}
 		}
 	}

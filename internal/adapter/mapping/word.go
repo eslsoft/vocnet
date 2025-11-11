@@ -103,7 +103,7 @@ func aggregateDefinitions(lexemes []*entity.Lexeme) []*dictv1.Definition {
 			defs[externalID] = &bucket{
 				definition: &dictv1.Definition{
 					LexemeId: externalID,
-					Pos:      lex.POS,
+					Pos:      lex.PartOfSpeech,
 				},
 				index: len(order),
 			}
@@ -244,10 +244,10 @@ func definitionsToLexemes(pb *dictv1.Word, wordLang entity.Language) []*entity.L
 
 	for _, def := range definitions {
 		lex := &entity.Lexeme{
-			ExternalID: def.GetLexemeId(),
-			Language:   wordLang,
-			Lemma:      pb.GetLemma(),
-			POS:        def.GetPos(),
+			ExternalID:   def.GetLexemeId(),
+			Language:     wordLang,
+			Lemma:        pb.GetLemma(),
+			PartOfSpeech: def.GetPos(),
 		}
 
 		// Filter forms that belong to this lexeme
