@@ -42,6 +42,7 @@ jobs:
             api/openapi/
             internal/infrastructure/database/ent/
             internal/app/wire_gen.go
+            internal/mocks/
 
   test:
     runs-on: ubuntu-latest
