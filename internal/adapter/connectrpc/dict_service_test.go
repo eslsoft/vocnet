@@ -624,6 +624,116 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 	}
 }
 
+func TestDictService_GetWordStats(t *testing.T) {
+	client := setupTestDB(t)
+
+	lexemeRepo := repository.NewLexemeRepository(client)
+	wordRepo := repository.NewWordGroupRepository(client)
+	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
+	svc := NewDictServiceServer(wordUC)
+
+	ctx := context.Background()
+
+	createWord := func(word *dictv1.Word) {
+		t.Helper()
+		_, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
+			Msg: &dictv1.CreateWordRequest{Word: word},
+		})
+		require.NoError(t, err)
+	}
+
+	createWord(&dictv1.Word{
+		Lemma:    "run",
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		Categories: []string{
+			"basic",
+		},
+		Phonetics: []*dictv1.Phonetic{
+			{Ipa: "/rʌn/"},
+		},
+		Forms: []*dictv1.WordForm{
+			{LexemeId: "L100", Word: "runs", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+		},
+		Definitions: []*dictv1.Definition{
+			{
+				LexemeId: "L100",
+				Pos:      "v.",
+				Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "move swiftly"},
+				},
+			},
+		},
+	})
+
+	createWord(&dictv1.Word{
+		Lemma:    "hola",
+		Language: commonv1.Language_LANGUAGE_SPANISH,
+		Categories: []string{
+			"greeting",
+		},
+		Definitions: []*dictv1.Definition{
+			{
+				LexemeId: "L200",
+				Pos:      "interj.",
+				Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "hello"},
+				},
+			},
+		},
+	})
+
+	resp, err := svc.GetWordStats(ctx, &connect.Request[dictv1.GetWordStatsRequest]{
+		Msg: &dictv1.GetWordStatsRequest{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Msg)
+
+	stats := resp.Msg
+	require.NotNil(t, stats.Summary)
+	assert.EqualValues(t, 2, stats.Summary.TotalWords)
+	assert.EqualValues(t, 2, stats.Summary.TotalLexemes)
+	assert.EqualValues(t, 2, stats.Summary.NewWordsLast_24H)
+	assert.EqualValues(t, 2, stats.Summary.NewWordsLast_7D)
+
+	require.NotNil(t, stats.Coverage)
+	assert.InDelta(t, 0.5, stats.Coverage.Phonetics, 0.0001)
+	assert.InDelta(t, 1.0, stats.Coverage.Categories, 0.0001)
+	assert.InDelta(t, 1.0, stats.Coverage.Definitions, 0.0001)
+	assert.InDelta(t, 0.5, stats.Coverage.Forms, 0.0001)
+
+	require.NotEmpty(t, stats.TopCategories)
+	var categoryNames []string
+	for _, cat := range stats.TopCategories {
+		categoryNames = append(categoryNames, cat.Category)
+	}
+	assert.Contains(t, categoryNames, "basic")
+	assert.Contains(t, categoryNames, "greeting")
+
+	var bucketTotal int64
+	for _, bucket := range stats.Completeness {
+		bucketTotal += bucket.Count
+	}
+	assert.EqualValues(t, stats.Summary.TotalWords, bucketTotal)
+
+	require.Len(t, stats.Languages, 2)
+	assert.Equal(t, commonv1.Language_LANGUAGE_ENGLISH, stats.Languages[0].Language)
+	assert.EqualValues(t, 1, stats.Languages[0].WordCount)
+	assert.InDelta(t, 1.0, stats.Languages[0].FormCoverage, 0.0001)
+
+	filterResp, err := svc.GetWordStats(ctx, &connect.Request[dictv1.GetWordStatsRequest]{
+		Msg: &dictv1.GetWordStatsRequest{
+			Languages: []commonv1.Language{commonv1.Language_LANGUAGE_ENGLISH},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, filterResp.Msg)
+
+	assert.EqualValues(t, 1, filterResp.Msg.Summary.TotalWords)
+	require.Len(t, filterResp.Msg.Languages, 1)
+	assert.Equal(t, commonv1.Language_LANGUAGE_ENGLISH, filterResp.Msg.Languages[0].Language)
+	assert.InDelta(t, 1.0, filterResp.Msg.Coverage.Forms, 0.0001)
+}
+
 func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 	client := setupTestDB(t)
 

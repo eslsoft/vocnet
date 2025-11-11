@@ -46,6 +46,12 @@ const (
 	DictServiceLookupWordProcedure = "/dict.v1.DictService/LookupWord"
 	// DictServiceDeleteWordProcedure is the fully-qualified name of the DictService's DeleteWord RPC.
 	DictServiceDeleteWordProcedure = "/dict.v1.DictService/DeleteWord"
+	// DictServiceListCategoriesProcedure is the fully-qualified name of the DictService's
+	// ListCategories RPC.
+	DictServiceListCategoriesProcedure = "/dict.v1.DictService/ListCategories"
+	// DictServiceGetWordStatsProcedure is the fully-qualified name of the DictService's GetWordStats
+	// RPC.
+	DictServiceGetWordStatsProcedure = "/dict.v1.DictService/GetWordStats"
 )
 
 // DictServiceClient is a client for the dict.v1.DictService service.
@@ -56,6 +62,8 @@ type DictServiceClient interface {
 	ListWords(context.Context, *connect.Request[v1.ListWordsRequest]) (*connect.Response[v1.ListWordsResponse], error)
 	LookupWord(context.Context, *connect.Request[v1.LookupWordRequest]) (*connect.Response[v1.Word], error)
 	DeleteWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[emptypb.Empty], error)
+	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
+	GetWordStats(context.Context, *connect.Request[v1.GetWordStatsRequest]) (*connect.Response[v1.GetWordStatsResponse], error)
 }
 
 // NewDictServiceClient constructs a client for the dict.v1.DictService service. By default, it uses
@@ -105,17 +113,31 @@ func NewDictServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(dictServiceMethods.ByName("DeleteWord")),
 			connect.WithClientOptions(opts...),
 		),
+		listCategories: connect.NewClient[v1.ListCategoriesRequest, v1.ListCategoriesResponse](
+			httpClient,
+			baseURL+DictServiceListCategoriesProcedure,
+			connect.WithSchema(dictServiceMethods.ByName("ListCategories")),
+			connect.WithClientOptions(opts...),
+		),
+		getWordStats: connect.NewClient[v1.GetWordStatsRequest, v1.GetWordStatsResponse](
+			httpClient,
+			baseURL+DictServiceGetWordStatsProcedure,
+			connect.WithSchema(dictServiceMethods.ByName("GetWordStats")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // dictServiceClient implements DictServiceClient.
 type dictServiceClient struct {
-	createWord *connect.Client[v1.CreateWordRequest, v1.Word]
-	updateWord *connect.Client[v1.Word, v1.Word]
-	getWord    *connect.Client[v1.WordIDRequest, v1.Word]
-	listWords  *connect.Client[v1.ListWordsRequest, v1.ListWordsResponse]
-	lookupWord *connect.Client[v1.LookupWordRequest, v1.Word]
-	deleteWord *connect.Client[v1.WordIDRequest, emptypb.Empty]
+	createWord     *connect.Client[v1.CreateWordRequest, v1.Word]
+	updateWord     *connect.Client[v1.Word, v1.Word]
+	getWord        *connect.Client[v1.WordIDRequest, v1.Word]
+	listWords      *connect.Client[v1.ListWordsRequest, v1.ListWordsResponse]
+	lookupWord     *connect.Client[v1.LookupWordRequest, v1.Word]
+	deleteWord     *connect.Client[v1.WordIDRequest, emptypb.Empty]
+	listCategories *connect.Client[v1.ListCategoriesRequest, v1.ListCategoriesResponse]
+	getWordStats   *connect.Client[v1.GetWordStatsRequest, v1.GetWordStatsResponse]
 }
 
 // CreateWord calls dict.v1.DictService.CreateWord.
@@ -148,6 +170,16 @@ func (c *dictServiceClient) DeleteWord(ctx context.Context, req *connect.Request
 	return c.deleteWord.CallUnary(ctx, req)
 }
 
+// ListCategories calls dict.v1.DictService.ListCategories.
+func (c *dictServiceClient) ListCategories(ctx context.Context, req *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error) {
+	return c.listCategories.CallUnary(ctx, req)
+}
+
+// GetWordStats calls dict.v1.DictService.GetWordStats.
+func (c *dictServiceClient) GetWordStats(ctx context.Context, req *connect.Request[v1.GetWordStatsRequest]) (*connect.Response[v1.GetWordStatsResponse], error) {
+	return c.getWordStats.CallUnary(ctx, req)
+}
+
 // DictServiceHandler is an implementation of the dict.v1.DictService service.
 type DictServiceHandler interface {
 	CreateWord(context.Context, *connect.Request[v1.CreateWordRequest]) (*connect.Response[v1.Word], error)
@@ -156,6 +188,8 @@ type DictServiceHandler interface {
 	ListWords(context.Context, *connect.Request[v1.ListWordsRequest]) (*connect.Response[v1.ListWordsResponse], error)
 	LookupWord(context.Context, *connect.Request[v1.LookupWordRequest]) (*connect.Response[v1.Word], error)
 	DeleteWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[emptypb.Empty], error)
+	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
+	GetWordStats(context.Context, *connect.Request[v1.GetWordStatsRequest]) (*connect.Response[v1.GetWordStatsResponse], error)
 }
 
 // NewDictServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -201,6 +235,18 @@ func NewDictServiceHandler(svc DictServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(dictServiceMethods.ByName("DeleteWord")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dictServiceListCategoriesHandler := connect.NewUnaryHandler(
+		DictServiceListCategoriesProcedure,
+		svc.ListCategories,
+		connect.WithSchema(dictServiceMethods.ByName("ListCategories")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dictServiceGetWordStatsHandler := connect.NewUnaryHandler(
+		DictServiceGetWordStatsProcedure,
+		svc.GetWordStats,
+		connect.WithSchema(dictServiceMethods.ByName("GetWordStats")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/dict.v1.DictService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DictServiceCreateWordProcedure:
@@ -215,6 +261,10 @@ func NewDictServiceHandler(svc DictServiceHandler, opts ...connect.HandlerOption
 			dictServiceLookupWordHandler.ServeHTTP(w, r)
 		case DictServiceDeleteWordProcedure:
 			dictServiceDeleteWordHandler.ServeHTTP(w, r)
+		case DictServiceListCategoriesProcedure:
+			dictServiceListCategoriesHandler.ServeHTTP(w, r)
+		case DictServiceGetWordStatsProcedure:
+			dictServiceGetWordStatsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -246,4 +296,12 @@ func (UnimplementedDictServiceHandler) LookupWord(context.Context, *connect.Requ
 
 func (UnimplementedDictServiceHandler) DeleteWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.DictService.DeleteWord is not implemented"))
+}
+
+func (UnimplementedDictServiceHandler) ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.DictService.ListCategories is not implemented"))
+}
+
+func (UnimplementedDictServiceHandler) GetWordStats(context.Context, *connect.Request[v1.GetWordStatsRequest]) (*connect.Response[v1.GetWordStatsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.DictService.GetWordStats is not implemented"))
 }

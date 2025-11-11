@@ -280,11 +280,102 @@ func (x *WordIDRequest) GetWordId() int64 {
 	return 0
 }
 
+type ListCategoriesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Optional filter to search categories by prefix or pattern
+	// If empty, returns all categories
+	Search        string `protobuf:"bytes,1,opt,name=search,proto3" json:"search,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCategoriesRequest) Reset() {
+	*x = ListCategoriesRequest{}
+	mi := &file_dict_v1_dict_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCategoriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCategoriesRequest) ProtoMessage() {}
+
+func (x *ListCategoriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_dict_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCategoriesRequest.ProtoReflect.Descriptor instead.
+func (*ListCategoriesRequest) Descriptor() ([]byte, []int) {
+	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListCategoriesRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
+}
+
+type ListCategoriesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of unique category names
+	Categories    []string `protobuf:"bytes,1,rep,name=categories,proto3" json:"categories,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCategoriesResponse) Reset() {
+	*x = ListCategoriesResponse{}
+	mi := &file_dict_v1_dict_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCategoriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCategoriesResponse) ProtoMessage() {}
+
+func (x *ListCategoriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_dict_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCategoriesResponse.ProtoReflect.Descriptor instead.
+func (*ListCategoriesResponse) Descriptor() ([]byte, []int) {
+	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListCategoriesResponse) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
 var File_dict_v1_dict_service_proto protoreflect.FileDescriptor
 
 const file_dict_v1_dict_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1adict/v1/dict_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x12dict/v1/word.proto\x1a\x1bgoogle/protobuf/empty.proto\"6\n" +
+	"\x1adict/v1/dict_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x12dict/v1/word.proto\x1a\x18dict/v1/word_stats.proto\x1a\x1bgoogle/protobuf/empty.proto\"6\n" +
 	"\x11CreateWordRequest\x12!\n" +
 	"\x04word\x18\x01 \x01(\v2\r.dict.v1.WordR\x04word\"'\n" +
 	"\x11LookupWordRequest\x12\x12\n" +
@@ -301,7 +392,13 @@ const file_dict_v1_dict_service_proto_rawDesc = "" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
 	"pagination\"(\n" +
 	"\rWordIDRequest\x12\x17\n" +
-	"\aword_id\x18\x01 \x01(\x03R\x06wordId2\xdf\x02\n" +
+	"\aword_id\x18\x01 \x01(\x03R\x06wordId\"/\n" +
+	"\x15ListCategoriesRequest\x12\x16\n" +
+	"\x06search\x18\x01 \x01(\tR\x06search\"8\n" +
+	"\x16ListCategoriesResponse\x12\x1e\n" +
+	"\n" +
+	"categories\x18\x01 \x03(\tR\n" +
+	"categories2\xff\x03\n" +
 	"\vDictService\x127\n" +
 	"\n" +
 	"CreateWord\x12\x1a.dict.v1.CreateWordRequest\x1a\r.dict.v1.Word\x12*\n" +
@@ -312,7 +409,9 @@ const file_dict_v1_dict_service_proto_rawDesc = "" +
 	"\n" +
 	"LookupWord\x12\x1a.dict.v1.LookupWordRequest\x1a\r.dict.v1.Word\x12<\n" +
 	"\n" +
-	"DeleteWord\x12\x16.dict.v1.WordIDRequest\x1a\x16.google.protobuf.EmptyB\x8e\x01\n" +
+	"DeleteWord\x12\x16.dict.v1.WordIDRequest\x1a\x16.google.protobuf.Empty\x12Q\n" +
+	"\x0eListCategories\x12\x1e.dict.v1.ListCategoriesRequest\x1a\x1f.dict.v1.ListCategoriesResponse\x12K\n" +
+	"\fGetWordStats\x12\x1c.dict.v1.GetWordStatsRequest\x1a\x1d.dict.v1.GetWordStatsResponseB\x8e\x01\n" +
 	"\vcom.dict.v1B\x10DictServiceProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
 
 var (
@@ -327,37 +426,45 @@ func file_dict_v1_dict_service_proto_rawDescGZIP() []byte {
 	return file_dict_v1_dict_service_proto_rawDescData
 }
 
-var file_dict_v1_dict_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_dict_v1_dict_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_dict_v1_dict_service_proto_goTypes = []any{
-	(*CreateWordRequest)(nil),     // 0: dict.v1.CreateWordRequest
-	(*LookupWordRequest)(nil),     // 1: dict.v1.LookupWordRequest
-	(*ListWordsRequest)(nil),      // 2: dict.v1.ListWordsRequest
-	(*ListWordsResponse)(nil),     // 3: dict.v1.ListWordsResponse
-	(*WordIDRequest)(nil),         // 4: dict.v1.WordIDRequest
-	(*Word)(nil),                  // 5: dict.v1.Word
-	(*v1.PaginationRequest)(nil),  // 6: common.v1.PaginationRequest
-	(*v1.PaginationResponse)(nil), // 7: common.v1.PaginationResponse
-	(*emptypb.Empty)(nil),         // 8: google.protobuf.Empty
+	(*CreateWordRequest)(nil),      // 0: dict.v1.CreateWordRequest
+	(*LookupWordRequest)(nil),      // 1: dict.v1.LookupWordRequest
+	(*ListWordsRequest)(nil),       // 2: dict.v1.ListWordsRequest
+	(*ListWordsResponse)(nil),      // 3: dict.v1.ListWordsResponse
+	(*WordIDRequest)(nil),          // 4: dict.v1.WordIDRequest
+	(*ListCategoriesRequest)(nil),  // 5: dict.v1.ListCategoriesRequest
+	(*ListCategoriesResponse)(nil), // 6: dict.v1.ListCategoriesResponse
+	(*Word)(nil),                   // 7: dict.v1.Word
+	(*v1.PaginationRequest)(nil),   // 8: common.v1.PaginationRequest
+	(*v1.PaginationResponse)(nil),  // 9: common.v1.PaginationResponse
+	(*GetWordStatsRequest)(nil),    // 10: dict.v1.GetWordStatsRequest
+	(*emptypb.Empty)(nil),          // 11: google.protobuf.Empty
+	(*GetWordStatsResponse)(nil),   // 12: dict.v1.GetWordStatsResponse
 }
 var file_dict_v1_dict_service_proto_depIdxs = []int32{
-	5,  // 0: dict.v1.CreateWordRequest.word:type_name -> dict.v1.Word
-	6,  // 1: dict.v1.ListWordsRequest.pagination:type_name -> common.v1.PaginationRequest
-	5,  // 2: dict.v1.ListWordsResponse.words:type_name -> dict.v1.Word
-	7,  // 3: dict.v1.ListWordsResponse.pagination:type_name -> common.v1.PaginationResponse
+	7,  // 0: dict.v1.CreateWordRequest.word:type_name -> dict.v1.Word
+	8,  // 1: dict.v1.ListWordsRequest.pagination:type_name -> common.v1.PaginationRequest
+	7,  // 2: dict.v1.ListWordsResponse.words:type_name -> dict.v1.Word
+	9,  // 3: dict.v1.ListWordsResponse.pagination:type_name -> common.v1.PaginationResponse
 	0,  // 4: dict.v1.DictService.CreateWord:input_type -> dict.v1.CreateWordRequest
-	5,  // 5: dict.v1.DictService.UpdateWord:input_type -> dict.v1.Word
+	7,  // 5: dict.v1.DictService.UpdateWord:input_type -> dict.v1.Word
 	4,  // 6: dict.v1.DictService.GetWord:input_type -> dict.v1.WordIDRequest
 	2,  // 7: dict.v1.DictService.ListWords:input_type -> dict.v1.ListWordsRequest
 	1,  // 8: dict.v1.DictService.LookupWord:input_type -> dict.v1.LookupWordRequest
 	4,  // 9: dict.v1.DictService.DeleteWord:input_type -> dict.v1.WordIDRequest
-	5,  // 10: dict.v1.DictService.CreateWord:output_type -> dict.v1.Word
-	5,  // 11: dict.v1.DictService.UpdateWord:output_type -> dict.v1.Word
-	5,  // 12: dict.v1.DictService.GetWord:output_type -> dict.v1.Word
-	3,  // 13: dict.v1.DictService.ListWords:output_type -> dict.v1.ListWordsResponse
-	5,  // 14: dict.v1.DictService.LookupWord:output_type -> dict.v1.Word
-	8,  // 15: dict.v1.DictService.DeleteWord:output_type -> google.protobuf.Empty
-	10, // [10:16] is the sub-list for method output_type
-	4,  // [4:10] is the sub-list for method input_type
+	5,  // 10: dict.v1.DictService.ListCategories:input_type -> dict.v1.ListCategoriesRequest
+	10, // 11: dict.v1.DictService.GetWordStats:input_type -> dict.v1.GetWordStatsRequest
+	7,  // 12: dict.v1.DictService.CreateWord:output_type -> dict.v1.Word
+	7,  // 13: dict.v1.DictService.UpdateWord:output_type -> dict.v1.Word
+	7,  // 14: dict.v1.DictService.GetWord:output_type -> dict.v1.Word
+	3,  // 15: dict.v1.DictService.ListWords:output_type -> dict.v1.ListWordsResponse
+	7,  // 16: dict.v1.DictService.LookupWord:output_type -> dict.v1.Word
+	11, // 17: dict.v1.DictService.DeleteWord:output_type -> google.protobuf.Empty
+	6,  // 18: dict.v1.DictService.ListCategories:output_type -> dict.v1.ListCategoriesResponse
+	12, // 19: dict.v1.DictService.GetWordStats:output_type -> dict.v1.GetWordStatsResponse
+	12, // [12:20] is the sub-list for method output_type
+	4,  // [4:12] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -369,13 +476,14 @@ func file_dict_v1_dict_service_proto_init() {
 		return
 	}
 	file_dict_v1_word_proto_init()
+	file_dict_v1_word_stats_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_dict_service_proto_rawDesc), len(file_dict_v1_dict_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

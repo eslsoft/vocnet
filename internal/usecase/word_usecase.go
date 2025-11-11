@@ -19,6 +19,8 @@ type WordUsecase interface {
 	Get(ctx context.Context, wordID int64) (*entity.Word, error)
 	List(ctx context.Context, filter *repository.ListWordGroupQuery) ([]*entity.Word, int64, error)
 	Lookup(ctx context.Context, surface string, language entity.Language) (*entity.Word, error)
+	ListCategories(ctx context.Context, search string) ([]string, error)
+	Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error)
 }
 
 type wordUsecase struct {
@@ -250,4 +252,12 @@ func (u *wordUsecase) buildWordFromCache(meta *entity.Word, lexemeMap map[int64]
 	result := *meta
 	result.Lexemes = lexemes
 	return &result
+}
+
+func (u *wordUsecase) ListCategories(ctx context.Context, search string) ([]string, error) {
+	return u.groups.ListCategories(ctx, search)
+}
+
+func (u *wordUsecase) Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error) {
+	return u.groups.Stats(ctx, filter)
 }

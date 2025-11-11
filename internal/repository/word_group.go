@@ -22,4 +22,6 @@ type WordGroupRepository interface {
 	GetByWID(ctx context.Context, wid string) (*entity.Word, error)
 	List(ctx context.Context, query *ListWordGroupQuery) ([]*entity.Word, int64, error)
 	DeleteByWID(ctx context.Context, wid string) error
+	ListCategories(ctx context.Context, search string) ([]string, error)
+	Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error)
 }

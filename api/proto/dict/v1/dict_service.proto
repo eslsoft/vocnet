@@ -3,6 +3,7 @@ package dict.v1;
 
 import "common/v1/types.proto";
 import "dict/v1/word.proto";
+import "dict/v1/word_stats.proto";
 import "google/protobuf/empty.proto";
 message CreateWordRequest {
   dict.v1.Word word = 1;
@@ -34,6 +35,15 @@ message ListWordsResponse {
 message WordIDRequest {
   int64 word_id = 1;
 }
+message ListCategoriesRequest {
+  // Optional filter to search categories by prefix or pattern
+  // If empty, returns all categories
+  string search = 1;
+}
+message ListCategoriesResponse {
+  // List of unique category names
+  repeated string categories = 1;
+}
 service DictService {
   rpc CreateWord(CreateWordRequest) returns (dict.v1.Word);
   rpc UpdateWord(dict.v1.Word) returns (dict.v1.Word);
@@ -41,4 +51,6 @@ service DictService {
   rpc ListWords(ListWordsRequest) returns (ListWordsResponse);
   rpc LookupWord(LookupWordRequest) returns (dict.v1.Word);
   rpc DeleteWord(WordIDRequest) returns (google.protobuf.Empty);
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
+  rpc GetWordStats(GetWordStatsRequest) returns (GetWordStatsResponse);
 }

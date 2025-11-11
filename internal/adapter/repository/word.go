@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -11,6 +13,7 @@ import (
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
 	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
+	entpredicate "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/predicate"
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
@@ -302,6 +305,179 @@ func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
 	}
 }
 
+func (r *wordGroupRepository) ListCategories(ctx context.Context, search string) ([]string, error) {
+	rows, err := r.client.Word.
+		Query().
+		Select(entword.FieldCategories).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list categories: %w", err)
+	}
+
+	normalizedSearch := strings.ToLower(strings.TrimSpace(search))
+	seen := make(map[string]struct{})
+	var out []string
+
+	for _, row := range rows {
+		for _, category := range row.Categories {
+			trimmed := strings.TrimSpace(category)
+			if trimmed == "" {
+				continue
+			}
+			if normalizedSearch != "" && !strings.Contains(strings.ToLower(trimmed), normalizedSearch) {
+				continue
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			out = append(out, trimmed)
+		}
+	}
+
+	sort.Strings(out)
+	return out, nil
+}
+
+func (r *wordGroupRepository) Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error) {
+	langCodes := normalizeLanguageCodes(filter)
+	words, err := r.loadWordsForStats(ctx, langCodes)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &entity.WordStats{
+		Completeness: initCompletenessBuckets(),
+	}
+
+	langAcc := make(map[string]*languageAccumulator)
+	if filter != nil {
+		for _, lang := range filter.Languages {
+			ensureLanguageAccumulator(langAcc, lang)
+		}
+	}
+
+	wordIndex := make(map[int64]*languageAccumulator, len(words))
+	categoryTallies := newCategoryTallies()
+
+	var (
+		sumCompleteness   int64
+		wordsWithPhonetic int64
+		wordsWithCategory int64
+		newLast24h        int64
+		newLast7d         int64
+	)
+
+	now := time.Now().UTC()
+	last24h := now.Add(-24 * time.Hour)
+	last7d := now.Add(-7 * 24 * time.Hour)
+
+	for _, w := range words {
+		lang := entity.ParseLanguage(w.Language)
+		acc := ensureLanguageAccumulator(langAcc, lang)
+		wordIndex[w.ID] = acc
+
+		acc.WordCount++
+		acc.CompletenessSum += int64(w.Completeness)
+		sumCompleteness += int64(w.Completeness)
+
+		if len(w.Phonetics) > 0 {
+			acc.PhoneticWords++
+			wordsWithPhonetic++
+		}
+		if len(w.Categories) > 0 {
+			acc.CategoryWords++
+			wordsWithCategory++
+		}
+		categoryTallies.AddMany(w.Categories)
+
+		incrementCompletenessBucket(stats.Completeness, w.Completeness)
+
+		if !w.CreatedAt.IsZero() {
+			if w.CreatedAt.After(last24h) {
+				newLast24h++
+			}
+			if w.CreatedAt.After(last7d) {
+				newLast7d++
+			}
+		}
+	}
+
+	totalWords := int64(len(words))
+	stats.Summary.TotalWords = totalWords
+	stats.Summary.NewLast24h = newLast24h
+	stats.Summary.NewLast7d = newLast7d
+	if totalWords > 0 {
+		stats.Summary.AvgCompleteness = float64(sumCompleteness) / float64(totalWords)
+	}
+
+	stats.TopCategories = categoryTallies.Top(maxCategoryStats)
+
+	lexemeRows := []struct {
+		Language string `json:"language"`
+		Count    int64  `json:"count"`
+	}{}
+	lexemeQuery := r.client.Lexeme.Query().
+		Where(entlexeme.WordIDNotNil())
+	if len(langCodes) > 0 {
+		lexemeQuery = lexemeQuery.Where(entlexeme.LanguageIn(langCodes...))
+	}
+	if err := lexemeQuery.
+		GroupBy(entlexeme.FieldLanguage).
+		Aggregate(entdb.As(entdb.Count(), "count")).
+		Scan(ctx, &lexemeRows); err != nil {
+		return nil, fmt.Errorf("count lexemes: %w", err)
+	}
+
+	for _, row := range lexemeRows {
+		stats.Summary.TotalLexemes += row.Count
+		acc := ensureLanguageAccumulator(langAcc, entity.ParseLanguage(row.Language))
+		acc.LexemeCount = row.Count
+	}
+
+	formQuery := r.client.LexemeForm.Query().
+		Where(entlexemeform.HasLexemeWith(entlexeme.WordIDNotNil()))
+	if len(langCodes) > 0 {
+		formQuery = formQuery.Where(entlexemeform.HasLexemeWith(entlexeme.LanguageIn(langCodes...)))
+	}
+	formTotal, err := formQuery.Count(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("count lexeme forms: %w", err)
+	}
+	stats.Summary.TotalForms = int64(formTotal)
+
+	definitionWords, err := r.collectLexemeWordIDs(ctx, langCodes, entpredicate.Lexeme(func(sel *sql.Selector) {
+		sel.Where(sqljson.LenGT(entlexeme.FieldSenses, 0))
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("collect definition coverage: %w", err)
+	}
+	for wordID := range definitionWords {
+		if acc := wordIndex[wordID]; acc != nil {
+			acc.WordsWithSenses++
+		}
+	}
+
+	formWords, err := r.collectLexemeWordIDs(ctx, langCodes, entlexeme.HasForms())
+	if err != nil {
+		return nil, fmt.Errorf("collect form coverage: %w", err)
+	}
+	for wordID := range formWords {
+		if acc := wordIndex[wordID]; acc != nil {
+			acc.WordsWithForms++
+		}
+	}
+
+	stats.Coverage.Phonetics = ratio(wordsWithPhonetic, totalWords)
+	stats.Coverage.Categories = ratio(wordsWithCategory, totalWords)
+	stats.Coverage.Definitions = ratio(int64(len(definitionWords)), totalWords)
+	stats.Coverage.Forms = ratio(int64(len(formWords)), totalWords)
+
+	stats.Languages = buildLanguageStats(langAcc)
+
+	return stats, nil
+}
+
 func mapEntWord(rec *entdb.Word) *entity.Word {
 	if rec == nil {
 		return nil
@@ -318,4 +494,232 @@ func mapEntWord(rec *entdb.Word) *entity.Word {
 		CreatedAt:    rec.CreatedAt,
 		UpdatedAt:    rec.UpdatedAt,
 	}
+}
+
+const (
+	maxCategoryStats   = 10
+	unknownLanguageKey = "und"
+)
+
+var completenessBucketConfig = []struct {
+	label string
+	min   int32
+	max   int32
+}{
+	{label: "missing", min: 0, max: 0},
+	{label: "forms_only", min: 1, max: 59},
+	{label: "definitions", min: 60, max: 99},
+	{label: "complete", min: 100, max: 100},
+}
+
+type languageAccumulator struct {
+	Language        entity.Language
+	WordCount       int64
+	CompletenessSum int64
+	PhoneticWords   int64
+	CategoryWords   int64
+	WordsWithSenses int64
+	WordsWithForms  int64
+	LexemeCount     int64
+}
+
+func (a *languageAccumulator) toStats() entity.WordLanguageStats {
+	stats := entity.WordLanguageStats{
+		Language:    a.Language,
+		WordCount:   a.WordCount,
+		LexemeCount: a.LexemeCount,
+	}
+	if a.WordCount > 0 {
+		stats.AvgCompleteness = float64(a.CompletenessSum) / float64(a.WordCount)
+		stats.PhoneticCoverage = ratio(a.PhoneticWords, a.WordCount)
+		stats.CategoryCoverage = ratio(a.CategoryWords, a.WordCount)
+		stats.DefinitionCoverage = ratio(a.WordsWithSenses, a.WordCount)
+		stats.FormCoverage = ratio(a.WordsWithForms, a.WordCount)
+	}
+	return stats
+}
+
+func ensureLanguageAccumulator(acc map[string]*languageAccumulator, lang entity.Language) *languageAccumulator {
+	normalized := normalizeLanguageValue(lang)
+	key := languageKey(normalized)
+	if entry, ok := acc[key]; ok {
+		return entry
+	}
+	entry := &languageAccumulator{
+		Language: normalized,
+	}
+	acc[key] = entry
+	return entry
+}
+
+func normalizeLanguageValue(lang entity.Language) entity.Language {
+	code := strings.TrimSpace(lang.Code())
+	if code == "" {
+		return entity.LanguageUnspecified
+	}
+	return entity.ParseLanguage(code)
+}
+
+func languageKey(lang entity.Language) string {
+	code := strings.TrimSpace(lang.Code())
+	if code == "" {
+		return unknownLanguageKey
+	}
+	return code
+}
+
+func buildLanguageStats(acc map[string]*languageAccumulator) []entity.WordLanguageStats {
+	stats := make([]entity.WordLanguageStats, 0, len(acc))
+	for _, a := range acc {
+		stats = append(stats, a.toStats())
+	}
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].WordCount == stats[j].WordCount {
+			return stats[i].Language.Code() < stats[j].Language.Code()
+		}
+		return stats[i].WordCount > stats[j].WordCount
+	})
+	return stats
+}
+
+type categoryTallies map[string]*categoryTally
+
+type categoryTally struct {
+	label string
+	count int64
+}
+
+func newCategoryTallies() categoryTallies {
+	return make(categoryTallies)
+}
+
+func (c categoryTallies) AddMany(categories []string) {
+	for _, raw := range categories {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		entry, ok := c[key]
+		if !ok {
+			entry = &categoryTally{label: trimmed}
+			c[key] = entry
+		}
+		entry.count++
+	}
+}
+
+func (c categoryTallies) Top(limit int) []entity.CategoryStat {
+	stats := make([]entity.CategoryStat, 0, len(c))
+	for _, tally := range c {
+		stats = append(stats, entity.CategoryStat{
+			Category: tally.label,
+			Count:    tally.count,
+		})
+	}
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].Count == stats[j].Count {
+			return stats[i].Category < stats[j].Category
+		}
+		return stats[i].Count > stats[j].Count
+	})
+	if limit > 0 && len(stats) > limit {
+		return stats[:limit]
+	}
+	return stats
+}
+
+func initCompletenessBuckets() []entity.CompletenessBucket {
+	buckets := make([]entity.CompletenessBucket, len(completenessBucketConfig))
+	for i, cfg := range completenessBucketConfig {
+		buckets[i] = entity.CompletenessBucket{
+			Label: cfg.label,
+			Min:   cfg.min,
+			Max:   cfg.max,
+		}
+	}
+	return buckets
+}
+
+func incrementCompletenessBucket(buckets []entity.CompletenessBucket, score int32) {
+	for i := range buckets {
+		if score >= buckets[i].Min && score <= buckets[i].Max {
+			buckets[i].Count++
+			return
+		}
+	}
+	if len(buckets) > 0 {
+		buckets[len(buckets)-1].Count++
+	}
+}
+
+func ratio(num, den int64) float64 {
+	if den == 0 {
+		return 0
+	}
+	return float64(num) / float64(den)
+}
+
+func normalizeLanguageCodes(filter *entity.WordStatsFilter) []string {
+	if filter == nil || len(filter.Languages) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(filter.Languages))
+	codes := make([]string, 0, len(filter.Languages))
+	for _, lang := range filter.Languages {
+		code := strings.TrimSpace(lang.Code())
+		if code == "" {
+			continue
+		}
+		lower := strings.ToLower(code)
+		if _, ok := seen[lower]; ok {
+			continue
+		}
+		seen[lower] = struct{}{}
+		codes = append(codes, lower)
+	}
+	return codes
+}
+
+func (r *wordGroupRepository) loadWordsForStats(ctx context.Context, langCodes []string) ([]*entdb.Word, error) {
+	query := r.client.Word.Query()
+	if len(langCodes) > 0 {
+		query = query.Where(entword.LanguageIn(langCodes...))
+	}
+	words, err := query.
+		Select(
+			entword.FieldID,
+			entword.FieldLanguage,
+			entword.FieldCategories,
+			entword.FieldPhonetics,
+			entword.FieldCompleteness,
+			entword.FieldCreatedAt,
+		).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list words for stats: %w", err)
+	}
+	return words, nil
+}
+
+func (r *wordGroupRepository) collectLexemeWordIDs(ctx context.Context, langCodes []string, preds ...entpredicate.Lexeme) (map[int64]struct{}, error) {
+	query := r.client.Lexeme.Query().
+		Where(entlexeme.WordIDNotNil())
+	if len(langCodes) > 0 {
+		query = query.Where(entlexeme.LanguageIn(langCodes...))
+	}
+	for _, pred := range preds {
+		query = query.Where(pred)
+	}
+	ids, err := query.
+		GroupBy(entlexeme.FieldWordID).
+		Ints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	results := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		results[int64(id)] = struct{}{}
+	}
+	return results, nil
 }

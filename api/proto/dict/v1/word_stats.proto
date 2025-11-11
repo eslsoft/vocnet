@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package dict.v1;
+
+import "common/v1/types.proto";
+
+// Word-level statistics request.
+message GetWordStatsRequest {
+  // Optional language filters; empty means all languages.
+  repeated common.v1.Language languages = 1;
+}
+
+// Aggregated statistics about the dictionary corpus.
+message GetWordStatsResponse {
+  WordStatsSummary summary = 1;
+  WordCoverage coverage = 2;
+  repeated WordLanguageStats languages = 3;
+  repeated CategoryStats top_categories = 4;
+  repeated CompletenessBucket completeness = 5;
+}
+
+// Top-line totals for quickly rendering an overview.
+message WordStatsSummary {
+  int64 total_words = 1;
+  int64 total_lexemes = 2;
+  int64 total_forms = 3;
+  double avg_completeness = 4;
+  int64 new_words_last_24h = 5;
+  int64 new_words_last_7d = 6;
+}
+
+// Global coverage ratios derived from the corpus.
+message WordCoverage {
+  double phonetics = 1;
+  double categories = 2;
+  double definitions = 3;
+  double forms = 4;
+}
+
+// Per-language slice of the stats for richer dashboards.
+message WordLanguageStats {
+  common.v1.Language language = 1;
+  int64 word_count = 2;
+  int64 lexeme_count = 3;
+  double avg_completeness = 4;
+  double phonetic_coverage = 5;
+  double definition_coverage = 6;
+  double form_coverage = 7;
+  double category_coverage = 8;
+}
+
+// Category distribution helps illustrate topical richness.
+message CategoryStats {
+  string category = 1;
+  int64 word_count = 2;
+}
+
+// Histogram bucket for completeness score ranges.
+message CompletenessBucket {
+  string label = 1;
+  int32 min = 2;
+  int32 max = 3;
+  int64 count = 4;
+}

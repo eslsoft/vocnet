@@ -163,3 +163,32 @@ func (s *DictServiceServer) DeleteWord(ctx context.Context, req *connect.Request
 
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
+
+func (s *DictServiceServer) GetWordStats(ctx context.Context, req *connect.Request[dictv1.GetWordStatsRequest]) (*connect.Response[dictv1.GetWordStatsResponse], error) {
+	var filter *entity.WordStatsFilter
+	if req != nil {
+		filter = mapping.ToEntityWordStatsFilter(req.Msg)
+	}
+	stats, err := s.wordUC.Stats(ctx, filter)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+	return connect.NewResponse(mapping.ToPbWordStats(stats)), nil
+}
+
+func (s *DictServiceServer) ListCategories(ctx context.Context, req *connect.Request[dictv1.ListCategoriesRequest]) (*connect.Response[dictv1.ListCategoriesResponse], error) {
+	search := ""
+	if req.Msg != nil {
+		search = strings.TrimSpace(req.Msg.GetSearch())
+	}
+
+	categories, err := s.wordUC.ListCategories(ctx, search)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	resp := &dictv1.ListCategoriesResponse{
+		Categories: categories,
+	}
+	return connect.NewResponse(resp), nil
+}
