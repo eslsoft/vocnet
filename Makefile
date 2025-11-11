@@ -48,26 +48,14 @@ setup: install-tools generate ## Setup complete development environment
 #==============================================================================
 
 .PHONY: generate
-generate: ## Generate all code (protobuf, ent, mocks, wire)
+generate: ent-generate ## Generate all code (protobuf, ent, mocks, wire)
+	@mkdir -p $(GEN_DIR) $(OPENAPI_DIR) internal/mocks
+	@echo "Generating golang codes"
+	go generate ./internal/...
 	@echo "Generating protobuf files with buf..."
-	@mkdir -p $(GEN_DIR) $(OPENAPI_DIR)
 	buf dep update $(PROTO_DIR)
 	buf generate
-	@echo "Generating Ent client..."
-	go generate ./internal/infrastructure/database/entschema
-	@echo "Generating mocks..."
-	go generate ./internal/repository/...
-	go generate ./internal/usecase/...
-	@echo "Generating Wire bindings..."
-	go generate ./internal/app
 	@echo "Code generation completed"
-
-.PHONY: mock-generate
-mock-generate: ## Generate mocks only
-	@echo "Generating mocks..."
-	@mkdir -p internal/mocks
-	go generate ./internal/repository/...
-	go generate ./internal/usecase/...
 
 .PHONY: ent-generate
 ent-generate: ## Generate Ent client only
