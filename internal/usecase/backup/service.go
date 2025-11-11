@@ -202,7 +202,7 @@ func (s *Service) Export(ctx context.Context, w io.Writer, opts ...ExportOption)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	counts := make(map[string]int, len(tables))
 	for _, tbl := range tables {
@@ -214,7 +214,7 @@ func (s *Service) Export(ctx context.Context, w io.Writer, opts ...ExportOption)
 	}
 
 	writer := bufio.NewWriter(w)
-	defer writer.Flush()
+	defer func() { _ = writer.Flush() }()
 
 	now := time.Now().UTC()
 	meta := record{
@@ -262,7 +262,7 @@ func (s *Service) Import(ctx context.Context, r io.Reader, opts ...ImportOption)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	br := bufio.NewReader(r)
 	stats := make(sequenceStats)
@@ -484,26 +484,26 @@ func (s *Service) exportTable(ctx context.Context, db *sql.DB, table *schema.Tab
 				dest[i] = &values[i]
 			}
 			if err := rows.Scan(dest...); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("scan %s: %w", table.Name, err)
 			}
 			rowMap, err := s.convertRow(table, columns, values)
 			if err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			if err := writeRecord(w, record{Type: table.Name, Payload: rowMap}); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			reporter.Increment(table.Name, 1)
 			rowCount++
 		}
 		if err := rows.Err(); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("iterate %s: %w", table.Name, err)
 		}
-		rows.Close()
+		_ = rows.Close()
 		if rowCount < batch {
 			break
 		}
@@ -620,12 +620,12 @@ func (s *Service) openDB(ctx context.Context) (*sql.DB, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 	if s.driver == "sqlite3" || s.driver == "sqlite" {
 		if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
-			db.Close()
+			_ = db.Close()
 			return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
 		}
 	}

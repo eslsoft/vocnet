@@ -5,31 +5,28 @@ go 1.24.0
 toolchain go1.24.7
 
 require (
-	github.com/envoyproxy/protoc-gen-validate v1.1.0
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.0
-	github.com/jackc/pgx/v5 v5.7.6
-	github.com/mattn/go-sqlite3 v1.14.32
-	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/cobra v1.10.1
-	github.com/spf13/viper v1.21.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20240826202546-f6391c0de4c7
-	google.golang.org/grpc v1.67.1
-	google.golang.org/protobuf v1.36.9
-)
-
-require (
 	connectrpc.com/connect v1.19.0
 	connectrpc.com/cors v0.1.0
 	entgo.io/ent v0.14.0
+	github.com/envoyproxy/protoc-gen-validate v1.1.0
 	github.com/golang/mock v1.6.0
 	github.com/google/cel-go v0.26.1
 	github.com/google/wire v0.7.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.0
+	github.com/jackc/pgx/v5 v5.7.6
 	github.com/lib/pq v1.10.9
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/rs/cors v1.11.1
+	github.com/sirupsen/logrus v1.9.3
+	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
+	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.43.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20240826202546-f6391c0de4c7
+	google.golang.org/grpc v1.67.1
+	google.golang.org/protobuf v1.36.9
 	modernc.org/sqlite v1.40.0
 )
 

@@ -1,7 +1,8 @@
 version: "2"
+
 run:
-  skip-dirs:
-    - scripts
+  timeout: 10m
+
 linters:
   enable:
     - bodyclose
@@ -20,39 +21,28 @@ linters:
     gocyclo:
       min-complexity: 30
   exclusions:
-    generated: lax
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
     rules:
-      - linters:
+      # Test files
+      - path: _test\.go
+        linters:
           - dupl
           - gocyclo
           - gosec
-        path: _test\.go
-      - linters:
+      # Mock files
+      - path: internal/mocks/
+        linters:
           - golint
           - unused
-        path: internal/mocks/
-      - linters:
-          - golint
-        path: api/gen/
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
-      - scripts$
-formatters:
-  enable:
-    - gofmt
-    - goimports
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
-      - scripts$
-      - api/gen/
+      # Generated API files
+      - path: api/gen/
+        linters:
+          - all
+      # Generated ent files
+      - path: internal/infrastructure/database/ent/
+        linters:
+          - all
+      # Scripts directory
+      - path: scripts/
+        linters:
+          - all
+

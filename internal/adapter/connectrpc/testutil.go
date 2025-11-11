@@ -42,15 +42,15 @@ func setupTestDB(t *testing.T) *ent.Client {
 	// Run schema migration
 	ctx := context.Background()
 	if err := client.Schema.Create(ctx); err != nil {
-		client.Close()
-		db.Close()
+		_ = client.Close()
+		_ = db.Close()
 		t.Fatalf("failed to create schema: %v", err)
 	}
 
 	// Register cleanup to close the client when test finishes
 	t.Cleanup(func() {
-		client.Close()
-		db.Close()
+		_ = client.Close()
+		_ = db.Close()
 	})
 
 	return client

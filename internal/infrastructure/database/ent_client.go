@@ -39,8 +39,8 @@ func NewEntClient(cfg *config.Config) (*ent.Client, func(), error) {
 	ctx := context.Background()
 	client := ent.NewClient(opts...)
 	if err := client.Schema.Create(ctx); err != nil {
-		return nil, func() { client.Close() }, fmt.Errorf("migrate schema: %w", err)
+		return nil, func() { _ = client.Close() }, fmt.Errorf("migrate schema: %w", err)
 	}
 
-	return client, func() { client.Close() }, err
+	return client, func() { _ = client.Close() }, err
 }

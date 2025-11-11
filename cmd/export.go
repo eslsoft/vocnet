@@ -89,9 +89,11 @@ var exportCmd = &cobra.Command{
 		)
 
 		if outputPath != "-" {
+			//nolint:gosec // G301: Directory permissions 0755 is standard for application data directories
 			if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 				return fmt.Errorf("创建输出目录失败: %w", err)
 			}
+			//nolint:gosec // G304: outputPath is validated user input from command line flag
 			file, openErr := os.Create(outputPath)
 			if openErr != nil {
 				return fmt.Errorf("创建备份文件失败: %w", openErr)

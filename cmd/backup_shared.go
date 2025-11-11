@@ -67,7 +67,7 @@ func (p *backupProgress) StartTable(table string, total int) {
 	p.counts[table] = 0
 	p.lastPrinted[table] = 0
 	p.steps[table] = progressStep(total)
-	fmt.Fprintf(p.out, "开始%s %s (共 %d 行)\n", p.operation, table, total)
+	_, _ = fmt.Fprintf(p.out, "开始%s %s (共 %d 行)\n", p.operation, table, total)
 }
 
 func (p *backupProgress) Increment(table string, delta int) {
@@ -95,9 +95,9 @@ func (p *backupProgress) FinishTable(table string) {
 		p.printProgress(table, current, total)
 	}
 	if total > 0 {
-		fmt.Fprintf(p.out, "完成%s %s: %d/%d 行\n", p.operation, table, current, total)
+		_, _ = fmt.Fprintf(p.out, "完成%s %s: %d/%d 行\n", p.operation, table, current, total)
 	} else {
-		fmt.Fprintf(p.out, "完成%s %s: %d 行\n", p.operation, table, current)
+		_, _ = fmt.Fprintf(p.out, "完成%s %s: %d 行\n", p.operation, table, current)
 	}
 	delete(p.counts, table)
 	delete(p.totals, table)
@@ -107,9 +107,9 @@ func (p *backupProgress) FinishTable(table string) {
 
 func (p *backupProgress) printProgress(table string, current, total int) {
 	if total > 0 {
-		fmt.Fprintf(p.out, "%s进度 %s: %d/%d\n", p.operation, table, current, total)
+		_, _ = fmt.Fprintf(p.out, "%s进度 %s: %d/%d\n", p.operation, table, current, total)
 	} else {
-		fmt.Fprintf(p.out, "%s进度 %s: 已处理 %d 行\n", p.operation, table, current)
+		_, _ = fmt.Fprintf(p.out, "%s进度 %s: 已处理 %d 行\n", p.operation, table, current)
 	}
 }
 
