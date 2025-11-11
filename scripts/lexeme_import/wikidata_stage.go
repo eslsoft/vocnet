@@ -422,9 +422,12 @@ func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.Word, error) {
 		return nil, errors.New("no senses")
 	}
 
-	// If POS is empty, try to infer it from glosses
+	// Infer POS and categories from glosses if needed
+	var categories []string
 	if posLabel == "" {
-		posLabel = inferPOSFromGlosses(wd.Senses)
+		posAndCats := inferPOSAndCategories(wd.Senses)
+		posLabel = posAndCats.POS
+		categories = posAndCats.Categories
 	}
 
 	definitions := []*dictv1.Definition{{
@@ -436,6 +439,7 @@ func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.Word, error) {
 	return &dictv1.Word{
 		Lemma:       lemma,
 		Language:    commonv1.Language_LANGUAGE_ENGLISH,
+		Categories:  categories,
 		Forms:       forms,
 		Definitions: definitions,
 	}, nil
@@ -585,10 +589,16 @@ func mapLexicalCategoryToPOS(lexicalCategory string) string {
 	}
 }
 
-// inferPOSFromGlosses attempts to infer the part-of-speech from sense glosses
+// POSAndCategories holds both POS and category tags inferred from glosses
+type POSAndCategories struct {
+	POS        string
+	Categories []string
+}
+
+// inferPOSAndCategories attempts to infer the part-of-speech and category tags from sense glosses
 // This is particularly useful for proper nouns and other words where Wikidata
 // doesn't provide a lexicalCategory but the gloss contains clear indicators
-func inferPOSFromGlosses(senses []WikidataSense) string {
+func inferPOSAndCategories(senses []WikidataSense) POSAndCategories {
 	// Collect all glosses
 	var glosses []string
 	for _, sense := range senses {
@@ -600,62 +610,206 @@ func inferPOSFromGlosses(senses []WikidataSense) string {
 	}
 
 	if len(glosses) == 0 {
-		return ""
+		return POSAndCategories{}
 	}
+
+	categories := []string{}
 
 	// Check each gloss for patterns
 	for _, gloss := range glosses {
-		// Proper nouns (all are nouns)
-		if strings.Contains(gloss, "family name") ||
-			strings.Contains(gloss, "surname") ||
-			strings.Contains(gloss, "given name") ||
-			strings.Contains(gloss, "male given name") ||
-			strings.Contains(gloss, "female given name") ||
-			strings.Contains(gloss, "unisex given name") ||
-			strings.Contains(gloss, "first name") {
-			return "noun"
+		// Person names
+		if strings.Contains(gloss, "family name") || strings.Contains(gloss, "surname") {
+			categories = appendUnique(categories, "entity:person", "person:family-name")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "given name") || strings.Contains(gloss, "first name") {
+			categories = appendUnique(categories, "entity:person", "person:given-name")
+			if strings.Contains(gloss, "male") {
+				categories = appendUnique(categories, "person:male-name")
+			} else if strings.Contains(gloss, "female") {
+				categories = appendUnique(categories, "person:female-name")
+			} else if strings.Contains(gloss, "unisex") {
+				categories = appendUnique(categories, "person:unisex-name")
+			}
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
 		}
 
-		if strings.Contains(gloss, "place name") ||
-			strings.Contains(gloss, "city in") ||
-			strings.Contains(gloss, "town in") ||
-			strings.Contains(gloss, "village in") ||
-			strings.Contains(gloss, "municipality in") ||
-			strings.Contains(gloss, "country") ||
-			strings.Contains(gloss, "capital of") ||
-			strings.Contains(gloss, "river in") ||
-			strings.Contains(gloss, "mountain") ||
-			strings.Contains(gloss, "lake in") ||
-			strings.Contains(gloss, "island") ||
-			strings.Contains(gloss, "region") ||
-			strings.Contains(gloss, "province") ||
-			strings.Contains(gloss, "state in") {
-			return "noun"
+		// Place names - specific types
+		if strings.Contains(gloss, "city in") || strings.Contains(gloss, "city of") {
+			categories = appendUnique(categories, "entity:place", "place:city")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		// Check for standalone "city" or patterns like "Canadian city"
+		if (strings.Contains(gloss, " city") || strings.HasSuffix(gloss, "city")) &&
+			!strings.Contains(gloss, "city in") && !strings.Contains(gloss, "city of") {
+			categories = appendUnique(categories, "entity:place", "place:city")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "town in") || strings.Contains(gloss, "town of") {
+			categories = appendUnique(categories, "entity:place", "place:town")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "village in") || strings.Contains(gloss, "village of") {
+			categories = appendUnique(categories, "entity:place", "place:village")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "municipality in") {
+			categories = appendUnique(categories, "entity:place", "place:municipality")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "capital of") {
+			categories = appendUnique(categories, "entity:place", "place:capital", "place:city")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "state in") || strings.Contains(gloss, "american state") {
+			categories = appendUnique(categories, "entity:place", "place:state")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "country") {
+			categories = appendUnique(categories, "entity:place", "place:country")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "territory") {
+			categories = appendUnique(categories, "entity:place", "place:territory")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "province") {
+			categories = appendUnique(categories, "entity:place", "place:province")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "region") || strings.Contains(gloss, "historic land") {
+			categories = appendUnique(categories, "entity:place", "place:region")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "river in") {
+			categories = appendUnique(categories, "entity:place", "place:river")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "mountain") {
+			categories = appendUnique(categories, "entity:place", "place:mountain")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "lake in") {
+			categories = appendUnique(categories, "entity:place", "place:lake")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "island") {
+			categories = appendUnique(categories, "entity:place", "place:island")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "place name") {
+			categories = appendUnique(categories, "entity:place")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
 		}
 
-		// Other entity types that are nouns
-		if strings.Contains(gloss, "company") ||
-			strings.Contains(gloss, "organization") ||
-			strings.Contains(gloss, "university") ||
-			strings.Contains(gloss, "language") ||
-			strings.Contains(gloss, "ethnic group") ||
-			strings.Contains(gloss, "dog breed") ||
-			strings.Contains(gloss, "cat breed") {
-			return "noun"
+		// Demonyms (people from a place)
+		if strings.Contains(gloss, "person from") || strings.Contains(gloss, "native of") ||
+			strings.Contains(gloss, "resident of") || strings.Contains(gloss, "citizens or residents of") ||
+			strings.Contains(gloss, "people of") {
+			categories = appendUnique(categories, "attr:demonym")
+			return POSAndCategories{POS: "noun", Categories: categories}
+		}
+
+		// Time-related
+		if strings.Contains(gloss, "day after") || strings.Contains(gloss, "day of the week") {
+			categories = appendUnique(categories, "entity:time", "attr:weekday")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "month of the year") {
+			categories = appendUnique(categories, "entity:time", "attr:month")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+
+		// Organizations
+		if strings.Contains(gloss, "company") {
+			categories = appendUnique(categories, "entity:organization", "org:company")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "organization") {
+			categories = appendUnique(categories, "entity:organization")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "university") {
+			categories = appendUnique(categories, "entity:organization", "org:university")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+
+		// Products, Games, Media
+		if strings.Contains(gloss, "video game") || strings.Contains(gloss, "web-based game") ||
+			(strings.Contains(gloss, "game") && (strings.Contains(gloss, "created") || strings.Contains(gloss, "developed"))) {
+			categories = appendUnique(categories, "product:game")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "software") || strings.Contains(gloss, "application") {
+			categories = appendUnique(categories, "product:software")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "brand") {
+			categories = appendUnique(categories, "product:brand")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+
+		// Other entity types
+		if strings.Contains(gloss, "language") {
+			categories = appendUnique(categories, "entity:language")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "ethnic group") {
+			categories = appendUnique(categories, "entity:ethnic-group")
+			return POSAndCategories{POS: "proper-noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "dog breed") {
+			categories = appendUnique(categories, "attr:animal", "attr:dog-breed")
+			return POSAndCategories{POS: "noun", Categories: categories}
+		}
+		if strings.Contains(gloss, "cat breed") {
+			categories = appendUnique(categories, "attr:animal", "attr:cat-breed")
+			return POSAndCategories{POS: "noun", Categories: categories}
+		}
+
+		// Scientific/Academic concepts
+		if strings.Contains(gloss, "concept") || strings.Contains(gloss, "theory") ||
+			strings.Contains(gloss, "principle") || strings.Contains(gloss, "hypothesis") {
+			categories = appendUnique(categories, "attr:concept")
+			return POSAndCategories{POS: "noun", Categories: categories}
 		}
 
 		// Phrases/idioms - typically don't have a single POS
-		// But if we must assign one, check the structure
-		if strings.Contains(gloss, "phrase") ||
-			strings.Contains(gloss, "idiom") ||
-			strings.Contains(gloss, "saying") ||
-			strings.Contains(gloss, "proverb") {
-			// These could be phrases, keep empty or return a special marker
-			// For now, we'll leave them empty
-			continue
+		if strings.Contains(gloss, "phrase") || strings.Contains(gloss, "idiom") {
+			categories = appendUnique(categories, "attr:phrase")
+			// Don't return POS for phrases, continue checking
+		}
+		if strings.Contains(gloss, "saying") || strings.Contains(gloss, "proverb") {
+			categories = appendUnique(categories, "phrase", "saying")
+			// Don't return POS for sayings
 		}
 	}
 
-	// No pattern matched, return empty
-	return ""
+	// If we only found phrase/saying categories, return them without POS
+	if len(categories) > 0 {
+		return POSAndCategories{POS: "", Categories: categories}
+	}
+
+	// No pattern matched
+	return POSAndCategories{}
+}
+
+// inferPOSFromGlosses is kept for backward compatibility, now calls inferPOSAndCategories
+func inferPOSFromGlosses(senses []WikidataSense) string {
+	return inferPOSAndCategories(senses).POS
+}
+
+// appendUnique appends items to a slice only if they don't already exist
+func appendUnique(slice []string, items ...string) []string {
+	existing := make(map[string]bool)
+	for _, item := range slice {
+		existing[item] = true
+	}
+	for _, item := range items {
+		if !existing[item] {
+			slice = append(slice, item)
+			existing[item] = true
+		}
+	}
+	return slice
 }

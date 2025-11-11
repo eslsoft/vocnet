@@ -36,6 +36,7 @@ type ecdictEnricher struct {
 type ecdictEnrichment struct {
 	phonetics  []*dictv1.Phonetic
 	categories []string
+	domains    []string // domain markers like [计], [法], [医]
 	senses     []sensePayload
 }
 
@@ -221,6 +222,16 @@ func mergeEnrichment(lexeme *dictv1.Word, enrich *ecdictEnrichment) bool {
 			changed = true
 		}
 	}
+	// Add domain markers as categories with "domain:" prefix
+	if len(enrich.domains) > 0 {
+		domainCategories := make([]string, len(enrich.domains))
+		for i, domain := range enrich.domains {
+			domainCategories[i] = "domain:" + domain
+		}
+		if addCategories(lexeme, domainCategories) {
+			changed = true
+		}
+	}
 	if len(enrich.senses) > 0 {
 		if addSenses(lexeme, enrich.senses) {
 			changed = true
@@ -242,15 +253,25 @@ type wordRecord struct {
 }
 
 func buildEnrichment(r wordRecord) *ecdictEnrichment {
+	// Extract domain markers from definition/translation
+	var allDomains []string
+	if r.Definition.Valid {
+		allDomains = append(allDomains, extractDomainMarkers(r.Definition.String)...)
+	}
+	if r.Translation.Valid {
+		allDomains = append(allDomains, extractDomainMarkers(r.Translation.String)...)
+	}
+
 	return &ecdictEnrichment{
 		phonetics:  buildPhonetics(r.Phonetic),
 		categories: buildTags(r.Tags),
+		domains:    deduplicateDomains(allDomains),
 		senses:     buildSensePayloads(r),
 	}
 }
 
 func (e *ecdictEnrichment) isEmpty() bool {
-	return len(e.phonetics) == 0 && len(e.categories) == 0 && len(e.senses) == 0
+	return len(e.phonetics) == 0 && len(e.categories) == 0 && len(e.domains) == 0 && len(e.senses) == 0
 }
 
 func addPhonetics(lexeme *dictv1.Word, additions []*dictv1.Phonetic) bool {
@@ -448,6 +469,25 @@ func buildTags(ns sql.NullString) []string {
 	}
 	seen := make(map[string]struct{}, len(parts))
 	ordered := make([]string, 0, len(parts))
+
+	// Learning level tags that need level: prefix
+	levelTags := map[string]bool{
+		"gk":    true,
+		"cet4":  true,
+		"cet6":  true,
+		"ky":    true,
+		"toefl": true,
+		"ielts": true,
+		"gre":   true,
+		"zk":    true,
+	}
+
+	// Attribute tags that need attr: prefix
+	attrTags := map[string]bool{
+		"phrase": true,
+		"saying": true,
+	}
+
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "" {
@@ -458,7 +498,15 @@ func buildTags(ns sql.NullString) []string {
 			continue
 		}
 		seen[norm] = struct{}{}
-		ordered = append(ordered, p)
+
+		// Add appropriate prefix to tags
+		tag := p
+		if levelTags[norm] {
+			tag = "level:" + p
+		} else if attrTags[norm] {
+			tag = "attr:" + p
+		}
+		ordered = append(ordered, tag)
 	}
 	if len(ordered) == 0 {
 		return nil
@@ -590,6 +638,171 @@ func removeDomainMarkers(s string) string {
 		s = strings.TrimSpace(s[closeIdx+1:])
 	}
 	return s
+}
+
+// extractDomainMarkers extracts domain/category markers like [计], [法], [医], etc.
+// Returns a slice of domain names (normalized to English)
+func extractDomainMarkers(s string) []string {
+	var domains []string
+	s = strings.TrimSpace(s)
+
+	for {
+		// Find patterns like [x], [xx], [xxx] at the beginning
+		if len(s) < 3 {
+			break
+		}
+		if s[0] != '[' {
+			break
+		}
+		closeIdx := strings.Index(s, "]")
+		if closeIdx == -1 || closeIdx > 10 { // Domain markers are usually short
+			break
+		}
+
+		// Extract the marker content
+		marker := s[1:closeIdx]
+		if domain := normalizeDomainMarker(marker); domain != "" {
+			domains = append(domains, domain)
+		}
+
+		// Move past the marker
+		s = strings.TrimSpace(s[closeIdx+1:])
+	}
+
+	return domains
+}
+
+// normalizeDomainMarker converts Chinese domain markers to English domain names
+func normalizeDomainMarker(marker string) string {
+	marker = strings.TrimSpace(marker)
+	if marker == "" {
+		return ""
+	}
+
+	// Map common Chinese domain markers to English
+	domainMap := map[string]string{
+		// Computing & Technology
+		"计":   "computing",
+		"计算机": "computing",
+		"网络":  "network",
+		"电":   "electronics",
+		"电子":  "electronics",
+		"电影":  "film",
+
+		// Science
+		"化":  "chemistry",
+		"化学": "chemistry",
+		"生":  "biology",
+		"生物": "biology",
+		"生化": "biochemistry",
+		"生态": "ecology",
+		"数":  "mathematics",
+		"数学": "mathematics",
+		"物":  "physics",
+		"物理": "physics",
+		"天":  "astronomy",
+		"天文": "astronomy",
+		"地":  "geography",
+		"地理": "geography",
+		"地质": "geology",
+		"矿":  "mineralogy",
+		"遗":  "genetics",
+
+		// Life Sciences & Medicine
+		"医":  "medicine",
+		"医学": "medicine",
+		"内科": "internal-medicine",
+		"心理": "psychology",
+		"植":  "botany",
+		"植保": "plant-protection",
+		"动":  "zoology",
+		"昆":  "entomology",
+
+		// Social Sciences
+		"法":  "law",
+		"经":  "economics",
+		"经济": "economics",
+		"财":  "finance",
+
+		// Engineering & Industry
+		"军":  "military",
+		"军事": "military",
+		"建":  "architecture",
+		"建筑": "architecture",
+		"机":  "mechanics",
+		"机械": "mechanics",
+
+		// Arts & Sports
+		"音":  "music",
+		"音乐": "music",
+		"体":  "sports",
+		"体育": "sports",
+
+		// Geography & Places (these shouldn't be domain markers, but handle them)
+		"地名":  "geography",
+		"人名":  "", // Person names are not a domain, skip
+		"美国":  "", // Country names are not domains, skip
+		"德国":  "",
+		"俄罗斯": "",
+		"智利":  "",
+		"约旦":  "",
+		"土耳其": "",
+
+		// Grammar markers (not domains, skip)
+		"前缀":  "", // prefix
+		"复":   "", // plural
+		"单复同": "", // same singular/plural
+		"用作单": "", // used as singular
+		"pl.": "", // plural abbreviation
+		"微":   "microscopy",
+	}
+
+	if domain, ok := domainMap[marker]; ok {
+		return domain
+	}
+
+	// Check if it's already in English and looks like a valid domain
+	lower := strings.ToLower(marker)
+	// If it contains only ASCII letters, assume it's already English
+	if isASCII(marker) {
+		return lower
+	}
+
+	// Unknown Chinese marker, skip it (return empty to avoid pollution)
+	return ""
+}
+
+// isASCII checks if a string contains only ASCII characters
+func isASCII(s string) bool {
+	for _, r := range s {
+		if r > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+// deduplicateDomains removes duplicate domains while preserving order
+func deduplicateDomains(domains []string) []string {
+	if len(domains) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(domains))
+
+	for _, domain := range domains {
+		domain = strings.ToLower(strings.TrimSpace(domain))
+		if domain == "" {
+			continue
+		}
+		if !seen[domain] {
+			seen[domain] = true
+			result = append(result, domain)
+		}
+	}
+
+	return result
 }
 
 // parseWordNetPOS parses ECDICT's WordNet-style POS format
