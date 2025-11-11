@@ -1,13 +1,39 @@
 syntax = "proto3";
 package dict.v1;
+
 import "common/v1/types.proto";
-import "google/protobuf/empty.proto";
 import "dict/v1/word.proto";
-message CreateWordRequest { dict.v1.Word word = 1; }
-message LookupWordRequest { string word = 1; }
-message ListWordsRequest {}
-message ListWordsResponse { repeated dict.v1.Word words = 1; }
-message WordIDRequest { int64 word_id = 1; }
+import "google/protobuf/empty.proto";
+message CreateWordRequest {
+  dict.v1.Word word = 1;
+}
+message LookupWordRequest {
+  string word = 1;
+}
+message ListWordsRequest {
+  common.v1.PaginationRequest pagination = 1;
+  // Filter expression using CEL syntax
+  // Supported fields: keyword, category, language, surface
+  // Examples:
+  //   keyword == "book"
+  //   category in ["cet4", "cet6"]
+  //   language == "en"
+  //   surface in ["run", "running", "ran"]  // Batch lookup by lemma or forms
+  //   keyword == "run" && category in ["basic"]
+  string filter = 2;
+  // Sorting: field name with optional direction
+  // Supported fields: lemma, updated_at, created_at
+  // Direction: asc or desc (default: asc)
+  // Examples: "lemma", "updated_at desc", "created_at asc"
+  string order_by = 3;
+}
+message ListWordsResponse {
+  repeated dict.v1.Word words = 1;
+  common.v1.PaginationResponse pagination = 2;
+}
+message WordIDRequest {
+  int64 word_id = 1;
+}
 service DictService {
   rpc CreateWord(CreateWordRequest) returns (dict.v1.Word);
   rpc UpdateWord(dict.v1.Word) returns (dict.v1.Word);

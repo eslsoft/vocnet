@@ -6,8 +6,11 @@ import (
 	"strings"
 
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
+	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
@@ -180,6 +183,8 @@ func (r *wordGroupRepository) DeleteByWID(ctx context.Context, wid string) error
 type listWordGroupParams struct {
 	Language      string
 	Keyword       string
+	Categories    []string
+	SurfaceTerms  []string
 	PrimaryKey    string
 	PrimaryDesc   bool
 	SecondaryKey  string
@@ -191,8 +196,60 @@ func applyWordGroupFilters(q *entdb.WordQuery, params listWordGroupParams) {
 		q.Where(entword.LanguageEQ(params.Language))
 	}
 	if params.Keyword != "" {
-		q.Where(entword.LemmaContainsFold(params.Keyword))
+		// Keyword search: match in lemma OR in any lexeme forms
+		// This allows searching "apples" to find "apple"
+		q.Where(entword.Or(
+			entword.LemmaContainsFold(params.Keyword),
+			entword.HasLexemesWith(
+				entlexeme.HasFormsWith(
+					entlexemeform.TextContainsFold(params.Keyword),
+				),
+			),
+		))
 	}
+	if len(params.Categories) > 0 {
+		// OR logic: word contains ANY of the specified categories
+		q.Where(func(s *sql.Selector) {
+			column := s.C(entword.FieldCategories)
+			predicates := make([]*sql.Predicate, 0, len(params.Categories))
+			for _, category := range params.Categories {
+				predicates = append(predicates, sqljson.ValueContains(column, category))
+			}
+			s.Where(sql.Or(predicates...))
+		})
+	}
+	if len(params.SurfaceTerms) > 0 {
+		// Batch lookup: match words by lemma OR any of their forms
+		// Use IN operator for better performance with large lists
+
+		// Convert to lowercase for case-insensitive matching
+		lowerTerms := make([]string, len(params.SurfaceTerms))
+		for i, term := range params.SurfaceTerms {
+			lowerTerms[i] = strings.ToLower(term)
+		}
+
+		q.Where(entword.Or(
+			// Match lemma (case-insensitive using LOWER() function)
+			func(s *sql.Selector) {
+				s.Where(sql.In(sql.Lower(s.C(entword.FieldLemma)), stringsToInterfaces(lowerTerms)...))
+			},
+			// Match any lexeme form (forms are already stored in lowercase)
+			entword.HasLexemesWith(
+				entlexeme.HasFormsWith(
+					entlexemeform.TextIn(lowerTerms...),
+				),
+			),
+		))
+	}
+}
+
+// Helper function to convert []string to []interface{} for SQL IN clause
+func stringsToInterfaces(strs []string) []interface{} {
+	result := make([]interface{}, len(strs))
+	for i, s := range strs {
+		result[i] = s
+	}
+	return result
 }
 
 func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
@@ -203,6 +260,12 @@ func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
 			q.Order(entword.ByLemma(sql.OrderDesc()))
 		} else {
 			q.Order(entword.ByLemma())
+		}
+	case "created_at":
+		if params.PrimaryDesc {
+			q.Order(entword.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+		} else {
+			q.Order(entword.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 		}
 	case "updated_at":
 		if params.PrimaryDesc {
@@ -222,6 +285,12 @@ func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
 				q.Order(entword.ByLemma(sql.OrderDesc()))
 			} else {
 				q.Order(entword.ByLemma())
+			}
+		case "created_at":
+			if params.SecondaryDesc {
+				q.Order(entword.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+			} else {
+				q.Order(entword.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
 		case "updated_at":
 			if params.SecondaryDesc {

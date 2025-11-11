@@ -388,3 +388,393 @@ func TestDictService_WordIDGeneration(t *testing.T) {
 		Msg: &dictv1.WordIDRequest{WordId: resp.Msg.Id},
 	})
 }
+
+func TestDictService_ListWords_Filtering(t *testing.T) {
+	client := setupTestDB(t)
+
+	lexemeRepo := repository.NewLexemeRepository(client)
+	wordRepo := repository.NewWordGroupRepository(client)
+	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
+	svc := NewDictServiceServer(wordUC)
+
+	ctx := context.Background()
+
+	// Create test words with different categories
+	words := []*dictv1.Word{
+		{
+			Lemma:      "apple",
+			Language:   commonv1.Language_LANGUAGE_ENGLISH,
+			Categories: []string{"cet4", "fruit"},
+			Definitions: []*dictv1.Definition{
+				{LexemeId: "L1001", Pos: "n.", Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "a fruit"},
+				}},
+			},
+		},
+		{
+			Lemma:      "book",
+			Language:   commonv1.Language_LANGUAGE_ENGLISH,
+			Categories: []string{"cet4", "education"},
+			Definitions: []*dictv1.Definition{
+				{LexemeId: "L1002", Pos: "n.", Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "a written work"},
+				}},
+			},
+		},
+		{
+			Lemma:      "computer",
+			Language:   commonv1.Language_LANGUAGE_ENGLISH,
+			Categories: []string{"cet6", "technology"},
+			Definitions: []*dictv1.Definition{
+				{LexemeId: "L1003", Pos: "n.", Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "an electronic device"},
+				}},
+			},
+		},
+		{
+			Lemma:      "bonjour",
+			Language:   commonv1.Language_LANGUAGE_FRENCH,
+			Categories: []string{"greeting"},
+			Definitions: []*dictv1.Definition{
+				{LexemeId: "L1004", Pos: "interj.", Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_FRENCH, Gloss: "hello"},
+				}},
+			},
+		},
+	}
+
+	// Create all words
+	createdIDs := make([]int64, 0, len(words))
+	for _, w := range words {
+		resp, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
+			Msg: &dictv1.CreateWordRequest{Word: w},
+		})
+		require.NoError(t, err)
+		createdIDs = append(createdIDs, resp.Msg.Id)
+	}
+
+	// Cleanup
+	defer func() {
+		for _, id := range createdIDs {
+			_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
+				Msg: &dictv1.WordIDRequest{WordId: id},
+			})
+		}
+	}()
+
+	tests := []struct {
+		name          string
+		req           *dictv1.ListWordsRequest
+		expectedCount int
+		checkFunc     func(*testing.T, []*dictv1.Word)
+	}{
+		{
+			name: "filter by keyword - exact lemma",
+			req: &dictv1.ListWordsRequest{
+				Filter: `keyword == "book"`,
+			},
+			expectedCount: 1,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				assert.Equal(t, "book", words[0].Lemma)
+			},
+		},
+		{
+			name: "filter by keyword - partial lemma",
+			req: &dictv1.ListWordsRequest{
+				Filter: `keyword == "app"`,
+			},
+			expectedCount: 1,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				assert.Equal(t, "apple", words[0].Lemma)
+			},
+		},
+		{
+			name: "filter by category - cet4",
+			req: &dictv1.ListWordsRequest{
+				Filter: `category in ["cet4"]`,
+			},
+			expectedCount: 2,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				lemmas := make([]string, len(words))
+				for i, w := range words {
+					lemmas[i] = w.Lemma
+				}
+				assert.Contains(t, lemmas, "apple")
+				assert.Contains(t, lemmas, "book")
+			},
+		},
+		{
+			name: "filter by category - cet6",
+			req: &dictv1.ListWordsRequest{
+				Filter: `category in ["cet6"]`,
+			},
+			expectedCount: 1,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				assert.Equal(t, "computer", words[0].Lemma)
+			},
+		},
+		{
+			name: "filter by multiple categories",
+			req: &dictv1.ListWordsRequest{
+				Filter: `category in ["cet4", "cet6"]`,
+			},
+			expectedCount: 3,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				lemmas := make([]string, len(words))
+				for i, w := range words {
+					lemmas[i] = w.Lemma
+				}
+				assert.Contains(t, lemmas, "apple")
+				assert.Contains(t, lemmas, "book")
+				assert.Contains(t, lemmas, "computer")
+			},
+		},
+		{
+			name: "filter by language",
+			req: &dictv1.ListWordsRequest{
+				Filter: `language == "fr"`,
+			},
+			expectedCount: 1,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				assert.Equal(t, "bonjour", words[0].Lemma)
+			},
+		},
+		{
+			name: "filter by language and category",
+			req: &dictv1.ListWordsRequest{
+				Filter: `language == "en" && category in ["technology"]`,
+			},
+			expectedCount: 1,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				assert.Equal(t, "computer", words[0].Lemma)
+			},
+		},
+		{
+			name: "pagination - first page",
+			req: &dictv1.ListWordsRequest{
+				Filter: `language == "en"`,
+				Pagination: &commonv1.PaginationRequest{
+					PageNo:   1,
+					PageSize: 2,
+				},
+			},
+			expectedCount: 2,
+			checkFunc:     func(t *testing.T, words []*dictv1.Word) {},
+		},
+		{
+			name: "pagination - second page",
+			req: &dictv1.ListWordsRequest{
+				Filter: `language == "en"`,
+				Pagination: &commonv1.PaginationRequest{
+					PageNo:   2,
+					PageSize: 2,
+				},
+			},
+			expectedCount: 1,
+			checkFunc:     func(t *testing.T, words []*dictv1.Word) {},
+		},
+		{
+			name: "order by lemma ascending",
+			req: &dictv1.ListWordsRequest{
+				Filter:  `language == "en"`,
+				OrderBy: "lemma",
+			},
+			expectedCount: 3,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				// Should be: apple, book, computer
+				assert.Equal(t, "apple", words[0].Lemma)
+				assert.Equal(t, "book", words[1].Lemma)
+				assert.Equal(t, "computer", words[2].Lemma)
+			},
+		},
+		{
+			name: "order by lemma descending",
+			req: &dictv1.ListWordsRequest{
+				Filter:  `language == "en"`,
+				OrderBy: "lemma desc",
+			},
+			expectedCount: 3,
+			checkFunc: func(t *testing.T, words []*dictv1.Word) {
+				// Should be: computer, book, apple
+				assert.Equal(t, "computer", words[0].Lemma)
+				assert.Equal(t, "book", words[1].Lemma)
+				assert.Equal(t, "apple", words[2].Lemma)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := svc.ListWords(ctx, &connect.Request[dictv1.ListWordsRequest]{
+				Msg: tt.req,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			assert.Equal(t, tt.expectedCount, len(resp.Msg.Words), "Expected %d words, got %d", tt.expectedCount, len(resp.Msg.Words))
+
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, resp.Msg.Words)
+			}
+
+			// Check pagination metadata
+			assert.NotNil(t, resp.Msg.Pagination)
+			assert.GreaterOrEqual(t, resp.Msg.Pagination.Total, int32(tt.expectedCount))
+		})
+	}
+}
+
+func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
+	client := setupTestDB(t)
+
+	lexemeRepo := repository.NewLexemeRepository(client)
+	wordRepo := repository.NewWordGroupRepository(client)
+	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
+	svc := NewDictServiceServer(wordUC)
+
+	ctx := context.Background()
+
+	// Create a word with forms
+	runWord := &dictv1.Word{
+		Lemma:      "run",
+		Language:   commonv1.Language_LANGUAGE_ENGLISH,
+		Categories: []string{"cet4"},
+		Forms: []*dictv1.WordForm{
+			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_LEMMA, Word: "run"},
+			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR, Word: "runs"},
+			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, Word: "running"},
+			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_PAST, Word: "ran"},
+		},
+		Definitions: []*dictv1.Definition{
+			{
+				LexemeId: "L2001",
+				Pos:      "v.",
+				Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move swiftly"},
+				},
+			},
+		},
+	}
+
+	swimWord := &dictv1.Word{
+		Lemma:      "swim",
+		Language:   commonv1.Language_LANGUAGE_ENGLISH,
+		Categories: []string{"cet4"},
+		Forms: []*dictv1.WordForm{
+			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_LEMMA, Word: "swim"},
+			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR, Word: "swims"},
+			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, Word: "swimming"},
+			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_PAST, Word: "swam"},
+		},
+		Definitions: []*dictv1.Definition{
+			{
+				LexemeId: "L2002",
+				Pos:      "v.",
+				Senses: []*dictv1.LexemeSense{
+					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move through water"},
+				},
+			},
+		},
+	}
+
+	// Create both words
+	runResp, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
+		Msg: &dictv1.CreateWordRequest{Word: runWord},
+	})
+	require.NoError(t, err)
+
+	swimResp, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
+		Msg: &dictv1.CreateWordRequest{Word: swimWord},
+	})
+	require.NoError(t, err)
+
+	// Cleanup
+	defer func() {
+		_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
+			Msg: &dictv1.WordIDRequest{WordId: runResp.Msg.Id},
+		})
+		_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
+			Msg: &dictv1.WordIDRequest{WordId: swimResp.Msg.Id},
+		})
+	}()
+
+	tests := []struct {
+		name          string
+		filter        string
+		expectedCount int
+		expectedLemma string
+	}{
+		{
+			name:          "find by lemma",
+			filter:        `surface in ["run"]`,
+			expectedCount: 1,
+			expectedLemma: "run",
+		},
+		{
+			name:          "find by inflected form - running",
+			filter:        `surface in ["running"]`,
+			expectedCount: 1,
+			expectedLemma: "run",
+		},
+		{
+			name:          "find by inflected form - ran",
+			filter:        `surface in ["ran"]`,
+			expectedCount: 1,
+			expectedLemma: "run",
+		},
+		{
+			name:          "batch lookup by multiple forms",
+			filter:        `surface in ["running", "swam"]`,
+			expectedCount: 2,
+			expectedLemma: "", // both run and swim
+		},
+		{
+			name:          "batch lookup with lemma and forms",
+			filter:        `surface in ["run", "swimming"]`,
+			expectedCount: 2,
+			expectedLemma: "", // both run and swim
+		},
+		{
+			name:          "no match",
+			filter:        `surface in ["walked"]`,
+			expectedCount: 0,
+			expectedLemma: "",
+		},
+		{
+			name:          "keyword search finds inflected form",
+			filter:        `keyword == "running"`,
+			expectedCount: 1,
+			expectedLemma: "run",
+		},
+		{
+			name:          "keyword search finds by partial inflected form",
+			filter:        `keyword == "swim"`,
+			expectedCount: 1,
+			expectedLemma: "swim",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := svc.ListWords(ctx, &connect.Request[dictv1.ListWordsRequest]{
+				Msg: &dictv1.ListWordsRequest{
+					Filter: tt.filter,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			assert.Equal(t, tt.expectedCount, len(resp.Msg.Words), "Expected %d words, got %d", tt.expectedCount, len(resp.Msg.Words))
+
+			if tt.expectedCount == 1 && tt.expectedLemma != "" {
+				assert.Equal(t, tt.expectedLemma, resp.Msg.Words[0].Lemma)
+			}
+
+			if tt.expectedCount == 2 {
+				lemmas := []string{resp.Msg.Words[0].Lemma, resp.Msg.Words[1].Lemma}
+				assert.Contains(t, lemmas, "run")
+				assert.Contains(t, lemmas, "swim")
+			}
+		})
+	}
+}

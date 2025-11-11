@@ -9,6 +9,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/internal/usecase"
+	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"google.golang.org/grpc/codes"
@@ -85,14 +86,49 @@ func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[di
 
 func (s *DictServiceServer) ListWords(ctx context.Context, req *connect.Request[dictv1.ListWordsRequest]) (*connect.Response[dictv1.ListWordsResponse], error) {
 	filter := &repository.ListWordGroupQuery{
-		Pagination: repository.Pagination{PageNo: 1, PageSize: 20},
+		Pagination: repository.Pagination{
+			PageNo:   1,
+			PageSize: 20,
+		},
+		FilterOrder: repository.FilterOrder{
+			Filter:  req.Msg.GetFilter(),
+			OrderBy: req.Msg.GetOrderBy(),
+		},
 	}
-	words, _, err := s.wordUC.List(ctx, filter)
+
+	// Apply pagination
+	if req.Msg.GetPagination() != nil {
+		if req.Msg.GetPagination().GetPageNo() > 0 {
+			filter.PageNo = req.Msg.GetPagination().GetPageNo()
+		}
+		if req.Msg.GetPagination().GetPageSize() > 0 {
+			filter.PageSize = req.Msg.GetPagination().GetPageSize()
+		}
+		// Limit max page size to 100000
+		if filter.PageSize > 10000 {
+			filter.PageSize = 10000
+		}
+	}
+
+	words, total, err := s.wordUC.List(ctx, filter)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 
-	resp := &dictv1.ListWordsResponse{}
+	// Safe conversion of total to int32
+	var totalCount int32
+	if total > 0x7FFFFFFF {
+		totalCount = 0x7FFFFFFF // max int32
+	} else {
+		totalCount = int32(total) //nolint:gosec // checked above
+	}
+
+	resp := &dictv1.ListWordsResponse{
+		Pagination: &commonv1.PaginationResponse{
+			Total:  totalCount,
+			PageNo: filter.PageNo,
+		},
+	}
 	for _, word := range words {
 		resp.Words = append(resp.Words, mapping.ToPbWord(word))
 	}

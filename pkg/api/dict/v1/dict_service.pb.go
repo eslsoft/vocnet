@@ -7,7 +7,7 @@
 package dictv1
 
 import (
-	_ "github.com/eslsoft/vocnet/pkg/api/common/v1"
+	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -112,7 +112,23 @@ func (x *LookupWordRequest) GetWord() string {
 }
 
 type ListWordsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Pagination *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	// Filter expression using CEL syntax
+	// Supported fields: keyword, category, language, surface
+	// Examples:
+	//
+	//	keyword == "book"
+	//	category in ["cet4", "cet6"]
+	//	language == "en"
+	//	surface in ["run", "running", "ran"]  // Batch lookup by lemma or forms
+	//	keyword == "run" && category in ["basic"]
+	Filter string `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	// Sorting: field name with optional direction
+	// Supported fields: lemma, updated_at, created_at
+	// Direction: asc or desc (default: asc)
+	// Examples: "lemma", "updated_at desc", "created_at asc"
+	OrderBy       string `protobuf:"bytes,3,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -147,9 +163,31 @@ func (*ListWordsRequest) Descriptor() ([]byte, []int) {
 	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{2}
 }
 
+func (x *ListWordsRequest) GetPagination() *v1.PaginationRequest {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+func (x *ListWordsRequest) GetFilter() string {
+	if x != nil {
+		return x.Filter
+	}
+	return ""
+}
+
+func (x *ListWordsRequest) GetOrderBy() string {
+	if x != nil {
+		return x.OrderBy
+	}
+	return ""
+}
+
 type ListWordsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Words         []*Word                `protobuf:"bytes,1,rep,name=words,proto3" json:"words,omitempty"`
+	Pagination    *v1.PaginationResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -187,6 +225,13 @@ func (*ListWordsResponse) Descriptor() ([]byte, []int) {
 func (x *ListWordsResponse) GetWords() []*Word {
 	if x != nil {
 		return x.Words
+	}
+	return nil
+}
+
+func (x *ListWordsResponse) GetPagination() *v1.PaginationResponse {
+	if x != nil {
+		return x.Pagination
 	}
 	return nil
 }
@@ -239,14 +284,22 @@ var File_dict_v1_dict_service_proto protoreflect.FileDescriptor
 
 const file_dict_v1_dict_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1adict/v1/dict_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x12dict/v1/word.proto\"6\n" +
+	"\x1adict/v1/dict_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x12dict/v1/word.proto\x1a\x1bgoogle/protobuf/empty.proto\"6\n" +
 	"\x11CreateWordRequest\x12!\n" +
 	"\x04word\x18\x01 \x01(\v2\r.dict.v1.WordR\x04word\"'\n" +
 	"\x11LookupWordRequest\x12\x12\n" +
-	"\x04word\x18\x01 \x01(\tR\x04word\"\x12\n" +
-	"\x10ListWordsRequest\"8\n" +
+	"\x04word\x18\x01 \x01(\tR\x04word\"\x83\x01\n" +
+	"\x10ListWordsRequest\x12<\n" +
+	"\n" +
+	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
+	"pagination\x12\x16\n" +
+	"\x06filter\x18\x02 \x01(\tR\x06filter\x12\x19\n" +
+	"\border_by\x18\x03 \x01(\tR\aorderBy\"w\n" +
 	"\x11ListWordsResponse\x12#\n" +
-	"\x05words\x18\x01 \x03(\v2\r.dict.v1.WordR\x05words\"(\n" +
+	"\x05words\x18\x01 \x03(\v2\r.dict.v1.WordR\x05words\x12=\n" +
+	"\n" +
+	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
+	"pagination\"(\n" +
 	"\rWordIDRequest\x12\x17\n" +
 	"\aword_id\x18\x01 \x01(\x03R\x06wordId2\xdf\x02\n" +
 	"\vDictService\x127\n" +
@@ -276,34 +329,38 @@ func file_dict_v1_dict_service_proto_rawDescGZIP() []byte {
 
 var file_dict_v1_dict_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_dict_v1_dict_service_proto_goTypes = []any{
-	(*CreateWordRequest)(nil), // 0: dict.v1.CreateWordRequest
-	(*LookupWordRequest)(nil), // 1: dict.v1.LookupWordRequest
-	(*ListWordsRequest)(nil),  // 2: dict.v1.ListWordsRequest
-	(*ListWordsResponse)(nil), // 3: dict.v1.ListWordsResponse
-	(*WordIDRequest)(nil),     // 4: dict.v1.WordIDRequest
-	(*Word)(nil),              // 5: dict.v1.Word
-	(*emptypb.Empty)(nil),     // 6: google.protobuf.Empty
+	(*CreateWordRequest)(nil),     // 0: dict.v1.CreateWordRequest
+	(*LookupWordRequest)(nil),     // 1: dict.v1.LookupWordRequest
+	(*ListWordsRequest)(nil),      // 2: dict.v1.ListWordsRequest
+	(*ListWordsResponse)(nil),     // 3: dict.v1.ListWordsResponse
+	(*WordIDRequest)(nil),         // 4: dict.v1.WordIDRequest
+	(*Word)(nil),                  // 5: dict.v1.Word
+	(*v1.PaginationRequest)(nil),  // 6: common.v1.PaginationRequest
+	(*v1.PaginationResponse)(nil), // 7: common.v1.PaginationResponse
+	(*emptypb.Empty)(nil),         // 8: google.protobuf.Empty
 }
 var file_dict_v1_dict_service_proto_depIdxs = []int32{
-	5, // 0: dict.v1.CreateWordRequest.word:type_name -> dict.v1.Word
-	5, // 1: dict.v1.ListWordsResponse.words:type_name -> dict.v1.Word
-	0, // 2: dict.v1.DictService.CreateWord:input_type -> dict.v1.CreateWordRequest
-	5, // 3: dict.v1.DictService.UpdateWord:input_type -> dict.v1.Word
-	4, // 4: dict.v1.DictService.GetWord:input_type -> dict.v1.WordIDRequest
-	2, // 5: dict.v1.DictService.ListWords:input_type -> dict.v1.ListWordsRequest
-	1, // 6: dict.v1.DictService.LookupWord:input_type -> dict.v1.LookupWordRequest
-	4, // 7: dict.v1.DictService.DeleteWord:input_type -> dict.v1.WordIDRequest
-	5, // 8: dict.v1.DictService.CreateWord:output_type -> dict.v1.Word
-	5, // 9: dict.v1.DictService.UpdateWord:output_type -> dict.v1.Word
-	5, // 10: dict.v1.DictService.GetWord:output_type -> dict.v1.Word
-	3, // 11: dict.v1.DictService.ListWords:output_type -> dict.v1.ListWordsResponse
-	5, // 12: dict.v1.DictService.LookupWord:output_type -> dict.v1.Word
-	6, // 13: dict.v1.DictService.DeleteWord:output_type -> google.protobuf.Empty
-	8, // [8:14] is the sub-list for method output_type
-	2, // [2:8] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5,  // 0: dict.v1.CreateWordRequest.word:type_name -> dict.v1.Word
+	6,  // 1: dict.v1.ListWordsRequest.pagination:type_name -> common.v1.PaginationRequest
+	5,  // 2: dict.v1.ListWordsResponse.words:type_name -> dict.v1.Word
+	7,  // 3: dict.v1.ListWordsResponse.pagination:type_name -> common.v1.PaginationResponse
+	0,  // 4: dict.v1.DictService.CreateWord:input_type -> dict.v1.CreateWordRequest
+	5,  // 5: dict.v1.DictService.UpdateWord:input_type -> dict.v1.Word
+	4,  // 6: dict.v1.DictService.GetWord:input_type -> dict.v1.WordIDRequest
+	2,  // 7: dict.v1.DictService.ListWords:input_type -> dict.v1.ListWordsRequest
+	1,  // 8: dict.v1.DictService.LookupWord:input_type -> dict.v1.LookupWordRequest
+	4,  // 9: dict.v1.DictService.DeleteWord:input_type -> dict.v1.WordIDRequest
+	5,  // 10: dict.v1.DictService.CreateWord:output_type -> dict.v1.Word
+	5,  // 11: dict.v1.DictService.UpdateWord:output_type -> dict.v1.Word
+	5,  // 12: dict.v1.DictService.GetWord:output_type -> dict.v1.Word
+	3,  // 13: dict.v1.DictService.ListWords:output_type -> dict.v1.ListWordsResponse
+	5,  // 14: dict.v1.DictService.LookupWord:output_type -> dict.v1.Word
+	8,  // 15: dict.v1.DictService.DeleteWord:output_type -> google.protobuf.Empty
+	10, // [10:16] is the sub-list for method output_type
+	4,  // [4:10] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_dict_v1_dict_service_proto_init() }
