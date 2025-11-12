@@ -244,35 +244,124 @@ func mergeWords(existing, new *dictv1.Word) *dictv1.Word {
 		merged.Forms = append(merged.Forms, f)
 	}
 
-	// Merge definitions (deduplicate by LexemeId+POS, merge senses within same POS)
+	// Merge definitions
+	// Strategy:
+	// - Wikidata lexemes (L prefix): keep separate by LexemeId+POS (same word can have multiple lexemes with same POS)
+	// - ECDICT definitions (TL prefix): merge by POS into existing Wikidata definitions
+
+	// Use LexemeId+POS as key to preserve Wikidata's multiple lexemes with same POS
 	defMap := make(map[string]*dictv1.Definition)
 	for _, def := range existing.GetDefinitions() {
 		key := def.GetLexemeId() + "|" + strings.ToLower(strings.TrimSpace(def.GetPos()))
 		defMap[key] = def
 	}
-	for _, def := range new.GetDefinitions() {
-		key := def.GetLexemeId() + "|" + strings.ToLower(strings.TrimSpace(def.GetPos()))
-		if existingDef, exists := defMap[key]; exists {
-			// Merge senses from new into existing (deduplicate by gloss)
-			senseMap := make(map[string]*dictv1.LexemeSense)
-			for _, s := range existingDef.GetSenses() {
-				senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
-				senseMap[senseKey] = s
-			}
-			for _, s := range def.GetSenses() {
-				senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
-				if _, ok := senseMap[senseKey]; !ok {
-					senseMap[senseKey] = s
-				}
-			}
-			existingDef.Senses = make([]*dictv1.LexemeSense, 0, len(senseMap))
-			for _, s := range senseMap {
-				existingDef.Senses = append(existingDef.Senses, s)
-			}
-		} else {
-			defMap[key] = def
+
+	// Build a POS lookup map for ECDICT matching (only use first definition per POS)
+	existingByPOS := make(map[string]*dictv1.Definition)
+	for _, def := range existing.GetDefinitions() {
+		posKey := strings.ToLower(strings.TrimSpace(def.GetPos()))
+		if _, exists := existingByPOS[posKey]; !exists {
+			// Only store the first definition for each POS
+			existingByPOS[posKey] = def
 		}
 	}
+
+	for _, newDef := range new.GetDefinitions() {
+		newLexemeID := newDef.GetLexemeId()
+		posKey := strings.ToLower(strings.TrimSpace(newDef.GetPos()))
+		key := newLexemeID + "|" + posKey
+
+		// Check if this is ECDICT data (TL prefix) or Wikidata data (L prefix)
+		isECDICT := strings.HasPrefix(newLexemeID, "TL-")
+
+		if isECDICT {
+			// ECDICT definition: try to merge by POS into existing Wikidata definition
+			if existingDef, exists := existingByPOS[posKey]; exists {
+				// Found matching POS - merge senses into existing Wikidata definition
+				senseMap := make(map[string]*dictv1.LexemeSense)
+				for _, s := range existingDef.GetSenses() {
+					senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+					senseMap[senseKey] = s
+				}
+				for _, s := range newDef.GetSenses() {
+					senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+					if _, ok := senseMap[senseKey]; !ok {
+						senseMap[senseKey] = s
+					}
+				}
+				existingDef.Senses = make([]*dictv1.LexemeSense, 0, len(senseMap))
+				for _, s := range senseMap {
+					existingDef.Senses = append(existingDef.Senses, s)
+				}
+				// Don't add to defMap - senses were merged into existing definition
+			} else {
+				// No matching POS in existing - add ECDICT definition as new
+				defMap[key] = newDef
+			}
+		} else {
+			// Wikidata definition: use LexemeId+POS key (preserve multiple lexemes with same POS)
+			if existingDef, exists := defMap[key]; exists {
+				// Same LexemeId+POS - merge senses
+				senseMap := make(map[string]*dictv1.LexemeSense)
+				for _, s := range existingDef.GetSenses() {
+					senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+					senseMap[senseKey] = s
+				}
+				for _, s := range newDef.GetSenses() {
+					senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+					if _, ok := senseMap[senseKey]; !ok {
+						senseMap[senseKey] = s
+					}
+				}
+				existingDef.Senses = make([]*dictv1.LexemeSense, 0, len(senseMap))
+				for _, s := range senseMap {
+					existingDef.Senses = append(existingDef.Senses, s)
+				}
+			} else {
+				// Check if there's a TL-xxx definition with the same POS
+				// If so, replace it with this Wikidata definition (merge senses)
+				var tlDefKey string
+				for existingKey, existingDef := range defMap {
+					if strings.HasPrefix(existingDef.GetLexemeId(), "TL-") &&
+						strings.ToLower(strings.TrimSpace(existingDef.GetPos())) == posKey {
+						tlDefKey = existingKey
+						break
+					}
+				}
+
+				if tlDefKey != "" {
+					// Found TL-xxx definition with same POS - merge and replace
+					tlDef := defMap[tlDefKey]
+					senseMap := make(map[string]*dictv1.LexemeSense)
+					// First add all senses from TL definition
+					for _, s := range tlDef.GetSenses() {
+						senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+						senseMap[senseKey] = s
+					}
+					// Then add senses from new Wikidata definition
+					for _, s := range newDef.GetSenses() {
+						senseKey := s.GetLanguage().String() + "|" + strings.ToLower(s.GetGloss())
+						if _, ok := senseMap[senseKey]; !ok {
+							senseMap[senseKey] = s
+						}
+					}
+					// Create merged definition with Wikidata LexemeId
+					mergedSenses := make([]*dictv1.LexemeSense, 0, len(senseMap))
+					for _, s := range senseMap {
+						mergedSenses = append(mergedSenses, s)
+					}
+					newDef.Senses = mergedSenses
+					// Remove TL definition and add Wikidata definition
+					delete(defMap, tlDefKey)
+					defMap[key] = newDef
+				} else {
+					// No TL-xxx definition with same POS - add as new definition
+					defMap[key] = newDef
+				}
+			}
+		}
+	}
+
 	merged.Definitions = make([]*dictv1.Definition, 0, len(defMap))
 	for _, def := range defMap {
 		merged.Definitions = append(merged.Definitions, def)
