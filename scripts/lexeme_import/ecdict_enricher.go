@@ -381,6 +381,15 @@ func mergeEnrichment(lexeme *dictv1.Word, enrich *ecdictEnrichment) bool {
 			changed = true
 		}
 	}
+	// Merge word forms from ECDICT exchange field
+	if enrich.exchange != "" {
+		_, forms := parseExchange(lexeme.GetLemma(), enrich.exchange)
+		if len(forms) > 0 {
+			if addForms(lexeme, forms) {
+				changed = true
+			}
+		}
+	}
 	return changed
 }
 
@@ -435,6 +444,43 @@ func addPhonetics(lexeme *dictv1.Word, additions []*dictv1.Phonetic) bool {
 		lexeme.Phonetics = append(lexeme.Phonetics, &dictv1.Phonetic{
 			Ipa:     strings.TrimSpace(add.GetIpa()),
 			Dialect: strings.TrimSpace(add.GetDialect()),
+		})
+		changed = true
+	}
+	return changed
+}
+
+func addForms(lexeme *dictv1.Word, additions []*dictv1.WordForm) bool {
+	if len(additions) == 0 {
+		return false
+	}
+	// Deduplicate by normalized word text (case-insensitive)
+	existing := make(map[string]struct{}, len(lexeme.Forms))
+	for _, f := range lexeme.Forms {
+		key := strings.ToLower(strings.TrimSpace(f.GetWord()))
+		existing[key] = struct{}{}
+	}
+	changed := false
+	for _, add := range additions {
+		key := strings.ToLower(strings.TrimSpace(add.GetWord()))
+		if key == "" {
+			continue
+		}
+		if _, ok := existing[key]; ok {
+			continue
+		}
+		existing[key] = struct{}{}
+		// Get the first definition's lexeme ID to use for forms
+		// ECDICT doesn't distinguish which POS the forms belong to
+		lexemeID := ""
+		if len(lexeme.Definitions) > 0 {
+			lexemeID = lexeme.Definitions[0].GetLexemeId()
+		}
+		lexeme.Forms = append(lexeme.Forms, &dictv1.WordForm{
+			LexemeId:  lexemeID,
+			Word:      add.GetWord(),
+			Type:      add.GetType(),
+			Irregular: add.GetIrregular(),
 		})
 		changed = true
 	}

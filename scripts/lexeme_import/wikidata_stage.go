@@ -83,6 +83,8 @@ func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServic
 			s.enricher.RegisterWord(lexeme)
 			// Then enrich it with ECDICT data if available
 			s.enricher.Enrich(lexeme)
+			// Re-register to include any new forms added by enrichment
+			s.enricher.RegisterWord(lexeme)
 		}
 		// Debug: log the lexeme senses after enrichment
 		if idx < 3 { // Only log first 3 for debugging

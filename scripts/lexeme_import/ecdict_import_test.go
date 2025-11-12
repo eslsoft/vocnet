@@ -1,8 +1,10 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
+	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 )
 
@@ -287,5 +289,101 @@ func TestGetMissingWords_SkipIfInWikidata(t *testing.T) {
 
 	if len(toImport) != 0 {
 		t.Errorf("GetMissingWords() created %d Words, want 0 (should skip words in Wikidata)", len(toImport))
+	}
+}
+
+func TestMergeEnrichment_WithForms(t *testing.T) {
+	// Simulate a Wikidata word that has some forms but not all
+	wikidataWord := &dictv1.Word{
+		Lemma:    "run",
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		Forms: []*dictv1.WordForm{
+			{LexemeId: "L1234", Word: "run", Type: dictv1.FormType_FORM_TYPE_LEMMA},
+			{LexemeId: "L1234", Word: "running", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+		},
+		Definitions: []*dictv1.Definition{
+			{LexemeId: "L1234", Pos: "verb", Senses: []*dictv1.LexemeSense{
+				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move quickly"},
+			}},
+		},
+	}
+
+	// ECDICT enrichment with complete forms from exchange field
+	enrichment := &ecdictEnrichment{
+		exchange: "p:ran/d:run/i:running/3:runs",
+		senses: []sensePayload{
+			{language: commonv1.Language_LANGUAGE_CHINESE, partOfSpeech: "verb", gloss: "跑步"},
+		},
+	}
+
+	changed := mergeEnrichment(wikidataWord, enrichment)
+
+	if !changed {
+		t.Error("mergeEnrichment() should return true when forms are added")
+	}
+
+	// Check that new forms were added
+	formWords := make(map[string]bool)
+	for _, form := range wikidataWord.Forms {
+		formWords[strings.ToLower(form.Word)] = true
+	}
+
+	expectedForms := []string{"run", "running", "ran", "runs"}
+	for _, expected := range expectedForms {
+		if !formWords[expected] {
+			t.Errorf("Expected form %q to be present, but it's missing", expected)
+		}
+	}
+
+	// Should have 4 forms total (run, running were already there, ran and runs were added)
+	if len(wikidataWord.Forms) != 4 {
+		t.Errorf("Forms length = %d, want 4 (run, running, ran, runs)", len(wikidataWord.Forms))
+	}
+
+	// Check that Chinese sense was also added
+	hasChinese := false
+	for _, def := range wikidataWord.Definitions {
+		for _, sense := range def.Senses {
+			if sense.Language == commonv1.Language_LANGUAGE_CHINESE {
+				hasChinese = true
+				break
+			}
+		}
+	}
+	if !hasChinese {
+		t.Error("Expected Chinese sense to be merged, but it's missing")
+	}
+}
+
+func TestMergeEnrichment_NoDuplicateForms(t *testing.T) {
+	// Wikidata word already has all forms from ECDICT
+	wikidataWord := &dictv1.Word{
+		Lemma:    "run",
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		Forms: []*dictv1.WordForm{
+			{LexemeId: "L1234", Word: "run", Type: dictv1.FormType_FORM_TYPE_LEMMA},
+			{LexemeId: "L1234", Word: "ran", Type: dictv1.FormType_FORM_TYPE_PAST},
+			{LexemeId: "L1234", Word: "running", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+			{LexemeId: "L1234", Word: "runs", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+		},
+		Definitions: []*dictv1.Definition{
+			{LexemeId: "L1234", Pos: "verb"},
+		},
+	}
+
+	enrichment := &ecdictEnrichment{
+		exchange: "p:ran/d:run/i:running/3:runs",
+	}
+
+	changed := mergeEnrichment(wikidataWord, enrichment)
+
+	// Should return false because no new forms were added (all already exist)
+	if changed {
+		t.Error("mergeEnrichment() should return false when no new forms are added")
+	}
+
+	// Should still have exactly 4 forms (no duplicates)
+	if len(wikidataWord.Forms) != 4 {
+		t.Errorf("Forms length = %d, want 4 (no duplicates)", len(wikidataWord.Forms))
 	}
 }
