@@ -75,7 +75,7 @@ func TestNormalizePOS(t *testing.T) {
 	}
 }
 
-func TestExtractLeadingPOS(t *testing.T) {
+func TestTryExtractPOS(t *testing.T) {
 	tests := []struct {
 		input        string
 		expectedPOS  string
@@ -85,20 +85,20 @@ func TestExtractLeadingPOS(t *testing.T) {
 		{"v. to run", "verb", "to run"},
 		{"adj. beautiful", "adjective", "beautiful"},
 		{"vt. to eat something", "verb", "to eat something"},
-		{"[计] n. computer term", "noun", "computer term"},
-		{"[法] [医] v. legal medical term", "verb", "legal medical term"},
-		{"no pos here", "", "no pos here"},
+		{"[计] n. computer term", "", ""}, // No POS extraction, keeps domain markers
+		{"n. [计] computer term", "noun", "[计] computer term"}, // Extracts POS, keeps domain markers in rest
+		{"no pos here", "", ""},
 		{"", "", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			pos, rest := extractLeadingPOS(tt.input)
+			pos, rest := tryExtractPOS(tt.input)
 			if pos != tt.expectedPOS {
-				t.Errorf("extractLeadingPOS(%q) pos = %q; want %q", tt.input, pos, tt.expectedPOS)
+				t.Errorf("tryExtractPOS(%q) pos = %q; want %q", tt.input, pos, tt.expectedPOS)
 			}
 			if rest != tt.expectedRest {
-				t.Errorf("extractLeadingPOS(%q) rest = %q; want %q", tt.input, rest, tt.expectedRest)
+				t.Errorf("tryExtractPOS(%q) rest = %q; want %q", tt.input, rest, tt.expectedRest)
 			}
 		})
 	}
@@ -131,16 +131,69 @@ func TestBuildSensePayloads_WithPosField(t *testing.T) {
 	if payloads[0].partOfSpeech != "noun" {
 		t.Errorf("expected POS 'noun', got %q", payloads[0].partOfSpeech)
 	}
-	if payloads[0].gloss != "a definition without pos prefix" {
-		t.Errorf("expected gloss without domain marker, got %q", payloads[0].gloss)
+	// Now we keep domain markers in the gloss
+	if payloads[0].gloss != "[计] a definition without pos prefix" {
+		t.Errorf("expected gloss with domain marker, got %q", payloads[0].gloss)
 	}
 
 	// Second payload (Chinese translation)
 	if payloads[1].partOfSpeech != "noun" {
 		t.Errorf("expected POS 'noun', got %q", payloads[1].partOfSpeech)
 	}
-	if payloads[1].gloss != "一个翻译" {
-		t.Errorf("expected gloss without domain marker, got %q", payloads[1].gloss)
+	// Now we keep domain markers in the gloss
+	if payloads[1].gloss != "[法] 一个翻译" {
+		t.Errorf("expected gloss with domain marker, got %q", payloads[1].gloss)
+	}
+}
+
+func TestBuildSensePayloads_NoPosWithDomainMarker(t *testing.T) {
+	record := wordRecord{
+		Word: "Beijing",
+		// No POS field
+		Pos: sql.NullString{Valid: false},
+		Translation: sql.NullString{
+			Valid:  true,
+			String: "[地名] 北京",
+		},
+	}
+
+	payloads := buildSensePayloads(record)
+
+	if len(payloads) != 1 {
+		t.Fatalf("expected 1 payload, got %d", len(payloads))
+	}
+
+	// Should be recognized as proper-noun when starting with domain marker and no POS
+	if payloads[0].partOfSpeech != "proper-noun" {
+		t.Errorf("expected POS 'proper-noun', got %q", payloads[0].partOfSpeech)
+	}
+	if payloads[0].gloss != "[地名] 北京" {
+		t.Errorf("expected gloss '[地名] 北京', got %q", payloads[0].gloss)
+	}
+}
+
+func TestStartsWithDomainMarker(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"[人名] 张三", true},
+		{"[地名] 北京", true},
+		{"[法] 法律术语", true},
+		{"[计] 计算机", true},
+		{"normal text", false},
+		{"n. definition", false},
+		{"", false},
+		{"[verylongmarkermorethan10chars] text", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := startsWithDomainMarker(tt.input)
+			if got != tt.want {
+				t.Errorf("startsWithDomainMarker(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 

@@ -3,7 +3,9 @@ package main
 import (
 	"archive/zip"
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -223,10 +225,16 @@ func mergeEnrichment(lexeme *dictv1.Word, enrich *ecdictEnrichment) bool {
 		}
 	}
 	// Add domain markers as categories with "domain:" prefix
+	// Entity types already have "entity:" prefix, don't add "domain:" to them
 	if len(enrich.domains) > 0 {
-		domainCategories := make([]string, len(enrich.domains))
-		for i, domain := range enrich.domains {
-			domainCategories[i] = "domain:" + domain
+		domainCategories := make([]string, 0, len(enrich.domains))
+		for _, domain := range enrich.domains {
+			// If domain already has a prefix like "entity:", use it as-is
+			if strings.HasPrefix(domain, "entity:") || strings.HasPrefix(domain, "attr:") {
+				domainCategories = append(domainCategories, domain)
+			} else {
+				domainCategories = append(domainCategories, "domain:"+domain)
+			}
 		}
 		if addCategories(lexeme, domainCategories) {
 			changed = true
@@ -373,26 +381,31 @@ func ensureDefinition(lexeme *dictv1.Word, pos string) *dictv1.Definition {
 	}
 
 	// No matching definition found, create a new one
-	// Try to reuse existing LexemeId from other definitions if available
-	lexemeID := ""
-	if len(lexeme.GetDefinitions()) > 0 {
-		lexemeID = lexeme.GetDefinitions()[0].GetLexemeId()
-	}
-
-	// If we still don't have a lexemeID, we need to generate one
-	// This should rarely happen (only if ECDICT has data for a word without any Wikidata definitions)
-	if lexemeID == "" {
-		// Use lemma as fallback identifier
-		lexemeID = fmt.Sprintf("ecdict-%s-%s", strings.ToLower(lexeme.GetLemma()), normalizedPos)
-	}
-
+	// New definitions from ECDICT enrichment need a temporary lexeme ID
+	// Use "TL" (Temporary Lexeme) prefix with a random suffix for uniqueness
 	def := &dictv1.Definition{
-		LexemeId: lexemeID,
+		LexemeId: generateTemporaryLexemeID(),
 		Pos:      pos,
 	}
 	lexeme.Definitions = append(lexeme.Definitions, def)
 	return def
 }
+
+// generateTemporaryLexemeID generates a unique temporary lexeme ID with TL prefix
+// Format: TL-{8 hex chars}
+// Example: TL-a3f2c9d1
+func generateTemporaryLexemeID() string {
+	bytes := make([]byte, 4) // 4 bytes = 8 hex chars
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to a simple counter-based approach if random fails
+		log.Printf("[ecdict] warning: failed to generate random ID: %v", err)
+		return fmt.Sprintf("TL-%08x", atomic.AddInt64(&temporaryLexemeCounter, 1))
+	}
+	return "TL-" + hex.EncodeToString(bytes)
+}
+
+// temporaryLexemeCounter is used as fallback when crypto/rand fails
+var temporaryLexemeCounter int64
 
 // normalizePOSForMatching converts POS tags to a normalized form for fuzzy matching
 // This should match the logic in normalizePOS() to ensure consistency
@@ -531,38 +544,65 @@ func buildSensePayloads(w wordRecord) []sensePayload {
 	}
 
 	var results []sensePayload
+
+	// Process English definitions
 	for _, line := range defLines {
-		pos, rest := extractLeadingPOS(line)
-		// If no POS found in the line, use the fallback from pos field
-		if pos == "" && fallbackPOS != "" {
-			pos = fallbackPOS
-			rest = removeDomainMarkers(line) // Still need to remove domain markers
-		}
-		if rest == "" {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
+
+		// Try to extract POS prefix if present
+		pos, rest := tryExtractPOS(line)
+
+		// If no POS found, use fallback and keep entire line as gloss
+		if pos == "" {
+			pos = fallbackPOS
+			rest = line
+			// If line starts with domain marker like [人名], [地名], etc. and no POS, treat as proper-noun
+			if pos == "" && startsWithDomainMarker(line) {
+				pos = "proper-noun"
+			}
+		}
+
+		// Keep the gloss even if it's just domain markers or very short
+		// Don't filter out any content
 		results = append(results, sensePayload{
 			language:     commonv1.Language_LANGUAGE_ENGLISH,
 			partOfSpeech: pos,
 			gloss:        rest,
 		})
 	}
+
+	// Process Chinese translations
 	for _, line := range transLines {
-		pos, rest := extractLeadingPOS(line)
-		// If no POS found in the line, use the fallback from pos field
-		if pos == "" && fallbackPOS != "" {
-			pos = fallbackPOS
-			rest = removeDomainMarkers(line) // Still need to remove domain markers
-		}
-		if rest == "" {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
+
+		// Try to extract POS prefix if present
+		pos, rest := tryExtractPOS(line)
+
+		// If no POS found, use fallback and keep entire line as gloss
+		if pos == "" {
+			pos = fallbackPOS
+			rest = line
+			// If line starts with domain marker like [人名], [地名], etc. and no POS, treat as proper-noun
+			if pos == "" && startsWithDomainMarker(line) {
+				pos = "proper-noun"
+			}
+		}
+
+		// Keep the gloss even if it's just domain markers or very short
+		// Don't filter out any content
 		results = append(results, sensePayload{
 			language:     commonv1.Language_LANGUAGE_CHINESE,
 			partOfSpeech: pos,
 			gloss:        rest,
 		})
 	}
+
 	return results
 }
 
@@ -581,21 +621,33 @@ func splitLines(s string) []string {
 	return res
 }
 
-func extractLeadingPOS(line string) (string, string) {
+// startsWithDomainMarker checks if a line starts with a domain marker like [人名], [地名], [法], etc.
+func startsWithDomainMarker(line string) bool {
+	s := strings.TrimSpace(line)
+	if len(s) < 3 {
+		return false
+	}
+	if s[0] != '[' {
+		return false
+	}
+	closeIdx := strings.Index(s, "]")
+	return closeIdx > 0 && closeIdx <= 10 // Domain markers are usually short
+}
+
+// tryExtractPOS attempts to extract a leading POS tag from a line
+// Returns (pos, rest) where rest is the remaining text after POS
+// If no POS found, returns ("", "")
+// This is a simplified version that doesn't remove domain markers
+func tryExtractPOS(line string) (string, string) {
 	s := strings.TrimSpace(line)
 	if s == "" {
 		return "", ""
 	}
 
-	// Remove domain/category markers like [计], [法], [医], etc.
-	// These are NOT part-of-speech tags but domain indicators
-	s = removeDomainMarkers(s)
-	if s == "" {
-		return "", ""
-	}
-
 	lower := strings.ToLower(s)
-	candidates := []string{"vt", "vi", "adj", "adv", "prep", "pron", "conj", "interj", "int", "num", "art", "aux", "abbr", "pref", "suf", "noun", "n", "v"}
+	// Try common POS abbreviations (ordered by length to match longer ones first)
+	candidates := []string{"vt", "vi", "adj", "adv", "prep", "pron", "conj", "interj", "int", "num", "art", "aux", "abbr", "pref", "suf", "noun", "n", "v", "a"}
+
 	for _, cand := range candidates {
 		if len(lower) < len(cand) {
 			continue
@@ -603,19 +655,20 @@ func extractLeadingPOS(line string) (string, string) {
 		if strings.HasPrefix(lower, cand) {
 			rest := s[len(cand):]
 			if rest == "" {
-				break
+				// POS is the entire line, no content
+				return normalizePOS(cand), ""
 			}
 			next := rest[0]
+			// POS must be followed by '.', space, or tab
 			if next != '.' && next != ' ' && next != '\t' {
 				continue
 			}
+			// Remove the optional '.' and trim space
 			rest = strings.TrimSpace(strings.TrimPrefix(rest, "."))
-			// Remove domain markers from the rest of the text as well
-			rest = removeDomainMarkers(rest)
 			return normalizePOS(cand), rest
 		}
 	}
-	return "", s
+	return "", ""
 }
 
 // removeDomainMarkers removes domain/category markers like [计], [法], [医], etc.
@@ -738,10 +791,12 @@ func normalizeDomainMarker(marker string) string {
 		"体":  "sports",
 		"体育": "sports",
 
-		// Geography & Places (these shouldn't be domain markers, but handle them)
-		"地名":  "geography",
-		"人名":  "", // Person names are not a domain, skip
-		"美国":  "", // Country names are not domains, skip
+		// Entity types (should be recognized as entity categories, not domains)
+		"地名": "entity:place",
+		"人名": "entity:person",
+
+		// Country names - not domains, skip
+		"美国":  "",
 		"德国":  "",
 		"俄罗斯": "",
 		"智利":  "",
@@ -902,7 +957,7 @@ func normalizePOS(pos string) string {
 		return "noun"
 	case "v", "verb", "vt", "vi":
 		return "verb"
-	case "adj", "adjective":
+	case "a", "adj", "adjective":
 		return "adjective"
 	case "adv", "adverb":
 		return "adverb"

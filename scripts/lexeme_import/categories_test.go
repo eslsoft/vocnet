@@ -252,9 +252,11 @@ func TestNormalizeDomainMarker(t *testing.T) {
 		{"动", "zoology"},
 		{"昆", "entomology"},
 
-		// Geography markers (should be skipped)
-		{"地名", "geography"},
-		{"人名", ""},
+		// Entity type markers (should be converted to entity: categories)
+		{"地名", "entity:place"},
+		{"人名", "entity:person"},
+
+		// Country names (should be skipped)
 		{"美国", ""},
 		{"德国", ""},
 		{"俄罗斯", ""},
