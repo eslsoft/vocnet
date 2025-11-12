@@ -29,6 +29,7 @@ import (
 type ecdictEnricher struct {
 	mu            sync.Mutex
 	entries       map[string]*ecdictEnrichment
+	knownForms    map[string]bool // Track all forms from Wikidata (lemmas + inflected forms)
 	total         int
 	applied       int64
 	skipped       int64
@@ -36,10 +37,12 @@ type ecdictEnricher struct {
 }
 
 type ecdictEnrichment struct {
-	phonetics  []*dictv1.Phonetic
-	categories []string
-	domains    []string // domain markers like [计], [法], [医]
-	senses     []sensePayload
+	phonetics   []*dictv1.Phonetic
+	categories  []string
+	domains     []string // domain markers like [计], [法], [医]
+	senses      []sensePayload
+	translation string // Chinese translation for reporting
+	exchange    string // Word forms (e.g., "p:ran/d:ran/i:running/3:runs") for reporting
 }
 
 type sensePayload struct {
@@ -59,9 +62,35 @@ func newECDICTEnricher(cfg pipelineConfig) (*ecdictEnricher, error) {
 	log.Printf("[ecdict] ready: %d rows scanned, %d contain enrichment payloads", total, len(entries))
 	return &ecdictEnricher{
 		entries:       entries,
+		knownForms:    make(map[string]bool),
 		total:         total,
 		missingReport: cfg.ecdictMissingPath,
 	}, nil
+}
+
+// RegisterWord registers a word and all its forms as known from Wikidata
+// This is used to track which words from ECDICT are actually missing from Wikidata
+func (e *ecdictEnricher) RegisterWord(lexeme *dictv1.Word) {
+	if e == nil || lexeme == nil {
+		return
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// Register the lemma
+	lemma := strings.ToLower(strings.TrimSpace(lexeme.GetLemma()))
+	if lemma != "" {
+		e.knownForms[lemma] = true
+	}
+
+	// Register all forms
+	for _, form := range lexeme.GetForms() {
+		word := strings.ToLower(strings.TrimSpace(form.GetWord()))
+		if word != "" {
+			e.knownForms[word] = true
+		}
+	}
 }
 
 func (e *ecdictEnricher) Enrich(lexeme *dictv1.Word) {
@@ -91,32 +120,129 @@ func (e *ecdictEnricher) Enrich(lexeme *dictv1.Word) {
 	}
 }
 
+type missingWordEntry struct {
+	word        string
+	translation string
+	exchange    string
+}
+
+type skippedWordEntry struct {
+	word        string
+	reason      string
+	translation string
+	exchange    string
+}
+
+// GetMissingWords returns a slice of Word objects to import from ECDICT
+// ECDICT data structure:
+// - Lemma entries (e.g., "run") have complete exchange with all forms: "p:ran/i:running/d:run/3:runs"
+// - Inflected entries (e.g., "ran") only point to lemma: "0:run/1:p"
+// Strategy:
+// 1. Only process entries where current word IS the lemma (no "0:" or "0:self")
+// 2. Skip entries that point to a different lemma (inflected forms)
+// 3. This naturally avoids duplicates since only lemma entries are processed
+func (e *ecdictEnricher) GetMissingWords() ([]*dictv1.Word, []skippedWordEntry) {
+	if e == nil {
+		return nil, nil
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	var toImport []*dictv1.Word
+	var skipped []skippedWordEntry
+
+	for word, enrichment := range e.entries {
+		// Skip if already in Wikidata
+		if e.knownForms[word] {
+			continue
+		}
+
+		// Skip if no exchange
+		if enrichment.exchange == "" {
+			skipped = append(skipped, skippedWordEntry{
+				word:        word,
+				reason:      "no_exchange",
+				translation: enrichment.translation,
+				exchange:    enrichment.exchange,
+			})
+			continue
+		}
+
+		// Parse exchange to determine if this is a lemma or inflected form
+		lemma, forms := parseExchange(word, enrichment.exchange)
+
+		// Case 1: No "0:" marker means this IS the lemma
+		// Example: "run" -> "p:ran/i:running/3:runs"
+		if lemma == "" {
+			// This word is its own lemma, use it directly
+			wordObj := buildWordFromECDICT(word, forms, enrichment)
+			toImport = append(toImport, wordObj)
+			continue
+		}
+
+		// Case 2: Has "0:" marker pointing to self (0:run for word "run")
+		// This is also a lemma entry
+		if strings.EqualFold(lemma, word) {
+			wordObj := buildWordFromECDICT(word, forms, enrichment)
+			toImport = append(toImport, wordObj)
+			continue
+		}
+
+		// Case 3: Has "0:" pointing to different word (e.g., "ran" -> "0:run")
+		// This is an inflected form, skip it (the lemma entry will include it)
+		skipped = append(skipped, skippedWordEntry{
+			word:        word,
+			reason:      "inflected_form",
+			translation: enrichment.translation,
+			exchange:    enrichment.exchange,
+		})
+	}
+
+	return toImport, skipped
+}
+
 func (e *ecdictEnricher) ReportUnused() {
 	if e == nil {
 		return
 	}
 	e.mu.Lock()
-	leftover := make([]string, 0, len(e.entries))
-	for lemma := range e.entries {
-		leftover = append(leftover, lemma)
+	// Filter out words that exist as forms in Wikidata (not just lemmas)
+	leftover := make([]missingWordEntry, 0, len(e.entries))
+	filteredAsForm := 0
+	for word, enrichment := range e.entries {
+		// Check if this word exists as a form (lemma or inflected form) in Wikidata
+		if e.knownForms[word] {
+			filteredAsForm++
+			continue
+		}
+		leftover = append(leftover, missingWordEntry{
+			word:        word,
+			translation: enrichment.translation,
+			exchange:    enrichment.exchange,
+		})
 	}
 	e.mu.Unlock()
 
-	log.Printf("[ecdict] applied=%d skipped=%d unused=%d (out of %d)",
-		e.applied, e.skipped, len(leftover), e.total)
+	log.Printf("[ecdict] applied=%d skipped=%d unused=%d filtered_as_form=%d (out of %d)",
+		e.applied, e.skipped, len(leftover), filteredAsForm, e.total)
 
 	if len(leftover) == 0 {
 		return
 	}
 
+	// Sort by word
+	sort.Slice(leftover, func(i, j int) bool {
+		return leftover[i].word < leftover[j].word
+	})
+
 	if e.missingReport == "" {
-		sort.Strings(leftover)
 		show := leftover
 		if len(show) > 10 {
 			show = show[:10]
 		}
-		for _, lemma := range show {
-			log.Printf("[ecdict] unused lemma: %s", lemma)
+		for _, entry := range show {
+			log.Printf("[ecdict] unused lemma: %s", entry.word)
 		}
 		if len(leftover) > len(show) {
 			log.Printf("[ecdict] ... plus %d more (set -ecdict-missing-report to persist)", len(leftover)-len(show))
@@ -133,8 +259,18 @@ func (e *ecdictEnricher) ReportUnused() {
 		log.Printf("[ecdict] create report dir failed: %v", err)
 		return
 	}
-	sort.Strings(leftover)
-	if err := os.WriteFile(path, []byte(strings.Join(leftover, "\n")), 0o644); err != nil {
+
+	// Build TSV output with header
+	var builder strings.Builder
+	builder.WriteString("word\ttranslation\texchange\n")
+	for _, entry := range leftover {
+		// Clean up translation and exchange for TSV (replace tabs and newlines with spaces)
+		translation := strings.ReplaceAll(strings.ReplaceAll(entry.translation, "\t", " "), "\n", " ")
+		exchange := strings.ReplaceAll(strings.ReplaceAll(entry.exchange, "\t", " "), "\n", " ")
+		builder.WriteString(fmt.Sprintf("%s\t%s\t%s\n", entry.word, translation, exchange))
+	}
+
+	if err := os.WriteFile(path, []byte(builder.String()), 0o644); err != nil {
 		log.Printf("[ecdict] write missing report failed: %v", err)
 		return
 	}
@@ -271,10 +407,12 @@ func buildEnrichment(r wordRecord) *ecdictEnrichment {
 	}
 
 	return &ecdictEnrichment{
-		phonetics:  buildPhonetics(r.Phonetic),
-		categories: buildTags(r.Tags),
-		domains:    deduplicateDomains(allDomains),
-		senses:     buildSensePayloads(r),
+		phonetics:   buildPhonetics(r.Phonetic),
+		categories:  buildTags(r.Tags),
+		domains:     deduplicateDomains(allDomains),
+		senses:      buildSensePayloads(r),
+		translation: nullStringVal(r.Translation),
+		exchange:    nullStringVal(r.Exchange),
 	}
 }
 
@@ -1109,4 +1247,133 @@ func nullStringVal(ns sql.NullString) string {
 		return ns.String
 	}
 	return ""
+}
+
+// parseExchange parses ECDICT exchange field and returns (lemma, forms)
+// Exchange format: "p:ran/d:ran/i:running/3:runs/0:run"
+// Codes: p=past, d=past_participle, i=present_participle, 3=third_person_singular,
+//
+//	r=comparative, t=superlative, s=plural, 0=lemma
+//
+// Returns empty lemma if no "0:" found in exchange
+func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.WordForm) {
+	exchange = strings.TrimSpace(exchange)
+	if exchange == "" {
+		return "", nil
+	}
+
+	// Parse exchange pairs like "p:ran/d:ran/i:running"
+	pairs := strings.Split(exchange, "/")
+	formMap := make(map[string]string) // code -> word
+
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		code := strings.TrimSpace(parts[0])
+		word := strings.TrimSpace(parts[1])
+		if code == "" || word == "" {
+			continue
+		}
+
+		formMap[code] = word
+	}
+
+	// Extract lemma (0:xxx) if present
+	// If no "0:" marker, this word IS the lemma
+	lemma = formMap["0"]
+
+	// Build forms (excluding lemma itself and variant markers)
+	// Use temporary lexeme ID for all forms
+	lexemeID := generateTemporaryLexemeID()
+
+	// Map ECDICT codes to FormType
+	codeToFormType := map[string]dictv1.FormType{
+		"p": dictv1.FormType_FORM_TYPE_PAST,
+		"d": dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE,
+		"i": dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE,
+		"3": dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR,
+		"r": dictv1.FormType_FORM_TYPE_COMPARATIVE,
+		"t": dictv1.FormType_FORM_TYPE_SUPERLATIVE,
+		"s": dictv1.FormType_FORM_TYPE_PLURAL,
+	}
+
+	for code, word := range formMap {
+		if code == "0" || code == "1" {
+			// Skip lemma marker (0) and variant type marker (1)
+			continue
+		}
+
+		formType, ok := codeToFormType[code]
+		if !ok {
+			// Unknown code, skip
+			continue
+		}
+
+		forms = append(forms, &dictv1.WordForm{
+			LexemeId:  lexemeID,
+			Word:      word,
+			Type:      formType,
+			Irregular: false, // We don't have enough info to determine irregularity
+		})
+	}
+
+	return lemma, forms
+}
+
+// buildWordFromECDICT constructs a Word object from ECDICT enrichment data
+func buildWordFromECDICT(lemma string, forms []*dictv1.WordForm, enrichment *ecdictEnrichment) *dictv1.Word {
+	word := &dictv1.Word{
+		Lemma:      lemma,
+		Language:   commonv1.Language_LANGUAGE_ENGLISH,
+		Phonetics:  enrichment.phonetics,
+		Categories: append(enrichment.categories, enrichment.domains...),
+		Forms:      forms,
+	}
+
+	// Group senses by POS
+	// If all senses have no POS, put them in a single definition with empty POS
+	posSenses := make(map[string][]*dictv1.LexemeSense)
+
+	for _, sense := range enrichment.senses {
+		pos := strings.TrimSpace(sense.partOfSpeech)
+		posSenses[pos] = append(posSenses[pos], &dictv1.LexemeSense{
+			Language: sense.language,
+			Gloss:    sense.gloss,
+		})
+	}
+
+	// Create definitions with individual lexeme IDs
+	// All forms will reference the FIRST definition's lexeme ID
+	// (ECDICT doesn't distinguish which POS the forms belong to)
+	var firstLexemeID string
+	for pos, senses := range posSenses {
+		lexemeID := generateTemporaryLexemeID()
+		if firstLexemeID == "" {
+			firstLexemeID = lexemeID
+		}
+
+		word.Definitions = append(word.Definitions, &dictv1.Definition{
+			LexemeId: lexemeID,
+			Pos:      pos,
+			Senses:   senses,
+		})
+	}
+
+	// Update all forms to reference the first definition's lexeme ID
+	// This is a limitation of ECDICT data - we don't know which POS each form belongs to
+	if firstLexemeID != "" {
+		for _, form := range forms {
+			form.LexemeId = firstLexemeID
+		}
+	}
+
+	return word
 }

@@ -7,8 +7,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
+	"connectrpc.com/connect"
+	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 )
 
@@ -126,8 +132,128 @@ func runPipeline(cfg pipelineConfig) error {
 		}
 		log.Printf("[%s] completed in %s", st.Name(), time.Since(start).Round(time.Millisecond))
 	}
+
+	// After all stages, import ECDICT-only words
 	if enricher != nil {
+		if err := importECDICTOnlyWords(ctx, client, enricher, cfg); err != nil {
+			return fmt.Errorf("import ECDICT-only words: %w", err)
+		}
 		enricher.ReportUnused()
 	}
+	return nil
+}
+
+func importECDICTOnlyWords(ctx context.Context, client dictv1connect.DictServiceClient, enricher *ecdictEnricher, cfg pipelineConfig) error {
+	log.Printf("[ecdict-import] extracting words missing from Wikidata...")
+	toImport, skipped := enricher.GetMissingWords()
+
+	log.Printf("[ecdict-import] found %d words to import, %d skipped", len(toImport), len(skipped))
+
+	if len(toImport) == 0 {
+		log.Printf("[ecdict-import] no words to import")
+		return reportSkippedWords(skipped, cfg.ecdictMissingPath)
+	}
+
+	// Import words in batches
+	imported := 0
+	failed := 0
+	sem := make(chan struct{}, cfg.batchSize)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for i, word := range toImport {
+		wg.Add(1)
+		sem <- struct{}{}
+
+		go func(idx int, w *dictv1.Word) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			req := &dictv1.CreateWordRequest{Word: w}
+			_, err := client.CreateWord(ctx, connect.NewRequest(req))
+
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				failed++
+				if failed <= 5 {
+					log.Printf("[ecdict-import] failed to create word %q: %v", w.GetLemma(), err)
+				}
+			} else {
+				imported++
+				if (idx+1)%100 == 0 || idx+1 == len(toImport) {
+					log.Printf("[ecdict-import] progress: %d/%d imported", imported, len(toImport))
+				}
+			}
+		}(i, word)
+	}
+
+	wg.Wait()
+	log.Printf("[ecdict-import] completed: %d imported, %d failed", imported, failed)
+
+	return reportSkippedWords(skipped, cfg.ecdictMissingPath)
+}
+
+func reportSkippedWords(skipped []skippedWordEntry, reportPath string) error {
+	if len(skipped) == 0 {
+		return nil
+	}
+
+	// Group by reason
+	byReason := make(map[string]int)
+	for _, entry := range skipped {
+		byReason[entry.reason]++
+	}
+
+	log.Printf("[ecdict-import] skipped words by reason:")
+	for reason, count := range byReason {
+		log.Printf("  - %s: %d", reason, count)
+	}
+
+	if reportPath == "" {
+		// Just log first few
+		show := skipped
+		if len(show) > 10 {
+			show = show[:10]
+		}
+		for _, entry := range show {
+			log.Printf("[ecdict-import] skipped %q (reason: %s)", entry.word, entry.reason)
+		}
+		if len(skipped) > len(show) {
+			log.Printf("[ecdict-import] ... plus %d more (set -ecdict-missing-report to persist)", len(skipped)-len(show))
+		}
+		return nil
+	}
+
+	// Sort by reason, then word
+	sort.Slice(skipped, func(i, j int) bool {
+		if skipped[i].reason != skipped[j].reason {
+			return skipped[i].reason < skipped[j].reason
+		}
+		return skipped[i].word < skipped[j].word
+	})
+
+	path, err := expandHome(reportPath)
+	if err != nil {
+		return fmt.Errorf("resolve report path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create report dir: %w", err)
+	}
+
+	// Build TSV output with header
+	var builder strings.Builder
+	builder.WriteString("word\treason\ttranslation\texchange\n")
+	for _, entry := range skipped {
+		translation := strings.ReplaceAll(strings.ReplaceAll(entry.translation, "\t", " "), "\n", " ")
+		exchange := strings.ReplaceAll(strings.ReplaceAll(entry.exchange, "\t", " "), "\n", " ")
+		builder.WriteString(fmt.Sprintf("%s\t%s\t%s\t%s\n", entry.word, entry.reason, translation, exchange))
+	}
+
+	if err := os.WriteFile(path, []byte(builder.String()), 0o644); err != nil {
+		return fmt.Errorf("write skipped report: %w", err)
+	}
+
+	log.Printf("[ecdict-import] wrote %d skipped words to %s", len(skipped), path)
 	return nil
 }

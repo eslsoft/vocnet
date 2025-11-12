@@ -79,6 +79,9 @@ func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServic
 			continue
 		}
 		if s.enricher != nil {
+			// Register this word and all its forms as known from Wikidata
+			s.enricher.RegisterWord(lexeme)
+			// Then enrich it with ECDICT data if available
 			s.enricher.Enrich(lexeme)
 		}
 		// Debug: log the lexeme senses after enrichment
