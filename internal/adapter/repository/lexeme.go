@@ -159,6 +159,103 @@ func (r *lexemeRepository) Lookup(ctx context.Context, surfaceForm string, langu
 	return mapEntLexeme(rec), nil
 }
 
+func (r *lexemeRepository) LookupFormInfo(ctx context.Context, surfaceForm string, language entity.Language) (*repository.LexemeFormInfo, error) {
+	word := strings.TrimSpace(surfaceForm)
+	if word == "" {
+		return nil, entity.ErrInvalidLexemeText
+	}
+	formText := strings.ToLower(word)
+	langCode := entity.NormalizeLanguage(language).Code()
+
+	// Query lexeme_form and join with lexeme to get lemma
+	form, err := r.client.LexemeForm.Query().
+		Where(entlexemeform.TextEQ(formText)).
+		WithLexeme(func(q *entdb.LexemeQuery) {
+			q.Where(entlexeme.LanguageEQ(langCode))
+		}).
+		First(ctx)
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("lookup form info: %w", err)
+	}
+
+	// Check if lexeme was loaded
+	lexeme, err := form.Edges.LexemeOrErr()
+	if err != nil {
+		return nil, nil
+	}
+
+	return &repository.LexemeFormInfo{
+		FormText:    form.Text,
+		FormType:    form.FormType,
+		IsIrregular: form.IsIrregular,
+		LemmaText:   lexeme.Lemma,
+	}, nil
+}
+
+func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string]*repository.LexemeFormInfo, error) {
+	if len(surfaceForms) == 0 {
+		return make(map[string]*repository.LexemeFormInfo), nil
+	}
+
+	langCode := entity.NormalizeLanguage(language).Code()
+
+	// Normalize all forms to lowercase
+	formTexts := make([]string, 0, len(surfaceForms))
+	originalToLower := make(map[string]string)
+	for _, sf := range surfaceForms {
+		word := strings.TrimSpace(sf)
+		if word == "" {
+			continue
+		}
+		formText := strings.ToLower(word)
+		formTexts = append(formTexts, formText)
+		originalToLower[word] = formText
+	}
+
+	if len(formTexts) == 0 {
+		return make(map[string]*repository.LexemeFormInfo), nil
+	}
+
+	// Batch query lexeme_forms with lexeme join
+	forms, err := r.client.LexemeForm.Query().
+		Where(entlexemeform.TextIn(formTexts...)).
+		WithLexeme(func(q *entdb.LexemeQuery) {
+			q.Where(entlexeme.LanguageEQ(langCode))
+		}).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("batch lookup form info: %w", err)
+	}
+
+	// Build result map
+	result := make(map[string]*repository.LexemeFormInfo)
+	for _, form := range forms {
+		lexeme, err := form.Edges.LexemeOrErr()
+		if err != nil {
+			continue
+		}
+
+		info := &repository.LexemeFormInfo{
+			FormText:    form.Text,
+			FormType:    form.FormType,
+			IsIrregular: form.IsIrregular,
+			LemmaText:   lexeme.Lemma,
+		}
+
+		// Map back to original case
+		for original, lower := range originalToLower {
+			if lower == form.Text {
+				result[original] = info
+			}
+		}
+	}
+
+	return result, nil
+}
+
 func (r *lexemeRepository) List(ctx context.Context, query *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
 	var params listLexemeParams
 	if err := filterexpr.Bind(query, &params, listLexemesSchema); err != nil {

@@ -4,33 +4,37 @@ package dict.v1;
 
 import "common/v1/types.proto";
 import "dict/v1/phrase.proto";
-import "google/api/annotations.proto";
-import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
-import "validate/validate.proto";
 
 message Word {
-  int64 id = 1; // Auto-increment ID (CRUD only)
-  string lemma = 2; // Surface form (lemma or inflected/variant form)
-  common.v1.Language language = 3; // Language of the entry
+  int64 id = 1; // Unique identifier for this word entry
+  common.v1.Language language = 2; // Language of the entry
+  string term = 3; // The word text (surface form: "apple", "apples", "ran", etc.)
+  FormType term_type = 4; // The type of this word (lemma, plural, past tense, etc.)
+  optional string lemma = 5; // The lemma form (only set for non-lemma forms, e.g., "apples" → "apple")
+
   repeated Phonetic phonetics = 6; // IPAs for this word
-  repeated Definition definitions = 7; // Possibly multiple languages' definitions
-  repeated string categories = 8; // Level / topic tags
+  repeated Meaning meanings = 7; // Multiple meanings/senses (different POS or definitions)
+  repeated string categories = 8; // Level / topic tags (e.g., "cet4", "cet6", "basic")
   repeated Phrase phrases = 9; // Common phrases/idioms containing this word
 
-  // When this entry is a lemma (word_type == "lemma"), forms lists all other surface forms
-  // (e.g. past, past_participle, plural, etc.) referencing this lemma. It MUST NOT include
-  // the lemma itself.
-  // When this entry is a non-lemma form, forms is empty; the original lemma text can be
-  // obtained from the `lemma` field. We return structured objects instead of plain strings
-  // so the client knows which type each form is without extra lookups.
-  repeated WordForm forms = 30;
-  repeated WordRelation relations = 31; // Relationships to other words (e.g. synonyms, antonyms)
+  // Related forms: when this is a lemma, lists all its inflected forms
+  // Example: "apple" → [{term:"apples", type:PLURAL}, {term:"apple's", type:...}]
+  // When this is a non-lemma form, this field is empty
+  repeated RelatedForm related_forms = 10;
 
+  bool irregular = 31; // Whether this is an irregular form (e.g., "went", "children")
   int32 completeness = 32; // Data completeness 0-100, calculated from core fields
 
   google.protobuf.Timestamp created_at = 100; // Creation timestamp
   google.protobuf.Timestamp updated_at = 101; // Last update timestamp
+}
+
+// Reference to a related inflected form
+message RelatedForm {
+  string term = 1; // Surface form text (e.g., "apples")
+  FormType form_type = 2; // Type of this form
+  bool irregular = 3; // Whether this is irregular
 }
 
 message Phonetic {
@@ -38,30 +42,36 @@ message Phonetic {
   string dialect = 2; // BCP-47 language tag for dialect (e.g. en-US, en-GB)
 }
 
-message Definition {
+// A specific meaning/sense of the word
+message Meaning {
   string lexeme_id = 1; // Wikidata Lexeme ID (e.g. "L123456")
   string pos = 2; // Part of speech, e.g. n., v., adj.
-  repeated LexemeSense senses = 3; // Definition text
-  repeated Sentence examples = 4;
+  repeated Definition definitions = 3; // Definition text in different languages
+  repeated Sentence examples = 4; // Example sentences
+  repeated Relation relations = 5; // Relationships to other words
 }
 
-message LexemeSense {
-  common.v1.Language language = 2;
-  string gloss = 3;
+// Definition text in a specific language
+message Definition {
+  common.v1.Language language = 1;
+  string gloss = 2; // The actual definition text
 }
 
-// Minimal reference for an inflected / variant form; no id to keep payload light.
-message WordForm {
-  string lexeme_id = 1; // Associated Lexeme ID (links to Definition.lexeme_id)
-  string word = 2; // Surface form text
-  FormType type = 3; // The specific form type (same value domain as Word.word_type)
-  bool irregular = 4;
+// Relationship to another word
+message Relation {
+  RelationType type = 1;
+  string target_word = 2; // The related word (surface form or lemma)
+  optional string note = 3; // Optional note about the relationship
 }
 
-// Word-to-word relationship for building vocabulary networks
-message WordRelation {
-  string word = 1;
-  common.v1.RelationType relation = 2; // Type of relationship
+enum RelationType {
+  RELATION_TYPE_UNSPECIFIED = 0;
+  RELATION_TYPE_SYNONYM = 1; // Same or similar meaning
+  RELATION_TYPE_ANTONYM = 2; // Opposite meaning
+  RELATION_TYPE_HYPERNYM = 3; // More general term (e.g., "animal" for "dog")
+  RELATION_TYPE_HYPONYM = 4; // More specific term (e.g., "poodle" for "dog")
+  RELATION_TYPE_DERIVED = 5; // Derived word (e.g., "quickly" from "quick")
+  RELATION_TYPE_RELATED = 6; // Other related word
 }
 
 message Sentence {

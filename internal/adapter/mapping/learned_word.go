@@ -17,20 +17,18 @@ func FromPbLearnedWord(in *learningv1.LearnedWord) *entity.LearnedWord {
 	spec := in.GetSpec()
 	status := in.GetStatus()
 	return &entity.LearnedWord{
-		ID:          in.GetId(),
-		WordID:      in.GetWordId(),
-		DisplayTerm: strings.TrimSpace(spec.GetDisplayTerm()),
-		Language:    FromPbLanguage(spec.GetLanguage()),
-		Tags:        append([]string{}, spec.GetTags()...),
-		Note:        strings.TrimSpace(spec.GetNote()),
-		Relations:   fromPbLearnedWordRelations(spec.GetRelations()),
-		Contexts:    fromPbLearnedWordContexts(spec.GetContexts()),
-		Mastery:     FromPbMastery(status.GetMastery()),
-		Review:      FromPbReview(status.GetReviewTiming()),
-		QueryCount:  status.GetQueryCount(),
-		CreatedBy:   status.GetCreatedBy(),
-		CreatedAt:   status.GetCreatedAt().AsTime(),
-		UpdatedAt:   status.GetUpdatedAt().AsTime(),
+		ID:         in.GetId(),
+		Term:       strings.TrimSpace(spec.GetTerm()),
+		Language:   FromPbLanguage(spec.GetLanguage()),
+		Tags:       append([]string{}, spec.GetTags()...),
+		Relations:  fromPbLearnedWordRelations(spec.GetRelations()),
+		Contexts:   fromPbLearnedWordContexts(spec.GetContexts()),
+		Mastery:    FromPbMastery(status.GetMastery()),
+		Review:     FromPbReview(status.GetReviewTiming()),
+		QueryCount: status.GetQueriedCount(),
+		CreatedBy:  status.GetCreatedBy(),
+		CreatedAt:  status.GetCreatedAt().AsTime(),
+		UpdatedAt:  status.GetUpdatedAt().AsTime(),
 	}
 }
 
@@ -40,7 +38,6 @@ func ToPbLearnedWord(in *entity.LearnedWord) *learningv1.LearnedWord {
 	}
 	return &learningv1.LearnedWord{
 		Id:     in.ID,
-		WordId: in.WordID,
 		Spec:   toPbLearnedWordSpec(in),
 		Status: toPbLearnedWordStatus(in),
 	}
@@ -48,12 +45,11 @@ func ToPbLearnedWord(in *entity.LearnedWord) *learningv1.LearnedWord {
 
 func toPbLearnedWordSpec(in *entity.LearnedWord) *learningv1.LearnedWordSpec {
 	return &learningv1.LearnedWordSpec{
-		DisplayTerm: in.DisplayTerm,
-		Language:    ToPbLanguage(in.Language),
-		Tags:        append([]string{}, in.Tags...),
-		Note:        in.Note,
-		Relations:   toPbLearnedWordRelations(in.Relations),
-		Contexts:    toPbLearnedWordContexts(in.Contexts),
+		Term:      in.Term,
+		Language:  ToPbLanguage(in.Language),
+		Tags:      append([]string{}, in.Tags...),
+		Relations: toPbLearnedWordRelations(in.Relations),
+		Contexts:  toPbLearnedWordContexts(in.Contexts),
 	}
 }
 
@@ -61,7 +57,8 @@ func toPbLearnedWordStatus(in *entity.LearnedWord) *learningv1.LearnedWordStatus
 	return &learningv1.LearnedWordStatus{
 		Mastery:      ToPbMastery(in.Mastery),
 		ReviewTiming: ToPbReview(in.Review),
-		QueryCount:   in.QueryCount,
+		QueriedWord:  in.Term,
+		QueriedCount: in.QueryCount,
 		CreatedBy:    in.CreatedBy,
 		CreatedAt:    timestamppb.New(in.CreatedAt),
 		UpdatedAt:    timestamppb.New(in.UpdatedAt),

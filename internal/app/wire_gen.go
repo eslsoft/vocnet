@@ -37,10 +37,10 @@ func Initialize() (*Container, func(), error) {
 	wordGroupRepository := repository.NewWordGroupRepository(client)
 	lexemeRepository := repository.NewLexemeRepository(client)
 	wordUsecase := usecase.NewWordUsecase(wordGroupRepository, lexemeRepository)
-	dictServiceServer := grpc.NewDictServiceServer(wordUsecase)
+	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
 	learnedWordRepository := repository.NewLearnedWordRepository(client)
-	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository)
-	learningServiceServer := grpc.NewLearningServiceServer(learnedWordUsecase)
+	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
+	learningServiceServer := connectrpc.NewLearningServiceServer(learnedWordUsecase)
 	serverServer := server.NewServer(configConfig, logger, dictServiceServer, learningServiceServer)
 	container := &Container{
 		Logger:    logger,
@@ -62,6 +62,6 @@ var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLe
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedLexemeUsecase, usecase.NewLearnedWordUsecase)
 
-var serviceSet = wire.NewSet(grpc.NewDictServiceServer, grpc.NewLearningServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*grpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*grpc.DictServiceServer)))
+var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)))
 
 var serverSet = wire.NewSet(server.NewLogger, server.NewServer)

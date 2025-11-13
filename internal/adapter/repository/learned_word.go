@@ -10,11 +10,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlearnedword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedword"
-	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
-	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
-	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
-	"github.com/eslsoft/vocnet/pkg/filterexpr"
 )
 
 type LearnedWordRepository struct {
@@ -23,19 +19,9 @@ type LearnedWordRepository struct {
 
 // NewLearnedWordRepository constructs an ent-backed repository.
 func NewLearnedWordRepository(client *entdb.Client) repository.LearnedWordRepository {
-	return &LearnedWordRepository{client: client}
-}
-
-type listLearnedWordsParams struct {
-	Keyword       string
-	WordIDs       []int64
-	SurfaceTerms  []string
-	Tags          []string
-	Categories    []string
-	PrimaryKey    string
-	PrimaryDesc   bool
-	SecondaryKey  string
-	SecondaryDesc bool
+	return &LearnedWordRepository{
+		client: client,
+	}
 }
 
 func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error) {
@@ -60,11 +46,10 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 
 	builder := r.client.LearnedWord.Create().
 		SetUserID(word.UserID).
-		SetWordID(word.WordID).
-		SetDisplayTerm(strings.TrimSpace(word.DisplayTerm)).
+		SetTerm(strings.TrimSpace(word.Term)).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, word.Tags...)).
-		SetNote(strings.TrimSpace(word.Note)).
+		SetNotes(word.Notes).
 		SetRelations(append([]entity.LearnedWordRelation{}, word.Relations...)).
 		SetContexts(append([]entity.LearnedWordContext{}, word.Contexts...)).
 		SetMasteryListen(listen).
@@ -115,11 +100,10 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 
 	mutation := r.client.LearnedWord.UpdateOneID(word.ID).
 		Where(entlearnedword.UserIDEQ(word.UserID)).
-		SetWordID(word.WordID).
-		SetDisplayTerm(strings.TrimSpace(word.DisplayTerm)).
+		SetTerm(strings.TrimSpace(word.Term)).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, word.Tags...)).
-		SetNote(strings.TrimSpace(word.Note)).
+		SetNotes(word.Notes).
 		SetRelations(append([]entity.LearnedWordRelation{}, word.Relations...)).
 		SetContexts(append([]entity.LearnedWordContext{}, word.Contexts...)).
 		SetMasteryListen(listen).
@@ -155,11 +139,11 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 	return mapEntLearnedWord(rec), nil
 }
 
-func (r *LearnedWordRepository) GetByWordID(ctx context.Context, userID int64, wordID int64) (*entity.LearnedWord, error) {
+func (r *LearnedWordRepository) GetByID(ctx context.Context, userID int64, id int64) (*entity.LearnedWord, error) {
 	rec, err := r.client.LearnedWord.Query().
 		Where(
+			entlearnedword.IDEQ(id),
 			entlearnedword.UserIDEQ(userID),
-			entlearnedword.WordIDEQ(wordID),
 		).
 		First(ctx)
 	if err != nil {
@@ -171,15 +155,17 @@ func (r *LearnedWordRepository) GetByWordID(ctx context.Context, userID int64, w
 	return mapEntLearnedWord(rec), nil
 }
 
-func (r *LearnedWordRepository) FindByWordID(ctx context.Context, userID int64, wordID int64) (*entity.LearnedWord, error) {
-	if wordID == 0 {
+func (r *LearnedWordRepository) FindByTerm(ctx context.Context, userID int64, term string, language entity.Language) (*entity.LearnedWord, error) {
+	if term == "" {
 		return nil, nil
 	}
 
+	languageCode := entity.NormalizeLanguage(language).Code()
 	rec, err := r.client.LearnedWord.Query().
 		Where(
 			entlearnedword.UserIDEQ(userID),
-			entlearnedword.WordIDEQ(wordID),
+			entlearnedword.TermEQ(strings.TrimSpace(term)),
+			entlearnedword.LanguageEQ(languageCode),
 		).
 		First(ctx)
 	if err != nil {
@@ -192,22 +178,38 @@ func (r *LearnedWordRepository) FindByWordID(ctx context.Context, userID int64, 
 }
 
 func (r *LearnedWordRepository) List(ctx context.Context, query *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-	var params listLearnedWordsParams
-	if err := filterexpr.Bind(query, &params, listLearnedWordsSchema); err != nil {
-		return nil, 0, err
-	}
+	// Note: Filter parsing and SurfaceTerms mapping is done in connectrpc and usecase layers
+	// Repository just applies the already-processed parameters
 
 	qbuilder := r.client.LearnedWord.Query().
 		Where(entlearnedword.UserIDEQ(query.UserID))
 
-	applyLearnedWordFilters(qbuilder, params)
+	// Apply filters from query parameters
+	if query.Keyword != "" {
+		qbuilder.Where(entlearnedword.TermContainsFold(query.Keyword))
+	}
+	if query.Language != "" {
+		qbuilder.Where(entlearnedword.LanguageEQ(query.Language))
+	}
+	if surfaces := uniqueFolded(query.SurfaceTerms); len(surfaces) > 0 {
+		qbuilder.Where(entlearnedword.TermIn(surfaces...))
+	}
+	if tags := uniqueFolded(query.Tags); len(tags) > 0 {
+		qbuilder.Where(func(s *sql.Selector) {
+			column := s.C(entlearnedword.FieldTags)
+			for _, tag := range tags {
+				s.Where(sqljson.ValueContains(column, tag))
+			}
+		})
+	}
 
 	total, err := qbuilder.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count user words: %w", err)
 	}
 
-	applyLearnedWordOrdering(qbuilder, params)
+	// Apply ordering from parsed parameters
+	applyLearnedWordOrdering(qbuilder, query)
 
 	offset := query.Offset()
 	if offset > 0 {
@@ -232,11 +234,11 @@ func (r *LearnedWordRepository) List(ctx context.Context, query *repository.List
 	return results, int64(total), nil
 }
 
-func (r *LearnedWordRepository) DeleteByWordID(ctx context.Context, userID int64, wordID int64) error {
+func (r *LearnedWordRepository) DeleteByID(ctx context.Context, userID int64, id int64) error {
 	affected, err := r.client.LearnedWord.Delete().
 		Where(
+			entlearnedword.IDEQ(id),
 			entlearnedword.UserIDEQ(userID),
-			entlearnedword.WordIDEQ(wordID),
 		).
 		Exec(ctx)
 	if err != nil {
@@ -248,66 +250,17 @@ func (r *LearnedWordRepository) DeleteByWordID(ctx context.Context, userID int64
 	return nil
 }
 
-func applyLearnedWordFilters(q *entdb.LearnedWordQuery, params listLearnedWordsParams) {
-	if params.Keyword != "" {
-		q.Where(entlearnedword.DisplayTermContainsFold(params.Keyword))
-	}
-	if len(params.WordIDs) > 0 {
-		q.Where(entlearnedword.WordIDIn(params.WordIDs...))
-	}
-	if surfaces := uniqueFolded(params.SurfaceTerms); len(surfaces) > 0 {
-		// Batch lookup: match learned words by their word's lemma OR any of their forms
-		// Use ent's edge predicates for clean join handling
-		q.Where(
-			entlearnedword.HasWordWith(
-				entword.Or(
-					// Match lemma (case-insensitive using LOWER() function)
-					func(s *sql.Selector) {
-						s.Where(sql.In(sql.Lower(s.C(entword.FieldLemma)), stringsToInterfaces(surfaces)...))
-					},
-					// Match any lexeme form (forms are already stored in lowercase)
-					entword.HasLexemesWith(
-						entlexeme.HasFormsWith(
-							entlexemeform.TextIn(surfaces...),
-						),
-					),
-				),
-			),
-		)
-	}
-	if tags := uniqueFolded(params.Tags); len(tags) > 0 {
-		q.Where(func(s *sql.Selector) {
-			column := s.C(entlearnedword.FieldTags)
-			for _, tag := range tags {
-				s.Where(sqljson.ValueContains(column, tag))
-			}
-		})
-	}
-	if categories := uniqueFolded(params.Categories); len(categories) > 0 {
-		q.Where(func(sel *sql.Selector) {
-			// Join with words to check categories
-			word := sql.Table(entword.Table)
-			sub := sql.Select().
-				From(word).
-				Where(sql.ColumnsEQ(
-					word.C(entword.FieldID),
-					sel.C(entlearnedword.FieldWordID),
-				))
-			for _, category := range categories {
-				sub.Where(sqljson.ValueContains(word.C(entword.FieldCategories), category))
-			}
-			sel.Where(sql.Exists(sub))
-		})
-	}
+func translateLearnedWordError(err error) error {
+	return translateDBError(err, "learned_word")
 }
 
-func applyLearnedWordOrdering(q *entdb.LearnedWordQuery, params listLearnedWordsParams) {
+func applyLearnedWordOrdering(qb *entdb.LearnedWordQuery, query *repository.ListLearnedWordQuery) {
 	for _, term := range []struct {
 		key  string
 		desc bool
 	}{
-		{key: params.PrimaryKey, desc: params.PrimaryDesc},
-		{key: params.SecondaryKey, desc: params.SecondaryDesc},
+		{key: query.PrimaryKey, desc: query.PrimaryDesc},
+		{key: query.SecondaryKey, desc: query.SecondaryDesc},
 	} {
 		if term.key == "" {
 			continue
@@ -315,38 +268,38 @@ func applyLearnedWordOrdering(q *entdb.LearnedWordQuery, params listLearnedWords
 		switch term.key {
 		case "created_at":
 			if term.desc {
-				q.Order(entlearnedword.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 			} else {
-				q.Order(entlearnedword.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
 		case "updated_at":
 			if term.desc {
-				q.Order(entlearnedword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 			} else {
-				q.Order(entlearnedword.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
-		case "display_term":
+		case "term":
 			if term.desc {
-				q.Order(entlearnedword.ByDisplayTerm(sql.OrderDesc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByTerm(sql.OrderDesc(), sql.OrderNullsLast()))
 			} else {
-				q.Order(entlearnedword.ByDisplayTerm(sql.OrderAsc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByTerm(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
 		case "mastery_overall":
 			if term.desc {
-				q.Order(entlearnedword.ByMasteryOverall(sql.OrderDesc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByMasteryOverall(sql.OrderDesc(), sql.OrderNullsLast()))
 			} else {
-				q.Order(entlearnedword.ByMasteryOverall(sql.OrderAsc(), sql.OrderNullsLast()))
+				qb.Order(entlearnedword.ByMasteryOverall(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
 		case "id":
 			if term.desc {
-				q.Order(entlearnedword.ByID(sql.OrderDesc()))
+				qb.Order(entlearnedword.ByID(sql.OrderDesc()))
 			} else {
-				q.Order(entlearnedword.ByID())
+				qb.Order(entlearnedword.ByID())
 			}
 		}
 	}
 
-	q.Order(entlearnedword.ByID())
+	qb.Order(entlearnedword.ByID())
 }
 
 func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
@@ -355,11 +308,10 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 	}
 
 	out := &entity.LearnedWord{
-		ID:          rec.ID,
-		UserID:      rec.UserID,
-		WordID:      rec.WordID,
-		DisplayTerm: rec.DisplayTerm,
-		Language:    entity.ParseLanguage(rec.Language),
+		ID:       rec.ID,
+		UserID:   rec.UserID,
+		Term:     rec.Term,
+		Language: entity.ParseLanguage(rec.Language),
 		Mastery: entity.MasteryBreakdown{
 			Listen:    int32(rec.MasteryListen),
 			Read:      int32(rec.MasteryRead),
@@ -373,7 +325,7 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 		},
 		QueryCount: rec.QueryCount,
 		Tags:       append([]string{}, rec.Tags...),
-		Note:       rec.Note,
+		Notes:      rec.Notes,
 		Relations:  append([]entity.LearnedWordRelation{}, rec.Relations...),
 		Contexts:   append([]entity.LearnedWordContext{}, rec.Contexts...),
 		CreatedBy:  rec.CreatedBy,
@@ -389,8 +341,4 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 	}
 
 	return out
-}
-
-func translateLearnedWordError(err error) error {
-	return translateDBError(err, "learned_word")
 }

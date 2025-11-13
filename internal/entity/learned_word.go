@@ -9,21 +9,20 @@ import (
 // This is a word-level learning record (not lexeme-level), which simplifies
 // the user experience for the majority of cases where multi-sense tracking is not needed.
 type LearnedWord struct {
-	ID          int64
-	UserID      int64
-	WordID      int64  // Reference to words.id
-	DisplayTerm string // The surface form user encountered (e.g. "ran" when learning "run")
-	Language    Language
-	Tags        []string
-	Note        string
-	Relations   []LearnedWordRelation
-	Contexts    []LearnedWordContext // Context sentences where user encountered this word
-	Mastery     MasteryBreakdown
-	Review      ReviewTiming
-	QueryCount  int64
-	CreatedBy   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID         int64
+	UserID     int64
+	Term       string // The term stored: lemma for regular forms, or the term itself for irregular forms
+	Language   Language
+	Tags       []string
+	Notes      []string
+	Relations  []LearnedWordRelation
+	Contexts   []LearnedWordContext // Context sentences where user encountered this word
+	Mastery    MasteryBreakdown
+	Review     ReviewTiming
+	QueryCount int64
+	CreatedBy  string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	// FUTURE: LexemeOverrides map[string]LexemeOverride
 	// This will enable tracking mastery for specific word senses when needed.
 	// Key: Wikidata Lexeme ID (e.g. "L123456")
@@ -45,15 +44,15 @@ type LearnedWordRelation struct {
 
 // LearnedWordContext stores a sentence/context where user encountered the word.
 type LearnedWordContext struct {
-	Sentence    string    `json:"sentence"`      // The sentence containing the word
-	Source      int32     `json:"source"`        // How this context was added (article, book, manual, etc.)
-	SourceRef   string    `json:"source_ref"`    // Optional reference (article title, book name, URL, etc.)
-	CollectedAt time.Time `json:"collected_at"`  // When this context was collected
+	Sentence    string    `json:"sentence"`     // The sentence containing the word
+	Source      int32     `json:"source"`       // How this context was added (article, book, manual, etc.)
+	SourceRef   string    `json:"source_ref"`   // Optional reference (article title, book name, URL, etc.)
+	CollectedAt time.Time `json:"collected_at"` // When this context was collected
 }
 
 // Normalize ensures defaults & constraints before persistence.
 func (uw *LearnedWord) Normalize(now time.Time) {
-	uw.DisplayTerm = strings.TrimSpace(uw.DisplayTerm)
+	uw.Term = strings.TrimSpace(uw.Term)
 	if uw.CreatedAt.IsZero() {
 		uw.CreatedAt = now
 	}

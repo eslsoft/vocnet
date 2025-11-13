@@ -9,7 +9,6 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
-	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -23,16 +22,16 @@ func (LearnedWord) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.Int64("user_id"),
-		field.Int64("word_id").
-			Comment("Reference to words.id"),
-		field.String("display_term").
-			Default("").
-			Comment("The surface form user encountered (e.g. 'ran' when learning 'run')"),
+		field.String("term").
+			NotEmpty().
+			Comment("The term stored: lemma for regular forms, or the term itself for irregular forms"),
 		field.String("language").Default(entity.LanguageEnglish.CodeOrDefault()),
 		field.JSON("tags", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
-		field.String("note").Default(""),
+		field.JSON("notes", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("relations", []entity.LearnedWordRelation{}).
 			Default([]entity.LearnedWordRelation{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
@@ -64,20 +63,13 @@ func (LearnedWord) Fields() []ent.Field {
 }
 
 func (LearnedWord) Edges() []ent.Edge {
-	return []ent.Edge{
-		// LearnedWord -> Word (多对一关系)
-		edge.To("word", Word.Type).
-			Field("word_id").
-			Unique().
-			Required().
-			Annotations(entsql.OnDelete(entsql.Cascade)), // Word删除时级联删除
-	}
+	return []ent.Edge{}
 }
 
 func (LearnedWord) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("user_id", "word_id").Unique(),
-		index.Fields("user_id", "language", "display_term"),
+		// Primary business key: user_id + term + language
+		index.Fields("user_id", "term", "language").Unique(),
 		// 优化复习查询：查找需要复习的词条
 		index.Fields("user_id", "review_next_review_at"),
 	}

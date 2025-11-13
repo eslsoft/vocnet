@@ -1,15 +1,18 @@
-package grpc
+package connectrpc
 
 import (
 	"context"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
+	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	learningv1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
+	"github.com/eslsoft/vocnet/pkg/filterexpr"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -29,12 +32,18 @@ func NewLearningServiceServer(uc usecase.LearnedWordUsecase) *LearningServiceSer
 }
 
 func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Request[learningv1.CollectWordRequest]) (*connect.Response[learningv1.LearnedWord], error) {
-	if req.Msg == nil || req.Msg.Word == nil {
-		return nil, status.Error(codes.InvalidArgument, "word payload required")
+	if req.Msg == nil || req.Msg.Spec == nil {
+		return nil, status.Error(codes.InvalidArgument, "spec payload required")
 	}
 
 	userID := int64(1000) // TODO: Extract from auth context
-	entityWord := mapping.FromPbLearnedWord(req.Msg.Word)
+	// Convert spec to entity (term might be empty, will be computed by usecase)
+	entityWord := &entity.LearnedWord{
+		Term:     strings.TrimSpace(req.Msg.Spec.GetTerm()),
+		Language: mapping.FromPbLanguage(req.Msg.Spec.GetLanguage()),
+		Tags:     req.Msg.Spec.GetTags(),
+		Notes:    req.Msg.Spec.GetNotes(),
+	}
 	result, err := s.uc.CollectWord(ctx, userID, entityWord)
 	if err != nil {
 		return nil, err
@@ -43,24 +52,24 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 	return connect.NewResponse(mapping.ToPbLearnedWord(result)), nil
 }
 
-func (s *LearningServiceServer) UncollectWord(ctx context.Context, req *connect.Request[learningv1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error) {
+func (s *LearningServiceServer) UncollectWord(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
 	if req.Msg == nil {
-		return nil, status.Error(codes.InvalidArgument, "word id required")
+		return nil, status.Error(codes.InvalidArgument, "id required")
 	}
 	userID := int64(1000) // TODO: Extract from auth context
-	if err := s.uc.DeleteLearnedWord(ctx, userID, req.Msg.GetWordId()); err != nil {
+	if err := s.uc.DeleteLearnedWord(ctx, userID, req.Msg.GetId()); err != nil {
 		return nil, err
 	}
 
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
-func (s *LearningServiceServer) GetLearnedWord(ctx context.Context, req *connect.Request[learningv1.LearnedWordKey]) (*connect.Response[learningv1.LearnedWord], error) {
+func (s *LearningServiceServer) GetLearnedWord(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[learningv1.LearnedWord], error) {
 	if req.Msg == nil {
-		return nil, status.Error(codes.InvalidArgument, "word id required")
+		return nil, status.Error(codes.InvalidArgument, "id required")
 	}
 	userID := int64(1000) // TODO: Extract from auth context
-	result, err := s.uc.GetLearnedWord(ctx, userID, req.Msg.GetWordId())
+	result, err := s.uc.GetLearnedWord(ctx, userID, req.Msg.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -72,16 +81,12 @@ func (s *LearningServiceServer) ListLearnedWords(ctx context.Context, req *conne
 	if req == nil || req.Msg == nil {
 		return nil, status.Error(codes.InvalidArgument, "request required")
 	}
-	msg := req.Msg
-	query := &repository.ListLearnedWordQuery{
-		Pagination: convertPagination(msg.GetPagination()),
-		FilterOrder: repository.FilterOrder{
-			Filter:  msg.GetFilter(),
-			OrderBy: msg.GetOrderBy(),
-		},
-		UserID: int64(1000), // TODO: Extract from auth context
+	var query repository.ListLearnedWordQuery
+	if err := filterexpr.Bind(req.Msg, &query, learnedWordFilterSchema); err != nil {
+		return nil, err
 	}
-	items, total, err := s.uc.ListLearnedWords(ctx, query)
+
+	items, total, err := s.uc.ListLearnedWords(ctx, &query)
 	if err != nil {
 		return nil, err
 	}
@@ -114,10 +119,10 @@ func (s *LearningServiceServer) UpdateMastery(ctx context.Context, req *connect.
 	result, err := s.uc.UpdateMastery(
 		ctx,
 		userID,
-		msg.GetWordId(),
+		msg.GetId(),
 		mapping.FromPbMastery(msg.GetMastery()),
-		mapping.FromPbReview(msg.GetReview()),
-		msg.GetNote(),
+		entity.ReviewTiming{}, // Review timing not provided in proto
+		msg.GetNotes(),
 	)
 	if err != nil {
 		return nil, err

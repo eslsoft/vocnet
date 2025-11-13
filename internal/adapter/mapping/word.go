@@ -20,27 +20,28 @@ func ToPbWord(word *entity.Word) *dictv1.Word {
 
 	out := &dictv1.Word{
 		Id:           word.ID,
-		Lemma:        word.Lemma,
+		Term:         word.Lemma, // entity.Word is always a lemma
+		TermType:     dictv1.FormType_FORM_TYPE_LEMMA,
 		Language:     pbLang,
 		Completeness: word.Completeness,
-		Forms:        aggregateForms(word.Lexemes),
-		Definitions:  aggregateDefinitions(word.Lexemes),
+		RelatedForms: aggregateRelatedForms(word.Lexemes),
+		Meanings:     aggregateMeanings(word.Lexemes),
 		Phrases:      []*dictv1.Phrase{}, // reserved for future sources
 		Phonetics:    mapPhonetics(word.Phonetics),
 		Categories:   word.Categories,
+		Irregular:    false, // lemmas are not irregular
 	}
 
 	setTimestamps(out, word.Lexemes)
 	return out
 }
 
-func aggregateForms(lexemes []*entity.Lexeme) []*dictv1.WordForm {
+func aggregateRelatedForms(lexemes []*entity.Lexeme) []*dictv1.RelatedForm {
 	type formKey struct {
-		LexemeID string // External Lexeme ID
-		Text     string
-		Type     entity.LexemeFormType
+		Text string
+		Type entity.LexemeFormType
 	}
-	bucket := make(map[formKey]*dictv1.WordForm)
+	bucket := make(map[formKey]*dictv1.RelatedForm)
 
 	for _, lex := range lexemes {
 		for _, form := range lex.Forms {
@@ -48,17 +49,19 @@ func aggregateForms(lexemes []*entity.Lexeme) []*dictv1.WordForm {
 			if text == "" {
 				continue
 			}
+			// Skip lemma forms as they're already represented by the main term
+			if form.FormType == entity.LexemeFormTypeLemma {
+				continue
+			}
 			key := formKey{
-				LexemeID: lex.ExternalID,
-				Text:     strings.ToLower(text),
-				Type:     defaultFormType(form.FormType),
+				Text: strings.ToLower(text),
+				Type: defaultFormType(form.FormType),
 			}
 			entry, ok := bucket[key]
 			if !ok {
-				entry = &dictv1.WordForm{
-					LexemeId:  lex.ExternalID,
-					Word:      text,
-					Type:      toPbFormType(key.Type),
+				entry = &dictv1.RelatedForm{
+					Term:      text,
+					FormType:  toPbFormType(key.Type),
 					Irregular: form.IsIrregular,
 				}
 				bucket[key] = entry
@@ -73,35 +76,32 @@ func aggregateForms(lexemes []*entity.Lexeme) []*dictv1.WordForm {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].LexemeID != keys[j].LexemeID {
-			return keys[i].LexemeID < keys[j].LexemeID
-		}
 		if keys[i].Text == keys[j].Text {
 			return strings.Compare(string(keys[i].Type), string(keys[j].Type)) < 0
 		}
 		return keys[i].Text < keys[j].Text
 	})
 
-	out := make([]*dictv1.WordForm, 0, len(keys))
+	out := make([]*dictv1.RelatedForm, 0, len(keys))
 	for _, key := range keys {
 		out = append(out, bucket[key])
 	}
 	return out
 }
 
-func aggregateDefinitions(lexemes []*entity.Lexeme) []*dictv1.Definition {
+func aggregateMeanings(lexemes []*entity.Lexeme) []*dictv1.Meaning {
 	type bucket struct {
-		definition *dictv1.Definition
-		index      int
+		meaning *dictv1.Meaning
+		index   int
 	}
-	defs := make(map[string]*bucket) // key: external_id
+	meanings := make(map[string]*bucket) // key: external_id
 	order := make([]string, 0)
 
 	for _, lex := range lexemes {
 		externalID := lex.ExternalID
-		if _, ok := defs[externalID]; !ok {
-			defs[externalID] = &bucket{
-				definition: &dictv1.Definition{
+		if _, ok := meanings[externalID]; !ok {
+			meanings[externalID] = &bucket{
+				meaning: &dictv1.Meaning{
 					LexemeId: externalID,
 					Pos:      lex.PartOfSpeech,
 				},
@@ -109,10 +109,10 @@ func aggregateDefinitions(lexemes []*entity.Lexeme) []*dictv1.Definition {
 			}
 			order = append(order, externalID)
 		}
-		target := defs[externalID].definition
+		target := meanings[externalID].meaning
 
 		for _, sense := range lex.Senses {
-			target.Senses = append(target.Senses, &dictv1.LexemeSense{
+			target.Definitions = append(target.Definitions, &dictv1.Definition{
 				Language: ToPbLanguage(sense.Language),
 				Gloss:    sense.Gloss,
 			})
@@ -124,9 +124,9 @@ func aggregateDefinitions(lexemes []*entity.Lexeme) []*dictv1.Definition {
 		}
 	}
 
-	out := make([]*dictv1.Definition, 0, len(order))
+	out := make([]*dictv1.Meaning, 0, len(order))
 	for _, externalID := range order {
-		out = append(out, defs[externalID].definition)
+		out = append(out, meanings[externalID].meaning)
 	}
 	return out
 }
@@ -209,9 +209,15 @@ func ToEntityWord(pb *dictv1.Word) *entity.Word {
 		return nil
 	}
 
+	// Determine lemma: use the lemma field if set, otherwise use term
+	lemma := pb.GetTerm()
+	if pb.Lemma != nil {
+		lemma = *pb.Lemma
+	}
+
 	word := &entity.Word{
 		ID:           pb.GetId(),
-		Lemma:        pb.GetLemma(),
+		Lemma:        lemma,
 		Language:     FromPbLanguage(pb.GetLanguage()),
 		Completeness: pb.GetCompleteness(),
 		Categories:   pb.GetCategories(),
@@ -228,57 +234,60 @@ func ToEntityWord(pb *dictv1.Word) *entity.Word {
 		}
 	}
 
-	// Convert definitions to lexemes
-	word.Lexemes = definitionsToLexemes(pb, word.Language)
+	// Convert meanings to lexemes
+	word.Lexemes = meaningsToLexemes(pb, word.Language, lemma)
 
 	return word
 }
 
-// definitionsToLexemes converts proto Definitions to entity Lexemes
-func definitionsToLexemes(pb *dictv1.Word, wordLang entity.Language) []*entity.Lexeme {
-	definitions := pb.GetDefinitions()
-	if len(definitions) == 0 {
+// meaningsToLexemes converts proto Meanings to entity Lexemes
+func meaningsToLexemes(pb *dictv1.Word, wordLang entity.Language, lemma string) []*entity.Lexeme {
+	meanings := pb.GetMeanings()
+	if len(meanings) == 0 {
 		return nil
 	}
 
-	lexemes := make([]*entity.Lexeme, 0, len(definitions))
+	lexemes := make([]*entity.Lexeme, 0, len(meanings))
 
-	for _, def := range definitions {
+	for _, meaning := range meanings {
 		lex := &entity.Lexeme{
-			ExternalID:   def.GetLexemeId(),
+			ExternalID:   meaning.GetLexemeId(),
 			Language:     wordLang,
-			Lemma:        pb.GetLemma(),
-			PartOfSpeech: def.GetPos(),
+			Lemma:        lemma,
+			PartOfSpeech: meaning.GetPos(),
 		}
 
-		// Filter forms that belong to this lexeme
-		if len(pb.GetForms()) > 0 {
-			for _, pbForm := range pb.GetForms() {
-				if pbForm.GetLexemeId() == def.GetLexemeId() {
-					lex.Forms = append(lex.Forms, entity.LexemeForm{
-						Text:        pbForm.GetWord(),
-						FormType:    fromPbFormType(pbForm.GetType()),
-						IsIrregular: pbForm.GetIrregular(),
-					})
-				}
+		// Add lemma form
+		lex.Forms = append(lex.Forms, entity.LexemeForm{
+			Text:        lemma,
+			FormType:    entity.LexemeFormTypeLemma,
+			IsIrregular: false,
+		})
+
+		// Add related forms
+		if len(pb.GetRelatedForms()) > 0 {
+			for _, relForm := range pb.GetRelatedForms() {
+				lex.Forms = append(lex.Forms, entity.LexemeForm{
+					Text:        relForm.GetTerm(),
+					FormType:    fromPbFormType(relForm.GetFormType()),
+					IsIrregular: relForm.GetIrregular(),
+				})
 			}
 		}
 
-		// Convert senses and examples
-		// Note: In proto, examples are at Definition level, but in entity they're at Sense level
-		// We attach examples to the first sense for simplicity
-		if len(def.GetSenses()) > 0 {
-			lex.Senses = make([]entity.LexemeSense, 0, len(def.GetSenses()))
-			for i, sense := range def.GetSenses() {
+		// Convert definitions to senses
+		if len(meaning.GetDefinitions()) > 0 {
+			lex.Senses = make([]entity.LexemeSense, 0, len(meaning.GetDefinitions()))
+			for i, def := range meaning.GetDefinitions() {
 				entitySense := entity.LexemeSense{
-					Language: FromPbLanguage(sense.GetLanguage()),
-					Gloss:    sense.GetGloss(),
+					Language: FromPbLanguage(def.GetLanguage()),
+					Gloss:    def.GetGloss(),
 				}
 
 				// Attach examples only to the first sense to avoid duplication
-				if i == 0 && len(def.GetExamples()) > 0 {
-					entitySense.Examples = make([]entity.SenseExample, 0, len(def.GetExamples()))
-					for _, ex := range def.GetExamples() {
+				if i == 0 && len(meaning.GetExamples()) > 0 {
+					entitySense.Examples = make([]entity.SenseExample, 0, len(meaning.GetExamples()))
+					for _, ex := range meaning.GetExamples() {
 						entitySense.Examples = append(entitySense.Examples, entity.SenseExample{
 							Text: ex.GetText(),
 						})

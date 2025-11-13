@@ -1,4 +1,4 @@
-package grpc
+package connectrpc
 
 import (
 	"github.com/eslsoft/vocnet/internal/repository"

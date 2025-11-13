@@ -29,7 +29,6 @@ const (
 type LearnedWord struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	WordId        int64                  `protobuf:"varint,2,opt,name=word_id,json=wordId,proto3" json:"word_id,omitempty"` // Reference to words.id
 	Spec          *LearnedWordSpec       `protobuf:"bytes,3,opt,name=spec,proto3" json:"spec,omitempty"`
 	Status        *LearnedWordStatus     `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -73,13 +72,6 @@ func (x *LearnedWord) GetId() int64 {
 	return 0
 }
 
-func (x *LearnedWord) GetWordId() int64 {
-	if x != nil {
-		return x.WordId
-	}
-	return 0
-}
-
 func (x *LearnedWord) GetSpec() *LearnedWordSpec {
 	if x != nil {
 		return x.Spec
@@ -97,12 +89,13 @@ func (x *LearnedWord) GetStatus() *LearnedWordStatus {
 // LearnedWordSpec stores user-authored metadata.
 type LearnedWordSpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DisplayTerm   string                 `protobuf:"bytes,1,opt,name=display_term,json=displayTerm,proto3" json:"display_term,omitempty"` // The surface form user encountered (e.g. "ran" when learning "run")
-	Language      v1.Language            `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`
-	Tags          []string               `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
-	Note          string                 `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
-	Relations     []*LearnedWordRelation `protobuf:"bytes,5,rep,name=relations,proto3" json:"relations,omitempty"`
-	Contexts      []*LearnedWordContext  `protobuf:"bytes,6,rep,name=contexts,proto3" json:"contexts,omitempty"` // Context sentences where user encountered this word
+	Language      v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`     // Language of the term
+	Term          string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`                                      // The actual word term (lemma for regular forms, or itself for irregular)
+	MasteryLevel  int32                  `protobuf:"varint,3,opt,name=mastery_level,json=masteryLevel,proto3" json:"mastery_level,omitempty"` // user-assigned mastery level (0-5)
+	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	Notes         []string               `protobuf:"bytes,6,rep,name=notes,proto3" json:"notes,omitempty"`
+	Contexts      []*LearnedWordContext  `protobuf:"bytes,10,rep,name=contexts,proto3" json:"contexts,omitempty"`   // Context sentences where user encountered this word
+	Relations     []*LearnedWordRelation `protobuf:"bytes,11,rep,name=relations,proto3" json:"relations,omitempty"` // Word-to-word relationships
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -137,18 +130,25 @@ func (*LearnedWordSpec) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *LearnedWordSpec) GetDisplayTerm() string {
-	if x != nil {
-		return x.DisplayTerm
-	}
-	return ""
-}
-
 func (x *LearnedWordSpec) GetLanguage() v1.Language {
 	if x != nil {
 		return x.Language
 	}
 	return v1.Language(0)
+}
+
+func (x *LearnedWordSpec) GetTerm() string {
+	if x != nil {
+		return x.Term
+	}
+	return ""
+}
+
+func (x *LearnedWordSpec) GetMasteryLevel() int32 {
+	if x != nil {
+		return x.MasteryLevel
+	}
+	return 0
 }
 
 func (x *LearnedWordSpec) GetTags() []string {
@@ -158,16 +158,9 @@ func (x *LearnedWordSpec) GetTags() []string {
 	return nil
 }
 
-func (x *LearnedWordSpec) GetNote() string {
+func (x *LearnedWordSpec) GetNotes() []string {
 	if x != nil {
-		return x.Note
-	}
-	return ""
-}
-
-func (x *LearnedWordSpec) GetRelations() []*LearnedWordRelation {
-	if x != nil {
-		return x.Relations
+		return x.Notes
 	}
 	return nil
 }
@@ -179,12 +172,20 @@ func (x *LearnedWordSpec) GetContexts() []*LearnedWordContext {
 	return nil
 }
 
+func (x *LearnedWordSpec) GetRelations() []*LearnedWordRelation {
+	if x != nil {
+		return x.Relations
+	}
+	return nil
+}
+
 // LearnedWordStatus is maintained by the system to reflect learning progress.
 type LearnedWordStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Mastery       *MasteryBreakdown      `protobuf:"bytes,1,opt,name=mastery,proto3" json:"mastery,omitempty"`
 	ReviewTiming  *ReviewTiming          `protobuf:"bytes,2,opt,name=review_timing,json=reviewTiming,proto3" json:"review_timing,omitempty"`
-	QueryCount    int64                  `protobuf:"varint,3,opt,name=query_count,json=queryCount,proto3" json:"query_count,omitempty"`
+	QueriedWord   string                 `protobuf:"bytes,10,opt,name=queried_word,json=queriedWord,proto3" json:"queried_word,omitempty"`    // currently queried word form, it's diffrent from lemma
+	QueriedCount  int64                  `protobuf:"varint,3,opt,name=queried_count,json=queriedCount,proto3" json:"queried_count,omitempty"` // number of times user queried this word
 	CreatedBy     string                 `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
@@ -236,9 +237,16 @@ func (x *LearnedWordStatus) GetReviewTiming() *ReviewTiming {
 	return nil
 }
 
-func (x *LearnedWordStatus) GetQueryCount() int64 {
+func (x *LearnedWordStatus) GetQueriedWord() string {
 	if x != nil {
-		return x.QueryCount
+		return x.QueriedWord
+	}
+	return ""
+}
+
+func (x *LearnedWordStatus) GetQueriedCount() int64 {
+	if x != nil {
+		return x.QueriedCount
 	}
 	return 0
 }
@@ -560,24 +568,26 @@ var File_learning_v1_learning_proto protoreflect.FileDescriptor
 
 const file_learning_v1_learning_proto_rawDesc = "" +
 	"\n" +
-	"\x1alearning/v1/learning.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x01\n" +
+	"\x1alearning/v1/learning.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x87\x01\n" +
 	"\vLearnedWord\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x17\n" +
-	"\aword_id\x18\x02 \x01(\x03R\x06wordId\x120\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x120\n" +
 	"\x04spec\x18\x03 \x01(\v2\x1c.learning.v1.LearnedWordSpecR\x04spec\x126\n" +
-	"\x06status\x18\x04 \x01(\v2\x1e.learning.v1.LearnedWordStatusR\x06status\"\x8a\x02\n" +
-	"\x0fLearnedWordSpec\x12!\n" +
-	"\fdisplay_term\x18\x01 \x01(\tR\vdisplayTerm\x12/\n" +
-	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x12\n" +
-	"\x04tags\x18\x03 \x03(\tR\x04tags\x12\x12\n" +
-	"\x04note\x18\x04 \x01(\tR\x04note\x12>\n" +
-	"\trelations\x18\x05 \x03(\v2 .learning.v1.LearnedWordRelationR\trelations\x12;\n" +
-	"\bcontexts\x18\x06 \x03(\v2\x1f.learning.v1.LearnedWordContextR\bcontexts\"\xc2\x02\n" +
+	"\x06status\x18\x04 \x01(\v2\x1e.learning.v1.LearnedWordStatusR\x06status\"\xa2\x02\n" +
+	"\x0fLearnedWordSpec\x12/\n" +
+	"\blanguage\x18\x01 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x12\n" +
+	"\x04term\x18\x02 \x01(\tR\x04term\x12#\n" +
+	"\rmastery_level\x18\x03 \x01(\x05R\fmasteryLevel\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x14\n" +
+	"\x05notes\x18\x06 \x03(\tR\x05notes\x12;\n" +
+	"\bcontexts\x18\n" +
+	" \x03(\v2\x1f.learning.v1.LearnedWordContextR\bcontexts\x12>\n" +
+	"\trelations\x18\v \x03(\v2 .learning.v1.LearnedWordRelationR\trelations\"\xe9\x02\n" +
 	"\x11LearnedWordStatus\x127\n" +
 	"\amastery\x18\x01 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x12>\n" +
-	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12\x1f\n" +
-	"\vquery_count\x18\x03 \x01(\x03R\n" +
-	"queryCount\x12\x1d\n" +
+	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12!\n" +
+	"\fqueried_word\x18\n" +
+	" \x01(\tR\vqueriedWord\x12#\n" +
+	"\rqueried_count\x18\x03 \x01(\x03R\fqueriedCount\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\x14 \x01(\tR\tcreatedBy\x129\n" +
 	"\n" +
@@ -642,8 +652,8 @@ var file_learning_v1_learning_proto_depIdxs = []int32{
 	1,  // 0: learning.v1.LearnedWord.spec:type_name -> learning.v1.LearnedWordSpec
 	2,  // 1: learning.v1.LearnedWord.status:type_name -> learning.v1.LearnedWordStatus
 	7,  // 2: learning.v1.LearnedWordSpec.language:type_name -> common.v1.Language
-	5,  // 3: learning.v1.LearnedWordSpec.relations:type_name -> learning.v1.LearnedWordRelation
-	6,  // 4: learning.v1.LearnedWordSpec.contexts:type_name -> learning.v1.LearnedWordContext
+	6,  // 3: learning.v1.LearnedWordSpec.contexts:type_name -> learning.v1.LearnedWordContext
+	5,  // 4: learning.v1.LearnedWordSpec.relations:type_name -> learning.v1.LearnedWordRelation
 	3,  // 5: learning.v1.LearnedWordStatus.mastery:type_name -> learning.v1.MasteryBreakdown
 	4,  // 6: learning.v1.LearnedWordStatus.review_timing:type_name -> learning.v1.ReviewTiming
 	8,  // 7: learning.v1.LearnedWordStatus.created_at:type_name -> google.protobuf.Timestamp

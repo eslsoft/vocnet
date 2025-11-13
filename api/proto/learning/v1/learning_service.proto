@@ -7,22 +7,17 @@ import "google/protobuf/empty.proto";
 import "learning/v1/learning.proto";
 import "validate/validate.proto";
 
-// Key for identifying a learned word entry.
-message LearnedWordKey {
-  int64 word_id = 1 [(validate.rules).int64.gt = 0];
-}
-
 // CollectWord request - main API for adding words to the user's vocabulary.
 message CollectWordRequest {
-  LearnedWord word = 1 [(validate.rules).message.required = true];
+  LearnedWordSpec spec = 1 [(validate.rules).message.required = true];
 }
 
 // UpdateMasteryRequest updates mastery and review schedule.
 message UpdateMasteryRequest {
-  int64 word_id = 1 [(validate.rules).int64.gt = 0];
+  int64 id = 1 [(validate.rules).int64.gt = 0]; // LearnedWord ID
   learning.v1.MasteryBreakdown mastery = 2;
-  learning.v1.ReviewTiming review = 3;
-  string note = 4;
+  repeated string tags = 3;
+  repeated string notes = 4;
 }
 
 // ListLearnedWordsRequest request with comprehensive filtering.
@@ -40,8 +35,8 @@ message ListLearnedWordsResponse {
 // User vocabulary management service for personal word learning.
 service LearningService {
   rpc CollectWord(CollectWordRequest) returns (LearnedWord) {}
-  rpc UncollectWord(LearnedWordKey) returns (google.protobuf.Empty) {}
-  rpc GetLearnedWord(LearnedWordKey) returns (LearnedWord) {}
+  rpc UncollectWord(common.v1.IDRequest) returns (google.protobuf.Empty) {}
+  rpc GetLearnedWord(common.v1.IDRequest) returns (LearnedWord) {}
   rpc ListLearnedWords(ListLearnedWordsRequest) returns (ListLearnedWordsResponse) {}
   rpc UpdateMastery(UpdateMasteryRequest) returns (LearnedWord) {}
 }

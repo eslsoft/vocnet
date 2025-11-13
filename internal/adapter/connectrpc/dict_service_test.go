@@ -1,4 +1,4 @@
-package grpc
+package connectrpc
 
 import (
 	"context"
@@ -24,27 +24,27 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test data with full hierarchy: Word -> Lexemes -> Forms + Senses (with Examples)
+	// Test data with full hierarchy: Word -> Meanings (with Definitions + Examples)
 	req := &connect.Request[dictv1.CreateWordRequest]{
 		Msg: &dictv1.CreateWordRequest{
 			Word: &dictv1.Word{
-				Lemma:    "run",
+				Term:     "run",
+				TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 				Language: commonv1.Language_LANGUAGE_ENGLISH,
 				Phonetics: []*dictv1.Phonetic{
 					{Ipa: "/rʌn/", Dialect: "en-US"},
 				},
 				Categories: []string{"basic", "verb"},
-				Forms: []*dictv1.WordForm{
-					{LexemeId: "L123", Word: "run", Type: dictv1.FormType_FORM_TYPE_LEMMA},
-					{LexemeId: "L123", Word: "runs", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
-					{LexemeId: "L123", Word: "running", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
-					{LexemeId: "L123", Word: "ran", Type: dictv1.FormType_FORM_TYPE_PAST, Irregular: true},
+				RelatedForms: []*dictv1.RelatedForm{
+					{Term: "runs", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+					{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+					{Term: "ran", FormType: dictv1.FormType_FORM_TYPE_PAST, Irregular: true},
 				},
-				Definitions: []*dictv1.Definition{
+				Meanings: []*dictv1.Meaning{
 					{
 						LexemeId: "L123",
 						Pos:      "v.",
-						Senses: []*dictv1.LexemeSense{
+						Definitions: []*dictv1.Definition{
 							{
 								Language: commonv1.Language_LANGUAGE_ENGLISH,
 								Gloss:    "to move swiftly on foot",
@@ -62,7 +62,7 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 					{
 						LexemeId: "L456",
 						Pos:      "n.",
-						Senses: []*dictv1.LexemeSense{
+						Definitions: []*dictv1.Definition{
 							{
 								Language: commonv1.Language_LANGUAGE_ENGLISH,
 								Gloss:    "an act of running",
@@ -84,7 +84,8 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 
 	word := resp.Msg
 	assert.Greater(t, word.Id, int64(0))
-	assert.Equal(t, "run", word.Lemma)
+	assert.Equal(t, "run", word.Term)
+	assert.Equal(t, dictv1.FormType_FORM_TYPE_LEMMA, word.TermType)
 	assert.Equal(t, commonv1.Language_LANGUAGE_ENGLISH, word.Language)
 
 	require.Len(t, word.Phonetics, 1, "Phonetics should be present")
@@ -92,32 +93,31 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 
 	assert.Len(t, word.Categories, 2)
 
-	// Verify Forms
-	assert.Len(t, word.Forms, 4)
+	// Verify Related Forms (lemma itself is not included in RelatedForms)
+	assert.Len(t, word.RelatedForms, 3)
 	formTypes := make(map[dictv1.FormType]string)
-	for _, f := range word.Forms {
-		formTypes[f.Type] = f.Word
+	for _, f := range word.RelatedForms {
+		formTypes[f.FormType] = f.Term
 	}
-	assert.Equal(t, "run", formTypes[dictv1.FormType_FORM_TYPE_LEMMA])
 	assert.Equal(t, "runs", formTypes[dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR])
 	assert.Equal(t, "running", formTypes[dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE])
 	assert.Equal(t, "ran", formTypes[dictv1.FormType_FORM_TYPE_PAST])
 
-	// Verify Definitions and Senses
-	assert.Len(t, word.Definitions, 2)
+	// Verify Meanings and Definitions
+	assert.Len(t, word.Meanings, 2)
 
-	verbDef := word.Definitions[0]
-	assert.Equal(t, "v.", verbDef.Pos)
-	assert.Len(t, verbDef.Senses, 2)
-	assert.Equal(t, "to move swiftly on foot", verbDef.Senses[0].Gloss)
-	assert.Equal(t, "跑步", verbDef.Senses[1].Gloss)
-	assert.Len(t, verbDef.Examples, 2)
-	assert.Equal(t, "She runs every morning.", verbDef.Examples[0].Text)
+	verbMeaning := word.Meanings[0]
+	assert.Equal(t, "v.", verbMeaning.Pos)
+	assert.Len(t, verbMeaning.Definitions, 2)
+	assert.Equal(t, "to move swiftly on foot", verbMeaning.Definitions[0].Gloss)
+	assert.Equal(t, "跑步", verbMeaning.Definitions[1].Gloss)
+	assert.Len(t, verbMeaning.Examples, 2)
+	assert.Equal(t, "She runs every morning.", verbMeaning.Examples[0].Text)
 
-	nounDef := word.Definitions[1]
-	assert.Equal(t, "n.", nounDef.Pos)
-	assert.Len(t, nounDef.Senses, 1)
-	assert.Len(t, nounDef.Examples, 1)
+	nounMeaning := word.Meanings[1]
+	assert.Equal(t, "n.", nounMeaning.Pos)
+	assert.Len(t, nounMeaning.Definitions, 1)
+	assert.Len(t, nounMeaning.Examples, 1)
 
 	assert.NotNil(t, word.CreatedAt)
 	assert.NotNil(t, word.UpdatedAt)
@@ -134,9 +134,9 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 
 		retrieved := getResp.Msg
 		assert.Equal(t, wordID, retrieved.Id)
-		assert.Equal(t, "run", retrieved.Lemma)
-		assert.Len(t, retrieved.Forms, 4)
-		assert.Len(t, retrieved.Definitions, 2)
+		assert.Equal(t, "run", retrieved.Term)
+		assert.Len(t, retrieved.RelatedForms, 3)
+		assert.Len(t, retrieved.Meanings, 2)
 	})
 
 	// Test UpdateWord
@@ -174,7 +174,7 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 		for _, w := range listResp.Msg.Words {
 			if w.Id == wordID {
 				found = true
-				assert.Equal(t, "run", w.Lemma)
+				assert.Equal(t, "run", w.Term)
 				break
 			}
 		}
@@ -190,8 +190,8 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, lookupResp)
 
-		assert.Equal(t, "run", lookupResp.Msg.Lemma)
-		assert.Len(t, lookupResp.Msg.Definitions, 2)
+		assert.Equal(t, "run", lookupResp.Msg.Term)
+		assert.Len(t, lookupResp.Msg.Meanings, 2)
 
 		// Lookup by inflected form
 		lookupResp2, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
@@ -200,7 +200,7 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, lookupResp2)
 
-		assert.Equal(t, "run", lookupResp2.Msg.Lemma) // Should return the lemma
+		assert.Equal(t, "run", lookupResp2.Msg.Term) // Should return the lemma
 	})
 
 	// Test DeleteWord
@@ -251,11 +251,12 @@ func TestDictService_CreateWord_ValidationErrors(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "empty lemma",
+			name: "empty term",
 			req: &connect.Request[dictv1.CreateWordRequest]{
 				Msg: &dictv1.CreateWordRequest{
 					Word: &dictv1.Word{
-						Lemma:    "",
+						Term:     "",
+						TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 						Language: commonv1.Language_LANGUAGE_ENGLISH,
 					},
 				},
@@ -305,7 +306,8 @@ func TestDictService_UpdateWord_ValidationErrors(t *testing.T) {
 			req: &connect.Request[dictv1.Word]{
 				Msg: &dictv1.Word{
 					Id:       0,
-					Lemma:    "test",
+					Term:     "test",
+					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 					Language: commonv1.Language_LANGUAGE_ENGLISH,
 				},
 			},
@@ -316,7 +318,8 @@ func TestDictService_UpdateWord_ValidationErrors(t *testing.T) {
 			req: &connect.Request[dictv1.Word]{
 				Msg: &dictv1.Word{
 					Id:       999999,
-					Lemma:    "test",
+					Term:     "test",
+					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 					Language: commonv1.Language_LANGUAGE_ENGLISH,
 				},
 			},
@@ -351,13 +354,14 @@ func TestDictService_WordIDGeneration(t *testing.T) {
 	req := &connect.Request[dictv1.CreateWordRequest]{
 		Msg: &dictv1.CreateWordRequest{
 			Word: &dictv1.Word{
-				Lemma:    "hello",
+				Term:     "hello",
+				TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 				Language: commonv1.Language_LANGUAGE_ENGLISH,
-				Definitions: []*dictv1.Definition{
+				Meanings: []*dictv1.Meaning{
 					{
 						LexemeId: "L789",
 						Pos:      "interj.",
-						Senses: []*dictv1.LexemeSense{
+						Definitions: []*dictv1.Definition{
 							{
 								Language: commonv1.Language_LANGUAGE_ENGLISH,
 								Gloss:    "a greeting",
@@ -381,7 +385,7 @@ func TestDictService_WordIDGeneration(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, lookupResp)
-	assert.Equal(t, "hello", lookupResp.Msg.Lemma)
+	assert.Equal(t, "hello", lookupResp.Msg.Term)
 
 	// Cleanup
 	_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
@@ -402,41 +406,45 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 	// Create test words with different categories
 	words := []*dictv1.Word{
 		{
-			Lemma:      "apple",
+			Term:       "apple",
+			TermType:   dictv1.FormType_FORM_TYPE_LEMMA,
 			Language:   commonv1.Language_LANGUAGE_ENGLISH,
 			Categories: []string{"cet4", "fruit"},
-			Definitions: []*dictv1.Definition{
-				{LexemeId: "L1001", Pos: "n.", Senses: []*dictv1.LexemeSense{
+			Meanings: []*dictv1.Meaning{
+				{LexemeId: "L1001", Pos: "n.", Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "a fruit"},
 				}},
 			},
 		},
 		{
-			Lemma:      "book",
+			Term:       "book",
+			TermType:   dictv1.FormType_FORM_TYPE_LEMMA,
 			Language:   commonv1.Language_LANGUAGE_ENGLISH,
 			Categories: []string{"cet4", "education"},
-			Definitions: []*dictv1.Definition{
-				{LexemeId: "L1002", Pos: "n.", Senses: []*dictv1.LexemeSense{
+			Meanings: []*dictv1.Meaning{
+				{LexemeId: "L1002", Pos: "n.", Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "a written work"},
 				}},
 			},
 		},
 		{
-			Lemma:      "computer",
+			Term:       "computer",
+			TermType:   dictv1.FormType_FORM_TYPE_LEMMA,
 			Language:   commonv1.Language_LANGUAGE_ENGLISH,
 			Categories: []string{"cet6", "technology"},
-			Definitions: []*dictv1.Definition{
-				{LexemeId: "L1003", Pos: "n.", Senses: []*dictv1.LexemeSense{
+			Meanings: []*dictv1.Meaning{
+				{LexemeId: "L1003", Pos: "n.", Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "an electronic device"},
 				}},
 			},
 		},
 		{
-			Lemma:      "bonjour",
+			Term:       "bonjour",
+			TermType:   dictv1.FormType_FORM_TYPE_LEMMA,
 			Language:   commonv1.Language_LANGUAGE_FRENCH,
 			Categories: []string{"greeting"},
-			Definitions: []*dictv1.Definition{
-				{LexemeId: "L1004", Pos: "interj.", Senses: []*dictv1.LexemeSense{
+			Meanings: []*dictv1.Meaning{
+				{LexemeId: "L1004", Pos: "interj.", Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_FRENCH, Gloss: "hello"},
 				}},
 			},
@@ -475,7 +483,7 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			},
 			expectedCount: 1,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
-				assert.Equal(t, "book", words[0].Lemma)
+				assert.Equal(t, "book", words[0].Term)
 			},
 		},
 		{
@@ -485,7 +493,7 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			},
 			expectedCount: 1,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
-				assert.Equal(t, "apple", words[0].Lemma)
+				assert.Equal(t, "apple", words[0].Term)
 			},
 		},
 		{
@@ -495,12 +503,12 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			},
 			expectedCount: 2,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
-				lemmas := make([]string, len(words))
+				terms := make([]string, len(words))
 				for i, w := range words {
-					lemmas[i] = w.Lemma
+					terms[i] = w.Term
 				}
-				assert.Contains(t, lemmas, "apple")
-				assert.Contains(t, lemmas, "book")
+				assert.Contains(t, terms, "apple")
+				assert.Contains(t, terms, "book")
 			},
 		},
 		{
@@ -510,7 +518,7 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			},
 			expectedCount: 1,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
-				assert.Equal(t, "computer", words[0].Lemma)
+				assert.Equal(t, "computer", words[0].Term)
 			},
 		},
 		{
@@ -520,13 +528,13 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			},
 			expectedCount: 3,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
-				lemmas := make([]string, len(words))
+				terms := make([]string, len(words))
 				for i, w := range words {
-					lemmas[i] = w.Lemma
+					terms[i] = w.Term
 				}
-				assert.Contains(t, lemmas, "apple")
-				assert.Contains(t, lemmas, "book")
-				assert.Contains(t, lemmas, "computer")
+				assert.Contains(t, terms, "apple")
+				assert.Contains(t, terms, "book")
+				assert.Contains(t, terms, "computer")
 			},
 		},
 		{
@@ -536,7 +544,7 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			},
 			expectedCount: 1,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
-				assert.Equal(t, "bonjour", words[0].Lemma)
+				assert.Equal(t, "bonjour", words[0].Term)
 			},
 		},
 		{
@@ -546,7 +554,7 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			},
 			expectedCount: 1,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
-				assert.Equal(t, "computer", words[0].Lemma)
+				assert.Equal(t, "computer", words[0].Term)
 			},
 		},
 		{
@@ -582,9 +590,9 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			expectedCount: 3,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
 				// Should be: apple, book, computer
-				assert.Equal(t, "apple", words[0].Lemma)
-				assert.Equal(t, "book", words[1].Lemma)
-				assert.Equal(t, "computer", words[2].Lemma)
+				assert.Equal(t, "apple", words[0].Term)
+				assert.Equal(t, "book", words[1].Term)
+				assert.Equal(t, "computer", words[2].Term)
 			},
 		},
 		{
@@ -596,9 +604,9 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 			expectedCount: 3,
 			checkFunc: func(t *testing.T, words []*dictv1.Word) {
 				// Should be: computer, book, apple
-				assert.Equal(t, "computer", words[0].Lemma)
-				assert.Equal(t, "book", words[1].Lemma)
-				assert.Equal(t, "apple", words[2].Lemma)
+				assert.Equal(t, "computer", words[0].Term)
+				assert.Equal(t, "book", words[1].Term)
+				assert.Equal(t, "apple", words[2].Term)
 			},
 		},
 	}
@@ -643,7 +651,8 @@ func TestDictService_GetWordStats(t *testing.T) {
 	}
 
 	createWord(&dictv1.Word{
-		Lemma:    "run",
+		Term:     "run",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 		Language: commonv1.Language_LANGUAGE_ENGLISH,
 		Categories: []string{
 			"basic",
@@ -651,14 +660,14 @@ func TestDictService_GetWordStats(t *testing.T) {
 		Phonetics: []*dictv1.Phonetic{
 			{Ipa: "/rʌn/"},
 		},
-		Forms: []*dictv1.WordForm{
-			{LexemeId: "L100", Word: "runs", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "runs", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
 		},
-		Definitions: []*dictv1.Definition{
+		Meanings: []*dictv1.Meaning{
 			{
 				LexemeId: "L100",
 				Pos:      "v.",
-				Senses: []*dictv1.LexemeSense{
+				Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "move swiftly"},
 				},
 			},
@@ -666,16 +675,17 @@ func TestDictService_GetWordStats(t *testing.T) {
 	})
 
 	createWord(&dictv1.Word{
-		Lemma:    "hola",
+		Term:     "hola",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 		Language: commonv1.Language_LANGUAGE_SPANISH,
 		Categories: []string{
 			"greeting",
 		},
-		Definitions: []*dictv1.Definition{
+		Meanings: []*dictv1.Meaning{
 			{
 				LexemeId: "L200",
 				Pos:      "interj.",
-				Senses: []*dictv1.LexemeSense{
+				Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "hello"},
 				},
 			},
@@ -699,7 +709,7 @@ func TestDictService_GetWordStats(t *testing.T) {
 	assert.InDelta(t, 0.5, stats.Coverage.Phonetics, 0.0001)
 	assert.InDelta(t, 1.0, stats.Coverage.Categories, 0.0001)
 	assert.InDelta(t, 1.0, stats.Coverage.Definitions, 0.0001)
-	assert.InDelta(t, 0.5, stats.Coverage.Forms, 0.0001)
+	assert.InDelta(t, 1.0, stats.Coverage.Forms, 0.0001) // Both words now have forms (lemma is always present)
 
 	require.NotEmpty(t, stats.TopCategories)
 	var categoryNames []string
@@ -746,20 +756,20 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 
 	// Create a word with forms
 	runWord := &dictv1.Word{
-		Lemma:      "run",
+		Term:       "run",
+		TermType:   dictv1.FormType_FORM_TYPE_LEMMA,
 		Language:   commonv1.Language_LANGUAGE_ENGLISH,
 		Categories: []string{"cet4"},
-		Forms: []*dictv1.WordForm{
-			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_LEMMA, Word: "run"},
-			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR, Word: "runs"},
-			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, Word: "running"},
-			{LexemeId: "L2001", Type: dictv1.FormType_FORM_TYPE_PAST, Word: "ran"},
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "runs", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+			{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+			{Term: "ran", FormType: dictv1.FormType_FORM_TYPE_PAST},
 		},
-		Definitions: []*dictv1.Definition{
+		Meanings: []*dictv1.Meaning{
 			{
 				LexemeId: "L2001",
 				Pos:      "v.",
-				Senses: []*dictv1.LexemeSense{
+				Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move swiftly"},
 				},
 			},
@@ -767,20 +777,20 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 	}
 
 	swimWord := &dictv1.Word{
-		Lemma:      "swim",
+		Term:       "swim",
+		TermType:   dictv1.FormType_FORM_TYPE_LEMMA,
 		Language:   commonv1.Language_LANGUAGE_ENGLISH,
 		Categories: []string{"cet4"},
-		Forms: []*dictv1.WordForm{
-			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_LEMMA, Word: "swim"},
-			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR, Word: "swims"},
-			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, Word: "swimming"},
-			{LexemeId: "L2002", Type: dictv1.FormType_FORM_TYPE_PAST, Word: "swam"},
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "swims", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+			{Term: "swimming", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+			{Term: "swam", FormType: dictv1.FormType_FORM_TYPE_PAST},
 		},
-		Definitions: []*dictv1.Definition{
+		Meanings: []*dictv1.Meaning{
 			{
 				LexemeId: "L2002",
 				Pos:      "v.",
-				Senses: []*dictv1.LexemeSense{
+				Definitions: []*dictv1.Definition{
 					{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move through water"},
 				},
 			},
@@ -877,13 +887,13 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 			assert.Equal(t, tt.expectedCount, len(resp.Msg.Words), "Expected %d words, got %d", tt.expectedCount, len(resp.Msg.Words))
 
 			if tt.expectedCount == 1 && tt.expectedLemma != "" {
-				assert.Equal(t, tt.expectedLemma, resp.Msg.Words[0].Lemma)
+				assert.Equal(t, tt.expectedLemma, resp.Msg.Words[0].Term)
 			}
 
 			if tt.expectedCount == 2 {
-				lemmas := []string{resp.Msg.Words[0].Lemma, resp.Msg.Words[1].Lemma}
-				assert.Contains(t, lemmas, "run")
-				assert.Contains(t, lemmas, "swim")
+				terms := []string{resp.Msg.Words[0].Term, resp.Msg.Words[1].Term}
+				assert.Contains(t, terms, "run")
+				assert.Contains(t, terms, "swim")
 			}
 		})
 	}

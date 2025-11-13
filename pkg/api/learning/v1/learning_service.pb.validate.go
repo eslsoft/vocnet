@@ -35,117 +35,6 @@ var (
 	_ = sort.Sort
 )
 
-// Validate checks the field values on LearnedWordKey with the rules defined in
-// the proto definition for this message. If any rules are violated, the first
-// error encountered is returned, or nil if there are no violations.
-func (m *LearnedWordKey) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on LearnedWordKey with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in LearnedWordKeyMultiError,
-// or nil if none found.
-func (m *LearnedWordKey) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *LearnedWordKey) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	if m.GetWordId() <= 0 {
-		err := LearnedWordKeyValidationError{
-			field:  "WordId",
-			reason: "value must be greater than 0",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
-
-	if len(errors) > 0 {
-		return LearnedWordKeyMultiError(errors)
-	}
-
-	return nil
-}
-
-// LearnedWordKeyMultiError is an error wrapping multiple validation errors
-// returned by LearnedWordKey.ValidateAll() if the designated constraints
-// aren't met.
-type LearnedWordKeyMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m LearnedWordKeyMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m LearnedWordKeyMultiError) AllErrors() []error { return m }
-
-// LearnedWordKeyValidationError is the validation error returned by
-// LearnedWordKey.Validate if the designated constraints aren't met.
-type LearnedWordKeyValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e LearnedWordKeyValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e LearnedWordKeyValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e LearnedWordKeyValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e LearnedWordKeyValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e LearnedWordKeyValidationError) ErrorName() string { return "LearnedWordKeyValidationError" }
-
-// Error satisfies the builtin error interface
-func (e LearnedWordKeyValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sLearnedWordKey.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = LearnedWordKeyValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = LearnedWordKeyValidationError{}
-
 // Validate checks the field values on CollectWordRequest with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
@@ -168,9 +57,9 @@ func (m *CollectWordRequest) validate(all bool) error {
 
 	var errors []error
 
-	if m.GetWord() == nil {
+	if m.GetSpec() == nil {
 		err := CollectWordRequestValidationError{
-			field:  "Word",
+			field:  "Spec",
 			reason: "value is required",
 		}
 		if !all {
@@ -180,11 +69,11 @@ func (m *CollectWordRequest) validate(all bool) error {
 	}
 
 	if all {
-		switch v := interface{}(m.GetWord()).(type) {
+		switch v := interface{}(m.GetSpec()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
 				errors = append(errors, CollectWordRequestValidationError{
-					field:  "Word",
+					field:  "Spec",
 					reason: "embedded message failed validation",
 					cause:  err,
 				})
@@ -192,16 +81,16 @@ func (m *CollectWordRequest) validate(all bool) error {
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
 				errors = append(errors, CollectWordRequestValidationError{
-					field:  "Word",
+					field:  "Spec",
 					reason: "embedded message failed validation",
 					cause:  err,
 				})
 			}
 		}
-	} else if v, ok := interface{}(m.GetWord()).(interface{ Validate() error }); ok {
+	} else if v, ok := interface{}(m.GetSpec()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return CollectWordRequestValidationError{
-				field:  "Word",
+				field:  "Spec",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
@@ -310,9 +199,9 @@ func (m *UpdateMasteryRequest) validate(all bool) error {
 
 	var errors []error
 
-	if m.GetWordId() <= 0 {
+	if m.GetId() <= 0 {
 		err := UpdateMasteryRequestValidationError{
-			field:  "WordId",
+			field:  "Id",
 			reason: "value must be greater than 0",
 		}
 		if !all {
@@ -349,37 +238,6 @@ func (m *UpdateMasteryRequest) validate(all bool) error {
 			}
 		}
 	}
-
-	if all {
-		switch v := interface{}(m.GetReview()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, UpdateMasteryRequestValidationError{
-					field:  "Review",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, UpdateMasteryRequestValidationError{
-					field:  "Review",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetReview()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return UpdateMasteryRequestValidationError{
-				field:  "Review",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	// no validation rules for Note
 
 	if len(errors) > 0 {
 		return UpdateMasteryRequestMultiError(errors)

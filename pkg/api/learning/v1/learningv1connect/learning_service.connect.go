@@ -8,6 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
+	v11 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	v1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	http "net/http"
@@ -54,8 +55,8 @@ const (
 // LearningServiceClient is a client for the learning.v1.LearningService service.
 type LearningServiceClient interface {
 	CollectWord(context.Context, *connect.Request[v1.CollectWordRequest]) (*connect.Response[v1.LearnedWord], error)
-	UncollectWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error)
-	GetLearnedWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error)
+	UncollectWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
+	GetLearnedWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.LearnedWord], error)
 	ListLearnedWords(context.Context, *connect.Request[v1.ListLearnedWordsRequest]) (*connect.Response[v1.ListLearnedWordsResponse], error)
 	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedWord], error)
 }
@@ -77,13 +78,13 @@ func NewLearningServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(learningServiceMethods.ByName("CollectWord")),
 			connect.WithClientOptions(opts...),
 		),
-		uncollectWord: connect.NewClient[v1.LearnedWordKey, emptypb.Empty](
+		uncollectWord: connect.NewClient[v11.IDRequest, emptypb.Empty](
 			httpClient,
 			baseURL+LearningServiceUncollectWordProcedure,
 			connect.WithSchema(learningServiceMethods.ByName("UncollectWord")),
 			connect.WithClientOptions(opts...),
 		),
-		getLearnedWord: connect.NewClient[v1.LearnedWordKey, v1.LearnedWord](
+		getLearnedWord: connect.NewClient[v11.IDRequest, v1.LearnedWord](
 			httpClient,
 			baseURL+LearningServiceGetLearnedWordProcedure,
 			connect.WithSchema(learningServiceMethods.ByName("GetLearnedWord")),
@@ -107,8 +108,8 @@ func NewLearningServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 // learningServiceClient implements LearningServiceClient.
 type learningServiceClient struct {
 	collectWord      *connect.Client[v1.CollectWordRequest, v1.LearnedWord]
-	uncollectWord    *connect.Client[v1.LearnedWordKey, emptypb.Empty]
-	getLearnedWord   *connect.Client[v1.LearnedWordKey, v1.LearnedWord]
+	uncollectWord    *connect.Client[v11.IDRequest, emptypb.Empty]
+	getLearnedWord   *connect.Client[v11.IDRequest, v1.LearnedWord]
 	listLearnedWords *connect.Client[v1.ListLearnedWordsRequest, v1.ListLearnedWordsResponse]
 	updateMastery    *connect.Client[v1.UpdateMasteryRequest, v1.LearnedWord]
 }
@@ -119,12 +120,12 @@ func (c *learningServiceClient) CollectWord(ctx context.Context, req *connect.Re
 }
 
 // UncollectWord calls learning.v1.LearningService.UncollectWord.
-func (c *learningServiceClient) UncollectWord(ctx context.Context, req *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error) {
+func (c *learningServiceClient) UncollectWord(ctx context.Context, req *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error) {
 	return c.uncollectWord.CallUnary(ctx, req)
 }
 
 // GetLearnedWord calls learning.v1.LearningService.GetLearnedWord.
-func (c *learningServiceClient) GetLearnedWord(ctx context.Context, req *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error) {
+func (c *learningServiceClient) GetLearnedWord(ctx context.Context, req *connect.Request[v11.IDRequest]) (*connect.Response[v1.LearnedWord], error) {
 	return c.getLearnedWord.CallUnary(ctx, req)
 }
 
@@ -141,8 +142,8 @@ func (c *learningServiceClient) UpdateMastery(ctx context.Context, req *connect.
 // LearningServiceHandler is an implementation of the learning.v1.LearningService service.
 type LearningServiceHandler interface {
 	CollectWord(context.Context, *connect.Request[v1.CollectWordRequest]) (*connect.Response[v1.LearnedWord], error)
-	UncollectWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error)
-	GetLearnedWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error)
+	UncollectWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
+	GetLearnedWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.LearnedWord], error)
 	ListLearnedWords(context.Context, *connect.Request[v1.ListLearnedWordsRequest]) (*connect.Response[v1.ListLearnedWordsResponse], error)
 	UpdateMastery(context.Context, *connect.Request[v1.UpdateMasteryRequest]) (*connect.Response[v1.LearnedWord], error)
 }
@@ -209,11 +210,11 @@ func (UnimplementedLearningServiceHandler) CollectWord(context.Context, *connect
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.CollectWord is not implemented"))
 }
 
-func (UnimplementedLearningServiceHandler) UncollectWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[emptypb.Empty], error) {
+func (UnimplementedLearningServiceHandler) UncollectWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.UncollectWord is not implemented"))
 }
 
-func (UnimplementedLearningServiceHandler) GetLearnedWord(context.Context, *connect.Request[v1.LearnedWordKey]) (*connect.Response[v1.LearnedWord], error) {
+func (UnimplementedLearningServiceHandler) GetLearnedWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.LearnedWord], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.LearningService.GetLearnedWord is not implemented"))
 }
 

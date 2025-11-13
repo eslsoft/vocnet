@@ -62,9 +62,11 @@ func (m *Word) validate(all bool) error {
 
 	// no validation rules for Id
 
-	// no validation rules for Lemma
-
 	// no validation rules for Language
+
+	// no validation rules for Term
+
+	// no validation rules for TermType
 
 	for idx, item := range m.GetPhonetics() {
 		_, _ = idx, item
@@ -100,7 +102,7 @@ func (m *Word) validate(all bool) error {
 
 	}
 
-	for idx, item := range m.GetDefinitions() {
+	for idx, item := range m.GetMeanings() {
 		_, _ = idx, item
 
 		if all {
@@ -108,7 +110,7 @@ func (m *Word) validate(all bool) error {
 			case interface{ ValidateAll() error }:
 				if err := v.ValidateAll(); err != nil {
 					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Definitions[%v]", idx),
+						field:  fmt.Sprintf("Meanings[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
 					})
@@ -116,7 +118,7 @@ func (m *Word) validate(all bool) error {
 			case interface{ Validate() error }:
 				if err := v.Validate(); err != nil {
 					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Definitions[%v]", idx),
+						field:  fmt.Sprintf("Meanings[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
 					})
@@ -125,7 +127,7 @@ func (m *Word) validate(all bool) error {
 		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return WordValidationError{
-					field:  fmt.Sprintf("Definitions[%v]", idx),
+					field:  fmt.Sprintf("Meanings[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -168,7 +170,7 @@ func (m *Word) validate(all bool) error {
 
 	}
 
-	for idx, item := range m.GetForms() {
+	for idx, item := range m.GetRelatedForms() {
 		_, _ = idx, item
 
 		if all {
@@ -176,7 +178,7 @@ func (m *Word) validate(all bool) error {
 			case interface{ ValidateAll() error }:
 				if err := v.ValidateAll(); err != nil {
 					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Forms[%v]", idx),
+						field:  fmt.Sprintf("RelatedForms[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
 					})
@@ -184,7 +186,7 @@ func (m *Word) validate(all bool) error {
 			case interface{ Validate() error }:
 				if err := v.Validate(); err != nil {
 					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Forms[%v]", idx),
+						field:  fmt.Sprintf("RelatedForms[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
 					})
@@ -193,7 +195,7 @@ func (m *Word) validate(all bool) error {
 		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return WordValidationError{
-					field:  fmt.Sprintf("Forms[%v]", idx),
+					field:  fmt.Sprintf("RelatedForms[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -202,39 +204,7 @@ func (m *Word) validate(all bool) error {
 
 	}
 
-	for idx, item := range m.GetRelations() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Relations[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, WordValidationError{
-						field:  fmt.Sprintf("Relations[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return WordValidationError{
-					field:  fmt.Sprintf("Relations[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
+	// no validation rules for Irregular
 
 	// no validation rules for Completeness
 
@@ -294,6 +264,10 @@ func (m *Word) validate(all bool) error {
 				cause:  err,
 			}
 		}
+	}
+
+	if m.Lemma != nil {
+		// no validation rules for Lemma
 	}
 
 	if len(errors) > 0 {
@@ -372,6 +346,111 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = WordValidationError{}
+
+// Validate checks the field values on RelatedForm with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *RelatedForm) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RelatedForm with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in RelatedFormMultiError, or
+// nil if none found.
+func (m *RelatedForm) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RelatedForm) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Term
+
+	// no validation rules for FormType
+
+	// no validation rules for Irregular
+
+	if len(errors) > 0 {
+		return RelatedFormMultiError(errors)
+	}
+
+	return nil
+}
+
+// RelatedFormMultiError is an error wrapping multiple validation errors
+// returned by RelatedForm.ValidateAll() if the designated constraints aren't met.
+type RelatedFormMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RelatedFormMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RelatedFormMultiError) AllErrors() []error { return m }
+
+// RelatedFormValidationError is the validation error returned by
+// RelatedForm.Validate if the designated constraints aren't met.
+type RelatedFormValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RelatedFormValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RelatedFormValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RelatedFormValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RelatedFormValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RelatedFormValidationError) ErrorName() string { return "RelatedFormValidationError" }
+
+// Error satisfies the builtin error interface
+func (e RelatedFormValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRelatedForm.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RelatedFormValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RelatedFormValidationError{}
 
 // Validate checks the field values on Phonetic with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
@@ -476,6 +555,210 @@ var _ interface {
 	ErrorName() string
 } = PhoneticValidationError{}
 
+// Validate checks the field values on Meaning with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *Meaning) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Meaning with the rules defined in the
+// proto definition for this message. If any rules are violated, the result is
+// a list of violation errors wrapped in MeaningMultiError, or nil if none found.
+func (m *Meaning) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Meaning) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for LexemeId
+
+	// no validation rules for Pos
+
+	for idx, item := range m.GetDefinitions() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, MeaningValidationError{
+						field:  fmt.Sprintf("Definitions[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, MeaningValidationError{
+						field:  fmt.Sprintf("Definitions[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return MeaningValidationError{
+					field:  fmt.Sprintf("Definitions[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetExamples() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, MeaningValidationError{
+						field:  fmt.Sprintf("Examples[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, MeaningValidationError{
+						field:  fmt.Sprintf("Examples[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return MeaningValidationError{
+					field:  fmt.Sprintf("Examples[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetRelations() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, MeaningValidationError{
+						field:  fmt.Sprintf("Relations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, MeaningValidationError{
+						field:  fmt.Sprintf("Relations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return MeaningValidationError{
+					field:  fmt.Sprintf("Relations[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return MeaningMultiError(errors)
+	}
+
+	return nil
+}
+
+// MeaningMultiError is an error wrapping multiple validation errors returned
+// by Meaning.ValidateAll() if the designated constraints aren't met.
+type MeaningMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m MeaningMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m MeaningMultiError) AllErrors() []error { return m }
+
+// MeaningValidationError is the validation error returned by Meaning.Validate
+// if the designated constraints aren't met.
+type MeaningValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e MeaningValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e MeaningValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e MeaningValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e MeaningValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e MeaningValidationError) ErrorName() string { return "MeaningValidationError" }
+
+// Error satisfies the builtin error interface
+func (e MeaningValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sMeaning.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = MeaningValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = MeaningValidationError{}
+
 // Validate checks the field values on Definition with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
@@ -498,77 +781,9 @@ func (m *Definition) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for LexemeId
+	// no validation rules for Language
 
-	// no validation rules for Pos
-
-	for idx, item := range m.GetSenses() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, DefinitionValidationError{
-						field:  fmt.Sprintf("Senses[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, DefinitionValidationError{
-						field:  fmt.Sprintf("Senses[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return DefinitionValidationError{
-					field:  fmt.Sprintf("Senses[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
-
-	for idx, item := range m.GetExamples() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, DefinitionValidationError{
-						field:  fmt.Sprintf("Examples[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, DefinitionValidationError{
-						field:  fmt.Sprintf("Examples[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return DefinitionValidationError{
-					field:  fmt.Sprintf("Examples[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
+	// no validation rules for Gloss
 
 	if len(errors) > 0 {
 		return DefinitionMultiError(errors)
@@ -647,152 +862,49 @@ var _ interface {
 	ErrorName() string
 } = DefinitionValidationError{}
 
-// Validate checks the field values on LexemeSense with the rules defined in
-// the proto definition for this message. If any rules are violated, the first
-// error encountered is returned, or nil if there are no violations.
-func (m *LexemeSense) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on LexemeSense with the rules defined in
-// the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in LexemeSenseMultiError, or
-// nil if none found.
-func (m *LexemeSense) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *LexemeSense) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	// no validation rules for Language
-
-	// no validation rules for Gloss
-
-	if len(errors) > 0 {
-		return LexemeSenseMultiError(errors)
-	}
-
-	return nil
-}
-
-// LexemeSenseMultiError is an error wrapping multiple validation errors
-// returned by LexemeSense.ValidateAll() if the designated constraints aren't met.
-type LexemeSenseMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m LexemeSenseMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m LexemeSenseMultiError) AllErrors() []error { return m }
-
-// LexemeSenseValidationError is the validation error returned by
-// LexemeSense.Validate if the designated constraints aren't met.
-type LexemeSenseValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e LexemeSenseValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e LexemeSenseValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e LexemeSenseValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e LexemeSenseValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e LexemeSenseValidationError) ErrorName() string { return "LexemeSenseValidationError" }
-
-// Error satisfies the builtin error interface
-func (e LexemeSenseValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sLexemeSense.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = LexemeSenseValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = LexemeSenseValidationError{}
-
-// Validate checks the field values on WordForm with the rules defined in the
+// Validate checks the field values on Relation with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
-func (m *WordForm) Validate() error {
+func (m *Relation) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on WordForm with the rules defined in
+// ValidateAll checks the field values on Relation with the rules defined in
 // the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in WordFormMultiError, or nil
+// result is a list of violation errors wrapped in RelationMultiError, or nil
 // if none found.
-func (m *WordForm) ValidateAll() error {
+func (m *Relation) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *WordForm) validate(all bool) error {
+func (m *Relation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
 	var errors []error
-
-	// no validation rules for LexemeId
-
-	// no validation rules for Word
 
 	// no validation rules for Type
 
-	// no validation rules for Irregular
+	// no validation rules for TargetWord
+
+	if m.Note != nil {
+		// no validation rules for Note
+	}
 
 	if len(errors) > 0 {
-		return WordFormMultiError(errors)
+		return RelationMultiError(errors)
 	}
 
 	return nil
 }
 
-// WordFormMultiError is an error wrapping multiple validation errors returned
-// by WordForm.ValidateAll() if the designated constraints aren't met.
-type WordFormMultiError []error
+// RelationMultiError is an error wrapping multiple validation errors returned
+// by Relation.ValidateAll() if the designated constraints aren't met.
+type RelationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m WordFormMultiError) Error() string {
+func (m RelationMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -801,11 +913,11 @@ func (m WordFormMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m WordFormMultiError) AllErrors() []error { return m }
+func (m RelationMultiError) AllErrors() []error { return m }
 
-// WordFormValidationError is the validation error returned by
-// WordForm.Validate if the designated constraints aren't met.
-type WordFormValidationError struct {
+// RelationValidationError is the validation error returned by
+// Relation.Validate if the designated constraints aren't met.
+type RelationValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -813,22 +925,22 @@ type WordFormValidationError struct {
 }
 
 // Field function returns field value.
-func (e WordFormValidationError) Field() string { return e.field }
+func (e RelationValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e WordFormValidationError) Reason() string { return e.reason }
+func (e RelationValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e WordFormValidationError) Cause() error { return e.cause }
+func (e RelationValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e WordFormValidationError) Key() bool { return e.key }
+func (e RelationValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e WordFormValidationError) ErrorName() string { return "WordFormValidationError" }
+func (e RelationValidationError) ErrorName() string { return "RelationValidationError" }
 
 // Error satisfies the builtin error interface
-func (e WordFormValidationError) Error() string {
+func (e RelationValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -840,14 +952,14 @@ func (e WordFormValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sWordForm.%s: %s%s",
+		"invalid %sRelation.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = WordFormValidationError{}
+var _ error = RelationValidationError{}
 
 var _ interface {
 	Field() string
@@ -855,110 +967,7 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = WordFormValidationError{}
-
-// Validate checks the field values on WordRelation with the rules defined in
-// the proto definition for this message. If any rules are violated, the first
-// error encountered is returned, or nil if there are no violations.
-func (m *WordRelation) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on WordRelation with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in WordRelationMultiError, or
-// nil if none found.
-func (m *WordRelation) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *WordRelation) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	// no validation rules for Word
-
-	// no validation rules for Relation
-
-	if len(errors) > 0 {
-		return WordRelationMultiError(errors)
-	}
-
-	return nil
-}
-
-// WordRelationMultiError is an error wrapping multiple validation errors
-// returned by WordRelation.ValidateAll() if the designated constraints aren't met.
-type WordRelationMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m WordRelationMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m WordRelationMultiError) AllErrors() []error { return m }
-
-// WordRelationValidationError is the validation error returned by
-// WordRelation.Validate if the designated constraints aren't met.
-type WordRelationValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e WordRelationValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e WordRelationValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e WordRelationValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e WordRelationValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e WordRelationValidationError) ErrorName() string { return "WordRelationValidationError" }
-
-// Error satisfies the builtin error interface
-func (e WordRelationValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sWordRelation.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = WordRelationValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = WordRelationValidationError{}
+} = RelationValidationError{}
 
 // Validate checks the field values on Sentence with the rules defined in the
 // proto definition for this message. If any rules are violated, the first

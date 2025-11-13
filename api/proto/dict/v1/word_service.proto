@@ -5,6 +5,7 @@ import "common/v1/types.proto";
 import "dict/v1/word.proto";
 import "dict/v1/word_stats.proto";
 import "google/protobuf/empty.proto";
+
 message CreateWordRequest {
   dict.v1.Word word = 1;
 }

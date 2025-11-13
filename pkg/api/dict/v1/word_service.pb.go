@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        (unknown)
-// source: dict/v1/dict_service.proto
+// source: dict/v1/word_service.proto
 
 package dictv1
 
@@ -32,7 +32,7 @@ type CreateWordRequest struct {
 
 func (x *CreateWordRequest) Reset() {
 	*x = CreateWordRequest{}
-	mi := &file_dict_v1_dict_service_proto_msgTypes[0]
+	mi := &file_dict_v1_word_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +44,7 @@ func (x *CreateWordRequest) String() string {
 func (*CreateWordRequest) ProtoMessage() {}
 
 func (x *CreateWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_dict_service_proto_msgTypes[0]
+	mi := &file_dict_v1_word_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57,7 +57,7 @@ func (x *CreateWordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWordRequest.ProtoReflect.Descriptor instead.
 func (*CreateWordRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{0}
+	return file_dict_v1_word_service_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CreateWordRequest) GetWord() *Word {
@@ -76,7 +76,7 @@ type LookupWordRequest struct {
 
 func (x *LookupWordRequest) Reset() {
 	*x = LookupWordRequest{}
-	mi := &file_dict_v1_dict_service_proto_msgTypes[1]
+	mi := &file_dict_v1_word_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -88,7 +88,7 @@ func (x *LookupWordRequest) String() string {
 func (*LookupWordRequest) ProtoMessage() {}
 
 func (x *LookupWordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_dict_service_proto_msgTypes[1]
+	mi := &file_dict_v1_word_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -101,7 +101,7 @@ func (x *LookupWordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LookupWordRequest.ProtoReflect.Descriptor instead.
 func (*LookupWordRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{1}
+	return file_dict_v1_word_service_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *LookupWordRequest) GetWord() string {
@@ -135,7 +135,7 @@ type ListWordsRequest struct {
 
 func (x *ListWordsRequest) Reset() {
 	*x = ListWordsRequest{}
-	mi := &file_dict_v1_dict_service_proto_msgTypes[2]
+	mi := &file_dict_v1_word_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -147,7 +147,7 @@ func (x *ListWordsRequest) String() string {
 func (*ListWordsRequest) ProtoMessage() {}
 
 func (x *ListWordsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_dict_service_proto_msgTypes[2]
+	mi := &file_dict_v1_word_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -160,7 +160,7 @@ func (x *ListWordsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWordsRequest.ProtoReflect.Descriptor instead.
 func (*ListWordsRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{2}
+	return file_dict_v1_word_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListWordsRequest) GetPagination() *v1.PaginationRequest {
@@ -194,7 +194,7 @@ type ListWordsResponse struct {
 
 func (x *ListWordsResponse) Reset() {
 	*x = ListWordsResponse{}
-	mi := &file_dict_v1_dict_service_proto_msgTypes[3]
+	mi := &file_dict_v1_word_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -206,7 +206,7 @@ func (x *ListWordsResponse) String() string {
 func (*ListWordsResponse) ProtoMessage() {}
 
 func (x *ListWordsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_dict_service_proto_msgTypes[3]
+	mi := &file_dict_v1_word_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -219,7 +219,7 @@ func (x *ListWordsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWordsResponse.ProtoReflect.Descriptor instead.
 func (*ListWordsResponse) Descriptor() ([]byte, []int) {
-	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{3}
+	return file_dict_v1_word_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListWordsResponse) GetWords() []*Word {
@@ -245,7 +245,7 @@ type WordIDRequest struct {
 
 func (x *WordIDRequest) Reset() {
 	*x = WordIDRequest{}
-	mi := &file_dict_v1_dict_service_proto_msgTypes[4]
+	mi := &file_dict_v1_word_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -257,7 +257,7 @@ func (x *WordIDRequest) String() string {
 func (*WordIDRequest) ProtoMessage() {}
 
 func (x *WordIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_dict_service_proto_msgTypes[4]
+	mi := &file_dict_v1_word_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -270,7 +270,7 @@ func (x *WordIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WordIDRequest.ProtoReflect.Descriptor instead.
 func (*WordIDRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{4}
+	return file_dict_v1_word_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *WordIDRequest) GetWordId() int64 {
@@ -291,7 +291,7 @@ type ListCategoriesRequest struct {
 
 func (x *ListCategoriesRequest) Reset() {
 	*x = ListCategoriesRequest{}
-	mi := &file_dict_v1_dict_service_proto_msgTypes[5]
+	mi := &file_dict_v1_word_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -303,7 +303,7 @@ func (x *ListCategoriesRequest) String() string {
 func (*ListCategoriesRequest) ProtoMessage() {}
 
 func (x *ListCategoriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_dict_service_proto_msgTypes[5]
+	mi := &file_dict_v1_word_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -316,7 +316,7 @@ func (x *ListCategoriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCategoriesRequest.ProtoReflect.Descriptor instead.
 func (*ListCategoriesRequest) Descriptor() ([]byte, []int) {
-	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{5}
+	return file_dict_v1_word_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListCategoriesRequest) GetSearch() string {
@@ -336,7 +336,7 @@ type ListCategoriesResponse struct {
 
 func (x *ListCategoriesResponse) Reset() {
 	*x = ListCategoriesResponse{}
-	mi := &file_dict_v1_dict_service_proto_msgTypes[6]
+	mi := &file_dict_v1_word_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -348,7 +348,7 @@ func (x *ListCategoriesResponse) String() string {
 func (*ListCategoriesResponse) ProtoMessage() {}
 
 func (x *ListCategoriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_dict_service_proto_msgTypes[6]
+	mi := &file_dict_v1_word_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -361,7 +361,7 @@ func (x *ListCategoriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCategoriesResponse.ProtoReflect.Descriptor instead.
 func (*ListCategoriesResponse) Descriptor() ([]byte, []int) {
-	return file_dict_v1_dict_service_proto_rawDescGZIP(), []int{6}
+	return file_dict_v1_word_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListCategoriesResponse) GetCategories() []string {
@@ -371,11 +371,11 @@ func (x *ListCategoriesResponse) GetCategories() []string {
 	return nil
 }
 
-var File_dict_v1_dict_service_proto protoreflect.FileDescriptor
+var File_dict_v1_word_service_proto protoreflect.FileDescriptor
 
-const file_dict_v1_dict_service_proto_rawDesc = "" +
+const file_dict_v1_word_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1adict/v1/dict_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x12dict/v1/word.proto\x1a\x18dict/v1/word_stats.proto\x1a\x1bgoogle/protobuf/empty.proto\"6\n" +
+	"\x1adict/v1/word_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x12dict/v1/word.proto\x1a\x18dict/v1/word_stats.proto\x1a\x1bgoogle/protobuf/empty.proto\"6\n" +
 	"\x11CreateWordRequest\x12!\n" +
 	"\x04word\x18\x01 \x01(\v2\r.dict.v1.WordR\x04word\"'\n" +
 	"\x11LookupWordRequest\x12\x12\n" +
@@ -412,22 +412,22 @@ const file_dict_v1_dict_service_proto_rawDesc = "" +
 	"DeleteWord\x12\x16.dict.v1.WordIDRequest\x1a\x16.google.protobuf.Empty\x12Q\n" +
 	"\x0eListCategories\x12\x1e.dict.v1.ListCategoriesRequest\x1a\x1f.dict.v1.ListCategoriesResponse\x12K\n" +
 	"\fGetWordStats\x12\x1c.dict.v1.GetWordStatsRequest\x1a\x1d.dict.v1.GetWordStatsResponseB\x8e\x01\n" +
-	"\vcom.dict.v1B\x10DictServiceProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
+	"\vcom.dict.v1B\x10WordServiceProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
 
 var (
-	file_dict_v1_dict_service_proto_rawDescOnce sync.Once
-	file_dict_v1_dict_service_proto_rawDescData []byte
+	file_dict_v1_word_service_proto_rawDescOnce sync.Once
+	file_dict_v1_word_service_proto_rawDescData []byte
 )
 
-func file_dict_v1_dict_service_proto_rawDescGZIP() []byte {
-	file_dict_v1_dict_service_proto_rawDescOnce.Do(func() {
-		file_dict_v1_dict_service_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_dict_v1_dict_service_proto_rawDesc), len(file_dict_v1_dict_service_proto_rawDesc)))
+func file_dict_v1_word_service_proto_rawDescGZIP() []byte {
+	file_dict_v1_word_service_proto_rawDescOnce.Do(func() {
+		file_dict_v1_word_service_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_dict_v1_word_service_proto_rawDesc), len(file_dict_v1_word_service_proto_rawDesc)))
 	})
-	return file_dict_v1_dict_service_proto_rawDescData
+	return file_dict_v1_word_service_proto_rawDescData
 }
 
-var file_dict_v1_dict_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_dict_v1_dict_service_proto_goTypes = []any{
+var file_dict_v1_word_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_dict_v1_word_service_proto_goTypes = []any{
 	(*CreateWordRequest)(nil),      // 0: dict.v1.CreateWordRequest
 	(*LookupWordRequest)(nil),      // 1: dict.v1.LookupWordRequest
 	(*ListWordsRequest)(nil),       // 2: dict.v1.ListWordsRequest
@@ -442,7 +442,7 @@ var file_dict_v1_dict_service_proto_goTypes = []any{
 	(*emptypb.Empty)(nil),          // 11: google.protobuf.Empty
 	(*GetWordStatsResponse)(nil),   // 12: dict.v1.GetWordStatsResponse
 }
-var file_dict_v1_dict_service_proto_depIdxs = []int32{
+var file_dict_v1_word_service_proto_depIdxs = []int32{
 	7,  // 0: dict.v1.CreateWordRequest.word:type_name -> dict.v1.Word
 	8,  // 1: dict.v1.ListWordsRequest.pagination:type_name -> common.v1.PaginationRequest
 	7,  // 2: dict.v1.ListWordsResponse.words:type_name -> dict.v1.Word
@@ -470,9 +470,9 @@ var file_dict_v1_dict_service_proto_depIdxs = []int32{
 	0,  // [0:4] is the sub-list for field type_name
 }
 
-func init() { file_dict_v1_dict_service_proto_init() }
-func file_dict_v1_dict_service_proto_init() {
-	if File_dict_v1_dict_service_proto != nil {
+func init() { file_dict_v1_word_service_proto_init() }
+func file_dict_v1_word_service_proto_init() {
+	if File_dict_v1_word_service_proto != nil {
 		return
 	}
 	file_dict_v1_word_proto_init()
@@ -481,17 +481,17 @@ func file_dict_v1_dict_service_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_dict_service_proto_rawDesc), len(file_dict_v1_dict_service_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_word_service_proto_rawDesc), len(file_dict_v1_word_service_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_dict_v1_dict_service_proto_goTypes,
-		DependencyIndexes: file_dict_v1_dict_service_proto_depIdxs,
-		MessageInfos:      file_dict_v1_dict_service_proto_msgTypes,
+		GoTypes:           file_dict_v1_word_service_proto_goTypes,
+		DependencyIndexes: file_dict_v1_word_service_proto_depIdxs,
+		MessageInfos:      file_dict_v1_word_service_proto_msgTypes,
 	}.Build()
-	File_dict_v1_dict_service_proto = out.File
-	file_dict_v1_dict_service_proto_goTypes = nil
-	file_dict_v1_dict_service_proto_depIdxs = nil
+	File_dict_v1_word_service_proto = out.File
+	file_dict_v1_word_service_proto_goTypes = nil
+	file_dict_v1_word_service_proto_depIdxs = nil
 }

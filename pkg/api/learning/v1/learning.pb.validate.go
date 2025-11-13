@@ -63,8 +63,6 @@ func (m *LearnedWord) validate(all bool) error {
 
 	// no validation rules for Id
 
-	// no validation rules for WordId
-
 	if all {
 		switch v := interface{}(m.GetSpec()).(type) {
 		case interface{ ValidateAll() error }:
@@ -222,45 +220,11 @@ func (m *LearnedWordSpec) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for DisplayTerm
-
 	// no validation rules for Language
 
-	// no validation rules for Note
+	// no validation rules for Term
 
-	for idx, item := range m.GetRelations() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, LearnedWordSpecValidationError{
-						field:  fmt.Sprintf("Relations[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, LearnedWordSpecValidationError{
-						field:  fmt.Sprintf("Relations[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return LearnedWordSpecValidationError{
-					field:  fmt.Sprintf("Relations[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
+	// no validation rules for MasteryLevel
 
 	for idx, item := range m.GetContexts() {
 		_, _ = idx, item
@@ -288,6 +252,40 @@ func (m *LearnedWordSpec) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return LearnedWordSpecValidationError{
 					field:  fmt.Sprintf("Contexts[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetRelations() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LearnedWordSpecValidationError{
+						field:  fmt.Sprintf("Relations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LearnedWordSpecValidationError{
+						field:  fmt.Sprintf("Relations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LearnedWordSpecValidationError{
+					field:  fmt.Sprintf("Relations[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -454,7 +452,9 @@ func (m *LearnedWordStatus) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for QueryCount
+	// no validation rules for QueriedWord
+
+	// no validation rules for QueriedCount
 
 	// no validation rules for CreatedBy
 

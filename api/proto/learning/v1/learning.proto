@@ -10,32 +10,29 @@ import "google/protobuf/timestamp.proto";
 // This represents a user's learning record for a word (word-level, not lexeme-level).
 message LearnedWord {
   int64 id = 1;
-  int64 word_id = 2;  // Reference to words.id
   LearnedWordSpec spec = 3;
   LearnedWordStatus status = 4;
 }
 
 // LearnedWordSpec stores user-authored metadata.
 message LearnedWordSpec {
-  string display_term = 1;  // The surface form user encountered (e.g. "ran" when learning "run")
-  common.v1.Language language = 2;
-  repeated string tags = 3;
-  string note = 4;
-  repeated LearnedWordRelation relations = 5;
-  repeated LearnedWordContext contexts = 6;  // Context sentences where user encountered this word
+  common.v1.Language language = 1; // Language of the term
+  string term = 2; // The actual word term (lemma for regular forms, or itself for irregular)
+  int32 mastery_level = 3; // user-assigned mastery level (0-5)
 
-  // FUTURE: lexeme_overrides for advanced users who need per-lexeme mastery tracking
-  // map<string, LexemeOverride> lexeme_overrides = 10;
-  // This will allow tracking mastery for specific word senses (e.g. "bank" as "银行" vs "河岸")
-  // when the default word-level mastery is insufficient.
-  // Format: {"L123456": {mastery: {...}, note: "..."}}
+  repeated string tags = 5;
+  repeated string notes = 6;
+
+  repeated LearnedWordContext contexts = 10; // Context sentences where user encountered this word
+  repeated LearnedWordRelation relations = 11; // Word-to-word relationships
 }
 
 // LearnedWordStatus is maintained by the system to reflect learning progress.
 message LearnedWordStatus {
   MasteryBreakdown mastery = 1;
   ReviewTiming review_timing = 2;
-  int64 query_count = 3;
+  string queried_word = 10; // currently queried word form, it's diffrent from lemma
+  int64 queried_count = 3; // number of times user queried this word
 
   string created_by = 20;
   google.protobuf.Timestamp created_at = 21;
