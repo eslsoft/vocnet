@@ -10,6 +10,8 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlearnedword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedword"
+	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
+	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
@@ -254,21 +256,24 @@ func applyLearnedWordFilters(q *entdb.LearnedWordQuery, params listLearnedWordsP
 		q.Where(entlearnedword.WordIDIn(params.WordIDs...))
 	}
 	if surfaces := uniqueFolded(params.SurfaceTerms); len(surfaces) > 0 {
-		q.Where(func(sel *sql.Selector) {
-			// Join lexeme_forms -> lexemes to find word_id from surface terms
-			// learned_words.word_id = lexemes.word_id
-			// lexemes.id = lexeme_forms.lexeme_id
-			// lexeme_forms.text IN (surfaces)
-			lexemeForm := sql.Table("lexeme_forms")
-			lexeme := sql.Table("lexemes")
-
-			sub := sql.Select(lexeme.C("word_id")).
-				From(lexemeForm).
-				Join(lexeme).On(lexeme.C("id"), lexemeForm.C("lexeme_id")).
-				Where(sql.In(lexemeForm.C("text"), stringsToInterfaces(surfaces)...))
-
-			sel.Where(sql.In(sel.C(entlearnedword.FieldWordID), sub))
-		})
+		// Batch lookup: match learned words by their word's lemma OR any of their forms
+		// Use ent's edge predicates for clean join handling
+		q.Where(
+			entlearnedword.HasWordWith(
+				entword.Or(
+					// Match lemma (case-insensitive using LOWER() function)
+					func(s *sql.Selector) {
+						s.Where(sql.In(sql.Lower(s.C(entword.FieldLemma)), stringsToInterfaces(surfaces)...))
+					},
+					// Match any lexeme form (forms are already stored in lowercase)
+					entword.HasLexemesWith(
+						entlexeme.HasFormsWith(
+							entlexemeform.TextIn(surfaces...),
+						),
+					),
+				),
+			),
+		)
 	}
 	if tags := uniqueFolded(params.Tags); len(tags) > 0 {
 		q.Where(func(s *sql.Selector) {
