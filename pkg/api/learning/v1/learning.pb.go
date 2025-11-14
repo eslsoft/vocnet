@@ -184,7 +184,7 @@ type LearnedWordStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Mastery       *MasteryBreakdown      `protobuf:"bytes,1,opt,name=mastery,proto3" json:"mastery,omitempty"`
 	ReviewTiming  *ReviewTiming          `protobuf:"bytes,2,opt,name=review_timing,json=reviewTiming,proto3" json:"review_timing,omitempty"`
-	QueriedWord   string                 `protobuf:"bytes,10,opt,name=queried_word,json=queriedWord,proto3" json:"queried_word,omitempty"`    // currently queried word form, it's diffrent from lemma
+	MatchedTerms  []string               `protobuf:"bytes,10,rep,name=matched_terms,json=matchedTerms,proto3" json:"matched_terms,omitempty"` // All query terms that matched this word (for client-side highlighting)
 	QueriedCount  int64                  `protobuf:"varint,3,opt,name=queried_count,json=queriedCount,proto3" json:"queried_count,omitempty"` // number of times user queried this word
 	CreatedBy     string                 `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -237,11 +237,11 @@ func (x *LearnedWordStatus) GetReviewTiming() *ReviewTiming {
 	return nil
 }
 
-func (x *LearnedWordStatus) GetQueriedWord() string {
+func (x *LearnedWordStatus) GetMatchedTerms() []string {
 	if x != nil {
-		return x.QueriedWord
+		return x.MatchedTerms
 	}
-	return ""
+	return nil
 }
 
 func (x *LearnedWordStatus) GetQueriedCount() int64 {
@@ -581,12 +581,12 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\x05notes\x18\x06 \x03(\tR\x05notes\x12;\n" +
 	"\bcontexts\x18\n" +
 	" \x03(\v2\x1f.learning.v1.LearnedWordContextR\bcontexts\x12>\n" +
-	"\trelations\x18\v \x03(\v2 .learning.v1.LearnedWordRelationR\trelations\"\xe9\x02\n" +
+	"\trelations\x18\v \x03(\v2 .learning.v1.LearnedWordRelationR\trelations\"\xeb\x02\n" +
 	"\x11LearnedWordStatus\x127\n" +
 	"\amastery\x18\x01 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x12>\n" +
-	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12!\n" +
-	"\fqueried_word\x18\n" +
-	" \x01(\tR\vqueriedWord\x12#\n" +
+	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12#\n" +
+	"\rmatched_terms\x18\n" +
+	" \x03(\tR\fmatchedTerms\x12#\n" +
 	"\rqueried_count\x18\x03 \x01(\x03R\fqueriedCount\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\x14 \x01(\tR\tcreatedBy\x129\n" +

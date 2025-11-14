@@ -452,8 +452,6 @@ func (m *LearnedWordStatus) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for QueriedWord
-
 	// no validation rules for QueriedCount
 
 	// no validation rules for CreatedBy

@@ -1,36 +1,12 @@
 package mapping
 
 import (
-	"strings"
-
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	learningv1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 )
-
-func FromPbLearnedWord(in *learningv1.LearnedWord) *entity.LearnedWord {
-	if in == nil {
-		return nil
-	}
-	spec := in.GetSpec()
-	status := in.GetStatus()
-	return &entity.LearnedWord{
-		ID:         in.GetId(),
-		Term:       strings.TrimSpace(spec.GetTerm()),
-		Language:   FromPbLanguage(spec.GetLanguage()),
-		Tags:       append([]string{}, spec.GetTags()...),
-		Relations:  fromPbLearnedWordRelations(spec.GetRelations()),
-		Contexts:   fromPbLearnedWordContexts(spec.GetContexts()),
-		Mastery:    FromPbMastery(status.GetMastery()),
-		Review:     FromPbReview(status.GetReviewTiming()),
-		QueryCount: status.GetQueriedCount(),
-		CreatedBy:  status.GetCreatedBy(),
-		CreatedAt:  status.GetCreatedAt().AsTime(),
-		UpdatedAt:  status.GetUpdatedAt().AsTime(),
-	}
-}
 
 func ToPbLearnedWord(in *entity.LearnedWord) *learningv1.LearnedWord {
 	if in == nil {
@@ -57,26 +33,12 @@ func toPbLearnedWordStatus(in *entity.LearnedWord) *learningv1.LearnedWordStatus
 	return &learningv1.LearnedWordStatus{
 		Mastery:      ToPbMastery(in.Mastery),
 		ReviewTiming: ToPbReview(in.Review),
-		QueriedWord:  in.Term,
-		QueriedCount: in.QueryCount,
+		MatchedTerms: append([]string{}, in.MatchedTerms...),
+		QueriedCount: in.QueriedCount,
 		CreatedBy:    in.CreatedBy,
 		CreatedAt:    timestamppb.New(in.CreatedAt),
 		UpdatedAt:    timestamppb.New(in.UpdatedAt),
 	}
-}
-
-func fromPbLearnedWordRelations(items []*learningv1.LearnedWordRelation) []entity.LearnedWordRelation {
-	out := make([]entity.LearnedWordRelation, 0, len(items))
-	for _, rel := range items {
-		out = append(out, entity.LearnedWordRelation{
-			Word:         strings.TrimSpace(rel.GetWord()),
-			RelationType: int32(rel.GetRelationType()),
-			Note:         strings.TrimSpace(rel.GetNote()),
-			CreatedAt:    rel.GetCreatedAt().AsTime(),
-			UpdatedAt:    rel.GetUpdatedAt().AsTime(),
-		})
-	}
-	return out
 }
 
 func toPbLearnedWordRelations(items []entity.LearnedWordRelation) []*learningv1.LearnedWordRelation {
@@ -88,19 +50,6 @@ func toPbLearnedWordRelations(items []entity.LearnedWordRelation) []*learningv1.
 			Note:         rel.Note,
 			CreatedAt:    timestamppb.New(rel.CreatedAt),
 			UpdatedAt:    timestamppb.New(rel.UpdatedAt),
-		})
-	}
-	return out
-}
-
-func fromPbLearnedWordContexts(items []*learningv1.LearnedWordContext) []entity.LearnedWordContext {
-	out := make([]entity.LearnedWordContext, 0, len(items))
-	for _, ctx := range items {
-		out = append(out, entity.LearnedWordContext{
-			Sentence:    strings.TrimSpace(ctx.GetSentence()),
-			Source:      int32(ctx.GetSource()),
-			SourceRef:   strings.TrimSpace(ctx.GetSourceRef()),
-			CollectedAt: ctx.GetCollectedAt().AsTime(),
 		})
 	}
 	return out
@@ -141,19 +90,6 @@ func ToPbMastery(in entity.MasteryBreakdown) *learningv1.MasteryBreakdown {
 		Spell:     in.Spell,
 		Pronounce: in.Pronounce,
 		Overall:   in.Overall,
-	}
-}
-
-// FromPbReview converts protobuf ReviewTiming to entity.
-func FromPbReview(in *learningv1.ReviewTiming) entity.ReviewTiming {
-	if in == nil {
-		return entity.ReviewTiming{}
-	}
-	return entity.ReviewTiming{
-		LastReviewAt: in.GetLastReviewAt().AsTime(),
-		NextReviewAt: in.GetNextReviewAt().AsTime(),
-		IntervalDays: in.GetIntervalDays(),
-		FailCount:    in.GetFailCount(),
 	}
 }
 

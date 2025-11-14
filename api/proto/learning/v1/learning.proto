@@ -31,7 +31,7 @@ message LearnedWordSpec {
 message LearnedWordStatus {
   MasteryBreakdown mastery = 1;
   ReviewTiming review_timing = 2;
-  string queried_word = 10; // currently queried word form, it's diffrent from lemma
+  repeated string matched_terms = 10; // All query terms that matched this word (for client-side highlighting)
   int64 queried_count = 3; // number of times user queried this word
 
   string created_by = 20;
