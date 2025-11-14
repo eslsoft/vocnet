@@ -28,7 +28,9 @@ type LexemeRepository interface {
 	GetByID(ctx context.Context, lexemeID int64) (*entity.Lexeme, error)
 	Lookup(ctx context.Context, surfaceForm string, language entity.Language) (*entity.Lexeme, error)
 	LookupFormInfo(ctx context.Context, surfaceForm string, language entity.Language) (*LexemeFormInfo, error)
-	BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string]*LexemeFormInfo, error)
+	// BatchLookupFormInfo returns all possible form infos for each surface term.
+	// A surface term can map to multiple lexemes (e.g., "learning" can be both a verb form and a noun).
+	BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*LexemeFormInfo, error)
 	List(ctx context.Context, filter *ListLexemeQuery) ([]*entity.Lexeme, int64, error)
 	ListByWordID(ctx context.Context, wordID int64) ([]*entity.Lexeme, error)
 	ListByIDs(ctx context.Context, ids []int64) ([]*entity.Lexeme, error)

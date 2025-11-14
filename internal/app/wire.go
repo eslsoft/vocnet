@@ -26,7 +26,6 @@ var databaseSet = wire.NewSet(
 
 var repositorySet = wire.NewSet(
 	repository.NewLexemeRepository,
-	repository.NewLearnedLexemeRepository,
 	repository.NewLearnedWordRepository,
 	repository.NewWordGroupRepository,
 )
@@ -34,7 +33,6 @@ var repositorySet = wire.NewSet(
 var usecaseSet = wire.NewSet(
 	usecase.NewLexemeUsecase,
 	usecase.NewWordUsecase,
-	usecase.NewLearnedLexemeUsecase,
 	usecase.NewLearnedWordUsecase,
 )
 

@@ -58,9 +58,9 @@ var configSet = wire.NewSet(config.Load)
 
 var databaseSet = wire.NewSet(database.NewEntClient)
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedLexemeRepository, repository.NewLearnedWordRepository, repository.NewWordGroupRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewWordGroupRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedLexemeUsecase, usecase.NewLearnedWordUsecase)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase)
 
 var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)))
 

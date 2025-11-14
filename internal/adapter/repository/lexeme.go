@@ -8,7 +8,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
-	entlearnedlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedlexeme"
 	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
 	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entpredicate "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/predicate"
@@ -195,9 +194,9 @@ func (r *lexemeRepository) LookupFormInfo(ctx context.Context, surfaceForm strin
 	}, nil
 }
 
-func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string]*repository.LexemeFormInfo, error) {
+func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*repository.LexemeFormInfo, error) {
 	if len(surfaceForms) == 0 {
-		return make(map[string]*repository.LexemeFormInfo), nil
+		return make(map[string][]*repository.LexemeFormInfo), nil
 	}
 
 	langCode := entity.NormalizeLanguage(language).Code()
@@ -216,7 +215,7 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 	}
 
 	if len(formTexts) == 0 {
-		return make(map[string]*repository.LexemeFormInfo), nil
+		return make(map[string][]*repository.LexemeFormInfo), nil
 	}
 
 	// Batch query lexeme_forms with lexeme join
@@ -230,8 +229,8 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 		return nil, fmt.Errorf("batch lookup form info: %w", err)
 	}
 
-	// Build result map
-	result := make(map[string]*repository.LexemeFormInfo)
+	// Build result map - now collecting ALL forms per surface term
+	result := make(map[string][]*repository.LexemeFormInfo)
 	for _, form := range forms {
 		lexeme, err := form.Edges.LexemeOrErr()
 		if err != nil {
@@ -245,10 +244,10 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 			LemmaText:   lexeme.Lemma,
 		}
 
-		// Map back to original case
+		// Map back to original case - append all forms instead of overwriting
 		for original, lower := range originalToLower {
 			if lower == form.Text {
-				result[original] = info
+				result[original] = append(result[original], info)
 			}
 		}
 	}
@@ -341,14 +340,6 @@ func (r *lexemeRepository) Delete(ctx context.Context, lexemeID int64) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-
-	// Preserve user data: set lexeme_id to NULL instead of deleting LearnedLexeme records
-	if err := tx.LearnedLexeme.Update().
-		Where(entlearnedlexeme.LexemeIDEQ(lexemeID)).
-		ClearLexemeID().
-		Exec(ctx); err != nil {
-		return fmt.Errorf("clear lexeme references: %w", err)
-	}
 
 	// Delete lexeme (LexemeForm will be cascade deleted automatically)
 	if err := tx.Lexeme.DeleteOneID(lexemeID).Exec(ctx); err != nil {

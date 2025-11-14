@@ -1,0 +1,7 @@
+POST http://localhost:8080/learning.v1.LearningService/ListLearnedWords
+Content-Type: application/json
+
+{"filter":"surface in [\"glass\", \"glasses\"]"}
+
+###
+

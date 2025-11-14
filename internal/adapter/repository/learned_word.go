@@ -25,25 +25,7 @@ func NewLearnedWordRepository(client *entdb.Client) repository.LearnedWordReposi
 }
 
 func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error) {
-	listen, err := int32ToInt16(word.Mastery.Listen, "mastery.listen")
-	if err != nil {
-		return nil, err
-	}
-	read, err := int32ToInt16(word.Mastery.Read, "mastery.read")
-	if err != nil {
-		return nil, err
-	}
-	spell, err := int32ToInt16(word.Mastery.Spell, "mastery.spell")
-	if err != nil {
-		return nil, err
-	}
-	pronounce, err := int32ToInt16(word.Mastery.Pronounce, "mastery.pronounce")
-	if err != nil {
-		return nil, err
-	}
-
 	languageCode := entity.NormalizeLanguage(word.Language).Code()
-
 	builder := r.client.LearnedWord.Create().
 		SetUserID(word.UserID).
 		SetTerm(strings.TrimSpace(word.Term)).
@@ -52,14 +34,14 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 		SetNotes(word.Notes).
 		SetRelations(append([]entity.LearnedWordRelation{}, word.Relations...)).
 		SetContexts(append([]entity.LearnedWordContext{}, word.Contexts...)).
-		SetMasteryListen(listen).
-		SetMasteryRead(read).
-		SetMasterySpell(spell).
-		SetMasteryPronounce(pronounce).
+		SetMasteryListen(int16(word.Mastery.Listen)).
+		SetMasteryRead(int16(word.Mastery.Read)).
+		SetMasterySpell(int16(word.Mastery.Spell)).
+		SetMasteryPronounce(int16(word.Mastery.Pronounce)).
 		SetMasteryOverall(word.Mastery.Overall).
 		SetReviewIntervalDays(word.Review.IntervalDays).
 		SetReviewFailCount(word.Review.FailCount).
-		SetQueryCount(word.QueryCount).
+		SetQueryCount(word.QueriedCount).
 		SetCreatedBy(word.CreatedBy).
 		SetCreatedAt(word.CreatedAt).
 		SetUpdatedAt(word.UpdatedAt)
@@ -79,25 +61,7 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 }
 
 func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error) {
-	listen, err := int32ToInt16(word.Mastery.Listen, "mastery.listen")
-	if err != nil {
-		return nil, err
-	}
-	read, err := int32ToInt16(word.Mastery.Read, "mastery.read")
-	if err != nil {
-		return nil, err
-	}
-	spell, err := int32ToInt16(word.Mastery.Spell, "mastery.spell")
-	if err != nil {
-		return nil, err
-	}
-	pronounce, err := int32ToInt16(word.Mastery.Pronounce, "mastery.pronounce")
-	if err != nil {
-		return nil, err
-	}
-
 	languageCode := entity.NormalizeLanguage(word.Language).Code()
-
 	mutation := r.client.LearnedWord.UpdateOneID(word.ID).
 		Where(entlearnedword.UserIDEQ(word.UserID)).
 		SetTerm(strings.TrimSpace(word.Term)).
@@ -106,14 +70,14 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 		SetNotes(word.Notes).
 		SetRelations(append([]entity.LearnedWordRelation{}, word.Relations...)).
 		SetContexts(append([]entity.LearnedWordContext{}, word.Contexts...)).
-		SetMasteryListen(listen).
-		SetMasteryRead(read).
-		SetMasterySpell(spell).
-		SetMasteryPronounce(pronounce).
+		SetMasteryListen(int16(word.Mastery.Listen)).
+		SetMasteryRead(int16(word.Mastery.Read)).
+		SetMasterySpell(int16(word.Mastery.Spell)).
+		SetMasteryPronounce(int16(word.Mastery.Pronounce)).
 		SetMasteryOverall(word.Mastery.Overall).
 		SetReviewIntervalDays(word.Review.IntervalDays).
 		SetReviewFailCount(word.Review.FailCount).
-		SetQueryCount(word.QueryCount).
+		SetQueryCount(word.QueriedCount).
 		SetCreatedBy(word.CreatedBy).
 		SetUpdatedAt(word.UpdatedAt)
 
@@ -323,14 +287,14 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 			IntervalDays: rec.ReviewIntervalDays,
 			FailCount:    rec.ReviewFailCount,
 		},
-		QueryCount: rec.QueryCount,
-		Tags:       append([]string{}, rec.Tags...),
-		Notes:      rec.Notes,
-		Relations:  append([]entity.LearnedWordRelation{}, rec.Relations...),
-		Contexts:   append([]entity.LearnedWordContext{}, rec.Contexts...),
-		CreatedBy:  rec.CreatedBy,
-		CreatedAt:  rec.CreatedAt,
-		UpdatedAt:  rec.UpdatedAt,
+		QueriedCount: rec.QueryCount,
+		Tags:         append([]string{}, rec.Tags...),
+		Notes:        rec.Notes,
+		Relations:    append([]entity.LearnedWordRelation{}, rec.Relations...),
+		Contexts:     append([]entity.LearnedWordContext{}, rec.Contexts...),
+		CreatedBy:    rec.CreatedBy,
+		CreatedAt:    rec.CreatedAt,
+		UpdatedAt:    rec.UpdatedAt,
 	}
 
 	if rec.ReviewLastReviewAt != nil {

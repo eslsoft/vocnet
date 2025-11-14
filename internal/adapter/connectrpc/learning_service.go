@@ -37,9 +37,9 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 	}
 
 	userID := int64(1000) // TODO: Extract from auth context
-	// Convert spec to entity (term might be empty, will be computed by usecase)
 	entityWord := &entity.LearnedWord{
 		Term:     strings.TrimSpace(req.Msg.Spec.GetTerm()),
+		Mastery:  entity.MasteryBreakdown{Overall: req.Msg.Spec.GetMasteryLevel()},
 		Language: mapping.FromPbLanguage(req.Msg.Spec.GetLanguage()),
 		Tags:     req.Msg.Spec.GetTags(),
 		Notes:    req.Msg.Spec.GetNotes(),
@@ -86,6 +86,11 @@ func (s *LearningServiceServer) ListLearnedWords(ctx context.Context, req *conne
 		return nil, err
 	}
 
+	query.UserID = int64(1000)
+	if req.Msg.Pagination != nil {
+		query.Pagination.PageNo = req.Msg.Pagination.PageNo
+		query.Pagination.PageSize = req.Msg.Pagination.PageSize
+	}
 	items, total, err := s.uc.ListLearnedWords(ctx, &query)
 	if err != nil {
 		return nil, err
