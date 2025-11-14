@@ -177,7 +177,7 @@ func importECDICTOnlyWords(ctx context.Context, client dictv1connect.DictService
 			if err != nil {
 				failed++
 				if failed <= 5 {
-					log.Printf("[ecdict-import] failed to create word %q: %v", w.GetLemma(), err)
+					log.Printf("[ecdict-import] failed to create word %q: %v", lemmaText(w), err)
 				}
 			} else {
 				imported++

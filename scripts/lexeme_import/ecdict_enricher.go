@@ -79,14 +79,14 @@ func (e *ecdictEnricher) RegisterWord(lexeme *dictv1.Word) {
 	defer e.mu.Unlock()
 
 	// Register the lemma
-	lemma := strings.ToLower(strings.TrimSpace(lexeme.GetLemma()))
+	lemma := strings.ToLower(strings.TrimSpace(lemmaText(lexeme)))
 	if lemma != "" {
 		e.knownForms[lemma] = true
 	}
 
 	// Register all forms
-	for _, form := range lexeme.GetForms() {
-		word := strings.ToLower(strings.TrimSpace(form.GetWord()))
+	for _, form := range lexeme.GetRelatedForms() {
+		word := strings.ToLower(strings.TrimSpace(form.GetTerm()))
 		if word != "" {
 			e.knownForms[word] = true
 		}
@@ -97,7 +97,7 @@ func (e *ecdictEnricher) Enrich(lexeme *dictv1.Word) {
 	if lexeme == nil {
 		return
 	}
-	lemma := strings.ToLower(strings.TrimSpace(lexeme.GetLemma()))
+	lemma := strings.ToLower(strings.TrimSpace(lemmaText(lexeme)))
 	if lemma == "" {
 		return
 	}
@@ -170,7 +170,7 @@ func (e *ecdictEnricher) GetMissingWords() ([]*dictv1.Word, []skippedWordEntry) 
 		}
 
 		// Parse exchange to determine if this is a lemma or inflected form
-		lemma, forms := parseExchange(word, enrichment.exchange)
+		lemma, forms := parseExchange(enrichment.exchange)
 
 		// Case 1: No "0:" marker means this IS the lemma
 		// Example: "run" -> "p:ran/i:running/3:runs"
@@ -376,18 +376,13 @@ func mergeEnrichment(lexeme *dictv1.Word, enrich *ecdictEnrichment) bool {
 			changed = true
 		}
 	}
-	if len(enrich.senses) > 0 {
-		if addSenses(lexeme, enrich.senses) {
-			changed = true
-		}
+	if len(enrich.senses) > 0 && addSenses(lexeme, enrich.senses) {
+		changed = true
 	}
-	// Merge word forms from ECDICT exchange field
 	if enrich.exchange != "" {
-		_, forms := parseExchange(lexeme.GetLemma(), enrich.exchange)
-		if len(forms) > 0 {
-			if addForms(lexeme, forms) {
-				changed = true
-			}
+		_, forms := parseExchange(enrich.exchange)
+		if len(forms) > 0 && addRelatedForms(lexeme, forms) {
+			changed = true
 		}
 	}
 	return changed
@@ -450,38 +445,44 @@ func addPhonetics(lexeme *dictv1.Word, additions []*dictv1.Phonetic) bool {
 	return changed
 }
 
-func addForms(lexeme *dictv1.Word, additions []*dictv1.WordForm) bool {
-	if len(additions) == 0 {
+func addRelatedForms(word *dictv1.Word, additions []*dictv1.RelatedForm) bool {
+	if word == nil || len(additions) == 0 {
 		return false
 	}
-	// Deduplicate by normalized word text (case-insensitive)
-	existing := make(map[string]struct{}, len(lexeme.Forms))
-	for _, f := range lexeme.Forms {
-		key := strings.ToLower(strings.TrimSpace(f.GetWord()))
-		existing[key] = struct{}{}
+
+	existing := make(map[string]int, len(word.GetRelatedForms()))
+	for idx, form := range word.GetRelatedForms() {
+		if key := relatedFormKey(form); key != "" {
+			existing[key] = idx
+		}
 	}
+
 	changed := false
 	for _, add := range additions {
-		key := strings.ToLower(strings.TrimSpace(add.GetWord()))
+		if add == nil {
+			continue
+		}
+		term := strings.TrimSpace(add.GetTerm())
+		if term == "" {
+			continue
+		}
+		key := relatedFormKey(add)
 		if key == "" {
 			continue
 		}
-		if _, ok := existing[key]; ok {
+		if idx, ok := existing[key]; ok {
+			if add.GetIrregular() && !word.RelatedForms[idx].GetIrregular() {
+				word.RelatedForms[idx].Irregular = true
+				changed = true
+			}
 			continue
 		}
-		existing[key] = struct{}{}
-		// Get the first definition's lexeme ID to use for forms
-		// ECDICT doesn't distinguish which POS the forms belong to
-		lexemeID := ""
-		if len(lexeme.Definitions) > 0 {
-			lexemeID = lexeme.Definitions[0].GetLexemeId()
-		}
-		lexeme.Forms = append(lexeme.Forms, &dictv1.WordForm{
-			LexemeId:  lexemeID,
-			Word:      add.GetWord(),
-			Type:      add.GetType(),
+		word.RelatedForms = append(word.RelatedForms, &dictv1.RelatedForm{
+			Term:      term,
+			FormType:  add.GetFormType(),
 			Irregular: add.GetIrregular(),
 		})
+		existing[key] = len(word.RelatedForms) - 1
 		changed = true
 	}
 	return changed
@@ -512,29 +513,26 @@ func addCategories(lexeme *dictv1.Word, categories []string) bool {
 }
 
 func addSenses(lexeme *dictv1.Word, additions []sensePayload) bool {
-	if len(additions) == 0 {
+	if lexeme == nil || len(additions) == 0 {
 		return false
 	}
 	existing := make(map[string]struct{})
-	for _, def := range lexeme.GetDefinitions() {
-		pos := def.GetPos()
-		for _, sense := range def.GetSenses() {
-			existing[senseKey(sense.GetLanguage(), pos, sense.GetGloss())] = struct{}{}
+	for _, meaning := range lexeme.GetMeanings() {
+		posKey := normalizePOSForMatching(meaning.GetPos())
+		for _, def := range meaning.GetDefinitions() {
+			existing[senseKey(def.GetLanguage(), posKey, def.GetGloss())] = struct{}{}
 		}
 	}
 
 	changed := false
-	// Allow both Wikidata glosses (English) and ECDICT definitions (English + Chinese)
-	// Wikidata glosses are typically brief semantic descriptions
-	// ECDICT definitions are more detailed dictionary entries
-	// Both have value and should be preserved (deduplicated by exact gloss match)
 	for _, add := range additions {
-		key := senseKey(add.language, add.partOfSpeech, add.gloss)
+		pos := strings.TrimSpace(add.partOfSpeech)
+		key := senseKey(add.language, normalizePOSForMatching(pos), add.gloss)
 		if _, ok := existing[key]; ok {
 			continue
 		}
-		def := ensureDefinition(lexeme, add.partOfSpeech)
-		def.Senses = append(def.Senses, &dictv1.LexemeSense{
+		meaning := ensureMeaning(lexeme, pos)
+		meaning.Definitions = append(meaning.Definitions, &dictv1.Definition{
 			Language: add.language,
 			Gloss:    add.gloss,
 		})
@@ -544,35 +542,31 @@ func addSenses(lexeme *dictv1.Word, additions []sensePayload) bool {
 	return changed
 }
 
-func ensureDefinition(lexeme *dictv1.Word, pos string) *dictv1.Definition {
+func ensureMeaning(word *dictv1.Word, pos string) *dictv1.Meaning {
+	if word == nil {
+		return nil
+	}
 	pos = strings.TrimSpace(pos)
 
-	// First try exact POS match
-	for _, def := range lexeme.GetDefinitions() {
-		if strings.EqualFold(strings.TrimSpace(def.GetPos()), pos) {
-			return def
+	for _, meaning := range word.GetMeanings() {
+		if strings.EqualFold(strings.TrimSpace(meaning.GetPos()), pos) {
+			return meaning
 		}
 	}
 
-	// If no exact match, try fuzzy POS matching
-	// ECDICT uses abbreviated forms like "n.", "v.", "adj."
-	// Wikidata uses full forms like "noun", "verb", "adjective"
-	normalizedPos := normalizePOSForMatching(pos)
-	for _, def := range lexeme.GetDefinitions() {
-		if normalizePOSForMatching(def.GetPos()) == normalizedPos {
-			return def
+	norm := normalizePOSForMatching(pos)
+	for _, meaning := range word.GetMeanings() {
+		if normalizePOSForMatching(meaning.GetPos()) == norm {
+			return meaning
 		}
 	}
 
-	// No matching definition found, create a new one
-	// New definitions from ECDICT enrichment need a temporary lexeme ID
-	// Use "TL" (Temporary Lexeme) prefix with a random suffix for uniqueness
-	def := &dictv1.Definition{
+	meaning := &dictv1.Meaning{
 		LexemeId: generateTemporaryLexemeID(),
 		Pos:      pos,
 	}
-	lexeme.Definitions = append(lexeme.Definitions, def)
-	return def
+	word.Meanings = append(word.Meanings, meaning)
+	return meaning
 }
 
 // generateTemporaryLexemeID generates a unique temporary lexeme ID with TL prefix
@@ -634,6 +628,17 @@ func normalizePOSForMatching(pos string) string {
 
 func phoneticKey(p *dictv1.Phonetic) string {
 	return strings.ToLower(strings.TrimSpace(p.GetIpa())) + "|" + strings.ToLower(strings.TrimSpace(p.GetDialect()))
+}
+
+func relatedFormKey(f *dictv1.RelatedForm) string {
+	if f == nil {
+		return ""
+	}
+	term := strings.ToLower(strings.TrimSpace(f.GetTerm()))
+	if term == "" {
+		return ""
+	}
+	return term + "|" + f.GetFormType().String()
 }
 
 func senseKey(lang commonv1.Language, pos, gloss string) string {
@@ -1302,7 +1307,7 @@ func nullStringVal(ns sql.NullString) string {
 //	r=comparative, t=superlative, s=plural, 0=lemma
 //
 // Returns empty lemma if no "0:" found in exchange
-func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.WordForm) {
+func parseExchange(exchange string) (lemma string, forms []*dictv1.RelatedForm) {
 	exchange = strings.TrimSpace(exchange)
 	if exchange == "" {
 		return "", nil
@@ -1337,9 +1342,6 @@ func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.
 	lemma = formMap["0"]
 
 	// Build forms (excluding lemma itself and variant markers)
-	// Use temporary lexeme ID for all forms
-	lexemeID := generateTemporaryLexemeID()
-
 	// Map ECDICT codes to FormType
 	codeToFormType := map[string]dictv1.FormType{
 		"p": dictv1.FormType_FORM_TYPE_PAST,
@@ -1363,11 +1365,10 @@ func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.
 			continue
 		}
 
-		forms = append(forms, &dictv1.WordForm{
-			LexemeId:  lexemeID,
-			Word:      word,
-			Type:      formType,
-			Irregular: false, // We don't have enough info to determine irregularity
+		forms = append(forms, &dictv1.RelatedForm{
+			Term:      word,
+			FormType:  formType,
+			Irregular: false,
 		})
 	}
 
@@ -1375,50 +1376,32 @@ func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.
 }
 
 // buildWordFromECDICT constructs a Word object from ECDICT enrichment data
-func buildWordFromECDICT(lemma string, forms []*dictv1.WordForm, enrichment *ecdictEnrichment) *dictv1.Word {
+func buildWordFromECDICT(lemma string, forms []*dictv1.RelatedForm, enrichment *ecdictEnrichment) *dictv1.Word {
 	word := &dictv1.Word{
-		Lemma:      lemma,
-		Language:   commonv1.Language_LANGUAGE_ENGLISH,
-		Phonetics:  enrichment.phonetics,
-		Categories: append(enrichment.categories, enrichment.domains...),
-		Forms:      forms,
+		Term:         lemma,
+		TermType:     dictv1.FormType_FORM_TYPE_LEMMA,
+		Language:     commonv1.Language_LANGUAGE_ENGLISH,
+		Phonetics:    enrichment.phonetics,
+		Categories:   append(enrichment.categories, enrichment.domains...),
+		RelatedForms: forms,
 	}
 
-	// Group senses by POS
-	// If all senses have no POS, put them in a single definition with empty POS
-	posSenses := make(map[string][]*dictv1.LexemeSense)
+	posDefinitions := make(map[string][]*dictv1.Definition)
 
 	for _, sense := range enrichment.senses {
 		pos := strings.TrimSpace(sense.partOfSpeech)
-		posSenses[pos] = append(posSenses[pos], &dictv1.LexemeSense{
+		posDefinitions[pos] = append(posDefinitions[pos], &dictv1.Definition{
 			Language: sense.language,
 			Gloss:    sense.gloss,
 		})
 	}
 
-	// Create definitions with individual lexeme IDs
-	// All forms will reference the FIRST definition's lexeme ID
-	// (ECDICT doesn't distinguish which POS the forms belong to)
-	var firstLexemeID string
-	for pos, senses := range posSenses {
-		lexemeID := generateTemporaryLexemeID()
-		if firstLexemeID == "" {
-			firstLexemeID = lexemeID
-		}
-
-		word.Definitions = append(word.Definitions, &dictv1.Definition{
-			LexemeId: lexemeID,
-			Pos:      pos,
-			Senses:   senses,
+	for pos, defs := range posDefinitions {
+		word.Meanings = append(word.Meanings, &dictv1.Meaning{
+			LexemeId:    generateTemporaryLexemeID(),
+			Pos:         pos,
+			Definitions: defs,
 		})
-	}
-
-	// Update all forms to reference the first definition's lexeme ID
-	// This is a limitation of ECDICT data - we don't know which POS each form belongs to
-	if firstLexemeID != "" {
-		for _, form := range forms {
-			form.LexemeId = firstLexemeID
-		}
 	}
 
 	return word

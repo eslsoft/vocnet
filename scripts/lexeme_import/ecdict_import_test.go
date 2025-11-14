@@ -11,7 +11,6 @@ import (
 func TestParseExchange(t *testing.T) {
 	tests := []struct {
 		name         string
-		currentWord  string
 		exchange     string
 		wantLemma    string
 		wantFormLen  int
@@ -19,7 +18,6 @@ func TestParseExchange(t *testing.T) {
 	}{
 		{
 			name:        "complete verb forms",
-			currentWord: "ran",
 			exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 			wantLemma:   "run",
 			wantFormLen: 4,
@@ -32,7 +30,6 @@ func TestParseExchange(t *testing.T) {
 		},
 		{
 			name:        "lemma entry without 0 marker",
-			currentWord: "perceive",
 			exchange:    "d:perceived/p:perceived/3:perceives/i:perceiving",
 			wantLemma:   "", // No "0:" means this word IS the lemma
 			wantFormLen: 4,  // Should have all forms
@@ -45,7 +42,6 @@ func TestParseExchange(t *testing.T) {
 		},
 		{
 			name:        "perceived with lemma",
-			currentWord: "perceived",
 			exchange:    "d:perceived/p:perceived/3:perceives/i:perceiving/0:perceive",
 			wantLemma:   "perceive",
 			wantFormLen: 4,
@@ -58,7 +54,6 @@ func TestParseExchange(t *testing.T) {
 		},
 		{
 			name:        "adjective forms",
-			currentWord: "bigger",
 			exchange:    "r:bigger/t:biggest/0:big",
 			wantLemma:   "big",
 			wantFormLen: 2,
@@ -69,7 +64,6 @@ func TestParseExchange(t *testing.T) {
 		},
 		{
 			name:        "noun plural",
-			currentWord: "cats",
 			exchange:    "s:cats/0:cat",
 			wantLemma:   "cat",
 			wantFormLen: 1,
@@ -79,14 +73,12 @@ func TestParseExchange(t *testing.T) {
 		},
 		{
 			name:        "no exchange",
-			currentWord: "hello",
 			exchange:    "",
 			wantLemma:   "",
 			wantFormLen: 0,
 		},
 		{
 			name:        "lemma entry for running",
-			currentWord: "run",
 			exchange:    "p:ran/d:run/i:running/3:runs",
 			wantLemma:   "", // No "0:" means this word IS the lemma
 			wantFormLen: 4,  // Should have all forms
@@ -101,7 +93,7 @@ func TestParseExchange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lemma, forms := parseExchange(tt.currentWord, tt.exchange)
+			lemma, forms := parseExchange(tt.exchange)
 
 			if lemma != tt.wantLemma {
 				t.Errorf("parseExchange() lemma = %q, want %q", lemma, tt.wantLemma)
@@ -114,7 +106,7 @@ func TestParseExchange(t *testing.T) {
 			if tt.wantFormType != nil {
 				gotFormType := make(map[dictv1.FormType]string)
 				for _, form := range forms {
-					gotFormType[form.Type] = form.Word
+					gotFormType[form.FormType] = form.Term
 				}
 
 				for formType, expectedWord := range tt.wantFormType {
@@ -143,36 +135,39 @@ func TestBuildWordFromECDICT(t *testing.T) {
 		},
 	}
 
-	forms := []*dictv1.WordForm{
-		{Word: "ran", Type: dictv1.FormType_FORM_TYPE_PAST},
-		{Word: "running", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+	forms := []*dictv1.RelatedForm{
+		{Term: "ran", FormType: dictv1.FormType_FORM_TYPE_PAST},
+		{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
 	}
 
 	word := buildWordFromECDICT("run", forms, enrichment)
 
-	if word.Lemma != "run" {
-		t.Errorf("Lemma = %q, want %q", word.Lemma, "run")
+	if word.Term != "run" {
+		t.Errorf("Term = %q, want %q", word.Term, "run")
 	}
 
-	if len(word.Forms) != 2 {
-		t.Errorf("Forms length = %d, want 2", len(word.Forms))
+	if word.TermType != dictv1.FormType_FORM_TYPE_LEMMA {
+		t.Errorf("TermType = %v, want FORM_TYPE_LEMMA", word.TermType)
 	}
 
-	if len(word.Definitions) != 2 {
-		t.Errorf("Definitions length = %d, want 2 (verb and noun)", len(word.Definitions))
+	if len(word.RelatedForms) != 2 {
+		t.Errorf("RelatedForms length = %d, want 2", len(word.RelatedForms))
 	}
 
-	// Check that senses are grouped by POS
+	if len(word.Meanings) != 2 {
+		t.Errorf("Meanings length = %d, want 2 (verb and noun)", len(word.Meanings))
+	}
+
 	posCount := make(map[string]int)
-	for _, def := range word.Definitions {
-		posCount[def.Pos] = len(def.Senses)
+	for _, meaning := range word.Meanings {
+		posCount[meaning.GetPos()] = len(meaning.GetDefinitions())
 	}
 
 	if posCount["verb"] != 2 {
-		t.Errorf("verb senses count = %d, want 2", posCount["verb"])
+		t.Errorf("verb definitions count = %d, want 2", posCount["verb"])
 	}
 	if posCount["noun"] != 1 {
-		t.Errorf("noun senses count = %d, want 1", posCount["noun"])
+		t.Errorf("noun definitions count = %d, want 1", posCount["noun"])
 	}
 
 	// Check categories include both categories and domains
@@ -189,20 +184,20 @@ func TestBuildWordFromECDICT_NoPOS(t *testing.T) {
 		},
 	}
 
-	forms := []*dictv1.WordForm{}
+	forms := []*dictv1.RelatedForm{}
 
 	word := buildWordFromECDICT("test", forms, enrichment)
 
-	if len(word.Definitions) != 1 {
-		t.Errorf("Definitions length = %d, want 1 (all senses in one definition)", len(word.Definitions))
+	if len(word.Meanings) != 1 {
+		t.Errorf("Meanings length = %d, want 1 (all senses in one meaning)", len(word.Meanings))
 	}
 
-	if word.Definitions[0].Pos != "" {
-		t.Errorf("Definition POS = %q, want empty", word.Definitions[0].Pos)
+	if word.Meanings[0].GetPos() != "" {
+		t.Errorf("Meaning POS = %q, want empty", word.Meanings[0].GetPos())
 	}
 
-	if len(word.Definitions[0].Senses) != 2 {
-		t.Errorf("Senses in definition = %d, want 2", len(word.Definitions[0].Senses))
+	if len(word.Meanings[0].GetDefinitions()) != 2 {
+		t.Errorf("Definitions in meaning = %d, want 2", len(word.Meanings[0].GetDefinitions()))
 	}
 }
 
@@ -238,8 +233,8 @@ func TestGetMissingWords_NoDuplicateLemmas(t *testing.T) {
 		t.Errorf("GetMissingWords() created %d Words, want 1 (should deduplicate by lemma)", len(toImport))
 	}
 
-	if len(toImport) > 0 && toImport[0].Lemma != "run" {
-		t.Errorf("Word lemma = %q, want %q", toImport[0].Lemma, "run")
+	if len(toImport) > 0 && toImport[0].Term != "run" {
+		t.Errorf("Word term = %q, want %q", toImport[0].Term, "run")
 	}
 }
 
@@ -267,8 +262,8 @@ func TestGetMissingWords_PreferLemmaEnrichment(t *testing.T) {
 
 	// Should use "run"'s enrichment (complete translation)
 	// We can't directly check translation, but we can verify the word was created
-	if toImport[0].Lemma != "run" {
-		t.Errorf("Word lemma = %q, want %q", toImport[0].Lemma, "run")
+	if toImport[0].Term != "run" {
+		t.Errorf("Word term = %q, want %q", toImport[0].Term, "run")
 	}
 }
 
@@ -295,14 +290,14 @@ func TestGetMissingWords_SkipIfInWikidata(t *testing.T) {
 func TestMergeEnrichment_WithForms(t *testing.T) {
 	// Simulate a Wikidata word that has some forms but not all
 	wikidataWord := &dictv1.Word{
-		Lemma:    "run",
+		Term:     "run",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 		Language: commonv1.Language_LANGUAGE_ENGLISH,
-		Forms: []*dictv1.WordForm{
-			{LexemeId: "L1234", Word: "run", Type: dictv1.FormType_FORM_TYPE_LEMMA},
-			{LexemeId: "L1234", Word: "running", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
 		},
-		Definitions: []*dictv1.Definition{
-			{LexemeId: "L1234", Pos: "verb", Senses: []*dictv1.LexemeSense{
+		Meanings: []*dictv1.Meaning{
+			{LexemeId: "L1234", Pos: "verb", Definitions: []*dictv1.Definition{
 				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move quickly"},
 			}},
 		},
@@ -324,27 +319,26 @@ func TestMergeEnrichment_WithForms(t *testing.T) {
 
 	// Check that new forms were added
 	formWords := make(map[string]bool)
-	for _, form := range wikidataWord.Forms {
-		formWords[strings.ToLower(form.Word)] = true
+	for _, form := range wikidataWord.RelatedForms {
+		formWords[strings.ToLower(form.Term)] = true
 	}
 
-	expectedForms := []string{"run", "running", "ran", "runs"}
+	expectedForms := []string{"running", "ran", "runs", "run"}
 	for _, expected := range expectedForms {
 		if !formWords[expected] {
 			t.Errorf("Expected form %q to be present, but it's missing", expected)
 		}
 	}
 
-	// Should have 4 forms total (run, running were already there, ran and runs were added)
-	if len(wikidataWord.Forms) != 4 {
-		t.Errorf("Forms length = %d, want 4 (run, running, ran, runs)", len(wikidataWord.Forms))
+	if len(wikidataWord.RelatedForms) != 4 {
+		t.Errorf("RelatedForms length = %d, want 4 (running, ran, runs, run)", len(wikidataWord.RelatedForms))
 	}
 
 	// Check that Chinese sense was also added
 	hasChinese := false
-	for _, def := range wikidataWord.Definitions {
-		for _, sense := range def.Senses {
-			if sense.Language == commonv1.Language_LANGUAGE_CHINESE {
+	for _, meaning := range wikidataWord.Meanings {
+		for _, def := range meaning.Definitions {
+			if def.Language == commonv1.Language_LANGUAGE_CHINESE {
 				hasChinese = true
 				break
 			}
@@ -358,15 +352,15 @@ func TestMergeEnrichment_WithForms(t *testing.T) {
 func TestMergeEnrichment_NoDuplicateForms(t *testing.T) {
 	// Wikidata word already has all forms from ECDICT
 	wikidataWord := &dictv1.Word{
-		Lemma:    "run",
+		Term:     "run",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
 		Language: commonv1.Language_LANGUAGE_ENGLISH,
-		Forms: []*dictv1.WordForm{
-			{LexemeId: "L1234", Word: "run", Type: dictv1.FormType_FORM_TYPE_LEMMA},
-			{LexemeId: "L1234", Word: "ran", Type: dictv1.FormType_FORM_TYPE_PAST},
-			{LexemeId: "L1234", Word: "running", Type: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
-			{LexemeId: "L1234", Word: "runs", Type: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "ran", FormType: dictv1.FormType_FORM_TYPE_PAST},
+			{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+			{Term: "runs", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
 		},
-		Definitions: []*dictv1.Definition{
+		Meanings: []*dictv1.Meaning{
 			{LexemeId: "L1234", Pos: "verb"},
 		},
 	}
@@ -382,8 +376,7 @@ func TestMergeEnrichment_NoDuplicateForms(t *testing.T) {
 		t.Error("mergeEnrichment() should return false when no new forms are added")
 	}
 
-	// Should still have exactly 4 forms (no duplicates)
-	if len(wikidataWord.Forms) != 4 {
-		t.Errorf("Forms length = %d, want 4 (no duplicates)", len(wikidataWord.Forms))
+	if len(wikidataWord.RelatedForms) != 3 {
+		t.Errorf("RelatedForms length = %d, want 3 (no duplicates)", len(wikidataWord.RelatedForms))
 	}
 }
