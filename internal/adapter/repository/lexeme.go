@@ -62,7 +62,7 @@ func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*
 
 	rec, err := main.Save(ctx)
 	if err != nil {
-		return nil, translateLexemeError(err)
+		return nil, translateDBError(err, "lexeme")
 	}
 
 	// Create form records
@@ -106,7 +106,7 @@ func (r *lexemeRepository) Update(ctx context.Context, lexeme *entity.Lexeme) (*
 		if entdb.IsNotFound(err) {
 			return nil, entity.ErrLexemeNotFound
 		}
-		return nil, translateLexemeError(err)
+		return nil, translateDBError(err, "lexeme")
 	}
 
 	// Update form records
@@ -150,48 +150,9 @@ func (r *lexemeRepository) Lookup(ctx context.Context, surfaceForm string, langu
 		WithForms(). // Preload forms to avoid N+1
 		First(ctx)
 	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("lookup lexeme: %w", err)
+		return nil, translateDBError(err, "lexeme")
 	}
 	return mapEntLexeme(rec), nil
-}
-
-func (r *lexemeRepository) LookupFormInfo(ctx context.Context, surfaceForm string, language entity.Language) (*repository.LexemeFormInfo, error) {
-	word := strings.TrimSpace(surfaceForm)
-	if word == "" {
-		return nil, entity.ErrInvalidLexemeText
-	}
-	formText := strings.ToLower(word)
-	langCode := entity.NormalizeLanguage(language).Code()
-
-	// Query lexeme_form and join with lexeme to get lemma
-	form, err := r.client.LexemeForm.Query().
-		Where(entlexemeform.TextEQ(formText)).
-		WithLexeme(func(q *entdb.LexemeQuery) {
-			q.Where(entlexeme.LanguageEQ(langCode))
-		}).
-		First(ctx)
-	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("lookup form info: %w", err)
-	}
-
-	// Check if lexeme was loaded
-	lexeme, err := form.Edges.LexemeOrErr()
-	if err != nil {
-		return nil, nil
-	}
-
-	return &repository.LexemeFormInfo{
-		FormText:    form.Text,
-		FormType:    form.FormType,
-		IsIrregular: form.IsIrregular,
-		LemmaText:   lexeme.Lemma,
-	}, nil
 }
 
 func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*repository.LexemeFormInfo, error) {
@@ -295,9 +256,6 @@ func (r *lexemeRepository) List(ctx context.Context, query *repository.ListLexem
 }
 
 func (r *lexemeRepository) ListByLemmaID(ctx context.Context, lemmaID int64) ([]*entity.Lexeme, error) {
-	if lemmaID == 0 {
-		return nil, nil
-	}
 	rows, err := r.client.Lexeme.Query().
 		Where(entlexeme.WordIDEQ(lemmaID)).
 		WithForms().
@@ -468,11 +426,6 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 	lex.Relations = append([]entity.LexemeRelation{}, rec.Relations...)
 
 	return lex
-}
-
-// Deprecated: Use translateDBError from errors.go instead
-func translateLexemeError(err error) error {
-	return translateDBError(err, "lexeme")
 }
 
 // upsertForms replaces all forms for a lexeme with the given list

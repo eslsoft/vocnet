@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strings"
 	"testing"
 
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
@@ -231,203 +230,105 @@ func TestBuildWordFromECDICT_NoPOS(t *testing.T) {
 	}
 }
 
-func TestGetMissingWords_NoDuplicateLemmas(t *testing.T) {
-	// Simulate ECDICT having entries for both lemma and inflected forms
-	// All pointing to the same lemma "run"
+func TestRegisterKnownWords_EnrichmentWithoutExchange(t *testing.T) {
+	// Test that words without exchange can be enriched if they're registered as known
 	enricher := &ecdictEnricher{
 		entries: map[string]*ecdictEnrichment{
+			"but": {
+				// No exchange, but has useful data
+				senses: []sensePayload{
+					{
+						language:     commonv1.Language_LANGUAGE_CHINESE,
+						partOfSpeech: "conj.",
+						gloss:        "但是",
+					},
+				},
+				translation: "但是",
+			},
+			"because": {
+				// No exchange, but has useful data
+				senses: []sensePayload{
+					{
+						language:     commonv1.Language_LANGUAGE_CHINESE,
+						partOfSpeech: "conj.",
+						gloss:        "因为",
+					},
+				},
+				translation: "因为",
+			},
 			"run": {
-				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
-				translation: "v. 跑",
-				phonetics: []*dictv1.Phonetic{
-					{Ipa: "/rʌn/"},
-				},
-			},
-			"ran": {
-				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
-				translation: "v. 跑",
-				phonetics: []*dictv1.Phonetic{
-					{Ipa: "/ræn/"},
-				},
-			},
-			"running": {
-				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
-				translation: "v. 跑",
-				phonetics: []*dictv1.Phonetic{
-					{Ipa: "/ˈrʌnɪŋ/"},
-				},
-			},
-			"runs": {
-				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
-				translation: "v. 跑",
-				phonetics: []*dictv1.Phonetic{
-					{Ipa: "/rʌnz/"},
+				// Has exchange - should be in newWords if not known
+				exchange: "p:ran/d:run/i:running/3:runs",
+				senses: []sensePayload{
+					{
+						language:     commonv1.Language_LANGUAGE_CHINESE,
+						partOfSpeech: "v.",
+						gloss:        "跑",
+					},
 				},
 			},
 		},
 		knownForms: make(map[string]bool),
 	}
 
-	toImport, _ := enricher.GetMissingWords()
+	// First, test without registering known words
+	newWords, enrichmentWords, skipped := enricher.GetWordsToProcess()
 
-	// Should only create ONE Word object for lemma "run"
-	if len(toImport) != 1 {
-		t.Errorf("GetMissingWords() created %d Words, want 1 (should deduplicate by lemma)", len(toImport))
+	// "but" and "because" should be skipped (no exchange, not known)
+	// "run" should be in newWords (has exchange, not known)
+	if len(newWords) != 1 {
+		t.Errorf("Before registration: newWords length = %d, want 1", len(newWords))
+	}
+	if len(enrichmentWords) != 0 {
+		t.Errorf("Before registration: enrichmentWords length = %d, want 0", len(enrichmentWords))
 	}
 
-	if len(toImport) > 0 && toImport[0].Term != "run" {
-		t.Errorf("Word term = %q, want %q", toImport[0].Term, "run")
-	}
-}
-
-func TestGetMissingWords_PreferLemmaEnrichment(t *testing.T) {
-	// When both lemma and inflected forms exist, prefer lemma's enrichment
-	enricher := &ecdictEnricher{
-		entries: map[string]*ecdictEnrichment{
-			"run": {
-				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
-				translation: "v. 跑步（完整释义）",
-				phonetics: []*dictv1.Phonetic{
-					{Ipa: "/rʌn/"},
-				},
-			},
-			"running": {
-				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
-				translation: "v. 跑步（不完整）",
-				phonetics: []*dictv1.Phonetic{
-					{Ipa: "/ˈrʌnɪŋ/"},
-				},
-			},
-		},
-		knownForms: make(map[string]bool),
-	}
-
-	toImport, _ := enricher.GetMissingWords()
-
-	if len(toImport) != 1 {
-		t.Fatalf("GetMissingWords() created %d Words, want 1", len(toImport))
-	}
-
-	// Should use "run"'s enrichment (complete translation)
-	// We can't directly check translation, but we can verify the word was created
-	if toImport[0].Term != "run" {
-		t.Errorf("Word term = %q, want %q", toImport[0].Term, "run")
-	}
-}
-
-func TestGetMissingWords_SkipIfInWikidata(t *testing.T) {
-	enricher := &ecdictEnricher{
-		entries: map[string]*ecdictEnrichment{
-			"run": {
-				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
-				translation: "v. 跑",
-				phonetics: []*dictv1.Phonetic{
-					{Ipa: "/rʌn/"},
-				},
-			},
-		},
-		knownForms: map[string]bool{
-			"run": true, // Already in Wikidata
-		},
-	}
-
-	toImport, _ := enricher.GetMissingWords()
-
-	if len(toImport) != 0 {
-		t.Errorf("GetMissingWords() created %d Words, want 0 (should skip words in Wikidata)", len(toImport))
-	}
-}
-
-func TestMergeEnrichment_WithForms(t *testing.T) {
-	// Simulate a Wikidata word that has some forms but not all
-	wikidataWord := &dictv1.Word{
-		Term:     "run",
-		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-		Language: commonv1.Language_LANGUAGE_ENGLISH,
-		RelatedForms: []*dictv1.RelatedForm{
-			{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
-		},
-		Meanings: []*dictv1.Meaning{
-			{LexemeId: "L1234", Pos: "verb", Definitions: []*dictv1.Definition{
-				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move quickly"},
-			}},
-		},
-	}
-
-	// ECDICT enrichment with complete forms from exchange field
-	enrichment := &ecdictEnrichment{
-		exchange: "p:ran/d:run/i:running/3:runs",
-		senses: []sensePayload{
-			{language: commonv1.Language_LANGUAGE_CHINESE, partOfSpeech: "verb", gloss: "跑步"},
-		},
-	}
-
-	changed := mergeEnrichment(wikidataWord, enrichment)
-
-	if !changed {
-		t.Error("mergeEnrichment() should return true when forms are added")
-	}
-
-	// Check that new forms were added
-	formWords := make(map[string]bool)
-	for _, form := range wikidataWord.RelatedForms {
-		formWords[strings.ToLower(form.Term)] = true
-	}
-
-	expectedForms := []string{"running", "ran", "runs", "run"}
-	for _, expected := range expectedForms {
-		if !formWords[expected] {
-			t.Errorf("Expected form %q to be present, but it's missing", expected)
+	skippedCount := 0
+	for _, skip := range skipped {
+		if skip.reason == "no_exchange" {
+			skippedCount++
 		}
 	}
-
-	if len(wikidataWord.RelatedForms) != 4 {
-		t.Errorf("RelatedForms length = %d, want 4 (running, ran, runs, run)", len(wikidataWord.RelatedForms))
+	if skippedCount != 2 {
+		t.Errorf("Before registration: skipped (no_exchange) count = %d, want 2", skippedCount)
 	}
 
-	// Check that Chinese sense was also added
-	hasChinese := false
-	for _, meaning := range wikidataWord.Meanings {
-		for _, def := range meaning.Definitions {
-			if def.Language == commonv1.Language_LANGUAGE_CHINESE {
-				hasChinese = true
-				break
+	// Now register "but" and "because" as known words
+	enricher.RegisterKnownWords([]string{"but", "because"})
+
+	// Test again after registering
+	newWords, enrichmentWords, skipped = enricher.GetWordsToProcess()
+
+	// Now "but" and "because" should be in enrichmentWords
+	// "run" should still be in newWords (has exchange, not registered as known)
+	if len(newWords) != 1 {
+		t.Errorf("After registration: newWords length = %d, want 1", len(newWords))
+	}
+	if len(enrichmentWords) != 2 {
+		t.Errorf("After registration: enrichmentWords length = %d, want 2 (but, because)", len(enrichmentWords))
+	}
+
+	// Verify the enrichment words are correct
+	foundBut := false
+	foundBecause := false
+	for _, word := range enrichmentWords {
+		if word.Term == "but" {
+			foundBut = true
+			if len(word.Meanings) == 0 {
+				t.Error("'but' should have meanings")
+			}
+		}
+		if word.Term == "because" {
+			foundBecause = true
+			if len(word.Meanings) == 0 {
+				t.Error("'because' should have meanings")
 			}
 		}
 	}
-	if !hasChinese {
-		t.Error("Expected Chinese sense to be merged, but it's missing")
+	if !foundBut {
+		t.Error("'but' not found in enrichmentWords after registration")
 	}
-}
-
-func TestMergeEnrichment_NoDuplicateForms(t *testing.T) {
-	// Wikidata word already has all forms from ECDICT
-	wikidataWord := &dictv1.Word{
-		Term:     "run",
-		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-		Language: commonv1.Language_LANGUAGE_ENGLISH,
-		RelatedForms: []*dictv1.RelatedForm{
-			{Term: "ran", FormType: dictv1.FormType_FORM_TYPE_PAST},
-			{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
-			{Term: "runs", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
-		},
-		Meanings: []*dictv1.Meaning{
-			{LexemeId: "L1234", Pos: "verb"},
-		},
-	}
-
-	enrichment := &ecdictEnrichment{
-		exchange: "p:ran/d:run/i:running/3:runs",
-	}
-
-	changed := mergeEnrichment(wikidataWord, enrichment)
-
-	// Should return false because no new forms were added (all already exist)
-	if changed {
-		t.Error("mergeEnrichment() should return false when no new forms are added")
-	}
-
-	if len(wikidataWord.RelatedForms) != 3 {
-		t.Errorf("RelatedForms length = %d, want 3 (no duplicates)", len(wikidataWord.RelatedForms))
+	if !foundBecause {
+		t.Error("'because' not found in enrichmentWords after registration")
 	}
 }

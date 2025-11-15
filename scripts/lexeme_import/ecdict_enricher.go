@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,13 +26,10 @@ import (
 )
 
 type ecdictEnricher struct {
-	mu            sync.Mutex
-	entries       map[string]*ecdictEnrichment
-	knownForms    map[string]bool // Track all forms from Wikidata (lemmas + inflected forms)
-	total         int
-	applied       int64
-	skipped       int64
-	missingReport string
+	mu         sync.Mutex
+	entries    map[string]*ecdictEnrichment
+	knownForms map[string]bool // Track all forms from Wikidata (lemmas + inflected forms)
+	total      int
 }
 
 type ecdictEnrichment struct {
@@ -61,69 +57,10 @@ func newECDICTEnricher(cfg pipelineConfig) (*ecdictEnricher, error) {
 	}
 	log.Printf("[ecdict] ready: %d rows scanned, %d contain enrichment payloads", total, len(entries))
 	return &ecdictEnricher{
-		entries:       entries,
-		knownForms:    make(map[string]bool),
-		total:         total,
-		missingReport: cfg.ecdictMissingPath,
+		entries:    entries,
+		knownForms: make(map[string]bool),
+		total:      total,
 	}, nil
-}
-
-// RegisterWord registers a word and all its forms as known from Wikidata
-// This is used to track which words from ECDICT are actually missing from Wikidata
-func (e *ecdictEnricher) RegisterWord(lexeme *dictv1.Word) {
-	if e == nil || lexeme == nil {
-		return
-	}
-
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	// Register the lemma
-	lemma := strings.ToLower(strings.TrimSpace(lemmaText(lexeme)))
-	if lemma != "" {
-		e.knownForms[lemma] = true
-	}
-
-	// Register all forms
-	for _, form := range lexeme.GetRelatedForms() {
-		word := strings.ToLower(strings.TrimSpace(form.GetTerm()))
-		if word != "" {
-			e.knownForms[word] = true
-		}
-	}
-}
-
-func (e *ecdictEnricher) Enrich(lexeme *dictv1.Word) {
-	if lexeme == nil {
-		return
-	}
-	lemma := strings.ToLower(strings.TrimSpace(lemmaText(lexeme)))
-	if lemma == "" {
-		return
-	}
-
-	e.mu.Lock()
-	enrichment, ok := e.entries[lemma]
-	if ok {
-		delete(e.entries, lemma)
-	}
-	e.mu.Unlock()
-	if !ok {
-		atomic.AddInt64(&e.skipped, 1)
-		return
-	}
-
-	if mergeEnrichment(lexeme, enrichment) {
-		atomic.AddInt64(&e.applied, 1)
-	} else {
-		atomic.AddInt64(&e.skipped, 1)
-	}
-}
-
-type missingWordEntry struct {
-	word        string
-	translation string
-	exchange    string
 }
 
 type skippedWordEntry struct {
@@ -221,161 +158,20 @@ func (e *ecdictEnricher) GetWordsToProcess() ([]*dictv1.Word, []*dictv1.Word, []
 	return newWords, enrichmentWords, skipped
 }
 
-// GetMissingWords returns a slice of Word objects to import from ECDICT
-// ECDICT data structure:
-// - Lemma entries (e.g., "run") have complete exchange with all forms: "p:ran/i:running/d:run/3:runs"
-// - Inflected entries (e.g., "ran") only point to lemma: "0:run/1:p"
-// Strategy:
-// 1. Only process entries where current word IS the lemma (no "0:" or "0:self")
-// 2. Skip entries that point to a different lemma (inflected forms)
-// 3. This naturally avoids duplicates since only lemma entries are processed
-//
-// Deprecated: Use GetWordsToProcess instead
-func (e *ecdictEnricher) GetMissingWords() ([]*dictv1.Word, []skippedWordEntry) {
+// RegisterKnownWords marks words as existing in the database (from Wikidata or previous imports)
+// This allows enrichment of words without exchange data
+func (e *ecdictEnricher) RegisterKnownWords(words []string) {
 	if e == nil {
-		return nil, nil
+		return
 	}
-
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	var toImport []*dictv1.Word
-	var skipped []skippedWordEntry
-
-	for word, enrichment := range e.entries {
-		// Skip if already in Wikidata
-		if e.knownForms[word] {
-			continue
-		}
-
-		// Skip if no exchange
-		if enrichment.exchange == "" {
-			skipped = append(skipped, skippedWordEntry{
-				word:        word,
-				reason:      "no_exchange",
-				translation: enrichment.translation,
-				exchange:    enrichment.exchange,
-			})
-			continue
-		}
-
-		// Skip if no phonetic (required for new words)
-		if len(enrichment.phonetics) == 0 {
-			skipped = append(skipped, skippedWordEntry{
-				word:        word,
-				reason:      "no_phonetic",
-				translation: enrichment.translation,
-				exchange:    enrichment.exchange,
-			})
-			continue
-		}
-
-		// Parse exchange to determine if this is a lemma or inflected form
-		lemma, forms := parseExchange(word, enrichment.exchange)
-
-		// Case 1: No "0:" marker means this IS the lemma
-		// Example: "run" -> "p:ran/i:running/3:runs"
-		if lemma == "" {
-			// This word is its own lemma, use it directly
-			wordObj := buildWordFromECDICT(word, forms, enrichment)
-			toImport = append(toImport, wordObj)
-			continue
-		}
-
-		// Case 2: Has "0:" marker pointing to self (0:run for word "run")
-		// This is also a lemma entry
-		if strings.EqualFold(lemma, word) {
-			wordObj := buildWordFromECDICT(word, forms, enrichment)
-			toImport = append(toImport, wordObj)
-			continue
-		}
-
-		// Case 3: Has "0:" pointing to different word (e.g., "ran" -> "0:run")
-		// This is an inflected form, skip it (the lemma entry will include it)
-		skipped = append(skipped, skippedWordEntry{
-			word:        word,
-			reason:      "inflected_form",
-			translation: enrichment.translation,
-			exchange:    enrichment.exchange,
-		})
+	for _, word := range words {
+		key := strings.ToLower(word)
+		e.knownForms[key] = true
 	}
-
-	return toImport, skipped
-}
-
-func (e *ecdictEnricher) ReportUnused() {
-	if e == nil {
-		return
-	}
-	e.mu.Lock()
-	// Filter out words that exist as forms in Wikidata (not just lemmas)
-	leftover := make([]missingWordEntry, 0, len(e.entries))
-	filteredAsForm := 0
-	for word, enrichment := range e.entries {
-		// Check if this word exists as a form (lemma or inflected form) in Wikidata
-		if e.knownForms[word] {
-			filteredAsForm++
-			continue
-		}
-		leftover = append(leftover, missingWordEntry{
-			word:        word,
-			translation: enrichment.translation,
-			exchange:    enrichment.exchange,
-		})
-	}
-	e.mu.Unlock()
-
-	log.Printf("[ecdict] applied=%d skipped=%d unused=%d filtered_as_form=%d (out of %d)",
-		e.applied, e.skipped, len(leftover), filteredAsForm, e.total)
-
-	if len(leftover) == 0 {
-		return
-	}
-
-	// Sort by word
-	sort.Slice(leftover, func(i, j int) bool {
-		return leftover[i].word < leftover[j].word
-	})
-
-	if e.missingReport == "" {
-		show := leftover
-		if len(show) > 10 {
-			show = show[:10]
-		}
-		for _, entry := range show {
-			log.Printf("[ecdict] unused lemma: %s", entry.word)
-		}
-		if len(leftover) > len(show) {
-			log.Printf("[ecdict] ... plus %d more (set -ecdict-missing-report to persist)", len(leftover)-len(show))
-		}
-		return
-	}
-
-	path, err := expandHome(e.missingReport)
-	if err != nil {
-		log.Printf("[ecdict] resolve report path failed: %v", err)
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		log.Printf("[ecdict] create report dir failed: %v", err)
-		return
-	}
-
-	// Build TSV output with header
-	var builder strings.Builder
-	builder.WriteString("word\ttranslation\texchange\n")
-	for _, entry := range leftover {
-		// Clean up translation and exchange for TSV (replace tabs and newlines with spaces)
-		translation := strings.ReplaceAll(strings.ReplaceAll(entry.translation, "\t", " "), "\n", " ")
-		exchange := strings.ReplaceAll(strings.ReplaceAll(entry.exchange, "\t", " "), "\n", " ")
-		builder.WriteString(fmt.Sprintf("%s\t%s\t%s\n", entry.word, translation, exchange))
-	}
-
-	if err := os.WriteFile(path, []byte(builder.String()), 0o644); err != nil {
-		log.Printf("[ecdict] write missing report failed: %v", err)
-		return
-	}
-	log.Printf("[ecdict] wrote %d unused lemmas to %s", len(leftover), path)
+	log.Printf("[ecdict] Registered %d known words for enrichment", len(words))
 }
 
 func loadECDICTEntries(cfg pipelineConfig) (map[string]*ecdictEnrichment, int, error) {
@@ -445,52 +241,6 @@ func loadECDICTEntries(cfg pipelineConfig) (map[string]*ecdictEnrichment, int, e
 	return entries, total, nil
 }
 
-func mergeEnrichment(lexeme *dictv1.Word, enrich *ecdictEnrichment) bool {
-	if enrich == nil || enrich.isEmpty() {
-		return false
-	}
-	changed := false
-
-	if len(enrich.phonetics) > 0 {
-		if addPhonetics(lexeme, enrich.phonetics) {
-			changed = true
-		}
-	}
-	if len(enrich.categories) > 0 {
-		if addCategories(lexeme, enrich.categories) {
-			changed = true
-		}
-	}
-	// Add domain markers as categories with "domain:" prefix
-	// Entity types already have "entity:" prefix, don't add "domain:" to them
-	if len(enrich.domains) > 0 {
-		domainCategories := make([]string, 0, len(enrich.domains))
-		for _, domain := range enrich.domains {
-			// If domain already has a prefix like "entity:", use it as-is
-			if strings.HasPrefix(domain, "entity:") || strings.HasPrefix(domain, "attr:") {
-				domainCategories = append(domainCategories, domain)
-			} else {
-				domainCategories = append(domainCategories, "domain:"+domain)
-			}
-		}
-		if addCategories(lexeme, domainCategories) {
-			changed = true
-		}
-	}
-	if len(enrich.senses) > 0 && addSenses(lexeme, enrich.senses) {
-		changed = true
-	}
-	if enrich.exchange != "" {
-		_, forms := parseExchange(lexeme.Term, enrich.exchange)
-		if len(forms) > 0 && addRelatedForms(lexeme, forms) {
-			changed = true
-		}
-	}
-	return changed
-}
-
-// Helper functions reused from legacy importer --------------------------------
-
 type wordRecord struct {
 	Word        string
 	Phonetic    sql.NullString
@@ -523,151 +273,6 @@ func buildEnrichment(r wordRecord) *ecdictEnrichment {
 
 func (e *ecdictEnrichment) isEmpty() bool {
 	return len(e.phonetics) == 0 && len(e.categories) == 0 && len(e.domains) == 0 && len(e.senses) == 0
-}
-
-func addPhonetics(lexeme *dictv1.Word, additions []*dictv1.Phonetic) bool {
-	existing := make(map[string]struct{}, len(lexeme.Phonetics))
-	for _, p := range lexeme.Phonetics {
-		existing[phoneticKey(p)] = struct{}{}
-	}
-	changed := false
-	for _, add := range additions {
-		key := phoneticKey(add)
-		if _, ok := existing[key]; ok {
-			continue
-		}
-		existing[key] = struct{}{}
-		lexeme.Phonetics = append(lexeme.Phonetics, &dictv1.Phonetic{
-			Ipa:     strings.TrimSpace(add.GetIpa()),
-			Dialect: strings.TrimSpace(add.GetDialect()),
-		})
-		changed = true
-	}
-	return changed
-}
-
-func addRelatedForms(word *dictv1.Word, additions []*dictv1.RelatedForm) bool {
-	if word == nil || len(additions) == 0 {
-		return false
-	}
-
-	existing := make(map[string]int, len(word.GetRelatedForms()))
-	for idx, form := range word.GetRelatedForms() {
-		if key := relatedFormKey(form); key != "" {
-			existing[key] = idx
-		}
-	}
-
-	changed := false
-	for _, add := range additions {
-		if add == nil {
-			continue
-		}
-		term := strings.TrimSpace(add.GetTerm())
-		if term == "" {
-			continue
-		}
-		key := relatedFormKey(add)
-		if key == "" {
-			continue
-		}
-		if idx, ok := existing[key]; ok {
-			if add.GetIrregular() && !word.RelatedForms[idx].GetIrregular() {
-				word.RelatedForms[idx].Irregular = true
-				changed = true
-			}
-			continue
-		}
-		word.RelatedForms = append(word.RelatedForms, &dictv1.RelatedForm{
-			Term:      term,
-			FormType:  add.GetFormType(),
-			Irregular: add.GetIrregular(),
-		})
-		existing[key] = len(word.RelatedForms) - 1
-		changed = true
-	}
-	return changed
-}
-
-func addCategories(lexeme *dictv1.Word, categories []string) bool {
-	if len(categories) == 0 {
-		return false
-	}
-	existing := make(map[string]struct{}, len(lexeme.Categories))
-	for _, cat := range lexeme.Categories {
-		existing[strings.ToLower(cat)] = struct{}{}
-	}
-	changed := false
-	for _, cat := range categories {
-		norm := strings.ToLower(strings.TrimSpace(cat))
-		if norm == "" {
-			continue
-		}
-		if _, ok := existing[norm]; ok {
-			continue
-		}
-		existing[norm] = struct{}{}
-		lexeme.Categories = append(lexeme.Categories, cat)
-		changed = true
-	}
-	return changed
-}
-
-func addSenses(lexeme *dictv1.Word, additions []sensePayload) bool {
-	if lexeme == nil || len(additions) == 0 {
-		return false
-	}
-	existing := make(map[string]struct{})
-	for _, meaning := range lexeme.GetMeanings() {
-		posKey := normalizePOSForMatching(meaning.GetPos())
-		for _, def := range meaning.GetDefinitions() {
-			existing[senseKey(def.GetLanguage(), posKey, def.GetGloss())] = struct{}{}
-		}
-	}
-
-	changed := false
-	for _, add := range additions {
-		pos := strings.TrimSpace(add.partOfSpeech)
-		key := senseKey(add.language, normalizePOSForMatching(pos), add.gloss)
-		if _, ok := existing[key]; ok {
-			continue
-		}
-		meaning := ensureMeaning(lexeme, pos)
-		meaning.Definitions = append(meaning.Definitions, &dictv1.Definition{
-			Language: add.language,
-			Gloss:    add.gloss,
-		})
-		existing[key] = struct{}{}
-		changed = true
-	}
-	return changed
-}
-
-func ensureMeaning(word *dictv1.Word, pos string) *dictv1.Meaning {
-	if word == nil {
-		return nil
-	}
-	pos = strings.TrimSpace(pos)
-
-	for _, meaning := range word.GetMeanings() {
-		if strings.EqualFold(strings.TrimSpace(meaning.GetPos()), pos) {
-			return meaning
-		}
-	}
-
-	norm := normalizePOSForMatching(pos)
-	for _, meaning := range word.GetMeanings() {
-		if normalizePOSForMatching(meaning.GetPos()) == norm {
-			return meaning
-		}
-	}
-
-	meaning := &dictv1.Meaning{
-		LexemeId: generateTemporaryLexemeID(),
-		Pos:      pos,
-	}
-	word.Meanings = append(word.Meanings, meaning)
-	return meaning
 }
 
 // generateTemporaryLexemeID generates a unique temporary lexeme ID with TL prefix
@@ -959,28 +564,6 @@ func tryExtractPOS(line string) (string, string) {
 		}
 	}
 	return "", ""
-}
-
-// removeDomainMarkers removes domain/category markers like [计], [法], [医], etc.
-// These markers indicate the domain (computing, law, medicine) but are not part-of-speech tags
-func removeDomainMarkers(s string) string {
-	s = strings.TrimSpace(s)
-	for {
-		// Find patterns like [x], [xx], [xxx] at the beginning
-		if len(s) < 3 {
-			break
-		}
-		if s[0] != '[' {
-			break
-		}
-		closeIdx := strings.Index(s, "]")
-		if closeIdx == -1 || closeIdx > 10 { // Domain markers are usually short
-			break
-		}
-		// Remove the marker and continue
-		s = strings.TrimSpace(s[closeIdx+1:])
-	}
-	return s
 }
 
 // extractDomainMarkers extracts domain/category markers like [计], [法], [医], etc.

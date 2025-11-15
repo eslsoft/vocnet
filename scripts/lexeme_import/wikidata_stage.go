@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/schollz/progressbar/v3"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
+	"github.com/schollz/progressbar/v3"
 )
 
 type wikidataStage struct {
@@ -26,6 +26,8 @@ type wikidataStage struct {
 	requestTimeout time.Duration
 	report         *ImportReport
 	reportMu       sync.Mutex // Protects concurrent access to report
+	importedWords  []string   // Track all successfully imported words (lemmas + forms)
+	importedMu     sync.Mutex // Protects importedWords
 }
 
 func newWikidataStage(cfg pipelineConfig) *wikidataStage {
@@ -227,6 +229,17 @@ func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServic
 	return s.report, nil
 }
 
+// GetImportedWords returns the list of all successfully imported words (lemmas + forms)
+func (s *wikidataStage) GetImportedWords() []string {
+	s.importedMu.Lock()
+	defer s.importedMu.Unlock()
+
+	// Return a copy to avoid race conditions
+	result := make([]string, len(s.importedWords))
+	copy(result, s.importedWords)
+	return result
+}
+
 func (s *wikidataStage) loadLexemes() ([]WikidataLexeme, error) {
 	path, err := expandHome(s.filePath)
 	if err != nil {
@@ -290,10 +303,37 @@ func (s *wikidataStage) createOrUpdate(ctx context.Context, client dictv1connect
 			return fmt.Errorf("update merged word: %w", updateErr)
 		}
 
+		// Record imported word and its forms
+		s.recordImportedWord(merged)
+
 		return nil
 	}
 	log.Printf("[wikidata] Created word %s with %d meanings", lemmaText(resp.Msg), len(resp.Msg.GetMeanings()))
+
+	// Record imported word and its forms
+	s.recordImportedWord(resp.Msg)
+
 	return nil
+}
+
+// recordImportedWord records the lemma and all its forms as successfully imported
+func (s *wikidataStage) recordImportedWord(word *dictv1.Word) {
+	if word == nil {
+		return
+	}
+
+	s.importedMu.Lock()
+	defer s.importedMu.Unlock()
+
+	// Add lemma
+	s.importedWords = append(s.importedWords, word.Term)
+
+	// Add all related forms
+	for _, form := range word.RelatedForms {
+		if form.Term != "" {
+			s.importedWords = append(s.importedWords, form.Term)
+		}
+	}
 }
 
 // mergeWords merges newWord's definitions and forms into existingWord

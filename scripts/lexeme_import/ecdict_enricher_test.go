@@ -5,30 +5,6 @@ import (
 	"testing"
 )
 
-func TestRemoveDomainMarkers(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"[计] 碱化", "碱化"},
-		{"[法] 社会主义的", "社会主义的"},
-		{"[医] 氡, 镭射气", "氡, 镭射气"},
-		{"[机] [计] 双重标记", "双重标记"},
-		{"no marker here", "no marker here"},
-		{"[verylongmarker] should not remove", "[verylongmarker] should not remove"},
-		{"", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := removeDomainMarkers(tt.input)
-			if result != tt.expected {
-				t.Errorf("removeDomainMarkers(%q) = %q; want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestNormalizePOS(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -85,7 +61,7 @@ func TestTryExtractPOS(t *testing.T) {
 		{"v. to run", "verb", "to run"},
 		{"adj. beautiful", "adjective", "beautiful"},
 		{"vt. to eat something", "verb", "to eat something"},
-		{"[计] n. computer term", "", ""}, // No POS extraction, keeps domain markers
+		{"[计] n. computer term", "", ""},                      // No POS extraction, keeps domain markers
 		{"n. [计] computer term", "noun", "[计] computer term"}, // Extracts POS, keeps domain markers in rest
 		{"no pos here", "", ""},
 		{"", "", ""},

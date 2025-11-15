@@ -116,17 +116,13 @@ func (u *wordUsecase) Lookup(ctx context.Context, surface string, language entit
 	lemma, err := u.lemmas.GetByWID(ctx, wid)
 	if err == nil {
 		return u.buildWordEntry(ctx, lemma, surface)
-	}
-	if err != nil && !errors.Is(err, entity.ErrWordNotFound) {
+	} else if !errors.Is(err, entity.ErrWordNotFound) {
 		return nil, err
 	}
 
 	lexeme, err := u.lexemes.Lookup(ctx, surface, language)
 	if err != nil || lexeme == nil {
 		return nil, err
-	}
-	if lexeme.LemmaID == 0 {
-		return nil, nil
 	}
 
 	lemma, err = u.lemmas.GetByID(ctx, lexeme.LemmaID)

@@ -31,18 +31,16 @@ type stage interface {
 }
 
 type pipelineConfig struct {
-	apiBase           string
-	batchSize         int
-	requestTimeout    time.Duration
-	wikidataFile      string
-	wikidataLimit     int
-	runWikidata       bool
-	useECDICT         bool
-	ecdictURL         string
-	ecdictCacheDir    string
-	ecdictNoCache     bool
-	ecdictMissingPath string
-	wordNetPath       string
+	apiBase        string
+	batchSize      int
+	requestTimeout time.Duration
+	wikidataFile   string
+	wikidataLimit  int
+	runWikidata    bool
+	ecdictURL      string
+	ecdictCacheDir string
+	ecdictNoCache  bool
+	wordNetPath    string
 }
 
 func main() {
@@ -63,11 +61,9 @@ func parseFlags() pipelineConfig {
 	flag.IntVar(&cfg.wikidataLimit, "wikidata-limit", defaultWikidataLimit, "Optional limit of Wikidata lexemes to import (0 = no limit)")
 	flag.BoolVar(&cfg.runWikidata, "wikidata", true, "Enable Wikidata ingestion stage")
 
-	flag.BoolVar(&cfg.useECDICT, "ecdict", true, "Enable ECDICT enrichment (applied before create)")
 	flag.StringVar(&cfg.ecdictURL, "ecdict-url", defaultECDictURL, "ECDICT SQLite download URL")
 	flag.StringVar(&cfg.ecdictCacheDir, "ecdict-cache", defaultECDictCacheDir, "ECDICT cache directory (default: user cache dir/vocnet)")
 	flag.BoolVar(&cfg.ecdictNoCache, "ecdict-no-cache", false, "Force re-download of ECDICT archive")
-	flag.StringVar(&cfg.ecdictMissingPath, "ecdict-missing-report", defaultMissingReport, "Optional file to record lemmas missing from Wikidata (\"\" = log only)")
 
 	flag.StringVar(&cfg.wordNetPath, "wordnet-path", defaultWordNetDataPath, "Optional WordNet data path (stage pending implementation)")
 
@@ -91,18 +87,6 @@ func runPipeline(cfg pipelineConfig) error {
 	fmt.Printf("\n📝 Logs are being written to: %s\n", logFile.Name())
 	fmt.Printf("   (Only warnings and errors will be shown on screen)\n\n")
 
-	// Load ECDICT enricher if enabled
-	var enricher *ecdictEnricher
-	if cfg.useECDICT {
-		var err error
-		enricher, err = newECDICTEnricher(cfg)
-		if err != nil {
-			return fmt.Errorf("load ECDICT enrichment: %w", err)
-		}
-		log.Printf("[pipeline] ECDICT enricher loaded with %d entries", len(enricher.entries))
-		fmt.Printf("✓ ECDICT enricher loaded with %d entries\n", len(enricher.entries))
-	}
-
 	httpClient := &http.Client{
 		Timeout: cfg.requestTimeout * time.Duration(cfg.batchSize),
 		Transport: &http.Transport{
@@ -117,6 +101,7 @@ func runPipeline(cfg pipelineConfig) error {
 	ctx := context.Background()
 
 	var reports []*ImportReport
+	var wikidataStage *wikidataStage
 
 	// Stage 1: Wikidata import (without ECDICT enrichment)
 	if cfg.runWikidata {
@@ -124,7 +109,7 @@ func runPipeline(cfg pipelineConfig) error {
 		log.Println("STAGE 1: Wikidata Import")
 		log.Println(strings.Repeat("=", 80))
 
-		wikidataStage := newWikidataStage(cfg)
+		wikidataStage = newWikidataStage(cfg)
 		start := time.Now()
 		report, err := wikidataStage.Run(ctx, client)
 		if err != nil {
@@ -132,19 +117,22 @@ func runPipeline(cfg pipelineConfig) error {
 		}
 		log.Printf("[wikidata] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
 		reports = append(reports, report)
-
-		// Register Wikidata words with ECDICT enricher for deduplication
-		if enricher != nil {
-			log.Println("[pipeline] Registering Wikidata words with ECDICT enricher...")
-			// We need to get the words from wikidata to register them
-			// Since we don't have direct access, we'll rely on the enricher
-			// being populated by the lookup mechanism
-			log.Println("[pipeline] Wikidata words will be excluded from ECDICT import based on term matching")
-		}
 	}
 
 	// Stage 2: ECDICT import (new words only)
+	enricher, err := newECDICTEnricher(cfg)
+	if err != nil {
+		return err
+	}
+
 	if enricher != nil {
+		// Register known words from Wikidata stage
+		if wikidataStage != nil {
+			importedWords := wikidataStage.GetImportedWords()
+			log.Printf("[ecdict] Registering %d words from Wikidata for enrichment", len(importedWords))
+			enricher.RegisterKnownWords(importedWords)
+		}
+
 		log.Println("\n" + strings.Repeat("=", 80))
 		log.Println("STAGE 2: ECDICT Import")
 		log.Println(strings.Repeat("=", 80))
