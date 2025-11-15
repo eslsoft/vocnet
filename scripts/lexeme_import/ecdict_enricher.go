@@ -111,6 +111,7 @@ func (e *ecdictEnricher) GetWordsToProcess() ([]*dictv1.Word, []*dictv1.Word, []
 
 		// Build word object for enrichment (if has useful data)
 		var wordObj *dictv1.Word
+		isInflectedForm := false
 
 		if hasExchange {
 			// Has exchange: check if it's a lemma or inflected form
@@ -121,14 +122,11 @@ func (e *ecdictEnricher) GetWordsToProcess() ([]*dictv1.Word, []*dictv1.Word, []
 				// Case 2: Has "0:" marker pointing to self - also a lemma
 				wordObj = buildWordFromECDICT(word, forms, enrichment)
 			} else {
-				// Case 3: Has "0:" pointing to different word - inflected form, skip
-				skipped = append(skipped, skippedWordEntry{
-					word:        word,
-					reason:      "inflected_form",
-					translation: enrichment.translation,
-					exchange:    enrichment.exchange,
-				})
-				continue
+				// Case 3: Has "0:" pointing to different word - inflected form
+				// But still allow enrichment if word exists in database as a lemma
+				isInflectedForm = true
+				// Build word object with enrichment data only (no forms from exchange)
+				wordObj = buildWordFromECDICT(word, nil, enrichment)
 			}
 		} else {
 			// No exchange: build minimal word for enrichment only
@@ -137,11 +135,20 @@ func (e *ecdictEnricher) GetWordsToProcess() ([]*dictv1.Word, []*dictv1.Word, []
 
 		// Determine if this word is in Wikidata
 		if e.knownForms[word] {
-			// Word exists: add to enrichment list (even without exchange)
+			// Word exists: add to enrichment list (even if it's an inflected form in ECDICT)
 			enrichmentWords = append(enrichmentWords, wordObj)
 		} else {
-			// Word doesn't exist: only add to newWords if it has exchange
-			if hasExchange {
+			// Word doesn't exist in database
+			if isInflectedForm {
+				// Inflected form not in database: skip (don't create new words for inflected forms)
+				skipped = append(skipped, skippedWordEntry{
+					word:        word,
+					reason:      "inflected_form",
+					translation: enrichment.translation,
+					exchange:    enrichment.exchange,
+				})
+			} else if hasExchange {
+				// Lemma with exchange: add to newWords
 				newWords = append(newWords, wordObj)
 			} else {
 				// No exchange: cannot create new word, skip
