@@ -216,10 +216,38 @@ func meaningsToLexemes(pb *dictv1.Word, wordLang entity.Language, lemma string) 
 		return nil
 	}
 
-	lexemes := make([]*entity.Lexeme, 0, len(meanings))
+	// Use map to deduplicate by external_id and track lexemes
+	lexemeMap := make(map[string]*entity.Lexeme)
+	lexemeOrder := make([]string, 0, len(meanings))
+
 	for _, meaning := range meanings {
+		externalID := strings.TrimSpace(meaning.GetLexemeId())
+
+		// Check if we've already processed this external_id
+		if existingLex, exists := lexemeMap[externalID]; exists {
+			// Merge senses into existing lexeme instead of creating duplicate
+			if len(meaning.GetDefinitions()) > 0 {
+				for i, def := range meaning.GetDefinitions() {
+					sense := entity.LexemeSense{
+						Language: FromPbLanguage(def.GetLanguage()),
+						Gloss:    def.GetGloss(),
+					}
+					if i == 0 && len(meaning.GetExamples()) > 0 {
+						for _, ex := range meaning.GetExamples() {
+							sense.Examples = append(sense.Examples, entity.SenseExample{
+								Text: ex.GetText(),
+							})
+						}
+					}
+					existingLex.Senses = append(existingLex.Senses, sense)
+				}
+			}
+			continue
+		}
+
+		// Create new lexeme
 		lex := &entity.Lexeme{
-			ExternalID:   meaning.GetLexemeId(),
+			ExternalID:   externalID,
 			Language:     wordLang,
 			Lemma:        lemma,
 			PartOfSpeech: meaning.GetPos(),
@@ -257,7 +285,15 @@ func meaningsToLexemes(pb *dictv1.Word, wordLang entity.Language, lemma string) 
 				lex.Senses = append(lex.Senses, sense)
 			}
 		}
-		lexemes = append(lexemes, lex)
+
+		lexemeMap[externalID] = lex
+		lexemeOrder = append(lexemeOrder, externalID)
+	}
+
+	// Convert map back to slice, preserving order
+	lexemes := make([]*entity.Lexeme, 0, len(lexemeOrder))
+	for _, externalID := range lexemeOrder {
+		lexemes = append(lexemes, lexemeMap[externalID])
 	}
 
 	return lexemes

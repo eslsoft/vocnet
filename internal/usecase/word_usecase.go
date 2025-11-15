@@ -79,7 +79,11 @@ func (u *wordUsecase) UpdateLemma(ctx context.Context, lemma *entity.Lemma) (*en
 	oldLexemes, err := u.lexemes.ListByLemmaID(ctx, updated.ID)
 	if err == nil {
 		for _, lex := range oldLexemes {
-			_ = u.lexemes.Delete(ctx, lex.ID)
+			if delErr := u.lexemes.Delete(ctx, lex.ID); delErr != nil {
+				// Log but don't fail - lexeme might already be deleted or in use
+				// The replaceLexemes will handle conflicts appropriately
+				continue
+			}
 		}
 	}
 	if err := u.replaceLexemes(ctx, updated, payload.Lexemes); err != nil {
@@ -199,7 +203,41 @@ func (u *wordUsecase) replaceLexemes(ctx context.Context, lemma *entity.Lemma, l
 		if strings.TrimSpace(payload.ExternalID) == "" {
 			return fmt.Errorf("lexeme external_id is required")
 		}
-		if _, err := u.lexemes.Create(ctx, &payload); err != nil {
+
+		// Try to create the lexeme
+		_, err := u.lexemes.Create(ctx, &payload)
+		if err != nil {
+			// If lexeme already exists, try to find and update it
+			if errors.Is(err, entity.ErrDuplicateLexeme) {
+				// Query for existing lexeme by external_id
+				query := &repository.ListLexemeQuery{
+					Pagination: repository.Pagination{
+						PageNo:   1,
+						PageSize: 1,
+					},
+					FilterOrder: repository.FilterOrder{
+						Filter: fmt.Sprintf(`lexeme_id in ["%s"]`, payload.ExternalID),
+					},
+				}
+				existing, _, listErr := u.lexemes.List(ctx, query)
+				if listErr != nil {
+					// Query failed - log and return error
+					return fmt.Errorf("failed to query existing lexeme (external_id: %s, POS: %s): %v, original error: %w", payload.ExternalID, payload.PartOfSpeech, listErr, err)
+				}
+				if len(existing) == 0 {
+					// Lexeme not found by query but DB says it exists
+					// This might be a race condition or the lexeme belongs to a different lemma
+					// Try to skip this lexeme and continue
+					return fmt.Errorf("lexeme exists but not found by query (external_id: %s, POS: %s): %w", payload.ExternalID, payload.PartOfSpeech, err)
+				}
+
+				// Update the existing lexeme with new data
+				payload.ID = existing[0].ID
+				if _, updateErr := u.lexemes.Update(ctx, &payload); updateErr != nil {
+					return fmt.Errorf("failed to update existing lexeme (external_id: %s, POS: %s): %w", payload.ExternalID, payload.PartOfSpeech, updateErr)
+				}
+				continue
+			}
 			return fmt.Errorf("failed to create lexeme (POS: %s): %w", payload.PartOfSpeech, err)
 		}
 	}
