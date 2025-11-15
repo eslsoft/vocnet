@@ -36,18 +36,22 @@ func (s *DictServiceServer) CreateWord(ctx context.Context, req *connect.Request
 	}
 
 	// Convert proto to entity
-	entityWord := mapping.ToEntityWord(req.Msg.GetWord())
-	if entityWord == nil {
+	entityLemma := mapping.ToEntityLemma(req.Msg.GetWord())
+	if entityLemma == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid word")
 	}
 
-	// Create word via usecase
-	created, err := s.wordUC.Create(ctx, entityWord)
+	created, err := s.wordUC.CreateLemma(ctx, entityLemma)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 
-	return connect.NewResponse(mapping.ToPbWord(created)), nil
+	entry := &entity.WordEntry{
+		QueriedTerm:     created.Text,
+		Lemma:           created,
+		QueriedFormType: entity.LexemeFormTypeLemma,
+	}
+	return connect.NewResponse(mapping.ToPbWord(entry)), nil
 }
 
 func (s *DictServiceServer) UpdateWord(ctx context.Context, req *connect.Request[dictv1.Word]) (*connect.Response[dictv1.Word], error) {
@@ -59,33 +63,43 @@ func (s *DictServiceServer) UpdateWord(ctx context.Context, req *connect.Request
 	}
 
 	// Convert proto to entity
-	entityWord := mapping.ToEntityWord(req.Msg)
-	if entityWord == nil {
+	entityLemma := mapping.ToEntityLemma(req.Msg)
+	if entityLemma == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid word")
 	}
 
 	// Update word via usecase
-	updated, err := s.wordUC.Update(ctx, entityWord)
+	updated, err := s.wordUC.UpdateLemma(ctx, entityLemma)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 
-	return connect.NewResponse(mapping.ToPbWord(updated)), nil
+	entry := &entity.WordEntry{
+		QueriedTerm:     updated.Text,
+		Lemma:           updated,
+		QueriedFormType: entity.LexemeFormTypeLemma,
+	}
+	return connect.NewResponse(mapping.ToPbWord(entry)), nil
 }
 
 func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[dictv1.WordIDRequest]) (*connect.Response[dictv1.Word], error) {
 	if req.Msg == nil {
 		return nil, status.Error(codes.InvalidArgument, "word id required")
 	}
-	word, err := s.wordUC.Get(ctx, req.Msg.GetWordId())
+	lemma, err := s.wordUC.GetLemma(ctx, req.Msg.GetWordId())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
-	return connect.NewResponse(mapping.ToPbWord(word)), nil
+	entry := &entity.WordEntry{
+		QueriedTerm:     lemma.Text,
+		Lemma:           lemma,
+		QueriedFormType: entity.LexemeFormTypeLemma,
+	}
+	return connect.NewResponse(mapping.ToPbWord(entry)), nil
 }
 
 func (s *DictServiceServer) ListWords(ctx context.Context, req *connect.Request[dictv1.ListWordsRequest]) (*connect.Response[dictv1.ListWordsResponse], error) {
-	filter := &repository.ListWordGroupQuery{
+	filter := &repository.ListLemmaQuery{
 		Pagination: repository.Pagination{
 			PageNo:   1,
 			PageSize: 20,
@@ -110,7 +124,7 @@ func (s *DictServiceServer) ListWords(ctx context.Context, req *connect.Request[
 		}
 	}
 
-	words, total, err := s.wordUC.List(ctx, filter)
+	entries, total, err := s.wordUC.List(ctx, filter)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -129,8 +143,8 @@ func (s *DictServiceServer) ListWords(ctx context.Context, req *connect.Request[
 			PageNo: filter.PageNo,
 		},
 	}
-	for _, word := range words {
-		resp.Words = append(resp.Words, mapping.ToPbWord(word))
+	for _, entry := range entries {
+		resp.Words = append(resp.Words, mapping.ToPbWord(entry))
 	}
 
 	return connect.NewResponse(resp), nil
@@ -140,11 +154,11 @@ func (s *DictServiceServer) LookupWord(ctx context.Context, req *connect.Request
 	if req.Msg == nil || strings.TrimSpace(req.Msg.GetWord()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "word text required")
 	}
-	word, err := s.wordUC.Lookup(ctx, req.Msg.GetWord(), entity.LanguageEnglish)
+	entry, err := s.wordUC.Lookup(ctx, req.Msg.GetWord(), entity.LanguageEnglish)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
-	return connect.NewResponse(mapping.ToPbWord(word)), nil
+	return connect.NewResponse(mapping.ToPbWord(entry)), nil
 }
 
 func (s *DictServiceServer) DeleteWord(ctx context.Context, req *connect.Request[dictv1.WordIDRequest]) (*connect.Response[emptypb.Empty], error) {
@@ -156,7 +170,7 @@ func (s *DictServiceServer) DeleteWord(ctx context.Context, req *connect.Request
 	}
 
 	// Delete word via usecase
-	err := s.wordUC.Delete(ctx, req.Msg.GetWordId())
+	err := s.wordUC.DeleteLemma(ctx, req.Msg.GetWordId())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}

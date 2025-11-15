@@ -32,7 +32,7 @@ type LexemeRepository interface {
 	// A surface term can map to multiple lexemes (e.g., "learning" can be both a verb form and a noun).
 	BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*LexemeFormInfo, error)
 	List(ctx context.Context, filter *ListLexemeQuery) ([]*entity.Lexeme, int64, error)
-	ListByWordID(ctx context.Context, wordID int64) ([]*entity.Lexeme, error)
+	ListByLemmaID(ctx context.Context, lemmaID int64) ([]*entity.Lexeme, error)
 	ListByIDs(ctx context.Context, ids []int64) ([]*entity.Lexeme, error)
 	Delete(ctx context.Context, lexemeID int64) error
 }

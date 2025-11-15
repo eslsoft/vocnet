@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -11,253 +13,291 @@ import (
 
 //go:generate mockgen -source=word_usecase.go -destination=../mocks/mock_word_usecase.go -package=mocks
 
-// WordUsecase exposes CRUD and query operations for aggregated words.
+var (
+	surfaceFilterPattern  = regexp.MustCompile(`(?i)surface\s+in\s*\[(.*?)\]`)
+	languageFilterPattern = regexp.MustCompile(`(?i)language\s*==\s*['"]([a-zA-Z_-]+)['"]`)
+)
+
+// WordUsecase exposes lemma management plus lookup/list queries backed by word entries.
 type WordUsecase interface {
-	Create(ctx context.Context, word *entity.Word) (*entity.Word, error)
-	Update(ctx context.Context, word *entity.Word) (*entity.Word, error)
-	Delete(ctx context.Context, wordID int64) error
-	Get(ctx context.Context, wordID int64) (*entity.Word, error)
-	List(ctx context.Context, filter *repository.ListWordGroupQuery) ([]*entity.Word, int64, error)
-	Lookup(ctx context.Context, surface string, language entity.Language) (*entity.Word, error)
+	CreateLemma(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error)
+	UpdateLemma(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error)
+	DeleteLemma(ctx context.Context, lemmaID int64) error
+	GetLemma(ctx context.Context, lemmaID int64) (*entity.Lemma, error)
+	Lookup(ctx context.Context, surface string, language entity.Language) (*entity.WordEntry, error)
+	List(ctx context.Context, filter *repository.ListLemmaQuery) ([]*entity.WordEntry, int64, error)
 	ListCategories(ctx context.Context, search string) ([]string, error)
 	Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error)
 }
 
 type wordUsecase struct {
-	groups  repository.WordGroupRepository
+	lemmas  repository.LemmaRepository
 	lexemes repository.LexemeRepository
 }
 
-func NewWordUsecase(groups repository.WordGroupRepository, lexemes repository.LexemeRepository) WordUsecase {
+// NewWordUsecase wires the lemma and lexeme repositories into a cohesive service.
+func NewWordUsecase(lemmas repository.LemmaRepository, lexemes repository.LexemeRepository) WordUsecase {
 	return &wordUsecase{
-		groups:  groups,
+		lemmas:  lemmas,
 		lexemes: lexemes,
 	}
 }
 
-func (u *wordUsecase) Create(ctx context.Context, word *entity.Word) (*entity.Word, error) {
-	if word == nil {
-		return nil, entity.ErrInvalidInput
-	}
-
-	// Normalize and generate WID if not set
-	word.Lemma = strings.TrimSpace(word.Lemma)
-	if word.Lemma == "" {
-		return nil, entity.ErrInvalidInput
-	}
-	if word.WID == "" {
-		word.WID = makeWID(word.Language, word.Lemma)
-	}
-
-	// 1. Create word in repository
-	created, err := u.groups.Create(ctx, word)
+func (u *wordUsecase) CreateLemma(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
+	payload, err := normalizeLemmaPayload(lemma)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Create lexemes for this word (from word.Lexemes if provided)
-	if len(word.Lexemes) > 0 {
-		for _, lex := range word.Lexemes {
-			// Set word association
-			lex.WordID = created.ID
-			lex.Language = created.Language
-			lex.Lemma = created.Lemma
-
-			// ExternalID must be provided (from Wikidata)
-			if lex.ExternalID == "" {
-				return nil, fmt.Errorf("lexeme external_id is required")
-			}
-
-			// Create lexeme with forms
-			_, err := u.lexemes.Create(ctx, lex)
-			if err != nil {
-				// Return error instead of continuing silently
-				return nil, fmt.Errorf("failed to create lexeme (POS: %s): %w", lex.PartOfSpeech, err)
-			}
-		}
+	created, err := u.lemmas.Create(ctx, payload)
+	if err != nil {
+		return nil, err
 	}
-
-	// Return word with lexemes populated
+	if err := u.replaceLexemes(ctx, created, payload.Lexemes); err != nil {
+		return nil, err
+	}
 	return u.populateLexemes(ctx, created)
 }
 
-func (u *wordUsecase) Update(ctx context.Context, word *entity.Word) (*entity.Word, error) {
-	if word == nil || word.ID == 0 {
+func (u *wordUsecase) UpdateLemma(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
+	if lemma == nil || lemma.ID == 0 {
 		return nil, entity.ErrInvalidInput
 	}
 
-	// Normalize lemma
-	word.Lemma = strings.TrimSpace(word.Lemma)
-	if word.Lemma == "" {
-		return nil, entity.ErrInvalidInput
+	payload, err := normalizeLemmaPayload(lemma)
+	if err != nil {
+		return nil, err
 	}
+	payload.ID = lemma.ID
 
-	// 1. Update word basic info in repository
-	updated, err := u.groups.Update(ctx, word)
+	updated, err := u.lemmas.Update(ctx, payload)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Delete old lexemes (will cascade delete forms)
-	oldLexemes, err := u.lexemes.ListByWordID(ctx, word.ID)
+	// Replace lexemes by re-importing payload lexemes after clearing old ones.
+	oldLexemes, err := u.lexemes.ListByLemmaID(ctx, updated.ID)
 	if err == nil {
 		for _, lex := range oldLexemes {
-			_ = u.lexemes.Delete(ctx, lex.ID) // Best effort
+			_ = u.lexemes.Delete(ctx, lex.ID)
 		}
 	}
-
-	// 3. Create new lexemes (from word.Lexemes if provided)
-	if len(word.Lexemes) > 0 {
-		for _, lex := range word.Lexemes {
-			// Set word association
-			lex.WordID = updated.ID
-			lex.Language = updated.Language
-			lex.Lemma = updated.Lemma
-
-			// ExternalID must be provided (from Wikidata)
-			if lex.ExternalID == "" {
-				return nil, fmt.Errorf("lexeme external_id is required")
-			}
-
-			// Create lexeme with forms
-			_, err := u.lexemes.Create(ctx, lex)
-			if err != nil {
-				// Log error but continue (partial success)
-				continue
-			}
-		}
+	if err := u.replaceLexemes(ctx, updated, payload.Lexemes); err != nil {
+		return nil, err
 	}
-
-	// Return word with lexemes populated
 	return u.populateLexemes(ctx, updated)
 }
 
-func (u *wordUsecase) Delete(ctx context.Context, wordID int64) error {
-	if wordID == 0 {
+func (u *wordUsecase) DeleteLemma(ctx context.Context, lemmaID int64) error {
+	if lemmaID == 0 {
 		return entity.ErrInvalidInput
 	}
-
-	// Delete word (associated lexemes will have word_id set to NULL)
-	return u.groups.Delete(ctx, wordID)
+	return u.lemmas.Delete(ctx, lemmaID)
 }
 
-func (u *wordUsecase) Get(ctx context.Context, wordID int64) (*entity.Word, error) {
-	word, err := u.groups.GetByID(ctx, wordID)
+func (u *wordUsecase) GetLemma(ctx context.Context, lemmaID int64) (*entity.Lemma, error) {
+	if lemmaID == 0 {
+		return nil, entity.ErrInvalidInput
+	}
+	lemma, err := u.lemmas.GetByID(ctx, lemmaID)
 	if err != nil {
 		return nil, err
 	}
-	return u.populateLexemes(ctx, word)
+	return u.populateLexemes(ctx, lemma)
 }
 
-func (u *wordUsecase) List(ctx context.Context, filter *repository.ListWordGroupQuery) ([]*entity.Word, int64, error) {
-	if filter == nil {
-		filter = &repository.ListWordGroupQuery{
-			Pagination: repository.Pagination{PageNo: 1, PageSize: 20},
-		}
-	}
-	words, total, err := u.groups.List(ctx, filter)
-	if err != nil {
-		return nil, 0, err
-	}
-	lexemeMap, err := u.fetchLexemeMap(ctx, words)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	all := make([]*entity.Word, 0, len(words))
-	for _, item := range words {
-		all = append(all, u.buildWordFromCache(item, lexemeMap))
-	}
-	return all, total, nil
-}
-
-func (u *wordUsecase) Lookup(ctx context.Context, surface string, language entity.Language) (*entity.Word, error) {
+func (u *wordUsecase) Lookup(ctx context.Context, surface string, language entity.Language) (*entity.WordEntry, error) {
 	surface = strings.TrimSpace(surface)
 	if surface == "" {
 		return nil, entity.ErrInvalidLexemeText
 	}
-	// Try to match lemma directly via WID
+
 	wid := makeWID(language, surface)
-	wordMeta, err := u.groups.GetByWID(ctx, wid)
+	lemma, err := u.lemmas.GetByWID(ctx, wid)
 	if err == nil {
-		return u.populateLexemes(ctx, wordMeta)
+		return u.buildWordEntry(ctx, lemma, surface)
+	}
+	if err != nil && !errors.Is(err, entity.ErrWordNotFound) {
+		return nil, err
 	}
 
-	// Try lexeme lookup
 	lexeme, err := u.lexemes.Lookup(ctx, surface, language)
+	if err != nil || lexeme == nil {
+		return nil, err
+	}
+	if lexeme.LemmaID == 0 {
+		return nil, nil
+	}
+
+	lemma, err = u.lemmas.GetByID(ctx, lexeme.LemmaID)
 	if err != nil {
 		return nil, err
 	}
-	if lexeme == nil {
-		return nil, nil
-	}
-	// Get word by WordID
-	if lexeme.WordID == 0 {
-		return nil, nil
-	}
-	wordMeta, err = u.groups.GetByID(ctx, lexeme.WordID)
-	if err != nil {
-		return nil, err
-	}
-	return u.populateLexemes(ctx, wordMeta)
+	return u.buildWordEntry(ctx, lemma, surface)
 }
 
-func (u *wordUsecase) populateLexemes(ctx context.Context, word *entity.Word) (*entity.Word, error) {
-	// Query lexemes by WordID
-	lexemes, err := u.lexemes.ListByWordID(ctx, word.ID)
+func (u *wordUsecase) List(ctx context.Context, filter *repository.ListLemmaQuery) ([]*entity.WordEntry, int64, error) {
+	if filter == nil {
+		filter = &repository.ListLemmaQuery{
+			Pagination: repository.Pagination{PageNo: 1, PageSize: 20},
+		}
+	}
+
+	filterExpr := filter.GetFilter()
+	surfaceTerms := extractSurfaceTerms(filterExpr)
+	lang := extractLanguageFilter(filterExpr)
+	if lang == entity.LanguageUnspecified {
+		lang = entity.LanguageEnglish
+	}
+
+	if len(surfaceTerms) > 0 {
+		entries := make([]*entity.WordEntry, 0, len(surfaceTerms))
+		for _, term := range surfaceTerms {
+			entry, err := u.Lookup(ctx, term, lang)
+			if err != nil {
+				continue
+			}
+			if entry != nil {
+				entries = append(entries, entry)
+			}
+		}
+		return entries, int64(len(entries)), nil
+	}
+
+	lemmas, total, err := u.lemmas.List(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	entries := make([]*entity.WordEntry, 0, len(lemmas))
+	for _, lemma := range lemmas {
+		entry, err := u.buildWordEntry(ctx, lemma, lemma.Text)
+		if err != nil {
+			return nil, 0, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, total, nil
+}
+
+func (u *wordUsecase) ListCategories(ctx context.Context, search string) ([]string, error) {
+	return u.lemmas.ListCategories(ctx, search)
+}
+
+func (u *wordUsecase) Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error) {
+	return u.lemmas.Stats(ctx, filter)
+}
+
+func (u *wordUsecase) replaceLexemes(ctx context.Context, lemma *entity.Lemma, lexemes []*entity.Lexeme) error {
+	if lemma == nil || len(lexemes) == 0 {
+		return nil
+	}
+	for _, lex := range lexemes {
+		if lex == nil {
+			continue
+		}
+		payload := *lex
+		payload.LemmaID = lemma.ID
+		payload.Language = lemma.Language
+		payload.Lemma = lemma.Text
+		if strings.TrimSpace(payload.ExternalID) == "" {
+			return fmt.Errorf("lexeme external_id is required")
+		}
+		if _, err := u.lexemes.Create(ctx, &payload); err != nil {
+			return fmt.Errorf("failed to create lexeme (POS: %s): %w", payload.PartOfSpeech, err)
+		}
+	}
+	return nil
+}
+
+func (u *wordUsecase) populateLexemes(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
+	lexemes, err := u.lexemes.ListByLemmaID(ctx, lemma.ID)
 	if err != nil {
 		return nil, err
 	}
-	result := *word
+	result := *lemma
 	result.Lexemes = lexemes
 	return &result, nil
 }
 
-func (u *wordUsecase) fetchLexemeMap(ctx context.Context, groups []*entity.Word) (map[int64]*entity.Lexeme, error) {
-	ids := make([]int64, 0)
-	seen := make(map[int64]struct{})
-	for _, group := range groups {
-		// Get all lexemes for this word
-		lexemes, err := u.lexemes.ListByWordID(ctx, group.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, lex := range lexemes {
-			if _, ok := seen[lex.ID]; ok {
-				continue
-			}
-			seen[lex.ID] = struct{}{}
-			ids = append(ids, lex.ID)
-		}
-	}
-	lexemes, err := u.lexemes.ListByIDs(ctx, ids)
+func (u *wordUsecase) buildWordEntry(ctx context.Context, lemma *entity.Lemma, queriedTerm string) (*entity.WordEntry, error) {
+	lemmaWithLexemes, err := u.populateLexemes(ctx, lemma)
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[int64]*entity.Lexeme, len(lexemes))
-	for _, lex := range lexemes {
-		result[lex.ID] = lex
+	entry := &entity.WordEntry{
+		QueriedTerm: strings.TrimSpace(queriedTerm),
+		Lemma:       lemmaWithLexemes,
 	}
-	return result, nil
+	if entry.QueriedTerm == "" {
+		entry.QueriedTerm = lemmaWithLexemes.Text
+	}
+
+	if form := entry.FindQueriedForm(); form != nil {
+		entry.QueriedFormType = form.FormType
+		entry.IsIrregular = form.IsIrregular
+	} else {
+		entry.QueriedFormType = entity.LexemeFormTypeLemma
+		entry.IsIrregular = false
+	}
+	return entry, nil
 }
 
-func (u *wordUsecase) buildWordFromCache(meta *entity.Word, lexemeMap map[int64]*entity.Lexeme) *entity.Word {
-	// Note: Since we don't have LexemeIDs stored anymore, we need to get them from the lexemeMap
-	lexemes := make([]*entity.Lexeme, 0)
-	for _, lex := range lexemeMap {
-		if lex.WordID == meta.ID {
-			lexemes = append(lexemes, lex)
+func normalizeLemmaPayload(in *entity.Lemma) (*entity.Lemma, error) {
+	if in == nil {
+		return nil, entity.ErrInvalidInput
+	}
+	out := *in
+	out.Text = strings.TrimSpace(out.Text)
+	if out.Text == "" {
+		return nil, entity.ErrInvalidInput
+	}
+	if out.Language == entity.LanguageUnspecified {
+		out.Language = entity.LanguageEnglish
+	}
+	if strings.TrimSpace(out.WID) == "" {
+		out.WID = makeWID(out.Language, out.Text)
+	}
+	if len(in.Lexemes) > 0 {
+		out.Lexemes = make([]*entity.Lexeme, 0, len(in.Lexemes))
+		for _, lex := range in.Lexemes {
+			if lex == nil {
+				continue
+			}
+			copyLex := *lex
+			out.Lexemes = append(out.Lexemes, &copyLex)
 		}
 	}
-	result := *meta
-	result.Lexemes = lexemes
-	return &result
+	return &out, nil
 }
 
-func (u *wordUsecase) ListCategories(ctx context.Context, search string) ([]string, error) {
-	return u.groups.ListCategories(ctx, search)
+func extractSurfaceTerms(filter string) []string {
+	matches := surfaceFilterPattern.FindStringSubmatch(filter)
+	if len(matches) < 2 {
+		return nil
+	}
+	body := matches[1]
+	rawItems := strings.Split(body, ",")
+	terms := make([]string, 0, len(rawItems))
+	for _, item := range rawItems {
+		trimmed := strings.TrimSpace(item)
+		trimmed = strings.Trim(trimmed, `"'`)
+		if trimmed == "" {
+			continue
+		}
+		terms = append(terms, trimmed)
+	}
+	return terms
 }
 
-func (u *wordUsecase) Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error) {
-	return u.groups.Stats(ctx, filter)
+func extractLanguageFilter(filter string) entity.Language {
+	matches := languageFilterPattern.FindStringSubmatch(filter)
+	if len(matches) < 2 {
+		return entity.LanguageUnspecified
+	}
+	code := strings.TrimSpace(matches[1])
+	if code == "" {
+		return entity.LanguageUnspecified
+	}
+	return entity.ParseLanguage(code)
 }

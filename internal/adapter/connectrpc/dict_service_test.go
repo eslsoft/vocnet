@@ -18,7 +18,7 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewWordGroupRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
 	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
 	svc := NewDictServiceServer(wordUC)
 
@@ -200,7 +200,9 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, lookupResp2)
 
-		assert.Equal(t, "run", lookupResp2.Msg.Term) // Should return the lemma
+		assert.Equal(t, "running", lookupResp2.Msg.Term)
+		require.NotNil(t, lookupResp2.Msg.Lemma)
+		assert.Equal(t, "run", lookupResp2.Msg.GetLemma())
 	})
 
 	// Test DeleteWord
@@ -223,7 +225,7 @@ func TestDictService_CreateWord_ValidationErrors(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewWordGroupRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
 	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
 	svc := NewDictServiceServer(wordUC)
 
@@ -283,7 +285,7 @@ func TestDictService_UpdateWord_ValidationErrors(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewWordGroupRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
 	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
 	svc := NewDictServiceServer(wordUC)
 
@@ -345,7 +347,7 @@ func TestDictService_WordIDGeneration(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewWordGroupRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
 	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
 	svc := NewDictServiceServer(wordUC)
 
@@ -397,7 +399,7 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewWordGroupRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
 	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
 	svc := NewDictServiceServer(wordUC)
 
@@ -636,7 +638,7 @@ func TestDictService_GetWordStats(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewWordGroupRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
 	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
 	svc := NewDictServiceServer(wordUC)
 
@@ -748,7 +750,7 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewWordGroupRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
 	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
 	svc := NewDictServiceServer(wordUC)
 
@@ -823,36 +825,42 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 		filter        string
 		expectedCount int
 		expectedLemma string
+		expectedTerms []string
 	}{
 		{
 			name:          "find by lemma",
 			filter:        `surface in ["run"]`,
 			expectedCount: 1,
 			expectedLemma: "run",
+			expectedTerms: []string{"run"},
 		},
 		{
 			name:          "find by inflected form - running",
 			filter:        `surface in ["running"]`,
 			expectedCount: 1,
 			expectedLemma: "run",
+			expectedTerms: []string{"running"},
 		},
 		{
 			name:          "find by inflected form - ran",
 			filter:        `surface in ["ran"]`,
 			expectedCount: 1,
 			expectedLemma: "run",
+			expectedTerms: []string{"ran"},
 		},
 		{
 			name:          "batch lookup by multiple forms",
 			filter:        `surface in ["running", "swam"]`,
 			expectedCount: 2,
 			expectedLemma: "", // both run and swim
+			expectedTerms: []string{"running", "swam"},
 		},
 		{
 			name:          "batch lookup with lemma and forms",
 			filter:        `surface in ["run", "swimming"]`,
 			expectedCount: 2,
 			expectedLemma: "", // both run and swim
+			expectedTerms: []string{"run", "swimming"},
 		},
 		{
 			name:          "no match",
@@ -887,13 +895,23 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 			assert.Equal(t, tt.expectedCount, len(resp.Msg.Words), "Expected %d words, got %d", tt.expectedCount, len(resp.Msg.Words))
 
 			if tt.expectedCount == 1 && tt.expectedLemma != "" {
-				assert.Equal(t, tt.expectedLemma, resp.Msg.Words[0].Term)
+				word := resp.Msg.Words[0]
+				lemmaText := word.Term
+				if word.Lemma != nil {
+					lemmaText = word.GetLemma()
+				}
+				assert.Equal(t, tt.expectedLemma, lemmaText)
 			}
 
 			if tt.expectedCount == 2 {
 				terms := []string{resp.Msg.Words[0].Term, resp.Msg.Words[1].Term}
-				assert.Contains(t, terms, "run")
-				assert.Contains(t, terms, "swim")
+				for _, expected := range tt.expectedTerms {
+					assert.Contains(t, terms, expected)
+				}
+			}
+
+			if len(tt.expectedTerms) == 1 {
+				assert.Equal(t, tt.expectedTerms[0], resp.Msg.Words[0].Term)
 			}
 		})
 	}

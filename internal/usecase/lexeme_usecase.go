@@ -23,13 +23,13 @@ type LexemeUsecase interface {
 }
 
 type lexemeUsecase struct {
-	repo       repository.LexemeRepository
-	wordGroups repository.WordGroupRepository
+	repo   repository.LexemeRepository
+	lemmas repository.LemmaRepository
 }
 
 // NewLexemeUsecase wires the repository with domain rules.
-func NewLexemeUsecase(repo repository.LexemeRepository, groups repository.WordGroupRepository) LexemeUsecase {
-	return &lexemeUsecase{repo: repo, wordGroups: groups}
+func NewLexemeUsecase(repo repository.LexemeRepository, lemmas repository.LemmaRepository) LexemeUsecase {
+	return &lexemeUsecase{repo: repo, lemmas: lemmas}
 }
 
 func (u *lexemeUsecase) Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
@@ -45,8 +45,8 @@ func (u *lexemeUsecase) Create(ctx context.Context, lexeme *entity.Lexeme) (*ent
 	}
 	// Update forms with the created lexeme's ID
 	created.Forms = normalizeLexemeForms(created.ID, created.Forms)
-	if created.WordID > 0 {
-		_ = u.refreshWordGroup(ctx, created.WordID) // best-effort
+	if created.LemmaID > 0 {
+		_ = u.refreshLemma(ctx, created.LemmaID) // best-effort
 	}
 	return created, nil
 }
@@ -60,8 +60,8 @@ func (u *lexemeUsecase) Update(ctx context.Context, lexeme *entity.Lexeme) (*ent
 	if err != nil {
 		return nil, err
 	}
-	if updated.WordID > 0 {
-		_ = u.refreshWordGroup(ctx, updated.WordID)
+	if updated.LemmaID > 0 {
+		_ = u.refreshLemma(ctx, updated.LemmaID)
 	}
 	return updated, nil
 }
@@ -96,8 +96,8 @@ func (u *lexemeUsecase) Delete(ctx context.Context, lexemeID int64) error {
 	if err := u.repo.Delete(ctx, lexemeID); err != nil {
 		return err
 	}
-	if lex.WordID > 0 {
-		_ = u.refreshWordGroup(ctx, lex.WordID)
+	if lex.LemmaID > 0 {
+		_ = u.refreshLemma(ctx, lex.LemmaID)
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func normalizeLexemePayload(in *entity.Lexeme) (*entity.Lexeme, error) {
 		return nil, fmt.Errorf("lexeme external_id is required")
 	}
 
-	// Note: WordID will be set later when associating with Word
+	// Note: LemmaID will be set later when associating with Lemma
 	// Forms will be handled separately after lexeme is created
 	out.Senses = normalizeLexemeSenses(out.ExternalID, out.Senses)
 	out.Relations = normalizeLexemeRelations(out.ExternalID, out.Relations)
@@ -183,31 +183,31 @@ func defaultFormType(ft entity.LexemeFormType) entity.LexemeFormType {
 	return ft
 }
 
-func (u *lexemeUsecase) refreshWordGroup(ctx context.Context, wordID int64) error {
-	if u.wordGroups == nil || wordID == 0 {
+func (u *lexemeUsecase) refreshLemma(ctx context.Context, lemmaID int64) error {
+	if u.lemmas == nil || lemmaID == 0 {
 		return nil
 	}
-	lexemes, err := u.repo.ListByWordID(ctx, wordID)
+	lexemes, err := u.repo.ListByLemmaID(ctx, lemmaID)
 	if err != nil {
 		return err
 	}
 	if len(lexemes) == 0 {
-		// If no lexemes, get word and delete by WID
-		word, err := u.wordGroups.GetByID(ctx, wordID)
+		// If no lexemes, get lemma and delete by WID
+		lemma, err := u.lemmas.GetByID(ctx, lemmaID)
 		if err != nil {
 			return err
 		}
-		return u.wordGroups.DeleteByWID(ctx, word.WID)
+		return u.lemmas.DeleteByWID(ctx, lemma.WID)
 	}
-	group := &entity.Word{
-		ID:           wordID,
+	lemma := &entity.Lemma{
+		ID:           lemmaID,
 		WID:          makeWID(lexemes[0].Language, lexemes[0].Lemma),
-		Lemma:        lexemes[0].Lemma,
+		Text:         lexemes[0].Lemma,
 		Language:     lexemes[0].Language,
 		Completeness: computeWordCompleteness(lexemes),
-		// TODO: Aggregate Phonetics and Categories from lexemes if needed
+		// TODO: Aggregate Categories from lexemes if needed
 	}
-	_, err = u.wordGroups.Upsert(ctx, group)
+	_, err = u.lemmas.Upsert(ctx, lemma)
 	return err
 }
 

@@ -3,8 +3,6 @@ package entschema
 import (
 	"time"
 
-	"github.com/eslsoft/vocnet/internal/entity"
-
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -29,9 +27,6 @@ func (Word) Fields() []ent.Field {
 			NotEmpty(),
 		field.String("language").
 			NotEmpty(),
-		field.JSON("phonetics", []entity.Phonetic{}).
-			Default([]entity.Phonetic{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("categories", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),

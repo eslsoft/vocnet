@@ -34,9 +34,9 @@ func Initialize() (*Container, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	wordGroupRepository := repository.NewWordGroupRepository(client)
+	lemmaRepository := repository.NewLemmaRepository(client)
 	lexemeRepository := repository.NewLexemeRepository(client)
-	wordUsecase := usecase.NewWordUsecase(wordGroupRepository, lexemeRepository)
+	wordUsecase := usecase.NewWordUsecase(lemmaRepository, lexemeRepository)
 	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
 	learnedWordRepository := repository.NewLearnedWordRepository(client)
 	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
@@ -58,7 +58,7 @@ var configSet = wire.NewSet(config.Load)
 
 var databaseSet = wire.NewSet(database.NewEntClient)
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewWordGroupRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository)
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase)
 

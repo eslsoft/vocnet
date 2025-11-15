@@ -10,13 +10,13 @@ import (
 
 func TestParseExchange(t *testing.T) {
 	tests := []struct {
-		name           string
-		currentWord    string
-		exchange       string
-		wantLemma      string
-		wantFormLen    int
-		wantFormType   map[dictv1.FormType]string
-		wantIrregular  map[dictv1.FormType]bool
+		name          string
+		currentWord   string
+		exchange      string
+		wantLemma     string
+		wantFormLen   int
+		wantFormType  map[dictv1.FormType]string
+		wantIrregular map[dictv1.FormType]bool
 	}{
 		{
 			name:        "complete verb forms",
@@ -239,18 +239,30 @@ func TestGetMissingWords_NoDuplicateLemmas(t *testing.T) {
 			"run": {
 				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 				translation: "v. 跑",
+				phonetics: []*dictv1.Phonetic{
+					{Ipa: "/rʌn/"},
+				},
 			},
 			"ran": {
 				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 				translation: "v. 跑",
+				phonetics: []*dictv1.Phonetic{
+					{Ipa: "/ræn/"},
+				},
 			},
 			"running": {
 				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 				translation: "v. 跑",
+				phonetics: []*dictv1.Phonetic{
+					{Ipa: "/ˈrʌnɪŋ/"},
+				},
 			},
 			"runs": {
 				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 				translation: "v. 跑",
+				phonetics: []*dictv1.Phonetic{
+					{Ipa: "/rʌnz/"},
+				},
 			},
 		},
 		knownForms: make(map[string]bool),
@@ -275,10 +287,16 @@ func TestGetMissingWords_PreferLemmaEnrichment(t *testing.T) {
 			"run": {
 				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 				translation: "v. 跑步（完整释义）",
+				phonetics: []*dictv1.Phonetic{
+					{Ipa: "/rʌn/"},
+				},
 			},
 			"running": {
 				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 				translation: "v. 跑步（不完整）",
+				phonetics: []*dictv1.Phonetic{
+					{Ipa: "/ˈrʌnɪŋ/"},
+				},
 			},
 		},
 		knownForms: make(map[string]bool),
@@ -303,6 +321,9 @@ func TestGetMissingWords_SkipIfInWikidata(t *testing.T) {
 			"run": {
 				exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 				translation: "v. 跑",
+				phonetics: []*dictv1.Phonetic{
+					{Ipa: "/rʌn/"},
+				},
 			},
 		},
 		knownForms: map[string]bool{

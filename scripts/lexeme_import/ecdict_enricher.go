@@ -1461,10 +1461,8 @@ func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.
 		"s": dictv1.FormType_FORM_TYPE_PLURAL,
 	}
 
-	// Use a map to deduplicate by text (database constraint is on lexeme_id + text)
-	// If same text appears with different FormTypes (e.g., "ran" as both past and past_participle),
-	// we keep both types but merge them into a single form
-	textToForms := make(map[string]*dictv1.RelatedForm)
+	// Deduplicate by text+form type (database constraint is on lexeme_id + text)
+	textTypeToForms := make(map[string]*dictv1.RelatedForm)
 
 	for code, word := range formMap {
 		if code == "0" || code == "1" {
@@ -1484,16 +1482,11 @@ func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.
 			continue
 		}
 
-		// Skip if it's the same as the lemma
-		if strings.EqualFold(normalizedText, strings.ToLower(strings.TrimSpace(actualLemma))) {
-			continue
-		}
-
 		// Detect if this form is irregular
 		irregular := isIrregularForm(actualLemma, word, formType)
 
-		// Check if we already have this text
-		if existing, exists := textToForms[normalizedText]; exists {
+		key := normalizedText + ":" + formType.String()
+		if existing, exists := textTypeToForms[key]; exists {
 			// Merge: prefer more specific FormType over UNSPECIFIED
 			// and always preserve irregular flag if any variant is irregular
 			if existing.FormType == dictv1.FormType_FORM_TYPE_UNSPECIFIED && formType != dictv1.FormType_FORM_TYPE_UNSPECIFIED {
@@ -1504,7 +1497,7 @@ func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.
 			}
 		} else {
 			// New form
-			textToForms[normalizedText] = &dictv1.RelatedForm{
+			textTypeToForms[key] = &dictv1.RelatedForm{
 				Term:      word,
 				FormType:  formType,
 				Irregular: irregular,
@@ -1513,7 +1506,7 @@ func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.
 	}
 
 	// Convert map to slice
-	for _, form := range textToForms {
+	for _, form := range textTypeToForms {
 		forms = append(forms, form)
 	}
 

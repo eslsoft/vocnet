@@ -34,7 +34,7 @@ const (
 type Lexeme struct {
 	ID           int64
 	ExternalID   string // Wikidata Lexeme ID (e.g. "L123456")
-	WordID       int64
+	LemmaID      int64
 	PartOfSpeech string
 	Language     Language
 	EntryType    LexemeEntryType
@@ -54,6 +54,7 @@ type LexemeForm struct {
 	Text        string
 	FormType    LexemeFormType
 	IsIrregular bool
+	Phonetics   []Phonetic
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

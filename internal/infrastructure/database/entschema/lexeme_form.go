@@ -3,7 +3,10 @@ package entschema
 import (
 	"time"
 
+	"github.com/eslsoft/vocnet/internal/entity"
+
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
@@ -29,6 +32,10 @@ func (LexemeForm) Fields() []ent.Field {
 			Comment("LEMMA, PAST, PLURAL, etc."),
 		field.Bool("is_irregular").
 			Default(false),
+		field.JSON("phonetics", []entity.Phonetic{}).
+			Default([]entity.Phonetic{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -53,9 +60,9 @@ func (LexemeForm) Indexes() []ent.Index {
 	return []ent.Index{
 		// 高效查找：通过 text 查找对应的 lexeme
 		index.Fields("text"),
-		// 唯一约束：同一个 lexeme 不能有重复的 form text
-		// 注意：这个复合索引已经覆盖了单独的 lexeme_id 索引查询
-		index.Fields("lexeme_id", "text").Unique(),
+		// 唯一约束：同一个 lexeme、同一个 form text、同一个 form type 只能出现一次
+		// 这样便于同时存储相同拼写但词性不同的记录（如 "ran" 既是 Past 也是 Past Participle）
+		index.Fields("lexeme_id", "text", "form_type").Unique(),
 	}
 }
 

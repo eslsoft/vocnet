@@ -56,8 +56,8 @@ func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*
 		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
 		SetRelations(append([]entity.LexemeRelation{}, lexeme.Relations...))
 
-	if lexeme.WordID > 0 {
-		main.SetWordID(lexeme.WordID)
+	if lexeme.LemmaID > 0 {
+		main.SetWordID(lexeme.LemmaID)
 	}
 
 	rec, err := main.Save(ctx)
@@ -96,8 +96,8 @@ func (r *lexemeRepository) Update(ctx context.Context, lexeme *entity.Lexeme) (*
 		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
 		SetRelations(append([]entity.LexemeRelation{}, lexeme.Relations...))
 
-	if lexeme.WordID > 0 {
-		update.SetWordID(lexeme.WordID)
+	if lexeme.LemmaID > 0 {
+		update.SetWordID(lexeme.LemmaID)
 	} else {
 		update.ClearWordID()
 	}
@@ -294,16 +294,16 @@ func (r *lexemeRepository) List(ctx context.Context, query *repository.ListLexem
 	return out, int64(total), nil
 }
 
-func (r *lexemeRepository) ListByWordID(ctx context.Context, wordID int64) ([]*entity.Lexeme, error) {
-	if wordID == 0 {
+func (r *lexemeRepository) ListByLemmaID(ctx context.Context, lemmaID int64) ([]*entity.Lexeme, error) {
+	if lemmaID == 0 {
 		return nil, nil
 	}
 	rows, err := r.client.Lexeme.Query().
-		Where(entlexeme.WordIDEQ(wordID)).
+		Where(entlexeme.WordIDEQ(lemmaID)).
 		WithForms().
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list lexemes by word id: %w", err)
+		return nil, fmt.Errorf("list lexemes by lemma id: %w", err)
 	}
 	out := make([]*entity.Lexeme, 0, len(rows))
 	for _, row := range rows {
@@ -444,7 +444,7 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 	}
 
 	if rec.WordID != nil {
-		lex.WordID = *rec.WordID
+		lex.LemmaID = *rec.WordID
 	}
 
 	// Map forms from edge
@@ -457,6 +457,7 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 				Text:        f.Text,
 				FormType:    entity.LexemeFormType(f.FormType),
 				IsIrregular: f.IsIrregular,
+				Phonetics:   append([]entity.Phonetic{}, f.Phonetics...),
 				CreatedAt:   f.CreatedAt,
 				UpdatedAt:   f.UpdatedAt,
 			})
@@ -494,7 +495,8 @@ func (r *lexemeRepository) upsertForms(ctx context.Context, client *entdb.Client
 			SetLexemeID(lexemeID).
 			SetText(strings.ToLower(strings.TrimSpace(f.Text))).
 			SetFormType(string(f.FormType)).
-			SetIsIrregular(f.IsIrregular))
+			SetIsIrregular(f.IsIrregular).
+			SetPhonetics(append([]entity.Phonetic{}, f.Phonetics...)))
 	}
 
 	if err := client.LexemeForm.CreateBulk(bulk...).Exec(ctx); err != nil {

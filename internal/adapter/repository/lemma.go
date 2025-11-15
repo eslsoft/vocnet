@@ -19,70 +19,67 @@ import (
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
 )
 
-type wordGroupRepository struct {
+type lemmaRepository struct {
 	client *entdb.Client
 }
 
-// NewWordGroupRepository constructs an ent-backed word group repository.
-func NewWordGroupRepository(client *entdb.Client) repository.WordGroupRepository {
-	return &wordGroupRepository{client: client}
+// NewLemmaRepository constructs an ent-backed lemma repository.
+func NewLemmaRepository(client *entdb.Client) repository.LemmaRepository {
+	return &lemmaRepository{client: client}
 }
 
-func (r *wordGroupRepository) Create(ctx context.Context, group *entity.Word) (*entity.Word, error) {
-	if group == nil || strings.TrimSpace(group.WID) == "" {
-		return nil, fmt.Errorf("word wid required")
+func (r *lemmaRepository) Create(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
+	if lemma == nil || strings.TrimSpace(lemma.WID) == "" {
+		return nil, fmt.Errorf("lemma wid required")
 	}
-	if strings.TrimSpace(group.Lemma) == "" {
-		return nil, fmt.Errorf("word lemma required")
+	if strings.TrimSpace(lemma.Text) == "" {
+		return nil, fmt.Errorf("lemma text required")
 	}
 
 	rec, err := r.client.Word.Create().
-		SetWid(strings.TrimSpace(group.WID)).
-		SetLemma(strings.TrimSpace(group.Lemma)).
-		SetLanguage(group.Language.CodeOrDefault()).
-		SetPhonetics(append([]entity.Phonetic{}, group.Phonetics...)).
-		SetCategories(append([]string{}, group.Categories...)).
-		SetCompleteness(group.Completeness).
+		SetWid(strings.TrimSpace(lemma.WID)).
+		SetLemma(strings.TrimSpace(lemma.Text)).
+		SetLanguage(lemma.Language.CodeOrDefault()).
+		SetCategories(append([]string{}, lemma.Categories...)).
+		SetCompleteness(lemma.Completeness).
 		Save(ctx)
 	if err != nil {
 		return nil, translateDBError(err, "word")
 	}
-	return mapEntWord(rec), nil
+	return mapEntLemma(rec), nil
 }
 
-func (r *wordGroupRepository) Update(ctx context.Context, group *entity.Word) (*entity.Word, error) {
-	if group == nil || group.ID == 0 {
-		return nil, fmt.Errorf("word id required")
+func (r *lemmaRepository) Update(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
+	if lemma == nil || lemma.ID == 0 {
+		return nil, fmt.Errorf("lemma id required")
 	}
-	if strings.TrimSpace(group.Lemma) == "" {
-		return nil, fmt.Errorf("word lemma required")
+	if strings.TrimSpace(lemma.Text) == "" {
+		return nil, fmt.Errorf("lemma text required")
 	}
 
-	rec, err := r.client.Word.UpdateOneID(group.ID).
-		SetLemma(strings.TrimSpace(group.Lemma)).
-		SetLanguage(group.Language.CodeOrDefault()).
-		SetPhonetics(append([]entity.Phonetic{}, group.Phonetics...)).
-		SetCategories(append([]string{}, group.Categories...)).
-		SetCompleteness(group.Completeness).
+	rec, err := r.client.Word.UpdateOneID(lemma.ID).
+		SetLemma(strings.TrimSpace(lemma.Text)).
+		SetLanguage(lemma.Language.CodeOrDefault()).
+		SetCategories(append([]string{}, lemma.Categories...)).
+		SetCompleteness(lemma.Completeness).
 		Save(ctx)
 	if err != nil {
 		return nil, translateDBError(err, "word")
 	}
-	return mapEntWord(rec), nil
+	return mapEntLemma(rec), nil
 }
 
-func (r *wordGroupRepository) Upsert(ctx context.Context, group *entity.Word) (*entity.Word, error) {
-	if group == nil || strings.TrimSpace(group.WID) == "" {
-		return nil, fmt.Errorf("word wid required")
+func (r *lemmaRepository) Upsert(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
+	if lemma == nil || strings.TrimSpace(lemma.WID) == "" {
+		return nil, fmt.Errorf("lemma wid required")
 	}
 
 	builder := r.client.Word.Create().
-		SetWid(strings.TrimSpace(group.WID)).
-		SetLemma(strings.TrimSpace(group.Lemma)).
-		SetLanguage(group.Language.CodeOrDefault()).
-		SetPhonetics(append([]entity.Phonetic{}, group.Phonetics...)).
-		SetCategories(append([]string{}, group.Categories...)).
-		SetCompleteness(group.Completeness)
+		SetWid(strings.TrimSpace(lemma.WID)).
+		SetLemma(strings.TrimSpace(lemma.Text)).
+		SetLanguage(lemma.Language.CodeOrDefault()).
+		SetCategories(append([]string{}, lemma.Categories...)).
+		SetCompleteness(lemma.Completeness)
 
 	newID, err := builder.
 		OnConflict(
@@ -91,44 +88,44 @@ func (r *wordGroupRepository) Upsert(ctx context.Context, group *entity.Word) (*
 		UpdateNewValues().
 		ID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("upsert word: %w", err)
+		return nil, fmt.Errorf("upsert lemma: %w", err)
 	}
 	return r.GetByID(ctx, newID)
 }
 
-func (r *wordGroupRepository) GetByID(ctx context.Context, wordID int64) (*entity.Word, error) {
-	rec, err := r.client.Word.Get(ctx, wordID)
+func (r *lemmaRepository) GetByID(ctx context.Context, lemmaID int64) (*entity.Lemma, error) {
+	rec, err := r.client.Word.Get(ctx, lemmaID)
 	if err != nil {
 		return nil, translateDBError(err, "word")
 	}
-	return mapEntWord(rec), nil
+	return mapEntLemma(rec), nil
 }
 
-func (r *wordGroupRepository) GetByWID(ctx context.Context, wid string) (*entity.Word, error) {
+func (r *lemmaRepository) GetByWID(ctx context.Context, wid string) (*entity.Lemma, error) {
 	rec, err := r.client.Word.Query().
 		Where(entword.WidEQ(strings.TrimSpace(wid))).
 		First(ctx)
 	if err != nil {
 		return nil, translateDBError(err, "word")
 	}
-	return mapEntWord(rec), nil
+	return mapEntLemma(rec), nil
 }
 
-func (r *wordGroupRepository) List(ctx context.Context, query *repository.ListWordGroupQuery) ([]*entity.Word, int64, error) {
-	var params listWordGroupParams
-	if err := filterexpr.Bind(query, &params, listWordGroupsSchema); err != nil {
+func (r *lemmaRepository) List(ctx context.Context, query *repository.ListLemmaQuery) ([]*entity.Lemma, int64, error) {
+	var params listLemmaParams
+	if err := filterexpr.Bind(query, &params, listLemmasSchema); err != nil {
 		return nil, 0, err
 	}
 
 	q := r.client.Word.Query()
-	applyWordGroupFilters(q, params)
+	applyLemmaFilters(q, params)
 
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
-		return nil, 0, fmt.Errorf("count word groups: %w", err)
+		return nil, 0, fmt.Errorf("count lemmas: %w", err)
 	}
 
-	applyWordGroupOrdering(q, params)
+	applyLemmaOrdering(q, params)
 
 	if offset := query.Offset(); offset > 0 {
 		q.Offset(int(offset))
@@ -139,43 +136,43 @@ func (r *wordGroupRepository) List(ctx context.Context, query *repository.ListWo
 
 	rows, err := q.All(ctx)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list word groups: %w", err)
+		return nil, 0, fmt.Errorf("list lemmas: %w", err)
 	}
 
-	out := make([]*entity.Word, 0, len(rows))
+	out := make([]*entity.Lemma, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, mapEntWord(row))
+		out = append(out, mapEntLemma(row))
 	}
 	return out, int64(total), nil
 }
 
-func (r *wordGroupRepository) Delete(ctx context.Context, wordID int64) error {
-	if wordID == 0 {
-		return fmt.Errorf("word id required")
+func (r *lemmaRepository) Delete(ctx context.Context, lemmaID int64) error {
+	if lemmaID == 0 {
+		return fmt.Errorf("lemma id required")
 	}
 
-	// Delete word (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
-	err := r.client.Word.DeleteOneID(wordID).Exec(ctx)
+	// Delete lemma (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
+	err := r.client.Word.DeleteOneID(lemmaID).Exec(ctx)
 	if err != nil {
 		if entdb.IsNotFound(err) {
 			return entity.ErrWordNotFound
 		}
-		return fmt.Errorf("delete word: %w", err)
+		return fmt.Errorf("delete lemma: %w", err)
 	}
 	return nil
 }
 
-func (r *wordGroupRepository) DeleteByWID(ctx context.Context, wid string) error {
+func (r *lemmaRepository) DeleteByWID(ctx context.Context, wid string) error {
 	if strings.TrimSpace(wid) == "" {
-		return fmt.Errorf("word wid required")
+		return fmt.Errorf("lemma wid required")
 	}
 
-	// Delete word (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
+	// Delete lemma (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
 	affected, err := r.client.Word.Delete().
 		Where(entword.WidEQ(strings.TrimSpace(wid))).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("delete word by wid: %w", err)
+		return fmt.Errorf("delete lemma by wid: %w", err)
 	}
 	if affected == 0 {
 		return entity.ErrWordNotFound
@@ -183,7 +180,7 @@ func (r *wordGroupRepository) DeleteByWID(ctx context.Context, wid string) error
 	return nil
 }
 
-type listWordGroupParams struct {
+type listLemmaParams struct {
 	Language      string
 	Keyword       string
 	Categories    []string
@@ -194,7 +191,7 @@ type listWordGroupParams struct {
 	SecondaryDesc bool
 }
 
-func applyWordGroupFilters(q *entdb.WordQuery, params listWordGroupParams) {
+func applyLemmaFilters(q *entdb.WordQuery, params listLemmaParams) {
 	if params.Language != "" {
 		q.Where(entword.LanguageEQ(params.Language))
 	}
@@ -255,7 +252,7 @@ func stringsToInterfaces(strs []string) []interface{} {
 	return result
 }
 
-func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
+func applyLemmaOrdering(q *entdb.WordQuery, params listLemmaParams) {
 	// Apply primary ordering
 	switch params.PrimaryKey {
 	case "lemma":
@@ -305,7 +302,7 @@ func applyWordGroupOrdering(q *entdb.WordQuery, params listWordGroupParams) {
 	}
 }
 
-func (r *wordGroupRepository) ListCategories(ctx context.Context, search string) ([]string, error) {
+func (r *lemmaRepository) ListCategories(ctx context.Context, search string) ([]string, error) {
 	rows, err := r.client.Word.
 		Query().
 		Select(entword.FieldCategories).
@@ -339,11 +336,18 @@ func (r *wordGroupRepository) ListCategories(ctx context.Context, search string)
 	return out, nil
 }
 
-func (r *wordGroupRepository) Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error) {
+func (r *lemmaRepository) Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error) {
 	langCodes := normalizeLanguageCodes(filter)
 	words, err := r.loadWordsForStats(ctx, langCodes)
 	if err != nil {
 		return nil, err
+	}
+
+	phoneticWords, err := r.collectLexemeWordIDs(ctx, langCodes, entlexeme.HasFormsWith(func(sel *sql.Selector) {
+		sel.Where(sqljson.LenGT(entlexemeform.FieldPhonetics, 0))
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("collect phonetic coverage: %w", err)
 	}
 
 	stats := &entity.WordStats{
@@ -381,7 +385,7 @@ func (r *wordGroupRepository) Stats(ctx context.Context, filter *entity.WordStat
 		acc.CompletenessSum += int64(w.Completeness)
 		sumCompleteness += int64(w.Completeness)
 
-		if len(w.Phonetics) > 0 {
+		if _, ok := phoneticWords[w.ID]; ok {
 			acc.PhoneticWords++
 			wordsWithPhonetic++
 		}
@@ -478,17 +482,16 @@ func (r *wordGroupRepository) Stats(ctx context.Context, filter *entity.WordStat
 	return stats, nil
 }
 
-func mapEntWord(rec *entdb.Word) *entity.Word {
+func mapEntLemma(rec *entdb.Word) *entity.Lemma {
 	if rec == nil {
 		return nil
 	}
 	parsedLang := entity.ParseLanguage(rec.Language)
-	return &entity.Word{
+	return &entity.Lemma{
 		ID:           rec.ID,
 		WID:          rec.Wid,
-		Lemma:        rec.Lemma,
+		Text:         rec.Lemma,
 		Language:     parsedLang,
-		Phonetics:    append([]entity.Phonetic{}, rec.Phonetics...),
 		Categories:   append([]string{}, rec.Categories...),
 		Completeness: rec.Completeness,
 		CreatedAt:    rec.CreatedAt,
@@ -681,7 +684,7 @@ func normalizeLanguageCodes(filter *entity.WordStatsFilter) []string {
 	return codes
 }
 
-func (r *wordGroupRepository) loadWordsForStats(ctx context.Context, langCodes []string) ([]*entdb.Word, error) {
+func (r *lemmaRepository) loadWordsForStats(ctx context.Context, langCodes []string) ([]*entdb.Word, error) {
 	query := r.client.Word.Query()
 	if len(langCodes) > 0 {
 		query = query.Where(entword.LanguageIn(langCodes...))
@@ -691,18 +694,17 @@ func (r *wordGroupRepository) loadWordsForStats(ctx context.Context, langCodes [
 			entword.FieldID,
 			entword.FieldLanguage,
 			entword.FieldCategories,
-			entword.FieldPhonetics,
 			entword.FieldCompleteness,
 			entword.FieldCreatedAt,
 		).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list words for stats: %w", err)
+		return nil, fmt.Errorf("list lemmas for stats: %w", err)
 	}
 	return words, nil
 }
 
-func (r *wordGroupRepository) collectLexemeWordIDs(ctx context.Context, langCodes []string, preds ...entpredicate.Lexeme) (map[int64]struct{}, error) {
+func (r *lemmaRepository) collectLexemeWordIDs(ctx context.Context, langCodes []string, preds ...entpredicate.Lexeme) (map[int64]struct{}, error) {
 	query := r.client.Lexeme.Query().
 		Where(entlexeme.WordIDNotNil())
 	if len(langCodes) > 0 {

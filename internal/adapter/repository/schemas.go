@@ -35,7 +35,7 @@ var listLexemesSchema = filterexpr.ResourceSchema{
 	},
 }
 
-var listWordGroupsSchema = filterexpr.ResourceSchema{
+var listLemmasSchema = filterexpr.ResourceSchema{
 	Filter: map[string]filterexpr.FilterField{
 		"language": {
 			Kind: filterexpr.KindString,
