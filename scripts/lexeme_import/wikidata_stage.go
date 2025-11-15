@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/schollz/progressbar/v3"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
@@ -23,35 +24,61 @@ type wikidataStage struct {
 	limit          int
 	batchSize      int
 	requestTimeout time.Duration
-	enricher       *ecdictEnricher
+	report         *ImportReport
+	reportMu       sync.Mutex // Protects concurrent access to report
 }
 
-func newWikidataStage(cfg pipelineConfig, enricher *ecdictEnricher) *wikidataStage {
+func newWikidataStage(cfg pipelineConfig) *wikidataStage {
 	return &wikidataStage{
 		filePath:       cfg.wikidataFile,
 		limit:          cfg.wikidataLimit,
 		batchSize:      cfg.batchSize,
 		requestTimeout: cfg.requestTimeout,
-		enricher:       enricher,
+		report:         NewImportReport("Wikidata"),
 	}
 }
 
 func (s *wikidataStage) Name() string { return "wikidata" }
 
-func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServiceClient) error {
+func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServiceClient) (*ImportReport, error) {
+	log.Println("[wikidata] Starting Wikidata import stage")
+
 	lexemes, err := s.loadLexemes()
 	if err != nil {
-		return err
+		return s.report, err
 	}
 	if len(lexemes) == 0 {
 		log.Printf("[wikidata] no lexemes found in %s", s.filePath)
-		return nil
+		s.report.Finalize()
+		return s.report, nil
 	}
 
+	s.report.Statistics.Total = int64(len(lexemes))
+
+	// Create progress bar
+	bar := progressbar.NewOptions(len(lexemes),
+		progressbar.OptionSetDescription("📚 Wikidata"),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "=",
+			SaucerHead:    ">",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+		progressbar.OptionThrottle(100*time.Millisecond),
+		progressbar.OptionClearOnFinish(),
+	)
+
 	jobCh := make(chan wikidataJob, s.batchSize*2)
+	resultCh := make(chan wikidataResult, s.batchSize*2)
 	var wg sync.WaitGroup
 
 	var succeeded, failed, skipped int64
+
+	// Start workers
 	for i := 0; i < s.batchSize; i++ {
 		wg.Add(1)
 		go func(workerID int) {
@@ -60,32 +87,90 @@ func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServic
 				reqCtx, cancel := context.WithTimeout(ctx, s.requestTimeout)
 				err := s.createOrUpdate(reqCtx, client, job.lexeme)
 				cancel()
-				if err != nil {
-					atomic.AddInt64(&failed, 1)
-					log.Printf("[wikidata] worker %d failed to upsert %s (%s): %v", workerID, job.id, job.lemma, err)
-				} else {
-					atomic.AddInt64(&succeeded, 1)
+
+				result := wikidataResult{
+					id:     job.id,
+					lemma:  job.lemma,
+					lexeme: job.lexeme,
+					err:    err,
 				}
+				resultCh <- result
 			}
 		}(i + 1)
 	}
 
+	// Result collector
+	var collectorWg sync.WaitGroup
+	collectorWg.Add(1)
+	go func() {
+		defer collectorWg.Done()
+		for result := range resultCh {
+			// Update progress bar
+			bar.Add(1)
+
+			if result.err != nil {
+				atomic.AddInt64(&failed, 1)
+				s.reportMu.Lock()
+				s.report.AddFailureSample(result.lemma, "api_error", result.err.Error())
+				s.report.AddAPIError(result.lemma, result.err.Error())
+				s.reportMu.Unlock()
+				log.Printf("[wikidata] failed to upsert %s (%s): %v", result.id, result.lemma, result.err)
+				// Show error on screen
+				Warn("[wikidata] failed to upsert %s: %v", result.lemma, result.err)
+			} else {
+				atomic.AddInt64(&succeeded, 1)
+
+				// Add success sample (first 10)
+				formStrs := make([]string, 0, len(result.lexeme.RelatedForms))
+				for _, form := range result.lexeme.RelatedForms {
+					formStrs = append(formStrs, form.Term)
+				}
+				hasPhonetic := len(result.lexeme.Phonetics) > 0
+
+				s.reportMu.Lock()
+				s.report.AddSuccessSample(result.lemma, formStrs, hasPhonetic, false)
+
+				// Record form statistics
+				for _, form := range result.lexeme.RelatedForms {
+					s.report.Statistics.TotalForms++
+					if form.Irregular {
+						s.report.Statistics.IrregularForms++
+					} else {
+						s.report.Statistics.RegularForms++
+					}
+					s.report.RecordFormType(form.FormType.String())
+				}
+
+				// Data quality metrics
+				if hasPhonetic {
+					s.report.Statistics.WithPhonetics++
+				}
+				if len(result.lexeme.Meanings) > 0 {
+					s.report.Statistics.WithDefinitions++
+				}
+				if len(result.lexeme.Categories) > 0 {
+					s.report.Statistics.WithCategories++
+				}
+				s.reportMu.Unlock()
+			}
+		}
+	}()
+
+	// Process lexemes
 	for idx, raw := range lexemes {
 		lexeme, err := convertWikidataLexeme(raw)
 		if err != nil {
 			atomic.AddInt64(&skipped, 1)
-			// Always log skipped lexemes for debugging
+			s.reportMu.Lock()
+			s.report.Statistics.Skipped++
+			s.report.AddSkippedSample(raw.ID, err.Error())
+			s.reportMu.Unlock()
 			log.Printf("[wikidata] skipping %s: %v", raw.ID, err)
+			// Update progress for skipped items
+			bar.Add(1)
 			continue
 		}
-		if s.enricher != nil {
-			// Register this word and all its forms as known from Wikidata
-			s.enricher.RegisterWord(lexeme)
-			// Then enrich it with ECDICT data if available
-			s.enricher.Enrich(lexeme)
-			// Re-register to include any new forms added by enrichment
-			s.enricher.RegisterWord(lexeme)
-		}
+
 		if idx < 3 {
 			meanings := lexeme.GetMeanings()
 			log.Printf("[wikidata] DEBUG %s: %d meanings", raw.ID, len(meanings))
@@ -97,22 +182,49 @@ func (s *wikidataStage) Run(ctx context.Context, client dictv1connect.DictServic
 				}
 			}
 		}
+
 		jobCh <- wikidataJob{id: raw.ID, lemma: lemmaText(lexeme), lexeme: lexeme}
-		if (idx+1)%5000 == 0 {
-			log.Printf("[wikidata] queued %d/%d lexemes", idx+1, len(lexemes))
-		}
 	}
 
 	close(jobCh)
 	wg.Wait()
+	close(resultCh)
+	collectorWg.Wait()
+
+	// Ensure progress bar is finished
+	bar.Finish()
+
+	// Update final statistics
+	s.report.Statistics.Successful = succeeded
+	s.report.Statistics.Failed = failed
 
 	log.Printf("[wikidata] done. succeeded=%d skipped=%d failed=%d total=%d",
 		succeeded, skipped, failed, len(lexemes))
 
-	if failed > 0 {
-		return fmt.Errorf("wikidata stage encountered %d failures", failed)
+	// Print summary to screen
+	fmt.Printf("✓ Wikidata: %d succeeded, %d skipped, %d failed (total: %d)\n",
+		succeeded, skipped, failed, len(lexemes))
+
+	// Finalize report
+	s.report.Finalize()
+
+	// Print summary to log
+	s.report.PrintSummary()
+
+	// Save report to file
+	reportPath := "reports/wikidata_import_report.json"
+	if err := s.report.SaveToFile(reportPath); err != nil {
+		log.Printf("[wikidata] Warning: failed to save report to %s: %v", reportPath, err)
+		Warn("[wikidata] Failed to save report: %v", err)
+	} else {
+		log.Printf("[wikidata] Report saved to %s", reportPath)
 	}
-	return nil
+
+	if failed > 0 {
+		Warn("Wikidata stage encountered %d failures", failed)
+		return s.report, fmt.Errorf("wikidata stage encountered %d failures", failed)
+	}
+	return s.report, nil
 }
 
 func (s *wikidataStage) loadLexemes() ([]WikidataLexeme, error) {
@@ -607,6 +719,13 @@ type wikidataJob struct {
 	lexeme *dictv1.Word
 }
 
+type wikidataResult struct {
+	id     string
+	lemma  string
+	lexeme *dictv1.Word
+	err    error
+}
+
 // WikidataLexeme mirrors the dump structure for lexemes.
 type WikidataLexeme struct {
 	Type            string                     `json:"type"`
@@ -658,7 +777,7 @@ func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.Word, error) {
 
 	formMap := make(map[string]*dictv1.RelatedForm)
 	for _, form := range wd.Forms {
-		converted, err := convertWikidataForm(form)
+		converted, err := convertWikidataForm(lemma, form)
 		if err != nil {
 			continue
 		}
@@ -691,16 +810,39 @@ func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.Word, error) {
 			senses = append(senses, converted)
 		}
 	}
-	if len(senses) == 0 {
-		return nil, errors.New("no senses")
+
+	// Check if this lexeme has any useful data
+	// Allow import even without senses if it has forms or other valuable data
+	hasUsefulData := len(senses) > 0 || len(forms) > 0 || posLabel != ""
+	if !hasUsefulData {
+		return nil, errors.New("no senses and no forms")
 	}
 
 	// Infer POS and categories from glosses if needed
 	var categories []string
-	if posLabel == "" {
+	if posLabel == "" && len(wd.Senses) > 0 {
 		posAndCats := inferPOSAndCategories(wd.Senses)
 		posLabel = posAndCats.POS
 		categories = posAndCats.Categories
+	}
+
+	// Build meanings only if we have senses
+	var meanings []*dictv1.Meaning
+	if len(senses) > 0 {
+		meanings = []*dictv1.Meaning{{
+			LexemeId:    lexemeID,
+			Pos:         posLabel,
+			Definitions: senses,
+		}}
+	} else {
+		// No senses, but we have forms - create a minimal meaning for the POS
+		if posLabel != "" {
+			meanings = []*dictv1.Meaning{{
+				LexemeId:    lexemeID,
+				Pos:         posLabel,
+				Definitions: nil, // Will be enriched by ECDICT
+			}}
+		}
 	}
 
 	return &dictv1.Word{
@@ -709,11 +851,7 @@ func convertWikidataLexeme(wd WikidataLexeme) (*dictv1.Word, error) {
 		Language:     commonv1.Language_LANGUAGE_ENGLISH,
 		Categories:   categories,
 		RelatedForms: forms,
-		Meanings: []*dictv1.Meaning{{
-			LexemeId:    lexemeID,
-			Pos:         posLabel,
-			Definitions: senses,
-		}},
+		Meanings:     meanings,
 	}, nil
 }
 
@@ -729,7 +867,7 @@ func extractLemma(lemmas map[string]WikidataValue) string {
 	return ""
 }
 
-func convertWikidataForm(wdForm WikidataForm) (*dictv1.RelatedForm, error) {
+func convertWikidataForm(lemma string, wdForm WikidataForm) (*dictv1.RelatedForm, error) {
 	text := ""
 	for _, key := range []string{"en", "en-us", "en-gb"} {
 		if value, ok := wdForm.Representations[key]; ok {
@@ -748,9 +886,14 @@ func convertWikidataForm(wdForm WikidataForm) (*dictv1.RelatedForm, error) {
 	}
 
 	formType := mapGrammaticalFeaturesToFormType(wdForm.GrammaticalFeatures)
+
+	// Detect if this form is irregular
+	irregular := isIrregularForm(lemma, text, formType)
+
 	return &dictv1.RelatedForm{
-		Term:     text,
-		FormType: formType,
+		Term:      text,
+		FormType:  formType,
+		Irregular: irregular,
 	}, nil
 }
 

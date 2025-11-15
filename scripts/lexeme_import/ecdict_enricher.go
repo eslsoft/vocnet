@@ -133,6 +133,94 @@ type skippedWordEntry struct {
 	exchange    string
 }
 
+// GetWordsToProcess returns three lists:
+// 1. newWords: Words to create (must have exchange, not in Wikidata)
+// 2. enrichmentWords: Words to enrich (any useful data, may not have exchange)
+// 3. skipped: Words that cannot be used at all
+func (e *ecdictEnricher) GetWordsToProcess() ([]*dictv1.Word, []*dictv1.Word, []skippedWordEntry) {
+	if e == nil {
+		return nil, nil, nil
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	var newWords []*dictv1.Word
+	var enrichmentWords []*dictv1.Word
+	var skipped []skippedWordEntry
+
+	for word, enrichment := range e.entries {
+		// Check if word has any useful data
+		hasUsefulData := len(enrichment.phonetics) > 0 || len(enrichment.senses) > 0
+		hasExchange := enrichment.exchange != ""
+
+		// Skip if no useful data at all
+		if !hasUsefulData {
+			skipped = append(skipped, skippedWordEntry{
+				word:        word,
+				reason:      "no_useful_data",
+				translation: enrichment.translation,
+				exchange:    enrichment.exchange,
+			})
+			continue
+		}
+
+		// Parse exchange to determine if this is a lemma or inflected form
+		var lemma string
+		var forms []*dictv1.RelatedForm
+		if hasExchange {
+			lemma, forms = parseExchange(word, enrichment.exchange)
+		}
+
+		// Build word object for enrichment (if has useful data)
+		var wordObj *dictv1.Word
+
+		if hasExchange {
+			// Has exchange: check if it's a lemma or inflected form
+			// Case 1: No "0:" marker means this IS the lemma
+			if lemma == "" {
+				wordObj = buildWordFromECDICT(word, forms, enrichment)
+			} else if strings.EqualFold(lemma, word) {
+				// Case 2: Has "0:" marker pointing to self - also a lemma
+				wordObj = buildWordFromECDICT(word, forms, enrichment)
+			} else {
+				// Case 3: Has "0:" pointing to different word - inflected form, skip
+				skipped = append(skipped, skippedWordEntry{
+					word:        word,
+					reason:      "inflected_form",
+					translation: enrichment.translation,
+					exchange:    enrichment.exchange,
+				})
+				continue
+			}
+		} else {
+			// No exchange: build minimal word for enrichment only
+			wordObj = buildWordFromECDICT(word, nil, enrichment)
+		}
+
+		// Determine if this word is in Wikidata
+		if e.knownForms[word] {
+			// Word exists: add to enrichment list (even without exchange)
+			enrichmentWords = append(enrichmentWords, wordObj)
+		} else {
+			// Word doesn't exist: only add to newWords if it has exchange
+			if hasExchange {
+				newWords = append(newWords, wordObj)
+			} else {
+				// No exchange: cannot create new word, skip
+				skipped = append(skipped, skippedWordEntry{
+					word:        word,
+					reason:      "no_exchange",
+					translation: enrichment.translation,
+					exchange:    enrichment.exchange,
+				})
+			}
+		}
+	}
+
+	return newWords, enrichmentWords, skipped
+}
+
 // GetMissingWords returns a slice of Word objects to import from ECDICT
 // ECDICT data structure:
 // - Lemma entries (e.g., "run") have complete exchange with all forms: "p:ran/i:running/d:run/3:runs"
@@ -141,6 +229,8 @@ type skippedWordEntry struct {
 // 1. Only process entries where current word IS the lemma (no "0:" or "0:self")
 // 2. Skip entries that point to a different lemma (inflected forms)
 // 3. This naturally avoids duplicates since only lemma entries are processed
+//
+// Deprecated: Use GetWordsToProcess instead
 func (e *ecdictEnricher) GetMissingWords() ([]*dictv1.Word, []skippedWordEntry) {
 	if e == nil {
 		return nil, nil
@@ -169,8 +259,19 @@ func (e *ecdictEnricher) GetMissingWords() ([]*dictv1.Word, []skippedWordEntry) 
 			continue
 		}
 
+		// Skip if no phonetic (required for new words)
+		if len(enrichment.phonetics) == 0 {
+			skipped = append(skipped, skippedWordEntry{
+				word:        word,
+				reason:      "no_phonetic",
+				translation: enrichment.translation,
+				exchange:    enrichment.exchange,
+			})
+			continue
+		}
+
 		// Parse exchange to determine if this is a lemma or inflected form
-		lemma, forms := parseExchange(enrichment.exchange)
+		lemma, forms := parseExchange(word, enrichment.exchange)
 
 		// Case 1: No "0:" marker means this IS the lemma
 		// Example: "run" -> "p:ran/i:running/3:runs"
@@ -380,7 +481,7 @@ func mergeEnrichment(lexeme *dictv1.Word, enrich *ecdictEnrichment) bool {
 		changed = true
 	}
 	if enrich.exchange != "" {
-		_, forms := parseExchange(enrich.exchange)
+		_, forms := parseExchange(lexeme.Term, enrich.exchange)
 		if len(forms) > 0 && addRelatedForms(lexeme, forms) {
 			changed = true
 		}
@@ -1306,8 +1407,9 @@ func nullStringVal(ns sql.NullString) string {
 //
 //	r=comparative, t=superlative, s=plural, 0=lemma
 //
+// currentWord is the word being processed (used as lemma if no "0:" found)
 // Returns empty lemma if no "0:" found in exchange
-func parseExchange(exchange string) (lemma string, forms []*dictv1.RelatedForm) {
+func parseExchange(currentWord, exchange string) (lemma string, forms []*dictv1.RelatedForm) {
 	exchange = strings.TrimSpace(exchange)
 	if exchange == "" {
 		return "", nil
@@ -1341,6 +1443,12 @@ func parseExchange(exchange string) (lemma string, forms []*dictv1.RelatedForm) 
 	// If no "0:" marker, this word IS the lemma
 	lemma = formMap["0"]
 
+	// Determine the actual lemma for irregular detection
+	actualLemma := lemma
+	if actualLemma == "" {
+		actualLemma = currentWord
+	}
+
 	// Build forms (excluding lemma itself and variant markers)
 	// Map ECDICT codes to FormType
 	codeToFormType := map[string]dictv1.FormType{
@@ -1352,6 +1460,11 @@ func parseExchange(exchange string) (lemma string, forms []*dictv1.RelatedForm) 
 		"t": dictv1.FormType_FORM_TYPE_SUPERLATIVE,
 		"s": dictv1.FormType_FORM_TYPE_PLURAL,
 	}
+
+	// Use a map to deduplicate by text (database constraint is on lexeme_id + text)
+	// If same text appears with different FormTypes (e.g., "ran" as both past and past_participle),
+	// we keep both types but merge them into a single form
+	textToForms := make(map[string]*dictv1.RelatedForm)
 
 	for code, word := range formMap {
 		if code == "0" || code == "1" {
@@ -1365,11 +1478,43 @@ func parseExchange(exchange string) (lemma string, forms []*dictv1.RelatedForm) 
 			continue
 		}
 
-		forms = append(forms, &dictv1.RelatedForm{
-			Term:      word,
-			FormType:  formType,
-			Irregular: false,
-		})
+		// Normalize text for deduplication
+		normalizedText := strings.ToLower(strings.TrimSpace(word))
+		if normalizedText == "" {
+			continue
+		}
+
+		// Skip if it's the same as the lemma
+		if strings.EqualFold(normalizedText, strings.ToLower(strings.TrimSpace(actualLemma))) {
+			continue
+		}
+
+		// Detect if this form is irregular
+		irregular := isIrregularForm(actualLemma, word, formType)
+
+		// Check if we already have this text
+		if existing, exists := textToForms[normalizedText]; exists {
+			// Merge: prefer more specific FormType over UNSPECIFIED
+			// and always preserve irregular flag if any variant is irregular
+			if existing.FormType == dictv1.FormType_FORM_TYPE_UNSPECIFIED && formType != dictv1.FormType_FORM_TYPE_UNSPECIFIED {
+				existing.FormType = formType
+			}
+			if irregular && !existing.Irregular {
+				existing.Irregular = true
+			}
+		} else {
+			// New form
+			textToForms[normalizedText] = &dictv1.RelatedForm{
+				Term:      word,
+				FormType:  formType,
+				Irregular: irregular,
+			}
+		}
+	}
+
+	// Convert map to slice
+	for _, form := range textToForms {
+		forms = append(forms, form)
 	}
 
 	return lemma, forms

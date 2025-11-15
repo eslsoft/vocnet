@@ -10,14 +10,17 @@ import (
 
 func TestParseExchange(t *testing.T) {
 	tests := []struct {
-		name         string
-		exchange     string
-		wantLemma    string
-		wantFormLen  int
-		wantFormType map[dictv1.FormType]string
+		name           string
+		currentWord    string
+		exchange       string
+		wantLemma      string
+		wantFormLen    int
+		wantFormType   map[dictv1.FormType]string
+		wantIrregular  map[dictv1.FormType]bool
 	}{
 		{
 			name:        "complete verb forms",
+			currentWord: "run",
 			exchange:    "p:ran/d:run/i:running/3:runs/0:run",
 			wantLemma:   "run",
 			wantFormLen: 4,
@@ -27,9 +30,16 @@ func TestParseExchange(t *testing.T) {
 				dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    "running",
 				dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: "runs",
 			},
+			wantIrregular: map[dictv1.FormType]bool{
+				dictv1.FormType_FORM_TYPE_PAST:                  true,  // ran is irregular
+				dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:       true,  // run (same as lemma) is irregular
+				dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    false, // running is regular
+				dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: false, // runs is regular
+			},
 		},
 		{
 			name:        "lemma entry without 0 marker",
+			currentWord: "perceive",
 			exchange:    "d:perceived/p:perceived/3:perceives/i:perceiving",
 			wantLemma:   "", // No "0:" means this word IS the lemma
 			wantFormLen: 4,  // Should have all forms
@@ -38,6 +48,12 @@ func TestParseExchange(t *testing.T) {
 				dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:       "perceived",
 				dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    "perceiving",
 				dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: "perceives",
+			},
+			wantIrregular: map[dictv1.FormType]bool{
+				dictv1.FormType_FORM_TYPE_PAST:                  false, // perceived is regular (perceive + d)
+				dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:       false, // perceived is regular
+				dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    false, // perceiving is regular (drop e + ing)
+				dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: false, // perceives is regular
 			},
 		},
 		{
@@ -93,7 +109,7 @@ func TestParseExchange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lemma, forms := parseExchange(tt.exchange)
+			lemma, forms := parseExchange(tt.currentWord, tt.exchange)
 
 			if lemma != tt.wantLemma {
 				t.Errorf("parseExchange() lemma = %q, want %q", lemma, tt.wantLemma)
@@ -105,8 +121,10 @@ func TestParseExchange(t *testing.T) {
 
 			if tt.wantFormType != nil {
 				gotFormType := make(map[dictv1.FormType]string)
+				gotIrregular := make(map[dictv1.FormType]bool)
 				for _, form := range forms {
 					gotFormType[form.FormType] = form.Term
+					gotIrregular[form.FormType] = form.Irregular
 				}
 
 				for formType, expectedWord := range tt.wantFormType {
@@ -114,6 +132,18 @@ func TestParseExchange(t *testing.T) {
 						t.Errorf("missing form type %v", formType)
 					} else if gotWord != expectedWord {
 						t.Errorf("form type %v: got word %q, want %q", formType, gotWord, expectedWord)
+					}
+				}
+
+				// Check irregular flags if specified
+				if tt.wantIrregular != nil {
+					for formType, expectedIrregular := range tt.wantIrregular {
+						if gotIrregular, ok := gotIrregular[formType]; !ok {
+							t.Errorf("missing irregular flag for form type %v", formType)
+						} else if gotIrregular != expectedIrregular {
+							t.Errorf("form type %v: got irregular=%v, want irregular=%v",
+								formType, gotIrregular, expectedIrregular)
+						}
 					}
 				}
 			}
