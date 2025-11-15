@@ -287,8 +287,19 @@ func (s *ecdictStage) enrichExistingWords(ctx context.Context, client dictv1conn
 	wg.Wait()
 	bar.Finish()
 
-	log.Printf("[ecdict] Enrichment complete: %d succeeded, %d failed", succeeded, failed)
-	fmt.Printf("✓ Enrichment: %d succeeded, %d failed\n", succeeded, failed)
+	// Update enrichment statistics in report
+	s.reportMu.Lock()
+	s.report.Enrichment.Succeeded = succeeded
+	s.report.Enrichment.Failed = failed
+	s.report.Enrichment.NotFound = notFound
+	s.report.Enrichment.PhoneticsAdded = totalPhoneticsAdded
+	s.report.Enrichment.DefinitionsAdded = totalDefinitionsAdded
+	s.report.Enrichment.FormsAdded = totalFormsAdded
+	s.report.Enrichment.CategoriesAdded = totalCategoriesAdded
+	s.reportMu.Unlock()
+
+	log.Printf("[ecdict] Enrichment complete: %d succeeded, %d failed, %d not found", succeeded, failed, notFound)
+	fmt.Printf("✓ Enrichment: %d succeeded, %d failed, %d not found\n", succeeded, failed, notFound)
 	return nil
 }
 

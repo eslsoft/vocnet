@@ -29,8 +29,14 @@ type Server struct {
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *logrus.Logger, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler) *Server {
-	interceptors := connect.WithInterceptors(Logger())
+func NewServer(cfg *config.Config, logger *logrus.Logger, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler) (*Server, error) {
+	// Create access logger interceptor with file support
+	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create access logger: %w", err)
+	}
+
+	interceptors := connect.WithInterceptors(accessLoggerInterceptor)
 
 	mux := http.NewServeMux()
 	mux.Handle(dictv1connect.NewDictServiceHandler(dictSvc, interceptors))
@@ -44,7 +50,7 @@ func NewServer(cfg *config.Config, logger *logrus.Logger, dictSvc dictv1connect.
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 		logger: logger,
-	}
+	}, nil
 }
 
 // StartGRPC starts the gRPC server

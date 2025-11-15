@@ -41,7 +41,11 @@ func Initialize() (*Container, func(), error) {
 	learnedWordRepository := repository.NewLearnedWordRepository(client)
 	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
 	learningServiceServer := connectrpc.NewLearningServiceServer(learnedWordUsecase)
-	serverServer := server.NewServer(configConfig, logger, dictServiceServer, learningServiceServer)
+	serverServer, err := server.NewServer(configConfig, logger, dictServiceServer, learningServiceServer)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	container := &Container{
 		Logger:    logger,
 		Server:    serverServer,

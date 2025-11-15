@@ -34,6 +34,7 @@ type DatabaseConfig struct {
 type LogConfig struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
+	File   string `mapstructure:"file"` // File path for log output, empty means stdout/stderr
 }
 
 // Load reads configuration from file and environment variables
@@ -87,12 +88,16 @@ func setDefaults() {
 	// Log defaults
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", "json")
+	viper.SetDefault("log.file", "") // Empty means stdout/stderr
 }
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
 		"database.dsn":     {"DB_DSN", "DB_URL"},
 		"database.log_sql": {"DB_LOG_SQL"},
+		"log.level":        {"LOG_LEVEL"},
+		"log.format":       {"LOG_FORMAT"},
+		"log.file":         {"LOG_FILE"},
 	}
 
 	for key, envs := range bindings {

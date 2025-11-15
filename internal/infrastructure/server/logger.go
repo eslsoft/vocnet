@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,8 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // InterceptorLogger adapts slog logger to interceptor logger.
@@ -23,6 +27,32 @@ func InterceptorLogger() logging.Logger {
 	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
 		logger.Log(ctx, slog.Level(lvl), msg, fields...)
 	})
+}
+
+// NewAccessLogger creates a slog logger for access logs with file output support
+func NewAccessLogger(cfg *config.Config) (*slog.Logger, error) {
+	var writer io.Writer = os.Stderr
+
+	// If log file is configured, write to file instead
+	if cfg.Log.File != "" {
+		// Ensure the log directory exists
+		logDir := filepath.Dir(cfg.Log.File)
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return nil, fmt.Errorf("create log directory: %w", err)
+		}
+
+		// Open log file for writing (append mode)
+		file, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("open log file: %w", err)
+		}
+
+		// Write to both file and stderr for visibility
+		writer = io.MultiWriter(file, os.Stderr)
+	}
+
+	handler := slog.NewTextHandler(writer, nil)
+	return slog.New(handler), nil
 }
 
 func Logger() connect.UnaryInterceptorFunc {
@@ -44,6 +74,30 @@ func Logger() connect.UnaryInterceptorFunc {
 	}
 }
 
+// LoggerWithConfig creates a logger interceptor with configuration support
+func LoggerWithConfig(cfg *config.Config) (connect.UnaryInterceptorFunc, error) {
+	logger, err := NewAccessLogger(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			start := time.Now()
+			resp, err := next(ctx, req)
+
+			duration := time.Since(start)
+			code := connect.CodeOf(err)
+			level := determineLogLevel(code, err)
+			attrs := buildLogAttributes(req, resp, code, duration, err)
+
+			logger.LogAttrs(ctx, level, "request completed", attrs...)
+
+			return resp, err
+		}
+	}, nil
+}
+
 func determineLogLevel(code connect.Code, err error) slog.Level {
 	if err == nil {
 		return slog.LevelInfo
@@ -60,6 +114,19 @@ func determineLogLevel(code connect.Code, err error) slog.Level {
 func buildLogAttributes(req connect.AnyRequest, resp connect.AnyResponse, code connect.Code, duration time.Duration, err error) []slog.Attr {
 	attrs := requestAttributes(req, code, duration)
 	attrs = append(attrs, responseAttributes(resp)...)
+
+	// Add request body
+	if reqBody := serializeMessage(req.Any()); reqBody != "" {
+		attrs = append(attrs, slog.String("request_body", reqBody))
+	}
+
+	// Add response body
+	// if resp != nil {
+	// 	if respBody := serializeMessage(resp.Any()); respBody != "" {
+	// 		attrs = append(attrs, slog.String("response_body", respBody))
+	// 	}
+	// }
+
 	if err != nil {
 		attrs = append(attrs, slog.String("error", err.Error()))
 	}
@@ -157,6 +224,40 @@ func contentLength(header http.Header) int {
 	return -1
 }
 
+// serializeMessage converts a protobuf message to JSON string for logging
+func serializeMessage(msg any) string {
+	if msg == nil {
+		return ""
+	}
+
+	// Try to cast to proto.Message
+	protoMsg, ok := msg.(proto.Message)
+	if !ok {
+		return fmt.Sprintf("%+v", msg)
+	}
+
+	// Use protojson to marshal the message
+	marshaler := protojson.MarshalOptions{
+		Multiline:       false,
+		Indent:          "",
+		EmitUnpopulated: true,
+		UseProtoNames:   true,
+	}
+
+	jsonBytes, err := marshaler.Marshal(protoMsg)
+	if err != nil {
+		return fmt.Sprintf("failed to marshal: %v", err)
+	}
+
+	// Limit the size to prevent huge logs (max 10KB)
+	const maxLogSize = 10 * 1024
+	if len(jsonBytes) > maxLogSize {
+		return string(jsonBytes[:maxLogSize]) + "...(truncated)"
+	}
+
+	return string(jsonBytes)
+}
+
 // NewLogger builds a configured logrus logger from application config.
 func NewLogger(cfg *config.Config) (*logrus.Logger, error) {
 	logger := logrus.New()
@@ -165,8 +266,31 @@ func NewLogger(cfg *config.Config) (*logrus.Logger, error) {
 		return nil, fmt.Errorf("parse log level: %w", err)
 	}
 	logger.SetLevel(level)
+
+	// Configure formatter
 	if cfg.Log.Format == "text" {
 		logger.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	} else {
+		logger.SetFormatter(&logrus.JSONFormatter{})
 	}
+
+	// Configure output destination
+	if cfg.Log.File != "" {
+		// Ensure the log directory exists
+		logDir := filepath.Dir(cfg.Log.File)
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return nil, fmt.Errorf("create log directory: %w", err)
+		}
+
+		// Open log file for writing (append mode)
+		file, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("open log file: %w", err)
+		}
+
+		// Write to both file and stdout for visibility
+		logger.SetOutput(io.MultiWriter(file, os.Stdout))
+	}
+
 	return logger, nil
 }
