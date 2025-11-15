@@ -64,6 +64,13 @@ func (u *wordUsecase) UpdateLemma(ctx context.Context, lemma *entity.Lemma) (*en
 		return nil, entity.ErrInvalidInput
 	}
 
+	// CRITICAL: Preserve existing forms when updating with incomplete data
+	// This happens when updating from a form view (which doesn't include RelatedForms)
+	existingLemma, err := u.GetLemma(ctx, lemma.ID)
+	if err == nil && existingLemma != nil {
+		lemma = preserveExistingForms(existingLemma, lemma)
+	}
+
 	payload, err := normalizeLemmaPayload(lemma)
 	if err != nil {
 		return nil, err
@@ -90,6 +97,64 @@ func (u *wordUsecase) UpdateLemma(ctx context.Context, lemma *entity.Lemma) (*en
 		return nil, err
 	}
 	return u.populateLexemes(ctx, updated)
+}
+
+// preserveExistingForms merges forms from existing lemma into incoming update
+// to prevent data loss when updating from incomplete data (e.g., form views)
+func preserveExistingForms(existing, incoming *entity.Lemma) *entity.Lemma {
+	if existing == nil || incoming == nil {
+		return incoming
+	}
+
+	// Build a map of existing forms by external_id
+	existingFormsByLexeme := make(map[string][]entity.LexemeForm)
+	for _, lex := range existing.Lexemes {
+		if lex.ExternalID != "" {
+			existingFormsByLexeme[lex.ExternalID] = lex.Forms
+		}
+	}
+
+	// Merge forms into incoming lexemes
+	result := *incoming
+	for i, lex := range result.Lexemes {
+		if existingForms, ok := existingFormsByLexeme[lex.ExternalID]; ok {
+			// Merge forms: keep all existing forms, add new ones
+			mergedForms := mergeFormLists(existingForms, lex.Forms)
+			result.Lexemes[i].Forms = mergedForms
+		}
+	}
+
+	return &result
+}
+
+// mergeFormLists merges two form lists, preserving all unique forms
+func mergeFormLists(existing, incoming []entity.LexemeForm) []entity.LexemeForm {
+	if len(incoming) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]bool)
+	result := make([]entity.LexemeForm, 0, len(existing)+len(incoming))
+
+	// Add all existing forms
+	for _, form := range existing {
+		key := strings.ToLower(form.Text) + "|" + string(form.FormType)
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, form)
+		}
+	}
+
+	// Add new forms
+	for _, form := range incoming {
+		key := strings.ToLower(form.Text) + "|" + string(form.FormType)
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, form)
+		}
+	}
+
+	return result
 }
 
 func (u *wordUsecase) DeleteLemma(ctx context.Context, lemmaID int64) error {
