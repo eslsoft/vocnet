@@ -14,64 +14,17 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
-// InterceptorLogger adapts slog logger to interceptor logger.
-// This code is simple enough to be copied and not imported.
-func InterceptorLogger() logging.Logger {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-		logger.Log(ctx, slog.Level(lvl), msg, fields...)
-	})
-}
-
 // NewAccessLogger creates a slog logger for access logs with file output support
 func NewAccessLogger(cfg *config.Config) (*slog.Logger, error) {
-	var writer io.Writer = os.Stderr
-
-	// If log file is configured, write to file instead
-	if cfg.Log.File != "" {
-		// Ensure the log directory exists
-		logDir := filepath.Dir(cfg.Log.File)
-		if err := os.MkdirAll(logDir, 0755); err != nil {
-			return nil, fmt.Errorf("create log directory: %w", err)
-		}
-
-		// Open log file for writing (append mode)
-		file, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return nil, fmt.Errorf("open log file: %w", err)
-		}
-
-		// Write to both file and stderr for visibility
-		writer = io.MultiWriter(file, os.Stderr)
+	handler, err := newHandler(cfg, slog.LevelDebug)
+	if err != nil {
+		return nil, err
 	}
-
-	handler := slog.NewTextHandler(writer, nil)
 	return slog.New(handler), nil
-}
-
-func Logger() connect.UnaryInterceptorFunc {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	return func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			start := time.Now()
-			resp, err := next(ctx, req)
-
-			duration := time.Since(start)
-			code := connect.CodeOf(err)
-			level := determineLogLevel(code, err)
-			attrs := buildLogAttributes(req, resp, code, duration, err)
-
-			logger.LogAttrs(ctx, level, "request completed", attrs...)
-
-			return resp, err
-		}
-	}
 }
 
 // LoggerWithConfig creates a logger interceptor with configuration support
@@ -258,39 +211,71 @@ func serializeMessage(msg any) string {
 	return string(jsonBytes)
 }
 
-// NewLogger builds a configured logrus logger from application config.
-func NewLogger(cfg *config.Config) (*logrus.Logger, error) {
-	logger := logrus.New()
-	level, err := logrus.ParseLevel(cfg.Log.Level)
+// NewLogger builds a configured slog logger for business logs.
+func NewLogger(cfg *config.Config) (*slog.Logger, error) {
+	level, err := parseLogLevel(cfg.Log.Level)
 	if err != nil {
 		return nil, fmt.Errorf("parse log level: %w", err)
 	}
-	logger.SetLevel(level)
 
-	// Configure formatter
-	if cfg.Log.Format == "text" {
-		logger.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
-	} else {
-		logger.SetFormatter(&logrus.JSONFormatter{})
+	handler, err := newHandler(cfg, level)
+	if err != nil {
+		return nil, err
 	}
 
-	// Configure output destination
-	if cfg.Log.File != "" {
-		// Ensure the log directory exists
-		logDir := filepath.Dir(cfg.Log.File)
-		if err := os.MkdirAll(logDir, 0755); err != nil {
-			return nil, fmt.Errorf("create log directory: %w", err)
-		}
+	return slog.New(handler), nil
+}
 
-		// Open log file for writing (append mode)
-		file, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return nil, fmt.Errorf("open log file: %w", err)
-		}
-
-		// Write to both file and stdout for visibility
-		logger.SetOutput(io.MultiWriter(file, os.Stdout))
+func newHandler(cfg *config.Config, level slog.Leveler) (slog.Handler, error) {
+	writer, err := newLogWriter(cfg)
+	if err != nil {
+		return nil, err
 	}
 
-	return logger, nil
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+
+	if strings.EqualFold(cfg.Log.Format, "text") {
+		return slog.NewTextHandler(writer, opts), nil
+	}
+	return slog.NewJSONHandler(writer, opts), nil
+}
+
+func newLogWriter(cfg *config.Config) (io.Writer, error) {
+	var writer io.Writer = os.Stdout
+	if cfg.Log.File == "" {
+		return writer, nil
+	}
+
+	logDir := filepath.Dir(cfg.Log.File)
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create log directory: %w", err)
+	}
+
+	file, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("open log file: %w", err)
+	}
+
+	return io.MultiWriter(file, os.Stdout), nil
+}
+
+func parseLogLevel(level string) (slog.Level, error) {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "trace":
+		return slog.LevelDebug - 4, nil
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info", "":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	case "fatal", "panic":
+		return slog.LevelError + 4, nil
+	default:
+		return slog.LevelInfo, fmt.Errorf("unsupported log level %q", level)
+	}
 }

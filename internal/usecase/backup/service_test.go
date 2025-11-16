@@ -15,7 +15,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent/enttest"
-	entlearnedlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedlexeme"
+	entlearnedlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedword"
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 
 	"entgo.io/ent/dialect"

@@ -60,7 +60,7 @@ var serveCmd = &cobra.Command{
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		select {
 		case sig := <-sigCh:
-			logger.Infof("received signal: %s, shutting down", sig)
+			logger.Info("received shutdown signal", "signal", sig.String())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = srv.Shutdown(ctx)

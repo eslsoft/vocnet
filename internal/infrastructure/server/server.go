@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -17,7 +18,6 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
-	"github.com/sirupsen/logrus"
 )
 
 // Server represents the application server
@@ -25,11 +25,11 @@ type Server struct {
 	config     *config.Config
 	grpcServer *grpc.Server
 	httpServer *http.Server
-	logger     *logrus.Logger
+	logger     *slog.Logger
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *logrus.Logger, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Server) StartGRPC() error {
 		return fmt.Errorf("failed to listen on %s: %w", addr, err)
 	}
 
-	s.logger.Infof("gRPC server starting on %s", addr)
+	s.logger.Info("gRPC server starting", "address", addr)
 
 	if err := s.grpcServer.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve gRPC: %w", err)
@@ -74,7 +74,7 @@ func (s *Server) StartGRPC() error {
 func (s *Server) StartHTTP() error {
 	// Register gRPC-Gateway handlers
 
-	s.logger.Infof("HTTP server starting on %s", s.httpServer.Addr)
+	s.logger.Info("HTTP server starting", "address", s.httpServer.Addr)
 
 	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("failed to serve HTTP: %w", err)
@@ -85,14 +85,14 @@ func (s *Server) StartHTTP() error {
 
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
-	s.logger.Info("Shutting down server...")
+	s.logger.Info("shutting down server")
 
 	// Shutdown HTTP server
 	if err := s.httpServer.Shutdown(ctx); err != nil {
-		s.logger.Errorf("Failed to shutdown HTTP server: %v", err)
+		s.logger.Error("failed to shutdown HTTP server", "error", err)
 	}
 
-	s.logger.Info("Server shutdown complete")
+	s.logger.Info("server shutdown complete")
 	return nil
 }
 
