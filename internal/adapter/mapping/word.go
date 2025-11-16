@@ -31,15 +31,27 @@ func buildLemmaView(entry *entity.WordEntry) *dictv1.Word {
 		}
 	}
 
+	// Use queried term if it exactly matches a lemma form (case-sensitive),
+	// otherwise fall back to stored lemma text
+	displayTerm := entry.Lemma.Text
+	if entry.QueriedTerm != "" {
+		for _, form := range allForms {
+			if form.FormType == entity.LexemeFormTypeLemma && form.Text == entry.QueriedTerm {
+				displayTerm = entry.QueriedTerm
+				break
+			}
+		}
+	}
+
 	word := &dictv1.Word{
 		Id:           entry.Lemma.ID,
-		Term:         entry.Lemma.Text,
+		Term:         displayTerm,
 		TermType:     dictv1.FormType_FORM_TYPE_LEMMA,
 		Lemma:        nil,
 		Language:     ToPbLanguage(entry.Lemma.Language),
 		Phonetics:    mapPhonetics(lemmaPhonetics),
 		Meanings:     aggregateMeanings(entry.Lemma.Lexemes),
-		RelatedForms: buildRelatedForms(allForms, true),
+		RelatedForms: buildRelatedForms(allForms, true, displayTerm),
 		Categories:   entry.Lemma.Categories,
 		Irregular:    false,
 		Completeness: entry.Lemma.Completeness,
@@ -72,13 +84,17 @@ func buildFormView(entry *entity.WordEntry) *dictv1.Word {
 	return word
 }
 
-func buildRelatedForms(allForms []entity.LexemeForm, excludeLemma bool) []*dictv1.RelatedForm {
+func buildRelatedForms(allForms []entity.LexemeForm, excludeLemma bool, displayTerm string) []*dictv1.RelatedForm {
 	seen := make(map[string]bool)
 	var forms []*dictv1.RelatedForm
 
 	for _, form := range allForms {
+		// When excludeLemma is true, only exclude lemma forms that match the display term (case-sensitive)
+		// This allows different-case lemma variants (like "Polish" vs "polish") to be included
 		if excludeLemma && form.FormType == entity.LexemeFormTypeLemma {
-			continue
+			if displayTerm == "" || form.Text == displayTerm {
+				continue
+			}
 		}
 		key := strings.ToLower(form.Text) + string(form.FormType)
 		if seen[key] {

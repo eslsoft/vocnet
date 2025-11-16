@@ -158,7 +158,15 @@ func (r *LearnedWordRepository) List(ctx context.Context, query *repository.List
 		qbuilder.Where(entlearnedword.LanguageEQ(query.Language))
 	}
 	if surfaces := uniqueFolded(query.SurfaceTerms); len(surfaces) > 0 {
-		qbuilder.Where(entlearnedword.TermIn(surfaces...))
+		// Convert to lowercase for case-insensitive matching
+		lowerTerms := make([]string, len(surfaces))
+		for i, term := range surfaces {
+			lowerTerms[i] = strings.ToLower(term)
+		}
+		// Use LOWER(term) IN (...) for case-insensitive matching
+		qbuilder.Where(func(s *sql.Selector) {
+			s.Where(sql.In(sql.Lower(s.C(entlearnedword.FieldTerm)), stringsToInterfaces(lowerTerms)...))
+		})
 	}
 	if tags := uniqueFolded(query.Tags); len(tags) > 0 {
 		qbuilder.Where(func(s *sql.Selector) {

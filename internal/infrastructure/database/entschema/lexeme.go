@@ -59,7 +59,7 @@ func (Lexeme) Edges() []ent.Edge {
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
 		// Lexeme -> Word (多对一，Word删除时设为NULL)
-		edge.From("word", Word.Type).
+		edge.From("word", Lemma.Type).
 			Ref("lexemes").
 			Field("word_id").
 			Unique().

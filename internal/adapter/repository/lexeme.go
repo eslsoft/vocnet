@@ -124,23 +124,38 @@ func (r *lexemeRepository) Lookup(ctx context.Context, surfaceForm string, langu
 	if word == "" {
 		return nil, entity.ErrInvalidLexemeText
 	}
-	formText := strings.ToLower(word)
+	wordLower := strings.ToLower(word)
 	langCode := entity.NormalizeLanguage(language).Code()
 
-	// Use Edge to query lexeme by form text
-	rec, err := r.client.Lexeme.Query().
+	// Query all lexemes that have a form matching the word (case-insensitive)
+	recs, err := r.client.Lexeme.Query().
 		Where(
 			entlexeme.LanguageEQ(langCode),
 			entlexeme.HasFormsWith(
-				entlexemeform.TextEQ(formText),
+				entlexemeform.TextLowerEQ(wordLower),
 			),
 		).
 		WithForms(). // Preload forms to avoid N+1
-		First(ctx)
+		All(ctx)
 	if err != nil {
 		return nil, translateDBError(err, "lexeme")
 	}
-	return mapEntLexeme(rec), nil
+	if len(recs) == 0 {
+		return nil, entity.ErrLexemeNotFound
+	}
+
+	// Sort in application layer: prioritize exact case match
+	// If multiple lexemes match, prefer the one with exact case match in forms
+	for _, rec := range recs {
+		for _, form := range rec.Edges.Forms {
+			if form.Text == word {
+				return mapEntLexeme(rec), nil
+			}
+		}
+	}
+
+	// No exact match, return first result
+	return mapEntLexeme(recs[0]), nil
 }
 
 func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*repository.LexemeFormInfo, error) {
@@ -150,26 +165,25 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 
 	langCode := entity.NormalizeLanguage(language).Code()
 
-	// Normalize all forms to lowercase
+	// Trim and filter empty strings, convert to lowercase
 	formTexts := make([]string, 0, len(surfaceForms))
-	originalToLower := make(map[string]string)
+	lowerFormTexts := make([]string, 0, len(surfaceForms))
 	for _, sf := range surfaceForms {
 		word := strings.TrimSpace(sf)
 		if word == "" {
 			continue
 		}
-		formText := strings.ToLower(word)
-		formTexts = append(formTexts, formText)
-		originalToLower[word] = formText
+		formTexts = append(formTexts, word)
+		lowerFormTexts = append(lowerFormTexts, strings.ToLower(word))
 	}
 
 	if len(formTexts) == 0 {
 		return make(map[string][]*repository.LexemeFormInfo), nil
 	}
 
-	// Batch query lexeme_forms with lexeme join
+	// Batch query using text_lower field (case-insensitive, indexed)
 	forms, err := r.client.LexemeForm.Query().
-		Where(entlexemeform.TextIn(formTexts...)).
+		Where(entlexemeform.TextLowerIn(lowerFormTexts...)).
 		WithLexeme(func(q *entdb.LexemeQuery) {
 			q.Where(entlexeme.LanguageEQ(langCode))
 		}).
@@ -178,7 +192,7 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 		return nil, fmt.Errorf("batch lookup form info: %w", err)
 	}
 
-	// Build result map - now collecting ALL forms per surface term
+	// Build result map - collecting ALL forms per surface term (case-insensitive)
 	result := make(map[string][]*repository.LexemeFormInfo)
 	for _, form := range forms {
 		lexeme, err := form.Edges.LexemeOrErr()
@@ -194,9 +208,9 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 			Pos:         lexeme.Pos,
 		}
 
-		// Map back to original case - append all forms instead of overwriting
-		for original, lower := range originalToLower {
-			if lower == form.Text {
+		// Map back to original surface forms (case-insensitive comparison using text_lower)
+		for _, original := range formTexts {
+			if form.TextLower == strings.ToLower(original) {
 				result[original] = append(result[original], info)
 			}
 		}
@@ -428,9 +442,11 @@ func (r *lexemeRepository) upsertForms(ctx context.Context, client *entdb.Client
 
 	bulk := make([]*entdb.LexemeFormCreate, 0, len(forms))
 	for _, f := range forms {
+		text := strings.TrimSpace(f.Text)
 		bulk = append(bulk, client.LexemeForm.Create().
 			SetLexemeID(lexemeID).
-			SetText(strings.ToLower(strings.TrimSpace(f.Text))).
+			SetText(text).
+			SetTextLower(strings.ToLower(text)).
 			SetFormType(string(f.FormType)).
 			SetIsIrregular(f.IsIrregular).
 			SetPhonetics(append([]entity.Phonetic{}, f.Phonetics...)))

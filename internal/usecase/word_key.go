@@ -12,5 +12,5 @@ import (
 // Example: "en:run"
 func makeWID(language entity.Language, lemma string) string {
 	lang := entity.NormalizeLanguage(language).CodeOrDefault()
-	return fmt.Sprintf("%s:%s", lang, strings.ToLower(strings.TrimSpace(lemma)))
+	return fmt.Sprintf("%s:%s", lang, strings.TrimSpace(lemma))
 }

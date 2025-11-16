@@ -11,10 +11,10 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
 	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
 	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entpredicate "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/predicate"
-	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
@@ -35,7 +35,7 @@ func (r *lemmaRepository) Create(ctx context.Context, lemma *entity.Lemma) (*ent
 		return nil, fmt.Errorf("lemma text required")
 	}
 
-	rec, err := r.client.Word.Create().
+	rec, err := r.client.Lemma.Create().
 		SetWid(strings.TrimSpace(lemma.WID)).
 		SetLemma(strings.TrimSpace(lemma.Text)).
 		SetLanguage(lemma.Language.CodeOrDefault()).
@@ -56,7 +56,7 @@ func (r *lemmaRepository) Update(ctx context.Context, lemma *entity.Lemma) (*ent
 		return nil, fmt.Errorf("lemma text required")
 	}
 
-	rec, err := r.client.Word.UpdateOneID(lemma.ID).
+	rec, err := r.client.Lemma.UpdateOneID(lemma.ID).
 		SetLemma(strings.TrimSpace(lemma.Text)).
 		SetLanguage(lemma.Language.CodeOrDefault()).
 		SetCategories(append([]string{}, lemma.Categories...)).
@@ -73,7 +73,7 @@ func (r *lemmaRepository) Upsert(ctx context.Context, lemma *entity.Lemma) (*ent
 		return nil, fmt.Errorf("lemma wid required")
 	}
 
-	builder := r.client.Word.Create().
+	builder := r.client.Lemma.Create().
 		SetWid(strings.TrimSpace(lemma.WID)).
 		SetLemma(strings.TrimSpace(lemma.Text)).
 		SetLanguage(lemma.Language.CodeOrDefault()).
@@ -82,7 +82,7 @@ func (r *lemmaRepository) Upsert(ctx context.Context, lemma *entity.Lemma) (*ent
 
 	newID, err := builder.
 		OnConflict(
-			sql.ConflictColumns(entword.FieldWid),
+			sql.ConflictColumns(entlemma.FieldWid),
 		).
 		UpdateNewValues().
 		ID(ctx)
@@ -93,7 +93,7 @@ func (r *lemmaRepository) Upsert(ctx context.Context, lemma *entity.Lemma) (*ent
 }
 
 func (r *lemmaRepository) GetByID(ctx context.Context, lemmaID int64) (*entity.Lemma, error) {
-	rec, err := r.client.Word.Get(ctx, lemmaID)
+	rec, err := r.client.Lemma.Get(ctx, lemmaID)
 	if err != nil {
 		return nil, translateDBError(err, "word")
 	}
@@ -101,8 +101,8 @@ func (r *lemmaRepository) GetByID(ctx context.Context, lemmaID int64) (*entity.L
 }
 
 func (r *lemmaRepository) GetByWID(ctx context.Context, wid string) (*entity.Lemma, error) {
-	rec, err := r.client.Word.Query().
-		Where(entword.WidEQ(strings.TrimSpace(wid))).
+	rec, err := r.client.Lemma.Query().
+		Where(entlemma.WidEQ(strings.TrimSpace(wid))).
 		First(ctx)
 	if err != nil {
 		return nil, translateDBError(err, "word")
@@ -111,7 +111,7 @@ func (r *lemmaRepository) GetByWID(ctx context.Context, wid string) (*entity.Lem
 }
 
 func (r *lemmaRepository) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.Lemma, int64, error) {
-	q := r.client.Word.Query()
+	q := r.client.Lemma.Query()
 	applyLemmaFilters(q, query)
 
 	total, err := q.Clone().Count(ctx)
@@ -145,7 +145,7 @@ func (r *lemmaRepository) Delete(ctx context.Context, lemmaID int64) error {
 	}
 
 	// Delete lemma (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
-	err := r.client.Word.DeleteOneID(lemmaID).Exec(ctx)
+	err := r.client.Lemma.DeleteOneID(lemmaID).Exec(ctx)
 	if err != nil {
 		if entdb.IsNotFound(err) {
 			return entity.ErrWordNotFound
@@ -161,8 +161,8 @@ func (r *lemmaRepository) DeleteByWID(ctx context.Context, wid string) error {
 	}
 
 	// Delete lemma (Lexeme.word_id will be set to NULL automatically via ON DELETE SET NULL)
-	affected, err := r.client.Word.Delete().
-		Where(entword.WidEQ(strings.TrimSpace(wid))).
+	affected, err := r.client.Lemma.Delete().
+		Where(entlemma.WidEQ(strings.TrimSpace(wid))).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("delete lemma by wid: %w", err)
@@ -173,16 +173,16 @@ func (r *lemmaRepository) DeleteByWID(ctx context.Context, wid string) error {
 	return nil
 }
 
-func applyLemmaFilters(q *entdb.WordQuery, params *repository.ListWordsQuery) {
+func applyLemmaFilters(q *entdb.LemmaQuery, params *repository.ListWordsQuery) {
 	if params.Language != "" {
-		q.Where(entword.LanguageEQ(params.Language))
+		q.Where(entlemma.LanguageEQ(params.Language))
 	}
 	if params.Keyword != "" {
 		// Keyword search: match in lemma OR in any lexeme forms
 		// This allows searching "apples" to find "apple"
-		q.Where(entword.Or(
-			entword.LemmaContainsFold(params.Keyword),
-			entword.HasLexemesWith(
+		q.Where(entlemma.Or(
+			entlemma.LemmaContainsFold(params.Keyword),
+			entlemma.HasLexemesWith(
 				entlexeme.HasFormsWith(
 					entlexemeform.TextContainsFold(params.Keyword),
 				),
@@ -192,7 +192,7 @@ func applyLemmaFilters(q *entdb.WordQuery, params *repository.ListWordsQuery) {
 	if len(params.Categories) > 0 {
 		// OR logic: word contains ANY of the specified categories
 		q.Where(func(s *sql.Selector) {
-			column := s.C(entword.FieldCategories)
+			column := s.C(entlemma.FieldCategories)
 			predicates := make([]*sql.Predicate, 0, len(params.Categories))
 			for _, category := range params.Categories {
 				predicates = append(predicates, sqljson.ValueContains(column, category))
@@ -210,15 +210,15 @@ func applyLemmaFilters(q *entdb.WordQuery, params *repository.ListWordsQuery) {
 			lowerTerms[i] = strings.ToLower(term)
 		}
 
-		q.Where(entword.Or(
+		q.Where(entlemma.Or(
 			// Match lemma (case-insensitive using LOWER() function)
 			func(s *sql.Selector) {
-				s.Where(sql.In(sql.Lower(s.C(entword.FieldLemma)), stringsToInterfaces(lowerTerms)...))
+				s.Where(sql.In(sql.Lower(s.C(entlemma.FieldLemma)), stringsToInterfaces(lowerTerms)...))
 			},
-			// Match any lexeme form (forms are already stored in lowercase)
-			entword.HasLexemesWith(
+			// Match any lexeme form using text_lower field (case-insensitive, indexed)
+			entlemma.HasLexemesWith(
 				entlexeme.HasFormsWith(
-					entlexemeform.TextIn(lowerTerms...),
+					entlexemeform.TextLowerIn(lowerTerms...),
 				),
 			),
 		))
@@ -234,29 +234,29 @@ func stringsToInterfaces(strs []string) []interface{} {
 	return result
 }
 
-func applyLemmaOrdering(q *entdb.WordQuery, params *repository.ListWordsQuery) {
+func applyLemmaOrdering(q *entdb.LemmaQuery, params *repository.ListWordsQuery) {
 	// Apply primary ordering
 	switch params.PrimaryKey {
 	case "lemma":
 		if params.PrimaryDesc {
-			q.Order(entword.ByLemma(sql.OrderDesc()))
+			q.Order(entlemma.ByLemma(sql.OrderDesc()))
 		} else {
-			q.Order(entword.ByLemma())
+			q.Order(entlemma.ByLemma())
 		}
 	case "created_at":
 		if params.PrimaryDesc {
-			q.Order(entword.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+			q.Order(entlemma.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 		} else {
-			q.Order(entword.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
+			q.Order(entlemma.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 		}
 	case "updated_at":
 		if params.PrimaryDesc {
-			q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+			q.Order(entlemma.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 		} else {
-			q.Order(entword.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
+			q.Order(entlemma.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 		}
 	default:
-		q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+		q.Order(entlemma.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 	}
 
 	// Apply secondary ordering
@@ -264,30 +264,30 @@ func applyLemmaOrdering(q *entdb.WordQuery, params *repository.ListWordsQuery) {
 		switch params.SecondaryKey {
 		case "lemma":
 			if params.SecondaryDesc {
-				q.Order(entword.ByLemma(sql.OrderDesc()))
+				q.Order(entlemma.ByLemma(sql.OrderDesc()))
 			} else {
-				q.Order(entword.ByLemma())
+				q.Order(entlemma.ByLemma())
 			}
 		case "created_at":
 			if params.SecondaryDesc {
-				q.Order(entword.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+				q.Order(entlemma.ByCreatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 			} else {
-				q.Order(entword.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
+				q.Order(entlemma.ByCreatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
 		case "updated_at":
 			if params.SecondaryDesc {
-				q.Order(entword.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
+				q.Order(entlemma.ByUpdatedAt(sql.OrderDesc(), sql.OrderNullsLast()))
 			} else {
-				q.Order(entword.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
+				q.Order(entlemma.ByUpdatedAt(sql.OrderAsc(), sql.OrderNullsLast()))
 			}
 		}
 	}
 }
 
 func (r *lemmaRepository) ListCategories(ctx context.Context, search string) ([]string, error) {
-	rows, err := r.client.Word.
+	rows, err := r.client.Lemma.
 		Query().
-		Select(entword.FieldCategories).
+		Select(entlemma.FieldCategories).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list categories: %w", err)
@@ -407,7 +407,7 @@ func initializeLanguageAcc(filter *entity.WordStatsFilter) map[string]*languageA
 	return acc
 }
 
-func aggregateWordStats(words []*entdb.Word, phoneticWords map[int64]struct{}, langAcc map[string]*languageAccumulator, stats *entity.WordStats) (map[int64]*languageAccumulator, wordAggregateMetrics) {
+func aggregateWordStats(words []*entdb.Lemma, phoneticWords map[int64]struct{}, langAcc map[string]*languageAccumulator, stats *entity.WordStats) (map[int64]*languageAccumulator, wordAggregateMetrics) {
 	metrics := wordAggregateMetrics{
 		categoryTallies: newCategoryTallies(),
 	}
@@ -499,7 +499,7 @@ func updateAccumulatorCounts(wordIndex map[int64]*languageAccumulator, ids map[i
 	}
 }
 
-func mapEntLemma(rec *entdb.Word) *entity.Lemma {
+func mapEntLemma(rec *entdb.Lemma) *entity.Lemma {
 	if rec == nil {
 		return nil
 	}
@@ -701,18 +701,18 @@ func normalizeLanguageCodes(filter *entity.WordStatsFilter) []string {
 	return codes
 }
 
-func (r *lemmaRepository) loadWordsForStats(ctx context.Context, langCodes []string) ([]*entdb.Word, error) {
-	query := r.client.Word.Query()
+func (r *lemmaRepository) loadWordsForStats(ctx context.Context, langCodes []string) ([]*entdb.Lemma, error) {
+	query := r.client.Lemma.Query()
 	if len(langCodes) > 0 {
-		query = query.Where(entword.LanguageIn(langCodes...))
+		query = query.Where(entlemma.LanguageIn(langCodes...))
 	}
 	words, err := query.
 		Select(
-			entword.FieldID,
-			entword.FieldLanguage,
-			entword.FieldCategories,
-			entword.FieldCompleteness,
-			entword.FieldCreatedAt,
+			entlemma.FieldID,
+			entlemma.FieldLanguage,
+			entlemma.FieldCategories,
+			entlemma.FieldCompleteness,
+			entlemma.FieldCreatedAt,
 		).
 		All(ctx)
 	if err != nil {

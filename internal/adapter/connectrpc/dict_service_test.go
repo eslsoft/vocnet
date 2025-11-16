@@ -916,3 +916,307 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 		})
 	}
 }
+
+// TestDictService_CaseSensitivity tests case handling across the full stack
+func TestDictService_CaseSensitivity(t *testing.T) {
+	client := setupTestDB(t)
+
+	lexemeRepo := repository.NewLexemeRepository(client)
+	wordRepo := repository.NewLemmaRepository(client)
+	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
+	svc := NewDictServiceServer(wordUC)
+
+	ctx := context.Background()
+
+	t.Run("stores and retrieves original case", func(t *testing.T) {
+		// Create word with mixed case
+		req := &connect.Request[dictv1.CreateWordRequest]{
+			Msg: &dictv1.CreateWordRequest{
+				Word: &dictv1.Word{
+					Term:     "Apple",
+					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+					Language: commonv1.Language_LANGUAGE_ENGLISH,
+					RelatedForms: []*dictv1.RelatedForm{
+						{Term: "Apples", FormType: dictv1.FormType_FORM_TYPE_PLURAL},
+					},
+					Meanings: []*dictv1.Meaning{
+						{
+							LexemeId: "L-APPLE",
+							Pos:      "n.",
+							Definitions: []*dictv1.Definition{
+								{
+									Language: commonv1.Language_LANGUAGE_ENGLISH,
+									Gloss:    "A fruit or a company",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		resp, err := svc.CreateWord(ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, "Apple", resp.Msg.Term, "Should preserve 'Apple' case")
+
+		// Verify related forms preserve case
+		var pluralForm *dictv1.RelatedForm
+		for _, f := range resp.Msg.RelatedForms {
+			if f.FormType == dictv1.FormType_FORM_TYPE_PLURAL {
+				pluralForm = f
+				break
+			}
+		}
+		require.NotNil(t, pluralForm, "Should have plural form")
+		assert.Equal(t, "Apples", pluralForm.Term, "Should preserve 'Apples' case")
+	})
+
+	t.Run("allows different words with different case", func(t *testing.T) {
+		// Create word with both lowercase verb and uppercase adjective meanings
+		// They share the same lemma but have different lexemes with different case forms
+		polishWord := &connect.Request[dictv1.CreateWordRequest]{
+			Msg: &dictv1.CreateWordRequest{
+				Word: &dictv1.Word{
+					Term:     "polish", // Lemma text (lowercase)
+					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+					Language: commonv1.Language_LANGUAGE_ENGLISH,
+					RelatedForms: []*dictv1.RelatedForm{
+						{Term: "polishes", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+						{Term: "polishing", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+						{Term: "Polish", FormType: dictv1.FormType_FORM_TYPE_LEMMA}, // Capital P for adjective
+					},
+					Meanings: []*dictv1.Meaning{
+						{
+							LexemeId: "L-POLISH-VERB",
+							Pos:      "v.",
+							Definitions: []*dictv1.Definition{
+								{
+									Language: commonv1.Language_LANGUAGE_ENGLISH,
+									Gloss:    "to make smooth and shiny",
+								},
+							},
+						},
+						{
+							LexemeId: "L-POLISH-ADJ",
+							Pos:      "adj.",
+							Definitions: []*dictv1.Definition{
+								{
+									Language: commonv1.Language_LANGUAGE_ENGLISH,
+									Gloss:    "relating to Poland",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		resp, err := svc.CreateWord(ctx, polishWord)
+		require.NoError(t, err)
+		assert.Equal(t, "polish", resp.Msg.Term) // Lemma is lowercase
+		assert.Len(t, resp.Msg.Meanings, 2)      // Two meanings (verb and adj)
+
+		// Verify both forms are stored
+		forms := resp.Msg.RelatedForms
+		hasPolish := false
+		for _, f := range forms {
+			if f.Term == "Polish" && f.FormType == dictv1.FormType_FORM_TYPE_LEMMA {
+				hasPolish = true
+				break
+			}
+		}
+		assert.True(t, hasPolish, "Should have 'Polish' (capital P) form stored")
+	})
+
+	t.Run("case-insensitive lookup with exact match priority", func(t *testing.T) {
+		// Create test word with multiple case variants
+		testWord := &connect.Request[dictv1.CreateWordRequest]{
+			Msg: &dictv1.CreateWordRequest{
+				Word: &dictv1.Word{
+					Term:     "test",
+					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+					Language: commonv1.Language_LANGUAGE_ENGLISH,
+					RelatedForms: []*dictv1.RelatedForm{
+						{Term: "Test", FormType: dictv1.FormType_FORM_TYPE_LEMMA}, // Capital T variant
+					},
+					Meanings: []*dictv1.Meaning{
+						{
+							LexemeId: "L-TEST",
+							Pos:      "n.",
+							Definitions: []*dictv1.Definition{
+								{
+									Language: commonv1.Language_LANGUAGE_ENGLISH,
+									Gloss:    "a procedure to assess something",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := svc.CreateWord(ctx, testWord)
+		require.NoError(t, err)
+
+		// Lookup with lowercase - should return lowercase because it matches exactly
+		lookupLower := &connect.Request[dictv1.LookupWordRequest]{
+			Msg: &dictv1.LookupWordRequest{
+				Word: "test",
+			},
+		}
+
+		respLower, err := svc.LookupWord(ctx, lookupLower)
+		require.NoError(t, err)
+		require.NotNil(t, respLower.Msg)
+		assert.Equal(t, "test", respLower.Msg.Term, "Query 'test' should return 'test' (exact match)")
+
+		// Lookup with uppercase - should return uppercase because it matches exactly
+		lookupUpper := &connect.Request[dictv1.LookupWordRequest]{
+			Msg: &dictv1.LookupWordRequest{
+				Word: "Test",
+			},
+		}
+
+		respUpper, err := svc.LookupWord(ctx, lookupUpper)
+		require.NoError(t, err)
+		require.NotNil(t, respUpper.Msg)
+		assert.Equal(t, "Test", respUpper.Msg.Term, "Query 'Test' should return 'Test' (exact match)")
+
+		// Lookup with random case - should return one of the stored forms
+		lookupRandom := &connect.Request[dictv1.LookupWordRequest]{
+			Msg: &dictv1.LookupWordRequest{
+				Word: "TEST",
+			},
+		}
+
+		respRandom, err := svc.LookupWord(ctx, lookupRandom)
+		require.NoError(t, err)
+		require.NotNil(t, respRandom.Msg)
+		// Should return either "test" or "Test" (the stored forms), not "TEST"
+		assert.Contains(t, []string{"test", "Test"}, respRandom.Msg.Term,
+			"Query 'TEST' should return a stored form ('test' or 'Test'), not 'TEST'")
+	})
+
+	t.Run("case-insensitive search in ListWords", func(t *testing.T) {
+		// Search with lowercase should find both
+		listReq := &connect.Request[dictv1.ListWordsRequest]{
+			Msg: &dictv1.ListWordsRequest{
+				Filter: `surface in ["polish"]`,
+			},
+		}
+
+		listResp, err := svc.ListWords(ctx, listReq)
+		require.NoError(t, err)
+
+		// Should find at least one (possibly both, depending on implementation)
+		assert.GreaterOrEqual(t, len(listResp.Msg.Words), 1)
+
+		// Collect all found terms
+		foundTerms := make(map[string]bool)
+		for _, w := range listResp.Msg.Words {
+			foundTerms[w.Term] = true
+		}
+
+		// Should be able to find words regardless of query case
+		assert.True(t, foundTerms["polish"] || foundTerms["Polish"],
+			"Should find at least one variant of polish/Polish")
+	})
+
+	t.Run("mixed case query", func(t *testing.T) {
+		// Create "iPhone" (proper noun)
+		iphone := &connect.Request[dictv1.CreateWordRequest]{
+			Msg: &dictv1.CreateWordRequest{
+				Word: &dictv1.Word{
+					Term:     "iPhone",
+					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+					Language: commonv1.Language_LANGUAGE_ENGLISH,
+					Meanings: []*dictv1.Meaning{
+						{
+							LexemeId: "L-IPHONE",
+							Pos:      "n.",
+							Definitions: []*dictv1.Definition{
+								{
+									Language: commonv1.Language_LANGUAGE_ENGLISH,
+									Gloss:    "Apple's smartphone",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		createResp, err := svc.CreateWord(ctx, iphone)
+		require.NoError(t, err)
+		assert.Equal(t, "iPhone", createResp.Msg.Term)
+
+		// Query with different cases
+		testCases := []struct {
+			query string
+		}{
+			{"iphone"},   // all lowercase
+			{"IPHONE"},   // all uppercase
+			{"iPhone"},   // original case
+			{"IpHoNe"},   // random case
+		}
+
+		for _, tc := range testCases {
+			t.Run("query_"+tc.query, func(t *testing.T) {
+				lookupReq := &connect.Request[dictv1.LookupWordRequest]{
+					Msg: &dictv1.LookupWordRequest{
+						Word: tc.query,
+					},
+				}
+
+				resp, err := svc.LookupWord(ctx, lookupReq)
+				require.NoError(t, err)
+				require.NotNil(t, resp.Msg)
+
+				// Should find the word regardless of query case
+				// But the returned term should preserve original case
+				assert.Equal(t, "iPhone", resp.Msg.Term,
+					"Should return original case 'iPhone' regardless of query case")
+			})
+		}
+	})
+
+	t.Run("inflected forms preserve case", func(t *testing.T) {
+		// Create word with mixed-case inflected forms
+		req := &connect.Request[dictv1.CreateWordRequest]{
+			Msg: &dictv1.CreateWordRequest{
+				Word: &dictv1.Word{
+					Term:     "US",
+					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+					Language: commonv1.Language_LANGUAGE_ENGLISH,
+					Meanings: []*dictv1.Meaning{
+						{
+							LexemeId: "L-US",
+							Pos:      "n.",
+							Definitions: []*dictv1.Definition{
+								{
+									Language: commonv1.Language_LANGUAGE_ENGLISH,
+									Gloss:    "United States",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		resp, err := svc.CreateWord(ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, "US", resp.Msg.Term)
+
+		// Verify case is preserved when retrieving
+		getReq := &connect.Request[dictv1.WordIDRequest]{
+			Msg: &dictv1.WordIDRequest{
+				WordId: resp.Msg.Id,
+			},
+		}
+
+		getResp, err := svc.GetWord(ctx, getReq)
+		require.NoError(t, err)
+		assert.Equal(t, "US", getResp.Msg.Term, "Should preserve all-caps 'US'")
+	})
+}

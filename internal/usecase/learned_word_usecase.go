@@ -192,36 +192,9 @@ func (u *learnedWordUsecase) prepareSurfaceTerms(ctx context.Context, query *rep
 		return nil, nil, err
 	}
 
-	query.SurfaceTerms = expandWithCaseVariants(mappedTerms)
+	// No need to expand case variants - database queries are now case-insensitive
+	query.SurfaceTerms = mappedTerms
 	return mapping, original, nil
-}
-
-func expandWithCaseVariants(terms []string) []string {
-	if len(terms) == 0 {
-		return nil
-	}
-
-	expanded := make([]string, 0, len(terms)*2)
-	seen := make(map[string]struct{}, len(terms)*2)
-
-	for _, term := range terms {
-		if addUniqueTerm(seen, term) {
-			expanded = append(expanded, term)
-		}
-		if cap := capitalize(term); cap != term && addUniqueTerm(seen, cap) {
-			expanded = append(expanded, cap)
-		}
-	}
-
-	return expanded
-}
-
-func addUniqueTerm(seen map[string]struct{}, term string) bool {
-	if _, ok := seen[term]; ok {
-		return false
-	}
-	seen[term] = struct{}{}
-	return true
 }
 
 func populateMatchedTerms(results []entity.LearnedWord, surfaceMap SurfaceToLemmasMap, original []string) {
