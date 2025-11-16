@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -13,10 +12,19 @@ import (
 
 //go:generate mockgen -source=word_usecase.go -destination=../mocks/mock_word_usecase.go -package=mocks
 
-var (
-	surfaceFilterPattern  = regexp.MustCompile(`(?i)surface\s+in\s*\[(.*?)\]`)
-	languageFilterPattern = regexp.MustCompile(`(?i)language\s*==\s*['"]([a-zA-Z_-]+)['"]`)
-)
+type ListWordsQuery struct {
+	repository.Pagination
+
+	Language     string
+	Keyword      string
+	Categories   []string
+	SurfaceTerms []string
+
+	PrimaryKey    string
+	PrimaryDesc   bool
+	SecondaryKey  string
+	SecondaryDesc bool
+}
 
 // WordUsecase exposes lemma management plus lookup/list queries backed by word entries.
 type WordUsecase interface {
@@ -25,7 +33,7 @@ type WordUsecase interface {
 	DeleteLemma(ctx context.Context, lemmaID int64) error
 	GetLemma(ctx context.Context, lemmaID int64) (*entity.Lemma, error)
 	Lookup(ctx context.Context, surface string, language entity.Language) (*entity.WordEntry, error)
-	List(ctx context.Context, filter *repository.ListLemmaQuery) ([]*entity.WordEntry, int64, error)
+	List(ctx context.Context, filter *ListWordsQuery) ([]*entity.WordEntry, int64, error)
 	ListCategories(ctx context.Context, search string) ([]string, error)
 	Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error)
 }
@@ -222,24 +230,23 @@ func (u *wordUsecase) Lookup(ctx context.Context, surface string, language entit
 	return u.buildWordEntry(ctx, lemma, surface)
 }
 
-func (u *wordUsecase) List(ctx context.Context, filter *repository.ListLemmaQuery) ([]*entity.WordEntry, int64, error) {
-	if filter == nil {
-		filter = &repository.ListLemmaQuery{
-			Pagination: repository.Pagination{PageNo: 1, PageSize: 20},
-		}
+func (u *wordUsecase) List(ctx context.Context, query *ListWordsQuery) ([]*entity.WordEntry, int64, error) {
+	filter := &repository.ListLemmaQuery{
+		Pagination:    query.Pagination,
+		Language:      entity.ParseLanguage(query.Language),
+		Keyword:       query.Keyword,
+		SurfaceTerms:  query.SurfaceTerms,
+		Categories:    query.Categories,
+		PrimaryKey:    query.PrimaryKey,
+		PrimaryDesc:   query.PrimaryDesc,
+		SecondaryKey:  query.SecondaryKey,
+		SecondaryDesc: query.SecondaryDesc,
 	}
 
-	filterExpr := filter.GetFilter()
-	surfaceTerms := extractSurfaceTerms(filterExpr)
-	lang := extractLanguageFilter(filterExpr)
-	if lang == entity.LanguageUnspecified {
-		lang = entity.LanguageEnglish
-	}
-
-	if len(surfaceTerms) > 0 {
+	if surfaceTerms := query.SurfaceTerms; len(surfaceTerms) > 0 {
 		entries := make([]*entity.WordEntry, 0, len(surfaceTerms))
 		for _, term := range surfaceTerms {
-			entry, err := u.Lookup(ctx, term, lang)
+			entry, err := u.Lookup(ctx, term, filter.Language)
 			if err != nil {
 				continue
 			}
@@ -301,9 +308,7 @@ func (u *wordUsecase) replaceLexemes(ctx context.Context, lemma *entity.Lemma, l
 						PageNo:   1,
 						PageSize: 1,
 					},
-					FilterOrder: repository.FilterOrder{
-						Filter: fmt.Sprintf(`lexeme_id in ["%s"]`, payload.ExternalID),
-					},
+					ExternalIDs: []string{payload.ExternalID},
 				}
 				existing, _, listErr := u.lexemes.List(ctx, query)
 				if listErr != nil {
@@ -389,35 +394,4 @@ func normalizeLemmaPayload(in *entity.Lemma) (*entity.Lemma, error) {
 		}
 	}
 	return &out, nil
-}
-
-func extractSurfaceTerms(filter string) []string {
-	matches := surfaceFilterPattern.FindStringSubmatch(filter)
-	if len(matches) < 2 {
-		return nil
-	}
-	body := matches[1]
-	rawItems := strings.Split(body, ",")
-	terms := make([]string, 0, len(rawItems))
-	for _, item := range rawItems {
-		trimmed := strings.TrimSpace(item)
-		trimmed = strings.Trim(trimmed, `"'`)
-		if trimmed == "" {
-			continue
-		}
-		terms = append(terms, trimmed)
-	}
-	return terms
-}
-
-func extractLanguageFilter(filter string) entity.Language {
-	matches := languageFilterPattern.FindStringSubmatch(filter)
-	if len(matches) < 2 {
-		return entity.LanguageUnspecified
-	}
-	code := strings.TrimSpace(matches[1])
-	if code == "" {
-		return entity.LanguageUnspecified
-	}
-	return entity.ParseLanguage(code)
 }

@@ -12,7 +12,6 @@ import (
 	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entpredicate "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/predicate"
 	"github.com/eslsoft/vocnet/internal/repository"
-	"github.com/eslsoft/vocnet/pkg/filterexpr"
 )
 
 type lexemeRepository struct {
@@ -22,17 +21,6 @@ type lexemeRepository struct {
 // NewLexemeRepository constructs an ent-backed lexeme repository.
 func NewLexemeRepository(client *entdb.Client) repository.LexemeRepository {
 	return &lexemeRepository{client: client}
-}
-
-type listLexemeParams struct {
-	Language      string
-	Keyword       string
-	EntryType     string
-	ExternalIDs   []string
-	PrimaryKey    string
-	PrimaryDesc   bool
-	SecondaryKey  string
-	SecondaryDesc bool
 }
 
 func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
@@ -218,20 +206,15 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 }
 
 func (r *lexemeRepository) List(ctx context.Context, query *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
-	var params listLexemeParams
-	if err := filterexpr.Bind(query, &params, listLexemesSchema); err != nil {
-		return nil, 0, err
-	}
-
 	q := r.client.Lexeme.Query()
-	applyLexemeListFilters(q, params)
+	applyLexemeListFilters(q, query)
 
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count lexemes: %w", err)
 	}
 
-	applyLexemeOrdering(q, params)
+	applyLexemeOrdering(q, query)
 
 	if offset := query.Offset(); offset > 0 {
 		q.Offset(int(offset))
@@ -322,7 +305,7 @@ func (r *lexemeRepository) fetchAggregate(ctx context.Context, predicate entpred
 	return mapEntLexeme(rec), nil
 }
 
-func applyLexemeListFilters(q *entdb.LexemeQuery, params listLexemeParams) {
+func applyLexemeListFilters(q *entdb.LexemeQuery, params *repository.ListLexemeQuery) {
 	if params.Language == "" {
 		params.Language = entity.LanguageEnglish.CodeOrDefault()
 	}
@@ -347,7 +330,7 @@ func applyLexemeListFilters(q *entdb.LexemeQuery, params listLexemeParams) {
 	}
 }
 
-func applyLexemeOrdering(q *entdb.LexemeQuery, params listLexemeParams) {
+func applyLexemeOrdering(q *entdb.LexemeQuery, params *repository.ListLexemeQuery) {
 	for _, term := range []struct {
 		key  string
 		desc bool

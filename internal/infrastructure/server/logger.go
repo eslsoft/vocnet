@@ -249,11 +249,11 @@ func newLogWriter(cfg *config.Config) (io.Writer, error) {
 	}
 
 	logDir := filepath.Dir(cfg.Log.File)
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+	if err := os.MkdirAll(logDir, 0o750); err != nil {
 		return nil, fmt.Errorf("create log directory: %w", err)
 	}
 
-	file, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open log file: %w", err)
 	}

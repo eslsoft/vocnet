@@ -28,6 +28,7 @@ linters:
           - dupl
           - gocyclo
           - gosec
+          - gocognit
       # Mock files
       - path: internal/mocks/
         linters:

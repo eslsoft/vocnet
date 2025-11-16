@@ -35,10 +35,10 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 		SetNotes(word.Notes).
 		SetRelations(append([]entity.LearnedWordRelation{}, word.Relations...)).
 		SetContexts(append([]entity.LearnedWordContext{}, word.Contexts...)).
-		SetMasteryListen(int16(word.Mastery.Listen)).
-		SetMasteryRead(int16(word.Mastery.Read)).
-		SetMasterySpell(int16(word.Mastery.Spell)).
-		SetMasteryPronounce(int16(word.Mastery.Pronounce)).
+		SetMasteryListen(word.Mastery.Listen).
+		SetMasteryRead(word.Mastery.Read).
+		SetMasterySpell(word.Mastery.Spell).
+		SetMasteryPronounce(word.Mastery.Pronounce).
 		SetMasteryOverall(word.Mastery.Overall).
 		SetReviewIntervalDays(word.Review.IntervalDays).
 		SetReviewFailCount(word.Review.FailCount).
@@ -72,10 +72,10 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 		SetNotes(word.Notes).
 		SetRelations(append([]entity.LearnedWordRelation{}, word.Relations...)).
 		SetContexts(append([]entity.LearnedWordContext{}, word.Contexts...)).
-		SetMasteryListen(int16(word.Mastery.Listen)).
-		SetMasteryRead(int16(word.Mastery.Read)).
-		SetMasterySpell(int16(word.Mastery.Spell)).
-		SetMasteryPronounce(int16(word.Mastery.Pronounce)).
+		SetMasteryListen(word.Mastery.Listen).
+		SetMasteryRead(word.Mastery.Read).
+		SetMasterySpell(word.Mastery.Spell).
+		SetMasteryPronounce(word.Mastery.Pronounce).
 		SetMasteryOverall(word.Mastery.Overall).
 		SetReviewIntervalDays(word.Review.IntervalDays).
 		SetReviewFailCount(word.Review.FailCount).
@@ -280,10 +280,10 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 		CaseSensitive: rec.CaseSensitive,
 		Language:      entity.ParseLanguage(rec.Language),
 		Mastery: entity.MasteryBreakdown{
-			Listen:    int32(rec.MasteryListen),
-			Read:      int32(rec.MasteryRead),
-			Spell:     int32(rec.MasterySpell),
-			Pronounce: int32(rec.MasteryPronounce),
+			Listen:    rec.MasteryListen,
+			Read:      rec.MasteryRead,
+			Spell:     rec.MasterySpell,
+			Pronounce: rec.MasteryPronounce,
 			Overall:   rec.MasteryOverall,
 		},
 		Review: entity.ReviewTiming{

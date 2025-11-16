@@ -8,7 +8,16 @@ import (
 
 type ListLemmaQuery struct {
 	Pagination
-	FilterOrder
+
+	Language     entity.Language
+	Keyword      string
+	Categories   []string
+	SurfaceTerms []string
+
+	PrimaryKey    string
+	PrimaryDesc   bool
+	SecondaryKey  string
+	SecondaryDesc bool
 }
 
 //go:generate mockgen -source=lemma.go -destination=../mocks/mock_lemma_repository.go -package=mocks

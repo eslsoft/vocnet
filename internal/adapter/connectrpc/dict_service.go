@@ -7,11 +7,12 @@ import (
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
+	"github.com/eslsoft/vocnet/pkg/filterexpr"
+	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -99,55 +100,23 @@ func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[di
 }
 
 func (s *DictServiceServer) ListWords(ctx context.Context, req *connect.Request[dictv1.ListWordsRequest]) (*connect.Response[dictv1.ListWordsResponse], error) {
-	filter := &repository.ListLemmaQuery{
-		Pagination: repository.Pagination{
-			PageNo:   1,
-			PageSize: 20,
-		},
-		FilterOrder: repository.FilterOrder{
-			Filter:  req.Msg.GetFilter(),
-			OrderBy: req.Msg.GetOrderBy(),
-		},
+	var query usecase.ListWordsQuery
+	if err := filterexpr.Bind(req.Msg, &query, listWordsSchema); err != nil {
+		return nil, err
 	}
 
-	// Apply pagination
-	if req.Msg.GetPagination() != nil {
-		if req.Msg.GetPagination().GetPageNo() > 0 {
-			filter.PageNo = req.Msg.GetPagination().GetPageNo()
-		}
-		if req.Msg.GetPagination().GetPageSize() > 0 {
-			filter.PageSize = req.Msg.GetPagination().GetPageSize()
-		}
-		// Limit max page size to 100000
-		if filter.PageSize > 10000 {
-			filter.PageSize = 10000
-		}
-	}
-
-	entries, total, err := s.wordUC.List(ctx, filter)
+	query.Pagination = convertPagination(req.Msg.GetPagination())
+	entries, total, err := s.wordUC.List(ctx, &query)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 
-	// Safe conversion of total to int32
-	var totalCount int32
-	if total > 0x7FFFFFFF {
-		totalCount = 0x7FFFFFFF // max int32
-	} else {
-		totalCount = int32(total) //nolint:gosec // checked above
-	}
-
-	resp := &dictv1.ListWordsResponse{
-		Pagination: &commonv1.PaginationResponse{
-			Total:  totalCount,
-			PageNo: filter.PageNo,
-		},
-	}
-	for _, entry := range entries {
-		resp.Words = append(resp.Words, mapping.ToPbWord(entry))
-	}
-
-	return connect.NewResponse(resp), nil
+	return connect.NewResponse(&dictv1.ListWordsResponse{
+		Pagination: &commonv1.PaginationResponse{Total: int32(total), PageNo: query.PageNo}, // nolint:gosec
+		Words: lo.Map(entries, func(item *entity.WordEntry, index int) *dictv1.Word {
+			return mapping.ToPbWord(item)
+		}),
+	}), nil
 }
 
 func (s *DictServiceServer) LookupWord(ctx context.Context, req *connect.Request[dictv1.LookupWordRequest]) (*connect.Response[dictv1.Word], error) {

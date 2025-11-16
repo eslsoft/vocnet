@@ -16,7 +16,6 @@ import (
 	entpredicate "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/predicate"
 	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
 	"github.com/eslsoft/vocnet/internal/repository"
-	"github.com/eslsoft/vocnet/pkg/filterexpr"
 )
 
 type lemmaRepository struct {
@@ -112,21 +111,15 @@ func (r *lemmaRepository) GetByWID(ctx context.Context, wid string) (*entity.Lem
 }
 
 func (r *lemmaRepository) List(ctx context.Context, query *repository.ListLemmaQuery) ([]*entity.Lemma, int64, error) {
-	var params listLemmaParams
-	if err := filterexpr.Bind(query, &params, listLemmasSchema); err != nil {
-		return nil, 0, err
-	}
-
 	q := r.client.Word.Query()
-	applyLemmaFilters(q, params)
+	applyLemmaFilters(q, query)
 
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count lemmas: %w", err)
 	}
 
-	applyLemmaOrdering(q, params)
-
+	applyLemmaOrdering(q, query)
 	if offset := query.Offset(); offset > 0 {
 		q.Offset(int(offset))
 	}
@@ -180,20 +173,9 @@ func (r *lemmaRepository) DeleteByWID(ctx context.Context, wid string) error {
 	return nil
 }
 
-type listLemmaParams struct {
-	Language      string
-	Keyword       string
-	Categories    []string
-	SurfaceTerms  []string
-	PrimaryKey    string
-	PrimaryDesc   bool
-	SecondaryKey  string
-	SecondaryDesc bool
-}
-
-func applyLemmaFilters(q *entdb.WordQuery, params listLemmaParams) {
+func applyLemmaFilters(q *entdb.WordQuery, params *repository.ListLemmaQuery) {
 	if params.Language != "" {
-		q.Where(entword.LanguageEQ(params.Language))
+		q.Where(entword.LanguageEQ(params.Language.Code()))
 	}
 	if params.Keyword != "" {
 		// Keyword search: match in lemma OR in any lexeme forms
@@ -252,7 +234,7 @@ func stringsToInterfaces(strs []string) []interface{} {
 	return result
 }
 
-func applyLemmaOrdering(q *entdb.WordQuery, params listLemmaParams) {
+func applyLemmaOrdering(q *entdb.WordQuery, params *repository.ListLemmaQuery) {
 	// Apply primary ordering
 	switch params.PrimaryKey {
 	case "lemma":

@@ -238,7 +238,7 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 					}
 				}
 
-				slog.Info("matchedTerms: evaluating surface",
+				slog.Debug("matchedTerms: evaluating surface",
 					"surface", surface,
 					"storedTerm", results[i].Term,
 					"caseSensitive", results[i].CaseSensitive,

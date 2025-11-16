@@ -17,6 +17,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/rs/cors v1.11.1
+	github.com/samber/lo v1.52.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10

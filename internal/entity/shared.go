@@ -39,14 +39,6 @@ func NormalizeLanguage(lang Language) Language {
 	}
 }
 
-func NormalizeWordToken(word string) string {
-	trimmed := strings.TrimSpace(word)
-	if trimmed == "" {
-		return ""
-	}
-	return strings.ToLower(trimmed)
-}
-
 // ParseLanguage converts an arbitrary string into a supported Language value.
 func ParseLanguage(code string) Language {
 	switch strings.ToLower(strings.TrimSpace(code)) {

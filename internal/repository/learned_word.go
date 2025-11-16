@@ -9,7 +9,6 @@ import (
 // ListLearnedWordQuery holds parameters for listing user words.
 type ListLearnedWordQuery struct {
 	Pagination
-	FilterOrder
 
 	UserID int64
 	// Parsed filter parameters (populated by connectrpc layer)

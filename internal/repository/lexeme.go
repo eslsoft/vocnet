@@ -8,7 +8,15 @@ import (
 
 type ListLexemeQuery struct {
 	Pagination
-	FilterOrder
+
+	Language      string
+	Keyword       string
+	EntryType     string
+	ExternalIDs   []string
+	PrimaryKey    string
+	PrimaryDesc   bool
+	SecondaryKey  string
+	SecondaryDesc bool
 }
 
 //go:generate mockgen -source=lexeme.go -destination=../mocks/mock_lexeme_repository.go -package=mocks

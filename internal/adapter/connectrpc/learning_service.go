@@ -13,6 +13,7 @@ import (
 	learningv1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
+	"github.com/samber/lo"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -82,36 +83,23 @@ func (s *LearningServiceServer) ListLearnedWords(ctx context.Context, req *conne
 		return nil, status.Error(codes.InvalidArgument, "request required")
 	}
 	var query repository.ListLearnedWordQuery
-	if err := filterexpr.Bind(req.Msg, &query, learnedWordFilterSchema); err != nil {
+	if err := filterexpr.Bind(req.Msg, &query, listLearnedWordsFilterSchema); err != nil {
 		return nil, err
 	}
 
 	query.UserID = int64(1000)
-	if req.Msg.Pagination != nil {
-		query.Pagination.PageNo = req.Msg.Pagination.PageNo
-		query.Pagination.PageSize = req.Msg.Pagination.PageSize
-	}
+	query.Pagination = convertPagination(req.Msg.GetPagination())
 	items, total, err := s.uc.ListLearnedWords(ctx, &query)
 	if err != nil {
 		return nil, err
 	}
 
-	total32, err := safeInt32("total user words", total)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	resp := &learningv1.ListLearnedWordsResponse{
-		Pagination: &commonv1.PaginationResponse{
-			Total:  total32,
-			PageNo: query.PageNo,
-		},
-	}
-	for _, item := range items {
-		resp.Words = append(resp.Words, mapping.ToPbLearnedWord(&item))
-	}
-
-	return connect.NewResponse(resp), nil
+	return connect.NewResponse(&learningv1.ListLearnedWordsResponse{
+		Pagination: &commonv1.PaginationResponse{Total: int32(total), PageNo: query.PageNo}, // nolint:gosec
+		Words: lo.Map(items, func(item entity.LearnedWord, index int) *learningv1.LearnedWord {
+			return mapping.ToPbLearnedWord(&item)
+		}),
+	}), nil
 }
 
 func (s *LearningServiceServer) UpdateMastery(ctx context.Context, req *connect.Request[learningv1.UpdateMasteryRequest]) (*connect.Response[learningv1.LearnedWord], error) {
