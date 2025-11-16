@@ -129,7 +129,7 @@ test-coverage: test ## Generate HTML test coverage report
 .PHONY: lint
 lint: ## Run golangci-lint
 	@echo "Running linter..."
-	golangci-lint run ./cmd/... ./internal/... ./pkg/...
+	golangci-lint run 
 
 .PHONY: fmt
 fmt: ## Format Go code

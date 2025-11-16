@@ -21,6 +21,7 @@ linters:
     gocyclo:
       min-complexity: 30
   exclusions:
+    generated: lax
     rules:
       # Test files
       - path: _test\.go
@@ -29,21 +30,15 @@ linters:
           - gocyclo
           - gosec
           - gocognit
-      # Mock files
-      - path: internal/mocks/
-        linters:
-          - golint
-          - unused
-      # Generated API files
-      - path: api/gen/
-        linters:
-          - all
-      # Generated ent files
-      - path: internal/infrastructure/database/ent/
-        linters:
-          - all
       # Scripts directory
-      - path: scripts/
+      - path: scripts/import/
         linters:
-          - all
-
+          - dupl
+          - gocyclo
+          - gosec
+          - gocognit
+          - gocritic
+          - staticcheck
+          - errcheck
+          - ineffassign
+          - unused
