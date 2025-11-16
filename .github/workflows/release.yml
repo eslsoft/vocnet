@@ -37,7 +37,7 @@ jobs:
       run: go mod download
 
     - name: Build binary
-      run: make build
+      run: make generate build
 
     - name: Package binary
       run: |
