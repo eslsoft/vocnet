@@ -25,6 +25,9 @@ func (LearnedWord) Fields() []ent.Field {
 		field.String("term").
 			NotEmpty().
 			Comment("The term stored: lemma for regular forms, or the term itself for irregular forms"),
+		field.Bool("case_sensitive").
+			Default(false).
+			Comment("Whether this word requires case-sensitive matching (e.g., polish vs Polish)"),
 		field.String("language").Default(entity.LanguageEnglish.CodeOrDefault()),
 		field.JSON("tags", []string{}).
 			Default([]string{}).

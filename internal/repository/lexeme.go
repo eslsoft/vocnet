@@ -19,6 +19,7 @@ type LexemeFormInfo struct {
 	FormType    string // The form type (e.g., "LEMMA", "PLURAL", "PAST")
 	IsIrregular bool   // Whether this is an irregular form
 	LemmaText   string // The lemma text (e.g., "apple", "go")
+	Pos         string // The part of speech (e.g., "verb", "noun", "proper-noun")
 }
 
 // LexemeRepository defines data access for lexeme entries.

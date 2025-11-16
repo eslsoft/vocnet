@@ -203,6 +203,7 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 			FormType:    form.FormType,
 			IsIrregular: form.IsIrregular,
 			LemmaText:   lexeme.Lemma,
+			Pos:         lexeme.Pos,
 		}
 
 		// Map back to original case - append all forms instead of overwriting

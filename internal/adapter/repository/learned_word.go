@@ -29,6 +29,7 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 	builder := r.client.LearnedWord.Create().
 		SetUserID(word.UserID).
 		SetTerm(strings.TrimSpace(word.Term)).
+		SetCaseSensitive(word.CaseSensitive).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, word.Tags...)).
 		SetNotes(word.Notes).
@@ -65,6 +66,7 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 	mutation := r.client.LearnedWord.UpdateOneID(word.ID).
 		Where(entlearnedword.UserIDEQ(word.UserID)).
 		SetTerm(strings.TrimSpace(word.Term)).
+		SetCaseSensitive(word.CaseSensitive).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, word.Tags...)).
 		SetNotes(word.Notes).
@@ -272,10 +274,11 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 	}
 
 	out := &entity.LearnedWord{
-		ID:       rec.ID,
-		UserID:   rec.UserID,
-		Term:     rec.Term,
-		Language: entity.ParseLanguage(rec.Language),
+		ID:            rec.ID,
+		UserID:        rec.UserID,
+		Term:          rec.Term,
+		CaseSensitive: rec.CaseSensitive,
+		Language:      entity.ParseLanguage(rec.Language),
 		Mastery: entity.MasteryBreakdown{
 			Listen:    int32(rec.MasteryListen),
 			Read:      int32(rec.MasteryRead),

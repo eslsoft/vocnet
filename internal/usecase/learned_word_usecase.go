@@ -50,12 +50,16 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	termToStore := word.Term // default
 
 	// Use BatchLookupFormInfo to ensure consistency with ListLearnedWords
-	formInfosMap, err := u.lexemeRepo.BatchLookupFormInfo(ctx, []string{word.Term}, language)
+	// Query both lowercase and capitalized variants to check for proper nouns
+	variants := []string{strings.ToLower(word.Term), capitalize(word.Term)}
+	formInfosMap, err := u.lexemeRepo.BatchLookupFormInfo(ctx, variants, language)
 	if err != nil {
 		return nil, err
 	}
 
 	formInfos := formInfosMap[word.Term]
+	// Determine if this word requires case-sensitive matching
+	caseSensitive := isCaseSensitiveWord(formInfosMap)
 	// Default: keep user's input
 	termToStore = word.Term
 	
@@ -98,6 +102,7 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 		}
 		existing.Mastery = word.Mastery
 		existing.Review = word.Review
+		existing.CaseSensitive = caseSensitive
 		existing.Normalize(now)
 		return u.repo.Update(ctx, existing)
 	}
@@ -105,6 +110,7 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	// Create new learned word
 	copy := *word
 	copy.Term = termToStore
+	copy.CaseSensitive = caseSensitive
 	copy.UserID = userID
 	copy.Language = language
 	if copy.QueriedCount == 0 {
@@ -169,7 +175,25 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 		if err != nil {
 			return nil, 0, err
 		}
-		query.SurfaceTerms = mappedTerms
+
+		// Expand mapped terms to include case variants (lowercase + capitalized)
+		// This ensures we find words regardless of how they're stored in the database
+		expandedTerms := make([]string, 0, len(mappedTerms)*2)
+		seen := make(map[string]bool)
+		for _, term := range mappedTerms {
+			// Add lowercase form
+			if !seen[term] {
+				expandedTerms = append(expandedTerms, term)
+				seen[term] = true
+			}
+			// Add capitalized form if different
+			if cap := capitalize(term); cap != term && !seen[cap] {
+				expandedTerms = append(expandedTerms, cap)
+				seen[cap] = true
+			}
+		}
+
+		query.SurfaceTerms = expandedTerms
 		surfaceToStorageMap = mapping
 	}
 
@@ -181,34 +205,43 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 	// If we have a storage-to-surface mapping, set MatchedTerms for each result
 	// The mapping is already storage → surface from MapSurfaceTermsToStorageTermsWithMapping
 	if len(surfaceToStorageMap) > 0 {
-		// Build a set of original surface terms for matching (case-insensitive)
-		surfaceTermSet := make(map[string]string, len(originalSurfaceTerms))
-		for _, term := range originalSurfaceTerms {
-			surfaceTermSet[strings.ToLower(term)] = term
-		}
-
 		// For each result, collect ALL surface terms that map to this storage term
 		for i := range results {
-			termLower := strings.ToLower(results[i].Term)
 			matchedTerms := make([]string, 0, 2) // typically 1-2 matches
+			seen := make(map[string]bool)        // avoid duplicates
 
-			// Check if the storage term itself was in the original query
-			if exactSurface, ok := surfaceTermSet[termLower]; ok {
-				matchedTerms = append(matchedTerms, exactSurface)
-			}
-
-			// Check all surface terms to see which ones map to this storage term
+			// Check all surface terms to see which ones should match this stored term
 			for _, surface := range originalSurfaceTerms {
-				surfaceLower := strings.ToLower(surface)
-				// Skip if already added as exact match
-				if surfaceLower == termLower {
-					continue
+				if seen[surface] {
+					continue // skip duplicates
 				}
-				// Check if this surface term maps to the current storage term
-				if mappedStorage, ok := surfaceToStorageMap[surfaceLower]; ok {
-					if strings.EqualFold(mappedStorage, results[i].Term) {
-						matchedTerms = append(matchedTerms, surface)
+
+				surfaceLower := strings.ToLower(surface)
+				mappedStorage, hasMapped := surfaceToStorageMap[surfaceLower]
+
+				shouldMatch := false
+
+				if hasMapped {
+					// Surface term was found in lexeme dictionary and mapped to a storage term
+					if results[i].CaseSensitive {
+						// For case-sensitive words, require exact match of both mapped storage and surface
+						shouldMatch = (mappedStorage == results[i].Term && surface == results[i].Term)
+					} else {
+						// For case-insensitive words, use case-insensitive match of mapped storage
+						shouldMatch = strings.EqualFold(mappedStorage, results[i].Term)
 					}
+				} else {
+					// Surface term not found in dictionary, try direct match with stored term
+					if results[i].CaseSensitive {
+						shouldMatch = (surface == results[i].Term)
+					} else {
+						shouldMatch = strings.EqualFold(surface, results[i].Term)
+					}
+				}
+
+				if shouldMatch {
+					matchedTerms = append(matchedTerms, surface)
+					seen[surface] = true
 				}
 			}
 
@@ -355,9 +388,40 @@ func deduplicateStrings(items []string) []string {
 		}
 		if _, exists := seen[lower]; !exists {
 			seen[lower] = struct{}{}
-			result = append(result, item)
+			// Always use lowercase to ensure consistent database queries
+			// Database storage may vary in case, but queries should be case-insensitive
+			result = append(result, lower)
 		}
 	}
 
 	return result
+}
+
+// capitalize returns a string with the first letter capitalized and the rest lowercase
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return s
+	}
+	result := strings.ToUpper(string(runes[0]))
+	if len(runes) > 1 {
+		result += strings.ToLower(string(runes[1:]))
+	}
+	return result
+}
+
+// isCaseSensitiveWord checks if any of the word's case variants contains a proper noun
+// indicating that the word should be matched case-sensitively (e.g., polish vs Polish)
+func isCaseSensitiveWord(formInfosMap map[string][]*repository.LexemeFormInfo) bool {
+	for _, formInfos := range formInfosMap {
+		for _, info := range formInfos {
+			if strings.Contains(strings.ToLower(info.Pos), "proper") {
+				return true
+			}
+		}
+	}
+	return false
 }
