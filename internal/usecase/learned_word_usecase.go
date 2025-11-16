@@ -36,6 +36,10 @@ type learnedWordUsecase struct {
 	clock      func() time.Time
 }
 
+// SurfaceToLemmasMap captures the 1:N relationship between a queried surface term
+// and every possible storage term (lemma or inflection) that might represent it.
+type SurfaceToLemmasMap map[string][]string
+
 func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word *entity.LearnedWord) (*entity.LearnedWord, error) {
 	if word == nil {
 		return nil, entity.ErrInvalidLearnedWordText
@@ -63,15 +67,15 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	caseSensitive := isCaseSensitiveWord(formInfosMap)
 	// Default: keep user's input
 	termToStore = word.Term
-	
+
 	// Only map to lemma if it's CLEARLY a simple regular inflection
 	// (not irregular, not a lemma itself, and has a different lemma)
 	if len(formInfos) == 1 {
 		info := formInfos[0]
-		if !info.IsIrregular && 
-		   info.FormType != "LEMMA" && 
-		   info.FormType != "" &&
-		   !strings.EqualFold(info.FormText, info.LemmaText) {
+		if !info.IsIrregular &&
+			info.FormType != "LEMMA" &&
+			info.FormType != "" &&
+			!strings.EqualFold(info.FormText, info.LemmaText) {
 			// Simple case: single regular inflection with different lemma
 			// e.g., "apples" → "apple"
 			termToStore = info.LemmaText
@@ -165,7 +169,7 @@ func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, userID int64, id
 func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
 	// Apply business logic: map surface terms to storage terms
 	// This implements mastery-inheritance.md: regular forms → lemma, irregular → itself
-	var surfaceToStorageMap map[string]string
+	var surfaceToLemmaMap SurfaceToLemmasMap
 	var originalSurfaceTerms []string
 	if len(query.SurfaceTerms) > 0 {
 		// Save original surface terms before mapping
@@ -195,7 +199,7 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 		}
 
 		query.SurfaceTerms = expandedTerms
-		surfaceToStorageMap = mapping
+		surfaceToLemmaMap = mapping
 	}
 
 	results, total, err := u.repo.List(ctx, query)
@@ -203,56 +207,47 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 		return nil, 0, err
 	}
 
-	// If we have a storage-to-surface mapping, set MatchedTerms for each result
-	// The mapping is already storage → surface from MapSurfaceTermsToStorageTermsWithMapping
-	if len(surfaceToStorageMap) > 0 {
+	// If we have a surface-to-lemma mapping, set MatchedTerms for each result
+	if len(surfaceToLemmaMap) > 0 {
 		// For each result, collect ALL surface terms that map to this storage term
 		for i := range results {
-			matchedTerms := make([]string, 0, 2) // typically 1-2 matches
-			seen := make(map[string]bool)        // avoid duplicates
+			matchedTerms := make([]string, 0, 2)                         // typically 1-2 matches
+			seen := make(map[string]struct{}, len(originalSurfaceTerms)) // avoid duplicates
 
 			// Check all surface terms to see which ones should match this stored term
 			for _, surface := range originalSurfaceTerms {
-				if seen[surface] {
+				if _, alreadyMatched := seen[surface]; alreadyMatched {
 					continue // skip duplicates
 				}
 
-				mappedStorage, hasMapped := surfaceToStorageMap[surface]
+				candidates := surfaceToLemmaMap[surface]
+				if len(candidates) == 0 {
+					// This should rarely happen since collectPossibleStorageTerms always
+					// includes the surface term. Skip empty candidates to avoid false matches.
+					slog.Debug("empty candidates for surface term, skipping",
+						"surface", surface,
+						"storedTerm", results[i].Term)
+					continue
+				}
 
 				shouldMatch := false
-
-				if hasMapped {
-					// Surface term was found in lexeme dictionary and mapped to a storage term
-					if results[i].CaseSensitive {
-						// For case-sensitive words, require exact match of both mapped storage and surface
-						shouldMatch = (mappedStorage == results[i].Term && surface == results[i].Term)
-					} else {
-						// For case-insensitive words, use case-insensitive match of mapped storage
-						shouldMatch = strings.EqualFold(mappedStorage, results[i].Term)
+				for _, candidate := range candidates {
+					if matchesStoredTerm(results[i].Term, candidate, results[i].CaseSensitive) {
+						shouldMatch = true
+						break
 					}
-					slog.Info("matchedTerms: checking with mapping",
-						"surface", surface,
-						"mappedStorage", mappedStorage,
-						"storedTerm", results[i].Term,
-						"caseSensitive", results[i].CaseSensitive,
-						"shouldMatch", shouldMatch)
-				} else {
-					// Surface term not found in dictionary, try direct match with stored term
-					if results[i].CaseSensitive {
-						shouldMatch = (surface == results[i].Term)
-					} else {
-						shouldMatch = strings.EqualFold(surface, results[i].Term)
-					}
-					slog.Info("matchedTerms: checking without mapping",
-						"surface", surface,
-						"storedTerm", results[i].Term,
-						"caseSensitive", results[i].CaseSensitive,
-						"shouldMatch", shouldMatch)
 				}
+
+				slog.Info("matchedTerms: evaluating surface",
+					"surface", surface,
+					"storedTerm", results[i].Term,
+					"caseSensitive", results[i].CaseSensitive,
+					"candidates", candidates,
+					"matched", shouldMatch)
 
 				if shouldMatch {
 					matchedTerms = append(matchedTerms, surface)
-					seen[surface] = true
+					seen[surface] = struct{}{}
 				}
 			}
 
@@ -278,12 +273,24 @@ func (u *learnedWordUsecase) MapSurfaceTermsToStorageTerms(ctx context.Context, 
 	return mappedTerms, err
 }
 
-// MapSurfaceTermsToStorageTermsWithMapping converts surface forms to storage terms and returns both
-// the mapped terms and a map from surface term to storage term.
-// Returns: (mappedStorageTerms, surfaceToStorageMap, error)
-func (u *learnedWordUsecase) MapSurfaceTermsToStorageTermsWithMapping(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, map[string]string, error) {
+// MapSurfaceTermsToStorageTermsWithMapping converts each queried surface form into
+// all possible storage terms (lemmas or inflections) that should be checked.
+// Returns (deduplicated storage terms to query, surface → lemmas mapping, error).
+func (u *learnedWordUsecase) MapSurfaceTermsToStorageTermsWithMapping(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, SurfaceToLemmasMap, error) {
 	if len(surfaceTerms) == 0 {
 		return surfaceTerms, nil, nil
+	}
+
+	// Filter out empty/whitespace-only terms upfront
+	filteredTerms := make([]string, 0, len(surfaceTerms))
+	for _, term := range surfaceTerms {
+		if strings.TrimSpace(term) != "" {
+			filteredTerms = append(filteredTerms, term)
+		}
+	}
+
+	if len(filteredTerms) == 0 {
+		return nil, nil, nil
 	}
 
 	// Normalize language, default to English
@@ -292,105 +299,34 @@ func (u *learnedWordUsecase) MapSurfaceTermsToStorageTermsWithMapping(ctx contex
 		language = entity.LanguageEnglish
 	}
 
-	// Batch lookup form information - now returns ALL possible forms per surface term
-	formInfosMap, err := u.lexemeRepo.BatchLookupFormInfo(ctx, surfaceTerms, language)
+	formInfosMap, err := u.lexemeRepo.BatchLookupFormInfo(ctx, filteredTerms, language)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Map each surface term to its storage term(s) using the same logic as CollectWord
-	termsToQuery := make([]string, 0, len(surfaceTerms))
-	surfaceToStorage := make(map[string]string, len(surfaceTerms))
-	// Also track storage → surface for reverse lookup (a storage term may come from multiple surfaces)
-	storageToFirstSurface := make(map[string]string)
+	termsToQuery := make([]string, 0, len(filteredTerms)*2)
+	surfaceToLemmas := make(SurfaceToLemmasMap, len(filteredTerms))
 
-	for _, surface := range surfaceTerms {
-		// ALWAYS include the original surface term first
-		// This fixes the "axes" problem where we store "axes" but only query ["axis", "axe"]
-		termsToQuery = append(termsToQuery, surface)
+	for _, surface := range filteredTerms {
+		formInfos := formInfosMap[surface]
+		lemmas := collectPossibleStorageTerms(surface, formInfos)
+		surfaceToLemmas[surface] = lemmas
+		termsToQuery = append(termsToQuery, lemmas...)
 
-		// Also track surface → surface for the case where no mapping exists
-		storageKey := strings.ToLower(surface)
-		if _, exists := storageToFirstSurface[storageKey]; !exists {
-			storageToFirstSurface[storageKey] = surface
-		}
-
-		formInfos, exists := formInfosMap[surface]
-		if !exists || len(formInfos) == 0 {
-			// No form info found, map to itself
-			surfaceToStorage[surface] = surface
-			continue
-		}
-
-		// Process ALL form infos for this surface term
-		// Add mapped lemmas IN ADDITION to the surface term
-		for _, formInfo := range formInfos {
-			var termToStore string
-
-			// Apply storage strategy: same logic as in CollectWord
-			if formInfo.IsIrregular {
-				// Irregular form: store/query the form itself
-				termToStore = formInfo.FormText
-			} else if formInfo.FormType != "LEMMA" && formInfo.FormType != "" {
-				// Regular inflection: store/query the lemma
-				termToStore = formInfo.LemmaText
-			} else {
-				// Lemma or unknown: store/query the form itself
-				termToStore = formInfo.FormText
-			}
-			// Skip if termToStore is the same as surface (already added)
-			if !strings.EqualFold(termToStore, surface) {
-				termsToQuery = append(termsToQuery, termToStore)
-			}
-
+		for _, info := range formInfos {
 			slog.Info("MapSurfaceTermsToStorageTermsWithMapping: processing formInfo",
 				"surface", surface,
-				"formText", formInfo.FormText,
-				"formType", formInfo.FormType,
-				"lemmaText", formInfo.LemmaText,
-				"isIrregular", formInfo.IsIrregular,
-				"termToStore", termToStore)
-
-			// Map surface to storage (prefer inflections over lemmas)
-			// Priority: non-LEMMA inflections > LEMMA > surface→surface
-			existing, exists := surfaceToStorage[surface]
-			isLemmaType := formInfo.FormType == "LEMMA" || formInfo.FormType == ""
-			isSelfMapping := strings.EqualFold(termToStore, surface)
-
-			if !exists {
-				// No mapping yet, use this one (unless it's a self-mapping LEMMA, which we skip)
-				if !(isLemmaType && isSelfMapping) {
-					surfaceToStorage[surface] = termToStore
-				}
-			} else {
-				// We have an existing mapping, decide whether to override
-				existingIsSelfMapping := strings.EqualFold(existing, surface)
-
-				if !isLemmaType && !isSelfMapping {
-					// This is a real inflection form (not LEMMA), always override except other real inflections
-					if existingIsSelfMapping || existing == strings.ToLower(surface) {
-						// Override self-mappings or lowercase-only mappings
-						surfaceToStorage[surface] = termToStore
-					}
-					// If existing is already a different term (not self), keep the first good mapping
-				} else if existingIsSelfMapping && !isSelfMapping {
-					// Existing is self-mapping, override with any non-self mapping
-					surfaceToStorage[surface] = termToStore
-				}
-				// Otherwise keep the existing mapping
-			}
-			// Track storage → surface for reverse lookup (first surface term wins)
-			storageKey := strings.ToLower(termToStore)
-			if _, exists := storageToFirstSurface[storageKey]; !exists {
-				storageToFirstSurface[storageKey] = surface
-			}
+				"formText", info.FormText,
+				"formType", info.FormType,
+				"lemmaText", info.LemmaText,
+				"isIrregular", info.IsIrregular)
 		}
 	}
 
-	// Deduplicate and return
-	// Return surfaceToStorage for the caller to know which surface terms map to which storage terms
-	return deduplicateStrings(termsToQuery), surfaceToStorage, nil
-} // mergeContexts appends new contexts to existing ones, avoiding duplicates based on sentence text.
+	return deduplicateStrings(termsToQuery), surfaceToLemmas, nil
+}
+
+// mergeContexts appends new contexts to existing ones, avoiding duplicates based on sentence text.
 func mergeContexts(existing, new []entity.LearnedWordContext) []entity.LearnedWordContext {
 	if len(new) == 0 {
 		return existing
@@ -414,7 +350,8 @@ func mergeContexts(existing, new []entity.LearnedWordContext) []entity.LearnedWo
 	return result
 }
 
-// deduplicateStrings removes duplicate strings (case-insensitive).
+// deduplicateStrings removes duplicate strings.
+// Note: Input is expected to be already lowercased from collectPossibleStorageTerms.
 func deduplicateStrings(items []string) []string {
 	if len(items) == 0 {
 		return items
@@ -424,19 +361,100 @@ func deduplicateStrings(items []string) []string {
 	result := make([]string, 0, len(items))
 
 	for _, item := range items {
-		lower := strings.ToLower(strings.TrimSpace(item))
-		if lower == "" {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
 			continue
 		}
-		if _, exists := seen[lower]; !exists {
-			seen[lower] = struct{}{}
-			// Always use lowercase to ensure consistent database queries
-			// Database storage may vary in case, but queries should be case-insensitive
-			result = append(result, lower)
+		if _, exists := seen[trimmed]; !exists {
+			seen[trimmed] = struct{}{}
+			result = append(result, trimmed)
 		}
 	}
 
 	return result
+}
+
+// collectPossibleStorageTerms gathers all candidate terms that might match the surface form.
+// Returns lowercase terms for case-insensitive database queries. Case variants will be
+// expanded later in ListLearnedWords via capitalize() to handle both lowercase and
+// capitalized forms (e.g., "root" → ["root", "Root"]).
+//
+// The function always includes the surface term itself plus all derived lemmas, ensuring
+// maximum recall even when lexeme data quality varies.
+//
+// Note: Empty/whitespace-only surfaces should be filtered out before calling this function.
+// If called with empty surface, returns empty slice (not nil) for consistency.
+func collectPossibleStorageTerms(surface string, formInfos []*repository.LexemeFormInfo) []string {
+	trimmedSurface := strings.TrimSpace(surface)
+	if trimmedSurface == "" {
+		// Return empty slice instead of nil for consistent handling
+		return []string{}
+	}
+
+	candidates := make([]string, 0, len(formInfos)+1)
+	seen := make(map[string]struct{}, len(formInfos)+1)
+	// Always include the surface term first (lowercase for consistency)
+	candidates = appendUniqueLowercase(candidates, seen, trimmedSurface)
+
+	for _, info := range formInfos {
+		if info == nil || isSelfReferencingLemma(info) {
+			continue
+		}
+
+		candidate := determineStorageTerm(info)
+		candidates = appendUniqueLowercase(candidates, seen, candidate)
+	}
+
+	return candidates
+}
+
+// appendUniqueLowercase adds a lowercased term to the slice if not already present.
+// Deduplication is case-insensitive (e.g., "Root" and "root" are considered duplicates).
+func appendUniqueLowercase(dst []string, seen map[string]struct{}, value string) []string {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	if lower == "" {
+		return dst
+	}
+
+	if _, exists := seen[lower]; exists {
+		return dst
+	}
+
+	seen[lower] = struct{}{}
+	return append(dst, lower)
+}
+
+func isSelfReferencingLemma(info *repository.LexemeFormInfo) bool {
+	if info == nil {
+		return false
+	}
+	if info.FormType != "LEMMA" {
+		return false
+	}
+	// Use exact match to handle case-sensitive words correctly (e.g., "Polish" vs "polish")
+	return strings.TrimSpace(info.FormText) == strings.TrimSpace(info.LemmaText)
+}
+
+func determineStorageTerm(info *repository.LexemeFormInfo) string {
+	if info == nil {
+		return ""
+	}
+
+	switch {
+	case info.IsIrregular:
+		return info.FormText
+	case info.FormType != "LEMMA" && info.FormType != "":
+		return info.LemmaText
+	default:
+		return info.FormText
+	}
+}
+
+func matchesStoredTerm(storedTerm, candidate string, caseSensitive bool) bool {
+	if caseSensitive {
+		return storedTerm == candidate
+	}
+	return strings.EqualFold(storedTerm, candidate)
 }
 
 // capitalize returns a string with the first letter capitalized and the rest lowercase

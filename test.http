@@ -3,7 +3,6 @@ Content-Type: application/json
 
 //{"filter":"surface in [\"governing\",\"hired\",\"Games\",\"Roots\",\"sales\",\"searching\", \"does\", \"goes\", \"easy\"]"}
 
-{"filter":"surface in [\"book\",\"eating\", \"easy\"]"}
-
+{"filter":"surface in [\"easy\",\"book\",\"eat\",\"eating\"]"}
 ###
 
