@@ -67,7 +67,7 @@ ent-generate: ## Generate Ent client only
 #==============================================================================
 
 .PHONY: build
-build: generate ## Build the binary
+build:  ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) .

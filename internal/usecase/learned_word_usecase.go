@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -216,8 +217,7 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 					continue // skip duplicates
 				}
 
-				surfaceLower := strings.ToLower(surface)
-				mappedStorage, hasMapped := surfaceToStorageMap[surfaceLower]
+				mappedStorage, hasMapped := surfaceToStorageMap[surface]
 
 				shouldMatch := false
 
@@ -230,6 +230,12 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 						// For case-insensitive words, use case-insensitive match of mapped storage
 						shouldMatch = strings.EqualFold(mappedStorage, results[i].Term)
 					}
+					slog.Info("matchedTerms: checking with mapping",
+						"surface", surface,
+						"mappedStorage", mappedStorage,
+						"storedTerm", results[i].Term,
+						"caseSensitive", results[i].CaseSensitive,
+						"shouldMatch", shouldMatch)
 				} else {
 					// Surface term not found in dictionary, try direct match with stored term
 					if results[i].CaseSensitive {
@@ -237,6 +243,11 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 					} else {
 						shouldMatch = strings.EqualFold(surface, results[i].Term)
 					}
+					slog.Info("matchedTerms: checking without mapping",
+						"surface", surface,
+						"storedTerm", results[i].Term,
+						"caseSensitive", results[i].CaseSensitive,
+						"shouldMatch", shouldMatch)
 				}
 
 				if shouldMatch {
@@ -327,15 +338,46 @@ func (u *learnedWordUsecase) MapSurfaceTermsToStorageTermsWithMapping(ctx contex
 				// Lemma or unknown: store/query the form itself
 				termToStore = formInfo.FormText
 			}
-
 			// Skip if termToStore is the same as surface (already added)
 			if !strings.EqualFold(termToStore, surface) {
 				termsToQuery = append(termsToQuery, termToStore)
 			}
 
-			// Map surface to storage (first occurrence wins if multiple forms map to same storage)
-			if _, exists := surfaceToStorage[surface]; !exists {
-				surfaceToStorage[surface] = termToStore
+			slog.Info("MapSurfaceTermsToStorageTermsWithMapping: processing formInfo",
+				"surface", surface,
+				"formText", formInfo.FormText,
+				"formType", formInfo.FormType,
+				"lemmaText", formInfo.LemmaText,
+				"isIrregular", formInfo.IsIrregular,
+				"termToStore", termToStore)
+
+			// Map surface to storage (prefer inflections over lemmas)
+			// Priority: non-LEMMA inflections > LEMMA > surface→surface
+			existing, exists := surfaceToStorage[surface]
+			isLemmaType := formInfo.FormType == "LEMMA" || formInfo.FormType == ""
+			isSelfMapping := strings.EqualFold(termToStore, surface)
+
+			if !exists {
+				// No mapping yet, use this one (unless it's a self-mapping LEMMA, which we skip)
+				if !(isLemmaType && isSelfMapping) {
+					surfaceToStorage[surface] = termToStore
+				}
+			} else {
+				// We have an existing mapping, decide whether to override
+				existingIsSelfMapping := strings.EqualFold(existing, surface)
+
+				if !isLemmaType && !isSelfMapping {
+					// This is a real inflection form (not LEMMA), always override except other real inflections
+					if existingIsSelfMapping || existing == strings.ToLower(surface) {
+						// Override self-mappings or lowercase-only mappings
+						surfaceToStorage[surface] = termToStore
+					}
+					// If existing is already a different term (not self), keep the first good mapping
+				} else if existingIsSelfMapping && !isSelfMapping {
+					// Existing is self-mapping, override with any non-self mapping
+					surfaceToStorage[surface] = termToStore
+				}
+				// Otherwise keep the existing mapping
 			}
 			// Track storage → surface for reverse lookup (first surface term wins)
 			storageKey := strings.ToLower(termToStore)

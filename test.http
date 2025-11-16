@@ -1,7 +1,9 @@
 POST http://localhost:8080/learning.v1.LearningService/ListLearnedWords
 Content-Type: application/json
 
-{"filter":"surface in [\"you\",\"do\",\"said\",\"whole\",\"principle\",\"came\",\"idea\"]"}
+//{"filter":"surface in [\"governing\",\"hired\",\"Games\",\"Roots\",\"sales\",\"searching\", \"does\", \"goes\", \"easy\"]"}
+
+{"filter":"surface in [\"book\",\"eating\", \"easy\"]"}
 
 ###
 
