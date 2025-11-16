@@ -129,32 +129,53 @@ func preserveExistingForms(existing, incoming *entity.Lemma) *entity.Lemma {
 
 // mergeFormLists merges two form lists, preserving all unique forms
 func mergeFormLists(existing, incoming []entity.LexemeForm) []entity.LexemeForm {
+	if len(existing) == 0 {
+		return append([]entity.LexemeForm(nil), incoming...)
+	}
 	if len(incoming) == 0 {
-		return existing
+		return append([]entity.LexemeForm(nil), existing...)
 	}
 
-	seen := make(map[string]bool)
 	result := make([]entity.LexemeForm, 0, len(existing)+len(incoming))
+	index := make(map[string]int, len(existing))
 
-	// Add all existing forms
 	for _, form := range existing {
-		key := strings.ToLower(form.Text) + "|" + string(form.FormType)
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, form)
-		}
+		key := canonicalFormKey(form)
+		index[key] = len(result)
+		result = append(result, form)
 	}
 
-	// Add new forms
 	for _, form := range incoming {
-		key := strings.ToLower(form.Text) + "|" + string(form.FormType)
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, form)
+		key := canonicalFormKey(form)
+		if idx, ok := index[key]; ok {
+			merged := result[idx]
+			merged = mergeLexemeForm(merged, form)
+			result[idx] = merged
+			continue
 		}
+		result = append(result, form)
 	}
 
 	return result
+}
+
+func canonicalFormKey(form entity.LexemeForm) string {
+	return strings.ToLower(strings.TrimSpace(form.Text)) + "|" + string(form.FormType)
+}
+
+// mergeLexemeForm prefers the incoming data but only overrides fields when values are provided.
+func mergeLexemeForm(base entity.LexemeForm, incoming entity.LexemeForm) entity.LexemeForm {
+	if trimmed := strings.TrimSpace(incoming.Text); trimmed != "" {
+		base.Text = trimmed
+	}
+	if incoming.FormType != entity.LexemeFormTypeUnspecified {
+		base.FormType = incoming.FormType
+	}
+	base.IsIrregular = incoming.IsIrregular
+	if len(incoming.Phonetics) > 0 {
+		base.Phonetics = append([]entity.Phonetic{}, incoming.Phonetics...)
+	}
+	return base
 }
 
 func (u *wordUsecase) DeleteLemma(ctx context.Context, lemmaID int64) error {
