@@ -11,52 +11,40 @@ import (
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
-func TestLearnedWordUsecase_ListLearnedWords_SetsQueriedTerm(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
+	t.Helper()
 
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// User queries for "learning" (a gerund/present participle)
-	// The system should map it to "learn" (lemma) for storage lookup
-	// But return "learning" as QueriedTerm in the result
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"learning"},
+	type testCase struct {
+		name            string
+		query           repository.ListLearnedWordQuery
+		lexemeResp      map[string][]*repository.LexemeFormInfo
+		skipLexeme      bool
+		repoResults     []entity.LearnedWord
+		total           int64
+		assertQuery     func(t *testing.T, q *repository.ListLearnedWordQuery)
+		expectedMatches map[string][]string
 	}
 
-	// Mock BatchLookupFormInfo: "learning" is a verb form with lemma "learn"
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"learning"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"learning": {
-				{
-					FormText:    "learning",
-					FormType:    "PRESENT_PARTICIPLE",
-					LemmaText:   "learn",
-					IsIrregular: false,
+	userID := int64(1000)
+	cases := []testCase{
+		{
+			name: "sets queried term on lemma hit",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"learning"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"learning": {
+					{
+						FormText:    "learning",
+						FormType:    "PRESENT_PARTICIPLE",
+						LemmaText:   "learn",
+						IsIrregular: false,
+					},
 				},
 			},
-		}, nil)
-
-	// Mock repository List: should receive both surface term and mapped lemma
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Verify that SurfaceTerms includes both "learning" (surface) and "learn" (mapped)
-			expectedTerms := []string{"learning", "learn"}
-			if !containsAll(q.SurfaceTerms, expectedTerms) {
-				t.Errorf("expected SurfaceTerms to contain %v, got %v", expectedTerms, q.SurfaceTerms)
-			}
-
-			// Return a learned word with Term="learn" (the stored lemma)
-			return []entity.LearnedWord{
+			repoResults: []entity.LearnedWord{
 				{
 					ID:       1,
 					UserID:   userID,
@@ -66,1081 +54,499 @@ func TestLearnedWordUsecase_ListLearnedWords_SetsQueriedTerm(t *testing.T) {
 						Overall: 300,
 					},
 				},
-			}, 1, nil
-		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 1 {
-		t.Fatalf("expected total=1, got %d", total)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	// Verify that MatchedTerms contains the original query term "learning"
-	result := results[0]
-	if result.Term != "learn" {
-		t.Errorf("expected Term=learn, got %s", result.Term)
-	}
-	if len(result.MatchedTerms) != 1 || result.MatchedTerms[0] != "learning" {
-		t.Errorf("expected MatchedTerms=[learning], got %v", result.MatchedTerms)
-	}
-}
-
-func TestLearnedWordUsecase_ListLearnedWords_MultipleQueryTerms(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// User queries for multiple forms: "learning", "went", "apples"
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"learning", "went", "apples"},
-	}
-
-	// Mock BatchLookupFormInfo
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"learning", "went", "apples"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"learning": {
-				{
-					FormText:    "learning",
-					FormType:    "PRESENT_PARTICIPLE",
-					LemmaText:   "learn",
-					IsIrregular: false,
+			},
+			total: 1,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if !containsAll(q.SurfaceTerms, []string{"learning", "learn"}) {
+					t.Fatalf("expected surface terms to include 'learning' and 'learn', got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"learn": {"learning"},
+			},
+		},
+		{
+			name: "handles multiple query terms",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"learning", "went", "apples"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"learning": {
+					{FormText: "learning", FormType: "PRESENT_PARTICIPLE", LemmaText: "learn", IsIrregular: false},
+				},
+				"went": {
+					{FormText: "went", FormType: "PAST_TENSE", LemmaText: "go", IsIrregular: true},
+				},
+				"apples": {
+					{FormText: "apples", FormType: "PLURAL", LemmaText: "apple", IsIrregular: false},
 				},
 			},
-			"went": {
-				{
-					FormText:    "went",
-					FormType:    "PAST_TENSE",
-					LemmaText:   "go",
-					IsIrregular: true, // irregular verb
-				},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
+				{ID: 2, UserID: userID, Term: "went", Language: entity.LanguageEnglish},
+				{ID: 3, UserID: userID, Term: "apple", Language: entity.LanguageEnglish},
 			},
-			"apples": {
-				{
-					FormText:    "apples",
-					FormType:    "PLURAL",
-					LemmaText:   "apple",
-					IsIrregular: false,
-				},
+			total: 3,
+			expectedMatches: map[string][]string{
+				"learn": {"learning"},
+				"went":  {"went"},
+				"apple": {"apples"},
 			},
-		}, nil)
-
-	// Mock repository List
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Storage terms: "learn" (from learning), "went" (irregular), "apple" (from apples)
-			// Return learned words matching these storage terms
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "learn",
-					Language: entity.LanguageEnglish,
-				},
-				{
-					ID:       2,
-					UserID:   userID,
-					Term:     "went",
-					Language: entity.LanguageEnglish,
-				},
-				{
-					ID:       3,
-					UserID:   userID,
-					Term:     "apple",
-					Language: entity.LanguageEnglish,
-				},
-			}, 3, nil
-		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 3 {
-		t.Fatalf("expected total=3, got %d", total)
-	}
-
-	if len(results) != 3 {
-		t.Fatalf("expected 3 results, got %d", len(results))
-	}
-
-	// Verify MatchedTerms for each result
-	expectedMapping := map[string][]string{
-		"learn": {"learning"},
-		"went":  {"went"},
-		"apple": {"apples"},
-	}
-
-	for _, result := range results {
-		expectedMatched, ok := expectedMapping[result.Term]
-		if !ok {
-			t.Errorf("unexpected result term: %s", result.Term)
-			continue
-		}
-		if !equalStringSlices(result.MatchedTerms, expectedMatched) {
-			t.Errorf("for term=%s, expected MatchedTerms=%v, got %v", result.Term, expectedMatched, result.MatchedTerms)
-		}
-	}
-}
-
-func TestLearnedWordUsecase_ListLearnedWords_NoSurfaceTerms(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// Query without SurfaceTerms
-	query := &repository.ListLearnedWordQuery{
-		UserID:   userID,
-		Language: "en",
-		Keyword:  "test",
-	}
-
-	// Mock repository List - no lexeme lookup should happen
-	mockRepo.EXPECT().
-		List(ctx, query).
-		Return([]entity.LearnedWord{
-			{
-				ID:       1,
+		},
+		{
+			name: "skips lexeme lookup when no surface terms",
+			query: repository.ListLearnedWordQuery{
 				UserID:   userID,
-				Term:     "test",
-				Language: entity.LanguageEnglish,
+				Language: "en",
+				Keyword:  "test",
 			},
-		}, int64(1), nil)
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
+			skipLexeme: true,
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "test", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if len(q.SurfaceTerms) != 0 {
+					t.Fatalf("expected surface terms to remain empty, got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"test": {},
+			},
+		},
+		{
+			name: "unifies surfaces mapping to same storage term",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"learning", "learned"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"learning": {
+					{FormText: "learning", FormType: "PRESENT_PARTICIPLE", LemmaText: "learn", IsIrregular: false},
+				},
+				"learned": {
+					{FormText: "learned", FormType: "PAST_TENSE", LemmaText: "learn", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if !containsAll(q.SurfaceTerms, []string{"learning", "learn", "learned"}) {
+					t.Fatalf("expected mapped terms to contain learning/learn/learned, got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"learn": {"learning", "learned"},
+			},
+		},
+		{
+			name: "prefers exact lemma match but keeps inflection",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"learn", "learning"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"learn": {
+					{FormText: "learn", FormType: "LEMMA", LemmaText: "learn", IsIrregular: false},
+				},
+				"learning": {
+					{FormText: "learning", FormType: "PRESENT_PARTICIPLE", LemmaText: "learn", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if !containsAll(q.SurfaceTerms, []string{"learn", "learning"}) {
+					t.Fatalf("expected query to include 'learn' and 'learning', got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"learn": {"learn", "learning"},
+			},
+		},
+		{
+			name: "ambiguous surface maps to multiple storage terms",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"learning"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"learning": {
+					{FormText: "learning", FormType: "PRESENT_PARTICIPLE", LemmaText: "learn", IsIrregular: false},
+					{FormText: "learning", FormType: "LEMMA", LemmaText: "learning", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
+				{ID: 2, UserID: userID, Term: "learning", Language: entity.LanguageEnglish},
+			},
+			total: 2,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if !containsAll(q.SurfaceTerms, []string{"learn", "learning"}) {
+					t.Fatalf("expected ambiguous term to expand to learn and learning, got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"learn":    {"learning"},
+				"learning": {"learning"},
+			},
+		},
+		{
+			name: "keeps irregular forms unchanged",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"went"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"went": {
+					{FormText: "went", FormType: "PAST_TENSE", LemmaText: "go", IsIrregular: true},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "went", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if !containsAll(q.SurfaceTerms, []string{"went"}) {
+					t.Fatalf("expected irregular term 'went' to stay unchanged, got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"went": {"went"},
+			},
+		},
+		{
+			name: "falls back to original term when lexeme lookup fails",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"unknownword"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "unknownword", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if !containsAll(q.SurfaceTerms, []string{"unknownword"}) {
+					t.Fatalf("expected unknown term to stay as-is, got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"unknownword": {"unknownword"},
+			},
+		},
+		{
+			name: "aggregates matched terms across overlapping queries",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"apple", "apples"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"apple": {
+					{FormText: "apple", FormType: "LEMMA", LemmaText: "apple", IsIrregular: false},
+				},
+				"apples": {
+					{FormText: "apples", FormType: "PLURAL", LemmaText: "apple", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "apple", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			expectedMatches: map[string][]string{
+				"apple": {"apple", "apples"},
+			},
+		},
+		{
+			name: "regression coverage for matched terms",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"governing", "hired", "Games", "sales", "searching", "does", "goes", "Roots"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"governing": {{FormText: "governing", FormType: "PRESENT_PARTICIPLE", LemmaText: "govern", IsIrregular: false}},
+				"hired":     {{FormText: "hired", FormType: "PAST_TENSE", LemmaText: "hire", IsIrregular: false}},
+				"Games":     {{FormText: "Games", FormType: "PLURAL", LemmaText: "game", IsIrregular: false}},
+				"sales":     {{FormText: "sales", FormType: "PLURAL", LemmaText: "sale", IsIrregular: false}},
+				"searching": {{FormText: "searching", FormType: "PRESENT_PARTICIPLE", LemmaText: "search", IsIrregular: false}},
+				"does": {
+					{FormText: "does", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "do", IsIrregular: false},
+					{FormText: "does", FormType: "PLURAL", LemmaText: "doe", IsIrregular: false},
+				},
+				"goes": {
+					{FormText: "goes", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "go", IsIrregular: false},
+					{FormText: "goes", FormType: "PLURAL", LemmaText: "goe", IsIrregular: false},
+				},
+				"Roots": {
+					{FormText: "Roots", FormType: "LEMMA", LemmaText: "roots", IsIrregular: false},
+					{FormText: "Roots", FormType: "PLURAL", LemmaText: "root", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "govern", Language: entity.LanguageEnglish},
+				{ID: 2, UserID: userID, Term: "hire", Language: entity.LanguageEnglish},
+				{ID: 3, UserID: userID, Term: "game", Language: entity.LanguageEnglish},
+				{ID: 4, UserID: userID, Term: "sale", Language: entity.LanguageEnglish},
+				{ID: 5, UserID: userID, Term: "search", Language: entity.LanguageEnglish},
+				{ID: 6, UserID: userID, Term: "do", Language: entity.LanguageEnglish},
+				{ID: 7, UserID: userID, Term: "go", Language: entity.LanguageEnglish},
+				{ID: 8, UserID: userID, Term: "root", Language: entity.LanguageEnglish},
+			},
+			total: 8,
+			expectedMatches: map[string][]string{
+				"govern": {"governing"},
+				"hire":   {"hired"},
+				"game":   {"Games"},
+				"sale":   {"sales"},
+				"search": {"searching"},
+				"do":     {"does"},
+				"go":     {"goes"},
+				"root":   {"Roots"},
+			},
+		},
+		{
+			name: "preserves queried capitalization in matched terms",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"Games"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"Games": {
+					{FormText: "Games", FormType: "PLURAL", LemmaText: "game", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "game", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			expectedMatches: map[string][]string{
+				"game": {"Games"},
+			},
+		},
+		{
+			name: "queries every lemma candidate for ambiguous forms",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"does"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"does": {
+					{FormText: "does", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "do", IsIrregular: false},
+					{FormText: "does", FormType: "PLURAL", LemmaText: "doe", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "do", Language: entity.LanguageEnglish},
+			},
+			total: 1,
+			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
+				t.Helper()
+				if !containsAll(q.SurfaceTerms, []string{"do", "doe"}) {
+					t.Fatalf("expected query with lemma candidates 'do' and 'doe', got %v", q.SurfaceTerms)
+				}
+			},
+			expectedMatches: map[string][]string{
+				"do": {"does"},
+			},
+		},
 	}
 
-	if total != 1 {
-		t.Fatalf("expected total=1, got %d", total)
-	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
+			repo := mocks.NewMockLearnedWordRepository(ctrl)
+			lexemeRepo := mocks.NewMockLexemeRepository(ctrl)
+			uc := NewLearnedWordUsecase(repo, lexemeRepo)
 
-	// MatchedTerms should be empty when not querying by SurfaceTerms
-	result := results[0]
-	if len(result.MatchedTerms) != 0 {
-		t.Errorf("expected empty MatchedTerms, got %v", result.MatchedTerms)
+			ctx := context.Background()
+			query := tc.query
+			if !tc.skipLexeme && len(query.SurfaceTerms) > 0 {
+				lexemeRepo.EXPECT().
+					BatchLookupFormInfo(ctx, query.SurfaceTerms, expectedLexemeLanguage(query.Language)).
+					Return(tc.lexemeResp, nil)
+			}
+
+			repo.EXPECT().
+				List(ctx, gomock.Any()).
+				DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
+					if tc.assertQuery != nil {
+						tc.assertQuery(t, q)
+					}
+					return cloneLearnedWords(tc.repoResults), tc.total, nil
+				})
+
+			results, total, err := uc.ListLearnedWords(ctx, &query)
+			if err != nil {
+				t.Fatalf("ListLearnedWords returned error: %v", err)
+			}
+
+			if total != tc.total {
+				t.Fatalf("expected total %d, got %d", tc.total, total)
+			}
+
+			assertMatchedTerms(t, results, tc.expectedMatches)
+		})
 	}
 }
 
-func TestLearnedWordUsecase_ListLearnedWords_MultipleSurfacesMapToSameStorage(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.T) {
+	t.Helper()
 
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// User queries for both "learning" and "learned" - both map to "learn"
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"learning", "learned"},
+	type testCase struct {
+		name            string
+		surfaceTerms    []string
+		lexemeResp      map[string][]*repository.LexemeFormInfo
+		expectedTerms   []string
+		expectedMapping map[string][]string
 	}
 
-	// Mock BatchLookupFormInfo
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"learning", "learned"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"learning": {
-				{
-					FormText:    "learning",
-					FormType:    "PRESENT_PARTICIPLE",
-					LemmaText:   "learn",
-					IsIrregular: false,
+	cases := []testCase{
+		{
+			name:         "includes surface term alongside lemma candidates",
+			surfaceTerms: []string{"axes"},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"axes": {
+					{FormText: "axes", FormType: "PLURAL", LemmaText: "axis", IsIrregular: false},
+					{FormText: "axes", FormType: "PLURAL", LemmaText: "axe", IsIrregular: false},
 				},
 			},
-			"learned": {
-				{
-					FormText:    "learned",
-					FormType:    "PAST_TENSE",
-					LemmaText:   "learn",
-					IsIrregular: false,
+			expectedTerms: []string{"axes", "axis", "axe"},
+			expectedMapping: map[string][]string{
+				"axes": {"axes", "axis", "axe"},
+			},
+		},
+		{
+			name:         "skips self referencing lemma entries",
+			surfaceTerms: []string{"Roots"},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"Roots": {
+					{FormText: "Roots", FormType: "LEMMA", LemmaText: "roots", IsIrregular: false},
+					{FormText: "Roots", FormType: "PLURAL", LemmaText: "root", IsIrregular: false},
 				},
 			},
-		}, nil)
+			expectedTerms: []string{"roots", "root"},
+			expectedMapping: map[string][]string{
+				"Roots": {"roots", "root"},
+			},
+		},
+		{
+			name:         "irregular form stays as-is",
+			surfaceTerms: []string{"went"},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"went": {
+					{FormText: "went", FormType: "PAST_TENSE", LemmaText: "go", IsIrregular: true},
+				},
+			},
+			expectedTerms: []string{"went"},
+			expectedMapping: map[string][]string{
+				"went": {"went"},
+			},
+		},
+	}
 
-	// Mock repository List: should receive surface terms + mapped lemmas
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Verify that SurfaceTerms includes both surface terms and the mapped lemma
-			// ["learning", "learn", "learned"] after deduplication
-			expectedTerms := []string{"learning", "learn", "learned"}
-			if !containsAll(q.SurfaceTerms, expectedTerms) {
-				t.Errorf("expected SurfaceTerms to contain %v, got %v", expectedTerms, q.SurfaceTerms)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			repo := mocks.NewMockLearnedWordRepository(ctrl)
+			lexemeRepo := mocks.NewMockLexemeRepository(ctrl)
+			uc := NewLearnedWordUsecase(repo, lexemeRepo).(*learnedWordUsecase)
+
+			ctx := context.Background()
+			lexemeRepo.EXPECT().
+				BatchLookupFormInfo(ctx, tc.surfaceTerms, entity.LanguageEnglish).
+				Return(tc.lexemeResp, nil)
+
+			terms, mapping, err := uc.MapSurfaceTermsToStorageTermsWithMapping(ctx, tc.surfaceTerms, entity.LanguageEnglish)
+			if err != nil {
+				t.Fatalf("MapSurfaceTermsToStorageTermsWithMapping returned error: %v", err)
 			}
 
-			// Return a learned word with Term="learn"
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "learn",
-					Language: entity.LanguageEnglish,
-				},
-			}, 1, nil
+			if !equalStringSlices(terms, tc.expectedTerms) {
+				t.Fatalf("expected terms %v, got %v", tc.expectedTerms, terms)
+			}
+
+			for surface, expected := range tc.expectedMapping {
+				if !equalStringSlices(mapping[surface], expected) {
+					t.Fatalf("surface %s: expected mapping %v, got %v", surface, expected, mapping[surface])
+				}
+			}
 		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 1 {
-		t.Fatalf("expected total=1, got %d", total)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	// MatchedTerms should contain both "learning" and "learned"
-	result := results[0]
-	if result.Term != "learn" {
-		t.Errorf("expected Term=learn, got %s", result.Term)
-	}
-	expectedMatched := []string{"learning", "learned"}
-	if !equalStringSlices(result.MatchedTerms, expectedMatched) {
-		t.Errorf("expected MatchedTerms to contain both 'learning' and 'learned', got %v", result.MatchedTerms)
 	}
 }
 
-func TestLearnedWordUsecase_ListLearnedWords_ExactMatchPriority(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func assertMatchedTerms(t *testing.T, results []entity.LearnedWord, expected map[string][]string) {
+	t.Helper()
 
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// User queries for both "learn" and "learning"
-	// "learn" is the lemma itself, "learning" is a form that maps to "learn"
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"learn", "learning"},
+	if len(results) != len(expected) {
+		t.Fatalf("expected %d results, got %d", len(expected), len(results))
 	}
 
-	// Mock BatchLookupFormInfo
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"learn", "learning"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"learn": {
-				{
-					FormText:    "learn",
-					FormType:    "LEMMA",
-					LemmaText:   "learn",
-					IsIrregular: false,
-				},
-			},
-			"learning": {
-				{
-					FormText:    "learning",
-					FormType:    "PRESENT_PARTICIPLE",
-					LemmaText:   "learn",
-					IsIrregular: false,
-				},
-			},
-		}, nil)
-
-	// Mock repository List
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Should receive both "learn" (surface + lemma) and "learning" (surface + maps to learn)
-			expectedTerms := []string{"learn", "learning"}
-			if !containsAll(q.SurfaceTerms, expectedTerms) {
-				t.Errorf("expected SurfaceTerms to contain %v, got %v", expectedTerms, q.SurfaceTerms)
-			}
-
-			// Return the learned word for "learn"
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "learn",
-					Language: entity.LanguageEnglish,
-				},
-			}, 1, nil
-		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 1 {
-		t.Fatalf("expected total=1, got %d", total)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	// MatchedTerms should contain both "learn" and "learning"
-	result := results[0]
-	if result.Term != "learn" {
-		t.Errorf("expected Term=learn, got %s", result.Term)
-	}
-	expectedMatched := []string{"learn", "learning"}
-	if !equalStringSlices(result.MatchedTerms, expectedMatched) {
-		t.Errorf("expected MatchedTerms to contain both 'learn' and 'learning', got %v", result.MatchedTerms)
-	}
-}
-
-func TestLearnedWordUsecase_ListLearnedWords_AmbiguousFormMultipleStorageTerms(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// "learning" can be both a verb form (→ learn) and a noun (→ learning itself)
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"learning"},
-	}
-
-	// Mock BatchLookupFormInfo: "learning" has two possible interpretations
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"learning"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"learning": {
-				{
-					FormText:    "learning",
-					FormType:    "PRESENT_PARTICIPLE",
-					LemmaText:   "learn",
-					IsIrregular: false,
-				},
-				{
-					FormText:    "learning",
-					FormType:    "LEMMA",
-					LemmaText:   "learning",
-					IsIrregular: false,
-				},
-			},
-		}, nil)
-
-	// Mock repository List
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Should receive both "learn" and "learning" (deduplicated)
-			expectedTerms := []string{"learn", "learning"}
-			if !containsAll(q.SurfaceTerms, expectedTerms) {
-				t.Errorf("expected SurfaceTerms to contain %v, got %v", expectedTerms, q.SurfaceTerms)
-			}
-
-			// Return both learned words
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "learn",
-					Language: entity.LanguageEnglish,
-				},
-				{
-					ID:       2,
-					UserID:   userID,
-					Term:     "learning",
-					Language: entity.LanguageEnglish,
-				},
-			}, 2, nil
-		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 2 {
-		t.Fatalf("expected total=2, got %d", total)
-	}
-
-	if len(results) != 2 {
-		t.Fatalf("expected 2 results, got %d", len(results))
-	}
-
-	// Both results should have MatchedTerms containing "learning"
+	seen := make(map[string]struct{}, len(results))
 	for _, result := range results {
-		if len(result.MatchedTerms) != 1 || result.MatchedTerms[0] != "learning" {
-			t.Errorf("for term=%s, expected MatchedTerms=[learning], got %v", result.Term, result.MatchedTerms)
-		}
-	}
-}
-
-func TestLearnedWordUsecase_ListLearnedWords_IrregularForm(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// "went" is an irregular past tense form that stores itself (not "go")
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"went"},
-	}
-
-	// Mock BatchLookupFormInfo
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"went"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"went": {
-				{
-					FormText:    "went",
-					FormType:    "PAST_TENSE",
-					LemmaText:   "go",
-					IsIrregular: true, // Irregular form stores itself
-				},
-			},
-		}, nil)
-
-	// Mock repository List
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Irregular form should store "went", not "go"
-			if !containsAll(q.SurfaceTerms, []string{"went"}) {
-				t.Errorf("expected SurfaceTerms to contain 'went', got %v", q.SurfaceTerms)
-			}
-
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "went",
-					Language: entity.LanguageEnglish,
-				},
-			}, 1, nil
-		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 1 {
-		t.Fatalf("expected total=1, got %d", total)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	result := results[0]
-	if result.Term != "went" {
-		t.Errorf("expected Term=went, got %s", result.Term)
-	}
-	if len(result.MatchedTerms) != 1 || result.MatchedTerms[0] != "went" {
-		t.Errorf("expected MatchedTerms=[went], got %v", result.MatchedTerms)
-	}
-}
-
-func TestLearnedWordUsecase_ListLearnedWords_UnknownForm(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// Query for a word not in the lexeme database
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"unknownword"},
-	}
-
-	// Mock BatchLookupFormInfo: no form info found
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"unknownword"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{}, nil)
-
-	// Mock repository List
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Unknown word should use itself as-is (case-insensitive)
-			if !containsAll(q.SurfaceTerms, []string{"unknownword"}) {
-				t.Errorf("expected SurfaceTerms to contain 'unknownword', got %v", q.SurfaceTerms)
-			}
-
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "unknownword",
-					Language: entity.LanguageEnglish,
-				},
-			}, 1, nil
-		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 1 {
-		t.Fatalf("expected total=1, got %d", total)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	result := results[0]
-	if result.Term != "unknownword" {
-		t.Errorf("expected Term=unknownword, got %s", result.Term)
-	}
-	if len(result.MatchedTerms) != 1 || result.MatchedTerms[0] != "unknownword" {
-		t.Errorf("expected MatchedTerms=[unknownword], got %v", result.MatchedTerms)
-	}
-}
-
-// Test for Fix 1: Multiple query terms should all appear in MatchedTerms
-func TestLearnedWordUsecase_ListLearnedWords_MultipleMatchedTerms(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// User queries for ["apple", "apples"] - both should appear in MatchedTerms
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"apple", "apples"},
-	}
-
-	// Mock BatchLookupFormInfo
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"apple", "apples"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"apple": {
-				{
-					FormText:    "apple",
-					FormType:    "LEMMA",
-					LemmaText:   "apple",
-					IsIrregular: false,
-				},
-			},
-			"apples": {
-				{
-					FormText:    "apples",
-					FormType:    "PLURAL",
-					LemmaText:   "apple",
-					IsIrregular: false,
-				},
-			},
-		}, nil)
-
-	// Mock repository List
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Should query for both "apple" (surface + lemma) and "apples" (surface + maps to apple)
-			// After dedup: ["apple", "apples"]
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "apple",
-					Language: entity.LanguageEnglish,
-				},
-			}, 1, nil
-		})
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 1 {
-		t.Fatalf("expected total=1, got %d", total)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	// Both "apple" and "apples" should be in MatchedTerms
-	result := results[0]
-	expectedMatched := []string{"apple", "apples"}
-	if !equalStringSlices(result.MatchedTerms, expectedMatched) {
-		t.Errorf("expected MatchedTerms to contain both 'apple' and 'apples', got %v", result.MatchedTerms)
-	}
-}
-
-// Test for Fix 2: Surface term should always be included in query
-func TestLearnedWordUsecase_MapSurfaceTermsToStorageTerms_IncludesSurfaceTerm(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo).(*learnedWordUsecase)
-
-	ctx := context.Background()
-
-	// "axes" can be plural of both "axis" and "axe"
-	// When we collect "axes", we store it as-is (ambiguous, len(formInfos) != 1)
-	// When we query "axes", we should search for ["axes", "axis", "axe"]
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"axes"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"axes": {
-				{
-					FormText:    "axes",
-					FormType:    "PLURAL",
-					LemmaText:   "axis",
-					IsIrregular: false,
-				},
-				{
-					FormText:    "axes",
-					FormType:    "PLURAL",
-					LemmaText:   "axe",
-					IsIrregular: false,
-				},
-			},
-		}, nil)
-
-	mappedTerms, mapping, err := uc.MapSurfaceTermsToStorageTermsWithMapping(ctx, []string{"axes"}, entity.LanguageEnglish)
-	if err != nil {
-		t.Fatalf("MapSurfaceTermsToStorageTermsWithMapping returned error: %v", err)
-	}
-
-	// Should include "axes" itself plus mapped lemmas "axis" and "axe"
-	expectedTerms := []string{"axes", "axis", "axe"}
-	if !equalStringSlices(mappedTerms, expectedTerms) {
-		t.Errorf("expected mapped terms to include surface term 'axes' and lemmas, got %v", mappedTerms)
-	}
-	if !equalStringSlices(mapping["axes"], expectedTerms) {
-		t.Errorf("expected mapping to contain %v, got %v", expectedTerms, mapping["axes"])
-	}
-}
-
-func TestLearnedWordUsecase_MapSurfaceTermsToStorageTerms_SkipsSelfReferencingLemma(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo).(*learnedWordUsecase)
-
-	ctx := context.Background()
-
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"Roots"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"Roots": {
-				{
-					FormText:    "Roots",
-					FormType:    "LEMMA",
-					LemmaText:   "roots",
-					IsIrregular: false,
-				},
-				{
-					FormText:    "Roots",
-					FormType:    "PLURAL",
-					LemmaText:   "root",
-					IsIrregular: false,
-				},
-			},
-		}, nil)
-
-	mappedTerms, mapping, err := uc.MapSurfaceTermsToStorageTermsWithMapping(ctx, []string{"Roots"}, entity.LanguageEnglish)
-	if err != nil {
-		t.Fatalf("MapSurfaceTermsToStorageTermsWithMapping returned error: %v", err)
-	}
-
-	if !equalStringSlices(mappedTerms, []string{"roots", "root"}) {
-		t.Errorf("expected mapped terms to deduplicate to 'roots' and 'root', got %v", mappedTerms)
-	}
-
-	// After simplification, all terms are lowercase for consistent queries
-	expectedCandidates := []string{"roots", "root"}
-	if !equalStringSlices(mapping["Roots"], expectedCandidates) {
-		t.Errorf("expected surface mapping %v, got %v", expectedCandidates, mapping["Roots"])
-	}
-}
-
-func TestLearnedWordUsecase_MapSurfaceTermsToStorageTerms_Irregular(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo).(*learnedWordUsecase)
-
-	ctx := context.Background()
-
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"went"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"went": {
-				{
-					FormText:    "went",
-					FormType:    "PAST_TENSE",
-					LemmaText:   "go",
-					IsIrregular: true,
-				},
-			},
-		}, nil)
-
-	mappedTerms, mapping, err := uc.MapSurfaceTermsToStorageTermsWithMapping(ctx, []string{"went"}, entity.LanguageEnglish)
-	if err != nil {
-		t.Fatalf("MapSurfaceTermsToStorageTermsWithMapping returned error: %v", err)
-	}
-
-	if !equalStringSlices(mappedTerms, []string{"went"}) {
-		t.Errorf("expected mapped terms to stay on irregular form, got %v", mappedTerms)
-	}
-	if !equalStringSlices(mapping["went"], []string{"went"}) {
-		t.Errorf("expected mapping for irregular form to keep the surface term, got %v", mapping["went"])
-	}
-}
-
-// Test for the actual bug case from matchedTerms-refactor-plan.md section 4.1
-// This is a regression test for the original matchedTerms bug
-func TestLearnedWordUsecase_ListLearnedWords_RegressionTest_MatchedTermsBug(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// Real bug case: these surface terms should all match and populate MatchedTerms
-	surfaceTerms := []string{"governing", "hired", "Games", "sales", "searching", "does", "goes", "Roots"}
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: surfaceTerms,
-	}
-
-	// Mock lexeme lookup for all terms
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, surfaceTerms, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"governing": {
-				{FormText: "governing", FormType: "PRESENT_PARTICIPLE", LemmaText: "govern", IsIrregular: false},
-			},
-			"hired": {
-				{FormText: "hired", FormType: "PAST_TENSE", LemmaText: "hire", IsIrregular: false},
-			},
-			"Games": {
-				{FormText: "Games", FormType: "PLURAL", LemmaText: "game", IsIrregular: false},
-			},
-			"sales": {
-				{FormText: "sales", FormType: "PLURAL", LemmaText: "sale", IsIrregular: false},
-			},
-			"searching": {
-				{FormText: "searching", FormType: "PRESENT_PARTICIPLE", LemmaText: "search", IsIrregular: false},
-			},
-			"does": {
-				// Multiple possible lemmas - should query all of them
-				{FormText: "does", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "do", IsIrregular: false},
-				{FormText: "does", FormType: "PLURAL", LemmaText: "doe", IsIrregular: false}, // wrong data, but should handle gracefully
-			},
-			"goes": {
-				{FormText: "goes", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "go", IsIrregular: false},
-				{FormText: "goes", FormType: "PLURAL", LemmaText: "goe", IsIrregular: false}, // wrong data
-			},
-			"Roots": {
-				{FormText: "Roots", FormType: "LEMMA", LemmaText: "roots", IsIrregular: false}, // self-referencing, should skip
-				{FormText: "Roots", FormType: "PLURAL", LemmaText: "root", IsIrregular: false},
-			},
-		}, nil)
-
-	// Mock repo to return learned words
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		Return([]entity.LearnedWord{
-			{ID: 1, UserID: userID, Term: "govern", Language: entity.LanguageEnglish},
-			{ID: 2, UserID: userID, Term: "hire", Language: entity.LanguageEnglish},
-			{ID: 3, UserID: userID, Term: "game", Language: entity.LanguageEnglish},
-			{ID: 4, UserID: userID, Term: "sale", Language: entity.LanguageEnglish},
-			{ID: 5, UserID: userID, Term: "search", Language: entity.LanguageEnglish},
-			{ID: 6, UserID: userID, Term: "do", Language: entity.LanguageEnglish},
-			{ID: 7, UserID: userID, Term: "go", Language: entity.LanguageEnglish},
-			{ID: 8, UserID: userID, Term: "root", Language: entity.LanguageEnglish},
-		}, int64(8), nil)
-
-	results, total, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if total != 8 {
-		t.Fatalf("expected total=8, got %d", total)
-	}
-
-	// Verify that ALL results have non-empty MatchedTerms
-	// This was the original bug: matchedTerms was empty
-	expectedMatches := map[string][]string{
-		"govern": {"governing"},
-		"hire":   {"hired"},
-		"game":   {"Games"},
-		"sale":   {"sales"},
-		"search": {"searching"},
-		"do":     {"does"},
-		"go":     {"goes"},
-		"root":   {"Roots"},
-	}
-
-	for _, result := range results {
-		expected, ok := expectedMatches[result.Term]
+		expectedMatches, ok := expected[result.Term]
 		if !ok {
 			t.Errorf("unexpected result term: %s", result.Term)
 			continue
 		}
+		seen[result.Term] = struct{}{}
 
-		if len(result.MatchedTerms) == 0 {
-			t.Errorf("REGRESSION: term=%s has empty MatchedTerms (this was the original bug!)", result.Term)
-		}
-
-		if !equalStringSlices(result.MatchedTerms, expected) {
-			t.Errorf("term=%s: expected MatchedTerms=%v, got %v", result.Term, expected, result.MatchedTerms)
+		if !equalStringSlices(result.MatchedTerms, expectedMatches) {
+			t.Errorf("term=%s: expected MatchedTerms=%v, got %v", result.Term, expectedMatches, result.MatchedTerms)
 		}
 	}
-}
 
-//
-//// Test case-sensitive word handling (Polish vs polish)
-//func TestLearnedWordUsecase_ListLearnedWords_CaseSensitiveWord(t *testing.T) {
-//	ctrl := gomock.NewController(t)
-//	defer ctrl.Finish()
-//
-//	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-//	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-//	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-//
-//	ctx := context.Background()
-//	userID := int64(1000)
-//
-//	// "Polish" (proper noun) vs "polish" (verb) - should be case-sensitive
-//	query := &repository.ListLearnedWordQuery{
-//		UserID:       userID,
-//		Language:     "en",
-//		SurfaceTerms: []string{"Polish"},
-//	}
-//
-//	mockLexemeRepo.EXPECT().
-//		BatchLookupFormInfo(ctx, []string{"Polish"}, entity.LanguageEnglish).
-//		Return(map[string][]*repository.LexemeFormInfo{
-//			"Polish": {
-//				{FormText: "Polish", FormType: "LEMMA", LemmaText: "Polish", IsIrregular: false, Pos: "proper noun"},
-//			},
-//		}, nil)
-//
-//	mockRepo.EXPECT().
-//		List(ctx, gomock.Any()).
-//		Return([]entity.LearnedWord{
-//			{
-//				ID:            1,
-//				UserID:        userID,
-//				Term:          "Polish",
-//				Language:      entity.LanguageEnglish,
-//				CaseSensitive: true, // This is set by isCaseSensitiveWord when POS contains "proper"
-//			},
-//		}, int64(1), nil)
-//
-//	results, _, err := uc.ListLearnedWords(ctx, query)
-//	if err != nil {
-//		t.Fatalf("ListLearnedWords returned error: %v", err)
-//	}
-//
-//	if len(results) != 1 {
-//		t.Fatalf("expected 1 result, got %d", len(results))
-//	}
-//
-//	result := results[0]
-//	if !result.CaseSensitive {
-//		t.Error("expected CaseSensitive=true for proper noun 'Polish'")
-//	}
-//
-//	if len(result.MatchedTerms) != 1 || result.MatchedTerms[0] != "Polish" {
-//		t.Errorf("expected MatchedTerms=[Polish], got %v", result.MatchedTerms)
-//	}
-//}
-
-// Test capitalization handling (Games → game)
-func TestLearnedWordUsecase_ListLearnedWords_CapitalizationHandling(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// User queries "Games" (capitalized), should match stored "game" (lowercase)
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"Games"},
-	}
-
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"Games"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"Games": {
-				{FormText: "Games", FormType: "PLURAL", LemmaText: "game", IsIrregular: false},
-			},
-		}, nil)
-
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		Return([]entity.LearnedWord{
-			{
-				ID:            1,
-				UserID:        userID,
-				Term:          "game", // stored as lowercase
-				Language:      entity.LanguageEnglish,
-				CaseSensitive: false,
-			},
-		}, int64(1), nil)
-
-	results, _, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	result := results[0]
-	if len(result.MatchedTerms) != 1 || result.MatchedTerms[0] != "Games" {
-		t.Errorf("expected MatchedTerms=[Games] (preserve original capitalization), got %v", result.MatchedTerms)
+	for term := range expected {
+		if _, ok := seen[term]; !ok {
+			t.Errorf("expected term %s to be returned, but it was missing", term)
+		}
 	}
 }
 
-// Test ambiguous form with multiple lemmas (does → do, doe)
-func TestLearnedWordUsecase_ListLearnedWords_AmbiguousFormMultipleLemmas(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRepo := mocks.NewMockLearnedWordRepository(ctrl)
-	mockLexemeRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLearnedWordUsecase(mockRepo, mockLexemeRepo)
-
-	ctx := context.Background()
-	userID := int64(1000)
-
-	// "does" can map to both "do" and "doe" - should query both
-	query := &repository.ListLearnedWordQuery{
-		UserID:       userID,
-		Language:     "en",
-		SurfaceTerms: []string{"does"},
+func cloneLearnedWords(words []entity.LearnedWord) []entity.LearnedWord {
+	if len(words) == 0 {
+		return nil
 	}
-
-	mockLexemeRepo.EXPECT().
-		BatchLookupFormInfo(ctx, []string{"does"}, entity.LanguageEnglish).
-		Return(map[string][]*repository.LexemeFormInfo{
-			"does": {
-				{FormText: "does", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "do", IsIrregular: false},
-				{FormText: "does", FormType: "PLURAL", LemmaText: "doe", IsIrregular: false}, // incorrect but handle gracefully
-			},
-		}, nil)
-
-	mockRepo.EXPECT().
-		List(ctx, gomock.Any()).
-		DoAndReturn(func(_ context.Context, q *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-			// Verify that query includes both "do" and "doe"
-			if !containsAll(q.SurfaceTerms, []string{"do", "doe"}) {
-				t.Errorf("expected query to include both 'do' and 'doe', got %v", q.SurfaceTerms)
-			}
-
-			// User has learned "do" but not "doe"
-			return []entity.LearnedWord{
-				{
-					ID:       1,
-					UserID:   userID,
-					Term:     "do",
-					Language: entity.LanguageEnglish,
-				},
-			}, 1, nil
-		})
-
-	results, _, err := uc.ListLearnedWords(ctx, query)
-	if err != nil {
-		t.Fatalf("ListLearnedWords returned error: %v", err)
-	}
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	result := results[0]
-	if result.Term != "do" {
-		t.Errorf("expected Term=do, got %s", result.Term)
-	}
-
-	// Should match because "does" maps to "do" (even though it also maps to "doe")
-	if len(result.MatchedTerms) != 1 || result.MatchedTerms[0] != "does" {
-		t.Errorf("expected MatchedTerms=[does], got %v", result.MatchedTerms)
-	}
+	cloned := make([]entity.LearnedWord, len(words))
+	copy(cloned, words)
+	return cloned
 }
 
-// Helper functions for test assertions
+func expectedLexemeLanguage(language string) entity.Language {
+	lang := entity.ParseLanguage(language)
+	lang = entity.NormalizeLanguage(lang)
+	if lang == entity.LanguageUnspecified {
+		return entity.LanguageEnglish
+	}
+	return lang
+}
 
 // equalStringSlices checks if two string slices contain the same elements (order-independent)
 func equalStringSlices(a, b []string) bool {
