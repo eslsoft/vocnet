@@ -12,20 +12,6 @@ import (
 
 //go:generate mockgen -source=word_usecase.go -destination=../mocks/mock_word_usecase.go -package=mocks
 
-type ListWordsQuery struct {
-	repository.Pagination
-
-	Language     string
-	Keyword      string
-	Categories   []string
-	SurfaceTerms []string
-
-	PrimaryKey    string
-	PrimaryDesc   bool
-	SecondaryKey  string
-	SecondaryDesc bool
-}
-
 // WordUsecase exposes lemma management plus lookup/list queries backed by word entries.
 type WordUsecase interface {
 	CreateLemma(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error)
@@ -33,7 +19,7 @@ type WordUsecase interface {
 	DeleteLemma(ctx context.Context, lemmaID int64) error
 	GetLemma(ctx context.Context, lemmaID int64) (*entity.Lemma, error)
 	Lookup(ctx context.Context, surface string, language entity.Language) (*entity.WordEntry, error)
-	List(ctx context.Context, filter *ListWordsQuery) ([]*entity.WordEntry, int64, error)
+	List(ctx context.Context, filter *repository.ListWordsQuery) ([]*entity.WordEntry, int64, error)
 	ListCategories(ctx context.Context, search string) ([]string, error)
 	Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error)
 }
@@ -230,23 +216,11 @@ func (u *wordUsecase) Lookup(ctx context.Context, surface string, language entit
 	return u.buildWordEntry(ctx, lemma, surface)
 }
 
-func (u *wordUsecase) List(ctx context.Context, query *ListWordsQuery) ([]*entity.WordEntry, int64, error) {
-	filter := &repository.ListLemmaQuery{
-		Pagination:    query.Pagination,
-		Language:      entity.ParseLanguage(query.Language),
-		Keyword:       query.Keyword,
-		SurfaceTerms:  query.SurfaceTerms,
-		Categories:    query.Categories,
-		PrimaryKey:    query.PrimaryKey,
-		PrimaryDesc:   query.PrimaryDesc,
-		SecondaryKey:  query.SecondaryKey,
-		SecondaryDesc: query.SecondaryDesc,
-	}
-
+func (u *wordUsecase) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.WordEntry, int64, error) {
 	if surfaceTerms := query.SurfaceTerms; len(surfaceTerms) > 0 {
 		entries := make([]*entity.WordEntry, 0, len(surfaceTerms))
 		for _, term := range surfaceTerms {
-			entry, err := u.Lookup(ctx, term, filter.Language)
+			entry, err := u.Lookup(ctx, term, entity.Language(query.Language))
 			if err != nil {
 				continue
 			}
@@ -257,7 +231,7 @@ func (u *wordUsecase) List(ctx context.Context, query *ListWordsQuery) ([]*entit
 		return entries, int64(len(entries)), nil
 	}
 
-	lemmas, total, err := u.lemmas.List(ctx, filter)
+	lemmas, total, err := u.lemmas.List(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}

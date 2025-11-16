@@ -6,20 +6,6 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 )
 
-type ListLemmaQuery struct {
-	Pagination
-
-	Language     entity.Language
-	Keyword      string
-	Categories   []string
-	SurfaceTerms []string
-
-	PrimaryKey    string
-	PrimaryDesc   bool
-	SecondaryKey  string
-	SecondaryDesc bool
-}
-
 //go:generate mockgen -source=lemma.go -destination=../mocks/mock_lemma_repository.go -package=mocks
 
 type LemmaRepository interface {
@@ -29,7 +15,7 @@ type LemmaRepository interface {
 	Delete(ctx context.Context, lemmaID int64) error
 	GetByID(ctx context.Context, lemmaID int64) (*entity.Lemma, error)
 	GetByWID(ctx context.Context, wid string) (*entity.Lemma, error)
-	List(ctx context.Context, query *ListLemmaQuery) ([]*entity.Lemma, int64, error)
+	List(ctx context.Context, query *ListWordsQuery) ([]*entity.Lemma, int64, error)
 	DeleteByWID(ctx context.Context, wid string) error
 	ListCategories(ctx context.Context, search string) ([]string, error)
 	Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error)

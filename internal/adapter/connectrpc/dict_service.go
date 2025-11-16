@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
@@ -100,7 +101,7 @@ func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[di
 }
 
 func (s *DictServiceServer) ListWords(ctx context.Context, req *connect.Request[dictv1.ListWordsRequest]) (*connect.Response[dictv1.ListWordsResponse], error) {
-	var query usecase.ListWordsQuery
+	var query repository.ListWordsQuery
 	if err := filterexpr.Bind(req.Msg, &query, listWordsSchema); err != nil {
 		return nil, err
 	}

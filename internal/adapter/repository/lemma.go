@@ -110,7 +110,7 @@ func (r *lemmaRepository) GetByWID(ctx context.Context, wid string) (*entity.Lem
 	return mapEntLemma(rec), nil
 }
 
-func (r *lemmaRepository) List(ctx context.Context, query *repository.ListLemmaQuery) ([]*entity.Lemma, int64, error) {
+func (r *lemmaRepository) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.Lemma, int64, error) {
 	q := r.client.Word.Query()
 	applyLemmaFilters(q, query)
 
@@ -173,9 +173,9 @@ func (r *lemmaRepository) DeleteByWID(ctx context.Context, wid string) error {
 	return nil
 }
 
-func applyLemmaFilters(q *entdb.WordQuery, params *repository.ListLemmaQuery) {
+func applyLemmaFilters(q *entdb.WordQuery, params *repository.ListWordsQuery) {
 	if params.Language != "" {
-		q.Where(entword.LanguageEQ(params.Language.Code()))
+		q.Where(entword.LanguageEQ(params.Language))
 	}
 	if params.Keyword != "" {
 		// Keyword search: match in lemma OR in any lexeme forms
@@ -234,7 +234,7 @@ func stringsToInterfaces(strs []string) []interface{} {
 	return result
 }
 
-func applyLemmaOrdering(q *entdb.WordQuery, params *repository.ListLemmaQuery) {
+func applyLemmaOrdering(q *entdb.WordQuery, params *repository.ListWordsQuery) {
 	// Apply primary ordering
 	switch params.PrimaryKey {
 	case "lemma":
