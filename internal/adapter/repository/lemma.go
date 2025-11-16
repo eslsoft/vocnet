@@ -336,99 +336,25 @@ func (r *lemmaRepository) Stats(ctx context.Context, filter *entity.WordStatsFil
 		Completeness: initCompletenessBuckets(),
 	}
 
-	langAcc := make(map[string]*languageAccumulator)
-	if filter != nil {
-		for _, lang := range filter.Languages {
-			ensureLanguageAccumulator(langAcc, lang)
-		}
+	langAcc := initializeLanguageAcc(filter)
+	wordIndex, metrics := aggregateWordStats(words, phoneticWords, langAcc, stats)
+
+	stats.Summary.TotalWords = metrics.totalWords
+	stats.Summary.NewLast24h = metrics.newLast24h
+	stats.Summary.NewLast7d = metrics.newLast7d
+	if metrics.totalWords > 0 {
+		stats.Summary.AvgCompleteness = float64(metrics.sumCompleteness) / float64(metrics.totalWords)
 	}
 
-	wordIndex := make(map[int64]*languageAccumulator, len(words))
-	categoryTallies := newCategoryTallies()
+	stats.TopCategories = metrics.categoryTallies.Top(maxCategoryStats)
 
-	var (
-		sumCompleteness   int64
-		wordsWithPhonetic int64
-		wordsWithCategory int64
-		newLast24h        int64
-		newLast7d         int64
-	)
-
-	now := time.Now().UTC()
-	last24h := now.Add(-24 * time.Hour)
-	last7d := now.Add(-7 * 24 * time.Hour)
-
-	for _, w := range words {
-		lang := entity.ParseLanguage(w.Language)
-		acc := ensureLanguageAccumulator(langAcc, lang)
-		wordIndex[w.ID] = acc
-
-		acc.WordCount++
-		acc.CompletenessSum += int64(w.Completeness)
-		sumCompleteness += int64(w.Completeness)
-
-		if _, ok := phoneticWords[w.ID]; ok {
-			acc.PhoneticWords++
-			wordsWithPhonetic++
-		}
-		if len(w.Categories) > 0 {
-			acc.CategoryWords++
-			wordsWithCategory++
-		}
-		categoryTallies.AddMany(w.Categories)
-
-		incrementCompletenessBucket(stats.Completeness, w.Completeness)
-
-		if !w.CreatedAt.IsZero() {
-			if w.CreatedAt.After(last24h) {
-				newLast24h++
-			}
-			if w.CreatedAt.After(last7d) {
-				newLast7d++
-			}
-		}
+	if err := r.populateLexemeCounts(ctx, langCodes, langAcc, stats); err != nil {
+		return nil, err
 	}
 
-	totalWords := int64(len(words))
-	stats.Summary.TotalWords = totalWords
-	stats.Summary.NewLast24h = newLast24h
-	stats.Summary.NewLast7d = newLast7d
-	if totalWords > 0 {
-		stats.Summary.AvgCompleteness = float64(sumCompleteness) / float64(totalWords)
-	}
-
-	stats.TopCategories = categoryTallies.Top(maxCategoryStats)
-
-	lexemeRows := []struct {
-		Language string `json:"language"`
-		Count    int64  `json:"count"`
-	}{}
-	lexemeQuery := r.client.Lexeme.Query().
-		Where(entlexeme.WordIDNotNil())
-	if len(langCodes) > 0 {
-		lexemeQuery = lexemeQuery.Where(entlexeme.LanguageIn(langCodes...))
-	}
-	if err := lexemeQuery.
-		GroupBy(entlexeme.FieldLanguage).
-		Aggregate(entdb.As(entdb.Count(), "count")).
-		Scan(ctx, &lexemeRows); err != nil {
-		return nil, fmt.Errorf("count lexemes: %w", err)
-	}
-
-	for _, row := range lexemeRows {
-		stats.Summary.TotalLexemes += row.Count
-		acc := ensureLanguageAccumulator(langAcc, entity.ParseLanguage(row.Language))
-		acc.LexemeCount = row.Count
-	}
-
-	formQuery := r.client.LexemeForm.Query().
-		Where(entlexemeform.HasLexemeWith(entlexeme.WordIDNotNil()))
-	if len(langCodes) > 0 {
-		formQuery = formQuery.Where(entlexemeform.HasLexemeWith(entlexeme.LanguageIn(langCodes...)))
-	}
-	formTotal, err := formQuery.Count(ctx)
+	formTotal, err := r.countLexemeForms(ctx, langCodes)
 	if err != nil {
-		return nil, fmt.Errorf("count lexeme forms: %w", err)
+		return nil, err
 	}
 	stats.Summary.TotalForms = int64(formTotal)
 
@@ -438,30 +364,139 @@ func (r *lemmaRepository) Stats(ctx context.Context, filter *entity.WordStatsFil
 	if err != nil {
 		return nil, fmt.Errorf("collect definition coverage: %w", err)
 	}
-	for wordID := range definitionWords {
-		if acc := wordIndex[wordID]; acc != nil {
-			acc.WordsWithSenses++
-		}
-	}
+	updateAccumulatorCounts(wordIndex, definitionWords, func(acc *languageAccumulator) {
+		acc.WordsWithSenses++
+	})
 
 	formWords, err := r.collectLexemeWordIDs(ctx, langCodes, entlexeme.HasForms())
 	if err != nil {
 		return nil, fmt.Errorf("collect form coverage: %w", err)
 	}
-	for wordID := range formWords {
-		if acc := wordIndex[wordID]; acc != nil {
-			acc.WordsWithForms++
-		}
-	}
+	updateAccumulatorCounts(wordIndex, formWords, func(acc *languageAccumulator) {
+		acc.WordsWithForms++
+	})
 
-	stats.Coverage.Phonetics = ratio(wordsWithPhonetic, totalWords)
-	stats.Coverage.Categories = ratio(wordsWithCategory, totalWords)
-	stats.Coverage.Definitions = ratio(int64(len(definitionWords)), totalWords)
-	stats.Coverage.Forms = ratio(int64(len(formWords)), totalWords)
+	stats.Coverage.Phonetics = ratio(metrics.wordsWithPhonetic, metrics.totalWords)
+	stats.Coverage.Categories = ratio(metrics.wordsWithCategory, metrics.totalWords)
+	stats.Coverage.Definitions = ratio(int64(len(definitionWords)), metrics.totalWords)
+	stats.Coverage.Forms = ratio(int64(len(formWords)), metrics.totalWords)
 
 	stats.Languages = buildLanguageStats(langAcc)
 
 	return stats, nil
+}
+
+type wordAggregateMetrics struct {
+	totalWords        int64
+	sumCompleteness   int64
+	wordsWithPhonetic int64
+	wordsWithCategory int64
+	newLast24h        int64
+	newLast7d         int64
+	categoryTallies   categoryTallies
+}
+
+func initializeLanguageAcc(filter *entity.WordStatsFilter) map[string]*languageAccumulator {
+	acc := make(map[string]*languageAccumulator)
+	if filter == nil {
+		return acc
+	}
+	for _, lang := range filter.Languages {
+		ensureLanguageAccumulator(acc, lang)
+	}
+	return acc
+}
+
+func aggregateWordStats(words []*entdb.Word, phoneticWords map[int64]struct{}, langAcc map[string]*languageAccumulator, stats *entity.WordStats) (map[int64]*languageAccumulator, wordAggregateMetrics) {
+	metrics := wordAggregateMetrics{
+		categoryTallies: newCategoryTallies(),
+	}
+	wordIndex := make(map[int64]*languageAccumulator, len(words))
+
+	now := time.Now().UTC()
+	last24h := now.Add(-24 * time.Hour)
+	last7d := now.Add(-7 * 24 * time.Hour)
+
+	for _, w := range words {
+		acc := ensureLanguageAccumulator(langAcc, entity.ParseLanguage(w.Language))
+		wordIndex[w.ID] = acc
+
+		acc.WordCount++
+		acc.CompletenessSum += int64(w.Completeness)
+		metrics.totalWords++
+		metrics.sumCompleteness += int64(w.Completeness)
+
+		if _, ok := phoneticWords[w.ID]; ok {
+			acc.PhoneticWords++
+			metrics.wordsWithPhonetic++
+		}
+		if len(w.Categories) > 0 {
+			acc.CategoryWords++
+			metrics.wordsWithCategory++
+		}
+		metrics.categoryTallies.AddMany(w.Categories)
+
+		incrementCompletenessBucket(stats.Completeness, w.Completeness)
+
+		if w.CreatedAt.IsZero() {
+			continue
+		}
+		if w.CreatedAt.After(last24h) {
+			metrics.newLast24h++
+		}
+		if w.CreatedAt.After(last7d) {
+			metrics.newLast7d++
+		}
+	}
+
+	return wordIndex, metrics
+}
+
+func (r *lemmaRepository) populateLexemeCounts(ctx context.Context, langCodes []string, langAcc map[string]*languageAccumulator, stats *entity.WordStats) error {
+	lexemeRows := []struct {
+		Language string `json:"language"`
+		Count    int64  `json:"count"`
+	}{}
+
+	query := r.client.Lexeme.Query().
+		Where(entlexeme.WordIDNotNil())
+	if len(langCodes) > 0 {
+		query = query.Where(entlexeme.LanguageIn(langCodes...))
+	}
+	if err := query.
+		GroupBy(entlexeme.FieldLanguage).
+		Aggregate(entdb.As(entdb.Count(), "count")).
+		Scan(ctx, &lexemeRows); err != nil {
+		return fmt.Errorf("count lexemes: %w", err)
+	}
+
+	for _, row := range lexemeRows {
+		stats.Summary.TotalLexemes += row.Count
+		acc := ensureLanguageAccumulator(langAcc, entity.ParseLanguage(row.Language))
+		acc.LexemeCount = row.Count
+	}
+	return nil
+}
+
+func (r *lemmaRepository) countLexemeForms(ctx context.Context, langCodes []string) (int, error) {
+	query := r.client.LexemeForm.Query().
+		Where(entlexemeform.HasLexemeWith(entlexeme.WordIDNotNil()))
+	if len(langCodes) > 0 {
+		query = query.Where(entlexemeform.HasLexemeWith(entlexeme.LanguageIn(langCodes...)))
+	}
+	total, err := query.Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count lexeme forms: %w", err)
+	}
+	return total, nil
+}
+
+func updateAccumulatorCounts(wordIndex map[int64]*languageAccumulator, ids map[int64]struct{}, update func(*languageAccumulator)) {
+	for wordID := range ids {
+		if acc := wordIndex[wordID]; acc != nil {
+			update(acc)
+		}
+	}
 }
 
 func mapEntLemma(rec *entdb.Word) *entity.Lemma {

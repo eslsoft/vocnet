@@ -216,85 +216,115 @@ func meaningsToLexemes(pb *dictv1.Word, wordLang entity.Language, lemma string) 
 		return nil
 	}
 
-	// Use map to deduplicate by external_id and track lexemes
-	lexemeMap := make(map[string]*entity.Lexeme)
+	lexemeMap := make(map[string]*entity.Lexeme, len(meanings))
 	lexemeOrder := make([]string, 0, len(meanings))
+	baseForms := buildLexemeForms(pb, lemma)
 
 	for _, meaning := range meanings {
-		externalID := strings.TrimSpace(meaning.GetLexemeId())
-
-		// Check if we've already processed this external_id
-		if existingLex, exists := lexemeMap[externalID]; exists {
-			// Merge senses into existing lexeme instead of creating duplicate
-			if len(meaning.GetDefinitions()) > 0 {
-				for i, def := range meaning.GetDefinitions() {
-					sense := entity.LexemeSense{
-						Language: FromPbLanguage(def.GetLanguage()),
-						Gloss:    def.GetGloss(),
-					}
-					if i == 0 && len(meaning.GetExamples()) > 0 {
-						for _, ex := range meaning.GetExamples() {
-							sense.Examples = append(sense.Examples, entity.SenseExample{
-								Text: ex.GetText(),
-							})
-						}
-					}
-					existingLex.Senses = append(existingLex.Senses, sense)
-				}
-			}
+		if meaning == nil {
 			continue
 		}
-
-		// Create new lexeme
-		lex := &entity.Lexeme{
-			ExternalID:   externalID,
-			Language:     wordLang,
-			Lemma:        lemma,
-			PartOfSpeech: meaning.GetPos(),
+		externalID := strings.TrimSpace(meaning.GetLexemeId())
+		lex := lexemeMap[externalID]
+		if lex == nil {
+			lex = newLexemeFromMeaning(externalID, meaning, wordLang, lemma, baseForms)
+			lexemeMap[externalID] = lex
+			lexemeOrder = append(lexemeOrder, externalID)
 		}
-
-		lemmaForm := entity.LexemeForm{
-			Text:        lemma,
-			FormType:    entity.LexemeFormTypeLemma,
-			IsIrregular: false,
-		}
-		lemmaForm.Phonetics = fromPbPhonetics(pb.GetPhonetics())
-		lex.Forms = append(lex.Forms, lemmaForm)
-		for _, relForm := range pb.GetRelatedForms() {
-			lex.Forms = append(lex.Forms, entity.LexemeForm{
-				Text:        relForm.GetTerm(),
-				FormType:    fromPbFormType(relForm.GetFormType()),
-				IsIrregular: relForm.GetIrregular(),
-			})
-		}
-
-		if len(meaning.GetDefinitions()) > 0 {
-			lex.Senses = make([]entity.LexemeSense, 0, len(meaning.GetDefinitions()))
-			for i, def := range meaning.GetDefinitions() {
-				sense := entity.LexemeSense{
-					Language: FromPbLanguage(def.GetLanguage()),
-					Gloss:    def.GetGloss(),
-				}
-				if i == 0 && len(meaning.GetExamples()) > 0 {
-					for _, ex := range meaning.GetExamples() {
-						sense.Examples = append(sense.Examples, entity.SenseExample{
-							Text: ex.GetText(),
-						})
-					}
-				}
-				lex.Senses = append(lex.Senses, sense)
-			}
-		}
-
-		lexemeMap[externalID] = lex
-		lexemeOrder = append(lexemeOrder, externalID)
+		appendMeaningSenses(lex, meaning)
 	}
 
-	// Convert map back to slice, preserving order
 	lexemes := make([]*entity.Lexeme, 0, len(lexemeOrder))
 	for _, externalID := range lexemeOrder {
 		lexemes = append(lexemes, lexemeMap[externalID])
 	}
 
 	return lexemes
+}
+
+func newLexemeFromMeaning(externalID string, meaning *dictv1.Meaning, lang entity.Language, lemma string, baseForms []entity.LexemeForm) *entity.Lexeme {
+	return &entity.Lexeme{
+		ExternalID:   externalID,
+		Language:     lang,
+		Lemma:        lemma,
+		PartOfSpeech: meaning.GetPos(),
+		Forms:        cloneLexemeForms(baseForms),
+	}
+}
+
+func buildLexemeForms(pb *dictv1.Word, lemma string) []entity.LexemeForm {
+	lemmaForm := entity.LexemeForm{
+		Text:        lemma,
+		FormType:    entity.LexemeFormTypeLemma,
+		IsIrregular: false,
+		Phonetics:   fromPbPhonetics(pb.GetPhonetics()),
+	}
+
+	forms := []entity.LexemeForm{lemmaForm}
+	for _, relForm := range pb.GetRelatedForms() {
+		forms = append(forms, entity.LexemeForm{
+			Text:        relForm.GetTerm(),
+			FormType:    fromPbFormType(relForm.GetFormType()),
+			IsIrregular: relForm.GetIrregular(),
+		})
+	}
+
+	return forms
+}
+
+func cloneLexemeForms(forms []entity.LexemeForm) []entity.LexemeForm {
+	if len(forms) == 0 {
+		return nil
+	}
+	clones := make([]entity.LexemeForm, len(forms))
+	for i, form := range forms {
+		cloned := form
+		if len(form.Phonetics) > 0 {
+			cloned.Phonetics = append([]entity.Phonetic(nil), form.Phonetics...)
+		}
+		clones[i] = cloned
+	}
+	return clones
+}
+
+func appendMeaningSenses(lex *entity.Lexeme, meaning *dictv1.Meaning) {
+	senses := buildSenses(meaning)
+	if len(senses) == 0 {
+		return
+	}
+	lex.Senses = append(lex.Senses, senses...)
+}
+
+func buildSenses(meaning *dictv1.Meaning) []entity.LexemeSense {
+	defs := meaning.GetDefinitions()
+	if len(defs) == 0 {
+		return nil
+	}
+
+	examples := buildExamples(meaning.GetExamples())
+	senses := make([]entity.LexemeSense, 0, len(defs))
+	for i, def := range defs {
+		sense := entity.LexemeSense{
+			Language: FromPbLanguage(def.GetLanguage()),
+			Gloss:    def.GetGloss(),
+		}
+		if i == 0 && len(examples) > 0 {
+			sense.Examples = append([]entity.SenseExample(nil), examples...)
+		}
+		senses = append(senses, sense)
+	}
+	return senses
+}
+
+func buildExamples(examples []*dictv1.Sentence) []entity.SenseExample {
+	if len(examples) == 0 {
+		return nil
+	}
+	out := make([]entity.SenseExample, 0, len(examples))
+	for _, ex := range examples {
+		out = append(out, entity.SenseExample{
+			Text: ex.GetText(),
+		})
+	}
+	return out
 }

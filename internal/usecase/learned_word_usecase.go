@@ -52,7 +52,7 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	// 1. If irregular == true: store the term itself (e.g., "went" → "went")
 	// 2. If term_type != LEMMA and irregular == false: store lemma (e.g., "apples" → "apple")
 	// 3. If term_type == LEMMA: store the term itself (e.g., "apple" → "apple")
-	termToStore := word.Term // default
+	termToStore := word.Term // default to the user's input
 
 	// Use BatchLookupFormInfo to ensure consistency with ListLearnedWords
 	// Query both lowercase and capitalized variants to check for proper nouns
@@ -65,9 +65,6 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	formInfos := formInfosMap[word.Term]
 	// Determine if this word requires case-sensitive matching
 	caseSensitive := isCaseSensitiveWord(formInfosMap)
-	// Default: keep user's input
-	termToStore = word.Term
-
 	// Only map to lemma if it's CLEARLY a simple regular inflection
 	// (not irregular, not a lemma itself, and has a different lemma)
 	if len(formInfos) == 1 {
@@ -167,39 +164,9 @@ func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, userID int64, id
 }
 
 func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-	// Apply business logic: map surface terms to storage terms
-	// This implements mastery-inheritance.md: regular forms → lemma, irregular → itself
-	var surfaceToLemmaMap SurfaceToLemmasMap
-	var originalSurfaceTerms []string
-	if len(query.SurfaceTerms) > 0 {
-		// Save original surface terms before mapping
-		originalSurfaceTerms = append([]string{}, query.SurfaceTerms...)
-
-		language := entity.ParseLanguage(query.Language)
-		mappedTerms, mapping, err := u.MapSurfaceTermsToStorageTermsWithMapping(ctx, query.SurfaceTerms, language)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		// Expand mapped terms to include case variants (lowercase + capitalized)
-		// This ensures we find words regardless of how they're stored in the database
-		expandedTerms := make([]string, 0, len(mappedTerms)*2)
-		seen := make(map[string]bool)
-		for _, term := range mappedTerms {
-			// Add lowercase form
-			if !seen[term] {
-				expandedTerms = append(expandedTerms, term)
-				seen[term] = true
-			}
-			// Add capitalized form if different
-			if cap := capitalize(term); cap != term && !seen[cap] {
-				expandedTerms = append(expandedTerms, cap)
-				seen[cap] = true
-			}
-		}
-
-		query.SurfaceTerms = expandedTerms
-		surfaceToLemmaMap = mapping
+	surfaceMap, originalTerms, err := u.prepareSurfaceTerms(ctx, query)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	results, total, err := u.repo.List(ctx, query)
@@ -207,55 +174,107 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 		return nil, 0, err
 	}
 
-	// If we have a surface-to-lemma mapping, set MatchedTerms for each result
-	if len(surfaceToLemmaMap) > 0 {
-		// For each result, collect ALL surface terms that map to this storage term
-		for i := range results {
-			matchedTerms := make([]string, 0, 2)                         // typically 1-2 matches
-			seen := make(map[string]struct{}, len(originalSurfaceTerms)) // avoid duplicates
+	populateMatchedTerms(results, surfaceMap, originalTerms)
 
-			// Check all surface terms to see which ones should match this stored term
-			for _, surface := range originalSurfaceTerms {
-				if _, alreadyMatched := seen[surface]; alreadyMatched {
-					continue // skip duplicates
-				}
+	return results, total, nil
+}
 
-				candidates := surfaceToLemmaMap[surface]
-				if len(candidates) == 0 {
-					// This should rarely happen since collectPossibleStorageTerms always
-					// includes the surface term. Skip empty candidates to avoid false matches.
-					slog.Debug("empty candidates for surface term, skipping",
-						"surface", surface,
-						"storedTerm", results[i].Term)
-					continue
-				}
+func (u *learnedWordUsecase) prepareSurfaceTerms(ctx context.Context, query *repository.ListLearnedWordQuery) (SurfaceToLemmasMap, []string, error) {
+	if query == nil || len(query.SurfaceTerms) == 0 {
+		return nil, nil, nil
+	}
 
-				shouldMatch := false
-				for _, candidate := range candidates {
-					if matchesStoredTerm(results[i].Term, candidate, results[i].CaseSensitive) {
-						shouldMatch = true
-						break
-					}
-				}
+	original := append([]string{}, query.SurfaceTerms...)
+	language := entity.ParseLanguage(query.Language)
 
-				slog.Debug("matchedTerms: evaluating surface",
-					"surface", surface,
-					"storedTerm", results[i].Term,
-					"caseSensitive", results[i].CaseSensitive,
-					"candidates", candidates,
-					"matched", shouldMatch)
+	mappedTerms, mapping, err := u.MapSurfaceTermsToStorageTermsWithMapping(ctx, query.SurfaceTerms, language)
+	if err != nil {
+		return nil, nil, err
+	}
 
-				if shouldMatch {
-					matchedTerms = append(matchedTerms, surface)
-					seen[surface] = struct{}{}
-				}
-			}
+	query.SurfaceTerms = expandWithCaseVariants(mappedTerms)
+	return mapping, original, nil
+}
 
-			results[i].MatchedTerms = matchedTerms
+func expandWithCaseVariants(terms []string) []string {
+	if len(terms) == 0 {
+		return nil
+	}
+
+	expanded := make([]string, 0, len(terms)*2)
+	seen := make(map[string]struct{}, len(terms)*2)
+
+	for _, term := range terms {
+		if addUniqueTerm(seen, term) {
+			expanded = append(expanded, term)
+		}
+		if cap := capitalize(term); cap != term && addUniqueTerm(seen, cap) {
+			expanded = append(expanded, cap)
 		}
 	}
 
-	return results, total, nil
+	return expanded
+}
+
+func addUniqueTerm(seen map[string]struct{}, term string) bool {
+	if _, ok := seen[term]; ok {
+		return false
+	}
+	seen[term] = struct{}{}
+	return true
+}
+
+func populateMatchedTerms(results []entity.LearnedWord, surfaceMap SurfaceToLemmasMap, original []string) {
+	if len(surfaceMap) == 0 || len(original) == 0 || len(results) == 0 {
+		return
+	}
+
+	for i := range results {
+		results[i].MatchedTerms = matchSurfaceTerms(results[i], surfaceMap, original)
+	}
+}
+
+func matchSurfaceTerms(word entity.LearnedWord, surfaceMap SurfaceToLemmasMap, original []string) []string {
+	matchedTerms := make([]string, 0, 2)
+	seen := make(map[string]struct{}, len(original))
+
+	for _, surface := range original {
+		if _, alreadyMatched := seen[surface]; alreadyMatched {
+			continue
+		}
+
+		candidates := surfaceMap[surface]
+		if len(candidates) == 0 {
+			slog.Debug("empty candidates for surface term, skipping",
+				"surface", surface,
+				"storedTerm", word.Term)
+			continue
+		}
+
+		shouldMatch := hasCandidateMatch(word, candidates)
+		slog.Debug("matchedTerms: evaluating surface",
+			"surface", surface,
+			"storedTerm", word.Term,
+			"caseSensitive", word.CaseSensitive,
+			"candidates", candidates,
+			"matched", shouldMatch)
+
+		if shouldMatch {
+			matchedTerms = append(matchedTerms, surface)
+			seen[surface] = struct{}{}
+		}
+	}
+
+	return matchedTerms
+}
+
+func hasCandidateMatch(word entity.LearnedWord, candidates []string) bool {
+	for _, candidate := range candidates {
+		if matchesStoredTerm(word.Term, candidate, word.CaseSensitive) {
+			return true
+		}
+	}
+	return false
 }
 
 func (u *learnedWordUsecase) DeleteLearnedWord(ctx context.Context, userID int64, id int64) error {
