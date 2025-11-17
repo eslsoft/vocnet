@@ -15,7 +15,7 @@ import (
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent/enttest"
 	entlearnedlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedword"
-	entword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/word"
+	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
 
 	"entgo.io/ent/dialect"
 )
@@ -225,7 +225,7 @@ type LearnedWordSnapshot struct {
 
 func snapshotWords(t *testing.T, ctx context.Context, client *entdb.Client) []wordSnapshot {
 	t.Helper()
-	rows, err := client.Word.Query().Order(entword.ByID()).All(ctx)
+	rows, err := client.Lemma.Query().Order(entlemma.ByID()).All(ctx)
 	if err != nil {
 		t.Fatalf("list words: %v", err)
 	}

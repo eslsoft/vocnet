@@ -584,11 +584,10 @@ func (s *Service) importRow(ctx context.Context, tx *sql.Tx, table *schema.Table
 
 func (s *Service) selectTables(requested []string) ([]*schema.Table, error) {
 	if len(requested) == 0 {
-		// Return tables sorted by name for deterministic order.
+		// Return all tables sorted by dependency order (topological sort).
 		tbls := make([]*schema.Table, len(s.tables))
 		copy(tbls, s.tables)
-		sort.Slice(tbls, func(i, j int) bool { return tbls[i].Name < tbls[j].Name })
-		return tbls, nil
+		return topologicalSort(tbls), nil
 	}
 	set := make(map[string]struct{}, len(requested))
 	for _, name := range requested {
@@ -610,8 +609,7 @@ func (s *Service) selectTables(requested []string) ([]*schema.Table, error) {
 			tbls = append(tbls, tbl)
 		}
 	}
-	sort.Slice(tbls, func(i, j int) bool { return tbls[i].Name < tbls[j].Name })
-	return tbls, nil
+	return topologicalSort(tbls), nil
 }
 
 func (s *Service) openDB(ctx context.Context) (*sql.DB, error) {
@@ -904,6 +902,85 @@ func difference(slice []string, exclude []string) []string {
 			result = append(result, item)
 		}
 	}
+	return result
+}
+
+// topologicalSort sorts tables by dependency order using Kahn's algorithm.
+// Tables with no dependencies come first, ensuring foreign key constraints are respected.
+func topologicalSort(tables []*schema.Table) []*schema.Table {
+	if len(tables) == 0 {
+		return tables
+	}
+
+	// Build dependency graph: table name -> list of dependent table names.
+	// If table A has a foreign key to table B, then A depends on B.
+	deps := make(map[string][]string)
+	inDegree := make(map[string]int)
+	tableMap := make(map[string]*schema.Table)
+
+	// Initialize
+	for _, tbl := range tables {
+		tableMap[tbl.Name] = tbl
+		inDegree[tbl.Name] = 0
+		deps[tbl.Name] = []string{}
+	}
+
+	// Extract foreign key dependencies from table ForeignKeys
+	for _, tbl := range tables {
+		for _, fk := range tbl.ForeignKeys {
+			if fk.RefTable == nil {
+				continue
+			}
+			refTableName := fk.RefTable.Name
+			// Skip if referenced table is not in our selection
+			if _, exists := tableMap[refTableName]; !exists {
+				continue
+			}
+			// tbl depends on refTableName
+			// refTableName must come before tbl
+			deps[refTableName] = append(deps[refTableName], tbl.Name)
+			inDegree[tbl.Name]++
+		}
+	}
+
+	// Kahn's algorithm: process nodes with no incoming edges
+	var queue []string
+	for name, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, name)
+		}
+	}
+	// Sort queue for deterministic order when there are multiple options
+	sort.Strings(queue)
+
+	var result []*schema.Table
+	for len(queue) > 0 {
+		// Pop first element
+		current := queue[0]
+		queue = queue[1:]
+		result = append(result, tableMap[current])
+
+		// Process dependencies
+		dependents := deps[current]
+		sort.Strings(dependents) // Deterministic order
+		for _, dep := range dependents {
+			inDegree[dep]--
+			if inDegree[dep] == 0 {
+				queue = append(queue, dep)
+				sort.Strings(queue) // Keep sorted for determinism
+			}
+		}
+	}
+
+	// If not all tables processed, there's a cycle (shouldn't happen with valid schema)
+	if len(result) != len(tables) {
+		// Fallback to alphabetical sort if cycle detected
+		fallback := make([]*schema.Table, len(tables))
+		copy(fallback, tables)
+		sort.Slice(fallback, func(i, j int) bool { return fallback[i].Name < fallback[j].Name })
+		return fallback
+	}
+
 	return result
 }
 
