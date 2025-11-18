@@ -187,7 +187,7 @@ func (u *learnedWordUsecase) prepareSurfaceTerms(ctx context.Context, query *rep
 	original := append([]string{}, query.SurfaceTerms...)
 	language := entity.ParseLanguage(query.Language)
 
-	mappedTerms, mapping, err := u.MapSurfaceTermsToStorageTermsWithMapping(ctx, query.SurfaceTerms, language)
+	mappedTerms, mapping, err := u.MapSurfaceTermsToStorageTerms(ctx, query.SurfaceTerms, language)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -281,18 +281,10 @@ func (u *learnedWordUsecase) DeleteLearnedWord(ctx context.Context, userID int64
 	return u.repo.DeleteByID(ctx, userID, id)
 }
 
-// MapSurfaceTermsToStorageTerms converts surface forms to the terms we actually store.
-// This encapsulates the business rule: regular inflections store lemma, irregular forms store themselves.
-// A single surface term can map to multiple storage terms (e.g., "learning" → ["learn", "learning"]).
-func (u *learnedWordUsecase) MapSurfaceTermsToStorageTerms(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, error) {
-	mappedTerms, _, err := u.MapSurfaceTermsToStorageTermsWithMapping(ctx, surfaceTerms, language)
-	return mappedTerms, err
-}
-
-// MapSurfaceTermsToStorageTermsWithMapping converts each queried surface form into
+// MapSurfaceTermsToStorageTerms converts each queried surface form into
 // all possible storage terms (lemmas or inflections) that should be checked.
 // Returns (deduplicated storage terms to query, surface → lemmas mapping, error).
-func (u *learnedWordUsecase) MapSurfaceTermsToStorageTermsWithMapping(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, SurfaceToLemmasMap, error) {
+func (u *learnedWordUsecase) MapSurfaceTermsToStorageTerms(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, SurfaceToLemmasMap, error) {
 	if len(surfaceTerms) == 0 {
 		return surfaceTerms, nil, nil
 	}
@@ -448,22 +440,6 @@ func appendUniqueCasePreserving(dst []string, seen map[string]struct{}, value st
 	dst = append(dst, trimmed)
 
 	return dst
-}
-
-// appendUniqueLowercase adds a lowercased term to the slice if not already present.
-// Deduplication is case-insensitive (e.g., "Root" and "root" are considered duplicates).
-func appendUniqueLowercase(dst []string, seen map[string]struct{}, value string) []string {
-	lower := strings.ToLower(strings.TrimSpace(value))
-	if lower == "" {
-		return dst
-	}
-
-	if _, exists := seen[lower]; exists {
-		return dst
-	}
-
-	seen[lower] = struct{}{}
-	return append(dst, lower)
 }
 
 func isSelfReferencingLemma(info *repository.LexemeFormInfo) bool {

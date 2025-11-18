@@ -450,8 +450,8 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 			},
 			total: 2,
 			expectedMatches: map[string][]string{
-				"Polish": {"Polish"},              // case-sensitive matches only "Polish"
-				"polish": {"Polish", "polish"},    // case-insensitive matches both variants
+				"Polish": {"Polish"},           // case-sensitive matches only "Polish"
+				"polish": {"Polish", "polish"}, // case-insensitive matches both variants
 			},
 		},
 	}
@@ -567,7 +567,7 @@ func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.
 				BatchLookupFormInfo(ctx, tc.surfaceTerms, entity.LanguageEnglish).
 				Return(tc.lexemeResp, nil)
 
-			terms, mapping, err := uc.MapSurfaceTermsToStorageTermsWithMapping(ctx, tc.surfaceTerms, entity.LanguageEnglish)
+			terms, mapping, err := uc.MapSurfaceTermsToStorageTerms(ctx, tc.surfaceTerms, entity.LanguageEnglish)
 			if err != nil {
 				t.Fatalf("MapSurfaceTermsToStorageTermsWithMapping returned error: %v", err)
 			}
