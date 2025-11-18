@@ -371,6 +371,89 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				"do": {"does"},
 			},
 		},
+		{
+			name: "case-sensitive word matches only with correct case",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"Sunday"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"Sunday": {
+					{FormText: "Sunday", FormType: "LEMMA", LemmaText: "Sunday", IsIrregular: false, Pos: "proper noun"},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "Sunday", Language: entity.LanguageEnglish, CaseSensitive: true},
+			},
+			total: 1,
+			expectedMatches: map[string][]string{
+				"Sunday": {"Sunday"},
+			},
+		},
+		{
+			name: "case-sensitive word does not match with wrong case",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"sunday"}, // lowercase query
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"sunday": {},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "Sunday", Language: entity.LanguageEnglish, CaseSensitive: true},
+			},
+			total: 1,
+			expectedMatches: map[string][]string{
+				"Sunday": {}, // Should not match "sunday" query
+			},
+		},
+		{
+			name: "case-insensitive word matches regardless of case",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"APPLE"}, // uppercase query
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"APPLE": {
+					{FormText: "APPLE", FormType: "LEMMA", LemmaText: "apple", IsIrregular: false},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "apple", Language: entity.LanguageEnglish, CaseSensitive: false},
+			},
+			total: 1,
+			expectedMatches: map[string][]string{
+				"apple": {"APPLE"}, // Should match despite different case
+			},
+		},
+		{
+			name: "distinguishes between Polish and polish",
+			query: repository.ListLearnedWordQuery{
+				UserID:       userID,
+				Language:     "en",
+				SurfaceTerms: []string{"Polish", "polish"},
+			},
+			lexemeResp: map[string][]*repository.LexemeFormInfo{
+				"Polish": {
+					{FormText: "Polish", FormType: "LEMMA", LemmaText: "Polish", IsIrregular: false, Pos: "proper noun"},
+				},
+				"polish": {
+					{FormText: "polish", FormType: "LEMMA", LemmaText: "polish", IsIrregular: false, Pos: "verb"},
+				},
+			},
+			repoResults: []entity.LearnedWord{
+				{ID: 1, UserID: userID, Term: "Polish", Language: entity.LanguageEnglish, CaseSensitive: true},
+				{ID: 2, UserID: userID, Term: "polish", Language: entity.LanguageEnglish, CaseSensitive: false},
+			},
+			total: 2,
+			expectedMatches: map[string][]string{
+				"Polish": {"Polish"},              // case-sensitive matches only "Polish"
+				"polish": {"Polish", "polish"},    // case-insensitive matches both variants
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -449,9 +532,9 @@ func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.
 					{FormText: "Roots", FormType: "PLURAL", LemmaText: "root", IsIrregular: false},
 				},
 			},
-			expectedTerms: []string{"roots", "root"},
+			expectedTerms: []string{"Roots", "root"},
 			expectedMapping: map[string][]string{
-				"Roots": {"roots", "root"},
+				"Roots": {"Roots", "root"},
 			},
 		},
 		{

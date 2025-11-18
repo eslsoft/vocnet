@@ -224,7 +224,7 @@ func matchSurfaceTerms(word entity.LearnedWord, surfaceMap SurfaceToLemmasMap, o
 			continue
 		}
 
-		shouldMatch := hasCandidateMatch(word, candidates)
+		shouldMatch := matchesSurfaceTerm(word, surface, candidates)
 		slog.Debug("matchedTerms: evaluating surface",
 			"surface", surface,
 			"storedTerm", word.Term,
@@ -241,9 +241,33 @@ func matchSurfaceTerms(word entity.LearnedWord, surfaceMap SurfaceToLemmasMap, o
 	return matchedTerms
 }
 
-func hasCandidateMatch(word entity.LearnedWord, candidates []string) bool {
+// matchesSurfaceTerm determines if a stored word matches a user's surface query term.
+// For case-sensitive words, the surface term or its candidates must exactly match the stored term.
+// For case-insensitive words, matching is done without regard to case.
+func matchesSurfaceTerm(word entity.LearnedWord, surface string, candidates []string) bool {
+	if word.CaseSensitive {
+		// For case-sensitive words, require exact case match
+		// Check if the surface term itself matches
+		if word.Term == surface {
+			return true
+		}
+		// Check if any candidate matches exactly
+		for _, candidate := range candidates {
+			if word.Term == candidate {
+				return true
+			}
+		}
+		return false
+	}
+
+	// For case-insensitive words, match without regard to case
+	// Check if the surface term matches (case-insensitive)
+	if strings.EqualFold(word.Term, surface) {
+		return true
+	}
+	// Check if any candidate matches (case-insensitive)
 	for _, candidate := range candidates {
-		if matchesStoredTerm(word.Term, candidate, word.CaseSensitive) {
+		if strings.EqualFold(word.Term, candidate) {
 			return true
 		}
 	}
@@ -367,9 +391,9 @@ func deduplicateStrings(items []string) []string {
 }
 
 // collectPossibleStorageTerms gathers all candidate terms that might match the surface form.
-// Returns lowercase terms for case-insensitive database queries. Case variants will be
-// expanded later in ListLearnedWords via capitalize() to handle both lowercase and
-// capitalized forms (e.g., "root" → ["root", "Root"]).
+// Returns both original case and lowercase variants to support both case-sensitive and
+// case-insensitive matching. Database queries use LOWER(term) IN (...) for case-insensitive
+// lookups, while matchedTerms population requires exact case for case-sensitive words.
 //
 // The function always includes the surface term itself plus all derived lemmas, ensuring
 // maximum recall even when lexeme data quality varies.
@@ -383,10 +407,12 @@ func collectPossibleStorageTerms(surface string, formInfos []*repository.LexemeF
 		return []string{}
 	}
 
-	candidates := make([]string, 0, len(formInfos)+1)
-	seen := make(map[string]struct{}, len(formInfos)+1)
-	// Always include the surface term first (lowercase for consistency)
-	candidates = appendUniqueLowercase(candidates, seen, trimmedSurface)
+	candidates := make([]string, 0, len(formInfos)*2+2)
+	seen := make(map[string]struct{}, len(formInfos)*2+2)
+
+	// Include both original case (for case-sensitive matching) and lowercase (for queries)
+	// This ensures that case-sensitive words like "Sunday" can be matched correctly
+	candidates = appendUniqueCasePreserving(candidates, seen, trimmedSurface)
 
 	for _, info := range formInfos {
 		if info == nil || isSelfReferencingLemma(info) {
@@ -394,10 +420,34 @@ func collectPossibleStorageTerms(surface string, formInfos []*repository.LexemeF
 		}
 
 		candidate := determineStorageTerm(info)
-		candidates = appendUniqueLowercase(candidates, seen, candidate)
+		candidates = appendUniqueCasePreserving(candidates, seen, candidate)
 	}
 
 	return candidates
+}
+
+// appendUniqueCasePreserving preserves the original case of terms for proper matching.
+// Database queries use LOWER(term) IN (...), so case doesn't affect query results.
+// Deduplication is case-insensitive (e.g., "Root" and "root" are considered duplicates).
+func appendUniqueCasePreserving(dst []string, seen map[string]struct{}, value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return dst
+	}
+
+	lower := strings.ToLower(trimmed)
+
+	// Check if we've already seen this term (case-insensitive)
+	if _, exists := seen[lower]; exists {
+		return dst
+	}
+
+	seen[lower] = struct{}{}
+
+	// Add original case only - database uses LOWER() for queries
+	dst = append(dst, trimmed)
+
+	return dst
 }
 
 // appendUniqueLowercase adds a lowercased term to the slice if not already present.
@@ -440,13 +490,6 @@ func determineStorageTerm(info *repository.LexemeFormInfo) string {
 	default:
 		return info.FormText
 	}
-}
-
-func matchesStoredTerm(storedTerm, candidate string, caseSensitive bool) bool {
-	if caseSensitive {
-		return storedTerm == candidate
-	}
-	return strings.EqualFold(storedTerm, candidate)
 }
 
 // capitalize returns a string with the first letter capitalized and the rest lowercase
