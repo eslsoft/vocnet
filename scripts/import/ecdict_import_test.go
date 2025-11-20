@@ -158,9 +158,9 @@ func TestBuildWordFromECDICT(t *testing.T) {
 		categories: []string{"level:cet4"},
 		domains:    []string{"domain:sports"},
 		senses: []sensePayload{
-			{language: 1, partOfSpeech: "verb", gloss: "跑"},
-			{language: 1, partOfSpeech: "verb", gloss: "运转"},
-			{language: 1, partOfSpeech: "noun", gloss: "跑步"},
+			{language: 1, partOfSpeech: "v.", gloss: "跑"},
+			{language: 1, partOfSpeech: "v.", gloss: "运转"},
+			{language: 1, partOfSpeech: "n.", gloss: "跑步"},
 		},
 	}
 
@@ -192,11 +192,11 @@ func TestBuildWordFromECDICT(t *testing.T) {
 		posCount[meaning.GetPos()] = len(meaning.GetDefinitions())
 	}
 
-	if posCount["verb"] != 2 {
-		t.Errorf("verb definitions count = %d, want 2", posCount["verb"])
+	if posCount["v."] != 2 {
+		t.Errorf("verb definitions count = %d, want 2", posCount["v."])
 	}
-	if posCount["noun"] != 1 {
-		t.Errorf("noun definitions count = %d, want 1", posCount["noun"])
+	if posCount["n."] != 1 {
+		t.Errorf("noun definitions count = %d, want 1", posCount["n."])
 	}
 
 	// Check categories include both categories and domains

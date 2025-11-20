@@ -463,7 +463,7 @@ func buildSensePayloads(w wordRecord) []sensePayload {
 			rest = line
 			// If line starts with domain marker like [人名], [地名], etc. and no POS, treat as proper-noun
 			if pos == "" && startsWithDomainMarker(line) {
-				pos = "proper-noun"
+				pos = "n."
 			}
 		}
 
@@ -492,7 +492,7 @@ func buildSensePayloads(w wordRecord) []sensePayload {
 			rest = line
 			// If line starts with domain marker like [人名], [地名], etc. and no POS, treat as proper-noun
 			if pos == "" && startsWithDomainMarker(line) {
-				pos = "proper-noun"
+				pos = "n."
 			}
 		}
 
@@ -789,7 +789,7 @@ func parseWordNetPOS(posStr string) string {
 	return wordNetPOSToStandard(bestPOS)
 }
 
-// wordNetPOSToStandard converts WordNet POS codes to standard full forms
+// wordNetPOSToStandard converts WordNet POS codes to traditional dictionary abbreviations
 // Complete WordNet POS codes from ECDICT:
 // n=noun, v=verb, j=adjective, r=adverb, m=numeral, s=adjective satellite
 // a=article, i=preposition, p=pronoun, d=determiner, u=interjection, c=conjunction
@@ -798,67 +798,65 @@ func wordNetPOSToStandard(code string) string {
 
 	switch code {
 	case "n":
-		return "noun"
+		return "n."
 	case "v":
-		return "verb"
+		return "v."
 	case "j", "s": // j=adjective, s=adjective satellite
-		return "adjective"
+		return "adj."
 	case "r":
-		return "adverb"
+		return "adv."
 	case "m":
-		return "numeral"
+		return "num."
 	case "a":
-		return "article"
+		return "det." // article -> determiner
 	case "i":
-		return "preposition"
+		return "prep."
 	case "p":
-		return "pronoun"
+		return "pron."
 	case "d":
-		return "determiner"
+		return "det."
 	case "u":
-		return "interjection"
+		return "interj."
 	case "c":
-		return "conjunction"
+		return "conj."
 	default:
 		// If not a WordNet code, try normal normalization
 		return normalizePOS(code)
 	}
 }
 
-// normalizePOS converts POS abbreviations to their canonical full form
-// This ensures consistency across Wikidata (uses full forms) and ECDICT (uses abbreviations)
+// normalizePOS converts POS abbreviations to traditional dictionary abbreviations
+// This ensures consistency across Wikidata and ECDICT
 func normalizePOS(pos string) string {
 	pos = strings.ToLower(strings.TrimSpace(pos))
 	pos = strings.TrimSuffix(pos, ".") // Remove trailing period if present
 
-	// Map all variants to canonical full forms (matching Wikidata's convention)
+	// Map all variants to traditional dictionary abbreviations
 	switch pos {
 	case "n", "noun":
-		return "noun"
+		return "n."
 	case "v", "verb", "vt", "vi":
-		return "verb"
+		return "v."
 	case "a", "adj", "adjective":
-		return "adjective"
+		return "adj."
 	case "adv", "adverb":
-		return "adverb"
+		return "adv."
 	case "prep", "preposition":
-		return "preposition"
+		return "prep."
 	case "pron", "pronoun":
-		return "pronoun"
+		return "pron."
 	case "conj", "conjunction":
-		return "conjunction"
+		return "conj."
 	case "interj", "int", "interjection":
-		return "interjection"
-	case "art", "article":
-		return "article"
-	case "det", "determiner":
-		return "determiner"
+		return "interj."
+	case "art", "article", "det", "determiner":
+		return "det."
 	case "num", "numeral":
-		return "numeral"
+		return "num."
 	case "aux", "auxiliary":
-		return "auxiliary"
+		return "aux."
 	case "abbr", "abbreviation":
-		return "abbreviation"
+		return "abbr."
 	case "pref", "prefix":
 		return "prefix"
 	case "suf", "suffix":

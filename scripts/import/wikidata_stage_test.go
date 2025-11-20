@@ -19,7 +19,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "proper-noun",
+			expected: "n.proper",
 		},
 		{
 			name: "given name",
@@ -30,7 +30,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "proper-noun",
+			expected: "n.proper",
 		},
 		{
 			name: "place name - city",
@@ -41,7 +41,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "proper-noun",
+			expected: "n.proper",
 		},
 		{
 			name: "place name - country",
@@ -52,7 +52,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "proper-noun",
+			expected: "n.proper",
 		},
 		{
 			name: "organization",
@@ -63,7 +63,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "proper-noun",
+			expected: "n.proper",
 		},
 		{
 			name: "dog breed",
@@ -74,7 +74,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "noun",
+			expected: "n.",
 		},
 		{
 			name: "phrase - no POS",
@@ -121,7 +121,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "proper-noun",
+			expected: "n.proper",
 		},
 	}
 

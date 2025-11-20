@@ -10,31 +10,31 @@ func TestNormalizePOS(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"n", "noun"},
-		{"n.", "noun"},
-		{"noun", "noun"},
-		{"v", "verb"},
-		{"v.", "verb"},
-		{"vt", "verb"},
-		{"vt.", "verb"},
-		{"vi", "verb"},
-		{"vi.", "verb"},
-		{"verb", "verb"},
-		{"adj", "adjective"},
-		{"adj.", "adjective"},
-		{"adjective", "adjective"},
-		{"adv", "adverb"},
-		{"adv.", "adverb"},
-		{"adverb", "adverb"},
-		{"prep", "preposition"},
-		{"pron", "pronoun"},
-		{"conj", "conjunction"},
-		{"interj", "interjection"},
-		{"int", "interjection"},
-		{"art", "article"},
-		{"num", "numeral"},
-		{"aux", "auxiliary"},
-		{"abbr", "abbreviation"},
+		{"n", "n."},
+		{"n.", "n."},
+		{"n.", "n."},
+		{"v", "v."},
+		{"v.", "v."},
+		{"vt", "v."},
+		{"vt.", "v."},
+		{"vi", "v."},
+		{"vi.", "v."},
+		{"v.", "v."},
+		{"adj", "adj."},
+		{"adj.", "adj."},
+		{"adj.", "adj."},
+		{"adv", "adv."},
+		{"adv.", "adv."},
+		{"adv.", "adv."},
+		{"prep", "prep."},
+		{"pron", "pron."},
+		{"conj", "conj."},
+		{"interj", "interj."},
+		{"int", "interj."},
+		{"art", "art."},
+		{"num", "num."},
+		{"aux", "aux."},
+		{"abbr", "abbr."},
 		{"pref", "prefix"},
 		{"suf", "suffix"},
 		{"", ""},
@@ -57,12 +57,12 @@ func TestTryExtractPOS(t *testing.T) {
 		expectedPOS  string
 		expectedRest string
 	}{
-		{"n. a person", "noun", "a person"},
-		{"v. to run", "verb", "to run"},
-		{"adj. beautiful", "adjective", "beautiful"},
-		{"vt. to eat something", "verb", "to eat something"},
+		{"n. a person", "n.", "a person"},
+		{"v. to run", "v.", "to run"},
+		{"adj. beautiful", "adj.", "beautiful"},
+		{"vt. to eat something", "v.", "to eat something"},
 		{"[计] n. computer term", "", ""},                      // No POS extraction, keeps domain markers
-		{"n. [计] computer term", "noun", "[计] computer term"}, // Extracts POS, keeps domain markers in rest
+		{"n. [计] computer term", "n.", "[计] computer term"}, // Extracts POS, keeps domain markers in rest
 		{"no pos here", "", ""},
 		{"", "", ""},
 	}
@@ -104,7 +104,7 @@ func TestBuildSensePayloads_WithPosField(t *testing.T) {
 	}
 
 	// First payload (English definition)
-	if payloads[0].partOfSpeech != "noun" {
+	if payloads[0].partOfSpeech != "n." {
 		t.Errorf("expected POS 'noun', got %q", payloads[0].partOfSpeech)
 	}
 	// Now we keep domain markers in the gloss
@@ -113,7 +113,7 @@ func TestBuildSensePayloads_WithPosField(t *testing.T) {
 	}
 
 	// Second payload (Chinese translation)
-	if payloads[1].partOfSpeech != "noun" {
+	if payloads[1].partOfSpeech != "n." {
 		t.Errorf("expected POS 'noun', got %q", payloads[1].partOfSpeech)
 	}
 	// Now we keep domain markers in the gloss
@@ -140,7 +140,7 @@ func TestBuildSensePayloads_NoPosWithDomainMarker(t *testing.T) {
 	}
 
 	// Should be recognized as proper-noun when starting with domain marker and no POS
-	if payloads[0].partOfSpeech != "proper-noun" {
+	if payloads[0].partOfSpeech != "n." {
 		t.Errorf("expected POS 'proper-noun', got %q", payloads[0].partOfSpeech)
 	}
 	if payloads[0].gloss != "[地名] 北京" {
@@ -193,11 +193,11 @@ func TestBuildSensePayloads_WithLinePosPrefix(t *testing.T) {
 	}
 
 	// Line-level POS should override the record-level POS
-	if payloads[0].partOfSpeech != "verb" {
+	if payloads[0].partOfSpeech != "v." {
 		t.Errorf("expected POS 'verb', got %q", payloads[0].partOfSpeech)
 	}
 
-	if payloads[1].partOfSpeech != "adjective" {
+	if payloads[1].partOfSpeech != "adj." {
 		t.Errorf("expected POS 'adjective', got %q", payloads[1].partOfSpeech)
 	}
 }
@@ -207,18 +207,18 @@ func TestParseWordNetPOS(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"n:100", "noun"},
-		{"v:100", "verb"},
-		{"j:100", "adjective"},
-		{"r:100", "adverb"},
-		{"m:100", "numeral"},
-		{"s:100", "adjective"}, // adjective satellite
-		{"v:5/n:95", "noun"},   // noun has higher probability
-		{"v:95/n:5", "verb"},   // verb has higher probability
-		{"j:54/n:46", "adjective"},
-		{"j:62/n:38", "adjective"},
-		{"v:1/n:99", "noun"},
-		{"v:8/n:92", "noun"},
+		{"n:100", "n."},
+		{"v:100", "v."},
+		{"j:100", "adj."},
+		{"r:100", "adv."},
+		{"m:100", "num."},
+		{"s:100", "adj."}, // adjective satellite
+		{"v:5/n:95", "n."},   // noun has higher probability
+		{"v:95/n:5", "v."},   // verb has higher probability
+		{"j:54/n:46", "adj."},
+		{"j:62/n:38", "adj."},
+		{"v:1/n:99", "n."},
+		{"v:8/n:92", "n."},
 		{"", ""},
 		{"xyz", "xyz"}, // Unknown POS codes are passed through
 	}
@@ -238,19 +238,19 @@ func TestWordNetPOSToStandard(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"n", "noun"},
-		{"v", "verb"},
-		{"j", "adjective"},
-		{"r", "adverb"},
-		{"m", "numeral"},
-		{"s", "adjective"}, // adjective satellite
-		{"a", "article"},
-		{"i", "preposition"},
-		{"p", "pronoun"},
-		{"d", "determiner"},
-		{"u", "interjection"},
-		{"c", "conjunction"},
-		{"N", "noun"}, // case insensitive
+		{"n", "n."},
+		{"v", "v."},
+		{"j", "adj."},
+		{"r", "adv."},
+		{"m", "num."},
+		{"s", "adj."}, // adjective satellite
+		{"a", "art."},
+		{"i", "prep."},
+		{"p", "pron."},
+		{"d", "det."},
+		{"u", "interj."},
+		{"c", "conj."},
+		{"N", "n."}, // case insensitive
 		{"", ""},
 	}
 
