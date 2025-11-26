@@ -8,6 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
+	v11 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	v1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	http "net/http"
@@ -58,10 +59,10 @@ const (
 type DictServiceClient interface {
 	CreateWord(context.Context, *connect.Request[v1.CreateWordRequest]) (*connect.Response[v1.Word], error)
 	UpdateWord(context.Context, *connect.Request[v1.Word]) (*connect.Response[v1.Word], error)
-	GetWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[v1.Word], error)
+	GetWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.Word], error)
 	ListWords(context.Context, *connect.Request[v1.ListWordsRequest]) (*connect.Response[v1.ListWordsResponse], error)
 	LookupWord(context.Context, *connect.Request[v1.LookupWordRequest]) (*connect.Response[v1.Word], error)
-	DeleteWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[emptypb.Empty], error)
+	DeleteWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
 	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
 	GetWordStats(context.Context, *connect.Request[v1.GetWordStatsRequest]) (*connect.Response[v1.GetWordStatsResponse], error)
 }
@@ -89,7 +90,7 @@ func NewDictServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(dictServiceMethods.ByName("UpdateWord")),
 			connect.WithClientOptions(opts...),
 		),
-		getWord: connect.NewClient[v1.WordIDRequest, v1.Word](
+		getWord: connect.NewClient[v11.IDRequest, v1.Word](
 			httpClient,
 			baseURL+DictServiceGetWordProcedure,
 			connect.WithSchema(dictServiceMethods.ByName("GetWord")),
@@ -107,7 +108,7 @@ func NewDictServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(dictServiceMethods.ByName("LookupWord")),
 			connect.WithClientOptions(opts...),
 		),
-		deleteWord: connect.NewClient[v1.WordIDRequest, emptypb.Empty](
+		deleteWord: connect.NewClient[v11.IDRequest, emptypb.Empty](
 			httpClient,
 			baseURL+DictServiceDeleteWordProcedure,
 			connect.WithSchema(dictServiceMethods.ByName("DeleteWord")),
@@ -132,10 +133,10 @@ func NewDictServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 type dictServiceClient struct {
 	createWord     *connect.Client[v1.CreateWordRequest, v1.Word]
 	updateWord     *connect.Client[v1.Word, v1.Word]
-	getWord        *connect.Client[v1.WordIDRequest, v1.Word]
+	getWord        *connect.Client[v11.IDRequest, v1.Word]
 	listWords      *connect.Client[v1.ListWordsRequest, v1.ListWordsResponse]
 	lookupWord     *connect.Client[v1.LookupWordRequest, v1.Word]
-	deleteWord     *connect.Client[v1.WordIDRequest, emptypb.Empty]
+	deleteWord     *connect.Client[v11.IDRequest, emptypb.Empty]
 	listCategories *connect.Client[v1.ListCategoriesRequest, v1.ListCategoriesResponse]
 	getWordStats   *connect.Client[v1.GetWordStatsRequest, v1.GetWordStatsResponse]
 }
@@ -151,7 +152,7 @@ func (c *dictServiceClient) UpdateWord(ctx context.Context, req *connect.Request
 }
 
 // GetWord calls dict.v1.DictService.GetWord.
-func (c *dictServiceClient) GetWord(ctx context.Context, req *connect.Request[v1.WordIDRequest]) (*connect.Response[v1.Word], error) {
+func (c *dictServiceClient) GetWord(ctx context.Context, req *connect.Request[v11.IDRequest]) (*connect.Response[v1.Word], error) {
 	return c.getWord.CallUnary(ctx, req)
 }
 
@@ -166,7 +167,7 @@ func (c *dictServiceClient) LookupWord(ctx context.Context, req *connect.Request
 }
 
 // DeleteWord calls dict.v1.DictService.DeleteWord.
-func (c *dictServiceClient) DeleteWord(ctx context.Context, req *connect.Request[v1.WordIDRequest]) (*connect.Response[emptypb.Empty], error) {
+func (c *dictServiceClient) DeleteWord(ctx context.Context, req *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error) {
 	return c.deleteWord.CallUnary(ctx, req)
 }
 
@@ -184,10 +185,10 @@ func (c *dictServiceClient) GetWordStats(ctx context.Context, req *connect.Reque
 type DictServiceHandler interface {
 	CreateWord(context.Context, *connect.Request[v1.CreateWordRequest]) (*connect.Response[v1.Word], error)
 	UpdateWord(context.Context, *connect.Request[v1.Word]) (*connect.Response[v1.Word], error)
-	GetWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[v1.Word], error)
+	GetWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.Word], error)
 	ListWords(context.Context, *connect.Request[v1.ListWordsRequest]) (*connect.Response[v1.ListWordsResponse], error)
 	LookupWord(context.Context, *connect.Request[v1.LookupWordRequest]) (*connect.Response[v1.Word], error)
-	DeleteWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[emptypb.Empty], error)
+	DeleteWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
 	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
 	GetWordStats(context.Context, *connect.Request[v1.GetWordStatsRequest]) (*connect.Response[v1.GetWordStatsResponse], error)
 }
@@ -282,7 +283,7 @@ func (UnimplementedDictServiceHandler) UpdateWord(context.Context, *connect.Requ
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.DictService.UpdateWord is not implemented"))
 }
 
-func (UnimplementedDictServiceHandler) GetWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[v1.Word], error) {
+func (UnimplementedDictServiceHandler) GetWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.Word], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.DictService.GetWord is not implemented"))
 }
 
@@ -294,7 +295,7 @@ func (UnimplementedDictServiceHandler) LookupWord(context.Context, *connect.Requ
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.DictService.LookupWord is not implemented"))
 }
 
-func (UnimplementedDictServiceHandler) DeleteWord(context.Context, *connect.Request[v1.WordIDRequest]) (*connect.Response[emptypb.Empty], error) {
+func (UnimplementedDictServiceHandler) DeleteWord(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.DictService.DeleteWord is not implemented"))
 }
 

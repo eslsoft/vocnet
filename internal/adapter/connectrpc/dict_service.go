@@ -84,11 +84,11 @@ func (s *DictServiceServer) UpdateWord(ctx context.Context, req *connect.Request
 	return connect.NewResponse(mapping.ToPbWord(entry)), nil
 }
 
-func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[dictv1.WordIDRequest]) (*connect.Response[dictv1.Word], error) {
+func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[dictv1.Word], error) {
 	if req.Msg == nil {
 		return nil, status.Error(codes.InvalidArgument, "word id required")
 	}
-	lemma, err := s.wordUC.GetLemma(ctx, req.Msg.GetWordId())
+	lemma, err := s.wordUC.GetLemma(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -131,16 +131,16 @@ func (s *DictServiceServer) LookupWord(ctx context.Context, req *connect.Request
 	return connect.NewResponse(mapping.ToPbWord(entry)), nil
 }
 
-func (s *DictServiceServer) DeleteWord(ctx context.Context, req *connect.Request[dictv1.WordIDRequest]) (*connect.Response[emptypb.Empty], error) {
+func (s *DictServiceServer) DeleteWord(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
 	if req.Msg == nil {
 		return nil, status.Error(codes.InvalidArgument, "word id required")
 	}
-	if req.Msg.GetWordId() == 0 {
+	if req.Msg.GetId() == 0 {
 		return nil, status.Error(codes.InvalidArgument, "word id required")
 	}
 
 	// Delete word via usecase
-	err := s.wordUC.DeleteLemma(ctx, req.Msg.GetWordId())
+	err := s.wordUC.DeleteLemma(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}

@@ -3,7 +3,6 @@ syntax = "proto3";
 package learning.v1;
 
 import "common/v1/types.proto";
-import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 // LearnedWord captures a user's personalised vocabulary entry.
@@ -24,17 +23,18 @@ message LearnedWordSpec {
   repeated string notes = 6;
 
   repeated LearnedWordContext contexts = 10; // Context sentences where user encountered this word
-  repeated LearnedWordRelation relations = 11; // Word-to-word relationships
 }
 
 // LearnedWordStatus is maintained by the system to reflect learning progress.
 message LearnedWordStatus {
   MasteryBreakdown mastery = 1;
   ReviewTiming review_timing = 2;
-  repeated string matched_terms = 10; // All query terms that matched this word (for client-side highlighting)
-  int64 queried_count = 3; // number of times user queried this word
+  repeated string matched_terms = 3; // All query terms that matched this word (for client-side highlighting)
+  repeated string matched_wordbooks = 4; // Wordbooks that contain this word
 
-  string created_by = 20;
+  string created_by = 10; // username of the creator
+  int64 queried_count = 11; // number of times user queried this word
+
   google.protobuf.Timestamp created_at = 21;
   google.protobuf.Timestamp updated_at = 22;
 }
@@ -56,15 +56,6 @@ message ReviewTiming {
   int32 fail_count = 4; // Consecutive failure count
 }
 
-// Word-to-word relationship for building vocabulary networks
-message LearnedWordRelation {
-  string word = 1;
-  common.v1.RelationType relation_type = 2; // Type of relationship
-  string note = 3; // User's note about this relation
-
-  google.protobuf.Timestamp created_at = 21;
-  google.protobuf.Timestamp updated_at = 22;
-}
 
 // LearnedWordContext stores a sentence/context where user encountered the word
 message LearnedWordContext {
@@ -73,18 +64,3 @@ message LearnedWordContext {
   string source_ref = 3; // Optional reference (article title, book name, URL, etc.)
   google.protobuf.Timestamp collected_at = 4; // When this context was collected
 }
-
-// // Language learning statistics
-// message LearningStats {
-//   int32 total_words = 1;
-//   int32 mastered_words = 2;
-//   int32 learning_words = 3;
-//   int32 review_due = 4;
-//   repeated MasteryLevelCount mastery_distribution = 5;
-// }
-
-// // Count by mastery level for statistics
-// message MasteryLevelCount {
-//   vocnet.v1.MasteryLevel level = 1;
-//   int32 count = 2;
-// }

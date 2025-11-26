@@ -70,8 +70,9 @@ enum RelationType {
   RELATION_TYPE_ANTONYM = 2; // Opposite meaning
   RELATION_TYPE_HYPERNYM = 3; // More general term (e.g., "animal" for "dog")
   RELATION_TYPE_HYPONYM = 4; // More specific term (e.g., "poodle" for "dog")
-  RELATION_TYPE_DERIVED = 5; // Derived word (e.g., "quickly" from "quick")
-  RELATION_TYPE_RELATED = 6; // Other related word
+  RELATION_TYPE_ASSOCIATION = 5; // association (bread->butter)
+  RELATION_TYPE_CAUSE_EFFECT = 6; // cause-effect  (smoke->cancer)
+  RELATION_TYPE_PART_WHOLE = 7; // part-whole (wheel->car)
 }
 
 message Sentence {

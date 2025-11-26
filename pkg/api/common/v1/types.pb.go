@@ -88,77 +88,6 @@ func (Language) EnumDescriptor() ([]byte, []int) {
 	return file_common_v1_types_proto_rawDescGZIP(), []int{0}
 }
 
-// Word relation types for building vocabulary networks
-type RelationType int32
-
-const (
-	RelationType_RELATION_TYPE_UNSPECIFIED  RelationType = 0
-	RelationType_RELATION_TYPE_SYNONYM      RelationType = 1   // 同义词
-	RelationType_RELATION_TYPE_ANTONYM      RelationType = 2   // 反义词
-	RelationType_RELATION_TYPE_HYPERNYM     RelationType = 3   // 上位词 (animal->dog)
-	RelationType_RELATION_TYPE_HYPONYM      RelationType = 4   // 下位词 (dog->animal)
-	RelationType_RELATION_TYPE_ASSOCIATION  RelationType = 5   // 关联词 (bread->butter)
-	RelationType_RELATION_TYPE_CAUSE_EFFECT RelationType = 6   // 因果关系 (smoke->cancer)
-	RelationType_RELATION_TYPE_PART_WHOLE   RelationType = 7   // 部分-整体 (wheel->car)
-	RelationType_RELATION_TYPE_MNEMONIC     RelationType = 10  // 联想/助记 (arbitrary user associations)
-	RelationType_RELATION_TYPE_CUSTOM       RelationType = 100 // 自定义关系 (reserved for extension)
-)
-
-// Enum value maps for RelationType.
-var (
-	RelationType_name = map[int32]string{
-		0:   "RELATION_TYPE_UNSPECIFIED",
-		1:   "RELATION_TYPE_SYNONYM",
-		2:   "RELATION_TYPE_ANTONYM",
-		3:   "RELATION_TYPE_HYPERNYM",
-		4:   "RELATION_TYPE_HYPONYM",
-		5:   "RELATION_TYPE_ASSOCIATION",
-		6:   "RELATION_TYPE_CAUSE_EFFECT",
-		7:   "RELATION_TYPE_PART_WHOLE",
-		10:  "RELATION_TYPE_MNEMONIC",
-		100: "RELATION_TYPE_CUSTOM",
-	}
-	RelationType_value = map[string]int32{
-		"RELATION_TYPE_UNSPECIFIED":  0,
-		"RELATION_TYPE_SYNONYM":      1,
-		"RELATION_TYPE_ANTONYM":      2,
-		"RELATION_TYPE_HYPERNYM":     3,
-		"RELATION_TYPE_HYPONYM":      4,
-		"RELATION_TYPE_ASSOCIATION":  5,
-		"RELATION_TYPE_CAUSE_EFFECT": 6,
-		"RELATION_TYPE_PART_WHOLE":   7,
-		"RELATION_TYPE_MNEMONIC":     10,
-		"RELATION_TYPE_CUSTOM":       100,
-	}
-)
-
-func (x RelationType) Enum() *RelationType {
-	p := new(RelationType)
-	*p = x
-	return p
-}
-
-func (x RelationType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (RelationType) Descriptor() protoreflect.EnumDescriptor {
-	return file_common_v1_types_proto_enumTypes[1].Descriptor()
-}
-
-func (RelationType) Type() protoreflect.EnumType {
-	return &file_common_v1_types_proto_enumTypes[1]
-}
-
-func (x RelationType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use RelationType.Descriptor instead.
-func (RelationType) EnumDescriptor() ([]byte, []int) {
-	return file_common_v1_types_proto_rawDescGZIP(), []int{1}
-}
-
 // Source types for sentences and content
 type SourceType int32
 
@@ -205,11 +134,11 @@ func (x SourceType) String() string {
 }
 
 func (SourceType) Descriptor() protoreflect.EnumDescriptor {
-	return file_common_v1_types_proto_enumTypes[2].Descriptor()
+	return file_common_v1_types_proto_enumTypes[1].Descriptor()
 }
 
 func (SourceType) Type() protoreflect.EnumType {
-	return &file_common_v1_types_proto_enumTypes[2]
+	return &file_common_v1_types_proto_enumTypes[1]
 }
 
 func (x SourceType) Number() protoreflect.EnumNumber {
@@ -218,7 +147,7 @@ func (x SourceType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SourceType.Descriptor instead.
 func (SourceType) EnumDescriptor() ([]byte, []int) {
-	return file_common_v1_types_proto_rawDescGZIP(), []int{2}
+	return file_common_v1_types_proto_rawDescGZIP(), []int{1}
 }
 
 // ID request message
@@ -393,19 +322,7 @@ const file_common_v1_types_proto_rawDesc = "" +
 	"\x0fLANGUAGE_FRENCH\x10\x04\x12\x13\n" +
 	"\x0fLANGUAGE_GERMAN\x10\x05\x12\x15\n" +
 	"\x11LANGUAGE_JAPANESE\x10\x06\x12\x13\n" +
-	"\x0fLANGUAGE_KOREAN\x10\a*\xad\x02\n" +
-	"\fRelationType\x12\x1d\n" +
-	"\x19RELATION_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
-	"\x15RELATION_TYPE_SYNONYM\x10\x01\x12\x19\n" +
-	"\x15RELATION_TYPE_ANTONYM\x10\x02\x12\x1a\n" +
-	"\x16RELATION_TYPE_HYPERNYM\x10\x03\x12\x19\n" +
-	"\x15RELATION_TYPE_HYPONYM\x10\x04\x12\x1d\n" +
-	"\x19RELATION_TYPE_ASSOCIATION\x10\x05\x12\x1e\n" +
-	"\x1aRELATION_TYPE_CAUSE_EFFECT\x10\x06\x12\x1c\n" +
-	"\x18RELATION_TYPE_PART_WHOLE\x10\a\x12\x1a\n" +
-	"\x16RELATION_TYPE_MNEMONIC\x10\n" +
-	"\x12\x18\n" +
-	"\x14RELATION_TYPE_CUSTOM\x10d*\xb1\x01\n" +
+	"\x0fLANGUAGE_KOREAN\x10\a*\xb1\x01\n" +
 	"\n" +
 	"SourceType\x12\x1b\n" +
 	"\x17SOURCE_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
@@ -435,15 +352,14 @@ func file_common_v1_types_proto_rawDescGZIP() []byte {
 	return file_common_v1_types_proto_rawDescData
 }
 
-var file_common_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_common_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_common_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_common_v1_types_proto_goTypes = []any{
 	(Language)(0),              // 0: common.v1.Language
-	(RelationType)(0),          // 1: common.v1.RelationType
-	(SourceType)(0),            // 2: common.v1.SourceType
-	(*IDRequest)(nil),          // 3: common.v1.IDRequest
-	(*PaginationRequest)(nil),  // 4: common.v1.PaginationRequest
-	(*PaginationResponse)(nil), // 5: common.v1.PaginationResponse
+	(SourceType)(0),            // 1: common.v1.SourceType
+	(*IDRequest)(nil),          // 2: common.v1.IDRequest
+	(*PaginationRequest)(nil),  // 3: common.v1.PaginationRequest
+	(*PaginationResponse)(nil), // 4: common.v1.PaginationResponse
 }
 var file_common_v1_types_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -463,7 +379,7 @@ func file_common_v1_types_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_v1_types_proto_rawDesc), len(file_common_v1_types_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      2,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,

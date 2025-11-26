@@ -9,9 +9,11 @@ import "google/protobuf/empty.proto";
 message CreateWordRequest {
   dict.v1.Word word = 1;
 }
+
 message LookupWordRequest {
   string word = 1;
 }
+
 message ListWordsRequest {
   common.v1.PaginationRequest pagination = 1;
   // Filter expression using CEL syntax
@@ -29,29 +31,30 @@ message ListWordsRequest {
   // Examples: "lemma", "updated_at desc", "created_at asc"
   string order_by = 3;
 }
+
 message ListWordsResponse {
   repeated dict.v1.Word words = 1;
   common.v1.PaginationResponse pagination = 2;
 }
-message WordIDRequest {
-  int64 word_id = 1;
-}
+
 message ListCategoriesRequest {
   // Optional filter to search categories by prefix or pattern
   // If empty, returns all categories
   string search = 1;
 }
+
 message ListCategoriesResponse {
   // List of unique category names
   repeated string categories = 1;
 }
+
 service DictService {
   rpc CreateWord(CreateWordRequest) returns (dict.v1.Word);
   rpc UpdateWord(dict.v1.Word) returns (dict.v1.Word);
-  rpc GetWord(WordIDRequest) returns (dict.v1.Word);
+  rpc GetWord(common.v1.IDRequest) returns (dict.v1.Word);
   rpc ListWords(ListWordsRequest) returns (ListWordsResponse);
   rpc LookupWord(LookupWordRequest) returns (dict.v1.Word);
-  rpc DeleteWord(WordIDRequest) returns (google.protobuf.Empty);
+  rpc DeleteWord(common.v1.IDRequest) returns (google.protobuf.Empty);
   rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
   rpc GetWordStats(GetWordStatsRequest) returns (GetWordStatsResponse);
 }

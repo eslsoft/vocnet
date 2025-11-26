@@ -260,40 +260,6 @@ func (m *LearnedWordSpec) validate(all bool) error {
 
 	}
 
-	for idx, item := range m.GetRelations() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, LearnedWordSpecValidationError{
-						field:  fmt.Sprintf("Relations[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, LearnedWordSpecValidationError{
-						field:  fmt.Sprintf("Relations[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return LearnedWordSpecValidationError{
-					field:  fmt.Sprintf("Relations[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
-
 	if len(errors) > 0 {
 		return LearnedWordSpecMultiError(errors)
 	}
@@ -452,9 +418,9 @@ func (m *LearnedWordStatus) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for QueriedCount
-
 	// no validation rules for CreatedBy
+
+	// no validation rules for QueriedCount
 
 	if all {
 		switch v := interface{}(m.GetCreatedAt()).(type) {
@@ -864,172 +830,6 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ReviewTimingValidationError{}
-
-// Validate checks the field values on LearnedWordRelation with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the first error encountered is returned, or nil if there are no violations.
-func (m *LearnedWordRelation) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on LearnedWordRelation with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// LearnedWordRelationMultiError, or nil if none found.
-func (m *LearnedWordRelation) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *LearnedWordRelation) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	// no validation rules for Word
-
-	// no validation rules for RelationType
-
-	// no validation rules for Note
-
-	if all {
-		switch v := interface{}(m.GetCreatedAt()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, LearnedWordRelationValidationError{
-					field:  "CreatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, LearnedWordRelationValidationError{
-					field:  "CreatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetCreatedAt()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return LearnedWordRelationValidationError{
-				field:  "CreatedAt",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	if all {
-		switch v := interface{}(m.GetUpdatedAt()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, LearnedWordRelationValidationError{
-					field:  "UpdatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, LearnedWordRelationValidationError{
-					field:  "UpdatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetUpdatedAt()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return LearnedWordRelationValidationError{
-				field:  "UpdatedAt",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	if len(errors) > 0 {
-		return LearnedWordRelationMultiError(errors)
-	}
-
-	return nil
-}
-
-// LearnedWordRelationMultiError is an error wrapping multiple validation
-// errors returned by LearnedWordRelation.ValidateAll() if the designated
-// constraints aren't met.
-type LearnedWordRelationMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m LearnedWordRelationMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m LearnedWordRelationMultiError) AllErrors() []error { return m }
-
-// LearnedWordRelationValidationError is the validation error returned by
-// LearnedWordRelation.Validate if the designated constraints aren't met.
-type LearnedWordRelationValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e LearnedWordRelationValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e LearnedWordRelationValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e LearnedWordRelationValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e LearnedWordRelationValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e LearnedWordRelationValidationError) ErrorName() string {
-	return "LearnedWordRelationValidationError"
-}
-
-// Error satisfies the builtin error interface
-func (e LearnedWordRelationValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sLearnedWordRelation.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = LearnedWordRelationValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = LearnedWordRelationValidationError{}
 
 // Validate checks the field values on LearnedWordContext with the rules
 // defined in the proto definition for this message. If any rules are

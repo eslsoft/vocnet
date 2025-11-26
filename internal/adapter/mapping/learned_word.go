@@ -21,11 +21,10 @@ func ToPbLearnedWord(in *entity.LearnedWord) *learningv1.LearnedWord {
 
 func toPbLearnedWordSpec(in *entity.LearnedWord) *learningv1.LearnedWordSpec {
 	return &learningv1.LearnedWordSpec{
-		Term:      in.Term,
-		Language:  ToPbLanguage(in.Language),
-		Tags:      append([]string{}, in.Tags...),
-		Relations: toPbLearnedWordRelations(in.Relations),
-		Contexts:  toPbLearnedWordContexts(in.Contexts),
+		Term:     in.Term,
+		Language: ToPbLanguage(in.Language),
+		Tags:     append([]string{}, in.Tags...),
+		Contexts: toPbLearnedWordContexts(in.Contexts),
 	}
 }
 
@@ -39,20 +38,6 @@ func toPbLearnedWordStatus(in *entity.LearnedWord) *learningv1.LearnedWordStatus
 		CreatedAt:    timestamppb.New(in.CreatedAt),
 		UpdatedAt:    timestamppb.New(in.UpdatedAt),
 	}
-}
-
-func toPbLearnedWordRelations(items []entity.LearnedWordRelation) []*learningv1.LearnedWordRelation {
-	out := make([]*learningv1.LearnedWordRelation, 0, len(items))
-	for _, rel := range items {
-		out = append(out, &learningv1.LearnedWordRelation{
-			Word:         rel.Word,
-			RelationType: commonv1.RelationType(rel.RelationType),
-			Note:         rel.Note,
-			CreatedAt:    timestamppb.New(rel.CreatedAt),
-			UpdatedAt:    timestamppb.New(rel.UpdatedAt),
-		})
-	}
-	return out
 }
 
 func toPbLearnedWordContexts(items []entity.LearnedWordContext) []*learningv1.LearnedWordContext {

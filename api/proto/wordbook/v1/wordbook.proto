@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package wordbook.v1;
+
+import "common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// Wordbook represents a collection of words organized by user.
+// Users can create multiple wordbooks to categorize their vocabulary (e.g., "IELTS Core", "Business English").
+message Wordbook {
+  int64 id = 1;
+  common.v1.Language language = 2; // Primary language
+  VisibilityType visibility = 10; // Visibility setting
+  string name = 3; // Wordbook name, e.g., "IELTS Core Vocabulary"
+  string description = 4; // Description of the wordbook
+  repeated string terms = 6; // Word terms in this wordbook, e.g., ['abandon', 'abbreviate']
+
+  WordbookStats status = 20;
+  google.protobuf.Timestamp created_at = 21;
+  google.protobuf.Timestamp updated_at = 22;
+}
+
+// WordbookStats provides learning progress statistics for a wordbook.
+message WordbookStats {
+  int32 total_words = 1;
+  int32 mastered_words = 2; // Words with overall mastery >= 4
+  int32 learning_words = 3; // Words with 1 <= overall mastery < 4
+  int32 unknown_words = 4; // Words with overall mastery < 1
+}
+
+// VisibilityType defines wordbook visibility settings.
+enum VisibilityType {
+  VISIBILITY_TYPE_UNSPECIFIED = 0;
+  VISIBILITY_TYPE_PRIVATE = 1; // Private to owner only
+  VISIBILITY_TYPE_PUBLIC = 2; // Public to all users
+  VISIBILITY_TYPE_SHARED = 3; // Accessible via share link only
+}

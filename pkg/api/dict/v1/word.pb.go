@@ -26,13 +26,14 @@ const (
 type RelationType int32
 
 const (
-	RelationType_RELATION_TYPE_UNSPECIFIED RelationType = 0
-	RelationType_RELATION_TYPE_SYNONYM     RelationType = 1 // Same or similar meaning
-	RelationType_RELATION_TYPE_ANTONYM     RelationType = 2 // Opposite meaning
-	RelationType_RELATION_TYPE_HYPERNYM    RelationType = 3 // More general term (e.g., "animal" for "dog")
-	RelationType_RELATION_TYPE_HYPONYM     RelationType = 4 // More specific term (e.g., "poodle" for "dog")
-	RelationType_RELATION_TYPE_DERIVED     RelationType = 5 // Derived word (e.g., "quickly" from "quick")
-	RelationType_RELATION_TYPE_RELATED     RelationType = 6 // Other related word
+	RelationType_RELATION_TYPE_UNSPECIFIED  RelationType = 0
+	RelationType_RELATION_TYPE_SYNONYM      RelationType = 1 // Same or similar meaning
+	RelationType_RELATION_TYPE_ANTONYM      RelationType = 2 // Opposite meaning
+	RelationType_RELATION_TYPE_HYPERNYM     RelationType = 3 // More general term (e.g., "animal" for "dog")
+	RelationType_RELATION_TYPE_HYPONYM      RelationType = 4 // More specific term (e.g., "poodle" for "dog")
+	RelationType_RELATION_TYPE_ASSOCIATION  RelationType = 5 // association (bread->butter)
+	RelationType_RELATION_TYPE_CAUSE_EFFECT RelationType = 6 // cause-effect  (smoke->cancer)
+	RelationType_RELATION_TYPE_PART_WHOLE   RelationType = 7 // part-whole (wheel->car)
 )
 
 // Enum value maps for RelationType.
@@ -43,17 +44,19 @@ var (
 		2: "RELATION_TYPE_ANTONYM",
 		3: "RELATION_TYPE_HYPERNYM",
 		4: "RELATION_TYPE_HYPONYM",
-		5: "RELATION_TYPE_DERIVED",
-		6: "RELATION_TYPE_RELATED",
+		5: "RELATION_TYPE_ASSOCIATION",
+		6: "RELATION_TYPE_CAUSE_EFFECT",
+		7: "RELATION_TYPE_PART_WHOLE",
 	}
 	RelationType_value = map[string]int32{
-		"RELATION_TYPE_UNSPECIFIED": 0,
-		"RELATION_TYPE_SYNONYM":     1,
-		"RELATION_TYPE_ANTONYM":     2,
-		"RELATION_TYPE_HYPERNYM":    3,
-		"RELATION_TYPE_HYPONYM":     4,
-		"RELATION_TYPE_DERIVED":     5,
-		"RELATION_TYPE_RELATED":     6,
+		"RELATION_TYPE_UNSPECIFIED":  0,
+		"RELATION_TYPE_SYNONYM":      1,
+		"RELATION_TYPE_ANTONYM":      2,
+		"RELATION_TYPE_HYPERNYM":     3,
+		"RELATION_TYPE_HYPONYM":      4,
+		"RELATION_TYPE_ASSOCIATION":  5,
+		"RELATION_TYPE_CAUSE_EFFECT": 6,
+		"RELATION_TYPE_PART_WHOLE":   7,
 	}
 )
 
@@ -731,15 +734,16 @@ const file_dict_v1_word_proto_rawDesc = "" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12-\n" +
 	"\x06source\x18\x02 \x01(\x0e2\x15.common.v1.SourceTypeR\x06source\x12\x1d\n" +
 	"\n" +
-	"source_ref\x18\x03 \x01(\tR\tsourceRef*\xd0\x01\n" +
+	"source_ref\x18\x03 \x01(\tR\tsourceRef*\xf7\x01\n" +
 	"\fRelationType\x12\x1d\n" +
 	"\x19RELATION_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15RELATION_TYPE_SYNONYM\x10\x01\x12\x19\n" +
 	"\x15RELATION_TYPE_ANTONYM\x10\x02\x12\x1a\n" +
 	"\x16RELATION_TYPE_HYPERNYM\x10\x03\x12\x19\n" +
-	"\x15RELATION_TYPE_HYPONYM\x10\x04\x12\x19\n" +
-	"\x15RELATION_TYPE_DERIVED\x10\x05\x12\x19\n" +
-	"\x15RELATION_TYPE_RELATED\x10\x06*\xe5\x02\n" +
+	"\x15RELATION_TYPE_HYPONYM\x10\x04\x12\x1d\n" +
+	"\x19RELATION_TYPE_ASSOCIATION\x10\x05\x12\x1e\n" +
+	"\x1aRELATION_TYPE_CAUSE_EFFECT\x10\x06\x12\x1c\n" +
+	"\x18RELATION_TYPE_PART_WHOLE\x10\a*\xe5\x02\n" +
 	"\bFormType\x12\x19\n" +
 	"\x15FORM_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fFORM_TYPE_LEMMA\x10\x01\x12\x14\n" +

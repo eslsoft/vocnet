@@ -51,20 +51,6 @@ enum Language {
   LANGUAGE_KOREAN = 7; // ko
 }
 
-// Word relation types for building vocabulary networks
-enum RelationType {
-  RELATION_TYPE_UNSPECIFIED = 0;
-  RELATION_TYPE_SYNONYM = 1; // 同义词
-  RELATION_TYPE_ANTONYM = 2; // 反义词
-  RELATION_TYPE_HYPERNYM = 3; // 上位词 (animal->dog)
-  RELATION_TYPE_HYPONYM = 4; // 下位词 (dog->animal)
-  RELATION_TYPE_ASSOCIATION = 5; // 关联词 (bread->butter)
-  RELATION_TYPE_CAUSE_EFFECT = 6; // 因果关系 (smoke->cancer)
-  RELATION_TYPE_PART_WHOLE = 7; // 部分-整体 (wheel->car)
-  RELATION_TYPE_MNEMONIC = 10; // 联想/助记 (arbitrary user associations)
-  RELATION_TYPE_CUSTOM = 100; // 自定义关系 (reserved for extension)
-}
-
 // Source types for sentences and content
 enum SourceType {
   SOURCE_TYPE_UNSPECIFIED = 0;
