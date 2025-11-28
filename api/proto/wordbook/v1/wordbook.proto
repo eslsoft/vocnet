@@ -3,6 +3,7 @@ syntax = "proto3";
 package wordbook.v1;
 
 import "common/v1/types.proto";
+import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 
 // Wordbook represents a collection of words organized by user.
@@ -10,12 +11,15 @@ import "google/protobuf/timestamp.proto";
 message Wordbook {
   int64 id = 1;
   common.v1.Language language = 2; // Primary language
-  VisibilityType visibility = 10; // Visibility setting
-  string name = 3; // Wordbook name, e.g., "IELTS Core Vocabulary"
-  string description = 4; // Description of the wordbook
-  repeated string terms = 6; // Word terms in this wordbook, e.g., ['abandon', 'abbreviate']
+  VisibilityType visibility = 3; // Visibility setting
+  string name = 5; // Wordbook name, e.g., "IELTS Core Vocabulary"
+  string description = 6; // Description of the wordbook
+  map<string, string> annotations = 7; // Additional metadata as key-value pairs
+  repeated string terms = 8; // Word terms in this wordbook, e.g., ['abandon', 'abbreviate']
 
-  WordbookStats status = 20;
+  WordbookStats status = 10;
+
+  string created_by = 20;
   google.protobuf.Timestamp created_at = 21;
   google.protobuf.Timestamp updated_at = 22;
 }

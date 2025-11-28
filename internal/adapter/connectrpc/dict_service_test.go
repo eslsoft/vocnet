@@ -126,8 +126,8 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 
 	// Test GetWord
 	t.Run("GetWord", func(t *testing.T) {
-		getResp, err := svc.GetWord(ctx, &connect.Request[dictv1.WordIDRequest]{
-			Msg: &dictv1.WordIDRequest{WordId: wordID},
+		getResp, err := svc.GetWord(ctx, &connect.Request[commonv1.IDRequest]{
+			Msg: &commonv1.IDRequest{Id: wordID},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, getResp)
@@ -207,15 +207,15 @@ func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
 
 	// Test DeleteWord
 	t.Run("DeleteWord", func(t *testing.T) {
-		deleteResp, err := svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
-			Msg: &dictv1.WordIDRequest{WordId: wordID},
+		deleteResp, err := svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
+			Msg: &commonv1.IDRequest{Id: wordID},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, deleteResp)
 
 		// Verify deletion
-		_, err = svc.GetWord(ctx, &connect.Request[dictv1.WordIDRequest]{
-			Msg: &dictv1.WordIDRequest{WordId: wordID},
+		_, err = svc.GetWord(ctx, &connect.Request[commonv1.IDRequest]{
+			Msg: &commonv1.IDRequest{Id: wordID},
 		})
 		require.Error(t, err)
 	})
@@ -390,8 +390,8 @@ func TestDictService_WordIDGeneration(t *testing.T) {
 	assert.Equal(t, "hello", lookupResp.Msg.Term)
 
 	// Cleanup
-	_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
-		Msg: &dictv1.WordIDRequest{WordId: resp.Msg.Id},
+	_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
+		Msg: &commonv1.IDRequest{Id: resp.Msg.Id},
 	})
 }
 
@@ -466,8 +466,8 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 	// Cleanup
 	defer func() {
 		for _, id := range createdIDs {
-			_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
-				Msg: &dictv1.WordIDRequest{WordId: id},
+			_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
+				Msg: &commonv1.IDRequest{Id: id},
 			})
 		}
 	}()
@@ -812,11 +812,11 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
-			Msg: &dictv1.WordIDRequest{WordId: runResp.Msg.Id},
+		_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
+			Msg: &commonv1.IDRequest{Id: runResp.Msg.Id},
 		})
-		_, _ = svc.DeleteWord(ctx, &connect.Request[dictv1.WordIDRequest]{
-			Msg: &dictv1.WordIDRequest{WordId: swimResp.Msg.Id},
+		_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
+			Msg: &commonv1.IDRequest{Id: swimResp.Msg.Id},
 		})
 	}()
 
@@ -1154,10 +1154,10 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 		testCases := []struct {
 			query string
 		}{
-			{"iphone"},   // all lowercase
-			{"IPHONE"},   // all uppercase
-			{"iPhone"},   // original case
-			{"IpHoNe"},   // random case
+			{"iphone"}, // all lowercase
+			{"IPHONE"}, // all uppercase
+			{"iPhone"}, // original case
+			{"IpHoNe"}, // random case
 		}
 
 		for _, tc := range testCases {
@@ -1209,9 +1209,9 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 		assert.Equal(t, "US", resp.Msg.Term)
 
 		// Verify case is preserved when retrieving
-		getReq := &connect.Request[dictv1.WordIDRequest]{
-			Msg: &dictv1.WordIDRequest{
-				WordId: resp.Msg.Id,
+		getReq := &connect.Request[commonv1.IDRequest]{
+			Msg: &commonv1.IDRequest{
+				Id: resp.Msg.Id,
 			},
 		}
 

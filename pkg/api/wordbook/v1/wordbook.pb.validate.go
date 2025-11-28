@@ -71,6 +71,8 @@ func (m *Wordbook) validate(all bool) error {
 
 	// no validation rules for Description
 
+	// no validation rules for Annotations
+
 	if all {
 		switch v := interface{}(m.GetStatus()).(type) {
 		case interface{ ValidateAll() error }:
@@ -99,6 +101,8 @@ func (m *Wordbook) validate(all bool) error {
 			}
 		}
 	}
+
+	// no validation rules for CreatedBy
 
 	if all {
 		switch v := interface{}(m.GetCreatedAt()).(type) {

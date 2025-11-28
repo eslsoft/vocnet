@@ -10,6 +10,7 @@ import (
 	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	_ "google.golang.org/protobuf/types/known/anypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -81,12 +82,14 @@ func (VisibilityType) EnumDescriptor() ([]byte, []int) {
 type Wordbook struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Language      v1.Language            `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`              // Primary language
-	Visibility    VisibilityType         `protobuf:"varint,10,opt,name=visibility,proto3,enum=wordbook.v1.VisibilityType" json:"visibility,omitempty"` // Visibility setting
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                               // Wordbook name, e.g., "IELTS Core Vocabulary"
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`                                 // Description of the wordbook
-	Terms         []string               `protobuf:"bytes,6,rep,name=terms,proto3" json:"terms,omitempty"`                                             // Word terms in this wordbook, e.g., ['abandon', 'abbreviate']
-	Status        *WordbookStats         `protobuf:"bytes,20,opt,name=status,proto3" json:"status,omitempty"`
+	Language      v1.Language            `protobuf:"varint,2,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`                                                        // Primary language
+	Visibility    VisibilityType         `protobuf:"varint,3,opt,name=visibility,proto3,enum=wordbook.v1.VisibilityType" json:"visibility,omitempty"`                                            // Visibility setting
+	Name          string                 `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`                                                                                         // Wordbook name, e.g., "IELTS Core Vocabulary"
+	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`                                                                           // Description of the wordbook
+	Annotations   map[string]string      `protobuf:"bytes,7,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Additional metadata as key-value pairs
+	Terms         []string               `protobuf:"bytes,8,rep,name=terms,proto3" json:"terms,omitempty"`                                                                                       // Word terms in this wordbook, e.g., ['abandon', 'abbreviate']
+	Status        *WordbookStats         `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
+	CreatedBy     string                 `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -158,6 +161,13 @@ func (x *Wordbook) GetDescription() string {
 	return ""
 }
 
+func (x *Wordbook) GetAnnotations() map[string]string {
+	if x != nil {
+		return x.Annotations
+	}
+	return nil
+}
+
 func (x *Wordbook) GetTerms() []string {
 	if x != nil {
 		return x.Terms
@@ -170,6 +180,13 @@ func (x *Wordbook) GetStatus() *WordbookStats {
 		return x.Status
 	}
 	return nil
+}
+
+func (x *Wordbook) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
 }
 
 func (x *Wordbook) GetCreatedAt() *timestamppb.Timestamp {
@@ -259,22 +276,28 @@ var File_wordbook_v1_wordbook_proto protoreflect.FileDescriptor
 
 const file_wordbook_v1_wordbook_proto_rawDesc = "" +
 	"\n" +
-	"\x1awordbook/v1/wordbook.proto\x12\vwordbook.v1\x1a\x15common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfe\x02\n" +
+	"\x1awordbook/v1/wordbook.proto\x12\vwordbook.v1\x1a\x15common/v1/types.proto\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa7\x04\n" +
 	"\bWordbook\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12/\n" +
 	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12;\n" +
 	"\n" +
-	"visibility\x18\n" +
-	" \x01(\x0e2\x1b.wordbook.v1.VisibilityTypeR\n" +
+	"visibility\x18\x03 \x01(\x0e2\x1b.wordbook.v1.VisibilityTypeR\n" +
 	"visibility\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x14\n" +
-	"\x05terms\x18\x06 \x03(\tR\x05terms\x122\n" +
-	"\x06status\x18\x14 \x01(\v2\x1a.wordbook.v1.WordbookStatsR\x06status\x129\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x12H\n" +
+	"\vannotations\x18\a \x03(\v2&.wordbook.v1.Wordbook.AnnotationsEntryR\vannotations\x12\x14\n" +
+	"\x05terms\x18\b \x03(\tR\x05terms\x122\n" +
+	"\x06status\x18\n" +
+	" \x01(\v2\x1a.wordbook.v1.WordbookStatsR\x06status\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\x14 \x01(\tR\tcreatedBy\x129\n" +
 	"\n" +
 	"created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa3\x01\n" +
+	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1a>\n" +
+	"\x10AnnotationsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa3\x01\n" +
 	"\rWordbookStats\x12\x1f\n" +
 	"\vtotal_words\x18\x01 \x01(\x05R\n" +
 	"totalWords\x12%\n" +
@@ -301,25 +324,27 @@ func file_wordbook_v1_wordbook_proto_rawDescGZIP() []byte {
 }
 
 var file_wordbook_v1_wordbook_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_wordbook_v1_wordbook_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_wordbook_v1_wordbook_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_wordbook_v1_wordbook_proto_goTypes = []any{
 	(VisibilityType)(0),           // 0: wordbook.v1.VisibilityType
 	(*Wordbook)(nil),              // 1: wordbook.v1.Wordbook
 	(*WordbookStats)(nil),         // 2: wordbook.v1.WordbookStats
-	(v1.Language)(0),              // 3: common.v1.Language
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	nil,                           // 3: wordbook.v1.Wordbook.AnnotationsEntry
+	(v1.Language)(0),              // 4: common.v1.Language
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_wordbook_v1_wordbook_proto_depIdxs = []int32{
-	3, // 0: wordbook.v1.Wordbook.language:type_name -> common.v1.Language
+	4, // 0: wordbook.v1.Wordbook.language:type_name -> common.v1.Language
 	0, // 1: wordbook.v1.Wordbook.visibility:type_name -> wordbook.v1.VisibilityType
-	2, // 2: wordbook.v1.Wordbook.status:type_name -> wordbook.v1.WordbookStats
-	4, // 3: wordbook.v1.Wordbook.created_at:type_name -> google.protobuf.Timestamp
-	4, // 4: wordbook.v1.Wordbook.updated_at:type_name -> google.protobuf.Timestamp
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	3, // 2: wordbook.v1.Wordbook.annotations:type_name -> wordbook.v1.Wordbook.AnnotationsEntry
+	2, // 3: wordbook.v1.Wordbook.status:type_name -> wordbook.v1.WordbookStats
+	5, // 4: wordbook.v1.Wordbook.created_at:type_name -> google.protobuf.Timestamp
+	5, // 5: wordbook.v1.Wordbook.updated_at:type_name -> google.protobuf.Timestamp
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_wordbook_v1_wordbook_proto_init() }
@@ -333,7 +358,7 @@ func file_wordbook_v1_wordbook_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_wordbook_v1_wordbook_proto_rawDesc), len(file_wordbook_v1_wordbook_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
