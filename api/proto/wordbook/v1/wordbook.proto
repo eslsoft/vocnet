@@ -3,7 +3,6 @@ syntax = "proto3";
 package wordbook.v1;
 
 import "common/v1/types.proto";
-import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 
 // Wordbook represents a collection of words organized by user.

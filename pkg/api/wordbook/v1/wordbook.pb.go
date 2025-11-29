@@ -10,7 +10,6 @@ import (
 	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	_ "google.golang.org/protobuf/types/known/anypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -276,7 +275,7 @@ var File_wordbook_v1_wordbook_proto protoreflect.FileDescriptor
 
 const file_wordbook_v1_wordbook_proto_rawDesc = "" +
 	"\n" +
-	"\x1awordbook/v1/wordbook.proto\x12\vwordbook.v1\x1a\x15common/v1/types.proto\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa7\x04\n" +
+	"\x1awordbook/v1/wordbook.proto\x12\vwordbook.v1\x1a\x15common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa7\x04\n" +
 	"\bWordbook\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12/\n" +
 	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12;\n" +

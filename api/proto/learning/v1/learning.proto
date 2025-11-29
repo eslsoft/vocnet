@@ -56,7 +56,6 @@ message ReviewTiming {
   int32 fail_count = 4; // Consecutive failure count
 }
 
-
 // LearnedWordContext stores a sentence/context where user encountered the word
 message LearnedWordContext {
   string sentence = 1; // The sentence containing the word
