@@ -29,13 +29,13 @@ type CardType int32
 
 const (
 	CardType_CARD_TYPE_UNSPECIFIED CardType = 0
-	// 单选题 - 从多个选项中选择唯一正确答案
+	// 选择题 - 从多个选项中选择正确答案 (单选/多选)
 	//
-	// 示例: 选择单词的正确释义
+	// 示例1: 单选 (correct_values 长度=1)
 	//
 	//	{
 	//	  "id": "card_001",
-	//	  "type": "CARD_TYPE_SINGLE_CHOICE",
+	//	  "type": "CARD_TYPE_CHOICE",
 	//	  "difficulty": 2,
 	//	  "prompt": "选择正确的中文释义",
 	//	  "question": {
@@ -53,16 +53,11 @@ const (
 	//	  }
 	//	}
 	//
-	// UI渲染: 单选按钮 (radio buttons)
-	// 验证逻辑: userAnswer == answer.correct_values[0]
-	CardType_CARD_TYPE_SINGLE_CHOICE CardType = 1
-	// 多选题 - 从多个选项中选择一个或多个正确答案
-	//
-	// 示例: 选择所有表示水果的单词
+	// 示例2: 多选 (correct_values 长度>1)
 	//
 	//	{
 	//	  "id": "card_002",
-	//	  "type": "CARD_TYPE_MULTIPLE_CHOICE",
+	//	  "type": "CARD_TYPE_CHOICE",
 	//	  "difficulty": 3,
 	//	  "prompt": "选择所有表示水果的单词",
 	//	  "question": {
@@ -79,75 +74,25 @@ const (
 	//	  }
 	//	}
 	//
-	// UI渲染: 复选框 (checkboxes)
-	// 验证逻辑: set(userAnswers) == set(answer.correct_values)
-	CardType_CARD_TYPE_MULTIPLE_CHOICE CardType = 2
-	// 填空题 - 自由输入填入缺失的单词或短语 (支持单空和多空)
+	// UI渲染: 根据 correct_values.length 自动判断
 	//
-	// 示例1: 单空填空
+	//	length=1 → 选择一个后即可提交
+	//	length>1 → 至少选择 correct_values.length 个后可以提交
+	//
+	// 验证逻辑: set(userAnswers) == set(answer.correct_values)
+	CardType_CARD_TYPE_CHOICE CardType = 1
+	// 选词填空题 - 从候选词中选择填入空位 (支持单空和多空)
+	//
+	// 示例1: 单空选词填空
 	//
 	//	{
 	//	  "id": "card_003",
-	//	  "type": "CARD_TYPE_FILL_BLANK",
-	//	  "difficulty": 2,
-	//	  "prompt": "完成句子",
-	//	  "question": {
-	//	    "text": "I eat an ___ every day.",
-	//	    "image_url": "https://example.com/apple.jpg"
-	//	  },
-	//	  "options": [
-	//	    {"id": "blank1", "hint": "a red fruit"}
-	//	  ],
-	//	  "answer": {
-	//	    "correct_values": ["blank1:apple"],
-	//	    "config": {
-	//	      "ignore_case": true
-	//	    }
-	//	  }
-	//	}
-	//
-	// 示例2: 多空填空
-	//
-	//	{
-	//	  "id": "card_003b",
-	//	  "type": "CARD_TYPE_FILL_BLANK",
-	//	  "difficulty": 3,
-	//	  "prompt": "完成句子",
-	//	  "question": {
-	//	    "text": "I ___ an apple. Apples ___ healthy."
-	//	  },
-	//	  "options": [
-	//	    {"id": "blank1", "hint": "verb"},
-	//	    {"id": "blank2", "hint": "be verb"}
-	//	  ],
-	//	  "answer": {
-	//	    "correct_values": ["blank1:eat", "blank2:are"],
-	//	    "config": {
-	//	      "ignore_case": true
-	//	    }
-	//	  }
-	//	}
-	//
-	// UI渲染: 文本输入框 (text input)
-	// 验证逻辑: correct_values 格式统一为 "blankId:answer"
-	//
-	//	客户端按 options 顺序匹配空位: options[0] 对应第1个 ___, options[1] 对应第2个 ___
-	//
-	// 注意: question.text 中用 ___ 标识空位 (按出现顺序与 options 对应)
-	//
-	//	options 必需, 每个 option 对应一个空位 (按顺序), 可提供 hint
-	CardType_CARD_TYPE_FILL_BLANK CardType = 3
-	// 选词填空题 - 从候选词中选择正确的词填入空位
-	//
-	// 示例: 从给定词汇中选择填空
-	//
-	//	{
-	//	  "id": "card_004",
-	//	  "type": "CARD_TYPE_WORD_SELECTION",
+	//	  "type": "CARD_TYPE_SELECT_WORDS",
 	//	  "difficulty": 2,
 	//	  "prompt": "选择正确的单词填空",
 	//	  "question": {
-	//	    "text": "I eat an ___ every day."
+	//	    "text": "I eat an ___ every day.",
+	//	    "image_url": "https://example.com/apple.jpg"
 	//	  },
 	//	  "options": [
 	//	    {"id": "opt1", "text": "apple"},
@@ -155,21 +100,100 @@ const (
 	//	    {"id": "opt3", "text": "book"}
 	//	  ],
 	//	  "answer": {
-	//	    "correct_values": ["opt1"]
+	//	    "correct_values": ["blank1:opt1"]
 	//	  }
 	//	}
 	//
-	// UI渲染: 拖拽单词到空位 或 下拉选择 (drag-word-to-blank / dropdown)
-	// 验证逻辑: userSelectedId == answer.correct_values[0]
-	// 注意: 与单选题的区别是UI形态 - 选词填空强调"填入空位"的交互
-	CardType_CARD_TYPE_WORD_SELECTION CardType = 4
-	// 排序题 - 将打乱的单词重组成正确的句子 (支持选词+排序)
+	// 示例2: 多空选词填空
+	//
+	//	{
+	//	  "id": "card_004",
+	//	  "type": "CARD_TYPE_SELECT_WORDS",
+	//	  "difficulty": 3,
+	//	  "prompt": "选择正确的单词填空",
+	//	  "question": {
+	//	    "text": "I ___ an apple. Apples ___ healthy."
+	//	  },
+	//	  "options": [
+	//	    {"id": "opt1", "text": "eat"},
+	//	    {"id": "opt2", "text": "drink"},
+	//	    {"id": "opt3", "text": "are"},
+	//	    {"id": "opt4", "text": "is"}
+	//	  ],
+	//	  "answer": {
+	//	    "correct_values": ["blank1:opt1", "blank2:opt3"]
+	//	  }
+	//	}
+	//
+	// UI渲染: 拖拽单词到空位 (drag-and-drop)
+	// 验证逻辑: correct_values 格式为 "blankId:optionId"
+	//
+	//	客户端按 ___ 出现顺序匹配空位: 第1个___ = blank1, 第2个___ = blank2
+	//
+	// 注意: question.text 中用 ___ 标识空位 (按出现顺序)
+	//
+	//	options 提供所有候选词 (可能包含干扰词)
+	CardType_CARD_TYPE_SELECT_WORDS CardType = 2
+	// 听写拼写题 - 听音频后手动拼写 (单词或句子)
+	//
+	// 示例1: 单词拼写
+	//
+	//	{
+	//	  "id": "card_005",
+	//	  "type": "CARD_TYPE_SPELLING",
+	//	  "difficulty": 2,
+	//	  "prompt": "听音频，拼写出你听到的单词",
+	//	  "question": {
+	//	    "text": "apple",
+	//	    "auto_play": true,
+	//	    "phonetics": [{"accent": "US", "text": "/ˈæpl/"}]
+	//	  },
+	//	  "options": [
+	//	    {"id": "hint1", "hint": "5 letters"}
+	//	  ],
+	//	  "answer": {
+	//	    "correct_values": ["apple"],
+	//	    "config": {
+	//	      "ignore_case": true
+	//	    }
+	//	  }
+	//	}
+	//
+	// 示例2: 句子拼写
+	//
+	//	{
+	//	  "id": "card_006",
+	//	  "type": "CARD_TYPE_SPELLING",
+	//	  "difficulty": 4,
+	//	  "prompt": "听音频，拼写出你听到的句子",
+	//	  "question": {
+	//	    "text": "I eat an apple every day",
+	//	    "auto_play": true
+	//	  },
+	//	  "options": [],
+	//	  "answer": {
+	//	    "correct_values": ["I eat an apple every day"],
+	//	    "config": {
+	//	      "ignore_case": true,
+	//	      "ignore_punctuation": true
+	//	    }
+	//	  }
+	//	}
+	//
+	// UI渲染: 音频播放按钮 + 文本输入框 (audio player + text input)
+	// 验证逻辑: normalize(userInput) == normalize(answer.correct_values[0])
+	// 注意: question.text 不显示给用户, 仅用于生成TTS音频
+	//
+	//	question.auto_play 通常为 true (自动播放音频)
+	//	options 可选, 用于提供提示 (如字母数、单词数)
+	CardType_CARD_TYPE_SPELLING CardType = 3
+	// 排序组句题 - 将打乱的单词重组成正确的句子 (支持干扰词)
 	//
 	// 示例1: 句子重组 (所有词都用)
 	//
 	//	{
-	//	  "id": "card_005",
-	//	  "type": "CARD_TYPE_ORDERING",
+	//	  "id": "card_007",
+	//	  "type": "CARD_TYPE_ARRANGE",
 	//	  "difficulty": 3,
 	//	  "prompt": "将下列单词组成一个正确的句子",
 	//	  "question": {
@@ -194,8 +218,8 @@ const (
 	// 示例2: 听音选词组句 (带干扰词)
 	//
 	//	{
-	//	  "id": "card_005b",
-	//	  "type": "CARD_TYPE_ORDERING",
+	//	  "id": "card_008",
+	//	  "type": "CARD_TYPE_ARRANGE",
 	//	  "difficulty": 4,
 	//	  "prompt": "听音频，选择正确的单词并组成句子",
 	//	  "question": {
@@ -227,13 +251,13 @@ const (
 	//
 	//	answer.correct_values 是正确的单词ID顺序
 	//	question.auto_play=true 表示自动播放音频 (听音选词组句场景)
-	CardType_CARD_TYPE_ORDERING CardType = 5
-	// 匹配题 - 将左侧项与右侧项配对
+	CardType_CARD_TYPE_ARRANGE CardType = 4
+	// 配对匹配题 - 将左侧项与右侧项配对
 	//
 	// 示例: 将单词与其释义匹配
 	//
 	//	{
-	//	  "id": "card_006",
+	//	  "id": "card_009",
 	//	  "type": "CARD_TYPE_MATCHING",
 	//	  "difficulty": 4,
 	//	  "prompt": "将单词与释义匹配",
@@ -251,72 +275,19 @@ const (
 	//	  }
 	//	}
 	//
-	// UI渲染: 两列布局, 连线或拖拽配对 (two-column matching)
+	// UI渲染: 两列布局, 连续点击两个进行配对 (two-column matching)
 	// 验证逻辑: set(userPairs) == set(answer.correct_values)
 	// 注意: options 必须有 group 字段 ("left" 或 "right")
 	//
 	//	answer.correct_values 格式为 "leftId:rightId"
-	CardType_CARD_TYPE_MATCHING CardType = 6
-	// 听写题 - 听音频后写出听到的内容 (单词或句子)
-	//
-	// 示例1: 单词听写
-	//
-	//	{
-	//	  "id": "card_007",
-	//	  "type": "CARD_TYPE_DICTATION",
-	//	  "difficulty": 2,
-	//	  "prompt": "听音频，写出你听到的单词",
-	//	  "question": {
-	//	    "text": "apple",
-	//	    "auto_play": true,
-	//	    "phonetics": [{"accent": "US", "text": "/ˈæpl/"}]
-	//	  },
-	//	  "options": [
-	//	    {"id": "hint1", "hint": "5 letters"}
-	//	  ],
-	//	  "answer": {
-	//	    "correct_values": ["apple"],
-	//	    "config": {
-	//	      "ignore_case": true
-	//	    }
-	//	  }
-	//	}
-	//
-	// 示例2: 句子听写
-	//
-	//	{
-	//	  "id": "card_007b",
-	//	  "type": "CARD_TYPE_DICTATION",
-	//	  "difficulty": 4,
-	//	  "prompt": "听音频，写出你听到的句子",
-	//	  "question": {
-	//	    "text": "I eat an apple every day",
-	//	    "auto_play": true
-	//	  },
-	//	  "options": [],
-	//	  "answer": {
-	//	    "correct_values": ["I eat an apple every day"],
-	//	    "config": {
-	//	      "ignore_case": true,
-	//	      "ignore_punctuation": true
-	//	    }
-	//	  }
-	//	}
-	//
-	// UI渲染: 音频播放按钮 + 文本输入框 (audio player + text input)
-	// 验证逻辑: normalize(userInput) == normalize(answer.correct_values[0])
-	// 注意: question.text 不显示给用户, 仅用于生成TTS音频
-	//
-	//	question.auto_play 通常为 true (自动播放音频)
-	//	options 可选, 用于提供提示 (如字母数、单词数)
-	CardType_CARD_TYPE_DICTATION CardType = 7
-	// 语音题 - 朗读单词或句子, 通过语音识别验证
+	CardType_CARD_TYPE_MATCHING CardType = 5
+	// 语音跟读题 - 朗读单词或句子, 通过语音识别验证
 	//
 	// 示例: 跟读单词
 	//
 	//	{
-	//	  "id": "card_008",
-	//	  "type": "CARD_TYPE_SPEECH",
+	//	  "id": "card_010",
+	//	  "type": "CARD_TYPE_SPEAKING",
 	//	  "difficulty": 3,
 	//	  "prompt": "跟读单词",
 	//	  "question": {
@@ -339,32 +310,28 @@ const (
 	// 注意: options 通常为空数组
 	//
 	//	question.auto_play 通常为 true (自动播放目标音频)
-	CardType_CARD_TYPE_SPEECH CardType = 8
+	CardType_CARD_TYPE_SPEAKING CardType = 6
 )
 
 // Enum value maps for CardType.
 var (
 	CardType_name = map[int32]string{
 		0: "CARD_TYPE_UNSPECIFIED",
-		1: "CARD_TYPE_SINGLE_CHOICE",
-		2: "CARD_TYPE_MULTIPLE_CHOICE",
-		3: "CARD_TYPE_FILL_BLANK",
-		4: "CARD_TYPE_WORD_SELECTION",
-		5: "CARD_TYPE_ORDERING",
-		6: "CARD_TYPE_MATCHING",
-		7: "CARD_TYPE_DICTATION",
-		8: "CARD_TYPE_SPEECH",
+		1: "CARD_TYPE_CHOICE",
+		2: "CARD_TYPE_SELECT_WORDS",
+		3: "CARD_TYPE_SPELLING",
+		4: "CARD_TYPE_ARRANGE",
+		5: "CARD_TYPE_MATCHING",
+		6: "CARD_TYPE_SPEAKING",
 	}
 	CardType_value = map[string]int32{
-		"CARD_TYPE_UNSPECIFIED":     0,
-		"CARD_TYPE_SINGLE_CHOICE":   1,
-		"CARD_TYPE_MULTIPLE_CHOICE": 2,
-		"CARD_TYPE_FILL_BLANK":      3,
-		"CARD_TYPE_WORD_SELECTION":  4,
-		"CARD_TYPE_ORDERING":        5,
-		"CARD_TYPE_MATCHING":        6,
-		"CARD_TYPE_DICTATION":       7,
-		"CARD_TYPE_SPEECH":          8,
+		"CARD_TYPE_UNSPECIFIED":  0,
+		"CARD_TYPE_CHOICE":       1,
+		"CARD_TYPE_SELECT_WORDS": 2,
+		"CARD_TYPE_SPELLING":     3,
+		"CARD_TYPE_ARRANGE":      4,
+		"CARD_TYPE_MATCHING":     5,
+		"CARD_TYPE_SPEAKING":     6,
 	}
 )
 
@@ -399,33 +366,34 @@ func (CardType) EnumDescriptor() ([]byte, []int) {
 // FlashCard - 统一的卡片结构
 // ============================================================================
 //
-// FlashCard 是一个通用的复习卡片数据结构，支持8种题型。
+// FlashCard 是一个通用的复习卡片数据结构，支持6种题型。
 // 客户端根据 `type` 字段选择对应的渲染器和验证逻辑。
 //
 // 字段使用规范 (按 CardType):
 // ┌─────────────────────┬─────────┬──────────┬─────────┬─────────┐
 // │ CardType            │ prompt  │ question │ options │ answer  │
 // ├─────────────────────┼─────────┼──────────┼─────────┼─────────┤
-// │ SINGLE_CHOICE       │ 必需    │ 必需     │ 必需    │ 必需    │
-// │ MULTIPLE_CHOICE     │ 必需    │ 必需     │ 必需    │ 必需    │
-// │ FILL_BLANK          │ 必需    │ 必需     │ 必需    │ 必需    │
-// │ WORD_SELECTION      │ 必需    │ 必需     │ 必需    │ 必需    │
-// │ ORDERING            │ 必需    │ 必需     │ 必需    │ 必需    │
+// │ CHOICE              │ 必需    │ 必需     │ 必需    │ 必需    │
+// │ SELECT_WORDS        │ 必需    │ 必需     │ 必需    │ 必需    │
+// │ SPELLING            │ 必需    │ 必需     │ 可选    │ 必需    │
+// │ ARRANGE             │ 必需    │ 必需     │ 必需    │ 必需    │
 // │ MATCHING            │ 必需    │ 必需     │ 必需    │ 必需    │
-// │ DICTATION           │ 必需    │ 必需     │ 可选    │ 必需    │
-// │ SPEECH              │ 必需    │ 必需     │ 不使用  │ 必需    │
+// │ SPEAKING            │ 必需    │ 必需     │ 不使用  │ 必需    │
 // └─────────────────────┴─────────┴──────────┴─────────┴─────────┘
 //
 // 数据约束:
-//   - SINGLE_CHOICE: options 至少2项, answer.correct_values 长度=1
-//   - MULTIPLE_CHOICE: options 至少2项, answer.correct_values 长度≥1
-//   - FILL_BLANK: question.text 用 ___ 标识空位, options 必需 (按顺序对应每个空位)
-//     answer.correct_values 格式统一为 "blankId:answer" (单空和多空同格式)
-//   - WORD_SELECTION: question.text 包含占位符, options 提供候选词 (text字段), answer.correct_values 长度=1
-//   - ORDERING: options 是打乱顺序的单词列表, answer.correct_values 是正确句子的单词ID顺序
-//   - MATCHING: options 必须有 group 字段 ("left"/"right"), answer 格式为 "leftId:rightId"
-//   - DICTATION: question.text 不显示给用户 (仅用于TTS), question.auto_play=true, options 可提供提示
-//   - SPEECH: question.auto_play 通常为 true, options 为空数组
+//   - CHOICE: options 至少2项, answer.correct_values 长度≥1
+//     客户端根据 correct_values 长度判断渲染单选(=1)或多选(>1)
+//   - SELECT_WORDS: question.text 用 ___ 标识空位, options 提供候选词 (text字段)
+//     支持单空和多空, answer.correct_values 格式为 "blankId:optionId"
+//   - SPELLING: question.text 不显示给用户 (仅用于TTS), question.auto_play=true
+//     options 可选 (用于提示), answer.correct_values 为拼写文本
+//   - ARRANGE: options 是打乱顺序的单词列表 (可能包含干扰词)
+//     answer.correct_values 是正确的单词ID顺序
+//   - MATCHING: options 必须有 group 字段 ("left"/"right")
+//     answer.correct_values 格式为 "leftId:rightId"
+//   - SPEAKING: question.auto_play 通常为 true, options 为空数组
+//     answer.correct_values 为目标发音文本
 //
 // 示例见各 CardType 枚举值注释。
 type FlashCard struct {
@@ -617,19 +585,19 @@ type CardAnswer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 正确答案值 (格式因题型而异):
 	//
-	//   - 单选题 (SINGLE_CHOICE):
-	//     选项ID, 长度必须为1
-	//     示例: ["A"]
-	//
-	//   - 多选题 (MULTIPLE_CHOICE):
+	//   - 选择题 (CHOICE):
 	//     选项ID列表, 长度≥1
-	//     示例: ["A", "C"]
+	//     示例: ["A"] (单选) 或 ["A", "C"] (多选)
 	//
-	//   - 填空题 (FILL_BLANK):
-	//     可接受的答案文本列表 (支持多个近义词)
-	//     示例: ["blankId:apple", "blankId:apples"]
+	//   - 选词填空 (SELECT_WORDS):
+	//     "blankId:optionId" 格式列表
+	//     示例: ["blank1:opt1", "blank2:opt3"]
 	//
-	//   - 排序题 (ORDERING):
+	//   - 拼写题 (SPELLING):
+	//     可接受的拼写文本列表 (支持多个近义词)
+	//     示例: ["apple", "apples"]
+	//
+	//   - 排序题 (ARRANGE):
 	//     排序后的选项ID列表
 	//     示例: ["2", "1", "3"] 表示正确顺序是 id=2, id=1, id=3
 	//
@@ -637,7 +605,7 @@ type CardAnswer struct {
 	//     "leftId:rightId" 格式的配对列表
 	//     示例: ["w1:m1", "w2:m2"]
 	//
-	//   - 语音题 (SPEECH):
+	//   - 语音题 (SPEAKING):
 	//     目标发音的文本
 	//     示例: ["apple"]
 	CorrectValues []string `protobuf:"bytes,1,rep,name=correct_values,json=correctValues,proto3" json:"correct_values,omitempty"`
@@ -705,11 +673,11 @@ type AnswerConfig struct {
 	// 忽略标点符号 (听写题常用)
 	// true: "Hello, world!" == "Hello world"
 	IgnorePunctuation bool `protobuf:"varint,3,opt,name=ignore_punctuation,json=ignorePunctuation,proto3" json:"ignore_punctuation,omitempty"`
-	// 严格顺序模式 (排序题专用)
+	// 严格顺序模式 (ARRANGE 排序题专用)
 	// true: 必须完全匹配顺序
 	// false: 只要部分顺序正确即可 (宽松模式)
 	StrictOrder bool `protobuf:"varint,4,opt,name=strict_order,json=strictOrder,proto3" json:"strict_order,omitempty"`
-	// 最小相似度阈值 (语音题专用, 范围 0.0-1.0)
+	// 最小相似度阈值 (SPEAKING 语音题专用, 范围 0.0-1.0)
 	// 通过语音识别转文本后, 计算与 correct_values 的相似度
 	// 示例: 0.85 表示相似度≥85%即判定为正确
 	MinSimilarity float32 `protobuf:"fixed32,5,opt,name=min_similarity,json=minSimilarity,proto3" json:"min_similarity,omitempty"`
@@ -919,17 +887,15 @@ const file_learning_v1_flashcard_proto_rawDesc = "" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x14\n" +
 	"\x05group\x18\x03 \x01(\tR\x05group\x12\x12\n" +
 	"\x04hint\x18\x04 \x01(\tR\x04hint\x12\x1b\n" +
-	"\tauto_play\x18\x05 \x01(\bR\bautoPlay*\xf8\x01\n" +
+	"\tauto_play\x18\x05 \x01(\bR\bautoPlay*\xb6\x01\n" +
 	"\bCardType\x12\x19\n" +
-	"\x15CARD_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
-	"\x17CARD_TYPE_SINGLE_CHOICE\x10\x01\x12\x1d\n" +
-	"\x19CARD_TYPE_MULTIPLE_CHOICE\x10\x02\x12\x18\n" +
-	"\x14CARD_TYPE_FILL_BLANK\x10\x03\x12\x1c\n" +
-	"\x18CARD_TYPE_WORD_SELECTION\x10\x04\x12\x16\n" +
-	"\x12CARD_TYPE_ORDERING\x10\x05\x12\x16\n" +
-	"\x12CARD_TYPE_MATCHING\x10\x06\x12\x17\n" +
-	"\x13CARD_TYPE_DICTATION\x10\a\x12\x14\n" +
-	"\x10CARD_TYPE_SPEECH\x10\bB\xa8\x01\n" +
+	"\x15CARD_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10CARD_TYPE_CHOICE\x10\x01\x12\x1a\n" +
+	"\x16CARD_TYPE_SELECT_WORDS\x10\x02\x12\x16\n" +
+	"\x12CARD_TYPE_SPELLING\x10\x03\x12\x15\n" +
+	"\x11CARD_TYPE_ARRANGE\x10\x04\x12\x16\n" +
+	"\x12CARD_TYPE_MATCHING\x10\x05\x12\x16\n" +
+	"\x12CARD_TYPE_SPEAKING\x10\x06B\xa8\x01\n" +
 	"\x0fcom.learning.v1B\x0eFlashcardProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (
