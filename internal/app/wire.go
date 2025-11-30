@@ -14,6 +14,7 @@ import (
 
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
+	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 )
 
 var configSet = wire.NewSet(
@@ -39,8 +40,10 @@ var usecaseSet = wire.NewSet(
 var serviceSet = wire.NewSet(
 	adaptergrpc.NewDictServiceServer,
 	adaptergrpc.NewLearningServiceServer,
+	adaptergrpc.NewWordbookServiceServer,
 	wire.Bind(new(learningv1connect.LearningServiceHandler), new(*adaptergrpc.LearningServiceServer)),
 	wire.Bind(new(dictv1connect.DictServiceHandler), new(*adaptergrpc.DictServiceServer)),
+	wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*adaptergrpc.WordbookServiceServer)),
 )
 
 var serverSet = wire.NewSet(

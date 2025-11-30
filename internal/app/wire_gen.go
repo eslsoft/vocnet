@@ -15,6 +15,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/usecase"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
+	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 	"github.com/google/wire"
 )
 
@@ -41,7 +42,8 @@ func Initialize() (*Container, func(), error) {
 	learnedWordRepository := repository.NewLearnedWordRepository(client)
 	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
 	learningServiceServer := connectrpc.NewLearningServiceServer(learnedWordUsecase)
-	serverServer, err := server.NewServer(configConfig, logger, dictServiceServer, learningServiceServer)
+	wordbookServiceServer := connectrpc.NewWordbookServiceServer()
+	serverServer, err := server.NewServer(configConfig, logger, dictServiceServer, learningServiceServer, wordbookServiceServer)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -66,6 +68,6 @@ var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLe
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase)
 
-var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)))
+var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)))
 
 var serverSet = wire.NewSet(server.NewLogger, server.NewServer)

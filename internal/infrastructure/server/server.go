@@ -18,6 +18,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
+	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 )
 
 // Server represents the application server
@@ -29,7 +30,7 @@ type Server struct {
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *slog.Logger, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
@@ -41,6 +42,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, dictSvc dictv1connect.Di
 	mux := http.NewServeMux()
 	mux.Handle(dictv1connect.NewDictServiceHandler(dictSvc, interceptors))
 	mux.Handle(learningv1connect.NewLearningServiceHandler(learningSvc, interceptors))
+	mux.Handle(wordbookv1connect.NewWordbookServiceHandler(wordbookSvc, interceptors))
 
 	return &Server{
 		config: cfg,
