@@ -61,7 +61,7 @@ func (s *WordbookServiceServer) ListWordbooks(ctx context.Context, req *connect.
 	var pageWordbooks []*wordbookv1.Wordbook
 	if startIdx < endIdx {
 		for i := startIdx; i < endIdx; i++ {
-			pageWordbooks = append(pageWordbooks, &builtinWordbooks[i])
+			pageWordbooks = append(pageWordbooks, builtinWordbooks[i])
 		}
 	} else {
 		pageWordbooks = []*wordbookv1.Wordbook{}
@@ -90,7 +90,7 @@ func (s *WordbookServiceServer) GetWordbook(ctx context.Context, req *connect.Re
 	builtinWordbooks := wordbook.GetBuiltinWordbooks()
 	for i := range builtinWordbooks {
 		if builtinWordbooks[i].Id == requestedID {
-			return connect.NewResponse(&builtinWordbooks[i]), nil
+			return connect.NewResponse(builtinWordbooks[i]), nil
 		}
 	}
 
