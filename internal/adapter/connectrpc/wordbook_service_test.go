@@ -2,17 +2,25 @@ package connectrpc
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"connectrpc.com/connect"
-	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
-	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/eslsoft/vocnet/internal/adapter/mapping"
+	repo "github.com/eslsoft/vocnet/internal/adapter/repository"
+	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/usecase"
+	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
+	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
+	"github.com/eslsoft/vocnet/pkg/wordbook"
 )
 
-func TestWordbookServiceServer_ListWordbooks(t *testing.T) {
-	server := NewWordbookServiceServer()
+func TestWordbookService_BuiltinListing(t *testing.T) {
+	svc := setupWordbookService(t)
+	ctx := context.Background()
 
 	tests := []struct {
 		name           string
@@ -29,8 +37,8 @@ func TestWordbookServiceServer_ListWordbooks(t *testing.T) {
 					PageSize: 20,
 				},
 			},
-			expectedTotal:  15, // Total builtin wordbooks
-			expectedLen:    15, // All wordbooks fit in one page
+			expectedTotal:  15,
+			expectedLen:    15,
 			expectedPageNo: 1,
 		},
 		{
@@ -70,7 +78,7 @@ func TestWordbookServiceServer_ListWordbooks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := server.ListWordbooks(context.Background(), connect.NewRequest(tt.req))
+			resp, err := svc.ListWordbooks(ctx, connect.NewRequest(tt.req))
 			require.NoError(t, err)
 			require.NotNil(t, resp)
 
@@ -78,115 +86,134 @@ func TestWordbookServiceServer_ListWordbooks(t *testing.T) {
 			assert.Equal(t, tt.expectedPageNo, resp.Msg.Pagination.PageNo)
 			assert.Len(t, resp.Msg.Wordbooks, tt.expectedLen)
 
-			// Verify wordbooks have required fields
 			for _, wb := range resp.Msg.Wordbooks {
 				assert.NotZero(t, wb.Id)
 				assert.NotEmpty(t, wb.Name)
 				assert.NotNil(t, wb.Terms)
+				assert.Greater(t, len(wb.Terms), 0)
 			}
 		})
 	}
 }
 
-func TestWordbookServiceServer_GetWordbook(t *testing.T) {
-	server := NewWordbookServiceServer()
+func TestWordbookService_UserOperations(t *testing.T) {
+	svc := setupWordbookService(t)
+	ctx := context.Background()
 
-	tests := []struct {
-		name        string
-		id          int64
-		expectError bool
-		expectedID  int64
-	}{
-		{
-			name:        "get existing wordbook - CEFR-A1",
-			id:          101,
-			expectError: false,
-			expectedID:  101,
-		},
-		{
-			name:        "get existing wordbook - CET4",
-			id:          109,
-			expectError: false,
-			expectedID:  109,
-		},
-		{
-			name:        "get non-existent wordbook",
-			id:          999,
-			expectError: true,
-		},
-		{
-			name:        "get wordbook with invalid id",
-			id:          0,
-			expectError: true,
-		},
-	}
+	// Create
+	createReq := connect.NewRequest(&wordbookv1.CreateWordbookRequest{
+		Language:    commonv1.Language_LANGUAGE_ENGLISH,
+		Visibility:  wordbookv1.VisibilityType_VISIBILITY_TYPE_PRIVATE,
+		Name:        "My Custom Book",
+		Description: "A personal list",
+	})
+	createReq.Header().Set("x-user-id", "42")
+	createdResp, err := svc.CreateWordbook(ctx, createReq)
+	require.NoError(t, err)
+	require.NotNil(t, createdResp)
+	created := createdResp.Msg
+	assert.NotZero(t, created.Id)
+	assert.Equal(t, "My Custom Book", created.Name)
+	assert.Equal(t, wordbookv1.VisibilityType_VISIBILITY_TYPE_PRIVATE, created.Visibility)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := &commonv1.IDRequest{Id: tt.id}
-			resp, err := server.GetWordbook(context.Background(), connect.NewRequest(req))
+	bookID := created.Id
 
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Nil(t, resp)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, resp)
-				assert.Equal(t, tt.expectedID, resp.Msg.Id)
-				assert.NotEmpty(t, resp.Msg.Name)
-				assert.NotNil(t, resp.Msg.Terms)
-				assert.Greater(t, len(resp.Msg.Terms), 0, "wordbook should have terms")
-			}
-		})
-	}
+	// Update
+	updateReq := connect.NewRequest(&wordbookv1.UpdateWordbookRequest{
+		Id:          bookID,
+		Visibility:  wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Name:        "Updated Book",
+		Description: "Updated description",
+	})
+	updateReq.Header().Set("x-user-id", "42")
+	updateResp, err := svc.UpdateWordbook(ctx, updateReq)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Book", updateResp.Msg.Name)
+
+	// Add words
+	addReq := connect.NewRequest(&wordbookv1.WordsActionRequest{
+		WordbookId: bookID,
+		Terms:      []string{"alpha", "beta", "alpha"},
+	})
+	addReq.Header().Set("x-user-id", "42")
+	addResp, err := svc.AddWords(ctx, addReq)
+	require.NoError(t, err)
+	assert.Len(t, addResp.Msg.Terms, 2)
+
+	// Remove word
+	removeReq := connect.NewRequest(&wordbookv1.WordsActionRequest{
+		WordbookId: bookID,
+		Terms:      []string{"beta"},
+	})
+	removeReq.Header().Set("x-user-id", "42")
+	removeResp, err := svc.RemoveWords(ctx, removeReq)
+	require.NoError(t, err)
+	assert.Len(t, removeResp.Msg.Terms, 1)
+	assert.Equal(t, "alpha", removeResp.Msg.Terms[0])
+
+	// Delete
+	delReq := connect.NewRequest(&commonv1.IDRequest{Id: bookID})
+	delReq.Header().Set("x-user-id", "42")
+	_, err = svc.DeleteWordbook(ctx, delReq)
+	require.NoError(t, err)
+
+	// Ensure deletion
+	_, err = svc.GetWordbook(ctx, connect.NewRequest(&commonv1.IDRequest{Id: bookID}))
+	assert.Error(t, err)
 }
 
-func TestWordbookServiceServer_UnimplementedMethods(t *testing.T) {
-	server := NewWordbookServiceServer()
+func TestWordbookService_GetBuiltin(t *testing.T) {
+	svc := setupWordbookService(t)
+	ctx := context.Background()
 
-	t.Run("CreateWordbook returns unimplemented", func(t *testing.T) {
-		req := &wordbookv1.CreateWordbookRequest{
-			Name: "Test Wordbook",
+	resp, err := svc.GetWordbook(ctx, connect.NewRequest(&commonv1.IDRequest{Id: 101}))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, int64(101), resp.Msg.Id)
+	assert.NotEmpty(t, resp.Msg.Terms)
+}
+
+func TestWordbookService_BuiltinIsReadOnly(t *testing.T) {
+	svc := setupWordbookService(t)
+	ctx := context.Background()
+	header := http.Header{}
+	header.Set("x-user-id", "1")
+
+	req := connect.NewRequest(&wordbookv1.UpdateWordbookRequest{
+		Id:          101,
+		Name:        "should fail",
+		Visibility:  wordbookv1.VisibilityType_VISIBILITY_TYPE_PRIVATE,
+		Description: "x",
+	})
+	req.Header().Set("x-user-id", "1")
+	_, err := svc.UpdateWordbook(ctx, req)
+	assert.Error(t, err)
+}
+
+func setupWordbookService(t *testing.T) *WordbookServiceServer {
+	t.Helper()
+	client := setupTestDB(t)
+
+	wordbookRepo := repo.NewWordbookRepository(client)
+	learnedRepo := repo.NewLearnedWordRepository(client)
+	wordbookUC := usecase.NewWordbookUsecase(wordbookRepo, learnedRepo)
+	require.NoError(t, wordbookUC.SyncBuiltin(context.Background(), loadBuiltinEntities()))
+
+	return NewWordbookServiceServer(wordbookUC)
+}
+
+func loadBuiltinEntities() []*entity.Wordbook {
+	builtin := wordbook.GetBuiltinWordbooks()
+	books := make([]*entity.Wordbook, 0, len(builtin))
+	for idx, wb := range builtin {
+		ent := mapping.ToEntityWordbook(wb)
+		if ent == nil {
+			continue
 		}
-		resp, err := server.CreateWordbook(context.Background(), connect.NewRequest(req))
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-	})
-
-	t.Run("UpdateWordbook returns unimplemented", func(t *testing.T) {
-		req := &wordbookv1.UpdateWordbookRequest{
-			Id:   101,
-			Name: "Updated Name",
-		}
-		resp, err := server.UpdateWordbook(context.Background(), connect.NewRequest(req))
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-	})
-
-	t.Run("DeleteWordbook returns unimplemented", func(t *testing.T) {
-		req := &commonv1.IDRequest{Id: 101}
-		resp, err := server.DeleteWordbook(context.Background(), connect.NewRequest(req))
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-	})
-
-	t.Run("AddWords returns unimplemented", func(t *testing.T) {
-		req := &wordbookv1.WordsActionRequest{
-			WordbookId: 101,
-			Terms:      []string{"test"},
-		}
-		resp, err := server.AddWords(context.Background(), connect.NewRequest(req))
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-	})
-
-	t.Run("RemoveWords returns unimplemented", func(t *testing.T) {
-		req := &wordbookv1.WordsActionRequest{
-			WordbookId: 101,
-			Terms:      []string{"test"},
-		}
-		resp, err := server.RemoveWords(context.Background(), connect.NewRequest(req))
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-	})
+		ent.Source = entity.WordbookSourceBuiltin
+		ent.UserID = 0
+		ent.SortOrder = int32(idx + 1)
+		books = append(books, ent)
+	}
+	return books
 }

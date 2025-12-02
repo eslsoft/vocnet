@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 
+	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
 	"github.com/samber/lo"
 )
@@ -195,6 +196,7 @@ func readBuiltinWordbookTerms(name string) []string {
 
 func GetBuiltinWordbooks() []*wordbookv1.Wordbook {
 	return lo.Map(builtinWordbooks, func(item *wordbookv1.Wordbook, index int) *wordbookv1.Wordbook {
+		item.Language = commonv1.Language_LANGUAGE_ENGLISH
 		item.Status = &wordbookv1.WordbookStats{TotalWords: int32(len(item.Terms))}
 		return item
 	})

@@ -31,7 +31,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/app"
+	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/pkg/wordbook"
 )
 
 // serveCmd represents the serve command
@@ -46,6 +49,11 @@ var serveCmd = &cobra.Command{
 		defer cleanup()
 
 		logger := container.Logger
+		ctx := context.Background()
+
+		if err := syncBuiltinWordbooks(ctx, container); err != nil {
+			return fmt.Errorf("sync builtin wordbooks: %w", err)
+		}
 
 		// Build server
 		srv := container.Server
@@ -86,4 +94,20 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// serveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+func syncBuiltinWordbooks(ctx context.Context, container *app.Container) error {
+	builtin := wordbook.GetBuiltinWordbooks()
+	books := make([]*entity.Wordbook, 0, len(builtin))
+	for idx, wb := range builtin {
+		ent := mapping.ToEntityWordbook(wb)
+		if ent == nil {
+			continue
+		}
+		ent.Source = entity.WordbookSourceBuiltin
+		ent.UserID = 0
+		ent.SortOrder = int32(idx + 1)
+		books = append(books, ent)
+	}
+	return container.WordbookUsecase.SyncBuiltin(ctx, books)
 }

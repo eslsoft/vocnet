@@ -4,120 +4,154 @@ import (
 	"context"
 
 	"connectrpc.com/connect"
+	"github.com/samber/lo"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/eslsoft/vocnet/internal/adapter/mapping"
+	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/repository"
+	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
 	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
-	"github.com/eslsoft/vocnet/pkg/wordbook"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
+	"github.com/eslsoft/vocnet/pkg/filterexpr"
 )
 
 var _ wordbookv1connect.WordbookServiceHandler = (*WordbookServiceServer)(nil)
 
 type WordbookServiceServer struct {
 	wordbookv1connect.UnimplementedWordbookServiceHandler
+	uc usecase.WordbookUsecase
 }
 
-func NewWordbookServiceServer() *WordbookServiceServer {
-	return &WordbookServiceServer{}
+func NewWordbookServiceServer(uc usecase.WordbookUsecase) *WordbookServiceServer {
+	return &WordbookServiceServer{uc: uc}
 }
 
-// ListWordbooks returns all builtin wordbooks
+func (s *WordbookServiceServer) CreateWordbook(ctx context.Context, req *connect.Request[wordbookv1.CreateWordbookRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
+	userID := userIDFromHeader(req.Header())
+	if userID <= 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
+	}
+	if req.Msg == nil {
+		return nil, mapping.ToPbError(entity.ErrInvalidInput)
+	}
+	entBook := mapping.ToEntityWordbook(&wordbookv1.Wordbook{
+		Language:    req.Msg.GetLanguage(),
+		Visibility:  req.Msg.GetVisibility(),
+		Name:        req.Msg.GetName(),
+		Description: req.Msg.GetDescription(),
+	})
+	created, err := s.uc.Create(ctx, userID, entBook)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+	return connect.NewResponse(mapping.ToPbWordbook(created)), nil
+}
+
+func (s *WordbookServiceServer) UpdateWordbook(ctx context.Context, req *connect.Request[wordbookv1.UpdateWordbookRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
+	userID := userIDFromHeader(req.Header())
+	if userID <= 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
+	}
+	if req.Msg == nil || req.Msg.GetId() == 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
+	}
+	entBook := mapping.ToEntityWordbook(&wordbookv1.Wordbook{
+		Id:          req.Msg.GetId(),
+		Visibility:  req.Msg.GetVisibility(),
+		Name:        req.Msg.GetName(),
+		Description: req.Msg.GetDescription(),
+	})
+	updated, err := s.uc.Update(ctx, userID, entBook)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+	return connect.NewResponse(mapping.ToPbWordbook(updated)), nil
+}
+
+func (s *WordbookServiceServer) DeleteWordbook(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
+	userID := userIDFromHeader(req.Header())
+	if userID <= 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
+	}
+	if req.Msg == nil || req.Msg.GetId() == 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
+	}
+	if err := s.uc.Delete(ctx, userID, req.Msg.GetId()); err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+	return connect.NewResponse(&emptypb.Empty{}), nil
+}
+
+func (s *WordbookServiceServer) GetWordbook(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
+	if req.Msg == nil || req.Msg.GetId() == 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
+	}
+	userID := userIDFromHeader(req.Header())
+	book, err := s.uc.Get(ctx, userID, req.Msg.GetId())
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+	return connect.NewResponse(mapping.ToPbWordbook(book)), nil
+}
+
 func (s *WordbookServiceServer) ListWordbooks(ctx context.Context, req *connect.Request[wordbookv1.ListWordbooksRequest]) (*connect.Response[wordbookv1.ListWordbooksResponse], error) {
-	// Get all builtin wordbooks
-	builtinWordbooks := wordbook.GetBuiltinWordbooks()
-
-	// TODO: Apply filtering and sorting when user-created wordbooks are supported
-	// For now, just return all builtin wordbooks
-
-	// Handle pagination
-	pagination := req.Msg.GetPagination()
-	pageSize := int32(20) // default page size
-	pageNo := int32(1)    // default page number
-
-	if pagination != nil {
-		if pagination.PageSize > 0 {
-			pageSize = pagination.PageSize
-		}
-		if pagination.PageNo > 0 {
-			pageNo = pagination.PageNo
-		}
+	userID := userIDFromHeader(req.Header())
+	if req.Msg == nil {
+		req.Msg = &wordbookv1.ListWordbooksRequest{}
+	}
+	params := repository.ListWordbookQuery{
+		Pagination:     convertPagination(req.Msg.GetPagination()),
+		IncludeBuiltin: true,
+	}
+	if err := filterexpr.Bind(req.Msg, &params, listWordbooksSchema); err != nil {
+		return nil, err
 	}
 
-	// Calculate pagination
-	total := int32(len(builtinWordbooks))
-	startIdx := (pageNo - 1) * pageSize
-	endIdx := startIdx + pageSize
-
-	if startIdx >= total {
-		startIdx = 0
-		endIdx = 0
-	} else if endIdx > total {
-		endIdx = total
-	}
-
-	// Slice wordbooks for current page
-	var pageWordbooks []*wordbookv1.Wordbook
-	if startIdx < endIdx {
-		for i := startIdx; i < endIdx; i++ {
-			pageWordbooks = append(pageWordbooks, builtinWordbooks[i])
-		}
-	} else {
-		pageWordbooks = []*wordbookv1.Wordbook{}
+	items, total, err := s.uc.List(ctx, userID, &params)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
 	}
 
 	resp := &wordbookv1.ListWordbooksResponse{
 		Pagination: &commonv1.PaginationResponse{
-			Total:  total,
-			PageNo: pageNo,
+			Total:  int32(total),
+			PageNo: params.PageNo,
 		},
-		Wordbooks: pageWordbooks,
+		Wordbooks: lo.Map(items, func(item *entity.Wordbook, _ int) *wordbookv1.Wordbook {
+			return mapping.ToPbWordbook(item)
+		}),
 	}
-
 	return connect.NewResponse(resp), nil
 }
 
-// GetWordbook returns a specific builtin wordbook by ID
-func (s *WordbookServiceServer) GetWordbook(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	if req.Msg == nil || req.Msg.GetId() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "id required")
-	}
-
-	requestedID := req.Msg.GetId()
-
-	// Search for the wordbook in builtin list
-	builtinWordbooks := wordbook.GetBuiltinWordbooks()
-	for i := range builtinWordbooks {
-		if builtinWordbooks[i].Id == requestedID {
-			return connect.NewResponse(builtinWordbooks[i]), nil
-		}
-	}
-
-	return nil, status.Errorf(codes.NotFound, "wordbook with id %d not found", requestedID)
-}
-
-// CreateWordbook is not implemented for builtin wordbooks
-func (s *WordbookServiceServer) CreateWordbook(ctx context.Context, req *connect.Request[wordbookv1.CreateWordbookRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	return nil, status.Error(codes.Unimplemented, "creating wordbooks is not yet supported")
-}
-
-// UpdateWordbook is not implemented for builtin wordbooks
-func (s *WordbookServiceServer) UpdateWordbook(ctx context.Context, req *connect.Request[wordbookv1.UpdateWordbookRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	return nil, status.Error(codes.Unimplemented, "updating wordbooks is not yet supported")
-}
-
-// DeleteWordbook is not implemented for builtin wordbooks
-func (s *WordbookServiceServer) DeleteWordbook(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
-	return nil, status.Error(codes.Unimplemented, "deleting wordbooks is not yet supported")
-}
-
-// AddWords is not implemented for builtin wordbooks
 func (s *WordbookServiceServer) AddWords(ctx context.Context, req *connect.Request[wordbookv1.WordsActionRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	return nil, status.Error(codes.Unimplemented, "adding words to wordbooks is not yet supported")
+	userID := userIDFromHeader(req.Header())
+	if userID <= 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
+	}
+	if req.Msg == nil || req.Msg.GetWordbookId() == 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
+	}
+	updated, err := s.uc.AddWords(ctx, userID, req.Msg.GetWordbookId(), req.Msg.GetTerms())
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+	return connect.NewResponse(mapping.ToPbWordbook(updated)), nil
 }
 
-// RemoveWords is not implemented for builtin wordbooks
 func (s *WordbookServiceServer) RemoveWords(ctx context.Context, req *connect.Request[wordbookv1.WordsActionRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	return nil, status.Error(codes.Unimplemented, "removing words from wordbooks is not yet supported")
+	userID := userIDFromHeader(req.Header())
+	if userID <= 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
+	}
+	if req.Msg == nil || req.Msg.GetWordbookId() == 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
+	}
+	updated, err := s.uc.RemoveWords(ctx, userID, req.Msg.GetWordbookId(), req.Msg.GetTerms())
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+	return connect.NewResponse(mapping.ToPbWordbook(updated)), nil
 }

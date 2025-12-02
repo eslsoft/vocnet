@@ -228,6 +228,45 @@ func translateLearnedWordError(err error) error {
 	return translateDBError(err, "learned_word")
 }
 
+// StatsByTerms aggregates mastery buckets for the provided terms.
+func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID int64, terms []string) (entity.WordbookStats, error) {
+	if userID == 0 || len(terms) == 0 {
+		return entity.WordbookStats{}, nil
+	}
+	unique := uniqueFolded(terms)
+	if len(unique) == 0 {
+		return entity.WordbookStats{}, nil
+	}
+
+	rows, err := r.client.LearnedWord.Query().
+		Where(
+			entlearnedword.UserIDEQ(userID),
+			entlearnedword.TermIn(unique...),
+		).
+		Select(entlearnedword.FieldMasteryOverall).
+		All(ctx)
+	if err != nil {
+		return entity.WordbookStats{}, fmt.Errorf("aggregate wordbook stats: %w", err)
+	}
+
+	stats := entity.WordbookStats{TotalWords: int32(len(unique))}
+	for _, row := range rows {
+		switch {
+		case row.MasteryOverall >= 4:
+			stats.MasteredWords++
+		case row.MasteryOverall >= 1:
+			stats.LearningWords++
+		default:
+			stats.UnknownWords++
+		}
+	}
+	stats.UnknownWords = stats.TotalWords - stats.MasteredWords - stats.LearningWords
+	if stats.UnknownWords < 0 {
+		stats.UnknownWords = 0
+	}
+	return stats, nil
+}
+
 func applyLearnedWordOrdering(qb *entdb.LearnedWordQuery, query *repository.ListLearnedWordQuery) {
 	for _, term := range []struct {
 		key  string

@@ -23,4 +23,11 @@ var (
 	ErrWordNotFound             = errors.New("word not found")
 	ErrInvalidWordID            = errors.New("invalid word id")
 	ErrDuplicateWord            = errors.New("word already exists")
+
+	ErrWordbookNotFound      = errors.New("wordbook not found")
+	ErrInvalidWordbookID     = errors.New("invalid wordbook id")
+	ErrInvalidWordbookName   = errors.New("invalid wordbook name")
+	ErrInvalidWordbookUser   = errors.New("invalid wordbook owner")
+	ErrBuiltinWordbookLocked = errors.New("builtin wordbook is read-only")
+	ErrDuplicateWordbook     = errors.New("wordbook already exists")
 )

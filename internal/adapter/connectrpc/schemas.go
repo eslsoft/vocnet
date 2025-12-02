@@ -73,3 +73,33 @@ var listLearnedWordsFilterSchema = filterexpr.ResourceSchema{
 		},
 	},
 }
+
+var listWordbooksSchema = filterexpr.ResourceSchema{
+	Filter: map[string]filterexpr.FilterField{
+		"name": {
+			Kind: filterexpr.KindString,
+			Ops:  map[filterexpr.Op]string{filterexpr.OpSW: "NameQuery"},
+		},
+		"language": {
+			Kind: filterexpr.KindString,
+			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "Language"},
+		},
+		"visibility": {
+			Kind: filterexpr.KindString,
+			Ops:  map[filterexpr.Op]string{filterexpr.OpEQ: "Visibility"},
+		},
+	},
+	Order: filterexpr.OrderSchema{
+		DefaultPrimary:     "sort_order",
+		DefaultPrimaryDesc: false,
+		FallbackKey:        "id",
+		FallbackDesc:       false,
+		Fields: map[string]filterexpr.OrderField{
+			"sort_order": {Expr: "sort_order", Nulls: "last"},
+			"name":       {Expr: "name", Nulls: "last"},
+			"created_at": {Expr: "created_at", Nulls: "last"},
+			"updated_at": {Expr: "updated_at", Nulls: "last"},
+			"id":         {Expr: "id", Nulls: "last"},
+		},
+	},
+}

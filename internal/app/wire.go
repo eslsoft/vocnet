@@ -29,12 +29,14 @@ var repositorySet = wire.NewSet(
 	repository.NewLexemeRepository,
 	repository.NewLearnedWordRepository,
 	repository.NewLemmaRepository,
+	repository.NewWordbookRepository,
 )
 
 var usecaseSet = wire.NewSet(
 	usecase.NewLexemeUsecase,
 	usecase.NewWordUsecase,
 	usecase.NewLearnedWordUsecase,
+	usecase.NewWordbookUsecase,
 )
 
 var serviceSet = wire.NewSet(
@@ -60,7 +62,7 @@ func Initialize() (*Container, func(), error) {
 		usecaseSet,
 		serviceSet,
 		serverSet,
-		wire.Struct(new(Container), "Logger", "Server", "EntClient"),
+		wire.Struct(new(Container), "Logger", "Server", "EntClient", "WordbookUsecase"),
 	)
 	return nil, nil, nil
 }

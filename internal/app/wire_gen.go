@@ -42,16 +42,19 @@ func Initialize() (*Container, func(), error) {
 	learnedWordRepository := repository.NewLearnedWordRepository(client)
 	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
 	learningServiceServer := connectrpc.NewLearningServiceServer(learnedWordUsecase)
-	wordbookServiceServer := connectrpc.NewWordbookServiceServer()
+	wordbookRepository := repository.NewWordbookRepository(client)
+	wordbookUsecase := usecase.NewWordbookUsecase(wordbookRepository, learnedWordRepository)
+	wordbookServiceServer := connectrpc.NewWordbookServiceServer(wordbookUsecase)
 	serverServer, err := server.NewServer(configConfig, logger, dictServiceServer, learningServiceServer, wordbookServiceServer)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
 	container := &Container{
-		Logger:    logger,
-		Server:    serverServer,
-		EntClient: client,
+		Logger:          logger,
+		Server:          serverServer,
+		EntClient:       client,
+		WordbookUsecase: wordbookUsecase,
 	}
 	return container, func() {
 		cleanup()
@@ -64,9 +67,9 @@ var configSet = wire.NewSet(config.Load)
 
 var databaseSet = wire.NewSet(database.NewEntClient)
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase)
 
 var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)))
 
