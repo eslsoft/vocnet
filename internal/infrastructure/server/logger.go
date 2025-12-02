@@ -90,7 +90,7 @@ func requestAttributes(req connect.AnyRequest, code connect.Code, duration time.
 	attrs := []slog.Attr{
 		slog.String("procedure", req.Spec().Procedure),
 		slog.String("status", code.String()),
-		slog.Duration("duration", duration),
+		slog.String("duration", duration.String()),
 	}
 
 	appendStringAttr(&attrs, "http_method", req.HTTPMethod())
