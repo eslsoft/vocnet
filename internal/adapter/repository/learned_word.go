@@ -11,6 +11,7 @@ import (
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlearnedword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedword"
 	"github.com/eslsoft/vocnet/internal/repository"
+	"github.com/google/uuid"
 )
 
 type LearnedWordRepository struct {
@@ -105,7 +106,7 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 	return mapEntLearnedWord(rec), nil
 }
 
-func (r *LearnedWordRepository) GetByID(ctx context.Context, userID int64, id int64) (*entity.LearnedWord, error) {
+func (r *LearnedWordRepository) GetByID(ctx context.Context, userID uuid.UUID, id int64) (*entity.LearnedWord, error) {
 	rec, err := r.client.LearnedWord.Query().
 		Where(
 			entlearnedword.IDEQ(id),
@@ -121,7 +122,7 @@ func (r *LearnedWordRepository) GetByID(ctx context.Context, userID int64, id in
 	return mapEntLearnedWord(rec), nil
 }
 
-func (r *LearnedWordRepository) FindByTerm(ctx context.Context, userID int64, term string, language entity.Language) (*entity.LearnedWord, error) {
+func (r *LearnedWordRepository) FindByTerm(ctx context.Context, userID uuid.UUID, term string, language entity.Language) (*entity.LearnedWord, error) {
 	if term == "" {
 		return nil, nil
 	}
@@ -208,7 +209,7 @@ func (r *LearnedWordRepository) List(ctx context.Context, query *repository.List
 	return results, int64(total), nil
 }
 
-func (r *LearnedWordRepository) DeleteByID(ctx context.Context, userID int64, id int64) error {
+func (r *LearnedWordRepository) DeleteByID(ctx context.Context, userID uuid.UUID, id int64) error {
 	affected, err := r.client.LearnedWord.Delete().
 		Where(
 			entlearnedword.IDEQ(id),
@@ -229,8 +230,8 @@ func translateLearnedWordError(err error) error {
 }
 
 // StatsByTerms aggregates mastery buckets for the provided terms.
-func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID int64, terms []string) (entity.WordbookStats, error) {
-	if userID == 0 || len(terms) == 0 {
+func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UUID, terms []string) (entity.WordbookStats, error) {
+	if userID == uuid.Nil || len(terms) == 0 {
 		return entity.WordbookStats{}, nil
 	}
 	unique := uniqueFolded(terms)

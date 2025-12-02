@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entwordbook "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/wordbook"
+	"github.com/google/uuid"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -73,7 +74,7 @@ func (r *wordbookRepository) Update(ctx context.Context, book *entity.Wordbook) 
 	return mapEntWordbook(rec), nil
 }
 
-func (r *wordbookRepository) Delete(ctx context.Context, id int64, userID int64) error {
+func (r *wordbookRepository) Delete(ctx context.Context, id int64, userID uuid.UUID) error {
 	err := r.client.Wordbook.DeleteOneID(id).
 		Where(entwordbook.UserIDEQ(userID)).
 		Exec(ctx)
@@ -83,11 +84,11 @@ func (r *wordbookRepository) Delete(ctx context.Context, id int64, userID int64)
 	return nil
 }
 
-func (r *wordbookRepository) GetByID(ctx context.Context, id int64, userID int64) (*entity.Wordbook, error) {
+func (r *wordbookRepository) GetByID(ctx context.Context, id int64, userID uuid.UUID) (*entity.Wordbook, error) {
 	rec, err := r.client.Wordbook.Query().
 		Where(
 			entwordbook.IDEQ(id),
-			entwordbook.UserIDIn(userID, 0),
+			entwordbook.UserIDIn(userID, uuid.Nil),
 		).
 		First(ctx)
 	if err != nil {
@@ -99,9 +100,9 @@ func (r *wordbookRepository) GetByID(ctx context.Context, id int64, userID int64
 func (r *wordbookRepository) List(ctx context.Context, query *repository.ListWordbookQuery) ([]*entity.Wordbook, int64, error) {
 	q := r.client.Wordbook.Query()
 
-	userIDs := []int64{query.UserID}
-	if query.IncludeBuiltin && query.UserID != 0 {
-		userIDs = append(userIDs, 0)
+	userIDs := []uuid.UUID{query.UserID}
+	if query.IncludeBuiltin && query.UserID != uuid.Nil {
+		userIDs = append(userIDs, uuid.Nil)
 	}
 	q.Where(entwordbook.UserIDIn(userIDs...))
 
@@ -155,7 +156,7 @@ func (r *wordbookRepository) SyncBuiltin(ctx context.Context, books []*entity.Wo
 		ids = append(ids, book.ID)
 		create := tx.Wordbook.Create().
 			SetID(book.ID).
-			SetUserID(0).
+			SetUserID(uuid.Nil).
 			SetSource(string(entity.WordbookSourceBuiltin)).
 			SetSortOrder(book.SortOrder).
 			SetLanguage(book.Language.CodeOrDefault()).
@@ -187,7 +188,7 @@ func (r *wordbookRepository) SyncBuiltin(ctx context.Context, books []*entity.Wo
 
 	if len(ids) > 0 {
 		if _, err := tx.Wordbook.Delete().
-			Where(entwordbook.UserIDEQ(0), entwordbook.IDNotIn(ids...)).
+			Where(entwordbook.UserIDEQ(uuid.Nil), entwordbook.IDNotIn(ids...)).
 			Exec(ctx); err != nil {
 			return fmt.Errorf("cleanup stale builtin wordbooks: %w", err)
 		}

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -12,6 +13,7 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Log      LogConfig      `mapstructure:"log"`
+	Auth     AuthConfig     `mapstructure:"auth"`
 }
 
 // ServerConfig holds server configuration
@@ -35,6 +37,12 @@ type LogConfig struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
 	File   string `mapstructure:"file"` // File path for log output, empty means stdout/stderr
+}
+
+// AuthConfig holds JWT authentication configuration
+type AuthConfig struct {
+	JWKSURL       string        `mapstructure:"jwks_url"`        // JWKS endpoint URL from Supabase
+	RefreshPeriod time.Duration `mapstructure:"refresh_period"`  // How often to refresh JWKS keys
 }
 
 // Load reads configuration from file and environment variables
@@ -89,15 +97,21 @@ func setDefaults() {
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", "json")
 	viper.SetDefault("log.file", "") // Empty means stdout/stderr
+
+	// Auth defaults
+	viper.SetDefault("auth.jwks_url", "")
+	viper.SetDefault("auth.refresh_period", time.Hour)
 }
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
-		"database.dsn":     {"DB_DSN", "DB_URL"},
-		"database.log_sql": {"DB_LOG_SQL"},
-		"log.level":        {"LOG_LEVEL"},
-		"log.format":       {"LOG_FORMAT"},
-		"log.file":         {"LOG_FILE"},
+		"database.dsn":        {"DB_DSN", "DB_URL"},
+		"database.log_sql":    {"DB_LOG_SQL"},
+		"log.level":           {"LOG_LEVEL"},
+		"log.format":          {"LOG_FORMAT"},
+		"log.file":            {"LOG_FILE"},
+		"auth.jwks_url":       {"AUTH_JWKS_URL", "SUPABASE_JWKS_URL"},
+		"auth.refresh_period": {"AUTH_REFRESH_PERIOD"},
 	}
 
 	for key, envs := range bindings {

@@ -25,6 +25,10 @@ var databaseSet = wire.NewSet(
 	database.NewEntClient,
 )
 
+var authSet = wire.NewSet(
+	provideJWTValidator,
+)
+
 var repositorySet = wire.NewSet(
 	repository.NewLexemeRepository,
 	repository.NewLearnedWordRepository,
@@ -58,6 +62,7 @@ func Initialize() (*Container, func(), error) {
 	wire.Build(
 		configSet,
 		databaseSet,
+		authSet,
 		repositorySet,
 		usecaseSet,
 		serviceSet,

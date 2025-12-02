@@ -3,6 +3,8 @@ package entity
 import (
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // WordbookSource marks where the wordbook comes from.
@@ -26,7 +28,7 @@ const (
 // Wordbook aggregates vocabulary terms into a named collection.
 type Wordbook struct {
 	ID          int64
-	UserID      int64
+	UserID      uuid.UUID
 	Source      WordbookSource
 	Language    Language
 	Visibility  WordbookVisibility
@@ -63,7 +65,7 @@ func NormalizeWordbook(in *Wordbook) (*Wordbook, error) {
 		out.Visibility = WordbookVisibilityPublic
 	}
 	if out.Source == "" {
-		if out.UserID == 0 {
+		if out.UserID == uuid.Nil {
 			out.Source = WordbookSourceBuiltin
 		} else {
 			out.Source = WordbookSourceUser

@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/repository"
+	"github.com/google/uuid"
 )
 
 //go:generate mockgen -source=wordbook_usecase.go -destination=../mocks/mock_wordbook_usecase.go -package=mocks
@@ -15,13 +17,13 @@ import (
 // WordbookUsecase orchestrates wordbook workflows.
 type WordbookUsecase interface {
 	SyncBuiltin(ctx context.Context, books []*entity.Wordbook) error
-	List(ctx context.Context, userID int64, query *repository.ListWordbookQuery) ([]*entity.Wordbook, int64, error)
-	Get(ctx context.Context, userID int64, id int64) (*entity.Wordbook, error)
-	Create(ctx context.Context, userID int64, book *entity.Wordbook) (*entity.Wordbook, error)
-	Update(ctx context.Context, userID int64, book *entity.Wordbook) (*entity.Wordbook, error)
-	Delete(ctx context.Context, userID int64, id int64) error
-	AddWords(ctx context.Context, userID int64, id int64, terms []string) (*entity.Wordbook, error)
-	RemoveWords(ctx context.Context, userID int64, id int64, terms []string) (*entity.Wordbook, error)
+	List(ctx context.Context, query *repository.ListWordbookQuery) ([]*entity.Wordbook, int64, error)
+	Get(ctx context.Context, id int64) (*entity.Wordbook, error)
+	Create(ctx context.Context, book *entity.Wordbook) (*entity.Wordbook, error)
+	Update(ctx context.Context, book *entity.Wordbook) (*entity.Wordbook, error)
+	Delete(ctx context.Context, id int64) error
+	AddWords(ctx context.Context, id int64, terms []string) (*entity.Wordbook, error)
+	RemoveWords(ctx context.Context, id int64, terms []string) (*entity.Wordbook, error)
 }
 
 type wordbookUsecase struct {
@@ -38,7 +40,7 @@ func (u *wordbookUsecase) SyncBuiltin(ctx context.Context, books []*entity.Wordb
 		if b == nil {
 			continue
 		}
-		b.UserID = 0
+		b.UserID = uuid.Nil
 		b.Source = entity.WordbookSourceBuiltin
 		if b.Visibility == entity.WordbookVisibilityUnspecified {
 			b.Visibility = entity.WordbookVisibilityPublic
@@ -58,7 +60,9 @@ func (u *wordbookUsecase) SyncBuiltin(ctx context.Context, books []*entity.Wordb
 	return u.repo.SyncBuiltin(ctx, books)
 }
 
-func (u *wordbookUsecase) List(ctx context.Context, userID int64, query *repository.ListWordbookQuery) ([]*entity.Wordbook, int64, error) {
+func (u *wordbookUsecase) List(ctx context.Context, query *repository.ListWordbookQuery) ([]*entity.Wordbook, int64, error) {
+	userID := auth.GetUserIDOrZero(ctx)
+
 	if query == nil {
 		query = &repository.ListWordbookQuery{}
 	}
@@ -77,7 +81,9 @@ func (u *wordbookUsecase) List(ctx context.Context, userID int64, query *reposit
 	return items, total, nil
 }
 
-func (u *wordbookUsecase) Get(ctx context.Context, userID int64, id int64) (*entity.Wordbook, error) {
+func (u *wordbookUsecase) Get(ctx context.Context, id int64) (*entity.Wordbook, error) {
+	userID := auth.GetUserIDOrZero(ctx)
+
 	if id <= 0 {
 		return nil, entity.ErrInvalidWordbookID
 	}
@@ -89,10 +95,9 @@ func (u *wordbookUsecase) Get(ctx context.Context, userID int64, id int64) (*ent
 	return book, nil
 }
 
-func (u *wordbookUsecase) Create(ctx context.Context, userID int64, book *entity.Wordbook) (*entity.Wordbook, error) {
-	if userID <= 0 {
-		return nil, entity.ErrInvalidWordbookUser
-	}
+func (u *wordbookUsecase) Create(ctx context.Context, book *entity.Wordbook) (*entity.Wordbook, error) {
+	userID := auth.MustGetUserID(ctx)
+
 	book.UserID = userID
 	book.Source = entity.WordbookSourceUser
 	now := time.Now()
@@ -107,12 +112,11 @@ func (u *wordbookUsecase) Create(ctx context.Context, userID int64, book *entity
 	return u.repo.Create(ctx, normalized)
 }
 
-func (u *wordbookUsecase) Update(ctx context.Context, userID int64, book *entity.Wordbook) (*entity.Wordbook, error) {
+func (u *wordbookUsecase) Update(ctx context.Context, book *entity.Wordbook) (*entity.Wordbook, error) {
+	userID := auth.MustGetUserID(ctx)
+
 	if book == nil || book.ID <= 0 {
 		return nil, entity.ErrInvalidWordbookID
-	}
-	if userID <= 0 {
-		return nil, entity.ErrInvalidWordbookUser
 	}
 
 	current, err := u.repo.GetByID(ctx, book.ID, userID)
@@ -147,12 +151,11 @@ func (u *wordbookUsecase) Update(ctx context.Context, userID int64, book *entity
 	return u.repo.Update(ctx, normalized)
 }
 
-func (u *wordbookUsecase) Delete(ctx context.Context, userID int64, id int64) error {
+func (u *wordbookUsecase) Delete(ctx context.Context, id int64) error {
+	userID := auth.MustGetUserID(ctx)
+
 	if id <= 0 {
 		return entity.ErrInvalidWordbookID
-	}
-	if userID <= 0 {
-		return entity.ErrInvalidWordbookUser
 	}
 	book, err := u.repo.GetByID(ctx, id, userID)
 	if err != nil {
@@ -164,15 +167,15 @@ func (u *wordbookUsecase) Delete(ctx context.Context, userID int64, id int64) er
 	return u.repo.Delete(ctx, id, userID)
 }
 
-func (u *wordbookUsecase) AddWords(ctx context.Context, userID int64, id int64, terms []string) (*entity.Wordbook, error) {
+func (u *wordbookUsecase) AddWords(ctx context.Context, id int64, terms []string) (*entity.Wordbook, error) {
 	if len(terms) == 0 {
 		return nil, entity.ErrInvalidInput
 	}
-	book, err := u.Get(ctx, userID, id)
+	book, err := u.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if book.Source == entity.WordbookSourceBuiltin || book.UserID == 0 {
+	if book.Source == entity.WordbookSourceBuiltin || book.UserID == uuid.Nil {
 		return nil, entity.ErrBuiltinWordbookLocked
 	}
 	book.Terms = append(book.Terms, terms...)
@@ -184,15 +187,15 @@ func (u *wordbookUsecase) AddWords(ctx context.Context, userID int64, id int64, 
 	return u.repo.Update(ctx, norm)
 }
 
-func (u *wordbookUsecase) RemoveWords(ctx context.Context, userID int64, id int64, terms []string) (*entity.Wordbook, error) {
+func (u *wordbookUsecase) RemoveWords(ctx context.Context, id int64, terms []string) (*entity.Wordbook, error) {
 	if len(terms) == 0 {
 		return nil, entity.ErrInvalidInput
 	}
-	book, err := u.Get(ctx, userID, id)
+	book, err := u.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if book.Source == entity.WordbookSourceBuiltin || book.UserID == 0 {
+	if book.Source == entity.WordbookSourceBuiltin || book.UserID == uuid.Nil {
 		return nil, entity.ErrBuiltinWordbookLocked
 	}
 
@@ -217,12 +220,12 @@ func (u *wordbookUsecase) RemoveWords(ctx context.Context, userID int64, id int6
 	return u.repo.Update(ctx, norm)
 }
 
-func (u *wordbookUsecase) attachStats(ctx context.Context, userID int64, book *entity.Wordbook) {
+func (u *wordbookUsecase) attachStats(ctx context.Context, userID uuid.UUID, book *entity.Wordbook) {
 	if book == nil {
 		return
 	}
 	book.Stats.TotalWords = int32(len(book.Terms))
-	if userID == 0 || u.learned == nil || len(book.Terms) == 0 {
+	if userID == uuid.Nil || u.learned == nil || len(book.Terms) == 0 {
 		return
 	}
 	stats, err := u.learned.StatsByTerms(ctx, userID, book.Terms)

@@ -29,10 +29,6 @@ func NewWordbookServiceServer(uc usecase.WordbookUsecase) *WordbookServiceServer
 }
 
 func (s *WordbookServiceServer) CreateWordbook(ctx context.Context, req *connect.Request[wordbookv1.CreateWordbookRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	userID := userIDFromHeader(req.Header())
-	if userID <= 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
-	}
 	if req.Msg == nil {
 		return nil, mapping.ToPbError(entity.ErrInvalidInput)
 	}
@@ -42,7 +38,7 @@ func (s *WordbookServiceServer) CreateWordbook(ctx context.Context, req *connect
 		Name:        req.Msg.GetName(),
 		Description: req.Msg.GetDescription(),
 	})
-	created, err := s.uc.Create(ctx, userID, entBook)
+	created, err := s.uc.Create(ctx, entBook)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -50,10 +46,6 @@ func (s *WordbookServiceServer) CreateWordbook(ctx context.Context, req *connect
 }
 
 func (s *WordbookServiceServer) UpdateWordbook(ctx context.Context, req *connect.Request[wordbookv1.UpdateWordbookRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	userID := userIDFromHeader(req.Header())
-	if userID <= 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
-	}
 	if req.Msg == nil || req.Msg.GetId() == 0 {
 		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
 	}
@@ -63,7 +55,7 @@ func (s *WordbookServiceServer) UpdateWordbook(ctx context.Context, req *connect
 		Name:        req.Msg.GetName(),
 		Description: req.Msg.GetDescription(),
 	})
-	updated, err := s.uc.Update(ctx, userID, entBook)
+	updated, err := s.uc.Update(ctx, entBook)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -71,14 +63,10 @@ func (s *WordbookServiceServer) UpdateWordbook(ctx context.Context, req *connect
 }
 
 func (s *WordbookServiceServer) DeleteWordbook(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
-	userID := userIDFromHeader(req.Header())
-	if userID <= 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
-	}
 	if req.Msg == nil || req.Msg.GetId() == 0 {
 		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
 	}
-	if err := s.uc.Delete(ctx, userID, req.Msg.GetId()); err != nil {
+	if err := s.uc.Delete(ctx, req.Msg.GetId()); err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
@@ -88,8 +76,7 @@ func (s *WordbookServiceServer) GetWordbook(ctx context.Context, req *connect.Re
 	if req.Msg == nil || req.Msg.GetId() == 0 {
 		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
 	}
-	userID := userIDFromHeader(req.Header())
-	book, err := s.uc.Get(ctx, userID, req.Msg.GetId())
+	book, err := s.uc.Get(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -97,7 +84,6 @@ func (s *WordbookServiceServer) GetWordbook(ctx context.Context, req *connect.Re
 }
 
 func (s *WordbookServiceServer) ListWordbooks(ctx context.Context, req *connect.Request[wordbookv1.ListWordbooksRequest]) (*connect.Response[wordbookv1.ListWordbooksResponse], error) {
-	userID := userIDFromHeader(req.Header())
 	if req.Msg == nil {
 		req.Msg = &wordbookv1.ListWordbooksRequest{}
 	}
@@ -109,7 +95,7 @@ func (s *WordbookServiceServer) ListWordbooks(ctx context.Context, req *connect.
 		return nil, err
 	}
 
-	items, total, err := s.uc.List(ctx, userID, &params)
+	items, total, err := s.uc.List(ctx, &params)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -127,14 +113,10 @@ func (s *WordbookServiceServer) ListWordbooks(ctx context.Context, req *connect.
 }
 
 func (s *WordbookServiceServer) AddWords(ctx context.Context, req *connect.Request[wordbookv1.WordsActionRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	userID := userIDFromHeader(req.Header())
-	if userID <= 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
-	}
 	if req.Msg == nil || req.Msg.GetWordbookId() == 0 {
 		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
 	}
-	updated, err := s.uc.AddWords(ctx, userID, req.Msg.GetWordbookId(), req.Msg.GetTerms())
+	updated, err := s.uc.AddWords(ctx, req.Msg.GetWordbookId(), req.Msg.GetTerms())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -142,14 +124,10 @@ func (s *WordbookServiceServer) AddWords(ctx context.Context, req *connect.Reque
 }
 
 func (s *WordbookServiceServer) RemoveWords(ctx context.Context, req *connect.Request[wordbookv1.WordsActionRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	userID := userIDFromHeader(req.Header())
-	if userID <= 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookUser)
-	}
 	if req.Msg == nil || req.Msg.GetWordbookId() == 0 {
 		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
 	}
-	updated, err := s.uc.RemoveWords(ctx, userID, req.Msg.GetWordbookId(), req.Msg.GetTerms())
+	updated, err := s.uc.RemoveWords(ctx, req.Msg.GetWordbookId(), req.Msg.GetTerms())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}

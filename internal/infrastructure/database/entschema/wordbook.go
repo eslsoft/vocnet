@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/google/uuid"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -21,7 +22,7 @@ type Wordbook struct {
 func (Wordbook) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.Int64("user_id").Default(0),
+		field.UUID("user_id", uuid.UUID{}),
 		field.String("source").Default(string(entity.WordbookSourceUser)),
 		field.Int32("sort_order").Default(0),
 		field.String("language").Default(entity.LanguageEnglish.CodeOrDefault()),

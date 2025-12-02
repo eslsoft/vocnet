@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
@@ -37,7 +38,6 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 		return nil, status.Error(codes.InvalidArgument, "spec payload required")
 	}
 
-	userID := int64(1000) // TODO: Extract from auth context
 	entityWord := &entity.LearnedWord{
 		Term:     strings.TrimSpace(req.Msg.Spec.GetTerm()),
 		Mastery:  entity.MasteryBreakdown{Overall: req.Msg.Spec.GetMasteryLevel()},
@@ -45,7 +45,7 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 		Tags:     req.Msg.Spec.GetTags(),
 		Notes:    req.Msg.Spec.GetNotes(),
 	}
-	result, err := s.uc.CollectWord(ctx, userID, entityWord)
+	result, err := s.uc.CollectWord(ctx, entityWord)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +57,7 @@ func (s *LearningServiceServer) UncollectWord(ctx context.Context, req *connect.
 	if req.Msg == nil {
 		return nil, status.Error(codes.InvalidArgument, "id required")
 	}
-	userID := int64(1000) // TODO: Extract from auth context
-	if err := s.uc.DeleteLearnedWord(ctx, userID, req.Msg.GetId()); err != nil {
+	if err := s.uc.DeleteLearnedWord(ctx, req.Msg.GetId()); err != nil {
 		return nil, err
 	}
 
@@ -69,8 +68,7 @@ func (s *LearningServiceServer) GetLearnedWord(ctx context.Context, req *connect
 	if req.Msg == nil {
 		return nil, status.Error(codes.InvalidArgument, "id required")
 	}
-	userID := int64(1000) // TODO: Extract from auth context
-	result, err := s.uc.GetLearnedWord(ctx, userID, req.Msg.GetId())
+	result, err := s.uc.GetLearnedWord(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +85,7 @@ func (s *LearningServiceServer) ListLearnedWords(ctx context.Context, req *conne
 		return nil, err
 	}
 
-	query.UserID = int64(1000)
+	query.UserID = auth.MustGetUserID(ctx)
 	query.Pagination = convertPagination(req.Msg.GetPagination())
 	items, total, err := s.uc.ListLearnedWords(ctx, &query)
 	if err != nil {
@@ -108,10 +106,8 @@ func (s *LearningServiceServer) UpdateMastery(ctx context.Context, req *connect.
 	}
 
 	msg := req.Msg
-	userID := int64(1000) // TODO: Extract from auth context
 	result, err := s.uc.UpdateMastery(
 		ctx,
-		userID,
 		msg.GetId(),
 		mapping.FromPbMastery(msg.GetMastery()),
 		entity.ReviewTiming{}, // Review timing not provided in proto

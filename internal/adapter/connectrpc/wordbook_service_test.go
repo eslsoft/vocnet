@@ -211,7 +211,6 @@ func loadBuiltinEntities() []*entity.Wordbook {
 			continue
 		}
 		ent.Source = entity.WordbookSourceBuiltin
-		ent.UserID = 0
 		ent.SortOrder = int32(idx + 1)
 		books = append(books, ent)
 	}

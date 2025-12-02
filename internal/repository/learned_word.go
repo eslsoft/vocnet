@@ -4,13 +4,14 @@ import (
 	"context"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/google/uuid"
 )
 
 // ListLearnedWordQuery holds parameters for listing user words.
 type ListLearnedWordQuery struct {
 	Pagination
 
-	UserID int64
+	UserID uuid.UUID
 	// Parsed filter parameters (populated by connectrpc layer)
 	Keyword      string
 	Language     string
@@ -30,9 +31,9 @@ type ListLearnedWordQuery struct {
 type LearnedWordRepository interface {
 	Create(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error)
 	Update(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error)
-	GetByID(ctx context.Context, userID int64, id int64) (*entity.LearnedWord, error)
-	FindByTerm(ctx context.Context, userID int64, term string, language entity.Language) (*entity.LearnedWord, error)
+	GetByID(ctx context.Context, userID uuid.UUID, id int64) (*entity.LearnedWord, error)
+	FindByTerm(ctx context.Context, userID uuid.UUID, term string, language entity.Language) (*entity.LearnedWord, error)
 	List(ctx context.Context, filter *ListLearnedWordQuery) ([]entity.LearnedWord, int64, error)
-	DeleteByID(ctx context.Context, userID int64, id int64) error
-	StatsByTerms(ctx context.Context, userID int64, terms []string) (entity.WordbookStats, error)
+	DeleteByID(ctx context.Context, userID uuid.UUID, id int64) error
+	StatsByTerms(ctx context.Context, userID uuid.UUID, terms []string) (entity.WordbookStats, error)
 }

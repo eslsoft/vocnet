@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 
 	"connectrpc.com/connect"
+	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
@@ -23,21 +24,31 @@ import (
 
 // Server represents the application server
 type Server struct {
-	config     *config.Config
-	grpcServer *grpc.Server
-	httpServer *http.Server
-	logger     *slog.Logger
+	config       *config.Config
+	grpcServer   *grpc.Server
+	httpServer   *http.Server
+	logger       *slog.Logger
+	jwtValidator *auth.JWTValidator
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *slog.Logger, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create access logger: %w", err)
 	}
 
-	interceptors := connect.WithInterceptors(accessLoggerInterceptor)
+	// Create auth interceptor with public procedures
+	// Dict service is public, Learning and Wordbook services require authentication
+	publicProcedures := getPublicProcedures()
+	authInterceptor := auth.NewAuthInterceptor(jwtValidator, publicProcedures)
+
+	// Combine interceptors: logger first, then auth
+	interceptors := connect.WithInterceptors(
+		accessLoggerInterceptor,
+		connect.UnaryInterceptorFunc(authInterceptor.WrapUnary),
+	)
 
 	mux := http.NewServeMux()
 	mux.Handle(dictv1connect.NewDictServiceHandler(dictSvc, interceptors))
@@ -51,7 +62,8 @@ func NewServer(cfg *config.Config, logger *slog.Logger, dictSvc dictv1connect.Di
 			Handler:           h2c.NewHandler(withCORS(mux), &http2.Server{}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-		logger: logger,
+		logger:       logger,
+		jwtValidator: jwtValidator,
 	}, nil
 }
 
@@ -94,6 +106,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.logger.Error("failed to shutdown HTTP server", "error", err)
 	}
 
+	// Close JWT validator
+	if s.jwtValidator != nil {
+		if err := s.jwtValidator.Close(); err != nil {
+			s.logger.Error("failed to close JWT validator", "error", err)
+		}
+	}
+
 	s.logger.Info("server shutdown complete")
 	return nil
 }
@@ -106,4 +125,21 @@ func withCORS(h http.Handler) http.Handler {
 		ExposedHeaders: connectcors.ExposedHeaders(),
 	})
 	return middleware.Handler(h)
+}
+
+// getPublicProcedures returns a list of procedures that don't require authentication
+// All Dict service procedures are public, while Learning and Wordbook require auth
+func getPublicProcedures() []string {
+	// Dict service procedures (all public)
+	dictProcedures := []string{
+		"/dict.v1.DictService/LookupWord",
+		"/dict.v1.DictService/LookupWordForms",
+		"/dict.v1.DictService/LookupLemma",
+	}
+
+	// Note: Some wordbook procedures may optionally support public access
+	// (e.g., GetWordbook can access public wordbooks)
+	// but the auth interceptor will still be called - GetUserIDOrZero handles this
+
+	return dictProcedures
 }

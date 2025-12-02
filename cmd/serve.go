@@ -105,7 +105,6 @@ func syncBuiltinWordbooks(ctx context.Context, container *app.Container) error {
 			continue
 		}
 		ent.Source = entity.WordbookSourceBuiltin
-		ent.UserID = 0
 		ent.SortOrder = int32(idx + 1)
 		books = append(books, ent)
 	}

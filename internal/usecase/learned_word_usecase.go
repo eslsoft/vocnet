@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
@@ -14,11 +15,11 @@ import (
 
 // LearnedWordUsecase encapsulates business logic for managing user vocabulary entries.
 type LearnedWordUsecase interface {
-	CollectWord(ctx context.Context, userID int64, word *entity.LearnedWord) (*entity.LearnedWord, error)
-	GetLearnedWord(ctx context.Context, userID int64, id int64) (*entity.LearnedWord, error)
-	UpdateMastery(ctx context.Context, userID int64, id int64, mastery entity.MasteryBreakdown, review entity.ReviewTiming, notes []string) (*entity.LearnedWord, error)
+	CollectWord(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error)
+	GetLearnedWord(ctx context.Context, id int64) (*entity.LearnedWord, error)
+	UpdateMastery(ctx context.Context, id int64, mastery entity.MasteryBreakdown, review entity.ReviewTiming, notes []string) (*entity.LearnedWord, error)
 	ListLearnedWords(ctx context.Context, filter *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error)
-	DeleteLearnedWord(ctx context.Context, userID int64, id int64) error
+	DeleteLearnedWord(ctx context.Context, id int64) error
 }
 
 // NewLearnedWordUsecase wires the repository with default behaviour.
@@ -40,7 +41,7 @@ type learnedWordUsecase struct {
 // and every possible storage term (lemma or inflection) that might represent it.
 type SurfaceToLemmasMap map[string][]string
 
-func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word *entity.LearnedWord) (*entity.LearnedWord, error) {
+func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error) {
 	if word == nil {
 		return nil, entity.ErrInvalidLearnedWordText
 	}
@@ -81,7 +82,7 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	// For all other cases (irregular, lemma, multiple forms, unknown), keep user's input
 
 	// Check if already collected
-	existing, err := u.repo.FindByTerm(ctx, userID, termToStore, language)
+	existing, err := u.repo.FindByTerm(ctx, word.UserID, termToStore, language)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,6 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	copy := *word
 	copy.Term = termToStore
 	copy.CaseSensitive = caseSensitive
-	copy.UserID = userID
 	copy.Language = language
 	if copy.QueriedCount == 0 {
 		copy.QueriedCount = 1
@@ -126,7 +126,9 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, userID int64, word
 	return u.repo.Create(ctx, &copy)
 }
 
-func (u *learnedWordUsecase) GetLearnedWord(ctx context.Context, userID int64, id int64) (*entity.LearnedWord, error) {
+func (u *learnedWordUsecase) GetLearnedWord(ctx context.Context, id int64) (*entity.LearnedWord, error) {
+	userID := auth.MustGetUserID(ctx)
+
 	if id == 0 {
 		return nil, entity.ErrLearnedWordNotFound
 	}
@@ -143,7 +145,9 @@ func (u *learnedWordUsecase) GetLearnedWord(ctx context.Context, userID int64, i
 	return u.repo.Update(ctx, existing)
 }
 
-func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, userID int64, id int64, mastery entity.MasteryBreakdown, review entity.ReviewTiming, notes []string) (*entity.LearnedWord, error) {
+func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, id int64, mastery entity.MasteryBreakdown, review entity.ReviewTiming, notes []string) (*entity.LearnedWord, error) {
+	userID := auth.MustGetUserID(ctx)
+
 	if id == 0 {
 		return nil, entity.ErrLearnedWordNotFound
 	}
@@ -274,7 +278,9 @@ func matchesSurfaceTerm(word entity.LearnedWord, surface string, candidates []st
 	return false
 }
 
-func (u *learnedWordUsecase) DeleteLearnedWord(ctx context.Context, userID int64, id int64) error {
+func (u *learnedWordUsecase) DeleteLearnedWord(ctx context.Context, id int64) error {
+	userID := auth.MustGetUserID(ctx)
+
 	if id == 0 {
 		return entity.ErrLearnedWordNotFound
 	}

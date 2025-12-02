@@ -1,10 +1,14 @@
 package entity
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // User represents a user entity in the domain
 type User struct {
-	ID        int64     `json:"id"`
+	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	CreatedAt time.Time `json:"created_at"`

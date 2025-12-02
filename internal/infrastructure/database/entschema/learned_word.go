@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/google/uuid"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -21,7 +22,7 @@ type LearnedWord struct {
 func (LearnedWord) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.Int64("user_id"),
+		field.UUID("user_id", uuid.UUID{}),
 		field.String("term").
 			NotEmpty().
 			Comment("The term stored: lemma for regular forms, or the term itself for irregular forms"),

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/google/uuid"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/mocks"
@@ -25,7 +26,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		expectedMatches map[string][]string
 	}
 
-	userID := int64(1000)
+	userID, _ := uuid.NewUUID()
 	cases := []testCase{
 		{
 			name: "sets queried term on lemma hit",
