@@ -83,6 +83,74 @@ func (x *CreateReviewPlanRequest) GetWordbookIds() []int64 {
 	return nil
 }
 
+type UpdateReviewPlanRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	WordbookIds   []int64                `protobuf:"varint,4,rep,packed,name=wordbook_ids,json=wordbookIds,proto3" json:"wordbook_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateReviewPlanRequest) Reset() {
+	*x = UpdateReviewPlanRequest{}
+	mi := &file_learning_v1_review_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateReviewPlanRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateReviewPlanRequest) ProtoMessage() {}
+
+func (x *UpdateReviewPlanRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_review_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateReviewPlanRequest.ProtoReflect.Descriptor instead.
+func (*UpdateReviewPlanRequest) Descriptor() ([]byte, []int) {
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *UpdateReviewPlanRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UpdateReviewPlanRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateReviewPlanRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *UpdateReviewPlanRequest) GetWordbookIds() []int64 {
+	if x != nil {
+		return x.WordbookIds
+	}
+	return nil
+}
+
 type ListReviewPlansRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Pagination    *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
@@ -94,7 +162,7 @@ type ListReviewPlansRequest struct {
 
 func (x *ListReviewPlansRequest) Reset() {
 	*x = ListReviewPlansRequest{}
-	mi := &file_learning_v1_review_service_proto_msgTypes[1]
+	mi := &file_learning_v1_review_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -106,7 +174,7 @@ func (x *ListReviewPlansRequest) String() string {
 func (*ListReviewPlansRequest) ProtoMessage() {}
 
 func (x *ListReviewPlansRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_learning_v1_review_service_proto_msgTypes[1]
+	mi := &file_learning_v1_review_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -119,7 +187,7 @@ func (x *ListReviewPlansRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReviewPlansRequest.ProtoReflect.Descriptor instead.
 func (*ListReviewPlansRequest) Descriptor() ([]byte, []int) {
-	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{1}
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListReviewPlansRequest) GetPagination() *v1.PaginationRequest {
@@ -153,7 +221,7 @@ type ListReviewPlansResponse struct {
 
 func (x *ListReviewPlansResponse) Reset() {
 	*x = ListReviewPlansResponse{}
-	mi := &file_learning_v1_review_service_proto_msgTypes[2]
+	mi := &file_learning_v1_review_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -165,7 +233,7 @@ func (x *ListReviewPlansResponse) String() string {
 func (*ListReviewPlansResponse) ProtoMessage() {}
 
 func (x *ListReviewPlansResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_learning_v1_review_service_proto_msgTypes[2]
+	mi := &file_learning_v1_review_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -178,7 +246,7 @@ func (x *ListReviewPlansResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReviewPlansResponse.ProtoReflect.Descriptor instead.
 func (*ListReviewPlansResponse) Descriptor() ([]byte, []int) {
-	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{2}
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListReviewPlansResponse) GetPagination() *v1.PaginationResponse {
@@ -205,7 +273,7 @@ type GetFlashCardsRequest struct {
 
 func (x *GetFlashCardsRequest) Reset() {
 	*x = GetFlashCardsRequest{}
-	mi := &file_learning_v1_review_service_proto_msgTypes[3]
+	mi := &file_learning_v1_review_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -217,7 +285,7 @@ func (x *GetFlashCardsRequest) String() string {
 func (*GetFlashCardsRequest) ProtoMessage() {}
 
 func (x *GetFlashCardsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_learning_v1_review_service_proto_msgTypes[3]
+	mi := &file_learning_v1_review_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -230,7 +298,7 @@ func (x *GetFlashCardsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFlashCardsRequest.ProtoReflect.Descriptor instead.
 func (*GetFlashCardsRequest) Descriptor() ([]byte, []int) {
-	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{3}
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetFlashCardsRequest) GetReviewPlanId() int64 {
@@ -257,7 +325,7 @@ type FlashCardSet struct {
 
 func (x *FlashCardSet) Reset() {
 	*x = FlashCardSet{}
-	mi := &file_learning_v1_review_service_proto_msgTypes[4]
+	mi := &file_learning_v1_review_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -269,7 +337,7 @@ func (x *FlashCardSet) String() string {
 func (*FlashCardSet) ProtoMessage() {}
 
 func (x *FlashCardSet) ProtoReflect() protoreflect.Message {
-	mi := &file_learning_v1_review_service_proto_msgTypes[4]
+	mi := &file_learning_v1_review_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -282,7 +350,7 @@ func (x *FlashCardSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlashCardSet.ProtoReflect.Descriptor instead.
 func (*FlashCardSet) Descriptor() ([]byte, []int) {
-	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{4}
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FlashCardSet) GetPagination() *v1.PaginationResponse {
@@ -307,7 +375,12 @@ const file_learning_v1_review_service_proto_rawDesc = "" +
 	"\x17CreateReviewPlanRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12!\n" +
-	"\fwordbook_ids\x18\x03 \x03(\x03R\vwordbookIds\"\x89\x01\n" +
+	"\fwordbook_ids\x18\x03 \x03(\x03R\vwordbookIds\"\x82\x01\n" +
+	"\x17UpdateReviewPlanRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12!\n" +
+	"\fwordbook_ids\x18\x04 \x03(\x03R\vwordbookIds\"\x89\x01\n" +
 	"\x16ListReviewPlansRequest\x12<\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
@@ -327,9 +400,10 @@ const file_learning_v1_review_service_proto_rawDesc = "" +
 	"pagination\x18\x01 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
 	"pagination\x127\n" +
 	"\vflash_cards\x18\x02 \x03(\v2\x16.learning.v1.FlashCardR\n" +
-	"flashCards2\x9f\x03\n" +
+	"flashCards2\xf4\x03\n" +
 	"\x11ReviewPlanService\x12S\n" +
-	"\x10CreateReviewPlan\x12$.learning.v1.CreateReviewPlanRequest\x1a\x17.learning.v1.ReviewPlan\"\x00\x12@\n" +
+	"\x10CreateReviewPlan\x12$.learning.v1.CreateReviewPlanRequest\x1a\x17.learning.v1.ReviewPlan\"\x00\x12S\n" +
+	"\x10UpdateReviewPlan\x12$.learning.v1.UpdateReviewPlanRequest\x1a\x17.learning.v1.ReviewPlan\"\x00\x12@\n" +
 	"\rGetReviewPlan\x12\x14.common.v1.IDRequest\x1a\x17.learning.v1.ReviewPlan\"\x00\x12^\n" +
 	"\x0fListReviewPlans\x12#.learning.v1.ListReviewPlansRequest\x1a$.learning.v1.ListReviewPlansResponse\"\x00\x12B\n" +
 	"\x10DeleteReviewPlan\x12\x14.common.v1.IDRequest\x1a\x16.google.protobuf.Empty\"\x00\x12O\n" +
@@ -348,38 +422,41 @@ func file_learning_v1_review_service_proto_rawDescGZIP() []byte {
 	return file_learning_v1_review_service_proto_rawDescData
 }
 
-var file_learning_v1_review_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_learning_v1_review_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_learning_v1_review_service_proto_goTypes = []any{
 	(*CreateReviewPlanRequest)(nil), // 0: learning.v1.CreateReviewPlanRequest
-	(*ListReviewPlansRequest)(nil),  // 1: learning.v1.ListReviewPlansRequest
-	(*ListReviewPlansResponse)(nil), // 2: learning.v1.ListReviewPlansResponse
-	(*GetFlashCardsRequest)(nil),    // 3: learning.v1.GetFlashCardsRequest
-	(*FlashCardSet)(nil),            // 4: learning.v1.FlashCardSet
-	(*v1.PaginationRequest)(nil),    // 5: common.v1.PaginationRequest
-	(*v1.PaginationResponse)(nil),   // 6: common.v1.PaginationResponse
-	(*ReviewPlan)(nil),              // 7: learning.v1.ReviewPlan
-	(*FlashCard)(nil),               // 8: learning.v1.FlashCard
-	(*v1.IDRequest)(nil),            // 9: common.v1.IDRequest
-	(*emptypb.Empty)(nil),           // 10: google.protobuf.Empty
+	(*UpdateReviewPlanRequest)(nil), // 1: learning.v1.UpdateReviewPlanRequest
+	(*ListReviewPlansRequest)(nil),  // 2: learning.v1.ListReviewPlansRequest
+	(*ListReviewPlansResponse)(nil), // 3: learning.v1.ListReviewPlansResponse
+	(*GetFlashCardsRequest)(nil),    // 4: learning.v1.GetFlashCardsRequest
+	(*FlashCardSet)(nil),            // 5: learning.v1.FlashCardSet
+	(*v1.PaginationRequest)(nil),    // 6: common.v1.PaginationRequest
+	(*v1.PaginationResponse)(nil),   // 7: common.v1.PaginationResponse
+	(*ReviewPlan)(nil),              // 8: learning.v1.ReviewPlan
+	(*FlashCard)(nil),               // 9: learning.v1.FlashCard
+	(*v1.IDRequest)(nil),            // 10: common.v1.IDRequest
+	(*emptypb.Empty)(nil),           // 11: google.protobuf.Empty
 }
 var file_learning_v1_review_service_proto_depIdxs = []int32{
-	5,  // 0: learning.v1.ListReviewPlansRequest.pagination:type_name -> common.v1.PaginationRequest
-	6,  // 1: learning.v1.ListReviewPlansResponse.pagination:type_name -> common.v1.PaginationResponse
-	7,  // 2: learning.v1.ListReviewPlansResponse.plans:type_name -> learning.v1.ReviewPlan
-	6,  // 3: learning.v1.FlashCardSet.pagination:type_name -> common.v1.PaginationResponse
-	8,  // 4: learning.v1.FlashCardSet.flash_cards:type_name -> learning.v1.FlashCard
+	6,  // 0: learning.v1.ListReviewPlansRequest.pagination:type_name -> common.v1.PaginationRequest
+	7,  // 1: learning.v1.ListReviewPlansResponse.pagination:type_name -> common.v1.PaginationResponse
+	8,  // 2: learning.v1.ListReviewPlansResponse.plans:type_name -> learning.v1.ReviewPlan
+	7,  // 3: learning.v1.FlashCardSet.pagination:type_name -> common.v1.PaginationResponse
+	9,  // 4: learning.v1.FlashCardSet.flash_cards:type_name -> learning.v1.FlashCard
 	0,  // 5: learning.v1.ReviewPlanService.CreateReviewPlan:input_type -> learning.v1.CreateReviewPlanRequest
-	9,  // 6: learning.v1.ReviewPlanService.GetReviewPlan:input_type -> common.v1.IDRequest
-	1,  // 7: learning.v1.ReviewPlanService.ListReviewPlans:input_type -> learning.v1.ListReviewPlansRequest
-	9,  // 8: learning.v1.ReviewPlanService.DeleteReviewPlan:input_type -> common.v1.IDRequest
-	3,  // 9: learning.v1.ReviewPlanService.GetFlashCards:input_type -> learning.v1.GetFlashCardsRequest
-	7,  // 10: learning.v1.ReviewPlanService.CreateReviewPlan:output_type -> learning.v1.ReviewPlan
-	7,  // 11: learning.v1.ReviewPlanService.GetReviewPlan:output_type -> learning.v1.ReviewPlan
-	2,  // 12: learning.v1.ReviewPlanService.ListReviewPlans:output_type -> learning.v1.ListReviewPlansResponse
-	10, // 13: learning.v1.ReviewPlanService.DeleteReviewPlan:output_type -> google.protobuf.Empty
-	4,  // 14: learning.v1.ReviewPlanService.GetFlashCards:output_type -> learning.v1.FlashCardSet
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
+	1,  // 6: learning.v1.ReviewPlanService.UpdateReviewPlan:input_type -> learning.v1.UpdateReviewPlanRequest
+	10, // 7: learning.v1.ReviewPlanService.GetReviewPlan:input_type -> common.v1.IDRequest
+	2,  // 8: learning.v1.ReviewPlanService.ListReviewPlans:input_type -> learning.v1.ListReviewPlansRequest
+	10, // 9: learning.v1.ReviewPlanService.DeleteReviewPlan:input_type -> common.v1.IDRequest
+	4,  // 10: learning.v1.ReviewPlanService.GetFlashCards:input_type -> learning.v1.GetFlashCardsRequest
+	8,  // 11: learning.v1.ReviewPlanService.CreateReviewPlan:output_type -> learning.v1.ReviewPlan
+	8,  // 12: learning.v1.ReviewPlanService.UpdateReviewPlan:output_type -> learning.v1.ReviewPlan
+	8,  // 13: learning.v1.ReviewPlanService.GetReviewPlan:output_type -> learning.v1.ReviewPlan
+	3,  // 14: learning.v1.ReviewPlanService.ListReviewPlans:output_type -> learning.v1.ListReviewPlansResponse
+	11, // 15: learning.v1.ReviewPlanService.DeleteReviewPlan:output_type -> google.protobuf.Empty
+	5,  // 16: learning.v1.ReviewPlanService.GetFlashCards:output_type -> learning.v1.FlashCardSet
+	11, // [11:17] is the sub-list for method output_type
+	5,  // [5:11] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -399,7 +476,7 @@ func file_learning_v1_review_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_learning_v1_review_service_proto_rawDesc), len(file_learning_v1_review_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

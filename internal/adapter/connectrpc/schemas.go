@@ -103,3 +103,24 @@ var listWordbooksSchema = filterexpr.ResourceSchema{
 		},
 	},
 }
+
+var listReviewPlansSchema = filterexpr.ResourceSchema{
+	Filter: map[string]filterexpr.FilterField{
+		"name": {
+			Kind: filterexpr.KindString,
+			Ops:  map[filterexpr.Op]string{filterexpr.OpSW: "NameQuery"},
+		},
+	},
+	Order: filterexpr.OrderSchema{
+		DefaultPrimary:     "id",
+		DefaultPrimaryDesc: false,
+		FallbackKey:        "id",
+		FallbackDesc:       false,
+		Fields: map[string]filterexpr.OrderField{
+			"id":         {Expr: "id", Nulls: "last"},
+			"name":       {Expr: "name", Nulls: "last"},
+			"created_at": {Expr: "created_at", Nulls: "last"},
+			"updated_at": {Expr: "updated_at", Nulls: "last"},
+		},
+	},
+}

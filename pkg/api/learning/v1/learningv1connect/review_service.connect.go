@@ -38,6 +38,9 @@ const (
 	// ReviewPlanServiceCreateReviewPlanProcedure is the fully-qualified name of the ReviewPlanService's
 	// CreateReviewPlan RPC.
 	ReviewPlanServiceCreateReviewPlanProcedure = "/learning.v1.ReviewPlanService/CreateReviewPlan"
+	// ReviewPlanServiceUpdateReviewPlanProcedure is the fully-qualified name of the ReviewPlanService's
+	// UpdateReviewPlan RPC.
+	ReviewPlanServiceUpdateReviewPlanProcedure = "/learning.v1.ReviewPlanService/UpdateReviewPlan"
 	// ReviewPlanServiceGetReviewPlanProcedure is the fully-qualified name of the ReviewPlanService's
 	// GetReviewPlan RPC.
 	ReviewPlanServiceGetReviewPlanProcedure = "/learning.v1.ReviewPlanService/GetReviewPlan"
@@ -55,6 +58,7 @@ const (
 // ReviewPlanServiceClient is a client for the learning.v1.ReviewPlanService service.
 type ReviewPlanServiceClient interface {
 	CreateReviewPlan(context.Context, *connect.Request[v1.CreateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error)
+	UpdateReviewPlan(context.Context, *connect.Request[v1.UpdateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error)
 	GetReviewPlan(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.ReviewPlan], error)
 	ListReviewPlans(context.Context, *connect.Request[v1.ListReviewPlansRequest]) (*connect.Response[v1.ListReviewPlansResponse], error)
 	DeleteReviewPlan(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
@@ -76,6 +80,12 @@ func NewReviewPlanServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			httpClient,
 			baseURL+ReviewPlanServiceCreateReviewPlanProcedure,
 			connect.WithSchema(reviewPlanServiceMethods.ByName("CreateReviewPlan")),
+			connect.WithClientOptions(opts...),
+		),
+		updateReviewPlan: connect.NewClient[v1.UpdateReviewPlanRequest, v1.ReviewPlan](
+			httpClient,
+			baseURL+ReviewPlanServiceUpdateReviewPlanProcedure,
+			connect.WithSchema(reviewPlanServiceMethods.ByName("UpdateReviewPlan")),
 			connect.WithClientOptions(opts...),
 		),
 		getReviewPlan: connect.NewClient[v11.IDRequest, v1.ReviewPlan](
@@ -108,6 +118,7 @@ func NewReviewPlanServiceClient(httpClient connect.HTTPClient, baseURL string, o
 // reviewPlanServiceClient implements ReviewPlanServiceClient.
 type reviewPlanServiceClient struct {
 	createReviewPlan *connect.Client[v1.CreateReviewPlanRequest, v1.ReviewPlan]
+	updateReviewPlan *connect.Client[v1.UpdateReviewPlanRequest, v1.ReviewPlan]
 	getReviewPlan    *connect.Client[v11.IDRequest, v1.ReviewPlan]
 	listReviewPlans  *connect.Client[v1.ListReviewPlansRequest, v1.ListReviewPlansResponse]
 	deleteReviewPlan *connect.Client[v11.IDRequest, emptypb.Empty]
@@ -117,6 +128,11 @@ type reviewPlanServiceClient struct {
 // CreateReviewPlan calls learning.v1.ReviewPlanService.CreateReviewPlan.
 func (c *reviewPlanServiceClient) CreateReviewPlan(ctx context.Context, req *connect.Request[v1.CreateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error) {
 	return c.createReviewPlan.CallUnary(ctx, req)
+}
+
+// UpdateReviewPlan calls learning.v1.ReviewPlanService.UpdateReviewPlan.
+func (c *reviewPlanServiceClient) UpdateReviewPlan(ctx context.Context, req *connect.Request[v1.UpdateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error) {
+	return c.updateReviewPlan.CallUnary(ctx, req)
 }
 
 // GetReviewPlan calls learning.v1.ReviewPlanService.GetReviewPlan.
@@ -142,6 +158,7 @@ func (c *reviewPlanServiceClient) GetFlashCards(ctx context.Context, req *connec
 // ReviewPlanServiceHandler is an implementation of the learning.v1.ReviewPlanService service.
 type ReviewPlanServiceHandler interface {
 	CreateReviewPlan(context.Context, *connect.Request[v1.CreateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error)
+	UpdateReviewPlan(context.Context, *connect.Request[v1.UpdateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error)
 	GetReviewPlan(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.ReviewPlan], error)
 	ListReviewPlans(context.Context, *connect.Request[v1.ListReviewPlansRequest]) (*connect.Response[v1.ListReviewPlansResponse], error)
 	DeleteReviewPlan(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
@@ -159,6 +176,12 @@ func NewReviewPlanServiceHandler(svc ReviewPlanServiceHandler, opts ...connect.H
 		ReviewPlanServiceCreateReviewPlanProcedure,
 		svc.CreateReviewPlan,
 		connect.WithSchema(reviewPlanServiceMethods.ByName("CreateReviewPlan")),
+		connect.WithHandlerOptions(opts...),
+	)
+	reviewPlanServiceUpdateReviewPlanHandler := connect.NewUnaryHandler(
+		ReviewPlanServiceUpdateReviewPlanProcedure,
+		svc.UpdateReviewPlan,
+		connect.WithSchema(reviewPlanServiceMethods.ByName("UpdateReviewPlan")),
 		connect.WithHandlerOptions(opts...),
 	)
 	reviewPlanServiceGetReviewPlanHandler := connect.NewUnaryHandler(
@@ -189,6 +212,8 @@ func NewReviewPlanServiceHandler(svc ReviewPlanServiceHandler, opts ...connect.H
 		switch r.URL.Path {
 		case ReviewPlanServiceCreateReviewPlanProcedure:
 			reviewPlanServiceCreateReviewPlanHandler.ServeHTTP(w, r)
+		case ReviewPlanServiceUpdateReviewPlanProcedure:
+			reviewPlanServiceUpdateReviewPlanHandler.ServeHTTP(w, r)
 		case ReviewPlanServiceGetReviewPlanProcedure:
 			reviewPlanServiceGetReviewPlanHandler.ServeHTTP(w, r)
 		case ReviewPlanServiceListReviewPlansProcedure:
@@ -208,6 +233,10 @@ type UnimplementedReviewPlanServiceHandler struct{}
 
 func (UnimplementedReviewPlanServiceHandler) CreateReviewPlan(context.Context, *connect.Request[v1.CreateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.ReviewPlanService.CreateReviewPlan is not implemented"))
+}
+
+func (UnimplementedReviewPlanServiceHandler) UpdateReviewPlan(context.Context, *connect.Request[v1.UpdateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.ReviewPlanService.UpdateReviewPlan is not implemented"))
 }
 
 func (UnimplementedReviewPlanServiceHandler) GetReviewPlan(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[v1.ReviewPlan], error) {

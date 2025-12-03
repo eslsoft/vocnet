@@ -30,4 +30,9 @@ var (
 	ErrInvalidWordbookUser   = errors.New("invalid wordbook owner")
 	ErrBuiltinWordbookLocked = errors.New("builtin wordbook is read-only")
 	ErrDuplicateWordbook     = errors.New("wordbook already exists")
+
+	ErrReviewPlanNotFound    = errors.New("review plan not found")
+	ErrInvalidReviewPlanID   = errors.New("invalid review plan id")
+	ErrInvalidReviewPlanName = errors.New("invalid review plan name")
+	ErrDuplicateReviewPlan   = errors.New("review plan already exists")
 )

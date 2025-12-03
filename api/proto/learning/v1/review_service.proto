@@ -14,6 +14,13 @@ message CreateReviewPlanRequest {
   repeated int64 wordbook_ids = 3;
 }
 
+message UpdateReviewPlanRequest {
+  int64 id = 1;
+  string name = 2;
+  string description = 3;
+  repeated int64 wordbook_ids = 4;
+}
+
 message ListReviewPlansRequest {
   common.v1.PaginationRequest pagination = 1;
   string filter = 2;
@@ -37,6 +44,7 @@ message FlashCardSet {
 
 service ReviewPlanService {
   rpc CreateReviewPlan(CreateReviewPlanRequest) returns (ReviewPlan) {}
+  rpc UpdateReviewPlan(UpdateReviewPlanRequest) returns (ReviewPlan) {}
   rpc GetReviewPlan(common.v1.IDRequest) returns (ReviewPlan) {}
   rpc ListReviewPlans(ListReviewPlansRequest) returns (ListReviewPlansResponse) {}
   rpc DeleteReviewPlan(common.v1.IDRequest) returns (google.protobuf.Empty) {}

@@ -34,6 +34,7 @@ var repositorySet = wire.NewSet(
 	repository.NewLearnedWordRepository,
 	repository.NewLemmaRepository,
 	repository.NewWordbookRepository,
+	repository.NewReviewPlanRepository,
 )
 
 var usecaseSet = wire.NewSet(
@@ -41,15 +42,18 @@ var usecaseSet = wire.NewSet(
 	usecase.NewWordUsecase,
 	usecase.NewLearnedWordUsecase,
 	usecase.NewWordbookUsecase,
+	usecase.NewReviewPlanUsecase,
 )
 
 var serviceSet = wire.NewSet(
 	adaptergrpc.NewDictServiceServer,
 	adaptergrpc.NewLearningServiceServer,
 	adaptergrpc.NewWordbookServiceServer,
+	adaptergrpc.NewReviewPlanServiceServer,
 	wire.Bind(new(learningv1connect.LearningServiceHandler), new(*adaptergrpc.LearningServiceServer)),
 	wire.Bind(new(dictv1connect.DictServiceHandler), new(*adaptergrpc.DictServiceServer)),
 	wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*adaptergrpc.WordbookServiceServer)),
+	wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*adaptergrpc.ReviewPlanServiceServer)),
 )
 
 var serverSet = wire.NewSet(
