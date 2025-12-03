@@ -37,7 +37,6 @@ func ToEntityWordbook(pb *wordbookv1.Wordbook) *entity.Wordbook {
 			LearningWords: stats.GetLearningWords(),
 			UnknownWords:  stats.GetUnknownWords(),
 		},
-		CreatedBy: pb.GetCreatedBy(),
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}
@@ -75,7 +74,7 @@ func ToPbWordbook(ent *entity.Wordbook) *wordbookv1.Wordbook {
 		Annotations: ann,
 		Terms:       append([]string{}, ent.Terms...),
 		Status:      status,
-		CreatedBy:   ent.CreatedBy,
+		CreatedBy:   ent.UserID.String(),
 	}
 
 	if !ent.CreatedAt.IsZero() {

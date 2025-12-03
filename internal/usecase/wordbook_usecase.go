@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -44,9 +43,6 @@ func (u *wordbookUsecase) SyncBuiltin(ctx context.Context, books []*entity.Wordb
 		b.Source = entity.WordbookSourceBuiltin
 		if b.Visibility == entity.WordbookVisibilityUnspecified {
 			b.Visibility = entity.WordbookVisibilityPublic
-		}
-		if b.CreatedBy == "" {
-			b.CreatedBy = "system"
 		}
 		if b.SortOrder == 0 {
 			b.SortOrder = 100
@@ -103,8 +99,6 @@ func (u *wordbookUsecase) Create(ctx context.Context, book *entity.Wordbook) (*e
 	now := time.Now()
 	book.CreatedAt = now
 	book.UpdatedAt = now
-	book.CreatedBy = fmt.Sprintf("user:%d", userID)
-
 	normalized, err := entity.NormalizeWordbook(book)
 	if err != nil {
 		return nil, err
@@ -140,7 +134,6 @@ func (u *wordbookUsecase) Update(ctx context.Context, book *entity.Wordbook) (*e
 	if book.Description == "" {
 		book.Description = current.Description
 	}
-	book.CreatedBy = current.CreatedBy
 	book.CreatedAt = current.CreatedAt
 	book.UpdatedAt = time.Now()
 

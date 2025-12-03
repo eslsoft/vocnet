@@ -29,13 +29,12 @@ func (Wordbook) Fields() []ent.Field {
 		field.String("visibility").Default(string(entity.WordbookVisibilityPublic)),
 		field.String("name").NotEmpty(),
 		field.String("description").Default(""),
-	field.JSON("annotations", map[string]string{}).
-		Default(map[string]string{}).
-		SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
-	field.JSON("terms", []string{}).
-		Default([]string{}).
-		SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
-	field.String("created_by").Default(""),
+		field.JSON("annotations", map[string]string{}).
+			Default(map[string]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		field.JSON("terms", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),

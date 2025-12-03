@@ -33,8 +33,7 @@ func (r *wordbookRepository) Create(ctx context.Context, book *entity.Wordbook) 
 		SetName(strings.TrimSpace(book.Name)).
 		SetDescription(book.Description).
 		SetAnnotations(book.Annotations).
-		SetTerms(append([]string{}, book.Terms...)).
-		SetCreatedBy(book.CreatedBy)
+		SetTerms(append([]string{}, book.Terms...))
 
 	if book.ID > 0 {
 		builder.SetID(book.ID)
@@ -64,7 +63,6 @@ func (r *wordbookRepository) Update(ctx context.Context, book *entity.Wordbook) 
 		SetDescription(book.Description).
 		SetAnnotations(book.Annotations).
 		SetTerms(append([]string{}, book.Terms...)).
-		SetCreatedBy(book.CreatedBy).
 		SetUpdatedAt(book.UpdatedAt)
 
 	rec, err := builder.Save(ctx)
@@ -164,8 +162,7 @@ func (r *wordbookRepository) SyncBuiltin(ctx context.Context, books []*entity.Wo
 			SetName(strings.TrimSpace(book.Name)).
 			SetDescription(book.Description).
 			SetAnnotations(book.Annotations).
-			SetTerms(append([]string{}, book.Terms...)).
-			SetCreatedBy(book.CreatedBy)
+			SetTerms(append([]string{}, book.Terms...))
 
 		create.OnConflict(
 			sql.ConflictColumns(entwordbook.FieldID),
@@ -178,7 +175,6 @@ func (r *wordbookRepository) SyncBuiltin(ctx context.Context, books []*entity.Wo
 			UpdateDescription().
 			UpdateAnnotations().
 			UpdateTerms().
-			UpdateCreatedBy().
 			UpdateUpdatedAt()
 
 		if _, err := create.Save(ctx); err != nil {
@@ -227,13 +223,6 @@ func applyWordbookOrdering(q *entdb.WordbookQuery, params *repository.ListWordbo
 	q.Order(entwordbook.ByID())
 }
 
-func orderTerm(desc bool) sql.OrderTermOption {
-	if desc {
-		return sql.OrderDesc()
-	}
-	return sql.OrderAsc()
-}
-
 func mapEntWordbook(rec *entdb.Wordbook) *entity.Wordbook {
 	if rec == nil {
 		return nil
@@ -250,7 +239,6 @@ func mapEntWordbook(rec *entdb.Wordbook) *entity.Wordbook {
 		Terms:       rec.Terms,
 		Stats:       entity.WordbookStats{TotalWords: int32(len(rec.Terms))},
 		SortOrder:   rec.SortOrder,
-		CreatedBy:   rec.CreatedBy,
 		CreatedAt:   rec.CreatedAt,
 		UpdatedAt:   rec.UpdatedAt,
 	}

@@ -38,7 +38,6 @@ type Wordbook struct {
 	Terms       []string
 	Stats       WordbookStats
 	SortOrder   int32
-	CreatedBy   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
