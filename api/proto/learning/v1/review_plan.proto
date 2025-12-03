@@ -11,16 +11,20 @@ message ReviewPlan {
   string name = 2;
   string description = 3;
 
+  ReviewPlanStatus status = 10;
+
   string created_by = 20; // username of the creator
   google.protobuf.Timestamp created_at = 21;
   google.protobuf.Timestamp updated_at = 22;
 }
 
 message ReviewPlanStatus {
-  int32 total_words = 1;
-  int32 reviewed_words = 2;
-  int32 pending_words = 3;
+  int32 pending_words = 1; // Words pending review
+
+  int32 mastered_words = 2; // Words with overall mastery >= 4
+  int32 learning_words = 3; // Words with 1 <= overall mastery < 4
+  int32 unknown_words = 4; // Words with overall mastery < 1
 
   repeated wordbook.v1.Wordbook wordbooks = 10;
-  google.protobuf.Timestamp last_reviewed_at = 11;
+  // google.protobuf.Timestamp last_reviewed_at = 11;
 }

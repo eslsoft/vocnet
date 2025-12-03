@@ -14,8 +14,17 @@ type ReviewPlan struct {
 	Name        string
 	Description string
 	WordbookIDs []int64
+	Status      ReviewPlanStatus
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+// ReviewPlanStatus contains computed statistics about a review plan.
+type ReviewPlanStatus struct {
+	MasteredWords int32
+	LearningWords int32
+	UnknownWords  int32
+	Wordbooks     []*Wordbook
 }
 
 // NormalizeReviewPlan cleans string fields, sets defaults, and ensures invariants.

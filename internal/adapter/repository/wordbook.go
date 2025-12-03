@@ -95,6 +95,44 @@ func (r *wordbookRepository) GetByID(ctx context.Context, id int64, userID uuid.
 	return mapEntWordbook(rec), nil
 }
 
+func (r *wordbookRepository) GetByIDs(ctx context.Context, ids []int64, userID uuid.UUID) ([]*entity.Wordbook, error) {
+	if len(ids) == 0 {
+		return []*entity.Wordbook{}, nil
+	}
+
+	// Deduplicate IDs
+	uniqueIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			uniqueIDs = append(uniqueIDs, id)
+		}
+	}
+
+	if len(uniqueIDs) == 0 {
+		return []*entity.Wordbook{}, nil
+	}
+
+	// Query wordbooks accessible to user (owned by user OR builtin)
+	rows, err := r.client.Wordbook.Query().
+		Where(
+			entwordbook.IDIn(uniqueIDs...),
+			entwordbook.UserIDIn(userID, uuid.Nil),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("batch get wordbooks: %w", err)
+	}
+
+	result := make([]*entity.Wordbook, 0, len(rows))
+	for _, rec := range rows {
+		result = append(result, mapEntWordbook(rec))
+	}
+
+	return result, nil
+}
+
 func (r *wordbookRepository) List(ctx context.Context, query *repository.ListWordbookQuery) ([]*entity.Wordbook, int64, error) {
 	q := r.client.Wordbook.Query()
 

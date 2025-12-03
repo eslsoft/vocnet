@@ -51,7 +51,7 @@ func Initialize() (*Container, func(), error) {
 	wordbookUsecase := usecase.NewWordbookUsecase(wordbookRepository, learnedWordRepository)
 	wordbookServiceServer := connectrpc.NewWordbookServiceServer(wordbookUsecase)
 	reviewPlanRepository := repository.NewReviewPlanRepository(client)
-	reviewPlanUsecase := usecase.NewReviewPlanUsecase(reviewPlanRepository, wordbookRepository)
+	reviewPlanUsecase := usecase.NewReviewPlanUsecase(reviewPlanRepository, wordbookRepository, learnedWordRepository)
 	reviewPlanServiceServer := connectrpc.NewReviewPlanServiceServer(reviewPlanUsecase)
 	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer)
 	if err != nil {

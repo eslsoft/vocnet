@@ -63,6 +63,35 @@ func (m *ReviewPlan) validate(all bool) error {
 
 	// no validation rules for Description
 
+	if all {
+		switch v := interface{}(m.GetStatus()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ReviewPlanValidationError{
+					field:  "Status",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ReviewPlanValidationError{
+					field:  "Status",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetStatus()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ReviewPlanValidationError{
+				field:  "Status",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	// no validation rules for CreatedBy
 
 	if all {
@@ -222,11 +251,13 @@ func (m *ReviewPlanStatus) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for TotalWords
-
-	// no validation rules for ReviewedWords
-
 	// no validation rules for PendingWords
+
+	// no validation rules for MasteredWords
+
+	// no validation rules for LearningWords
+
+	// no validation rules for UnknownWords
 
 	for idx, item := range m.GetWordbooks() {
 		_, _ = idx, item
@@ -260,35 +291,6 @@ func (m *ReviewPlanStatus) validate(all bool) error {
 			}
 		}
 
-	}
-
-	if all {
-		switch v := interface{}(m.GetLastReviewedAt()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ReviewPlanStatusValidationError{
-					field:  "LastReviewedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, ReviewPlanStatusValidationError{
-					field:  "LastReviewedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetLastReviewedAt()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return ReviewPlanStatusValidationError{
-				field:  "LastReviewedAt",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
 	}
 
 	if len(errors) > 0 {

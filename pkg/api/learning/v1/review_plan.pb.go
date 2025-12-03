@@ -29,6 +29,7 @@ type ReviewPlan struct {
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Status        *ReviewPlanStatus      `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
 	CreatedBy     string                 `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"` // username of the creator
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
@@ -87,6 +88,13 @@ func (x *ReviewPlan) GetDescription() string {
 	return ""
 }
 
+func (x *ReviewPlan) GetStatus() *ReviewPlanStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
 func (x *ReviewPlan) GetCreatedBy() string {
 	if x != nil {
 		return x.CreatedBy
@@ -109,14 +117,14 @@ func (x *ReviewPlan) GetUpdatedAt() *timestamppb.Timestamp {
 }
 
 type ReviewPlanStatus struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	TotalWords     int32                  `protobuf:"varint,1,opt,name=total_words,json=totalWords,proto3" json:"total_words,omitempty"`
-	ReviewedWords  int32                  `protobuf:"varint,2,opt,name=reviewed_words,json=reviewedWords,proto3" json:"reviewed_words,omitempty"`
-	PendingWords   int32                  `protobuf:"varint,3,opt,name=pending_words,json=pendingWords,proto3" json:"pending_words,omitempty"`
-	Wordbooks      []*v1.Wordbook         `protobuf:"bytes,10,rep,name=wordbooks,proto3" json:"wordbooks,omitempty"`
-	LastReviewedAt *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=last_reviewed_at,json=lastReviewedAt,proto3" json:"last_reviewed_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PendingWords  int32                  `protobuf:"varint,1,opt,name=pending_words,json=pendingWords,proto3" json:"pending_words,omitempty"`    // Words pending review
+	MasteredWords int32                  `protobuf:"varint,2,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Words with overall mastery >= 4
+	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // Words with 1 <= overall mastery < 4
+	UnknownWords  int32                  `protobuf:"varint,4,opt,name=unknown_words,json=unknownWords,proto3" json:"unknown_words,omitempty"`    // Words with overall mastery < 1
+	Wordbooks     []*v1.Wordbook         `protobuf:"bytes,10,rep,name=wordbooks,proto3" json:"wordbooks,omitempty"`                              // google.protobuf.Timestamp last_reviewed_at = 11;
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ReviewPlanStatus) Reset() {
@@ -149,23 +157,30 @@ func (*ReviewPlanStatus) Descriptor() ([]byte, []int) {
 	return file_learning_v1_review_plan_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ReviewPlanStatus) GetTotalWords() int32 {
-	if x != nil {
-		return x.TotalWords
-	}
-	return 0
-}
-
-func (x *ReviewPlanStatus) GetReviewedWords() int32 {
-	if x != nil {
-		return x.ReviewedWords
-	}
-	return 0
-}
-
 func (x *ReviewPlanStatus) GetPendingWords() int32 {
 	if x != nil {
 		return x.PendingWords
+	}
+	return 0
+}
+
+func (x *ReviewPlanStatus) GetMasteredWords() int32 {
+	if x != nil {
+		return x.MasteredWords
+	}
+	return 0
+}
+
+func (x *ReviewPlanStatus) GetLearningWords() int32 {
+	if x != nil {
+		return x.LearningWords
+	}
+	return 0
+}
+
+func (x *ReviewPlanStatus) GetUnknownWords() int32 {
+	if x != nil {
+		return x.UnknownWords
 	}
 	return 0
 }
@@ -177,37 +192,31 @@ func (x *ReviewPlanStatus) GetWordbooks() []*v1.Wordbook {
 	return nil
 }
 
-func (x *ReviewPlanStatus) GetLastReviewedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.LastReviewedAt
-	}
-	return nil
-}
-
 var File_learning_v1_review_plan_proto protoreflect.FileDescriptor
 
 const file_learning_v1_review_plan_proto_rawDesc = "" +
 	"\n" +
-	"\x1dlearning/v1/review_plan.proto\x12\vlearning.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1awordbook/v1/wordbook.proto\"\xe7\x01\n" +
+	"\x1dlearning/v1/review_plan.proto\x12\vlearning.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1awordbook/v1/wordbook.proto\"\x9e\x02\n" +
 	"\n" +
 	"ReviewPlan\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1d\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x125\n" +
+	"\x06status\x18\n" +
+	" \x01(\v2\x1d.learning.v1.ReviewPlanStatusR\x06status\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\x14 \x01(\tR\tcreatedBy\x129\n" +
 	"\n" +
 	"created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xfa\x01\n" +
-	"\x10ReviewPlanStatus\x12\x1f\n" +
-	"\vtotal_words\x18\x01 \x01(\x05R\n" +
-	"totalWords\x12%\n" +
-	"\x0ereviewed_words\x18\x02 \x01(\x05R\rreviewedWords\x12#\n" +
-	"\rpending_words\x18\x03 \x01(\x05R\fpendingWords\x123\n" +
+	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xdf\x01\n" +
+	"\x10ReviewPlanStatus\x12#\n" +
+	"\rpending_words\x18\x01 \x01(\x05R\fpendingWords\x12%\n" +
+	"\x0emastered_words\x18\x02 \x01(\x05R\rmasteredWords\x12%\n" +
+	"\x0elearning_words\x18\x03 \x01(\x05R\rlearningWords\x12#\n" +
+	"\runknown_words\x18\x04 \x01(\x05R\funknownWords\x123\n" +
 	"\twordbooks\x18\n" +
-	" \x03(\v2\x15.wordbook.v1.WordbookR\twordbooks\x12D\n" +
-	"\x10last_reviewed_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x0elastReviewedAtB\xa9\x01\n" +
+	" \x03(\v2\x15.wordbook.v1.WordbookR\twordbooksB\xa9\x01\n" +
 	"\x0fcom.learning.v1B\x0fReviewPlanProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (
@@ -230,10 +239,10 @@ var file_learning_v1_review_plan_proto_goTypes = []any{
 	(*v1.Wordbook)(nil),           // 3: wordbook.v1.Wordbook
 }
 var file_learning_v1_review_plan_proto_depIdxs = []int32{
-	2, // 0: learning.v1.ReviewPlan.created_at:type_name -> google.protobuf.Timestamp
-	2, // 1: learning.v1.ReviewPlan.updated_at:type_name -> google.protobuf.Timestamp
-	3, // 2: learning.v1.ReviewPlanStatus.wordbooks:type_name -> wordbook.v1.Wordbook
-	2, // 3: learning.v1.ReviewPlanStatus.last_reviewed_at:type_name -> google.protobuf.Timestamp
+	1, // 0: learning.v1.ReviewPlan.status:type_name -> learning.v1.ReviewPlanStatus
+	2, // 1: learning.v1.ReviewPlan.created_at:type_name -> google.protobuf.Timestamp
+	2, // 2: learning.v1.ReviewPlan.updated_at:type_name -> google.protobuf.Timestamp
+	3, // 3: learning.v1.ReviewPlanStatus.wordbooks:type_name -> wordbook.v1.Wordbook
 	4, // [4:4] is the sub-list for method output_type
 	4, // [4:4] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name

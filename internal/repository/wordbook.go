@@ -28,6 +28,7 @@ type WordbookRepository interface {
 	Update(ctx context.Context, book *entity.Wordbook) (*entity.Wordbook, error)
 	Delete(ctx context.Context, id int64, userID uuid.UUID) error
 	GetByID(ctx context.Context, id int64, userID uuid.UUID) (*entity.Wordbook, error)
+	GetByIDs(ctx context.Context, ids []int64, userID uuid.UUID) ([]*entity.Wordbook, error)
 	List(ctx context.Context, query *ListWordbookQuery) ([]*entity.Wordbook, int64, error)
 	SyncBuiltin(ctx context.Context, books []*entity.Wordbook) error
 }
