@@ -13,6 +13,7 @@ message CreateWordbookRequest {
   VisibilityType visibility = 2; // Visibility setting
   string name = 3; // Wordbook name, e.g., "IELTS Core Vocabulary"
   string description = 4; // Description of the wordbook
+  map<string, string> annotations = 5; // Additional metadata as key-value pairs
 }
 
 // UpdateWordbookRequest updates an existing wordbook.
@@ -21,6 +22,7 @@ message UpdateWordbookRequest {
   VisibilityType visibility = 2; // Visibility setting
   string name = 3; // Wordbook name, e.g., "IELTS Core Vocabulary"
   string description = 4; // Description of the wordbook
+  map<string, string> annotations = 5; // Additional metadata as key-value pairs
 }
 
 // AddWordsRequest adds terms to a wordbook.

@@ -37,6 +37,7 @@ func (s *WordbookServiceServer) CreateWordbook(ctx context.Context, req *connect
 		Visibility:  req.Msg.GetVisibility(),
 		Name:        req.Msg.GetName(),
 		Description: req.Msg.GetDescription(),
+		Annotations: req.Msg.GetAnnotations(),
 	})
 	created, err := s.uc.Create(ctx, entBook)
 	if err != nil {
@@ -54,6 +55,7 @@ func (s *WordbookServiceServer) UpdateWordbook(ctx context.Context, req *connect
 		Visibility:  req.Msg.GetVisibility(),
 		Name:        req.Msg.GetName(),
 		Description: req.Msg.GetDescription(),
+		Annotations: req.Msg.GetAnnotations(),
 	})
 	updated, err := s.uc.Update(ctx, entBook)
 	if err != nil {

@@ -27,10 +27,11 @@ const (
 // CreateWordbookRequest creates a new wordbook.
 type CreateWordbookRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Language      v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`             // Primary language
-	Visibility    VisibilityType         `protobuf:"varint,2,opt,name=visibility,proto3,enum=wordbook.v1.VisibilityType" json:"visibility,omitempty"` // Visibility setting
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                              // Wordbook name, e.g., "IELTS Core Vocabulary"
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`                                // Description of the wordbook
+	Language      v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`                                                        // Primary language
+	Visibility    VisibilityType         `protobuf:"varint,2,opt,name=visibility,proto3,enum=wordbook.v1.VisibilityType" json:"visibility,omitempty"`                                            // Visibility setting
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                                                                         // Wordbook name, e.g., "IELTS Core Vocabulary"
+	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`                                                                           // Description of the wordbook
+	Annotations   map[string]string      `protobuf:"bytes,5,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Additional metadata as key-value pairs
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -93,13 +94,21 @@ func (x *CreateWordbookRequest) GetDescription() string {
 	return ""
 }
 
+func (x *CreateWordbookRequest) GetAnnotations() map[string]string {
+	if x != nil {
+		return x.Annotations
+	}
+	return nil
+}
+
 // UpdateWordbookRequest updates an existing wordbook.
 type UpdateWordbookRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Visibility    VisibilityType         `protobuf:"varint,2,opt,name=visibility,proto3,enum=wordbook.v1.VisibilityType" json:"visibility,omitempty"` // Visibility setting
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                              // Wordbook name, e.g., "IELTS Core Vocabulary"
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`                                // Description of the wordbook
+	Visibility    VisibilityType         `protobuf:"varint,2,opt,name=visibility,proto3,enum=wordbook.v1.VisibilityType" json:"visibility,omitempty"`                                            // Visibility setting
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                                                                         // Wordbook name, e.g., "IELTS Core Vocabulary"
+	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`                                                                           // Description of the wordbook
+	Annotations   map[string]string      `protobuf:"bytes,5,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Additional metadata as key-value pairs
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -160,6 +169,13 @@ func (x *UpdateWordbookRequest) GetDescription() string {
 		return x.Description
 	}
 	return ""
+}
+
+func (x *UpdateWordbookRequest) GetAnnotations() map[string]string {
+	if x != nil {
+		return x.Annotations
+	}
+	return nil
 }
 
 // AddWordsRequest adds terms to a wordbook.
@@ -345,21 +361,29 @@ var File_wordbook_v1_wordbook_service_proto protoreflect.FileDescriptor
 
 const file_wordbook_v1_wordbook_service_proto_rawDesc = "" +
 	"\n" +
-	"\"wordbook/v1/wordbook_service.proto\x12\vwordbook.v1\x1a\x15common/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x17validate/validate.proto\x1a\x1awordbook/v1/wordbook.proto\"\xbb\x01\n" +
+	"\"wordbook/v1/wordbook_service.proto\x12\vwordbook.v1\x1a\x15common/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x17validate/validate.proto\x1a\x1awordbook/v1/wordbook.proto\"\xd2\x02\n" +
 	"\x15CreateWordbookRequest\x12/\n" +
 	"\blanguage\x18\x01 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12;\n" +
 	"\n" +
 	"visibility\x18\x02 \x01(\x0e2\x1b.wordbook.v1.VisibilityTypeR\n" +
 	"visibility\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"\xa3\x01\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12U\n" +
+	"\vannotations\x18\x05 \x03(\v23.wordbook.v1.CreateWordbookRequest.AnnotationsEntryR\vannotations\x1a>\n" +
+	"\x10AnnotationsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xba\x02\n" +
 	"\x15UpdateWordbookRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x02id\x12;\n" +
 	"\n" +
 	"visibility\x18\x02 \x01(\x0e2\x1b.wordbook.v1.VisibilityTypeR\n" +
 	"visibility\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"^\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12U\n" +
+	"\vannotations\x18\x05 \x03(\v23.wordbook.v1.UpdateWordbookRequest.AnnotationsEntryR\vannotations\x1a>\n" +
+	"\x10AnnotationsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"^\n" +
 	"\x12WordsActionRequest\x12(\n" +
 	"\vwordbook_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\n" +
 	"wordbookId\x12\x1e\n" +
@@ -397,47 +421,51 @@ func file_wordbook_v1_wordbook_service_proto_rawDescGZIP() []byte {
 	return file_wordbook_v1_wordbook_service_proto_rawDescData
 }
 
-var file_wordbook_v1_wordbook_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_wordbook_v1_wordbook_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_wordbook_v1_wordbook_service_proto_goTypes = []any{
 	(*CreateWordbookRequest)(nil), // 0: wordbook.v1.CreateWordbookRequest
 	(*UpdateWordbookRequest)(nil), // 1: wordbook.v1.UpdateWordbookRequest
 	(*WordsActionRequest)(nil),    // 2: wordbook.v1.WordsActionRequest
 	(*ListWordbooksRequest)(nil),  // 3: wordbook.v1.ListWordbooksRequest
 	(*ListWordbooksResponse)(nil), // 4: wordbook.v1.ListWordbooksResponse
-	(v1.Language)(0),              // 5: common.v1.Language
-	(VisibilityType)(0),           // 6: wordbook.v1.VisibilityType
-	(*v1.PaginationRequest)(nil),  // 7: common.v1.PaginationRequest
-	(*v1.PaginationResponse)(nil), // 8: common.v1.PaginationResponse
-	(*Wordbook)(nil),              // 9: wordbook.v1.Wordbook
-	(*v1.IDRequest)(nil),          // 10: common.v1.IDRequest
-	(*emptypb.Empty)(nil),         // 11: google.protobuf.Empty
+	nil,                           // 5: wordbook.v1.CreateWordbookRequest.AnnotationsEntry
+	nil,                           // 6: wordbook.v1.UpdateWordbookRequest.AnnotationsEntry
+	(v1.Language)(0),              // 7: common.v1.Language
+	(VisibilityType)(0),           // 8: wordbook.v1.VisibilityType
+	(*v1.PaginationRequest)(nil),  // 9: common.v1.PaginationRequest
+	(*v1.PaginationResponse)(nil), // 10: common.v1.PaginationResponse
+	(*Wordbook)(nil),              // 11: wordbook.v1.Wordbook
+	(*v1.IDRequest)(nil),          // 12: common.v1.IDRequest
+	(*emptypb.Empty)(nil),         // 13: google.protobuf.Empty
 }
 var file_wordbook_v1_wordbook_service_proto_depIdxs = []int32{
-	5,  // 0: wordbook.v1.CreateWordbookRequest.language:type_name -> common.v1.Language
-	6,  // 1: wordbook.v1.CreateWordbookRequest.visibility:type_name -> wordbook.v1.VisibilityType
-	6,  // 2: wordbook.v1.UpdateWordbookRequest.visibility:type_name -> wordbook.v1.VisibilityType
-	7,  // 3: wordbook.v1.ListWordbooksRequest.pagination:type_name -> common.v1.PaginationRequest
-	8,  // 4: wordbook.v1.ListWordbooksResponse.pagination:type_name -> common.v1.PaginationResponse
-	9,  // 5: wordbook.v1.ListWordbooksResponse.wordbooks:type_name -> wordbook.v1.Wordbook
-	0,  // 6: wordbook.v1.WordbookService.CreateWordbook:input_type -> wordbook.v1.CreateWordbookRequest
-	1,  // 7: wordbook.v1.WordbookService.UpdateWordbook:input_type -> wordbook.v1.UpdateWordbookRequest
-	10, // 8: wordbook.v1.WordbookService.DeleteWordbook:input_type -> common.v1.IDRequest
-	10, // 9: wordbook.v1.WordbookService.GetWordbook:input_type -> common.v1.IDRequest
-	3,  // 10: wordbook.v1.WordbookService.ListWordbooks:input_type -> wordbook.v1.ListWordbooksRequest
-	2,  // 11: wordbook.v1.WordbookService.AddWords:input_type -> wordbook.v1.WordsActionRequest
-	2,  // 12: wordbook.v1.WordbookService.RemoveWords:input_type -> wordbook.v1.WordsActionRequest
-	9,  // 13: wordbook.v1.WordbookService.CreateWordbook:output_type -> wordbook.v1.Wordbook
-	9,  // 14: wordbook.v1.WordbookService.UpdateWordbook:output_type -> wordbook.v1.Wordbook
-	11, // 15: wordbook.v1.WordbookService.DeleteWordbook:output_type -> google.protobuf.Empty
-	9,  // 16: wordbook.v1.WordbookService.GetWordbook:output_type -> wordbook.v1.Wordbook
-	4,  // 17: wordbook.v1.WordbookService.ListWordbooks:output_type -> wordbook.v1.ListWordbooksResponse
-	9,  // 18: wordbook.v1.WordbookService.AddWords:output_type -> wordbook.v1.Wordbook
-	9,  // 19: wordbook.v1.WordbookService.RemoveWords:output_type -> wordbook.v1.Wordbook
-	13, // [13:20] is the sub-list for method output_type
-	6,  // [6:13] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	7,  // 0: wordbook.v1.CreateWordbookRequest.language:type_name -> common.v1.Language
+	8,  // 1: wordbook.v1.CreateWordbookRequest.visibility:type_name -> wordbook.v1.VisibilityType
+	5,  // 2: wordbook.v1.CreateWordbookRequest.annotations:type_name -> wordbook.v1.CreateWordbookRequest.AnnotationsEntry
+	8,  // 3: wordbook.v1.UpdateWordbookRequest.visibility:type_name -> wordbook.v1.VisibilityType
+	6,  // 4: wordbook.v1.UpdateWordbookRequest.annotations:type_name -> wordbook.v1.UpdateWordbookRequest.AnnotationsEntry
+	9,  // 5: wordbook.v1.ListWordbooksRequest.pagination:type_name -> common.v1.PaginationRequest
+	10, // 6: wordbook.v1.ListWordbooksResponse.pagination:type_name -> common.v1.PaginationResponse
+	11, // 7: wordbook.v1.ListWordbooksResponse.wordbooks:type_name -> wordbook.v1.Wordbook
+	0,  // 8: wordbook.v1.WordbookService.CreateWordbook:input_type -> wordbook.v1.CreateWordbookRequest
+	1,  // 9: wordbook.v1.WordbookService.UpdateWordbook:input_type -> wordbook.v1.UpdateWordbookRequest
+	12, // 10: wordbook.v1.WordbookService.DeleteWordbook:input_type -> common.v1.IDRequest
+	12, // 11: wordbook.v1.WordbookService.GetWordbook:input_type -> common.v1.IDRequest
+	3,  // 12: wordbook.v1.WordbookService.ListWordbooks:input_type -> wordbook.v1.ListWordbooksRequest
+	2,  // 13: wordbook.v1.WordbookService.AddWords:input_type -> wordbook.v1.WordsActionRequest
+	2,  // 14: wordbook.v1.WordbookService.RemoveWords:input_type -> wordbook.v1.WordsActionRequest
+	11, // 15: wordbook.v1.WordbookService.CreateWordbook:output_type -> wordbook.v1.Wordbook
+	11, // 16: wordbook.v1.WordbookService.UpdateWordbook:output_type -> wordbook.v1.Wordbook
+	13, // 17: wordbook.v1.WordbookService.DeleteWordbook:output_type -> google.protobuf.Empty
+	11, // 18: wordbook.v1.WordbookService.GetWordbook:output_type -> wordbook.v1.Wordbook
+	4,  // 19: wordbook.v1.WordbookService.ListWordbooks:output_type -> wordbook.v1.ListWordbooksResponse
+	11, // 20: wordbook.v1.WordbookService.AddWords:output_type -> wordbook.v1.Wordbook
+	11, // 21: wordbook.v1.WordbookService.RemoveWords:output_type -> wordbook.v1.Wordbook
+	15, // [15:22] is the sub-list for method output_type
+	8,  // [8:15] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_wordbook_v1_wordbook_service_proto_init() }
@@ -452,7 +480,7 @@ func file_wordbook_v1_wordbook_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_wordbook_v1_wordbook_service_proto_rawDesc), len(file_wordbook_v1_wordbook_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
