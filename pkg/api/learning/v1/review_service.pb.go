@@ -10,7 +10,9 @@ import (
 	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	_ "google.golang.org/protobuf/types/known/anypb"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -85,7 +87,7 @@ func (x *CreateReviewPlanRequest) GetWordbookIds() []int64 {
 
 type UpdateReviewPlanRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id            int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	WordbookIds   []int64                `protobuf:"varint,4,rep,packed,name=wordbook_ids,json=wordbookIds,proto3" json:"wordbook_ids,omitempty"`
@@ -123,7 +125,7 @@ func (*UpdateReviewPlanRequest) Descriptor() ([]byte, []int) {
 	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *UpdateReviewPlanRequest) GetId() int64 {
+func (x *UpdateReviewPlanRequest) GetId() int32 {
 	if x != nil {
 		return x.Id
 	}
@@ -265,7 +267,7 @@ func (x *ListReviewPlansResponse) GetPlans() []*ReviewPlan {
 
 type GetFlashCardsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ReviewPlanId  int64                  `protobuf:"varint,1,opt,name=review_plan_id,json=reviewPlanId,proto3" json:"review_plan_id,omitempty"`
+	ReviewPlanId  int32                  `protobuf:"varint,1,opt,name=review_plan_id,json=reviewPlanId,proto3" json:"review_plan_id,omitempty"`
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -301,7 +303,7 @@ func (*GetFlashCardsRequest) Descriptor() ([]byte, []int) {
 	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *GetFlashCardsRequest) GetReviewPlanId() int64 {
+func (x *GetFlashCardsRequest) GetReviewPlanId() int32 {
 	if x != nil {
 		return x.ReviewPlanId
 	}
@@ -319,6 +321,7 @@ type FlashCardSet struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Pagination    *v1.PaginationResponse `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	FlashCards    []*FlashCard           `protobuf:"bytes,2,rep,name=flash_cards,json=flashCards,proto3" json:"flash_cards,omitempty"`
+	Stats         *FlashCardStats        `protobuf:"bytes,3,opt,name=stats,proto3" json:"stats,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -367,17 +370,232 @@ func (x *FlashCardSet) GetFlashCards() []*FlashCard {
 	return nil
 }
 
+func (x *FlashCardSet) GetStats() *FlashCardStats {
+	if x != nil {
+		return x.Stats
+	}
+	return nil
+}
+
+// FlashCard statistics for current session
+type FlashCardStats struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	NewWords         int32                  `protobuf:"varint,1,opt,name=new_words,json=newWords,proto3" json:"new_words,omitempty"`                         // Number of new words in this set
+	ReviewWords      int32                  `protobuf:"varint,2,opt,name=review_words,json=reviewWords,proto3" json:"review_words,omitempty"`                // Number of review words in this set
+	TotalDueWords    int32                  `protobuf:"varint,3,opt,name=total_due_words,json=totalDueWords,proto3" json:"total_due_words,omitempty"`        // Total number of words due for review
+	EstimatedMinutes int32                  `protobuf:"varint,4,opt,name=estimated_minutes,json=estimatedMinutes,proto3" json:"estimated_minutes,omitempty"` // Estimated time to complete (minutes)
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *FlashCardStats) Reset() {
+	*x = FlashCardStats{}
+	mi := &file_learning_v1_review_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlashCardStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlashCardStats) ProtoMessage() {}
+
+func (x *FlashCardStats) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_review_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlashCardStats.ProtoReflect.Descriptor instead.
+func (*FlashCardStats) Descriptor() ([]byte, []int) {
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *FlashCardStats) GetNewWords() int32 {
+	if x != nil {
+		return x.NewWords
+	}
+	return 0
+}
+
+func (x *FlashCardStats) GetReviewWords() int32 {
+	if x != nil {
+		return x.ReviewWords
+	}
+	return 0
+}
+
+func (x *FlashCardStats) GetTotalDueWords() int32 {
+	if x != nil {
+		return x.TotalDueWords
+	}
+	return 0
+}
+
+func (x *FlashCardStats) GetEstimatedMinutes() int32 {
+	if x != nil {
+		return x.EstimatedMinutes
+	}
+	return 0
+}
+
+// Request to submit answer records
+type SubmitAnswerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReviewPlanId  int32                  `protobuf:"varint,1,opt,name=review_plan_id,json=reviewPlanId,proto3" json:"review_plan_id,omitempty"`
+	Results       []*AnswerResult        `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitAnswerRequest) Reset() {
+	*x = SubmitAnswerRequest{}
+	mi := &file_learning_v1_review_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitAnswerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitAnswerRequest) ProtoMessage() {}
+
+func (x *SubmitAnswerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_review_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitAnswerRequest.ProtoReflect.Descriptor instead.
+func (*SubmitAnswerRequest) Descriptor() ([]byte, []int) {
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SubmitAnswerRequest) GetReviewPlanId() int32 {
+	if x != nil {
+		return x.ReviewPlanId
+	}
+	return 0
+}
+
+func (x *SubmitAnswerRequest) GetResults() []*AnswerResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+// Single answer result for one flashcard
+type AnswerResult struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	LwordId  int64                  `protobuf:"varint,1,opt,name=lword_id,json=lwordId,proto3" json:"lword_id,omitempty"`                              // Stable linkage to LearnedWord
+	CardType CardType               `protobuf:"varint,2,opt,name=card_type,json=cardType,proto3,enum=learning.v1.CardType" json:"card_type,omitempty"` // Type of the card answered
+	// Result details
+	Correct          bool                   `protobuf:"varint,3,opt,name=correct,proto3" json:"correct,omitempty"`                                             // Whether the answer was strictly correct
+	Accuracy         float32                `protobuf:"fixed32,4,opt,name=accuracy,proto3" json:"accuracy,omitempty"`                                          // Accuracy score (0.0 - 1.0), useful for partial matches
+	TimeSpentSeconds int32                  `protobuf:"varint,5,opt,name=time_spent_seconds,json=timeSpentSeconds,proto3" json:"time_spent_seconds,omitempty"` // Time spent answering (seconds)
+	AnsweredAt       *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=answered_at,json=answeredAt,proto3" json:"answered_at,omitempty"`                      // Timestamp when the answer was submitted
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *AnswerResult) Reset() {
+	*x = AnswerResult{}
+	mi := &file_learning_v1_review_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnswerResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnswerResult) ProtoMessage() {}
+
+func (x *AnswerResult) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_review_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnswerResult.ProtoReflect.Descriptor instead.
+func (*AnswerResult) Descriptor() ([]byte, []int) {
+	return file_learning_v1_review_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *AnswerResult) GetLwordId() int64 {
+	if x != nil {
+		return x.LwordId
+	}
+	return 0
+}
+
+func (x *AnswerResult) GetCardType() CardType {
+	if x != nil {
+		return x.CardType
+	}
+	return CardType_CARD_TYPE_UNSPECIFIED
+}
+
+func (x *AnswerResult) GetCorrect() bool {
+	if x != nil {
+		return x.Correct
+	}
+	return false
+}
+
+func (x *AnswerResult) GetAccuracy() float32 {
+	if x != nil {
+		return x.Accuracy
+	}
+	return 0
+}
+
+func (x *AnswerResult) GetTimeSpentSeconds() int32 {
+	if x != nil {
+		return x.TimeSpentSeconds
+	}
+	return 0
+}
+
+func (x *AnswerResult) GetAnsweredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AnsweredAt
+	}
+	return nil
+}
+
 var File_learning_v1_review_service_proto protoreflect.FileDescriptor
 
 const file_learning_v1_review_service_proto_rawDesc = "" +
 	"\n" +
-	" learning/v1/review_service.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1blearning/v1/flashcard.proto\x1a\x1alearning/v1/learning.proto\x1a\x1dlearning/v1/review_plan.proto\"r\n" +
+	" learning/v1/review_service.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x19google/protobuf/any.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1blearning/v1/flashcard.proto\x1a\x1alearning/v1/learning.proto\x1a\x1dlearning/v1/review_plan.proto\"r\n" +
 	"\x17CreateReviewPlanRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12!\n" +
 	"\fwordbook_ids\x18\x03 \x03(\x03R\vwordbookIds\"\x82\x01\n" +
 	"\x17UpdateReviewPlanRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
+	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12!\n" +
 	"\fwordbook_ids\x18\x04 \x03(\x03R\vwordbookIds\"\x89\x01\n" +
@@ -393,21 +611,39 @@ const file_learning_v1_review_service_proto_rawDesc = "" +
 	"pagination\x12-\n" +
 	"\x05plans\x18\x02 \x03(\v2\x17.learning.v1.ReviewPlanR\x05plans\"R\n" +
 	"\x14GetFlashCardsRequest\x12$\n" +
-	"\x0ereview_plan_id\x18\x01 \x01(\x03R\freviewPlanId\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\x86\x01\n" +
+	"\x0ereview_plan_id\x18\x01 \x01(\x05R\freviewPlanId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\xb9\x01\n" +
 	"\fFlashCardSet\x12=\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
 	"pagination\x127\n" +
 	"\vflash_cards\x18\x02 \x03(\v2\x16.learning.v1.FlashCardR\n" +
-	"flashCards2\xf4\x03\n" +
+	"flashCards\x121\n" +
+	"\x05stats\x18\x03 \x01(\v2\x1b.learning.v1.FlashCardStatsR\x05stats\"\xa5\x01\n" +
+	"\x0eFlashCardStats\x12\x1b\n" +
+	"\tnew_words\x18\x01 \x01(\x05R\bnewWords\x12!\n" +
+	"\freview_words\x18\x02 \x01(\x05R\vreviewWords\x12&\n" +
+	"\x0ftotal_due_words\x18\x03 \x01(\x05R\rtotalDueWords\x12+\n" +
+	"\x11estimated_minutes\x18\x04 \x01(\x05R\x10estimatedMinutes\"p\n" +
+	"\x13SubmitAnswerRequest\x12$\n" +
+	"\x0ereview_plan_id\x18\x01 \x01(\x05R\freviewPlanId\x123\n" +
+	"\aresults\x18\x02 \x03(\v2\x19.learning.v1.AnswerResultR\aresults\"\xfe\x01\n" +
+	"\fAnswerResult\x12\x19\n" +
+	"\blword_id\x18\x01 \x01(\x03R\alwordId\x122\n" +
+	"\tcard_type\x18\x02 \x01(\x0e2\x15.learning.v1.CardTypeR\bcardType\x12\x18\n" +
+	"\acorrect\x18\x03 \x01(\bR\acorrect\x12\x1a\n" +
+	"\baccuracy\x18\x04 \x01(\x02R\baccuracy\x12,\n" +
+	"\x12time_spent_seconds\x18\x05 \x01(\x05R\x10timeSpentSeconds\x12;\n" +
+	"\vanswered_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"answeredAt2\xc0\x04\n" +
 	"\x11ReviewPlanService\x12S\n" +
 	"\x10CreateReviewPlan\x12$.learning.v1.CreateReviewPlanRequest\x1a\x17.learning.v1.ReviewPlan\"\x00\x12S\n" +
 	"\x10UpdateReviewPlan\x12$.learning.v1.UpdateReviewPlanRequest\x1a\x17.learning.v1.ReviewPlan\"\x00\x12@\n" +
 	"\rGetReviewPlan\x12\x14.common.v1.IDRequest\x1a\x17.learning.v1.ReviewPlan\"\x00\x12^\n" +
 	"\x0fListReviewPlans\x12#.learning.v1.ListReviewPlansRequest\x1a$.learning.v1.ListReviewPlansResponse\"\x00\x12B\n" +
 	"\x10DeleteReviewPlan\x12\x14.common.v1.IDRequest\x1a\x16.google.protobuf.Empty\"\x00\x12O\n" +
-	"\rGetFlashCards\x12!.learning.v1.GetFlashCardsRequest\x1a\x19.learning.v1.FlashCardSet\"\x00B\xac\x01\n" +
+	"\rGetFlashCards\x12!.learning.v1.GetFlashCardsRequest\x1a\x19.learning.v1.FlashCardSet\"\x00\x12J\n" +
+	"\fSubmitAnswer\x12 .learning.v1.SubmitAnswerRequest\x1a\x16.google.protobuf.Empty\"\x00B\xac\x01\n" +
 	"\x0fcom.learning.v1B\x12ReviewServiceProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (
@@ -422,7 +658,7 @@ func file_learning_v1_review_service_proto_rawDescGZIP() []byte {
 	return file_learning_v1_review_service_proto_rawDescData
 }
 
-var file_learning_v1_review_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_learning_v1_review_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_learning_v1_review_service_proto_goTypes = []any{
 	(*CreateReviewPlanRequest)(nil), // 0: learning.v1.CreateReviewPlanRequest
 	(*UpdateReviewPlanRequest)(nil), // 1: learning.v1.UpdateReviewPlanRequest
@@ -430,36 +666,47 @@ var file_learning_v1_review_service_proto_goTypes = []any{
 	(*ListReviewPlansResponse)(nil), // 3: learning.v1.ListReviewPlansResponse
 	(*GetFlashCardsRequest)(nil),    // 4: learning.v1.GetFlashCardsRequest
 	(*FlashCardSet)(nil),            // 5: learning.v1.FlashCardSet
-	(*v1.PaginationRequest)(nil),    // 6: common.v1.PaginationRequest
-	(*v1.PaginationResponse)(nil),   // 7: common.v1.PaginationResponse
-	(*ReviewPlan)(nil),              // 8: learning.v1.ReviewPlan
-	(*FlashCard)(nil),               // 9: learning.v1.FlashCard
-	(*v1.IDRequest)(nil),            // 10: common.v1.IDRequest
-	(*emptypb.Empty)(nil),           // 11: google.protobuf.Empty
+	(*FlashCardStats)(nil),          // 6: learning.v1.FlashCardStats
+	(*SubmitAnswerRequest)(nil),     // 7: learning.v1.SubmitAnswerRequest
+	(*AnswerResult)(nil),            // 8: learning.v1.AnswerResult
+	(*v1.PaginationRequest)(nil),    // 9: common.v1.PaginationRequest
+	(*v1.PaginationResponse)(nil),   // 10: common.v1.PaginationResponse
+	(*ReviewPlan)(nil),              // 11: learning.v1.ReviewPlan
+	(*FlashCard)(nil),               // 12: learning.v1.FlashCard
+	(CardType)(0),                   // 13: learning.v1.CardType
+	(*timestamppb.Timestamp)(nil),   // 14: google.protobuf.Timestamp
+	(*v1.IDRequest)(nil),            // 15: common.v1.IDRequest
+	(*emptypb.Empty)(nil),           // 16: google.protobuf.Empty
 }
 var file_learning_v1_review_service_proto_depIdxs = []int32{
-	6,  // 0: learning.v1.ListReviewPlansRequest.pagination:type_name -> common.v1.PaginationRequest
-	7,  // 1: learning.v1.ListReviewPlansResponse.pagination:type_name -> common.v1.PaginationResponse
-	8,  // 2: learning.v1.ListReviewPlansResponse.plans:type_name -> learning.v1.ReviewPlan
-	7,  // 3: learning.v1.FlashCardSet.pagination:type_name -> common.v1.PaginationResponse
-	9,  // 4: learning.v1.FlashCardSet.flash_cards:type_name -> learning.v1.FlashCard
-	0,  // 5: learning.v1.ReviewPlanService.CreateReviewPlan:input_type -> learning.v1.CreateReviewPlanRequest
-	1,  // 6: learning.v1.ReviewPlanService.UpdateReviewPlan:input_type -> learning.v1.UpdateReviewPlanRequest
-	10, // 7: learning.v1.ReviewPlanService.GetReviewPlan:input_type -> common.v1.IDRequest
-	2,  // 8: learning.v1.ReviewPlanService.ListReviewPlans:input_type -> learning.v1.ListReviewPlansRequest
-	10, // 9: learning.v1.ReviewPlanService.DeleteReviewPlan:input_type -> common.v1.IDRequest
-	4,  // 10: learning.v1.ReviewPlanService.GetFlashCards:input_type -> learning.v1.GetFlashCardsRequest
-	8,  // 11: learning.v1.ReviewPlanService.CreateReviewPlan:output_type -> learning.v1.ReviewPlan
-	8,  // 12: learning.v1.ReviewPlanService.UpdateReviewPlan:output_type -> learning.v1.ReviewPlan
-	8,  // 13: learning.v1.ReviewPlanService.GetReviewPlan:output_type -> learning.v1.ReviewPlan
-	3,  // 14: learning.v1.ReviewPlanService.ListReviewPlans:output_type -> learning.v1.ListReviewPlansResponse
-	11, // 15: learning.v1.ReviewPlanService.DeleteReviewPlan:output_type -> google.protobuf.Empty
-	5,  // 16: learning.v1.ReviewPlanService.GetFlashCards:output_type -> learning.v1.FlashCardSet
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	9,  // 0: learning.v1.ListReviewPlansRequest.pagination:type_name -> common.v1.PaginationRequest
+	10, // 1: learning.v1.ListReviewPlansResponse.pagination:type_name -> common.v1.PaginationResponse
+	11, // 2: learning.v1.ListReviewPlansResponse.plans:type_name -> learning.v1.ReviewPlan
+	10, // 3: learning.v1.FlashCardSet.pagination:type_name -> common.v1.PaginationResponse
+	12, // 4: learning.v1.FlashCardSet.flash_cards:type_name -> learning.v1.FlashCard
+	6,  // 5: learning.v1.FlashCardSet.stats:type_name -> learning.v1.FlashCardStats
+	8,  // 6: learning.v1.SubmitAnswerRequest.results:type_name -> learning.v1.AnswerResult
+	13, // 7: learning.v1.AnswerResult.card_type:type_name -> learning.v1.CardType
+	14, // 8: learning.v1.AnswerResult.answered_at:type_name -> google.protobuf.Timestamp
+	0,  // 9: learning.v1.ReviewPlanService.CreateReviewPlan:input_type -> learning.v1.CreateReviewPlanRequest
+	1,  // 10: learning.v1.ReviewPlanService.UpdateReviewPlan:input_type -> learning.v1.UpdateReviewPlanRequest
+	15, // 11: learning.v1.ReviewPlanService.GetReviewPlan:input_type -> common.v1.IDRequest
+	2,  // 12: learning.v1.ReviewPlanService.ListReviewPlans:input_type -> learning.v1.ListReviewPlansRequest
+	15, // 13: learning.v1.ReviewPlanService.DeleteReviewPlan:input_type -> common.v1.IDRequest
+	4,  // 14: learning.v1.ReviewPlanService.GetFlashCards:input_type -> learning.v1.GetFlashCardsRequest
+	7,  // 15: learning.v1.ReviewPlanService.SubmitAnswer:input_type -> learning.v1.SubmitAnswerRequest
+	11, // 16: learning.v1.ReviewPlanService.CreateReviewPlan:output_type -> learning.v1.ReviewPlan
+	11, // 17: learning.v1.ReviewPlanService.UpdateReviewPlan:output_type -> learning.v1.ReviewPlan
+	11, // 18: learning.v1.ReviewPlanService.GetReviewPlan:output_type -> learning.v1.ReviewPlan
+	3,  // 19: learning.v1.ReviewPlanService.ListReviewPlans:output_type -> learning.v1.ListReviewPlansResponse
+	16, // 20: learning.v1.ReviewPlanService.DeleteReviewPlan:output_type -> google.protobuf.Empty
+	5,  // 21: learning.v1.ReviewPlanService.GetFlashCards:output_type -> learning.v1.FlashCardSet
+	16, // 22: learning.v1.ReviewPlanService.SubmitAnswer:output_type -> google.protobuf.Empty
+	16, // [16:23] is the sub-list for method output_type
+	9,  // [9:16] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_learning_v1_review_service_proto_init() }
@@ -476,7 +723,7 @@ func file_learning_v1_review_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_learning_v1_review_service_proto_rawDesc), len(file_learning_v1_review_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

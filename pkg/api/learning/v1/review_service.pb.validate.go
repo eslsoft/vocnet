@@ -740,6 +740,35 @@ func (m *FlashCardSet) validate(all bool) error {
 
 	}
 
+	if all {
+		switch v := interface{}(m.GetStats()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, FlashCardSetValidationError{
+					field:  "Stats",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, FlashCardSetValidationError{
+					field:  "Stats",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetStats()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return FlashCardSetValidationError{
+				field:  "Stats",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return FlashCardSetMultiError(errors)
 	}
@@ -816,3 +845,387 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = FlashCardSetValidationError{}
+
+// Validate checks the field values on FlashCardStats with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *FlashCardStats) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on FlashCardStats with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in FlashCardStatsMultiError,
+// or nil if none found.
+func (m *FlashCardStats) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *FlashCardStats) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for NewWords
+
+	// no validation rules for ReviewWords
+
+	// no validation rules for TotalDueWords
+
+	// no validation rules for EstimatedMinutes
+
+	if len(errors) > 0 {
+		return FlashCardStatsMultiError(errors)
+	}
+
+	return nil
+}
+
+// FlashCardStatsMultiError is an error wrapping multiple validation errors
+// returned by FlashCardStats.ValidateAll() if the designated constraints
+// aren't met.
+type FlashCardStatsMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FlashCardStatsMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FlashCardStatsMultiError) AllErrors() []error { return m }
+
+// FlashCardStatsValidationError is the validation error returned by
+// FlashCardStats.Validate if the designated constraints aren't met.
+type FlashCardStatsValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e FlashCardStatsValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e FlashCardStatsValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e FlashCardStatsValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e FlashCardStatsValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e FlashCardStatsValidationError) ErrorName() string { return "FlashCardStatsValidationError" }
+
+// Error satisfies the builtin error interface
+func (e FlashCardStatsValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sFlashCardStats.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = FlashCardStatsValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = FlashCardStatsValidationError{}
+
+// Validate checks the field values on SubmitAnswerRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *SubmitAnswerRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SubmitAnswerRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// SubmitAnswerRequestMultiError, or nil if none found.
+func (m *SubmitAnswerRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SubmitAnswerRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for ReviewPlanId
+
+	for idx, item := range m.GetResults() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, SubmitAnswerRequestValidationError{
+						field:  fmt.Sprintf("Results[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, SubmitAnswerRequestValidationError{
+						field:  fmt.Sprintf("Results[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return SubmitAnswerRequestValidationError{
+					field:  fmt.Sprintf("Results[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return SubmitAnswerRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// SubmitAnswerRequestMultiError is an error wrapping multiple validation
+// errors returned by SubmitAnswerRequest.ValidateAll() if the designated
+// constraints aren't met.
+type SubmitAnswerRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SubmitAnswerRequestMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SubmitAnswerRequestMultiError) AllErrors() []error { return m }
+
+// SubmitAnswerRequestValidationError is the validation error returned by
+// SubmitAnswerRequest.Validate if the designated constraints aren't met.
+type SubmitAnswerRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SubmitAnswerRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SubmitAnswerRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SubmitAnswerRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SubmitAnswerRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SubmitAnswerRequestValidationError) ErrorName() string {
+	return "SubmitAnswerRequestValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e SubmitAnswerRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSubmitAnswerRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SubmitAnswerRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SubmitAnswerRequestValidationError{}
+
+// Validate checks the field values on AnswerResult with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *AnswerResult) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on AnswerResult with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in AnswerResultMultiError, or
+// nil if none found.
+func (m *AnswerResult) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *AnswerResult) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for LwordId
+
+	// no validation rules for CardType
+
+	// no validation rules for Correct
+
+	// no validation rules for Accuracy
+
+	// no validation rules for TimeSpentSeconds
+
+	if all {
+		switch v := interface{}(m.GetAnsweredAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, AnswerResultValidationError{
+					field:  "AnsweredAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, AnswerResultValidationError{
+					field:  "AnsweredAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetAnsweredAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return AnswerResultValidationError{
+				field:  "AnsweredAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return AnswerResultMultiError(errors)
+	}
+
+	return nil
+}
+
+// AnswerResultMultiError is an error wrapping multiple validation errors
+// returned by AnswerResult.ValidateAll() if the designated constraints aren't met.
+type AnswerResultMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m AnswerResultMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m AnswerResultMultiError) AllErrors() []error { return m }
+
+// AnswerResultValidationError is the validation error returned by
+// AnswerResult.Validate if the designated constraints aren't met.
+type AnswerResultValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e AnswerResultValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e AnswerResultValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e AnswerResultValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e AnswerResultValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e AnswerResultValidationError) ErrorName() string { return "AnswerResultValidationError" }
+
+// Error satisfies the builtin error interface
+func (e AnswerResultValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sAnswerResult.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = AnswerResultValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = AnswerResultValidationError{}

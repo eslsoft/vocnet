@@ -406,6 +406,7 @@ type FlashCard struct {
 	Question      *CardQuestion          `protobuf:"bytes,6,opt,name=question,proto3" json:"question,omitempty"`                                                                                 // 具体问题内容
 	Answer        *CardAnswer            `protobuf:"bytes,7,opt,name=answer,proto3" json:"answer,omitempty"`                                                                                     // 标准答案和验证规则
 	Options       []*CardItem            `protobuf:"bytes,8,rep,name=options,proto3" json:"options,omitempty"`                                                                                   // 可交互项 (选项/填空位/排序项/配对项)
+	LwordId       int64                  `protobuf:"varint,9,opt,name=lword_id,json=lwordId,proto3" json:"lword_id,omitempty"`                                                                   // 关联的 LearnedWord ID (用于结果回传)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -494,6 +495,13 @@ func (x *FlashCard) GetOptions() []*CardItem {
 		return x.Options
 	}
 	return nil
+}
+
+func (x *FlashCard) GetLwordId() int64 {
+	if x != nil {
+		return x.LwordId
+	}
+	return 0
 }
 
 // ============================================================================
@@ -851,7 +859,7 @@ var File_learning_v1_flashcard_proto protoreflect.FileDescriptor
 
 const file_learning_v1_flashcard_proto_rawDesc = "" +
 	"\n" +
-	"\x1blearning/v1/flashcard.proto\x12\vlearning.v1\x1a\x12dict/v1/word.proto\"\xa2\x03\n" +
+	"\x1blearning/v1/flashcard.proto\x12\vlearning.v1\x1a\x12dict/v1/word.proto\"\xbd\x03\n" +
 	"\tFlashCard\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12I\n" +
 	"\vannotations\x18\x02 \x03(\v2'.learning.v1.FlashCard.AnnotationsEntryR\vannotations\x12)\n" +
@@ -862,7 +870,8 @@ const file_learning_v1_flashcard_proto_rawDesc = "" +
 	"\x06prompt\x18\x05 \x01(\tR\x06prompt\x125\n" +
 	"\bquestion\x18\x06 \x01(\v2\x19.learning.v1.CardQuestionR\bquestion\x12/\n" +
 	"\x06answer\x18\a \x01(\v2\x17.learning.v1.CardAnswerR\x06answer\x12/\n" +
-	"\aoptions\x18\b \x03(\v2\x15.learning.v1.CardItemR\aoptions\x1a>\n" +
+	"\aoptions\x18\b \x03(\v2\x15.learning.v1.CardItemR\aoptions\x12\x19\n" +
+	"\blword_id\x18\t \x01(\x03R\alwordId\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8d\x01\n" +

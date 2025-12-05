@@ -47,6 +47,7 @@ message FlashCard {
   CardQuestion question = 6; // 具体问题内容
   CardAnswer answer = 7; // 标准答案和验证规则
   repeated CardItem options = 8; // 可交互项 (选项/填空位/排序项/配对项)
+  int64 lword_id = 9; // 关联的 LearnedWord ID (用于结果回传)
 }
 
 // ============================================================================

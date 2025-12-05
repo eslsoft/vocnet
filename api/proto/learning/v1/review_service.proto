@@ -3,7 +3,9 @@ syntax = "proto3";
 package learning.v1;
 
 import "common/v1/types.proto";
+import "google/protobuf/any.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
 import "learning/v1/flashcard.proto";
 import "learning/v1/learning.proto";
 import "learning/v1/review_plan.proto";
@@ -15,7 +17,7 @@ message CreateReviewPlanRequest {
 }
 
 message UpdateReviewPlanRequest {
-  int64 id = 1;
+  int32 id = 1;
   string name = 2;
   string description = 3;
   repeated int64 wordbook_ids = 4;
@@ -33,13 +35,45 @@ message ListReviewPlansResponse {
 }
 
 message GetFlashCardsRequest {
-  int64 review_plan_id = 1;
+  int32 review_plan_id = 1;
   int32 limit = 2;
 }
 
 message FlashCardSet {
   common.v1.PaginationResponse pagination = 1;
   repeated FlashCard flash_cards = 2;
+  FlashCardStats stats = 3;
+}
+
+// FlashCard statistics for current session
+message FlashCardStats {
+  int32 new_words = 1; // Number of new words in this set
+  int32 review_words = 2; // Number of review words in this set
+  int32 total_due_words = 3; // Total number of words due for review
+  int32 estimated_minutes = 4; // Estimated time to complete (minutes)
+}
+
+// ============================================================================
+// Submit Answers - Batch submission of answer records
+// ============================================================================
+
+// Request to submit answer records
+message SubmitAnswerRequest {
+  int32 review_plan_id = 1;
+  repeated AnswerResult results = 2;
+}
+
+// Single answer result for one flashcard
+message AnswerResult {
+  int64 lword_id = 1; // Stable linkage to LearnedWord
+  CardType card_type = 2; // Type of the card answered
+
+  // Result details
+  bool correct = 3; // Whether the answer was strictly correct
+  float accuracy = 4; // Accuracy score (0.0 - 1.0), useful for partial matches
+
+  int32 time_spent_seconds = 5; // Time spent answering (seconds)
+  google.protobuf.Timestamp answered_at = 6; // Timestamp when the answer was submitted
 }
 
 service ReviewPlanService {
@@ -50,4 +84,5 @@ service ReviewPlanService {
   rpc DeleteReviewPlan(common.v1.IDRequest) returns (google.protobuf.Empty) {}
 
   rpc GetFlashCards(GetFlashCardsRequest) returns (FlashCardSet) {}
+  rpc SubmitAnswer(SubmitAnswerRequest) returns (google.protobuf.Empty) {}
 }

@@ -53,6 +53,9 @@ const (
 	// ReviewPlanServiceGetFlashCardsProcedure is the fully-qualified name of the ReviewPlanService's
 	// GetFlashCards RPC.
 	ReviewPlanServiceGetFlashCardsProcedure = "/learning.v1.ReviewPlanService/GetFlashCards"
+	// ReviewPlanServiceSubmitAnswerProcedure is the fully-qualified name of the ReviewPlanService's
+	// SubmitAnswer RPC.
+	ReviewPlanServiceSubmitAnswerProcedure = "/learning.v1.ReviewPlanService/SubmitAnswer"
 )
 
 // ReviewPlanServiceClient is a client for the learning.v1.ReviewPlanService service.
@@ -63,6 +66,7 @@ type ReviewPlanServiceClient interface {
 	ListReviewPlans(context.Context, *connect.Request[v1.ListReviewPlansRequest]) (*connect.Response[v1.ListReviewPlansResponse], error)
 	DeleteReviewPlan(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
 	GetFlashCards(context.Context, *connect.Request[v1.GetFlashCardsRequest]) (*connect.Response[v1.FlashCardSet], error)
+	SubmitAnswer(context.Context, *connect.Request[v1.SubmitAnswerRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewReviewPlanServiceClient constructs a client for the learning.v1.ReviewPlanService service. By
@@ -112,6 +116,12 @@ func NewReviewPlanServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(reviewPlanServiceMethods.ByName("GetFlashCards")),
 			connect.WithClientOptions(opts...),
 		),
+		submitAnswer: connect.NewClient[v1.SubmitAnswerRequest, emptypb.Empty](
+			httpClient,
+			baseURL+ReviewPlanServiceSubmitAnswerProcedure,
+			connect.WithSchema(reviewPlanServiceMethods.ByName("SubmitAnswer")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -123,6 +133,7 @@ type reviewPlanServiceClient struct {
 	listReviewPlans  *connect.Client[v1.ListReviewPlansRequest, v1.ListReviewPlansResponse]
 	deleteReviewPlan *connect.Client[v11.IDRequest, emptypb.Empty]
 	getFlashCards    *connect.Client[v1.GetFlashCardsRequest, v1.FlashCardSet]
+	submitAnswer     *connect.Client[v1.SubmitAnswerRequest, emptypb.Empty]
 }
 
 // CreateReviewPlan calls learning.v1.ReviewPlanService.CreateReviewPlan.
@@ -155,6 +166,11 @@ func (c *reviewPlanServiceClient) GetFlashCards(ctx context.Context, req *connec
 	return c.getFlashCards.CallUnary(ctx, req)
 }
 
+// SubmitAnswer calls learning.v1.ReviewPlanService.SubmitAnswer.
+func (c *reviewPlanServiceClient) SubmitAnswer(ctx context.Context, req *connect.Request[v1.SubmitAnswerRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.submitAnswer.CallUnary(ctx, req)
+}
+
 // ReviewPlanServiceHandler is an implementation of the learning.v1.ReviewPlanService service.
 type ReviewPlanServiceHandler interface {
 	CreateReviewPlan(context.Context, *connect.Request[v1.CreateReviewPlanRequest]) (*connect.Response[v1.ReviewPlan], error)
@@ -163,6 +179,7 @@ type ReviewPlanServiceHandler interface {
 	ListReviewPlans(context.Context, *connect.Request[v1.ListReviewPlansRequest]) (*connect.Response[v1.ListReviewPlansResponse], error)
 	DeleteReviewPlan(context.Context, *connect.Request[v11.IDRequest]) (*connect.Response[emptypb.Empty], error)
 	GetFlashCards(context.Context, *connect.Request[v1.GetFlashCardsRequest]) (*connect.Response[v1.FlashCardSet], error)
+	SubmitAnswer(context.Context, *connect.Request[v1.SubmitAnswerRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewReviewPlanServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -208,6 +225,12 @@ func NewReviewPlanServiceHandler(svc ReviewPlanServiceHandler, opts ...connect.H
 		connect.WithSchema(reviewPlanServiceMethods.ByName("GetFlashCards")),
 		connect.WithHandlerOptions(opts...),
 	)
+	reviewPlanServiceSubmitAnswerHandler := connect.NewUnaryHandler(
+		ReviewPlanServiceSubmitAnswerProcedure,
+		svc.SubmitAnswer,
+		connect.WithSchema(reviewPlanServiceMethods.ByName("SubmitAnswer")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/learning.v1.ReviewPlanService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ReviewPlanServiceCreateReviewPlanProcedure:
@@ -222,6 +245,8 @@ func NewReviewPlanServiceHandler(svc ReviewPlanServiceHandler, opts ...connect.H
 			reviewPlanServiceDeleteReviewPlanHandler.ServeHTTP(w, r)
 		case ReviewPlanServiceGetFlashCardsProcedure:
 			reviewPlanServiceGetFlashCardsHandler.ServeHTTP(w, r)
+		case ReviewPlanServiceSubmitAnswerProcedure:
+			reviewPlanServiceSubmitAnswerHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -253,4 +278,8 @@ func (UnimplementedReviewPlanServiceHandler) DeleteReviewPlan(context.Context, *
 
 func (UnimplementedReviewPlanServiceHandler) GetFlashCards(context.Context, *connect.Request[v1.GetFlashCardsRequest]) (*connect.Response[v1.FlashCardSet], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.ReviewPlanService.GetFlashCards is not implemented"))
+}
+
+func (UnimplementedReviewPlanServiceHandler) SubmitAnswer(context.Context, *connect.Request[v1.SubmitAnswerRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("learning.v1.ReviewPlanService.SubmitAnswer is not implemented"))
 }

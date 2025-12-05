@@ -41,11 +41,11 @@ message LearnedWordStatus {
 
 // Mastery breakdown for different skills
 message MasteryBreakdown {
-  int32 listen = 1; // Listening mastery (0-5)
-  int32 read = 2; // Reading mastery (0-5)
-  int32 spell = 3; // Spelling mastery (0-5)
-  int32 pronounce = 4; // Pronunciation mastery (0-5)
-  int32 overall = 6; // Overall mastery score (0-500, stored as *100)
+  int32 listening = 1; // Listening mastery (0-5)
+  int32 reading = 2; // Reading mastery (0-5)
+  int32 spelling = 3; // Spelling mastery (0-5)
+  int32 speaking = 4; // Pronunciation mastery (0-5)
+  int32 overall = 5; // Overall mastery score (0-500, stored as *100)
 }
 
 // Review timing information

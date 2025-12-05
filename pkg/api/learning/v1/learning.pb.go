@@ -274,11 +274,11 @@ func (x *LearnedWordStatus) GetUpdatedAt() *timestamppb.Timestamp {
 // Mastery breakdown for different skills
 type MasteryBreakdown struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Listen        int32                  `protobuf:"varint,1,opt,name=listen,proto3" json:"listen,omitempty"`       // Listening mastery (0-5)
-	Read          int32                  `protobuf:"varint,2,opt,name=read,proto3" json:"read,omitempty"`           // Reading mastery (0-5)
-	Spell         int32                  `protobuf:"varint,3,opt,name=spell,proto3" json:"spell,omitempty"`         // Spelling mastery (0-5)
-	Pronounce     int32                  `protobuf:"varint,4,opt,name=pronounce,proto3" json:"pronounce,omitempty"` // Pronunciation mastery (0-5)
-	Overall       int32                  `protobuf:"varint,6,opt,name=overall,proto3" json:"overall,omitempty"`     // Overall mastery score (0-500, stored as *100)
+	Listening     int32                  `protobuf:"varint,1,opt,name=listening,proto3" json:"listening,omitempty"` // Listening mastery (0-5)
+	Reading       int32                  `protobuf:"varint,2,opt,name=reading,proto3" json:"reading,omitempty"`     // Reading mastery (0-5)
+	Spelling      int32                  `protobuf:"varint,3,opt,name=spelling,proto3" json:"spelling,omitempty"`   // Spelling mastery (0-5)
+	Speaking      int32                  `protobuf:"varint,4,opt,name=speaking,proto3" json:"speaking,omitempty"`   // Pronunciation mastery (0-5)
+	Overall       int32                  `protobuf:"varint,5,opt,name=overall,proto3" json:"overall,omitempty"`     // Overall mastery score (0-500, stored as *100)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -313,30 +313,30 @@ func (*MasteryBreakdown) Descriptor() ([]byte, []int) {
 	return file_learning_v1_learning_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *MasteryBreakdown) GetListen() int32 {
+func (x *MasteryBreakdown) GetListening() int32 {
 	if x != nil {
-		return x.Listen
+		return x.Listening
 	}
 	return 0
 }
 
-func (x *MasteryBreakdown) GetRead() int32 {
+func (x *MasteryBreakdown) GetReading() int32 {
 	if x != nil {
-		return x.Read
+		return x.Reading
 	}
 	return 0
 }
 
-func (x *MasteryBreakdown) GetSpell() int32 {
+func (x *MasteryBreakdown) GetSpelling() int32 {
 	if x != nil {
-		return x.Spell
+		return x.Spelling
 	}
 	return 0
 }
 
-func (x *MasteryBreakdown) GetPronounce() int32 {
+func (x *MasteryBreakdown) GetSpeaking() int32 {
 	if x != nil {
-		return x.Pronounce
+		return x.Speaking
 	}
 	return 0
 }
@@ -515,13 +515,13 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x8c\x01\n" +
-	"\x10MasteryBreakdown\x12\x16\n" +
-	"\x06listen\x18\x01 \x01(\x05R\x06listen\x12\x12\n" +
-	"\x04read\x18\x02 \x01(\x05R\x04read\x12\x14\n" +
-	"\x05spell\x18\x03 \x01(\x05R\x05spell\x12\x1c\n" +
-	"\tpronounce\x18\x04 \x01(\x05R\tpronounce\x12\x18\n" +
-	"\aoverall\x18\x06 \x01(\x05R\aoverall\"\xd6\x01\n" +
+	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x9c\x01\n" +
+	"\x10MasteryBreakdown\x12\x1c\n" +
+	"\tlistening\x18\x01 \x01(\x05R\tlistening\x12\x18\n" +
+	"\areading\x18\x02 \x01(\x05R\areading\x12\x1a\n" +
+	"\bspelling\x18\x03 \x01(\x05R\bspelling\x12\x1a\n" +
+	"\bspeaking\x18\x04 \x01(\x05R\bspeaking\x12\x18\n" +
+	"\aoverall\x18\x05 \x01(\x05R\aoverall\"\xd6\x01\n" +
 	"\fReviewTiming\x12@\n" +
 	"\x0elast_review_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\flastReviewAt\x12@\n" +
 	"\x0enext_review_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\fnextReviewAt\x12#\n" +

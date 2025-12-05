@@ -159,6 +159,8 @@ func (m *FlashCard) validate(all bool) error {
 
 	}
 
+	// no validation rules for LwordId
+
 	if len(errors) > 0 {
 		return FlashCardMultiError(errors)
 	}

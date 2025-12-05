@@ -582,13 +582,13 @@ func (m *MasteryBreakdown) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for Listen
+	// no validation rules for Listening
 
-	// no validation rules for Read
+	// no validation rules for Reading
 
-	// no validation rules for Spell
+	// no validation rules for Spelling
 
-	// no validation rules for Pronounce
+	// no validation rules for Speaking
 
 	// no validation rules for Overall
 
