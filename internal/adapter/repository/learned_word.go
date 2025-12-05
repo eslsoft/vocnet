@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -15,13 +16,15 @@ import (
 )
 
 type LearnedWordRepository struct {
-	client *entdb.Client
+	client       *entdb.Client
+	wordbookRepo repository.WordbookRepository
 }
 
 // NewLearnedWordRepository constructs an ent-backed repository.
-func NewLearnedWordRepository(client *entdb.Client) repository.LearnedWordRepository {
+func NewLearnedWordRepository(client *entdb.Client, wordbookRepo repository.WordbookRepository) repository.LearnedWordRepository {
 	return &LearnedWordRepository{
-		client: client,
+		client:       client,
+		wordbookRepo: wordbookRepo,
 	}
 }
 
@@ -356,4 +359,134 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 	}
 
 	return out
+}
+
+// GetByReviewPlan fetches words associated with a review plan's wordbooks.
+func (r *LearnedWordRepository) GetByReviewPlan(ctx context.Context, userID uuid.UUID,
+	wordbookIDs []int64, dueOnly bool, limit int) ([]*entity.LearnedWord, error) {
+
+	if len(wordbookIDs) == 0 {
+		return []*entity.LearnedWord{}, nil
+	}
+
+	// Step 1: Fetch all wordbooks to get their terms
+	if r.wordbookRepo == nil {
+		return nil, fmt.Errorf("wordbook repository not available")
+	}
+
+	wordbooks, err := r.wordbookRepo.GetByIDs(ctx, wordbookIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 2: Extract and deduplicate all terms
+	allTerms := make(map[string]struct{})
+	for _, wb := range wordbooks {
+		for _, term := range wb.Terms {
+			allTerms[term] = struct{}{}
+		}
+	}
+
+	if len(allTerms) == 0 {
+		return []*entity.LearnedWord{}, nil
+	}
+
+	termsSlice := make([]string, 0, len(allTerms))
+	for term := range allTerms {
+		termsSlice = append(termsSlice, term)
+	}
+
+	// Step 3: Query LearnedWords
+	qb := r.client.LearnedWord.Query().
+		Where(
+			entlearnedword.UserIDEQ(userID),
+			entlearnedword.TermIn(termsSlice...),
+		)
+
+	if dueOnly {
+		now := time.Now()
+		qb.Where(func(s *sql.Selector) {
+			// next_review_at <= now OR next_review_at IS NULL
+			s.Where(sql.Or(
+				sql.LTE(s.C(entlearnedword.FieldReviewNextReviewAt), now),
+				sql.IsNull(s.C(entlearnedword.FieldReviewNextReviewAt)),
+			))
+		})
+	}
+
+	if limit > 0 {
+		qb.Limit(limit)
+	}
+
+	rows, err := qb.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*entity.LearnedWord, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapEntLearnedWord(row))
+	}
+
+	return result, nil
+}
+
+// UpdateMasteryAndReview atomically updates mastery scores and review timing.
+func (r *LearnedWordRepository) UpdateMasteryAndReview(ctx context.Context, id int64,
+	userID uuid.UUID, mastery entity.MasteryBreakdown, review entity.ReviewTiming) error {
+
+	mutation := r.client.LearnedWord.UpdateOneID(id).
+		Where(entlearnedword.UserIDEQ(userID)).
+		SetMasteryListen(mastery.Listen).
+		SetMasteryRead(mastery.Read).
+		SetMasterySpell(mastery.Spell).
+		SetMasteryPronounce(mastery.Pronounce).
+		SetMasteryOverall(mastery.Overall).
+		SetReviewIntervalDays(review.IntervalDays).
+		SetReviewFailCount(review.FailCount).
+		SetUpdatedAt(time.Now())
+
+	if !review.LastReviewAt.IsZero() {
+		mutation.SetReviewLastReviewAt(review.LastReviewAt)
+	}
+	if !review.NextReviewAt.IsZero() {
+		mutation.SetReviewNextReviewAt(review.NextReviewAt)
+	}
+
+	_, err := mutation.Save(ctx)
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return entity.ErrLearnedWordNotFound
+		}
+		return err
+	}
+
+	return nil
+}
+
+// GetByIDs fetches multiple words by their IDs.
+func (r *LearnedWordRepository) GetByIDs(ctx context.Context, userID uuid.UUID,
+	ids []int64) ([]*entity.LearnedWord, error) {
+
+	if len(ids) == 0 {
+		return []*entity.LearnedWord{}, nil
+	}
+
+	rows, err := r.client.LearnedWord.Query().
+		Where(
+			entlearnedword.UserIDEQ(userID),
+			entlearnedword.IDIn(ids...),
+		).
+		All(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*entity.LearnedWord, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapEntLearnedWord(row))
+	}
+
+	return result, nil
 }

@@ -104,9 +104,14 @@ MaxInterval      = 180 天  // 最大间隔
 
 ### 3.2 服务端：生成卡片 (GetFlashCards)
 
+**设计模式**：**批次获取 (Batch Fetching)**
+- 本接口**不支持传统分页** (Offset/Page)，因为复习队列是动态变化的。
+- 客户端应采用 **"做完一批取一批"** 的模式。
+- 当用户完成当前批次并提交后，已复习的词不再满足 `next_review_at <= now` 条件，自然会从队列中消失。下一次请求将自动获取后续的词。
+
 **输入**：
 - `review_plan_id`: 复习计划ID
-- `limit`: 本次需要的卡片数量（如20张）
+- `limit`: 本次需要的卡片数量（建议 10-20 张，避免一次生成过多浪费资源）
 
 **核心逻辑**：
 1. 加载ReviewPlan关联的所有Wordbook
@@ -137,8 +142,27 @@ MaxInterval      = 180 天  // 最大间隔
 ```protobuf
 message FlashCardSet {
   repeated FlashCard flash_cards = 2;
-  // 需要新增统计信息（见下方proto改进建议）
+  FlashCardStats stats = 3; // 包含实时统计信息
 }
+
+message FlashCardStats {
+  int32 new_words = 1;       // 本批次包含的新词数
+  int32 review_words = 2;    // 本批次包含的复习词数
+  int32 total_due_words = 3; // 【关键】当前时刻待复习总数（包含本批次）。
+  int32 estimated_minutes = 4; // 预计剩余时间
+  int32 today_reviewed_count = 5; // 【新增】今天已复习的单词数（用于恢复进度条）
+}
+
+**客户端进度条计算公式**：
+```javascript
+// 总任务量 = 今天已完成 + 剩余待复习
+const totalTask = stats.today_reviewed_count + stats.total_due_words;
+// 当前进度 = 今天已完成
+const currentProgress = stats.today_reviewed_count;
+
+// 渲染
+ProgressBar.render(currentProgress, totalTask); // 例如: 20/100
+```
 ```
 
 **卡片选择算法（MVP版本）**：
@@ -157,6 +181,7 @@ message FlashCardSet {
 - ✅ 基于下发的answer即时反馈对错
 - ✅ 本地存储答题进度（localStorage/IndexedDB）
 - ✅ 批量提交答题记录
+- ✅ **错题重练机制**：当用户答错时，客户端**不应立即提交**，而是将该卡片重新插入待答队列末尾（Re-queue），直到答对为止。
 
 **本地数据结构**（参考）：
 ```javascript
@@ -178,6 +203,10 @@ message FlashCardSet {
   status: "in_progress"
 }
 ```
+
+**提交策略**：
+- 同一个词在本次 Session 中可能被回答多次（先错后对）。
+- **最终提交规则**：只要该词在本次 Session 中出现过错误，`SubmitAnswer` 时标记为 `correct=false`（或低分）。只有一次性答对的词，才标记为 `correct=true`。
 
 **中途退出处理**：
 - 监听 `beforeunload` 事件自动提交已答题目

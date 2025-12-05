@@ -379,13 +379,14 @@ func (x *FlashCardSet) GetStats() *FlashCardStats {
 
 // FlashCard statistics for current session
 type FlashCardStats struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	NewWords         int32                  `protobuf:"varint,1,opt,name=new_words,json=newWords,proto3" json:"new_words,omitempty"`                         // Number of new words in this set
-	ReviewWords      int32                  `protobuf:"varint,2,opt,name=review_words,json=reviewWords,proto3" json:"review_words,omitempty"`                // Number of review words in this set
-	TotalDueWords    int32                  `protobuf:"varint,3,opt,name=total_due_words,json=totalDueWords,proto3" json:"total_due_words,omitempty"`        // Total number of words due for review
-	EstimatedMinutes int32                  `protobuf:"varint,4,opt,name=estimated_minutes,json=estimatedMinutes,proto3" json:"estimated_minutes,omitempty"` // Estimated time to complete (minutes)
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	NewWords           int32                  `protobuf:"varint,1,opt,name=new_words,json=newWords,proto3" json:"new_words,omitempty"`                                 // Number of new words in this set
+	ReviewWords        int32                  `protobuf:"varint,2,opt,name=review_words,json=reviewWords,proto3" json:"review_words,omitempty"`                        // Number of review words in this set
+	TotalDueWords      int32                  `protobuf:"varint,3,opt,name=total_due_words,json=totalDueWords,proto3" json:"total_due_words,omitempty"`                // Total number of words due for review (including current batch)
+	TodayReviewedCount int32                  `protobuf:"varint,4,opt,name=today_reviewed_count,json=todayReviewedCount,proto3" json:"today_reviewed_count,omitempty"` // Number of words already reviewed today
+	EstimatedMinutes   int32                  `protobuf:"varint,5,opt,name=estimated_minutes,json=estimatedMinutes,proto3" json:"estimated_minutes,omitempty"`         // Estimated time to complete (minutes)
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *FlashCardStats) Reset() {
@@ -435,6 +436,13 @@ func (x *FlashCardStats) GetReviewWords() int32 {
 func (x *FlashCardStats) GetTotalDueWords() int32 {
 	if x != nil {
 		return x.TotalDueWords
+	}
+	return 0
+}
+
+func (x *FlashCardStats) GetTodayReviewedCount() int32 {
+	if x != nil {
+		return x.TodayReviewedCount
 	}
 	return 0
 }
@@ -619,12 +627,13 @@ const file_learning_v1_review_service_proto_rawDesc = "" +
 	"pagination\x127\n" +
 	"\vflash_cards\x18\x02 \x03(\v2\x16.learning.v1.FlashCardR\n" +
 	"flashCards\x121\n" +
-	"\x05stats\x18\x03 \x01(\v2\x1b.learning.v1.FlashCardStatsR\x05stats\"\xa5\x01\n" +
+	"\x05stats\x18\x03 \x01(\v2\x1b.learning.v1.FlashCardStatsR\x05stats\"\xd7\x01\n" +
 	"\x0eFlashCardStats\x12\x1b\n" +
 	"\tnew_words\x18\x01 \x01(\x05R\bnewWords\x12!\n" +
 	"\freview_words\x18\x02 \x01(\x05R\vreviewWords\x12&\n" +
-	"\x0ftotal_due_words\x18\x03 \x01(\x05R\rtotalDueWords\x12+\n" +
-	"\x11estimated_minutes\x18\x04 \x01(\x05R\x10estimatedMinutes\"p\n" +
+	"\x0ftotal_due_words\x18\x03 \x01(\x05R\rtotalDueWords\x120\n" +
+	"\x14today_reviewed_count\x18\x04 \x01(\x05R\x12todayReviewedCount\x12+\n" +
+	"\x11estimated_minutes\x18\x05 \x01(\x05R\x10estimatedMinutes\"p\n" +
 	"\x13SubmitAnswerRequest\x12$\n" +
 	"\x0ereview_plan_id\x18\x01 \x01(\x05R\freviewPlanId\x123\n" +
 	"\aresults\x18\x02 \x03(\v2\x19.learning.v1.AnswerResultR\aresults\"\xfe\x01\n" +

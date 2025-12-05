@@ -874,6 +874,8 @@ func (m *FlashCardStats) validate(all bool) error {
 
 	// no validation rules for TotalDueWords
 
+	// no validation rules for TodayReviewedCount
+
 	// no validation rules for EstimatedMinutes
 
 	if len(errors) > 0 {

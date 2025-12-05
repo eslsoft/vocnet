@@ -59,10 +59,10 @@ func FromPbMastery(in *learningv1.MasteryBreakdown) entity.MasteryBreakdown {
 		return entity.MasteryBreakdown{}
 	}
 	return entity.MasteryBreakdown{
-		Listen:    in.GetListen(),
-		Read:      in.GetRead(),
-		Spell:     in.GetSpell(),
-		Pronounce: in.GetPronounce(),
+		Listen:    in.GetListening(),
+		Read:      in.GetReading(),
+		Spell:     in.GetSpelling(),
+		Pronounce: in.GetSpeaking(),
 		Overall:   in.GetOverall(),
 	}
 }
@@ -70,10 +70,10 @@ func FromPbMastery(in *learningv1.MasteryBreakdown) entity.MasteryBreakdown {
 // ToPbMastery converts entity MasteryBreakdown to protobuf.
 func ToPbMastery(in entity.MasteryBreakdown) *learningv1.MasteryBreakdown {
 	return &learningv1.MasteryBreakdown{
-		Listen:    in.Listen,
-		Read:      in.Read,
-		Spell:     in.Spell,
-		Pronounce: in.Pronounce,
+		Listening: in.Listen,
+		Reading:   in.Read,
+		Spelling:  in.Spell,
+		Speaking:  in.Pronounce,
 		Overall:   in.Overall,
 	}
 }

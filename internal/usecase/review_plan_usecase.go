@@ -20,23 +20,35 @@ type ReviewPlanUsecase interface {
 	Create(ctx context.Context, plan *entity.ReviewPlan) (*entity.ReviewPlan, error)
 	Update(ctx context.Context, plan *entity.ReviewPlan) (*entity.ReviewPlan, error)
 	Delete(ctx context.Context, id int64) error
+
+	// FlashCard operations
+	GetFlashCards(ctx context.Context, planID int64, limit int32) (*FlashCardSet, error)
+	SubmitAnswer(ctx context.Context, planID int64, results []*AnswerResult) error
 }
 
 type reviewPlanUsecase struct {
-	repo         repository.ReviewPlanRepository
-	wordbookRepo repository.WordbookRepository
-	learnedRepo  repository.LearnedWordRepository
+	repo            repository.ReviewPlanRepository
+	wordbookRepo    repository.WordbookRepository
+	learnedRepo     repository.LearnedWordRepository
+	dailyStatsRepo  repository.DailyStatsRepository
+	cardFactory     *CardGeneratorFactory
+	reviewAlgorithm ReviewAlgorithm
 }
 
 func NewReviewPlanUsecase(
 	repo repository.ReviewPlanRepository,
 	wordbookRepo repository.WordbookRepository,
 	learnedRepo repository.LearnedWordRepository,
+	dailyStatsRepo repository.DailyStatsRepository,
+	lexemeRepo repository.LexemeRepository,
 ) ReviewPlanUsecase {
 	return &reviewPlanUsecase{
-		repo:         repo,
-		wordbookRepo: wordbookRepo,
-		learnedRepo:  learnedRepo,
+		repo:            repo,
+		wordbookRepo:    wordbookRepo,
+		learnedRepo:     learnedRepo,
+		dailyStatsRepo:  dailyStatsRepo,
+		cardFactory:     NewCardGeneratorFactory(lexemeRepo),
+		reviewAlgorithm: NewSM2Algorithm(),
 	}
 }
 

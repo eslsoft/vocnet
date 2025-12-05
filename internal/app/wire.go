@@ -35,6 +35,7 @@ var repositorySet = wire.NewSet(
 	repository.NewLemmaRepository,
 	repository.NewWordbookRepository,
 	repository.NewReviewPlanRepository,
+	repository.NewDailyStatsRepository,
 )
 
 var usecaseSet = wire.NewSet(

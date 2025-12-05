@@ -49,8 +49,9 @@ message FlashCardSet {
 message FlashCardStats {
   int32 new_words = 1; // Number of new words in this set
   int32 review_words = 2; // Number of review words in this set
-  int32 total_due_words = 3; // Total number of words due for review
-  int32 estimated_minutes = 4; // Estimated time to complete (minutes)
+  int32 total_due_words = 3; // Total number of words due for review (including current batch)
+  int32 today_reviewed_count = 4; // Number of words already reviewed today
+  int32 estimated_minutes = 5; // Estimated time to complete (minutes)
 }
 
 // ============================================================================

@@ -44,14 +44,15 @@ func Initialize() (*Container, func(), error) {
 	lexemeRepository := repository.NewLexemeRepository(client)
 	wordUsecase := usecase.NewWordUsecase(lemmaRepository, lexemeRepository)
 	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
-	learnedWordRepository := repository.NewLearnedWordRepository(client)
+	wordbookRepository := repository.NewWordbookRepository(client)
+	learnedWordRepository := repository.NewLearnedWordRepository(client, wordbookRepository)
 	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
 	learningServiceServer := connectrpc.NewLearningServiceServer(learnedWordUsecase)
-	wordbookRepository := repository.NewWordbookRepository(client)
 	wordbookUsecase := usecase.NewWordbookUsecase(wordbookRepository, learnedWordRepository)
 	wordbookServiceServer := connectrpc.NewWordbookServiceServer(wordbookUsecase)
 	reviewPlanRepository := repository.NewReviewPlanRepository(client)
-	reviewPlanUsecase := usecase.NewReviewPlanUsecase(reviewPlanRepository, wordbookRepository, learnedWordRepository)
+	dailyStatsRepository := repository.NewDailyStatsRepository(client)
+	reviewPlanUsecase := usecase.NewReviewPlanUsecase(reviewPlanRepository, wordbookRepository, learnedWordRepository, dailyStatsRepository, lexemeRepository)
 	reviewPlanServiceServer := connectrpc.NewReviewPlanServiceServer(reviewPlanUsecase)
 	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer)
 	if err != nil {
@@ -81,7 +82,7 @@ var authSet = wire.NewSet(
 	provideJWTValidator,
 )
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository)
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewReviewPlanUsecase)
 

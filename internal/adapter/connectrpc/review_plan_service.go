@@ -53,7 +53,7 @@ func (s *ReviewPlanServiceServer) UpdateReviewPlan(ctx context.Context, req *con
 	}
 
 	entPlan := &entity.ReviewPlan{
-		ID:          req.Msg.GetId(),
+		ID:          int64(req.Msg.GetId()),
 		Name:        req.Msg.GetName(),
 		Description: req.Msg.GetDescription(),
 		WordbookIDs: append([]int64{}, req.Msg.GetWordbookIds()...),
@@ -122,6 +122,57 @@ func (s *ReviewPlanServiceServer) DeleteReviewPlan(ctx context.Context, req *con
 }
 
 func (s *ReviewPlanServiceServer) GetFlashCards(ctx context.Context, req *connect.Request[learningv1.GetFlashCardsRequest]) (*connect.Response[learningv1.FlashCardSet], error) {
-	// TODO: Implement GetFlashCards - requires FlashCard entity and complex query logic
-	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	if req.Msg == nil {
+		return nil, mapping.ToPbError(entity.ErrInvalidInput)
+	}
+
+	planID := req.Msg.GetReviewPlanId()
+	if planID <= 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidReviewPlanID)
+	}
+
+	limit := req.Msg.GetLimit()
+	if limit <= 0 {
+		limit = 20 // Default limit
+	}
+	if limit > 100 {
+		limit = 100 // Max limit
+	}
+
+	// Call usecase
+	cardSet, err := s.uc.GetFlashCards(ctx, int64(planID), limit)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	// Convert to proto
+	resp := mapping.ToPbFlashCardSet(cardSet)
+
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ReviewPlanServiceServer) SubmitAnswer(ctx context.Context, req *connect.Request[learningv1.SubmitAnswerRequest]) (*connect.Response[emptypb.Empty], error) {
+	if req.Msg == nil {
+		return nil, mapping.ToPbError(entity.ErrInvalidInput)
+	}
+
+	planID := req.Msg.GetReviewPlanId()
+	if planID <= 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidReviewPlanID)
+	}
+
+	if len(req.Msg.GetResults()) == 0 {
+		return nil, mapping.ToPbError(entity.ErrInvalidInput)
+	}
+
+	// Convert proto to usecase types
+	results := mapping.FromPbAnswerResults(req.Msg.GetResults())
+
+	// Call usecase
+	err := s.uc.SubmitAnswer(ctx, int64(planID), results)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	return connect.NewResponse(&emptypb.Empty{}), nil
 }
