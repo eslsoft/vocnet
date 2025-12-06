@@ -44,6 +44,7 @@ var usecaseSet = wire.NewSet(
 	usecase.NewLearnedWordUsecase,
 	usecase.NewWordbookUsecase,
 	usecase.NewReviewPlanUsecase,
+	usecase.NewStatsUsecase,
 )
 
 var serviceSet = wire.NewSet(
@@ -51,10 +52,12 @@ var serviceSet = wire.NewSet(
 	adaptergrpc.NewLearningServiceServer,
 	adaptergrpc.NewWordbookServiceServer,
 	adaptergrpc.NewReviewPlanServiceServer,
+	adaptergrpc.NewStatsServiceServer,
 	wire.Bind(new(learningv1connect.LearningServiceHandler), new(*adaptergrpc.LearningServiceServer)),
 	wire.Bind(new(dictv1connect.DictServiceHandler), new(*adaptergrpc.DictServiceServer)),
 	wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*adaptergrpc.WordbookServiceServer)),
 	wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*adaptergrpc.ReviewPlanServiceServer)),
+	wire.Bind(new(learningv1connect.StatsServiceHandler), new(*adaptergrpc.StatsServiceServer)),
 )
 
 var serverSet = wire.NewSet(

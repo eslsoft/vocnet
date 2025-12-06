@@ -492,3 +492,73 @@ func (r *LearnedWordRepository) GetByIDs(ctx context.Context, userID uuid.UUID,
 
 	return result, nil
 }
+
+// CountByUser returns the total number of learned words for a user.
+func (r *LearnedWordRepository) CountByUser(ctx context.Context, userID uuid.UUID) (int32, error) {
+	count, err := r.client.LearnedWord.Query().
+		Where(entlearnedword.UserIDEQ(userID)).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count user words: %w", err)
+	}
+	return int32(count), nil
+}
+
+// CountMasteredByUser returns the count of words with mastery >= masteryThreshold.
+func (r *LearnedWordRepository) CountMasteredByUser(ctx context.Context, userID uuid.UUID, masteryThreshold int32) (int32, error) {
+	count, err := r.client.LearnedWord.Query().
+		Where(
+			entlearnedword.UserIDEQ(userID),
+			entlearnedword.MasteryOverallGTE(masteryThreshold),
+		).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count mastered words: %w", err)
+	}
+	return int32(count), nil
+}
+
+// CountDueToday returns the count of words due for review (NextReviewAt <= endOfToday).
+func (r *LearnedWordRepository) CountDueToday(ctx context.Context, userID uuid.UUID, endOfToday time.Time) (int32, error) {
+	count, err := r.client.LearnedWord.Query().
+		Where(entlearnedword.UserIDEQ(userID)).
+		Where(func(s *sql.Selector) {
+			// next_review_at <= endOfToday OR next_review_at IS NULL
+			s.Where(sql.Or(
+				sql.LTE(s.C(entlearnedword.FieldReviewNextReviewAt), endOfToday),
+				sql.IsNull(s.C(entlearnedword.FieldReviewNextReviewAt)),
+			))
+		}).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count due words: %w", err)
+	}
+	return int32(count), nil
+}
+
+// GetMasteryDistribution returns a map of mastery level (0-5) to word count.
+func (r *LearnedWordRepository) GetMasteryDistribution(ctx context.Context, userID uuid.UUID) (map[int32]int32, error) {
+	var results []struct {
+		MasteryLevel int32 `json:"mastery_overall"`
+		Count        int   `json:"count"`
+	}
+
+	err := r.client.LearnedWord.Query().
+		Where(entlearnedword.UserIDEQ(userID)).
+		GroupBy(entlearnedword.FieldMasteryOverall).
+		Aggregate(func(s *sql.Selector) string {
+			return sql.As(sql.Count("*"), "count")
+		}).
+		Scan(ctx, &results)
+
+	if err != nil {
+		return nil, fmt.Errorf("get mastery distribution: %w", err)
+	}
+
+	distribution := make(map[int32]int32)
+	for _, result := range results {
+		distribution[result.MasteryLevel] = int32(result.Count)
+	}
+
+	return distribution, nil
+}

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/google/uuid"
@@ -47,4 +48,16 @@ type LearnedWordRepository interface {
 
 	// GetByIDs fetches multiple words by their IDs (for batch operations like distractor generation).
 	GetByIDs(ctx context.Context, userID uuid.UUID, ids []int64) ([]*entity.LearnedWord, error)
+
+	// CountByUser returns the total number of learned words for a user.
+	CountByUser(ctx context.Context, userID uuid.UUID) (int32, error)
+
+	// CountMasteredByUser returns the count of words with mastery >= masteryThreshold.
+	CountMasteredByUser(ctx context.Context, userID uuid.UUID, masteryThreshold int32) (int32, error)
+
+	// CountDueToday returns the count of words due for review (NextReviewAt <= endOfToday).
+	CountDueToday(ctx context.Context, userID uuid.UUID, endOfToday time.Time) (int32, error)
+
+	// GetMasteryDistribution returns a map of mastery level (0-5) to word count.
+	GetMasteryDistribution(ctx context.Context, userID uuid.UUID) (map[int32]int32, error)
 }

@@ -26,4 +26,13 @@ type DailyStatsRepository interface {
 	// GetRange retrieves stats for a date range (inclusive). Used for calendar/chart views.
 	// Results are ordered by date descending.
 	GetRange(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) ([]*entity.DailyStats, error)
+
+	// GetToday retrieves stats for today (normalized to current date).
+	// Returns nil if no stats exist for today yet.
+	GetToday(ctx context.Context, userID uuid.UUID) (*entity.DailyStats, error)
+
+	// CountConsecutiveDays calculates the current streak of consecutive days with activity.
+	// A day has activity if CardsReviewed > 0 OR NewWords > 0.
+	// The streak ends at the first day without activity (working backwards from today).
+	CountConsecutiveDays(ctx context.Context, userID uuid.UUID, today time.Time) (int32, error)
 }

@@ -32,7 +32,7 @@ type Server struct {
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler, reviewPlanSvc learningv1connect.ReviewPlanServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler, reviewPlanSvc learningv1connect.ReviewPlanServiceHandler, statsSvc learningv1connect.StatsServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
@@ -55,6 +55,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 	mux.Handle(learningv1connect.NewLearningServiceHandler(learningSvc, interceptors))
 	mux.Handle(wordbookv1connect.NewWordbookServiceHandler(wordbookSvc, interceptors))
 	mux.Handle(learningv1connect.NewReviewPlanServiceHandler(reviewPlanSvc, interceptors))
+	mux.Handle(learningv1connect.NewStatsServiceHandler(statsSvc, interceptors))
 
 	return &Server{
 		config: cfg,

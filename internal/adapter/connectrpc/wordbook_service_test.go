@@ -195,7 +195,7 @@ func setupWordbookService(t *testing.T) *WordbookServiceServer {
 	client := setupTestDB(t)
 
 	wordbookRepo := repo.NewWordbookRepository(client)
-	learnedRepo := repo.NewLearnedWordRepository(client)
+	learnedRepo := repo.NewLearnedWordRepository(client, wordbookRepo)
 	wordbookUC := usecase.NewWordbookUsecase(wordbookRepo, learnedRepo)
 	require.NoError(t, wordbookUC.SyncBuiltin(context.Background(), loadBuiltinEntities()))
 

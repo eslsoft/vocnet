@@ -137,3 +137,80 @@ func mapEntDailyStats(rec *entdb.DailyStats) *entity.DailyStats {
 		UpdatedAt:        rec.UpdatedAt,
 	}
 }
+
+// GetToday retrieves stats for today (normalized to current date).
+// Returns nil if no stats exist for today yet.
+func (r *dailyStatsRepository) GetToday(ctx context.Context, userID uuid.UUID) (*entity.DailyStats, error) {
+	normalizedToday := entity.NormalizeDate(time.Now())
+
+	rec, err := r.client.DailyStats.Query().
+		Where(
+			dailystats.UserIDEQ(userID),
+			dailystats.DateEQ(normalizedToday),
+		).
+		First(ctx)
+
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return mapEntDailyStats(rec), nil
+}
+
+// CountConsecutiveDays calculates the current streak of consecutive days with activity.
+// A day has activity if CardsReviewed > 0 OR NewWords > 0.
+// The streak ends at the first day without activity (working backwards from today).
+func (r *dailyStatsRepository) CountConsecutiveDays(ctx context.Context, userID uuid.UUID, today time.Time) (int32, error) {
+	normalizedToday := entity.NormalizeDate(today)
+	// Limit to last 365 days to prevent unbounded scans
+	startDate := normalizedToday.AddDate(0, 0, -365)
+
+	// Fetch stats in descending order (most recent first)
+	recs, err := r.client.DailyStats.Query().
+		Where(
+			dailystats.UserIDEQ(userID),
+			dailystats.DateGTE(startDate),
+			dailystats.DateLTE(normalizedToday),
+		).
+		Order(entdb.Desc(dailystats.FieldDate)).
+		All(ctx)
+
+	if err != nil {
+		return 0, err
+	}
+
+	// Build a map for quick lookup
+	statsMap := make(map[string]*entdb.DailyStats)
+	for _, rec := range recs {
+		dateStr := rec.Date.Format("2006-01-02")
+		statsMap[dateStr] = rec
+	}
+
+	// Count consecutive days backwards from today
+	var streak int32
+	currentDate := normalizedToday
+
+	for i := 0; i <= 365; i++ {
+		dateStr := currentDate.Format("2006-01-02")
+		stat, exists := statsMap[dateStr]
+
+		if !exists {
+			// No record for this date, streak ends
+			break
+		}
+
+		// Check if there's activity: CardsReviewed > 0 OR NewWords > 0
+		if stat.CardsReviewed > 0 || stat.NewWords > 0 {
+			streak++
+			currentDate = currentDate.AddDate(0, 0, -1)
+		} else {
+			// No activity on this date, streak ends
+			break
+		}
+	}
+
+	return streak, nil
+}
