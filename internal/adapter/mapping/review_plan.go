@@ -24,8 +24,11 @@ func ToEntityReviewPlan(pb *learningv1.ReviewPlan) *entity.ReviewPlan {
 		ID:          pb.GetId(),
 		Name:        pb.GetName(),
 		Description: pb.GetDescription(),
-		CreatedAt:   createdAt,
-		UpdatedAt:   updatedAt,
+		Config: entity.ReviewPlanConfig{
+			DailyNewLimit: pb.GetConfig().GetDailyNewLimit(),
+		},
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 }
 
@@ -38,8 +41,11 @@ func ToPbReviewPlan(ent *entity.ReviewPlan) *learningv1.ReviewPlan {
 		Id:          ent.ID,
 		Name:        ent.Name,
 		Description: ent.Description,
-		CreatedBy:   ent.UserID.String(),
-		Status:      toPbReviewPlanStatus(&ent.Status),
+		Config: &learningv1.ReviewPlanConfig{
+			DailyNewLimit: ent.Config.DailyNewLimit,
+		},
+		CreatedBy: ent.UserID.String(),
+		Status:    toPbReviewPlanStatus(&ent.Status),
 	}
 	if !ent.CreatedAt.IsZero() {
 		out.CreatedAt = timestamppb.New(ent.CreatedAt)
@@ -63,10 +69,17 @@ func toPbReviewPlanStatus(status *entity.ReviewPlanStatus) *learningv1.ReviewPla
 	}
 
 	return &learningv1.ReviewPlanStatus{
-		PendingWords:  status.PendingWords,
-		MasteredWords: status.MasteredWords,
-		LearningWords: status.LearningWords,
-		UnknownWords:  status.UnknownWords,
-		Wordbooks:     wordbooks,
+		Inventory: &learningv1.InventoryStats{
+			TotalWords:    status.Inventory.TotalWords,
+			NewWords:      status.Inventory.NewWords,
+			LearningWords: status.Inventory.LearningWords,
+			MasteredWords: status.Inventory.MasteredWords,
+		},
+		DailyTask: &learningv1.DailyTaskStats{
+			ReviewDue:         status.DailyTask.ReviewDue,
+			NewWordsRemaining: status.DailyTask.NewWordsRemaining,
+			NewWordsCompleted: status.DailyTask.NewWordsCompleted,
+		},
+		Wordbooks: wordbooks,
 	}
 }

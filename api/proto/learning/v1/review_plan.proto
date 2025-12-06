@@ -11,6 +11,8 @@ message ReviewPlan {
   string name = 2;
   string description = 3;
 
+  ReviewPlanConfig config = 6;
+
   ReviewPlanStatus status = 10;
 
   string created_by = 20; // username of the creator
@@ -18,13 +20,29 @@ message ReviewPlan {
   google.protobuf.Timestamp updated_at = 22;
 }
 
-message ReviewPlanStatus {
-  int32 pending_words = 1; // Words pending review
+message ReviewPlanConfig {
+  int32 daily_new_limit = 1; // Maximum new words to learn per day
+}
 
-  int32 mastered_words = 2; // Words with overall mastery >= 4
-  int32 learning_words = 3; // Words with 1 <= overall mastery < 4
-  int32 unknown_words = 4; // Words with overall mastery < 1
+message ReviewPlanStatus {
+  // Inventory statistics (Overall learning progress)
+  InventoryStats inventory = 1;
+
+  // Daily task queue (Today's todo list)
+  DailyTaskStats daily_task = 2;
 
   repeated wordbook.v1.Wordbook wordbooks = 10;
-  // google.protobuf.Timestamp last_reviewed_at = 11;
+}
+
+message InventoryStats {
+  int32 total_words = 1; // Total words in the plan
+  int32 new_words = 2; // Not started yet (Mastery == 0)
+  int32 learning_words = 3; // In learning progress (0 < Mastery < 4)
+  int32 mastered_words = 4; // Mastered / Mature (Mastery >= 4)
+}
+
+message DailyTaskStats {
+  int32 review_due = 1; // Words due for review today (Backlog + Due Today)
+  int32 new_words_remaining = 2; // Remaining new words quota for today
+  int32 new_words_completed = 3; // New words learned today
 }

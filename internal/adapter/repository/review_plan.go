@@ -27,6 +27,7 @@ func (r *reviewPlanRepository) Create(ctx context.Context, plan *entity.ReviewPl
 		SetUserID(plan.UserID).
 		SetName(strings.TrimSpace(plan.Name)).
 		SetDescription(plan.Description).
+		SetDailyNewLimit(plan.Config.DailyNewLimit).
 		SetWordbookIds(append([]int64{}, plan.WordbookIDs...))
 
 	if plan.ID > 0 {
@@ -51,6 +52,7 @@ func (r *reviewPlanRepository) Update(ctx context.Context, plan *entity.ReviewPl
 		Where(entreviewplan.UserIDEQ(plan.UserID)).
 		SetName(strings.TrimSpace(plan.Name)).
 		SetDescription(plan.Description).
+		SetDailyNewLimit(plan.Config.DailyNewLimit).
 		SetWordbookIds(append([]int64{}, plan.WordbookIDs...)).
 		SetUpdatedAt(plan.UpdatedAt)
 
@@ -158,6 +160,9 @@ func mapEntReviewPlan(rec *entdb.ReviewPlan) *entity.ReviewPlan {
 		UserID:      rec.UserID,
 		Name:        rec.Name,
 		Description: rec.Description,
+		Config: entity.ReviewPlanConfig{
+			DailyNewLimit: rec.DailyNewLimit,
+		},
 		WordbookIDs: rec.WordbookIds,
 		CreatedAt:   rec.CreatedAt,
 		UpdatedAt:   rec.UpdatedAt,

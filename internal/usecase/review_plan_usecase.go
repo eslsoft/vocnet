@@ -127,6 +127,9 @@ func (u *reviewPlanUsecase) Update(ctx context.Context, plan *entity.ReviewPlan)
 	if plan.Description == "" {
 		plan.Description = current.Description
 	}
+	if plan.Config.DailyNewLimit <= 0 {
+		plan.Config.DailyNewLimit = current.Config.DailyNewLimit
+	}
 	plan.CreatedAt = current.CreatedAt
 	plan.UpdatedAt = time.Now()
 	normalized, err := entity.NormalizeReviewPlan(plan)
@@ -224,12 +227,33 @@ func (u *reviewPlanUsecase) attachStatus(ctx context.Context, plan *entity.Revie
 		}
 	}
 
+	// Get DailyStats for remaining new limit
+	var newWordsToday int32
+	if u.dailyStatsRepo != nil {
+		ds, err := u.dailyStatsRepo.GetOrCreate(ctx, plan.UserID, time.Now())
+		if err == nil && ds != nil {
+			newWordsToday = ds.NewWords
+		}
+	}
+
+	remaining := plan.Config.DailyNewLimit - newWordsToday
+	if remaining < 0 {
+		remaining = 0
+	}
+
 	plan.Status = entity.ReviewPlanStatus{
-		PendingWords:  stats.PendingWords,
-		MasteredWords: stats.MasteredWords,
-		LearningWords: stats.LearningWords,
-		UnknownWords:  stats.UnknownWords,
-		Wordbooks:     wordbooks,
+		Inventory: entity.InventoryStats{
+			TotalWords:    stats.TotalWords,
+			NewWords:      stats.NewWords,
+			LearningWords: stats.LearningWords,
+			MasteredWords: stats.MasteredWords,
+		},
+		DailyTask: entity.DailyTaskStats{
+			ReviewDue:         stats.ReviewDue,
+			NewWordsRemaining: remaining,
+			NewWordsCompleted: newWordsToday,
+		},
+		Wordbooks: wordbooks,
 	}
 }
 
@@ -272,6 +296,15 @@ func (u *reviewPlanUsecase) attachStatusBatch(ctx context.Context, plans []*enti
 		return // best-effort
 	}
 
+	// Get DailyStats once
+	var newWordsToday int32
+	if u.dailyStatsRepo != nil {
+		ds, err := u.dailyStatsRepo.GetOrCreate(ctx, userID, time.Now())
+		if err == nil && ds != nil {
+			newWordsToday = ds.NewWords
+		}
+	}
+
 	// Step 3: Build wordbook lookup map
 	wordbookMap := make(map[int64]*entity.Wordbook, len(wordbooks))
 	for _, wb := range wordbooks {
@@ -311,12 +344,24 @@ func (u *reviewPlanUsecase) attachStatusBatch(ctx context.Context, plans []*enti
 			}
 		}
 
+		remaining := plan.Config.DailyNewLimit - newWordsToday
+		if remaining < 0 {
+			remaining = 0
+		}
+
 		plan.Status = entity.ReviewPlanStatus{
-			PendingWords:  planStats.PendingWords,
-			MasteredWords: planStats.MasteredWords,
-			LearningWords: planStats.LearningWords,
-			UnknownWords:  planStats.UnknownWords,
-			Wordbooks:     planWordbooks,
+			Inventory: entity.InventoryStats{
+				TotalWords:    planStats.TotalWords,
+				NewWords:      planStats.NewWords,
+				LearningWords: planStats.LearningWords,
+				MasteredWords: planStats.MasteredWords,
+			},
+			DailyTask: entity.DailyTaskStats{
+				ReviewDue:         planStats.ReviewDue,
+				NewWordsRemaining: remaining,
+				NewWordsCompleted: newWordsToday,
+			},
+			Wordbooks: planWordbooks,
 		}
 	}
 }

@@ -35,7 +35,7 @@ func ToEntityWordbook(pb *wordbookv1.Wordbook) *entity.Wordbook {
 			TotalWords:    stats.GetTotalWords(),
 			MasteredWords: stats.GetMasteredWords(),
 			LearningWords: stats.GetLearningWords(),
-			UnknownWords:  stats.GetUnknownWords(),
+			NewWords:      stats.GetUnknownWords(), // Map Unknown -> New
 		},
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
@@ -51,7 +51,7 @@ func ToPbWordbook(ent *entity.Wordbook) *wordbookv1.Wordbook {
 		TotalWords:    ent.Stats.TotalWords,
 		MasteredWords: ent.Stats.MasteredWords,
 		LearningWords: ent.Stats.LearningWords,
-		UnknownWords:  ent.Stats.UnknownWords,
+		UnknownWords:  ent.Stats.NewWords, // Map New -> Unknown
 	}
 	if status.TotalWords == 0 {
 		status.TotalWords = int32(len(ent.Terms))

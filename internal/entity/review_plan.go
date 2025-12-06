@@ -7,12 +7,18 @@ import (
 	"github.com/google/uuid"
 )
 
+// ReviewPlanConfig holds configuration for a review plan.
+type ReviewPlanConfig struct {
+	DailyNewLimit int32
+}
+
 // ReviewPlan represents a user's vocabulary review plan configuration.
 type ReviewPlan struct {
 	ID          int64
 	UserID      uuid.UUID
 	Name        string
 	Description string
+	Config      ReviewPlanConfig
 	WordbookIDs []int64
 	Status      ReviewPlanStatus
 	CreatedAt   time.Time
@@ -21,11 +27,22 @@ type ReviewPlan struct {
 
 // ReviewPlanStatus contains computed statistics about a review plan.
 type ReviewPlanStatus struct {
-	PendingWords  int32
-	MasteredWords int32
+	Inventory InventoryStats
+	DailyTask DailyTaskStats
+	Wordbooks []*Wordbook
+}
+
+type InventoryStats struct {
+	TotalWords    int32
+	NewWords      int32
 	LearningWords int32
-	UnknownWords  int32
-	Wordbooks     []*Wordbook
+	MasteredWords int32
+}
+
+type DailyTaskStats struct {
+	ReviewDue         int32
+	NewWordsRemaining int32
+	NewWordsCompleted int32
 }
 
 // NormalizeReviewPlan cleans string fields, sets defaults, and ensures invariants.
@@ -41,6 +58,12 @@ func NormalizeReviewPlan(in *ReviewPlan) (*ReviewPlan, error) {
 	if out.Name == "" {
 		return nil, ErrInvalidReviewPlanName
 	}
+
+	if out.Config.DailyNewLimit <= 0 {
+		out.Config.DailyNewLimit = 20 // Default to 20 new words per day
+	}
+
+	// Deduplicate wordbook IDs
 
 	// Deduplicate wordbook IDs
 	if len(out.WordbookIDs) > 0 {

@@ -24,6 +24,7 @@ func (ReviewPlan) Fields() []ent.Field {
 		field.UUID("user_id", uuid.UUID{}),
 		field.String("name").NotEmpty(),
 		field.String("description").Default(""),
+		field.Int32("daily_new_limit").Default(20),
 		field.JSON("wordbook_ids", []int64{}).
 			Default([]int64{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),

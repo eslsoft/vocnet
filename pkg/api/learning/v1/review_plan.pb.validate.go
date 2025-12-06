@@ -64,6 +64,35 @@ func (m *ReviewPlan) validate(all bool) error {
 	// no validation rules for Description
 
 	if all {
+		switch v := interface{}(m.GetConfig()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ReviewPlanValidationError{
+					field:  "Config",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ReviewPlanValidationError{
+					field:  "Config",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetConfig()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ReviewPlanValidationError{
+				field:  "Config",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
 		switch v := interface{}(m.GetStatus()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
@@ -229,6 +258,108 @@ var _ interface {
 	ErrorName() string
 } = ReviewPlanValidationError{}
 
+// Validate checks the field values on ReviewPlanConfig with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *ReviewPlanConfig) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ReviewPlanConfig with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ReviewPlanConfigMultiError, or nil if none found.
+func (m *ReviewPlanConfig) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ReviewPlanConfig) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for DailyNewLimit
+
+	if len(errors) > 0 {
+		return ReviewPlanConfigMultiError(errors)
+	}
+
+	return nil
+}
+
+// ReviewPlanConfigMultiError is an error wrapping multiple validation errors
+// returned by ReviewPlanConfig.ValidateAll() if the designated constraints
+// aren't met.
+type ReviewPlanConfigMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ReviewPlanConfigMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ReviewPlanConfigMultiError) AllErrors() []error { return m }
+
+// ReviewPlanConfigValidationError is the validation error returned by
+// ReviewPlanConfig.Validate if the designated constraints aren't met.
+type ReviewPlanConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ReviewPlanConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ReviewPlanConfigValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ReviewPlanConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ReviewPlanConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ReviewPlanConfigValidationError) ErrorName() string { return "ReviewPlanConfigValidationError" }
+
+// Error satisfies the builtin error interface
+func (e ReviewPlanConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sReviewPlanConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ReviewPlanConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ReviewPlanConfigValidationError{}
+
 // Validate checks the field values on ReviewPlanStatus with the rules defined
 // in the proto definition for this message. If any rules are violated, the
 // first error encountered is returned, or nil if there are no violations.
@@ -251,13 +382,63 @@ func (m *ReviewPlanStatus) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for PendingWords
+	if all {
+		switch v := interface{}(m.GetInventory()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ReviewPlanStatusValidationError{
+					field:  "Inventory",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ReviewPlanStatusValidationError{
+					field:  "Inventory",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetInventory()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ReviewPlanStatusValidationError{
+				field:  "Inventory",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
 
-	// no validation rules for MasteredWords
-
-	// no validation rules for LearningWords
-
-	// no validation rules for UnknownWords
+	if all {
+		switch v := interface{}(m.GetDailyTask()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ReviewPlanStatusValidationError{
+					field:  "DailyTask",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ReviewPlanStatusValidationError{
+					field:  "DailyTask",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetDailyTask()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ReviewPlanStatusValidationError{
+				field:  "DailyTask",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
 
 	for idx, item := range m.GetWordbooks() {
 		_, _ = idx, item
@@ -370,3 +551,217 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ReviewPlanStatusValidationError{}
+
+// Validate checks the field values on InventoryStats with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *InventoryStats) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on InventoryStats with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in InventoryStatsMultiError,
+// or nil if none found.
+func (m *InventoryStats) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *InventoryStats) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for TotalWords
+
+	// no validation rules for NewWords
+
+	// no validation rules for LearningWords
+
+	// no validation rules for MasteredWords
+
+	if len(errors) > 0 {
+		return InventoryStatsMultiError(errors)
+	}
+
+	return nil
+}
+
+// InventoryStatsMultiError is an error wrapping multiple validation errors
+// returned by InventoryStats.ValidateAll() if the designated constraints
+// aren't met.
+type InventoryStatsMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m InventoryStatsMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m InventoryStatsMultiError) AllErrors() []error { return m }
+
+// InventoryStatsValidationError is the validation error returned by
+// InventoryStats.Validate if the designated constraints aren't met.
+type InventoryStatsValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e InventoryStatsValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e InventoryStatsValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e InventoryStatsValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e InventoryStatsValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e InventoryStatsValidationError) ErrorName() string { return "InventoryStatsValidationError" }
+
+// Error satisfies the builtin error interface
+func (e InventoryStatsValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sInventoryStats.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = InventoryStatsValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = InventoryStatsValidationError{}
+
+// Validate checks the field values on DailyTaskStats with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *DailyTaskStats) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on DailyTaskStats with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in DailyTaskStatsMultiError,
+// or nil if none found.
+func (m *DailyTaskStats) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *DailyTaskStats) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for ReviewDue
+
+	// no validation rules for NewWordsRemaining
+
+	// no validation rules for NewWordsCompleted
+
+	if len(errors) > 0 {
+		return DailyTaskStatsMultiError(errors)
+	}
+
+	return nil
+}
+
+// DailyTaskStatsMultiError is an error wrapping multiple validation errors
+// returned by DailyTaskStats.ValidateAll() if the designated constraints
+// aren't met.
+type DailyTaskStatsMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m DailyTaskStatsMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m DailyTaskStatsMultiError) AllErrors() []error { return m }
+
+// DailyTaskStatsValidationError is the validation error returned by
+// DailyTaskStats.Validate if the designated constraints aren't met.
+type DailyTaskStatsValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e DailyTaskStatsValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e DailyTaskStatsValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e DailyTaskStatsValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e DailyTaskStatsValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e DailyTaskStatsValidationError) ErrorName() string { return "DailyTaskStatsValidationError" }
+
+// Error satisfies the builtin error interface
+func (e DailyTaskStatsValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sDailyTaskStats.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = DailyTaskStatsValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = DailyTaskStatsValidationError{}

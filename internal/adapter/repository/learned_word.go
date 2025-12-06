@@ -247,13 +247,14 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 	}
 
 	now := time.Now()
+	y, m, d := now.Date()
+	endOfToday := time.Date(y, m, d, 23, 59, 59, 999999999, now.Location())
+
 	stats := entity.WordbookStats{TotalWords: int32(len(uniqueTerms))}
 	for _, row := range rows {
-		// 待复习定义：
-		// 1. ReviewNextReviewAt 为 nil (新词，从未学过)
-		// 2. ReviewNextReviewAt <= now (复习时间已到)
-		if row.ReviewNextReviewAt == nil || row.ReviewNextReviewAt.Before(now) {
-			stats.PendingWords++
+		// ReviewDue: 已学习且今天到期 (NextReviewAt <= EndOfToday)
+		if row.ReviewNextReviewAt != nil && row.ReviewNextReviewAt.Before(endOfToday) {
+			stats.ReviewDue++
 		}
 
 		switch {
@@ -262,12 +263,12 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 		case row.MasteryOverall >= 1:
 			stats.LearningWords++
 		default:
-			stats.UnknownWords++
+			// New words (Mastery == 0)
 		}
 	}
-	stats.UnknownWords = stats.TotalWords - stats.MasteredWords - stats.LearningWords
-	if stats.UnknownWords < 0 {
-		stats.UnknownWords = 0
+	stats.NewWords = stats.TotalWords - stats.MasteredWords - stats.LearningWords
+	if stats.NewWords < 0 {
+		stats.NewWords = 0
 	}
 	return stats, nil
 }

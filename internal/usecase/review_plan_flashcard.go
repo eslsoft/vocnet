@@ -87,14 +87,32 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 		selectedWords = append(selectedWords, dueWords[i])
 	}
 
+	// Get DailyStats for remaining new limit
+	var newWordsToday int32
+	if u.dailyStatsRepo != nil {
+		ds, err := u.dailyStatsRepo.GetOrCreate(ctx, userID, time.Now())
+		if err == nil && ds != nil {
+			newWordsToday = ds.NewWords
+		}
+	}
+	remainingQuota := int(plan.Config.DailyNewLimit) - int(newWordsToday)
+	if remainingQuota < 0 {
+		remainingQuota = 0
+	}
+
 	// Fill remaining with new words (randomized)
-	if len(selectedWords) < int(limit) && len(newWords) > 0 {
+	if len(selectedWords) < int(limit) && len(newWords) > 0 && remainingQuota > 0 {
 		rand.Shuffle(len(newWords), func(i, j int) {
 			newWords[i], newWords[j] = newWords[j], newWords[i]
 		})
 
-		remaining := int(limit) - len(selectedWords)
-		for i := 0; i < len(newWords) && i < remaining; i++ {
+		remainingSpace := int(limit) - len(selectedWords)
+		countToTake := remainingSpace
+		if countToTake > remainingQuota {
+			countToTake = remainingQuota
+		}
+
+		for i := 0; i < len(newWords) && i < countToTake; i++ {
 			selectedWords = append(selectedWords, newWords[i])
 		}
 	}
@@ -255,8 +273,8 @@ func selectCardType(word *entity.LearnedWord) CardType {
 
 	// Map skill to card type
 	switch weakestSkill {
-	case "listen":
-		return CardTypeSPELLING
+	//case "listen":
+	//	return CardTypeSPELLING
 	case "read":
 		return CardTypeCHOICE
 	case "spell":

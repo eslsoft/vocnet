@@ -29,6 +29,7 @@ type ReviewPlan struct {
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Config        *ReviewPlanConfig      `protobuf:"bytes,6,opt,name=config,proto3" json:"config,omitempty"`
 	Status        *ReviewPlanStatus      `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
 	CreatedBy     string                 `protobuf:"bytes,20,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"` // username of the creator
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -88,6 +89,13 @@ func (x *ReviewPlan) GetDescription() string {
 	return ""
 }
 
+func (x *ReviewPlan) GetConfig() *ReviewPlanConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
 func (x *ReviewPlan) GetStatus() *ReviewPlanStatus {
 	if x != nil {
 		return x.Status
@@ -116,20 +124,64 @@ func (x *ReviewPlan) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-type ReviewPlanStatus struct {
+type ReviewPlanConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PendingWords  int32                  `protobuf:"varint,1,opt,name=pending_words,json=pendingWords,proto3" json:"pending_words,omitempty"`    // Words pending review
-	MasteredWords int32                  `protobuf:"varint,2,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Words with overall mastery >= 4
-	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // Words with 1 <= overall mastery < 4
-	UnknownWords  int32                  `protobuf:"varint,4,opt,name=unknown_words,json=unknownWords,proto3" json:"unknown_words,omitempty"`    // Words with overall mastery < 1
-	Wordbooks     []*v1.Wordbook         `protobuf:"bytes,10,rep,name=wordbooks,proto3" json:"wordbooks,omitempty"`                              // google.protobuf.Timestamp last_reviewed_at = 11;
+	DailyNewLimit int32                  `protobuf:"varint,1,opt,name=daily_new_limit,json=dailyNewLimit,proto3" json:"daily_new_limit,omitempty"` // Maximum new words to learn per day
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewPlanConfig) Reset() {
+	*x = ReviewPlanConfig{}
+	mi := &file_learning_v1_review_plan_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewPlanConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewPlanConfig) ProtoMessage() {}
+
+func (x *ReviewPlanConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_review_plan_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewPlanConfig.ProtoReflect.Descriptor instead.
+func (*ReviewPlanConfig) Descriptor() ([]byte, []int) {
+	return file_learning_v1_review_plan_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ReviewPlanConfig) GetDailyNewLimit() int32 {
+	if x != nil {
+		return x.DailyNewLimit
+	}
+	return 0
+}
+
+type ReviewPlanStatus struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Inventory statistics (Overall learning progress)
+	Inventory *InventoryStats `protobuf:"bytes,1,opt,name=inventory,proto3" json:"inventory,omitempty"`
+	// Daily task queue (Today's todo list)
+	DailyTask     *DailyTaskStats `protobuf:"bytes,2,opt,name=daily_task,json=dailyTask,proto3" json:"daily_task,omitempty"`
+	Wordbooks     []*v1.Wordbook  `protobuf:"bytes,10,rep,name=wordbooks,proto3" json:"wordbooks,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ReviewPlanStatus) Reset() {
 	*x = ReviewPlanStatus{}
-	mi := &file_learning_v1_review_plan_proto_msgTypes[1]
+	mi := &file_learning_v1_review_plan_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -141,7 +193,7 @@ func (x *ReviewPlanStatus) String() string {
 func (*ReviewPlanStatus) ProtoMessage() {}
 
 func (x *ReviewPlanStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_learning_v1_review_plan_proto_msgTypes[1]
+	mi := &file_learning_v1_review_plan_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -154,35 +206,21 @@ func (x *ReviewPlanStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewPlanStatus.ProtoReflect.Descriptor instead.
 func (*ReviewPlanStatus) Descriptor() ([]byte, []int) {
-	return file_learning_v1_review_plan_proto_rawDescGZIP(), []int{1}
+	return file_learning_v1_review_plan_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ReviewPlanStatus) GetPendingWords() int32 {
+func (x *ReviewPlanStatus) GetInventory() *InventoryStats {
 	if x != nil {
-		return x.PendingWords
+		return x.Inventory
 	}
-	return 0
+	return nil
 }
 
-func (x *ReviewPlanStatus) GetMasteredWords() int32 {
+func (x *ReviewPlanStatus) GetDailyTask() *DailyTaskStats {
 	if x != nil {
-		return x.MasteredWords
+		return x.DailyTask
 	}
-	return 0
-}
-
-func (x *ReviewPlanStatus) GetLearningWords() int32 {
-	if x != nil {
-		return x.LearningWords
-	}
-	return 0
-}
-
-func (x *ReviewPlanStatus) GetUnknownWords() int32 {
-	if x != nil {
-		return x.UnknownWords
-	}
-	return 0
+	return nil
 }
 
 func (x *ReviewPlanStatus) GetWordbooks() []*v1.Wordbook {
@@ -192,16 +230,145 @@ func (x *ReviewPlanStatus) GetWordbooks() []*v1.Wordbook {
 	return nil
 }
 
+type InventoryStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TotalWords    int32                  `protobuf:"varint,1,opt,name=total_words,json=totalWords,proto3" json:"total_words,omitempty"`          // Total words in the plan
+	NewWords      int32                  `protobuf:"varint,2,opt,name=new_words,json=newWords,proto3" json:"new_words,omitempty"`                // Not started yet (Mastery == 0)
+	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // In learning progress (0 < Mastery < 4)
+	MasteredWords int32                  `protobuf:"varint,4,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Mastered / Mature (Mastery >= 4)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InventoryStats) Reset() {
+	*x = InventoryStats{}
+	mi := &file_learning_v1_review_plan_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InventoryStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InventoryStats) ProtoMessage() {}
+
+func (x *InventoryStats) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_review_plan_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InventoryStats.ProtoReflect.Descriptor instead.
+func (*InventoryStats) Descriptor() ([]byte, []int) {
+	return file_learning_v1_review_plan_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *InventoryStats) GetTotalWords() int32 {
+	if x != nil {
+		return x.TotalWords
+	}
+	return 0
+}
+
+func (x *InventoryStats) GetNewWords() int32 {
+	if x != nil {
+		return x.NewWords
+	}
+	return 0
+}
+
+func (x *InventoryStats) GetLearningWords() int32 {
+	if x != nil {
+		return x.LearningWords
+	}
+	return 0
+}
+
+func (x *InventoryStats) GetMasteredWords() int32 {
+	if x != nil {
+		return x.MasteredWords
+	}
+	return 0
+}
+
+type DailyTaskStats struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ReviewDue         int32                  `protobuf:"varint,1,opt,name=review_due,json=reviewDue,proto3" json:"review_due,omitempty"`                           // Words due for review today (Backlog + Due Today)
+	NewWordsRemaining int32                  `protobuf:"varint,2,opt,name=new_words_remaining,json=newWordsRemaining,proto3" json:"new_words_remaining,omitempty"` // Remaining new words quota for today
+	NewWordsCompleted int32                  `protobuf:"varint,3,opt,name=new_words_completed,json=newWordsCompleted,proto3" json:"new_words_completed,omitempty"` // New words learned today
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *DailyTaskStats) Reset() {
+	*x = DailyTaskStats{}
+	mi := &file_learning_v1_review_plan_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DailyTaskStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DailyTaskStats) ProtoMessage() {}
+
+func (x *DailyTaskStats) ProtoReflect() protoreflect.Message {
+	mi := &file_learning_v1_review_plan_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DailyTaskStats.ProtoReflect.Descriptor instead.
+func (*DailyTaskStats) Descriptor() ([]byte, []int) {
+	return file_learning_v1_review_plan_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DailyTaskStats) GetReviewDue() int32 {
+	if x != nil {
+		return x.ReviewDue
+	}
+	return 0
+}
+
+func (x *DailyTaskStats) GetNewWordsRemaining() int32 {
+	if x != nil {
+		return x.NewWordsRemaining
+	}
+	return 0
+}
+
+func (x *DailyTaskStats) GetNewWordsCompleted() int32 {
+	if x != nil {
+		return x.NewWordsCompleted
+	}
+	return 0
+}
+
 var File_learning_v1_review_plan_proto protoreflect.FileDescriptor
 
 const file_learning_v1_review_plan_proto_rawDesc = "" +
 	"\n" +
-	"\x1dlearning/v1/review_plan.proto\x12\vlearning.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1awordbook/v1/wordbook.proto\"\x9e\x02\n" +
+	"\x1dlearning/v1/review_plan.proto\x12\vlearning.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1awordbook/v1/wordbook.proto\"\xd5\x02\n" +
 	"\n" +
 	"ReviewPlan\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x125\n" +
+	"\x06config\x18\x06 \x01(\v2\x1d.learning.v1.ReviewPlanConfigR\x06config\x125\n" +
 	"\x06status\x18\n" +
 	" \x01(\v2\x1d.learning.v1.ReviewPlanStatusR\x06status\x12\x1d\n" +
 	"\n" +
@@ -209,14 +376,26 @@ const file_learning_v1_review_plan_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xdf\x01\n" +
-	"\x10ReviewPlanStatus\x12#\n" +
-	"\rpending_words\x18\x01 \x01(\x05R\fpendingWords\x12%\n" +
-	"\x0emastered_words\x18\x02 \x01(\x05R\rmasteredWords\x12%\n" +
-	"\x0elearning_words\x18\x03 \x01(\x05R\rlearningWords\x12#\n" +
-	"\runknown_words\x18\x04 \x01(\x05R\funknownWords\x123\n" +
+	"updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\":\n" +
+	"\x10ReviewPlanConfig\x12&\n" +
+	"\x0fdaily_new_limit\x18\x01 \x01(\x05R\rdailyNewLimit\"\xbe\x01\n" +
+	"\x10ReviewPlanStatus\x129\n" +
+	"\tinventory\x18\x01 \x01(\v2\x1b.learning.v1.InventoryStatsR\tinventory\x12:\n" +
+	"\n" +
+	"daily_task\x18\x02 \x01(\v2\x1b.learning.v1.DailyTaskStatsR\tdailyTask\x123\n" +
 	"\twordbooks\x18\n" +
-	" \x03(\v2\x15.wordbook.v1.WordbookR\twordbooksB\xa9\x01\n" +
+	" \x03(\v2\x15.wordbook.v1.WordbookR\twordbooks\"\x9c\x01\n" +
+	"\x0eInventoryStats\x12\x1f\n" +
+	"\vtotal_words\x18\x01 \x01(\x05R\n" +
+	"totalWords\x12\x1b\n" +
+	"\tnew_words\x18\x02 \x01(\x05R\bnewWords\x12%\n" +
+	"\x0elearning_words\x18\x03 \x01(\x05R\rlearningWords\x12%\n" +
+	"\x0emastered_words\x18\x04 \x01(\x05R\rmasteredWords\"\x8f\x01\n" +
+	"\x0eDailyTaskStats\x12\x1d\n" +
+	"\n" +
+	"review_due\x18\x01 \x01(\x05R\treviewDue\x12.\n" +
+	"\x13new_words_remaining\x18\x02 \x01(\x05R\x11newWordsRemaining\x12.\n" +
+	"\x13new_words_completed\x18\x03 \x01(\x05R\x11newWordsCompletedB\xa9\x01\n" +
 	"\x0fcom.learning.v1B\x0fReviewPlanProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (
@@ -231,23 +410,29 @@ func file_learning_v1_review_plan_proto_rawDescGZIP() []byte {
 	return file_learning_v1_review_plan_proto_rawDescData
 }
 
-var file_learning_v1_review_plan_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_learning_v1_review_plan_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_learning_v1_review_plan_proto_goTypes = []any{
 	(*ReviewPlan)(nil),            // 0: learning.v1.ReviewPlan
-	(*ReviewPlanStatus)(nil),      // 1: learning.v1.ReviewPlanStatus
-	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
-	(*v1.Wordbook)(nil),           // 3: wordbook.v1.Wordbook
+	(*ReviewPlanConfig)(nil),      // 1: learning.v1.ReviewPlanConfig
+	(*ReviewPlanStatus)(nil),      // 2: learning.v1.ReviewPlanStatus
+	(*InventoryStats)(nil),        // 3: learning.v1.InventoryStats
+	(*DailyTaskStats)(nil),        // 4: learning.v1.DailyTaskStats
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*v1.Wordbook)(nil),           // 6: wordbook.v1.Wordbook
 }
 var file_learning_v1_review_plan_proto_depIdxs = []int32{
-	1, // 0: learning.v1.ReviewPlan.status:type_name -> learning.v1.ReviewPlanStatus
-	2, // 1: learning.v1.ReviewPlan.created_at:type_name -> google.protobuf.Timestamp
-	2, // 2: learning.v1.ReviewPlan.updated_at:type_name -> google.protobuf.Timestamp
-	3, // 3: learning.v1.ReviewPlanStatus.wordbooks:type_name -> wordbook.v1.Wordbook
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1, // 0: learning.v1.ReviewPlan.config:type_name -> learning.v1.ReviewPlanConfig
+	2, // 1: learning.v1.ReviewPlan.status:type_name -> learning.v1.ReviewPlanStatus
+	5, // 2: learning.v1.ReviewPlan.created_at:type_name -> google.protobuf.Timestamp
+	5, // 3: learning.v1.ReviewPlan.updated_at:type_name -> google.protobuf.Timestamp
+	3, // 4: learning.v1.ReviewPlanStatus.inventory:type_name -> learning.v1.InventoryStats
+	4, // 5: learning.v1.ReviewPlanStatus.daily_task:type_name -> learning.v1.DailyTaskStats
+	6, // 6: learning.v1.ReviewPlanStatus.wordbooks:type_name -> wordbook.v1.Wordbook
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_learning_v1_review_plan_proto_init() }
@@ -261,7 +446,7 @@ func file_learning_v1_review_plan_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_learning_v1_review_plan_proto_rawDesc), len(file_learning_v1_review_plan_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
