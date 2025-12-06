@@ -21,6 +21,7 @@ type ReviewPlan struct {
 
 // ReviewPlanStatus contains computed statistics about a review plan.
 type ReviewPlanStatus struct {
+	PendingWords  int32
 	MasteredWords int32
 	LearningWords int32
 	UnknownWords  int32

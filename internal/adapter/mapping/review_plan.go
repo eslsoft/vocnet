@@ -63,10 +63,10 @@ func toPbReviewPlanStatus(status *entity.ReviewPlanStatus) *learningv1.ReviewPla
 	}
 
 	return &learningv1.ReviewPlanStatus{
+		PendingWords:  status.PendingWords,
 		MasteredWords: status.MasteredWords,
 		LearningWords: status.LearningWords,
 		UnknownWords:  status.UnknownWords,
 		Wordbooks:     wordbooks,
-		// PendingWords is not set (as per requirements)
 	}
 }

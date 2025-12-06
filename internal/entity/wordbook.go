@@ -48,6 +48,7 @@ type WordbookStats struct {
 	MasteredWords int32
 	LearningWords int32
 	UnknownWords  int32
+	PendingWords  int32
 }
 
 // NormalizeWordbook cleans string fields, sets defaults, and ensures invariants.

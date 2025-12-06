@@ -60,7 +60,7 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 
 	rec, err := builder.Save(ctx)
 	if err != nil {
-		return nil, translateLearnedWordError(err)
+		return nil, translateDBError(err, "learned_word")
 	}
 	return mapEntLearnedWord(rec), nil
 }
@@ -103,7 +103,7 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 		if entdb.IsNotFound(err) {
 			return nil, entity.ErrLearnedWordNotFound
 		}
-		return nil, translateLearnedWordError(err)
+		return nil, translateDBError(err, "learned_word")
 	}
 
 	return mapEntLearnedWord(rec), nil
@@ -162,14 +162,9 @@ func (r *LearnedWordRepository) List(ctx context.Context, query *repository.List
 		qbuilder.Where(entlearnedword.LanguageEQ(query.Language))
 	}
 	if surfaces := uniqueFolded(query.SurfaceTerms); len(surfaces) > 0 {
-		// Convert to lowercase for case-insensitive matching
-		lowerTerms := make([]string, len(surfaces))
-		for i, term := range surfaces {
-			lowerTerms[i] = strings.ToLower(term)
-		}
 		// Use LOWER(term) IN (...) for case-insensitive matching
 		qbuilder.Where(func(s *sql.Selector) {
-			s.Where(sql.In(sql.Lower(s.C(entlearnedword.FieldTerm)), stringsToInterfaces(lowerTerms)...))
+			s.Where(sql.In(sql.Lower(s.C(entlearnedword.FieldTerm)), stringsToInterfaces(surfaces)...))
 		})
 	}
 	if tags := uniqueFolded(query.Tags); len(tags) > 0 {
@@ -228,33 +223,39 @@ func (r *LearnedWordRepository) DeleteByID(ctx context.Context, userID uuid.UUID
 	return nil
 }
 
-func translateLearnedWordError(err error) error {
-	return translateDBError(err, "learned_word")
-}
-
 // StatsByTerms aggregates mastery buckets for the provided terms.
 func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UUID, terms []string) (entity.WordbookStats, error) {
 	if userID == uuid.Nil || len(terms) == 0 {
 		return entity.WordbookStats{}, nil
 	}
-	unique := uniqueFolded(terms)
-	if len(unique) == 0 {
+
+	// Use exact deduplication to ensure we match exactly what is in the wordbook.
+	uniqueTerms := unique(terms)
+	if len(uniqueTerms) == 0 {
 		return entity.WordbookStats{}, nil
 	}
 
 	rows, err := r.client.LearnedWord.Query().
 		Where(
 			entlearnedword.UserIDEQ(userID),
-			entlearnedword.TermIn(unique...),
+			entlearnedword.TermIn(uniqueTerms...),
 		).
-		Select(entlearnedword.FieldMasteryOverall).
+		Select(entlearnedword.FieldMasteryOverall, entlearnedword.FieldReviewNextReviewAt).
 		All(ctx)
 	if err != nil {
 		return entity.WordbookStats{}, fmt.Errorf("aggregate wordbook stats: %w", err)
 	}
 
-	stats := entity.WordbookStats{TotalWords: int32(len(unique))}
+	now := time.Now()
+	stats := entity.WordbookStats{TotalWords: int32(len(uniqueTerms))}
 	for _, row := range rows {
+		// 待复习定义：
+		// 1. ReviewNextReviewAt 为 nil (新词，从未学过)
+		// 2. ReviewNextReviewAt <= now (复习时间已到)
+		if row.ReviewNextReviewAt == nil || row.ReviewNextReviewAt.Before(now) {
+			stats.PendingWords++
+		}
+
 		switch {
 		case row.MasteryOverall >= 4:
 			stats.MasteredWords++

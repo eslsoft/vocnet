@@ -225,6 +225,7 @@ func (u *reviewPlanUsecase) attachStatus(ctx context.Context, plan *entity.Revie
 	}
 
 	plan.Status = entity.ReviewPlanStatus{
+		PendingWords:  stats.PendingWords,
 		MasteredWords: stats.MasteredWords,
 		LearningWords: stats.LearningWords,
 		UnknownWords:  stats.UnknownWords,
@@ -311,6 +312,7 @@ func (u *reviewPlanUsecase) attachStatusBatch(ctx context.Context, plans []*enti
 		}
 
 		plan.Status = entity.ReviewPlanStatus{
+			PendingWords:  planStats.PendingWords,
 			MasteredWords: planStats.MasteredWords,
 			LearningWords: planStats.LearningWords,
 			UnknownWords:  planStats.UnknownWords,
