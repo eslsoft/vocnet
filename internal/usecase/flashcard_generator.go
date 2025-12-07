@@ -108,7 +108,7 @@ type CardGeneratorFactory struct {
 func NewCardGeneratorFactory(lexemeRepo repository.LexemeRepository) *CardGeneratorFactory {
 	return &CardGeneratorFactory{
 		choice:      &ChoiceCardGenerator{lexemeRepo: lexemeRepo},
-		spelling:    &SpellingCardGenerator{},
+		spelling:    &SpellingCardGenerator{lexemeRepo: lexemeRepo},
 		selectWords: &SelectWordsCardGenerator{lexemeRepo: lexemeRepo},
 	}
 }
@@ -140,40 +140,53 @@ func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.Learned
 		return nil, fmt.Errorf("no definition found for word: %s", word.Term)
 	}
 
-	// Select primary sense gloss as correct answer
-	correctGloss := lexeme.Senses[0].Gloss
+	// Select preferred glosses (Chinese if available, otherwise English)
+	correctGloss := getPreferredGloss(lexeme.Senses)
+	if correctGloss == "" {
+		return nil, fmt.Errorf("no valid gloss found for word: %s", word.Term)
+	}
 
-	// Generate options
+	// Generate options (without IDs first)
+	// Use index 0 to mark the correct answer
 	options := []*CardItem{
-		{ID: "A", Text: correctGloss},
+		{Text: correctGloss},
 	}
 
 	// Add distractor glosses
-	optionLabels := []string{"B", "C", "D"}
 	for i, dist := range distractors {
 		if i >= 3 {
 			break
 		}
 		distLexeme, _ := g.lexemeRepo.Lookup(ctx, dist.Term, dist.Language)
 		if distLexeme != nil && len(distLexeme.Senses) > 0 {
-			options = append(options, &CardItem{
-				ID:   optionLabels[i],
-				Text: distLexeme.Senses[0].Gloss,
-			})
+			if distGloss := getPreferredGloss(distLexeme.Senses); distGloss != "" {
+				options = append(options, &CardItem{
+					Text: distGloss,
+				})
+			}
 		}
 	}
 
-	// Shuffle options
+	// Remember which index is the correct answer before shuffling
+	correctIndex := 0
+
+	// Shuffle options with index tracking
+	indices := make([]int, len(options))
+	for i := range indices {
+		indices[i] = i
+	}
 	rand.Shuffle(len(options), func(i, j int) {
 		options[i], options[j] = options[j], options[i]
+		indices[i], indices[j] = indices[j], indices[i]
 	})
 
-	// Find correct answer ID after shuffle
+	// Find where the correct answer ended up after shuffle
 	var correctID string
-	for _, opt := range options {
-		if opt.Text == correctGloss {
-			correctID = opt.ID
-			break
+	optionLabels := []string{"A", "B", "C", "D"}
+	for i, idx := range indices {
+		options[i].ID = optionLabels[i]
+		if idx == correctIndex {
+			correctID = optionLabels[i]
 		}
 	}
 
@@ -210,18 +223,41 @@ func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.Learned
 }
 
 // SpellingCardGenerator generates spelling questions.
-type SpellingCardGenerator struct{}
+type SpellingCardGenerator struct {
+	lexemeRepo repository.LexemeRepository
+}
 
 // Generate creates a SPELLING type flashcard.
 func (g *SpellingCardGenerator) Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*FlashCard, error) {
+	// Fetch word definition from Lexeme table to get phonetics
+	lexeme, err := g.lexemeRepo.Lookup(ctx, word.Term, word.Language)
+	if err != nil || lexeme == nil {
+		return nil, fmt.Errorf("no lexeme found for word: %s", word.Term)
+	}
+
+	// Extract phonetics from forms (typically the lemma form)
+	phonetics := make([]Phonetic, 0)
+	for _, form := range lexeme.Forms {
+		if form.FormType == entity.LexemeFormTypeLemma {
+			for _, p := range form.Phonetics {
+				phonetics = append(phonetics, Phonetic{
+					Accent: p.Dialect,
+					Text:   p.IPA,
+				})
+			}
+			break
+		}
+	}
+
 	return &FlashCard{
 		ID:      generateCardID(),
 		Type:    CardTypeSPELLING,
 		LWordID: word.ID,
 		Prompt:  "听音频，拼写出你听到的单词",
 		Question: &CardQuestion{
-			Text:     word.Term, // Used for TTS, not shown to user
-			AutoPlay: true,
+			Text:      word.Term, // Used for TTS, not shown to user
+			AutoPlay:  true,
+			Phonetics: phonetics,
 		},
 		Options: []*CardItem{
 			{ID: "hint1", Hint: fmt.Sprintf("%d letters", len(word.Term))},
@@ -334,4 +370,45 @@ func calculateDifficulty(masteryScore int32) int32 {
 		return 3 // Default difficulty for new words
 	}
 	return 6 - masteryScore // 5→1, 4→2, 3→3, 2→4, 1→5
+}
+
+// getPreferredGloss returns glosses from senses, preferring Chinese if available.
+// Multiple glosses are joined with "；".
+func getPreferredGloss(senses []entity.LexemeSense) string {
+	if len(senses) == 0 {
+		return ""
+	}
+
+	// Collect Chinese glosses first
+	var chineseGlosses []string
+	for _, sense := range senses {
+		if sense.Language == entity.LanguageChinese && strings.TrimSpace(sense.Gloss) != "" {
+			chineseGlosses = append(chineseGlosses, strings.TrimSpace(sense.Gloss))
+		}
+	}
+
+	if len(chineseGlosses) > 0 {
+		return strings.Join(chineseGlosses, "；")
+	}
+
+	// Fallback to English or any available glosses
+	var englishGlosses []string
+	for _, sense := range senses {
+		if sense.Language == entity.LanguageEnglish && strings.TrimSpace(sense.Gloss) != "" {
+			englishGlosses = append(englishGlosses, strings.TrimSpace(sense.Gloss))
+		}
+	}
+
+	if len(englishGlosses) > 0 {
+		return strings.Join(englishGlosses, "; ")
+	}
+
+	// Last resort: return any available gloss
+	for _, sense := range senses {
+		if gloss := strings.TrimSpace(sense.Gloss); gloss != "" {
+			return gloss
+		}
+	}
+
+	return ""
 }

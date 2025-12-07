@@ -254,27 +254,40 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 func selectCardType(word *entity.LearnedWord) CardType {
 	mastery := word.Mastery
 
-	// Find minimum mastery score
-	minScore := mastery.Listen
-	weakestSkill := "listen"
+	// Collect all skills with their scores
+	skills := []struct {
+		name  string
+		score int32
+	}{
+		{"listen", mastery.Listen},
+		{"read", mastery.Read},
+		{"spell", mastery.Spell},
+		{"pronounce", mastery.Pronounce},
+	}
 
-	if mastery.Read < minScore {
-		minScore = mastery.Read
-		weakestSkill = "read"
+	// Find minimum score
+	minScore := skills[0].score
+	for _, s := range skills[1:] {
+		if s.score < minScore {
+			minScore = s.score
+		}
 	}
-	if mastery.Spell < minScore {
-		minScore = mastery.Spell
-		weakestSkill = "spell"
+
+	// Collect all skills with minimum score
+	weakestSkills := make([]string, 0, len(skills))
+	for _, s := range skills {
+		if s.score == minScore {
+			weakestSkills = append(weakestSkills, s.name)
+		}
 	}
-	if mastery.Pronounce < minScore {
-		minScore = mastery.Pronounce
-		weakestSkill = "pronounce"
-	}
+
+	// Randomly select one if multiple skills have same minimum score (e.g., all 0 for new words)
+	weakestSkill := weakestSkills[rand.Intn(len(weakestSkills))]
 
 	// Map skill to card type
 	switch weakestSkill {
-	//case "listen":
-	//	return CardTypeSPELLING
+	case "listen":
+		return CardTypeSPELLING
 	case "read":
 		return CardTypeCHOICE
 	case "spell":
