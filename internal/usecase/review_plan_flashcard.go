@@ -48,9 +48,9 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	var dueWords, newWords []*entity.LearnedWord
 	var todayReviewedCount int
 	now := time.Now()
-	// Use end of day to include all words due today (Review Ahead)
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	// Use day boundaries to bucket today's progress consistently
+	startOfDay := entity.StartOfDay(now)
+	endOfDay := entity.EndOfDay(now)
 
 	for _, word := range allWords {
 		// Count words reviewed today
@@ -58,9 +58,9 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 			todayReviewedCount++
 		}
 
-		if word.Mastery.Overall == 0 {
+		if isNewWord(word) {
 			newWords = append(newWords, word)
-		} else if word.Review.NextReviewAt.Before(endOfDay) || word.Review.NextReviewAt.IsZero() {
+		} else if entity.IsReviewDue(word.Review.NextReviewAt, endOfDay) {
 			dueWords = append(dueWords, word)
 		}
 	}
@@ -95,12 +95,13 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 			newWordsToday = ds.NewWords
 		}
 	}
+	// Daily new limit controls how many truly new words can be studied today.
 	remainingQuota := int(plan.Config.DailyNewLimit) - int(newWordsToday)
 	if remainingQuota < 0 {
 		remainingQuota = 0
 	}
 
-	// Fill remaining with new words (randomized)
+	// Fill remaining with new words (randomized), but cap by daily new limit
 	if len(selectedWords) < int(limit) && len(newWords) > 0 && remainingQuota > 0 {
 		rand.Shuffle(len(newWords), func(i, j int) {
 			newWords[i], newWords[j] = newWords[j], newWords[i]
@@ -108,7 +109,7 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 
 		remainingSpace := int(limit) - len(selectedWords)
 		countToTake := remainingSpace
-		if countToTake > remainingQuota {
+		if remainingQuota > 0 && countToTake > remainingQuota {
 			countToTake = remainingQuota
 		}
 
@@ -322,11 +323,19 @@ func selectDistractors(allWords []*entity.LearnedWord, target *entity.LearnedWor
 func countNewWords(words []*entity.LearnedWord) int {
 	count := 0
 	for _, w := range words {
-		if w.Mastery.Overall == 0 {
+		if isNewWord(w) {
 			count++
 		}
 	}
 	return count
+}
+
+// isNewWord treats words with no scheduled review as "new" (pre-study).
+func isNewWord(word *entity.LearnedWord) bool {
+	if word == nil {
+		return true
+	}
+	return word.Review.NextReviewAt.IsZero()
 }
 
 // updateMastery applies score to relevant mastery dimensions based on card type.

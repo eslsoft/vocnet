@@ -246,14 +246,15 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 		return entity.WordbookStats{}, fmt.Errorf("aggregate wordbook stats: %w", err)
 	}
 
-	now := time.Now()
-	y, m, d := now.Date()
-	endOfToday := time.Date(y, m, d, 23, 59, 59, 999999999, now.Location())
+	endOfToday := entity.EndOfDay(time.Now())
 
 	stats := entity.WordbookStats{TotalWords: int32(len(uniqueTerms))}
 	for _, row := range rows {
-		// ReviewDue: 已学习且今天到期 (NextReviewAt <= EndOfToday)
-		if row.ReviewNextReviewAt != nil && row.ReviewNextReviewAt.Before(endOfToday) {
+		var next time.Time
+		if row.ReviewNextReviewAt != nil {
+			next = *row.ReviewNextReviewAt
+		}
+		if entity.IsReviewDue(next, endOfToday) {
 			stats.ReviewDue++
 		}
 

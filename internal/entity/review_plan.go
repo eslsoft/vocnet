@@ -45,6 +45,26 @@ type DailyTaskStats struct {
 	NewWordsCompleted int32
 }
 
+// StartOfDay returns the beginning of the user's day in the same location.
+func StartOfDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
+// EndOfDay returns the end-of-day timestamp (inclusive) for the given time.
+func EndOfDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 23, 59, 59, int(time.Second-time.Nanosecond), t.Location())
+}
+
+// IsReviewDue reports whether the next review time is scheduled and due by the cutoff.
+func IsReviewDue(next time.Time, cutoff time.Time) bool {
+	if next.IsZero() {
+		return false
+	}
+	return !next.After(cutoff)
+}
+
 // NormalizeReviewPlan cleans string fields, sets defaults, and ensures invariants.
 func NormalizeReviewPlan(in *ReviewPlan) (*ReviewPlan, error) {
 	if in == nil {
