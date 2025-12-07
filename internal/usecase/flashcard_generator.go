@@ -5,96 +5,15 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/google/uuid"
 )
 
-// CardType represents the type of flashcard.
-type CardType string
-
-const (
-	CardTypeCHOICE       CardType = "CHOICE"
-	CardTypeSPELLING     CardType = "SPELLING"
-	CardTypeSELECT_WORDS CardType = "SELECT_WORDS"
-)
-
-// FlashCard represents a single flashcard for vocabulary review.
-type FlashCard struct {
-	ID          string
-	Type        CardType
-	LWordID     int64
-	Prompt      string
-	Question    *CardQuestion
-	Options     []*CardItem
-	Answer      *CardAnswer
-	Difficulty  int32
-	Annotations map[string]string
-}
-
-// CardQuestion represents the question content of a flashcard.
-type CardQuestion struct {
-	Text      string
-	AutoPlay  bool
-	Phonetics []Phonetic
-	ImageURL  string
-}
-
-// Phonetic represents pronunciation information.
-type Phonetic struct {
-	Accent string // e.g., "US", "UK"
-	Text   string // e.g., "/ˈæpl/"
-}
-
-// CardItem represents an option or interactive item in a flashcard.
-type CardItem struct {
-	ID    string
-	Text  string
-	Hint  string
-	Group string // For matching questions
-}
-
-// CardAnswer represents the correct answer and validation rules.
-type CardAnswer struct {
-	CorrectValues []string
-	Config        *AnswerConfig
-}
-
-// AnswerConfig contains validation configuration.
-type AnswerConfig struct {
-	IgnoreCase bool
-}
-
-// FlashCardSet represents a collection of flashcards with statistics.
-type FlashCardSet struct {
-	Cards []*FlashCard
-	Stats *FlashCardStats
-}
-
-// FlashCardStats contains statistics about the flashcard set.
-type FlashCardStats struct {
-	NewWords           int32
-	ReviewWords        int32
-	TotalDueWords      int32
-	EstimatedMinutes   int32
-	TodayReviewedCount int32
-}
-
-// AnswerResult represents the result of answering a flashcard.
-type AnswerResult struct {
-	LWordID          int64
-	CardType         CardType
-	Correct          bool
-	Accuracy         float32
-	TimeSpentSeconds int32
-	AnsweredAt       time.Time
-}
-
 // CardGenerator defines the interface for card type generators.
 type CardGenerator interface {
-	Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*FlashCard, error)
+	Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*entity.FlashCard, error)
 }
 
 // CardGeneratorFactory creates card generators based on card type.
@@ -114,13 +33,13 @@ func NewCardGeneratorFactory(lexemeRepo repository.LexemeRepository) *CardGenera
 }
 
 // GetGenerator returns the appropriate card generator for the given card type.
-func (f *CardGeneratorFactory) GetGenerator(cardType CardType) CardGenerator {
+func (f *CardGeneratorFactory) GetGenerator(cardType entity.CardType) CardGenerator {
 	switch cardType {
-	case CardTypeCHOICE:
+	case entity.CardTypeCHOICE:
 		return f.choice
-	case CardTypeSPELLING:
+	case entity.CardTypeSPELLING:
 		return f.spelling
-	case CardTypeSELECT_WORDS:
+	case entity.CardTypeSELECT_WORDS:
 		return f.selectWords
 	default:
 		return f.choice
@@ -133,7 +52,7 @@ type ChoiceCardGenerator struct {
 }
 
 // Generate creates a CHOICE type flashcard.
-func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*FlashCard, error) {
+func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*entity.FlashCard, error) {
 	// Fetch word definition from Lexeme table
 	lexeme, err := g.lexemeRepo.Lookup(ctx, word.Term, word.Language)
 	if err != nil || lexeme == nil || len(lexeme.Senses) == 0 {
@@ -148,7 +67,7 @@ func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.Learned
 
 	// Generate options (without IDs first)
 	// Use index 0 to mark the correct answer
-	options := []*CardItem{
+	options := []*entity.CardItem{
 		{Text: correctGloss},
 	}
 
@@ -160,9 +79,7 @@ func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.Learned
 		distLexeme, _ := g.lexemeRepo.Lookup(ctx, dist.Term, dist.Language)
 		if distLexeme != nil && len(distLexeme.Senses) > 0 {
 			if distGloss := getPreferredGloss(distLexeme.Senses); distGloss != "" {
-				options = append(options, &CardItem{
-					Text: distGloss,
-				})
+				options = append(options, &entity.CardItem{Text: distGloss})
 			}
 		}
 	}
@@ -191,31 +108,28 @@ func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.Learned
 	}
 
 	// Extract phonetics from forms (typically the lemma form)
-	phonetics := make([]Phonetic, 0)
+	phonetics := make([]entity.Phonetic, 0)
 	for _, form := range lexeme.Forms {
 		if form.FormType == entity.LexemeFormTypeLemma {
 			for _, p := range form.Phonetics {
-				phonetics = append(phonetics, Phonetic{
-					Accent: p.Dialect,
-					Text:   p.IPA,
-				})
+				phonetics = append(phonetics, p)
 			}
 			break
 		}
 	}
 
-	return &FlashCard{
+	return &entity.FlashCard{
 		ID:      generateCardID(),
-		Type:    CardTypeCHOICE,
+		Type:    entity.CardTypeCHOICE,
 		LWordID: word.ID,
 		Prompt:  "选择正确的释义",
-		Question: &CardQuestion{
+		Question: &entity.CardQuestion{
 			Text:      word.Term,
 			AutoPlay:  true,
 			Phonetics: phonetics,
 		},
 		Options: options,
-		Answer: &CardAnswer{
+		Answer: &entity.CardAnswer{
 			CorrectValues: []string{correctID},
 		},
 		Difficulty: calculateDifficulty(word.Mastery.Read),
@@ -228,7 +142,7 @@ type SpellingCardGenerator struct {
 }
 
 // Generate creates a SPELLING type flashcard.
-func (g *SpellingCardGenerator) Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*FlashCard, error) {
+func (g *SpellingCardGenerator) Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*entity.FlashCard, error) {
 	// Fetch word definition from Lexeme table to get phonetics
 	lexeme, err := g.lexemeRepo.Lookup(ctx, word.Term, word.Language)
 	if err != nil || lexeme == nil {
@@ -236,35 +150,32 @@ func (g *SpellingCardGenerator) Generate(ctx context.Context, word *entity.Learn
 	}
 
 	// Extract phonetics from forms (typically the lemma form)
-	phonetics := make([]Phonetic, 0)
+	phonetics := make([]entity.Phonetic, 0)
 	for _, form := range lexeme.Forms {
 		if form.FormType == entity.LexemeFormTypeLemma {
 			for _, p := range form.Phonetics {
-				phonetics = append(phonetics, Phonetic{
-					Accent: p.Dialect,
-					Text:   p.IPA,
-				})
+				phonetics = append(phonetics, p)
 			}
 			break
 		}
 	}
 
-	return &FlashCard{
+	return &entity.FlashCard{
 		ID:      generateCardID(),
-		Type:    CardTypeSPELLING,
+		Type:    entity.CardTypeSPELLING,
 		LWordID: word.ID,
 		Prompt:  "听音频，拼写出你听到的单词",
-		Question: &CardQuestion{
+		Question: &entity.CardQuestion{
 			Text:      word.Term, // Used for TTS, not shown to user
 			AutoPlay:  true,
 			Phonetics: phonetics,
 		},
-		Options: []*CardItem{
+		Options: []*entity.CardItem{
 			{ID: "hint1", Hint: fmt.Sprintf("%d letters", len(word.Term))},
 		},
-		Answer: &CardAnswer{
+		Answer: &entity.CardAnswer{
 			CorrectValues: []string{word.Term},
-			Config: &AnswerConfig{
+			Config: &entity.AnswerConfig{
 				IgnoreCase: true,
 			},
 		},
@@ -278,7 +189,7 @@ type SelectWordsCardGenerator struct {
 }
 
 // Generate creates a SELECT_WORDS type flashcard.
-func (g *SelectWordsCardGenerator) Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*FlashCard, error) {
+func (g *SelectWordsCardGenerator) Generate(ctx context.Context, word *entity.LearnedWord, distractors []*entity.LearnedWord) (*entity.FlashCard, error) {
 	// Select example sentence (priority: LearnedWord.Contexts > Lexeme.Senses)
 	var exampleSentence string
 	if len(word.Contexts) > 0 {
@@ -313,7 +224,7 @@ func (g *SelectWordsCardGenerator) Generate(ctx context.Context, word *entity.Le
 	}
 
 	// Generate options (correct word + distractors)
-	options := []*CardItem{
+	options := []*entity.CardItem{
 		{ID: "opt1", Text: word.Term},
 	}
 
@@ -321,7 +232,7 @@ func (g *SelectWordsCardGenerator) Generate(ctx context.Context, word *entity.Le
 		if i >= 3 {
 			break
 		}
-		options = append(options, &CardItem{
+		options = append(options, &entity.CardItem{
 			ID:   fmt.Sprintf("opt%d", i+2),
 			Text: dist.Term,
 		})
@@ -341,16 +252,16 @@ func (g *SelectWordsCardGenerator) Generate(ctx context.Context, word *entity.Le
 		}
 	}
 
-	return &FlashCard{
+	return &entity.FlashCard{
 		ID:      generateCardID(),
-		Type:    CardTypeSELECT_WORDS,
+		Type:    entity.CardTypeSELECT_WORDS,
 		LWordID: word.ID,
 		Prompt:  "选择正确的单词填空",
-		Question: &CardQuestion{
+		Question: &entity.CardQuestion{
 			Text: questionText,
 		},
 		Options: options,
-		Answer: &CardAnswer{
+		Answer: &entity.CardAnswer{
 			CorrectValues: []string{fmt.Sprintf("blank1:%s", correctID)},
 		},
 		Difficulty: calculateDifficulty((word.Mastery.Read + word.Mastery.Spell) / 2),

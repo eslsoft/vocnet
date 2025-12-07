@@ -22,8 +22,8 @@ type ReviewPlanUsecase interface {
 	Delete(ctx context.Context, id int64) error
 
 	// FlashCard operations
-	GetFlashCards(ctx context.Context, planID int64, limit int32) (*FlashCardSet, error)
-	SubmitAnswer(ctx context.Context, planID int64, results []*AnswerResult) error
+	GetFlashCards(ctx context.Context, planID int64, limit int32) (*entity.FlashCardSet, error)
+	SubmitAnswer(ctx context.Context, planID int64, results []*entity.AnswerResult) error
 }
 
 type reviewPlanUsecase struct {

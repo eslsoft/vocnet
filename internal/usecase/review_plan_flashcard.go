@@ -21,7 +21,7 @@ import (
 // 6. Generate cards for each word based on weakest skill
 // 7. Shuffle cards
 // 8. Return FlashCardSet with statistics
-func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, limit int32) (*FlashCardSet, error) {
+func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, limit int32) (*entity.FlashCardSet, error) {
 	userID := auth.MustGetUserID(ctx)
 
 	// Step 1: Load ReviewPlan
@@ -31,7 +31,7 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	}
 
 	if len(plan.WordbookIDs) == 0 {
-		return &FlashCardSet{Cards: []*FlashCard{}, Stats: &FlashCardStats{}}, nil
+		return &entity.FlashCardSet{Cards: []*entity.FlashCard{}, Stats: &entity.FlashCardStats{}}, nil
 	}
 
 	// Step 2: Fetch all LearnedWords for this plan
@@ -41,7 +41,7 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	}
 
 	if len(allWords) == 0 {
-		return &FlashCardSet{Cards: []*FlashCard{}, Stats: &FlashCardStats{}}, nil
+		return &entity.FlashCardSet{Cards: []*entity.FlashCard{}, Stats: &entity.FlashCardStats{}}, nil
 	}
 
 	// Step 3: Classify words
@@ -113,7 +113,7 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	}
 
 	// Step 6: Generate cards for each word
-	cards := make([]*FlashCard, 0, len(selectedWords))
+	cards := make([]*entity.FlashCard, 0, len(selectedWords))
 
 	for _, word := range selectedWords {
 		// Determine card type based on weakest skill
@@ -140,15 +140,15 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	})
 
 	// Step 8: Build statistics
-	stats := &FlashCardStats{
+	stats := &entity.FlashCardStats{
 		NewWords:           int32(remainingQuota), // Remaining new words quota for today
 		ReviewWords:        int32(len(selectedWords) - countNewWords(selectedWords)),
 		TotalDueWords:      int32(len(dueWords)),
-		TodayReviewedCount: cardsReviewedToday, // Cards reviewed today from daily_stats
+		TodayReviewedCount: cardsReviewedToday,    // Cards reviewed today from daily_stats
 		EstimatedMinutes:   int32(len(cards) / 4), // Assume ~15 sec per card
 	}
 
-	return &FlashCardSet{
+	return &entity.FlashCardSet{
 		Cards: cards,
 		Stats: stats,
 	}, nil
@@ -160,7 +160,7 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 // 2. Process each answer result (update mastery, apply algorithm, accumulate stats)
 // 3. Update DailyStats atomically
 // 4. Return success
-func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, results []*AnswerResult) error {
+func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, results []*entity.AnswerResult) error {
 	userID := auth.MustGetUserID(ctx)
 
 	// Step 1: Verify plan exists and belongs to user
@@ -248,7 +248,7 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 // Helper functions
 
 // selectCardType determines card type based on weakest mastery dimension.
-func selectCardType(word *entity.LearnedWord) CardType {
+func selectCardType(word *entity.LearnedWord) entity.CardType {
 	mastery := word.Mastery
 
 	// Collect all skills with their scores
@@ -284,15 +284,15 @@ func selectCardType(word *entity.LearnedWord) CardType {
 	// Map skill to card type
 	switch weakestSkill {
 	case "listen":
-		return CardTypeSPELLING
+		return entity.CardTypeSPELLING
 	case "read":
-		return CardTypeCHOICE
+		return entity.CardTypeCHOICE
 	//case "spell":
 	//	return CardTypeSELECT_WORDS
 	case "pronounce":
-		return CardTypeCHOICE // MVP: downgrade to CHOICE
+		return entity.CardTypeCHOICE // MVP: downgrade to CHOICE
 	default:
-		return CardTypeCHOICE
+		return entity.CardTypeCHOICE
 	}
 }
 
@@ -335,23 +335,23 @@ func isNewWord(word *entity.LearnedWord) bool {
 }
 
 // updateMastery applies score to relevant mastery dimensions based on card type.
-func updateMastery(current entity.MasteryBreakdown, cardType CardType, score float32) entity.MasteryBreakdown {
+func updateMastery(current entity.MasteryBreakdown, cardType entity.CardType, score float32) entity.MasteryBreakdown {
 	// Score delta: map 0.0-1.0 score to -1 to +1 mastery change
 	delta := (score - 0.5) * 2.0 // 0.0→-1.0, 0.5→0.0, 1.0→+1.0
 
 	updated := current
 
 	switch cardType {
-	case CardTypeCHOICE:
+	case entity.CardTypeCHOICE:
 		// Affects: reading
 		updated.Read = clampMastery(updated.Read + int32(delta))
 
-	case CardTypeSPELLING:
+	case entity.CardTypeSPELLING:
 		// Affects: listening (60%), spelling (40%)
 		updated.Listen = clampMastery(updated.Listen + int32(delta*0.6))
 		updated.Spell = clampMastery(updated.Spell + int32(delta*0.4))
 
-	case CardTypeSELECT_WORDS:
+	case entity.CardTypeSELECT_WORDS:
 		// Affects: reading (50%), spelling (50%)
 		updated.Read = clampMastery(updated.Read + int32(delta*0.5))
 		updated.Spell = clampMastery(updated.Spell + int32(delta*0.5))

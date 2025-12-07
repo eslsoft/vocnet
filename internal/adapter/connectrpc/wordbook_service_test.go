@@ -2,16 +2,17 @@ package connectrpc
 
 import (
 	"context"
-	"net/http"
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	repo "github.com/eslsoft/vocnet/internal/adapter/repository"
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
@@ -98,7 +99,8 @@ func TestWordbookService_BuiltinListing(t *testing.T) {
 
 func TestWordbookService_UserOperations(t *testing.T) {
 	svc := setupWordbookService(t)
-	ctx := context.Background()
+	userID := uuid.New()
+	ctx := auth.SetUserID(context.Background(), userID)
 
 	// Create
 	createReq := connect.NewRequest(&wordbookv1.CreateWordbookRequest{
@@ -107,7 +109,6 @@ func TestWordbookService_UserOperations(t *testing.T) {
 		Name:        "My Custom Book",
 		Description: "A personal list",
 	})
-	createReq.Header().Set("x-user-id", "42")
 	createdResp, err := svc.CreateWordbook(ctx, createReq)
 	require.NoError(t, err)
 	require.NotNil(t, createdResp)
@@ -125,7 +126,6 @@ func TestWordbookService_UserOperations(t *testing.T) {
 		Name:        "Updated Book",
 		Description: "Updated description",
 	})
-	updateReq.Header().Set("x-user-id", "42")
 	updateResp, err := svc.UpdateWordbook(ctx, updateReq)
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Book", updateResp.Msg.Name)
@@ -135,7 +135,6 @@ func TestWordbookService_UserOperations(t *testing.T) {
 		WordbookId: bookID,
 		Terms:      []string{"alpha", "beta", "alpha"},
 	})
-	addReq.Header().Set("x-user-id", "42")
 	addResp, err := svc.AddWords(ctx, addReq)
 	require.NoError(t, err)
 	assert.Len(t, addResp.Msg.Terms, 2)
@@ -145,7 +144,6 @@ func TestWordbookService_UserOperations(t *testing.T) {
 		WordbookId: bookID,
 		Terms:      []string{"beta"},
 	})
-	removeReq.Header().Set("x-user-id", "42")
 	removeResp, err := svc.RemoveWords(ctx, removeReq)
 	require.NoError(t, err)
 	assert.Len(t, removeResp.Msg.Terms, 1)
@@ -153,7 +151,6 @@ func TestWordbookService_UserOperations(t *testing.T) {
 
 	// Delete
 	delReq := connect.NewRequest(&commonv1.IDRequest{Id: bookID})
-	delReq.Header().Set("x-user-id", "42")
 	_, err = svc.DeleteWordbook(ctx, delReq)
 	require.NoError(t, err)
 
@@ -175,9 +172,8 @@ func TestWordbookService_GetBuiltin(t *testing.T) {
 
 func TestWordbookService_BuiltinIsReadOnly(t *testing.T) {
 	svc := setupWordbookService(t)
-	ctx := context.Background()
-	header := http.Header{}
-	header.Set("x-user-id", "1")
+	userID := uuid.New()
+	ctx := auth.SetUserID(context.Background(), userID)
 
 	req := connect.NewRequest(&wordbookv1.UpdateWordbookRequest{
 		Id:          101,
@@ -185,7 +181,7 @@ func TestWordbookService_BuiltinIsReadOnly(t *testing.T) {
 		Visibility:  wordbookv1.VisibilityType_VISIBILITY_TYPE_PRIVATE,
 		Description: "x",
 	})
-	req.Header().Set("x-user-id", "1")
+	req.Header().Set("x-user-id", userID.String())
 	_, err := svc.UpdateWordbook(ctx, req)
 	assert.Error(t, err)
 }

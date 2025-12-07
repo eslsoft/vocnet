@@ -1,14 +1,14 @@
 package mapping
 
 import (
-	"github.com/eslsoft/vocnet/internal/usecase"
+	"github.com/eslsoft/vocnet/internal/entity"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	learningv1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // ToPbFlashCard converts usecase FlashCard to protobuf FlashCard.
-func ToPbFlashCard(card *usecase.FlashCard) *learningv1.FlashCard {
+func ToPbFlashCard(card *entity.FlashCard) *learningv1.FlashCard {
 	if card == nil {
 		return nil
 	}
@@ -27,7 +27,7 @@ func ToPbFlashCard(card *usecase.FlashCard) *learningv1.FlashCard {
 }
 
 // ToPbFlashCardSet converts usecase FlashCardSet to protobuf FlashCardSet.
-func ToPbFlashCardSet(set *usecase.FlashCardSet) *learningv1.FlashCardSet {
+func ToPbFlashCardSet(set *entity.FlashCardSet) *learningv1.FlashCardSet {
 	if set == nil {
 		return &learningv1.FlashCardSet{}
 	}
@@ -44,13 +44,13 @@ func ToPbFlashCardSet(set *usecase.FlashCardSet) *learningv1.FlashCardSet {
 }
 
 // toPbCardType converts usecase CardType to protobuf CardType.
-func toPbCardType(t usecase.CardType) learningv1.CardType {
+func toPbCardType(t entity.CardType) learningv1.CardType {
 	switch t {
-	case usecase.CardTypeCHOICE:
+	case entity.CardTypeCHOICE:
 		return learningv1.CardType_CARD_TYPE_CHOICE
-	case usecase.CardTypeSPELLING:
+	case entity.CardTypeSPELLING:
 		return learningv1.CardType_CARD_TYPE_SPELLING
-	case usecase.CardTypeSELECT_WORDS:
+	case entity.CardTypeSELECT_WORDS:
 		return learningv1.CardType_CARD_TYPE_SELECT_WORDS
 	default:
 		return learningv1.CardType_CARD_TYPE_UNSPECIFIED
@@ -58,7 +58,7 @@ func toPbCardType(t usecase.CardType) learningv1.CardType {
 }
 
 // toPbCardQuestion converts usecase CardQuestion to protobuf CardQuestion.
-func toPbCardQuestion(q *usecase.CardQuestion) *learningv1.CardQuestion {
+func toPbCardQuestion(q *entity.CardQuestion) *learningv1.CardQuestion {
 	if q == nil {
 		return nil
 	}
@@ -66,8 +66,8 @@ func toPbCardQuestion(q *usecase.CardQuestion) *learningv1.CardQuestion {
 	phonetics := make([]*dictv1.Phonetic, 0, len(q.Phonetics))
 	for _, p := range q.Phonetics {
 		phonetics = append(phonetics, &dictv1.Phonetic{
-			Ipa:     p.Text,   // usecase.Text contains the IPA string
-			Dialect: p.Accent, // usecase.Accent contains the dialect
+			Ipa:     p.IPA,
+			Dialect: p.Dialect,
 		})
 	}
 
@@ -80,7 +80,7 @@ func toPbCardQuestion(q *usecase.CardQuestion) *learningv1.CardQuestion {
 }
 
 // toPbCardAnswer converts usecase CardAnswer to protobuf CardAnswer.
-func toPbCardAnswer(a *usecase.CardAnswer) *learningv1.CardAnswer {
+func toPbCardAnswer(a *entity.CardAnswer) *learningv1.CardAnswer {
 	if a == nil {
 		return nil
 	}
@@ -99,7 +99,7 @@ func toPbCardAnswer(a *usecase.CardAnswer) *learningv1.CardAnswer {
 }
 
 // toPbCardItems converts usecase CardItems to protobuf CardItems.
-func toPbCardItems(items []*usecase.CardItem) []*learningv1.CardItem {
+func toPbCardItems(items []*entity.CardItem) []*learningv1.CardItem {
 	if items == nil {
 		return nil
 	}
@@ -119,7 +119,7 @@ func toPbCardItems(items []*usecase.CardItem) []*learningv1.CardItem {
 }
 
 // toPbFlashCardStats converts usecase FlashCardStats to protobuf FlashCardStats.
-func toPbFlashCardStats(stats *usecase.FlashCardStats) *learningv1.FlashCardStats {
+func toPbFlashCardStats(stats *entity.FlashCardStats) *learningv1.FlashCardStats {
 	if stats == nil {
 		return &learningv1.FlashCardStats{}
 	}
@@ -134,12 +134,12 @@ func toPbFlashCardStats(stats *usecase.FlashCardStats) *learningv1.FlashCardStat
 }
 
 // FromPbAnswerResult converts protobuf AnswerResult to usecase AnswerResult.
-func FromPbAnswerResult(pb *learningv1.AnswerResult) *usecase.AnswerResult {
+func FromPbAnswerResult(pb *learningv1.AnswerResult) *entity.AnswerResult {
 	if pb == nil {
 		return nil
 	}
 
-	return &usecase.AnswerResult{
+	return &entity.AnswerResult{
 		LWordID:          pb.GetLwordId(),
 		CardType:         fromPbCardType(pb.GetCardType()),
 		Correct:          pb.GetCorrect(),
@@ -150,26 +150,26 @@ func FromPbAnswerResult(pb *learningv1.AnswerResult) *usecase.AnswerResult {
 }
 
 // fromPbCardType converts protobuf CardType to usecase CardType.
-func fromPbCardType(t learningv1.CardType) usecase.CardType {
+func fromPbCardType(t learningv1.CardType) entity.CardType {
 	switch t {
 	case learningv1.CardType_CARD_TYPE_CHOICE:
-		return usecase.CardTypeCHOICE
+		return entity.CardTypeCHOICE
 	case learningv1.CardType_CARD_TYPE_SPELLING:
-		return usecase.CardTypeSPELLING
+		return entity.CardTypeSPELLING
 	case learningv1.CardType_CARD_TYPE_SELECT_WORDS:
-		return usecase.CardTypeSELECT_WORDS
+		return entity.CardTypeSELECT_WORDS
 	default:
-		return usecase.CardTypeCHOICE
+		return entity.CardTypeCHOICE
 	}
 }
 
 // FromPbAnswerResults converts multiple protobuf AnswerResults.
-func FromPbAnswerResults(pbResults []*learningv1.AnswerResult) []*usecase.AnswerResult {
+func FromPbAnswerResults(pbResults []*learningv1.AnswerResult) []*entity.AnswerResult {
 	if pbResults == nil {
 		return nil
 	}
 
-	results := make([]*usecase.AnswerResult, 0, len(pbResults))
+	results := make([]*entity.AnswerResult, 0, len(pbResults))
 	for _, pb := range pbResults {
 		if pb != nil {
 			results = append(results, FromPbAnswerResult(pb))
@@ -179,7 +179,7 @@ func FromPbAnswerResults(pbResults []*learningv1.AnswerResult) []*usecase.Answer
 }
 
 // ToPbAnswerResult converts usecase AnswerResult to protobuf (for testing).
-func ToPbAnswerResult(result *usecase.AnswerResult) *learningv1.AnswerResult {
+func ToPbAnswerResult(result *entity.AnswerResult) *learningv1.AnswerResult {
 	if result == nil {
 		return nil
 	}
