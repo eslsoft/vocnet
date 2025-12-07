@@ -576,7 +576,7 @@ func (m *InventoryStats) validate(all bool) error {
 
 	// no validation rules for TotalWords
 
-	// no validation rules for NewWords
+	// no validation rules for UnknownWords
 
 	// no validation rules for LearningWords
 
@@ -687,6 +687,8 @@ func (m *DailyTaskStats) validate(all bool) error {
 	// no validation rules for NewWordsRemaining
 
 	// no validation rules for NewWordsCompleted
+
+	// no validation rules for CardsReviewedToday
 
 	if len(errors) > 0 {
 		return DailyTaskStatsMultiError(errors)

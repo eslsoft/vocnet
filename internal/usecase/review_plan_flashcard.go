@@ -46,18 +46,11 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 
 	// Step 3: Classify words
 	var dueWords, newWords []*entity.LearnedWord
-	var todayReviewedCount int
 	now := time.Now()
 	// Use day boundaries to bucket today's progress consistently
-	startOfDay := entity.StartOfDay(now)
 	endOfDay := entity.EndOfDay(now)
 
 	for _, word := range allWords {
-		// Count words reviewed today
-		if !word.Review.LastReviewAt.IsZero() && word.Review.LastReviewAt.After(startOfDay) {
-			todayReviewedCount++
-		}
-
 		if isNewWord(word) {
 			newWords = append(newWords, word)
 		} else if entity.IsReviewDue(word.Review.NextReviewAt, endOfDay) {
@@ -87,12 +80,13 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 		selectedWords = append(selectedWords, dueWords[i])
 	}
 
-	// Get DailyStats for remaining new limit
-	var newWordsToday int32
+	// Get DailyStats for quota and progress tracking
+	var newWordsToday, cardsReviewedToday int32
 	if u.dailyStatsRepo != nil {
-		ds, err := u.dailyStatsRepo.GetOrCreate(ctx, userID, time.Now())
+		ds, err := u.dailyStatsRepo.GetByPlan(ctx, userID, plan.ID, time.Now())
 		if err == nil && ds != nil {
 			newWordsToday = ds.NewWords
+			cardsReviewedToday = ds.CardsReviewed
 		}
 	}
 	// Daily new limit controls how many truly new words can be studied today.
@@ -147,10 +141,10 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 
 	// Step 8: Build statistics
 	stats := &FlashCardStats{
-		NewWords:           int32(countNewWords(selectedWords)),
+		NewWords:           int32(remainingQuota), // Remaining new words quota for today
 		ReviewWords:        int32(len(selectedWords) - countNewWords(selectedWords)),
 		TotalDueWords:      int32(len(dueWords)),
-		TodayReviewedCount: int32(todayReviewedCount),
+		TodayReviewedCount: cardsReviewedToday, // Cards reviewed today from daily_stats
 		EstimatedMinutes:   int32(len(cards) / 4), // Assume ~15 sec per card
 	}
 
@@ -196,7 +190,8 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 			continue // Skip failed lookups
 		}
 
-		wasNew := word.Mastery.Overall == 0
+		// Check if this was a new word (never reviewed before)
+		wasNew := isNewWord(word)
 
 		// Map score to mastery dimensions
 		mastery := updateMastery(word.Mastery, result.CardType, result.Accuracy)
@@ -220,7 +215,8 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 		totalTimeSpent += result.TimeSpentSeconds
 		totalScore += result.Accuracy
 
-		if wasNew && mastery.Overall > 0 {
+		// Count new words: words that had no NextReviewAt before this review
+		if wasNew {
 			newWordsSet[word.ID] = true
 		}
 
@@ -232,7 +228,7 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 	// Step 3: Update DailyStats (atomic increment)
 	if len(results) > 0 {
 		avgScore := totalScore / float32(len(results))
-		err = u.dailyStatsRepo.IncrementStats(ctx, userID, todayDate,
+		err = u.dailyStatsRepo.IncrementStats(ctx, userID, planID, todayDate,
 			int32(len(results)),     // cards_reviewed
 			int32(len(newWordsSet)), // new_words
 			totalTimeSpent,          // time_spent_seconds
@@ -291,8 +287,8 @@ func selectCardType(word *entity.LearnedWord) CardType {
 		return CardTypeSPELLING
 	case "read":
 		return CardTypeCHOICE
-	case "spell":
-		return CardTypeSELECT_WORDS
+	//case "spell":
+	//	return CardTypeSELECT_WORDS
 	case "pronounce":
 		return CardTypeCHOICE // MVP: downgrade to CHOICE
 	default:

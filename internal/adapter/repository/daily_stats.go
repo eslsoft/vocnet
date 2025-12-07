@@ -22,13 +22,14 @@ func NewDailyStatsRepository(client *entdb.Client) repository.DailyStatsReposito
 	}
 }
 
-func (r *dailyStatsRepository) GetOrCreate(ctx context.Context, userID uuid.UUID, date time.Time) (*entity.DailyStats, error) {
+func (r *dailyStatsRepository) GetOrCreate(ctx context.Context, userID uuid.UUID, planID int64, date time.Time) (*entity.DailyStats, error) {
 	normalizedDate := entity.NormalizeDate(date)
 
 	// Try to get existing record
 	rec, err := r.client.DailyStats.Query().
 		Where(
 			dailystats.UserIDEQ(userID),
+			dailystats.PlanIDEQ(planID),
 			dailystats.DateEQ(normalizedDate),
 		).
 		First(ctx)
@@ -44,6 +45,7 @@ func (r *dailyStatsRepository) GetOrCreate(ctx context.Context, userID uuid.UUID
 	// Create new record with zero values
 	rec, err = r.client.DailyStats.Create().
 		SetUserID(userID).
+		SetPlanID(planID).
 		SetDate(normalizedDate).
 		SetCardsReviewed(0).
 		SetNewWords(0).
@@ -59,14 +61,14 @@ func (r *dailyStatsRepository) GetOrCreate(ctx context.Context, userID uuid.UUID
 	return mapEntDailyStats(rec), nil
 }
 
-func (r *dailyStatsRepository) IncrementStats(ctx context.Context, userID uuid.UUID, date time.Time,
+func (r *dailyStatsRepository) IncrementStats(ctx context.Context, userID uuid.UUID, planID int64, date time.Time,
 	cardsReviewed int32, newWords int32, timeSpentSeconds int32,
 	scoreSum float32, wordsMastered int32) error {
 
 	normalizedDate := entity.NormalizeDate(date)
 
 	// First, get or create the record to calculate new average
-	current, err := r.GetOrCreate(ctx, userID, normalizedDate)
+	current, err := r.GetOrCreate(ctx, userID, planID, normalizedDate)
 	if err != nil {
 		return err
 	}
@@ -84,6 +86,7 @@ func (r *dailyStatsRepository) IncrementStats(ctx context.Context, userID uuid.U
 	return r.client.DailyStats.Update().
 		Where(
 			dailystats.UserIDEQ(userID),
+			dailystats.PlanIDEQ(planID),
 			dailystats.DateEQ(normalizedDate),
 		).
 		AddCardsReviewed(cardsReviewed).
@@ -127,6 +130,7 @@ func mapEntDailyStats(rec *entdb.DailyStats) *entity.DailyStats {
 	return &entity.DailyStats{
 		ID:               rec.ID,
 		UserID:           rec.UserID,
+		PlanID:           rec.PlanID,
 		Date:             rec.Date,
 		CardsReviewed:    rec.CardsReviewed,
 		NewWords:         rec.NewWords,
@@ -138,15 +142,16 @@ func mapEntDailyStats(rec *entdb.DailyStats) *entity.DailyStats {
 	}
 }
 
-// GetToday retrieves stats for today (normalized to current date).
-// Returns nil if no stats exist for today yet.
-func (r *dailyStatsRepository) GetToday(ctx context.Context, userID uuid.UUID) (*entity.DailyStats, error) {
-	normalizedToday := entity.NormalizeDate(time.Now())
+// GetByPlan retrieves stats for a specific plan on a specific date.
+// Returns nil if no stats exist for this plan and date.
+func (r *dailyStatsRepository) GetByPlan(ctx context.Context, userID uuid.UUID, planID int64, date time.Time) (*entity.DailyStats, error) {
+	normalizedDate := entity.NormalizeDate(date)
 
 	rec, err := r.client.DailyStats.Query().
 		Where(
 			dailystats.UserIDEQ(userID),
-			dailystats.DateEQ(normalizedToday),
+			dailystats.PlanIDEQ(planID),
+			dailystats.DateEQ(normalizedDate),
 		).
 		First(ctx)
 
@@ -160,8 +165,69 @@ func (r *dailyStatsRepository) GetToday(ctx context.Context, userID uuid.UUID) (
 	return mapEntDailyStats(rec), nil
 }
 
+// GetTodayAllPlans retrieves today's stats for all plans for the given user.
+func (r *dailyStatsRepository) GetTodayAllPlans(ctx context.Context, userID uuid.UUID) ([]*entity.DailyStats, error) {
+	normalizedToday := entity.NormalizeDate(time.Now())
+
+	recs, err := r.client.DailyStats.Query().
+		Where(
+			dailystats.UserIDEQ(userID),
+			dailystats.DateEQ(normalizedToday),
+		).
+		All(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*entity.DailyStats, 0, len(recs))
+	for _, rec := range recs {
+		result = append(result, mapEntDailyStats(rec))
+	}
+
+	return result, nil
+}
+
+// GetToday retrieves aggregated stats for today across all plans.
+// Returns nil if no stats exist for today yet.
+func (r *dailyStatsRepository) GetToday(ctx context.Context, userID uuid.UUID) (*entity.DailyStats, error) {
+	stats, err := r.GetTodayAllPlans(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(stats) == 0 {
+		return nil, nil
+	}
+
+	// Aggregate across all plans
+	aggregated := &entity.DailyStats{
+		UserID:           userID,
+		Date:             entity.NormalizeDate(time.Now()),
+		CardsReviewed:    0,
+		NewWords:         0,
+		TimeSpentSeconds: 0,
+		WordsMastered:    0,
+	}
+
+	var totalScoreSum float32
+	for _, stat := range stats {
+		aggregated.CardsReviewed += stat.CardsReviewed
+		aggregated.NewWords += stat.NewWords
+		aggregated.TimeSpentSeconds += stat.TimeSpentSeconds
+		aggregated.WordsMastered += stat.WordsMastered
+		totalScoreSum += stat.AverageScore * float32(stat.CardsReviewed)
+	}
+
+	if aggregated.CardsReviewed > 0 {
+		aggregated.AverageScore = totalScoreSum / float32(aggregated.CardsReviewed)
+	}
+
+	return aggregated, nil
+}
+
 // CountConsecutiveDays calculates the current streak of consecutive days with activity.
-// A day has activity if CardsReviewed > 0 OR NewWords > 0.
+// A day has activity if ANY plan has CardsReviewed > 0 OR NewWords > 0.
 // The streak ends at the first day without activity (working backwards from today).
 func (r *dailyStatsRepository) CountConsecutiveDays(ctx context.Context, userID uuid.UUID, today time.Time) (int32, error) {
 	normalizedToday := entity.NormalizeDate(today)
@@ -182,11 +248,13 @@ func (r *dailyStatsRepository) CountConsecutiveDays(ctx context.Context, userID 
 		return 0, err
 	}
 
-	// Build a map for quick lookup
-	statsMap := make(map[string]*entdb.DailyStats)
+	// Group by date and check if any plan has activity
+	dateActivityMap := make(map[string]bool)
 	for _, rec := range recs {
 		dateStr := rec.Date.Format("2006-01-02")
-		statsMap[dateStr] = rec
+		if rec.CardsReviewed > 0 || rec.NewWords > 0 {
+			dateActivityMap[dateStr] = true
+		}
 	}
 
 	// Count consecutive days backwards from today
@@ -195,15 +263,7 @@ func (r *dailyStatsRepository) CountConsecutiveDays(ctx context.Context, userID 
 
 	for i := 0; i <= 365; i++ {
 		dateStr := currentDate.Format("2006-01-02")
-		stat, exists := statsMap[dateStr]
-
-		if !exists {
-			// No record for this date, streak ends
-			break
-		}
-
-		// Check if there's activity: CardsReviewed > 0 OR NewWords > 0
-		if stat.CardsReviewed > 0 || stat.NewWords > 0 {
+		if dateActivityMap[dateStr] {
 			streak++
 			currentDate = currentDate.AddDate(0, 0, -1)
 		} else {

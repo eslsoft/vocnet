@@ -250,11 +250,7 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 
 	stats := entity.WordbookStats{TotalWords: int32(len(uniqueTerms))}
 	for _, row := range rows {
-		var next time.Time
-		if row.ReviewNextReviewAt != nil {
-			next = *row.ReviewNextReviewAt
-		}
-		if entity.IsReviewDue(next, endOfToday) {
+		if row.ReviewNextReviewAt != nil && entity.IsReviewDue(*row.ReviewNextReviewAt, endOfToday) {
 			stats.ReviewDue++
 		}
 
@@ -264,12 +260,12 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 		case row.MasteryOverall >= 1:
 			stats.LearningWords++
 		default:
-			// New words (Mastery == 0)
+			stats.UnknownWords++
 		}
 	}
-	stats.NewWords = stats.TotalWords - stats.MasteredWords - stats.LearningWords
-	if stats.NewWords < 0 {
-		stats.NewWords = 0
+	// Words without learned_word records are still unknown
+	if missing := stats.TotalWords - int32(len(rows)); missing > 0 {
+		stats.UnknownWords += missing
 	}
 	return stats, nil
 }

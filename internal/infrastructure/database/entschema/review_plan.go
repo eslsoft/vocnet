@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -38,7 +39,9 @@ func (ReviewPlan) Fields() []ent.Field {
 }
 
 func (ReviewPlan) Edges() []ent.Edge {
-	return nil
+	return []ent.Edge{
+		edge.To("daily_stats", DailyStats.Type),
+	}
 }
 
 func (ReviewPlan) Indexes() []ent.Index {

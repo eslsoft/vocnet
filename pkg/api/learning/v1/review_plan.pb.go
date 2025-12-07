@@ -233,7 +233,7 @@ func (x *ReviewPlanStatus) GetWordbooks() []*v1.Wordbook {
 type InventoryStats struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TotalWords    int32                  `protobuf:"varint,1,opt,name=total_words,json=totalWords,proto3" json:"total_words,omitempty"`          // Total words in the plan
-	NewWords      int32                  `protobuf:"varint,2,opt,name=new_words,json=newWords,proto3" json:"new_words,omitempty"`                // Not started yet (Mastery == 0)
+	UnknownWords  int32                  `protobuf:"varint,2,opt,name=unknown_words,json=unknownWords,proto3" json:"unknown_words,omitempty"`    // Not started yet (Mastery == 0)
 	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // In learning progress (0 < Mastery < 4)
 	MasteredWords int32                  `protobuf:"varint,4,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Mastered / Mature (Mastery >= 4)
 	unknownFields protoimpl.UnknownFields
@@ -277,9 +277,9 @@ func (x *InventoryStats) GetTotalWords() int32 {
 	return 0
 }
 
-func (x *InventoryStats) GetNewWords() int32 {
+func (x *InventoryStats) GetUnknownWords() int32 {
 	if x != nil {
-		return x.NewWords
+		return x.UnknownWords
 	}
 	return 0
 }
@@ -299,12 +299,13 @@ func (x *InventoryStats) GetMasteredWords() int32 {
 }
 
 type DailyTaskStats struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	ReviewDue         int32                  `protobuf:"varint,1,opt,name=review_due,json=reviewDue,proto3" json:"review_due,omitempty"`                           // Words due for review today (Backlog + Due Today)
-	NewWordsRemaining int32                  `protobuf:"varint,2,opt,name=new_words_remaining,json=newWordsRemaining,proto3" json:"new_words_remaining,omitempty"` // Remaining new words quota for today
-	NewWordsCompleted int32                  `protobuf:"varint,3,opt,name=new_words_completed,json=newWordsCompleted,proto3" json:"new_words_completed,omitempty"` // New words learned today
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	ReviewDue          int32                  `protobuf:"varint,1,opt,name=review_due,json=reviewDue,proto3" json:"review_due,omitempty"`                              // Words due for review today (Backlog + Due Today)
+	NewWordsRemaining  int32                  `protobuf:"varint,2,opt,name=new_words_remaining,json=newWordsRemaining,proto3" json:"new_words_remaining,omitempty"`    // Remaining new words quota for today
+	NewWordsCompleted  int32                  `protobuf:"varint,3,opt,name=new_words_completed,json=newWordsCompleted,proto3" json:"new_words_completed,omitempty"`    // New words learned for this plan today
+	CardsReviewedToday int32                  `protobuf:"varint,4,opt,name=cards_reviewed_today,json=cardsReviewedToday,proto3" json:"cards_reviewed_today,omitempty"` // Total cards reviewed for this plan today
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *DailyTaskStats) Reset() {
@@ -358,6 +359,13 @@ func (x *DailyTaskStats) GetNewWordsCompleted() int32 {
 	return 0
 }
 
+func (x *DailyTaskStats) GetCardsReviewedToday() int32 {
+	if x != nil {
+		return x.CardsReviewedToday
+	}
+	return 0
+}
+
 var File_learning_v1_review_plan_proto protoreflect.FileDescriptor
 
 const file_learning_v1_review_plan_proto_rawDesc = "" +
@@ -384,18 +392,19 @@ const file_learning_v1_review_plan_proto_rawDesc = "" +
 	"\n" +
 	"daily_task\x18\x02 \x01(\v2\x1b.learning.v1.DailyTaskStatsR\tdailyTask\x123\n" +
 	"\twordbooks\x18\n" +
-	" \x03(\v2\x15.wordbook.v1.WordbookR\twordbooks\"\x9c\x01\n" +
+	" \x03(\v2\x15.wordbook.v1.WordbookR\twordbooks\"\xa4\x01\n" +
 	"\x0eInventoryStats\x12\x1f\n" +
 	"\vtotal_words\x18\x01 \x01(\x05R\n" +
-	"totalWords\x12\x1b\n" +
-	"\tnew_words\x18\x02 \x01(\x05R\bnewWords\x12%\n" +
+	"totalWords\x12#\n" +
+	"\runknown_words\x18\x02 \x01(\x05R\funknownWords\x12%\n" +
 	"\x0elearning_words\x18\x03 \x01(\x05R\rlearningWords\x12%\n" +
-	"\x0emastered_words\x18\x04 \x01(\x05R\rmasteredWords\"\x8f\x01\n" +
+	"\x0emastered_words\x18\x04 \x01(\x05R\rmasteredWords\"\xc1\x01\n" +
 	"\x0eDailyTaskStats\x12\x1d\n" +
 	"\n" +
 	"review_due\x18\x01 \x01(\x05R\treviewDue\x12.\n" +
 	"\x13new_words_remaining\x18\x02 \x01(\x05R\x11newWordsRemaining\x12.\n" +
-	"\x13new_words_completed\x18\x03 \x01(\x05R\x11newWordsCompletedB\xa9\x01\n" +
+	"\x13new_words_completed\x18\x03 \x01(\x05R\x11newWordsCompleted\x120\n" +
+	"\x14cards_reviewed_today\x18\x04 \x01(\x05R\x12cardsReviewedTodayB\xa9\x01\n" +
 	"\x0fcom.learning.v1B\x0fReviewPlanProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (

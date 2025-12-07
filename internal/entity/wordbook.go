@@ -47,7 +47,7 @@ type WordbookStats struct {
 	TotalWords    int32
 	MasteredWords int32
 	LearningWords int32
-	NewWords      int32 // Was UnknownWords
+	UnknownWords  int32 // Overall mastery < 1 (not started)
 	ReviewDue     int32
 }
 

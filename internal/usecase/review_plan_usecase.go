@@ -227,12 +227,13 @@ func (u *reviewPlanUsecase) attachStatus(ctx context.Context, plan *entity.Revie
 		}
 	}
 
-	// Get DailyStats for remaining new limit
-	var newWordsToday int32
+	// Get per-plan DailyStats
+	var newWordsToday, cardsReviewedToday int32
 	if u.dailyStatsRepo != nil {
-		ds, err := u.dailyStatsRepo.GetOrCreate(ctx, plan.UserID, time.Now())
+		ds, err := u.dailyStatsRepo.GetByPlan(ctx, plan.UserID, plan.ID, time.Now())
 		if err == nil && ds != nil {
 			newWordsToday = ds.NewWords
+			cardsReviewedToday = ds.CardsReviewed
 		}
 	}
 
@@ -244,14 +245,15 @@ func (u *reviewPlanUsecase) attachStatus(ctx context.Context, plan *entity.Revie
 	plan.Status = entity.ReviewPlanStatus{
 		Inventory: entity.InventoryStats{
 			TotalWords:    stats.TotalWords,
-			NewWords:      stats.NewWords,
+			UnknownWords:  stats.UnknownWords,
 			LearningWords: stats.LearningWords,
 			MasteredWords: stats.MasteredWords,
 		},
 		DailyTask: entity.DailyTaskStats{
-			ReviewDue:         stats.ReviewDue,
-			NewWordsRemaining: remaining,
-			NewWordsCompleted: newWordsToday,
+			ReviewDue:          stats.ReviewDue,
+			NewWordsRemaining:  remaining,
+			NewWordsCompleted:  newWordsToday,
+			CardsReviewedToday: cardsReviewedToday,
 		},
 		Wordbooks: wordbooks,
 	}
@@ -296,12 +298,14 @@ func (u *reviewPlanUsecase) attachStatusBatch(ctx context.Context, plans []*enti
 		return // best-effort
 	}
 
-	// Get DailyStats once
-	var newWordsToday int32
+	// Get per-plan DailyStats for all plans
+	planStatsMap := make(map[int64]*entity.DailyStats)
 	if u.dailyStatsRepo != nil {
-		ds, err := u.dailyStatsRepo.GetOrCreate(ctx, userID, time.Now())
-		if err == nil && ds != nil {
-			newWordsToday = ds.NewWords
+		todayStats, err := u.dailyStatsRepo.GetTodayAllPlans(ctx, userID)
+		if err == nil {
+			for _, stat := range todayStats {
+				planStatsMap[stat.PlanID] = stat
+			}
 		}
 	}
 
@@ -344,6 +348,13 @@ func (u *reviewPlanUsecase) attachStatusBatch(ctx context.Context, plans []*enti
 			}
 		}
 
+		// Get per-plan daily stats
+		var newWordsToday, cardsReviewedToday int32
+		if ds, exists := planStatsMap[plan.ID]; exists {
+			newWordsToday = ds.NewWords
+			cardsReviewedToday = ds.CardsReviewed
+		}
+
 		remaining := plan.Config.DailyNewLimit - newWordsToday
 		if remaining < 0 {
 			remaining = 0
@@ -352,14 +363,15 @@ func (u *reviewPlanUsecase) attachStatusBatch(ctx context.Context, plans []*enti
 		plan.Status = entity.ReviewPlanStatus{
 			Inventory: entity.InventoryStats{
 				TotalWords:    planStats.TotalWords,
-				NewWords:      planStats.NewWords,
+				UnknownWords:  planStats.UnknownWords,
 				LearningWords: planStats.LearningWords,
 				MasteredWords: planStats.MasteredWords,
 			},
 			DailyTask: entity.DailyTaskStats{
-				ReviewDue:         planStats.ReviewDue,
-				NewWordsRemaining: remaining,
-				NewWordsCompleted: newWordsToday,
+				ReviewDue:          planStats.ReviewDue,
+				NewWordsRemaining:  remaining,
+				NewWordsCompleted:  newWordsToday,
+				CardsReviewedToday: cardsReviewedToday,
 			},
 			Wordbooks: planWordbooks,
 		}

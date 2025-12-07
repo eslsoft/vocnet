@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -21,6 +22,7 @@ func (DailyStats) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.UUID("user_id", uuid.UUID{}),
+		field.Int64("plan_id").Comment("FK to review_plans.id"),
 		field.Time("date").Comment("Normalized to UTC midnight"),
 		field.Int32("cards_reviewed").Default(0).NonNegative(),
 		field.Int32("new_words").Default(0).NonNegative(),
@@ -37,13 +39,21 @@ func (DailyStats) Fields() []ent.Field {
 }
 
 func (DailyStats) Edges() []ent.Edge {
-	return nil
+	return []ent.Edge{
+		edge.From("review_plan", ReviewPlan.Type).
+			Ref("daily_stats").
+			Field("plan_id").
+			Unique().
+			Required().
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+	}
 }
 
 func (DailyStats) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("user_id", "date").Unique(),
-		index.Fields("user_id"),
+		index.Fields("user_id", "plan_id", "date").Unique(),
+		index.Fields("plan_id"),
+		index.Fields("user_id", "date"),
 	}
 }
 

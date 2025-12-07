@@ -34,15 +34,16 @@ type ReviewPlanStatus struct {
 
 type InventoryStats struct {
 	TotalWords    int32
-	NewWords      int32
+	UnknownWords  int32
 	LearningWords int32
 	MasteredWords int32
 }
 
 type DailyTaskStats struct {
-	ReviewDue         int32
-	NewWordsRemaining int32
-	NewWordsCompleted int32
+	ReviewDue          int32
+	NewWordsRemaining  int32
+	NewWordsCompleted  int32
+	CardsReviewedToday int32
 }
 
 // StartOfDay returns the beginning of the user's day in the same location.

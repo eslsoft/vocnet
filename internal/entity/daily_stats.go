@@ -6,10 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// DailyStats represents daily learning statistics for a user.
+// DailyStats represents daily learning statistics for a user per review plan.
 type DailyStats struct {
 	ID               int64
 	UserID           uuid.UUID
+	PlanID           int64
 	Date             time.Time // Normalized to UTC midnight
 	CardsReviewed    int32
 	NewWords         int32

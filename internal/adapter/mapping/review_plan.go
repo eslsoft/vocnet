@@ -71,14 +71,15 @@ func toPbReviewPlanStatus(status *entity.ReviewPlanStatus) *learningv1.ReviewPla
 	return &learningv1.ReviewPlanStatus{
 		Inventory: &learningv1.InventoryStats{
 			TotalWords:    status.Inventory.TotalWords,
-			NewWords:      status.Inventory.NewWords,
+			UnknownWords:  status.Inventory.UnknownWords,
 			LearningWords: status.Inventory.LearningWords,
 			MasteredWords: status.Inventory.MasteredWords,
 		},
 		DailyTask: &learningv1.DailyTaskStats{
-			ReviewDue:         status.DailyTask.ReviewDue,
-			NewWordsRemaining: status.DailyTask.NewWordsRemaining,
-			NewWordsCompleted: status.DailyTask.NewWordsCompleted,
+			ReviewDue:          status.DailyTask.ReviewDue,
+			NewWordsRemaining:  status.DailyTask.NewWordsRemaining,
+			NewWordsCompleted:  status.DailyTask.NewWordsCompleted,
+			CardsReviewedToday: status.DailyTask.CardsReviewedToday,
 		},
 		Wordbooks: wordbooks,
 	}
