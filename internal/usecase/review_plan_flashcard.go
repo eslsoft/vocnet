@@ -10,7 +10,9 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
+	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/safeconv"
+	"github.com/google/uuid"
 	"golang.org/x/exp/slog"
 )
 
@@ -34,7 +36,9 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	}
 
 	if len(plan.WordbookIDs) == 0 {
-		return &entity.FlashCardSet{Cards: []*entity.FlashCard{}, Stats: &entity.FlashCardStats{}}, nil
+		// Even when there are no wordbooks, return total stats for progress calculation
+		stats := buildEmptyStats(ctx, u.dailyStatsRepo, userID, plan.ID, int(plan.Config.DailyNewLimit))
+		return &entity.FlashCardSet{Cards: []*entity.FlashCard{}, Stats: stats}, nil
 	}
 
 	// Step 2: Fetch all LearnedWords for this plan
@@ -44,7 +48,9 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	}
 
 	if len(allWords) == 0 {
-		return &entity.FlashCardSet{Cards: []*entity.FlashCard{}, Stats: &entity.FlashCardStats{}}, nil
+		// Even when there are no words, return total stats for progress calculation
+		stats := buildEmptyStats(ctx, u.dailyStatsRepo, userID, plan.ID, int(plan.Config.DailyNewLimit))
+		return &entity.FlashCardSet{Cards: []*entity.FlashCard{}, Stats: stats}, nil
 	}
 
 	// Step 3: Classify words
@@ -343,17 +349,6 @@ func selectDistractors(allWords []*entity.LearnedWord, target *entity.LearnedWor
 	return candidates[:count]
 }
 
-// countNewWords counts words with overall mastery == 0.
-func countNewWords(words []*entity.LearnedWord) int {
-	count := 0
-	for _, w := range words {
-		if isNewWord(w) {
-			count++
-		}
-	}
-	return count
-}
-
 // isNewWord treats words with no scheduled review as "new" (pre-study).
 func isNewWord(word *entity.LearnedWord) bool {
 	if word == nil {
@@ -422,4 +417,46 @@ func clampMastery32(val int32) int32 {
 		return 500
 	}
 	return val
+}
+
+// buildEmptyStats builds FlashCardStats when there are no cards to review,
+// but still includes the total counts for progress calculation.
+func buildEmptyStats(ctx context.Context, dailyStatsRepo repository.DailyStatsRepository, userID uuid.UUID, planID int64, dailyNewLimit int) *entity.FlashCardStats {
+	var newWordsToday, cardsReviewedToday int32
+	if dailyStatsRepo != nil {
+		ds, err := dailyStatsRepo.GetByPlan(ctx, userID, planID, time.Now())
+		if err == nil && ds != nil {
+			newWordsToday = ds.NewWords
+			cardsReviewedToday = ds.CardsReviewed
+		}
+	}
+
+	// Calculate how many review words (non-new) were completed today
+	remainingQuota := dailyNewLimit - int(newWordsToday)
+	if remainingQuota < 0 {
+		remainingQuota = 0
+	}
+	newWordsCompletedToday := dailyNewLimit - remainingQuota
+	reviewWordsCompletedToday := int(cardsReviewedToday) - newWordsCompletedToday
+
+	// todayDueTotal represents the total words that were due at the start of the day
+	// Since there are no dueWords remaining, todayDueTotal = reviewWordsCompletedToday
+	todayDueTotal := reviewWordsCompletedToday
+	if todayDueTotal < 0 {
+		todayDueTotal = 0
+	}
+
+	return &entity.FlashCardStats{
+		// Fixed totals for progress calculation
+		TodayDueTotal: safeconv.IntToInt32(todayDueTotal),
+		TodayNewTotal: safeconv.IntToInt32(dailyNewLimit),
+
+		// No remaining tasks
+		TodayDueRemaining:  0,
+		TodayNewRemaining:  safeconv.IntToInt32(remainingQuota),
+		TodayReviewedCount: cardsReviewedToday,
+
+		// No cards to estimate
+		EstimatedMinutes: 0,
+	}
 }
