@@ -8,6 +8,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/repository"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"github.com/google/uuid"
 )
 
@@ -217,7 +218,7 @@ func (u *wordbookUsecase) attachStats(ctx context.Context, userID uuid.UUID, boo
 	if book == nil {
 		return
 	}
-	book.Stats.TotalWords = int32(len(book.Terms))
+	book.Stats.TotalWords = safeconv.IntToInt32(len(book.Terms))
 	if userID == uuid.Nil || u.learned == nil || len(book.Terms) == 0 {
 		return
 	}

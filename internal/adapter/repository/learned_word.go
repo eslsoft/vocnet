@@ -12,6 +12,7 @@ import (
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlearnedword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedword"
 	"github.com/eslsoft/vocnet/internal/repository"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"github.com/google/uuid"
 )
 
@@ -248,7 +249,7 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 
 	endOfToday := entity.EndOfDay(time.Now())
 
-	stats := entity.WordbookStats{TotalWords: int32(len(uniqueTerms))}
+	stats := entity.WordbookStats{TotalWords: safeconv.IntToInt32(len(uniqueTerms))}
 	for _, row := range rows {
 		if row.ReviewNextReviewAt != nil && entity.IsReviewDue(*row.ReviewNextReviewAt, endOfToday) {
 			stats.ReviewDue++
@@ -264,7 +265,7 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 		}
 	}
 	// Words without learned_word records are still unknown
-	if missing := stats.TotalWords - int32(len(rows)); missing > 0 {
+	if missing := stats.TotalWords - safeconv.IntToInt32(len(rows)); missing > 0 {
 		stats.UnknownWords += missing
 	}
 	return stats, nil
@@ -498,7 +499,7 @@ func (r *LearnedWordRepository) CountByUser(ctx context.Context, userID uuid.UUI
 	if err != nil {
 		return 0, fmt.Errorf("count user words: %w", err)
 	}
-	return int32(count), nil
+	return safeconv.IntToInt32(count), nil
 }
 
 // CountMasteredByUser returns the count of words with mastery >= masteryThreshold.
@@ -512,7 +513,7 @@ func (r *LearnedWordRepository) CountMasteredByUser(ctx context.Context, userID 
 	if err != nil {
 		return 0, fmt.Errorf("count mastered words: %w", err)
 	}
-	return int32(count), nil
+	return safeconv.IntToInt32(count), nil
 }
 
 // CountDueToday returns the count of words due for review (NextReviewAt <= endOfToday).
@@ -530,7 +531,7 @@ func (r *LearnedWordRepository) CountDueToday(ctx context.Context, userID uuid.U
 	if err != nil {
 		return 0, fmt.Errorf("count due words: %w", err)
 	}
-	return int32(count), nil
+	return safeconv.IntToInt32(count), nil
 }
 
 // GetMasteryDistribution returns a map of mastery level (0-5) to word count.
@@ -554,7 +555,7 @@ func (r *LearnedWordRepository) GetMasteryDistribution(ctx context.Context, user
 
 	distribution := make(map[int32]int32)
 	for _, result := range results {
-		distribution[result.MasteryLevel] = int32(result.Count)
+		distribution[result.MasteryLevel] = safeconv.IntToInt32(result.Count)
 	}
 
 	return distribution, nil

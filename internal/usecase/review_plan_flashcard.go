@@ -2,12 +2,15 @@ package usecase
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"math/big"
 	"math/rand"
 	"sort"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"golang.org/x/exp/slog"
 )
 
@@ -141,11 +144,11 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 
 	// Step 8: Build statistics
 	stats := &entity.FlashCardStats{
-		NewWords:           int32(remainingQuota), // Remaining new words quota for today
-		ReviewWords:        int32(len(selectedWords) - countNewWords(selectedWords)),
-		TotalDueWords:      int32(len(dueWords)),
-		TodayReviewedCount: cardsReviewedToday,    // Cards reviewed today from daily_stats
-		EstimatedMinutes:   int32(len(cards) / 4), // Assume ~15 sec per card
+		NewWords:           safeconv.IntToInt32(remainingQuota), // Remaining new words quota for today
+		ReviewWords:        safeconv.IntToInt32(len(selectedWords) - countNewWords(selectedWords)),
+		TotalDueWords:      safeconv.IntToInt32(len(dueWords)),
+		TodayReviewedCount: cardsReviewedToday,                  // Cards reviewed today from daily_stats
+		EstimatedMinutes:   safeconv.IntToInt32(len(cards) / 4), // Assume ~15 sec per card
 	}
 
 	return &entity.FlashCardSet{
@@ -229,11 +232,11 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 	if len(results) > 0 {
 		avgScore := totalScore / float32(len(results))
 		err = u.dailyStatsRepo.IncrementStats(ctx, userID, planID, todayDate,
-			int32(len(results)),     // cards_reviewed
-			int32(len(newWordsSet)), // new_words
-			totalTimeSpent,          // time_spent_seconds
-			avgScore,                // score_sum (for average calculation)
-			masteredWordsCount,      // words_mastered
+			safeconv.IntToInt32(len(results)),     // cards_reviewed
+			safeconv.IntToInt32(len(newWordsSet)), // new_words
+			totalTimeSpent,                        // time_spent_seconds
+			avgScore,                              // score_sum (for average calculation)
+			masteredWordsCount,                    // words_mastered
 		)
 		if err != nil {
 			// Log error but don't fail the operation
@@ -279,7 +282,7 @@ func selectCardType(word *entity.LearnedWord) entity.CardType {
 	}
 
 	// Randomly select one if multiple skills have same minimum score (e.g., all 0 for new words)
-	weakestSkill := weakestSkills[rand.Intn(len(weakestSkills))]
+	weakestSkill := weakestSkills[randomChoiceIndex(len(weakestSkills))]
 
 	// Map skill to card type
 	switch weakestSkill {
@@ -287,13 +290,26 @@ func selectCardType(word *entity.LearnedWord) entity.CardType {
 		return entity.CardTypeSPELLING
 	case "read":
 		return entity.CardTypeCHOICE
-	//case "spell":
+	// case "spell":
 	//	return CardTypeSELECT_WORDS
 	case "pronounce":
 		return entity.CardTypeCHOICE // MVP: downgrade to CHOICE
 	default:
 		return entity.CardTypeCHOICE
 	}
+}
+
+func randomChoiceIndex(max int) int {
+	if max <= 0 {
+		return 0
+	}
+
+	n, err := cryptorand.Int(cryptorand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		return 0
+	}
+
+	return int(n.Int64())
 }
 
 // selectDistractors randomly selects N distractors excluding the target word.

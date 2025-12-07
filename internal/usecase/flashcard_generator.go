@@ -111,9 +111,7 @@ func (g *ChoiceCardGenerator) Generate(ctx context.Context, word *entity.Learned
 	phonetics := make([]entity.Phonetic, 0)
 	for _, form := range lexeme.Forms {
 		if form.FormType == entity.LexemeFormTypeLemma {
-			for _, p := range form.Phonetics {
-				phonetics = append(phonetics, p)
-			}
+			phonetics = form.Phonetics
 			break
 		}
 	}
@@ -153,9 +151,7 @@ func (g *SpellingCardGenerator) Generate(ctx context.Context, word *entity.Learn
 	phonetics := make([]entity.Phonetic, 0)
 	for _, form := range lexeme.Forms {
 		if form.FormType == entity.LexemeFormTypeLemma {
-			for _, p := range form.Phonetics {
-				phonetics = append(phonetics, p)
-			}
+			phonetics = form.Phonetics
 			break
 		}
 	}

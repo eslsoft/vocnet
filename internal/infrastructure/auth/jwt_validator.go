@@ -49,12 +49,16 @@ func NewJWTValidator(ctx context.Context, cfg *JWTValidatorConfig) (*JWTValidato
 	// Create a cancellable context for the JWKS background refresh
 	jwksCtx, cancel := context.WithCancel(ctx)
 
+	override := keyfunc.Override{
+		RefreshInterval: refreshPeriod,
+	}
+
 	// Configure JWKS with automatic refresh
 	// The keyfunc library handles:
 	// - Initial fetch on startup
 	// - Background refresh at specified interval
 	// - Automatic caching of keys
-	kf, err := keyfunc.NewDefaultCtx(jwksCtx, []string{cfg.JWKSURL})
+	kf, err := keyfunc.NewDefaultOverrideCtx(jwksCtx, []string{cfg.JWKSURL}, override)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("auth: failed to create JWKS keyfunc: %w", err)

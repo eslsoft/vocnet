@@ -12,6 +12,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 )
 
 type wordbookRepository struct {
@@ -275,7 +276,7 @@ func mapEntWordbook(rec *entdb.Wordbook) *entity.Wordbook {
 		Description: rec.Description,
 		Annotations: rec.Annotations,
 		Terms:       rec.Terms,
-		Stats:       entity.WordbookStats{TotalWords: int32(len(rec.Terms))},
+		Stats:       entity.WordbookStats{TotalWords: safeconv.IntToInt32(len(rec.Terms))},
 		SortOrder:   rec.SortOrder,
 		CreatedAt:   rec.CreatedAt,
 		UpdatedAt:   rec.UpdatedAt,

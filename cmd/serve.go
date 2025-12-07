@@ -34,6 +34,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/app"
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
 )
 
@@ -105,7 +106,7 @@ func syncBuiltinWordbooks(ctx context.Context, container *app.Container) error {
 			continue
 		}
 		ent.Source = entity.WordbookSourceBuiltin
-		ent.SortOrder = int32(idx + 1)
+		ent.SortOrder = safeconv.IntToInt32(idx + 1)
 		books = append(books, ent)
 	}
 	return container.WordbookUsecase.SyncBuiltin(ctx, books)

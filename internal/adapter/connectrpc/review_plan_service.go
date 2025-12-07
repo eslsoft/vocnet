@@ -15,6 +15,7 @@ import (
 	learningv1 "github.com/eslsoft/vocnet/pkg/api/learning/v1"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 )
 
 var _ learningv1connect.ReviewPlanServiceHandler = (*ReviewPlanServiceServer)(nil)
@@ -68,11 +69,12 @@ func (s *ReviewPlanServiceServer) UpdateReviewPlan(ctx context.Context, req *con
 }
 
 func (s *ReviewPlanServiceServer) GetReviewPlan(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[learningv1.ReviewPlan], error) {
-	if req.Msg == nil || req.Msg.GetId() == 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidReviewPlanID)
+	planID, err := extractID(req, entity.ErrInvalidReviewPlanID)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
 	}
 
-	plan, err := s.uc.Get(ctx, req.Msg.GetId())
+	plan, err := s.uc.Get(ctx, planID)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -99,7 +101,7 @@ func (s *ReviewPlanServiceServer) ListReviewPlans(ctx context.Context, req *conn
 
 	resp := &learningv1.ListReviewPlansResponse{
 		Pagination: &commonv1.PaginationResponse{
-			Total:  int32(total),
+			Total:  safeconv.Int64ToInt32(total),
 			PageNo: params.PageNo,
 		},
 		Plans: lo.Map(items, func(item *entity.ReviewPlan, _ int) *learningv1.ReviewPlan {
@@ -110,11 +112,12 @@ func (s *ReviewPlanServiceServer) ListReviewPlans(ctx context.Context, req *conn
 }
 
 func (s *ReviewPlanServiceServer) DeleteReviewPlan(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
-	if req.Msg == nil || req.Msg.GetId() == 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidReviewPlanID)
+	planID, err := extractID(req, entity.ErrInvalidReviewPlanID)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
 	}
 
-	if err := s.uc.Delete(ctx, req.Msg.GetId()); err != nil {
+	if err := s.uc.Delete(ctx, planID); err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 

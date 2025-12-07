@@ -15,6 +15,7 @@ import (
 	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
 	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 	"github.com/eslsoft/vocnet/pkg/filterexpr"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 )
 
 var _ wordbookv1connect.WordbookServiceHandler = (*WordbookServiceServer)(nil)
@@ -65,20 +66,24 @@ func (s *WordbookServiceServer) UpdateWordbook(ctx context.Context, req *connect
 }
 
 func (s *WordbookServiceServer) DeleteWordbook(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
-	if req.Msg == nil || req.Msg.GetId() == 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
+	wordbookID, err := extractID(req, entity.ErrInvalidWordbookID)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
 	}
-	if err := s.uc.Delete(ctx, req.Msg.GetId()); err != nil {
+
+	if err := s.uc.Delete(ctx, wordbookID); err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
 func (s *WordbookServiceServer) GetWordbook(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	if req.Msg == nil || req.Msg.GetId() == 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
+	wordbookID, err := extractID(req, entity.ErrInvalidWordbookID)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
 	}
-	book, err := s.uc.Get(ctx, req.Msg.GetId())
+
+	book, err := s.uc.Get(ctx, wordbookID)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
@@ -104,7 +109,7 @@ func (s *WordbookServiceServer) ListWordbooks(ctx context.Context, req *connect.
 
 	resp := &wordbookv1.ListWordbooksResponse{
 		Pagination: &commonv1.PaginationResponse{
-			Total:  int32(total),
+			Total:  safeconv.Int64ToInt32(total),
 			PageNo: params.PageNo,
 		},
 		Wordbooks: lo.Map(items, func(item *entity.Wordbook, _ int) *wordbookv1.Wordbook {
@@ -115,23 +120,27 @@ func (s *WordbookServiceServer) ListWordbooks(ctx context.Context, req *connect.
 }
 
 func (s *WordbookServiceServer) AddWords(ctx context.Context, req *connect.Request[wordbookv1.WordsActionRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	if req.Msg == nil || req.Msg.GetWordbookId() == 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
-	}
-	updated, err := s.uc.AddWords(ctx, req.Msg.GetWordbookId(), req.Msg.GetTerms())
-	if err != nil {
-		return nil, mapping.ToPbError(err)
-	}
-	return connect.NewResponse(mapping.ToPbWordbook(updated)), nil
+	return s.handleWords(ctx, req, s.uc.AddWords)
 }
 
 func (s *WordbookServiceServer) RemoveWords(ctx context.Context, req *connect.Request[wordbookv1.WordsActionRequest]) (*connect.Response[wordbookv1.Wordbook], error) {
-	if req.Msg == nil || req.Msg.GetWordbookId() == 0 {
-		return nil, mapping.ToPbError(entity.ErrInvalidWordbookID)
-	}
-	updated, err := s.uc.RemoveWords(ctx, req.Msg.GetWordbookId(), req.Msg.GetTerms())
+	return s.handleWords(ctx, req, s.uc.RemoveWords)
+}
+
+func (s *WordbookServiceServer) handleWords(
+	ctx context.Context,
+	req *connect.Request[wordbookv1.WordsActionRequest],
+	action func(context.Context, int64, []string) (*entity.Wordbook, error),
+) (*connect.Response[wordbookv1.Wordbook], error) {
+	wordbookID, terms, err := extractWordbookAction(req)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
+
+	updated, err := action(ctx, wordbookID, terms)
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
 	return connect.NewResponse(mapping.ToPbWordbook(updated)), nil
 }

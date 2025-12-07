@@ -5,6 +5,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -54,7 +55,7 @@ func ToPbWordbook(ent *entity.Wordbook) *wordbookv1.Wordbook {
 		UnknownWords:  ent.Stats.UnknownWords,
 	}
 	if status.TotalWords == 0 {
-		status.TotalWords = int32(len(ent.Terms))
+		status.TotalWords = safeconv.IntToInt32(len(ent.Terms))
 	}
 
 	ann := copyStringMap(ent.Annotations)

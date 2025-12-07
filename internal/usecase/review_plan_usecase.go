@@ -266,114 +266,149 @@ func (u *reviewPlanUsecase) attachStatusBatch(ctx context.Context, plans []*enti
 		return
 	}
 
-	// Step 1: Collect all unique wordbook IDs across all plans
-	allWordbookIDs := make(map[int64]bool)
+	wordbookIDs := collectWordbookIDs(plans)
+	if len(wordbookIDs) == 0 {
+		assignEmptyPlanStatuses(plans)
+		return
+	}
+
+	userID := plans[0].UserID
+	wordbooks, err := u.wordbookRepo.GetByIDs(ctx, wordbookIDs, userID)
+	if err != nil {
+		return // best-effort
+	}
+
+	wordbookMap := buildWordbookMap(wordbooks)
+	planStatsMap := u.loadPlanDailyStats(ctx, userID)
+
+	for _, plan := range plans {
+		u.attachPlanStatus(ctx, plan, wordbookMap, planStatsMap)
+	}
+}
+
+func (u *reviewPlanUsecase) attachPlanStatus(
+	ctx context.Context,
+	plan *entity.ReviewPlan,
+	wordbookMap map[int64]*entity.Wordbook,
+	planStatsMap map[int64]*entity.DailyStats,
+) {
+	planWordbooks := collectPlanWordbooks(plan.WordbookIDs, wordbookMap)
+	planTerms := collectPlanTerms(planWordbooks)
+
+	planStats := entity.WordbookStats{}
+	if len(planTerms) > 0 {
+		stats, err := u.learnedRepo.StatsByTerms(ctx, plan.UserID, planTerms)
+		if err != nil {
+			return
+		}
+		planStats = stats
+	}
+
+	newWordsToday, cardsReviewedToday := dailyProgress(plan.ID, planStatsMap)
+	remaining := plan.Config.DailyNewLimit - newWordsToday
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	plan.Status = entity.ReviewPlanStatus{
+		Inventory: entity.InventoryStats{
+			TotalWords:    planStats.TotalWords,
+			UnknownWords:  planStats.UnknownWords,
+			LearningWords: planStats.LearningWords,
+			MasteredWords: planStats.MasteredWords,
+		},
+		DailyTask: entity.DailyTaskStats{
+			ReviewDue:          planStats.ReviewDue,
+			NewWordsRemaining:  remaining,
+			NewWordsCompleted:  newWordsToday,
+			CardsReviewedToday: cardsReviewedToday,
+		},
+		Wordbooks: planWordbooks,
+	}
+}
+
+func collectWordbookIDs(plans []*entity.ReviewPlan) []int64 {
+	allWordbookIDs := make(map[int64]struct{})
 	for _, plan := range plans {
 		for _, wbID := range plan.WordbookIDs {
-			allWordbookIDs[wbID] = true
+			allWordbookIDs[wbID] = struct{}{}
 		}
 	}
 
 	if len(allWordbookIDs) == 0 {
-		// Initialize empty status for all plans
-		for _, plan := range plans {
-			plan.Status = entity.ReviewPlanStatus{
-				Wordbooks: []*entity.Wordbook{},
-			}
-		}
-		return
+		return nil
 	}
 
-	// Convert to slice for batch fetch
 	wordbookIDSlice := make([]int64, 0, len(allWordbookIDs))
 	for id := range allWordbookIDs {
 		wordbookIDSlice = append(wordbookIDSlice, id)
 	}
 
-	// Step 2: Single batch query for all wordbooks
-	// All plans should have the same UserID (enforced by List query)
-	userID := plans[0].UserID
-	wordbooks, err := u.wordbookRepo.GetByIDs(ctx, wordbookIDSlice, userID)
-	if err != nil {
-		return // best-effort
-	}
+	return wordbookIDSlice
+}
 
-	// Get per-plan DailyStats for all plans
-	planStatsMap := make(map[int64]*entity.DailyStats)
-	if u.dailyStatsRepo != nil {
-		todayStats, err := u.dailyStatsRepo.GetTodayAllPlans(ctx, userID)
-		if err == nil {
-			for _, stat := range todayStats {
-				planStatsMap[stat.PlanID] = stat
-			}
+func assignEmptyPlanStatuses(plans []*entity.ReviewPlan) {
+	for _, plan := range plans {
+		plan.Status = entity.ReviewPlanStatus{
+			Wordbooks: []*entity.Wordbook{},
 		}
 	}
+}
 
-	// Step 3: Build wordbook lookup map
+func buildWordbookMap(wordbooks []*entity.Wordbook) map[int64]*entity.Wordbook {
 	wordbookMap := make(map[int64]*entity.Wordbook, len(wordbooks))
 	for _, wb := range wordbooks {
 		wordbookMap[wb.ID] = wb
 	}
+	return wordbookMap
+}
 
-	// Step 4: For each plan, compute its specific status
-	for _, plan := range plans {
-		// Get wordbooks for this plan
-		planWordbooks := make([]*entity.Wordbook, 0, len(plan.WordbookIDs))
-		for _, wbID := range plan.WordbookIDs {
-			if wb, exists := wordbookMap[wbID]; exists {
-				planWordbooks = append(planWordbooks, wb)
-			}
-		}
+func (u *reviewPlanUsecase) loadPlanDailyStats(ctx context.Context, userID uuid.UUID) map[int64]*entity.DailyStats {
+	if u.dailyStatsRepo == nil {
+		return nil
+	}
 
-		// Extract unique terms for this plan
-		planTermsMap := make(map[string]struct{})
-		for _, wb := range planWordbooks {
-			for _, term := range wb.Terms {
-				planTermsMap[term] = struct{}{}
-			}
-		}
+	todayStats, err := u.dailyStatsRepo.GetTodayAllPlans(ctx, userID)
+	if err != nil {
+		return nil
+	}
 
-		// Convert to slice
-		planTerms := make([]string, 0, len(planTermsMap))
-		for term := range planTermsMap {
-			planTerms = append(planTerms, term)
-		}
+	statsMap := make(map[int64]*entity.DailyStats, len(todayStats))
+	for _, stat := range todayStats {
+		statsMap[stat.PlanID] = stat
+	}
+	return statsMap
+}
 
-		// Compute stats for this plan's terms
-		var planStats entity.WordbookStats
-		if len(planTerms) > 0 {
-			planStats, err = u.learnedRepo.StatsByTerms(ctx, plan.UserID, planTerms)
-			if err != nil {
-				continue // skip this plan if error
-			}
-		}
-
-		// Get per-plan daily stats
-		var newWordsToday, cardsReviewedToday int32
-		if ds, exists := planStatsMap[plan.ID]; exists {
-			newWordsToday = ds.NewWords
-			cardsReviewedToday = ds.CardsReviewed
-		}
-
-		remaining := plan.Config.DailyNewLimit - newWordsToday
-		if remaining < 0 {
-			remaining = 0
-		}
-
-		plan.Status = entity.ReviewPlanStatus{
-			Inventory: entity.InventoryStats{
-				TotalWords:    planStats.TotalWords,
-				UnknownWords:  planStats.UnknownWords,
-				LearningWords: planStats.LearningWords,
-				MasteredWords: planStats.MasteredWords,
-			},
-			DailyTask: entity.DailyTaskStats{
-				ReviewDue:          planStats.ReviewDue,
-				NewWordsRemaining:  remaining,
-				NewWordsCompleted:  newWordsToday,
-				CardsReviewedToday: cardsReviewedToday,
-			},
-			Wordbooks: planWordbooks,
+func collectPlanWordbooks(ids []int64, wordbookMap map[int64]*entity.Wordbook) []*entity.Wordbook {
+	planWordbooks := make([]*entity.Wordbook, 0, len(ids))
+	for _, wbID := range ids {
+		if wb, exists := wordbookMap[wbID]; exists {
+			planWordbooks = append(planWordbooks, wb)
 		}
 	}
+	return planWordbooks
+}
+
+func collectPlanTerms(planWordbooks []*entity.Wordbook) []string {
+	planTermsMap := make(map[string]struct{})
+	for _, wb := range planWordbooks {
+		for _, term := range wb.Terms {
+			planTermsMap[term] = struct{}{}
+		}
+	}
+
+	planTerms := make([]string, 0, len(planTermsMap))
+	for term := range planTermsMap {
+		planTerms = append(planTerms, term)
+	}
+
+	return planTerms
+}
+
+func dailyProgress(planID int64, planStatsMap map[int64]*entity.DailyStats) (int32, int32) {
+	if ds, exists := planStatsMap[planID]; exists {
+		return ds.NewWords, ds.CardsReviewed
+	}
+	return 0, 0
 }

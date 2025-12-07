@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"github.com/google/uuid"
 )
 
@@ -75,7 +76,7 @@ func NormalizeWordbook(in *Wordbook) (*Wordbook, error) {
 		out.Annotations = map[string]string{}
 	}
 	out.Terms = dedupeTerms(out.Terms)
-	out.Stats.TotalWords = int32(len(out.Terms)) // simple derived metric for now
+	out.Stats.TotalWords = safeconv.IntToInt32(len(out.Terms)) // simple derived metric for now
 
 	if out.Name == "" {
 		return nil, ErrInvalidWordbookName
