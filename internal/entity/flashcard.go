@@ -59,11 +59,17 @@ type FlashCardSet struct {
 
 // FlashCardStats contains statistics about the flashcard set.
 type FlashCardStats struct {
-	NewWords           int32
-	ReviewWords        int32
-	TotalDueWords      int32
-	EstimatedMinutes   int32
-	TodayReviewedCount int32
+	// Today's total tasks (fixed values for progress calculation)
+	TodayDueTotal int32 // Total number of words due at start of day
+	TodayNewTotal int32 // Daily new words quota
+
+	// Remaining tasks (dynamic values)
+	TodayDueRemaining  int32 // Remaining words due for review
+	TodayNewRemaining  int32 // Remaining new words quota
+	TodayReviewedCount int32 // Number of cards already reviewed today
+
+	// Other
+	EstimatedMinutes int32 // Estimated time to complete current batch (minutes)
 }
 
 // AnswerResult represents the result of answering a flashcard.

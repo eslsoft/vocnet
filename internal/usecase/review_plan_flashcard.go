@@ -143,12 +143,24 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	})
 
 	// Step 8: Build statistics
+	// Calculate fixed totals for progress bar
+	dailyNewLimit := int(plan.Config.DailyNewLimit)
+	newWordsCompletedToday := dailyNewLimit - remainingQuota
+	reviewWordsCompletedToday := int(cardsReviewedToday) - newWordsCompletedToday
+	todayDueTotal := reviewWordsCompletedToday + len(dueWords)
+
 	stats := &entity.FlashCardStats{
-		NewWords:           safeconv.IntToInt32(remainingQuota), // Remaining new words quota for today
-		ReviewWords:        safeconv.IntToInt32(len(selectedWords) - countNewWords(selectedWords)),
-		TotalDueWords:      safeconv.IntToInt32(len(dueWords)),
+		// Fixed totals
+		TodayDueTotal: safeconv.IntToInt32(todayDueTotal), // Total words due at start of day
+		TodayNewTotal: safeconv.IntToInt32(dailyNewLimit), // Daily new words quota
+
+		// Remaining tasks (dynamic)
+		TodayDueRemaining:  safeconv.IntToInt32(len(dueWords)),  // Remaining words due for review
+		TodayNewRemaining:  safeconv.IntToInt32(remainingQuota), // Remaining new words quota
 		TodayReviewedCount: cardsReviewedToday,                  // Cards reviewed today from daily_stats
-		EstimatedMinutes:   safeconv.IntToInt32(len(cards) / 4), // Assume ~15 sec per card
+
+		// Other
+		EstimatedMinutes: safeconv.IntToInt32(len(cards) / 4), // Assume ~15 sec per card
 	}
 
 	return &entity.FlashCardSet{

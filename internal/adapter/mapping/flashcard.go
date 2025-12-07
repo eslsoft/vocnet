@@ -125,9 +125,10 @@ func toPbFlashCardStats(stats *entity.FlashCardStats) *learningv1.FlashCardStats
 	}
 
 	return &learningv1.FlashCardStats{
-		NewWords:           stats.NewWords,
-		ReviewWords:        stats.ReviewWords,
-		TotalDueWords:      stats.TotalDueWords,
+		TodayDueTotal:      stats.TodayDueTotal,
+		TodayNewTotal:      stats.TodayNewTotal,
+		TodayDueRemaining:  stats.TodayDueRemaining,
+		TodayNewRemaining:  stats.TodayNewRemaining,
 		TodayReviewedCount: stats.TodayReviewedCount,
 		EstimatedMinutes:   stats.EstimatedMinutes,
 	}

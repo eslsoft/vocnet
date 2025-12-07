@@ -146,22 +146,32 @@ message FlashCardSet {
 }
 
 message FlashCardStats {
-  int32 new_words = 1;       // 本批次包含的新词数
-  int32 review_words = 2;    // 本批次包含的复习词数
-  int32 total_due_words = 3; // 【关键】当前时刻待复习总数（包含本批次）。
-  int32 estimated_minutes = 4; // 预计剩余时间
-  int32 today_reviewed_count = 5; // 【新增】今天已复习的单词数（用于恢复进度条）
+  // Fixed totals for progress calculation
+  int32 today_due_total = 3;      // 今日到期词总数（固定）
+  int32 today_new_total = 6;      // 新词配额（固定）
+
+  // Remaining tasks (dynamic)
+  int32 today_due_remaining = 7;  // 剩余到期词数
+  int32 today_new_remaining = 1;  // 剩余新词配额
+
+  // Progress
+  int32 today_reviewed_count = 4; // 今天已复习的卡片数
+
+  // Other
+  int32 estimated_minutes = 5;    // 完成本批次的预计时间（分钟）
+
+  reserved 2; // 已删除: review_words
 }
 
 **客户端进度条计算公式**：
 ```javascript
-// 总任务量 = 今天已完成 + 剩余待复习
-const totalTask = stats.today_reviewed_count + stats.total_due_words;
+// 总任务 = 到期词总数 + 新词配额（都是固定值）
+const totalTask = stats.today_due_total + stats.today_new_total;
 // 当前进度 = 今天已完成
 const currentProgress = stats.today_reviewed_count;
 
 // 渲染
-ProgressBar.render(currentProgress, totalTask); // 例如: 20/100
+ProgressBar.render(currentProgress, totalTask); // 例如: 50/120
 ```
 ```
 
@@ -283,7 +293,7 @@ ProgressBar.render(currentProgress, totalTask); // 例如: 20/100
 
 **关键Message**：
 - `FlashCardSet`: 卡片集合，包含flash_cards和stats统计信息
-- `FlashCardStats`: 卡片统计（新词数、复习词数、总待复习数、预估时长）
+- `FlashCardStats`: 卡片统计（固定总数：到期词总数、新词配额；动态数据：剩余到期词、剩余新词配额、已复习数；预估时长）
 - `SubmitAnswerRequest`: 提交答题请求（单条）
 - `AnswerRecord`: 单条答题记录，含 `AnswerScore`（0-10）与 `time_spent_seconds`
 

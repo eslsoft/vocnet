@@ -868,11 +868,13 @@ func (m *FlashCardStats) validate(all bool) error {
 
 	var errors []error
 
-	// no validation rules for NewWords
+	// no validation rules for TodayDueTotal
 
-	// no validation rules for ReviewWords
+	// no validation rules for TodayNewTotal
 
-	// no validation rules for TotalDueWords
+	// no validation rules for TodayDueRemaining
+
+	// no validation rules for TodayNewRemaining
 
 	// no validation rules for TodayReviewedCount
 
