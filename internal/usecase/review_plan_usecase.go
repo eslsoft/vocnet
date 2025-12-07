@@ -35,21 +35,8 @@ type reviewPlanUsecase struct {
 	reviewAlgorithm ReviewAlgorithm
 }
 
-func NewReviewPlanUsecase(
-	repo repository.ReviewPlanRepository,
-	wordbookRepo repository.WordbookRepository,
-	learnedRepo repository.LearnedWordRepository,
-	dailyStatsRepo repository.DailyStatsRepository,
-	lexemeRepo repository.LexemeRepository,
-) ReviewPlanUsecase {
-	return &reviewPlanUsecase{
-		repo:            repo,
-		wordbookRepo:    wordbookRepo,
-		learnedRepo:     learnedRepo,
-		dailyStatsRepo:  dailyStatsRepo,
-		cardFactory:     NewCardGeneratorFactory(lexemeRepo),
-		reviewAlgorithm: NewSM2Algorithm(),
-	}
+func NewReviewPlanUsecase(repo repository.ReviewPlanRepository, wordbookRepo repository.WordbookRepository, learnedRepo repository.LearnedWordRepository, dailyStatsRepo repository.DailyStatsRepository, cardFactory *CardGeneratorFactory, reviewAlgorithm ReviewAlgorithm) ReviewPlanUsecase {
+	return &reviewPlanUsecase{repo: repo, wordbookRepo: wordbookRepo, learnedRepo: learnedRepo, dailyStatsRepo: dailyStatsRepo, cardFactory: cardFactory, reviewAlgorithm: reviewAlgorithm}
 }
 
 func (u *reviewPlanUsecase) List(ctx context.Context, query *repository.ListReviewPlanQuery) ([]*entity.ReviewPlan, int64, error) {
