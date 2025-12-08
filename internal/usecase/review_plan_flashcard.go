@@ -10,6 +10,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
+	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"github.com/google/uuid"
@@ -55,9 +56,8 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 
 	// Step 3: Classify words
 	var dueWords, newWords []*entity.LearnedWord
-	now := time.Now()
 	// Use day boundaries to bucket today's progress consistently
-	endOfDay := entity.EndOfDay(now)
+	endOfDay := usertime.EndOfToday(ctx)
 
 	for _, word := range allWords {
 		if isNewWord(word) {
@@ -92,7 +92,7 @@ func (u *reviewPlanUsecase) GetFlashCards(ctx context.Context, planID int64, lim
 	// Get DailyStats for quota and progress tracking
 	var newWordsToday, cardsReviewedToday int32
 	if u.dailyStatsRepo != nil {
-		ds, err := u.dailyStatsRepo.GetByPlan(ctx, userID, plan.ID, time.Now())
+		ds, err := u.dailyStatsRepo.GetByPlan(ctx, userID, plan.ID, usertime.Now(ctx))
 		if err == nil && ds != nil {
 			newWordsToday = ds.NewWords
 			cardsReviewedToday = ds.CardsReviewed
@@ -195,7 +195,7 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 	}
 
 	// Step 2: Process each answer result
-	now := time.Now()
+	now := usertime.Now(ctx)
 	todayDate := entity.NormalizeDate(now)
 
 	var totalTimeSpent int32

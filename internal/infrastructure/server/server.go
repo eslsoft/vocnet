@@ -17,6 +17,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
+	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
@@ -39,14 +40,19 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 		return nil, fmt.Errorf("create access logger: %w", err)
 	}
 
+	// Create usertime interceptor with public procedures
+	// Public procedures don't require timezone, protected procedures do
+	publicProcedures := getPublicProcedures()
+	usertimeInterceptor := usertime.NewUsertimeInterceptor(publicProcedures)
+
 	// Create auth interceptor with public procedures
 	// Dict service is public, Learning and Wordbook services require authentication
-	publicProcedures := getPublicProcedures()
 	authInterceptor := auth.NewAuthInterceptor(jwtValidator, publicProcedures)
 
-	// Combine interceptors: logger first, then auth
+	// Combine interceptors: logger first, then usertime, then auth
 	interceptors := connect.WithInterceptors(
 		accessLoggerInterceptor,
+		connect.UnaryInterceptorFunc(usertimeInterceptor.WrapUnary),
 		connect.UnaryInterceptorFunc(authInterceptor.WrapUnary),
 	)
 
@@ -123,7 +129,7 @@ func withCORS(h http.Handler) http.Handler {
 	middleware := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: connectcors.AllowedMethods(),
-		AllowedHeaders: connectcors.AllowedHeaders(),
+		AllowedHeaders: append(connectcors.AllowedHeaders(), usertime.TimezoneHeader),
 		ExposedHeaders: connectcors.ExposedHeaders(),
 	})
 	return middleware.Handler(h)

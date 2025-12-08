@@ -7,6 +7,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
+	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
@@ -16,7 +17,7 @@ import (
 type StatsUsecase interface {
 	GetDashboardStats(ctx context.Context) (*entity.DashboardStats, error)
 	GetMasteryDistribution(ctx context.Context) (*entity.MasteryDistributionData, error)
-	GetActivityCalendar(ctx context.Context, startTime, endTime time.Time, timezoneOffsetMinutes int32) (*entity.ActivityCalendarData, error)
+	GetActivityCalendar(ctx context.Context, startTime, endTime time.Time) (*entity.ActivityCalendarData, error)
 }
 
 type statsUsecase struct {
@@ -62,9 +63,8 @@ func (u *statsUsecase) GetDashboardStats(ctx context.Context) (*entity.Dashboard
 	}
 
 	// Calculate remaining due words for today
-	now := time.Now()
-	y, m, d := now.Date()
-	endOfToday := time.Date(y, m, d, 23, 59, 59, 999999999, now.Location())
+	now := usertime.Now(ctx)
+	endOfToday := usertime.EndOfToday(ctx)
 	todayDue, err := u.learnedWordRepo.CountDueToday(ctx, userID, endOfToday)
 	if err != nil {
 		return nil, err
@@ -111,16 +111,16 @@ func (u *statsUsecase) GetMasteryDistribution(ctx context.Context) (*entity.Mast
 }
 
 // GetActivityCalendar retrieves GitHub-style activity heatmap data.
-func (u *statsUsecase) GetActivityCalendar(ctx context.Context, startTime, endTime time.Time, timezoneOffsetMinutes int32) (*entity.ActivityCalendarData, error) {
+func (u *statsUsecase) GetActivityCalendar(ctx context.Context, startTime, endTime time.Time) (*entity.ActivityCalendarData, error) {
 	userID := auth.MustGetUserID(ctx)
 
 	// Default to last 365 days if not specified
 	if startTime.IsZero() {
-		endTime = time.Now()
+		endTime = usertime.Now(ctx)
 		startTime = endTime.AddDate(-1, 0, 0)
 	}
 	if endTime.IsZero() {
-		endTime = time.Now()
+		endTime = usertime.Now(ctx)
 	}
 
 	// Normalize to date boundaries
@@ -133,8 +133,8 @@ func (u *statsUsecase) GetActivityCalendar(ctx context.Context, startTime, endTi
 		return nil, err
 	}
 
-	// Create timezone for user's local time
-	loc := time.FixedZone("UserTZ", int(timezoneOffsetMinutes)*60)
+	// Get user's timezone from context
+	loc := usertime.MustGetLocation(ctx)
 
 	// Build activity map
 	activityMap := make(map[string]int32)

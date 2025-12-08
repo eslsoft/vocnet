@@ -567,8 +567,6 @@ func (m *GetActivityCalendarRequest) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for TimezoneOffset
-
 	if len(errors) > 0 {
 		return GetActivityCalendarRequestMultiError(errors)
 	}

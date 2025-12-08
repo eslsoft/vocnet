@@ -225,7 +225,7 @@ func (r *LearnedWordRepository) DeleteByID(ctx context.Context, userID uuid.UUID
 }
 
 // StatsByTerms aggregates mastery buckets for the provided terms.
-func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UUID, terms []string) (entity.WordbookStats, error) {
+func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UUID, terms []string, endOfToday time.Time) (entity.WordbookStats, error) {
 	if userID == uuid.Nil || len(terms) == 0 {
 		return entity.WordbookStats{}, nil
 	}
@@ -246,8 +246,6 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 	if err != nil {
 		return entity.WordbookStats{}, fmt.Errorf("aggregate wordbook stats: %w", err)
 	}
-
-	endOfToday := entity.EndOfDay(time.Now())
 
 	stats := entity.WordbookStats{TotalWords: safeconv.IntToInt32(len(uniqueTerms))}
 	for _, row := range rows {

@@ -3,10 +3,10 @@ package usecase
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
+	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/google/uuid"
 )
@@ -80,7 +80,7 @@ func (u *reviewPlanUsecase) Create(ctx context.Context, plan *entity.ReviewPlan)
 	userID := auth.MustGetUserID(ctx)
 
 	plan.UserID = userID
-	now := time.Now()
+	now := usertime.Now(ctx)
 	plan.CreatedAt = now
 	plan.UpdatedAt = now
 	normalized, err := entity.NormalizeReviewPlan(plan)
@@ -118,7 +118,7 @@ func (u *reviewPlanUsecase) Update(ctx context.Context, plan *entity.ReviewPlan)
 		plan.Config.DailyNewLimit = current.Config.DailyNewLimit
 	}
 	plan.CreatedAt = current.CreatedAt
-	plan.UpdatedAt = time.Now()
+	plan.UpdatedAt = usertime.Now(ctx)
 	normalized, err := entity.NormalizeReviewPlan(plan)
 	if err != nil {
 		return nil, err
@@ -208,7 +208,7 @@ func (u *reviewPlanUsecase) attachStatus(ctx context.Context, plan *entity.Revie
 	// Get mastery stats
 	var stats entity.WordbookStats
 	if len(uniqueTerms) > 0 {
-		stats, err = u.learnedRepo.StatsByTerms(ctx, plan.UserID, uniqueTerms)
+		stats, err = u.learnedRepo.StatsByTerms(ctx, plan.UserID, uniqueTerms, usertime.EndOfToday(ctx))
 		if err != nil {
 			return // best-effort
 		}
@@ -217,7 +217,7 @@ func (u *reviewPlanUsecase) attachStatus(ctx context.Context, plan *entity.Revie
 	// Get per-plan DailyStats
 	var newWordsToday, cardsReviewedToday int32
 	if u.dailyStatsRepo != nil {
-		ds, err := u.dailyStatsRepo.GetByPlan(ctx, plan.UserID, plan.ID, time.Now())
+		ds, err := u.dailyStatsRepo.GetByPlan(ctx, plan.UserID, plan.ID, usertime.Now(ctx))
 		if err == nil && ds != nil {
 			newWordsToday = ds.NewWords
 			cardsReviewedToday = ds.CardsReviewed
@@ -284,7 +284,7 @@ func (u *reviewPlanUsecase) attachPlanStatus(
 
 	planStats := entity.WordbookStats{}
 	if len(planTerms) > 0 {
-		stats, err := u.learnedRepo.StatsByTerms(ctx, plan.UserID, planTerms)
+		stats, err := u.learnedRepo.StatsByTerms(ctx, plan.UserID, planTerms, usertime.EndOfToday(ctx))
 		if err != nil {
 			return
 		}

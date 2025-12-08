@@ -249,12 +249,9 @@ type GetActivityCalendarRequest struct {
 	// 查询范围开始时间 (默认最近一年)
 	StartTime *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
 	// 查询范围结束时间 (默认当前)
-	EndTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
-	// 时区偏移量 (分钟)，用于正确计算"天"的边界
-	// 例如: UTC+8 -> 480
-	TimezoneOffset int32 `protobuf:"varint,3,opt,name=timezone_offset,json=timezoneOffset,proto3" json:"timezone_offset,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	EndTime       *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetActivityCalendarRequest) Reset() {
@@ -299,13 +296,6 @@ func (x *GetActivityCalendarRequest) GetEndTime() *timestamppb.Timestamp {
 		return x.EndTime
 	}
 	return nil
-}
-
-func (x *GetActivityCalendarRequest) GetTimezoneOffset() int32 {
-	if x != nil {
-		return x.TimezoneOffset
-	}
-	return 0
 }
 
 type ActivityCalendar struct {
@@ -434,12 +424,11 @@ const file_learning_v1_stats_service_proto_rawDesc = "" +
 	"\fgenerated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vgeneratedAt\x1a?\n" +
 	"\x11DistributionEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x05R\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\xb7\x01\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\x8e\x01\n" +
 	"\x1aGetActivityCalendarRequest\x129\n" +
 	"\n" +
 	"start_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tstartTime\x125\n" +
-	"\bend_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\aendTime\x12'\n" +
-	"\x0ftimezone_offset\x18\x03 \x01(\x05R\x0etimezoneOffset\"N\n" +
+	"\bend_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\aendTime\"N\n" +
 	"\x10ActivityCalendar\x12:\n" +
 	"\n" +
 	"activities\x18\x01 \x03(\v2\x1a.learning.v1.DailyActivityR\n" +

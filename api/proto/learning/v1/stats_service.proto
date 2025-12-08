@@ -65,10 +65,6 @@ message GetActivityCalendarRequest {
   google.protobuf.Timestamp start_time = 1;
   // 查询范围结束时间 (默认当前)
   google.protobuf.Timestamp end_time = 2;
-
-  // 时区偏移量 (分钟)，用于正确计算"天"的边界
-  // 例如: UTC+8 -> 480
-  int32 timezone_offset = 3;
 }
 
 message ActivityCalendar {

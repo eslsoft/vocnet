@@ -55,9 +55,7 @@ func (s *StatsServiceServer) GetActivityCalendar(ctx context.Context, req *conne
 		endTime = req.Msg.GetEndTime().AsTime()
 	}
 
-	timezoneOffset := req.Msg.GetTimezoneOffset()
-
-	data, err := s.uc.GetActivityCalendar(ctx, startTime, endTime, timezoneOffset)
+	data, err := s.uc.GetActivityCalendar(ctx, startTime, endTime)
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}

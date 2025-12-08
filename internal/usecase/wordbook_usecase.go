@@ -7,6 +7,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
+	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"github.com/google/uuid"
@@ -222,7 +223,10 @@ func (u *wordbookUsecase) attachStats(ctx context.Context, userID uuid.UUID, boo
 	if userID == uuid.Nil || u.learned == nil || len(book.Terms) == 0 {
 		return
 	}
-	stats, err := u.learned.StatsByTerms(ctx, userID, book.Terms)
+	// Use EndOfTodayOrUTC for attachStats since it's a best-effort operation
+	// and may be called from contexts without timezone (e.g., tests)
+	endOfToday := usertime.EndOfTodayOrUTC(ctx)
+	stats, err := u.learned.StatsByTerms(ctx, userID, book.Terms, endOfToday)
 	if err != nil {
 		return // best-effort; keep default totals
 	}
