@@ -49,7 +49,7 @@ deps:
   - buf.build/googleapis/googleapis
   - buf.build/bufbuild/protovalidate
   - buf.build/envoyproxy/protoc-gen-validate
-  - buf.build/your-org/your-repo  # 添加新依赖
+  - buf.build/your-org/your-repo # 添加新依赖
 ```
 
 然后运行：
@@ -61,18 +61,22 @@ make buf-deps
 ## Buf 配置文件说明
 
 ### `buf.gen.yaml` (项目根目录)
+
 - 代码生成配置
 - 定义使用哪些插件和输出选项
 
 ### `buf.work.yaml` (项目根目录)
+
 - 工作空间配置
 - 管理多模块项目，指向 `api/proto` 目录
 
 ### `api/proto/buf.yaml`
+
 - 模块级别的配置
 - 定义模块名称、依赖、linting 和 breaking change 规则
 
 ### `api/proto/buf.lock` (自动生成)
+
 - 依赖锁定文件
 - 确保构建的可重现性
 
