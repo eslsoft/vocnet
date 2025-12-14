@@ -39,6 +39,7 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 	}
 
 	entityWord := &entity.LearnedWord{
+		UserID:   auth.MustGetUserID(ctx),
 		Term:     strings.TrimSpace(req.Msg.Spec.GetTerm()),
 		Mastery:  entity.MasteryBreakdown{Overall: req.Msg.Spec.GetMasteryLevel()},
 		Language: mapping.FromPbLanguage(req.Msg.Spec.GetLanguage()),
