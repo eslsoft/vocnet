@@ -118,7 +118,7 @@ POST /api/v1/review-plans/{plan_id}/submit-answer
 | **数据归属**   | 锁定在单一应用     | 跨应用的数据中心               |
 | **换应用成本** | 需要重新测试水平   | 掌握度数据跟随用户             |
 | **复习算法**   | 各家实现，质量参差 | 统一的 FSRS 科学算法           |
-| **开源透明**   | 闭源，数据不透明   | 开源（Apache 2.0），数据自主权 |
+| **开源透明**   | 闭源，数据不透明   | 开源（AGPL-3.0），数据自主权   |
 | **生态模式**   | 封闭               | 开放 API，第三方可接入         |
 | **专注度**     | 大而全但不专精     | 专注词汇管理                   |
 
@@ -195,7 +195,7 @@ Vocnet 目前处于 **Alpha 阶段**，核心功能已可用：
 - **API**: ConnectRPC (gRPC-compatible)
 - **数据库**: PostgreSQL / SQLite
 - **算法**: SM2 (FSRS v5 规划中)
-- **开源协议**: Apache 2.0
+- **开源协议**: AGPL-3.0
 
 技术详情：[架构概览](developers/technical-overview.md)
 

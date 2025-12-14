@@ -6,7 +6,7 @@
 <p><em>以用户为中心的全生命周期的词汇数据中心</em></p>
 
 <p>
-<a href="https://github.com/eslsoft/vocnet/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="license"/></a>
+<a href="https://github.com/eslsoft/vocnet/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="license"/></a>
 <a href="https://github.com/eslsoft/vocnet/issues"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="prs"/></a>
 <a href="docs/roadmap.md"><img src="https://img.shields.io/badge/roadmap-active-success" alt="roadmap"/></a>
 <a href="#"><img src="https://img.shields.io/badge/status-alpha-orange" alt="status"/></a>
@@ -104,7 +104,11 @@ Vocnet 致力于打造一个开放的词汇网络管理平台，帮助用户集�
 
 ## 📜 许可证
 
-本项目基于 [Apache 2.0 License](LICENSE) 开源。
+本项目基于 [AGPL-3.0 License](LICENSE) 开源。
+
+- 你可以自由自托管、修改和内部使用 vocnet；
+- 如果你基于 vocnet 提供网络服务（SaaS），需要按 AGPL-3.0 开源你对 vocnet 的修改；
+- 官方认证服务将以单独的商业条款提供，并不在本仓库开源范围内。
 
 ---
 
