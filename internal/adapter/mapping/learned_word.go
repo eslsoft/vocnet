@@ -34,7 +34,7 @@ func toPbLearnedWordStatus(in *entity.LearnedWord) *learningv1.LearnedWordStatus
 		ReviewTiming: ToPbReview(in.Review),
 		MatchedTerms: append([]string{}, in.MatchedTerms...),
 		QueriedCount: in.QueriedCount,
-		CreatedBy:    in.CreatedBy,
+		CreatedBy:    in.UserID.String(),
 		CreatedAt:    timestamppb.New(in.CreatedAt),
 		UpdatedAt:    timestamppb.New(in.UpdatedAt),
 	}

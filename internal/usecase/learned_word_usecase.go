@@ -118,9 +118,6 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	if copy.QueriedCount == 0 {
 		copy.QueriedCount = 1
 	}
-	if copy.CreatedBy == "" {
-		copy.CreatedBy = "user"
-	}
 	copy.Normalize(now)
 
 	return u.repo.Create(ctx, &copy)

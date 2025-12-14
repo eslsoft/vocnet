@@ -56,7 +56,6 @@ func (LearnedWord) Fields() []ent.Field {
 		field.Int32("review_interval_days").Default(0),
 		field.Int32("review_fail_count").Default(0),
 		field.Int64("query_count").Default(0),
-		field.String("created_by").Default(""),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),

@@ -48,7 +48,6 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 		SetReviewIntervalDays(word.Review.IntervalDays).
 		SetReviewFailCount(word.Review.FailCount).
 		SetQueryCount(word.QueriedCount).
-		SetCreatedBy(word.CreatedBy).
 		SetCreatedAt(word.CreatedAt).
 		SetUpdatedAt(word.UpdatedAt)
 
@@ -85,7 +84,6 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 		SetReviewIntervalDays(word.Review.IntervalDays).
 		SetReviewFailCount(word.Review.FailCount).
 		SetQueryCount(word.QueriedCount).
-		SetCreatedBy(word.CreatedBy).
 		SetUpdatedAt(word.UpdatedAt)
 
 	if !word.Review.LastReviewAt.IsZero() {
@@ -344,7 +342,6 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 		Notes:        rec.Notes,
 		Relations:    append([]entity.LearnedWordRelation{}, rec.Relations...),
 		Contexts:     append([]entity.LearnedWordContext{}, rec.Contexts...),
-		CreatedBy:    rec.CreatedBy,
 		CreatedAt:    rec.CreatedAt,
 		UpdatedAt:    rec.UpdatedAt,
 	}

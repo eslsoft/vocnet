@@ -17,16 +17,17 @@ type LearnedWord struct {
 	CaseSensitive bool   // Whether this word requires case-sensitive matching (e.g., polish vs Polish)
 	Language      Language
 	Tags          []string
-	Notes        []string
-	Relations    []LearnedWordRelation
-	Contexts     []LearnedWordContext // Context sentences where user encountered this word
-	Mastery      MasteryBreakdown
-	Review       ReviewTiming
-	QueriedCount int64
+	Notes         []string
+	Relations     []LearnedWordRelation
+	Contexts      []LearnedWordContext // Context sentences where user encountered this word
+	Mastery       MasteryBreakdown
+	Review        ReviewTiming
+	QueriedCount  int64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+
 	MatchedTerms []string // All query terms that matched this stored term
-	CreatedBy    string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+
 	// FUTURE: LexemeOverrides map[string]LexemeOverride
 	// This will enable tracking mastery for specific word senses when needed.
 	// Key: Wikidata Lexeme ID (e.g. "L123456")
