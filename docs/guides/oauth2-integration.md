@@ -104,7 +104,7 @@ vocnet 使用标准的 **OAuth 2.0 Authorization Code Flow**，确保：
 在你的应用中添加"连接 vocnet"按钮，跳转到：
 
 ```
-GET https://vocnet.com/oauth/authorize?
+GET https://vocnet.apps.tftt.cc/oauth/authorize?
   client_id=YOUR_CLIENT_ID&
   redirect_uri=https://your-app.com/callback&
   scope=read:words,write:words&
@@ -154,7 +154,7 @@ https://your-app.com/callback?
 在你的**后端**调用：
 
 ```bash
-POST https://vocnet.com/oauth/token
+POST https://vocnet.apps.tftt.cc/oauth/token
 Content-Type: application/json
 
 {
@@ -207,7 +207,7 @@ vocnet 会：
 `access_token` 过期后（1 小时），用 `refresh_token` 刷新：
 
 ```bash
-POST https://vocnet.com/oauth/token
+POST https://vocnet.apps.tftt.cc/oauth/token
 Content-Type: application/json
 
 {
@@ -240,7 +240,7 @@ const REDIRECT_URI = "http://localhost:3000/callback";
 app.get("/login", (req, res) => {
   const state = Math.random().toString(36);
   const authUrl =
-    `https://vocnet.com/oauth/authorize?` +
+    `https://vocnet.apps.tftt.cc/oauth/authorize?` +
     `client_id=${CLIENT_ID}&` +
     `redirect_uri=${REDIRECT_URI}&` +
     `scope=read:words,write:words&` +
@@ -258,7 +258,7 @@ app.get("/callback", async (req, res) => {
 
   try {
     // 换取 access_token
-    const response = await axios.post("https://vocnet.com/oauth/token", {
+    const response = await axios.post("https://vocnet.apps.tftt.cc/oauth/token", {
       grant_type: "authorization_code",
       code,
       client_id: CLIENT_ID,
@@ -362,7 +362,7 @@ A: 使用 `refresh_token` 刷新（见 Step 6）
 A: 用户可以在 vocnet 账号设置中撤销授权，或你的应用调用：
 
 ```bash
-POST https://vocnet.com/oauth/revoke
+POST https://vocnet.apps.tftt.cc/oauth/revoke
 Authorization: Bearer ACCESS_TOKEN
 ```
 
@@ -376,7 +376,7 @@ A: 计划支持（用于移动端和 SPA）。
 
 - [API 参考](../api/overview.md) — 查看可用 API
 - [使用案例](../ecosystem/use-cases.md) — 集成示例
-- [开发者指南](developer-guide.md) — 完整开发文档
+- [开发者指南](../developers/integration-guide.md) — 完整开发文档
 
 ---
 

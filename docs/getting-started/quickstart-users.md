@@ -11,11 +11,12 @@
 开始之前，你需要：
 
 - **Vocnet 账号**
-  - 官方实例：访问 [https://vocnet.com](https://vocnet.com) 注册（计划中）
+  - 官方实例：访问 [https://vocnet.apps.tftt.cc](https://vocnet.apps.tftt.cc) 注册（计划中）
   - 自建实例：如果你的组织/个人部署了 Vocnet，请获取访问地址
 - 浏览器（推荐 Chrome / Firefox / Safari 最新版本）
 
 !!! tip "自建部署"
+
 如果你想自己部署 Vocnet，请查看 [自建部署指南](../self-hosting/installation.md)
 
 ---
@@ -35,6 +36,7 @@
 如果你已经有账号，直接使用邮箱和密码登录即可。
 
 !!! info "OAuth2 登录"
+
 部分 Vocnet 实例可能支持第三方登录（Google、GitHub 等），具体取决于实例配置。
 
 ---
@@ -72,6 +74,7 @@ Vocnet 支持按技能分项跟踪掌握度：
 | **综合** | 整体掌握程度 |
 
 !!! tip "建议"
+
 刚开始不用太纠结分项评分，先从综合掌握度开始，随着学习深入再细化。
 
 ---
@@ -107,6 +110,7 @@ Vocnet 提供多种复习题型：
 4. 继续下一题，直到完成今日计划
 
 !!! success "复习完成"
+
 完成今日复习后，你可以：
 
     - 查看今日统计（复习数量、正确率、用时）
@@ -135,7 +139,11 @@ Vocnet 的强大之处在于**跨应用的数据同步**。你可以将其他学
 - 在 Vocnet 中的复习记录会更新掌握度
 - 掌握度变化会同步回第三方应用
 
-!!! example "典型场景" - 在阅读 APP 中标记生词 → 自动添加到 Vocnet - 在 Vocnet 中复习并掌握 → 阅读 APP 中该词标记为「已掌握」 - 所有数据统一管理，无需在多个应用中重复学习
+!!! example "典型场景"
+
+- 在阅读 APP 中标记生词 → 自动添加到 Vocnet
+- 在 Vocnet 中复习并掌握 → 阅读 APP 中该词标记为「已掌握」
+- 所有数据统一管理，无需在多个应用中重复学习
 
 ### 查看已授权应用
 
@@ -154,7 +162,12 @@ Vocnet 支持将词汇组织到不同的词本中：
 - **系统词本** - 如「IELTS 核心词汇」「四级词汇」等
 - **自建词本** - 创建自己的主题词本（如「旅游英语」「技术术语」）
 
-!!! tip "使用词本" 1. 进入「词本」页面 2. 点击「创建词本」 3. 将单词添加到词本 4. 可以针对特定词本创建复习计划
+!!! tip "使用词本"
+
+1. 进入「词本」页面
+2. 点击「创建词本」
+3. 将单词添加到词本
+4. 可以针对特定词本创建复习计划
 
 ### 学习统计
 
@@ -195,9 +208,17 @@ Vocnet 使用 FSRS（Free Spaced Repetition Scheduler）算法，这是一种科
 
 恭喜你已经掌握了 Vocnet 的基本使用！接下来你可以：
 
-!!! tip "深入学习" - **[完整用户手册](../guides/user-guide.md)** - 了解所有功能的详细用法 - **[FSRS 算法](../concepts/fsrs-algorithm.md)** - 理解复习算法的科学原理 - **[掌握度跟踪](../concepts/mastery-tracking.md)** - 深入了解掌握度评分体系
+!!! tip "深入学习"
 
-!!! question "需要帮助？" - [常见问题 (FAQ)](../faq.md) - [GitHub Issues](https://github.com/eslsoft/vocnet/issues) - [社区讨论](https://github.com/eslsoft/vocnet/discussions)
+- **[完整用户手册](../guides/user-guide.md)** - 了解所有功能的详细用法
+- **[FSRS 算法](../concepts/fsrs-algorithm.md)** - 理解复习算法的科学原理
+- **[掌握度跟踪](../concepts/mastery-tracking.md)** - 深入了解掌握度评分体系
+
+!!! question "需要帮助？"
+
+- [常见问题 (FAQ)](../faq.md)
+- [GitHub Issues](https://github.com/eslsoft/vocnet/issues)
+- [社区讨论](https://github.com/eslsoft/vocnet/discussions)
 
 ---
 

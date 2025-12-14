@@ -1,7 +1,7 @@
 site_name: vocnet 文档
 site_description: 开源的词汇网络管理平台 - 以用户为中心的全生命周期词汇数据中心
 site_author: vocnet team
-site_url: https://vocnet.com
+site_url: https://vocnet.apps.tftt.cc
 
 repo_name: eslsoft/vocnet
 repo_url: https://github.com/eslsoft/vocnet
@@ -122,7 +122,6 @@ nav:
         - Flashcard 系统: developers/design/flashcard-system-design.md
         - 掌握度继承: developers/design/mastery-inheritance.md
         - 词汇过滤: developers/design/list-words-filtering.md
-        - 匹配词重构: developers/design/matchedTerms-refactor-plan.md
         - 分类标签: developers/design/category-tags-system.md
 
   # ============ 共享文档 ============
@@ -146,6 +145,5 @@ nav:
   - 其他:
     - 常见问题: faq.md
     - 路线图: roadmap.md
-    - 旧版快速开始: getting-started/quickstart.md
 
 copyright: Copyright &copy; 2024 vocnet team

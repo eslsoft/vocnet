@@ -16,9 +16,10 @@
 - **Go 1.21+** 或其他支持 HTTP 请求的开发环境
 
 !!! tip "获取开发者凭证"
+
 目前需要通过 GitHub Issue 申请开发者账号。未来将提供自助申请流程。
 
-    提交申请：[https://github.com/eslsoft/vocnet/issues/new](https://github.com/eslsoft/vocnet/issues/new)
+提交申请：[https://github.com/eslsoft/vocnet/issues/new](https://github.com/eslsoft/vocnet/issues/new)
 
 ---
 
@@ -51,6 +52,7 @@
 | `wordbooks:write` | 创建/管理词本       |
 
 !!! warning "最小权限原则"
+
 只申请你的应用实际需要的权限，避免过度授权。
 
 ---
@@ -64,7 +66,7 @@ Vocnet 使用标准的 OAuth 2.0 授权码模式。
 在你的应用中添加「连接 Vocnet」按钮，跳转到授权页面：
 
 ```
-https://vocnet.com/oauth/authorize?
+https://vocnet.apps.tftt.cc/oauth/authorize?
   client_id=YOUR_CLIENT_ID&
   redirect_uri=https://yourapp.com/oauth/callback&
   response_type=code&
@@ -95,7 +97,7 @@ https://yourapp.com/oauth/callback?code=AUTHORIZATION_CODE&state=RANDOM_STATE_ST
 使用授权码换取 Access Token：
 
 ```bash
-curl -X POST https://vocnet.com/oauth/token \
+curl -X POST https://vocnet.apps.tftt.cc/oauth/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   -d 'grant_type=authorization_code' \
   -d 'code=AUTHORIZATION_CODE' \
@@ -116,7 +118,10 @@ curl -X POST https://vocnet.com/oauth/token \
 }
 ```
 
-!!! tip "Token 管理" - **Access Token** 用于调用 API，有效期通常为 1 小时 - **Refresh Token** 用于刷新 Access Token，有效期较长 - 记得处理 Token 过期和刷新逻辑
+!!! tip "Token 管理"
+
+- **Access Token** 用于调用 API，有效期通常为 1 小时
+- **Refresh Token** 用于刷新 Access Token，有效期较长 - 记得处理 Token 过期和刷新逻辑
 
 详细的 OAuth2 集成指南：[OAuth2 集成](../guides/oauth2-integration.md)
 
@@ -243,7 +248,7 @@ import (
 
 // 初始化客户端
 vocnetClient := client.New(
-    client.WithBaseURL("https://vocnet.com"),
+    client.WithBaseURL("https://vocnet.apps.tftt.cc"),
     client.WithAccessToken(accessToken),
 )
 
@@ -264,7 +269,7 @@ resp, err := vocnetClient.Learning.CollectWord(context.Background(), &learning.C
 import { VocnetClient } from "@vocnet/sdk";
 
 const client = new VocnetClient({
-  baseURL: "https://vocnet.com",
+  baseURL: "https://vocnet.apps.tftt.cc",
   accessToken: accessToken,
 });
 
@@ -280,6 +285,7 @@ const response = await client.learning.collectWord({
 ```
 
 !!! note "SDK 文档"
+
 详细的 SDK 使用指南：[SDK 使用](../developers/sdk-usage.md)
 
 ---
@@ -304,7 +310,7 @@ make run
 使用 Refresh Token 刷新 Access Token：
 
 ```bash
-curl -X POST https://vocnet.com/oauth/token \
+curl -X POST https://vocnet.apps.tftt.cc/oauth/token \
   -d 'grant_type=refresh_token' \
   -d 'refresh_token=YOUR_REFRESH_TOKEN' \
   -d 'client_id=YOUR_CLIENT_ID' \
@@ -351,11 +357,23 @@ Vocnet API 使用标准的 HTTP 状态码：
 
 恭喜你已经完成了基本的 API 集成！接下来你可以：
 
-!!! tip "深入学习" - **[完整 API 参考](../api/overview.md)** - 查看所有可用的 API 接口 - **[集成最佳实践](../developers/integration-guide.md)** - 架构设计、错误处理、性能优化 - **[示例代码](../developers/examples.md)** - 各种场景的完整示例代码
+!!! tip "深入学习"
 
-!!! info "技术资源" - **[技术架构](../developers/technical-overview.md)** - 了解 Vocnet 的设计架构 - **[数据模型](../concepts/data-model.md)** - 理解核心数据结构 - **[FSRS 算法](../concepts/fsrs-algorithm.md)** - 复习算法原理
+- **[完整 API 参考](../api/overview.md)** - 查看所有可用的 API 接口
+- **[集成最佳实践](../developers/integration-guide.md)** - 架构设计、错误处理、性能优化
+- **[示例代码](../developers/examples.md)** - 各种场景的完整示例代码
 
-!!! question "需要帮助？" - [常见问题 (FAQ)](../faq.md) - [GitHub Issues](https://github.com/eslsoft/vocnet/issues) - [开发者社区](https://github.com/eslsoft/vocnet/discussions)
+!!! info "技术资源"
+
+- **[技术架构](../developers/technical-overview.md)** - 了解 Vocnet 的设计架构
+- **[数据模型](../concepts/data-model.md)** - 理解核心数据结构
+- **[FSRS 算法](../concepts/fsrs-algorithm.md)** - 复习算法原理
+
+!!! question "需要帮助？"
+
+- [常见问题 (FAQ)](../faq.md)
+- [GitHub Issues](https://github.com/eslsoft/vocnet/issues)
+- [开发者社区](https://github.com/eslsoft/vocnet/discussions)
 
 ---
 

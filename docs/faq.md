@@ -6,7 +6,7 @@
 
 vocnet 是一个开源的词汇网络管理平台，帮助用户管理全生命周期的词汇数据，并提供基于 FSRS 算法的科学复习系统。
 
-详见：[项目介绍](getting-started/introduction.md)
+详见：[项目介绍](concepts/introduction.md)
 
 ---
 
@@ -19,7 +19,7 @@ vocnet 是一个开源的词汇网络管理平台，帮助用户管理全生命�
 
 ---
 
-### 与扇贝、百词斩等 APP 的区别？
+### 与扇贝、百词斩等 APP 的区别？ {#与扇贝百词斩等-app-的区别}
 
 | 维度     | 传统 APP                 | vocnet                 |
 | -------- | ------------------------ | ---------------------- |
@@ -138,7 +138,7 @@ curl http://localhost:8080/api/v1/learning/export \
 4. 实现 OAuth2 授权流程
 5. 调用 API
 
-详见：[开发者指南](guides/developer-guide.md)
+详见：[开发者指南](developers/integration-guide.md)
 
 ---
 

@@ -10,12 +10,12 @@
 
 ### 硬件要求
 
-| 配置项 | 最低要求 | 推荐配置 |
-|--------|---------|---------|
-| CPU | 1 核 | 2 核+ |
-| 内存 | 512 MB | 2 GB+ |
-| 硬盘 | 1 GB | 10 GB+ |
-| 网络 | 1 Mbps | 100 Mbps+ |
+| 配置项 | 最低要求 | 推荐配置  |
+| ------ | -------- | --------- |
+| CPU    | 1 核     | 2 核+     |
+| 内存   | 512 MB   | 2 GB+     |
+| 硬盘   | 1 GB     | 10 GB+    |
+| 网络   | 1 Mbps   | 100 Mbps+ |
 
 ### 软件要求
 
@@ -26,8 +26,9 @@
 - **Make** - 构建工具
 
 !!! tip "推荐环境"
-    - **开发/测试**: SQLite（零配置，开箱即用）
-    - **生产部署**: PostgreSQL（性能更好，支持并发）
+
+- **开发/测试**: SQLite（零配置，开箱即用）
+- **生产部署**: PostgreSQL（性能更好，支持并发）
 
 ---
 
@@ -56,21 +57,22 @@ make setup
 - 生成 protobuf 和 ent 代码
 
 !!! note "手动安装依赖"
-    如果 `make setup` 失败，可以手动安装：
 
-    ```bash
-    # 安装 buf
-    go install github.com/bufbuild/buf/cmd/buf@latest
+如果 `make setup` 失败，可以手动安装：
 
-    # 安装 mockgen
-    go install github.com/golang/mock/mockgen@latest
+```bash
+# 安装 buf
+go install github.com/bufbuild/buf/cmd/buf@latest
 
-    # 下载 Go 依赖
-    go mod download
+# 安装 mockgen
+go install github.com/golang/mock/mockgen@latest
 
-    # 生成代码
-    make generate
-    ```
+# 下载 Go 依赖
+go mod download
+
+# 生成代码
+make generate
+```
 
 ### 3. 初始化数据库
 
@@ -100,11 +102,12 @@ DB_DSN="postgres://postgres:postgres@localhost:5432/vocnet?sslmode=disable" make
 ```
 
 !!! warning "连接字符串格式"
-    PostgreSQL 连接字符串格式：
 
-    ```
-    postgres://用户名:密码@主机:端口/数据库名?sslmode=disable
-    ```
+PostgreSQL 连接字符串格式：
+
+```
+postgres://用户名:密码@主机:端口/数据库名?sslmode=disable
+```
 
 ### 4. 启动服务
 
@@ -118,7 +121,8 @@ make run
 - **gRPC-Web**: `localhost:8080` (同一端口，ConnectRPC 协议)
 
 !!! success "测试服务"
-    访问 http://localhost:8080 查看服务状态。
+
+访问 http://localhost:8080 查看服务状态。
 
 ### 5. 验证安装
 
@@ -150,7 +154,7 @@ docker build -t vocnet:latest .
 创建 `docker-compose.yml`：
 
 ```yaml
-version: '3.8'
+version: "3.8"
 
 services:
   postgres:
@@ -336,12 +340,12 @@ Vocnet 通过环境变量进行配置。你可以：
 
 ### 核心配置
 
-| 环境变量 | 说明 | 默认值 | 示例 |
-|---------|------|--------|------|
-| `DB_DSN` | 数据库连接字符串 | `vocnet.db`（SQLite） | `postgres://...` |
-| `JWKS_URL` | JWT 密钥集 URL（Supabase 等） | - | `https://xxx.supabase.co/auth/v1/jwks` |
-| `LOG_LEVEL` | 日志级别 | `info` | `debug`, `info`, `warn`, `error` |
-| `PORT` | 服务端口 | `8080` | `8080` |
+| 环境变量    | 说明                          | 默认值                | 示例                                   |
+| ----------- | ----------------------------- | --------------------- | -------------------------------------- |
+| `DB_DSN`    | 数据库连接字符串              | `vocnet.db`（SQLite） | `postgres://...`                       |
+| `JWKS_URL`  | JWT 密钥集 URL（Supabase 等） | -                     | `https://xxx.supabase.co/auth/v1/jwks` |
+| `LOG_LEVEL` | 日志级别                      | `info`                | `debug`, `info`, `warn`, `error`       |
+| `PORT`      | 服务端口                      | `8080`                | `8080`                                 |
 
 详细配置选项：[配置说明](configuration.md)
 
@@ -370,12 +374,13 @@ psql -U vocnet vocnet < vocnet_backup.sql
 ```
 
 !!! tip "自动备份"
-    建议设置定时任务（cron）每天自动备份：
 
-    ```bash
-    # 添加到 crontab
-    0 2 * * * /opt/vocnet/scripts/backup.sh
-    ```
+建议设置定时任务（cron）每天自动备份：
+
+```bash
+# 添加到 crontab
+0 2 * * * /opt/vocnet/scripts/backup.sh
+```
 
 ---
 
@@ -454,14 +459,16 @@ psql "postgres://vocnet:password@localhost:5432/vocnet"
 ## 下一步
 
 !!! tip "配置和管理"
-    - [配置说明](configuration.md) - 了解所有配置选项
-    - [数据迁移](migration.md) - 版本升级和数据迁移
-    - [监控和日志](../developers/technical-overview.md) - 生产环境监控
+
+- [配置说明](configuration.md) - 了解所有配置选项
+- [数据迁移](migration.md) - 版本升级和数据迁移
+- [监控和日志](../developers/technical-overview.md) - 生产环境监控
 
 !!! question "需要帮助？"
-    - [常见问题 (FAQ)](../faq.md)
-    - [GitHub Issues](https://github.com/eslsoft/vocnet/issues)
-    - [社区讨论](https://github.com/eslsoft/vocnet/discussions)
+
+- [常见问题 (FAQ)](../faq.md)
+- [GitHub Issues](https://github.com/eslsoft/vocnet/issues)
+- [社区讨论](https://github.com/eslsoft/vocnet/discussions)
 
 ---
 
