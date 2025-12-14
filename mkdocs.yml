@@ -1,5 +1,5 @@
-site_name: vocnet 文档
-site_description: 开源的词汇网络管理平台 - 以用户为中心的全生命周期词汇数据中心
+site_name: Vocnet Documentation
+site_description: Open-source vocabulary network management platform and word data hub
 site_author: vocnet team
 site_url: https://vocnet.apps.tftt.cc
 
@@ -9,7 +9,7 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
-  language: zh
+  language: en
   palette:
     # Light mode
     - media: "(prefers-color-scheme: light)"
@@ -18,7 +18,7 @@ theme:
       accent: indigo
       toggle:
         icon: material/brightness-7
-        name: 切换到暗色模式
+        name: Switch to dark mode
     # Dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
@@ -26,21 +26,21 @@ theme:
       accent: indigo
       toggle:
         icon: material/brightness-4
-        name: 切换到亮色模式
+        name: Switch to light mode
 
   features:
-    - navigation.instant      # 即时加载
-    - navigation.tracking     # 锚点跟踪
-    - navigation.tabs         # 顶部导航标签
-    - navigation.sections     # 侧边栏分组
-    - navigation.expand       # 默认展开导航
-    - navigation.top          # 返回顶部按钮
-    - search.suggest          # 搜索建议
-    - search.highlight        # 搜索结果高亮
-    - search.share            # 搜索分享
-    - content.code.copy       # 代码复制按钮
-    - content.action.edit     # 编辑此页
-    - content.action.view     # 查看源码
+    - navigation.instant      # Instant loading
+    - navigation.tracking     # Anchor tracking
+    - navigation.tabs         # Top navigation tabs
+    - navigation.sections     # Sidebar sections
+    - navigation.expand       # Expand navigation by default
+    - navigation.top          # Back-to-top button
+    - search.suggest          # Search suggestions
+    - search.highlight        # Search result highlighting
+    - search.share            # Share search results
+    - content.code.copy       # Copy code button
+    - content.action.edit     # Edit this page
+    - content.action.view     # View source
 
   icon:
     repo: fontawesome/brands/github
@@ -50,29 +50,28 @@ theme:
 plugins:
   - search:
       lang:
-        - zh
         - en
   - git-revision-date-localized:
       enable_creation_date: true
       type: timeago
 
 markdown_extensions:
-  - admonition              # 提示框
-  - pymdownx.details        # 可折叠提示框
-  - pymdownx.superfences    # 代码块增强
-  - pymdownx.tabbed:        # 标签页
+  - admonition              # Admonition blocks
+  - pymdownx.details        # Collapsible details blocks
+  - pymdownx.superfences    # Enhanced code fences
+  - pymdownx.tabbed:        # Tabs
       alternate_style: true
-  - pymdownx.highlight:     # 代码高亮
+  - pymdownx.highlight:     # Syntax highlighting
       anchor_linenums: true
-  - pymdownx.inlinehilite   # 行内代码高亮
-  - pymdownx.snippets       # 代码片段
-  - tables                  # 表格
-  - attr_list               # 属性列表
-  - md_in_html             # HTML 中的 Markdown
+  - pymdownx.inlinehilite   # Inline code highlighting
+  - pymdownx.snippets       # Code snippets
+  - tables                  # Tables
+  - attr_list               # Attribute lists
+  - md_in_html             # Markdown inside HTML
   - pymdownx.emoji:         # Emoji
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - toc:                    # 目录
+  - toc:                    # Table of contents
       permalink: true
       toc_depth: 3
 
@@ -86,64 +85,64 @@ extra:
     provider: mike
 
 nav:
-  - 首页: index.md
+  - Home: index.md
 
-  # ============ 用户文档 ============
-  - 用户文档:
-    - 快速开始:
-      - 新用户指南: getting-started/quickstart-users.md
-      - 安装客户端: getting-started/installation.md
-    - 使用指南:
-      - 完整用户手册: guides/user-guide.md
-    - 自建部署:
-      - 安装指南: self-hosting/installation.md
-      - 配置说明: self-hosting/configuration.md
-      - 数据迁移: self-hosting/migration.md
+  # ============ User Documentation ============
+  - User Guide:
+    - Get Started:
+      - Quickstart for Users: getting-started/quickstart-users.md
+      - Install Client: getting-started/installation.md
+    - Usage:
+      - Full User Manual: guides/user-guide.md
+    - Self Hosting:
+      - Installation: self-hosting/installation.md
+      - Configuration: self-hosting/configuration.md
+      - Data Migration: self-hosting/migration.md
 
-  # ============ 开发者文档 ============
-  - 开发者文档:
-    - 快速开始:
-      - 集成指南: getting-started/quickstart-developers.md
-      - OAuth2 集成: guides/oauth2-integration.md
-    - API 参考:
-      - API 概览: api/overview.md
-      - 认证授权: api/authentication.md
-      - 学习接口: api/learning.md
-      - 复习接口: api/flashcards.md
-      - 词本接口: api/wordbooks.md
-    - 开发指南:
-      - 集成最佳实践: developers/integration-guide.md
-      - SDK 使用: developers/sdk-usage.md
-      - 示例代码: developers/examples.md
-    - 技术架构:
-      - 架构概览: developers/technical-overview.md
-      - Buf 工具链: developers/buf-quickstart.md
-      - 设计文档:
-        - Flashcard 系统: developers/design/flashcard-system-design.md
-        - 掌握度继承: developers/design/mastery-inheritance.md
-        - 词汇过滤: developers/design/list-words-filtering.md
-        - 分类标签: developers/design/category-tags-system.md
+  # ============ Developer Documentation ============
+  - Developer Docs:
+    - Get Started:
+      - Integration Quickstart: getting-started/quickstart-developers.md
+      - OAuth2 Integration: guides/oauth2-integration.md
+    - API Reference:
+      - API Overview: api/overview.md
+      - Authentication: api/authentication.md
+      - Learning API: api/learning.md
+      - Flashcards API: api/flashcards.md
+      - Wordbook API: api/wordbooks.md
+    - Guides:
+      - Integration Best Practices: developers/integration-guide.md
+      - SDK Usage: developers/sdk-usage.md
+      - Examples: developers/examples.md
+    - Architecture:
+      - Technical Overview: developers/technical-overview.md
+      - Buf Toolchain: developers/buf-quickstart.md
+      - Design Docs:
+        - Flashcard System: developers/design/flashcard-system-design.md
+        - Mastery Inheritance: developers/design/mastery-inheritance.md
+        - Word Filtering: developers/design/list-words-filtering.md
+        - Category Tags: developers/design/category-tags-system.md
 
-  # ============ 共享文档 ============
-  - 核心概念:
-    - 项目介绍: concepts/introduction.md
-    - 词汇网络: concepts/vocabulary-network.md
-    - FSRS 算法: concepts/fsrs-algorithm.md
-    - 掌握度跟踪: concepts/mastery-tracking.md
-    - 数据模型: concepts/data-model.md
+  # ============ Shared Docs ============
+  - Core Concepts:
+    - Introduction: concepts/introduction.md
+    - Vocabulary Network: concepts/vocabulary-network.md
+    - FSRS Algorithm: concepts/fsrs-algorithm.md
+    - Mastery Tracking: concepts/mastery-tracking.md
+    - Data Model: concepts/data-model.md
 
-  - 生态系统:
-    - 生态概览: ecosystem/overview.md
-    - 使用案例: ecosystem/use-cases.md
-    - 第三方集成: ecosystem/third-party.md
+  - Ecosystem:
+    - Overview: ecosystem/overview.md
+    - Use Cases: ecosystem/use-cases.md
+    - Third-Party Integration: ecosystem/third-party.md
 
-  - 参与贡献:
-    - 代码贡献: contributing/code.md
-    - 文档贡献: contributing/documentation.md
-    - 治理模型: contributing/governance.md
+  - Contributing:
+    - Code Contribution: contributing/code.md
+    - Documentation Contribution: contributing/documentation.md
+    - Governance: contributing/governance.md
 
-  - 其他:
-    - 常见问题: faq.md
-    - 路线图: roadmap.md
+  - Other:
+    - FAQ: faq.md
+    - Roadmap: roadmap.md
 
 copyright: Copyright &copy; 2024 vocnet team

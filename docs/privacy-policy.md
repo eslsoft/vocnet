@@ -1,6 +1,6 @@
-# vocnet Privacy Policy
+# Vocnet Privacy Policy
 
-This Privacy Policy applies to vocnet and its related iOS client application (collectively, the “App”). Please read this Policy carefully before using the App.
+This Privacy Policy applies to Vocnet and its related iOS client application (collectively, the “App”). Please read this Policy carefully before using the App.
 
 By using the App, you acknowledge that you have read and understood this Privacy Policy.
 
