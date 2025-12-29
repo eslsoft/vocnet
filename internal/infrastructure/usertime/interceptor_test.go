@@ -61,8 +61,8 @@ func TestLoadLocation_ValidTimezones(t *testing.T) {
 func TestLoadLocation_InvalidTimezone(t *testing.T) {
 	invalidTimezones := []string{
 		"Invalid/Timezone",
-		"PST",           // Abbreviations are not valid IANA names
-		"GMT+8",         // This format is not valid
+		"PST",   // Abbreviations are not valid IANA names
+		"GMT+8", // This format is not valid
 		"Not/A/TimeZone",
 	}
 

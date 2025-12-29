@@ -11,51 +11,51 @@ import (
 
 // ImportReport contains the complete report for an import operation
 type ImportReport struct {
-	StageName   string            `json:"stage_name"`
-	StartTime   time.Time         `json:"start_time"`
-	EndTime     time.Time         `json:"end_time"`
-	Duration    string            `json:"duration"`
-	Statistics  Statistics        `json:"statistics"`
-	Enrichment  *EnrichmentStats  `json:"enrichment,omitempty"`  // For ECDICT enrichment phase
-	Samples     Samples           `json:"samples"`
-	Issues      Issues            `json:"issues"`
+	StageName  string           `json:"stage_name"`
+	StartTime  time.Time        `json:"start_time"`
+	EndTime    time.Time        `json:"end_time"`
+	Duration   string           `json:"duration"`
+	Statistics Statistics       `json:"statistics"`
+	Enrichment *EnrichmentStats `json:"enrichment,omitempty"` // For ECDICT enrichment phase
+	Samples    Samples          `json:"samples"`
+	Issues     Issues           `json:"issues"`
 }
 
 // EnrichmentStats tracks the enrichment phase statistics
 type EnrichmentStats struct {
-	Attempted         int64            `json:"attempted"`           // Total words attempted to enrich
-	Succeeded         int64            `json:"succeeded"`           // Successfully enriched
-	Failed            int64            `json:"failed"`              // Failed to enrich
-	NotFound          int64            `json:"not_found"`           // Word not found in database
-	PhoneticsAdded    int64            `json:"phonetics_added"`     // How many phonetics were added
-	DefinitionsAdded  int64            `json:"definitions_added"`   // How many definitions were added
-	FormsAdded        int64            `json:"forms_added"`         // How many forms were added
-	CategoriesAdded   int64            `json:"categories_added"`    // How many categories were added
+	Attempted        int64 `json:"attempted"`         // Total words attempted to enrich
+	Succeeded        int64 `json:"succeeded"`         // Successfully enriched
+	Failed           int64 `json:"failed"`            // Failed to enrich
+	NotFound         int64 `json:"not_found"`         // Word not found in database
+	PhoneticsAdded   int64 `json:"phonetics_added"`   // How many phonetics were added
+	DefinitionsAdded int64 `json:"definitions_added"` // How many definitions were added
+	FormsAdded       int64 `json:"forms_added"`       // How many forms were added
+	CategoriesAdded  int64 `json:"categories_added"`  // How many categories were added
 }
 
 // Statistics holds numerical data about the import
 type Statistics struct {
-	Total              int64            `json:"total"`
-	Successful         int64            `json:"successful"`
-	Failed             int64            `json:"failed"`
-	Skipped            int64            `json:"skipped"`
-	Updated            int64            `json:"updated,omitempty"`      // For enrichment stages
-	NewlyAdded         int64            `json:"newly_added,omitempty"`  // For new word imports
+	Total      int64 `json:"total"`
+	Successful int64 `json:"successful"`
+	Failed     int64 `json:"failed"`
+	Skipped    int64 `json:"skipped"`
+	Updated    int64 `json:"updated,omitempty"`     // For enrichment stages
+	NewlyAdded int64 `json:"newly_added,omitempty"` // For new word imports
 
 	// Form-related statistics
-	TotalForms         int64            `json:"total_forms,omitempty"`
-	RegularForms       int64            `json:"regular_forms,omitempty"`
-	IrregularForms     int64            `json:"irregular_forms,omitempty"`
-	FormsAdded         int64            `json:"forms_added,omitempty"`
+	TotalForms     int64 `json:"total_forms,omitempty"`
+	RegularForms   int64 `json:"regular_forms,omitempty"`
+	IrregularForms int64 `json:"irregular_forms,omitempty"`
+	FormsAdded     int64 `json:"forms_added,omitempty"`
 
 	// Form type breakdown
-	FormsByType        map[string]int64 `json:"forms_by_type,omitempty"`
+	FormsByType map[string]int64 `json:"forms_by_type,omitempty"`
 
 	// Data quality metrics
-	WithPhonetics      int64            `json:"with_phonetics,omitempty"`
-	WithDefinitions    int64            `json:"with_definitions,omitempty"`
-	WithExchange       int64            `json:"with_exchange,omitempty"`
-	WithCategories     int64            `json:"with_categories,omitempty"`
+	WithPhonetics   int64 `json:"with_phonetics,omitempty"`
+	WithDefinitions int64 `json:"with_definitions,omitempty"`
+	WithExchange    int64 `json:"with_exchange,omitempty"`
+	WithCategories  int64 `json:"with_categories,omitempty"`
 }
 
 // Samples holds example entries from the import
@@ -77,11 +77,11 @@ type SampleEntry struct {
 
 // Issues holds problems encountered during import
 type Issues struct {
-	MissingFields      map[string]int64 `json:"missing_fields,omitempty"`
-	InvalidData        []IssueEntry     `json:"invalid_data,omitempty"`
-	Duplicates         []IssueEntry     `json:"duplicates,omitempty"`
-	ParseErrors        []IssueEntry     `json:"parse_errors,omitempty"`
-	APIErrors          []IssueEntry     `json:"api_errors,omitempty"`
+	MissingFields map[string]int64 `json:"missing_fields,omitempty"`
+	InvalidData   []IssueEntry     `json:"invalid_data,omitempty"`
+	Duplicates    []IssueEntry     `json:"duplicates,omitempty"`
+	ParseErrors   []IssueEntry     `json:"parse_errors,omitempty"`
+	APIErrors     []IssueEntry     `json:"api_errors,omitempty"`
 }
 
 // IssueEntry represents a single issue
@@ -94,10 +94,10 @@ type IssueEntry struct {
 // NewImportReport creates a new report with the given stage name
 func NewImportReport(stageName string) *ImportReport {
 	return &ImportReport{
-		StageName:  stageName,
-		StartTime:  time.Now(),
+		StageName: stageName,
+		StartTime: time.Now(),
 		Statistics: Statistics{
-			FormsByType:   make(map[string]int64),
+			FormsByType: make(map[string]int64),
 		},
 		Samples: Samples{
 			SuccessExamples: make([]SampleEntry, 0),

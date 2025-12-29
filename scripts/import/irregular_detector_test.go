@@ -8,10 +8,10 @@ import (
 
 func TestIsIrregularForm(t *testing.T) {
 	tests := []struct {
-		name       string
-		lemma      string
-		form       string
-		formType   dictv1.FormType
+		name          string
+		lemma         string
+		form          string
+		formType      dictv1.FormType
 		wantIrregular bool
 	}{
 		// Regular plural forms

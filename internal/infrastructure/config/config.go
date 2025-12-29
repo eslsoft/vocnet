@@ -41,8 +41,8 @@ type LogConfig struct {
 
 // AuthConfig holds JWT authentication configuration
 type AuthConfig struct {
-	JWKSURL       string        `mapstructure:"jwks_url"`        // JWKS endpoint URL from Supabase
-	RefreshPeriod time.Duration `mapstructure:"refresh_period"`  // How often to refresh JWKS keys
+	JWKSURL       string        `mapstructure:"jwks_url"`       // JWKS endpoint URL from Supabase
+	RefreshPeriod time.Duration `mapstructure:"refresh_period"` // How often to refresh JWKS keys
 }
 
 // Load reads configuration from file and environment variables

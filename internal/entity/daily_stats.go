@@ -25,8 +25,9 @@ type DailyStats struct {
 // It extracts the date in the input's timezone, then returns that date at UTC midnight.
 //
 // Example:
-//   Input:  2025-12-08 20:30:00 CST (UTC+8)
-//   Output: 2025-12-08 00:00:00 UTC
+//
+//	Input:  2025-12-08 20:30:00 CST (UTC+8)
+//	Output: 2025-12-08 00:00:00 UTC
 //
 // This ensures:
 // - Database always stores UTC midnight (consistent format)

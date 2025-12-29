@@ -410,17 +410,6 @@ func clampMastery(val int32) int32 {
 	return val
 }
 
-// clampMastery32 limits overall mastery value to [0, 500] range.
-func clampMastery32(val int32) int32 {
-	if val < 0 {
-		return 0
-	}
-	if val > 500 {
-		return 500
-	}
-	return val
-}
-
 // buildEmptyStats builds FlashCardStats when there are no cards to review,
 // but still includes the total counts for progress calculation.
 func buildEmptyStats(ctx context.Context, dailyStatsRepo repository.DailyStatsRepository, userID uuid.UUID, planID int64, dailyNewLimit int) *entity.FlashCardStats {

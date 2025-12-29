@@ -61,7 +61,7 @@ func TestTryExtractPOS(t *testing.T) {
 		{"v. to run", "v.", "to run"},
 		{"adj. beautiful", "adj.", "beautiful"},
 		{"vt. to eat something", "v.", "to eat something"},
-		{"[计] n. computer term", "", ""},                      // No POS extraction, keeps domain markers
+		{"[计] n. computer term", "", ""},                    // No POS extraction, keeps domain markers
 		{"n. [计] computer term", "n.", "[计] computer term"}, // Extracts POS, keeps domain markers in rest
 		{"no pos here", "", ""},
 		{"", "", ""},
@@ -212,9 +212,9 @@ func TestParseWordNetPOS(t *testing.T) {
 		{"j:100", "adj."},
 		{"r:100", "adv."},
 		{"m:100", "num."},
-		{"s:100", "adj."}, // adjective satellite
-		{"v:5/n:95", "n."},   // noun has higher probability
-		{"v:95/n:5", "v."},   // verb has higher probability
+		{"s:100", "adj."},  // adjective satellite
+		{"v:5/n:95", "n."}, // noun has higher probability
+		{"v:95/n:5", "v."}, // verb has higher probability
 		{"j:54/n:46", "adj."},
 		{"j:62/n:38", "adj."},
 		{"v:1/n:99", "n."},
