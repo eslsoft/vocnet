@@ -32,6 +32,10 @@ message LearnedWordStatus {
   repeated string matched_terms = 3; // All query terms that matched this word (for client-side highlighting)
   repeated string matched_wordbooks = 4; // Wordbooks that contain this word
 
+  // MasteryLevel encodes both coarse stage (unknown/learning/known)
+  // and whether the word is known passively or actively.
+  MasteryLevel level = 5;
+
   string created_by = 10; // username of the creator
   int64 queried_count = 11; // number of times user queried this word
 
@@ -45,7 +49,18 @@ message MasteryBreakdown {
   int32 reading = 2; // Reading mastery (0-5)
   int32 spelling = 3; // Spelling mastery (0-5)
   int32 speaking = 4; // Pronunciation mastery (0-5)
-  int32 overall = 5; // Overall mastery score (0-500, stored as *100)
+  int32 overall = 5; // Overall mastery score (0-500, stored as *100), derived from receptive/productive scores
+}
+
+// MasteryLevel represents the user's current mastery state for a word.
+// It combines the coarse stage (unknown / learning / known) with
+// whether the word is known passively or actively.
+enum MasteryLevel {
+  MASTERY_LEVEL_UNSPECIFIED = 0;
+  MASTERY_LEVEL_UNKNOWN = 1; // Word is effectively unknown to the user.
+  MASTERY_LEVEL_LEARNING = 2; // Word is in the process of being learned.
+  MASTERY_LEVEL_KNOWN = 3; // User can reliably understand the word (reading/listening).
+  MASTERY_LEVEL_MASTERED = 4; // User can both understand and actively use the word.
 }
 
 // Review timing information
