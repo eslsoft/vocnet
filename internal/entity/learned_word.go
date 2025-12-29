@@ -127,6 +127,44 @@ func (m *MasteryBreakdown) Normalize() {
 	m.Overall = m.CalculateOverall()
 }
 
+// InitializeFromUserMasteryLevel converts user's overall mastery perception (0-5)
+// into four-dimensional breakdown based on typical language learning progression.
+// This is used when users want to quickly mark existing vocabulary knowledge.
+//
+// Conversion rationale:
+//   - Receptive skills (read/listen) develop before productive skills (spell/speak)
+//   - Reading is typically easier than listening (visual vs auditory input)
+//   - Speaking is easier than spelling (phonetic vs orthographic accuracy)
+//   - Conservative production estimates avoid over-estimating active skills
+func (m *MasteryBreakdown) InitializeFromUserMasteryLevel(level int32) {
+	switch level {
+	case 0:
+		// Unknown or skip initialization - all dimensions at 0
+		m.Listen, m.Read, m.Spell, m.Pronounce = 0, 0, 0, 0
+	case 1:
+		// Seen before, vague recognition - minimal passive skills only
+		m.Listen, m.Read, m.Spell, m.Pronounce = 1, 2, 0, 0
+	case 2:
+		// Can recognize in context - developing passive, beginning spelling awareness
+		m.Listen, m.Read, m.Spell, m.Pronounce = 2, 3, 1, 0
+	case 3:
+		// Know meaning well - strong passive, limited but emerging production
+		m.Listen, m.Read, m.Spell, m.Pronounce = 3, 4, 1, 2
+	case 4:
+		// Can use passively - excellent comprehension, developing production (triggers KNOWN)
+		m.Listen, m.Read, m.Spell, m.Pronounce = 4, 4, 2, 3
+	case 5:
+		// Fully mastered - high competence across all dimensions (triggers MASTERED)
+		m.Listen, m.Read, m.Spell, m.Pronounce = 5, 5, 4, 5
+	default:
+		// Invalid level, treat as unknown
+		m.Listen, m.Read, m.Spell, m.Pronounce = 0, 0, 0, 0
+	}
+
+	// Calculate overall from the initialized dimensions
+	m.Normalize()
+}
+
 // ReviewTiming represents spaced repetition metadata for a user lexeme.
 type ReviewTiming struct {
 	LastReviewAt time.Time

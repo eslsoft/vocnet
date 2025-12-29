@@ -38,10 +38,13 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 		return nil, status.Error(codes.InvalidArgument, "spec payload required")
 	}
 
+	var mastery entity.MasteryBreakdown
+	mastery.InitializeFromUserMasteryLevel(req.Msg.Spec.GetMasteryLevel())
+
 	entityWord := &entity.LearnedWord{
 		UserID:   auth.MustGetUserID(ctx),
 		Term:     strings.TrimSpace(req.Msg.Spec.GetTerm()),
-		Mastery:  entity.MasteryBreakdown{Overall: req.Msg.Spec.GetMasteryLevel()},
+		Mastery:  mastery,
 		Language: mapping.FromPbLanguage(req.Msg.Spec.GetLanguage()),
 		Tags:     req.Msg.Spec.GetTags(),
 		Notes:    req.Msg.Spec.GetNotes(),

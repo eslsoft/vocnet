@@ -17,7 +17,17 @@ message LearnedWord {
 message LearnedWordSpec {
   common.v1.Language language = 1; // Language of the term
   string term = 2; // The actual word term (lemma for regular forms, or itself for irregular)
-  int32 mastery_level = 3; // user-assigned mastery level (0-5)
+
+  // User's overall mastery perception (0-5):
+  //   0 = unknown/not started
+  //   1 = seen before (vague recognition)
+  //   2 = recognize in context (can understand when seen/heard)
+  //   3 = know meaning well (solid comprehension, limited production)
+  //   4 = can use passively (excellent comprehension, emerging active use)
+  //   5 = fully mastered (fluent in all skills)
+  // This will be expanded into four skill dimensions (listening, reading, spelling, speaking)
+  // based on typical language learning progression where receptive skills develop before productive skills.
+  int32 mastery_level = 3;
 
   repeated string tags = 5;
   repeated string notes = 6;

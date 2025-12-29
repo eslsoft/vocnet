@@ -90,6 +90,9 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	now := u.clock()
 	if existing != nil {
 		// Update existing record (but don't increment QueryCount - that happens in GetLearnedWord)
+		// Note: We don't update Mastery here - users should use UpdateMastery API for that.
+		// This prevents accidental overwriting of precise mastery data from reviews/tests
+		// when re-collecting a word with initial mastery_level estimation.
 		if len(word.Tags) > 0 {
 			existing.Tags = append([]string{}, word.Tags...)
 		}
@@ -103,9 +106,8 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 			// Append new contexts to existing ones (avoid duplicates based on sentence)
 			existing.Contexts = mergeContexts(existing.Contexts, word.Contexts)
 		}
-		existing.Mastery = word.Mastery
-		existing.Mastery.Normalize() // Ensure overall is calculated from dimensions
-		existing.Review = word.Review
+		// existing.Mastery = word.Mastery  // Removed: don't overwrite mastery on re-collect
+		// existing.Review = word.Review     // Removed: don't overwrite review timing
 		existing.CaseSensitive = caseSensitive
 		existing.Normalize(now)
 		return u.repo.Update(ctx, existing)
