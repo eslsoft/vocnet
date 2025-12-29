@@ -380,21 +380,23 @@ func updateMastery(current entity.MasteryBreakdown, cardType entity.CardType, sc
 		updated.Spell = clampMastery(updated.Spell + int32(delta*0.5))
 	}
 
-	// Recalculate overall
-	updated.Overall = (updated.Listen + updated.Read + updated.Spell + updated.Pronounce) * 25
+	// Recalculate overall using weighted formula
+	updated.Overall = updated.CalculateOverall()
 
 	return updated
 }
 
 // applyFailPenalty reduces all mastery dimensions by 1.
 func applyFailPenalty(mastery entity.MasteryBreakdown) entity.MasteryBreakdown {
-	return entity.MasteryBreakdown{
+	penalized := entity.MasteryBreakdown{
 		Listen:    clampMastery(mastery.Listen - 1),
 		Read:      clampMastery(mastery.Read - 1),
 		Spell:     clampMastery(mastery.Spell - 1),
 		Pronounce: clampMastery(mastery.Pronounce - 1),
-		Overall:   clampMastery32(mastery.Overall - 25), // Decrease by 0.25 * 100
 	}
+	// Recalculate overall from penalized dimensions
+	penalized.Overall = penalized.CalculateOverall()
+	return penalized
 }
 
 // clampMastery limits mastery value to [0, 5] range.

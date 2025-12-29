@@ -104,6 +104,7 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 			existing.Contexts = mergeContexts(existing.Contexts, word.Contexts)
 		}
 		existing.Mastery = word.Mastery
+		existing.Mastery.Normalize() // Ensure overall is calculated from dimensions
 		existing.Review = word.Review
 		existing.CaseSensitive = caseSensitive
 		existing.Normalize(now)
@@ -118,6 +119,7 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	if copy.QueriedCount == 0 {
 		copy.QueriedCount = 1
 	}
+	copy.Mastery.Normalize() // Ensure overall is calculated from dimensions
 	copy.Normalize(now)
 
 	return u.repo.Create(ctx, &copy)
@@ -155,6 +157,7 @@ func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, id int64, master
 	}
 
 	existing.Mastery = mastery
+	existing.Mastery.Normalize() // Ensure overall is calculated from dimensions
 	existing.Review = review
 	if len(notes) > 0 {
 		existing.Notes = append([]string{}, notes...)

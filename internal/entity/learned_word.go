@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"math"
 	"strings"
 	"time"
 
@@ -41,6 +42,89 @@ type MasteryBreakdown struct {
 	Spell     int32
 	Pronounce int32
 	Overall   int32
+}
+
+// MasteryLevel represents the user's current mastery state for a word.
+// It combines the coarse stage (unknown / learning / known) with
+// whether the word is known passively or actively.
+type MasteryLevel int32
+
+const (
+	MasteryLevelUnspecified MasteryLevel = 0
+	MasteryLevelUnknown     MasteryLevel = 1
+	MasteryLevelLearning    MasteryLevel = 2
+	MasteryLevelKnown       MasteryLevel = 3
+	MasteryLevelMastered    MasteryLevel = 4
+)
+
+// CalculateOverall computes the overall mastery score using weighted formula.
+// Returns 0-500 (representing 0.0-5.0 with centpoints).
+// Formula:
+//   - Receptive (passive) = (Read + Listen) / 2.0
+//   - Productive (active) = 0.3 * Spell + 0.7 * Pronounce (speaking weighted higher)
+//   - Overall = round((0.6 * Receptive + 0.4 * Productive) * 100)
+func (m MasteryBreakdown) CalculateOverall() int32 {
+	// Receptive (passive): simple average of reading + listening
+	receptive := float64(m.Read+m.Listen) / 2.0
+
+	// Productive (active): weighted average, speaking (70%) > spelling (30%)
+	productive := 0.3*float64(m.Spell) + 0.7*float64(m.Pronounce)
+
+	// Overall: receptive (60%) + productive (40%)
+	overallRaw := 0.6*receptive + 0.4*productive
+	overall := int32(math.Round(overallRaw * 100))
+
+	// Clamp to 0-500 range
+	if overall < 0 {
+		return 0
+	}
+	if overall > 500 {
+		return 500
+	}
+	return overall
+}
+
+// CalculateMasteryLevel determines the coarse mastery stage based on skill dimensions.
+// Returns one of: UNKNOWN, LEARNING, KNOWN, or MASTERED.
+// Algorithm:
+//   - UNKNOWN: all dimensions are 0
+//   - MASTERED: receptive >= 4.0 AND productive >= 3.0 (full mastery)
+//   - KNOWN: receptive >= 4.0 (passive mastery, can understand well)
+//   - LEARNING: otherwise (has some progress but not yet known)
+func (m MasteryBreakdown) CalculateMasteryLevel() MasteryLevel {
+	// Receptive (passive): simple average of reading + listening
+	receptive := float64(m.Read+m.Listen) / 2.0
+
+	// Productive (active): weighted average, speaking (70%) > spelling (30%)
+	productive := 0.3*float64(m.Spell) + 0.7*float64(m.Pronounce)
+
+	// Find max dimension to check if word is completely unknown
+	maxDim := m.Read
+	if m.Listen > maxDim {
+		maxDim = m.Listen
+	}
+	if m.Spell > maxDim {
+		maxDim = m.Spell
+	}
+	if m.Pronounce > maxDim {
+		maxDim = m.Pronounce
+	}
+
+	switch {
+	case maxDim <= 0:
+		return MasteryLevelUnknown
+	case receptive >= 4.0 && productive >= 3.0:
+		return MasteryLevelMastered
+	case receptive >= 4.0:
+		return MasteryLevelKnown
+	default:
+		return MasteryLevelLearning
+	}
+}
+
+// Normalize ensures overall is calculated from dimensions.
+func (m *MasteryBreakdown) Normalize() {
+	m.Overall = m.CalculateOverall()
 }
 
 // ReviewTiming represents spaced repetition metadata for a user lexeme.

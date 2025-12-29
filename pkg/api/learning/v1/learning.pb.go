@@ -23,6 +23,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// MasteryLevel represents the user's current mastery state for a word.
+// It combines the coarse stage (unknown / learning / known) with
+// whether the word is known passively or actively.
+type MasteryLevel int32
+
+const (
+	MasteryLevel_MASTERY_LEVEL_UNSPECIFIED MasteryLevel = 0
+	MasteryLevel_MASTERY_LEVEL_UNKNOWN     MasteryLevel = 1 // Word is effectively unknown to the user.
+	MasteryLevel_MASTERY_LEVEL_LEARNING    MasteryLevel = 2 // Word is in the process of being learned.
+	MasteryLevel_MASTERY_LEVEL_KNOWN       MasteryLevel = 3 // User can reliably understand the word (reading/listening).
+	MasteryLevel_MASTERY_LEVEL_MASTERED    MasteryLevel = 4 // User can both understand and actively use the word.
+)
+
+// Enum value maps for MasteryLevel.
+var (
+	MasteryLevel_name = map[int32]string{
+		0: "MASTERY_LEVEL_UNSPECIFIED",
+		1: "MASTERY_LEVEL_UNKNOWN",
+		2: "MASTERY_LEVEL_LEARNING",
+		3: "MASTERY_LEVEL_KNOWN",
+		4: "MASTERY_LEVEL_MASTERED",
+	}
+	MasteryLevel_value = map[string]int32{
+		"MASTERY_LEVEL_UNSPECIFIED": 0,
+		"MASTERY_LEVEL_UNKNOWN":     1,
+		"MASTERY_LEVEL_LEARNING":    2,
+		"MASTERY_LEVEL_KNOWN":       3,
+		"MASTERY_LEVEL_MASTERED":    4,
+	}
+)
+
+func (x MasteryLevel) Enum() *MasteryLevel {
+	p := new(MasteryLevel)
+	*p = x
+	return p
+}
+
+func (x MasteryLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MasteryLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_learning_v1_learning_proto_enumTypes[0].Descriptor()
+}
+
+func (MasteryLevel) Type() protoreflect.EnumType {
+	return &file_learning_v1_learning_proto_enumTypes[0]
+}
+
+func (x MasteryLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MasteryLevel.Descriptor instead.
+func (MasteryLevel) EnumDescriptor() ([]byte, []int) {
+	return file_learning_v1_learning_proto_rawDescGZIP(), []int{0}
+}
+
 // LearnedWord captures a user's personalised vocabulary entry.
 // This represents a user's learning record for a word (word-level, not lexeme-level).
 type LearnedWord struct {
@@ -177,12 +235,15 @@ type LearnedWordStatus struct {
 	ReviewTiming     *ReviewTiming          `protobuf:"bytes,2,opt,name=review_timing,json=reviewTiming,proto3" json:"review_timing,omitempty"`
 	MatchedTerms     []string               `protobuf:"bytes,3,rep,name=matched_terms,json=matchedTerms,proto3" json:"matched_terms,omitempty"`             // All query terms that matched this word (for client-side highlighting)
 	MatchedWordbooks []string               `protobuf:"bytes,4,rep,name=matched_wordbooks,json=matchedWordbooks,proto3" json:"matched_wordbooks,omitempty"` // Wordbooks that contain this word
-	CreatedBy        string                 `protobuf:"bytes,10,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`                     // username of the creator
-	QueriedCount     int64                  `protobuf:"varint,11,opt,name=queried_count,json=queriedCount,proto3" json:"queried_count,omitempty"`           // number of times user queried this word
-	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// MasteryLevel encodes both coarse stage (unknown/learning/known)
+	// and whether the word is known passively or actively.
+	Level         MasteryLevel           `protobuf:"varint,5,opt,name=level,proto3,enum=learning.v1.MasteryLevel" json:"level,omitempty"`
+	CreatedBy     string                 `protobuf:"bytes,10,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`           // username of the creator
+	QueriedCount  int64                  `protobuf:"varint,11,opt,name=queried_count,json=queriedCount,proto3" json:"queried_count,omitempty"` // number of times user queried this word
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LearnedWordStatus) Reset() {
@@ -243,6 +304,13 @@ func (x *LearnedWordStatus) GetMatchedWordbooks() []string {
 	return nil
 }
 
+func (x *LearnedWordStatus) GetLevel() MasteryLevel {
+	if x != nil {
+		return x.Level
+	}
+	return MasteryLevel_MASTERY_LEVEL_UNSPECIFIED
+}
+
 func (x *LearnedWordStatus) GetCreatedBy() string {
 	if x != nil {
 		return x.CreatedBy
@@ -278,7 +346,7 @@ type MasteryBreakdown struct {
 	Reading       int32                  `protobuf:"varint,2,opt,name=reading,proto3" json:"reading,omitempty"`     // Reading mastery (0-5)
 	Spelling      int32                  `protobuf:"varint,3,opt,name=spelling,proto3" json:"spelling,omitempty"`   // Spelling mastery (0-5)
 	Speaking      int32                  `protobuf:"varint,4,opt,name=speaking,proto3" json:"speaking,omitempty"`   // Pronunciation mastery (0-5)
-	Overall       int32                  `protobuf:"varint,5,opt,name=overall,proto3" json:"overall,omitempty"`     // Overall mastery score (0-500, stored as *100)
+	Overall       int32                  `protobuf:"varint,5,opt,name=overall,proto3" json:"overall,omitempty"`     // Overall mastery score (0-500, stored as *100), derived from receptive/productive scores
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -502,12 +570,13 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x14\n" +
 	"\x05notes\x18\x06 \x03(\tR\x05notes\x12;\n" +
 	"\bcontexts\x18\n" +
-	" \x03(\v2\x1f.learning.v1.LearnedWordContextR\bcontexts\"\x98\x03\n" +
+	" \x03(\v2\x1f.learning.v1.LearnedWordContextR\bcontexts\"\xc9\x03\n" +
 	"\x11LearnedWordStatus\x127\n" +
 	"\amastery\x18\x01 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x12>\n" +
 	"\rreview_timing\x18\x02 \x01(\v2\x19.learning.v1.ReviewTimingR\freviewTiming\x12#\n" +
 	"\rmatched_terms\x18\x03 \x03(\tR\fmatchedTerms\x12+\n" +
-	"\x11matched_wordbooks\x18\x04 \x03(\tR\x10matchedWordbooks\x12\x1d\n" +
+	"\x11matched_wordbooks\x18\x04 \x03(\tR\x10matchedWordbooks\x12/\n" +
+	"\x05level\x18\x05 \x01(\x0e2\x19.learning.v1.MasteryLevelR\x05level\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\n" +
 	" \x01(\tR\tcreatedBy\x12#\n" +
@@ -533,7 +602,13 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\x06source\x18\x02 \x01(\x0e2\x15.common.v1.SourceTypeR\x06source\x12\x1d\n" +
 	"\n" +
 	"source_ref\x18\x03 \x01(\tR\tsourceRef\x12=\n" +
-	"\fcollected_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vcollectedAtB\xa7\x01\n" +
+	"\fcollected_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vcollectedAt*\x99\x01\n" +
+	"\fMasteryLevel\x12\x1d\n" +
+	"\x19MASTERY_LEVEL_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15MASTERY_LEVEL_UNKNOWN\x10\x01\x12\x1a\n" +
+	"\x16MASTERY_LEVEL_LEARNING\x10\x02\x12\x17\n" +
+	"\x13MASTERY_LEVEL_KNOWN\x10\x03\x12\x1a\n" +
+	"\x16MASTERY_LEVEL_MASTERED\x10\x04B\xa7\x01\n" +
 	"\x0fcom.learning.v1B\rLearningProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (
@@ -548,36 +623,39 @@ func file_learning_v1_learning_proto_rawDescGZIP() []byte {
 	return file_learning_v1_learning_proto_rawDescData
 }
 
+var file_learning_v1_learning_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_learning_v1_learning_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_learning_v1_learning_proto_goTypes = []any{
-	(*LearnedWord)(nil),           // 0: learning.v1.LearnedWord
-	(*LearnedWordSpec)(nil),       // 1: learning.v1.LearnedWordSpec
-	(*LearnedWordStatus)(nil),     // 2: learning.v1.LearnedWordStatus
-	(*MasteryBreakdown)(nil),      // 3: learning.v1.MasteryBreakdown
-	(*ReviewTiming)(nil),          // 4: learning.v1.ReviewTiming
-	(*LearnedWordContext)(nil),    // 5: learning.v1.LearnedWordContext
-	(v1.Language)(0),              // 6: common.v1.Language
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
-	(v1.SourceType)(0),            // 8: common.v1.SourceType
+	(MasteryLevel)(0),             // 0: learning.v1.MasteryLevel
+	(*LearnedWord)(nil),           // 1: learning.v1.LearnedWord
+	(*LearnedWordSpec)(nil),       // 2: learning.v1.LearnedWordSpec
+	(*LearnedWordStatus)(nil),     // 3: learning.v1.LearnedWordStatus
+	(*MasteryBreakdown)(nil),      // 4: learning.v1.MasteryBreakdown
+	(*ReviewTiming)(nil),          // 5: learning.v1.ReviewTiming
+	(*LearnedWordContext)(nil),    // 6: learning.v1.LearnedWordContext
+	(v1.Language)(0),              // 7: common.v1.Language
+	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+	(v1.SourceType)(0),            // 9: common.v1.SourceType
 }
 var file_learning_v1_learning_proto_depIdxs = []int32{
-	1,  // 0: learning.v1.LearnedWord.spec:type_name -> learning.v1.LearnedWordSpec
-	2,  // 1: learning.v1.LearnedWord.status:type_name -> learning.v1.LearnedWordStatus
-	6,  // 2: learning.v1.LearnedWordSpec.language:type_name -> common.v1.Language
-	5,  // 3: learning.v1.LearnedWordSpec.contexts:type_name -> learning.v1.LearnedWordContext
-	3,  // 4: learning.v1.LearnedWordStatus.mastery:type_name -> learning.v1.MasteryBreakdown
-	4,  // 5: learning.v1.LearnedWordStatus.review_timing:type_name -> learning.v1.ReviewTiming
-	7,  // 6: learning.v1.LearnedWordStatus.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 7: learning.v1.LearnedWordStatus.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 8: learning.v1.ReviewTiming.last_review_at:type_name -> google.protobuf.Timestamp
-	7,  // 9: learning.v1.ReviewTiming.next_review_at:type_name -> google.protobuf.Timestamp
-	8,  // 10: learning.v1.LearnedWordContext.source:type_name -> common.v1.SourceType
-	7,  // 11: learning.v1.LearnedWordContext.collected_at:type_name -> google.protobuf.Timestamp
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	2,  // 0: learning.v1.LearnedWord.spec:type_name -> learning.v1.LearnedWordSpec
+	3,  // 1: learning.v1.LearnedWord.status:type_name -> learning.v1.LearnedWordStatus
+	7,  // 2: learning.v1.LearnedWordSpec.language:type_name -> common.v1.Language
+	6,  // 3: learning.v1.LearnedWordSpec.contexts:type_name -> learning.v1.LearnedWordContext
+	4,  // 4: learning.v1.LearnedWordStatus.mastery:type_name -> learning.v1.MasteryBreakdown
+	5,  // 5: learning.v1.LearnedWordStatus.review_timing:type_name -> learning.v1.ReviewTiming
+	0,  // 6: learning.v1.LearnedWordStatus.level:type_name -> learning.v1.MasteryLevel
+	8,  // 7: learning.v1.LearnedWordStatus.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 8: learning.v1.LearnedWordStatus.updated_at:type_name -> google.protobuf.Timestamp
+	8,  // 9: learning.v1.ReviewTiming.last_review_at:type_name -> google.protobuf.Timestamp
+	8,  // 10: learning.v1.ReviewTiming.next_review_at:type_name -> google.protobuf.Timestamp
+	9,  // 11: learning.v1.LearnedWordContext.source:type_name -> common.v1.SourceType
+	8,  // 12: learning.v1.LearnedWordContext.collected_at:type_name -> google.protobuf.Timestamp
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_learning_v1_learning_proto_init() }
@@ -590,13 +668,14 @@ func file_learning_v1_learning_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_learning_v1_learning_proto_rawDesc), len(file_learning_v1_learning_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_learning_v1_learning_proto_goTypes,
 		DependencyIndexes: file_learning_v1_learning_proto_depIdxs,
+		EnumInfos:         file_learning_v1_learning_proto_enumTypes,
 		MessageInfos:      file_learning_v1_learning_proto_msgTypes,
 	}.Build()
 	File_learning_v1_learning_proto = out.File

@@ -35,6 +35,7 @@ func toPbLearnedWordStatus(in *entity.LearnedWord) *learningv1.LearnedWordStatus
 		MatchedTerms: append([]string{}, in.MatchedTerms...),
 		QueriedCount: in.QueriedCount,
 		CreatedBy:    in.UserID.String(),
+		Level:        toPbMasteryLevel(in.Mastery.CalculateMasteryLevel()),
 		CreatedAt:    timestamppb.New(in.CreatedAt),
 		UpdatedAt:    timestamppb.New(in.UpdatedAt),
 	}
@@ -86,4 +87,9 @@ func ToPbReview(in entity.ReviewTiming) *learningv1.ReviewTiming {
 		IntervalDays: in.IntervalDays,
 		FailCount:    in.FailCount,
 	}
+}
+
+// toPbMasteryLevel converts entity MasteryLevel to protobuf MasteryLevel.
+func toPbMasteryLevel(level entity.MasteryLevel) learningv1.MasteryLevel {
+	return learningv1.MasteryLevel(level)
 }

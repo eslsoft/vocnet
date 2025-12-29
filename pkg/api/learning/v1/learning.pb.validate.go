@@ -418,6 +418,8 @@ func (m *LearnedWordStatus) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for Level
+
 	// no validation rules for CreatedBy
 
 	// no validation rules for QueriedCount
