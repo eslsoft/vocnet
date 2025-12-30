@@ -69,13 +69,25 @@ func (x *CollectWordRequest) GetSpec() *LearnedWordSpec {
 	return nil
 }
 
-// UpdateMasteryRequest updates mastery and review schedule.
+// UpdateMasteryRequest updates mastery using simple user perception (0-5).
+// The system will automatically convert this to four-dimensional breakdown
+// using the same logic as CollectWord (InitializeFromUserMasteryLevel).
 type UpdateMasteryRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"` // LearnedWord ID
-	Mastery       *MasteryBreakdown      `protobuf:"bytes,2,opt,name=mastery,proto3" json:"mastery,omitempty"`
-	Tags          []string               `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
-	Notes         []string               `protobuf:"bytes,4,rep,name=notes,proto3" json:"notes,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"` // LearnedWord ID
+	// User's overall mastery perception (0-5):
+	//
+	//	0 = unknown/not started
+	//	1 = seen before (vague recognition)
+	//	2 = recognize in context (can understand when seen/heard)
+	//	3 = know meaning well (solid comprehension, limited production)
+	//	4 = can use passively (excellent comprehension, emerging active use)
+	//	5 = fully mastered (fluent in all skills)
+	//
+	// This will be expanded into four skill dimensions automatically.
+	MasteryLevel  int32    `protobuf:"varint,2,opt,name=mastery_level,json=masteryLevel,proto3" json:"mastery_level,omitempty"`
+	Tags          []string `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
+	Notes         []string `protobuf:"bytes,4,rep,name=notes,proto3" json:"notes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -117,11 +129,11 @@ func (x *UpdateMasteryRequest) GetId() int64 {
 	return 0
 }
 
-func (x *UpdateMasteryRequest) GetMastery() *MasteryBreakdown {
+func (x *UpdateMasteryRequest) GetMasteryLevel() int32 {
 	if x != nil {
-		return x.Mastery
+		return x.MasteryLevel
 	}
-	return nil
+	return 0
 }
 
 func (x *UpdateMasteryRequest) GetTags() []string {
@@ -257,10 +269,10 @@ const file_learning_v1_learning_service_proto_rawDesc = "" +
 	"\n" +
 	"\"learning/v1/learning_service.proto\x12\vlearning.v1\x1a\x15common/v1/types.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1alearning/v1/learning.proto\x1a\x17validate/validate.proto\"P\n" +
 	"\x12CollectWordRequest\x12:\n" +
-	"\x04spec\x18\x01 \x01(\v2\x1c.learning.v1.LearnedWordSpecB\b\xfaB\x05\x8a\x01\x02\x10\x01R\x04spec\"\x92\x01\n" +
+	"\x04spec\x18\x01 \x01(\v2\x1c.learning.v1.LearnedWordSpecB\b\xfaB\x05\x8a\x01\x02\x10\x01R\x04spec\"\x89\x01\n" +
 	"\x14UpdateMasteryRequest\x12\x17\n" +
-	"\x02id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x02id\x127\n" +
-	"\amastery\x18\x02 \x01(\v2\x1d.learning.v1.MasteryBreakdownR\amastery\x12\x12\n" +
+	"\x02id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x02id\x12.\n" +
+	"\rmastery_level\x18\x02 \x01(\x05B\t\xfaB\x06\x1a\x04\x18\x05(\x00R\fmasteryLevel\x12\x12\n" +
 	"\x04tags\x18\x03 \x03(\tR\x04tags\x12\x14\n" +
 	"\x05notes\x18\x04 \x03(\tR\x05notes\"\x8a\x01\n" +
 	"\x17ListLearnedWordsRequest\x12<\n" +
@@ -301,34 +313,32 @@ var file_learning_v1_learning_service_proto_goTypes = []any{
 	(*ListLearnedWordsRequest)(nil),  // 2: learning.v1.ListLearnedWordsRequest
 	(*ListLearnedWordsResponse)(nil), // 3: learning.v1.ListLearnedWordsResponse
 	(*LearnedWordSpec)(nil),          // 4: learning.v1.LearnedWordSpec
-	(*MasteryBreakdown)(nil),         // 5: learning.v1.MasteryBreakdown
-	(*v1.PaginationRequest)(nil),     // 6: common.v1.PaginationRequest
-	(*v1.PaginationResponse)(nil),    // 7: common.v1.PaginationResponse
-	(*LearnedWord)(nil),              // 8: learning.v1.LearnedWord
-	(*v1.IDRequest)(nil),             // 9: common.v1.IDRequest
-	(*emptypb.Empty)(nil),            // 10: google.protobuf.Empty
+	(*v1.PaginationRequest)(nil),     // 5: common.v1.PaginationRequest
+	(*v1.PaginationResponse)(nil),    // 6: common.v1.PaginationResponse
+	(*LearnedWord)(nil),              // 7: learning.v1.LearnedWord
+	(*v1.IDRequest)(nil),             // 8: common.v1.IDRequest
+	(*emptypb.Empty)(nil),            // 9: google.protobuf.Empty
 }
 var file_learning_v1_learning_service_proto_depIdxs = []int32{
-	4,  // 0: learning.v1.CollectWordRequest.spec:type_name -> learning.v1.LearnedWordSpec
-	5,  // 1: learning.v1.UpdateMasteryRequest.mastery:type_name -> learning.v1.MasteryBreakdown
-	6,  // 2: learning.v1.ListLearnedWordsRequest.pagination:type_name -> common.v1.PaginationRequest
-	7,  // 3: learning.v1.ListLearnedWordsResponse.pagination:type_name -> common.v1.PaginationResponse
-	8,  // 4: learning.v1.ListLearnedWordsResponse.words:type_name -> learning.v1.LearnedWord
-	0,  // 5: learning.v1.LearningService.CollectWord:input_type -> learning.v1.CollectWordRequest
-	9,  // 6: learning.v1.LearningService.UncollectWord:input_type -> common.v1.IDRequest
-	9,  // 7: learning.v1.LearningService.GetLearnedWord:input_type -> common.v1.IDRequest
-	2,  // 8: learning.v1.LearningService.ListLearnedWords:input_type -> learning.v1.ListLearnedWordsRequest
-	1,  // 9: learning.v1.LearningService.UpdateMastery:input_type -> learning.v1.UpdateMasteryRequest
-	8,  // 10: learning.v1.LearningService.CollectWord:output_type -> learning.v1.LearnedWord
-	10, // 11: learning.v1.LearningService.UncollectWord:output_type -> google.protobuf.Empty
-	8,  // 12: learning.v1.LearningService.GetLearnedWord:output_type -> learning.v1.LearnedWord
-	3,  // 13: learning.v1.LearningService.ListLearnedWords:output_type -> learning.v1.ListLearnedWordsResponse
-	8,  // 14: learning.v1.LearningService.UpdateMastery:output_type -> learning.v1.LearnedWord
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	4, // 0: learning.v1.CollectWordRequest.spec:type_name -> learning.v1.LearnedWordSpec
+	5, // 1: learning.v1.ListLearnedWordsRequest.pagination:type_name -> common.v1.PaginationRequest
+	6, // 2: learning.v1.ListLearnedWordsResponse.pagination:type_name -> common.v1.PaginationResponse
+	7, // 3: learning.v1.ListLearnedWordsResponse.words:type_name -> learning.v1.LearnedWord
+	0, // 4: learning.v1.LearningService.CollectWord:input_type -> learning.v1.CollectWordRequest
+	8, // 5: learning.v1.LearningService.UncollectWord:input_type -> common.v1.IDRequest
+	8, // 6: learning.v1.LearningService.GetLearnedWord:input_type -> common.v1.IDRequest
+	2, // 7: learning.v1.LearningService.ListLearnedWords:input_type -> learning.v1.ListLearnedWordsRequest
+	1, // 8: learning.v1.LearningService.UpdateMastery:input_type -> learning.v1.UpdateMasteryRequest
+	7, // 9: learning.v1.LearningService.CollectWord:output_type -> learning.v1.LearnedWord
+	9, // 10: learning.v1.LearningService.UncollectWord:output_type -> google.protobuf.Empty
+	7, // 11: learning.v1.LearningService.GetLearnedWord:output_type -> learning.v1.LearnedWord
+	3, // 12: learning.v1.LearningService.ListLearnedWords:output_type -> learning.v1.ListLearnedWordsResponse
+	7, // 13: learning.v1.LearningService.UpdateMastery:output_type -> learning.v1.LearnedWord
+	9, // [9:14] is the sub-list for method output_type
+	4, // [4:9] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_learning_v1_learning_service_proto_init() }

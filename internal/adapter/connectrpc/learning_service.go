@@ -110,11 +110,17 @@ func (s *LearningServiceServer) UpdateMastery(ctx context.Context, req *connect.
 	}
 
 	msg := req.Msg
+
+	// Convert user's simple mastery level (0-5) to four-dimensional breakdown
+	// using the same logic as CollectWord
+	var mastery entity.MasteryBreakdown
+	mastery.InitializeFromUserMasteryLevel(msg.GetMasteryLevel())
+
 	result, err := s.uc.UpdateMastery(
 		ctx,
 		msg.GetId(),
-		mapping.FromPbMastery(msg.GetMastery()),
-		entity.ReviewTiming{}, // Review timing not provided in proto
+		mastery,
+		msg.GetTags(),
 		msg.GetNotes(),
 	)
 	if err != nil {

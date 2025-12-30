@@ -17,7 +17,7 @@ import (
 type LearnedWordUsecase interface {
 	CollectWord(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error)
 	GetLearnedWord(ctx context.Context, id int64) (*entity.LearnedWord, error)
-	UpdateMastery(ctx context.Context, id int64, mastery entity.MasteryBreakdown, review entity.ReviewTiming, notes []string) (*entity.LearnedWord, error)
+	UpdateMastery(ctx context.Context, id int64, mastery entity.MasteryBreakdown, tags []string, notes []string) (*entity.LearnedWord, error)
 	ListLearnedWords(ctx context.Context, filter *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error)
 	DeleteLearnedWord(ctx context.Context, id int64) error
 }
@@ -146,7 +146,7 @@ func (u *learnedWordUsecase) GetLearnedWord(ctx context.Context, id int64) (*ent
 	return u.repo.Update(ctx, existing)
 }
 
-func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, id int64, mastery entity.MasteryBreakdown, review entity.ReviewTiming, notes []string) (*entity.LearnedWord, error) {
+func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, id int64, mastery entity.MasteryBreakdown, tags []string, notes []string) (*entity.LearnedWord, error) {
 	userID := auth.MustGetUserID(ctx)
 
 	if id == 0 {
@@ -160,7 +160,9 @@ func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, id int64, master
 
 	existing.Mastery = mastery
 	existing.Mastery.Normalize() // Ensure overall is calculated from dimensions
-	existing.Review = review
+	if len(tags) > 0 {
+		existing.Tags = append([]string{}, tags...)
+	}
 	if len(notes) > 0 {
 		existing.Notes = append([]string{}, notes...)
 	}

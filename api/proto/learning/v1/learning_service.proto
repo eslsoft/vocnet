@@ -12,10 +12,22 @@ message CollectWordRequest {
   LearnedWordSpec spec = 1 [(validate.rules).message.required = true];
 }
 
-// UpdateMasteryRequest updates mastery and review schedule.
+// UpdateMasteryRequest updates mastery using simple user perception (0-5).
+// The system will automatically convert this to four-dimensional breakdown
+// using the same logic as CollectWord (InitializeFromUserMasteryLevel).
 message UpdateMasteryRequest {
   int64 id = 1 [(validate.rules).int64.gt = 0]; // LearnedWord ID
-  learning.v1.MasteryBreakdown mastery = 2;
+
+  // User's overall mastery perception (0-5):
+  //   0 = unknown/not started
+  //   1 = seen before (vague recognition)
+  //   2 = recognize in context (can understand when seen/heard)
+  //   3 = know meaning well (solid comprehension, limited production)
+  //   4 = can use passively (excellent comprehension, emerging active use)
+  //   5 = fully mastered (fluent in all skills)
+  // This will be expanded into four skill dimensions automatically.
+  int32 mastery_level = 2 [(validate.rules).int32 = {gte: 0, lte: 5}];
+
   repeated string tags = 3;
   repeated string notes = 4;
 }

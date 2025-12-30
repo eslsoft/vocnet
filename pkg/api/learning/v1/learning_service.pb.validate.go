@@ -210,33 +210,15 @@ func (m *UpdateMasteryRequest) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	if all {
-		switch v := interface{}(m.GetMastery()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, UpdateMasteryRequestValidationError{
-					field:  "Mastery",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, UpdateMasteryRequestValidationError{
-					field:  "Mastery",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
+	if val := m.GetMasteryLevel(); val < 0 || val > 5 {
+		err := UpdateMasteryRequestValidationError{
+			field:  "MasteryLevel",
+			reason: "value must be inside range [0, 5]",
 		}
-	} else if v, ok := interface{}(m.GetMastery()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return UpdateMasteryRequestValidationError{
-				field:  "Mastery",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
+		if !all {
+			return err
 		}
+		errors = append(errors, err)
 	}
 
 	if len(errors) > 0 {

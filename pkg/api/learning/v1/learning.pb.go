@@ -145,13 +145,24 @@ func (x *LearnedWord) GetStatus() *LearnedWordStatus {
 
 // LearnedWordSpec stores user-authored metadata.
 type LearnedWordSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Language      v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"`     // Language of the term
-	Term          string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`                                      // The actual word term (lemma for regular forms, or itself for irregular)
-	MasteryLevel  int32                  `protobuf:"varint,3,opt,name=mastery_level,json=masteryLevel,proto3" json:"mastery_level,omitempty"` // user-assigned mastery level (0-5)
-	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
-	Notes         []string               `protobuf:"bytes,6,rep,name=notes,proto3" json:"notes,omitempty"`
-	Contexts      []*LearnedWordContext  `protobuf:"bytes,10,rep,name=contexts,proto3" json:"contexts,omitempty"` // Context sentences where user encountered this word
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Language v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"` // Language of the term
+	Term     string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`                                  // The actual word term (lemma for regular forms, or itself for irregular)
+	// User's overall mastery perception (0-5):
+	//
+	//	0 = unknown/not started
+	//	1 = seen before (vague recognition)
+	//	2 = recognize in context (can understand when seen/heard)
+	//	3 = know meaning well (solid comprehension, limited production)
+	//	4 = can use passively (excellent comprehension, emerging active use)
+	//	5 = fully mastered (fluent in all skills)
+	//
+	// This will be expanded into four skill dimensions (listening, reading, spelling, speaking)
+	// based on typical language learning progression where receptive skills develop before productive skills.
+	MasteryLevel  int32                 `protobuf:"varint,3,opt,name=mastery_level,json=masteryLevel,proto3" json:"mastery_level,omitempty"`
+	Tags          []string              `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	Notes         []string              `protobuf:"bytes,6,rep,name=notes,proto3" json:"notes,omitempty"`
+	Contexts      []*LearnedWordContext `protobuf:"bytes,10,rep,name=contexts,proto3" json:"contexts,omitempty"` // Context sentences where user encountered this word
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
