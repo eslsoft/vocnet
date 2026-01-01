@@ -146,32 +146,41 @@ else:
 
 在 3 档粗略级别之外，我们希望进一步区分“被动已知”和“主动已知”。
 
-### MasteryLevel（Unknown / Learning / Known / Mastered）
+### MasteryLevel（5 级掌握度）
 
-在服务端使用一个枚举 `MasteryLevel` 同时表达阶段和被动/主动形态：
+在服务端使用一个枚举 `MasteryLevel` 表达掌握程度，基于 overall 分数判定：
 
 ```pseudo
-if max_dim <= 0:
-  level = MASTERY_LEVEL_UNKNOWN
+overall = CalculateOverall()  # 0-500 scale
 
-elif rec >= 4 and prod >= 3:
-  level = MASTERY_LEVEL_MASTERED   # 完全掌握：理解到位且能较好输出
+if overall == 0:
+  level = MASTERY_LEVEL_UNSPECIFIED  # 未设置
 
-elif rec >= 4:
-  level = MASTERY_LEVEL_KNOWN      # 已知（被动）：理解不错，但输出较弱
+elif overall < 126:
+  level = MASTERY_LEVEL_UNKNOWN      # 完全陌生
+
+elif overall < 220:
+  level = MASTERY_LEVEL_RECOGNIZED   # 见过，能识别
+
+elif overall < 313:
+  level = MASTERY_LEVEL_UNDERSTOOD   # 理解含义
+
+elif overall < 418:
+  level = MASTERY_LEVEL_PROFICIENT   # 能主动使用
 
 else:
-  level = MASTERY_LEVEL_LEARNING   # 已有一定掌握，但未达到“已知”标准
+  level = MASTERY_LEVEL_MASTERED     # 完全掌握，流利使用
 ```
+
+阈值来源：取用户初始化各级别 overall 值的中点。
 
 客户端可基于此：
 
-- 仅看大类：
+- 简化为 3 档：
   - UNKNOWN → 未知
-  - LEARNING → 学习中
-  - KNOWN / MASTERED → 已知
-- 再看细类：
-  - KNOWN vs MASTERED 渲染不同图标或标签（例如“被动掌握”“完全掌握”）。
+  - RECOGNIZED / UNDERSTOOD / PROFICIENT → 学习中
+  - MASTERED → 已掌握
+- 或完整展示 5 档进度。
 
 ### 维度弱点标签
 

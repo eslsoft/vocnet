@@ -46,7 +46,8 @@ func (u *statsUsecase) GetDashboardStats(ctx context.Context) (*entity.Dashboard
 		return nil, err
 	}
 
-	masteredWords, err := u.learnedWordRepo.CountMasteredByUser(ctx, userID, 4)
+	// Use new overall score threshold: MASTERED >= 418 (on 0-500 scale)
+	masteredWords, err := u.learnedWordRepo.CountMasteredByUser(ctx, userID, 418)
 	if err != nil {
 		return nil, err
 	}

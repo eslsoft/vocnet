@@ -251,10 +251,14 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 			stats.ReviewDue++
 		}
 
+		// Use new overall score thresholds (0-500 scale):
+		// - MASTERED: >= 418
+		// - LEARNING (RECOGNIZED/UNDERSTOOD/PROFICIENT): >= 126 and < 418
+		// - UNKNOWN: < 126
 		switch {
-		case row.MasteryOverall >= 4:
+		case row.MasteryOverall >= 418:
 			stats.MasteredWords++
-		case row.MasteryOverall >= 1:
+		case row.MasteryOverall >= 126:
 			stats.LearningWords++
 		default:
 			stats.UnknownWords++
