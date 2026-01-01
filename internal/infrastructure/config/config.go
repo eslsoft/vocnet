@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -47,10 +48,8 @@ type AuthConfig struct {
 
 // Load reads configuration from file and environment variables
 func Load() (*Config, error) {
-	viper.SetConfigName(".env")
-	viper.SetConfigType("env")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./config")
+	// Load .env file into system environment variables (ignore error if file doesn't exist)
+	_ = godotenv.Load()
 
 	// Set default values
 	setDefaults()
@@ -62,13 +61,6 @@ func Load() (*Config, error) {
 	// Enable reading from environment variables
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-
-	// Read configuration file
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("error reading config file: %w", err)
-		}
-	}
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
@@ -105,13 +97,8 @@ func setDefaults() {
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
-		"database.dsn":        {"DB_DSN", "DB_URL"},
-		"database.log_sql":    {"DB_LOG_SQL"},
-		"log.level":           {"LOG_LEVEL"},
-		"log.format":          {"LOG_FORMAT"},
-		"log.file":            {"LOG_FILE"},
-		"auth.jwks_url":       {"AUTH_JWKS_URL", "SUPABASE_JWKS_URL"},
-		"auth.refresh_period": {"AUTH_REFRESH_PERIOD"},
+		"database.dsn":    {"DATABASE_URL"},
+		"auth.jwks_url":   {"AUTH_JWKS_URL"},
 	}
 
 	for key, envs := range bindings {
