@@ -534,10 +534,11 @@ func (r *LearnedWordRepository) CountDueToday(ctx context.Context, userID uuid.U
 }
 
 // GetMasteryDistribution returns a map of mastery level (0-5) to word count.
+// Converts overall scores (0-500) to mastery levels using entity.MasteryBreakdown.CalculateMasteryLevel().
 func (r *LearnedWordRepository) GetMasteryDistribution(ctx context.Context, userID uuid.UUID) (map[int32]int32, error) {
 	var results []struct {
-		MasteryLevel int32 `json:"mastery_overall"`
-		Count        int   `json:"count"`
+		MasteryOverall int32 `json:"mastery_overall"`
+		Count          int   `json:"count"`
 	}
 
 	err := r.client.LearnedWord.Query().
@@ -552,9 +553,11 @@ func (r *LearnedWordRepository) GetMasteryDistribution(ctx context.Context, user
 		return nil, fmt.Errorf("get mastery distribution: %w", err)
 	}
 
+	// Convert overall scores to mastery levels
 	distribution := make(map[int32]int32)
 	for _, result := range results {
-		distribution[result.MasteryLevel] = safeconv.IntToInt32(result.Count)
+		level := int32(entity.MasteryLevelFromOverall(result.MasteryOverall))
+		distribution[level] += safeconv.IntToInt32(result.Count)
 	}
 
 	return distribution, nil

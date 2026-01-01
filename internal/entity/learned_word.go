@@ -93,8 +93,11 @@ func (m MasteryBreakdown) CalculateOverall() int32 {
 //	Level 4 (PROFICIENT): overall ~ 348
 //	Level 5 (MASTERED):   overall ~ 488
 func (m MasteryBreakdown) CalculateMasteryLevel() MasteryLevel {
-	overall := m.CalculateOverall()
+	return MasteryLevelFromOverall(m.CalculateOverall())
+}
 
+// MasteryLevelFromOverall converts an overall score (0-500) to a MasteryLevel.
+func MasteryLevelFromOverall(overall int32) MasteryLevel {
 	switch {
 	case overall == 0:
 		return MasteryLevelUnspecified
