@@ -24,16 +24,15 @@ const (
 )
 
 // MasteryLevel represents the user's current mastery state for a word.
-// It combines the coarse stage (unknown / learning / known) with
-// whether the word is known passively or actively.
 type MasteryLevel int32
 
 const (
-	MasteryLevel_MASTERY_LEVEL_UNSPECIFIED MasteryLevel = 0
-	MasteryLevel_MASTERY_LEVEL_UNKNOWN     MasteryLevel = 1 // Word is effectively unknown to the user.
-	MasteryLevel_MASTERY_LEVEL_LEARNING    MasteryLevel = 2 // Word is in the process of being learned.
-	MasteryLevel_MASTERY_LEVEL_KNOWN       MasteryLevel = 3 // User can reliably understand the word (reading/listening).
-	MasteryLevel_MASTERY_LEVEL_MASTERED    MasteryLevel = 4 // User can both understand and actively use the word.
+	MasteryLevel_MASTERY_LEVEL_UNSPECIFIED MasteryLevel = 0 // Not set (system default)
+	MasteryLevel_MASTERY_LEVEL_UNKNOWN     MasteryLevel = 1 // Completely unfamiliar
+	MasteryLevel_MASTERY_LEVEL_RECOGNIZED  MasteryLevel = 2 // Seen before, can identify
+	MasteryLevel_MASTERY_LEVEL_UNDERSTOOD  MasteryLevel = 3 // Know the meaning
+	MasteryLevel_MASTERY_LEVEL_PROFICIENT  MasteryLevel = 4 // Can use actively
+	MasteryLevel_MASTERY_LEVEL_MASTERED    MasteryLevel = 5 // Fluent, automatic
 )
 
 // Enum value maps for MasteryLevel.
@@ -41,16 +40,18 @@ var (
 	MasteryLevel_name = map[int32]string{
 		0: "MASTERY_LEVEL_UNSPECIFIED",
 		1: "MASTERY_LEVEL_UNKNOWN",
-		2: "MASTERY_LEVEL_LEARNING",
-		3: "MASTERY_LEVEL_KNOWN",
-		4: "MASTERY_LEVEL_MASTERED",
+		2: "MASTERY_LEVEL_RECOGNIZED",
+		3: "MASTERY_LEVEL_UNDERSTOOD",
+		4: "MASTERY_LEVEL_PROFICIENT",
+		5: "MASTERY_LEVEL_MASTERED",
 	}
 	MasteryLevel_value = map[string]int32{
 		"MASTERY_LEVEL_UNSPECIFIED": 0,
 		"MASTERY_LEVEL_UNKNOWN":     1,
-		"MASTERY_LEVEL_LEARNING":    2,
-		"MASTERY_LEVEL_KNOWN":       3,
-		"MASTERY_LEVEL_MASTERED":    4,
+		"MASTERY_LEVEL_RECOGNIZED":  2,
+		"MASTERY_LEVEL_UNDERSTOOD":  3,
+		"MASTERY_LEVEL_PROFICIENT":  4,
+		"MASTERY_LEVEL_MASTERED":    5,
 	}
 )
 
@@ -148,14 +149,13 @@ type LearnedWordSpec struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Language v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"` // Language of the term
 	Term     string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`                                  // The actual word term (lemma for regular forms, or itself for irregular)
-	// User's overall mastery perception (0-5):
+	// User's overall mastery level (1-5), 0 means unspecified:
 	//
-	//	0 = unknown/not started
-	//	1 = seen before (vague recognition)
-	//	2 = recognize in context (can understand when seen/heard)
-	//	3 = know meaning well (solid comprehension, limited production)
-	//	4 = can use passively (excellent comprehension, emerging active use)
-	//	5 = fully mastered (fluent in all skills)
+	//	1 = unknown (completely unfamiliar)
+	//	2 = recognized (seen before, can identify)
+	//	3 = understood (know the meaning)
+	//	4 = proficient (can use actively)
+	//	5 = mastered (fluent, automatic)
 	//
 	// This will be expanded into four skill dimensions (listening, reading, spelling, speaking)
 	// based on typical language learning progression where receptive skills develop before productive skills.
@@ -613,13 +613,14 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\x06source\x18\x02 \x01(\x0e2\x15.common.v1.SourceTypeR\x06source\x12\x1d\n" +
 	"\n" +
 	"source_ref\x18\x03 \x01(\tR\tsourceRef\x12=\n" +
-	"\fcollected_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vcollectedAt*\x99\x01\n" +
+	"\fcollected_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vcollectedAt*\xbe\x01\n" +
 	"\fMasteryLevel\x12\x1d\n" +
 	"\x19MASTERY_LEVEL_UNSPECIFIED\x10\x00\x12\x19\n" +
-	"\x15MASTERY_LEVEL_UNKNOWN\x10\x01\x12\x1a\n" +
-	"\x16MASTERY_LEVEL_LEARNING\x10\x02\x12\x17\n" +
-	"\x13MASTERY_LEVEL_KNOWN\x10\x03\x12\x1a\n" +
-	"\x16MASTERY_LEVEL_MASTERED\x10\x04B\xa7\x01\n" +
+	"\x15MASTERY_LEVEL_UNKNOWN\x10\x01\x12\x1c\n" +
+	"\x18MASTERY_LEVEL_RECOGNIZED\x10\x02\x12\x1c\n" +
+	"\x18MASTERY_LEVEL_UNDERSTOOD\x10\x03\x12\x1c\n" +
+	"\x18MASTERY_LEVEL_PROFICIENT\x10\x04\x12\x1a\n" +
+	"\x16MASTERY_LEVEL_MASTERED\x10\x05B\xa7\x01\n" +
 	"\x0fcom.learning.v1B\rLearningProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/learning/v1;learningv1\xa2\x02\x03LXX\xaa\x02\vLearning.V1\xca\x02\vLearning\\V1\xe2\x02\x17Learning\\V1\\GPBMetadata\xea\x02\fLearning::V1b\x06proto3"
 
 var (

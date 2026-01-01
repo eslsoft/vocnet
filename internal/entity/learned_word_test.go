@@ -127,65 +127,69 @@ func TestMasteryBreakdown_CalculateMasteryLevel(t *testing.T) {
 		expected MasteryLevel
 	}{
 		{
-			name: "UNKNOWN - all zeros",
+			name: "UNSPECIFIED - all zeros",
 			mastery: MasteryBreakdown{
 				Listen:    0,
 				Read:      0,
 				Spell:     0,
 				Pronounce: 0,
 			},
+			// overall = 0 → UNSPECIFIED
+			expected: MasteryLevelUnspecified,
+		},
+		{
+			name: "UNKNOWN - low overall (level 1 init)",
+			mastery: MasteryBreakdown{
+				Listen:    1,
+				Read:      2,
+				Spell:     0,
+				Pronounce: 0,
+			},
+			// overall = 90 → UNKNOWN (< 126)
 			expected: MasteryLevelUnknown,
 		},
 		{
-			name: "LEARNING - some progress but rec < 4",
+			name: "RECOGNIZED - medium-low overall (level 2 init)",
 			mastery: MasteryBreakdown{
 				Listen:    2,
 				Read:      3,
 				Spell:     1,
-				Pronounce: 2,
+				Pronounce: 0,
 			},
-			// rec = (2+3)/2 = 2.5
-			// prod = 0.3*1 + 0.7*2 = 1.7
-			// rec < 4 → LEARNING
-			expected: MasteryLevelLearning,
+			// overall = 162 → RECOGNIZED (126-219)
+			expected: MasteryLevelRecognized,
 		},
 		{
-			name: "KNOWN - rec >= 4, prod < 3",
+			name: "UNDERSTOOD - medium overall (level 3 init)",
 			mastery: MasteryBreakdown{
-				Listen:    4,
-				Read:      4,
-				Spell:     0,
-				Pronounce: 1,
-			},
-			// rec = (4+4)/2 = 4.0
-			// prod = 0.3*0 + 0.7*1 = 0.7 < 3
-			// rec >= 4, prod < 3 → KNOWN
-			expected: MasteryLevelKnown,
-		},
-		{
-			name: "KNOWN - rec >= 4, prod exactly at boundary (< 3)",
-			mastery: MasteryBreakdown{
-				Listen:    5,
+				Listen:    3,
 				Read:      4,
 				Spell:     1,
-				Pronounce: 3,
+				Pronounce: 2,
 			},
-			// rec = (5+4)/2 = 4.5
-			// prod = 0.3*1 + 0.7*3 = 0.3 + 2.1 = 2.4 < 3
-			// rec >= 4, prod < 3 → KNOWN
-			expected: MasteryLevelKnown,
+			// overall = 278 → UNDERSTOOD (220-312)
+			expected: MasteryLevelUnderstood,
 		},
 		{
-			name: "MASTERED - rec >= 4, prod >= 3",
+			name: "PROFICIENT - medium-high overall (level 4 init)",
 			mastery: MasteryBreakdown{
 				Listen:    4,
 				Read:      4,
 				Spell:     2,
-				Pronounce: 4,
+				Pronounce: 3,
 			},
-			// rec = (4+4)/2 = 4.0
-			// prod = 0.3*2 + 0.7*4 = 0.6 + 2.8 = 3.4 >= 3
-			// rec >= 4, prod >= 3 → MASTERED
+			// overall = 348 → PROFICIENT (313-417)
+			expected: MasteryLevelProficient,
+		},
+		{
+			name: "MASTERED - high overall (level 5 init)",
+			mastery: MasteryBreakdown{
+				Listen:    5,
+				Read:      5,
+				Spell:     4,
+				Pronounce: 5,
+			},
+			// overall = 488 → MASTERED (>= 418)
 			expected: MasteryLevelMastered,
 		},
 		{
@@ -196,24 +200,22 @@ func TestMasteryBreakdown_CalculateMasteryLevel(t *testing.T) {
 				Spell:     5,
 				Pronounce: 5,
 			},
-			// rec = 5, prod = 5
-			// rec >= 4, prod >= 3 → MASTERED
+			// overall = 500 → MASTERED
 			expected: MasteryLevelMastered,
 		},
 		{
-			name: "KNOWN - high receptive, low productive",
+			name: "PROFICIENT - high receptive, low productive",
 			mastery: MasteryBreakdown{
 				Listen:    5,
 				Read:      5,
 				Spell:     0,
 				Pronounce: 0,
 			},
-			// rec = 5, prod = 0
-			// rec >= 4, prod < 3 → KNOWN
-			expected: MasteryLevelKnown,
+			// overall = 300 → UNDERSTOOD (220-312)
+			expected: MasteryLevelUnderstood,
 		},
 		{
-			name: "LEARNING - low receptive, high productive",
+			name: "RECOGNIZED - low receptive, high productive",
 			mastery: MasteryBreakdown{
 				Listen:    2,
 				Read:      2,
@@ -221,21 +223,22 @@ func TestMasteryBreakdown_CalculateMasteryLevel(t *testing.T) {
 				Pronounce: 5,
 			},
 			// rec = 2, prod = 5
-			// rec < 4 → LEARNING
-			expected: MasteryLevelLearning,
+			// overall = round((0.6*2 + 0.4*5) * 100) = round(320) = 320
+			// → PROFICIENT (313-417)
+			expected: MasteryLevelProficient,
 		},
 		{
-			name: "MASTERED - exactly at threshold",
+			name: "boundary - exactly at 126",
 			mastery: MasteryBreakdown{
-				Listen:    4,
-				Read:      4,
-				Spell:     0,
-				Pronounce: 5,
+				Listen:    2,
+				Read:      2,
+				Spell:     1,
+				Pronounce: 0,
 			},
-			// rec = (4+4)/2 = 4.0
-			// prod = 0.3*0 + 0.7*5 = 3.5 >= 3
-			// rec >= 4, prod >= 3 → MASTERED
-			expected: MasteryLevelMastered,
+			// rec = 2, prod = 0.3
+			// overall = round((0.6*2 + 0.4*0.3) * 100) = round(132) = 132
+			// → RECOGNIZED (126-219)
+			expected: MasteryLevelRecognized,
 		},
 	}
 
@@ -243,9 +246,10 @@ func TestMasteryBreakdown_CalculateMasteryLevel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.mastery.CalculateMasteryLevel()
 			if result != tt.expected {
-				t.Errorf("CalculateMasteryLevel() = %d (%s), expected %d (%s)",
+				t.Errorf("CalculateMasteryLevel() = %d (%s), expected %d (%s), overall=%d",
 					result, masteryLevelName(result),
-					tt.expected, masteryLevelName(tt.expected))
+					tt.expected, masteryLevelName(tt.expected),
+					tt.mastery.CalculateOverall())
 			}
 		})
 	}
@@ -306,70 +310,70 @@ func TestMasteryBreakdown_InitializeFromUserMasteryLevel(t *testing.T) {
 		overallMax        int32 // Maximum expected overall value
 	}{
 		{
-			name:              "level 0 - unknown",
+			name:              "level 0 - unspecified",
 			level:             0,
 			expectedListen:    0,
 			expectedRead:      0,
 			expectedSpell:     0,
 			expectedPronounce: 0,
-			expectedLevel:     MasteryLevelUnknown,
+			expectedLevel:     MasteryLevelUnspecified,
 			overallMin:        0,
 			overallMax:        0,
 		},
 		{
-			name:              "level 1 - seen before",
+			name:              "level 1 - unknown",
 			level:             1,
 			expectedListen:    1,
 			expectedRead:      2,
 			expectedSpell:     0,
 			expectedPronounce: 0,
-			expectedLevel:     MasteryLevelLearning,
+			expectedLevel:     MasteryLevelUnknown,
 			// rec = (1+2)/2 = 1.5, prod = 0
 			// overall = round((0.6*1.5 + 0.4*0) * 100) = round(90) = 90
 			overallMin: 90,
 			overallMax: 90,
 		},
 		{
-			name:              "level 2 - recognize in context",
+			name:              "level 2 - recognized",
 			level:             2,
 			expectedListen:    2,
 			expectedRead:      3,
 			expectedSpell:     1,
 			expectedPronounce: 0,
-			expectedLevel:     MasteryLevelLearning,
+			expectedLevel:     MasteryLevelRecognized,
 			// rec = (2+3)/2 = 2.5, prod = 0.3*1 + 0.7*0 = 0.3
 			// overall = round((0.6*2.5 + 0.4*0.3) * 100) = round((1.5 + 0.12) * 100) = round(162) = 162
 			overallMin: 162,
 			overallMax: 162,
 		},
 		{
-			name:              "level 3 - know well",
+			name:              "level 3 - understood",
 			level:             3,
 			expectedListen:    3,
 			expectedRead:      4,
 			expectedSpell:     1,
 			expectedPronounce: 2,
-			expectedLevel:     MasteryLevelLearning,
+			expectedLevel:     MasteryLevelUnderstood,
 			// rec = (3+4)/2 = 3.5, prod = 0.3*1 + 0.7*2 = 0.3 + 1.4 = 1.7
 			// overall = round((0.6*3.5 + 0.4*1.7) * 100) = round((2.1 + 0.68) * 100) = round(278) = 278
 			overallMin: 278,
 			overallMax: 278,
 		},
 		{
-			name:              "level 4 - can use passively",
+			name:              "level 4 - proficient",
 			level:             4,
 			expectedListen:    4,
 			expectedRead:      4,
 			expectedSpell:     2,
 			expectedPronounce: 3,
-			expectedLevel:     MasteryLevelKnown,
+			expectedLevel:     MasteryLevelProficient,
 			// rec = (4+4)/2 = 4.0, prod = 0.3*2 + 0.7*3 = 0.6 + 2.1 = 2.7
 			// overall = round((0.6*4.0 + 0.4*2.7) * 100) = round((2.4 + 1.08) * 100) = round(348) = 348
 			overallMin: 348,
 			overallMax: 348,
 		},
 		{
-			name:              "level 5 - fully mastered",
+			name:              "level 5 - mastered",
 			level:             5,
 			expectedListen:    5,
 			expectedRead:      5,
@@ -388,7 +392,7 @@ func TestMasteryBreakdown_InitializeFromUserMasteryLevel(t *testing.T) {
 			expectedRead:      0,
 			expectedSpell:     0,
 			expectedPronounce: 0,
-			expectedLevel:     MasteryLevelUnknown,
+			expectedLevel:     MasteryLevelUnspecified,
 			overallMin:        0,
 			overallMax:        0,
 		},
@@ -399,7 +403,7 @@ func TestMasteryBreakdown_InitializeFromUserMasteryLevel(t *testing.T) {
 			expectedRead:      0,
 			expectedSpell:     0,
 			expectedPronounce: 0,
-			expectedLevel:     MasteryLevelUnknown,
+			expectedLevel:     MasteryLevelUnspecified,
 			overallMin:        0,
 			overallMax:        0,
 		},
@@ -410,7 +414,7 @@ func TestMasteryBreakdown_InitializeFromUserMasteryLevel(t *testing.T) {
 			expectedRead:      0,
 			expectedSpell:     0,
 			expectedPronounce: 0,
-			expectedLevel:     MasteryLevelUnknown,
+			expectedLevel:     MasteryLevelUnspecified,
 			overallMin:        0,
 			overallMax:        0,
 		},
@@ -458,10 +462,12 @@ func masteryLevelName(level MasteryLevel) string {
 		return "UNSPECIFIED"
 	case MasteryLevelUnknown:
 		return "UNKNOWN"
-	case MasteryLevelLearning:
-		return "LEARNING"
-	case MasteryLevelKnown:
-		return "KNOWN"
+	case MasteryLevelRecognized:
+		return "RECOGNIZED"
+	case MasteryLevelUnderstood:
+		return "UNDERSTOOD"
+	case MasteryLevelProficient:
+		return "PROFICIENT"
 	case MasteryLevelMastered:
 		return "MASTERED"
 	default:

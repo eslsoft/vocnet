@@ -18,13 +18,12 @@ message LearnedWordSpec {
   common.v1.Language language = 1; // Language of the term
   string term = 2; // The actual word term (lemma for regular forms, or itself for irregular)
 
-  // User's overall mastery perception (0-5):
-  //   0 = unknown/not started
-  //   1 = seen before (vague recognition)
-  //   2 = recognize in context (can understand when seen/heard)
-  //   3 = know meaning well (solid comprehension, limited production)
-  //   4 = can use passively (excellent comprehension, emerging active use)
-  //   5 = fully mastered (fluent in all skills)
+  // User's overall mastery level (1-5), 0 means unspecified:
+  //   1 = unknown (completely unfamiliar)
+  //   2 = recognized (seen before, can identify)
+  //   3 = understood (know the meaning)
+  //   4 = proficient (can use actively)
+  //   5 = mastered (fluent, automatic)
   // This will be expanded into four skill dimensions (listening, reading, spelling, speaking)
   // based on typical language learning progression where receptive skills develop before productive skills.
   int32 mastery_level = 3;
@@ -63,14 +62,13 @@ message MasteryBreakdown {
 }
 
 // MasteryLevel represents the user's current mastery state for a word.
-// It combines the coarse stage (unknown / learning / known) with
-// whether the word is known passively or actively.
 enum MasteryLevel {
-  MASTERY_LEVEL_UNSPECIFIED = 0;
-  MASTERY_LEVEL_UNKNOWN = 1; // Word is effectively unknown to the user.
-  MASTERY_LEVEL_LEARNING = 2; // Word is in the process of being learned.
-  MASTERY_LEVEL_KNOWN = 3; // User can reliably understand the word (reading/listening).
-  MASTERY_LEVEL_MASTERED = 4; // User can both understand and actively use the word.
+  MASTERY_LEVEL_UNSPECIFIED = 0; // Not set (system default)
+  MASTERY_LEVEL_UNKNOWN = 1;     // Completely unfamiliar
+  MASTERY_LEVEL_RECOGNIZED = 2;  // Seen before, can identify
+  MASTERY_LEVEL_UNDERSTOOD = 3;  // Know the meaning
+  MASTERY_LEVEL_PROFICIENT = 4;  // Can use actively
+  MASTERY_LEVEL_MASTERED = 5;    // Fluent, automatic
 }
 
 // Review timing information

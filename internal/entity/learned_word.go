@@ -45,16 +45,15 @@ type MasteryBreakdown struct {
 }
 
 // MasteryLevel represents the user's current mastery state for a word.
-// It combines the coarse stage (unknown / learning / known) with
-// whether the word is known passively or actively.
 type MasteryLevel int32
 
 const (
-	MasteryLevelUnspecified MasteryLevel = 0
-	MasteryLevelUnknown     MasteryLevel = 1
-	MasteryLevelLearning    MasteryLevel = 2
-	MasteryLevelKnown       MasteryLevel = 3
-	MasteryLevelMastered    MasteryLevel = 4
+	MasteryLevelUnspecified MasteryLevel = 0 // Not set (system default)
+	MasteryLevelUnknown     MasteryLevel = 1 // Completely unfamiliar
+	MasteryLevelRecognized  MasteryLevel = 2 // Seen before, can identify
+	MasteryLevelUnderstood  MasteryLevel = 3 // Know the meaning
+	MasteryLevelProficient  MasteryLevel = 4 // Can use actively
+	MasteryLevelMastered    MasteryLevel = 5 // Fluent, automatic
 )
 
 // CalculateOverall computes the overall mastery score using weighted formula.
@@ -84,41 +83,31 @@ func (m MasteryBreakdown) CalculateOverall() int32 {
 	return overall
 }
 
-// CalculateMasteryLevel determines the coarse mastery stage based on skill dimensions.
-// Returns one of: UNKNOWN, LEARNING, KNOWN, or MASTERED.
-// Algorithm:
-//   - UNKNOWN: all dimensions are 0
-//   - MASTERED: receptive >= 4.0 AND productive >= 3.0 (full mastery)
-//   - KNOWN: receptive >= 4.0 (passive mastery, can understand well)
-//   - LEARNING: otherwise (has some progress but not yet known)
+// CalculateMasteryLevel determines the mastery level based on the overall score.
+// Returns one of: UNSPECIFIED, UNKNOWN, RECOGNIZED, UNDERSTOOD, PROFICIENT, or MASTERED.
+// The thresholds are designed to match the InitializeFromUserMasteryLevel mapping:
+//
+//	Level 1 (UNKNOWN):    overall ~  90
+//	Level 2 (RECOGNIZED): overall ~ 162
+//	Level 3 (UNDERSTOOD): overall ~ 278
+//	Level 4 (PROFICIENT): overall ~ 348
+//	Level 5 (MASTERED):   overall ~ 488
 func (m MasteryBreakdown) CalculateMasteryLevel() MasteryLevel {
-	// Receptive (passive): simple average of reading + listening
-	receptive := float64(m.Read+m.Listen) / 2.0
-
-	// Productive (active): weighted average, speaking (70%) > spelling (30%)
-	productive := 0.3*float64(m.Spell) + 0.7*float64(m.Pronounce)
-
-	// Find max dimension to check if word is completely unknown
-	maxDim := m.Read
-	if m.Listen > maxDim {
-		maxDim = m.Listen
-	}
-	if m.Spell > maxDim {
-		maxDim = m.Spell
-	}
-	if m.Pronounce > maxDim {
-		maxDim = m.Pronounce
-	}
+	overall := m.CalculateOverall()
 
 	switch {
-	case maxDim <= 0:
+	case overall == 0:
+		return MasteryLevelUnspecified
+	case overall < 126:
 		return MasteryLevelUnknown
-	case receptive >= 4.0 && productive >= 3.0:
-		return MasteryLevelMastered
-	case receptive >= 4.0:
-		return MasteryLevelKnown
+	case overall < 220:
+		return MasteryLevelRecognized
+	case overall < 313:
+		return MasteryLevelUnderstood
+	case overall < 418:
+		return MasteryLevelProficient
 	default:
-		return MasteryLevelLearning
+		return MasteryLevelMastered
 	}
 }
 
@@ -127,9 +116,9 @@ func (m *MasteryBreakdown) Normalize() {
 	m.Overall = m.CalculateOverall()
 }
 
-// InitializeFromUserMasteryLevel converts user's overall mastery perception (0-5)
-// into four-dimensional breakdown based on typical language learning progression.
-// This is used when users want to quickly mark existing vocabulary knowledge.
+// InitializeFromUserMasteryLevel converts user's mastery level (1-5) into
+// four-dimensional breakdown based on typical language learning progression.
+// Level 0 means unspecified (user hasn't set a level).
 //
 // Conversion rationale:
 //   - Receptive skills (read/listen) develop before productive skills (spell/speak)
@@ -139,25 +128,25 @@ func (m *MasteryBreakdown) Normalize() {
 func (m *MasteryBreakdown) InitializeFromUserMasteryLevel(level int32) {
 	switch level {
 	case 0:
-		// Unknown or skip initialization - all dimensions at 0
+		// Unspecified - user hasn't set a level
 		m.Listen, m.Read, m.Spell, m.Pronounce = 0, 0, 0, 0
 	case 1:
-		// Seen before, vague recognition - minimal passive skills only
+		// Unknown - completely unfamiliar (overall ~ 90)
 		m.Listen, m.Read, m.Spell, m.Pronounce = 1, 2, 0, 0
 	case 2:
-		// Can recognize in context - developing passive, beginning spelling awareness
+		// Recognized - seen before, can identify (overall ~ 162)
 		m.Listen, m.Read, m.Spell, m.Pronounce = 2, 3, 1, 0
 	case 3:
-		// Know meaning well - strong passive, limited but emerging production
+		// Understood - know the meaning (overall ~ 278)
 		m.Listen, m.Read, m.Spell, m.Pronounce = 3, 4, 1, 2
 	case 4:
-		// Can use passively - excellent comprehension, developing production (triggers KNOWN)
+		// Proficient - can use actively (overall ~ 348)
 		m.Listen, m.Read, m.Spell, m.Pronounce = 4, 4, 2, 3
 	case 5:
-		// Fully mastered - high competence across all dimensions (triggers MASTERED)
+		// Mastered - fluent, automatic (overall ~ 488)
 		m.Listen, m.Read, m.Spell, m.Pronounce = 5, 5, 4, 5
 	default:
-		// Invalid level, treat as unknown
+		// Invalid level, treat as unspecified
 		m.Listen, m.Read, m.Spell, m.Pronounce = 0, 0, 0, 0
 	}
 
