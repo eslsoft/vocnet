@@ -34,11 +34,16 @@ message ReviewPlanStatus {
   repeated wordbook.v1.Wordbook wordbooks = 10;
 }
 
+// InventoryStats tracks word counts by mastery level.
+// Thresholds are based on overall score (0-500 scale):
+//   - MASTERED: overall >= 418 (Level 5)
+//   - LEARNING: overall 126-417 (Level 2-4)
+//   - UNKNOWN: overall < 126 (Level 0-1)
 message InventoryStats {
   int32 total_words = 1; // Total words in the plan
-  int32 unknown_words = 2; // Not started yet (Mastery == 0)
-  int32 learning_words = 3; // In learning progress (0 < Mastery < 4)
-  int32 mastered_words = 4; // Mastered / Mature (Mastery >= 4)
+  int32 unknown_words = 2; // Words with overall < 126 (Level 0-1)
+  int32 learning_words = 3; // Words with overall 126-417 (Level 2-4)
+  int32 mastered_words = 4; // Words with overall >= 418 (Level 5)
 }
 
 message DailyTaskStats {

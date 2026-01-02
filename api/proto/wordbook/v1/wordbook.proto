@@ -24,11 +24,15 @@ message Wordbook {
 }
 
 // WordbookStats provides learning progress statistics for a wordbook.
+// Thresholds are based on overall score (0-500 scale):
+//   - MASTERED: overall >= 418 (Level 5)
+//   - LEARNING: overall 126-417 (Level 2-4)
+//   - UNKNOWN: overall < 126 (Level 0-1)
 message WordbookStats {
   int32 total_words = 1;
-  int32 mastered_words = 2; // Words with overall mastery >= 4
-  int32 learning_words = 3; // Words with 1 <= overall mastery < 4
-  int32 unknown_words = 4; // Words with overall mastery < 1
+  int32 mastered_words = 2; // Words with overall >= 418 (Level 5)
+  int32 learning_words = 3; // Words with overall 126-417 (Level 2-4)
+  int32 unknown_words = 4; // Words with overall < 126 (Level 0-1)
 }
 
 // VisibilityType defines wordbook visibility settings.

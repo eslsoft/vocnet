@@ -230,12 +230,17 @@ func (x *ReviewPlanStatus) GetWordbooks() []*v1.Wordbook {
 	return nil
 }
 
+// InventoryStats tracks word counts by mastery level.
+// Thresholds are based on overall score (0-500 scale):
+//   - MASTERED: overall >= 418 (Level 5)
+//   - LEARNING: overall 126-417 (Level 2-4)
+//   - UNKNOWN: overall < 126 (Level 0-1)
 type InventoryStats struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TotalWords    int32                  `protobuf:"varint,1,opt,name=total_words,json=totalWords,proto3" json:"total_words,omitempty"`          // Total words in the plan
-	UnknownWords  int32                  `protobuf:"varint,2,opt,name=unknown_words,json=unknownWords,proto3" json:"unknown_words,omitempty"`    // Not started yet (Mastery == 0)
-	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // In learning progress (0 < Mastery < 4)
-	MasteredWords int32                  `protobuf:"varint,4,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Mastered / Mature (Mastery >= 4)
+	UnknownWords  int32                  `protobuf:"varint,2,opt,name=unknown_words,json=unknownWords,proto3" json:"unknown_words,omitempty"`    // Words with overall < 126 (Level 0-1)
+	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // Words with overall 126-417 (Level 2-4)
+	MasteredWords int32                  `protobuf:"varint,4,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Words with overall >= 418 (Level 5)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

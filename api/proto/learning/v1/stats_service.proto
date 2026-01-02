@@ -37,7 +37,7 @@ message GetDashboardStatsRequest {}
 message DashboardStats {
   // --- 全局进度 ---
   int32 total_words = 1; // 总收藏词汇量
-  int32 mastered_words = 2; // 已掌握词汇量 (Level >= 4)
+  int32 mastered_words = 2; // 已掌握词汇量 (Level == 5, overall >= 418)
 
   // --- 今日概览 ---
   int32 today_reviewed_count = 3; // 今日已复习卡片数 (次数)
@@ -52,7 +52,7 @@ message DashboardStats {
 message GetMasteryDistributionRequest {}
 
 message MasteryDistribution {
-  // key: mastery level (0:Unknown, 1:Seen, 2:Recognize, 3:Usable, 4:Proficient, 5:Mastered)
+  // key: mastery level (0:Unspecified, 1:Unknown, 2:Recognized, 3:Understood, 4:Proficient, 5:Mastered)
   // value: word count
   map<int32, int32> distribution = 1;
 

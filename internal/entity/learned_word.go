@@ -85,13 +85,15 @@ func (m MasteryBreakdown) CalculateOverall() int32 {
 
 // CalculateMasteryLevel determines the mastery level based on the overall score.
 // Returns one of: UNSPECIFIED, UNKNOWN, RECOGNIZED, UNDERSTOOD, PROFICIENT, or MASTERED.
-// The thresholds are designed to match the InitializeFromUserMasteryLevel mapping:
 //
-//	Level 1 (UNKNOWN):    overall ~  90
-//	Level 2 (RECOGNIZED): overall ~ 162
-//	Level 3 (UNDERSTOOD): overall ~ 278
-//	Level 4 (PROFICIENT): overall ~ 348
-//	Level 5 (MASTERED):   overall ~ 488
+// Thresholds are midpoints between adjacent InitializeFromUserMasteryLevel values:
+//
+//	overall == 0         → UNSPECIFIED
+//	overall < 126        → UNKNOWN     (Level 1 init produces ~90)
+//	overall 126-219      → RECOGNIZED  (Level 2 init produces ~162)
+//	overall 220-312      → UNDERSTOOD  (Level 3 init produces ~278)
+//	overall 313-417      → PROFICIENT  (Level 4 init produces ~348)
+//	overall >= 418       → MASTERED    (Level 5 init produces ~488)
 func (m MasteryBreakdown) CalculateMasteryLevel() MasteryLevel {
 	return MasteryLevelFromOverall(m.CalculateOverall())
 }

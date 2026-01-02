@@ -44,11 +44,15 @@ type Wordbook struct {
 }
 
 // WordbookStats stores learning progress counters.
+// Thresholds are based on overall score (0-500 scale):
+//   - MasteredWords: overall >= 418 (Level 5)
+//   - LearningWords: overall 126-417 (Level 2-4)
+//   - UnknownWords: overall < 126 (Level 0-1)
 type WordbookStats struct {
 	TotalWords    int32
-	MasteredWords int32
-	LearningWords int32
-	UnknownWords  int32 // Overall mastery < 1 (not started)
+	MasteredWords int32 // overall >= 418
+	LearningWords int32 // overall 126-417
+	UnknownWords  int32 // overall < 126
 	ReviewDue     int32
 }
 

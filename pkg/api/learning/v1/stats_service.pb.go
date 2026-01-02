@@ -62,7 +62,7 @@ type DashboardStats struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// --- 全局进度 ---
 	TotalWords    int32 `protobuf:"varint,1,opt,name=total_words,json=totalWords,proto3" json:"total_words,omitempty"`          // 总收藏词汇量
-	MasteredWords int32 `protobuf:"varint,2,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // 已掌握词汇量 (Level >= 4)
+	MasteredWords int32 `protobuf:"varint,2,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // 已掌握词汇量 (Level == 5, overall >= 418)
 	// --- 今日概览 ---
 	TodayReviewedCount int32 `protobuf:"varint,3,opt,name=today_reviewed_count,json=todayReviewedCount,proto3" json:"today_reviewed_count,omitempty"` // 今日已复习卡片数 (次数)
 	TodayDueWords      int32 `protobuf:"varint,4,opt,name=today_due_words,json=todayDueWords,proto3" json:"today_due_words,omitempty"`                // 今日剩余待复习单词数 (全局，去重后)
@@ -191,7 +191,7 @@ func (*GetMasteryDistributionRequest) Descriptor() ([]byte, []int) {
 
 type MasteryDistribution struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// key: mastery level (0:Unknown, 1:Seen, 2:Recognize, 3:Usable, 4:Proficient, 5:Mastered)
+	// key: mastery level (0:Unspecified, 1:Unknown, 2:Recognized, 3:Understood, 4:Proficient, 5:Mastered)
 	// value: word count
 	Distribution map[int32]int32 `protobuf:"bytes,1,rep,name=distribution,proto3" json:"distribution,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	// 统计生成时间

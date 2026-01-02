@@ -203,12 +203,16 @@ func (x *Wordbook) GetUpdatedAt() *timestamppb.Timestamp {
 }
 
 // WordbookStats provides learning progress statistics for a wordbook.
+// Thresholds are based on overall score (0-500 scale):
+//   - MASTERED: overall >= 418 (Level 5)
+//   - LEARNING: overall 126-417 (Level 2-4)
+//   - UNKNOWN: overall < 126 (Level 0-1)
 type WordbookStats struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TotalWords    int32                  `protobuf:"varint,1,opt,name=total_words,json=totalWords,proto3" json:"total_words,omitempty"`
-	MasteredWords int32                  `protobuf:"varint,2,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Words with overall mastery >= 4
-	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // Words with 1 <= overall mastery < 4
-	UnknownWords  int32                  `protobuf:"varint,4,opt,name=unknown_words,json=unknownWords,proto3" json:"unknown_words,omitempty"`    // Words with overall mastery < 1
+	MasteredWords int32                  `protobuf:"varint,2,opt,name=mastered_words,json=masteredWords,proto3" json:"mastered_words,omitempty"` // Words with overall >= 418 (Level 5)
+	LearningWords int32                  `protobuf:"varint,3,opt,name=learning_words,json=learningWords,proto3" json:"learning_words,omitempty"` // Words with overall 126-417 (Level 2-4)
+	UnknownWords  int32                  `protobuf:"varint,4,opt,name=unknown_words,json=unknownWords,proto3" json:"unknown_words,omitempty"`    // Words with overall < 126 (Level 0-1)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
