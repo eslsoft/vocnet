@@ -8,7 +8,6 @@ package commonv1
 
 import (
 	_ "github.com/envoyproxy/protoc-gen-validate/validate"
-	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -305,7 +304,7 @@ var File_common_v1_types_proto protoreflect.FileDescriptor
 
 const file_common_v1_types_proto_rawDesc = "" +
 	"\n" +
-	"\x15common/v1/types.proto\x12\tcommon.v1\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x17validate/validate.proto\"$\n" +
+	"\x15common/v1/types.proto\x12\tcommon.v1\x1a\x17validate/validate.proto\"$\n" +
 	"\tIDRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x02id\"I\n" +
 	"\x11PaginationRequest\x12\x17\n" +
@@ -332,10 +331,7 @@ const file_common_v1_types_proto_rawDesc = "" +
 	"\x11SOURCE_TYPE_VIDEO\x10\x04\x12\x16\n" +
 	"\x12SOURCE_TYPE_MANUAL\x10\x05\x12\x15\n" +
 	"\x11SOURCE_TYPE_OTHER\x10\n" +
-	"B\xc7\x02\x92A\xad\x01\x12\x82\x01\n" +
-	"\n" +
-	"Vocnet API\x126Vocnet API for vocabulary learning and word management\"7\n" +
-	"\x12Vocnet API Support\x12!https://github.com/eslsoft/vocnet2\x031.0*\x02\x01\x022\x10application/json:\x10application/json\n" +
+	"B\x96\x01\n" +
 	"\rcom.common.v1B\n" +
 	"TypesProtoP\x01Z4github.com/eslsoft/vocnet/pkg/api/common/v1;commonv1\xa2\x02\x03CXX\xaa\x02\tCommon.V1\xca\x02\tCommon\\V1\xe2\x02\x15Common\\V1\\GPBMetadata\xea\x02\n" +
 	"Common::V1b\x06proto3"

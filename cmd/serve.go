@@ -41,7 +41,7 @@ import (
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start gRPC + HTTP gateway server",
+	Short: "Start ConnectRPC server (HTTP + gRPC)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		container, cleanup, err := app.Initialize()
 		if err != nil {

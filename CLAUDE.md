@@ -127,7 +127,7 @@ make db-up
 # Run database migrations
 make migrate
 
-# Run server (default: gRPC on :9090, HTTP on :8080)
+# Run ConnectRPC server (supports both gRPC and HTTP protocols on :8080)
 make run
 # or with custom DB
 DATABASE_URL=postgres://user:pass@localhost:5432/vocnet make run
@@ -227,7 +227,7 @@ Configuration via environment variables (see `.env.example`):
 
 - `DATABASE_URL`: Database connection string (SQLite or PostgreSQL)
 - `SERVER_GRPC_PORT`: gRPC server port (default: 9090)
-- `SERVER_HTTP_PORT`: HTTP gateway port (default: 8080)
+- `SERVER_HTTP_PORT`: ConnectRPC HTTP port (default: 8080)
 - `AUTH_JWKS_URL`: JWT JWKS endpoint for authentication (Supabase format)
 - `LOG_LEVEL`: Logging level (debug, info, warn, error)
 
