@@ -164,7 +164,8 @@ type ReviewTiming struct {
 	LastReviewAt time.Time
 	NextReviewAt time.Time
 	IntervalDays int32
-	FailCount    int32
+	FailCount    int32 // Cumulative failure count (not reset on success) for FSRS
+	Reps         int32 // Total number of reviews (repetitions) for FSRS
 }
 
 // LearnedWordRelation links a user word to another concept in their vocabulary graph.

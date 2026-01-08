@@ -54,7 +54,10 @@ func (LearnedWord) Fields() []ent.Field {
 		field.Time("review_last_review_at").Optional().Nillable(),
 		field.Time("review_next_review_at").Optional().Nillable(),
 		field.Int32("review_interval_days").Default(0),
-		field.Int32("review_fail_count").Default(0),
+		field.Int32("review_fail_count").Default(0).
+			Comment("Cumulative failure count for FSRS (not reset on success)"),
+		field.Int32("review_reps").Default(0).
+			Comment("Total number of reviews (repetitions for FSRS)"),
 		field.Int64("query_count").Default(0),
 		field.Time("created_at").
 			Default(time.Now).

@@ -53,7 +53,7 @@ func Initialize() (*Container, func(), error) {
 	reviewPlanRepository := repository.NewReviewPlanRepository(client)
 	dailyStatsRepository := repository.NewDailyStatsRepository(client)
 	cardGeneratorFactory := usecase.NewCardGeneratorFactory(lexemeRepository)
-	reviewAlgorithm := usecase.NewSM2Algorithm()
+	reviewAlgorithm := usecase.NewFSRSAlgorithm()
 	reviewPlanUsecase := usecase.NewReviewPlanUsecase(reviewPlanRepository, wordbookRepository, learnedWordRepository, dailyStatsRepository, cardGeneratorFactory, reviewAlgorithm)
 	reviewPlanServiceServer := connectrpc.NewReviewPlanServiceServer(reviewPlanUsecase)
 	statsUsecase := usecase.NewStatsUsecase(learnedWordRepository, dailyStatsRepository)
@@ -88,7 +88,7 @@ var authSet = wire.NewSet(
 
 var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewSM2Algorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase)
 
 var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, connectrpc.NewReviewPlanServiceServer, connectrpc.NewStatsServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)), wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*connectrpc.ReviewPlanServiceServer)), wire.Bind(new(learningv1connect.StatsServiceHandler), new(*connectrpc.StatsServiceServer)))
 

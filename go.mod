@@ -20,6 +20,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	github.com/rs/cors v1.11.1
 	github.com/samber/lo v1.52.0
 	github.com/schollz/progressbar/v3 v3.18.0

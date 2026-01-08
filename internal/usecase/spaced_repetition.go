@@ -20,7 +20,9 @@ const (
 
 // ReviewAlgorithm defines the interface for spaced repetition algorithms.
 type ReviewAlgorithm interface {
-	CalculateNextReview(current entity.ReviewTiming, scoreNormalized float32) entity.ReviewTiming
+	// CalculateNextReview calculates the next review timing based on the word's current state and performance.
+	// The word parameter includes both mastery and review data for FSRS mapping.
+	CalculateNextReview(word *entity.LearnedWord, scoreNormalized float32) entity.ReviewTiming
 }
 
 // SM2Algorithm implements a simplified SM-2 spaced repetition algorithm for MVP.
@@ -41,7 +43,10 @@ func NewSM2Algorithm() ReviewAlgorithm {
 // - First review: starts with InitialInterval (1 day)
 // - Three consecutive failures: resets interval to InitialInterval
 // - Intervals are clamped to [1, MaxInterval] range
-func (a *SM2Algorithm) CalculateNextReview(current entity.ReviewTiming, scoreNormalized float32) entity.ReviewTiming {
+//
+// NOTE: fail_count is now cumulative (not reset on success) for FSRS compatibility.
+func (a *SM2Algorithm) CalculateNextReview(word *entity.LearnedWord, scoreNormalized float32) entity.ReviewTiming {
+	current := word.Review
 	now := time.Now()
 
 	// Step 1: Determine current interval (default to InitialInterval for first review)
@@ -72,26 +77,30 @@ func (a *SM2Algorithm) CalculateNextReview(current entity.ReviewTiming, scoreNor
 		newInterval = MaxInterval
 	}
 
-	// Step 4: Update fail count
+	// Step 4: Update fail count (cumulative, no longer reset)
 	failCount := current.FailCount
-	if scoreNormalized >= PassingScore {
-		failCount = 0 // Reset on passing score
-	} else {
-		failCount++ // Increment on failure
+	if scoreNormalized < PassingScore {
+		failCount++ // Increment on failure only
 	}
+	// Note: fail_count is no longer reset on success for FSRS compatibility
 
 	// Step 5: Reset interval if failed 3+ times consecutively
+	// (This still uses the cumulative count for backward compatibility)
 	if failCount >= 3 {
 		newInterval = InitialInterval
 	}
 
-	// Step 6: Calculate next review time
+	// Step 6: Increment reps (total review count)
+	reps := current.Reps + 1
+
+	// Step 7: Calculate next review time
 	nextReviewAt := now.Add(time.Duration(newInterval) * 24 * time.Hour)
 
 	return entity.ReviewTiming{
 		LastReviewAt: now,
 		NextReviewAt: nextReviewAt,
 		IntervalDays: newInterval,
-		FailCount:    failCount,
+		FailCount:    failCount, // Cumulative failure count
+		Reps:         reps,      // Total reviews
 	}
 }

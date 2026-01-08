@@ -217,8 +217,8 @@ func (u *reviewPlanUsecase) SubmitAnswer(ctx context.Context, planID int64, resu
 		// Map score to mastery dimensions
 		mastery := updateMastery(word.Mastery, result.CardType, result.Accuracy)
 
-		// Apply spaced repetition algorithm
-		review := u.reviewAlgorithm.CalculateNextReview(word.Review, result.Accuracy)
+		// Apply spaced repetition algorithm (FSRS uses full word for mastery mapping)
+		review := u.reviewAlgorithm.CalculateNextReview(word, result.Accuracy)
 
 		// Handle fail penalty (lower mastery if failed 3+ times)
 		if review.FailCount >= 3 {

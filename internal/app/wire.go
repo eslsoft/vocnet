@@ -44,7 +44,7 @@ var usecaseSet = wire.NewSet(
 	usecase.NewLearnedWordUsecase,
 	usecase.NewWordbookUsecase,
 	usecase.NewCardGeneratorFactory,
-	usecase.NewSM2Algorithm,
+	usecase.NewFSRSAlgorithm,
 	usecase.NewReviewPlanUsecase,
 	usecase.NewStatsUsecase,
 )
