@@ -1,1 +1,333 @@
-AGENTS.md
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Vocnet is an open-source vocabulary network management platform that serves as a centralized vocabulary data hub. It provides:
+
+- Multi-dimensional mastery tracking (listen, read, spell, pronounce) with 0-5 level granularity
+- FSRS (Free Spaced Repetition Scheduler) algorithm for intelligent review scheduling
+- ConnectRPC-based API with auto-generated SDKs for all platforms
+- Support for SQLite (default) and PostgreSQL databases
+
+The project targets both language learners (who use it to track and review vocabulary) and app developers (who integrate it as a vocabulary management backend).
+
+## Architecture
+
+### Clean Architecture Layers
+
+The codebase follows Clean Architecture with strict dependency rules:
+
+```
+internal/
+├── entity/          # Core domain models (no external dependencies)
+├── repository/      # Repository interfaces (defined by usecases)
+├── usecase/         # Business logic (depends on entity + repository interfaces)
+├── adapter/         # Implementation of external interfaces
+│   ├── connectrpc/  # gRPC/ConnectRPC handlers (thin layer, validation only)
+│   ├── repository/  # Repository implementations using Ent ORM
+│   └── mapping/     # Entity ↔ Protobuf conversions
+├── infrastructure/  # External concerns (DB, auth, server)
+│   ├── database/    # Ent ORM schemas and client
+│   │   └── entschema/ # Ent schema definitions
+│   ├── auth/        # JWT validation and interceptors
+│   ├── usertime/    # User timezone handling
+│   └── server/      # Server setup
+└── app/             # Dependency injection (Wire)
+```
+
+**Critical Rules:**
+- Inner layers (entity, usecase) MUST NOT import outer layers (adapter, infrastructure)
+- Repository interfaces are defined in `internal/repository/` and consumed by usecases
+- Repository implementations live in `internal/adapter/repository/`
+- Business logic belongs in usecases; ConnectRPC handlers only validate and delegate
+
+### Key Domain Concepts
+
+#### LearnedWord
+The central entity representing a user's vocabulary entry (`internal/entity/learned_word.go`). Each word tracks:
+- **Term**: Lemma for regular words, or the original form for irregular words
+- **MasteryBreakdown**: Four-dimensional mastery (Listen, Read, Spell, Pronounce) + calculated Overall score
+  - Scores are 0-5 integers stored as centpoints (0-500 range internally)
+  - Overall is calculated via weighted formula: `0.6 * receptive + 0.4 * productive`
+  - Receptive = (Read + Listen) / 2
+  - Productive = 0.3 * Spell + 0.7 * Pronounce
+- **ReviewTiming**: FSRS state (LastReviewAt, NextReviewAt, IntervalDays, FailCount, Reps)
+- **Relations**: Vocabulary network connections (synonyms, antonyms, derived words)
+- **Contexts**: Sentences where the user encountered the word
+
+#### FSRS Integration
+The project uses FSRS-4.5 for spaced repetition (`internal/usecase/spaced_repetition_fsrs.go`).
+
+**Important Design Decision**: FSRS parameters (stability, difficulty, state) are NOT stored in the database. Instead, they are dynamically calculated from mastery data on each review. This:
+- Eliminates redundant storage
+- Derives FSRS state from the canonical mastery breakdown
+- Uses mastery level to infer FSRS state (New/Learning/Review/Relearning)
+
+Review interval calculation happens in `CalculateNextReview()` which:
+1. Builds FSRS Card from mastery data
+2. Maps accuracy score (0-1) to FSRS rating (1-4)
+3. Calls FSRS algorithm
+4. Returns updated ReviewTiming
+
+#### Lemma vs Lexeme
+- **Lemma** (`internal/entity/lemma.go`): Dictionary headword (e.g., "run")
+- **Lexeme** (`internal/entity/lexeme.go`): Wikidata lexeme with specific grammatical sense
+- **LexemeForm**: Inflected forms (e.g., "runs", "running", "ran")
+
+Users primarily interact with lemmas. Lexemes provide linguistic enrichment (definitions, categories, forms).
+
+### Database Schema (Ent ORM)
+
+Schemas are defined in `internal/infrastructure/database/entschema/`:
+- `learned_word.go`: User vocabulary entries
+- `lemma.go`: Dictionary headwords
+- `lexeme.go`: Wikidata lexemes
+- `lexeme_form.go`: Inflected forms
+- `review_plan.go`: User review sessions
+- `daily_stats.go`: Daily learning statistics
+- `wordbook.go`: Predefined word lists (CET4, IELTS, etc.)
+
+**After modifying schemas**, regenerate Ent client:
+```bash
+make ent-generate
+```
+
+### API (ConnectRPC)
+
+Proto definitions are in `api/proto/`:
+- `dict/`: Dictionary services (words, lemmas, lexemes)
+- `learning/`: Learning services (learned words, flashcards, reviews)
+- `wordbook/`: Wordbook services (preset word lists)
+- `common/`: Shared types (enums, pagination)
+
+**After modifying `.proto` files**, regenerate code:
+```bash
+make generate
+```
+
+This regenerates:
+- Go protobuf and ConnectRPC code (`pkg/api/`)
+- Ent client
+- Mocks
+- Wire dependency injection
+
+## Common Commands
+
+### Development
+
+```bash
+# Setup development environment (install tools + generate code)
+make setup
+
+# Start database (PostgreSQL in Docker)
+make db-up
+
+# Run database migrations
+make migrate
+
+# Run server (default: gRPC on :9090, HTTP on :8080)
+make run
+# or with custom DB
+DATABASE_URL=postgres://user:pass@localhost:5432/vocnet make run
+
+# Start full dev environment (DB + server)
+make dev
+```
+
+### Testing
+
+```bash
+# Run all tests (excludes scripts/)
+make test
+
+# Run tests with HTML coverage report
+make test-coverage
+
+# Run tests for specific package
+go test -v ./internal/usecase/...
+
+# Run single test
+go test -v -run TestLearnedWordUsecase_UpdateMastery ./internal/usecase/
+```
+
+**Testing Conventions:**
+- UseCase tests use mocked repositories (`internal/mocks/`)
+- Repository tests use real database (require `DATABASE_URL`)
+- Table-driven tests preferred
+- Test files named `*_test.go` alongside implementation
+
+### Code Generation
+
+```bash
+# Generate all (protobuf + ent + mocks)
+make generate
+
+# Generate only Ent client
+make ent-generate
+
+# Format code
+make fmt
+
+# Lint code
+make lint
+```
+
+**Mocks:**
+- Auto-generated via `go:generate` directives in interface files
+- Located in `internal/mocks/`
+- Use `github.com/golang/mock/gomock`
+- After changing interfaces, run `make generate`
+
+### Building
+
+```bash
+# Build binary to bin/vocnet
+make build
+
+# Build Docker image
+make docker-build
+
+# Run Docker container
+make docker-run
+```
+
+### Database
+
+```bash
+# SQLite (default)
+DATABASE_URL=file:./data/vocnet.db go run . serve
+
+# PostgreSQL
+make db-up  # Start container
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/vocnet go run . db-init
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/vocnet go run . serve
+
+# Stop database
+make db-down
+```
+
+### Protobuf
+
+```bash
+# Lint proto files
+make buf-lint
+
+# Check for breaking changes against main
+make buf-breaking
+
+# Format proto files
+make buf-format
+```
+
+## Configuration
+
+Configuration via environment variables (see `.env.example`):
+
+- `DATABASE_URL`: Database connection string (SQLite or PostgreSQL)
+- `SERVER_GRPC_PORT`: gRPC server port (default: 9090)
+- `SERVER_HTTP_PORT`: HTTP gateway port (default: 8080)
+- `AUTH_JWKS_URL`: JWT JWKS endpoint for authentication (Supabase format)
+- `LOG_LEVEL`: Logging level (debug, info, warn, error)
+
+Load `.env` file automatically on startup.
+
+## Import Scripts
+
+Data import scripts in `scripts/import/`:
+
+- `ecdict_stage.go`: Import ECDICT dictionary data
+- `wikidata_stage.go`: Import Wikidata lexemes
+- `irregular_detector.go`: Detect irregular verb forms
+
+Run via CLI commands:
+```bash
+go run . import --help
+```
+
+Reports are saved to `reports/` directory.
+
+## Authentication
+
+JWT-based authentication using Supabase JWKS:
+- JWT validator in `internal/infrastructure/auth/jwt_validator.go`
+- Auth interceptor in `internal/infrastructure/auth/interceptor.go`
+- User ID extracted from JWT and injected into context
+- Anonymous endpoints can be configured in interceptor whitelist
+
+## Key Patterns
+
+### Dependency Injection (Wire)
+
+Wire configuration in `internal/app/`:
+- `wire.go`: Wire provider sets
+- `wire_gen.go`: Auto-generated (DO NOT EDIT)
+- `container.go`: Aggregates dependencies
+
+After changing Wire providers:
+```bash
+make generate
+```
+
+### Error Handling
+
+- Repository layer: Returns domain errors (`entity.ErrNotFound`, `entity.ErrDuplicateKey`)
+- UseCase layer: Returns domain errors, wraps with context
+- Adapter layer: Maps domain errors to gRPC status codes (`internal/adapter/mapping/error.go`)
+
+### Filter Expressions
+
+The `pkg/filterexpr` package provides CEL-based filtering for list queries:
+- Supports field comparisons, logical operators (AND, OR, NOT)
+- Automatically binds CEL expressions to Ent predicates
+- Used in List* endpoints for flexible filtering
+
+Example:
+```
+filter: "mastery.overall >= 300 && tags.contains('important')"
+```
+
+### Testing Utilities
+
+- `internal/adapter/connectrpc/testutil.go`: Helpers for ConnectRPC handler testing
+- Shared test fixtures can be added to `*_test.go` files
+
+## Common Tasks
+
+### Adding a New API Endpoint
+
+1. Define in `.proto` file under `api/proto/`
+2. Run `make generate` to generate Go code
+3. Implement handler in `internal/adapter/connectrpc/*_service.go`
+4. Add usecase method if needed in `internal/usecase/`
+5. Register service in `internal/infrastructure/server/server.go`
+
+### Adding a New Entity
+
+1. Define struct in `internal/entity/`
+2. Define repository interface in `internal/repository/`
+3. Create Ent schema in `internal/infrastructure/database/entschema/`
+4. Run `make ent-generate`
+5. Implement repository in `internal/adapter/repository/`
+6. Add usecase logic in `internal/usecase/`
+7. Add mapping to protobuf in `internal/adapter/mapping/`
+
+### Modifying Mastery Calculation
+
+The mastery calculation formula is in `internal/entity/learned_word.go`:
+- `CalculateOverall()`: Computes weighted overall score
+- `InitializeFromUserMasteryLevel()`: Maps user level (1-5) to four dimensions
+- `CalculateMasteryLevel()`: Converts overall score back to level
+
+**IMPORTANT**: When changing mastery logic, also update FSRS mapping in `internal/usecase/spaced_repetition_fsrs.go`:
+- `calculateStabilityFromMastery()`
+- `calculateDifficultyFromMastery()`
+- `masteryLevelToFSRSState()`
+
+## License & Contribution
+
+- Licensed under AGPL-3.0 (see LICENSE)
+- Contributions welcome (see CONTRIBUTING.md)
+- Commit message format: `type: description` (feat, fix, refactor, docs, test, chore, perf)
+- Breaking changes: Prefix with `BREAKING:` in commit message
