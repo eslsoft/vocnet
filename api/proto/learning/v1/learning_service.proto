@@ -37,6 +37,11 @@ message ListLearnedWordsRequest {
   common.v1.PaginationRequest pagination = 1;
   string filter = 2;
   string order_by = 3;
+
+  // auto_inherit_mastery controls whether inflected forms (e.g., "running")
+  // inherit mastery from their lemma (e.g., "run") when the inflection isn't
+  // directly stored. Default: false (disabled).
+  bool auto_inherit_mastery = 4;
 }
 
 message ListLearnedWordsResponse {

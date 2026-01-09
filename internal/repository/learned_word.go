@@ -24,6 +24,8 @@ type ListLearnedWordQuery struct {
 	PrimaryDesc   bool
 	SecondaryKey  string
 	SecondaryDesc bool
+	// Auto inherit mastery from lemma for inflected forms
+	AutoInheritMastery bool
 }
 
 //go:generate mockgen -source=learned_word.go -destination=../mocks/mock_learned_word_repository.go -package=mocks

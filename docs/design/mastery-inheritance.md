@@ -2,216 +2,306 @@
 
 ## 问题背景
 
-用户收藏了 "apple"，遇到 "apples" 时希望系统能判断为"已掌握"（规则变形继承），但 "went" 不应继承自 "go"（不规则变形需独立学习）。
+在英语学习中,用户收藏了词根形式"run",当遇到其变形"running"时,希望系统能自动识别为"已学习"状态。但对于不规则变形(如"went"←"go"),由于语义和形态差异较大,不应该自动继承掌握度。
 
-**需求**：
-1. 批量查询300+单词性能高效（~10ms）
-2. 避免冗余存储
-3. 区分规则/不规则变形
+**核心需求**:
+1. 批量查询300+单词时保持高性能(目标~10ms)
+2. 用户收藏精确性:收藏什么就存储什么,不做隐式转换
+3. 智能继承:规则变形(如running、runs)能继承lemma(如run)的掌握度
+4. 区分规则/不规则:不规则变形(如went、gone)需要独立学习
 
-## 核心方案
+## 核心设计原则
 
-### 存储策略
+1. **收藏透明性**:用户收藏什么就存储什么,不做隐式转换
+2. **查询继承性**:查询时统一处理继承逻辑,规则变形继承lemma的掌握度
+3. **逻辑集中化**:继承逻辑集中在usecase层维护,避免重复实现
+4. **性能优先**:批量查询保持高性能(目标2次SQL查询)
 
-| 变形类型 | 示例 | 存储方式 | 理由 |
-|---------|------|---------|------|
-| 规则变形 | apple → apples | 存lemma的ID (100) | 语法规则，无需额外记忆 |
-| 不规则变形 | go → went | 存自己的ID (201) | 需要单独记忆 |
+## 存储策略
 
-**决策依据**：`words.irregular` 字段
+### 收藏行为与存储
 
-**决策依据**：`words.irregular` 字段
+| 用户行为 | 示例 | 数据库存储 | 说明 |
+|---------|------|-----------|------|
+| 收藏lemma | 收藏"run" | "run" | 直接存储 |
+| 收藏规则变形 | 收藏"running" | "running" + "run"(自动) | 存储原词 + 自动创建lemma(如不存在)|
+| 收藏不规则变形 | 收藏"went" | "went" | 只存储原词(不创建"go") |
 
-### 数据示例
+### 自动创建Lemma的规则
 
-**words表**：
+**触发条件**:
+- 用户收藏的词是**规则变形**(通过Wikidata lexeme判断)
+- 对应的**lemma不存在**于用户词库
+
+**创建行为**:
+- 自动创建lemma记录,继承相同的初始掌握度
+- 如果lemma已存在,**不更新**其掌握度(保护用户数据)
+
+**不创建的情况**:
+- 不规则变形(irregular=true)
+- 用户收藏的就是lemma本身
+- Lemma已存在于用户词库
+
+## 查询继承机制
+
+### 继承规则
+
+查询时,系统根据词形特征决定是否继承:
+
+| 查询词类型 | 继承行为 | 示例 |
+|----------|---------|------|
+| Lemma | 查询自己 | "run" → "run" |
+| 规则变形 | 查询自己+继承lemma | "running" → "running"或"run" |
+| 不规则变形 | 只查询自己 | "went" → "went"(不继承"go") |
+
+### 精确匹配优先
+
+当数据库中同时存在变形和lemma时,优先返回精确匹配:
+
 ```
-id  | term    | lemma  | irregular
-----|---------|--------|----------
-100 | apple   | null   | false
-101 | apples  | apple  | false     -- 规则
-201 | went    | go     | true      -- 不规则
-202 | gone    | go     | true      -- 不规则
+数据库: ["run" (mastery=5), "running" (mastery=3)]
+
+查询"running" → 返回 mastery=3 (精确匹配)
+查询"runs"    → 返回 mastery=5 (继承自"run")
 ```
 
-**learned_words表（优化：存term而非word_id）**：
+### 查询示例
+
+**场景**:数据库存储了`["run" (mastery=5), "running" (mastery=3), "went" (mastery=2)]`
+
+**单词本查询** `["run", "running", "runs", "went", "go"]`:
+
+| 查询词 | 继承映射 | 数据库匹配 | 返回结果 |
+|-------|---------|-----------|---------|
+| run | run → run | ✅ "run" | mastery=5 |
+| running | running → running | ✅ "running" | mastery=3 (精确匹配优先) |
+| runs | runs → run | ✅ "run" | mastery=5 (继承自lemma) |
+| went | went → went | ✅ "went" | mastery=2 |
+| go | go → go | ❌ 不存在 | Unknown (不规则不继承) |
+
+## 性能优化
+
+### SQL查询优化
+
+**收藏流程**(per word):
+- 1次 lexeme form查询(判断是否规则变形)
+- 1次 lemma存在性检查
+- 1-2次 Create/Update(原词 + 可能的lemma)
+
+**批量查询流程**(300+ words):
+- 1次 批量lexeme form查询
+- 1次 批量learned_word查询
+
+**总计**: 2次SQL查询 ⚡
+
+### 去重优化
+
+通过继承映射,大幅减少实际查询词数:
+
 ```
-user_id | term   | language | 说明
---------|--------|----------|-----
-1       | apple  | en       | 收藏apples → 存"apple"
-1       | went   | en       | 收藏went → 存"went" ✅
-1       | gone   | en       | 收藏gone → 存"gone" ✅
+单词本: ["run", "running", "runs", "ran"]
+映射后: ["run", "ran"]  ← 查询词数从4减少到2
 ```
 
-**优势**：
-- ✅ 批量查询减少到 **2次SQL**（原来3次）
-- ✅ 无需联表查询 word_id
-- ✅ 数据更直观（直接看到单词）
-- ⚠️ 需要复合索引 `(user_id, term, language)`
+对于包含大量规则变形的单词本,实际查询词数可减少50-80%。
 
-## 实现逻辑
+## 继承表
 
-### 1. 收藏时：根据irregular决定
+完整的继承规则矩阵:
 
-### 1. 收藏时：根据irregular决定
+| 查询词 | 数据库状态 | 映射结果 | 返回掌握度 | 说明 |
+|-------|-----------|---------|-----------|------|
+| "run" | "run"存在 | run→run | mastery(run) | 精确匹配 |
+| "running" | "running"存在 | running→running | mastery(running) | 精确匹配优先 |
+| "running" | 只有"run"存在 | running→run | mastery(run) | 继承lemma |
+| "runs" | "run"存在 | runs→run | mastery(run) | 继承lemma |
+| "went" | "went"存在 | went→went | mastery(went) | 不规则不继承 |
+| "went" | 只有"go"存在 | went→went | Unknown | 不规则不继承 |
 
-```go
-// 伪代码（优化版：存term）
-func CollectWord(word) {
-    var termToStore string
+## 实现架构
 
-    if word.Irregular {
-        termToStore = word.Term  // went → "went"
-    } else if word.TermType != LEMMA {
-        termToStore = word.Lemma  // apples → "apple"
-    } else {
-        termToStore = word.Term   // apple → "apple"
-    }
+### 分层职责
 
-    // 存储到learned_words
-    Save(userID, termToStore, language)
+```
+┌─────────────────────────────────────────┐
+│  API Layer (ConnectRPC)                 │
+│  - 接收AutoInheritMastery参数          │
+│  - 调用usecase层                       │
+└─────────────────────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────┐
+│  Usecase Layer                          │
+│  - CollectWord: 自动创建lemma逻辑      │
+│  - MapSurfaceTermsToStorageTerms:       │
+│    统一继承映射(核心逻辑)               │
+│  - ListLearnedWords: 应用继承映射      │
+└─────────────────────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────┐
+│  Repository Layer                       │
+│  - FindByTerm: 精确匹配优先            │
+│  - StatsByTerms: 批量查询统计          │
+│  - 使用normal字段做case-insensitive查询│
+└─────────────────────────────────────────┘
+```
+
+### 核心接口
+
+**MapSurfaceTermsToStorageTerms**
+
+统一的继承逻辑入口,负责:
+1. 批量查询词形信息(lexeme forms)
+2. 构建继承映射关系(surface → lemma)
+3. 返回去重后的存储词列表
+
+**应用场景**:
+- ListLearnedWords (列表查询)
+- StatsByTerms (单词本统计)
+- GetByReviewPlan (复习计划)
+
+### 数据流示例
+
+```
+用户查询 ["running", "runs", "went"]
+         ↓
+MapSurfaceTermsToStorageTerms
+  ├→ 查询lexeme forms
+  ├→ 构建映射: {"running":"run", "runs":"run", "went":"went"}
+  └→ 返回: ["run", "running", "went"] (去重后)
+         ↓
+Repository.List
+  └→ WHERE term IN ("run", "running", "went")
+         ↓
+Usecase层应用映射
+  ├→ "running" 匹配到 "running" (精确) → mastery=3
+  ├→ "runs" 映射到 "run" → mastery=5
+  └→ "went" 匹配到 "went" → mastery=2
+```
+
+## 掌握度更新策略
+
+```
+场景1: 数据库空 → 收藏"running" (mastery=3)
+   结果: ["run" (3), "running" (3)]  ← 自动创建lemma
+
+场景2: 数据库有"run" (5) → 收藏"running" (3)
+   结果: ["run" (5), "running" (3)]  ← 不更新lemma
+
+场景3: 数据库有"running" (3) → 收藏"run" (5)
+   结果: ["run" (5), "running" (3)]  ← 正常更新
+```
+
+**设计理念**:保护用户已有数据,避免自动覆盖。
+
+## 数据迁移
+
+### 向后兼容性
+
+**旧数据兼容**:无需迁移,新旧数据都能正确处理
+
+**迁移策略**:
+- 保持旧数据不变
+- 新收藏遵循新规则
+- 查询时统一通过继承映射处理
+
+示例:
+```
+旧数据: ["run" (mastery=4)]  # 可能来自收藏"running"
+新查询: ["running"]
+结果: 继承映射 "running"→"run" → 返回 mastery=4 ✅
+```
+
+## AutoInheritMastery参数
+
+### API控制
+
+查询API提供`auto_inherit_mastery`参数,允许客户端选择是否启用继承:
+
+```protobuf
+message ListLearnedWordsRequest {
+  bool auto_inherit_mastery = 5;  // 默认false
 }
 ```
 
-**决策树**：
-```
-收藏一个词 →
-  ├─ irregular == true  → 存储自己的term
-  ├─ term_type == LEMMA → 存储自己的term
-  └─ 否则（规则变形）   → 存储lemma的term
-```
+**使用场景**:
+- `true`: 单词本统计、复习计划(需要继承)
+- `false`: 精确查询、数据导出(不需要继承)
 
-### 2. 批量查询：3次查询完成
+### 行为差异
 
-### 2. 批量查询：优化到2次查询 ⚡
+| auto_inherit_mastery | 查询行为 | 示例 |
+|---------------------|---------|------|
+| false | 1:1精确查询 | "runs" → 只查"runs" |
+| true | 应用继承映射 | "runs" → 查"runs"和"run" |
 
-```go
-// 伪代码（优化版）
-func BatchCheckMastery(words []string, language string, userID int64) {
-    // 1️⃣ 批量查words表（获取irregular/lemma信息）
-    wordInfos = BatchLookup(words, language)
-    // 返回: map[term]WordInfo
-
-    // 2️⃣ 构建要查询learned_words的term集合
-    termsToCheck := []string{}
-    termMapping := map[string]string{}  // 原词 → 要查的词
-
-    for _, word in wordInfos {
-        var termToCheck string
-        if word.Irregular {
-            termToCheck = word.Term      // went → "went"
-        } else if word.TermType != LEMMA {
-            termToCheck = word.Lemma     // apples → "apple"
-        } else {
-            termToCheck = word.Term      // apple → "apple"
-        }
-        termsToCheck.add(termToCheck)
-        termMapping[word.Term] = termToCheck
-    }
-
-    // 3️⃣ 批量查learned_words（直接用term查询！）
-    learned = SELECT * FROM learned_words
-              WHERE user_id=? AND language=? AND term IN (termsToCheck)
-    // 返回: map[term]LearnedWord
-
-    // 4️⃣ 组装结果
-    for _, originalWord in words {
-        termToCheck = termMapping[originalWord]
-        if learned[termToCheck] exists {
-            is_inherited = (wordInfos[originalWord].Irregular==false &&
-                           wordInfos[originalWord].TermType!=LEMMA)
-            return {is_learned:true, is_inherited, mastery}
-        }
-    }
-}
-```
-
-**SQL查询（仅2次！）**：
-```sql
--- 1. 批量查词信息（包含lemma/irregular）
-SELECT term, lemma, irregular, term_type
-FROM words
-WHERE language='en' AND term IN ('apple','apples','went',...);  -- 300行
-
--- 2. 批量查掌握度（直接用term查！）
-SELECT term, mastery_*
-FROM learned_words
-WHERE user_id=1 AND language='en' AND term IN ('apple','went',...);  -- 50行
-```
-
-**性能提升**：
-- 原方案：3次SQL (~10ms)
-- **优化方案：2次SQL (~7ms)** ⚡
-- 减少30%查询时间！
-
-## 继承规则
-
-## 继承规则
-
-| 类型 | 示例 | irregular | 继承策略 |
-|------|------|-----------|----------|
-| 规则变形 | apple → apples | false | 100%继承 |
-| 不规则变形 | go → went | true | 独立学习 |
-| 不同词性 | run(v.) vs run(n.) | - | 不继承 |
-
-## 方案优势
-
-## 方案优势
+## 优势总结
 
 | 优势 | 说明 |
 |------|------|
-| 零数据库变更 | 只需修改learned_words表结构（word_id → term） |
-| 零数据冗余 | 规则变形存lemma term，不规则存自己 |
-| **超高性能** | 300词批量查询~7ms（**仅2次SQL**！） |
-| 简单实现 | 无需word_id转换，直接term匹配 |
-| 数据直观 | 可读性强，调试方便 |
+| **用户透明** | 收藏什么存什么,行为可预测 |
+| **逻辑集中** | 继承逻辑只在usecase层维护,易于修改 |
+| **性能高效** | 2次SQL查询,去重后查询词数大幅减少 |
+| **灵活性高** | 支持精确收藏(override lemma) |
+| **一致性强** | 所有查询共用同一套继承逻辑 |
+| **向后兼容** | 无需数据迁移 |
 
-## Schema变更
+## 注意事项
 
-```sql
--- 旧表结构
-CREATE TABLE learned_words (
-  user_id BIGINT,
-  word_id BIGINT,  -- ❌ 移除
-  ...
-  PRIMARY KEY (user_id, word_id)
-);
+### 1. 自动创建Lemma的时机
 
--- 新表结构（优化）
-CREATE TABLE learned_words (
-  user_id BIGINT,
-  term VARCHAR(100),      -- ✅ 存储term字符串
-  language VARCHAR(10),   -- ✅ 必须，支持多语言
-  ...
-  PRIMARY KEY (user_id, term, language),
-  INDEX idx_user_lang (user_id, language)
-);
-```
+✅ **会自动创建**:
+- 用户收藏规则变形(如"running")
+- Lemma不存在于用户词库
 
-**注意事项**：
-- 需要 `language` 字段区分不同语言的同形词（如 "chat" 英语vs法语）
-- 索引必须包含 `(user_id, language, term)` 三元组
-- 数据迁移：从 `word_id` 反查 `term` 填充
+❌ **不会自动创建**:
+- 不规则变形(如"went")
+- Lemma已存在(保护用户数据)
+- 用户收藏的就是lemma本身
 
-## 总结
+### 2. Lexeme查询失败的处理
 
-**核心指标（优化后）**：
-- 批量查询300词：**~7ms** ⚡（原10ms）
-- 数据库查询次数：**2次**（减少33%）
-- Schema修改：learned_words表（word_id → term + language）
-- 存储冗余：0
+如果Wikidata lexeme查询失败:
+- 当前实现:返回错误,阻止收藏
+- 建议优化:降级策略,按原词存储(不自动创建lemma)
 
-**关键逻辑**：
-```
-收藏流程：检查irregular → 规则存lemma term / 不规则存自己term
-查询流程：批量查words(获取lemma) → 批量查learned_words(直接term匹配)
-```
+### 3. 多义词处理
 
-**优化效果对比**：
+当前实现限制:如果一个词有多个lexeme记录,不会自动创建lemma。这是为了避免歧义。
 
-| 方案 | SQL次数 | 耗时 | Schema变更 |
-|------|---------|------|-----------|
-| 原方案(word_id) | 3次 | ~10ms | 无 |
-| **优化方案(term)** | **2次** | **~7ms** | word_id→term |
+未来可以考虑支持多义词的智能选择。
 
-**推荐**：✅ 采用优化方案，性能提升30%，代码更简洁
+### 4. 性能监控建议
+
+监控指标:
+- Lemma自动创建失败率
+- 继承映射去重率(体现性能提升)
+- 批量查询响应时间
+
+## 测试覆盖
+
+### 核心测试用例
+
+**收藏测试**:
+- 收藏规则变形自动创建lemma
+- Lemma已存在时不更新
+- 不规则变形不创建lemma
+
+**查询测试**:
+- 继承映射正确性
+- 精确匹配优先
+- 不规则变形不继承
+
+**统计测试**:
+- 单词本统计正确应用继承
+- 去重后查询词数正确
+
+### 测试文件
+
+- `internal/usecase/mastery_inheritance_test.go` - 继承机制核心测试
+- `internal/usecase/learned_word_usecase_test.go` - usecase层测试
+
+## 相关文档
+
+- `/api/proto/learning/v1/learning_service.proto` - API定义
+- `/internal/usecase/learned_word_usecase.go` - 核心实现
+- `/internal/repository/learned_word.go` - Repository接口

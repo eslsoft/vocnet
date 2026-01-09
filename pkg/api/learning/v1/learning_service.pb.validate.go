@@ -356,6 +356,8 @@ func (m *ListLearnedWordsRequest) validate(all bool) error {
 
 	// no validation rules for OrderBy
 
+	// no validation rules for AutoInheritMastery
+
 	if len(errors) > 0 {
 		return ListLearnedWordsRequestMultiError(errors)
 	}

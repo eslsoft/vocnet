@@ -47,7 +47,14 @@ internal/
 
 #### LearnedWord
 The central entity representing a user's vocabulary entry (`internal/entity/learned_word.go`). Each word tracks:
-- **Term**: Lemma for regular words, or the original form for irregular words
+- **Term**: Lemma for regular words, or the original form for irregular words (stored with original case, e.g., "Hello", "iPhone", "Polish")
+- **Normal**: Auto-generated lowercase form of Term for case-insensitive querying (internal field, e.g., "hello", "iphone", "polish")
+- **Case Handling**:
+  - Storage: Term preserves original case; Normal is automatically set to lowercase in `Normalize()` method
+  - Uniqueness: Based on `(user_id, term, language)` - case-sensitive (user can store both "Polish" and "polish")
+  - Querying: Case-insensitive using `normal` field - "Hello" and "hello" both match stored "Hello"
+  - Priority: Exact case match prioritized over other matches with same normal form
+  - Display: Always shows original Term case to user
 - **MasteryBreakdown**: Four-dimensional mastery (Listen, Read, Spell, Pronounce) + calculated Overall score
   - Scores are 0-5 integers stored as centpoints (0-500 range internally)
   - Overall is calculated via weighted formula: `0.6 * receptive + 0.4 * productive`

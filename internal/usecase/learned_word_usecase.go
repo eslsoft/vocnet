@@ -20,6 +20,7 @@ type LearnedWordUsecase interface {
 	UpdateMastery(ctx context.Context, id int64, mastery entity.MasteryBreakdown, tags []string, notes []string) (*entity.LearnedWord, error)
 	ListLearnedWords(ctx context.Context, filter *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error)
 	DeleteLearnedWord(ctx context.Context, id int64) error
+	MapSurfaceTermsToStorageTerms(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, map[string]string, error)
 }
 
 // NewLearnedWordUsecase wires the repository with default behaviour.
@@ -47,41 +48,47 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	}
 
 	language := entity.NormalizeLanguage(word.Language)
+	termToStore := word.Term // Always store exactly what the user provided
 
-	// Determine which term to store based on irregular flag
-	// Logic from docs/mastery-inheritance.md:
-	// 1. If irregular == true: store the term itself (e.g., "went" → "went")
-	// 2. If term_type != LEMMA and irregular == false: store lemma (e.g., "apples" → "apple")
-	// 3. If term_type == LEMMA: store the term itself (e.g., "apple" → "apple")
-	termToStore := word.Term // default to the user's input
-
-	// Use BatchLookupFormInfo to ensure consistency with ListLearnedWords
-	// Query both lowercase and capitalized variants to check for proper nouns
-	variants := []string{strings.ToLower(word.Term), capitalize(word.Term)}
-	formInfosMap, err := u.lexemeRepo.BatchLookupFormInfo(ctx, variants, language)
+	// Lookup form info for the term (for lemma detection)
+	formInfosMap, err := u.lexemeRepo.BatchLookupFormInfo(ctx, []string{word.Term}, language)
 	if err != nil {
 		return nil, err
 	}
 
 	formInfos := formInfosMap[word.Term]
-	// Determine if this word requires case-sensitive matching
-	caseSensitive := isCaseSensitiveWord(formInfosMap)
-	// Only map to lemma if it's CLEARLY a simple regular inflection
-	// (not irregular, not a lemma itself, and has a different lemma)
-	if len(formInfos) == 1 {
-		info := formInfos[0]
-		if !info.IsIrregular &&
-			info.FormType != "LEMMA" &&
-			info.FormType != "" &&
-			!strings.EqualFold(info.FormText, info.LemmaText) {
-			// Simple case: single regular inflection with different lemma
-			// e.g., "apples" → "apple"
-			termToStore = info.LemmaText
+
+	// Identify lemma for auto-creation if it's a regular inflection
+	// Logic from docs/design/mastery-inheritance.md
+	if isRegularInflection(formInfos) {
+		lemmaText := formInfos[0].LemmaText
+		// Check if lemma already exists for this user
+		existingLemma, err := u.repo.FindByTerm(ctx, word.UserID, lemmaText, language)
+		if err != nil {
+			return nil, err
+		}
+
+		if existingLemma == nil {
+			// Auto-create lemma record with same initial mastery
+			now := u.clock()
+			lemmaWord := &entity.LearnedWord{
+				UserID:       word.UserID,
+				Term:         lemmaText,
+				Language:     language,
+				Mastery:      word.Mastery,
+				QueriedCount: 1,
+				Tags:         append([]string{}, word.Tags...),
+			}
+			lemmaWord.Mastery.Normalize()
+			lemmaWord.Normalize(now)
+			if _, err := u.repo.Create(ctx, lemmaWord); err != nil {
+				// Log error but continue with storing the original word
+				slog.Error("failed to auto-create lemma", "term", word.Term, "lemma", lemmaText, "error", err)
+			}
 		}
 	}
-	// For all other cases (irregular, lemma, multiple forms, unknown), keep user's input
 
-	// Check if already collected
+	// Check if already collected (FindByTerm now uses normal field + exact match priority)
 	existing, err := u.repo.FindByTerm(ctx, word.UserID, termToStore, language)
 	if err != nil {
 		return nil, err
@@ -89,39 +96,35 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 
 	now := u.clock()
 	if existing != nil {
-		// Update existing record (but don't increment QueryCount - that happens in GetLearnedWord)
-		// Note: We don't update Mastery here - users should use UpdateMastery API for that.
-		// This prevents accidental overwriting of precise mastery data from reviews/tests
-		// when re-collecting a word with initial mastery_level estimation.
-		if len(word.Tags) > 0 {
-			existing.Tags = append([]string{}, word.Tags...)
+		// Only update if it's an exact match (to avoid unique constraint violation)
+		if existing.Term == termToStore {
+			// Update existing record
+			if len(word.Tags) > 0 {
+				existing.Tags = append([]string{}, word.Tags...)
+			}
+			if len(word.Notes) > 0 {
+				existing.Notes = append([]string{}, word.Notes...)
+			}
+			if len(word.Relations) > 0 {
+				existing.Relations = append([]entity.LearnedWordRelation{}, word.Relations...)
+			}
+			if len(word.Contexts) > 0 {
+				existing.Contexts = mergeContexts(existing.Contexts, word.Contexts)
+			}
+			existing.Normalize(now)
+			return u.repo.Update(ctx, existing)
 		}
-		if len(word.Notes) > 0 {
-			existing.Notes = append([]string{}, word.Notes...)
-		}
-		if len(word.Relations) > 0 {
-			existing.Relations = append([]entity.LearnedWordRelation{}, word.Relations...)
-		}
-		if len(word.Contexts) > 0 {
-			// Append new contexts to existing ones (avoid duplicates based on sentence)
-			existing.Contexts = mergeContexts(existing.Contexts, word.Contexts)
-		}
-		// existing.Mastery = word.Mastery  // Removed: don't overwrite mastery on re-collect
-		// existing.Review = word.Review     // Removed: don't overwrite review timing
-		existing.CaseSensitive = caseSensitive
-		existing.Normalize(now)
-		return u.repo.Update(ctx, existing)
+		// Different case variant exists, try to create new record
 	}
 
 	// Create new learned word
 	copy := *word
 	copy.Term = termToStore
-	copy.CaseSensitive = caseSensitive
 	copy.Language = language
 	if copy.QueriedCount == 0 {
 		copy.QueriedCount = 1
 	}
-	copy.Mastery.Normalize() // Ensure overall is calculated from dimensions
+	copy.Mastery.Normalize()
 	copy.Normalize(now)
 
 	return u.repo.Create(ctx, &copy)
@@ -172,7 +175,7 @@ func (u *learnedWordUsecase) UpdateMastery(ctx context.Context, id int64, master
 }
 
 func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
-	surfaceMap, originalTerms, err := u.prepareSurfaceTerms(ctx, query)
+	mapping, originalTerms, err := u.prepareSurfaceTerms(ctx, query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -182,12 +185,12 @@ func (u *learnedWordUsecase) ListLearnedWords(ctx context.Context, query *reposi
 		return nil, 0, err
 	}
 
-	populateMatchedTerms(results, surfaceMap, originalTerms)
+	populateMatchedTerms(results, mapping, originalTerms)
 
 	return results, total, nil
 }
 
-func (u *learnedWordUsecase) prepareSurfaceTerms(ctx context.Context, query *repository.ListLearnedWordQuery) (SurfaceToLemmasMap, []string, error) {
+func (u *learnedWordUsecase) prepareSurfaceTerms(ctx context.Context, query *repository.ListLearnedWordQuery) (map[string]string, []string, error) {
 	if query == nil || len(query.SurfaceTerms) == 0 {
 		return nil, nil, nil
 	}
@@ -195,27 +198,37 @@ func (u *learnedWordUsecase) prepareSurfaceTerms(ctx context.Context, query *rep
 	original := append([]string{}, query.SurfaceTerms...)
 	language := entity.ParseLanguage(query.Language)
 
+	// Only apply mastery inheritance if explicitly enabled
+	if !query.AutoInheritMastery {
+		// No inheritance: direct 1:1 mapping
+		mapping := make(map[string]string, len(query.SurfaceTerms))
+		for _, term := range query.SurfaceTerms {
+			mapping[term] = term
+		}
+		return mapping, original, nil
+	}
+
+	// With inheritance enabled: map inflections to lemmas
 	mappedTerms, mapping, err := u.MapSurfaceTermsToStorageTerms(ctx, query.SurfaceTerms, language)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// No need to expand case variants - database queries are now case-insensitive
 	query.SurfaceTerms = mappedTerms
 	return mapping, original, nil
 }
 
-func populateMatchedTerms(results []entity.LearnedWord, surfaceMap SurfaceToLemmasMap, original []string) {
-	if len(surfaceMap) == 0 || len(original) == 0 || len(results) == 0 {
+func populateMatchedTerms(results []entity.LearnedWord, mapping map[string]string, original []string) {
+	if len(mapping) == 0 || len(original) == 0 || len(results) == 0 {
 		return
 	}
 
 	for i := range results {
-		results[i].MatchedTerms = matchSurfaceTerms(results[i], surfaceMap, original)
+		results[i].MatchedTerms = matchSurfaceTerms(results[i], mapping, original)
 	}
 }
 
-func matchSurfaceTerms(word entity.LearnedWord, surfaceMap SurfaceToLemmasMap, original []string) []string {
+func matchSurfaceTerms(word entity.LearnedWord, mapping map[string]string, original []string) []string {
 	matchedTerms := make([]string, 0, 2)
 	seen := make(map[string]struct{}, len(original))
 
@@ -224,21 +237,8 @@ func matchSurfaceTerms(word entity.LearnedWord, surfaceMap SurfaceToLemmasMap, o
 			continue
 		}
 
-		candidates := surfaceMap[surface]
-		if len(candidates) == 0 {
-			slog.Debug("empty candidates for surface term, skipping",
-				"surface", surface,
-				"storedTerm", word.Term)
-			continue
-		}
-
-		shouldMatch := matchesSurfaceTerm(word, surface, candidates)
-		slog.Debug("matchedTerms: evaluating surface",
-			"surface", surface,
-			"storedTerm", word.Term,
-			"caseSensitive", word.CaseSensitive,
-			"candidates", candidates,
-			"matched", shouldMatch)
+		lemma := mapping[surface]
+		shouldMatch := matchesSurfaceTerm(word, surface, lemma)
 
 		if shouldMatch {
 			matchedTerms = append(matchedTerms, surface)
@@ -250,36 +250,20 @@ func matchSurfaceTerms(word entity.LearnedWord, surfaceMap SurfaceToLemmasMap, o
 }
 
 // matchesSurfaceTerm determines if a stored word matches a user's surface query term.
-// For case-sensitive words, the surface term or its candidates must exactly match the stored term.
-// For case-insensitive words, matching is done without regard to case.
-func matchesSurfaceTerm(word entity.LearnedWord, surface string, candidates []string) bool {
-	if word.CaseSensitive {
-		// For case-sensitive words, require exact case match
-		// Check if the surface term itself matches
-		if word.Term == surface {
-			return true
-		}
-		// Check if any candidate matches exactly
-		for _, candidate := range candidates {
-			if word.Term == candidate {
-				return true
-			}
-		}
-		return false
-	}
+// Logic:
+// 1. Case-insensitive exact match (using normal field)
+// 2. Inheritance match (if surface maps to this word's lemma)
+func matchesSurfaceTerm(word entity.LearnedWord, surface string, lemma string) bool {
+	surfaceNormal := strings.ToLower(strings.TrimSpace(surface))
+	lemmaNormal := strings.ToLower(strings.TrimSpace(lemma))
 
-	// For case-insensitive words, match without regard to case
-	// Check if the surface term matches (case-insensitive)
-	if strings.EqualFold(word.Term, surface) {
+	// Case-insensitive exact match
+	if word.Normal == surfaceNormal {
 		return true
 	}
-	// Check if any candidate matches (case-insensitive)
-	for _, candidate := range candidates {
-		if strings.EqualFold(word.Term, candidate) {
-			return true
-		}
-	}
-	return false
+
+	// Case-insensitive inheritance match
+	return word.Normal == lemmaNormal
 }
 
 func (u *learnedWordUsecase) DeleteLearnedWord(ctx context.Context, id int64) error {
@@ -292,14 +276,13 @@ func (u *learnedWordUsecase) DeleteLearnedWord(ctx context.Context, id int64) er
 }
 
 // MapSurfaceTermsToStorageTerms converts each queried surface form into
-// all possible storage terms (lemmas or inflections) that should be checked.
-// Returns (deduplicated storage terms to query, surface → lemmas mapping, error).
-func (u *learnedWordUsecase) MapSurfaceTermsToStorageTerms(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, SurfaceToLemmasMap, error) {
+// its storage candidates (surface itself and lemma if applicable).
+// Returns (deduplicated storage terms to query, surface → lemma mapping, error).
+func (u *learnedWordUsecase) MapSurfaceTermsToStorageTerms(ctx context.Context, surfaceTerms []string, language entity.Language) ([]string, map[string]string, error) {
 	if len(surfaceTerms) == 0 {
 		return surfaceTerms, nil, nil
 	}
 
-	// Filter out empty/whitespace-only terms upfront
 	filteredTerms := make([]string, 0, len(surfaceTerms))
 	for _, term := range surfaceTerms {
 		if strings.TrimSpace(term) != "" {
@@ -311,7 +294,6 @@ func (u *learnedWordUsecase) MapSurfaceTermsToStorageTerms(ctx context.Context, 
 		return nil, nil, nil
 	}
 
-	// Normalize language, default to English
 	language = entity.NormalizeLanguage(language)
 	if language == entity.LanguageUnspecified {
 		language = entity.LanguageEnglish
@@ -323,25 +305,37 @@ func (u *learnedWordUsecase) MapSurfaceTermsToStorageTerms(ctx context.Context, 
 	}
 
 	termsToQuery := make([]string, 0, len(filteredTerms)*2)
-	surfaceToLemmas := make(SurfaceToLemmasMap, len(filteredTerms))
+	mapping := make(map[string]string, len(filteredTerms))
 
 	for _, surface := range filteredTerms {
 		formInfos := formInfosMap[surface]
-		lemmas := collectPossibleStorageTerms(surface, formInfos)
-		surfaceToLemmas[surface] = lemmas
-		termsToQuery = append(termsToQuery, lemmas...)
 
-		for _, info := range formInfos {
-			slog.Info("MapSurfaceTermsToStorageTermsWithMapping: processing formInfo",
-				"surface", surface,
-				"formText", info.FormText,
-				"formType", info.FormType,
-				"lemmaText", info.LemmaText,
-				"isIrregular", info.IsIrregular)
+		// Always include surface itself for exact match priority
+		termsToQuery = append(termsToQuery, surface)
+
+		if isRegularInflection(formInfos) {
+			lemma := formInfos[0].LemmaText
+			mapping[surface] = lemma
+			termsToQuery = append(termsToQuery, lemma)
+		} else {
+			// No inheritance mapping for lemmas or irregular forms
+			mapping[surface] = surface
 		}
 	}
 
-	return deduplicateStrings(termsToQuery), surfaceToLemmas, nil
+	return deduplicateStrings(termsToQuery), mapping, nil
+}
+
+// isRegularInflection checks if the form info indicates a simple regular inflection.
+func isRegularInflection(infos []*repository.LexemeFormInfo) bool {
+	if len(infos) != 1 {
+		return false
+	}
+	info := infos[0]
+	return !info.IsIrregular &&
+		info.FormType != "LEMMA" &&
+		info.FormType != "" &&
+		!strings.EqualFold(info.FormText, info.LemmaText)
 }
 
 // mergeContexts appends new contexts to existing ones, avoiding duplicates based on sentence text.
@@ -390,119 +384,4 @@ func deduplicateStrings(items []string) []string {
 	}
 
 	return result
-}
-
-// collectPossibleStorageTerms gathers all candidate terms that might match the surface form.
-// Returns both original case and lowercase variants to support both case-sensitive and
-// case-insensitive matching. Database queries use LOWER(term) IN (...) for case-insensitive
-// lookups, while matchedTerms population requires exact case for case-sensitive words.
-//
-// The function always includes the surface term itself plus all derived lemmas, ensuring
-// maximum recall even when lexeme data quality varies.
-//
-// Note: Empty/whitespace-only surfaces should be filtered out before calling this function.
-// If called with empty surface, returns empty slice (not nil) for consistency.
-func collectPossibleStorageTerms(surface string, formInfos []*repository.LexemeFormInfo) []string {
-	trimmedSurface := strings.TrimSpace(surface)
-	if trimmedSurface == "" {
-		// Return empty slice instead of nil for consistent handling
-		return []string{}
-	}
-
-	candidates := make([]string, 0, len(formInfos)*2+2)
-	seen := make(map[string]struct{}, len(formInfos)*2+2)
-
-	// Include both original case (for case-sensitive matching) and lowercase (for queries)
-	// This ensures that case-sensitive words like "Sunday" can be matched correctly
-	candidates = appendUniqueCasePreserving(candidates, seen, trimmedSurface)
-
-	for _, info := range formInfos {
-		if info == nil || isSelfReferencingLemma(info) {
-			continue
-		}
-
-		candidate := determineStorageTerm(info)
-		candidates = appendUniqueCasePreserving(candidates, seen, candidate)
-	}
-
-	return candidates
-}
-
-// appendUniqueCasePreserving preserves the original case of terms for proper matching.
-// Database queries use LOWER(term) IN (...), so case doesn't affect query results.
-// Deduplication is case-insensitive (e.g., "Root" and "root" are considered duplicates).
-func appendUniqueCasePreserving(dst []string, seen map[string]struct{}, value string) []string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return dst
-	}
-
-	lower := strings.ToLower(trimmed)
-
-	// Check if we've already seen this term (case-insensitive)
-	if _, exists := seen[lower]; exists {
-		return dst
-	}
-
-	seen[lower] = struct{}{}
-
-	// Add original case only - database uses LOWER() for queries
-	dst = append(dst, trimmed)
-
-	return dst
-}
-
-func isSelfReferencingLemma(info *repository.LexemeFormInfo) bool {
-	if info == nil {
-		return false
-	}
-	if info.FormType != "LEMMA" {
-		return false
-	}
-	// Use exact match to handle case-sensitive words correctly (e.g., "Polish" vs "polish")
-	return strings.TrimSpace(info.FormText) == strings.TrimSpace(info.LemmaText)
-}
-
-func determineStorageTerm(info *repository.LexemeFormInfo) string {
-	if info == nil {
-		return ""
-	}
-
-	switch {
-	case info.IsIrregular:
-		return info.FormText
-	case info.FormType != "LEMMA" && info.FormType != "":
-		return info.LemmaText
-	default:
-		return info.FormText
-	}
-}
-
-// capitalize returns a string with the first letter capitalized and the rest lowercase
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	runes := []rune(s)
-	if len(runes) == 0 {
-		return s
-	}
-	result := strings.ToUpper(string(runes[0]))
-	if len(runes) > 1 {
-		result += strings.ToLower(string(runes[1:]))
-	}
-	return result
-}
-
-// isCaseSensitiveWord checks if any of the word's case variants contains a proper noun
-// indicating that the word should be matched case-sensitively (e.g., polish vs Polish)
-func isCaseSensitiveWord(formInfosMap map[string][]*repository.LexemeFormInfo) bool {
-	for _, formInfos := range formInfosMap {
-		for _, info := range formInfos {
-			if strings.Contains(strings.ToLower(info.Pos), "proper") {
-				return true
-			}
-		}
-	}
-	return false
 }

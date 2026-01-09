@@ -26,9 +26,9 @@ func (LearnedWord) Fields() []ent.Field {
 		field.String("term").
 			NotEmpty().
 			Comment("The term stored: lemma for regular forms, or the term itself for irregular forms"),
-		field.Bool("case_sensitive").
-			Default(false).
-			Comment("Whether this word requires case-sensitive matching (e.g., polish vs Polish)"),
+		field.String("normal").
+			Default("").
+			Comment("Normalized lowercase form of term for case-insensitive querying"),
 		field.String("language").Default(entity.LanguageEnglish.CodeOrDefault()),
 		field.JSON("tags", []string{}).
 			Default([]string{}).
@@ -74,8 +74,10 @@ func (LearnedWord) Edges() []ent.Edge {
 
 func (LearnedWord) Indexes() []ent.Index {
 	return []ent.Index{
-		// Primary business key: user_id + term + language
+		// Primary business key: user_id + term + language (case-sensitive)
 		index.Fields("user_id", "term", "language").Unique(),
+		// Case-insensitive querying: user_id + normal + language
+		index.Fields("user_id", "normal", "language"),
 		// 优化复习查询：查找需要复习的词条
 		index.Fields("user_id", "review_next_review_at"),
 	}

@@ -91,6 +91,7 @@ func (s *LearningServiceServer) ListLearnedWords(ctx context.Context, req *conne
 
 	query.UserID = auth.MustGetUserID(ctx)
 	query.Pagination = convertPagination(req.Msg.GetPagination())
+	query.AutoInheritMastery = req.Msg.GetAutoInheritMastery()
 	items, total, err := s.uc.ListLearnedWords(ctx, &query)
 	if err != nil {
 		return nil, err

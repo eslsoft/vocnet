@@ -34,7 +34,7 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 	builder := r.client.LearnedWord.Create().
 		SetUserID(word.UserID).
 		SetTerm(strings.TrimSpace(word.Term)).
-		SetCaseSensitive(word.CaseSensitive).
+		SetNormal(word.Normal).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, word.Tags...)).
 		SetNotes(word.Notes).
@@ -71,7 +71,7 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 	mutation := r.client.LearnedWord.UpdateOneID(word.ID).
 		Where(entlearnedword.UserIDEQ(word.UserID)).
 		SetTerm(strings.TrimSpace(word.Term)).
-		SetCaseSensitive(word.CaseSensitive).
+		SetNormal(word.Normal).
 		SetLanguage(languageCode).
 		SetTags(append([]string{}, word.Tags...)).
 		SetNotes(word.Notes).
@@ -131,21 +131,46 @@ func (r *LearnedWordRepository) FindByTerm(ctx context.Context, userID uuid.UUID
 		return nil, nil
 	}
 
+	trimmedTerm := strings.TrimSpace(term)
+	normalTerm := strings.ToLower(trimmedTerm)
 	languageCode := entity.NormalizeLanguage(language).Code()
-	rec, err := r.client.LearnedWord.Query().
+
+	// Query by normal field (may return multiple rows)
+	rows, err := r.client.LearnedWord.Query().
 		Where(
 			entlearnedword.UserIDEQ(userID),
-			entlearnedword.TermEQ(strings.TrimSpace(term)),
+			entlearnedword.NormalEQ(normalTerm),
 			entlearnedword.LanguageEQ(languageCode),
 		).
-		First(ctx)
+		All(ctx)
 	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("find user word: %w", err)
 	}
-	return mapEntLearnedWord(rec), nil
+
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	// Exact match takes priority
+	for _, row := range rows {
+		if row.Term == trimmedTerm {
+			return mapEntLearnedWord(row), nil
+		}
+	}
+
+	// No exact match, return the one with highest mastery
+	best := rows[0]
+	for _, row := range rows[1:] {
+		if row.MasteryOverall > best.MasteryOverall {
+			best = row
+		} else if row.MasteryOverall == best.MasteryOverall &&
+			row.ReviewLastReviewAt != nil && best.ReviewLastReviewAt != nil &&
+			row.ReviewLastReviewAt.After(*best.ReviewLastReviewAt) {
+			best = row
+		}
+	}
+
+	return mapEntLearnedWord(best), nil
 }
 
 func (r *LearnedWordRepository) List(ctx context.Context, query *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
@@ -157,16 +182,18 @@ func (r *LearnedWordRepository) List(ctx context.Context, query *repository.List
 
 	// Apply filters from query parameters
 	if query.Keyword != "" {
-		qbuilder.Where(entlearnedword.TermContainsFold(query.Keyword))
+		keyword := strings.ToLower(strings.TrimSpace(query.Keyword))
+		qbuilder.Where(entlearnedword.NormalContains(keyword))
 	}
 	if query.Language != "" {
 		qbuilder.Where(entlearnedword.LanguageEQ(query.Language))
 	}
-	if surfaces := uniqueFolded(query.SurfaceTerms); len(surfaces) > 0 {
-		// Use LOWER(term) IN (...) for case-insensitive matching
-		qbuilder.Where(func(s *sql.Selector) {
-			s.Where(sql.In(sql.Lower(s.C(entlearnedword.FieldTerm)), stringsToInterfaces(surfaces)...))
-		})
+	if len(query.SurfaceTerms) > 0 {
+		lowerTerms := make([]string, 0, len(query.SurfaceTerms))
+		for _, term := range query.SurfaceTerms {
+			lowerTerms = append(lowerTerms, strings.ToLower(strings.TrimSpace(term)))
+		}
+		qbuilder.Where(entlearnedword.NormalIn(lowerTerms...))
 	}
 	if tags := uniqueFolded(query.Tags); len(tags) > 0 {
 		qbuilder.Where(func(s *sql.Selector) {
@@ -230,33 +257,82 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 		return entity.WordbookStats{}, nil
 	}
 
-	// Use exact deduplication to ensure we match exactly what is in the wordbook.
+	// Use exact deduplication for total count to match wordbook contents
 	uniqueTerms := unique(terms)
 	if len(uniqueTerms) == 0 {
 		return entity.WordbookStats{}, nil
 	}
 
+	// Build term map: normal -> original term
+	lowerTerms := make([]string, 0, len(uniqueTerms))
+	termMap := make(map[string]string)
+	for _, term := range uniqueTerms {
+		trimmed := strings.TrimSpace(term)
+		lower := strings.ToLower(trimmed)
+		lowerTerms = append(lowerTerms, lower)
+		termMap[lower] = trimmed
+	}
+
+	// Query by normal field
 	rows, err := r.client.LearnedWord.Query().
 		Where(
 			entlearnedword.UserIDEQ(userID),
-			entlearnedword.TermIn(uniqueTerms...),
+			entlearnedword.NormalIn(lowerTerms...),
 		).
-		Select(entlearnedword.FieldMasteryOverall, entlearnedword.FieldReviewNextReviewAt).
+		Select(entlearnedword.FieldTerm, entlearnedword.FieldNormal,
+			entlearnedword.FieldMasteryOverall, entlearnedword.FieldReviewNextReviewAt).
 		All(ctx)
 	if err != nil {
 		return entity.WordbookStats{}, fmt.Errorf("aggregate wordbook stats: %w", err)
 	}
 
-	stats := entity.WordbookStats{TotalWords: safeconv.IntToInt32(len(uniqueTerms))}
+	// Group by normal, apply exact match rule
+	grouped := make(map[string][]*entdb.LearnedWord)
 	for _, row := range rows {
+		grouped[row.Normal] = append(grouped[row.Normal], row)
+	}
+
+	// Build lookup map: normal -> best record
+	learnedMap := make(map[string]*entdb.LearnedWord)
+	for normal, records := range grouped {
+		originalTerm := termMap[normal]
+
+		// Exact match takes priority
+		var best *entdb.LearnedWord
+		for _, rec := range records {
+			if rec.Term == originalTerm {
+				best = rec
+				break
+			}
+		}
+
+		// No exact match, select by highest mastery
+		if best == nil {
+			best = records[0]
+			for _, rec := range records[1:] {
+				if rec.MasteryOverall > best.MasteryOverall {
+					best = rec
+				}
+			}
+		}
+
+		learnedMap[normal] = best
+	}
+
+	stats := entity.WordbookStats{TotalWords: safeconv.IntToInt32(len(uniqueTerms))}
+
+	for _, term := range uniqueTerms {
+		trimmed := strings.TrimSpace(term)
+		row, exists := learnedMap[strings.ToLower(trimmed)]
+		if !exists {
+			stats.UnknownWords++
+			continue
+		}
+
 		if row.ReviewNextReviewAt != nil && entity.IsReviewDue(*row.ReviewNextReviewAt, endOfToday) {
 			stats.ReviewDue++
 		}
 
-		// Use new overall score thresholds (0-500 scale):
-		// - MASTERED: >= 418
-		// - LEARNING (RECOGNIZED/UNDERSTOOD/PROFICIENT): >= 126 and < 418
-		// - UNKNOWN: < 126
 		switch {
 		case row.MasteryOverall >= 418:
 			stats.MasteredWords++
@@ -266,10 +342,7 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 			stats.UnknownWords++
 		}
 	}
-	// Words without learned_word records are still unknown
-	if missing := stats.TotalWords - safeconv.IntToInt32(len(rows)); missing > 0 {
-		stats.UnknownWords += missing
-	}
+
 	return stats, nil
 }
 
@@ -327,11 +400,11 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 	}
 
 	out := &entity.LearnedWord{
-		ID:            rec.ID,
-		UserID:        rec.UserID,
-		Term:          rec.Term,
-		CaseSensitive: rec.CaseSensitive,
-		Language:      entity.ParseLanguage(rec.Language),
+		ID:       rec.ID,
+		UserID:   rec.UserID,
+		Term:     rec.Term,
+		Normal:   rec.Normal,
+		Language: entity.ParseLanguage(rec.Language),
 		Mastery: entity.MasteryBreakdown{
 			Listen:    rec.MasteryListen,
 			Read:      rec.MasteryRead,
@@ -385,7 +458,10 @@ func (r *LearnedWordRepository) GetByReviewPlan(ctx context.Context, userID uuid
 	allTerms := make(map[string]struct{})
 	for _, wb := range wordbooks {
 		for _, term := range wb.Terms {
-			allTerms[term] = struct{}{}
+			trimmed := strings.TrimSpace(term)
+			if trimmed != "" {
+				allTerms[trimmed] = struct{}{}
+			}
 		}
 	}
 
@@ -399,10 +475,13 @@ func (r *LearnedWordRepository) GetByReviewPlan(ctx context.Context, userID uuid
 	}
 
 	// Step 3: Query LearnedWords
+	uniqueTerms := uniqueFolded(termsSlice)
 	qb := r.client.LearnedWord.Query().
 		Where(
 			entlearnedword.UserIDEQ(userID),
-			entlearnedword.TermIn(termsSlice...),
+			func(s *sql.Selector) {
+				s.Where(sql.In(sql.Lower(s.C(entlearnedword.FieldTerm)), stringsToInterfaces(uniqueTerms)...))
+			},
 		)
 
 	if dueOnly {

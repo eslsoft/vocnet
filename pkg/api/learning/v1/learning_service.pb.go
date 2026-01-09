@@ -152,12 +152,16 @@ func (x *UpdateMasteryRequest) GetNotes() []string {
 
 // ListLearnedWordsRequest request with comprehensive filtering.
 type ListLearnedWordsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pagination    *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
-	Filter        string                 `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	OrderBy       string                 `protobuf:"bytes,3,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Pagination *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Filter     string                 `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	OrderBy    string                 `protobuf:"bytes,3,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	// auto_inherit_mastery controls whether inflected forms (e.g., "running")
+	// inherit mastery from their lemma (e.g., "run") when the inflection isn't
+	// directly stored. Default: false (disabled).
+	AutoInheritMastery bool `protobuf:"varint,4,opt,name=auto_inherit_mastery,json=autoInheritMastery,proto3" json:"auto_inherit_mastery,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ListLearnedWordsRequest) Reset() {
@@ -209,6 +213,13 @@ func (x *ListLearnedWordsRequest) GetOrderBy() string {
 		return x.OrderBy
 	}
 	return ""
+}
+
+func (x *ListLearnedWordsRequest) GetAutoInheritMastery() bool {
+	if x != nil {
+		return x.AutoInheritMastery
+	}
+	return false
 }
 
 type ListLearnedWordsResponse struct {
@@ -274,13 +285,14 @@ const file_learning_v1_learning_service_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x02id\x12.\n" +
 	"\rmastery_level\x18\x02 \x01(\x05B\t\xfaB\x06\x1a\x04\x18\x05(\x00R\fmasteryLevel\x12\x12\n" +
 	"\x04tags\x18\x03 \x03(\tR\x04tags\x12\x14\n" +
-	"\x05notes\x18\x04 \x03(\tR\x05notes\"\x8a\x01\n" +
+	"\x05notes\x18\x04 \x03(\tR\x05notes\"\xbc\x01\n" +
 	"\x17ListLearnedWordsRequest\x12<\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
 	"pagination\x12\x16\n" +
 	"\x06filter\x18\x02 \x01(\tR\x06filter\x12\x19\n" +
-	"\border_by\x18\x03 \x01(\tR\aorderBy\"\x89\x01\n" +
+	"\border_by\x18\x03 \x01(\tR\aorderBy\x120\n" +
+	"\x14auto_inherit_mastery\x18\x04 \x01(\bR\x12autoInheritMastery\"\x89\x01\n" +
 	"\x18ListLearnedWordsResponse\x12=\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +

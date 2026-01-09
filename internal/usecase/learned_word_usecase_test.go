@@ -31,9 +31,10 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		{
 			name: "sets queried term on lemma hit",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"learning"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"learning"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"learning": {
@@ -50,6 +51,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 					ID:       1,
 					UserID:   userID,
 					Term:     "learn",
+					Normal:   "learn",
 					Language: entity.LanguageEnglish,
 					Mastery: entity.MasteryBreakdown{
 						Overall: 300,
@@ -70,9 +72,10 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		{
 			name: "handles multiple query terms",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"learning", "went", "apples"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"learning", "went", "apples"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"learning": {
@@ -86,9 +89,9 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
-				{ID: 2, UserID: userID, Term: "went", Language: entity.LanguageEnglish},
-				{ID: 3, UserID: userID, Term: "apple", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "learn", Normal: "learn", Language: entity.LanguageEnglish},
+				{ID: 2, UserID: userID, Term: "went", Normal: "went", Language: entity.LanguageEnglish},
+				{ID: 3, UserID: userID, Term: "apple", Normal: "apple", Language: entity.LanguageEnglish},
 			},
 			total: 3,
 			expectedMatches: map[string][]string{
@@ -106,7 +109,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 			},
 			skipLexeme: true,
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "test", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "test", Normal: "test", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
@@ -122,9 +125,10 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		{
 			name: "unifies surfaces mapping to same storage term",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"learning", "learned"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"learning", "learned"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"learning": {
@@ -135,7 +139,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "learn", Normal: "learn", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
@@ -151,9 +155,10 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		{
 			name: "prefers exact lemma match but keeps inflection",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"learn", "learning"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"learn", "learning"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"learn": {
@@ -164,7 +169,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "learn", Normal: "learn", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
@@ -178,11 +183,12 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 			},
 		},
 		{
-			name: "ambiguous surface maps to multiple storage terms",
+			name: "ambiguous surface stays as-is",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"learning"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"learning"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"learning": {
@@ -191,27 +197,26 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "learn", Language: entity.LanguageEnglish},
-				{ID: 2, UserID: userID, Term: "learning", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "learning", Normal: "learning", Language: entity.LanguageEnglish},
 			},
-			total: 2,
+			total: 1,
 			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
 				t.Helper()
-				if !containsAll(q.SurfaceTerms, []string{"learn", "learning"}) {
-					t.Fatalf("expected ambiguous term to expand to learn and learning, got %v", q.SurfaceTerms)
+				if !containsAll(q.SurfaceTerms, []string{"learning"}) {
+					t.Fatalf("expected ambiguous term to stay as-is, got %v", q.SurfaceTerms)
 				}
 			},
 			expectedMatches: map[string][]string{
-				"learn":    {"learning"},
 				"learning": {"learning"},
 			},
 		},
 		{
 			name: "keeps irregular forms unchanged",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"went"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"went"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"went": {
@@ -219,7 +224,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "went", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "went", Normal: "went", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
@@ -235,13 +240,14 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		{
 			name: "falls back to original term when lexeme lookup fails",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"unknownword"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"unknownword"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "unknownword", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "unknownword", Normal: "unknownword", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
@@ -257,9 +263,10 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		{
 			name: "aggregates matched terms across overlapping queries",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"apple", "apples"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"apple", "apples"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"apple": {
@@ -270,7 +277,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "apple", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "apple", Normal: "apple", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			expectedMatches: map[string][]string{
@@ -280,9 +287,10 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 		{
 			name: "regression coverage for matched terms",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"governing", "hired", "Games", "sales", "searching", "does", "goes", "Roots"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"governing", "hired", "Games", "sales", "searching"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"governing": {{FormText: "governing", FormType: "PRESENT_PARTICIPLE", LemmaText: "govern", IsIrregular: false}},
@@ -290,47 +298,30 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				"Games":     {{FormText: "Games", FormType: "PLURAL", LemmaText: "game", IsIrregular: false}},
 				"sales":     {{FormText: "sales", FormType: "PLURAL", LemmaText: "sale", IsIrregular: false}},
 				"searching": {{FormText: "searching", FormType: "PRESENT_PARTICIPLE", LemmaText: "search", IsIrregular: false}},
-				"does": {
-					{FormText: "does", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "do", IsIrregular: false},
-					{FormText: "does", FormType: "PLURAL", LemmaText: "doe", IsIrregular: false},
-				},
-				"goes": {
-					{FormText: "goes", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "go", IsIrregular: false},
-					{FormText: "goes", FormType: "PLURAL", LemmaText: "goe", IsIrregular: false},
-				},
-				"Roots": {
-					{FormText: "Roots", FormType: "LEMMA", LemmaText: "roots", IsIrregular: false},
-					{FormText: "Roots", FormType: "PLURAL", LemmaText: "root", IsIrregular: false},
-				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "govern", Language: entity.LanguageEnglish},
-				{ID: 2, UserID: userID, Term: "hire", Language: entity.LanguageEnglish},
-				{ID: 3, UserID: userID, Term: "game", Language: entity.LanguageEnglish},
-				{ID: 4, UserID: userID, Term: "sale", Language: entity.LanguageEnglish},
-				{ID: 5, UserID: userID, Term: "search", Language: entity.LanguageEnglish},
-				{ID: 6, UserID: userID, Term: "do", Language: entity.LanguageEnglish},
-				{ID: 7, UserID: userID, Term: "go", Language: entity.LanguageEnglish},
-				{ID: 8, UserID: userID, Term: "root", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "govern", Normal: "govern", Language: entity.LanguageEnglish},
+				{ID: 2, UserID: userID, Term: "hire", Normal: "hire", Language: entity.LanguageEnglish},
+				{ID: 3, UserID: userID, Term: "game", Normal: "game", Language: entity.LanguageEnglish},
+				{ID: 4, UserID: userID, Term: "sale", Normal: "sale", Language: entity.LanguageEnglish},
+				{ID: 5, UserID: userID, Term: "search", Normal: "search", Language: entity.LanguageEnglish},
 			},
-			total: 8,
+			total: 5,
 			expectedMatches: map[string][]string{
 				"govern": {"governing"},
 				"hire":   {"hired"},
 				"game":   {"Games"},
 				"sale":   {"sales"},
 				"search": {"searching"},
-				"do":     {"does"},
-				"go":     {"goes"},
-				"root":   {"Roots"},
 			},
 		},
 		{
 			name: "preserves queried capitalization in matched terms",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"Games"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"Games"},
+				AutoInheritMastery: true,
 			},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"Games": {
@@ -338,7 +329,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 				},
 			},
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "game", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "game", Normal: "game", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			expectedMatches: map[string][]string{
@@ -346,113 +337,27 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 			},
 		},
 		{
-			name: "queries every lemma candidate for ambiguous forms",
+			name: "disables inheritance when AutoInheritMastery is false",
 			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"does"},
+				UserID:             userID,
+				Language:           "en",
+				SurfaceTerms:       []string{"learning", "learn"},
+				AutoInheritMastery: false,
 			},
-			lexemeResp: map[string][]*repository.LexemeFormInfo{
-				"does": {
-					{FormText: "does", FormType: "THIRD_PERSON_SINGULAR", LemmaText: "do", IsIrregular: false},
-					{FormText: "does", FormType: "PLURAL", LemmaText: "doe", IsIrregular: false},
-				},
-			},
+			skipLexeme: true, // Should not call lexeme lookup when inheritance is disabled
 			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "do", Language: entity.LanguageEnglish},
+				{ID: 1, UserID: userID, Term: "learning", Normal: "learning", Language: entity.LanguageEnglish},
 			},
 			total: 1,
 			assertQuery: func(t *testing.T, q *repository.ListLearnedWordQuery) {
 				t.Helper()
-				if !containsAll(q.SurfaceTerms, []string{"do", "doe"}) {
-					t.Fatalf("expected query with lemma candidates 'do' and 'doe', got %v", q.SurfaceTerms)
+				// SurfaceTerms should remain unchanged (no lemma mapping)
+				if !equalStringSlices(q.SurfaceTerms, []string{"learning", "learn"}) {
+					t.Fatalf("expected surface terms to remain unchanged, got %v", q.SurfaceTerms)
 				}
 			},
 			expectedMatches: map[string][]string{
-				"do": {"does"},
-			},
-		},
-		{
-			name: "case-sensitive word matches only with correct case",
-			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"Sunday"},
-			},
-			lexemeResp: map[string][]*repository.LexemeFormInfo{
-				"Sunday": {
-					{FormText: "Sunday", FormType: "LEMMA", LemmaText: "Sunday", IsIrregular: false, Pos: "proper noun"},
-				},
-			},
-			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "Sunday", Language: entity.LanguageEnglish, CaseSensitive: true},
-			},
-			total: 1,
-			expectedMatches: map[string][]string{
-				"Sunday": {"Sunday"},
-			},
-		},
-		{
-			name: "case-sensitive word does not match with wrong case",
-			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"sunday"}, // lowercase query
-			},
-			lexemeResp: map[string][]*repository.LexemeFormInfo{
-				"sunday": {},
-			},
-			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "Sunday", Language: entity.LanguageEnglish, CaseSensitive: true},
-			},
-			total: 1,
-			expectedMatches: map[string][]string{
-				"Sunday": {}, // Should not match "sunday" query
-			},
-		},
-		{
-			name: "case-insensitive word matches regardless of case",
-			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"APPLE"}, // uppercase query
-			},
-			lexemeResp: map[string][]*repository.LexemeFormInfo{
-				"APPLE": {
-					{FormText: "APPLE", FormType: "LEMMA", LemmaText: "apple", IsIrregular: false},
-				},
-			},
-			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "apple", Language: entity.LanguageEnglish, CaseSensitive: false},
-			},
-			total: 1,
-			expectedMatches: map[string][]string{
-				"apple": {"APPLE"}, // Should match despite different case
-			},
-		},
-		{
-			name: "distinguishes between Polish and polish",
-			query: repository.ListLearnedWordQuery{
-				UserID:       userID,
-				Language:     "en",
-				SurfaceTerms: []string{"Polish", "polish"},
-			},
-			lexemeResp: map[string][]*repository.LexemeFormInfo{
-				"Polish": {
-					{FormText: "Polish", FormType: "LEMMA", LemmaText: "Polish", IsIrregular: false, Pos: "proper noun"},
-				},
-				"polish": {
-					{FormText: "polish", FormType: "LEMMA", LemmaText: "polish", IsIrregular: false, Pos: "verb"},
-				},
-			},
-			repoResults: []entity.LearnedWord{
-				{ID: 1, UserID: userID, Term: "Polish", Language: entity.LanguageEnglish, CaseSensitive: true},
-				{ID: 2, UserID: userID, Term: "polish", Language: entity.LanguageEnglish, CaseSensitive: false},
-			},
-			total: 2,
-			expectedMatches: map[string][]string{
-				"Polish": {"Polish"},           // case-sensitive matches only "Polish"
-				"polish": {"Polish", "polish"}, // case-insensitive matches both variants
+				"learning": {"learning"},
 			},
 		},
 	}
@@ -498,7 +403,7 @@ func TestLearnedWordUsecase_ListLearnedWords(t *testing.T) {
 	}
 }
 
-func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.T) {
+func TestLearnedWordUsecase_MapSurfaceTermsToStorageTerms(t *testing.T) {
 	t.Helper()
 
 	type testCase struct {
@@ -506,40 +411,38 @@ func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.
 		surfaceTerms    []string
 		lexemeResp      map[string][]*repository.LexemeFormInfo
 		expectedTerms   []string
-		expectedMapping map[string][]string
+		expectedMapping map[string]string
 	}
 
 	cases := []testCase{
 		{
-			name:         "includes surface term alongside lemma candidates",
+			name:         "includes surface term alongside lemma candidate",
 			surfaceTerms: []string{"axes"},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"axes": {
 					{FormText: "axes", FormType: "PLURAL", LemmaText: "axis", IsIrregular: false},
-					{FormText: "axes", FormType: "PLURAL", LemmaText: "axe", IsIrregular: false},
 				},
 			},
-			expectedTerms: []string{"axes", "axis", "axe"},
-			expectedMapping: map[string][]string{
-				"axes": {"axes", "axis", "axe"},
+			expectedTerms: []string{"axes", "axis"},
+			expectedMapping: map[string]string{
+				"axes": "axis",
 			},
 		},
 		{
-			name:         "skips self referencing lemma entries",
-			surfaceTerms: []string{"Roots"},
+			name:         "lemma mapping points to self for non-inflections",
+			surfaceTerms: []string{"roots"},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
-				"Roots": {
-					{FormText: "Roots", FormType: "LEMMA", LemmaText: "roots", IsIrregular: false},
-					{FormText: "Roots", FormType: "PLURAL", LemmaText: "root", IsIrregular: false},
+				"roots": {
+					{FormText: "roots", FormType: "LEMMA", LemmaText: "roots", IsIrregular: false},
 				},
 			},
-			expectedTerms: []string{"Roots", "root"},
-			expectedMapping: map[string][]string{
-				"Roots": {"Roots", "root"},
+			expectedTerms: []string{"roots"},
+			expectedMapping: map[string]string{
+				"roots": "roots",
 			},
 		},
 		{
-			name:         "irregular form stays as-is",
+			name:         "irregular form does not inherit",
 			surfaceTerms: []string{"went"},
 			lexemeResp: map[string][]*repository.LexemeFormInfo{
 				"went": {
@@ -547,8 +450,17 @@ func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.
 				},
 			},
 			expectedTerms: []string{"went"},
-			expectedMapping: map[string][]string{
-				"went": {"went"},
+			expectedMapping: map[string]string{
+				"went": "went",
+			},
+		},
+		{
+			name:         "unrecognized word stays as-is",
+			surfaceTerms: []string{"foobar"},
+			lexemeResp:    map[string][]*repository.LexemeFormInfo{},
+			expectedTerms: []string{"foobar"},
+			expectedMapping: map[string]string{
+				"foobar": "foobar",
 			},
 		},
 	}
@@ -570,7 +482,7 @@ func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.
 
 			terms, mapping, err := uc.MapSurfaceTermsToStorageTerms(ctx, tc.surfaceTerms, entity.LanguageEnglish)
 			if err != nil {
-				t.Fatalf("MapSurfaceTermsToStorageTermsWithMapping returned error: %v", err)
+				t.Fatalf("MapSurfaceTermsToStorageTerms returned error: %v", err)
 			}
 
 			if !equalStringSlices(terms, tc.expectedTerms) {
@@ -578,8 +490,8 @@ func TestLearnedWordUsecase_MapSurfaceTermsToStorageTermsWithMapping(t *testing.
 			}
 
 			for surface, expected := range tc.expectedMapping {
-				if !equalStringSlices(mapping[surface], expected) {
-					t.Fatalf("surface %s: expected mapping %v, got %v", surface, expected, mapping[surface])
+				if mapping[surface] != expected {
+					t.Fatalf("surface %s: expected mapping %s, got %s", surface, expected, mapping[surface])
 				}
 			}
 		})

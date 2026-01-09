@@ -12,11 +12,11 @@ import (
 // This is a word-level learning record (not lexeme-level), which simplifies
 // the user experience for the majority of cases where multi-sense tracking is not needed.
 type LearnedWord struct {
-	ID            int64
-	UserID        uuid.UUID
-	Term          string // The term stored: lemma for regular forms, or the term itself for irregular forms
-	CaseSensitive bool   // Whether this word requires case-sensitive matching (e.g., polish vs Polish)
-	Language      Language
+	ID       int64
+	UserID   uuid.UUID
+	Term     string // The term stored: lemma for regular forms, or the term itself for irregular forms
+	Normal   string // Normalized lowercase form of term for case-insensitive querying
+	Language Language
 	Tags          []string
 	Notes         []string
 	Relations     []LearnedWordRelation
@@ -189,6 +189,7 @@ type LearnedWordContext struct {
 // Normalize ensures defaults & constraints before persistence.
 func (uw *LearnedWord) Normalize(now time.Time) {
 	uw.Term = strings.TrimSpace(uw.Term)
+	uw.Normal = strings.ToLower(uw.Term) // Automatically fill normal field
 	if uw.CreatedAt.IsZero() {
 		uw.CreatedAt = now
 	}
