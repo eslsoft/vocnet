@@ -17,6 +17,33 @@
 3. **逻辑集中化**:继承逻辑集中在usecase层维护,避免重复实现
 4. **性能优先**:批量查询保持高性能(目标2次SQL查询)
 
+## 实现状态
+
+### ✅ 已实现
+
+1. **CollectWord (收藏单词)**
+   - 收藏规则变形时自动创建lemma记录
+   - 位置: `internal/usecase/learned_word_usecase.go:45-131`
+
+2. **ListLearnedWords (列表查询)**
+   - 支持掌握度继承机制
+   - 通过 `auto_inherit_mastery` 参数控制 (默认 false)
+   - 位置: `internal/usecase/learned_word_usecase.go:177-191`
+
+### ❌ 未实现
+
+以下功能文档曾提及支持继承,但当前仅实现大小写不敏感查询,未实现掌握度继承:
+
+1. **StatsByTerms (单词本统计)**
+   - 位置: `internal/adapter/repository/learned_word.go:254`
+   - 调用方: 单词本统计、复习计划统计
+
+2. **GetByReviewPlan (复习计划单词获取)**
+   - 位置: `internal/adapter/repository/learned_word.go:439`
+   - 调用方: 复习计划闪卡生成
+
+**影响**: 单词本和复习计划功能暂不支持变形词继承lemma掌握度。如单词本包含"runs"但用户只学习了"run",统计时不会显示"runs"已学习。
+
 ## 存储策略
 
 ### 收藏行为与存储
@@ -65,11 +92,11 @@
 查询"runs"    → 返回 mastery=5 (继承自"run")
 ```
 
-### 查询示例
+### 查询示例 (ListLearnedWords with auto_inherit_mastery=true)
 
 **场景**:数据库存储了`["run" (mastery=5), "running" (mastery=3), "went" (mastery=2)]`
 
-**单词本查询** `["run", "running", "runs", "went", "go"]`:
+**查询请求** `["run", "running", "runs", "went", "go"]`:
 
 | 查询词 | 继承映射 | 数据库匹配 | 返回结果 |
 |-------|---------|-----------|---------|
@@ -140,7 +167,7 @@
 ┌─────────────────────────────────────────┐
 │  Repository Layer                       │
 │  - FindByTerm: 精确匹配优先            │
-│  - StatsByTerms: 批量查询统计          │
+│  - List: 根据映射后的terms查询         │
 │  - 使用normal字段做case-insensitive查询│
 └─────────────────────────────────────────┘
 ```
@@ -155,9 +182,7 @@
 3. 返回去重后的存储词列表
 
 **应用场景**:
-- ListLearnedWords (列表查询)
-- StatsByTerms (单词本统计)
-- GetByReviewPlan (复习计划)
+- ListLearnedWords (列表查询) - **唯一应用场景,通过 auto_inherit_mastery 参数控制**
 
 ### 数据流示例
 
@@ -215,17 +240,26 @@ Usecase层应用映射
 
 ### API控制
 
-查询API提供`auto_inherit_mastery`参数,允许客户端选择是否启用继承:
+**唯一支持继承的API**: `ListLearnedWords`
+
+该API提供`auto_inherit_mastery`参数,允许客户端选择是否启用掌握度继承:
 
 ```protobuf
 message ListLearnedWordsRequest {
-  bool auto_inherit_mastery = 5;  // 默认false
+  bool auto_inherit_mastery = 4;  // 默认false
 }
 ```
 
-**使用场景**:
-- `true`: 单词本统计、复习计划(需要继承)
-- `false`: 精确查询、数据导出(不需要继承)
+**参数说明**:
+- `true`: 启用掌握度继承,规则变形可以继承lemma的掌握度
+- `false` (默认): 禁用继承,仅精确匹配查询
+
+**适用场景**:
+- 单词本应用场景(显示学习进度): 设置为 `true`
+- 精确查询、数据导出: 保持 `false` (默认值)
+
+**限制**:
+- 其他API(如单词本统计、复习计划获取)暂不支持掌握度继承,仅使用大小写不敏感查询
 
 ### 行为差异
 
@@ -242,7 +276,7 @@ message ListLearnedWordsRequest {
 | **逻辑集中** | 继承逻辑只在usecase层维护,易于修改 |
 | **性能高效** | 2次SQL查询,去重后查询词数大幅减少 |
 | **灵活性高** | 支持精确收藏(override lemma) |
-| **一致性强** | 所有查询共用同一套继承逻辑 |
+| **可控性强** | 通过参数控制是否启用继承,默认关闭 |
 | **向后兼容** | 无需数据迁移 |
 
 ## 注意事项
@@ -287,18 +321,38 @@ message ListLearnedWordsRequest {
 - 不规则变形不创建lemma
 
 **查询测试**:
-- 继承映射正确性
+- ListLearnedWords 继承映射正确性
 - 精确匹配优先
 - 不规则变形不继承
-
-**统计测试**:
-- 单词本统计正确应用继承
-- 去重后查询词数正确
+- auto_inherit_mastery 参数开关测试
 
 ### 测试文件
 
 - `internal/usecase/mastery_inheritance_test.go` - 继承机制核心测试
 - `internal/usecase/learned_word_usecase_test.go` - usecase层测试
+
+## 未来扩展
+
+如需为其他API添加掌握度继承支持,可复用现有的 `MapSurfaceTermsToStorageTerms` 方法:
+
+### 潜在扩展场景
+
+1. **StatsByTerms (单词本统计)**
+   - 在 `internal/adapter/repository/learned_word.go:254` 添加继承逻辑
+   - 调用 `MapSurfaceTermsToStorageTerms` 预处理terms
+   - 应用继承映射到统计结果
+
+2. **GetByReviewPlan (复习计划)**
+   - 在 `internal/adapter/repository/learned_word.go:439` 添加继承逻辑
+   - 同样调用 `MapSurfaceTermsToStorageTerms` 预处理
+   - 复习时能识别更多变形词
+
+### 实现建议
+
+由于 `MapSurfaceTermsToStorageTerms` 已经在 usecase 层实现,扩展时需要:
+1. 考虑是否在 repository 方法中添加继承参数
+2. 或在调用方(usecase层)预处理terms再传入repository
+3. 保持与 ListLearnedWords 的行为一致性
 
 ## 相关文档
 
