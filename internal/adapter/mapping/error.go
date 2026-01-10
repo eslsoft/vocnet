@@ -15,6 +15,8 @@ func ToPbError(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, entity.ErrInvalidLexemeText), errors.Is(err, entity.ErrInvalidLexemeID):
 		return connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, entity.ErrLexemeRequired), errors.Is(err, entity.ErrLanguageMismatch):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, entity.ErrLexemeNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, entity.ErrWordNotFound):
@@ -22,6 +24,8 @@ func ToPbError(err error) error {
 	case errors.Is(err, entity.ErrDuplicateLexeme):
 		return connect.NewError(connect.CodeAlreadyExists, err)
 	case errors.Is(err, entity.ErrDuplicateWord):
+		return connect.NewError(connect.CodeAlreadyExists, err)
+	case errors.Is(err, entity.ErrDuplicateLearnedWord):
 		return connect.NewError(connect.CodeAlreadyExists, err)
 	case errors.Is(err, entity.ErrDuplicateLearnedLexeme):
 		return connect.NewError(connect.CodeAlreadyExists, err)

@@ -224,6 +224,8 @@ func (m *LearnedWordSpec) validate(all bool) error {
 
 	// no validation rules for Term
 
+	// no validation rules for LexemeId
+
 	// no validation rules for MasteryLevel
 
 	for idx, item := range m.GetContexts() {

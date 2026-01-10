@@ -33,6 +33,7 @@ func (r *LearnedWordRepository) Create(ctx context.Context, word *entity.Learned
 	languageCode := entity.NormalizeLanguage(word.Language).Code()
 	builder := r.client.LearnedWord.Create().
 		SetUserID(word.UserID).
+		SetLexemeID(word.LexemeID).
 		SetTerm(strings.TrimSpace(word.Term)).
 		SetNormal(word.Normal).
 		SetLanguage(languageCode).
@@ -70,6 +71,7 @@ func (r *LearnedWordRepository) Update(ctx context.Context, word *entity.Learned
 	languageCode := entity.NormalizeLanguage(word.Language).Code()
 	mutation := r.client.LearnedWord.UpdateOneID(word.ID).
 		Where(entlearnedword.UserIDEQ(word.UserID)).
+		SetLexemeID(word.LexemeID).
 		SetTerm(strings.TrimSpace(word.Term)).
 		SetNormal(word.Normal).
 		SetLanguage(languageCode).
@@ -148,6 +150,27 @@ func (r *LearnedWordRepository) FindByTerm(ctx context.Context, userID uuid.UUID
 
 	best := findExactMatch(rows, trimmedTerm)
 	return mapEntLearnedWord(best), nil
+}
+
+func (r *LearnedWordRepository) FindByLexeme(ctx context.Context, userID uuid.UUID, lexemeID int64, normal string) (*entity.LearnedWord, error) {
+	if lexemeID == 0 || normal == "" {
+		return nil, nil
+	}
+
+	rec, err := r.client.LearnedWord.Query().
+		Where(
+			entlearnedword.UserIDEQ(userID),
+			entlearnedword.LexemeIDEQ(lexemeID),
+			entlearnedword.NormalEQ(normal),
+		).
+		First(ctx)
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("find user word by lexeme and normal: %w", err)
+	}
+	return mapEntLearnedWord(rec), nil
 }
 
 func (r *LearnedWordRepository) List(ctx context.Context, query *repository.ListLearnedWordQuery) ([]entity.LearnedWord, int64, error) {
@@ -315,26 +338,13 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 		}
 
 		candidates := grouped[strings.ToLower(trimmed)]
-		if len(candidates) == 0 {
+		// Use the same exact match logic as FindByTerm
+		best := findExactMatch(candidates, trimmed)
+
+		if best == nil {
+			fmt.Println(candidates, trimmed)
 			stats.UnknownWords++
 			continue
-		}
-
-		// Select best match:
-		// 1. Exact match takes priority
-		// 2. Fallback to any candidate (insensitive match)
-		var best *entdb.LearnedWord
-		for _, c := range candidates {
-			if c.Term == trimmed {
-				best = c
-				break
-			}
-		}
-
-		// If no exact match found, but we have candidates (matching Normal),
-		// just use the first one as an insensitive match.
-		if best == nil {
-			best = candidates[0]
 		}
 
 		if best.ReviewNextReviewAt != nil && entity.IsReviewDue(*best.ReviewNextReviewAt, endOfToday) {
@@ -410,6 +420,7 @@ func mapEntLearnedWord(rec *entdb.LearnedWord) *entity.LearnedWord {
 	out := &entity.LearnedWord{
 		ID:       rec.ID,
 		UserID:   rec.UserID,
+		LexemeID: rec.LexemeID,
 		Term:     rec.Term,
 		Normal:   rec.Normal,
 		Language: entity.ParseLanguage(rec.Language),

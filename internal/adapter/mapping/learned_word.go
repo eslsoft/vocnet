@@ -22,6 +22,7 @@ func ToPbLearnedWord(in *entity.LearnedWord) *learningv1.LearnedWord {
 func toPbLearnedWordSpec(in *entity.LearnedWord) *learningv1.LearnedWordSpec {
 	return &learningv1.LearnedWordSpec{
 		Term:     in.Term,
+		LexemeId: in.LexemeID,
 		Language: ToPbLanguage(in.Language),
 		Tags:     append([]string{}, in.Tags...),
 		Contexts: toPbLearnedWordContexts(in.Contexts),

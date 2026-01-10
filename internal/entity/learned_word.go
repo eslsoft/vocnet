@@ -14,6 +14,7 @@ import (
 type LearnedWord struct {
 	ID       int64
 	UserID   uuid.UUID
+	LexemeID int64
 	Term     string // The term stored: lemma for regular forms, or the term itself for irregular forms
 	Normal   string // Normalized lowercase form of term for case-insensitive querying
 	Language Language

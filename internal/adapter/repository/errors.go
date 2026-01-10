@@ -43,6 +43,8 @@ func translateDBError(err error, entityType string) error {
 				return entity.ErrDuplicateWord
 			case "lexeme":
 				return entity.ErrDuplicateLexeme
+			case "learned_word":
+				return entity.ErrDuplicateLearnedWord
 			case "learned_lexeme":
 				return entity.ErrDuplicateLearnedLexeme
 			case "wordbook":
@@ -58,6 +60,8 @@ func translateDBError(err error, entityType string) error {
 				return entity.ErrDuplicateWord
 			case "lexeme":
 				return entity.ErrDuplicateLexeme
+			case "learned_word":
+				return entity.ErrDuplicateLearnedWord
 			case "learned_lexeme":
 				return entity.ErrDuplicateLearnedLexeme
 			case "wordbook":

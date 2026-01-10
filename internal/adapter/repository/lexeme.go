@@ -201,6 +201,7 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 		}
 
 		info := &repository.LexemeFormInfo{
+			LexemeID:    lexeme.ID,
 			FormText:    form.Text,
 			FormType:    form.FormType,
 			IsIrregular: form.IsIrregular,

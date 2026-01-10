@@ -11,14 +11,13 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/mocks"
-	"github.com/eslsoft/vocnet/internal/repository"
 )
 
 func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
 	userID := uuid.New()
 	ctx := context.Background()
 
-	t.Run("auto-creates lemma for regular inflection", func(t *testing.T) {
+	t.Run("auto-creates lemma when collecting inflection", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -29,50 +28,45 @@ func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
 
 		word := &entity.LearnedWord{
 			UserID:   userID,
+			LexemeID: 100,
 			Term:     "running",
 			Language: entity.LanguageEnglish,
 		}
 		word.Mastery.InitializeFromUserMasteryLevel(3)
 
-		// Mock lexeme lookup
 		lexemeRepo.EXPECT().
-			BatchLookupFormInfo(ctx, gomock.Any(), entity.LanguageEnglish).
-			Return(map[string][]*repository.LexemeFormInfo{
-				"running": {{FormText: "running", FormType: "PRESENT_PARTICIPLE", LemmaText: "run", IsIrregular: false}},
-			}, nil)
+			GetByID(ctx, int64(100)).
+			Return(&entity.Lexeme{ID: 100, Language: entity.LanguageEnglish, Lemma: "run"}, nil)
 
-		// Mock check if lemma exists
-		repo.EXPECT().
-			FindByTerm(ctx, userID, "run", entity.LanguageEnglish).
-			Return(nil, nil)
-
-		// Mock lemma creation
-		repo.EXPECT().
-			Create(ctx, gomock.Any()).
-			DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
-				assert.Equal(t, "run", w.Term)
-				assert.Equal(t, int32(278), w.Mastery.Overall) // Level 3 normalized
-				return w, nil
-			})
-
-		// Mock check if original word exists
-		repo.EXPECT().
-			FindByTerm(ctx, userID, "running", entity.LanguageEnglish).
-			Return(nil, nil)
-
-		// Mock original word creation
-		repo.EXPECT().
-			Create(ctx, gomock.Any()).
-			DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
-				assert.Equal(t, "running", w.Term)
-				return w, nil
-			})
+		gomock.InOrder(
+			repo.EXPECT().
+				FindByLexeme(ctx, userID, int64(100), "run").
+				Return(nil, nil),
+			repo.EXPECT().
+				Create(ctx, gomock.Any()).
+				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
+					assert.Equal(t, "run", w.Term)
+					assert.Equal(t, int32(278), w.Mastery.Overall) // Level 3 normalized
+					assert.Equal(t, int64(100), w.LexemeID)
+					return w, nil
+				}),
+			repo.EXPECT().
+				FindByLexeme(ctx, userID, int64(100), "running").
+				Return(nil, nil),
+			repo.EXPECT().
+				Create(ctx, gomock.Any()).
+				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
+					assert.Equal(t, "running", w.Term)
+					assert.Equal(t, int64(100), w.LexemeID)
+					return w, nil
+				}),
+		)
 
 		_, err := uc.CollectWord(ctx, word)
 		assert.NoError(t, err)
 	})
 
-	t.Run("does not create lemma for irregular forms", func(t *testing.T) {
+	t.Run("auto-creates lemma for irregular forms too", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -82,23 +76,37 @@ func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
 
 		word := &entity.LearnedWord{
 			UserID:   userID,
+			LexemeID: 200,
 			Term:     "went",
 			Language: entity.LanguageEnglish,
 		}
 
 		lexemeRepo.EXPECT().
-			BatchLookupFormInfo(ctx, gomock.Any(), entity.LanguageEnglish).
-			Return(map[string][]*repository.LexemeFormInfo{
-				"went": {{FormText: "went", FormType: "PAST_TENSE", LemmaText: "go", IsIrregular: true}},
-			}, nil)
+			GetByID(ctx, int64(200)).
+			Return(&entity.Lexeme{ID: 200, Language: entity.LanguageEnglish, Lemma: "go"}, nil)
 
-		// FindByTerm for "went"
-		repo.EXPECT().
-			FindByTerm(ctx, userID, "went", entity.LanguageEnglish).
-			Return(nil, nil)
-
-		// Create only "went"
-		repo.EXPECT().Create(ctx, gomock.Any()).Return(word, nil)
+		gomock.InOrder(
+			repo.EXPECT().
+				FindByLexeme(ctx, userID, int64(200), "go").
+				Return(nil, nil),
+			repo.EXPECT().
+				Create(ctx, gomock.Any()).
+				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
+					assert.Equal(t, "go", w.Term)
+					assert.Equal(t, int64(200), w.LexemeID)
+					return w, nil
+				}),
+			repo.EXPECT().
+				FindByLexeme(ctx, userID, int64(200), "went").
+				Return(nil, nil),
+			repo.EXPECT().
+				Create(ctx, gomock.Any()).
+				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
+					assert.Equal(t, "went", w.Term)
+					assert.Equal(t, int64(200), w.LexemeID)
+					return w, nil
+				}),
+		)
 
 		_, err := uc.CollectWord(ctx, word)
 		assert.NoError(t, err)

@@ -37,12 +37,16 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 	if req.Msg == nil || req.Msg.Spec == nil {
 		return nil, status.Error(codes.InvalidArgument, "spec payload required")
 	}
+	if req.Msg.Spec.GetLexemeId() == 0 {
+		return nil, mapping.ToPbError(entity.ErrLexemeRequired)
+	}
 
 	var mastery entity.MasteryBreakdown
 	mastery.InitializeFromUserMasteryLevel(req.Msg.Spec.GetMasteryLevel())
 
 	entityWord := &entity.LearnedWord{
 		UserID:   auth.MustGetUserID(ctx),
+		LexemeID: req.Msg.Spec.GetLexemeId(),
 		Term:     strings.TrimSpace(req.Msg.Spec.GetTerm()),
 		Mastery:  mastery,
 		Language: mapping.FromPbLanguage(req.Msg.Spec.GetLanguage()),
@@ -51,7 +55,7 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 	}
 	result, err := s.uc.CollectWord(ctx, entityWord)
 	if err != nil {
-		return nil, err
+		return nil, mapping.ToPbError(err)
 	}
 
 	return connect.NewResponse(mapping.ToPbLearnedWord(result)), nil
@@ -62,7 +66,7 @@ func (s *LearningServiceServer) UncollectWord(ctx context.Context, req *connect.
 		return nil, status.Error(codes.InvalidArgument, "id required")
 	}
 	if err := s.uc.DeleteLearnedWord(ctx, req.Msg.GetId()); err != nil {
-		return nil, err
+		return nil, mapping.ToPbError(err)
 	}
 
 	return connect.NewResponse(&emptypb.Empty{}), nil
@@ -74,7 +78,7 @@ func (s *LearningServiceServer) GetLearnedWord(ctx context.Context, req *connect
 	}
 	result, err := s.uc.GetLearnedWord(ctx, req.Msg.GetId())
 	if err != nil {
-		return nil, err
+		return nil, mapping.ToPbError(err)
 	}
 
 	return connect.NewResponse(mapping.ToPbLearnedWord(result)), nil
@@ -94,7 +98,7 @@ func (s *LearningServiceServer) ListLearnedWords(ctx context.Context, req *conne
 	query.AutoInheritMastery = req.Msg.GetAutoInheritMastery()
 	items, total, err := s.uc.ListLearnedWords(ctx, &query)
 	if err != nil {
-		return nil, err
+		return nil, mapping.ToPbError(err)
 	}
 
 	return connect.NewResponse(&learningv1.ListLearnedWordsResponse{
@@ -125,7 +129,7 @@ func (s *LearningServiceServer) UpdateMastery(ctx context.Context, req *connect.
 		msg.GetNotes(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, mapping.ToPbError(err)
 	}
 
 	return connect.NewResponse(mapping.ToPbLearnedWord(result)), nil

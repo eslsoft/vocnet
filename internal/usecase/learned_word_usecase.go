@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -46,34 +45,41 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	if word == nil {
 		return nil, entity.ErrInvalidLearnedWordText
 	}
+	if word.LexemeID == 0 {
+		return nil, entity.ErrLexemeRequired
+	}
 
 	language := entity.NormalizeLanguage(word.Language)
-	termToStore := word.Term // Always store exactly what the user provided
-
-	// Lookup form info for the term (for lemma detection)
-	formInfosMap, err := u.lexemeRepo.BatchLookupFormInfo(ctx, []string{word.Term}, language)
+	lexeme, err := u.lexemeRepo.GetByID(ctx, word.LexemeID)
 	if err != nil {
 		return nil, err
 	}
+	if entity.NormalizeLanguage(lexeme.Language) != language {
+		return nil, entity.ErrLanguageMismatch
+	}
 
-	formInfos := formInfosMap[word.Term]
+	termToStore := strings.TrimSpace(word.Term)
+	if termToStore == "" {
+		return nil, entity.ErrInvalidLearnedWordText
+	}
+	lemmaTerm := strings.TrimSpace(lexeme.Lemma)
+	if lemmaTerm == "" {
+		return nil, entity.ErrInvalidLearnedWordText
+	}
 
-	// Identify lemma for auto-creation if it's a regular inflection
-	// Logic from docs/design/mastery-inheritance.md
-	if isRegularInflection(formInfos) {
-		lemmaText := formInfos[0].LemmaText
-		// Check if lemma already exists for this user
-		existingLemma, err := u.repo.FindByTerm(ctx, word.UserID, lemmaText, language)
+	now := u.clock()
+	normalizedTerm := strings.ToLower(termToStore)
+	if !strings.EqualFold(termToStore, lemmaTerm) {
+		lemmaNormal := strings.ToLower(lemmaTerm)
+		existingLemma, err := u.repo.FindByLexeme(ctx, word.UserID, word.LexemeID, lemmaNormal)
 		if err != nil {
 			return nil, err
 		}
-
 		if existingLemma == nil {
-			// Auto-create lemma record with same initial mastery
-			now := u.clock()
 			lemmaWord := &entity.LearnedWord{
 				UserID:       word.UserID,
-				Term:         lemmaText,
+				LexemeID:     word.LexemeID,
+				Term:         lemmaTerm,
 				Language:     language,
 				Mastery:      word.Mastery,
 				QueriedCount: 1,
@@ -82,43 +88,38 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 			lemmaWord.Mastery.Normalize()
 			lemmaWord.Normalize(now)
 			if _, err := u.repo.Create(ctx, lemmaWord); err != nil {
-				// Log error but continue with storing the original word
-				slog.Error("failed to auto-create lemma", "term", word.Term, "lemma", lemmaText, "error", err)
+				return nil, err
 			}
 		}
 	}
 
-	// Check if already collected (FindByTerm now uses normal field + exact match priority)
-	existing, err := u.repo.FindByTerm(ctx, word.UserID, termToStore, language)
+	existing, err := u.repo.FindByLexeme(ctx, word.UserID, word.LexemeID, normalizedTerm)
 	if err != nil {
 		return nil, err
 	}
 
-	now := u.clock()
 	if existing != nil {
-		// Only update if it's an exact match (to avoid unique constraint violation)
-		if existing.Term == termToStore {
-			// Update existing record
-			if len(word.Tags) > 0 {
-				existing.Tags = append([]string{}, word.Tags...)
-			}
-			if len(word.Notes) > 0 {
-				existing.Notes = append([]string{}, word.Notes...)
-			}
-			if len(word.Relations) > 0 {
-				existing.Relations = append([]entity.LearnedWordRelation{}, word.Relations...)
-			}
-			if len(word.Contexts) > 0 {
-				existing.Contexts = mergeContexts(existing.Contexts, word.Contexts)
-			}
-			existing.Normalize(now)
-			return u.repo.Update(ctx, existing)
+		// Update existing record
+		existing.Term = termToStore
+		if len(word.Tags) > 0 {
+			existing.Tags = append([]string{}, word.Tags...)
 		}
-		// Different case variant exists, try to create new record
+		if len(word.Notes) > 0 {
+			existing.Notes = append([]string{}, word.Notes...)
+		}
+		if len(word.Relations) > 0 {
+			existing.Relations = append([]entity.LearnedWordRelation{}, word.Relations...)
+		}
+		if len(word.Contexts) > 0 {
+			existing.Contexts = mergeContexts(existing.Contexts, word.Contexts)
+		}
+		existing.Normalize(now)
+		return u.repo.Update(ctx, existing)
 	}
 
 	// Create new learned word
 	copy := *word
+	copy.LexemeID = word.LexemeID
 	copy.Term = termToStore
 	copy.Language = language
 	if copy.QueriedCount == 0 {

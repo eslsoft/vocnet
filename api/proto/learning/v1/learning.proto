@@ -17,6 +17,7 @@ message LearnedWord {
 message LearnedWordSpec {
   common.v1.Language language = 1; // Language of the term
   string term = 2; // The actual word term (lemma for regular forms, or itself for irregular)
+  int64 lexeme_id = 3; // Lexeme ID for uniqueness
 
   // User's overall mastery level (1-5), 0 means unspecified:
   //   1 = unknown (completely unfamiliar)
@@ -26,7 +27,7 @@ message LearnedWordSpec {
   //   5 = mastered (fluent, automatic)
   // This will be expanded into four skill dimensions (listening, reading, spelling, speaking)
   // based on typical language learning progression where receptive skills develop before productive skills.
-  int32 mastery_level = 3;
+  int32 mastery_level = 4;
 
   repeated string tags = 5;
   repeated string notes = 6;
@@ -64,11 +65,11 @@ message MasteryBreakdown {
 // MasteryLevel represents the user's current mastery state for a word.
 enum MasteryLevel {
   MASTERY_LEVEL_UNSPECIFIED = 0; // Not set (system default)
-  MASTERY_LEVEL_UNKNOWN = 1;     // Completely unfamiliar
-  MASTERY_LEVEL_RECOGNIZED = 2;  // Seen before, can identify
-  MASTERY_LEVEL_UNDERSTOOD = 3;  // Know the meaning
-  MASTERY_LEVEL_PROFICIENT = 4;  // Can use actively
-  MASTERY_LEVEL_MASTERED = 5;    // Fluent, automatic
+  MASTERY_LEVEL_UNKNOWN = 1; // Completely unfamiliar
+  MASTERY_LEVEL_RECOGNIZED = 2; // Seen before, can identify
+  MASTERY_LEVEL_UNDERSTOOD = 3; // Know the meaning
+  MASTERY_LEVEL_PROFICIENT = 4; // Can use actively
+  MASTERY_LEVEL_MASTERED = 5; // Fluent, automatic
 }
 
 // Review timing information

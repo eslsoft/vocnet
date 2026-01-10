@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -23,6 +24,8 @@ func (LearnedWord) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.UUID("user_id", uuid.UUID{}),
+		field.Int64("lexeme_id").
+			Comment("Foreign key to lexemes table - determines uniqueness"),
 		field.String("term").
 			NotEmpty().
 			Comment("The term stored: lemma for regular forms, or the term itself for irregular forms"),
@@ -69,13 +72,18 @@ func (LearnedWord) Fields() []ent.Field {
 }
 
 func (LearnedWord) Edges() []ent.Edge {
-	return []ent.Edge{}
+	return []ent.Edge{
+		edge.To("lexeme", Lexeme.Type).
+			Unique().
+			Required().
+			Field("lexeme_id"),
+	}
 }
 
 func (LearnedWord) Indexes() []ent.Index {
 	return []ent.Index{
-		// Primary business key: user_id + term + language (case-sensitive)
-		index.Fields("user_id", "term", "language").Unique(),
+		// Primary business key: user_id + lexeme_id + normal
+		index.Fields("user_id", "lexeme_id", "normal").Unique(),
 		// Case-insensitive querying: user_id + normal + language
 		index.Fields("user_id", "normal", "language"),
 		// 优化复习查询：查找需要复习的词条

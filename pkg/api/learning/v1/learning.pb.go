@@ -149,6 +149,7 @@ type LearnedWordSpec struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Language v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"` // Language of the term
 	Term     string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`                                  // The actual word term (lemma for regular forms, or itself for irregular)
+	LexemeId int64                  `protobuf:"varint,3,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"`         // Lexeme ID for uniqueness
 	// User's overall mastery level (1-5), 0 means unspecified:
 	//
 	//	1 = unknown (completely unfamiliar)
@@ -159,7 +160,7 @@ type LearnedWordSpec struct {
 	//
 	// This will be expanded into four skill dimensions (listening, reading, spelling, speaking)
 	// based on typical language learning progression where receptive skills develop before productive skills.
-	MasteryLevel  int32                 `protobuf:"varint,3,opt,name=mastery_level,json=masteryLevel,proto3" json:"mastery_level,omitempty"`
+	MasteryLevel  int32                 `protobuf:"varint,4,opt,name=mastery_level,json=masteryLevel,proto3" json:"mastery_level,omitempty"`
 	Tags          []string              `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
 	Notes         []string              `protobuf:"bytes,6,rep,name=notes,proto3" json:"notes,omitempty"`
 	Contexts      []*LearnedWordContext `protobuf:"bytes,10,rep,name=contexts,proto3" json:"contexts,omitempty"` // Context sentences where user encountered this word
@@ -209,6 +210,13 @@ func (x *LearnedWordSpec) GetTerm() string {
 		return x.Term
 	}
 	return ""
+}
+
+func (x *LearnedWordSpec) GetLexemeId() int64 {
+	if x != nil {
+		return x.LexemeId
+	}
+	return 0
 }
 
 func (x *LearnedWordSpec) GetMasteryLevel() int32 {
@@ -573,11 +581,12 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\vLearnedWord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x120\n" +
 	"\x04spec\x18\x03 \x01(\v2\x1c.learning.v1.LearnedWordSpecR\x04spec\x126\n" +
-	"\x06status\x18\x04 \x01(\v2\x1e.learning.v1.LearnedWordStatusR\x06status\"\xe2\x01\n" +
+	"\x06status\x18\x04 \x01(\v2\x1e.learning.v1.LearnedWordStatusR\x06status\"\xff\x01\n" +
 	"\x0fLearnedWordSpec\x12/\n" +
 	"\blanguage\x18\x01 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x12\n" +
-	"\x04term\x18\x02 \x01(\tR\x04term\x12#\n" +
-	"\rmastery_level\x18\x03 \x01(\x05R\fmasteryLevel\x12\x12\n" +
+	"\x04term\x18\x02 \x01(\tR\x04term\x12\x1b\n" +
+	"\tlexeme_id\x18\x03 \x01(\x03R\blexemeId\x12#\n" +
+	"\rmastery_level\x18\x04 \x01(\x05R\fmasteryLevel\x12\x12\n" +
 	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x14\n" +
 	"\x05notes\x18\x06 \x03(\tR\x05notes\x12;\n" +
 	"\bcontexts\x18\n" +

@@ -23,6 +23,7 @@ type ListLexemeQuery struct {
 
 // LexemeFormInfo contains basic information about a lexeme form for determining storage strategy
 type LexemeFormInfo struct {
+	LexemeID    int64
 	FormText    string // The form text (e.g., "apples", "went")
 	FormType    string // The form type (e.g., "LEMMA", "PLURAL", "PAST")
 	IsIrregular bool   // Whether this is an irregular form
