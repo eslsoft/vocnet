@@ -318,7 +318,6 @@ func (r *LearnedWordRepository) StatsByTerms(ctx context.Context, userID uuid.UU
 		best := findExactMatch(candidates, trimmed)
 
 		if best == nil {
-			fmt.Println(candidates, trimmed)
 			stats.UnknownWords++
 			continue
 		}
