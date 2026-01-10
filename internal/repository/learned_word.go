@@ -35,8 +35,7 @@ type LearnedWordRepository interface {
 	Create(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error)
 	Update(ctx context.Context, word *entity.LearnedWord) (*entity.LearnedWord, error)
 	GetByID(ctx context.Context, userID uuid.UUID, id int64) (*entity.LearnedWord, error)
-	FindByTerm(ctx context.Context, userID uuid.UUID, term string, language entity.Language) (*entity.LearnedWord, error)
-	FindByLexeme(ctx context.Context, userID uuid.UUID, lexemeID int64, normal string) (*entity.LearnedWord, error)
+	FindByLexeme(ctx context.Context, userID uuid.UUID, lexemeID string, normal string) (*entity.LearnedWord, error)
 	List(ctx context.Context, filter *ListLearnedWordQuery) ([]entity.LearnedWord, int64, error)
 	DeleteByID(ctx context.Context, userID uuid.UUID, id int64) error
 	StatsByTerms(ctx context.Context, userID uuid.UUID, terms []string, endOfToday time.Time) (entity.WordbookStats, error)

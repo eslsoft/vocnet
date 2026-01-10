@@ -128,32 +128,8 @@ func (r *LearnedWordRepository) GetByID(ctx context.Context, userID uuid.UUID, i
 	return mapEntLearnedWord(rec), nil
 }
 
-func (r *LearnedWordRepository) FindByTerm(ctx context.Context, userID uuid.UUID, term string, language entity.Language) (*entity.LearnedWord, error) {
-	if term == "" {
-		return nil, nil
-	}
-
-	trimmedTerm := strings.TrimSpace(term)
-	normalTerm := strings.ToLower(trimmedTerm)
-	languageCode := entity.NormalizeLanguage(language).Code()
-
-	rows, err := r.client.LearnedWord.Query().
-		Where(
-			entlearnedword.UserIDEQ(userID),
-			entlearnedword.NormalEQ(normalTerm),
-			entlearnedword.LanguageEQ(languageCode),
-		).
-		All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("find user word: %w", err)
-	}
-
-	best := findExactMatch(rows, trimmedTerm)
-	return mapEntLearnedWord(best), nil
-}
-
-func (r *LearnedWordRepository) FindByLexeme(ctx context.Context, userID uuid.UUID, lexemeID int64, normal string) (*entity.LearnedWord, error) {
-	if lexemeID == 0 || normal == "" {
+func (r *LearnedWordRepository) FindByLexeme(ctx context.Context, userID uuid.UUID, lexemeID string, normal string) (*entity.LearnedWord, error) {
+	if lexemeID == "" || normal == "" {
 		return nil, nil
 	}
 

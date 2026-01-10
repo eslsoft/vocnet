@@ -45,12 +45,14 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	if word == nil {
 		return nil, entity.ErrInvalidLearnedWordText
 	}
-	if word.LexemeID == 0 {
+	lexemeID := strings.TrimSpace(word.LexemeID)
+	if lexemeID == "" {
 		return nil, entity.ErrLexemeRequired
 	}
 
+	word.LexemeID = lexemeID
 	language := entity.NormalizeLanguage(word.Language)
-	lexeme, err := u.lexemeRepo.GetByID(ctx, word.LexemeID)
+	lexeme, err := u.getLexemeByExternalID(ctx, word.LexemeID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +102,6 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 
 	if existing != nil {
 		// Update existing record
-		existing.Term = termToStore
 		if len(word.Tags) > 0 {
 			existing.Tags = append([]string{}, word.Tags...)
 		}
@@ -113,7 +114,6 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 		if len(word.Contexts) > 0 {
 			existing.Contexts = mergeContexts(existing.Contexts, word.Contexts)
 		}
-		existing.Normalize(now)
 		return u.repo.Update(ctx, existing)
 	}
 
@@ -127,8 +127,20 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	}
 	copy.Mastery.Normalize()
 	copy.Normalize(now)
-
 	return u.repo.Create(ctx, &copy)
+}
+
+func (u *learnedWordUsecase) getLexemeByExternalID(ctx context.Context, externalID string) (*entity.Lexeme, error) {
+	lexemes, _, err := u.lexemeRepo.List(ctx, &repository.ListLexemeQuery{
+		ExternalIDs: []string{externalID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(lexemes) == 0 {
+		return nil, entity.ErrLexemeNotFound
+	}
+	return lexemes[0], nil
 }
 
 func (u *learnedWordUsecase) GetLearnedWord(ctx context.Context, id int64) (*entity.LearnedWord, error) {

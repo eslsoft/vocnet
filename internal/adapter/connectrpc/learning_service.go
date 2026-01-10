@@ -37,7 +37,7 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 	if req.Msg == nil || req.Msg.Spec == nil {
 		return nil, status.Error(codes.InvalidArgument, "spec payload required")
 	}
-	if req.Msg.Spec.GetLexemeId() == 0 {
+	if strings.TrimSpace(req.Msg.Spec.GetLexemeId()) == "" {
 		return nil, mapping.ToPbError(entity.ErrLexemeRequired)
 	}
 
@@ -46,7 +46,7 @@ func (s *LearningServiceServer) CollectWord(ctx context.Context, req *connect.Re
 
 	entityWord := &entity.LearnedWord{
 		UserID:   auth.MustGetUserID(ctx),
-		LexemeID: req.Msg.Spec.GetLexemeId(),
+		LexemeID: strings.TrimSpace(req.Msg.Spec.GetLexemeId()),
 		Term:     strings.TrimSpace(req.Msg.Spec.GetTerm()),
 		Mastery:  mastery,
 		Language: mapping.FromPbLanguage(req.Msg.Spec.GetLanguage()),

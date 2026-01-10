@@ -10,7 +10,6 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
-	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -24,8 +23,9 @@ func (LearnedWord) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.UUID("user_id", uuid.UUID{}),
-		field.Int64("lexeme_id").
-			Comment("Foreign key to lexemes table - determines uniqueness"),
+		field.String("lexeme_id").
+			NotEmpty().
+			Comment("External lexeme ID (Wikidata) - determines uniqueness"),
 		field.String("term").
 			NotEmpty().
 			Comment("The term stored: lemma for regular forms, or the term itself for irregular forms"),
@@ -68,15 +68,6 @@ func (LearnedWord) Fields() []ent.Field {
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now),
-	}
-}
-
-func (LearnedWord) Edges() []ent.Edge {
-	return []ent.Edge{
-		edge.To("lexeme", Lexeme.Type).
-			Unique().
-			Required().
-			Field("lexeme_id"),
 	}
 }
 

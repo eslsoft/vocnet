@@ -17,7 +17,7 @@ message LearnedWord {
 message LearnedWordSpec {
   common.v1.Language language = 1; // Language of the term
   string term = 2; // The actual word term (lemma for regular forms, or itself for irregular)
-  int64 lexeme_id = 3; // Lexeme ID for uniqueness
+  string lexeme_id = 3; // Wikidata Lexeme ID (e.g. "L123456")
 
   // User's overall mastery level (1-5), 0 means unspecified:
   //   1 = unknown (completely unfamiliar)

@@ -149,7 +149,7 @@ type LearnedWordSpec struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Language v1.Language            `protobuf:"varint,1,opt,name=language,proto3,enum=common.v1.Language" json:"language,omitempty"` // Language of the term
 	Term     string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`                                  // The actual word term (lemma for regular forms, or itself for irregular)
-	LexemeId int64                  `protobuf:"varint,3,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"`         // Lexeme ID for uniqueness
+	LexemeId string                 `protobuf:"bytes,3,opt,name=lexeme_id,json=lexemeId,proto3" json:"lexeme_id,omitempty"`          // Wikidata Lexeme ID (e.g. "L123456")
 	// User's overall mastery level (1-5), 0 means unspecified:
 	//
 	//	1 = unknown (completely unfamiliar)
@@ -212,11 +212,11 @@ func (x *LearnedWordSpec) GetTerm() string {
 	return ""
 }
 
-func (x *LearnedWordSpec) GetLexemeId() int64 {
+func (x *LearnedWordSpec) GetLexemeId() string {
 	if x != nil {
 		return x.LexemeId
 	}
-	return 0
+	return ""
 }
 
 func (x *LearnedWordSpec) GetMasteryLevel() int32 {
@@ -585,7 +585,7 @@ const file_learning_v1_learning_proto_rawDesc = "" +
 	"\x0fLearnedWordSpec\x12/\n" +
 	"\blanguage\x18\x01 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x12\n" +
 	"\x04term\x18\x02 \x01(\tR\x04term\x12\x1b\n" +
-	"\tlexeme_id\x18\x03 \x01(\x03R\blexemeId\x12#\n" +
+	"\tlexeme_id\x18\x03 \x01(\tR\blexemeId\x12#\n" +
 	"\rmastery_level\x18\x04 \x01(\x05R\fmasteryLevel\x12\x12\n" +
 	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x14\n" +
 	"\x05notes\x18\x06 \x03(\tR\x05notes\x12;\n" +

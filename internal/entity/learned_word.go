@@ -12,21 +12,21 @@ import (
 // This is a word-level learning record (not lexeme-level), which simplifies
 // the user experience for the majority of cases where multi-sense tracking is not needed.
 type LearnedWord struct {
-	ID       int64
-	UserID   uuid.UUID
-	LexemeID int64
-	Term     string // The term stored: lemma for regular forms, or the term itself for irregular forms
-	Normal   string // Normalized lowercase form of term for case-insensitive querying
-	Language Language
-	Tags          []string
-	Notes         []string
-	Relations     []LearnedWordRelation
-	Contexts      []LearnedWordContext // Context sentences where user encountered this word
-	Mastery       MasteryBreakdown
-	Review        ReviewTiming
-	QueriedCount  int64
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID           int64
+	UserID       uuid.UUID
+	LexemeID     string
+	Term         string // The term stored: lemma for regular forms, or the term itself for irregular forms
+	Normal       string // Normalized lowercase form of term for case-insensitive querying
+	Language     Language
+	Tags         []string
+	Notes        []string
+	Relations    []LearnedWordRelation
+	Contexts     []LearnedWordContext // Context sentences where user encountered this word
+	Mastery      MasteryBreakdown
+	Review       ReviewTiming
+	QueriedCount int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 
 	MatchedTerms []string // All query terms that matched this stored term
 

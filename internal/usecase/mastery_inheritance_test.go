@@ -11,6 +11,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/mocks"
+	"github.com/eslsoft/vocnet/internal/repository"
 )
 
 func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
@@ -28,36 +29,39 @@ func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
 
 		word := &entity.LearnedWord{
 			UserID:   userID,
-			LexemeID: 100,
+			LexemeID: "L100",
 			Term:     "running",
 			Language: entity.LanguageEnglish,
 		}
 		word.Mastery.InitializeFromUserMasteryLevel(3)
 
 		lexemeRepo.EXPECT().
-			GetByID(ctx, int64(100)).
-			Return(&entity.Lexeme{ID: 100, Language: entity.LanguageEnglish, Lemma: "run"}, nil)
+			List(ctx, gomock.Any()).
+			DoAndReturn(func(_ context.Context, query *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
+				assert.Equal(t, []string{"L100"}, query.ExternalIDs)
+				return []*entity.Lexeme{{ID: 100, ExternalID: "L100", Language: entity.LanguageEnglish, Lemma: "run"}}, 1, nil
+			})
 
 		gomock.InOrder(
 			repo.EXPECT().
-				FindByLexeme(ctx, userID, int64(100), "run").
+				FindByLexeme(ctx, userID, "L100", "run").
 				Return(nil, nil),
 			repo.EXPECT().
 				Create(ctx, gomock.Any()).
 				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
 					assert.Equal(t, "run", w.Term)
 					assert.Equal(t, int32(278), w.Mastery.Overall) // Level 3 normalized
-					assert.Equal(t, int64(100), w.LexemeID)
+					assert.Equal(t, "L100", w.LexemeID)
 					return w, nil
 				}),
 			repo.EXPECT().
-				FindByLexeme(ctx, userID, int64(100), "running").
+				FindByLexeme(ctx, userID, "L100", "running").
 				Return(nil, nil),
 			repo.EXPECT().
 				Create(ctx, gomock.Any()).
 				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
 					assert.Equal(t, "running", w.Term)
-					assert.Equal(t, int64(100), w.LexemeID)
+					assert.Equal(t, "L100", w.LexemeID)
 					return w, nil
 				}),
 		)
@@ -76,34 +80,37 @@ func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
 
 		word := &entity.LearnedWord{
 			UserID:   userID,
-			LexemeID: 200,
+			LexemeID: "L200",
 			Term:     "went",
 			Language: entity.LanguageEnglish,
 		}
 
 		lexemeRepo.EXPECT().
-			GetByID(ctx, int64(200)).
-			Return(&entity.Lexeme{ID: 200, Language: entity.LanguageEnglish, Lemma: "go"}, nil)
+			List(ctx, gomock.Any()).
+			DoAndReturn(func(_ context.Context, query *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
+				assert.Equal(t, []string{"L200"}, query.ExternalIDs)
+				return []*entity.Lexeme{{ID: 200, ExternalID: "L200", Language: entity.LanguageEnglish, Lemma: "go"}}, 1, nil
+			})
 
 		gomock.InOrder(
 			repo.EXPECT().
-				FindByLexeme(ctx, userID, int64(200), "go").
+				FindByLexeme(ctx, userID, "L200", "go").
 				Return(nil, nil),
 			repo.EXPECT().
 				Create(ctx, gomock.Any()).
 				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
 					assert.Equal(t, "go", w.Term)
-					assert.Equal(t, int64(200), w.LexemeID)
+					assert.Equal(t, "L200", w.LexemeID)
 					return w, nil
 				}),
 			repo.EXPECT().
-				FindByLexeme(ctx, userID, int64(200), "went").
+				FindByLexeme(ctx, userID, "L200", "went").
 				Return(nil, nil),
 			repo.EXPECT().
 				Create(ctx, gomock.Any()).
 				DoAndReturn(func(_ context.Context, w *entity.LearnedWord) (*entity.LearnedWord, error) {
 					assert.Equal(t, "went", w.Term)
-					assert.Equal(t, int64(200), w.LexemeID)
+					assert.Equal(t, "L200", w.LexemeID)
 					return w, nil
 				}),
 		)
