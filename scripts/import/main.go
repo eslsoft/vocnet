@@ -5,35 +5,29 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
+	"os"
 	"strings"
 	"time"
 
-	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
+	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	"entgo.io/ent/dialect/sql"
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
-	defaultAPIBase          = "http://localhost:8080"
+	defaultDatabaseURL      = "file:./data/vocnet.db?_fk=1"
 	defaultBatchSize        = 32
 	defaultWikidataFile     = "~/lexemes/english-lexemes.json"
 	defaultWikidataLimit    = 0
 	defaultECDictURL        = "https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip"
-	defaultRequestTimeout   = 10 * time.Second // Increased from 5s to handle complex merges
-	defaultMissingReport    = ""
-	defaultWordNetDataPath  = ""
 	defaultECDictCacheDir   = ""
-	defaultWordNetRelations = false
+	defaultWordNetDataPath  = ""
 )
 
-type stage interface {
-	Name() string
-	Run(ctx context.Context, client dictv1connect.DictServiceClient) error
-}
-
 type pipelineConfig struct {
-	apiBase        string
+	databaseURL    string
 	batchSize      int
-	requestTimeout time.Duration
 	wikidataFile   string
 	wikidataLimit  int
 	runWikidata    bool
@@ -53,9 +47,8 @@ func main() {
 func parseFlags() pipelineConfig {
 	var cfg pipelineConfig
 
-	flag.StringVar(&cfg.apiBase, "api", defaultAPIBase, "DictService base URL")
-	flag.IntVar(&cfg.batchSize, "batch", defaultBatchSize, "Maximum parallel API calls")
-	flag.DurationVar(&cfg.requestTimeout, "timeout", defaultRequestTimeout, "Per-request timeout")
+	flag.StringVar(&cfg.databaseURL, "database", defaultDatabaseURL, "Database connection URL")
+	flag.IntVar(&cfg.batchSize, "batch", defaultBatchSize, "Maximum parallel operations")
 
 	flag.StringVar(&cfg.wikidataFile, "wikidata-file", defaultWikidataFile, "Path to filtered Wikidata lexemes JSON")
 	flag.IntVar(&cfg.wikidataLimit, "wikidata-limit", defaultWikidataLimit, "Optional limit of Wikidata lexemes to import (0 = no limit)")
@@ -69,11 +62,78 @@ func parseFlags() pipelineConfig {
 
 	flag.Parse()
 
+	// Get database URL from environment if not set via flag
+	if cfg.databaseURL == defaultDatabaseURL {
+		if envURL := os.Getenv("DATABASE_URL"); envURL != "" {
+			cfg.databaseURL = envURL
+		}
+	}
+
 	if cfg.batchSize <= 0 {
 		cfg.batchSize = defaultBatchSize
 	}
 
 	return cfg
+}
+
+// initializeEntClient creates and initializes an Ent client with proper configuration.
+func initializeEntClient(databaseURL string) (*entdb.Client, func(), error) {
+	// Determine driver name from DSN
+	driverName := "sqlite3"
+	dataSourceName := databaseURL
+
+	if strings.HasPrefix(databaseURL, "postgres://") || strings.HasPrefix(databaseURL, "postgresql://") {
+		driverName = "postgres"
+	} else if strings.HasPrefix(databaseURL, "file:") {
+		// Ensure SQLite DSN has required params
+		if !strings.Contains(databaseURL, "_fk=") {
+			if strings.Contains(databaseURL, "?") {
+				dataSourceName = databaseURL + "&_fk=1"
+			} else {
+				dataSourceName = databaseURL + "?_fk=1"
+			}
+		}
+	}
+
+	// Open database with proper SQL driver configuration
+	drv, err := sql.Open(driverName, dataSourceName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open database driver: %w", err)
+	}
+
+	// Configure connection pool
+	db := drv.DB()
+	db.SetMaxIdleConns(5)
+	db.SetMaxOpenConns(25)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(1 * time.Minute)
+
+	// Create Ent client
+	opts := []entdb.Option{entdb.Driver(drv)}
+
+	// Enable debug mode for imports (useful for troubleshooting)
+	if os.Getenv("DEBUG") != "" {
+		opts = append(opts, entdb.Debug())
+		log.Printf("[init] SQL debug mode enabled")
+	}
+
+	client := entdb.NewClient(opts...)
+
+	// Run schema migration
+	ctx := context.Background()
+	if err := client.Schema.Create(ctx); err != nil {
+		_ = client.Close()
+		return nil, nil, fmt.Errorf("migrate schema: %w", err)
+	}
+
+	// Return cleanup function
+	cleanup := func() {
+		if err := client.Close(); err != nil {
+			log.Printf("[cleanup] Warning: failed to close database: %v", err)
+		}
+	}
+
+	return client, cleanup, nil
 }
 
 func runPipeline(cfg pipelineConfig) error {
@@ -87,31 +147,34 @@ func runPipeline(cfg pipelineConfig) error {
 	fmt.Printf("\n📝 Logs are being written to: %s\n", logFile.Name())
 	fmt.Printf("   (Only warnings and errors will be shown on screen)\n\n")
 
-	httpClient := &http.Client{
-		Timeout: cfg.requestTimeout * time.Duration(cfg.batchSize),
-		Transport: &http.Transport{
-			MaxIdleConns:        cfg.batchSize,
-			MaxIdleConnsPerHost: cfg.batchSize,
-			MaxConnsPerHost:     cfg.batchSize,
-			IdleConnTimeout:     90 * time.Second,
-		},
+	// Initialize database connection
+	log.Printf("[init] Connecting to database: %s", cfg.databaseURL)
+
+	// Create Ent client using proper initialization
+	entClient, cleanup, err := initializeEntClient(cfg.databaseURL)
+	if err != nil {
+		return fmt.Errorf("initialize ent client: %w", err)
 	}
+	defer cleanup()
 
-	client := dictv1connect.NewDictServiceClient(httpClient, cfg.apiBase)
+	log.Printf("[init] Database initialized successfully")
+
+	// Initialize import service
+	importService := NewLexemeImportService(entClient)
+
 	ctx := context.Background()
-
 	var reports []*ImportReport
-	var wikidataStage *wikidataStage
+	var wikidataImporter *wikidataImporter
 
-	// Stage 1: Wikidata import (without ECDICT enrichment)
+	// Stage 1: Wikidata import
 	if cfg.runWikidata {
 		log.Println("\n" + strings.Repeat("=", 80))
 		log.Println("STAGE 1: Wikidata Import")
 		log.Println(strings.Repeat("=", 80))
 
-		wikidataStage = newWikidataStage(cfg)
+		wikidataImporter = newWikidataImporter(cfg, importService)
 		start := time.Now()
-		report, err := wikidataStage.Run(ctx, client)
+		report, err := wikidataImporter.Run(ctx)
 		if err != nil {
 			log.Printf("[wikidata] Warning: stage completed with errors: %v", err)
 		}
@@ -122,14 +185,14 @@ func runPipeline(cfg pipelineConfig) error {
 	// Stage 2: ECDICT import (new words only)
 	enricher, err := newECDICTEnricher(cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("ECDICT enricher: %w", err)
 	}
 
 	if enricher != nil {
 		// Register known words from Wikidata stage
-		if wikidataStage != nil {
-			importedWords := wikidataStage.GetImportedWords()
-			log.Printf("[ecdict] Registering %d words from Wikidata for enrichment", len(importedWords))
+		if wikidataImporter != nil {
+			importedWords := wikidataImporter.GetImportedWords()
+			log.Printf("[ecdict] Registering %d words from Wikidata", len(importedWords))
 			enricher.RegisterKnownWords(importedWords)
 		}
 
@@ -137,28 +200,15 @@ func runPipeline(cfg pipelineConfig) error {
 		log.Println("STAGE 2: ECDICT Import")
 		log.Println(strings.Repeat("=", 80))
 
-		ecdictStage := newECDictStage(cfg, enricher)
+		// Phase 1: Import new words
+		ecdictImporter := newECDictImporter(cfg, importService, enricher)
 		start := time.Now()
-		report, err := ecdictStage.Run(ctx, client)
+		report, err := ecdictImporter.Run(ctx)
 		if err != nil {
-			return fmt.Errorf("ECDICT stage: %w", err)
+			return fmt.Errorf("ECDICT import stage: %w", err)
 		}
-		log.Printf("[ecdict] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
+		log.Printf("[ecdict] Import stage completed in %s\n", time.Since(start).Round(time.Millisecond))
 		reports = append(reports, report)
-	}
-
-	// Stage 3: WordNet (if configured)
-	if cfg.wordNetPath != "" {
-		log.Println("\n" + strings.Repeat("=", 80))
-		log.Println("STAGE 3: WordNet Import")
-		log.Println(strings.Repeat("=", 80))
-
-		wordnetStage := newWordNetStage(cfg.wordNetPath)
-		start := time.Now()
-		if err := wordnetStage.Run(ctx, client); err != nil {
-			return fmt.Errorf("WordNet stage: %w", err)
-		}
-		log.Printf("[wordnet] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
 	}
 
 	// Print overall summary

@@ -15,31 +15,50 @@ func ToPbWord(entry *entity.WordEntry) *dictv1.Word {
 	if entry == nil || entry.Lemma == nil {
 		return nil
 	}
-	if entry.IsQueriedLemma() {
-		return buildLemmaView(entry)
+
+	// Check if the queried term matches the lemma surface (is queried lemma)
+	queriedForm := findFormByText(entry.Lemma.Forms, entry.QueriedTerm)
+	isQueriedLemma := queriedForm != nil && queriedForm.FormType == entity.LexemeFormTypeLemma
+
+	if isQueriedLemma {
+		return buildLemmaView(entry, queriedForm)
 	}
-	return buildFormView(entry)
+	return buildFormView(entry, queriedForm)
 }
 
-func buildLemmaView(entry *entity.WordEntry) *dictv1.Word {
-	allForms := entry.GetAllForms()
+func buildLemmaView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dictv1.Word {
 	var lemmaPhonetics []entity.Phonetic
-	for _, form := range allForms {
-		if form.FormType == entity.LexemeFormTypeLemma {
-			lemmaPhonetics = form.Phonetics
-			break
-		}
+	if queriedForm != nil {
+		lemmaPhonetics = queriedForm.Phonetics
 	}
 
-	// Use queried term if it exactly matches a lemma form (case-sensitive),
-	// otherwise fall back to stored lemma text
-	displayTerm := entry.Lemma.Text
-	if entry.QueriedTerm != "" {
-		for _, form := range allForms {
-			if form.FormType == entity.LexemeFormTypeLemma && form.Text == entry.QueriedTerm {
-				displayTerm = entry.QueriedTerm
-				break
+	// Use queried term if provided, otherwise use lemma surface
+	displayTerm := entry.QueriedTerm
+	if displayTerm == "" {
+		displayTerm = entry.Lemma.Surface
+	}
+
+	// Get language and categories from the first lexeme (they should all be the same language)
+	var language entity.Language
+	var categories []string
+	var completeness int32
+	if len(entry.Lexemies) > 0 {
+		language = entry.Lexemies[0].Language
+		// Aggregate categories from all lexemes
+		categorySet := make(map[string]bool)
+		var completenessSum int64
+		for _, lex := range entry.Lexemies {
+			for _, cat := range lex.Categories {
+				categorySet[cat] = true
 			}
+			completenessSum += int64(lex.Completeness)
+		}
+		categories = make([]string, 0, len(categorySet))
+		for cat := range categorySet {
+			categories = append(categories, cat)
+		}
+		if len(entry.Lexemies) > 0 {
+			completeness = int32(completenessSum / int64(len(entry.Lexemies)))
 		}
 	}
 
@@ -48,61 +67,106 @@ func buildLemmaView(entry *entity.WordEntry) *dictv1.Word {
 		Term:         displayTerm,
 		TermType:     dictv1.FormType_FORM_TYPE_LEMMA,
 		Lemma:        nil,
-		Language:     ToPbLanguage(entry.Lemma.Language),
+		Language:     ToPbLanguage(language),
 		Phonetics:    mapPhonetics(lemmaPhonetics),
-		Meanings:     aggregateMeanings(entry.Lemma.Lexemes),
-		RelatedForms: buildRelatedForms(allForms, true, displayTerm),
-		Categories:   entry.Lemma.Categories,
+		Meanings:     aggregateMeanings(entry.Lexemies),
+		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
+		Categories:   categories,
 		Irregular:    false,
-		Completeness: entry.Lemma.Completeness,
+		Completeness: completeness,
 	}
-	setTimestamps(word, entry.Lemma.Lexemes)
+	setTimestampsFromLexemes(word, entry.Lexemies)
 	return word
 }
 
-func buildFormView(entry *entity.WordEntry) *dictv1.Word {
-	queriedForm := entry.FindQueriedForm()
+func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dictv1.Word {
 	var phonetics []entity.Phonetic
+	var formType entity.LexemeFormType
+	var isIrregular bool
+
 	if queriedForm != nil {
 		phonetics = queriedForm.Phonetics
+		formType = queriedForm.FormType
+		isIrregular = queriedForm.IsIrregular
 	}
-	lemmaText := entry.Lemma.Text
+
+	lemmaText := entry.Lemma.Surface
+
+	// Get language, categories, and completeness from lexemes
+	var language entity.Language
+	var categories []string
+	var completeness int32
+	if len(entry.Lexemies) > 0 {
+		language = entry.Lexemies[0].Language
+		categorySet := make(map[string]bool)
+		var completenessSum int64
+		for _, lex := range entry.Lexemies {
+			for _, cat := range lex.Categories {
+				categorySet[cat] = true
+			}
+			completenessSum += int64(lex.Completeness)
+		}
+		categories = make([]string, 0, len(categorySet))
+		for cat := range categorySet {
+			categories = append(categories, cat)
+		}
+		if len(entry.Lexemies) > 0 {
+			completeness = int32(completenessSum / int64(len(entry.Lexemies)))
+		}
+	}
+
 	word := &dictv1.Word{
 		Id:           entry.Lemma.ID,
 		Term:         entry.QueriedTerm,
-		TermType:     toPbFormType(entry.QueriedFormType),
+		TermType:     toPbFormType(formType),
 		Lemma:        &lemmaText,
-		Language:     ToPbLanguage(entry.Lemma.Language),
+		Language:     ToPbLanguage(language),
 		Phonetics:    mapPhonetics(phonetics),
-		Meanings:     aggregateMeanings(entry.Lemma.Lexemes),
-		RelatedForms: nil,
-		Categories:   entry.Lemma.Categories,
-		Irregular:    entry.IsIrregular,
-		Completeness: entry.Lemma.Completeness,
+		Meanings:     aggregateMeanings(entry.Lexemies),
+		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
+		Categories:   categories,
+		Irregular:    isIrregular,
+		Completeness: completeness,
 	}
-	setTimestamps(word, entry.Lemma.Lexemes)
+	setTimestampsFromLexemes(word, entry.Lexemies)
 	return word
 }
 
-func buildRelatedForms(allForms []entity.LexemeForm, excludeLemma bool, displayTerm string) []*dictv1.RelatedForm {
+// findFormByText finds a form by its surface text (case-insensitive match on normalized)
+func findFormByText(forms []*entity.LemmaForm, text string) *entity.LemmaForm {
+	if text == "" || len(forms) == 0 {
+		return nil
+	}
+	normalized := strings.ToLower(text)
+	for _, form := range forms {
+		if form.Normalized == normalized {
+			return form
+		}
+	}
+	return nil
+}
+
+func buildRelatedForms(allForms []*entity.LemmaForm, excludeForm *entity.LemmaForm) []*dictv1.RelatedForm {
 	seen := make(map[string]bool)
 	var forms []*dictv1.RelatedForm
 
 	for _, form := range allForms {
-		// When excludeLemma is true, only exclude lemma forms that match the display term (case-sensitive)
-		// This allows different-case lemma variants (like "Polish" vs "polish") to be included
-		if excludeLemma && form.FormType == entity.LexemeFormTypeLemma {
-			if displayTerm == "" || form.Text == displayTerm {
-				continue
-			}
+		if form == nil {
+			continue
 		}
-		key := strings.ToLower(form.Text) + string(form.FormType)
+
+		// Exclude the form being displayed
+		if excludeForm != nil && form.ID == excludeForm.ID {
+			continue
+		}
+
+		key := strings.ToLower(form.Surface) + string(form.FormType)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
 		forms = append(forms, &dictv1.RelatedForm{
-			Term:      form.Text,
+			Term:      form.Surface,
 			FormType:  toPbFormType(form.FormType),
 			Irregular: form.IsIrregular,
 		})
@@ -116,7 +180,7 @@ func buildRelatedForms(allForms []entity.LexemeForm, excludeLemma bool, displayT
 	return forms
 }
 
-func aggregateMeanings(lexemes []*entity.Lexeme) []*dictv1.Meaning {
+func aggregateMeanings(lexemes []entity.Lexeme) []*dictv1.Meaning {
 	type bucket struct {
 		meaning *dictv1.Meaning
 		index   int
@@ -124,7 +188,8 @@ func aggregateMeanings(lexemes []*entity.Lexeme) []*dictv1.Meaning {
 	meanings := make(map[string]*bucket)
 	order := make([]string, 0, len(lexemes))
 
-	for _, lex := range lexemes {
+	for i := range lexemes {
+		lex := &lexemes[i]
 		externalID := lex.ExternalID
 		if _, ok := meanings[externalID]; !ok {
 			meanings[externalID] = &bucket{
@@ -183,13 +248,14 @@ func fromPbPhonetics(phonetics []*dictv1.Phonetic) []entity.Phonetic {
 	return out
 }
 
-func setTimestamps(word *dictv1.Word, lexemes []*entity.Lexeme) {
+func setTimestampsFromLexemes(word *dictv1.Word, lexemes []entity.Lexeme) {
 	if len(lexemes) == 0 {
 		return
 	}
 	newest := lexemes[0].UpdatedAt
 	oldest := lexemes[0].CreatedAt
-	for _, lex := range lexemes[1:] {
+	for i := 1; i < len(lexemes); i++ {
+		lex := &lexemes[i]
 		if lex.UpdatedAt.After(newest) {
 			newest = lex.UpdatedAt
 		}
@@ -205,142 +271,5 @@ func setTimestamps(word *dictv1.Word, lexemes []*entity.Lexeme) {
 	}
 }
 
-// ToEntityLemma converts a proto Word message into the lemma aggregate used internally.
-func ToEntityLemma(pb *dictv1.Word) *entity.Lemma {
-	if pb == nil {
-		return nil
-	}
-	lemmaText := pb.GetTerm()
-	if pb.Lemma != nil && strings.TrimSpace(pb.GetLemma()) != "" {
-		lemmaText = pb.GetLemma()
-	}
-
-	lemma := &entity.Lemma{
-		ID:           pb.GetId(),
-		Text:         strings.TrimSpace(lemmaText),
-		Language:     FromPbLanguage(pb.GetLanguage()),
-		Completeness: pb.GetCompleteness(),
-		Categories:   pb.GetCategories(),
-	}
-	lemma.Lexemes = meaningsToLexemes(pb, lemma.Language, lemma.Text)
-	return lemma
-}
-
-func meaningsToLexemes(pb *dictv1.Word, wordLang entity.Language, lemma string) []*entity.Lexeme {
-	meanings := pb.GetMeanings()
-	if len(meanings) == 0 {
-		return nil
-	}
-
-	lexemeMap := make(map[string]*entity.Lexeme, len(meanings))
-	lexemeOrder := make([]string, 0, len(meanings))
-	baseForms := buildLexemeForms(pb, lemma)
-
-	for _, meaning := range meanings {
-		if meaning == nil {
-			continue
-		}
-		externalID := strings.TrimSpace(meaning.GetLexemeId())
-		lex := lexemeMap[externalID]
-		if lex == nil {
-			lex = newLexemeFromMeaning(externalID, meaning, wordLang, lemma, baseForms)
-			lexemeMap[externalID] = lex
-			lexemeOrder = append(lexemeOrder, externalID)
-		}
-		appendMeaningSenses(lex, meaning)
-	}
-
-	lexemes := make([]*entity.Lexeme, 0, len(lexemeOrder))
-	for _, externalID := range lexemeOrder {
-		lexemes = append(lexemes, lexemeMap[externalID])
-	}
-
-	return lexemes
-}
-
-func newLexemeFromMeaning(externalID string, meaning *dictv1.Meaning, lang entity.Language, lemma string, baseForms []entity.LexemeForm) *entity.Lexeme {
-	return &entity.Lexeme{
-		ExternalID:   externalID,
-		Language:     lang,
-		Lemma:        lemma,
-		PartOfSpeech: meaning.GetPos(),
-		Forms:        cloneLexemeForms(baseForms),
-	}
-}
-
-func buildLexemeForms(pb *dictv1.Word, lemma string) []entity.LexemeForm {
-	lemmaForm := entity.LexemeForm{
-		Text:        lemma,
-		FormType:    entity.LexemeFormTypeLemma,
-		IsIrregular: false,
-		Phonetics:   fromPbPhonetics(pb.GetPhonetics()),
-	}
-
-	forms := []entity.LexemeForm{lemmaForm}
-	for _, relForm := range pb.GetRelatedForms() {
-		forms = append(forms, entity.LexemeForm{
-			Text:        relForm.GetTerm(),
-			FormType:    fromPbFormType(relForm.GetFormType()),
-			IsIrregular: relForm.GetIrregular(),
-		})
-	}
-
-	return forms
-}
-
-func cloneLexemeForms(forms []entity.LexemeForm) []entity.LexemeForm {
-	if len(forms) == 0 {
-		return nil
-	}
-	clones := make([]entity.LexemeForm, len(forms))
-	for i, form := range forms {
-		cloned := form
-		if len(form.Phonetics) > 0 {
-			cloned.Phonetics = append([]entity.Phonetic(nil), form.Phonetics...)
-		}
-		clones[i] = cloned
-	}
-	return clones
-}
-
-func appendMeaningSenses(lex *entity.Lexeme, meaning *dictv1.Meaning) {
-	senses := buildSenses(meaning)
-	if len(senses) == 0 {
-		return
-	}
-	lex.Senses = append(lex.Senses, senses...)
-}
-
-func buildSenses(meaning *dictv1.Meaning) []entity.LexemeSense {
-	defs := meaning.GetDefinitions()
-	if len(defs) == 0 {
-		return nil
-	}
-
-	examples := buildExamples(meaning.GetExamples())
-	senses := make([]entity.LexemeSense, 0, len(defs))
-	for i, def := range defs {
-		sense := entity.LexemeSense{
-			Language: FromPbLanguage(def.GetLanguage()),
-			Gloss:    def.GetGloss(),
-		}
-		if i == 0 && len(examples) > 0 {
-			sense.Examples = append([]entity.SenseExample(nil), examples...)
-		}
-		senses = append(senses, sense)
-	}
-	return senses
-}
-
-func buildExamples(examples []*dictv1.Sentence) []entity.SenseExample {
-	if len(examples) == 0 {
-		return nil
-	}
-	out := make([]entity.SenseExample, 0, len(examples))
-	for _, ex := range examples {
-		out = append(out, entity.SenseExample{
-			Text: ex.GetText(),
-		})
-	}
-	return out
-}
+// Note: Write operations (ToEntityLemma and related functions) have been removed
+// as write operations are disabled per user request.

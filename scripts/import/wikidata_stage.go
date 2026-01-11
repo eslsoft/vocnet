@@ -35,7 +35,7 @@ func newWikidataStage(cfg pipelineConfig) *wikidataStage {
 		filePath:       cfg.wikidataFile,
 		limit:          cfg.wikidataLimit,
 		batchSize:      cfg.batchSize,
-		requestTimeout: cfg.requestTimeout,
+		requestTimeout: 10 * time.Second, // legacy: fixed timeout
 		report:         NewImportReport("Wikidata"),
 	}
 }
@@ -925,7 +925,7 @@ func convertWikidataForm(lemma string, wdForm WikidataForm) (*dictv1.RelatedForm
 		return nil, errors.New("form text missing")
 	}
 
-	formType := mapGrammaticalFeaturesToFormType(wdForm.GrammaticalFeatures)
+	formType := mapGrammaticalFeaturesToFormTypeProto(wdForm.GrammaticalFeatures)
 
 	// Detect if this form is irregular
 	irregular := isIrregularForm(lemma, text, formType)
@@ -964,7 +964,7 @@ func convertWikidataSense(wdSense WikidataSense) *dictv1.Definition {
 	}
 }
 
-func mapGrammaticalFeaturesToFormType(features []string) dictv1.FormType {
+func mapGrammaticalFeaturesToFormTypeProto(features []string) dictv1.FormType {
 	for _, feature := range features {
 		switch feature {
 		case "Q146786":

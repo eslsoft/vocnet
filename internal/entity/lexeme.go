@@ -9,6 +9,7 @@ const (
 	LexemeEntryTypeUnspecified LexemeEntryType = ""
 	LexemeEntryTypeWord        LexemeEntryType = "WORD"
 	LexemeEntryTypePhrase      LexemeEntryType = "PHRASE"
+	LexemeEntryTypeIdiom       LexemeEntryType = "IDIOM"
 )
 
 // LexemeFormType enumerates normalized surface-form categories.
@@ -30,40 +31,28 @@ const (
 	LexemeFormTypeShortForm           LexemeFormType = "SHORT_FORM"
 )
 
-// Lexeme captures a normalized lemma plus its forms, senses, and metadata.
+// Lexeme captures a semantic entry with its forms, senses, and metadata.
 type Lexeme struct {
 	ID           int64
 	ExternalID   string // Wikidata Lexeme ID (e.g. "L123456")
-	LemmaID      int64
-	PartOfSpeech string
 	Language     Language
+	PartOfSpeech string
 	EntryType    LexemeEntryType
-	Lemma        string
-	Forms        []LexemeForm
+	Level        string
+	Frequencies  []Frequency
+	SenseGloss   string
 	Senses       []LexemeSense
 	Relations    []LexemeRelation
+	Categories   []string
+	Completeness int32
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-// LexemeForm captures a surfaced variant of a lexeme's lemma.
-type LexemeForm struct {
-	ID          int64
-	LexemeID    int64
-	Text        string
-	FormType    LexemeFormType
-	IsIrregular bool
-	Phonetics   []Phonetic
-
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-// Phonetic stores IPA/dialect pairs for lexemes.
-type Phonetic struct {
-	IPA     string `json:"ipa"`
-	Dialect string `json:"dialect,omitempty"`
+type Frequency struct {
+	Corpus string `json:"corpus"`
+	Count  int64  `json:"count"`
 }
 
 // LexemeSense models a language-specific gloss for a particular part of speech.

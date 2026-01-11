@@ -27,14 +27,9 @@ func (g *SpellingCardGenerator) Generate(ctx context.Context, word *entity.Learn
 		return nil, fmt.Errorf("no lexeme found for word: %s", word.Term)
 	}
 
-	// Extract phonetics from forms (typically the lemma form)
+	// Note: Phonetics extraction removed as Forms are no longer directly accessible from Lexeme
+	// Forms are now accessed through Lemma entity. If phonetics are needed, query via LemmaRepository
 	phonetics := make([]entity.Phonetic, 0)
-	for _, form := range lexeme.Forms {
-		if form.FormType == entity.LexemeFormTypeLemma {
-			phonetics = form.Phonetics
-			break
-		}
-	}
 
 	return &entity.FlashCard{
 		ID:      generateCardID(),

@@ -64,36 +64,11 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	if termToStore == "" {
 		return nil, entity.ErrInvalidLearnedWordText
 	}
-	lemmaTerm := strings.TrimSpace(lexeme.Lemma)
-	if lemmaTerm == "" {
-		return nil, entity.ErrInvalidLearnedWordText
-	}
+	// Note: Mastery inheritance (auto-creating lemma when collecting inflection) temporarily disabled
+	// because lexeme.LemmaText field has been removed. To re-enable, query LemmaRepository to get lemma surface.
 
 	now := u.clock()
 	normalizedTerm := strings.ToLower(termToStore)
-	if !strings.EqualFold(termToStore, lemmaTerm) {
-		lemmaNormal := strings.ToLower(lemmaTerm)
-		existingLemma, err := u.repo.FindByLexeme(ctx, word.UserID, word.LexemeID, lemmaNormal)
-		if err != nil {
-			return nil, err
-		}
-		if existingLemma == nil {
-			lemmaWord := &entity.LearnedWord{
-				UserID:       word.UserID,
-				LexemeID:     word.LexemeID,
-				Term:         lemmaTerm,
-				Language:     language,
-				Mastery:      word.Mastery,
-				QueriedCount: 1,
-				Tags:         append([]string{}, word.Tags...),
-			}
-			lemmaWord.Mastery.Normalize()
-			lemmaWord.Normalize(now)
-			if _, err := u.repo.Create(ctx, lemmaWord); err != nil {
-				return nil, err
-			}
-		}
-	}
 
 	existing, err := u.repo.FindByLexeme(ctx, word.UserID, word.LexemeID, normalizedTerm)
 	if err != nil {

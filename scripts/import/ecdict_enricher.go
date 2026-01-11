@@ -39,6 +39,10 @@ type ecdictEnrichment struct {
 	senses      []sensePayload
 	translation string // Chinese translation for reporting
 	exchange    string // Word forms (e.g., "p:ran/d:ran/i:running/3:runs") for reporting
+	bnc         int64  // British National Corpus frequency rank
+	frq         int64  // Contemporary Corpus frequency rank
+	collins     int    // Collins star rating (1-5)
+	oxford      bool   // Oxford 3000 core vocabulary
 }
 
 type sensePayload struct {
@@ -216,7 +220,7 @@ func loadECDICTEntries(cfg pipelineConfig) (map[string]*ecdictEnrichment, int, e
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`SELECT word, phonetic, definition, pos, translation, exchange, tag FROM stardict`)
+	rows, err := db.Query(`SELECT word, phonetic, definition, pos, translation, exchange, tag, bnc, frq, collins, oxford FROM stardict`)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -226,13 +230,15 @@ func loadECDICTEntries(cfg pipelineConfig) (map[string]*ecdictEnrichment, int, e
 	total := 0
 	for rows.Next() {
 		var r wordRecord
-		if err := rows.Scan(&r.Word, &r.Phonetic, &r.Definition, &r.Pos, &r.Translation, &r.Exchange, &r.Tags); err != nil {
+		if err := rows.Scan(&r.Word, &r.Phonetic, &r.Definition, &r.Pos, &r.Translation, &r.Exchange, &r.Tags, &r.BNC, &r.FRQ, &r.Collins, &r.Oxford); err != nil {
 			return nil, 0, err
 		}
 		total++
 
 		r.Word = strings.TrimSpace(r.Word)
-		if r.Word == "" || !isSingleWord(r.Word) || isAllEmpty(r) {
+		// Allow both single words and phrases (multi-word expressions)
+		// Only skip if empty or contains invalid characters
+		if r.Word == "" || containsInvalidChars(r.Word) || isAllEmpty(r) {
 			continue
 		}
 		enrichment := buildEnrichment(r)
@@ -256,6 +262,10 @@ type wordRecord struct {
 	Translation sql.NullString
 	Exchange    sql.NullString
 	Tags        sql.NullString
+	BNC         sql.NullInt64 // British National Corpus frequency rank
+	FRQ         sql.NullInt64 // Contemporary Corpus frequency rank
+	Collins     sql.NullInt64 // Collins star rating (1-5)
+	Oxford      sql.NullInt64 // Oxford 3000 core vocabulary (0 or 1)
 }
 
 func buildEnrichment(r wordRecord) *ecdictEnrichment {
@@ -275,6 +285,10 @@ func buildEnrichment(r wordRecord) *ecdictEnrichment {
 		senses:      buildSensePayloads(r),
 		translation: nullStringVal(r.Translation),
 		exchange:    nullStringVal(r.Exchange),
+		bnc:         nullInt64Val(r.BNC),
+		frq:         nullInt64Val(r.FRQ),
+		collins:     int(nullInt64Val(r.Collins)),
+		oxford:      nullInt64Val(r.Oxford) > 0,
 	}
 }
 
@@ -964,6 +978,22 @@ func safeUint64ToInt64(v uint64) (int64, error) {
 	return int64(v), nil
 }
 
+// containsInvalidChars checks if the word contains invalid characters
+// Allows spaces (for phrases) but rejects commas, semicolons, tabs, newlines
+func containsInvalidChars(w string) bool {
+	// Reject tabs and newlines (spaces are OK for phrases)
+	if strings.ContainsAny(w, "\t\n") {
+		return true
+	}
+	// Reject comma-separated lists or semicolons
+	if strings.ContainsAny(w, ",;") {
+		return true
+	}
+	return false
+}
+
+// isSingleWord checks if a word is a single word (no spaces)
+// Kept for backward compatibility if needed elsewhere
 func isSingleWord(w string) bool {
 	if strings.ContainsAny(w, " \t\n") {
 		return false
@@ -987,6 +1017,13 @@ func nullStringVal(ns sql.NullString) string {
 		return ns.String
 	}
 	return ""
+}
+
+func nullInt64Val(ni sql.NullInt64) int64 {
+	if ni.Valid {
+		return ni.Int64
+	}
+	return 0
 }
 
 // parseExchange parses ECDICT exchange field and returns (lemma, forms)

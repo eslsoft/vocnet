@@ -39,7 +39,7 @@ func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
 			List(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, query *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
 				assert.Equal(t, []string{"L100"}, query.ExternalIDs)
-				return []*entity.Lexeme{{ID: 100, ExternalID: "L100", Language: entity.LanguageEnglish, Lemma: "run"}}, 1, nil
+				return []*entity.Lexeme{{ID: 100, ExternalID: "L100", Language: entity.LanguageEnglish}}, 1, nil
 			})
 
 		gomock.InOrder(
@@ -89,7 +89,7 @@ func TestLearnedWordUsecase_CollectWord_Inheritance(t *testing.T) {
 			List(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, query *repository.ListLexemeQuery) ([]*entity.Lexeme, int64, error) {
 				assert.Equal(t, []string{"L200"}, query.ExternalIDs)
-				return []*entity.Lexeme{{ID: 200, ExternalID: "L200", Language: entity.LanguageEnglish, Lemma: "go"}}, 1, nil
+				return []*entity.Lexeme{{ID: 200, ExternalID: "L200", Language: entity.LanguageEnglish}}, 1, nil
 			})
 
 		gomock.InOrder(

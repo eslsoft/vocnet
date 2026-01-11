@@ -25,24 +25,48 @@ func (Lexeme) Fields() []ent.Field {
 			NotEmpty().
 			Unique().
 			Comment("Wikidata Lexeme ID (e.g. L123456)"),
-		field.Int64("word_id").
-			Optional().
-			Nillable().
-			Comment("Foreign key to words table, nullable for migration"),
-		field.String("language").
-			Default(entity.LanguageEnglish.CodeOrDefault()),
+
+		// Core identification
+		field.String("language_code").
+			Default("").
+			Comment("Language code: en, zh-Hans, es, etc."),
 		field.String("pos").
-			Default(""),
+			Default("").
+			Comment("Part of speech: NOUN, VERB, ADJ, ADV, PROPN, etc."),
 		field.String("entry_type").
-			Default(string(entity.LexemeEntryTypeWord)),
-		field.String("lemma").
-			Default(""),
+			Default("WORD").
+			Comment("WORD or PHRASE"),
+		field.String("level").
+			Optional().
+			Comment("CEFR level: A1, A2, B1, B2, C1, C2"),
+		field.JSON("frequencies", []entity.Frequency{}).
+			Default([]entity.Frequency{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Frequency data"),
+
+		// Semantics
+		field.String("sense_gloss").
+			Optional().
+			Comment("Simple one-line gloss for quick preview"),
 		field.JSON("senses", []entity.LexemeSense{}).
 			Default([]entity.LexemeSense{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Detailed multi-language definitions"),
+
+		// Relationships and categories
 		field.JSON("relations", []entity.LexemeRelation{}).
 			Default([]entity.LexemeRelation{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("synonyms, antonyms, etc."),
+		field.JSON("categories", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Thematic categories"),
+
+		// Metadata
+		field.Int32("completeness").
+			Default(0).
+			Comment("Data completeness 0-100"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -54,23 +78,18 @@ func (Lexeme) Fields() []ent.Field {
 
 func (Lexeme) Edges() []ent.Edge {
 	return []ent.Edge{
-		// Lexeme -> LexemeForm (一对多，级联删除)
-		edge.To("forms", LexemeForm.Type).
+		// Lexeme -> Lemma (一对多，删除Lexeme时级联删除Lemma)
+		edge.To("lemmas", Lemma.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
-
-		// Lexeme -> Word (多对一，Word删除时设为NULL)
-		edge.From("word", Lemma.Type).
-			Ref("lexemes").
-			Field("word_id").
-			Unique().
-			Annotations(entsql.OnDelete(entsql.SetNull)),
 	}
 }
 
 func (Lexeme) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("language", "lemma"),
-		index.Fields("word_id"),
+		// Query by language
+		index.Fields("language_code"),
+		// Query by language + pos
+		index.Fields("language_code", "pos"),
 	}
 }
 

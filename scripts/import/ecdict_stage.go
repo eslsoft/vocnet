@@ -27,7 +27,7 @@ func newECDictStage(cfg pipelineConfig, enricher *ecdictEnricher) *ecdictStage {
 	return &ecdictStage{
 		enricher:       enricher,
 		batchSize:      cfg.batchSize,
-		requestTimeout: cfg.requestTimeout,
+		requestTimeout: 10 * time.Second, // legacy: fixed timeout
 		report:         NewImportReport("ECDICT"),
 	}
 }

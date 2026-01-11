@@ -1,0 +1,430 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/eslsoft/vocnet/internal/entity"
+	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
+	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
+	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
+)
+
+// ImportLexemeData contains all data needed for importing a complete lexeme entry.
+type ImportLexemeData struct {
+	Lexeme *entity.Lexeme
+	Lemmas []*ImportLemmaData
+}
+
+// ImportLemmaData contains lemma and its forms for import.
+type ImportLemmaData struct {
+	Surface   string
+	Normalized string
+	Variant    string
+	IsPrimary  bool
+	Forms      []*entity.LemmaForm
+}
+
+// LexemeImportService handles lexeme import operations using Ent client directly.
+type LexemeImportService struct {
+	client *entdb.Client
+}
+
+// NewLexemeImportService creates a new import service.
+func NewLexemeImportService(client *entdb.Client) *LexemeImportService {
+	return &LexemeImportService{client: client}
+}
+
+// FindLexemeByLemmaSurface finds a lexeme by its lemma surface text or any of its forms.
+// It searches both the lemma table and lexeme_form table to handle inflected forms.
+func (s *LexemeImportService) FindLexemeByLemmaSurface(ctx context.Context, surface string, language string) (*ImportLexemeData, error) {
+	normalized := strings.ToLower(surface)
+
+	// 1. Try to find lemma first (most common case)
+	lemma, err := s.client.Lemma.Query().
+		Where(
+			entlemma.NormalizedEQ(normalized),
+		).
+		WithForms().
+		First(ctx)
+
+	if err == nil {
+		// Found lemma, build result
+		return s.buildImportDataFromLemma(ctx, lemma)
+	}
+
+	if !entdb.IsNotFound(err) {
+		return nil, fmt.Errorf("query lemma: %w", err)
+	}
+
+	// 2. Lemma not found, try to find in forms (inflected forms like "ran", "running")
+	form, err := s.client.LexemeForm.Query().
+		Where(entlexemeform.NormalizedEQ(normalized)).
+		WithLemma(func(q *entdb.LemmaQuery) {
+			q.WithForms()
+		}).
+		First(ctx)
+
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return nil, nil // Not found is not an error for enrichment
+		}
+		return nil, fmt.Errorf("query form: %w", err)
+	}
+
+	// Found via form, get the associated lemma
+	if form.Edges.Lemma == nil {
+		return nil, fmt.Errorf("form %s has no associated lemma", surface)
+	}
+
+	return s.buildImportDataFromLemma(ctx, form.Edges.Lemma)
+}
+
+// buildImportDataFromLemma builds ImportLexemeData from a lemma entity.
+func (s *LexemeImportService) buildImportDataFromLemma(ctx context.Context, lemma *entdb.Lemma) (*ImportLexemeData, error) {
+	// Load the lexeme
+	lexeme, err := s.client.Lexeme.Query().
+		Where(entlexeme.IDEQ(lemma.LexemeID)).
+		First(ctx)
+
+	if err != nil {
+		if entdb.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query lexeme: %w", err)
+	}
+
+	// Build ImportLexemeData from existing data
+	result := &ImportLexemeData{
+		Lexeme: &entity.Lexeme{
+			ID:           lexeme.ID,
+			ExternalID:   lexeme.ExternalID,
+			Language:     entity.Language(lexeme.LanguageCode),
+			PartOfSpeech: lexeme.Pos,
+			EntryType:    entity.LexemeEntryType(lexeme.EntryType),
+			Level:        lexeme.Level,
+			Frequencies:  lexeme.Frequencies,
+			SenseGloss:   lexeme.SenseGloss,
+			Senses:       lexeme.Senses,
+			Relations:    lexeme.Relations,
+			Categories:   lexeme.Categories,
+			Completeness: lexeme.Completeness,
+		},
+		Lemmas: []*ImportLemmaData{{
+			Surface:    lemma.Surface,
+			Normalized: lemma.Normalized,
+			Variant:    lemma.Variant,
+			IsPrimary:  lemma.IsPrimary,
+			Forms:      convertEntFormsToEntity(lemma.Edges.Forms),
+		}},
+	}
+
+	return result, nil
+}
+
+// convertEntFormsToEntity converts Ent forms to entity forms.
+func convertEntFormsToEntity(entForms []*entdb.LexemeForm) []*entity.LemmaForm {
+	forms := make([]*entity.LemmaForm, 0, len(entForms))
+	for _, f := range entForms {
+		forms = append(forms, &entity.LemmaForm{
+			ID:          f.ID,
+			LemmaID:     f.LemmaID,
+			Surface:     f.Surface,
+			Normalized:  f.Normalized,
+			FormType:    entity.LexemeFormType(f.FormType),
+			IsIrregular: f.IsIrregular,
+			Phonetics:   f.Phonetics,
+		})
+	}
+	return forms
+}
+
+// CreateOrUpdateComplete creates or updates a complete lexeme entry with all lemmas and forms.
+func (s *LexemeImportService) CreateOrUpdateComplete(ctx context.Context, data *ImportLexemeData) error {
+	if data == nil || data.Lexeme == nil {
+		return fmt.Errorf("invalid data")
+	}
+	if data.Lexeme.ExternalID == "" {
+		return fmt.Errorf("external_id is required")
+	}
+
+	// Start transaction
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("start transaction: %w", err)
+	}
+	defer func() {
+		if v := recover(); v != nil {
+			_ = tx.Rollback()
+			panic(v)
+		}
+	}()
+
+	// Check if lexeme exists by external_id
+	existingLexeme, err := tx.Lexeme.Query().
+		Where(entlexeme.ExternalIDEQ(data.Lexeme.ExternalID)).
+		WithLemmas(func(q *entdb.LemmaQuery) {
+			q.WithForms()
+		}).
+		First(ctx)
+
+	var lexemeRow *entdb.Lexeme
+	if err != nil && !entdb.IsNotFound(err) {
+		_ = tx.Rollback()
+		return fmt.Errorf("query existing lexeme: %w", err)
+	}
+
+	if existingLexeme != nil {
+		// Update existing lexeme
+		lexemeRow, err = tx.Lexeme.UpdateOne(existingLexeme).
+			SetLanguageCode(data.Lexeme.Language.CodeOrDefault()).
+			SetPos(data.Lexeme.PartOfSpeech).
+			SetEntryType(string(data.Lexeme.EntryType)).
+			SetLevel(data.Lexeme.Level).
+			SetFrequencies(data.Lexeme.Frequencies).
+			SetSenseGloss(data.Lexeme.SenseGloss).
+			SetSenses(mergeSenses(existingLexeme.Senses, data.Lexeme.Senses)).
+			SetRelations(mergeRelations(existingLexeme.Relations, data.Lexeme.Relations)).
+			SetCategories(mergeStringSlices(existingLexeme.Categories, data.Lexeme.Categories)).
+			SetCompleteness(data.Lexeme.Completeness).
+			Save(ctx)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("update lexeme: %w", err)
+		}
+	} else {
+		// Create new lexeme
+		lexemeCreate := tx.Lexeme.Create().
+			SetExternalID(data.Lexeme.ExternalID).
+			SetLanguageCode(data.Lexeme.Language.CodeOrDefault()).
+			SetPos(data.Lexeme.PartOfSpeech).
+			SetSenseGloss(data.Lexeme.SenseGloss).
+			SetSenses(data.Lexeme.Senses).
+			SetRelations(data.Lexeme.Relations).
+			SetCategories(data.Lexeme.Categories).
+			SetCompleteness(data.Lexeme.Completeness)
+
+		if data.Lexeme.EntryType != "" {
+			lexemeCreate.SetEntryType(string(data.Lexeme.EntryType))
+		}
+		if data.Lexeme.Level != "" {
+			lexemeCreate.SetLevel(data.Lexeme.Level)
+		}
+		if len(data.Lexeme.Frequencies) > 0 {
+			lexemeCreate.SetFrequencies(data.Lexeme.Frequencies)
+		}
+
+		lexemeRow, err = lexemeCreate.Save(ctx)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("create lexeme: %w", err)
+		}
+	}
+
+	// Process lemmas and forms
+	for _, lemmaData := range data.Lemmas {
+		if err := s.createOrUpdateLemma(ctx, tx, lexemeRow.ID, lemmaData); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("process lemma %s: %w", lemmaData.Surface, err)
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// createOrUpdateLemma creates or updates a lemma with its forms within a transaction.
+func (s *LexemeImportService) createOrUpdateLemma(ctx context.Context, tx *entdb.Tx, lexemeID int64, data *ImportLemmaData) error {
+	if data == nil || data.Surface == "" {
+		return fmt.Errorf("invalid lemma data")
+	}
+	if data.Normalized == "" {
+		data.Normalized = strings.ToLower(data.Surface)
+	}
+
+	// Check if lemma exists
+	existingLemma, err := tx.Lemma.Query().
+		Where(
+			entlemma.LexemeIDEQ(lexemeID),
+			entlemma.SurfaceEQ(data.Surface),
+		).
+		WithForms().
+		First(ctx)
+
+	var lemmaRow *entdb.Lemma
+	if err != nil && !entdb.IsNotFound(err) {
+		return fmt.Errorf("query existing lemma: %w", err)
+	}
+
+	if existingLemma != nil {
+		// Update existing lemma
+		lemmaRow, err = tx.Lemma.UpdateOne(existingLemma).
+			SetNormalized(data.Normalized).
+			SetVariant(data.Variant).
+			SetIsPrimary(data.IsPrimary).
+			Save(ctx)
+		if err != nil {
+			return fmt.Errorf("update lemma: %w", err)
+		}
+
+		// Delete existing forms (we'll recreate them)
+		if _, err := tx.LexemeForm.Delete().Where(entlexemeform.LemmaIDEQ(existingLemma.ID)).Exec(ctx); err != nil {
+			return fmt.Errorf("delete old forms: %w", err)
+		}
+	} else {
+		// Create new lemma
+		lemmaRow, err = tx.Lemma.Create().
+			SetLexemeID(lexemeID).
+			SetSurface(data.Surface).
+			SetNormalized(data.Normalized).
+			SetVariant(data.Variant).
+			SetIsPrimary(data.IsPrimary).
+			Save(ctx)
+		if err != nil {
+			return fmt.Errorf("create lemma: %w", err)
+		}
+	}
+
+	// Ensure the lemma itself is always included in the forms table
+	hasLemmaInForms := false
+	for _, f := range data.Forms {
+		if strings.EqualFold(f.Normalized, data.Normalized) {
+			hasLemmaInForms = true
+			break
+		}
+	}
+	if !hasLemmaInForms {
+		data.Forms = append([]*entity.LemmaForm{{
+			Surface:    data.Surface,
+			Normalized: data.Normalized,
+			FormType:   entity.LexemeFormTypeLemma,
+		}}, data.Forms...)
+	}
+
+	// Create forms
+	for _, form := range data.Forms {
+		if form.Surface == "" {
+			continue
+		}
+		if form.Normalized == "" {
+			form.Normalized = strings.ToLower(form.Surface)
+		}
+
+		_, err := tx.LexemeForm.Create().
+			SetLemmaID(lemmaRow.ID).
+			SetSurface(form.Surface).
+			SetNormalized(form.Normalized).
+			SetFormType(string(form.FormType)).
+			SetIsIrregular(form.IsIrregular).
+			SetPhonetics(form.Phonetics).
+			Save(ctx)
+		if err != nil {
+			return fmt.Errorf("create form %s: %w", form.Surface, err)
+		}
+	}
+
+	return nil
+}
+
+// mergeSenses merges two sense arrays, avoiding duplicates.
+func mergeSenses(existing, incoming []entity.LexemeSense) []entity.LexemeSense {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]struct{})
+	result := make([]entity.LexemeSense, 0, len(existing)+len(incoming))
+
+	for _, sense := range existing {
+		key := fmt.Sprintf("%s:%s", sense.Language.CodeOrDefault(), sense.Gloss)
+		if _, ok := seen[key]; !ok {
+			result = append(result, sense)
+			seen[key] = struct{}{}
+		}
+	}
+
+	for _, sense := range incoming {
+		key := fmt.Sprintf("%s:%s", sense.Language.CodeOrDefault(), sense.Gloss)
+		if _, ok := seen[key]; !ok {
+			result = append(result, sense)
+			seen[key] = struct{}{}
+		}
+	}
+
+	return result
+}
+
+// mergeRelations merges two relation arrays, avoiding duplicates.
+func mergeRelations(existing, incoming []entity.LexemeRelation) []entity.LexemeRelation {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]struct{})
+	result := make([]entity.LexemeRelation, 0, len(existing)+len(incoming))
+
+	for _, rel := range existing {
+		key := fmt.Sprintf("%s:%s:%d", rel.LexemeID, rel.TargetLexemeID, rel.RelationType)
+		if _, ok := seen[key]; !ok {
+			result = append(result, rel)
+			seen[key] = struct{}{}
+		}
+	}
+
+	for _, rel := range incoming {
+		key := fmt.Sprintf("%s:%s:%d", rel.LexemeID, rel.TargetLexemeID, rel.RelationType)
+		if _, ok := seen[key]; !ok {
+			result = append(result, rel)
+			seen[key] = struct{}{}
+		}
+	}
+
+	return result
+}
+
+// mergeStringSlices merges two string slices, avoiding duplicates.
+func mergeStringSlices(existing, incoming []string) []string {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(existing)+len(incoming))
+
+	for _, item := range existing {
+		trimmed := strings.TrimSpace(item)
+		if trimmed != "" {
+			if _, ok := seen[trimmed]; !ok {
+				result = append(result, trimmed)
+				seen[trimmed] = struct{}{}
+			}
+		}
+	}
+
+	for _, item := range incoming {
+		trimmed := strings.TrimSpace(item)
+		if trimmed != "" {
+			if _, ok := seen[trimmed]; !ok {
+				result = append(result, trimmed)
+				seen[trimmed] = struct{}{}
+			}
+		}
+	}
+
+	return result
+}

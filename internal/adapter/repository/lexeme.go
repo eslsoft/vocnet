@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
 	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
 	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entpredicate "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/predicate"
@@ -24,88 +25,111 @@ func NewLexemeRepository(client *entdb.Client) repository.LexemeRepository {
 }
 
 func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
-	if lexeme == nil || strings.TrimSpace(lexeme.ExternalID) == "" {
-		return nil, entity.ErrInvalidLexemeID
+	if lexeme == nil {
+		return nil, entity.ErrInvalidInput
+	}
+	if lexeme.ExternalID == "" {
+		return nil, entity.ErrInvalidInput
 	}
 
+	// Start transaction
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() {
+		if v := recover(); v != nil {
+			_ = tx.Rollback()
+			panic(v)
+		}
+	}()
 
-	// Create lexeme record (without forms - forms are in separate table now)
-	main := tx.Lexeme.Create().
-		SetExternalID(strings.TrimSpace(lexeme.ExternalID)).
-		SetLanguage(entity.NormalizeLanguage(lexeme.Language).Code()).
-		SetPos(strings.TrimSpace(lexeme.PartOfSpeech)).
-		SetEntryType(string(lexeme.EntryType)).
-		SetLemma(strings.TrimSpace(lexeme.Lemma)).
-		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
-		SetRelations(append([]entity.LexemeRelation{}, lexeme.Relations...))
+	// Create lexeme
+	lexemeCreate := tx.Lexeme.Create().
+		SetExternalID(lexeme.ExternalID).
+		SetLanguageCode(lexeme.Language.CodeOrDefault()).
+		SetPos(lexeme.PartOfSpeech).
+		SetSenseGloss(lexeme.SenseGloss).
+		SetSenses(lexeme.Senses).
+		SetRelations(lexeme.Relations).
+		SetCategories(lexeme.Categories).
+		SetCompleteness(lexeme.Completeness)
 
-	if lexeme.LemmaID > 0 {
-		main.SetWordID(lexeme.LemmaID)
+	if lexeme.EntryType != "" {
+		lexemeCreate.SetEntryType(string(lexeme.EntryType))
+	}
+	if lexeme.Level != "" {
+		lexemeCreate.SetLevel(lexeme.Level)
+	}
+	if len(lexeme.Frequencies) > 0 {
+		lexemeCreate.SetFrequencies(lexeme.Frequencies)
 	}
 
-	rec, err := main.Save(ctx)
+	lexemeRow, err := lexemeCreate.Save(ctx)
 	if err != nil {
+		_ = tx.Rollback()
 		return nil, translateDBError(err, "lexeme")
 	}
 
-	// Create form records
-	if err := r.upsertForms(ctx, tx.Client(), rec.ID, lexeme.Forms); err != nil {
-		return nil, fmt.Errorf("create forms: %w", err)
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return r.GetByID(ctx, rec.ID)
+	// Reload with edges
+	return r.GetByID(ctx, lexemeRow.ID)
 }
 
 func (r *lexemeRepository) Update(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
 	if lexeme == nil || lexeme.ID == 0 {
-		return nil, entity.ErrInvalidLexemeID
+		return nil, entity.ErrInvalidInput
 	}
 
+	// Start transaction
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Update lexeme record (without forms)
-	update := tx.Lexeme.UpdateOneID(lexeme.ID).
-		SetLanguage(entity.NormalizeLanguage(lexeme.Language).Code()).
-		SetPos(strings.TrimSpace(lexeme.PartOfSpeech)).
-		SetEntryType(string(lexeme.EntryType)).
-		SetLemma(strings.TrimSpace(lexeme.Lemma)).
-		SetSenses(append([]entity.LexemeSense{}, lexeme.Senses...)).
-		SetRelations(append([]entity.LexemeRelation{}, lexeme.Relations...))
-
-	if lexeme.LemmaID > 0 {
-		update.SetWordID(lexeme.LemmaID)
-	} else {
-		update.ClearWordID()
-	}
-
-	if _, err := update.Save(ctx); err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, entity.ErrLexemeNotFound
+	defer func() {
+		if v := recover(); v != nil {
+			_ = tx.Rollback()
+			panic(v)
 		}
+	}()
+
+	// Update lexeme
+	update := tx.Lexeme.UpdateOneID(lexeme.ID).
+		SetLanguageCode(lexeme.Language.CodeOrDefault()).
+		SetPos(lexeme.PartOfSpeech).
+		SetSenseGloss(lexeme.SenseGloss).
+		SetSenses(lexeme.Senses).
+		SetRelations(lexeme.Relations).
+		SetCategories(lexeme.Categories).
+		SetCompleteness(lexeme.Completeness)
+
+	if lexeme.EntryType != "" {
+		update.SetEntryType(string(lexeme.EntryType))
+	}
+	if lexeme.Level != "" {
+		update.SetLevel(lexeme.Level)
+	}
+	if len(lexeme.Frequencies) > 0 {
+		update.SetFrequencies(lexeme.Frequencies)
+	}
+
+	lexemeRow, err := update.Save(ctx)
+	if err != nil {
+		_ = tx.Rollback()
 		return nil, translateDBError(err, "lexeme")
 	}
 
-	// Update form records
-	if err := r.upsertForms(ctx, tx.Client(), lexeme.ID, lexeme.Forms); err != nil {
-		return nil, fmt.Errorf("update forms: %w", err)
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return r.GetByID(ctx, lexeme.ID)
+	// Reload with edges
+	return r.GetByID(ctx, lexemeRow.ID)
 }
 
 func (r *lexemeRepository) GetByID(ctx context.Context, lexemeID int64) (*entity.Lexeme, error) {
@@ -130,12 +154,16 @@ func (r *lexemeRepository) Lookup(ctx context.Context, surfaceForm string, langu
 	// Query all lexemes that have a form matching the word (case-insensitive)
 	recs, err := r.client.Lexeme.Query().
 		Where(
-			entlexeme.LanguageEQ(langCode),
-			entlexeme.HasFormsWith(
-				entlexemeform.TextLowerEQ(wordLower),
+			entlexeme.LanguageCodeEQ(langCode),
+			entlexeme.HasLemmasWith(
+				entlemma.HasFormsWith(
+					entlexemeform.NormalizedEQ(wordLower),
+				),
 			),
 		).
-		WithForms(). // Preload forms to avoid N+1
+		WithLemmas(func(q *entdb.LemmaQuery) {
+			q.WithForms()
+		}).
 		All(ctx)
 	if err != nil {
 		return nil, translateDBError(err, "lexeme")
@@ -147,9 +175,11 @@ func (r *lexemeRepository) Lookup(ctx context.Context, surfaceForm string, langu
 	// Sort in application layer: prioritize exact case match
 	// If multiple lexemes match, prefer the one with exact case match in forms
 	for _, rec := range recs {
-		for _, form := range rec.Edges.Forms {
-			if form.Text == word {
-				return mapEntLexeme(rec), nil
+		for _, lemma := range rec.Edges.Lemmas {
+			for _, form := range lemma.Edges.Forms {
+				if form.Surface == word {
+					return mapEntLexeme(rec), nil
+				}
 			}
 		}
 	}
@@ -181,11 +211,13 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 		return make(map[string][]*repository.LexemeFormInfo), nil
 	}
 
-	// Batch query using text_lower field (case-insensitive, indexed)
+	// Batch query using normalized field (case-insensitive, indexed)
 	forms, err := r.client.LexemeForm.Query().
-		Where(entlexemeform.TextLowerIn(lowerFormTexts...)).
-		WithLexeme(func(q *entdb.LexemeQuery) {
-			q.Where(entlexeme.LanguageEQ(langCode))
+		Where(entlexemeform.NormalizedIn(lowerFormTexts...)).
+		WithLemma(func(q *entdb.LemmaQuery) {
+			q.WithLexeme(func(lq *entdb.LexemeQuery) {
+				lq.Where(entlexeme.LanguageCodeEQ(langCode))
+			})
 		}).
 		All(ctx)
 	if err != nil {
@@ -195,23 +227,27 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 	// Build result map - collecting ALL forms per surface term (case-insensitive)
 	result := make(map[string][]*repository.LexemeFormInfo)
 	for _, form := range forms {
-		lexeme, err := form.Edges.LexemeOrErr()
+		lemma, err := form.Edges.LemmaOrErr()
+		if err != nil {
+			continue
+		}
+		lexeme, err := lemma.Edges.LexemeOrErr()
 		if err != nil {
 			continue
 		}
 
 		info := &repository.LexemeFormInfo{
 			LexemeID:    lexeme.ID,
-			FormText:    form.Text,
+			FormText:    form.Surface,
 			FormType:    form.FormType,
 			IsIrregular: form.IsIrregular,
-			LemmaText:   lexeme.Lemma,
+			LemmaText:   lemma.Surface,
 			Pos:         lexeme.Pos,
 		}
 
-		// Map back to original surface forms (case-insensitive comparison using text_lower)
+		// Map back to original surface forms (case-insensitive comparison using normalized)
 		for _, original := range formTexts {
-			if form.TextLower == strings.ToLower(original) {
+			if form.Normalized == strings.ToLower(original) {
 				result[original] = append(result[original], info)
 			}
 		}
@@ -238,8 +274,9 @@ func (r *lexemeRepository) List(ctx context.Context, query *repository.ListLexem
 		q.Limit(int(query.PageSize))
 	}
 
-	// Preload forms to avoid N+1
-	q.WithForms()
+	q.WithLemmas(func(lq *entdb.LemmaQuery) {
+		lq.WithForms()
+	})
 
 	rows, err := q.All(ctx)
 	if err != nil {
@@ -255,9 +292,28 @@ func (r *lexemeRepository) List(ctx context.Context, query *repository.ListLexem
 }
 
 func (r *lexemeRepository) ListByLemmaID(ctx context.Context, lemmaID int64) ([]*entity.Lexeme, error) {
+	if lemmaID == 0 {
+		return []*entity.Lexeme{}, nil
+	}
+	lemmaRow, err := r.client.Lemma.Query().
+		Where(entlemma.IDEQ(lemmaID)).
+		WithLexeme().
+		First(ctx)
+	if err != nil {
+		return nil, translateDBError(err, "word")
+	}
+	lexemeRow, err := lemmaRow.Edges.LexemeOrErr()
+	if err != nil {
+		return nil, translateDBError(err, "lexeme")
+	}
 	rows, err := r.client.Lexeme.Query().
-		Where(entlexeme.WordIDEQ(lemmaID)).
-		WithForms().
+		Where(
+			entlexeme.LanguageCodeEQ(lexemeRow.LanguageCode),
+			entlexeme.HasLemmasWith(entlemma.NormalizedEQ(lemmaRow.Normalized)),
+		).
+		WithLemmas(func(lq *entdb.LemmaQuery) {
+			lq.WithForms()
+		}).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list lexemes by lemma id: %w", err)
@@ -275,7 +331,9 @@ func (r *lexemeRepository) ListByIDs(ctx context.Context, ids []int64) ([]*entit
 	}
 	rows, err := r.client.Lexeme.Query().
 		Where(entlexeme.IDIn(ids...)).
-		WithForms().
+		WithLemmas(func(lq *entdb.LemmaQuery) {
+			lq.WithForms()
+		}).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list lexemes by ids: %w", err)
@@ -289,30 +347,17 @@ func (r *lexemeRepository) ListByIDs(ctx context.Context, ids []int64) ([]*entit
 
 func (r *lexemeRepository) Delete(ctx context.Context, lexemeID int64) error {
 	if lexemeID == 0 {
-		return entity.ErrInvalidLexemeID
+		return entity.ErrInvalidInput
 	}
-
-	tx, err := r.client.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Delete lexeme (LexemeForm will be cascade deleted automatically)
-	if err := tx.Lexeme.DeleteOneID(lexemeID).Exec(ctx); err != nil {
-		if entdb.IsNotFound(err) {
-			return entity.ErrLexemeNotFound
-		}
-		return fmt.Errorf("delete lexeme: %w", err)
-	}
-
-	return tx.Commit()
+	return r.client.Lexeme.DeleteOneID(lexemeID).Exec(context.Background())
 }
 
 func (r *lexemeRepository) fetchAggregate(ctx context.Context, predicate entpredicate.Lexeme) (*entity.Lexeme, error) {
 	rec, err := r.client.Lexeme.Query().
 		Where(predicate).
-		WithForms(). // Preload forms
+		WithLemmas(func(q *entdb.LemmaQuery) {
+			q.WithForms()
+		}).
 		First(ctx)
 	if err != nil {
 		return nil, err
@@ -324,10 +369,10 @@ func applyLexemeListFilters(q *entdb.LexemeQuery, params *repository.ListLexemeQ
 	if params.Language == "" {
 		params.Language = entity.LanguageEnglish.CodeOrDefault()
 	}
-	q.Where(entlexeme.LanguageEQ(params.Language))
+	q.Where(entlexeme.LanguageCodeEQ(params.Language))
 
 	if params.Keyword != "" {
-		q.Where(entlexeme.LemmaContainsFold(params.Keyword))
+		q.Where(entlexeme.HasLemmasWith(entlemma.SurfaceContainsFold(params.Keyword)))
 	}
 	if params.EntryType != "" {
 		q.Where(entlexeme.EntryTypeEQ(params.EntryType))
@@ -368,9 +413,9 @@ func applyLexemeOrdering(q *entdb.LexemeQuery, params *repository.ListLexemeQuer
 			}
 		case "lemma":
 			if term.desc {
-				q.Order(entlexeme.ByLemma(sql.OrderDesc(), sql.OrderNullsLast()))
+				q.Order(entlexeme.ByLemmas(sql.OrderByField(entlemma.FieldSurface, sql.OrderDesc())))
 			} else {
-				q.Order(entlexeme.ByLemma(sql.OrderAsc(), sql.OrderNullsLast()))
+				q.Order(entlexeme.ByLemmas(sql.OrderByField(entlemma.FieldSurface, sql.OrderAsc())))
 			}
 		case "id":
 			if term.desc {
@@ -392,70 +437,23 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 	lex := &entity.Lexeme{
 		ID:           rec.ID,
 		ExternalID:   rec.ExternalID,
-		Language:     entity.ParseLanguage(rec.Language),
+		Language:     entity.ParseLanguage(rec.LanguageCode),
 		PartOfSpeech: rec.Pos,
 		EntryType:    entity.LexemeEntryType(rec.EntryType),
-		Lemma:        rec.Lemma,
+		Level:        rec.Level,
+		Frequencies:  append([]entity.Frequency{}, rec.Frequencies...),
+		SenseGloss:   rec.SenseGloss,
+		Categories:   append([]string{}, rec.Categories...),
+		Completeness: rec.Completeness,
 		CreatedAt:    rec.CreatedAt,
 		UpdatedAt:    rec.UpdatedAt,
 	}
 
-	if rec.WordID != nil {
-		lex.LemmaID = *rec.WordID
-	}
-
-	// Map forms from edge
-	if rec.Edges.Forms != nil {
-		lex.Forms = make([]entity.LexemeForm, 0, len(rec.Edges.Forms))
-		for _, f := range rec.Edges.Forms {
-			lex.Forms = append(lex.Forms, entity.LexemeForm{
-				ID:          f.ID,
-				LexemeID:    f.LexemeID,
-				Text:        f.Text,
-				FormType:    entity.LexemeFormType(f.FormType),
-				IsIrregular: f.IsIrregular,
-				Phonetics:   append([]entity.Phonetic{}, f.Phonetics...),
-				CreatedAt:   f.CreatedAt,
-				UpdatedAt:   f.UpdatedAt,
-			})
-		}
-	}
+	// Note: PrimaryLemmaID, LemmaText, and Forms have been removed from entity.Lexeme
+	// Forms are now accessed through the Lemma entity
 
 	lex.Senses = append([]entity.LexemeSense{}, rec.Senses...)
 	lex.Relations = append([]entity.LexemeRelation{}, rec.Relations...)
 
 	return lex
-}
-
-// upsertForms replaces all forms for a lexeme with the given list
-func (r *lexemeRepository) upsertForms(ctx context.Context, client *entdb.Client, lexemeID int64, forms []entity.LexemeForm) error {
-	// Delete existing forms
-	if _, err := client.LexemeForm.Delete().
-		Where(entlexemeform.LexemeIDEQ(lexemeID)).
-		Exec(ctx); err != nil {
-		return fmt.Errorf("delete old forms: %w", err)
-	}
-
-	// Create new forms
-	if len(forms) == 0 {
-		return nil
-	}
-
-	bulk := make([]*entdb.LexemeFormCreate, 0, len(forms))
-	for _, f := range forms {
-		text := strings.TrimSpace(f.Text)
-		bulk = append(bulk, client.LexemeForm.Create().
-			SetLexemeID(lexemeID).
-			SetText(text).
-			SetTextLower(strings.ToLower(text)).
-			SetFormType(string(f.FormType)).
-			SetIsIrregular(f.IsIrregular).
-			SetPhonetics(append([]entity.Phonetic{}, f.Phonetics...)))
-	}
-
-	if err := client.LexemeForm.CreateBulk(bulk...).Exec(ctx); err != nil {
-		return fmt.Errorf("bulk create forms: %w", err)
-	}
-
-	return nil
 }

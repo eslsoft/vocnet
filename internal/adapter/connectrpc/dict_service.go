@@ -33,69 +33,22 @@ func NewDictServiceServer(wordUC usecase.WordUsecase) *DictServiceServer {
 }
 
 func (s *DictServiceServer) CreateWord(ctx context.Context, req *connect.Request[dictv1.CreateWordRequest]) (*connect.Response[dictv1.Word], error) {
-	if req.Msg == nil || req.Msg.GetWord() == nil {
-		return nil, status.Error(codes.InvalidArgument, "word required")
-	}
-
-	// Convert proto to entity
-	entityLemma := mapping.ToEntityLemma(req.Msg.GetWord())
-	if entityLemma == nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid word")
-	}
-
-	created, err := s.wordUC.CreateLemma(ctx, entityLemma)
-	if err != nil {
-		return nil, mapping.ToPbError(err)
-	}
-
-	entry := &entity.WordEntry{
-		QueriedTerm:     created.Text,
-		Lemma:           created,
-		QueriedFormType: entity.LexemeFormTypeLemma,
-	}
-	return connect.NewResponse(mapping.ToPbWord(entry)), nil
+	// Write operations are disabled per user request
+	return nil, status.Error(codes.Unimplemented, "write operations are not supported")
 }
 
 func (s *DictServiceServer) UpdateWord(ctx context.Context, req *connect.Request[dictv1.Word]) (*connect.Response[dictv1.Word], error) {
-	if req.Msg == nil {
-		return nil, status.Error(codes.InvalidArgument, "word required")
-	}
-	if req.Msg.GetId() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "word id required")
-	}
-
-	// Convert proto to entity
-	entityLemma := mapping.ToEntityLemma(req.Msg)
-	if entityLemma == nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid word")
-	}
-
-	// Update word via usecase
-	updated, err := s.wordUC.UpdateLemma(ctx, entityLemma)
-	if err != nil {
-		return nil, mapping.ToPbError(err)
-	}
-
-	entry := &entity.WordEntry{
-		QueriedTerm:     updated.Text,
-		Lemma:           updated,
-		QueriedFormType: entity.LexemeFormTypeLemma,
-	}
-	return connect.NewResponse(mapping.ToPbWord(entry)), nil
+	// Write operations are disabled per user request
+	return nil, status.Error(codes.Unimplemented, "write operations are not supported")
 }
 
 func (s *DictServiceServer) GetWord(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[dictv1.Word], error) {
 	if req.Msg == nil {
 		return nil, status.Error(codes.InvalidArgument, "word id required")
 	}
-	lemma, err := s.wordUC.GetLemma(ctx, req.Msg.GetId())
+	entry, err := s.wordUC.GetLemma(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
-	}
-	entry := &entity.WordEntry{
-		QueriedTerm:     lemma.Text,
-		Lemma:           lemma,
-		QueriedFormType: entity.LexemeFormTypeLemma,
 	}
 	return connect.NewResponse(mapping.ToPbWord(entry)), nil
 }
@@ -132,20 +85,8 @@ func (s *DictServiceServer) LookupWord(ctx context.Context, req *connect.Request
 }
 
 func (s *DictServiceServer) DeleteWord(ctx context.Context, req *connect.Request[commonv1.IDRequest]) (*connect.Response[emptypb.Empty], error) {
-	if req.Msg == nil {
-		return nil, status.Error(codes.InvalidArgument, "word id required")
-	}
-	if req.Msg.GetId() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "word id required")
-	}
-
-	// Delete word via usecase
-	err := s.wordUC.DeleteLemma(ctx, req.Msg.GetId())
-	if err != nil {
-		return nil, mapping.ToPbError(err)
-	}
-
-	return connect.NewResponse(&emptypb.Empty{}), nil
+	// Write operations are disabled per user request
+	return nil, status.Error(codes.Unimplemented, "write operations are not supported")
 }
 
 func (s *DictServiceServer) GetWordStats(ctx context.Context, req *connect.Request[dictv1.GetWordStatsRequest]) (*connect.Response[dictv1.GetWordStatsResponse], error) {

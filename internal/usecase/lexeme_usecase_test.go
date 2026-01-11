@@ -16,15 +16,12 @@ func TestLexemeUsecase_CreateNormalizesData(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLexemeUsecase(mockRepo, nil)
+	uc := NewLexemeUsecase(mockRepo)
 
 	payload := &entity.Lexeme{
 		ExternalID: "L999",
-		Lemma:      "Run",
 		Language:   entity.LanguageUnspecified,
-		Forms: []entity.LexemeForm{
-			{Text: "running"},
-		},
+		// Note: Forms field removed from entity.Lexeme
 	}
 
 	// Setup expectation: the repository should receive normalized data
@@ -53,10 +50,7 @@ func TestLexemeUsecase_CreateNormalizesData(t *testing.T) {
 	if created.Language != entity.LanguageEnglish {
 		t.Fatalf("expected default language, got %s", created.Language)
 	}
-	// After Create returns, forms should have the lexeme ID
-	if len(created.Forms) == 0 || created.Forms[0].LexemeID != created.ID {
-		t.Fatalf("expected forms to inherit lexeme ID, got LexemeID=%d", created.Forms[0].LexemeID)
-	}
+	// Note: Forms validation removed as Forms field no longer exists in entity.Lexeme
 }
 
 func TestLexemeUsecase_GetValidatesIdentifier(t *testing.T) {
@@ -64,7 +58,7 @@ func TestLexemeUsecase_GetValidatesIdentifier(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := mocks.NewMockLexemeRepository(ctrl)
-	uc := NewLexemeUsecase(mockRepo, nil)
+	uc := NewLexemeUsecase(mockRepo)
 
 	if _, err := uc.Get(context.Background(), 0); !errors.Is(err, entity.ErrInvalidLexemeID) {
 		t.Fatalf("expected ErrInvalidLexemeID, got %v", err)

@@ -23,13 +23,12 @@ type LexemeUsecase interface {
 }
 
 type lexemeUsecase struct {
-	repo   repository.LexemeRepository
-	lemmas repository.LemmaRepository
+	repo repository.LexemeRepository
 }
 
 // NewLexemeUsecase wires the repository with domain rules.
-func NewLexemeUsecase(repo repository.LexemeRepository, lemmas repository.LemmaRepository) LexemeUsecase {
-	return &lexemeUsecase{repo: repo, lemmas: lemmas}
+func NewLexemeUsecase(repo repository.LexemeRepository) LexemeUsecase {
+	return &lexemeUsecase{repo: repo}
 }
 
 func (u *lexemeUsecase) Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error) {
@@ -37,17 +36,11 @@ func (u *lexemeUsecase) Create(ctx context.Context, lexeme *entity.Lexeme) (*ent
 	if err != nil {
 		return nil, err
 	}
-	// Normalize forms with lexeme ID after creation
-	norm.Forms = normalizeLexemeForms(norm.ID, norm.Forms)
 	created, err := u.repo.Create(ctx, norm)
 	if err != nil {
 		return nil, err
 	}
-	// Update forms with the created lexeme's ID
-	created.Forms = normalizeLexemeForms(created.ID, created.Forms)
-	if created.LemmaID > 0 {
-		_ = u.refreshLemma(ctx, created.LemmaID) // best-effort
-	}
+	// Note: Forms normalization removed as Forms field no longer exists
 	return created, nil
 }
 
@@ -59,9 +52,6 @@ func (u *lexemeUsecase) Update(ctx context.Context, lexeme *entity.Lexeme) (*ent
 	updated, err := u.repo.Update(ctx, norm)
 	if err != nil {
 		return nil, err
-	}
-	if updated.LemmaID > 0 {
-		_ = u.refreshLemma(ctx, updated.LemmaID)
 	}
 	return updated, nil
 }
@@ -89,15 +79,8 @@ func (u *lexemeUsecase) Delete(ctx context.Context, lexemeID int64) error {
 	if lexemeID == 0 {
 		return entity.ErrInvalidLexemeID
 	}
-	lex, err := u.repo.GetByID(ctx, lexemeID)
-	if err != nil {
-		return err
-	}
 	if err := u.repo.Delete(ctx, lexemeID); err != nil {
 		return err
-	}
-	if lex.LemmaID > 0 {
-		_ = u.refreshLemma(ctx, lex.LemmaID)
 	}
 	return nil
 }
@@ -114,14 +97,17 @@ func normalizeLexemePayload(in *entity.Lexeme) (*entity.Lexeme, error) {
 	if out.EntryType == entity.LexemeEntryTypeUnspecified {
 		out.EntryType = entity.LexemeEntryTypeWord
 	}
-	out.Lemma = strings.TrimSpace(out.Lemma)
+	// Note: LemmaText field removed from entity.Lexeme
+	out.Level = strings.TrimSpace(out.Level)
+	out.SenseGloss = strings.TrimSpace(out.SenseGloss)
+	out.Frequencies = append([]entity.Frequency{}, out.Frequencies...)
+	out.Categories = append([]string{}, out.Categories...)
 
 	// ExternalID must be provided (from Wikidata)
 	if out.ExternalID == "" {
 		return nil, fmt.Errorf("lexeme external_id is required")
 	}
 
-	// Note: LemmaID will be set later when associating with Lemma
 	// Forms will be handled separately after lexeme is created
 	out.Senses = normalizeLexemeSenses(out.ExternalID, out.Senses)
 	out.Relations = normalizeLexemeRelations(out.ExternalID, out.Relations)
@@ -129,22 +115,7 @@ func normalizeLexemePayload(in *entity.Lexeme) (*entity.Lexeme, error) {
 	return &out, nil
 }
 
-func normalizeLexemeForms(lexemeID int64, forms []entity.LexemeForm) []entity.LexemeForm {
-	if len(forms) == 0 {
-		return []entity.LexemeForm{}
-	}
-	out := make([]entity.LexemeForm, 0, len(forms))
-	for _, form := range forms {
-		out = append(out, entity.LexemeForm{
-			ID:          form.ID,
-			LexemeID:    lexemeID,
-			Text:        strings.TrimSpace(form.Text),
-			FormType:    defaultFormType(form.FormType),
-			IsIrregular: form.IsIrregular,
-		})
-	}
-	return out
-}
+// normalizeLexemeForms removed as Forms field no longer exists in entity.Lexeme
 
 func normalizeLexemeSenses(lexemeLID string, senses []entity.LexemeSense) []entity.LexemeSense {
 	if len(senses) == 0 {
@@ -181,59 +152,4 @@ func defaultFormType(ft entity.LexemeFormType) entity.LexemeFormType {
 		return entity.LexemeFormTypeLemma
 	}
 	return ft
-}
-
-func (u *lexemeUsecase) refreshLemma(ctx context.Context, lemmaID int64) error {
-	if u.lemmas == nil || lemmaID == 0 {
-		return nil
-	}
-	lexemes, err := u.repo.ListByLemmaID(ctx, lemmaID)
-	if err != nil {
-		return err
-	}
-	if len(lexemes) == 0 {
-		// If no lexemes, get lemma and delete by WID
-		lemma, err := u.lemmas.GetByID(ctx, lemmaID)
-		if err != nil {
-			return err
-		}
-		return u.lemmas.DeleteByWID(ctx, lemma.WID)
-	}
-	lemma := &entity.Lemma{
-		ID:           lemmaID,
-		WID:          makeWID(lexemes[0].Language, lexemes[0].Lemma),
-		Text:         lexemes[0].Lemma,
-		Language:     lexemes[0].Language,
-		Completeness: computeWordCompleteness(lexemes),
-		// TODO: Aggregate Categories from lexemes if needed
-	}
-	_, err = u.lemmas.Upsert(ctx, lemma)
-	return err
-}
-
-func computeWordCompleteness(lexemes []*entity.Lexeme) int32 {
-	if len(lexemes) == 0 {
-		return 0
-	}
-	var score int32
-	hasForms := false
-	hasSenses := false
-	for _, lex := range lexemes {
-		if len(lex.Forms) > 0 {
-			hasForms = true
-		}
-		if len(lex.Senses) > 0 {
-			hasSenses = true
-		}
-	}
-	if hasForms {
-		score += 40
-	}
-	if hasSenses {
-		score += 60
-	}
-	if score > 100 {
-		return 100
-	}
-	return score
 }

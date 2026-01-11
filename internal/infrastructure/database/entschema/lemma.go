@@ -4,7 +4,8 @@ import (
 	"time"
 
 	"entgo.io/ent"
-	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/entsql"
+	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -17,19 +18,25 @@ type Lemma struct {
 func (Lemma) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.String("wid").
+		field.Int64("lexeme_id").
+			Comment("Foreign key to lexemes table"),
+
+		// Dictionary form text
+		field.String("surface").
 			NotEmpty().
-			Unique().
-			Comment("Stable business identifier: {language}:{lemma}"),
-		field.String("lemma").
-			NotEmpty(),
-		field.String("language").
-			NotEmpty(),
-		field.JSON("categories", []string{}).
-			Default([]string{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
-		field.Int32("completeness").
-			Default(0),
+			Comment("Dictionary form preserving original case (e.g. Have, LED, Polish)"),
+		field.String("normalized").
+			NotEmpty().
+			Comment("Lowercase form for case-insensitive lookup (e.g. have, led, polish)"),
+
+		// Orthographic variant support
+		field.String("variant").
+			Optional().
+			Comment("Orthographic variant type: US, UK, archaic, etc. (e.g. color vs colour)"),
+		field.Bool("is_primary").
+			Default(true).
+			Comment("Whether this is the primary lemma for the lexeme"),
+
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -41,16 +48,33 @@ func (Lemma) Fields() []ent.Field {
 
 func (Lemma) Edges() []ent.Edge {
 	return []ent.Edge{
-		// Word -> Lexeme (一对多，删除Word时Lexeme.word_id设为NULL)
-		// 注：级联策略在Lexeme端的edge.From中定义
-		edge.To("lexemes", Lexeme.Type),
+		// Lemma -> Lexeme (多对一，Lexeme删除时级联删除Lemma)
+		edge.From("lexeme", Lexeme.Type).
+			Ref("lemmas").
+			Field("lexeme_id").
+			Required().
+			Unique().
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+
+		// Lemma -> LexemeForm (一对多，Lemma删除时级联删除Form)
+		edge.To("forms", LexemeForm.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 
 func (Lemma) Indexes() []ent.Index {
 	return []ent.Index{
-		// 唯一约束：同一语言下的同一 lemma 只能有一个 Word 记录
-		// 因为 wid = {language}:{lemma} 是唯一的
-		index.Fields("language", "lemma").Unique(),
+		// Query by lexeme_id
+		index.Fields("lexeme_id"),
+		// Case-insensitive lookup
+		index.Fields("normalized"),
+		// Unique constraint: same lexeme cannot have duplicate text
+		index.Fields("lexeme_id", "surface").Unique(),
+	}
+}
+
+func (Lemma) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		entsql.Annotation{Table: "lemmas"},
 	}
 }
