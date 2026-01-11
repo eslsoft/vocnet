@@ -9,20 +9,20 @@ import (
 	"strings"
 	"time"
 
-	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	"entgo.io/ent/dialect/sql"
+	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
-	defaultDatabaseURL      = "file:./data/vocnet.db?_fk=1"
-	defaultBatchSize        = 32
-	defaultWikidataFile     = "~/lexemes/english-lexemes.json"
-	defaultWikidataLimit    = 0
-	defaultECDictURL        = "https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip"
-	defaultECDictCacheDir   = ""
-	defaultWordNetDataPath  = ""
+	defaultDatabaseURL     = "file:./data/vocnet.db?_fk=1"
+	defaultBatchSize       = 32
+	defaultWikidataFile    = "~/lexemes/english-lexemes.json"
+	defaultWikidataLimit   = 0
+	defaultECDictURL       = "https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip"
+	defaultECDictCacheDir  = ""
+	defaultWordNetDataPath = ""
 )
 
 type pipelineConfig struct {
@@ -31,10 +31,12 @@ type pipelineConfig struct {
 	wikidataFile   string
 	wikidataLimit  int
 	runWikidata    bool
+	runECDict      bool
 	ecdictURL      string
 	ecdictCacheDir string
 	ecdictNoCache  bool
 	wordNetPath    string
+	mobyFile       string
 }
 
 func main() {
@@ -54,11 +56,13 @@ func parseFlags() pipelineConfig {
 	flag.IntVar(&cfg.wikidataLimit, "wikidata-limit", defaultWikidataLimit, "Optional limit of Wikidata lexemes to import (0 = no limit)")
 	flag.BoolVar(&cfg.runWikidata, "wikidata", true, "Enable Wikidata ingestion stage")
 
+	flag.BoolVar(&cfg.runECDict, "ecdict", true, "Enable ECDICT ingestion stage")
 	flag.StringVar(&cfg.ecdictURL, "ecdict-url", defaultECDictURL, "ECDICT SQLite download URL")
 	flag.StringVar(&cfg.ecdictCacheDir, "ecdict-cache", defaultECDictCacheDir, "ECDICT cache directory (default: user cache dir/vocnet)")
 	flag.BoolVar(&cfg.ecdictNoCache, "ecdict-no-cache", false, "Force re-download of ECDICT archive")
 
 	flag.StringVar(&cfg.wordNetPath, "wordnet-path", defaultWordNetDataPath, "Optional WordNet data path (stage pending implementation)")
+	flag.StringVar(&cfg.mobyFile, "moby-file", "", "Path to Moby Hyphenator (mhyph.txt) for extra syllables")
 
 	flag.Parse()
 
@@ -183,31 +187,49 @@ func runPipeline(cfg pipelineConfig) error {
 	}
 
 	// Stage 2: ECDICT import (new words only)
-	enricher, err := newECDICTEnricher(cfg)
-	if err != nil {
-		return fmt.Errorf("ECDICT enricher: %w", err)
+	if cfg.runECDict {
+		enricher, err := newECDICTEnricher(cfg)
+		if err != nil {
+			return fmt.Errorf("ECDICT enricher: %w", err)
+		}
+
+		if enricher != nil {
+			// Register known words from Wikidata stage
+			if wikidataImporter != nil {
+				importedWords := wikidataImporter.GetImportedWords()
+				log.Printf("[ecdict] Registering %d words from Wikidata", len(importedWords))
+				enricher.RegisterKnownWords(importedWords)
+			}
+
+			log.Println("\n" + strings.Repeat("=", 80))
+			log.Println("STAGE 2: ECDICT Import")
+			log.Println(strings.Repeat("=", 80))
+
+			// Phase 1: Import new words
+			ecdictImporter := newECDictImporter(cfg, importService, enricher)
+			start := time.Now()
+			report, err := ecdictImporter.Run(ctx)
+			if err != nil {
+				return fmt.Errorf("ECDICT import stage: %w", err)
+			}
+			log.Printf("[ecdict] Import stage completed in %s\n", time.Since(start).Round(time.Millisecond))
+			reports = append(reports, report)
+		}
 	}
 
-	if enricher != nil {
-		// Register known words from Wikidata stage
-		if wikidataImporter != nil {
-			importedWords := wikidataImporter.GetImportedWords()
-			log.Printf("[ecdict] Registering %d words from Wikidata", len(importedWords))
-			enricher.RegisterKnownWords(importedWords)
-		}
-
+	// Stage 3: Moby Hyphenator Import
+	if cfg.mobyFile != "" {
 		log.Println("\n" + strings.Repeat("=", 80))
-		log.Println("STAGE 2: ECDICT Import")
+		log.Println("STAGE 4: Moby Hyphenator Import")
 		log.Println(strings.Repeat("=", 80))
 
-		// Phase 1: Import new words
-		ecdictImporter := newECDictImporter(cfg, importService, enricher)
+		mobyImporter := newMobyImporter(cfg, importService)
 		start := time.Now()
-		report, err := ecdictImporter.Run(ctx)
+		report, err := mobyImporter.Run(ctx)
 		if err != nil {
-			return fmt.Errorf("ECDICT import stage: %w", err)
+			log.Printf("[moby] Warning: stage completed with errors: %v", err)
 		}
-		log.Printf("[ecdict] Import stage completed in %s\n", time.Since(start).Round(time.Millisecond))
+		log.Printf("[moby] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
 		reports = append(reports, report)
 	}
 
@@ -259,6 +281,8 @@ func printOverallSummary(reports []*ImportReport) {
 			reportFile = "reports/wikidata_import_report.json"
 		} else if report.StageName == "ECDICT" {
 			reportFile = "reports/ecdict_import_report.json"
+		} else if report.StageName == "Moby" {
+			reportFile = "reports/moby_import_report.json"
 		}
 		if reportFile != "" {
 			fmt.Printf("  %s: %s\n", report.StageName, reportFile)

@@ -20,10 +20,11 @@ type ImportLexemeData struct {
 
 // ImportLemmaData contains lemma and its forms for import.
 type ImportLemmaData struct {
-	Surface   string
+	Surface    string
 	Normalized string
 	Variant    string
 	IsPrimary  bool
+	Syllables  []string
 	Forms      []*entity.LemmaForm
 }
 
@@ -136,6 +137,7 @@ func convertEntFormsToEntity(entForms []*entdb.LexemeForm) []*entity.LemmaForm {
 			FormType:    entity.LexemeFormType(f.FormType),
 			IsIrregular: f.IsIrregular,
 			Phonetics:   f.Phonetics,
+			Syllables:   f.Syllables,
 		})
 	}
 	return forms
@@ -323,6 +325,7 @@ func (s *LexemeImportService) createOrUpdateLemma(ctx context.Context, tx *entdb
 			SetFormType(string(form.FormType)).
 			SetIsIrregular(form.IsIrregular).
 			SetPhonetics(form.Phonetics).
+			SetSyllables(form.Syllables).
 			Save(ctx)
 		if err != nil {
 			return fmt.Errorf("create form %s: %w", form.Surface, err)

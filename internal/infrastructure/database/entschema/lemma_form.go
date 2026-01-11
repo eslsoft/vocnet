@@ -47,6 +47,9 @@ func (LexemeForm) Fields() []ent.Field {
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("IPA and dialect information"),
+		field.JSON("syllables", []string{}).
+			Optional().
+			Comment("Syllabification list"),
 
 		field.Time("created_at").
 			Default(time.Now).

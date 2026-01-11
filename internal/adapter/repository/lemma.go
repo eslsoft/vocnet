@@ -314,6 +314,7 @@ func mapEntLemma(lemmaRow *entdb.Lemma) *entity.Lemma {
 			FormType:    entity.LexemeFormType(formRow.FormType),
 			IsIrregular: formRow.IsIrregular,
 			Phonetics:   formRow.Phonetics,
+			Syllables:   formRow.Syllables,
 			CreatedAt:   formRow.CreatedAt,
 			UpdatedAt:   formRow.UpdatedAt,
 		})

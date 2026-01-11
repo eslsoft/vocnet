@@ -181,6 +181,7 @@ type Word struct {
 	// Example: "apple" → [{term:"apples", type:PLURAL}, {term:"apple's", type:...}]
 	// When this is a non-lemma form, this field is empty
 	RelatedForms  []*RelatedForm         `protobuf:"bytes,10,rep,name=related_forms,json=relatedForms,proto3" json:"related_forms,omitempty"`
+	Syllables     []string               `protobuf:"bytes,11,rep,name=syllables,proto3" json:"syllables,omitempty"`                   // Syllabification (e.g. ["a", "bil", "i", "ty"])
 	Irregular     bool                   `protobuf:"varint,31,opt,name=irregular,proto3" json:"irregular,omitempty"`                  // Whether this is an irregular form (e.g., "went", "children")
 	Completeness  int32                  `protobuf:"varint,32,opt,name=completeness,proto3" json:"completeness,omitempty"`            // Data completeness 0-100, calculated from core fields
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,100,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // Creation timestamp
@@ -285,6 +286,13 @@ func (x *Word) GetPhrases() []*Phrase {
 func (x *Word) GetRelatedForms() []*RelatedForm {
 	if x != nil {
 		return x.RelatedForms
+	}
+	return nil
+}
+
+func (x *Word) GetSyllables() []string {
+	if x != nil {
+		return x.Syllables
 	}
 	return nil
 }
@@ -685,7 +693,7 @@ var File_dict_v1_word_proto protoreflect.FileDescriptor
 
 const file_dict_v1_word_proto_rawDesc = "" +
 	"\n" +
-	"\x12dict/v1/word.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x14dict/v1/phrase.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcd\x04\n" +
+	"\x12dict/v1/word.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x14dict/v1/phrase.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xeb\x04\n" +
 	"\x04Word\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12/\n" +
 	"\blanguage\x18\x02 \x01(\x0e2\x13.common.v1.LanguageR\blanguage\x12\x12\n" +
@@ -700,6 +708,7 @@ const file_dict_v1_word_proto_rawDesc = "" +
 	"\aphrases\x18\t \x03(\v2\x0f.dict.v1.PhraseR\aphrases\x129\n" +
 	"\rrelated_forms\x18\n" +
 	" \x03(\v2\x14.dict.v1.RelatedFormR\frelatedForms\x12\x1c\n" +
+	"\tsyllables\x18\v \x03(\tR\tsyllables\x12\x1c\n" +
 	"\tirregular\x18\x1f \x01(\bR\tirregular\x12\"\n" +
 	"\fcompleteness\x18  \x01(\x05R\fcompleteness\x129\n" +
 	"\n" +

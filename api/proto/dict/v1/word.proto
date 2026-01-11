@@ -23,6 +23,8 @@ message Word {
   // When this is a non-lemma form, this field is empty
   repeated RelatedForm related_forms = 10;
 
+  repeated string syllables = 11; // Syllabification (e.g. ["a", "bil", "i", "ty"])
+
   bool irregular = 31; // Whether this is an irregular form (e.g., "went", "children")
   int32 completeness = 32; // Data completeness 0-100, calculated from core fields
 

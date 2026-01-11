@@ -11,6 +11,7 @@ type Lemma struct {
 	Surface    string
 	Normalized string
 	Variant    string
+	Syllables  []string
 	Forms      []*LemmaForm
 
 	CreatedAt time.Time
@@ -26,6 +27,7 @@ type LemmaForm struct {
 	FormType    LexemeFormType
 	IsIrregular bool
 	Phonetics   []Phonetic
+	Syllables   []string
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
