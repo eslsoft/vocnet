@@ -37,15 +37,13 @@ type pipelineConfig struct {
 	batchSize         int
 	wikidataFile      string
 	wikidataLimit     int
-	runWikidata       bool
-	runECDict         bool
 	ecdictURL         string
 	ecdictCacheDir    string
 	ecdictNoCache     bool
 	mobyFile          string
-	checkCoverage     bool
 	wordbookDir       string
 	coverageOutputDir string
+	pipes             string
 }
 
 func Execute() {
@@ -63,16 +61,15 @@ func parseFlags() pipelineConfig {
 
 	flag.StringVar(&cfg.wikidataFile, "wikidata-file", defaultWikidataFile, "Path to filtered Wikidata lexemes JSON")
 	flag.IntVar(&cfg.wikidataLimit, "wikidata-limit", defaultWikidataLimit, "Optional limit of Wikidata lexemes to import (0 = no limit)")
-	flag.BoolVar(&cfg.runWikidata, "wikidata", true, "Enable Wikidata ingestion stage")
 
-	flag.BoolVar(&cfg.runECDict, "ecdict", true, "Enable ECDICT ingestion stage")
 	flag.StringVar(&cfg.ecdictURL, "ecdict-url", defaultECDictURL, "ECDICT SQLite download URL")
 	flag.StringVar(&cfg.ecdictCacheDir, "ecdict-cache", defaultECDictCacheDir, "ECDICT cache directory (default: user cache dir/vocnet)")
 	flag.BoolVar(&cfg.ecdictNoCache, "ecdict-no-cache", false, "Force re-download of ECDICT archive")
 
 	flag.StringVar(&cfg.mobyFile, "moby-file", defaultMobyFile, "Path to Moby Hyphenator (mhyph.txt) for extra syllables")
 
-	flag.BoolVar(&cfg.checkCoverage, "check-coverage", false, "Check wordbook coverage against lemma database")
+	flag.StringVar(&cfg.pipes, "pipes", "*", "Pipeline stages to run (comma-separated: wikidata,ecdict,moby,coverage) or * for all")
+
 	flag.StringVar(&cfg.wordbookDir, "wordbook-dir", defaultWordbookDir, "Directory containing wordbook JSON files")
 	flag.StringVar(&cfg.coverageOutputDir, "coverage-output", "reports", "Directory to save coverage reports")
 
@@ -153,11 +150,6 @@ func initializeEntClient(databaseURL string) (*entdb.Client, func(), error) {
 }
 
 func runPipeline(cfg pipelineConfig) error {
-	// If only checking coverage, run that and exit
-	if cfg.checkCoverage {
-		return runCoverageCheck(cfg)
-	}
-
 	// Setup logging to file
 	logFile, err := util.SetupLogging()
 	if err != nil {
@@ -187,7 +179,7 @@ func runPipeline(cfg pipelineConfig) error {
 	var reports []*report.ImportReport
 
 	// Stage 1: Wikidata import
-	if cfg.runWikidata {
+	if shouldRun(cfg.pipes, "wikidata") {
 		log.Println("\n" + strings.Repeat("=", 80))
 		log.Println("STAGE 1: Wikidata Import")
 		log.Println(strings.Repeat("=", 80))
@@ -203,8 +195,8 @@ func runPipeline(cfg pipelineConfig) error {
 	}
 
 	// Stage 2: ECDICT enrichment (existing words only)
-	if cfg.runECDict {
-		if !cfg.runWikidata {
+	if shouldRun(cfg.pipes, "ecdict") {
+		if !shouldRun(cfg.pipes, "wikidata") {
 			log.Printf("[ecdict] Wikidata stage disabled. ECDICT will only enrich existing data.")
 		}
 
@@ -238,7 +230,7 @@ func runPipeline(cfg pipelineConfig) error {
 	}
 
 	// Stage 3: Moby Hyphenator Import
-	if cfg.mobyFile != "" {
+	if shouldRun(cfg.pipes, "moby") {
 		if _, err := os.Stat(cfg.mobyFile); err != nil {
 			if os.IsNotExist(err) {
 				log.Printf("[moby] File not found at %s, skipping Moby import", cfg.mobyFile)
@@ -263,6 +255,13 @@ func runPipeline(cfg pipelineConfig) error {
 
 	// Print overall summary
 	printOverallSummary(reports)
+
+	// Stage 4: Coverage Check
+	if shouldRun(cfg.pipes, "coverage") {
+		if err := runCoverageCheck(cfg); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -356,4 +355,16 @@ func printOverallSummary(reports []*report.ImportReport) {
 	}
 
 	fmt.Println(strings.Repeat("=", 80))
+}
+
+func shouldRun(pipes string, stage string) bool {
+	if pipes == "*" {
+		return true
+	}
+	for _, p := range strings.Split(pipes, ",") {
+		if strings.TrimSpace(p) == stage {
+			return true
+		}
+	}
+	return false
 }

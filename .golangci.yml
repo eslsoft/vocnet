@@ -30,7 +30,7 @@ linters:
           - gosec
           - gocognit
       # Scripts directory
-      - path: hack/dictinit/
+      - path: hack/
         linters:
           - dupl
           - gocyclo
@@ -40,4 +40,3 @@ linters:
           - staticcheck
           - errcheck
           - ineffassign
-          - unused
