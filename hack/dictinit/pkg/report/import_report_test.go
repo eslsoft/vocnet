@@ -1,4 +1,4 @@
-package main
+package report
 
 import (
 	"encoding/json"
@@ -21,6 +21,9 @@ func TestNewImportReport(t *testing.T) {
 
 	if report.Statistics.FormsByType == nil {
 		t.Error("FormsByType map should be initialized")
+	}
+	if report.Statistics.RelationsByType == nil {
+		t.Error("RelationsByType map should be initialized")
 	}
 
 	if report.Issues.MissingFields == nil {
@@ -119,6 +122,9 @@ func TestImportReport_RecordFormType(t *testing.T) {
 	report.RecordFormType("PLURAL")
 	report.RecordFormType("PLURAL")
 	report.RecordFormType("PAST")
+	report.RecordRelationType("SYNONYM")
+	report.RecordRelationType("SYNONYM")
+	report.RecordRelationType("ANTONYM")
 
 	if report.Statistics.FormsByType["PLURAL"] != 2 {
 		t.Errorf("FormsByType[PLURAL] = %d, want 2", report.Statistics.FormsByType["PLURAL"])
@@ -126,6 +132,12 @@ func TestImportReport_RecordFormType(t *testing.T) {
 
 	if report.Statistics.FormsByType["PAST"] != 1 {
 		t.Errorf("FormsByType[PAST] = %d, want 1", report.Statistics.FormsByType["PAST"])
+	}
+	if report.Statistics.RelationsByType["SYNONYM"] != 2 {
+		t.Errorf("RelationsByType[SYNONYM] = %d, want 2", report.Statistics.RelationsByType["SYNONYM"])
+	}
+	if report.Statistics.RelationsByType["ANTONYM"] != 1 {
+		t.Errorf("RelationsByType[ANTONYM] = %d, want 1", report.Statistics.RelationsByType["ANTONYM"])
 	}
 }
 

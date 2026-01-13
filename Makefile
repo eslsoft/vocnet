@@ -129,7 +129,7 @@ test-coverage: test ## Generate HTML test coverage report
 .PHONY: lint
 lint: ## Run golangci-lint
 	@echo "Running linter..."
-	golangci-lint run 
+	golangci-lint run
 
 .PHONY: fmt
 fmt: ## Format Go code
@@ -182,6 +182,20 @@ clean: ## Clean build artifacts and generated files
 	rm -rf $(OPENAPI_DIR)
 	rm -f coverage.out coverage.html
 	@echo "Clean completed"
+
+#==============================================================================
+# Utilities
+#==============================================================================
+
+.PHONY: sense-cleaner
+sense-cleaner: ## Run sense cleaner (use ARGS for flags, e.g., make sense-cleaner ARGS="-dry-run -limit 10")
+	@echo "Running sense cleaner..."
+	go run ./hack/sense-cleaner/... $(ARGS)
+
+.PHONY: sense-cleaner-dry
+sense-cleaner-dry: ## Run sense cleaner in dry-run mode with 10 samples
+	@echo "Running sense cleaner (dry-run, 10 samples)..."
+	go run ./hack/sense-cleaner/... -dry-run -limit 10
 
 #==============================================================================
 # Convenience

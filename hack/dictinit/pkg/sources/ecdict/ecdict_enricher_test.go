@@ -1,4 +1,4 @@
-package main
+package ecdict
 
 import (
 	"database/sql"
@@ -31,7 +31,7 @@ func TestNormalizePOS(t *testing.T) {
 		{"conj", "conj."},
 		{"interj", "interj."},
 		{"int", "interj."},
-		{"art", "art."},
+		{"art", "det."},
 		{"num", "num."},
 		{"aux", "aux."},
 		{"abbr", "abbr."},
@@ -244,7 +244,7 @@ func TestWordNetPOSToStandard(t *testing.T) {
 		{"r", "adv."},
 		{"m", "num."},
 		{"s", "adj."}, // adjective satellite
-		{"a", "art."},
+		{"a", "det."},
 		{"i", "prep."},
 		{"p", "pron."},
 		{"d", "det."},

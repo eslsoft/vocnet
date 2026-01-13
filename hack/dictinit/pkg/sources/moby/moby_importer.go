@@ -1,4 +1,4 @@
-package main
+package moby
 
 import (
 	"bufio"
@@ -10,36 +10,43 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/report"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
 	"github.com/schollz/progressbar/v3"
 )
 
-type mobyImporter struct {
-	importService *LexemeImportService
+type Importer struct {
+	importService *store.LexemeImportService
 	filePath      string
 	batchSize     int
-	report        *ImportReport
-	reportMu      sync.Mutex
+	report        *report.ImportReport
+	knownForms    map[string]struct{}
 }
 
-func newMobyImporter(cfg pipelineConfig, importService *LexemeImportService) *mobyImporter {
-	r := NewImportReport("Moby")
-	r.Enrichment = &EnrichmentStats{}
-	return &mobyImporter{
+func NewImporter(filePath string, batchSize int, importService *store.LexemeImportService) *Importer {
+	return &Importer{
 		importService: importService,
-		filePath:      cfg.mobyFile,
-		batchSize:     cfg.batchSize,
-		report:        r,
+		filePath:      filePath,
+		batchSize:     batchSize,
+		report:        report.NewImportReport("Moby"),
 	}
 }
 
-func (imp *mobyImporter) Name() string {
+func (imp *Importer) Name() string {
 	return "moby"
 }
 
-func (imp *mobyImporter) Run(ctx context.Context) (*ImportReport, error) {
+func (imp *Importer) Run(ctx context.Context) (*report.ImportReport, error) {
 	log.Printf("[moby] Starting Moby import from %s", imp.filePath)
+
+	knownForms, err := imp.importService.LoadKnownForms(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load known forms: %w", err)
+	}
+	imp.knownForms = knownForms
+	log.Printf("[moby] Loaded %d known forms", len(knownForms))
 
 	file, err := os.Open(imp.filePath)
 	if err != nil {
@@ -63,45 +70,34 @@ func (imp *mobyImporter) Run(ctx context.Context) (*ImportReport, error) {
 	)
 
 	jobCh := make(chan []byte, imp.batchSize*2)
-	resultCh := make(chan error, imp.batchSize*2)
+	progressCh := make(chan struct{}, imp.batchSize*4)
+	statsCh := make(chan mobyWorkerStats, imp.batchSize)
 	var wg sync.WaitGroup
 
-	var succeeded, skipped, failed int64
+	var skippedLogCount int64
+
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		for range progressCh {
+			bar.Add(1)
+		}
+	}()
 
 	// Start workers
 	for i := 0; i < imp.batchSize; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			stats := mobyWorkerStats{}
 			for line := range jobCh {
 				err := imp.processLine(ctx, line)
-				resultCh <- err
+				stats.applyResult(err, &skippedLogCount)
+				progressCh <- struct{}{}
 			}
+			statsCh <- stats
 		}()
 	}
-
-	// Result collector
-	var collectorWg sync.WaitGroup
-	collectorWg.Add(1)
-	go func() {
-		defer collectorWg.Done()
-		for err := range resultCh {
-			bar.Add(1)
-			if err != nil {
-				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "skipped") {
-					newSkipped := atomic.AddInt64(&skipped, 1)
-					// Sample log every 5000 skipped items
-					if newSkipped%5000 == 0 {
-						log.Printf("[moby] Skipped sample: %v", err)
-					}
-				} else {
-					atomic.AddInt64(&failed, 1)
-				}
-			} else {
-				atomic.AddInt64(&succeeded, 1)
-			}
-		}
-	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -113,9 +109,17 @@ func (imp *mobyImporter) Run(ctx context.Context) (*ImportReport, error) {
 	close(jobCh)
 
 	wg.Wait()
-	close(resultCh)
-	collectorWg.Wait()
+	close(progressCh)
+	<-progressDone
+	close(statsCh)
 	bar.Finish()
+
+	var succeeded, skipped, failed int64
+	for stats := range statsCh {
+		succeeded += stats.succeeded
+		skipped += stats.skipped
+		failed += stats.failed
+	}
 
 	imp.report.Statistics.Total = int64(lineCount)
 	imp.report.Statistics.Successful = succeeded
@@ -128,7 +132,7 @@ func (imp *mobyImporter) Run(ctx context.Context) (*ImportReport, error) {
 	return imp.report, nil
 }
 
-func (imp *mobyImporter) processLine(ctx context.Context, lineBytes []byte) error {
+func (imp *Importer) processLine(ctx context.Context, lineBytes []byte) error {
 	// Replace 0xA5 (Moby separator) with space
 	for i, b := range lineBytes {
 		if b == 0xA5 {
@@ -156,6 +160,14 @@ func (imp *mobyImporter) processLine(ctx context.Context, lineBytes []byte) erro
 
 	// Reconstruct the full word
 	word := strings.Join(parts, "")
+
+	wordKey := util.NormalizeKey(word)
+	if wordKey == "" {
+		return fmt.Errorf("skipped: empty word")
+	}
+	if _, ok := imp.knownForms[wordKey]; !ok {
+		return fmt.Errorf("skipped: %s not found in db", word)
+	}
 
 	// Find in DB
 	importData, err := imp.importService.FindLexemeByLemmaSurface(ctx, word, "en")

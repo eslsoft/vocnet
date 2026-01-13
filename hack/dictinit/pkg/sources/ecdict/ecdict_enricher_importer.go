@@ -1,39 +1,46 @@
-package main
+package ecdict
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	reportpkg "github.com/eslsoft/vocnet/hack/dictinit/pkg/report"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/schollz/progressbar/v3"
 )
 
 type ecdictEnrichmentImporter struct {
-	importService *LexemeImportService
+	importService *store.LexemeImportService
 	batchSize     int
-	report        *ImportReport
-	reportMu      sync.Mutex
+	report        *reportpkg.ImportReport
 }
 
-func newECDictEnrichmentImporter(cfg pipelineConfig, importService *LexemeImportService) *ecdictEnrichmentImporter {
+func newECDictEnrichmentImporter(batchSize int, importService *store.LexemeImportService, report *reportpkg.ImportReport) *ecdictEnrichmentImporter {
+	if report == nil {
+		report = reportpkg.NewImportReport("ECDICT")
+	}
 	return &ecdictEnrichmentImporter{
 		importService: importService,
-		batchSize:     cfg.batchSize,
-		report:        NewImportReport("ECDICT-Enrichment"),
+		batchSize:     batchSize,
+		report:        report,
 	}
 }
 
-func (imp *ecdictEnrichmentImporter) Run(ctx context.Context, wordsToEnrich []ecdictWord) (*ImportReport, error) {
+func (imp *ecdictEnrichmentImporter) Run(ctx context.Context, wordsToEnrich []ecdictWord) (*reportpkg.ImportReport, error) {
 	if len(wordsToEnrich) == 0 {
 		return imp.report, nil
 	}
 
 	log.Printf("[ecdict-enrich] Starting enrichment for %d words", len(wordsToEnrich))
 	imp.report.Statistics.Total = int64(len(wordsToEnrich))
+	if imp.report.Enrichment == nil {
+		imp.report.Enrichment = &reportpkg.EnrichmentStats{}
+	}
 
 	// Create progress bar
 	bar := progressbar.NewOptions(len(wordsToEnrich),
@@ -53,55 +60,32 @@ func (imp *ecdictEnrichmentImporter) Run(ctx context.Context, wordsToEnrich []ec
 	)
 
 	jobCh := make(chan ecdictWord, imp.batchSize*2)
-	resultCh := make(chan ecdictEnrichmentResult, imp.batchSize*2)
+	progressCh := make(chan struct{}, imp.batchSize*4)
+	statsCh := make(chan ecdictWorkerStats, imp.batchSize)
 	var wg sync.WaitGroup
 
-	var succeeded, failed, notFound int64
-	var totalPhoneticsAdded, totalSensesAdded, totalFormsAdded, totalCategoriesAdded int64
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		for range progressCh {
+			bar.Add(1)
+		}
+	}()
 
 	// Start workers
 	for i := 0; i < imp.batchSize; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
+			stats := newECDictWorkerStats()
 			for word := range jobCh {
 				result := imp.enrichWord(ctx, word)
-				resultCh <- result
+				stats.applyResult(result)
+				progressCh <- struct{}{}
 			}
+			statsCh <- stats
 		}(i + 1)
 	}
-
-	// Result collector
-	var collectorWg sync.WaitGroup
-	collectorWg.Add(1)
-	go func() {
-		defer collectorWg.Done()
-		for result := range resultCh {
-			bar.Add(1)
-
-			if result.err != nil {
-				atomic.AddInt64(&failed, 1)
-				imp.reportMu.Lock()
-				imp.report.AddFailureSample(result.word, "enrich_error", result.err.Error())
-				imp.reportMu.Unlock()
-				log.Printf("[ecdict-enrich] failed to enrich %s: %v", result.word, result.err)
-			} else if result.notFound {
-				atomic.AddInt64(&notFound, 1)
-			} else if result.succeeded {
-				atomic.AddInt64(&succeeded, 1)
-
-				// Track what was added
-				atomic.AddInt64(&totalPhoneticsAdded, int64(result.phoneticsAdded))
-				atomic.AddInt64(&totalSensesAdded, int64(result.sensesAdded))
-				atomic.AddInt64(&totalFormsAdded, int64(result.formsAdded))
-				atomic.AddInt64(&totalCategoriesAdded, int64(result.categoriesAdded))
-
-				imp.reportMu.Lock()
-				imp.report.AddSuccessSample(result.word, nil, result.phoneticsAdded > 0, false)
-				imp.reportMu.Unlock()
-			}
-		}
-	}()
 
 	// Send words to workers
 	for _, word := range wordsToEnrich {
@@ -110,21 +94,36 @@ func (imp *ecdictEnrichmentImporter) Run(ctx context.Context, wordsToEnrich []ec
 	close(jobCh)
 
 	wg.Wait()
-	close(resultCh)
-	collectorWg.Wait()
+	close(progressCh)
+	<-progressDone
+	close(statsCh)
 	bar.Finish()
 
+	aggregate := newECDictWorkerStats()
+	for stats := range statsCh {
+		aggregate.merge(stats)
+	}
+
 	// Update final statistics
-	imp.report.Statistics.Successful = succeeded
-	imp.report.Statistics.Failed = failed
+	imp.report.Statistics.Successful = aggregate.succeeded
+	imp.report.Statistics.Failed = aggregate.failed
+	imp.report.Enrichment.Attempted = int64(len(wordsToEnrich))
+	imp.report.Enrichment.Succeeded = aggregate.succeeded
+	imp.report.Enrichment.Failed = aggregate.failed
+	imp.report.Enrichment.NotFound = aggregate.notFound
+	imp.report.Enrichment.PhoneticsAdded = aggregate.totalPhoneticsAdded
+	imp.report.Enrichment.DefinitionsAdded = aggregate.totalSensesAdded
+	imp.report.Enrichment.FormsAdded = aggregate.totalFormsAdded
+	imp.report.Samples.SuccessExamples = aggregate.successSamples
+	imp.report.Samples.FailureExamples = aggregate.failureSamples
 
-	log.Printf("[ecdict-enrich] done. succeeded=%d failed=%d notFound=%d", succeeded, failed, notFound)
-	log.Printf("[ecdict-enrich] Added: %d phonetics, %d senses, %d forms, %d categories",
-		totalPhoneticsAdded, totalSensesAdded, totalFormsAdded, totalCategoriesAdded)
+	log.Printf("[ecdict-enrich] done. succeeded=%d failed=%d notFound=%d", aggregate.succeeded, aggregate.failed, aggregate.notFound)
+	log.Printf("[ecdict-enrich] Added: %d phonetics, %d senses, %d forms",
+		aggregate.totalPhoneticsAdded, aggregate.totalSensesAdded, aggregate.totalFormsAdded)
 
-	fmt.Printf("✓ Enrichment: %d succeeded, %d failed, %d not found\n", succeeded, failed, notFound)
-	fmt.Printf("  Added: %d phonetics, %d senses, %d forms, %d categories\n",
-		totalPhoneticsAdded, totalSensesAdded, totalFormsAdded, totalCategoriesAdded)
+	fmt.Printf("✓ Enrichment: %d succeeded, %d failed, %d not found\n", aggregate.succeeded, aggregate.failed, aggregate.notFound)
+	fmt.Printf("  Added: %d phonetics, %d senses, %d forms\n",
+		aggregate.totalPhoneticsAdded, aggregate.totalSensesAdded, aggregate.totalFormsAdded)
 
 	// Finalize report
 	imp.report.Finalize()
@@ -141,14 +140,13 @@ func (imp *ecdictEnrichmentImporter) Run(ctx context.Context, wordsToEnrich []ec
 }
 
 type ecdictEnrichmentResult struct {
-	word             string
-	succeeded        bool
-	notFound         bool
-	phoneticsAdded   int
-	sensesAdded      int
-	formsAdded       int
-	categoriesAdded  int
-	err              error
+	word           string
+	succeeded      bool
+	notFound       bool
+	phoneticsAdded int
+	sensesAdded    int
+	formsAdded     int
+	err            error
 }
 
 func (imp *ecdictEnrichmentImporter) enrichWord(ctx context.Context, word ecdictWord) ecdictEnrichmentResult {
@@ -175,15 +173,16 @@ func (imp *ecdictEnrichmentImporter) enrichWord(ctx context.Context, word ecdict
 		return result
 	}
 
+	oldPhonetics := countTotalPhonetics(existing.Lemmas[0].Forms)
+
 	// Merge enrichment data into existing
 	merged := mergeEnrichmentData(existing, enrichmentData)
 
 	// Count what was added
-	result.phoneticsAdded = countNewPhonetics(existing.Lemmas[0].Forms, merged.Lemmas[0].Forms)
+	newPhonetics := countTotalPhonetics(merged.Lemmas[0].Forms)
+	result.phoneticsAdded = newPhonetics - oldPhonetics
 	result.sensesAdded = countNewSenses(existing.Lexeme.Senses, merged.Lexeme.Senses)
 	result.formsAdded = countNewForms(existing.Lemmas[0].Forms, merged.Lemmas[0].Forms)
-	result.categoriesAdded = countNewCategories(existing.Lexeme.Categories, merged.Lexeme.Categories)
-
 	// Update the lexeme
 	err = imp.importService.CreateOrUpdateComplete(ctx, merged)
 	if err != nil {
@@ -196,8 +195,8 @@ func (imp *ecdictEnrichmentImporter) enrichWord(ctx context.Context, word ecdict
 }
 
 // mergeEnrichmentData merges ECDICT enrichment data into existing lexeme data.
-func mergeEnrichmentData(existing, enrichment *ImportLexemeData) *ImportLexemeData {
-	merged := &ImportLexemeData{
+func mergeEnrichmentData(existing, enrichment *store.ImportLexemeData) *store.ImportLexemeData {
+	merged := &store.ImportLexemeData{
 		Lexeme: &entity.Lexeme{
 			ID:           existing.Lexeme.ID,
 			ExternalID:   existing.Lexeme.ExternalID,
@@ -205,20 +204,58 @@ func mergeEnrichmentData(existing, enrichment *ImportLexemeData) *ImportLexemeDa
 			PartOfSpeech: existing.Lexeme.PartOfSpeech,
 			EntryType:    existing.Lexeme.EntryType,
 			Level:        existing.Lexeme.Level,
-			Frequencies:  existing.Lexeme.Frequencies,
+			Frequencies:  mergeFrequencies(existing.Lexeme.Frequencies, enrichment.Lexeme.Frequencies),
 			SenseGloss:   existing.Lexeme.SenseGloss,
 			Senses:       mergeSensesEnrichment(existing.Lexeme.Senses, enrichment.Lexeme.Senses),
 			Relations:    existing.Lexeme.Relations,
-			Categories:   mergeStringSlices(existing.Lexeme.Categories, enrichment.Lexeme.Categories),
+			Categories:   existing.Lexeme.Categories,
 			Completeness: existing.Lexeme.Completeness,
 		},
-		Lemmas: []*ImportLemmaData{{
+		Lemmas: []*store.ImportLemmaData{{
 			Surface:    existing.Lemmas[0].Surface,
 			Normalized: existing.Lemmas[0].Normalized,
 			Variant:    existing.Lemmas[0].Variant,
 			IsPrimary:  existing.Lemmas[0].IsPrimary,
 			Forms:      mergeFormsEnrichment(existing.Lemmas[0].Forms, enrichment.Lemmas[0].Forms),
 		}},
+	}
+
+	return merged
+}
+
+func mergeFrequencies(existing, incoming []entity.Frequency) []entity.Frequency {
+	if len(incoming) == 0 {
+		return existing
+	}
+	if len(existing) == 0 {
+		return incoming
+	}
+
+	seen := make(map[string]struct{}, len(existing))
+	merged := make([]entity.Frequency, 0, len(existing)+len(incoming))
+
+	for _, freq := range existing {
+		key := strings.ToLower(strings.TrimSpace(freq.Corpus))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, freq)
+	}
+
+	for _, freq := range incoming {
+		key := strings.ToLower(strings.TrimSpace(freq.Corpus))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, freq)
 	}
 
 	return merged
@@ -326,16 +363,12 @@ func mergePhoneticsEnrichment(existing, incoming []entity.Phonetic) []entity.Pho
 }
 
 // Helper functions to count additions
-func countNewPhonetics(oldForms, newForms []*entity.LemmaForm) int {
-	oldCount := 0
-	newCount := 0
-	for _, f := range oldForms {
-		oldCount += len(f.Phonetics)
+func countTotalPhonetics(forms []*entity.LemmaForm) int {
+	total := 0
+	for _, f := range forms {
+		total += len(f.Phonetics)
 	}
-	for _, f := range newForms {
-		newCount += len(f.Phonetics)
-	}
-	return newCount - oldCount
+	return total
 }
 
 func countNewSenses(oldSenses, newSenses []entity.LexemeSense) int {
@@ -344,8 +377,4 @@ func countNewSenses(oldSenses, newSenses []entity.LexemeSense) int {
 
 func countNewForms(oldForms, newForms []*entity.LemmaForm) int {
 	return len(newForms) - len(oldForms)
-}
-
-func countNewCategories(oldCats, newCats []string) int {
-	return len(newCats) - len(oldCats)
 }

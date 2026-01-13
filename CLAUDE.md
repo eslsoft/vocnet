@@ -242,15 +242,17 @@ Load `.env` file automatically on startup.
 
 ## Import Scripts
 
-Data import scripts in `scripts/import/`:
+Dictionary initialization tool lives in `hack/dictinit/`:
 
-- `ecdict_stage.go`: Import ECDICT dictionary data
-- `wikidata_stage.go`: Import Wikidata lexemes
-- `irregular_detector.go`: Detect irregular verb forms
+- `cmd/dictinit/main.go`: CLI entry point
+- `internal/dictinit/pipeline/main.go`: Pipeline configuration
+- `internal/dictinit/sources/wikidata/wikidata_importer.go`: Wikidata lexeme ingestion
+- `internal/dictinit/sources/ecdict/ecdict_enricher.go`: ECDICT enrichment parsing
+- `internal/dictinit/util/irregular_detector.go`: Detect irregular verb forms
 
 Run via CLI commands:
 ```bash
-go run . import --help
+go run ./hack/dictinit/cmd/dictinit --help
 ```
 
 Reports are saved to `reports/` directory.

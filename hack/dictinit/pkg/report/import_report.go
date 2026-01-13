@@ -1,4 +1,4 @@
-package main
+package report
 
 import (
 	"encoding/json"
@@ -16,12 +16,12 @@ type ImportReport struct {
 	EndTime    time.Time        `json:"end_time"`
 	Duration   string           `json:"duration"`
 	Statistics Statistics       `json:"statistics"`
-	Enrichment *EnrichmentStats `json:"enrichment,omitempty"` // For ECDICT enrichment phase
+	Enrichment *EnrichmentStats `json:"enrichment,omitempty"` // For enrichment phase
 	Samples    Samples          `json:"samples"`
 	Issues     Issues           `json:"issues"`
 }
 
-// EnrichmentStats tracks the enrichment phase statistics
+// EnrichmentStats tracks the enrichment phase statistics.
 type EnrichmentStats struct {
 	Attempted        int64 `json:"attempted"`         // Total words attempted to enrich
 	Succeeded        int64 `json:"succeeded"`         // Successfully enriched
@@ -30,7 +30,6 @@ type EnrichmentStats struct {
 	PhoneticsAdded   int64 `json:"phonetics_added"`   // How many phonetics were added
 	DefinitionsAdded int64 `json:"definitions_added"` // How many definitions were added
 	FormsAdded       int64 `json:"forms_added"`       // How many forms were added
-	CategoriesAdded  int64 `json:"categories_added"`  // How many categories were added
 }
 
 // Statistics holds numerical data about the import
@@ -39,8 +38,6 @@ type Statistics struct {
 	Successful int64 `json:"successful"`
 	Failed     int64 `json:"failed"`
 	Skipped    int64 `json:"skipped"`
-	Updated    int64 `json:"updated,omitempty"`     // For enrichment stages
-	NewlyAdded int64 `json:"newly_added,omitempty"` // For new word imports
 
 	// Form-related statistics
 	TotalForms     int64 `json:"total_forms,omitempty"`
@@ -48,14 +45,17 @@ type Statistics struct {
 	IrregularForms int64 `json:"irregular_forms,omitempty"`
 	FormsAdded     int64 `json:"forms_added,omitempty"`
 
+	// Relation/category statistics
+	TotalRelations  int64            `json:"total_relations,omitempty"`
+	TotalCategories int64            `json:"total_categories,omitempty"`
+	RelationsByType map[string]int64 `json:"relations_by_type,omitempty"`
+
 	// Form type breakdown
 	FormsByType map[string]int64 `json:"forms_by_type,omitempty"`
 
 	// Data quality metrics
 	WithPhonetics   int64 `json:"with_phonetics,omitempty"`
 	WithDefinitions int64 `json:"with_definitions,omitempty"`
-	WithExchange    int64 `json:"with_exchange,omitempty"`
-	WithCategories  int64 `json:"with_categories,omitempty"`
 }
 
 // Samples holds example entries from the import
@@ -67,12 +67,12 @@ type Samples struct {
 
 // SampleEntry represents a single sample from the import
 type SampleEntry struct {
-	Term        string   `json:"term"`
-	Reason      string   `json:"reason,omitempty"`
-	Details     string   `json:"details,omitempty"`
-	Forms       []string `json:"forms,omitempty"`
-	HasPhonetic bool     `json:"has_phonetic,omitempty"`
-	HasExchange bool     `json:"has_exchange,omitempty"`
+	Term          string   `json:"term"`
+	Reason        string   `json:"reason,omitempty"`
+	Details       string   `json:"details,omitempty"`
+	Forms         []string `json:"forms,omitempty"`
+	HasPhonetic   bool     `json:"has_phonetic,omitempty"`
+	HasDefinition bool     `json:"has_definition,omitempty"`
 }
 
 // Issues holds problems encountered during import
@@ -97,7 +97,8 @@ func NewImportReport(stageName string) *ImportReport {
 		StageName: stageName,
 		StartTime: time.Now(),
 		Statistics: Statistics{
-			FormsByType: make(map[string]int64),
+			FormsByType:     make(map[string]int64),
+			RelationsByType: make(map[string]int64),
 		},
 		Samples: Samples{
 			SuccessExamples: make([]SampleEntry, 0),
@@ -121,15 +122,15 @@ func (r *ImportReport) Finalize() {
 }
 
 // AddSuccessSample adds a success example (max 10)
-func (r *ImportReport) AddSuccessSample(term string, forms []string, hasPhonetic, hasExchange bool) {
+func (r *ImportReport) AddSuccessSample(term string, forms []string, hasPhonetic, hasDefinition bool) {
 	if len(r.Samples.SuccessExamples) >= 10 {
 		return
 	}
 	r.Samples.SuccessExamples = append(r.Samples.SuccessExamples, SampleEntry{
-		Term:        term,
-		Forms:       forms,
-		HasPhonetic: hasPhonetic,
-		HasExchange: hasExchange,
+		Term:          term,
+		Forms:         forms,
+		HasPhonetic:   hasPhonetic,
+		HasDefinition: hasDefinition,
 	})
 }
 
@@ -210,6 +211,11 @@ func (r *ImportReport) RecordFormType(formType string) {
 	r.Statistics.FormsByType[formType]++
 }
 
+// RecordRelationType records a relation type occurrence.
+func (r *ImportReport) RecordRelationType(relType string) {
+	r.Statistics.RelationsByType[relType]++
+}
+
 // SaveToFile saves the report to a JSON file
 func (r *ImportReport) SaveToFile(filename string) error {
 	// Ensure the reports directory exists
@@ -242,13 +248,6 @@ func (r *ImportReport) PrintSummary() {
 	fmt.Printf("📝 Total Processed: %d\n", r.Statistics.Total)
 	fmt.Printf("✅ Successful: %d\n", r.Statistics.Successful)
 
-	if r.Statistics.Updated > 0 {
-		fmt.Printf("🔄 Updated: %d\n", r.Statistics.Updated)
-	}
-	if r.Statistics.NewlyAdded > 0 {
-		fmt.Printf("➕ Newly Added: %d\n", r.Statistics.NewlyAdded)
-	}
-
 	fmt.Printf("❌ Failed: %d\n", r.Statistics.Failed)
 	fmt.Printf("⏭️  Skipped: %d\n", r.Statistics.Skipped)
 
@@ -272,9 +271,6 @@ func (r *ImportReport) PrintSummary() {
 		if r.Enrichment.FormsAdded > 0 {
 			fmt.Printf("    Forms: %d\n", r.Enrichment.FormsAdded)
 		}
-		if r.Enrichment.CategoriesAdded > 0 {
-			fmt.Printf("    Categories: %d\n", r.Enrichment.CategoriesAdded)
-		}
 	}
 
 	// Form statistics
@@ -297,6 +293,22 @@ func (r *ImportReport) PrintSummary() {
 		}
 	}
 
+	if r.Statistics.TotalRelations > 0 || r.Statistics.TotalCategories > 0 {
+		fmt.Println("\n🔗 Relations & Categories:")
+		if r.Statistics.TotalRelations > 0 {
+			fmt.Printf("  Total Relations: %d\n", r.Statistics.TotalRelations)
+		}
+		if len(r.Statistics.RelationsByType) > 0 {
+			fmt.Println("  Relations by Type:")
+			for relType, count := range r.Statistics.RelationsByType {
+				fmt.Printf("    %s: %d\n", relType, count)
+			}
+		}
+		if r.Statistics.TotalCategories > 0 {
+			fmt.Printf("  Total Categories: %d\n", r.Statistics.TotalCategories)
+		}
+	}
+
 	// Data quality
 	if r.Statistics.Total > 0 {
 		fmt.Println("\n📈 Data Quality:")
@@ -309,16 +321,6 @@ func (r *ImportReport) PrintSummary() {
 			fmt.Printf("  With Definitions: %d (%.1f%%)\n",
 				r.Statistics.WithDefinitions,
 				float64(r.Statistics.WithDefinitions)/float64(r.Statistics.Total)*100)
-		}
-		if r.Statistics.WithExchange > 0 {
-			fmt.Printf("  With Exchange: %d (%.1f%%)\n",
-				r.Statistics.WithExchange,
-				float64(r.Statistics.WithExchange)/float64(r.Statistics.Total)*100)
-		}
-		if r.Statistics.WithCategories > 0 {
-			fmt.Printf("  With Categories: %d (%.1f%%)\n",
-				r.Statistics.WithCategories,
-				float64(r.Statistics.WithCategories)/float64(r.Statistics.Total)*100)
 		}
 	}
 

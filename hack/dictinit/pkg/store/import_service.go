@@ -1,10 +1,11 @@
-package main
+package store
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
@@ -36,6 +37,39 @@ type LexemeImportService struct {
 // NewLexemeImportService creates a new import service.
 func NewLexemeImportService(client *entdb.Client) *LexemeImportService {
 	return &LexemeImportService{client: client}
+}
+
+// LoadKnownForms returns a normalized lookup of all lemma surfaces and lexeme forms in the database.
+func (s *LexemeImportService) LoadKnownForms(ctx context.Context) (map[string]struct{}, error) {
+	lemmas, err := s.client.Lemma.Query().
+		Select(entlemma.FieldNormalized).
+		Strings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load lemmas: %w", err)
+	}
+
+	forms, err := s.client.LexemeForm.Query().
+		Select(entlexemeform.FieldNormalized).
+		Strings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load forms: %w", err)
+	}
+
+	known := make(map[string]struct{}, len(lemmas)+len(forms))
+	for _, lemma := range lemmas {
+		key := util.NormalizeKey(lemma)
+		if key != "" {
+			known[key] = struct{}{}
+		}
+	}
+	for _, form := range forms {
+		key := util.NormalizeKey(form)
+		if key != "" {
+			known[key] = struct{}{}
+		}
+	}
+
+	return known, nil
 }
 
 // FindLexemeByLemmaSurface finds a lexeme by its lemma surface text or any of its forms.
@@ -189,7 +223,7 @@ func (s *LexemeImportService) CreateOrUpdateComplete(ctx context.Context, data *
 			SetSenseGloss(data.Lexeme.SenseGloss).
 			SetSenses(mergeSenses(existingLexeme.Senses, data.Lexeme.Senses)).
 			SetRelations(mergeRelations(existingLexeme.Relations, data.Lexeme.Relations)).
-			SetCategories(mergeStringSlices(existingLexeme.Categories, data.Lexeme.Categories)).
+			SetCategories(MergeStringSlices(existingLexeme.Categories, data.Lexeme.Categories)).
 			SetCompleteness(data.Lexeme.Completeness).
 			Save(ctx)
 		if err != nil {
@@ -398,7 +432,7 @@ func mergeRelations(existing, incoming []entity.LexemeRelation) []entity.LexemeR
 }
 
 // mergeStringSlices merges two string slices, avoiding duplicates.
-func mergeStringSlices(existing, incoming []string) []string {
+func MergeStringSlices(existing, incoming []string) []string {
 	if len(existing) == 0 {
 		return incoming
 	}

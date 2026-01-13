@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"strings"
@@ -7,9 +7,9 @@ import (
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 )
 
-// isIrregularForm determines if a given inflected form is irregular
+// IsIrregularForm determines if a given inflected form is irregular
 // based on standard English morphological rules.
-func isIrregularForm(lemma, form string, formType dictv1.FormType) bool {
+func IsIrregularForm(lemma, form string, formType dictv1.FormType) bool {
 	if lemma == "" || form == "" {
 		return false
 	}

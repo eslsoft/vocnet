@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"fmt"
@@ -18,8 +18,8 @@ var (
 	errorLog *log.Logger
 )
 
-// setupLogging configures logging to output to both file and stderr
-func setupLogging() (*os.File, error) {
+// SetupLogging configures logging to output to both file and stderr.
+func SetupLogging() (*os.File, error) {
 	// Create logs directory
 	logDir := "logs"
 	if err := os.MkdirAll(logDir, 0o755); err != nil {

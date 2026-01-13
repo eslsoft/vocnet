@@ -100,7 +100,7 @@
 
 ### 1. Wikidata 来源的分类
 
-在 `scripts/lexeme_import/wikidata_stage.go` 中，通过 `inferPOSAndCategories()` 函数从 gloss 文本推断分类：
+在 `hack/dictinit/internal/dictinit/sources/wikidata/wikidata_stage.go` 中，通过 `inferPOSAndCategories()` 函数从 gloss 文本推断分类：
 
 ```go
 // 示例：识别人名
@@ -126,7 +126,7 @@ if strings.Contains(gloss, "city in") {
 
 ### 2. ECDICT 来源的分类
 
-在 `scripts/lexeme_import/ecdict_enricher.go` 中，通过 `extractDomainMarkers()` 函数提取领域标记：
+在 `hack/dictinit/internal/dictinit/sources/ecdict/ecdict_enricher.go` 中，通过 `extractDomainMarkers()` 函数提取领域标记：
 
 ```go
 // 从定义中提取领域标记
@@ -320,7 +320,7 @@ SELECT * FROM words WHERE categories @> '["proper-noun", "city"]';
 
 运行测试：
 ```bash
-go test ./scripts/lexeme_import/... -v -run "Category|Domain|Append"
+go test ./hack/dictinit/... -v -run "Category|Domain|Append"
 ```
 
 ## 迁移指南

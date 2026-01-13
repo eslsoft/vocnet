@@ -1,4 +1,4 @@
-package main
+package wikidata
 
 import (
 	"testing"
@@ -19,7 +19,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "n.proper",
+			expected: "n.",
 		},
 		{
 			name: "given name",
@@ -30,7 +30,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "n.proper",
+			expected: "n.",
 		},
 		{
 			name: "place name - city",
@@ -41,7 +41,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "n.proper",
+			expected: "n.",
 		},
 		{
 			name: "place name - country",
@@ -52,7 +52,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "n.proper",
+			expected: "n.",
 		},
 		{
 			name: "organization",
@@ -63,7 +63,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "n.proper",
+			expected: "n.",
 		},
 		{
 			name: "dog breed",
@@ -121,7 +121,7 @@ func TestInferPOSFromGlosses(t *testing.T) {
 					},
 				},
 			},
-			expected: "n.proper",
+			expected: "n.",
 		},
 	}
 

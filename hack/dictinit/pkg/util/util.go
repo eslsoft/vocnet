@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func expandHome(path string) (string, error) {
+func ExpandHome(path string) (string, error) {
 	if path == "" || path == "~" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -23,4 +23,8 @@ func expandHome(path string) (string, error) {
 		return filepath.Join(home, path[2:]), nil
 	}
 	return path, nil
+}
+
+func NormalizeKey(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }

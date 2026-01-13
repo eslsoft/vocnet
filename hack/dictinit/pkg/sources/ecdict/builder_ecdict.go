@@ -1,14 +1,16 @@
-package main
+package ecdict
 
 import (
 	"strings"
 
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
 	"github.com/eslsoft/vocnet/internal/entity"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 )
 
 // BuildECDictLexeme converts ECDICT data to entity structures for import.
-func BuildECDictLexeme(word string, enrichment *ecdictEnrichment) (*ImportLexemeData, error) {
+func BuildECDictLexeme(word string, enrichment *ecdictEnrichment) (*store.ImportLexemeData, error) {
 	if word == "" {
 		return nil, nil
 	}
@@ -64,9 +66,6 @@ func BuildECDictLexeme(word string, enrichment *ecdictEnrichment) (*ImportLexeme
 	// Determine entry type (WORD vs PHRASE) - simple: check for spaces
 	entryType := determineEntryType(word)
 
-	// Build categories with additional metadata (without collins, it's in frequencies now)
-	categories := buildCategories(enrichment.categories, enrichment.oxford)
-
 	// Build lexeme
 	lexeme := &entity.Lexeme{
 		ExternalID:   "TL-ECDICT-" + word, // Temporary ID for ECDICT words
@@ -76,7 +75,6 @@ func BuildECDictLexeme(word string, enrichment *ecdictEnrichment) (*ImportLexeme
 		Frequencies:  frequencies,
 		SenseGloss:   senseGloss,
 		Senses:       senses,
-		Categories:   categories,
 		Completeness: calculateCompletenessECDict(senses, forms, phonetics),
 	}
 
@@ -137,16 +135,16 @@ func BuildECDictLexeme(word string, enrichment *ecdictEnrichment) (*ImportLexeme
 	}
 
 	// Build lemma data
-	lemmaData := &ImportLemmaData{
+	lemmaData := &store.ImportLemmaData{
 		Surface:    lemmaText,
 		Normalized: strings.ToLower(lemmaText),
 		IsPrimary:  true,
 		Forms:      lemmaForms,
 	}
 
-	return &ImportLexemeData{
+	return &store.ImportLexemeData{
 		Lexeme: lexeme,
-		Lemmas: []*ImportLemmaData{lemmaData},
+		Lemmas: []*store.ImportLemmaData{lemmaData},
 	}, nil
 }
 
@@ -181,7 +179,7 @@ func parseExchangeToEntity(word, exchange string) (string, []*entity.LemmaForm) 
 		}
 
 		// Detect if irregular
-		irregular := isIrregularForm(word, formText, entityFormTypeToProto(formType))
+		irregular := util.IsIrregularForm(word, formText, util.EntityFormTypeToProto(formType))
 
 		forms = append(forms, &entity.LemmaForm{
 			Surface:     formText,
@@ -300,21 +298,6 @@ func determineEntryType(word string) entity.LexemeEntryType {
 		return entity.LexemeEntryTypePhrase
 	}
 	return entity.LexemeEntryTypeWord
-}
-
-// buildCategories builds the categories array with additional metadata.
-func buildCategories(baseCategories []string, oxford bool) []string {
-	categories := make([]string, 0, len(baseCategories)+1)
-
-	// Add base categories from tags
-	categories = append(categories, baseCategories...)
-
-	// Add Oxford 3000 marker
-	if oxford {
-		categories = append(categories, "oxford:3000")
-	}
-
-	return categories
 }
 
 // deduplicatePhonetics removes duplicate phonetics based on IPA + Dialect.

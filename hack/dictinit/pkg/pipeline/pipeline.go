@@ -1,4 +1,4 @@
-package main
+package pipeline
 
 import (
 	"context"
@@ -10,39 +10,48 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/report"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/ecdict"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/moby"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/wikidata"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
-	defaultDatabaseURL     = "file:./data/vocnet.db?_fk=1"
-	defaultBatchSize       = 32
-	defaultWikidataFile    = "~/lexemes/english-lexemes.json"
-	defaultWikidataLimit   = 0
-	defaultECDictURL       = "https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip"
-	defaultECDictCacheDir  = ""
-	defaultWordNetDataPath = ""
+	defaultDatabaseURL    = "file:./data/vocnet.db?_fk=1"
+	defaultBatchSize      = 32
+	defaultWikidataFile   = "./data/wikidata/english-lexemes.json"
+	defaultWikidataLimit  = 0
+	defaultECDictURL      = "https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip"
+	defaultECDictCacheDir = ""
+	defaultMobyFile       = "./data/mhyph.txt"
+	defaultWordbookDir    = "./pkg/wordbook/books"
 )
 
 type pipelineConfig struct {
-	databaseURL    string
-	batchSize      int
-	wikidataFile   string
-	wikidataLimit  int
-	runWikidata    bool
-	runECDict      bool
-	ecdictURL      string
-	ecdictCacheDir string
-	ecdictNoCache  bool
-	wordNetPath    string
-	mobyFile       string
+	databaseURL       string
+	batchSize         int
+	wikidataFile      string
+	wikidataLimit     int
+	runWikidata       bool
+	runECDict         bool
+	ecdictURL         string
+	ecdictCacheDir    string
+	ecdictNoCache     bool
+	mobyFile          string
+	checkCoverage     bool
+	wordbookDir       string
+	coverageOutputDir string
 }
 
-func main() {
+func Execute() {
 	cfg := parseFlags()
 	if err := runPipeline(cfg); err != nil {
-		log.Fatalf("lexeme import failed: %v", err)
+		log.Fatalf("dict init failed: %v", err)
 	}
 }
 
@@ -61,8 +70,11 @@ func parseFlags() pipelineConfig {
 	flag.StringVar(&cfg.ecdictCacheDir, "ecdict-cache", defaultECDictCacheDir, "ECDICT cache directory (default: user cache dir/vocnet)")
 	flag.BoolVar(&cfg.ecdictNoCache, "ecdict-no-cache", false, "Force re-download of ECDICT archive")
 
-	flag.StringVar(&cfg.wordNetPath, "wordnet-path", defaultWordNetDataPath, "Optional WordNet data path (stage pending implementation)")
-	flag.StringVar(&cfg.mobyFile, "moby-file", "", "Path to Moby Hyphenator (mhyph.txt) for extra syllables")
+	flag.StringVar(&cfg.mobyFile, "moby-file", defaultMobyFile, "Path to Moby Hyphenator (mhyph.txt) for extra syllables")
+
+	flag.BoolVar(&cfg.checkCoverage, "check-coverage", false, "Check wordbook coverage against lemma database")
+	flag.StringVar(&cfg.wordbookDir, "wordbook-dir", defaultWordbookDir, "Directory containing wordbook JSON files")
+	flag.StringVar(&cfg.coverageOutputDir, "coverage-output", "reports", "Directory to save coverage reports")
 
 	flag.Parse()
 
@@ -141,8 +153,13 @@ func initializeEntClient(databaseURL string) (*entdb.Client, func(), error) {
 }
 
 func runPipeline(cfg pipelineConfig) error {
+	// If only checking coverage, run that and exit
+	if cfg.checkCoverage {
+		return runCoverageCheck(cfg)
+	}
+
 	// Setup logging to file
-	logFile, err := setupLogging()
+	logFile, err := util.SetupLogging()
 	if err != nil {
 		return fmt.Errorf("setup logging: %w", err)
 	}
@@ -164,11 +181,10 @@ func runPipeline(cfg pipelineConfig) error {
 	log.Printf("[init] Database initialized successfully")
 
 	// Initialize import service
-	importService := NewLexemeImportService(entClient)
+	importService := store.NewLexemeImportService(entClient)
 
 	ctx := context.Background()
-	var reports []*ImportReport
-	var wikidataImporter *wikidataImporter
+	var reports []*report.ImportReport
 
 	// Stage 1: Wikidata import
 	if cfg.runWikidata {
@@ -176,7 +192,7 @@ func runPipeline(cfg pipelineConfig) error {
 		log.Println("STAGE 1: Wikidata Import")
 		log.Println(strings.Repeat("=", 80))
 
-		wikidataImporter = newWikidataImporter(cfg, importService)
+		wikidataImporter := wikidata.NewImporter(cfg.wikidataFile, cfg.wikidataLimit, cfg.batchSize, importService)
 		start := time.Now()
 		report, err := wikidataImporter.Run(ctx)
 		if err != nil {
@@ -186,51 +202,63 @@ func runPipeline(cfg pipelineConfig) error {
 		reports = append(reports, report)
 	}
 
-	// Stage 2: ECDICT import (new words only)
+	// Stage 2: ECDICT enrichment (existing words only)
 	if cfg.runECDict {
-		enricher, err := newECDICTEnricher(cfg)
+		if !cfg.runWikidata {
+			log.Printf("[ecdict] Wikidata stage disabled. ECDICT will only enrich existing data.")
+		}
+
+		knownForms, err := importService.LoadKnownForms(ctx)
+		if err != nil {
+			return fmt.Errorf("load known forms: %w", err)
+		}
+		log.Printf("[ecdict] Loaded %d known forms from database", len(knownForms))
+
+		enricher, err := ecdict.NewEnricher(cfg.ecdictURL, cfg.ecdictCacheDir, cfg.ecdictNoCache)
 		if err != nil {
 			return fmt.Errorf("ECDICT enricher: %w", err)
 		}
 
 		if enricher != nil {
-			// Register known words from Wikidata stage
-			if wikidataImporter != nil {
-				importedWords := wikidataImporter.GetImportedWords()
-				log.Printf("[ecdict] Registering %d words from Wikidata", len(importedWords))
-				enricher.RegisterKnownWords(importedWords)
-			}
-
 			log.Println("\n" + strings.Repeat("=", 80))
-			log.Println("STAGE 2: ECDICT Import")
+			log.Println("STAGE 2: ECDICT Enrichment")
 			log.Println(strings.Repeat("=", 80))
 
-			// Phase 1: Import new words
-			ecdictImporter := newECDictImporter(cfg, importService, enricher)
+			enricher.RegisterKnownForms(knownForms)
+
+			ecdictImporter := ecdict.NewImporter(cfg.batchSize, importService, enricher)
 			start := time.Now()
 			report, err := ecdictImporter.Run(ctx)
 			if err != nil {
-				return fmt.Errorf("ECDICT import stage: %w", err)
+				return fmt.Errorf("ECDICT enrichment stage: %w", err)
 			}
-			log.Printf("[ecdict] Import stage completed in %s\n", time.Since(start).Round(time.Millisecond))
+			log.Printf("[ecdict] Enrichment stage completed in %s\n", time.Since(start).Round(time.Millisecond))
 			reports = append(reports, report)
 		}
 	}
 
 	// Stage 3: Moby Hyphenator Import
 	if cfg.mobyFile != "" {
-		log.Println("\n" + strings.Repeat("=", 80))
-		log.Println("STAGE 4: Moby Hyphenator Import")
-		log.Println(strings.Repeat("=", 80))
+		if _, err := os.Stat(cfg.mobyFile); err != nil {
+			if os.IsNotExist(err) {
+				log.Printf("[moby] File not found at %s, skipping Moby import", cfg.mobyFile)
+			} else {
+				return fmt.Errorf("stat moby file: %w", err)
+			}
+		} else {
+			log.Println("\n" + strings.Repeat("=", 80))
+			log.Println("STAGE 3: Moby Hyphenator Import")
+			log.Println(strings.Repeat("=", 80))
 
-		mobyImporter := newMobyImporter(cfg, importService)
-		start := time.Now()
-		report, err := mobyImporter.Run(ctx)
-		if err != nil {
-			log.Printf("[moby] Warning: stage completed with errors: %v", err)
+			mobyImporter := moby.NewImporter(cfg.mobyFile, cfg.batchSize, importService)
+			start := time.Now()
+			report, err := mobyImporter.Run(ctx)
+			if err != nil {
+				log.Printf("[moby] Warning: stage completed with errors: %v", err)
+			}
+			log.Printf("[moby] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
+			reports = append(reports, report)
 		}
-		log.Printf("[moby] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
-		reports = append(reports, report)
 	}
 
 	// Print overall summary
@@ -239,8 +267,46 @@ func runPipeline(cfg pipelineConfig) error {
 	return nil
 }
 
+// runCoverageCheck checks wordbook coverage against lemma database
+func runCoverageCheck(cfg pipelineConfig) error {
+	fmt.Println("\n🔍 Starting Wordbook Coverage Check")
+	fmt.Println(strings.Repeat("=", 80))
+
+	// Initialize database connection
+	entClient, cleanup, err := initializeEntClient(cfg.databaseURL)
+	if err != nil {
+		return fmt.Errorf("initialize ent client: %w", err)
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Run coverage check
+	results, err := CheckWordbookCoverage(ctx, entClient, cfg.wordbookDir)
+	if err != nil {
+		return fmt.Errorf("check coverage: %w", err)
+	}
+
+	// Print console report
+	PrintCoverageReport(results)
+
+	// Save detailed report to file
+	if cfg.coverageOutputDir != "" {
+		if err := os.MkdirAll(cfg.coverageOutputDir, 0755); err != nil {
+			return fmt.Errorf("create output directory: %w", err)
+		}
+
+		outputFile := fmt.Sprintf("%s/wordbook_coverage_report.md", cfg.coverageOutputDir)
+		if err := SaveUncoveredWordsReport(results, outputFile); err != nil {
+			return fmt.Errorf("save report: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // printOverallSummary prints a summary of all import stages
-func printOverallSummary(reports []*ImportReport) {
+func printOverallSummary(reports []*report.ImportReport) {
 	if len(reports) == 0 {
 		return
 	}
@@ -280,7 +346,7 @@ func printOverallSummary(reports []*ImportReport) {
 		if report.StageName == "Wikidata" {
 			reportFile = "reports/wikidata_import_report.json"
 		} else if report.StageName == "ECDICT" {
-			reportFile = "reports/ecdict_import_report.json"
+			reportFile = "reports/ecdict_enrichment_report.json"
 		} else if report.StageName == "Moby" {
 			reportFile = "reports/moby_import_report.json"
 		}

@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"testing"
@@ -99,9 +99,9 @@ func TestIsIrregularForm(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isIrregularForm(tt.lemma, tt.form, tt.formType)
+			got := IsIrregularForm(tt.lemma, tt.form, tt.formType)
 			if got != tt.wantIrregular {
-				t.Errorf("isIrregularForm(%q, %q, %v) = %v, want %v",
+				t.Errorf("IsIrregularForm(%q, %q, %v) = %v, want %v",
 					tt.lemma, tt.form, tt.formType, got, tt.wantIrregular)
 			}
 		})
