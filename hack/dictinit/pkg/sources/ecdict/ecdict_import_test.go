@@ -66,7 +66,7 @@ func TestRegisterKnownWords_EnrichmentWithoutExchange(t *testing.T) {
 	})
 
 	// Test again after registering.
-	enrichmentWords, skipped = enricher.CollectEnrichmentWords()
+	enrichmentWords, _ = enricher.CollectEnrichmentWords()
 
 	// Now "but" and "because" should be in enrichmentWords.
 	if len(enrichmentWords) != 2 {

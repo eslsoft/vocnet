@@ -240,91 +240,125 @@ func (r *ImportReport) SaveToFile(filename string) error {
 
 // PrintSummary prints a human-readable summary of the report
 func (r *ImportReport) PrintSummary() {
+	r.printHeader()
+	r.printSummaryStats()
+	r.printEnrichmentSummary()
+	r.printFormStats()
+	r.printFormTypes()
+	r.printRelationsAndCategories()
+	r.printDataQuality()
+	r.printIssuesSummary()
+	r.printFooter()
+}
+
+func (r *ImportReport) printHeader() {
 	fmt.Println("\n" + strings.Repeat("=", 80))
 	fmt.Printf("📊 %s Import Report\n", r.StageName)
 	fmt.Println(strings.Repeat("=", 80))
+}
 
+func (r *ImportReport) printFooter() {
+	fmt.Println(strings.Repeat("=", 80))
+}
+
+func (r *ImportReport) printSummaryStats() {
 	fmt.Printf("⏱️  Duration: %s\n", r.Duration)
 	fmt.Printf("📝 Total Processed: %d\n", r.Statistics.Total)
 	fmt.Printf("✅ Successful: %d\n", r.Statistics.Successful)
-
 	fmt.Printf("❌ Failed: %d\n", r.Statistics.Failed)
 	fmt.Printf("⏭️  Skipped: %d\n", r.Statistics.Skipped)
+}
 
-	// Enrichment statistics
-	if r.Enrichment != nil && r.Enrichment.Attempted > 0 {
-		fmt.Println("\n🔧 Enrichment Phase:")
-		fmt.Printf("  Attempted: %d\n", r.Enrichment.Attempted)
-		fmt.Printf("  Succeeded: %d (%.1f%%)\n",
-			r.Enrichment.Succeeded,
-			float64(r.Enrichment.Succeeded)/float64(r.Enrichment.Attempted)*100)
-		fmt.Printf("  Failed: %d\n", r.Enrichment.Failed)
-		fmt.Printf("  Not Found: %d\n", r.Enrichment.NotFound)
-
-		fmt.Println("\n  Data Added:")
-		if r.Enrichment.PhoneticsAdded > 0 {
-			fmt.Printf("    Phonetics: %d\n", r.Enrichment.PhoneticsAdded)
-		}
-		if r.Enrichment.DefinitionsAdded > 0 {
-			fmt.Printf("    Definitions: %d\n", r.Enrichment.DefinitionsAdded)
-		}
-		if r.Enrichment.FormsAdded > 0 {
-			fmt.Printf("    Forms: %d\n", r.Enrichment.FormsAdded)
-		}
+func (r *ImportReport) printEnrichmentSummary() {
+	if r.Enrichment == nil || r.Enrichment.Attempted == 0 {
+		return
 	}
 
-	// Form statistics
-	if r.Statistics.TotalForms > 0 {
-		fmt.Println("\n📋 Form Statistics:")
-		fmt.Printf("  Total Forms: %d\n", r.Statistics.TotalForms)
-		fmt.Printf("  Regular Forms: %d (%.1f%%)\n",
-			r.Statistics.RegularForms,
-			float64(r.Statistics.RegularForms)/float64(r.Statistics.TotalForms)*100)
-		fmt.Printf("  Irregular Forms: %d (%.1f%%)\n",
-			r.Statistics.IrregularForms,
-			float64(r.Statistics.IrregularForms)/float64(r.Statistics.TotalForms)*100)
+	fmt.Println("\n🔧 Enrichment Phase:")
+	fmt.Printf("  Attempted: %d\n", r.Enrichment.Attempted)
+	fmt.Printf("  Succeeded: %d (%.1f%%)\n",
+		r.Enrichment.Succeeded,
+		float64(r.Enrichment.Succeeded)/float64(r.Enrichment.Attempted)*100)
+	fmt.Printf("  Failed: %d\n", r.Enrichment.Failed)
+	fmt.Printf("  Not Found: %d\n", r.Enrichment.NotFound)
+
+	fmt.Println("\n  Data Added:")
+	if r.Enrichment.PhoneticsAdded > 0 {
+		fmt.Printf("    Phonetics: %d\n", r.Enrichment.PhoneticsAdded)
+	}
+	if r.Enrichment.DefinitionsAdded > 0 {
+		fmt.Printf("    Definitions: %d\n", r.Enrichment.DefinitionsAdded)
+	}
+	if r.Enrichment.FormsAdded > 0 {
+		fmt.Printf("    Forms: %d\n", r.Enrichment.FormsAdded)
+	}
+}
+
+func (r *ImportReport) printFormStats() {
+	if r.Statistics.TotalForms == 0 {
+		return
 	}
 
-	// Form type breakdown
-	if len(r.Statistics.FormsByType) > 0 {
-		fmt.Println("\n📊 Forms by Type:")
-		for formType, count := range r.Statistics.FormsByType {
-			fmt.Printf("  %s: %d\n", formType, count)
-		}
+	fmt.Println("\n📋 Form Statistics:")
+	fmt.Printf("  Total Forms: %d\n", r.Statistics.TotalForms)
+	fmt.Printf("  Regular Forms: %d (%.1f%%)\n",
+		r.Statistics.RegularForms,
+		float64(r.Statistics.RegularForms)/float64(r.Statistics.TotalForms)*100)
+	fmt.Printf("  Irregular Forms: %d (%.1f%%)\n",
+		r.Statistics.IrregularForms,
+		float64(r.Statistics.IrregularForms)/float64(r.Statistics.TotalForms)*100)
+}
+
+func (r *ImportReport) printFormTypes() {
+	if len(r.Statistics.FormsByType) == 0 {
+		return
 	}
 
-	if r.Statistics.TotalRelations > 0 || r.Statistics.TotalCategories > 0 {
-		fmt.Println("\n🔗 Relations & Categories:")
-		if r.Statistics.TotalRelations > 0 {
-			fmt.Printf("  Total Relations: %d\n", r.Statistics.TotalRelations)
-		}
-		if len(r.Statistics.RelationsByType) > 0 {
-			fmt.Println("  Relations by Type:")
-			for relType, count := range r.Statistics.RelationsByType {
-				fmt.Printf("    %s: %d\n", relType, count)
-			}
-		}
-		if r.Statistics.TotalCategories > 0 {
-			fmt.Printf("  Total Categories: %d\n", r.Statistics.TotalCategories)
-		}
+	fmt.Println("\n📊 Forms by Type:")
+	for formType, count := range r.Statistics.FormsByType {
+		fmt.Printf("  %s: %d\n", formType, count)
+	}
+}
+
+func (r *ImportReport) printRelationsAndCategories() {
+	if r.Statistics.TotalRelations == 0 && r.Statistics.TotalCategories == 0 {
+		return
 	}
 
-	// Data quality
-	if r.Statistics.Total > 0 {
-		fmt.Println("\n📈 Data Quality:")
-		if r.Statistics.WithPhonetics > 0 {
-			fmt.Printf("  With Phonetics: %d (%.1f%%)\n",
-				r.Statistics.WithPhonetics,
-				float64(r.Statistics.WithPhonetics)/float64(r.Statistics.Total)*100)
-		}
-		if r.Statistics.WithDefinitions > 0 {
-			fmt.Printf("  With Definitions: %d (%.1f%%)\n",
-				r.Statistics.WithDefinitions,
-				float64(r.Statistics.WithDefinitions)/float64(r.Statistics.Total)*100)
+	fmt.Println("\n🔗 Relations & Categories:")
+	if r.Statistics.TotalRelations > 0 {
+		fmt.Printf("  Total Relations: %d\n", r.Statistics.TotalRelations)
+	}
+	if len(r.Statistics.RelationsByType) > 0 {
+		fmt.Println("  Relations by Type:")
+		for relType, count := range r.Statistics.RelationsByType {
+			fmt.Printf("    %s: %d\n", relType, count)
 		}
 	}
+	if r.Statistics.TotalCategories > 0 {
+		fmt.Printf("  Total Categories: %d\n", r.Statistics.TotalCategories)
+	}
+}
 
-	// Issues summary
+func (r *ImportReport) printDataQuality() {
+	if r.Statistics.Total == 0 {
+		return
+	}
+
+	fmt.Println("\n📈 Data Quality:")
+	if r.Statistics.WithPhonetics > 0 {
+		fmt.Printf("  With Phonetics: %d (%.1f%%)\n",
+			r.Statistics.WithPhonetics,
+			float64(r.Statistics.WithPhonetics)/float64(r.Statistics.Total)*100)
+	}
+	if r.Statistics.WithDefinitions > 0 {
+		fmt.Printf("  With Definitions: %d (%.1f%%)\n",
+			r.Statistics.WithDefinitions,
+			float64(r.Statistics.WithDefinitions)/float64(r.Statistics.Total)*100)
+	}
+}
+
+func (r *ImportReport) printIssuesSummary() {
 	if len(r.Issues.MissingFields) > 0 {
 		fmt.Println("\n⚠️  Missing Fields:")
 		for field, count := range r.Issues.MissingFields {
@@ -343,6 +377,4 @@ func (r *ImportReport) PrintSummary() {
 	if len(r.Issues.Duplicates) > 0 {
 		fmt.Printf("❗ Duplicates: %d (see report file for details)\n", len(r.Issues.Duplicates))
 	}
-
-	fmt.Println(strings.Repeat("=", 80))
 }

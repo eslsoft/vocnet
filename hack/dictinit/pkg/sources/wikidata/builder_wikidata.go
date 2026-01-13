@@ -20,46 +20,9 @@ func BuildWikidataLexeme(wd WikidataLexeme) (*store.ImportLexemeData, error) {
 		return nil, errors.New("lemma missing")
 	}
 
-	// Extract POS and categories from glosses if needed
-	posLabel := mapLexicalCategoryToPOS(wd.LexicalCategory)
-	var categories []string
-	if len(wd.Senses) > 0 {
-		posAndCats := inferPOSAndCategories(wd.Senses)
-		categories = appendUnique(categories, posAndCats.Categories...)
-		if posLabel == "" {
-			posLabel = posAndCats.POS
-		}
-	}
-	if posLabel == "" {
-		posLabel = inferPOSFromForms(lemmaText, wd.Forms)
-	}
+	posLabel, categories := resolvePOSAndCategories(wd, lemmaText)
 
-	// Build senses
-	senses := make([]entity.LexemeSense, 0, len(wd.Senses))
-	for _, wdSense := range wd.Senses {
-		var gloss string
-		var lang string
-		for _, key := range []string{"en", "en-us", "en-gb"} {
-			if value, ok := wdSense.Glosses[key]; ok {
-				gloss = value.Value
-				lang = key
-				break
-			}
-		}
-		if gloss == "" {
-			for langKey, value := range wdSense.Glosses {
-				gloss = value.Value
-				lang = langKey
-				break
-			}
-		}
-		if gloss != "" {
-			senses = append(senses, entity.LexemeSense{
-				Language: mapLanguageCodeToEntity(lang),
-				Gloss:    gloss,
-			})
-		}
-	}
+	senses := buildSenses(wd.Senses)
 
 	// Check if this lexeme has any useful data
 	hasUsefulData := len(senses) > 0 || len(wd.Forms) > 0 || posLabel != ""
@@ -67,23 +30,9 @@ func BuildWikidataLexeme(wd WikidataLexeme) (*store.ImportLexemeData, error) {
 		return nil, errors.New("no senses and no forms")
 	}
 
-	// Build SenseGloss (first sense gloss for quick preview)
-	senseGloss := ""
-	if len(senses) > 0 {
-		senseGloss = senses[0].Gloss
-	}
+	senseGloss := firstSenseGloss(senses)
+	entryType := resolveEntryType(wd.LexicalCategory, categories, lemmaText)
 
-	// Determine entry type
-	entryType := mapLexicalCategoryToEntryType(wd.LexicalCategory)
-	if entryType == entity.LexemeEntryTypeWord {
-		if isIdiomCategory(categories) {
-			entryType = entity.LexemeEntryTypeIdiom
-		} else if isPhraseCategory(categories) || strings.Contains(lemmaText, " ") {
-			entryType = entity.LexemeEntryTypePhrase
-		}
-	}
-
-	// Build lexeme
 	lexeme := &entity.Lexeme{
 		ExternalID:   wd.ID,
 		Language:     entity.LanguageEnglish,
@@ -96,80 +45,7 @@ func BuildWikidataLexeme(wd WikidataLexeme) (*store.ImportLexemeData, error) {
 		Completeness: calculateCompleteness(senses, wd.Forms),
 	}
 
-	// Build forms
-	formMap := make(map[string]*entity.LemmaForm)
-	for _, wdForm := range wd.Forms {
-		text := ""
-		for _, key := range []string{"en", "en-us", "en-gb"} {
-			if value, ok := wdForm.Representations[key]; ok {
-				text = value.Value
-				break
-			}
-		}
-		if text == "" {
-			for _, value := range wdForm.Representations {
-				text = value.Value
-				break
-			}
-		}
-		if text == "" {
-			continue
-		}
-
-		// Skip if same as lemma (case-insensitive)
-		textLower := strings.ToLower(strings.TrimSpace(text))
-		// Removed lemma exclusion to allow lemma to be present in forms
-
-		formType := mapWikidataFormType(wdForm.GrammaticalFeatures)
-		if formType == entity.LexemeFormTypeUnspecified {
-			if strings.EqualFold(textLower, strings.ToLower(strings.TrimSpace(lemmaText))) {
-				formType = entity.LexemeFormTypeLemma
-			}
-		}
-		if formType == entity.LexemeFormTypeUnspecified {
-			if _, ok := lemmaVariants[textLower]; ok {
-				formType = entity.LexemeFormTypeLemma
-			}
-		}
-		if formType == entity.LexemeFormTypeUnspecified {
-			inferred := inferFormTypeFromSurface(lemmaText, text, posLabel)
-			if inferred == entity.LexemeFormTypeUnspecified && posLabel == "" {
-				inferred = inferFormTypeFromSurfaceLoose(lemmaText, text)
-			}
-			if inferred != entity.LexemeFormTypeUnspecified {
-				if len(wdForm.GrammaticalFeatures) == 0 && shouldLogInference(inferred) {
-					util.Info("[wikidata][infer-low] id=%s lemma=%q form=%q pos=%q inferred=%s",
-						wd.ID, lemmaText, text, posLabel, inferred)
-				}
-				formType = inferred
-			}
-		}
-		irregular := util.IsIrregularForm(lemmaText, text, util.EntityFormTypeToProto(formType))
-
-		form := &entity.LemmaForm{
-			Surface:     text,
-			Normalized:  textLower,
-			FormType:    formType,
-			IsIrregular: irregular,
-		}
-
-		// Deduplicate forms by normalized text
-		if existing, ok := formMap[textLower]; ok {
-			// Prefer forms with specific type over unspecified
-			if existing.FormType == entity.LexemeFormTypeUnspecified && formType != entity.LexemeFormTypeUnspecified {
-				formMap[textLower] = form
-			} else if irregular && !existing.IsIrregular {
-				formMap[textLower] = form
-			}
-		} else {
-			formMap[textLower] = form
-		}
-	}
-
-	forms := make([]*entity.LemmaForm, 0, len(formMap))
-	for _, form := range formMap {
-		forms = append(forms, form)
-	}
+	forms := buildForms(wd, lemmaText, lemmaVariants, posLabel)
 
 	return &store.ImportLexemeData{
 		Lexeme: lexeme,
@@ -202,6 +78,147 @@ func mapWikidataFormType(features []string) entity.LexemeFormType {
 		}
 	}
 	return entity.LexemeFormTypeUnspecified
+}
+
+func resolvePOSAndCategories(wd WikidataLexeme, lemmaText string) (string, []string) {
+	posLabel := mapLexicalCategoryToPOS(wd.LexicalCategory)
+	var categories []string
+	if len(wd.Senses) > 0 {
+		posAndCats := inferPOSAndCategories(wd.Senses)
+		categories = appendUnique(categories, posAndCats.Categories...)
+		if posLabel == "" {
+			posLabel = posAndCats.POS
+		}
+	}
+	if posLabel == "" {
+		posLabel = inferPOSFromForms(lemmaText, wd.Forms)
+	}
+	return posLabel, categories
+}
+
+func buildSenses(senses []WikidataSense) []entity.LexemeSense {
+	out := make([]entity.LexemeSense, 0, len(senses))
+	for _, wdSense := range senses {
+		gloss, lang := selectPreferredGloss(wdSense.Glosses)
+		if gloss == "" {
+			continue
+		}
+		out = append(out, entity.LexemeSense{
+			Language: mapLanguageCodeToEntity(lang),
+			Gloss:    gloss,
+		})
+	}
+	return out
+}
+
+func selectPreferredGloss(glosses map[string]WikidataValue) (string, string) {
+	for _, key := range []string{"en", "en-us", "en-gb"} {
+		if value, ok := glosses[key]; ok {
+			return value.Value, key
+		}
+	}
+	for langKey, value := range glosses {
+		return value.Value, langKey
+	}
+	return "", ""
+}
+
+func firstSenseGloss(senses []entity.LexemeSense) string {
+	if len(senses) == 0 {
+		return ""
+	}
+	return senses[0].Gloss
+}
+
+func resolveEntryType(lexicalCategory string, categories []string, lemmaText string) entity.LexemeEntryType {
+	entryType := mapLexicalCategoryToEntryType(lexicalCategory)
+	if entryType != entity.LexemeEntryTypeWord {
+		return entryType
+	}
+	if isIdiomCategory(categories) {
+		return entity.LexemeEntryTypeIdiom
+	}
+	if isPhraseCategory(categories) || strings.Contains(lemmaText, " ") {
+		return entity.LexemeEntryTypePhrase
+	}
+	return entryType
+}
+
+func buildForms(wd WikidataLexeme, lemmaText string, lemmaVariants map[string]struct{}, posLabel string) []*entity.LemmaForm {
+	formMap := make(map[string]*entity.LemmaForm)
+	for _, wdForm := range wd.Forms {
+		text := selectPreferredRepresentation(wdForm.Representations)
+		if text == "" {
+			continue
+		}
+
+		textLower := strings.ToLower(strings.TrimSpace(text))
+		formType := resolveFormType(lemmaText, text, textLower, posLabel, lemmaVariants, wdForm, wd.ID)
+		irregular := util.IsIrregularForm(lemmaText, text, util.EntityFormTypeToProto(formType))
+
+		form := &entity.LemmaForm{
+			Surface:     text,
+			Normalized:  textLower,
+			FormType:    formType,
+			IsIrregular: irregular,
+		}
+
+		if existing, ok := formMap[textLower]; ok {
+			if existing.FormType == entity.LexemeFormTypeUnspecified && formType != entity.LexemeFormTypeUnspecified {
+				formMap[textLower] = form
+			} else if irregular && !existing.IsIrregular {
+				formMap[textLower] = form
+			}
+		} else {
+			formMap[textLower] = form
+		}
+	}
+
+	forms := make([]*entity.LemmaForm, 0, len(formMap))
+	for _, form := range formMap {
+		forms = append(forms, form)
+	}
+	return forms
+}
+
+func selectPreferredRepresentation(representations map[string]WikidataValue) string {
+	for _, key := range []string{"en", "en-us", "en-gb"} {
+		if value, ok := representations[key]; ok {
+			return value.Value
+		}
+	}
+	for _, value := range representations {
+		return value.Value
+	}
+	return ""
+}
+
+func resolveFormType(lemmaText, text, textLower, posLabel string, lemmaVariants map[string]struct{}, wdForm WikidataForm, lexemeID string) entity.LexemeFormType {
+	formType := mapWikidataFormType(wdForm.GrammaticalFeatures)
+	if formType == entity.LexemeFormTypeUnspecified {
+		if strings.EqualFold(textLower, strings.ToLower(strings.TrimSpace(lemmaText))) {
+			formType = entity.LexemeFormTypeLemma
+		}
+	}
+	if formType == entity.LexemeFormTypeUnspecified {
+		if _, ok := lemmaVariants[textLower]; ok {
+			formType = entity.LexemeFormTypeLemma
+		}
+	}
+	if formType == entity.LexemeFormTypeUnspecified {
+		inferred := inferFormTypeFromSurface(lemmaText, text, posLabel)
+		if inferred == entity.LexemeFormTypeUnspecified && posLabel == "" {
+			inferred = inferFormTypeFromSurfaceLoose(lemmaText, text)
+		}
+		if inferred != entity.LexemeFormTypeUnspecified {
+			if len(wdForm.GrammaticalFeatures) == 0 && shouldLogInference(inferred) {
+				util.Info("[wikidata][infer-low] id=%s lemma=%q form=%q pos=%q inferred=%s",
+					lexemeID, lemmaText, text, posLabel, inferred)
+			}
+			formType = inferred
+		}
+	}
+	return formType
 }
 
 func extractLemmaVariants(lemmas map[string]WikidataValue) ([]*store.ImportLemmaData, map[string]struct{}, string) {

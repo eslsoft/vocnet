@@ -125,49 +125,41 @@ func isRegularPlural(singular, plural string) bool {
 
 // isRegularPast checks if the past tense form follows standard English rules
 func isRegularPast(base, past string) bool {
-	return isRegularEdForm(base, past)
+	return isRegularSuffixForm(base, past, "ed", "d", "ied", "ed")
 }
 
 // isRegularPastParticiple checks if the past participle follows standard English rules
 func isRegularPastParticiple(base, participle string) bool {
-	return isRegularEdForm(base, participle)
+	return isRegularSuffixForm(base, participle, "ed", "d", "ied", "ed")
 }
 
-// isRegularEdForm checks if a form follows the standard -ed pattern
-func isRegularEdForm(base, inflected string) bool {
-	// Rule 1: Standard +ed (walk → walked)
-	if inflected == base+"ed" {
+func isRegularSuffixForm(base, inflected, standardSuffix, silentESuffix, ySuffix, doubledSuffix string) bool {
+	if inflected == base+standardSuffix {
 		return true
 	}
 
-	// Rule 2: Silent -e → +d (live → lived, bake → baked)
-	if strings.HasSuffix(base, "e") && inflected == base+"d" {
+	if strings.HasSuffix(base, "e") && inflected == base+silentESuffix {
 		return true
 	}
 
-	// Rule 3: Consonant + y → -y + ied (study → studied, try → tried)
 	if len(base) >= 2 && strings.HasSuffix(base, "y") {
 		beforeY := rune(base[len(base)-2])
 		if !isVowel(beforeY) {
 			stem := base[:len(base)-1]
-			if inflected == stem+"ied" {
+			if inflected == stem+ySuffix {
 				return true
 			}
 		}
 	}
 
-	// Rule 4: CVC pattern → double consonant + ed (stop → stopped, plan → planned)
-	// This is complex - we check if it's a single-syllable word ending in CVC
 	if len(base) >= 3 {
 		lastChar := rune(base[len(base)-1])
 		secondLastChar := rune(base[len(base)-2])
 		thirdLastChar := rune(base[len(base)-3])
 
-		// Check CVC pattern: consonant-vowel-consonant
 		if !isVowel(thirdLastChar) && isVowel(secondLastChar) && !isVowel(lastChar) {
-			// Exception: don't double w, x, y
 			if lastChar != 'w' && lastChar != 'x' && lastChar != 'y' {
-				doubled := base + string(lastChar) + "ed"
+				doubled := base + string(lastChar) + doubledSuffix
 				if inflected == doubled {
 					return true
 				}
@@ -270,89 +262,12 @@ func isRegularThirdPerson(base, thirdPerson string) bool {
 
 // isRegularComparative checks if the comparative form follows standard rules
 func isRegularComparative(base, comparative string) bool {
-	// Rule 1: Standard +er (fast → faster)
-	if comparative == base+"er" {
-		return true
-	}
-
-	// Rule 2: Silent -e → +r (large → larger, nice → nicer)
-	if strings.HasSuffix(base, "e") && comparative == base+"r" {
-		return true
-	}
-
-	// Rule 3: Consonant + y → -y + ier (happy → happier, easy → easier)
-	if len(base) >= 2 && strings.HasSuffix(base, "y") {
-		beforeY := rune(base[len(base)-2])
-		if !isVowel(beforeY) {
-			stem := base[:len(base)-1]
-			if comparative == stem+"ier" {
-				return true
-			}
-		}
-	}
-
-	// Rule 4: CVC pattern → double consonant + er (big → bigger, hot → hotter)
-	if len(base) >= 3 {
-		lastChar := rune(base[len(base)-1])
-		secondLastChar := rune(base[len(base)-2])
-		thirdLastChar := rune(base[len(base)-3])
-
-		if !isVowel(thirdLastChar) && isVowel(secondLastChar) && !isVowel(lastChar) {
-			if lastChar != 'w' && lastChar != 'x' && lastChar != 'y' {
-				doubled := base + string(lastChar) + "er"
-				if comparative == doubled {
-					return true
-				}
-			}
-		}
-	}
-
-	// Note: Multi-syllable adjectives typically use "more + adjective" (more beautiful)
-	// These don't have a morphological comparative form, so we won't see them here
-
-	return false
+	return isRegularSuffixForm(base, comparative, "er", "r", "ier", "er")
 }
 
 // isRegularSuperlative checks if the superlative form follows standard rules
 func isRegularSuperlative(base, superlative string) bool {
-	// Rule 1: Standard +est (fast → fastest)
-	if superlative == base+"est" {
-		return true
-	}
-
-	// Rule 2: Silent -e → +st (large → largest, nice → nicest)
-	if strings.HasSuffix(base, "e") && superlative == base+"st" {
-		return true
-	}
-
-	// Rule 3: Consonant + y → -y + iest (happy → happiest, easy → easiest)
-	if len(base) >= 2 && strings.HasSuffix(base, "y") {
-		beforeY := rune(base[len(base)-2])
-		if !isVowel(beforeY) {
-			stem := base[:len(base)-1]
-			if superlative == stem+"iest" {
-				return true
-			}
-		}
-	}
-
-	// Rule 4: CVC pattern → double consonant + est (big → biggest, hot → hottest)
-	if len(base) >= 3 {
-		lastChar := rune(base[len(base)-1])
-		secondLastChar := rune(base[len(base)-2])
-		thirdLastChar := rune(base[len(base)-3])
-
-		if !isVowel(thirdLastChar) && isVowel(secondLastChar) && !isVowel(lastChar) {
-			if lastChar != 'w' && lastChar != 'x' && lastChar != 'y' {
-				doubled := base + string(lastChar) + "est"
-				if superlative == doubled {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
+	return isRegularSuffixForm(base, superlative, "est", "st", "iest", "est")
 }
 
 // isVowel checks if a character is a vowel (a, e, i, o, u)

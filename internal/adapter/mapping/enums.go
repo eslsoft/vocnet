@@ -29,22 +29,6 @@ var (
 	}
 
 	// nolint:dupl
-	pbFormTypeMap = map[dictv1.FormType]entity.LexemeFormType{
-		dictv1.FormType_FORM_TYPE_LEMMA:                 entity.LexemeFormTypeLemma,
-		dictv1.FormType_FORM_TYPE_PLURAL:                entity.LexemeFormTypePlural,
-		dictv1.FormType_FORM_TYPE_PAST:                  entity.LexemeFormTypePast,
-		dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:       entity.LexemeFormTypePastParticiple,
-		dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    entity.LexemeFormTypePresentParticiple,
-		dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: entity.LexemeFormTypeThirdPersonSingular,
-		dictv1.FormType_FORM_TYPE_COMPARATIVE:           entity.LexemeFormTypeComparative,
-		dictv1.FormType_FORM_TYPE_SUPERLATIVE:           entity.LexemeFormTypeSuperlative,
-		dictv1.FormType_FORM_TYPE_IMPERATIVE:            entity.LexemeFormTypeImperative,
-		dictv1.FormType_FORM_TYPE_SUBJUNCTIVE:           entity.LexemeFormTypeSubjunctive,
-		dictv1.FormType_FORM_TYPE_GERUND:                entity.LexemeFormTypeGerund,
-		dictv1.FormType_FORM_TYPE_SHORT_FORM:            entity.LexemeFormTypeShortForm,
-		dictv1.FormType_FORM_TYPE_UNSPECIFIED:           entity.LexemeFormTypeUnspecified,
-	}
-	// nolint:dupl
 	entityFormTypeMap = map[entity.LexemeFormType]dictv1.FormType{
 		entity.LexemeFormTypeLemma:               dictv1.FormType_FORM_TYPE_LEMMA,
 		entity.LexemeFormTypePlural:              dictv1.FormType_FORM_TYPE_PLURAL,
@@ -81,11 +65,4 @@ func toPbFormType(in entity.LexemeFormType) dictv1.FormType {
 		return pbType
 	}
 	return dictv1.FormType_FORM_TYPE_UNSPECIFIED
-}
-
-func fromPbFormType(pbType dictv1.FormType) entity.LexemeFormType {
-	if entType, ok := pbFormTypeMap[pbType]; ok {
-		return entType
-	}
-	return entity.LexemeFormTypeUnspecified
 }

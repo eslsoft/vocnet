@@ -236,20 +236,6 @@ func mapPhonetics(phonetics []entity.Phonetic) []*dictv1.Phonetic {
 	return out
 }
 
-func fromPbPhonetics(phonetics []*dictv1.Phonetic) []entity.Phonetic {
-	if len(phonetics) == 0 {
-		return nil
-	}
-	out := make([]entity.Phonetic, 0, len(phonetics))
-	for _, p := range phonetics {
-		out = append(out, entity.Phonetic{
-			IPA:     strings.TrimSpace(p.GetIpa()),
-			Dialect: strings.TrimSpace(p.GetDialect()),
-		})
-	}
-	return out
-}
-
 func setTimestampsFromLexemes(word *dictv1.Word, lexemes []entity.Lexeme) {
 	if len(lexemes) == 0 {
 		return
@@ -272,6 +258,3 @@ func setTimestampsFromLexemes(word *dictv1.Word, lexemes []entity.Lexeme) {
 		word.UpdatedAt = timestamppb.New(newest)
 	}
 }
-
-// Note: Write operations (ToEntityLemma and related functions) have been removed
-// as write operations are disabled per user request.

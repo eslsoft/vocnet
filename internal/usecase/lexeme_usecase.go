@@ -146,10 +146,3 @@ func normalizeLexemeRelations(lexemeLID string, relations []entity.LexemeRelatio
 	}
 	return out
 }
-
-func defaultFormType(ft entity.LexemeFormType) entity.LexemeFormType {
-	if ft == entity.LexemeFormTypeUnspecified {
-		return entity.LexemeFormTypeLemma
-	}
-	return ft
-}
