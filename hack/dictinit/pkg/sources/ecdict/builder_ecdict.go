@@ -38,7 +38,11 @@ func BuildECDictLexeme(word string, enrichment *ecdictEnrichment) (*store.Import
 
 	// Build senses
 	senses := make([]entity.LexemeSense, 0, len(enrichment.senses))
+	isLemma := strings.EqualFold(word, lemmaText)
 	for _, sense := range enrichment.senses {
+		if !isLemma && sense.language == commonv1.Language_LANGUAGE_CHINESE {
+			continue
+		}
 		senses = append(senses, entity.LexemeSense{
 			Language: mapCommonLanguageToEntity(sense.language),
 			Gloss:    sense.gloss,

@@ -4,7 +4,7 @@ Get started with the Sense Cleaner in 5 minutes.
 
 ## Overview
 
-This tool now processes vocabulary data **by word** (not by lexeme), and is specifically configured to work with **CEFR-B1 level words** from the wordbook. Each word may have multiple lexemes (different meanings/parts of speech), and the AI processes all lexemes of a word together for better consistency.
+This tool now processes vocabulary data **by word** (not by lexeme). By default it uses the **CEFR-B1** wordbook, but you can select another wordbook by name or ID. Each word may have multiple lexemes (different meanings/parts of speech), and the AI processes all lexemes of a word together for better consistency.
 
 ## Step 1: Get OpenAI API Key
 
@@ -40,8 +40,8 @@ Expected output:
 Connecting to database: file:./data/vocnet.db?_fk=1
 Starting sense cleaning process...
 🔍 DRY RUN MODE - No changes will be made to database
-Querying CEFR-B1 wordbook...
-Found 1500 words in CEFR-B1 wordbook
+Querying wordbook by name (contains, case-insensitive): CEFR-B1
+Found 1500 words in wordbook "CEFR-B1"
 Processing 10 words (after filtering)
 Found 10 words with lexemes to process
 Progress: 10/10 processed (cleaned: 8, skipped: 2, failed: 0)
@@ -77,6 +77,16 @@ go run ./hack/sense-cleaner/... -language en -limit 50
 go run ./hack/sense-cleaner/... -pos VERB -limit 50
 ```
 
+### Choose a Wordbook
+
+```bash
+# By name (partial match, case-insensitive)
+go run ./hack/sense-cleaner/... -wordbook "CEFR-B2" -limit 10
+
+# By ID (overrides --wordbook)
+go run ./hack/sense-cleaner/... -wordbook-id 42 -limit 10
+```
+
 ### Clean All CEFR-B1 Words
 
 ```bash
@@ -90,7 +100,7 @@ go run ./hack/sense-cleaner/... -dry-run
 go run ./hack/sense-cleaner/... -batch-size 10
 ```
 
-**Important**: The tool automatically queries the CEFR-B1 wordbook and only processes words in that list. You don't need to specify any word list manually.
+**Important**: The tool automatically queries the selected wordbook and only processes words in that list. You don't need to specify any word list manually.
 
 ## Common Issues
 
@@ -100,8 +110,8 @@ go run ./hack/sense-cleaner/... -batch-size 10
 echo $OPENAI_API_KEY
 ```
 
-### Issue: "query CEFR-B1 wordbook: not found"
-**Solution**: The CEFR-B1 wordbook doesn't exist in your database. Check:
+### Issue: "wordbook not found"
+**Solution**: The selected wordbook doesn't exist in your database. Check:
 ```bash
 # SQLite
 sqlite3 data/vocnet.db "SELECT name FROM wordbooks WHERE name LIKE '%B1%';"
@@ -110,10 +120,10 @@ sqlite3 data/vocnet.db "SELECT name FROM wordbooks WHERE name LIKE '%B1%';"
 psql $DATABASE_URL -c "SELECT name FROM wordbooks WHERE name ILIKE '%B1%';"
 ```
 
-If no wordbook exists, you need to import the CEFR-B1 wordbook first.
+If no wordbook exists, you need to import the wordbook first.
 
 ### Issue: "Found 0 words with lexemes to process"
-**Solution**: The CEFR-B1 words in your database don't have associated lexemes with senses. This could mean:
+**Solution**: The words in your selected wordbook don't have associated lexemes with senses. This could mean:
 1. The wordbook exists but has no terms
 2. The words in the wordbook don't have matching lemmas/lexemes in the database
 3. The lexemes don't have senses data yet
@@ -127,6 +137,7 @@ go run ./hack/sense-cleaner/... -batch-size 5
 ## Tips
 
 - **Start Small**: Use `-limit 10` to test
+- **Resume with Offset**: Use `-offset 200` to continue from a specific wordbook index
 - **Use Filters**: `-language en -pos VERB` to focus
 - **Monitor Costs**: OpenAI API charges per token (see README.md)
 - **Check Examples**: Review report before large runs
@@ -136,7 +147,7 @@ go run ./hack/sense-cleaner/... -batch-size 5
 
 - Read the full [README.md](README.md) for all options
 - Review [cost estimation](README.md#cost-estimation)
-- Customize the AI prompt in `claude_client.go` if needed
+- Customize the AI prompt in `openai_client.go` if needed
 
 ## Support
 

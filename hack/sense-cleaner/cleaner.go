@@ -16,16 +16,16 @@ import (
 )
 
 type SenseCleaner struct {
-	entClient    *entdb.Client
-	claudeClient *ClaudeClient
-	config       config
+	entClient *entdb.Client
+	aiClient  *OpenAIClient
+	config    config
 }
 
-func NewSenseCleaner(entClient *entdb.Client, claudeClient *ClaudeClient, cfg config) *SenseCleaner {
+func NewSenseCleaner(entClient *entdb.Client, aiClient *OpenAIClient, cfg config) *SenseCleaner {
 	return &SenseCleaner{
-		entClient:    entClient,
-		claudeClient: claudeClient,
-		config:       cfg,
+		entClient: entClient,
+		aiClient:  aiClient,
+		config:    cfg,
 	}
 }
 
@@ -43,8 +43,7 @@ func (sc *SenseCleaner) Run(ctx context.Context) (*CleaningReport, error) {
 		return report, err
 	}
 
-	processedWords := sc.loadProcessedWordsForResume()
-	wordsToProcess := sc.collectWordsToProcess(wb.Terms, processedWords)
+	wordsToProcess := sc.collectWordsToProcess(wb.Terms)
 	if len(wordsToProcess) == 0 {
 		sc.finishReport(report)
 		return report, nil
@@ -70,57 +69,82 @@ func (sc *SenseCleaner) newCleaningReport() *CleaningReport {
 		Config: map[string]any{
 			"batch_size":      sc.config.batchSize,
 			"limit":           sc.config.limit,
+			"offset":          sc.config.offset,
 			"dry_run":         sc.config.dryRun,
 			"language_filter": sc.config.languageFilter,
 			"pos_filter":      sc.config.posFilter,
-			"resume":          sc.config.resume,
-			"state_file":      sc.config.stateFile,
+			"wordbook":        sc.config.wordbookName,
+			"wordbook_id":     sc.config.wordbookID,
 		},
 	}
 }
 
 func (sc *SenseCleaner) loadWordbook(ctx context.Context, report *CleaningReport) (*entdb.Wordbook, error) {
-	log.Printf("Querying CEFR-B1 wordbook...")
-	wb, err := sc.entClient.Wordbook.Query().
-		Where(wordbook.NameContainsFold("CEFR-B1")).
-		First(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("query CEFR-B1 wordbook: %w", err)
+	if sc.config.wordbookID > 0 {
+		log.Printf("Querying wordbook by ID: %d", sc.config.wordbookID)
+		wb, err := sc.entClient.Wordbook.Get(ctx, sc.config.wordbookID)
+		if err != nil {
+			return nil, fmt.Errorf("query wordbook by id %d: %w", sc.config.wordbookID, err)
+		}
+		if len(wb.Terms) == 0 {
+			log.Printf("Warning: wordbook %q is empty", wb.Name)
+			sc.finishReport(report)
+			return nil, nil
+		}
+		log.Printf("Found %d words in wordbook %q", len(wb.Terms), wb.Name)
+		return wb, nil
 	}
 
+	wordbookName := sc.config.wordbookName
+	if wordbookName == "" {
+		wordbookName = "CEFR-B1"
+	}
+
+	log.Printf("Querying wordbook by name (contains, case-insensitive): %s", wordbookName)
+	wbs, err := sc.entClient.Wordbook.Query().
+		Where(wordbook.NameContainsFold(wordbookName)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query wordbook %q: %w", wordbookName, err)
+	}
+	if len(wbs) == 0 {
+		return nil, fmt.Errorf("wordbook not found: %q", wordbookName)
+	}
+	if len(wbs) > 1 {
+		var names []string
+		for _, wb := range wbs {
+			names = append(names, wb.Name)
+		}
+		return nil, fmt.Errorf("multiple wordbooks match %q: %s (use --wordbook-id to choose one)", wordbookName, strings.Join(names, ", "))
+	}
+
+	wb := wbs[0]
 	if len(wb.Terms) == 0 {
-		log.Printf("Warning: CEFR-B1 wordbook is empty")
+		log.Printf("Warning: wordbook %q is empty", wb.Name)
 		sc.finishReport(report)
 		return nil, nil
 	}
 
-	log.Printf("Found %d words in CEFR-B1 wordbook", len(wb.Terms))
+	log.Printf("Found %d words in wordbook %q", len(wb.Terms), wb.Name)
 	return wb, nil
 }
 
-func (sc *SenseCleaner) loadProcessedWordsForResume() map[string]bool {
-	if !sc.config.resume {
+func (sc *SenseCleaner) collectWordsToProcess(terms []string) []string {
+	offset := sc.config.offset
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(terms) {
+		log.Printf("Offset %d is beyond wordbook size %d; nothing to process", offset, len(terms))
 		return nil
 	}
 
-	processedWords, err := loadProcessedWords(sc.config.stateFile)
-	if err != nil {
-		log.Printf("Warning: failed to load state file: %v (starting fresh)", err)
-		return make(map[string]bool)
-	}
+	terms = terms[offset:]
 
-	log.Printf("Loaded %d processed words from state file", len(processedWords))
-	return processedWords
-}
-
-func (sc *SenseCleaner) collectWordsToProcess(terms []string, processedWords map[string]bool) []string {
 	var wordsToProcess []string
 	for _, term := range terms {
 		normalizedTerm := strings.ToLower(strings.TrimSpace(term))
 		if normalizedTerm == "" {
-			continue
-		}
-		if sc.config.resume && processedWords != nil && processedWords[normalizedTerm] {
 			continue
 		}
 		wordsToProcess = append(wordsToProcess, normalizedTerm)
@@ -130,7 +154,7 @@ func (sc *SenseCleaner) collectWordsToProcess(terms []string, processedWords map
 		wordsToProcess = wordsToProcess[:sc.config.limit]
 	}
 
-	log.Printf("Processing %d words (after filtering)", len(wordsToProcess))
+	log.Printf("Processing %d words (after filtering, offset %d)", len(wordsToProcess), offset)
 	return wordsToProcess
 }
 
@@ -207,18 +231,11 @@ func (sc *SenseCleaner) processWordDataList(ctx context.Context, report *Cleanin
 			if result.Error != nil {
 				report.Failed++
 				report.Errors = append(report.Errors, fmt.Sprintf("[%s] %v", wd.Term, result.Error))
+				log.Printf("Failed to clean %q: %v", wd.Term, result.Error)
 			} else if result.Changed {
 				report.SuccessfullyCleaned++
 				report.SensesBefore += result.SensesBefore
 				report.SensesAfter += result.SensesAfter
-
-				if sc.config.resume && !sc.config.dryRun {
-					go func(term string) {
-						if err := appendProcessedWord(sc.config.stateFile, term); err != nil {
-							log.Printf("Warning: failed to save state: %v", err)
-						}
-					}(wd.Term)
-				}
 
 				if exampleCount < 10 && len(result.Examples) > 0 {
 					report.Examples = append(report.Examples, result.Examples[0])
@@ -278,13 +295,13 @@ func (sc *SenseCleaner) processWord(ctx context.Context, wordData *WordData) Wor
 
 	result.SensesBefore = totalSensesBefore
 
-	// Call Claude API to clean all lexemes of this word
-	response, err := sc.claudeClient.CleanWordSenses(ctx, CleanWordSensesRequest{
+	// Call OpenAI API to clean all lexemes of this word
+	response, err := sc.aiClient.CleanWordSenses(ctx, CleanWordSensesRequest{
 		Word:    wordData.Term,
 		Lexemes: allLexemeData,
 	})
 	if err != nil {
-		result.Error = fmt.Errorf("claude api: %w", err)
+		result.Error = fmt.Errorf("openai api: %w", err)
 		return result
 	}
 

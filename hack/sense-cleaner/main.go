@@ -22,12 +22,13 @@ type config struct {
 	apiKey         string
 	batchSize      int
 	limit          int
+	offset         int
 	dryRun         bool
 	languageFilter string
 	posFilter      string
+	wordbookName   string
+	wordbookID     int64
 	outputReport   string
-	stateFile      string
-	resume         bool
 }
 
 func main() {
@@ -45,12 +46,13 @@ func parseFlags() config {
 	flag.StringVar(&cfg.apiKey, "api-key", "", "OpenAI API key (or set OPENAI_API_KEY env)")
 	flag.IntVar(&cfg.batchSize, "batch-size", 10, "Number of lexemes to process in parallel")
 	flag.IntVar(&cfg.limit, "limit", 0, "Limit number of lexemes to process (0 = all)")
+	flag.IntVar(&cfg.offset, "offset", 0, "Start offset in wordbook terms (0-based)")
 	flag.BoolVar(&cfg.dryRun, "dry-run", false, "Preview changes without updating database")
 	flag.StringVar(&cfg.languageFilter, "language", "", "Filter by language code (e.g., en)")
 	flag.StringVar(&cfg.posFilter, "pos", "", "Filter by part of speech (e.g., VERB)")
+	flag.StringVar(&cfg.wordbookName, "wordbook", "CEFR-B1", "Wordbook name (partial match, case-insensitive)")
+	flag.Int64Var(&cfg.wordbookID, "wordbook-id", 0, "Wordbook ID (overrides --wordbook)")
 	flag.StringVar(&cfg.outputReport, "output", "reports/sense_cleaning_report.json", "Output report path")
-	flag.StringVar(&cfg.stateFile, "state-file", ".sense_cleaner_state.txt", "State file for resume support")
-	flag.BoolVar(&cfg.resume, "resume", false, "Resume from previous run (skip already processed lexemes)")
 
 	flag.Parse()
 
@@ -84,11 +86,11 @@ func run(cfg config) error {
 	}
 	defer cleanup()
 
-	// Initialize Claude API client
-	claudeClient := NewClaudeClient(cfg.apiKey)
+	// Initialize OpenAI API client
+	openAIClient := NewOpenAIClient(cfg.apiKey)
 
 	// Initialize cleaner
-	cleaner := NewSenseCleaner(entClient, claudeClient, cfg)
+	cleaner := NewSenseCleaner(entClient, openAIClient, cfg)
 
 	// Run cleaning process
 	log.Printf("Starting sense cleaning process...")
@@ -227,18 +229,18 @@ func printSummary(report *CleaningReport, cfg config) {
 }
 
 type CleaningReport struct {
-	StartTime           time.Time            `json:"start_time"`
-	EndTime             time.Time            `json:"end_time"`
-	Duration            string               `json:"duration"`
-	TotalProcessed      int                  `json:"total_processed"`
-	SuccessfullyCleaned int                  `json:"successfully_cleaned"`
-	Skipped             int                  `json:"skipped"`
-	Failed              int                  `json:"failed"`
-	SensesBefore        int                  `json:"senses_before"`
-	SensesAfter         int                  `json:"senses_after"`
-	Examples            []CleaningExample    `json:"examples"`
-	Errors              []string             `json:"errors"`
-	Config              map[string]any       `json:"config"`
+	StartTime           time.Time         `json:"start_time"`
+	EndTime             time.Time         `json:"end_time"`
+	Duration            string            `json:"duration"`
+	TotalProcessed      int               `json:"total_processed"`
+	SuccessfullyCleaned int               `json:"successfully_cleaned"`
+	Skipped             int               `json:"skipped"`
+	Failed              int               `json:"failed"`
+	SensesBefore        int               `json:"senses_before"`
+	SensesAfter         int               `json:"senses_after"`
+	Examples            []CleaningExample `json:"examples"`
+	Errors              []string          `json:"errors"`
+	Config              map[string]any    `json:"config"`
 }
 
 type CleaningExample struct {
