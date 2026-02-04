@@ -32,9 +32,11 @@ func buildLemmaView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dic
 		lemmaPhonetics = queriedForm.Phonetics
 	}
 
-	// Use queried term if provided, otherwise use lemma surface
+	// Use form surface if available (preserves case), otherwise queried term or lemma surface
 	displayTerm := entry.QueriedTerm
-	if displayTerm == "" {
+	if queriedForm != nil {
+		displayTerm = queriedForm.Surface
+	} else if displayTerm == "" {
 		displayTerm = entry.Lemma.Surface
 	}
 
@@ -116,9 +118,14 @@ func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dict
 		}
 	}
 
+	term := entry.QueriedTerm
+	if queriedForm != nil {
+		term = queriedForm.Surface
+	}
+
 	word := &dictv1.Word{
 		Id:           entry.Lemma.ID,
-		Term:         entry.QueriedTerm,
+		Term:         term,
 		TermType:     toPbFormType(formType),
 		Lemma:        &lemmaText,
 		Language:     ToPbLanguage(language),
@@ -140,6 +147,15 @@ func findFormByText(forms []*entity.LemmaForm, text string) *entity.LemmaForm {
 		return nil
 	}
 	normalized := strings.ToLower(text)
+
+	// Priority 1: Exact surface match
+	for _, form := range forms {
+		if form.Surface == text {
+			return form
+		}
+	}
+
+	// Priority 2: Normalized match
 	for _, form := range forms {
 		if form.Normalized == normalized {
 			return form

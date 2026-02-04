@@ -64,8 +64,6 @@ func (u *learnedWordUsecase) CollectWord(ctx context.Context, word *entity.Learn
 	if termToStore == "" {
 		return nil, entity.ErrInvalidLearnedWordText
 	}
-	// Note: Mastery inheritance (auto-creating lemma when collecting inflection) temporarily disabled
-	// because lexeme.LemmaText field has been removed. To re-enable, query LemmaRepository to get lemma surface.
 
 	now := u.clock()
 	normalizedTerm := strings.ToLower(termToStore)

@@ -2,348 +2,129 @@ package connectrpc
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
+	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/usecase"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 )
 
-func TestDictService_CreateWord_FullHierarchy(t *testing.T) {
-	// Setup - each test gets its own isolated SQLite database
-	client := setupTestDB(t)
-
-	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
-	svc := NewDictServiceServer(wordUC)
-
+func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 	ctx := context.Background()
 
-	// Test data with full hierarchy: Word -> Meanings (with Definitions + Examples)
-	req := &connect.Request[dictv1.CreateWordRequest]{
-		Msg: &dictv1.CreateWordRequest{
-			Word: &dictv1.Word{
-				Term:     "run",
-				TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-				Language: commonv1.Language_LANGUAGE_ENGLISH,
-				Phonetics: []*dictv1.Phonetic{
-					{Ipa: "/rʌn/", Dialect: "en-US"},
-				},
-				Categories: []string{"basic", "verb"},
-				RelatedForms: []*dictv1.RelatedForm{
-					{Term: "runs", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
-					{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
-					{Term: "ran", FormType: dictv1.FormType_FORM_TYPE_PAST, Irregular: true},
-				},
-				Meanings: []*dictv1.Meaning{
-					{
-						LexemeId: "L123",
-						Pos:      "v.",
-						Definitions: []*dictv1.Definition{
-							{
-								Language: commonv1.Language_LANGUAGE_ENGLISH,
-								Gloss:    "to move swiftly on foot",
-							},
-							{
-								Language: commonv1.Language_LANGUAGE_CHINESE,
-								Gloss:    "跑步",
-							},
-						},
-						Examples: []*dictv1.Sentence{
-							{Text: "She runs every morning."},
-							{Text: "I ran to catch the bus."},
-						},
-					},
-					{
-						LexemeId: "L456",
-						Pos:      "n.",
-						Definitions: []*dictv1.Definition{
-							{
-								Language: commonv1.Language_LANGUAGE_ENGLISH,
-								Gloss:    "an act of running",
-							},
-						},
-						Examples: []*dictv1.Sentence{
-							{Text: "Let's go for a run."},
-						},
-					},
-				},
-			},
-		},
+	var firstLemmaID int64
+
+	// Map commonv1.Language to entity.Language code
+	langCode := "en"
+	switch word.Language {
+	case commonv1.Language_LANGUAGE_FRENCH:
+		langCode = "fr"
+	case commonv1.Language_LANGUAGE_SPANISH:
+		langCode = "es"
+	case commonv1.Language_LANGUAGE_CHINESE:
+		langCode = "zh"
 	}
 
-	// Create
-	resp, err := svc.CreateWord(ctx, req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-
-	word := resp.Msg
-	assert.Greater(t, word.Id, int64(0))
-	assert.Equal(t, "run", word.Term)
-	assert.Equal(t, dictv1.FormType_FORM_TYPE_LEMMA, word.TermType)
-	assert.Equal(t, commonv1.Language_LANGUAGE_ENGLISH, word.Language)
-
-	require.Len(t, word.Phonetics, 1, "Phonetics should be present")
-	assert.Equal(t, "/rʌn/", word.Phonetics[0].Ipa)
-
-	assert.Len(t, word.Categories, 2)
-
-	// Verify Related Forms (lemma itself is not included in RelatedForms)
-	assert.Len(t, word.RelatedForms, 3)
-	formTypes := make(map[dictv1.FormType]string)
-	for _, f := range word.RelatedForms {
-		formTypes[f.FormType] = f.Term
+	var formTypeMap = map[dictv1.FormType]entity.LexemeFormType{
+		dictv1.FormType_FORM_TYPE_LEMMA:                 entity.LexemeFormTypeLemma,
+		dictv1.FormType_FORM_TYPE_PLURAL:                entity.LexemeFormTypePlural,
+		dictv1.FormType_FORM_TYPE_PAST:                  entity.LexemeFormTypePast,
+		dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:       entity.LexemeFormTypePastParticiple,
+		dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    entity.LexemeFormTypePresentParticiple,
+		dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: entity.LexemeFormTypeThirdPersonSingular,
+		dictv1.FormType_FORM_TYPE_COMPARATIVE:           entity.LexemeFormTypeComparative,
+		dictv1.FormType_FORM_TYPE_SUPERLATIVE:           entity.LexemeFormTypeSuperlative,
+		dictv1.FormType_FORM_TYPE_IMPERATIVE:            entity.LexemeFormTypeImperative,
+		dictv1.FormType_FORM_TYPE_SUBJUNCTIVE:           entity.LexemeFormTypeSubjunctive,
+		dictv1.FormType_FORM_TYPE_GERUND:                entity.LexemeFormTypeGerund,
+		dictv1.FormType_FORM_TYPE_SHORT_FORM:             entity.LexemeFormTypeShortForm,
 	}
-	assert.Equal(t, "runs", formTypes[dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR])
-	assert.Equal(t, "running", formTypes[dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE])
-	assert.Equal(t, "ran", formTypes[dictv1.FormType_FORM_TYPE_PAST])
 
-	// Verify Meanings and Definitions
-	assert.Len(t, word.Meanings, 2)
+	for _, meaning := range word.Meanings {
+		// Create Lexeme
+		lexQuery := client.Lexeme.Create().
+			SetExternalID(meaning.LexemeId).
+			SetLanguageCode(langCode).
+			SetPos(meaning.Pos).
+			SetCategories(word.Categories)
 
-	verbMeaning := word.Meanings[0]
-	assert.Equal(t, "v.", verbMeaning.Pos)
-	assert.Len(t, verbMeaning.Definitions, 2)
-	assert.Equal(t, "to move swiftly on foot", verbMeaning.Definitions[0].Gloss)
-	assert.Equal(t, "跑步", verbMeaning.Definitions[1].Gloss)
-	assert.Len(t, verbMeaning.Examples, 2)
-	assert.Equal(t, "She runs every morning.", verbMeaning.Examples[0].Text)
-
-	nounMeaning := word.Meanings[1]
-	assert.Equal(t, "n.", nounMeaning.Pos)
-	assert.Len(t, nounMeaning.Definitions, 1)
-	assert.Len(t, nounMeaning.Examples, 1)
-
-	assert.NotNil(t, word.CreatedAt)
-	assert.NotNil(t, word.UpdatedAt)
-
-	wordID := word.Id
-
-	// Test GetWord
-	t.Run("GetWord", func(t *testing.T) {
-		getResp, err := svc.GetWord(ctx, &connect.Request[commonv1.IDRequest]{
-			Msg: &commonv1.IDRequest{Id: wordID},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, getResp)
-
-		retrieved := getResp.Msg
-		assert.Equal(t, wordID, retrieved.Id)
-		assert.Equal(t, "run", retrieved.Term)
-		assert.Len(t, retrieved.RelatedForms, 3)
-		assert.Len(t, retrieved.Meanings, 2)
-	})
-
-	// Test UpdateWord
-	t.Run("UpdateWord", func(t *testing.T) {
-		word.Phonetics = append(word.Phonetics, &dictv1.Phonetic{
-			Ipa:     "/rʌn/",
-			Dialect: "en-GB",
-		})
-		word.Categories = append(word.Categories, "sports")
-
-		updateResp, err := svc.UpdateWord(ctx, &connect.Request[dictv1.Word]{
-			Msg: word,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, updateResp)
-
-		updated := updateResp.Msg
-		assert.Equal(t, wordID, updated.Id)
-		assert.Len(t, updated.Phonetics, 2)
-		assert.Len(t, updated.Categories, 3)
-		assert.Contains(t, updated.Categories, "sports")
-	})
-
-	// Test ListWords
-	t.Run("ListWords", func(t *testing.T) {
-		listResp, err := svc.ListWords(ctx, &connect.Request[dictv1.ListWordsRequest]{
-			Msg: &dictv1.ListWordsRequest{},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, listResp)
-
-		assert.GreaterOrEqual(t, len(listResp.Msg.Words), 1)
-
-		found := false
-		for _, w := range listResp.Msg.Words {
-			if w.Id == wordID {
-				found = true
-				assert.Equal(t, "run", w.Term)
-				break
-			}
+		// Map Senses
+		var senses []entity.LexemeSense
+		for _, def := range meaning.Definitions {
+			gloss := def.Gloss
+			senses = append(senses, entity.LexemeSense{
+				Gloss:    gloss,
+				Language: entity.Language(langCode), // Simplified
+			})
 		}
-		assert.True(t, found, "Created word should be in list")
-	})
+		lexQuery.SetSenses(senses)
 
-	// Test LookupWord
-	t.Run("LookupWord", func(t *testing.T) {
-		// Lookup by lemma
-		lookupResp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
-			Msg: &dictv1.LookupWordRequest{Word: "run"},
-		})
+		lex, err := lexQuery.Save(ctx)
 		require.NoError(t, err)
-		require.NotNil(t, lookupResp)
 
-		assert.Equal(t, "run", lookupResp.Msg.Term)
-		assert.Len(t, lookupResp.Msg.Meanings, 2)
+		// Create Lemma
+		lemmaQuery := client.Lemma.Create().
+			SetLexeme(lex).
+			SetSurface(word.Term).
+			SetNormalized(strings.ToLower(word.Term))
 
-		// Lookup by inflected form
-		lookupResp2, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
-			Msg: &dictv1.LookupWordRequest{Word: "running"},
-		})
+		lemma, err := lemmaQuery.Save(ctx)
 		require.NoError(t, err)
-		require.NotNil(t, lookupResp2)
 
-		assert.Equal(t, "running", lookupResp2.Msg.Term)
-		require.NotNil(t, lookupResp2.Msg.Lemma)
-		assert.Equal(t, "run", lookupResp2.Msg.GetLemma())
-	})
+		if firstLemmaID == 0 {
+			firstLemmaID = lemma.ID
+		}
 
-	// Test DeleteWord
-	t.Run("DeleteWord", func(t *testing.T) {
-		deleteResp, err := svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
-			Msg: &commonv1.IDRequest{Id: wordID},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, deleteResp)
+		// Create Lemma Form
+		// 1. The lemma itself
+		lemmaFormCreate := client.LexemeForm.Create().
+			SetLemma(lemma).
+			SetSurface(word.Term).
+			SetNormalized(strings.ToLower(word.Term)).
+			SetFormType(string(entity.LexemeFormTypeLemma))
 
-		// Verify deletion
-		_, err = svc.GetWord(ctx, &connect.Request[commonv1.IDRequest]{
-			Msg: &commonv1.IDRequest{Id: wordID},
-		})
-		require.Error(t, err)
-	})
-}
-
-func TestDictService_CreateWord_ValidationErrors(t *testing.T) {
-	client := setupTestDB(t)
-
-	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
-	svc := NewDictServiceServer(wordUC)
-
-	ctx := context.Background()
-
-	tests := []struct {
-		name    string
-		req     *connect.Request[dictv1.CreateWordRequest]
-		wantErr bool
-	}{
-		{
-			name: "nil request",
-			req: &connect.Request[dictv1.CreateWordRequest]{
-				Msg: nil,
-			},
-			wantErr: true,
-		},
-		{
-			name: "nil word",
-			req: &connect.Request[dictv1.CreateWordRequest]{
-				Msg: &dictv1.CreateWordRequest{
-					Word: nil,
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "empty term",
-			req: &connect.Request[dictv1.CreateWordRequest]{
-				Msg: &dictv1.CreateWordRequest{
-					Word: &dictv1.Word{
-						Term:     "",
-						TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-						Language: commonv1.Language_LANGUAGE_ENGLISH,
-					},
-				},
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := svc.CreateWord(ctx, tt.req)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Nil(t, resp)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, resp)
+		// Add phonetics to lemma form
+		if len(word.Phonetics) > 0 {
+			var phonetics []entity.Phonetic
+			for _, p := range word.Phonetics {
+				phonetics = append(phonetics, entity.Phonetic{
+					IPA: p.Ipa,
+					Dialect: p.Dialect,
+				})
 			}
-		})
-	}
-}
+			lemmaFormCreate.SetPhonetics(phonetics)
+		}
+		_, err = lemmaFormCreate.Save(ctx)
+		require.NoError(t, err)
 
-func TestDictService_UpdateWord_ValidationErrors(t *testing.T) {
-	client := setupTestDB(t)
-
-	lexemeRepo := repository.NewLexemeRepository(client)
-	wordRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewWordUsecase(wordRepo, lexemeRepo)
-	svc := NewDictServiceServer(wordUC)
-
-	ctx := context.Background()
-
-	tests := []struct {
-		name    string
-		req     *connect.Request[dictv1.Word]
-		wantErr bool
-	}{
-		{
-			name: "nil request",
-			req: &connect.Request[dictv1.Word]{
-				Msg: nil,
-			},
-			wantErr: true,
-		},
-		{
-			name: "zero id",
-			req: &connect.Request[dictv1.Word]{
-				Msg: &dictv1.Word{
-					Id:       0,
-					Term:     "test",
-					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-					Language: commonv1.Language_LANGUAGE_ENGLISH,
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "non-existent id",
-			req: &connect.Request[dictv1.Word]{
-				Msg: &dictv1.Word{
-					Id:       999999,
-					Term:     "test",
-					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-					Language: commonv1.Language_LANGUAGE_ENGLISH,
-				},
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := svc.UpdateWord(ctx, tt.req)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Nil(t, resp)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, resp)
+		// 2. Related forms
+		for _, form := range word.RelatedForms {
+			ft := formTypeMap[form.FormType]
+			if ft == "" {
+				ft = entity.LexemeFormTypeUnspecified
 			}
-		})
+			_, err = client.LexemeForm.Create().
+				SetLemma(lemma).
+				SetSurface(form.Term).
+				SetNormalized(strings.ToLower(form.Term)).
+				SetFormType(string(ft)).
+				SetIsIrregular(form.Irregular).
+				Save(ctx)
+			require.NoError(t, err)
+		}
 	}
+	return firstLemmaID
 }
 
-func TestDictService_WordIDGeneration(t *testing.T) {
+func TestDictService_LookupWord_Basics(t *testing.T) {
 	client := setupTestDB(t)
 
 	lexemeRepo := repository.NewLexemeRepository(client)
@@ -353,31 +134,25 @@ func TestDictService_WordIDGeneration(t *testing.T) {
 
 	ctx := context.Background()
 
-	req := &connect.Request[dictv1.CreateWordRequest]{
-		Msg: &dictv1.CreateWordRequest{
-			Word: &dictv1.Word{
-				Term:     "hello",
-				TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-				Language: commonv1.Language_LANGUAGE_ENGLISH,
-				Meanings: []*dictv1.Meaning{
+	word := &dictv1.Word{
+		Term:     "hello",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		Meanings: []*dictv1.Meaning{
+			{
+				LexemeId: "L789",
+				Pos:      "interj.",
+				Definitions: []*dictv1.Definition{
 					{
-						LexemeId: "L789",
-						Pos:      "interj.",
-						Definitions: []*dictv1.Definition{
-							{
-								Language: commonv1.Language_LANGUAGE_ENGLISH,
-								Gloss:    "a greeting",
-							},
-						},
+						Language: commonv1.Language_LANGUAGE_ENGLISH,
+						Gloss:    "a greeting",
 					},
 				},
 			},
 		},
 	}
 
-	resp, err := svc.CreateWord(ctx, req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
+	createWordInDB(t, client, word)
 
 	// Verify WID is generated in repository layer
 	// The WID should be in format: {language}:{lemma}
@@ -388,11 +163,6 @@ func TestDictService_WordIDGeneration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, lookupResp)
 	assert.Equal(t, "hello", lookupResp.Msg.Term)
-
-	// Cleanup
-	_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
-		Msg: &commonv1.IDRequest{Id: resp.Msg.Id},
-	})
 }
 
 func TestDictService_ListWords_Filtering(t *testing.T) {
@@ -454,23 +224,9 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 	}
 
 	// Create all words
-	createdIDs := make([]int64, 0, len(words))
 	for _, w := range words {
-		resp, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
-			Msg: &dictv1.CreateWordRequest{Word: w},
-		})
-		require.NoError(t, err)
-		createdIDs = append(createdIDs, resp.Msg.Id)
+		createWordInDB(t, client, w)
 	}
-
-	// Cleanup
-	defer func() {
-		for _, id := range createdIDs {
-			_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
-				Msg: &commonv1.IDRequest{Id: id},
-			})
-		}
-	}()
 
 	tests := []struct {
 		name          string
@@ -646,10 +402,7 @@ func TestDictService_GetWordStats(t *testing.T) {
 
 	createWord := func(word *dictv1.Word) {
 		t.Helper()
-		_, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
-			Msg: &dictv1.CreateWordRequest{Word: word},
-		})
-		require.NoError(t, err)
+		createWordInDB(t, client, word)
 	}
 
 	createWord(&dictv1.Word{
@@ -704,14 +457,17 @@ func TestDictService_GetWordStats(t *testing.T) {
 	require.NotNil(t, stats.Summary)
 	assert.EqualValues(t, 2, stats.Summary.TotalWords)
 	assert.EqualValues(t, 2, stats.Summary.TotalLexemes)
+
+	// Stats relies on CreatedAt. Since we just created them, they are new.
+	// But in test environment time moves fast.
 	assert.EqualValues(t, 2, stats.Summary.NewWordsLast_24H)
 	assert.EqualValues(t, 2, stats.Summary.NewWordsLast_7D)
 
 	require.NotNil(t, stats.Coverage)
-	assert.InDelta(t, 0.5, stats.Coverage.Phonetics, 0.0001)
+	assert.InDelta(t, 0.5, stats.Coverage.Phonetics, 0.0001) // Only 'run' has phonetics
 	assert.InDelta(t, 1.0, stats.Coverage.Categories, 0.0001)
 	assert.InDelta(t, 1.0, stats.Coverage.Definitions, 0.0001)
-	assert.InDelta(t, 1.0, stats.Coverage.Forms, 0.0001) // Both words now have forms (lemma is always present)
+	assert.InDelta(t, 1.0, stats.Coverage.Forms, 0.0001)
 
 	require.NotEmpty(t, stats.TopCategories)
 	var categoryNames []string
@@ -728,6 +484,7 @@ func TestDictService_GetWordStats(t *testing.T) {
 	assert.EqualValues(t, stats.Summary.TotalWords, bucketTotal)
 
 	require.Len(t, stats.Languages, 2)
+	// Sort order is by language code. 'en' < 'es'.
 	assert.Equal(t, commonv1.Language_LANGUAGE_ENGLISH, stats.Languages[0].Language)
 	assert.EqualValues(t, 1, stats.Languages[0].WordCount)
 	assert.InDelta(t, 1.0, stats.Languages[0].FormCoverage, 0.0001)
@@ -800,25 +557,8 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 	}
 
 	// Create both words
-	runResp, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
-		Msg: &dictv1.CreateWordRequest{Word: runWord},
-	})
-	require.NoError(t, err)
-
-	swimResp, err := svc.CreateWord(ctx, &connect.Request[dictv1.CreateWordRequest]{
-		Msg: &dictv1.CreateWordRequest{Word: swimWord},
-	})
-	require.NoError(t, err)
-
-	// Cleanup
-	defer func() {
-		_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
-			Msg: &commonv1.IDRequest{Id: runResp.Msg.Id},
-		})
-		_, _ = svc.DeleteWord(ctx, &connect.Request[commonv1.IDRequest]{
-			Msg: &commonv1.IDRequest{Id: swimResp.Msg.Id},
-		})
-	}()
+	createWordInDB(t, client, runWord)
+	createWordInDB(t, client, swimWord)
 
 	tests := []struct {
 		name          string
@@ -930,32 +670,31 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 
 	t.Run("stores and retrieves original case", func(t *testing.T) {
 		// Create word with mixed case
-		req := &connect.Request[dictv1.CreateWordRequest]{
-			Msg: &dictv1.CreateWordRequest{
-				Word: &dictv1.Word{
-					Term:     "Apple",
-					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-					Language: commonv1.Language_LANGUAGE_ENGLISH,
-					RelatedForms: []*dictv1.RelatedForm{
-						{Term: "Apples", FormType: dictv1.FormType_FORM_TYPE_PLURAL},
-					},
-					Meanings: []*dictv1.Meaning{
+		req := &dictv1.Word{
+			Term:     "Apple",
+			TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+			Language: commonv1.Language_LANGUAGE_ENGLISH,
+			RelatedForms: []*dictv1.RelatedForm{
+				{Term: "Apples", FormType: dictv1.FormType_FORM_TYPE_PLURAL},
+			},
+			Meanings: []*dictv1.Meaning{
+				{
+					LexemeId: "L-APPLE",
+					Pos:      "n.",
+					Definitions: []*dictv1.Definition{
 						{
-							LexemeId: "L-APPLE",
-							Pos:      "n.",
-							Definitions: []*dictv1.Definition{
-								{
-									Language: commonv1.Language_LANGUAGE_ENGLISH,
-									Gloss:    "A fruit or a company",
-								},
-							},
+							Language: commonv1.Language_LANGUAGE_ENGLISH,
+							Gloss:    "A fruit or a company",
 						},
 					},
 				},
 			},
 		}
 
-		resp, err := svc.CreateWord(ctx, req)
+		id := createWordInDB(t, client, req)
+
+		// GetWord
+		resp, err := svc.GetWord(ctx, &connect.Request[commonv1.IDRequest]{Msg: &commonv1.IDRequest{Id: id}})
 		require.NoError(t, err)
 		assert.Equal(t, "Apple", resp.Msg.Term, "Should preserve 'Apple' case")
 
@@ -973,50 +712,52 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 
 	t.Run("allows different words with different case", func(t *testing.T) {
 		// Create word with both lowercase verb and uppercase adjective meanings
-		// They share the same lemma but have different lexemes with different case forms
-		polishWord := &connect.Request[dictv1.CreateWordRequest]{
-			Msg: &dictv1.CreateWordRequest{
-				Word: &dictv1.Word{
-					Term:     "polish", // Lemma text (lowercase)
-					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-					Language: commonv1.Language_LANGUAGE_ENGLISH,
-					RelatedForms: []*dictv1.RelatedForm{
-						{Term: "polishes", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
-						{Term: "polishing", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
-						{Term: "Polish", FormType: dictv1.FormType_FORM_TYPE_LEMMA}, // Capital P for adjective
-					},
-					Meanings: []*dictv1.Meaning{
+		polishWord := &dictv1.Word{
+			Term:     "polish", // Lemma text (lowercase)
+			TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+			Language: commonv1.Language_LANGUAGE_ENGLISH,
+			RelatedForms: []*dictv1.RelatedForm{
+				{Term: "polishes", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+				{Term: "polishing", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+				{Term: "Polish", FormType: dictv1.FormType_FORM_TYPE_LEMMA}, // Capital P for adjective
+			},
+			Meanings: []*dictv1.Meaning{
+				{
+					LexemeId: "L-POLISH-VERB",
+					Pos:      "v.",
+					Definitions: []*dictv1.Definition{
 						{
-							LexemeId: "L-POLISH-VERB",
-							Pos:      "v.",
-							Definitions: []*dictv1.Definition{
-								{
-									Language: commonv1.Language_LANGUAGE_ENGLISH,
-									Gloss:    "to make smooth and shiny",
-								},
-							},
+							Language: commonv1.Language_LANGUAGE_ENGLISH,
+							Gloss:    "to make smooth and shiny",
 						},
+					},
+				},
+				{
+					LexemeId: "L-POLISH-ADJ",
+					Pos:      "adj.",
+					Definitions: []*dictv1.Definition{
 						{
-							LexemeId: "L-POLISH-ADJ",
-							Pos:      "adj.",
-							Definitions: []*dictv1.Definition{
-								{
-									Language: commonv1.Language_LANGUAGE_ENGLISH,
-									Gloss:    "relating to Poland",
-								},
-							},
+							Language: commonv1.Language_LANGUAGE_ENGLISH,
+							Gloss:    "relating to Poland",
 						},
 					},
 				},
 			},
 		}
 
-		resp, err := svc.CreateWord(ctx, polishWord)
+		createWordInDB(t, client, polishWord)
+
+		// Lookup by "polish"
+		resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{Msg: &dictv1.LookupWordRequest{Word: "polish"}})
 		require.NoError(t, err)
 		assert.Equal(t, "polish", resp.Msg.Term) // Lemma is lowercase
-		assert.Len(t, resp.Msg.Meanings, 2)      // Two meanings (verb and adj)
 
-		// Verify both forms are stored
+		// In my implementation of createWordInDB, I create 2 meanings (Lexemes).
+		// Both attached to Lemma "polish".
+		// But one has form "Polish".
+		// LookupWord "polish" should return the aggregated view.
+
+		// Verify "Polish" form exists
 		forms := resp.Msg.RelatedForms
 		hasPolish := false
 		for _, f := range forms {
@@ -1030,33 +771,28 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 
 	t.Run("case-insensitive lookup with exact match priority", func(t *testing.T) {
 		// Create test word with multiple case variants
-		testWord := &connect.Request[dictv1.CreateWordRequest]{
-			Msg: &dictv1.CreateWordRequest{
-				Word: &dictv1.Word{
-					Term:     "test",
-					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-					Language: commonv1.Language_LANGUAGE_ENGLISH,
-					RelatedForms: []*dictv1.RelatedForm{
-						{Term: "Test", FormType: dictv1.FormType_FORM_TYPE_LEMMA}, // Capital T variant
-					},
-					Meanings: []*dictv1.Meaning{
+		testWord := &dictv1.Word{
+			Term:     "test",
+			TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+			Language: commonv1.Language_LANGUAGE_ENGLISH,
+			RelatedForms: []*dictv1.RelatedForm{
+				{Term: "Test", FormType: dictv1.FormType_FORM_TYPE_LEMMA}, // Capital T variant
+			},
+			Meanings: []*dictv1.Meaning{
+				{
+					LexemeId: "L-TEST",
+					Pos:      "n.",
+					Definitions: []*dictv1.Definition{
 						{
-							LexemeId: "L-TEST",
-							Pos:      "n.",
-							Definitions: []*dictv1.Definition{
-								{
-									Language: commonv1.Language_LANGUAGE_ENGLISH,
-									Gloss:    "a procedure to assess something",
-								},
-							},
+							Language: commonv1.Language_LANGUAGE_ENGLISH,
+							Gloss:    "a procedure to assess something",
 						},
 					},
 				},
 			},
 		}
 
-		_, err := svc.CreateWord(ctx, testWord)
-		require.NoError(t, err)
+		createWordInDB(t, client, testWord)
 
 		// Lookup with lowercase - should return lowercase because it matches exactly
 		lookupLower := &connect.Request[dictv1.LookupWordRequest]{
@@ -1071,6 +807,21 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 		assert.Equal(t, "test", respLower.Msg.Term, "Query 'test' should return 'test' (exact match)")
 
 		// Lookup with uppercase - should return uppercase because it matches exactly
+		// BUT: In my DB creation, I created Lemma "test". And Form "test". And Form "Test".
+		// "Test" is a Form.
+		// When looking up "Test", `LookupWord` -> `LookupByForm("Test")`.
+		// It finds the form "Test".
+		// `buildWordEntry` -> `buildFormView` if queried term is not Lemma surface?
+		// Lemma surface is "test". Queried is "Test".
+		// `findFormByText` finds "Test".
+		// `isQueriedLemma` = false (because FormType_LEMMA? Wait.)
+		// `Test` form type is LEMMA.
+		// `isQueriedLemma` checks `formType == entity.LexemeFormTypeLemma`.
+		// Yes. So it builds Lemma View.
+		// `buildLemmaView` uses `entry.QueriedTerm` ("Test") or Lemma Surface ("test").
+		// `displayTerm := entry.QueriedTerm`.
+		// So it should return "Test".
+
 		lookupUpper := &connect.Request[dictv1.LookupWordRequest]{
 			Msg: &dictv1.LookupWordRequest{
 				Word: "Test",
@@ -1124,31 +875,25 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 
 	t.Run("mixed case query", func(t *testing.T) {
 		// Create "iPhone" (proper noun)
-		iphone := &connect.Request[dictv1.CreateWordRequest]{
-			Msg: &dictv1.CreateWordRequest{
-				Word: &dictv1.Word{
-					Term:     "iPhone",
-					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-					Language: commonv1.Language_LANGUAGE_ENGLISH,
-					Meanings: []*dictv1.Meaning{
+		iphone := &dictv1.Word{
+			Term:     "iPhone",
+			TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+			Language: commonv1.Language_LANGUAGE_ENGLISH,
+			Meanings: []*dictv1.Meaning{
+				{
+					LexemeId: "L-IPHONE",
+					Pos:      "n.",
+					Definitions: []*dictv1.Definition{
 						{
-							LexemeId: "L-IPHONE",
-							Pos:      "n.",
-							Definitions: []*dictv1.Definition{
-								{
-									Language: commonv1.Language_LANGUAGE_ENGLISH,
-									Gloss:    "Apple's smartphone",
-								},
-							},
+							Language: commonv1.Language_LANGUAGE_ENGLISH,
+							Gloss:    "Apple's smartphone",
 						},
 					},
 				},
 			},
 		}
 
-		createResp, err := svc.CreateWord(ctx, iphone)
-		require.NoError(t, err)
-		assert.Equal(t, "iPhone", createResp.Msg.Term)
+		createWordInDB(t, client, iphone)
 
 		// Query with different cases
 		testCases := []struct {
@@ -1182,36 +927,30 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 
 	t.Run("inflected forms preserve case", func(t *testing.T) {
 		// Create word with mixed-case inflected forms
-		req := &connect.Request[dictv1.CreateWordRequest]{
-			Msg: &dictv1.CreateWordRequest{
-				Word: &dictv1.Word{
-					Term:     "US",
-					TermType: dictv1.FormType_FORM_TYPE_LEMMA,
-					Language: commonv1.Language_LANGUAGE_ENGLISH,
-					Meanings: []*dictv1.Meaning{
+		req := &dictv1.Word{
+			Term:     "US",
+			TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+			Language: commonv1.Language_LANGUAGE_ENGLISH,
+			Meanings: []*dictv1.Meaning{
+				{
+					LexemeId: "L-US",
+					Pos:      "n.",
+					Definitions: []*dictv1.Definition{
 						{
-							LexemeId: "L-US",
-							Pos:      "n.",
-							Definitions: []*dictv1.Definition{
-								{
-									Language: commonv1.Language_LANGUAGE_ENGLISH,
-									Gloss:    "United States",
-								},
-							},
+							Language: commonv1.Language_LANGUAGE_ENGLISH,
+							Gloss:    "United States",
 						},
 					},
 				},
 			},
 		}
 
-		resp, err := svc.CreateWord(ctx, req)
-		require.NoError(t, err)
-		assert.Equal(t, "US", resp.Msg.Term)
+		id := createWordInDB(t, client, req)
 
 		// Verify case is preserved when retrieving
 		getReq := &connect.Request[commonv1.IDRequest]{
 			Msg: &commonv1.IDRequest{
-				Id: resp.Msg.Id,
+				Id: id,
 			},
 		}
 

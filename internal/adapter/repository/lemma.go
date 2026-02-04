@@ -438,9 +438,11 @@ func applyLemmaFilters(q *entdb.LemmaQuery, params *repository.ListWordsQuery) {
 		if len(categories) > 0 {
 			q.Where(entlemma.HasLexemeWith(func(s *sql.Selector) {
 				column := s.C(entlexeme.FieldCategories)
+				var preds []*sql.Predicate
 				for _, category := range categories {
-					s.Where(sqljson.ValueContains(column, category))
+					preds = append(preds, sqljson.ValueContains(column, category))
 				}
+				s.Where(sql.Or(preds...))
 			}))
 		}
 	}
