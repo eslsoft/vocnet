@@ -68,7 +68,7 @@ func parseFlags() pipelineConfig {
 
 	flag.StringVar(&cfg.mobyFile, "moby-file", defaultMobyFile, "Path to Moby Hyphenator (mhyph.txt) for extra syllables")
 
-	flag.StringVar(&cfg.pipes, "pipes", "*", "Pipeline stages to run (comma-separated: wikidata,ecdict,moby,coverage) or * for all")
+	flag.StringVar(&cfg.pipes, "pipes", "*", "Pipeline stages to run (comma-separated: wikidata,ecdict,moby,coverage,chinese-sense) or * for all")
 
 	flag.StringVar(&cfg.wordbookDir, "wordbook-dir", defaultWordbookDir, "Directory containing wordbook JSON files")
 	flag.StringVar(&cfg.coverageOutputDir, "coverage-output", "reports", "Directory to save coverage reports")
@@ -262,6 +262,39 @@ func runPipeline(cfg pipelineConfig) error {
 			return err
 		}
 	}
+
+	// Stage 5: Chinese Sense Coverage Check
+	if shouldRun(cfg.pipes, "chinese-sense") {
+		if err := runChineseSenseCoverageCheck(cfg); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// runChineseSenseCoverageCheck checks Chinese translation coverage
+func runChineseSenseCoverageCheck(cfg pipelineConfig) error {
+	fmt.Println("\n🇨🇳 Starting Chinese Sense Coverage Check")
+	fmt.Println(strings.Repeat("=", 80))
+
+	// Initialize database connection
+	entClient, cleanup, err := initializeEntClient(cfg.databaseURL)
+	if err != nil {
+		return fmt.Errorf("initialize ent client: %w", err)
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Run Chinese sense coverage check
+	stats, err := CheckChineseSenseCoverage(ctx, entClient)
+	if err != nil {
+		return fmt.Errorf("check Chinese sense coverage: %w", err)
+	}
+
+	// Print report
+	PrintChineseSenseStats(stats)
 
 	return nil
 }

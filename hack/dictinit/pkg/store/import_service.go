@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
@@ -72,8 +73,74 @@ func (s *LexemeImportService) LoadKnownForms(ctx context.Context) (map[string]st
 	return known, nil
 }
 
+// FindAllLexemesByLemmaSurface finds ALL lexemes by lemma surface text (for enrichment).
+// Unlike FindLexemeByLemmaSurface, this returns all matching lexemes (different POS/senses).
+func (s *LexemeImportService) FindAllLexemesByLemmaSurface(ctx context.Context, surface string, language string) ([]*ImportLexemeData, error) {
+	normalized := strings.ToLower(surface)
+
+	// Find all lemmas with this surface text
+	lemmas, err := s.client.Lemma.Query().
+		Where(
+			entlemma.NormalizedEQ(normalized),
+		).
+		WithForms().
+		All(ctx) // ← Use All() instead of First()
+	if err != nil {
+		return nil, fmt.Errorf("query lemmas: %w", err)
+	}
+
+	if len(lemmas) == 0 {
+		// Try to find in forms (inflected forms)
+		forms, err := s.client.LexemeForm.Query().
+			Where(entlexemeform.NormalizedEQ(normalized)).
+			WithLemma(func(q *entdb.LemmaQuery) {
+				q.WithForms()
+			}).
+			All(ctx)
+		if err != nil {
+			if entdb.IsNotFound(err) {
+				return nil, nil // Not found is not an error
+			}
+			return nil, fmt.Errorf("query forms: %w", err)
+		}
+
+		// Collect unique lemmas from forms
+		lemmaMap := make(map[int64]*entdb.Lemma)
+		for _, form := range forms {
+			if form.Edges.Lemma != nil {
+				lemmaMap[form.Edges.Lemma.ID] = form.Edges.Lemma
+			}
+		}
+
+		lemmas = make([]*entdb.Lemma, 0, len(lemmaMap))
+		for _, lemma := range lemmaMap {
+			lemmas = append(lemmas, lemma)
+		}
+	}
+
+	// Build ImportLexemeData for each lemma
+	results := make([]*ImportLexemeData, 0, len(lemmas))
+	for _, lemma := range lemmas {
+		data, err := s.buildImportDataFromLemma(ctx, lemma)
+		if err != nil {
+			// Log but continue with other lemmas
+			log.Printf("[import-service] Warning: failed to build data for lemma %d: %v", lemma.ID, err)
+			continue
+		}
+		if data != nil {
+			// Filter by language if specified
+			if language == "" || data.Lexeme.Language.Code() == language {
+				results = append(results, data)
+			}
+		}
+	}
+
+	return results, nil
+}
+
 // FindLexemeByLemmaSurface finds a lexeme by its lemma surface text or any of its forms.
 // It searches both the lemma table and lexeme_form table to handle inflected forms.
+// NOTE: This returns only the FIRST match. Use FindAllLexemesByLemmaSurface for enrichment.
 func (s *LexemeImportService) FindLexemeByLemmaSurface(ctx context.Context, surface string, language string) (*ImportLexemeData, error) {
 	normalized := strings.ToLower(surface)
 

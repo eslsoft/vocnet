@@ -192,6 +192,11 @@ func appendSensePayloads(results []sensePayload, lines []string, fallbackPOS str
 			continue
 		}
 
+		// Skip lines that are ONLY domain markers (like "[计]" by itself)
+		if isOnlyDomainMarker(line) {
+			continue
+		}
+
 		// Try to extract POS prefix if present
 		pos, rest := tryExtractPOS(line)
 
@@ -242,6 +247,29 @@ func startsWithDomainMarker(line string) bool {
 	}
 	closeIdx := strings.Index(s, "]")
 	return closeIdx > 0 && closeIdx <= 10 // Domain markers are usually short
+}
+
+// isOnlyDomainMarker checks if a line contains ONLY a domain marker (e.g., "[计]" or "[计] 状态")
+// Returns true for lines like "[计]", "[医]", etc. that should be skipped
+func isOnlyDomainMarker(line string) bool {
+	s := strings.TrimSpace(line)
+	if len(s) < 3 {
+		return false
+	}
+	if s[0] != '[' {
+		return false
+	}
+	closeIdx := strings.Index(s, "]")
+	if closeIdx == -1 {
+		return false
+	}
+
+	// Check if there's significant content after the domain marker
+	rest := strings.TrimSpace(s[closeIdx+1:])
+
+	// If nothing after ']', or only whitespace, it's just a domain marker
+	// If there's content after, it's a valid gloss with domain marker
+	return rest == ""
 }
 
 // tryExtractPOS attempts to extract a leading POS tag from a line

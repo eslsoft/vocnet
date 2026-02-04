@@ -154,42 +154,77 @@ func (imp *ecdictEnrichmentImporter) enrichWord(ctx context.Context, word ecdict
 		word: word.word,
 	}
 
-	// Find existing lexeme by lemma surface
-	existing, err := imp.importService.FindLexemeByLemmaSurface(ctx, word.word, "en")
+	// Find ALL existing lexemes by lemma surface (to handle multiple POS)
+	existingLexemes, err := imp.importService.FindAllLexemesByLemmaSurface(ctx, word.word, "en")
 	if err != nil {
 		result.err = fmt.Errorf("find existing: %w", err)
 		return result
 	}
 
-	if existing == nil {
+	if len(existingLexemes) == 0 {
 		result.notFound = true
 		return result
 	}
 
-	// Build enrichment data from ECDICT
-	enrichmentData, err := BuildECDictLexeme(word.word, word.enrichment)
-	if err != nil || enrichmentData == nil {
-		result.err = fmt.Errorf("build enrichment: %w", err)
+	// Enrich each lexeme with POS-filtered senses
+	var lastErr error
+	enrichedCount := 0
+
+	for _, existing := range existingLexemes {
+		// Build enrichment data filtered by this lexeme's POS
+		enrichmentData, err := BuildECDictEnrichmentForPOS(word.word, word.enrichment, existing.Lexeme.PartOfSpeech)
+		if err != nil {
+			lastErr = fmt.Errorf("build enrichment for POS %s: %w", existing.Lexeme.PartOfSpeech, err)
+			log.Printf("[ecdict-enrich] Warning: failed to build enrichment for '%s' POS %s: %v",
+				word.word, existing.Lexeme.PartOfSpeech, err)
+			continue
+		}
+
+		// If no matching senses for this POS, skip
+		if enrichmentData == nil || len(enrichmentData.Lexeme.Senses) == 0 {
+			continue
+		}
+
+		oldPhonetics := countTotalPhonetics(existing.Lemmas[0].Forms)
+		oldSenses := len(existing.Lexeme.Senses)
+		oldForms := len(existing.Lemmas[0].Forms)
+
+		// Merge enrichment data into existing
+		merged := mergeEnrichmentData(existing, enrichmentData)
+
+		// Update the lexeme
+		err = imp.importService.CreateOrUpdateComplete(ctx, merged)
+		if err != nil {
+			lastErr = fmt.Errorf("update lexeme %s: %w", existing.Lexeme.ExternalID, err)
+			log.Printf("[ecdict-enrich] Warning: failed to enrich lexeme %s for word '%s' POS %s: %v",
+				existing.Lexeme.ExternalID, word.word, existing.Lexeme.PartOfSpeech, err)
+			continue
+		}
+
+		// Count what was added for this lexeme
+		newPhonetics := countTotalPhonetics(merged.Lemmas[0].Forms)
+		newSenses := len(merged.Lexeme.Senses)
+		newForms := len(merged.Lemmas[0].Forms)
+
+		result.phoneticsAdded += (newPhonetics - oldPhonetics)
+		result.sensesAdded += (newSenses - oldSenses)
+		result.formsAdded += (newForms - oldForms)
+
+		enrichedCount++
+	}
+
+	if enrichedCount == 0 {
+		// If no lexemes were enriched, consider it "not found" rather than an error
+		// This can happen if ECDICT has the word but no senses match any lexeme's POS
+		if lastErr != nil {
+			result.err = lastErr
+		} else {
+			result.notFound = true
+		}
 		return result
 	}
 
-	oldPhonetics := countTotalPhonetics(existing.Lemmas[0].Forms)
-
-	// Merge enrichment data into existing
-	merged := mergeEnrichmentData(existing, enrichmentData)
-
-	// Count what was added
-	newPhonetics := countTotalPhonetics(merged.Lemmas[0].Forms)
-	result.phoneticsAdded = newPhonetics - oldPhonetics
-	result.sensesAdded = countNewSenses(existing.Lexeme.Senses, merged.Lexeme.Senses)
-	result.formsAdded = countNewForms(existing.Lemmas[0].Forms, merged.Lemmas[0].Forms)
-	// Update the lexeme
-	err = imp.importService.CreateOrUpdateComplete(ctx, merged)
-	if err != nil {
-		result.err = fmt.Errorf("update lexeme: %w", err)
-		return result
-	}
-
+	// Consider it successful if we enriched at least one lexeme
 	result.succeeded = true
 	return result
 }
