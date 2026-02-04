@@ -75,6 +75,53 @@ func (r *lemmaRepository) LookupByForm(ctx context.Context, surface string, lang
 	return nil, entity.ErrWordNotFound
 }
 
+func (r *lemmaRepository) ListByFormNormalized(ctx context.Context, surface string, language entity.Language) ([]*entity.Lemma, error) {
+	surface = strings.TrimSpace(surface)
+	if surface == "" {
+		return nil, entity.ErrInvalidInput
+	}
+
+	normalized := strings.ToLower(surface)
+	langCode := language.CodeOrDefault()
+
+	formRows, err := r.client.LexemeForm.Query().
+		Where(entlexemeform.NormalizedEQ(normalized)).
+		Where(entlexemeform.HasLemmaWith(
+			entlemma.HasLexemeWith(entlexeme.LanguageCodeEQ(langCode)),
+		)).
+		WithLemma(func(q *entdb.LemmaQuery) {
+			q.WithForms()
+		}).
+		All(ctx)
+	if err != nil {
+		return nil, translateDBError(err, "lemma")
+	}
+
+	if len(formRows) == 0 {
+		return nil, entity.ErrWordNotFound
+	}
+
+	seen := make(map[int64]struct{}, len(formRows))
+	out := make([]*entity.Lemma, 0, len(formRows))
+	for _, formRow := range formRows {
+		lemmaRow, err := formRow.Edges.LemmaOrErr()
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[lemmaRow.ID]; ok {
+			continue
+		}
+		seen[lemmaRow.ID] = struct{}{}
+		out = append(out, mapEntLemma(lemmaRow))
+	}
+
+	if len(out) == 0 {
+		return nil, entity.ErrWordNotFound
+	}
+
+	return out, nil
+}
+
 func (r *lemmaRepository) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.Lemma, int64, error) {
 	if query == nil {
 		query = &repository.ListWordsQuery{}

@@ -62,13 +62,25 @@ func (u *wordUsecase) Lookup(ctx context.Context, surface string, language entit
 func (u *wordUsecase) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.WordEntry, int64, error) {
 	if surfaceTerms := query.SurfaceTerms; len(surfaceTerms) > 0 {
 		entries := make([]*entity.WordEntry, 0, len(surfaceTerms))
+		seen := make(map[int64]struct{})
 		for _, term := range surfaceTerms {
-			entry, err := u.Lookup(ctx, term, entity.Language(query.Language))
+			lemmas, err := u.lemmas.ListByFormNormalized(ctx, term, entity.Language(query.Language))
 			if err != nil {
 				continue
 			}
-			if entry != nil {
+			for _, lemma := range lemmas {
+				if lemma == nil {
+					continue
+				}
+				if _, ok := seen[lemma.ID]; ok {
+					continue
+				}
+				entry, err := u.buildWordEntry(ctx, lemma, term)
+				if err != nil || entry == nil {
+					continue
+				}
 				entries = append(entries, entry)
+				seen[lemma.ID] = struct{}{}
 			}
 		}
 		return entries, int64(len(entries)), nil
@@ -110,6 +122,38 @@ func (u *wordUsecase) buildWordEntry(ctx context.Context, lemma *entity.Lemma, q
 	for _, lex := range lexemePtrs {
 		if lex != nil {
 			lexemes = append(lexemes, *lex)
+		}
+	}
+
+	// Merge lexemes from other lemmas that share the same surface form
+	// (e.g., adopted as adj vs adopt as verb).
+	if len(lexemes) > 0 {
+		lang := lexemes[0].Language
+		relatedLemmas, err := u.lemmas.ListByFormNormalized(ctx, lemma.Surface, lang)
+		if err == nil {
+			existing := make(map[int64]struct{}, len(lexemes))
+			for _, lex := range lexemes {
+				existing[lex.ID] = struct{}{}
+			}
+			for _, related := range relatedLemmas {
+				if related == nil || related.ID == lemma.ID {
+					continue
+				}
+				relatedLexemePtrs, err := u.lexemes.ListByLemmaID(ctx, related.ID)
+				if err != nil {
+					continue
+				}
+				for _, lex := range relatedLexemePtrs {
+					if lex == nil {
+						continue
+					}
+					if _, ok := existing[lex.ID]; ok {
+						continue
+					}
+					lexemes = append(lexemes, *lex)
+					existing[lex.ID] = struct{}{}
+				}
+			}
 		}
 	}
 

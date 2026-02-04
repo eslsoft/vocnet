@@ -142,7 +142,7 @@ func getPublicProcedures() []string {
 	dictProcedures := []string{
 		"/dict.v1.DictService/LookupWord",
 		"/dict.v1.DictService/LookupWordForms",
-		"/dict.v1.DictService/LookupLemma",
+		"/dict.v1.DictService/ListWords",
 	}
 
 	// Note: Some wordbook procedures may optionally support public access
