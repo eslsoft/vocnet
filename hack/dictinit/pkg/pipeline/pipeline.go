@@ -14,6 +14,7 @@ import (
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/ecdict"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/moby"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/wikidata"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/youdaodict"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
@@ -30,6 +31,7 @@ const (
 	defaultECDictCacheDir = ""
 	defaultMobyFile       = "./data/mhyph.txt"
 	defaultWordbookDir    = "./pkg/wordbook/books"
+	defaultYoudaoDictDir  = "./data/yddict"
 )
 
 type pipelineConfig struct {
@@ -41,6 +43,7 @@ type pipelineConfig struct {
 	ecdictCacheDir    string
 	ecdictNoCache     bool
 	mobyFile          string
+	youdaoDictDir     string
 	wordbookDir       string
 	coverageOutputDir string
 	pipes             string
@@ -68,7 +71,9 @@ func parseFlags() pipelineConfig {
 
 	flag.StringVar(&cfg.mobyFile, "moby-file", defaultMobyFile, "Path to Moby Hyphenator (mhyph.txt) for extra syllables")
 
-	flag.StringVar(&cfg.pipes, "pipes", "*", "Pipeline stages to run (comma-separated: wikidata,ecdict,moby,coverage,chinese-sense) or * for all")
+	flag.StringVar(&cfg.youdaoDictDir, "youdao-dict-dir", defaultYoudaoDictDir, "Directory containing Youdao dict (oss/dict)")
+
+	flag.StringVar(&cfg.pipes, "pipes", "*", "Pipeline stages to run (comma-separated: wikidata,ecdict,moby,youdao,coverage,chinese-sense) or * for all")
 
 	flag.StringVar(&cfg.wordbookDir, "wordbook-dir", defaultWordbookDir, "Directory containing wordbook JSON files")
 	flag.StringVar(&cfg.coverageOutputDir, "coverage-output", "reports", "Directory to save coverage reports")
@@ -253,6 +258,39 @@ func runPipeline(cfg pipelineConfig) error {
 		}
 	}
 
+	// Stage 4: Youdao Dictionary Enrichment
+	if shouldRun(cfg.pipes, "youdao") {
+		log.Println("\n" + strings.Repeat("=", 80))
+		log.Println("STAGE 4: Youdao Dictionary Enrichment")
+		log.Println(strings.Repeat("=", 80))
+
+		knownForms, err := importService.LoadKnownForms(ctx)
+		if err != nil {
+			return fmt.Errorf("load known forms for youdao: %w", err)
+		}
+		log.Printf("[youdao] Loaded %d known forms from database", len(knownForms))
+
+		idMap, err := importService.LoadExternalIDMap(ctx)
+		if err != nil {
+			return fmt.Errorf("load external id map for youdao: %w", err)
+		}
+
+		enricher, err := youdaodict.NewEnricher(cfg.youdaoDictDir)
+		if err != nil {
+			return fmt.Errorf("youdao enricher: %w", err)
+		}
+		enricher.RegisterKnownForms(knownForms, idMap)
+
+		youdaoImporter := youdaodict.NewImporter(cfg.batchSize, importService, enricher)
+		start := time.Now()
+		report, err := youdaoImporter.Run(ctx)
+		if err != nil {
+			log.Printf("[youdao] Warning: stage completed with errors: %v", err)
+		}
+		log.Printf("[youdao] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
+		reports = append(reports, report)
+	}
+
 	// Print overall summary
 	printOverallSummary(reports)
 
@@ -381,6 +419,8 @@ func printOverallSummary(reports []*report.ImportReport) {
 			reportFile = "reports/ecdict_enrichment_report.json"
 		} else if report.StageName == "Moby" {
 			reportFile = "reports/moby_import_report.json"
+		} else if report.StageName == "YoudaoDict" {
+			reportFile = "reports/youdao_import_report.json"
 		}
 		if reportFile != "" {
 			fmt.Printf("  %s: %s\n", report.StageName, reportFile)

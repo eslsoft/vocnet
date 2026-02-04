@@ -40,6 +40,38 @@ func NewLexemeImportService(client *entdb.Client) *LexemeImportService {
 	return &LexemeImportService{client: client}
 }
 
+// LoadExternalIDMap returns a map of normalized lemma surfaces to their Wikidata ExternalIDs.
+func (s *LexemeImportService) LoadExternalIDMap(ctx context.Context) (map[string]string, error) {
+	results, err := s.client.Lemma.Query().
+		Select(entlemma.FieldNormalized, entlemma.FieldLexemeID).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load external id map: %w", err)
+	}
+
+	// We also need to map the Lexeme internal ID to ExternalID
+	lexemes, err := s.client.Lexeme.Query().
+		Select(entlexeme.FieldID, entlexeme.FieldExternalID).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load lexemes for id mapping: %w", err)
+	}
+
+	lexemeIDToExternalID := make(map[int64]string, len(lexemes))
+	for _, l := range lexemes {
+		lexemeIDToExternalID[l.ID] = l.ExternalID
+	}
+
+	surfaceToExternalID := make(map[string]string, len(results))
+	for _, r := range results {
+		if extID, ok := lexemeIDToExternalID[r.LexemeID]; ok {
+			surfaceToExternalID[r.Normalized] = extID
+		}
+	}
+
+	return surfaceToExternalID, nil
+}
+
 // LoadKnownForms returns a normalized lookup of all lemma surfaces and lexeme forms in the database.
 func (s *LexemeImportService) LoadKnownForms(ctx context.Context) (map[string]struct{}, error) {
 	lemmas, err := s.client.Lemma.Query().
