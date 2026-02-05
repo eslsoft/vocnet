@@ -278,10 +278,10 @@ func (i *Importer) enrichRelations(lex *entity.Lexeme, word YoudaoWord) bool {
 		}
 	}
 
-	// 3. Related Words (Root/Association -> RelationType 5)
+	// 3. Related Words (Root/Association -> RelationType 8: DERIVATIVE)
 	for _, r := range content.RelWord.Rels {
 		for _, w := range r.Words {
-			addRel(w.Hwd, 5, r.Pos)
+			addRel(w.Hwd, 8, r.Pos)
 		}
 	}
 

@@ -34,6 +34,7 @@ const (
 	RelationType_RELATION_TYPE_ASSOCIATION  RelationType = 5 // association (bread->butter)
 	RelationType_RELATION_TYPE_CAUSE_EFFECT RelationType = 6 // cause-effect  (smoke->cancer)
 	RelationType_RELATION_TYPE_PART_WHOLE   RelationType = 7 // part-whole (wheel->car)
+	RelationType_RELATION_TYPE_DERIVATIVE   RelationType = 8 // derivative word (teacher -> teach)
 )
 
 // Enum value maps for RelationType.
@@ -47,6 +48,7 @@ var (
 		5: "RELATION_TYPE_ASSOCIATION",
 		6: "RELATION_TYPE_CAUSE_EFFECT",
 		7: "RELATION_TYPE_PART_WHOLE",
+		8: "RELATION_TYPE_DERIVATIVE",
 	}
 	RelationType_value = map[string]int32{
 		"RELATION_TYPE_UNSPECIFIED":  0,
@@ -57,6 +59,7 @@ var (
 		"RELATION_TYPE_ASSOCIATION":  5,
 		"RELATION_TYPE_CAUSE_EFFECT": 6,
 		"RELATION_TYPE_PART_WHOLE":   7,
+		"RELATION_TYPE_DERIVATIVE":   8,
 	}
 )
 
@@ -743,7 +746,7 @@ const file_dict_v1_word_proto_rawDesc = "" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12-\n" +
 	"\x06source\x18\x02 \x01(\x0e2\x15.common.v1.SourceTypeR\x06source\x12\x1d\n" +
 	"\n" +
-	"source_ref\x18\x03 \x01(\tR\tsourceRef*\xf7\x01\n" +
+	"source_ref\x18\x03 \x01(\tR\tsourceRef*\x95\x02\n" +
 	"\fRelationType\x12\x1d\n" +
 	"\x19RELATION_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15RELATION_TYPE_SYNONYM\x10\x01\x12\x19\n" +
@@ -752,7 +755,8 @@ const file_dict_v1_word_proto_rawDesc = "" +
 	"\x15RELATION_TYPE_HYPONYM\x10\x04\x12\x1d\n" +
 	"\x19RELATION_TYPE_ASSOCIATION\x10\x05\x12\x1e\n" +
 	"\x1aRELATION_TYPE_CAUSE_EFFECT\x10\x06\x12\x1c\n" +
-	"\x18RELATION_TYPE_PART_WHOLE\x10\a*\xe5\x02\n" +
+	"\x18RELATION_TYPE_PART_WHOLE\x10\a\x12\x1c\n" +
+	"\x18RELATION_TYPE_DERIVATIVE\x10\b*\xe5\x02\n" +
 	"\bFormType\x12\x19\n" +
 	"\x15FORM_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fFORM_TYPE_LEMMA\x10\x01\x12\x14\n" +
