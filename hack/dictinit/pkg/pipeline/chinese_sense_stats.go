@@ -15,10 +15,10 @@ import (
 
 // ChineseSenseStats holds statistics about Chinese sense coverage
 type ChineseSenseStats struct {
-	TotalLexemes         int64
-	WithChineseSense     int64
-	WithoutChineseSense  int64
-	PercentWithChinese   float64
+	TotalLexemes          int64
+	WithChineseSense      int64
+	WithoutChineseSense   int64
+	PercentWithChinese    float64
 	PercentWithoutChinese float64
 
 	// Per part-of-speech breakdown
@@ -29,12 +29,14 @@ type ChineseSenseStats struct {
 }
 
 type POSSenseStats struct {
-	Total              int64
-	WithChineseSense   int64
+	Total               int64
+	WithChineseSense    int64
 	WithoutChineseSense int64
 }
 
 // CheckChineseSenseCoverage checks how many lexemes have Chinese translations
+//
+//nolint:gocognit // Diagnostic aggregation is intentionally linear but long.
 func CheckChineseSenseCoverage(ctx context.Context, client *entdb.Client) (*ChineseSenseStats, error) {
 	log.Printf("[chinese-sense] Starting Chinese sense coverage check...")
 
@@ -109,7 +111,7 @@ func CheckChineseSenseCoverage(ctx context.Context, client *entdb.Client) (*Chin
 		}
 
 		offset += len(lexemes)
-		if offset % 5000 == 0 {
+		if offset%5000 == 0 {
 			log.Printf("[chinese-sense] Processed %d lexemes...", offset)
 		}
 	}

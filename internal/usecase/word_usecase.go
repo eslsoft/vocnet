@@ -111,51 +111,14 @@ func (u *wordUsecase) Stats(ctx context.Context, filter *entity.WordStatsFilter)
 }
 
 func (u *wordUsecase) buildWordEntry(ctx context.Context, lemma *entity.Lemma, queriedTerm string) (*entity.WordEntry, error) {
-	// Look up lexemes by the lemma's ID
-	lexemePtrs, err := u.lexemes.ListByLemmaID(ctx, lemma.ID)
+	lexemes, err := u.fetchLexemesByLemma(ctx, lemma.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert []*entity.Lexeme to []entity.Lexeme
-	lexemes := make([]entity.Lexeme, 0, len(lexemePtrs))
-	for _, lex := range lexemePtrs {
-		if lex != nil {
-			lexemes = append(lexemes, *lex)
-		}
-	}
-
 	// Merge lexemes from other lemmas that share the same surface form
 	// (e.g., adopted as adj vs adopt as verb).
-	if len(lexemes) > 0 {
-		lang := lexemes[0].Language
-		relatedLemmas, err := u.lemmas.ListByFormNormalized(ctx, lemma.Surface, lang)
-		if err == nil {
-			existing := make(map[int64]struct{}, len(lexemes))
-			for _, lex := range lexemes {
-				existing[lex.ID] = struct{}{}
-			}
-			for _, related := range relatedLemmas {
-				if related == nil || related.ID == lemma.ID {
-					continue
-				}
-				relatedLexemePtrs, err := u.lexemes.ListByLemmaID(ctx, related.ID)
-				if err != nil {
-					continue
-				}
-				for _, lex := range relatedLexemePtrs {
-					if lex == nil {
-						continue
-					}
-					if _, ok := existing[lex.ID]; ok {
-						continue
-					}
-					lexemes = append(lexemes, *lex)
-					existing[lex.ID] = struct{}{}
-				}
-			}
-		}
-	}
+	lexemes = u.mergeRelatedLexemes(ctx, lexemes, lemma)
 
 	entry := &entity.WordEntry{
 		QueriedTerm: strings.TrimSpace(queriedTerm),
@@ -169,6 +132,63 @@ func (u *wordUsecase) buildWordEntry(ctx context.Context, lemma *entity.Lemma, q
 		entry.QueriedTerm = lemma.Surface
 	}
 	return entry, nil
+}
+
+func (u *wordUsecase) fetchLexemesByLemma(ctx context.Context, lemmaID int64) ([]entity.Lexeme, error) {
+	lexemePtrs, err := u.lexemes.ListByLemmaID(ctx, lemmaID)
+	if err != nil {
+		return nil, err
+	}
+	return collectLexemes(lexemePtrs), nil
+}
+
+func (u *wordUsecase) mergeRelatedLexemes(ctx context.Context, lexemes []entity.Lexeme, lemma *entity.Lemma) []entity.Lexeme {
+	if len(lexemes) == 0 || lemma == nil {
+		return lexemes
+	}
+
+	lang := lexemes[0].Language
+	relatedLemmas, err := u.lemmas.ListByFormNormalized(ctx, lemma.Surface, lang)
+	if err != nil {
+		return lexemes
+	}
+
+	existing := make(map[int64]struct{}, len(lexemes))
+	for _, lex := range lexemes {
+		existing[lex.ID] = struct{}{}
+	}
+
+	for _, related := range relatedLemmas {
+		if related == nil || related.ID == lemma.ID {
+			continue
+		}
+		relatedLexemePtrs, err := u.lexemes.ListByLemmaID(ctx, related.ID)
+		if err != nil {
+			continue
+		}
+		for _, lex := range collectLexemes(relatedLexemePtrs) {
+			if _, ok := existing[lex.ID]; ok {
+				continue
+			}
+			lexemes = append(lexemes, lex)
+			existing[lex.ID] = struct{}{}
+		}
+	}
+
+	return lexemes
+}
+
+func collectLexemes(lexemePtrs []*entity.Lexeme) []entity.Lexeme {
+	if len(lexemePtrs) == 0 {
+		return nil
+	}
+	lexemes := make([]entity.Lexeme, 0, len(lexemePtrs))
+	for _, lex := range lexemePtrs {
+		if lex != nil {
+			lexemes = append(lexemes, *lex)
+		}
+	}
+	return lexemes
 }
 
 func resolveRelationTargets(ctx context.Context, lemmas repository.LemmaRepository, lexemes []entity.Lexeme) map[string]string {

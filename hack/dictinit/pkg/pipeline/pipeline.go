@@ -14,6 +14,7 @@ import (
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/ecdict"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/moby"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/wikidata"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/wordnet"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/sources/youdaodict"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
@@ -32,6 +33,7 @@ const (
 	defaultMobyFile       = "./data/mhyph.txt"
 	defaultWordbookDir    = "./pkg/wordbook/books"
 	defaultYoudaoDictDir  = "./data/yddict"
+	defaultWordnetDir     = "./data/wordnet"
 )
 
 type pipelineConfig struct {
@@ -44,6 +46,7 @@ type pipelineConfig struct {
 	ecdictNoCache     bool
 	mobyFile          string
 	youdaoDictDir     string
+	wordnetDir        string
 	wordbookDir       string
 	coverageOutputDir string
 	pipes             string
@@ -76,7 +79,9 @@ func parseFlags() pipelineConfig {
 
 	flag.StringVar(&cfg.youdaoDictDir, "youdao-dict-dir", defaultYoudaoDictDir, "Directory containing Youdao dict (oss/dict)")
 
-	flag.StringVar(&cfg.pipes, "pipes", "*", "Pipeline stages to run (comma-separated: wikidata,ecdict,moby,youdao,coverage,chinese-sense) or * for all")
+	flag.StringVar(&cfg.wordnetDir, "wordnet-dir", defaultWordnetDir, "Directory containing WordNet data files (data.noun, data.verb, data.adj, data.adv)")
+
+	flag.StringVar(&cfg.pipes, "pipes", "*", "Pipeline stages to run (comma-separated: wikidata,ecdict,moby,youdao,wordnet,coverage,chinese-sense) or * for all")
 
 	flag.StringVar(&cfg.wordbookDir, "wordbook-dir", defaultWordbookDir, "Directory containing wordbook JSON files")
 	flag.StringVar(&cfg.coverageOutputDir, "coverage-output", "reports", "Directory to save coverage reports")
@@ -157,6 +162,7 @@ func initializeEntClient(databaseURL string) (*entdb.Client, func(), error) {
 	return client, cleanup, nil
 }
 
+//nolint:gocognit // Pipeline orchestration is complex but kept in one place for clarity.
 func runPipeline(cfg pipelineConfig) error {
 	// Setup logging to file
 	logFile, err := util.SetupLogging()
@@ -294,17 +300,33 @@ func runPipeline(cfg pipelineConfig) error {
 		reports = append(reports, report)
 	}
 
+	// Stage 5: WordNet Relation Enrichment
+	if shouldRun(cfg.pipes, "wordnet") {
+		log.Println("\n" + strings.Repeat("=", 80))
+		log.Println("STAGE 5: WordNet Relation Enrichment")
+		log.Println(strings.Repeat("=", 80))
+
+		wordnetImporter := wordnet.NewImporter(cfg.wordnetDir, cfg.batchSize, importService)
+		start := time.Now()
+		report, err := wordnetImporter.Run(ctx)
+		if err != nil {
+			log.Printf("[wordnet] Warning: stage completed with errors: %v", err)
+		}
+		log.Printf("[wordnet] Stage completed in %s\n", time.Since(start).Round(time.Millisecond))
+		reports = append(reports, report)
+	}
+
 	// Print overall summary
 	printOverallSummary(reports)
 
-	// Stage 4: Coverage Check
+	// Stage 6: Coverage Check
 	if shouldRun(cfg.pipes, "coverage") {
 		if err := runCoverageCheck(cfg); err != nil {
 			return err
 		}
 	}
 
-	// Stage 5: Chinese Sense Coverage Check
+	// Stage 7: Chinese Sense Coverage Check
 	if shouldRun(cfg.pipes, "chinese-sense") {
 		if err := runChineseSenseCoverageCheck(cfg); err != nil {
 			return err
@@ -424,6 +446,8 @@ func printOverallSummary(reports []*report.ImportReport) {
 			reportFile = "reports/moby_import_report.json"
 		} else if report.StageName == "YoudaoDict" {
 			reportFile = "reports/youdao_import_report.json"
+		} else if report.StageName == "WordNet" {
+			reportFile = "reports/wordnet_import_report.json"
 		}
 		if reportFile != "" {
 			fmt.Printf("  %s: %s\n", report.StageName, reportFile)

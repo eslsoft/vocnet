@@ -405,11 +405,3 @@ func countTotalPhonetics(forms []*entity.LemmaForm) int {
 	}
 	return total
 }
-
-func countNewSenses(oldSenses, newSenses []entity.LexemeSense) int {
-	return len(newSenses) - len(oldSenses)
-}
-
-func countNewForms(oldForms, newForms []*entity.LemmaForm) int {
-	return len(newForms) - len(oldForms)
-}

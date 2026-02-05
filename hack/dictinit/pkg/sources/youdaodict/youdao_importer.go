@@ -208,6 +208,7 @@ func (i *Importer) applyEnrichment(data *store.ImportLexemeData, word YoudaoWord
 	return changed
 }
 
+//nolint:gocognit // Relationship enrichment is a single-pass transformer.
 func (i *Importer) enrichRelations(lex *entity.Lexeme, word YoudaoWord) bool {
 	changed := false
 	content := word.Content.Word.Content
