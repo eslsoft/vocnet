@@ -81,6 +81,8 @@ func (Lexeme) Edges() []ent.Edge {
 		// Lexeme -> Lemma (一对多，删除Lexeme时级联删除Lemma)
 		edge.To("lemmas", Lemma.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("concept_links", LexemeConceptLink.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 
