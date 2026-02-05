@@ -16,4 +16,8 @@ type LemmaRepository interface {
 	List(ctx context.Context, query *ListWordsQuery) ([]*entity.Lemma, int64, error)
 	ListCategories(ctx context.Context, search string) ([]string, error)
 	Stats(ctx context.Context, filter *entity.WordStatsFilter) (*entity.WordStats, error)
+
+	// ResolveLemmaSurfacesByLexemeExternalIDs resolves external lexeme IDs (e.g. "L123456")
+	// to a displayable lemma surface. Used for returning relations without exposing IDs.
+	ResolveLemmaSurfacesByLexemeExternalIDs(ctx context.Context, externalIDs []string, language entity.Language) (map[string]string, error)
 }

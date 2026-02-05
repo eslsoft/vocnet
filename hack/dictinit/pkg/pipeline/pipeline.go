@@ -52,7 +52,10 @@ type pipelineConfig struct {
 func Execute() {
 	cfg := parseFlags()
 	if err := runPipeline(cfg); err != nil {
-		log.Fatalf("dict init failed: %v", err)
+		// runPipeline wires logging to file-only info logs, so also print the root
+		// failure to stderr for visibility when the process exits early.
+		fmt.Fprintf(os.Stderr, "dict init failed: %v\n", err)
+		os.Exit(1)
 	}
 }
 

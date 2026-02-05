@@ -10,6 +10,7 @@ import (
 
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/report"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/schollz/progressbar/v3"
 )
@@ -212,9 +213,36 @@ func (i *Importer) enrichRelations(lex *entity.Lexeme, word YoudaoWord) bool {
 	content := word.Content.Word.Content
 
 	// Helper to add a relation
-	addRel := func(targetTerm string, relType int32) {
-		targetExtID, ok := i.enricher.surfaceToExtID[strings.ToLower(targetTerm)]
-		if !ok || targetExtID == lex.ExternalID {
+	addRel := func(targetTerm string, relType int32, posHint string) {
+		key := util.NormalizeKey(targetTerm)
+		candidates, ok := i.enricher.surfaceToExtID[key]
+		if !ok || len(candidates) == 0 {
+			return
+		}
+
+		desiredPOS := MapPOS(posHint)
+		if desiredPOS == "" {
+			desiredPOS = lex.PartOfSpeech
+		}
+
+		pick := func(matchPOS bool) (string, bool) {
+			for _, c := range candidates {
+				if c.ExternalID == "" || c.ExternalID == lex.ExternalID {
+					continue
+				}
+				if matchPOS && desiredPOS != "" && c.Pos != desiredPOS {
+					continue
+				}
+				return c.ExternalID, true
+			}
+			return "", false
+		}
+
+		targetExtID, ok := pick(true)
+		if !ok {
+			targetExtID, ok = pick(false)
+		}
+		if !ok {
 			return
 		}
 
@@ -239,21 +267,21 @@ func (i *Importer) enrichRelations(lex *entity.Lexeme, word YoudaoWord) bool {
 	// 1. Synonyms (RelationType 1)
 	for _, s := range content.Syno.Synos {
 		for _, h := range s.Hwds {
-			addRel(h.W, 1)
+			addRel(h.W, 1, s.Pos)
 		}
 	}
 
 	// 2. Antonyms (RelationType 2)
 	for _, a := range content.Anto.Antos {
 		for _, h := range a.Hwds {
-			addRel(h.W, 2)
+			addRel(h.W, 2, a.Pos)
 		}
 	}
 
 	// 3. Related Words (Root/Association -> RelationType 5)
 	for _, r := range content.RelWord.Rels {
 		for _, w := range r.Words {
-			addRel(w.Hwd, 5)
+			addRel(w.Hwd, 5, r.Pos)
 		}
 	}
 

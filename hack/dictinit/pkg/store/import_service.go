@@ -40,36 +40,65 @@ func NewLexemeImportService(client *entdb.Client) *LexemeImportService {
 	return &LexemeImportService{client: client}
 }
 
-// LoadExternalIDMap returns a map of normalized lemma surfaces to their Wikidata ExternalIDs.
-func (s *LexemeImportService) LoadExternalIDMap(ctx context.Context) (map[string]string, error) {
-	results, err := s.client.Lemma.Query().
-		Select(entlemma.FieldNormalized, entlemma.FieldLexemeID).
-		All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("load external id map: %w", err)
-	}
+type SurfaceLexemeRef struct {
+	ExternalID string
+	Pos        string
+}
 
-	// We also need to map the Lexeme internal ID to ExternalID
+// LoadExternalIDMap returns a map of normalized lemma surfaces to candidate Wikidata ExternalIDs.
+// Note: A surface can map to multiple lexemes (different POS/senses). Callers should pick the best
+// candidate (e.g. matching POS) instead of assuming uniqueness.
+func (s *LexemeImportService) LoadExternalIDMap(ctx context.Context) (map[string][]SurfaceLexemeRef, error) {
+	// NOTE: Do NOT eager-load Lexeme via WithLexeme() here.
+	// Ent's eager-loading strategy issues a `WHERE id IN (...)` query for the edge
+	// and will exceed PostgreSQL's 65535 parameter limit on large datasets.
+
+	// 1) Load lexeme id -> (external_id, pos)
 	lexemes, err := s.client.Lexeme.Query().
-		Select(entlexeme.FieldID, entlexeme.FieldExternalID).
+		Select(entlexeme.FieldID, entlexeme.FieldExternalID, entlexeme.FieldPos).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load lexemes for id mapping: %w", err)
 	}
-
-	lexemeIDToExternalID := make(map[int64]string, len(lexemes))
-	for _, l := range lexemes {
-		lexemeIDToExternalID[l.ID] = l.ExternalID
-	}
-
-	surfaceToExternalID := make(map[string]string, len(results))
-	for _, r := range results {
-		if extID, ok := lexemeIDToExternalID[r.LexemeID]; ok {
-			surfaceToExternalID[r.Normalized] = extID
+	lexemeInfo := make(map[int64]SurfaceLexemeRef, len(lexemes))
+	for _, lex := range lexemes {
+		if lex == nil || lex.ID == 0 || lex.ExternalID == "" {
+			continue
+		}
+		lexemeInfo[lex.ID] = SurfaceLexemeRef{
+			ExternalID: lex.ExternalID,
+			Pos:        lex.Pos,
 		}
 	}
 
-	return surfaceToExternalID, nil
+	// 2) Load lemma normalized -> lexeme_id references
+	lemmas, err := s.client.Lemma.Query().
+		Select(entlemma.FieldNormalized, entlemma.FieldLexemeID).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load lemma normalized map: %w", err)
+	}
+
+	surfaceToExternalIDs := make(map[string][]SurfaceLexemeRef, len(lemmas))
+	seen := make(map[string]struct{}, len(lemmas))
+	for _, l := range lemmas {
+		if l == nil || l.Normalized == "" || l.LexemeID == 0 {
+			continue
+		}
+		info, ok := lexemeInfo[l.LexemeID]
+		if !ok || info.ExternalID == "" {
+			continue
+		}
+		key := util.NormalizeKey(l.Normalized)
+		dupKey := key + ":" + info.ExternalID
+		if _, ok := seen[dupKey]; ok {
+			continue
+		}
+		seen[dupKey] = struct{}{}
+		surfaceToExternalIDs[key] = append(surfaceToExternalIDs[key], info)
+	}
+
+	return surfaceToExternalIDs, nil
 }
 
 // LoadKnownForms returns a normalized lookup of all lemma surfaces and lexeme forms in the database.

@@ -242,6 +242,71 @@ func (r *lemmaRepository) Stats(ctx context.Context, filter *entity.WordStatsFil
 	return stats, nil
 }
 
+func (r *lemmaRepository) ResolveLemmaSurfacesByLexemeExternalIDs(ctx context.Context, externalIDs []string, language entity.Language) (map[string]string, error) {
+	out := make(map[string]string)
+	if len(externalIDs) == 0 {
+		return out, nil
+	}
+	langCode := entity.NormalizeLanguage(language).Code()
+
+	ids := make([]string, 0, len(externalIDs))
+	seen := make(map[string]struct{}, len(externalIDs))
+	for _, id := range externalIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		ids = append(ids, trimmed)
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	// Load all lemmas for the target lexemes and pick the best display lemma per lexeme.
+	// Prefer is_primary=true, otherwise fall back to the first seen.
+	rows, err := r.client.Lemma.Query().
+		Where(entlemma.HasLexemeWith(
+			entlexeme.LanguageCodeEQ(langCode),
+			entlexeme.ExternalIDIn(ids...),
+		)).
+		WithLexeme().
+		All(ctx)
+	if err != nil {
+		return nil, translateDBError(err, "lemma")
+	}
+
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		lex, err := row.Edges.LexemeOrErr()
+		if err != nil || lex == nil {
+			continue
+		}
+		extID := lex.ExternalID
+		if extID == "" {
+			continue
+		}
+		// If we already have a primary lemma picked, keep it.
+		if _, ok := out[extID]; ok {
+			// Only replace if current row is primary and existing selection isn't.
+			// Since we don't track the previous selection's primary-ness, we handle it
+			// by only overwriting when row.IsPrimary is true.
+			if row.IsPrimary {
+				out[extID] = row.Surface
+			}
+			continue
+		}
+		out[extID] = row.Surface
+	}
+
+	return out, nil
+}
+
 type wordStatsAccumulator struct {
 	langAcc         map[string]*languageAccumulator
 	categoryCounts  map[string]int64

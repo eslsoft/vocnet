@@ -18,9 +18,9 @@ type YoudaoWord struct {
 			WordHead string `json:"wordHead"`
 			WordId   string `json:"wordId"`
 			Content  struct {
-				USPhone  string `json:"usphone"`
-				UKPhone  string `json:"ukphone"`
-				Trans    []struct {
+				USPhone string `json:"usphone"`
+				UKPhone string `json:"ukphone"`
+				Trans   []struct {
 					TranCn    string `json:"tranCn"`
 					Pos       string `json:"pos"`
 					TranOther string `json:"tranOther"`
@@ -63,25 +63,25 @@ func MapPOS(youdaoPOS string) string {
 	pos := strings.ToLower(strings.TrimSuffix(youdaoPOS, "."))
 	switch pos {
 	case "n":
-		return "NOUN"
+		return "n."
 	case "v", "vt", "vi":
-		return "VERB"
+		return "v."
 	case "adj", "a":
-		return "ADJ"
+		return "adj."
 	case "adv", "ad":
-		return "ADV"
+		return "adv."
 	case "prep":
-		return "PREP"
+		return "prep."
 	case "conj":
-		return "CONJ"
+		return "conj."
 	case "pron":
-		return "PRON"
+		return "pron."
 	case "num":
-		return "NUM"
+		return "num."
 	case "art":
-		return "DET"
+		return "det."
 	case "int":
-		return "INTJ"
+		return "interj."
 	default:
 		return ""
 	}

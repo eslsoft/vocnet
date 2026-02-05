@@ -162,8 +162,47 @@ func (u *wordUsecase) buildWordEntry(ctx context.Context, lemma *entity.Lemma, q
 		Lemma:       lemma,
 		Lexemies:    lexemes,
 	}
+
+	// Resolve relation targets to lemma surfaces so API can return relations without exposing IDs.
+	entry.RelationTargetLemmas = resolveRelationTargets(ctx, u.lemmas, lexemes)
 	if entry.QueriedTerm == "" {
 		entry.QueriedTerm = lemma.Surface
 	}
 	return entry, nil
+}
+
+func resolveRelationTargets(ctx context.Context, lemmas repository.LemmaRepository, lexemes []entity.Lexeme) map[string]string {
+	if lemmas == nil || len(lexemes) == 0 {
+		return map[string]string{}
+	}
+
+	// Collect unique target lexeme external IDs.
+	targets := make([]string, 0, 16)
+	seen := make(map[string]struct{}, 16)
+	for _, lex := range lexemes {
+		for _, rel := range lex.Relations {
+			if rel.TargetLexemeID == "" {
+				continue
+			}
+			if _, ok := seen[rel.TargetLexemeID]; ok {
+				continue
+			}
+			seen[rel.TargetLexemeID] = struct{}{}
+			targets = append(targets, rel.TargetLexemeID)
+		}
+	}
+	if len(targets) == 0 {
+		return map[string]string{}
+	}
+
+	lang := lexemes[0].Language
+	resolved, err := lemmas.ResolveLemmaSurfacesByLexemeExternalIDs(ctx, targets, lang)
+	if err != nil {
+		// Best-effort: relations are enrichment data, do not fail the main lookup.
+		return map[string]string{}
+	}
+	if resolved == nil {
+		return map[string]string{}
+	}
+	return resolved
 }

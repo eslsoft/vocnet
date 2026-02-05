@@ -116,3 +116,38 @@ func TestToPbWord_PopulatesRelatedForms_ForLemma(t *testing.T) {
 	assert.Contains(t, terms, "running")
 	assert.NotContains(t, terms, "run", "Should exclude the lemma itself")
 }
+
+func TestToPbWord_PopulatesRelations_WithResolvedTargetLemma(t *testing.T) {
+	lemmaID := int64(1)
+	forms := []*entity.LemmaForm{
+		{ID: 10, LemmaID: lemmaID, Surface: "run", Normalized: "run", FormType: entity.LexemeFormTypeLemma},
+	}
+	lemma := &entity.Lemma{ID: lemmaID, Surface: "run", Normalized: "run", Forms: forms}
+
+	entry := &entity.WordEntry{
+		QueriedTerm: "run",
+		Lemma:       lemma,
+		Lexemies: []entity.Lexeme{
+			{
+				ExternalID:   "L100",
+				PartOfSpeech: "v.",
+				Relations: []entity.LexemeRelation{
+					{LexemeID: "L100", TargetLexemeID: "L200", RelationType: int32(dictv1.RelationType_RELATION_TYPE_SYNONYM)},
+				},
+			},
+		},
+		RelationTargetLemmas: map[string]string{
+			"L200": "sprint",
+		},
+	}
+
+	pbWord := ToPbWord(entry)
+	assert.NotNil(t, pbWord)
+	if assert.Len(t, pbWord.Meanings, 1) {
+		meaning := pbWord.Meanings[0]
+		if assert.Len(t, meaning.Relations, 1) {
+			assert.Equal(t, dictv1.RelationType_RELATION_TYPE_SYNONYM, meaning.Relations[0].Type)
+			assert.Equal(t, "sprint", meaning.Relations[0].TargetWord)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/eslsoft/vocnet/hack/dictinit/pkg/store"
 	"github.com/eslsoft/vocnet/hack/dictinit/pkg/util"
 )
 
@@ -13,7 +14,7 @@ type Enricher struct {
 	mu             sync.Mutex
 	entries        map[string]YoudaoWord
 	knownForms     map[string]bool
-	surfaceToExtID map[string]string
+	surfaceToExtID map[string][]store.SurfaceLexemeRef
 }
 
 func NewEnricher(dictDir string) (*Enricher, error) {
@@ -49,7 +50,7 @@ func NewEnricher(dictDir string) (*Enricher, error) {
 	}, nil
 }
 
-func (e *Enricher) RegisterKnownForms(words map[string]struct{}, idMap map[string]string) {
+func (e *Enricher) RegisterKnownForms(words map[string]struct{}, idMap map[string][]store.SurfaceLexemeRef) {
 	if e == nil {
 		return
 	}
