@@ -297,14 +297,14 @@ func runPipeline(cfg pipelineConfig) error {
 	// Print overall summary
 	printOverallSummary(reports)
 
-	// Stage 4: Coverage Check
+	// Stage 5: Coverage Check
 	if shouldRun(cfg.pipes, "coverage") {
 		if err := runCoverageCheck(cfg); err != nil {
 			return err
 		}
 	}
 
-	// Stage 5: Chinese Sense Coverage Check
+	// Stage 6: Chinese Sense Coverage Check
 	if shouldRun(cfg.pipes, "chinese-sense") {
 		if err := runChineseSenseCoverageCheck(cfg); err != nil {
 			return err

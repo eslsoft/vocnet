@@ -41,6 +41,7 @@ func NewLexemeImportService(client *entdb.Client) *LexemeImportService {
 }
 
 type SurfaceLexemeRef struct {
+	LexemeID   int64
 	ExternalID string
 	Pos        string
 }
@@ -66,6 +67,7 @@ func (s *LexemeImportService) LoadExternalIDMap(ctx context.Context) (map[string
 			continue
 		}
 		lexemeInfo[lex.ID] = SurfaceLexemeRef{
+			LexemeID:   lex.ID,
 			ExternalID: lex.ExternalID,
 			Pos:        lex.Pos,
 		}
