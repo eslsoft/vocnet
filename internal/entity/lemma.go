@@ -6,13 +6,14 @@ import (
 
 // Lemma represents the canonical form of a word, along with its associated lexemes.
 type Lemma struct {
-	ID         int64
-	LexemeID   string
-	Surface    string
-	Normalized string
-	Variant    string
-	Syllables  []string
-	Forms      []*LemmaForm
+	ID          int64
+	LexemeID    string
+	Surface     string
+	Normalized  string
+	Variant     string
+	WikidataQID string // Wikidata entity Q-ID (e.g. "Q7553")
+	Syllables   []string
+	Forms       []*LemmaForm
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -307,6 +307,65 @@ func (r *lemmaRepository) ResolveLemmaSurfacesByLexemeExternalIDs(ctx context.Co
 	return out, nil
 }
 
+// CreateMinimal creates a minimal lemma with a single form for the pipeline.
+// This is used when processing new words that don't exist in the database yet.
+func (r *lemmaRepository) CreateMinimal(ctx context.Context, lexemeID int64, surface string, language entity.Language) (*entity.Lemma, error) {
+	if lexemeID == 0 {
+		return nil, fmt.Errorf("lexeme_id required")
+	}
+	if surface == "" {
+		return nil, fmt.Errorf("surface required")
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(surface))
+
+	// Start transaction
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("start transaction: %w", err)
+	}
+	defer func() {
+		if v := recover(); v != nil {
+			_ = tx.Rollback()
+			panic(v)
+		}
+	}()
+
+	// Create lemma
+	lemmaRow, err := tx.Lemma.Create().
+		SetLexemeID(lexemeID).
+		SetSurface(surface).
+		SetNormalized(normalized).
+		SetIsPrimary(true).
+		Save(ctx)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, translateDBError(err, "lemma")
+	}
+
+	// Create a lemma form (LEMMA type) for the surface
+	_, err = tx.LexemeForm.Create().
+		SetLemmaID(lemmaRow.ID).
+		SetSurface(surface).
+		SetNormalized(normalized).
+		SetFormType("LEMMA").
+		SetIsIrregular(false).
+		Save(ctx)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, translateDBError(err, "lexeme_form")
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Return the created lemma
+	return r.GetByID(ctx, lemmaRow.ID)
+}
+
+
 type wordStatsAccumulator struct {
 	langAcc         map[string]*languageAccumulator
 	categoryCounts  map[string]int64
@@ -511,14 +570,15 @@ func mapEntLemma(lemmaRow *entdb.Lemma) *entity.Lemma {
 	}
 
 	return &entity.Lemma{
-		ID:         lemmaRow.ID,
-		LexemeID:   fmt.Sprintf("%d", lemmaRow.LexemeID),
-		Surface:    lemmaRow.Surface,
-		Normalized: lemmaRow.Normalized,
-		Variant:    lemmaRow.Variant,
-		Forms:      forms,
-		CreatedAt:  lemmaRow.CreatedAt,
-		UpdatedAt:  lemmaRow.UpdatedAt,
+		ID:          lemmaRow.ID,
+		LexemeID:    fmt.Sprintf("%d", lemmaRow.LexemeID),
+		Surface:     lemmaRow.Surface,
+		Normalized:  lemmaRow.Normalized,
+		Variant:     lemmaRow.Variant,
+		WikidataQID: lemmaRow.WikidataQid,
+		Forms:       forms,
+		CreatedAt:   lemmaRow.CreatedAt,
+		UpdatedAt:   lemmaRow.UpdatedAt,
 	}
 }
 

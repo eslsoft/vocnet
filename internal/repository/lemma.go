@@ -20,4 +20,7 @@ type LemmaRepository interface {
 	// ResolveLemmaSurfacesByLexemeExternalIDs resolves external lexeme IDs (e.g. "L123456")
 	// to a displayable lemma surface. Used for returning relations without exposing IDs.
 	ResolveLemmaSurfacesByLexemeExternalIDs(ctx context.Context, externalIDs []string, language entity.Language) (map[string]string, error)
+
+	// CreateMinimal creates a minimal lemma+form for a lexeme (used by pipeline)
+	CreateMinimal(ctx context.Context, lexemeID int64, surface string, language entity.Language) (*entity.Lemma, error)
 }

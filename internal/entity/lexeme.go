@@ -42,7 +42,6 @@ type Lexeme struct {
 	Frequencies  []Frequency
 	SenseGloss   string
 	Senses       []LexemeSense
-	Relations    []LexemeRelation
 	Categories   []string
 	Completeness int32
 
@@ -66,11 +65,4 @@ type LexemeSense struct {
 type SenseExample struct {
 	Text        string `json:"text"`
 	Translation string `json:"translation,omitempty"`
-}
-
-// LexemeRelation links two lexemes semantically.
-type LexemeRelation struct {
-	LexemeID       string `json:"lexeme_id"`
-	TargetLexemeID string `json:"target_lexeme_id"`
-	RelationType   int32  `json:"relation_type"`
 }

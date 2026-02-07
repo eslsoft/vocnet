@@ -37,6 +37,10 @@ func (Lemma) Fields() []ent.Field {
 			Default(true).
 			Comment("Whether this is the primary lemma for the lexeme"),
 
+		field.String("wikidata_qid").
+			Optional().
+			Comment("Wikidata entity Q-ID (e.g. Q7553)"),
+
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -59,6 +63,19 @@ func (Lemma) Edges() []ent.Edge {
 		// Lemma -> LexemeForm (一对多，Lemma删除时级联删除Form)
 		edge.To("forms", LexemeForm.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+
+		// Lemma -> RawEvidence (一对多)
+		edge.To("raw_evidences", RawEvidence.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+
+		// Lemma -> PipelineTask (一对多)
+		edge.To("pipeline_tasks", PipelineTask.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+
+		// Lemma -> WordSnapshot (一对一)
+		edge.To("word_snapshot", WordSnapshot.Type).
+			Unique().
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 
@@ -70,6 +87,8 @@ func (Lemma) Indexes() []ent.Index {
 		index.Fields("normalized"),
 		// Unique constraint: same lexeme cannot have duplicate text
 		index.Fields("lexeme_id", "surface").Unique(),
+		// Query by wikidata QID
+		index.Fields("wikidata_qid"),
 	}
 }
 

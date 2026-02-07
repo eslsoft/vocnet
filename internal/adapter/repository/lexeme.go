@@ -51,7 +51,6 @@ func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*
 		SetPos(lexeme.PartOfSpeech).
 		SetSenseGloss(lexeme.SenseGloss).
 		SetSenses(lexeme.Senses).
-		SetRelations(lexeme.Relations).
 		SetCategories(lexeme.Categories).
 		SetCompleteness(lexeme.Completeness)
 
@@ -103,7 +102,6 @@ func (r *lexemeRepository) Update(ctx context.Context, lexeme *entity.Lexeme) (*
 		SetPos(lexeme.PartOfSpeech).
 		SetSenseGloss(lexeme.SenseGloss).
 		SetSenses(lexeme.Senses).
-		SetRelations(lexeme.Relations).
 		SetCategories(lexeme.Categories).
 		SetCompleteness(lexeme.Completeness)
 
@@ -453,7 +451,6 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 	// Forms are now accessed through the Lemma entity
 
 	lex.Senses = append([]entity.LexemeSense{}, rec.Senses...)
-	lex.Relations = append([]entity.LexemeRelation{}, rec.Relations...)
 
 	return lex
 }

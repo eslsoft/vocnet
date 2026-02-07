@@ -110,7 +110,6 @@ func normalizeLexemePayload(in *entity.Lexeme) (*entity.Lexeme, error) {
 
 	// Forms will be handled separately after lexeme is created
 	out.Senses = normalizeLexemeSenses(out.ExternalID, out.Senses)
-	out.Relations = normalizeLexemeRelations(out.ExternalID, out.Relations)
 
 	return &out, nil
 }
@@ -127,21 +126,6 @@ func normalizeLexemeSenses(lexemeLID string, senses []entity.LexemeSense) []enti
 			Language: sense.Language,
 			Gloss:    strings.TrimSpace(sense.Gloss),
 			Examples: append([]entity.SenseExample{}, sense.Examples...),
-		})
-	}
-	return out
-}
-
-func normalizeLexemeRelations(lexemeLID string, relations []entity.LexemeRelation) []entity.LexemeRelation {
-	if len(relations) == 0 {
-		return []entity.LexemeRelation{}
-	}
-	out := make([]entity.LexemeRelation, 0, len(relations))
-	for _, rel := range relations {
-		out = append(out, entity.LexemeRelation{
-			LexemeID:       lexemeLID,
-			TargetLexemeID: strings.TrimSpace(rel.TargetLexemeID),
-			RelationType:   rel.RelationType,
 		})
 	}
 	return out

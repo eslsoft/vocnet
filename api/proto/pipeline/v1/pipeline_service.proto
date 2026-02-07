@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package pipeline.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
+
+// PipelineService manages the vocabulary distillation pipeline.
+service PipelineService {
+  // ProcessWord runs the full pipeline for a given term.
+  rpc ProcessWord(ProcessWordRequest) returns (ProcessWordResponse);
+
+  // GetPipelineStatus returns the status of pipeline tasks for a word.
+  rpc GetPipelineStatus(GetPipelineStatusRequest) returns (PipelineStatus);
+
+  // RetryPhase retries a failed phase for a word.
+  rpc RetryPhase(RetryPhaseRequest) returns (PipelineStatus);
+
+  // GetWordSnapshot returns the materialized snapshot for a word.
+  rpc GetWordSnapshot(GetWordSnapshotRequest) returns (WordSnapshotResponse);
+
+  // ListWordSnapshots returns a paginated list of word snapshots.
+  rpc ListWordSnapshots(ListWordSnapshotsRequest) returns (ListWordSnapshotsResponse);
+
+  // GetEvidence returns raw evidence for a word.
+  rpc GetEvidence(GetEvidenceRequest) returns (GetEvidenceResponse);
+}
+
+// ProcessWordRequest initiates pipeline processing for a word.
+message ProcessWordRequest {
+  string term = 1;           // The word to process
+  string language = 2;       // Language code (default "en")
+  int32 tier = 3;            // Priority tier: 1=Core, 2=Extended, 3=LongTail (default 2)
+  repeated int32 phases = 4; // Specific phases to run (empty = all phases)
+}
+
+// ProcessWordResponse contains the result of pipeline execution.
+message ProcessWordResponse {
+  int64 lemma_id = 1;
+  string term = 2;
+  PipelineStatus status = 3;
+  WordSnapshotResponse snapshot = 4; // may be null if synthesis not yet run
+}
+
+// GetPipelineStatusRequest requests the status of a word's pipeline.
+message GetPipelineStatusRequest {
+  string term = 1;
+  string language = 2;
+}
+
+// PipelineStatus shows the execution state of all phases for a word.
+message PipelineStatus {
+  int64 lemma_id = 1;
+  string term = 2;
+  repeated PhaseStatus phases = 3;
+}
+
+// PhaseStatus represents the state of a single pipeline phase.
+message PhaseStatus {
+  int32 phase = 1;                    // Phase number (1-5)
+  string name = 2;                    // Phase name: discovery, lexical, relational, intellectual, synthesis
+  string status = 3;                  // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED
+  int32 attempts = 4;                 // Retry count
+  string error_message = 5;           // Last error message (if failed)
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+}
+
+// RetryPhaseRequest retries a failed phase.
+message RetryPhaseRequest {
+  string term = 1;
+  string language = 2;
+  int32 phase = 3; // Phase number to retry
+}
+
+// GetWordSnapshotRequest requests a word snapshot.
+message GetWordSnapshotRequest {
+  string term = 1;
+  string language = 2;
+}
+
+// WordSnapshotResponse contains the materialized word snapshot.
+message WordSnapshotResponse {
+  string term = 1;
+  string language = 2;
+  string wikidata_qid = 3;
+  int32 version = 4;
+  repeated SnapshotLexeme lexemes = 5;
+  repeated SnapshotRelation relations = 6;
+  QualityScore qscore = 7;
+  google.protobuf.Timestamp synthesized_at = 8;
+}
+
+// SnapshotLexeme represents a POS-grouped lexeme in a snapshot.
+message SnapshotLexeme {
+  string pos = 1;
+  repeated SnapshotSense senses = 2;
+  repeated SnapshotForm forms = 3;
+  repeated Phonetic phonetics = 4;
+}
+
+// SnapshotSense is a single sense/definition in a snapshot.
+message SnapshotSense {
+  string language = 1;
+  string gloss = 2;
+  repeated string examples = 3;
+  string provider = 4;      // Data source: wikidata, wordnet, ecdict, etc.
+  double trust_weight = 5;  // Trust score 0.0-1.0
+}
+
+// SnapshotForm is an inflected form in a snapshot.
+message SnapshotForm {
+  string surface = 1;
+  string form_type = 2;     // LEMMA, PLURAL, PAST, etc.
+  bool is_irregular = 3;
+}
+
+// Phonetic represents an IPA pronunciation.
+message Phonetic {
+  string ipa = 1;
+  string dialect = 2;       // en-US, en-GB, etc.
+}
+
+// SnapshotRelation is a semantic relation in a snapshot.
+message SnapshotRelation {
+  string relation_type = 1; // SYNONYM, ANTONYM, HYPERNYM, etc.
+  string target_term = 2;
+  string provider = 3;
+  double strength = 4;      // Relation strength 0.0-1.0
+  bool sense_mapped = 5;    // Whether sense-level disambiguation is done
+}
+
+// QualityScore represents multi-dimensional quality metrics.
+message QualityScore {
+  double overall = 1;
+  double completeness = 2;
+  double depth = 3;
+  double density = 4;
+  double validity = 5;
+}
+
+// ListWordSnapshotsRequest requests a paginated list of snapshots.
+message ListWordSnapshotsRequest {
+  int32 page_size = 1;
+  int32 page_no = 2;
+  string language = 3;
+  double min_qscore = 4;    // Filter by minimum quality score
+  string order_by = 5;      // qscore, synthesized_at, term
+  bool desc = 6;            // Sort descending
+}
+
+// ListWordSnapshotsResponse contains a paginated list of snapshots.
+message ListWordSnapshotsResponse {
+  repeated WordSnapshotResponse snapshots = 1;
+  int32 total = 2;
+  int32 page_no = 3;
+}
+
+// GetEvidenceRequest requests raw evidence for a word.
+message GetEvidenceRequest {
+  string term = 1;
+  string language = 2;
+  int32 phase = 3;          // Filter by phase (0 = all phases)
+  string provider = 4;      // Filter by provider (empty = all providers)
+}
+
+// GetEvidenceResponse contains raw evidence envelopes.
+message GetEvidenceResponse {
+  repeated Evidence evidences = 1;
+}
+
+// Evidence represents a raw evidence envelope.
+message Evidence {
+  int64 id = 1;
+  string provider = 2;
+  int32 phase = 3;
+  google.protobuf.Struct content = 4;   // Raw JSON response
+  string schema_version = 5;
+  google.protobuf.Timestamp fetched_at = 6;
+}

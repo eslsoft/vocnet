@@ -1,7 +1,6 @@
 package mapping
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -72,7 +71,7 @@ func buildLemmaView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dic
 		Lemma:        nil,
 		Language:     ToPbLanguage(language),
 		Phonetics:    mapPhonetics(lemmaPhonetics),
-		Meanings:     aggregateMeanings(entry.Lexemies, entry.RelationTargetLemmas),
+		Meanings:     aggregateMeanings(entry.Lexemies),
 		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
 		Syllables:    entry.Lemma.Syllables,
 		Categories:   categories,
@@ -131,7 +130,7 @@ func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dict
 		Lemma:        &lemmaText,
 		Language:     ToPbLanguage(language),
 		Phonetics:    mapPhonetics(phonetics),
-		Meanings:     aggregateMeanings(entry.Lexemies, entry.RelationTargetLemmas),
+		Meanings:     aggregateMeanings(entry.Lexemies),
 		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
 		Syllables:    entry.Lemma.Syllables,
 		Categories:   categories,
@@ -199,11 +198,10 @@ func buildRelatedForms(allForms []*entity.LemmaForm, excludeForm *entity.LemmaFo
 	return forms
 }
 
-func aggregateMeanings(lexemes []entity.Lexeme, relationTargets map[string]string) []*dictv1.Meaning {
+func aggregateMeanings(lexemes []entity.Lexeme) []*dictv1.Meaning {
 	type bucket struct {
 		meaning *dictv1.Meaning
 		index   int
-		seenRel map[string]struct{}
 	}
 	meanings := make(map[string]*bucket)
 	order := make([]string, 0, len(lexemes))
@@ -217,8 +215,7 @@ func aggregateMeanings(lexemes []entity.Lexeme, relationTargets map[string]strin
 					LexemeId: externalID,
 					Pos:      lex.PartOfSpeech,
 				},
-				index:   len(order),
-				seenRel: make(map[string]struct{}),
+				index: len(order),
 			}
 			order = append(order, externalID)
 		}
@@ -235,27 +232,6 @@ func aggregateMeanings(lexemes []entity.Lexeme, relationTargets map[string]strin
 					Text: ex.Text,
 				})
 			}
-		}
-
-		// Relations are stored at lexeme level. Convert to proto relations, resolving target word
-		// as a lemma surface when possible.
-		for _, rel := range lex.Relations {
-			if rel.TargetLexemeID == "" {
-				continue
-			}
-			key := fmt.Sprintf("%d:%s", rel.RelationType, rel.TargetLexemeID)
-			if _, ok := b.seenRel[key]; ok {
-				continue
-			}
-			b.seenRel[key] = struct{}{}
-			targetWord := ""
-			if relationTargets != nil {
-				targetWord = relationTargets[rel.TargetLexemeID]
-			}
-			target.Relations = append(target.Relations, &dictv1.Relation{
-				Type:       dictv1.RelationType(rel.RelationType),
-				TargetWord: targetWord,
-			})
 		}
 	}
 

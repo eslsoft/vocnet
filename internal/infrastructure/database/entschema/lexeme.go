@@ -3,8 +3,6 @@ package entschema
 import (
 	"time"
 
-	"github.com/eslsoft/vocnet/internal/entity"
-
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -12,6 +10,8 @@ import (
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+
+	"github.com/eslsoft/vocnet/internal/entity"
 )
 
 type Lexeme struct {
@@ -53,11 +53,7 @@ func (Lexeme) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("Detailed multi-language definitions"),
 
-		// Relationships and categories
-		field.JSON("relations", []entity.LexemeRelation{}).
-			Default([]entity.LexemeRelation{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-			Comment("synonyms, antonyms, etc."),
+		// Categories
 		field.JSON("categories", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
@@ -83,6 +79,14 @@ func (Lexeme) Edges() []ent.Edge {
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("concept_links", LexemeConceptLink.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+
+		// Lexeme -> SemanticRelation (source side, one-to-many)
+		edge.To("semantic_relations", SemanticRelation.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+
+		// Lexeme -> SemanticRelation (target side, one-to-many)
+		edge.To("semantic_relation_targets", SemanticRelation.Type).
+			Annotations(entsql.OnDelete(entsql.SetNull)),
 	}
 }
 
