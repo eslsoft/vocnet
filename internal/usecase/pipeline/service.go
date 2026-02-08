@@ -151,6 +151,11 @@ func (s *PipelineService) GetJobDetail(ctx context.Context, id int64) (*JobDetai
 	return detail, nil
 }
 
+// ControlJob performs a state transition on a job (pause/resume/cancel/retry).
+func (s *PipelineService) ControlJob(ctx context.Context, id int64, action entity.JobAction) error {
+	return s.jobRepo.ChangeStatus(ctx, id, action)
+}
+
 // deduplicateTerms removes duplicates and empty strings from a term list.
 func deduplicateTerms(terms []string) []string {
 	seen := make(map[string]struct{}, len(terms))

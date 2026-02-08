@@ -52,10 +52,13 @@ func TestDeduplicateTerms(t *testing.T) {
 }
 
 func TestWorkerStop(t *testing.T) {
-	w := &Worker{
-		pollInterval: time.Second,
-		logger:       slog.New(slog.NewTextHandler(os.Stderr, nil)),
-	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	pool := NewWorkerPool(nil, nil, nil, logger, WorkerPoolConfig{
+		WorkerCount:  1,
+		PollInterval: time.Second,
+		RateLimit:    2.0,
+	})
+	w := &Worker{pool: pool}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

@@ -49,12 +49,14 @@ type AuthConfig struct {
 
 // PipelineConfig holds pipeline data source configuration
 type PipelineConfig struct {
-	DataDir      string `mapstructure:"data_dir"`      // Base data directory (default: ./data)
+	DataDir      string `mapstructure:"data_dir"`       // Base data directory (default: ./data)
 	AutoDownload bool   `mapstructure:"auto_download"`  // Auto-download missing data sources
 	CacheDir     string `mapstructure:"cache_dir"`      // Data cache directory
 	LLMBaseURL   string `mapstructure:"llm_base_url"`   // OpenAI-compatible endpoint
 	LLMAPIKey    string `mapstructure:"llm_api_key"`    // API key for LLM provider
 	LLMModel     string `mapstructure:"llm_model"`      // Model name (e.g. gpt-4o-mini)
+	WorkerCount  int    `mapstructure:"worker_count"`   // Number of concurrent workers (default: 1)
+	RateLimit    int    `mapstructure:"rate_limit"`     // Rate limit per second for API calls (default: 2)
 }
 
 // Load reads configuration from file and environment variables
@@ -112,18 +114,22 @@ func setDefaults() {
 	viper.SetDefault("pipeline.llm_base_url", "https://api.openai.com/v1")
 	viper.SetDefault("pipeline.llm_api_key", "")
 	viper.SetDefault("pipeline.llm_model", "gpt-4o-mini")
+	viper.SetDefault("pipeline.worker_count", 1)
+	viper.SetDefault("pipeline.rate_limit", 2)
 }
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
-		"database.dsn":             {"DATABASE_URL"},
-		"auth.jwks_url":            {"AUTH_JWKS_URL"},
+		"database.dsn":            {"DATABASE_URL"},
+		"auth.jwks_url":           {"AUTH_JWKS_URL"},
 		"pipeline.data_dir":      {"PIPELINE_DATA_DIR"},
 		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
 		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
-		"pipeline.llm_base_url": {"PIPELINE_LLM_BASE_URL"},
-		"pipeline.llm_api_key":  {"PIPELINE_LLM_API_KEY"},
-		"pipeline.llm_model":    {"PIPELINE_LLM_MODEL"},
+		"pipeline.llm_base_url":  {"PIPELINE_LLM_BASE_URL"},
+		"pipeline.llm_api_key":   {"PIPELINE_LLM_API_KEY"},
+		"pipeline.llm_model":     {"PIPELINE_LLM_MODEL"},
+		"pipeline.worker_count":  {"PIPELINE_WORKER_COUNT"},
+		"pipeline.rate_limit":    {"PIPELINE_RATE_LIMIT"},
 	}
 
 	for key, envs := range bindings {

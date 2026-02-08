@@ -5,86 +5,116 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/gammazero/workerpool"
 	"golang.org/x/time/rate"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
-// Worker is a background consumer that processes pipeline jobs.
-type Worker struct {
+// WorkerPoolConfig configures the worker pool.
+type WorkerPoolConfig struct {
+	WorkerCount  int           // Number of concurrent workers (default: 1)
+	PollInterval time.Duration // Interval between job polls (default: 5s)
+	RateLimit    float64       // Rate limit per second for API calls (default: 2.0)
+}
+
+// WorkerPool manages concurrent pipeline job processing using gammazero/workerpool.
+type WorkerPool struct {
 	jobRepo      repository.PipelineJobRepository
 	snapshotRepo repository.WordSnapshotRepository
 	pipeline     *Pipeline
 	logger       *slog.Logger
+	config       WorkerPoolConfig
 
-	pollInterval time.Duration
-	rateLimiter  *rate.Limiter
-
-	cancel context.CancelFunc
+	pool        *workerpool.WorkerPool
+	rateLimiter *rate.Limiter
+	cancel      context.CancelFunc
 }
 
-// NewWorker creates a new pipeline Worker.
-func NewWorker(
+// NewWorkerPool creates a new worker pool with the given configuration.
+func NewWorkerPool(
 	jobRepo repository.PipelineJobRepository,
 	snapshotRepo repository.WordSnapshotRepository,
 	pipeline *Pipeline,
 	logger *slog.Logger,
-) *Worker {
-	return &Worker{
+	config WorkerPoolConfig,
+) *WorkerPool {
+	if config.WorkerCount <= 0 {
+		config.WorkerCount = 1
+	}
+	if config.PollInterval <= 0 {
+		config.PollInterval = 5 * time.Second
+	}
+	if config.RateLimit <= 0 {
+		config.RateLimit = 2.0
+	}
+
+	return &WorkerPool{
 		jobRepo:      jobRepo,
 		snapshotRepo: snapshotRepo,
 		pipeline:     pipeline,
-		logger:       logger.With("component", "pipeline-worker"),
-		pollInterval: 5 * time.Second,
-		rateLimiter:  rate.NewLimiter(rate.Limit(2.0), 1), // 2 req/s for Wikidata
+		logger:       logger.With("component", "pipeline-worker-pool"),
+		config:       config,
+		rateLimiter:  rate.NewLimiter(rate.Limit(config.RateLimit), 1),
 	}
 }
 
-// Start begins the background job processing loop.
+// Start begins the worker pool and polls for jobs.
 // It blocks until the context is cancelled or Stop is called.
-func (w *Worker) Start(ctx context.Context) error {
-	ctx, w.cancel = context.WithCancel(ctx)
-	w.logger.Info("pipeline worker started", "poll_interval", w.pollInterval)
+func (p *WorkerPool) Start(ctx context.Context) error {
+	ctx, p.cancel = context.WithCancel(ctx)
+	p.pool = workerpool.New(p.config.WorkerCount)
 
-	ticker := time.NewTicker(w.pollInterval)
+	p.logger.Info("pipeline worker pool started",
+		"worker_count", p.config.WorkerCount,
+		"poll_interval", p.config.PollInterval,
+		"rate_limit", p.config.RateLimit,
+	)
+
+	ticker := time.NewTicker(p.config.PollInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			w.logger.Info("pipeline worker stopped")
+			p.pool.StopWait()
+			p.logger.Info("pipeline worker pool stopped")
 			return nil
 		case <-ticker.C:
-			w.pollOnce(ctx)
+			p.pollAndSubmit(ctx)
 		}
 	}
 }
 
-// Stop gracefully stops the worker.
-func (w *Worker) Stop() {
-	if w.cancel != nil {
-		w.cancel()
+// Stop gracefully stops all workers.
+func (p *WorkerPool) Stop() {
+	if p.cancel != nil {
+		p.cancel()
 	}
 }
 
-func (w *Worker) pollOnce(ctx context.Context) {
-	job, err := w.jobRepo.ClaimNext(ctx)
+func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
+	job, err := p.jobRepo.ClaimNext(ctx)
 	if err != nil {
-		w.logger.Error("failed to claim job", "error", err)
+		p.logger.Error("failed to claim job", "error", err)
 		return
 	}
 	if job == nil {
 		return // No pending jobs
 	}
 
-	jobLogger := w.logger.With("job_id", job.ID)
-	jobLogger.Info("processing job", "name", job.Name, "type", job.JobType, "total_terms", len(w.buildTerms(job)))
-	w.processJob(ctx, job, jobLogger)
+	jobLogger := p.logger.With("job_id", job.ID)
+	jobLogger.Info("submitting job to pool", "name", job.Name, "type", job.JobType)
+
+	// Submit job to worker pool
+	p.pool.Submit(func() {
+		p.processJob(ctx, job, jobLogger)
+	})
 }
 
 // buildTerms extracts the term list from a job.
-func (w *Worker) buildTerms(job *entity.PipelineJob) []string {
+func (p *WorkerPool) buildTerms(job *entity.PipelineJob) []string {
 	switch job.JobType {
 	case entity.JobTypeSingleWord:
 		return []string{job.Term}
@@ -95,38 +125,51 @@ func (w *Worker) buildTerms(job *entity.PipelineJob) []string {
 	}
 }
 
-func (w *Worker) processJob(ctx context.Context, job *entity.PipelineJob, jobLogger *slog.Logger) {
+func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jobLogger *slog.Logger) {
 	jobStart := time.Now()
-	terms := w.buildTerms(job)
+	terms := p.buildTerms(job)
 
 	var processed, skipped, failed int
 	for _, term := range terms {
-		// Check context cancellation
+		// Check context cancellation (server shutdown)
 		select {
 		case <-ctx.Done():
 			jobLogger.Warn("job interrupted by shutdown")
 			// Mark back as PENDING so it can be resumed
-			_ = w.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
+			_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
 			return
 		default:
 		}
 
-		// Rate limit for Wikidata API
-		if err := w.rateLimiter.Wait(ctx); err != nil {
+		// Check if job was paused or cancelled by user
+		currentJob, err := p.jobRepo.GetByID(ctx, job.ID)
+		if err != nil {
+			jobLogger.Error("failed to check job status", "error", err)
+			continue
+		}
+
+		switch currentJob.Status {
+		case entity.JobStatusPaused:
+			jobLogger.Info("job paused by user", "processed", processed, "skipped", skipped, "failed", failed)
+			return
+		case entity.JobStatusCancelled:
+			jobLogger.Info("job cancelled by user", "processed", processed, "skipped", skipped, "failed", failed)
+			return
+		}
+
+		// Rate limit for API calls
+		if err := p.rateLimiter.Wait(ctx); err != nil {
 			jobLogger.Warn("rate limiter interrupted", "error", err)
-			_ = w.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
+			_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
 			return
 		}
 
 		termLogger := jobLogger.With("term", term)
 
 		// Check if snapshot already exists → skip.
-		// On resume, previously processed terms hit this path and increment
-		// Skipped instead of Processed, so counters may not sum perfectly
-		// after a restart. The behavior is correct — no work is duplicated.
-		_, err := w.snapshotRepo.GetByTerm(ctx, term, job.Language)
+		_, err = p.snapshotRepo.GetByTerm(ctx, term, job.Language)
 		if err == nil {
-			_ = w.jobRepo.IncrementSkipped(ctx, job.ID)
+			_ = p.jobRepo.IncrementSkipped(ctx, job.ID)
 			skipped++
 			termLogger.Debug("skipped (snapshot exists)")
 			continue
@@ -134,20 +177,52 @@ func (w *Worker) processJob(ctx context.Context, job *entity.PipelineJob, jobLog
 
 		// Process the word
 		termStart := time.Now()
-		_, err = w.pipeline.Run(ctx, term, job.Language, job.Tier, &RunOptions{Logger: termLogger})
+		_, err = p.pipeline.Run(ctx, term, job.Language, job.Tier, &RunOptions{Logger: termLogger})
 		if err != nil {
-			_ = w.jobRepo.IncrementFailed(ctx, job.ID)
+			_ = p.jobRepo.IncrementFailed(ctx, job.ID)
 			failed++
 			termLogger.Warn("failed to process term", "error", err)
 			continue
 		}
 
-		_ = w.jobRepo.IncrementProcessed(ctx, job.ID)
+		_ = p.jobRepo.IncrementProcessed(ctx, job.ID)
 		processed++
 		termLogger.Debug("term processed", "duration", time.Since(termStart))
 	}
 
 	// All done
-	_ = w.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
+	_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
 	jobLogger.Info("job completed", "duration", time.Since(jobStart), "processed", processed, "skipped", skipped, "failed", failed)
+}
+
+// Worker is a single background consumer that processes pipeline jobs.
+//
+// Deprecated: Use WorkerPool instead for better concurrency control.
+type Worker struct {
+	pool *WorkerPool
+}
+
+// NewWorker creates a new pipeline Worker (wraps WorkerPool with 1 worker).
+func NewWorker(
+	jobRepo repository.PipelineJobRepository,
+	snapshotRepo repository.WordSnapshotRepository,
+	pipeline *Pipeline,
+	logger *slog.Logger,
+) *Worker {
+	pool := NewWorkerPool(jobRepo, snapshotRepo, pipeline, logger, WorkerPoolConfig{
+		WorkerCount:  1,
+		PollInterval: 5 * time.Second,
+		RateLimit:    2.0,
+	})
+	return &Worker{pool: pool}
+}
+
+// Start begins the background job processing loop.
+func (w *Worker) Start(ctx context.Context) error {
+	return w.pool.Start(ctx)
+}
+
+// Stop gracefully stops the worker.
+func (w *Worker) Stop() {
+	w.pool.Stop()
 }

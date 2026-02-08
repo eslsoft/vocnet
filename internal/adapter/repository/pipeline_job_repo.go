@@ -189,6 +189,37 @@ func (r *pipelineJobRepository) UpdateStatus(ctx context.Context, id int64, stat
 	return nil
 }
 
+func (r *pipelineJobRepository) ChangeStatus(ctx context.Context, id int64, action entity.JobAction) error {
+	job, err := r.client.PipelineJob.Get(ctx, id)
+	if err != nil {
+		return translateDBError(err, "pipeline_job")
+	}
+
+	status := entity.JobStatus(job.Status)
+	if err := status.ValidateTransition(action); err != nil {
+		return err
+	}
+
+	targetStatus := action.TargetStatus()
+	update := r.client.PipelineJob.UpdateOneID(id).
+		SetStatus(string(targetStatus))
+
+	// Handle action-specific side effects
+	now := time.Now()
+	switch action {
+	case entity.JobActionCancel:
+		update.SetCompletedAt(now)
+	case entity.JobActionRetry:
+		update.ClearStartedAt().ClearCompletedAt().ClearErrorMessage()
+	}
+
+	_, err = update.Save(ctx)
+	if err != nil {
+		return translateDBError(err, "pipeline_job")
+	}
+	return nil
+}
+
 func mapEntPipelineJob(row *entdb.PipelineJob) *entity.PipelineJob {
 	if row == nil {
 		return nil
