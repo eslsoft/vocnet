@@ -153,8 +153,6 @@ func getPublicProcedures() []string {
 		"/pipeline.v1.PipelineService/GetWordSnapshot",
 		"/pipeline.v1.PipelineService/ListWordSnapshots",
 		"/pipeline.v1.PipelineService/GetEvidence",
-		"/pipeline.v1.PipelineService/GetJob",
-		"/pipeline.v1.PipelineService/ListJobs",
 		"/pipeline.v1.PipelineService/ListDataSources",
 	}
 

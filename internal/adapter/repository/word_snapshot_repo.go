@@ -92,19 +92,14 @@ func (r *wordSnapshotRepository) List(ctx context.Context, query *repository.Lis
 	}
 
 	// Apply ordering
-	orderFunc := entwordsnapshot.ByQscore()
+	dir := orderTerm(query.Desc)
 	switch query.OrderBy {
 	case "synthesized_at":
-		orderFunc = entwordsnapshot.BySynthesizedAt()
+		q = q.Order(entwordsnapshot.BySynthesizedAt(dir), entwordsnapshot.ByID(dir))
 	case "term":
-		orderFunc = entwordsnapshot.ByTerm()
+		q = q.Order(entwordsnapshot.ByTerm(dir), entwordsnapshot.ByID(dir))
 	default:
-		orderFunc = entwordsnapshot.ByQscore()
-	}
-	if query.Desc {
-		q = q.Order(orderFunc, entwordsnapshot.ByID())
-	} else {
-		q = q.Order(orderFunc, entwordsnapshot.ByID())
+		q = q.Order(entwordsnapshot.ByQscore(dir), entwordsnapshot.ByID(dir))
 	}
 
 	// Apply pagination

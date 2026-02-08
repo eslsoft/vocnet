@@ -3,9 +3,14 @@ package connectrpc
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
+	"github.com/samber/lo"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
@@ -14,10 +19,6 @@ import (
 	pipelinev1 "github.com/eslsoft/vocnet/pkg/api/pipeline/v1"
 	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
-	"github.com/samber/lo"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 var _ pipelinev1connect.PipelineServiceHandler = (*PipelineServiceServer)(nil)
@@ -42,7 +43,7 @@ func (s *PipelineServiceServer) ProcessWord(_ context.Context, _ *connect.Reques
 	// ProcessWord is a synchronous pipeline execution. This requires the full Pipeline
 	// orchestrator (not just PipelineService). For now, return unimplemented.
 	// In the future, this could be wired to Pipeline.Run() directly.
-	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("ProcessWord requires the full pipeline orchestrator"))
 }
 
 func (s *PipelineServiceServer) GetPipelineStatus(ctx context.Context, req *connect.Request[pipelinev1.GetPipelineStatusRequest]) (*connect.Response[pipelinev1.PipelineStatus], error) {
@@ -60,7 +61,7 @@ func (s *PipelineServiceServer) GetPipelineStatus(ctx context.Context, req *conn
 
 func (s *PipelineServiceServer) RetryPhase(_ context.Context, _ *connect.Request[pipelinev1.RetryPhaseRequest]) (*connect.Response[pipelinev1.PipelineStatus], error) {
 	// RetryPhase requires the full Pipeline orchestrator. Return unimplemented for now.
-	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("RetryPhase requires the full pipeline orchestrator"))
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +155,7 @@ func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Requ
 		// Resolve wordbook to terms
 		resolvedTerms, resolvedName, resolveErr := resolveWordbook(wbName)
 		if resolveErr != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, resolveErr)
+			return nil, connect.NewError(connect.CodeNotFound, resolveErr)
 		}
 		if name == "" {
 			name = resolvedName
@@ -175,6 +176,7 @@ func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Requ
 	return connect.NewResponse(mapping.ToPbPipelineJob(job)), nil
 }
 
+//nolint:dupl // GetJob and CancelJob are distinct RPCs with identical structure
 func (s *PipelineServiceServer) GetJob(ctx context.Context, req *connect.Request[pipelinev1.GetJobRequest]) (*connect.Response[pipelinev1.PipelineJob], error) {
 	if req.Msg == nil || req.Msg.GetId() == 0 {
 		return nil, status.Error(codes.InvalidArgument, "job id is required")
@@ -212,6 +214,7 @@ func (s *PipelineServiceServer) ListJobs(ctx context.Context, req *connect.Reque
 	}), nil
 }
 
+//nolint:dupl // CancelJob and GetJob are distinct RPCs with identical structure
 func (s *PipelineServiceServer) CancelJob(ctx context.Context, req *connect.Request[pipelinev1.CancelJobRequest]) (*connect.Response[pipelinev1.PipelineJob], error) {
 	if req.Msg == nil || req.Msg.GetId() == 0 {
 		return nil, status.Error(codes.InvalidArgument, "job id is required")
@@ -267,6 +270,16 @@ func (s *PipelineServiceServer) DownloadDataSource(ctx context.Context, req *con
 // resolveWordbook finds a builtin wordbook by name or ID and returns its terms.
 func resolveWordbook(nameOrID string) ([]string, string, error) {
 	builtins := wordbook.GetBuiltinWordbooks()
+
+	// Try by numeric ID
+	if id, err := strconv.ParseInt(nameOrID, 10, 64); err == nil {
+		for _, wb := range builtins {
+			if wb.Id == id {
+				return wb.Terms, wb.Name, nil
+			}
+		}
+		return nil, "", fmt.Errorf("wordbook with ID %d not found", id)
+	}
 
 	// Try by name (case-insensitive)
 	for _, wb := range builtins {
