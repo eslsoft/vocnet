@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // ECDICTEntry represents a dictionary entry from ECDICT.
@@ -35,10 +35,20 @@ func NewReader(dbPath string) (*Reader, error) {
 		return nil, fmt.Errorf("ecdict database path is required")
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open ecdict database: %w", err)
 	}
+
+	// Set read-only mode via PRAGMA
+	if _, err := db.Exec("PRAGMA query_only = ON"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("set read-only mode: %w", err)
+	}
+
+	// SQLite is a single-file database; limit the pool
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	// Verify database is accessible
 	if err := db.Ping(); err != nil {

@@ -25,6 +25,7 @@ type DataPaths struct {
 	ECDICT     string
 	WordNet    string
 	Moby       string
+	Wikidata   string
 }
 
 // ResolvePaths computes all data source paths from a base directory.
@@ -34,6 +35,7 @@ func ResolvePaths(dataDir string) DataPaths {
 		ECDICT:     filepath.Join(dataDir, "ecdict", ecdictDefaultFilename),
 		WordNet:    filepath.Join(dataDir, "wordnet"),
 		Moby:       filepath.Join(dataDir, "moby", mobyFilename),
+		Wikidata:   filepath.Join(dataDir, "wikidata", wikidataLexemesFilename),
 	}
 }
 
@@ -71,6 +73,7 @@ func NewManager(cfg *config.Config, logger *slog.Logger, cacheDir string) *Manag
 	m.sources["ecdict"] = NewECDICTSource(dataDir, cacheDir, logger)
 	m.sources["wordnet"] = NewWordNetSource(dataDir, cacheDir, logger)
 	m.sources["moby"] = NewMobySource(dataDir, cacheDir, logger)
+	m.sources["wikidata"] = NewWikidataSource(dataDir, cacheDir, logger)
 
 	return m
 }
@@ -211,6 +214,8 @@ func toSourceKey(name string) string {
 		return "wordnet"
 	case "Moby":
 		return "moby"
+	case "Wikidata":
+		return "wikidata"
 	default:
 		return name
 	}

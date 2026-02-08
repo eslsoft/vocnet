@@ -220,7 +220,7 @@ func (db *DatabaseConfig) ensureInitialized() error {
 		return err
 	}
 	switch driver {
-	case "sqlite3":
+	case "sqlite":
 		dsn = db.sqliteDSN(dsn)
 	case "postgres":
 		// keep DSN as-is for postgres
@@ -246,7 +246,7 @@ func driverFromDSN(dsn string) (string, error) {
 	case strings.HasPrefix(dsn, "file:"),
 		strings.HasPrefix(dsn, "sqlite://"),
 		strings.HasPrefix(dsn, "sqlite3://"):
-		return "sqlite3", nil
+		return "sqlite", nil
 	}
 
 	if strings.Contains(dsn, "=") {
@@ -265,7 +265,7 @@ func driverFromDSN(dsn string) (string, error) {
 			strings.HasSuffix(dsn, ".sqlite3"),
 			strings.HasPrefix(dsn, "./"),
 			strings.HasPrefix(dsn, "/"):
-			return "sqlite3", nil
+			return "sqlite", nil
 		}
 	}
 

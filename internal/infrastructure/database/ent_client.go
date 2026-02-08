@@ -9,7 +9,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // NewEntClient constructs an ent.Client configured for the application's database.

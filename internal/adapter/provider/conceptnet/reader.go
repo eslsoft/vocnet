@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 )
@@ -44,9 +44,15 @@ func NewReaderWithLogger(dataPath string, logger *slog.Logger) (*Reader, error) 
 		return nil, fmt.Errorf("build conceptnet index: %w", err)
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?mode=ro&_journal_mode=OFF&cache=shared")
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open conceptnet index: %w", err)
+	}
+
+	// Set read-only mode via PRAGMA (modernc.org/sqlite doesn't support DSN params)
+	if _, err := db.Exec("PRAGMA query_only = ON"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("set read-only mode: %w", err)
 	}
 
 	// SQLite is a single-file database; limit the pool to avoid extra file handles and locking issues.
@@ -158,7 +164,7 @@ func ensureIndex(csvPath, dbPath string, logger *slog.Logger) error {
 
 // validateIndex checks that the SQLite index is structurally valid.
 func validateIndex(dbPath string) error {
-	db, err := sql.Open("sqlite3", dbPath+"?mode=ro")
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return err
 	}
@@ -187,7 +193,7 @@ func buildIndex(csvPath, dbPath string, logger *slog.Logger) error {
 	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	db, err := sql.Open("sqlite3", tmpPath)
+	db, err := sql.Open("sqlite", tmpPath)
 	if err != nil {
 		return fmt.Errorf("create index db: %w", err)
 	}
