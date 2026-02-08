@@ -85,9 +85,6 @@ func (Lexeme) Edges() []ent.Edge {
 			Unique().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
-		edge.To("concept_links", LexemeConceptLink.Type).
-			Annotations(entsql.OnDelete(entsql.Cascade)),
-
 		// Lexeme -> SemanticRelation (source side, one-to-many)
 		edge.To("semantic_relations", SemanticRelation.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
