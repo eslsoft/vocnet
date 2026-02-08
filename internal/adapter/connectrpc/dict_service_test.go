@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
 )
 
 func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
@@ -48,13 +49,74 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 		dictv1.FormType_FORM_TYPE_SHORT_FORM:             entity.LexemeFormTypeShortForm,
 	}
 
+	// Create Lemma first (if not exists)
+	var lemmaRecord *ent.Lemma
+	var err error
+
+	// Check if lemma already exists for this word
+	lemmaRecord, err = client.Lemma.Query().
+		Where(lemma.SurfaceEQ(word.Term)).
+		Only(ctx)
+
+	if err != nil {
+		// Create new lemma
+		lemmaRecord, err = client.Lemma.Create().
+			SetSurface(word.Term).
+			SetNormalized(strings.ToLower(word.Term)).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	if firstLemmaID == 0 {
+		firstLemmaID = lemmaRecord.ID
+	}
+
+	// Create Lemma Form for the lemma itself (only once per lemma)
+	lemmaFormCreate := client.LexemeForm.Create().
+		SetLemma(lemmaRecord).
+		SetSurface(word.Term).
+		SetNormalized(strings.ToLower(word.Term)).
+		SetFormType(string(entity.LexemeFormTypeLemma))
+
+	// Add phonetics to lemma form
+	if len(word.Phonetics) > 0 {
+		var phonetics []entity.Phonetic
+		for _, p := range word.Phonetics {
+			phonetics = append(phonetics, entity.Phonetic{
+				IPA:     p.Ipa,
+				Dialect: p.Dialect,
+			})
+		}
+		lemmaFormCreate.SetPhonetics(phonetics)
+	}
+	_, err = lemmaFormCreate.Save(ctx)
+	require.NoError(t, err)
+
+	// Create related forms
+	for _, form := range word.RelatedForms {
+		ft := formTypeMap[form.FormType]
+		if ft == "" {
+			ft = entity.LexemeFormTypeUnspecified
+		}
+		_, err = client.LexemeForm.Create().
+			SetLemma(lemmaRecord).
+			SetSurface(form.Term).
+			SetNormalized(strings.ToLower(form.Term)).
+			SetFormType(string(ft)).
+			SetIsIrregular(form.Irregular).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	// Create lexemes with reference to lemma
 	for _, meaning := range word.Meanings {
-		// Create Lexeme
+		// Create Lexeme with reference to Lemma
 		lexQuery := client.Lexeme.Create().
 			SetExternalID(meaning.LexemeId).
 			SetLanguageCode(langCode).
 			SetPos(meaning.Pos).
-			SetCategories(word.Categories)
+			SetCategories(word.Categories).
+			SetLemma(lemmaRecord) // Set the lemma relationship
 
 		// Map Senses
 		var senses []entity.LexemeSense
@@ -67,59 +129,8 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 		}
 		lexQuery.SetSenses(senses)
 
-		lex, err := lexQuery.Save(ctx)
+		_, err = lexQuery.Save(ctx)
 		require.NoError(t, err)
-
-		// Create Lemma
-		lemmaQuery := client.Lemma.Create().
-			SetLexeme(lex).
-			SetSurface(word.Term).
-			SetNormalized(strings.ToLower(word.Term))
-
-		lemma, err := lemmaQuery.Save(ctx)
-		require.NoError(t, err)
-
-		if firstLemmaID == 0 {
-			firstLemmaID = lemma.ID
-		}
-
-		// Create Lemma Form
-		// 1. The lemma itself
-		lemmaFormCreate := client.LexemeForm.Create().
-			SetLemma(lemma).
-			SetSurface(word.Term).
-			SetNormalized(strings.ToLower(word.Term)).
-			SetFormType(string(entity.LexemeFormTypeLemma))
-
-		// Add phonetics to lemma form
-		if len(word.Phonetics) > 0 {
-			var phonetics []entity.Phonetic
-			for _, p := range word.Phonetics {
-				phonetics = append(phonetics, entity.Phonetic{
-					IPA: p.Ipa,
-					Dialect: p.Dialect,
-				})
-			}
-			lemmaFormCreate.SetPhonetics(phonetics)
-		}
-		_, err = lemmaFormCreate.Save(ctx)
-		require.NoError(t, err)
-
-		// 2. Related forms
-		for _, form := range word.RelatedForms {
-			ft := formTypeMap[form.FormType]
-			if ft == "" {
-				ft = entity.LexemeFormTypeUnspecified
-			}
-			_, err = client.LexemeForm.Create().
-				SetLemma(lemma).
-				SetSurface(form.Term).
-				SetNormalized(strings.ToLower(form.Term)).
-				SetFormType(string(ft)).
-				SetIsIrregular(form.Irregular).
-				Save(ctx)
-			require.NoError(t, err)
-		}
 	}
 	return firstLemmaID
 }

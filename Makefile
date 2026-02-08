@@ -70,7 +70,7 @@ ent-generate: ## Generate Ent client only
 build:  ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(BINARY_NAME) .
+	CGO_ENABLED=1 go build -o $(BUILD_DIR)/$(BINARY_NAME) .
 
 .PHONY: run
 run: ## Run the server
@@ -85,11 +85,6 @@ run: ## Run the server
 dev: db-up ## Start full development environment (DB + server)
 	@echo "Starting development server..."
 	go run . serve
-
-.PHONY: migrate
-migrate: ## Run database migrations
-	@echo "Running migrations..."
-	go run . db-init
 
 #==============================================================================
 # Database
@@ -186,6 +181,11 @@ clean: ## Clean build artifacts and generated files
 #==============================================================================
 # Utilities
 #==============================================================================
+
+.PHONY: pipeline-setup
+pipeline-setup: ## Download all pipeline data sources
+	@echo "Downloading pipeline data sources..."
+	go run . pipeline data download
 
 .PHONY: sense-cleaner
 sense-cleaner: ## Run sense cleaner (use ARGS for flags, e.g., make sense-cleaner ARGS="-dry-run -limit 10")

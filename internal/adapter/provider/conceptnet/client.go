@@ -49,7 +49,7 @@ func (c *Client) FetchRelations(ctx context.Context, term string, language strin
 	if err != nil {
 		return nil, nil, fmt.Errorf("conceptnet fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("conceptnet returned %d", resp.StatusCode)

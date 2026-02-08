@@ -119,7 +119,7 @@ make generate
 
 ## 数据库迁移规范
 
-- 数据库结构由 ent schema 维护，运行 `make migrate` （或 `go run . db-init --schema-only`）应用变更
+- 数据库结构由 ent schema 维护，运行 `make migrate`
 - 若涉及数据修复，按需要在应用层编写一次性脚本
 - 大批量写操作需评估锁与性能影响
 

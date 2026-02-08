@@ -21,6 +21,8 @@ type Lexeme struct {
 func (Lexeme) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
+		field.Int64("lemma_id").
+			Comment("Foreign key to lemmas table"),
 		field.String("external_id").
 			NotEmpty().
 			Unique().
@@ -74,9 +76,15 @@ func (Lexeme) Fields() []ent.Field {
 
 func (Lexeme) Edges() []ent.Edge {
 	return []ent.Edge{
-		// Lexeme -> Lemma (一对多，删除Lexeme时级联删除Lemma)
-		edge.To("lemmas", Lemma.Type).
+		// Lexeme -> Lemma (多对一，Lemma删除时级联删除Lexeme)
+		// 多个Lexeme可以属于同一个Lemma（不同词性/语义）
+		// 例如: water-noun-lexeme 和 water-verb-lexeme 都属于 water-lemma
+		edge.To("lemma", Lemma.Type).
+			Field("lemma_id").
+			Required().
+			Unique().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+
 		edge.To("concept_links", LexemeConceptLink.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
@@ -92,6 +100,8 @@ func (Lexeme) Edges() []ent.Edge {
 
 func (Lexeme) Indexes() []ent.Index {
 	return []ent.Index{
+		// Query by lemma_id
+		index.Fields("lemma_id"),
 		// Query by language
 		index.Fields("language_code"),
 		// Query by language + pos

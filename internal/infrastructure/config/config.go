@@ -15,6 +15,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Log      LogConfig      `mapstructure:"log"`
 	Auth     AuthConfig     `mapstructure:"auth"`
+	Pipeline PipelineConfig `mapstructure:"pipeline"`
 }
 
 // ServerConfig holds server configuration
@@ -44,6 +45,13 @@ type LogConfig struct {
 type AuthConfig struct {
 	JWKSURL       string        `mapstructure:"jwks_url"`       // JWKS endpoint URL from Supabase
 	RefreshPeriod time.Duration `mapstructure:"refresh_period"` // How often to refresh JWKS keys
+}
+
+// PipelineConfig holds pipeline data source configuration
+type PipelineConfig struct {
+	DataDir      string `mapstructure:"data_dir"`      // Base data directory (default: ./data)
+	AutoDownload bool   `mapstructure:"auto_download"`  // Auto-download missing data sources
+	CacheDir     string `mapstructure:"cache_dir"`      // Data cache directory
 }
 
 // Load reads configuration from file and environment variables
@@ -93,12 +101,20 @@ func setDefaults() {
 	// Auth defaults
 	viper.SetDefault("auth.jwks_url", "")
 	viper.SetDefault("auth.refresh_period", time.Hour)
+
+	// Pipeline defaults
+	viper.SetDefault("pipeline.data_dir", "./data")
+	viper.SetDefault("pipeline.auto_download", false)
+	viper.SetDefault("pipeline.cache_dir", "") // Empty means use system cache dir
 }
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
-		"database.dsn":    {"DATABASE_URL"},
-		"auth.jwks_url":   {"AUTH_JWKS_URL"},
+		"database.dsn":             {"DATABASE_URL"},
+		"auth.jwks_url":            {"AUTH_JWKS_URL"},
+		"pipeline.data_dir":      {"PIPELINE_DATA_DIR"},
+		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
+		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
 	}
 
 	for key, envs := range bindings {

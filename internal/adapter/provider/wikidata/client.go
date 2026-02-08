@@ -57,7 +57,7 @@ func (c *Client) SearchEntity(ctx context.Context, term string, language string)
 	if err != nil {
 		return nil, fmt.Errorf("wikidata search: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("wikidata search returned %d", resp.StatusCode)
@@ -126,7 +126,7 @@ LIMIT 10`, langQID(langCode), strings.ToLower(term))
 	if err != nil {
 		return nil, nil, fmt.Errorf("wikidata sparql: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("wikidata sparql returned %d", resp.StatusCode)
@@ -199,7 +199,7 @@ func (c *Client) fetchLexemeDetail(ctx context.Context, lexemeID string) ([]prov
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("fetch lexeme %s: status %d", lexemeID, resp.StatusCode)
@@ -224,6 +224,24 @@ func (c *Client) fetchLexemeDetail(ctx context.Context, lexemeID string) ([]prov
 					Value string `json:"value"`
 				} `json:"representations"`
 				GrammaticalFeatures []string `json:"grammaticalFeatures"`
+				Claims              struct {
+					P898 []struct { // P898 is IPA transcription
+						Mainsnak struct {
+							Datavalue struct {
+								Value string `json:"value"`
+							} `json:"datavalue"`
+						} `json:"mainsnak"`
+						Qualifiers struct {
+							P5237 []struct { // P5237 is pronunciation variant (US/UK/etc)
+								Datavalue struct {
+									Value struct {
+										ID string `json:"id"`
+									} `json:"value"`
+								} `json:"datavalue"`
+							} `json:"P5237"`
+						} `json:"qualifiers"`
+					} `json:"P898"`
+				} `json:"claims"`
 			} `json:"forms"`
 		} `json:"entities"`
 	}
@@ -255,10 +273,33 @@ func (c *Client) fetchLexemeDetail(ctx context.Context, lexemeID string) ([]prov
 			repr = r.Value
 			break
 		}
+
+		// Extract phonetics from P898 claims
+		phonetics := make([]provider.WikidataPhonetic, 0)
+		for _, p898 := range f.Claims.P898 {
+			ipa := p898.Mainsnak.Datavalue.Value
+			if ipa == "" {
+				continue
+			}
+
+			// Extract dialect from P5237 qualifier (pronunciation variant)
+			dialect := ""
+			if len(p898.Qualifiers.P5237) > 0 {
+				variantQID := p898.Qualifiers.P5237[0].Datavalue.Value.ID
+				dialect = mapLanguageVariant(variantQID)
+			}
+
+			phonetics = append(phonetics, provider.WikidataPhonetic{
+				IPA:     ipa,
+				Dialect: dialect,
+			})
+		}
+
 		forms = append(forms, provider.WikidataForm{
 			FormID:         f.ID,
 			Representation: repr,
 			Features:       f.GrammaticalFeatures,
+			Phonetics:      phonetics,
 		})
 	}
 
@@ -317,5 +358,22 @@ func mapWikidataPOS(qid string) string {
 		return "interjection"
 	default:
 		return qid
+	}
+}
+
+
+// mapLanguageVariant converts a Wikidata language variant QID to BCP 47 dialect tag.
+func mapLanguageVariant(qid string) string {
+	switch qid {
+	case "Q7976": // American English
+		return "en-US"
+	case "Q7979": // British English
+		return "en-GB"
+	case "Q100163": // Australian English
+		return "en-AU"
+	case "Q44679": // Canadian English
+		return "en-CA"
+	default:
+		return "" // Unknown dialect
 	}
 }

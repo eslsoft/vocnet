@@ -36,6 +36,7 @@ type LexemeRepository interface {
 	Create(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error)
 	Update(ctx context.Context, lexeme *entity.Lexeme) (*entity.Lexeme, error)
 	GetByID(ctx context.Context, lexemeID int64) (*entity.Lexeme, error)
+	GetByExternalID(ctx context.Context, externalID string) (*entity.Lexeme, error)
 	Lookup(ctx context.Context, surfaceForm string, language entity.Language) (*entity.Lexeme, error)
 	// BatchLookupFormInfo returns all possible form infos for each surface term.
 	// A surface term can map to multiple lexemes (e.g., "learning" can be both a verb form and a noun).

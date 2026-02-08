@@ -18,8 +18,6 @@ type Lemma struct {
 func (Lemma) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.Int64("lexeme_id").
-			Comment("Foreign key to lexemes table"),
 
 		// Dictionary form text
 		field.String("surface").
@@ -35,7 +33,7 @@ func (Lemma) Fields() []ent.Field {
 			Comment("Orthographic variant type: US, UK, archaic, etc. (e.g. color vs colour)"),
 		field.Bool("is_primary").
 			Default(true).
-			Comment("Whether this is the primary lemma for the lexeme"),
+			Comment("Whether this is the primary lemma (for variant handling)"),
 
 		field.String("wikidata_qid").
 			Optional().
@@ -52,13 +50,11 @@ func (Lemma) Fields() []ent.Field {
 
 func (Lemma) Edges() []ent.Edge {
 	return []ent.Edge{
-		// Lemma -> Lexeme (多对一，Lexeme删除时级联删除Lemma)
-		edge.From("lexeme", Lexeme.Type).
-			Ref("lemmas").
-			Field("lexeme_id").
-			Required().
-			Unique().
-			Annotations(entsql.OnDelete(entsql.Cascade)),
+		// Lemma <- Lexeme (一对多反向边，Lexeme有lemma_id字段)
+		// 一个Lemma可以有多个Lexemes（不同词性/语义）
+		// 例如: "water" lemma -> [water-noun lexeme, water-verb lexeme]
+		edge.From("lexemes", Lexeme.Type).
+			Ref("lemma"),
 
 		// Lemma -> LexemeForm (一对多，Lemma删除时级联删除Form)
 		edge.To("forms", LexemeForm.Type).
@@ -81,12 +77,11 @@ func (Lemma) Edges() []ent.Edge {
 
 func (Lemma) Indexes() []ent.Index {
 	return []ent.Index{
-		// Query by lexeme_id
-		index.Fields("lexeme_id"),
 		// Case-insensitive lookup
 		index.Fields("normalized"),
-		// Unique constraint: same lexeme cannot have duplicate text
-		index.Fields("lexeme_id", "surface").Unique(),
+		// Unique constraint: one lemma per surface form (case-sensitive)
+		// Note: Different spellings (color/colour) are separate lemmas
+		index.Fields("surface").Unique(),
 		// Query by wikidata QID
 		index.Fields("wikidata_qid"),
 	}

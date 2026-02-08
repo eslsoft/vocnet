@@ -163,7 +163,7 @@ func (sc *SenseCleaner) buildWordDataList(ctx context.Context, wordsToProcess []
 	for _, term := range wordsToProcess {
 		lemmas, err := sc.entClient.Lemma.Query().
 			Where(lemma.NormalizedEQ(term)).
-			WithLexeme(func(q *entdb.LexemeQuery) {
+			WithLexemes(func(q *entdb.LexemeQuery) {
 				if sc.config.languageFilter != "" {
 					q.Where(lexeme.LanguageCodeEQ(sc.config.languageFilter))
 				}
@@ -183,8 +183,10 @@ func (sc *SenseCleaner) buildWordDataList(ctx context.Context, wordsToProcess []
 
 		lexemeMap := make(map[int64]*entdb.Lexeme)
 		for _, lem := range lemmas {
-			if lem.Edges.Lexeme != nil {
-				lexemeMap[lem.Edges.Lexeme.ID] = lem.Edges.Lexeme
+			for _, lex := range lem.Edges.Lexemes {
+				if lex != nil {
+					lexemeMap[lex.ID] = lex
+				}
 			}
 		}
 

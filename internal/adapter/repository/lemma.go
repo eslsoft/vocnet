@@ -53,19 +53,20 @@ func (r *lemmaRepository) LookupByForm(ctx context.Context, surface string, lang
 	normalized := strings.ToLower(surface)
 	langCode := language.CodeOrDefault()
 
-	// First, try to find a form that matches this surface
-	formRow, err := r.client.LexemeForm.Query().
-		Where(entlexemeform.NormalizedEQ(normalized)).
-		Where(entlexemeform.HasLemmaWith(
-			entlemma.HasLexemeWith(entlexeme.LanguageCodeEQ(langCode)),
+	// First, try to find a lexeme that matches the language and has a form with this surface
+	lexemeRows, err := r.client.Lexeme.Query().
+		Where(entlexeme.LanguageCodeEQ(langCode)).
+		Where(entlexeme.HasLemmaWith(
+			entlemma.HasFormsWith(entlexemeform.NormalizedEQ(normalized)),
 		)).
 		WithLemma(func(q *entdb.LemmaQuery) {
 			q.WithForms()
 		}).
-		First(ctx)
+		All(ctx)
 
-	if err == nil {
-		lemmaRow, err := formRow.Edges.LemmaOrErr()
+	if err == nil && len(lexemeRows) > 0 {
+		// Return the first matching lemma
+		lemmaRow, err := lexemeRows[0].Edges.LemmaOrErr()
 		if err == nil {
 			return mapEntLemma(lemmaRow), nil
 		}
@@ -87,7 +88,7 @@ func (r *lemmaRepository) ListByFormNormalized(ctx context.Context, surface stri
 	formRows, err := r.client.LexemeForm.Query().
 		Where(entlexemeform.NormalizedEQ(normalized)).
 		Where(entlexemeform.HasLemmaWith(
-			entlemma.HasLexemeWith(entlexeme.LanguageCodeEQ(langCode)),
+			entlemma.HasLexemesWith(entlexeme.LanguageCodeEQ(langCode)),
 		)).
 		WithLemma(func(q *entdb.LemmaQuery) {
 			q.WithForms()
@@ -127,7 +128,7 @@ func (r *lemmaRepository) List(ctx context.Context, query *repository.ListWordsQ
 		query = &repository.ListWordsQuery{}
 	}
 
-	q := r.client.Lemma.Query().WithForms().WithLexeme()
+	q := r.client.Lemma.Query().WithForms().WithLexemes()
 	applyLemmaFilters(q, query)
 
 	// Get total count before pagination
@@ -266,42 +267,39 @@ func (r *lemmaRepository) ResolveLemmaSurfacesByLexemeExternalIDs(ctx context.Co
 		return out, nil
 	}
 
-	// Load all lemmas for the target lexemes and pick the best display lemma per lexeme.
-	// Prefer is_primary=true, otherwise fall back to the first seen.
-	rows, err := r.client.Lemma.Query().
-		Where(entlemma.HasLexemeWith(
+	// Load all lexemes by external IDs and get their lemmas
+	lexemeRows, err := r.client.Lexeme.Query().
+		Where(
 			entlexeme.LanguageCodeEQ(langCode),
 			entlexeme.ExternalIDIn(ids...),
-		)).
-		WithLexeme().
+		).
+		WithLemma().
 		All(ctx)
 	if err != nil {
-		return nil, translateDBError(err, "lemma")
+		return nil, translateDBError(err, "lexeme")
 	}
 
-	for _, row := range rows {
-		if row == nil {
+	for _, lexemeRow := range lexemeRows {
+		if lexemeRow == nil {
 			continue
 		}
-		lex, err := row.Edges.LexemeOrErr()
-		if err != nil || lex == nil {
-			continue
-		}
-		extID := lex.ExternalID
+		extID := lexemeRow.ExternalID
 		if extID == "" {
 			continue
 		}
-		// If we already have a primary lemma picked, keep it.
+		lemma, err := lexemeRow.Edges.LemmaOrErr()
+		if err != nil || lemma == nil {
+			continue
+		}
+		// If we already have a lemma picked for this external ID, keep it.
 		if _, ok := out[extID]; ok {
-			// Only replace if current row is primary and existing selection isn't.
-			// Since we don't track the previous selection's primary-ness, we handle it
-			// by only overwriting when row.IsPrimary is true.
-			if row.IsPrimary {
-				out[extID] = row.Surface
+			// Only replace if current lemma is primary and existing selection isn't.
+			if lemma.IsPrimary {
+				out[extID] = lemma.Surface
 			}
 			continue
 		}
-		out[extID] = row.Surface
+		out[extID] = lemma.Surface
 	}
 
 	return out, nil
@@ -309,10 +307,7 @@ func (r *lemmaRepository) ResolveLemmaSurfacesByLexemeExternalIDs(ctx context.Co
 
 // CreateMinimal creates a minimal lemma with a single form for the pipeline.
 // This is used when processing new words that don't exist in the database yet.
-func (r *lemmaRepository) CreateMinimal(ctx context.Context, lexemeID int64, surface string, language entity.Language) (*entity.Lemma, error) {
-	if lexemeID == 0 {
-		return nil, fmt.Errorf("lexeme_id required")
-	}
+func (r *lemmaRepository) CreateMinimal(ctx context.Context, surface string, language entity.Language) (*entity.Lemma, error) {
 	if surface == "" {
 		return nil, fmt.Errorf("surface required")
 	}
@@ -331,9 +326,8 @@ func (r *lemmaRepository) CreateMinimal(ctx context.Context, lexemeID int64, sur
 		}
 	}()
 
-	// Create lemma
+	// Create lemma without lexeme_id (lexemes will reference this lemma)
 	lemmaRow, err := tx.Lemma.Create().
-		SetLexemeID(lexemeID).
 		SetSurface(surface).
 		SetNormalized(normalized).
 		SetIsPrimary(true).
@@ -365,6 +359,102 @@ func (r *lemmaRepository) CreateMinimal(ctx context.Context, lexemeID int64, sur
 	return r.GetByID(ctx, lemmaRow.ID)
 }
 
+// Update updates an existing lemma (used by pipeline to save WikidataQID, etc.).
+func (r *lemmaRepository) Update(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
+	if lemma.ID == 0 {
+		return nil, fmt.Errorf("lemma ID required")
+	}
+
+	update := r.client.Lemma.UpdateOneID(lemma.ID)
+
+	// Update fields
+	if lemma.Surface != "" {
+		update.SetSurface(lemma.Surface)
+		update.SetNormalized(strings.ToLower(strings.TrimSpace(lemma.Surface)))
+	}
+	if lemma.Variant != "" {
+		update.SetVariant(lemma.Variant)
+	}
+	if lemma.WikidataQID != "" {
+		update.SetWikidataQid(lemma.WikidataQID)
+	}
+
+	_, err := update.Save(ctx)
+	if err != nil {
+		return nil, translateDBError(err, "lemma")
+	}
+
+	// Return updated lemma
+	return r.GetByID(ctx, lemma.ID)
+}
+
+// CreateForms creates additional word forms (past, plural, etc.) for a lemma.
+func (r *lemmaRepository) CreateForms(ctx context.Context, lemmaID int64, forms []entity.LemmaForm) error {
+	if lemmaID == 0 {
+		return fmt.Errorf("lemma_id required")
+	}
+	if len(forms) == 0 {
+		return nil // Nothing to create
+	}
+
+	// Start transaction
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("start transaction: %w", err)
+	}
+	defer func() {
+		if v := recover(); v != nil {
+			_ = tx.Rollback()
+			panic(v)
+		}
+	}()
+
+	// Create each form
+	for _, form := range forms {
+		if form.Surface == "" {
+			continue // Skip empty forms
+		}
+
+		normalized := strings.ToLower(strings.TrimSpace(form.Surface))
+
+		// Check if form already exists
+		exists, err := tx.LexemeForm.Query().
+			Where(
+				entlexemeform.LemmaIDEQ(lemmaID),
+				entlexemeform.SurfaceEQ(form.Surface),
+				entlexemeform.FormTypeEQ(string(form.FormType)),
+			).
+			Exist(ctx)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("check form existence: %w", err)
+		}
+		if exists {
+			continue // Skip duplicates
+		}
+
+		// Create form
+		_, err = tx.LexemeForm.Create().
+			SetLemmaID(lemmaID).
+			SetSurface(form.Surface).
+			SetNormalized(normalized).
+			SetFormType(string(form.FormType)).
+			SetIsIrregular(form.IsIrregular).
+			Save(ctx)
+		if err != nil {
+			_ = tx.Rollback()
+			return translateDBError(err, "lexeme_form")
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 
 type wordStatsAccumulator struct {
 	langAcc         map[string]*languageAccumulator
@@ -376,9 +466,9 @@ type wordStatsAccumulator struct {
 }
 
 func (r *lemmaRepository) loadStatsRows(ctx context.Context, langCodes []string) ([]*entdb.Lemma, []*entdb.Lexeme, error) {
-	lemmaQuery := r.client.Lemma.Query().WithLexeme()
+	lemmaQuery := r.client.Lemma.Query().WithLexemes()
 	if len(langCodes) > 0 {
-		lemmaQuery = lemmaQuery.Where(entlemma.HasLexemeWith(entlexeme.LanguageCodeIn(langCodes...)))
+		lemmaQuery = lemmaQuery.Where(entlemma.HasLexemesWith(entlexeme.LanguageCodeIn(langCodes...)))
 	}
 	lemmas, err := lemmaQuery.All(ctx)
 	if err != nil {
@@ -571,7 +661,6 @@ func mapEntLemma(lemmaRow *entdb.Lemma) *entity.Lemma {
 
 	return &entity.Lemma{
 		ID:          lemmaRow.ID,
-		LexemeID:    fmt.Sprintf("%d", lemmaRow.LexemeID),
 		Surface:     lemmaRow.Surface,
 		Normalized:  lemmaRow.Normalized,
 		Variant:     lemmaRow.Variant,
@@ -586,7 +675,7 @@ func applyLemmaFilters(q *entdb.LemmaQuery, params *repository.ListWordsQuery) {
 	if params.Language == "" {
 		params.Language = entity.LanguageEnglish.CodeOrDefault()
 	}
-	q.Where(entlemma.HasLexemeWith(entlexeme.LanguageCodeEQ(params.Language)))
+	q.Where(entlemma.HasLexemesWith(entlexeme.LanguageCodeEQ(params.Language)))
 
 	if params.Keyword != "" {
 		keyword := strings.TrimSpace(params.Keyword)
@@ -608,7 +697,7 @@ func applyLemmaFilters(q *entdb.LemmaQuery, params *repository.ListWordsQuery) {
 			}
 		}
 		if len(categories) > 0 {
-			q.Where(entlemma.HasLexemeWith(func(s *sql.Selector) {
+			q.Where(entlemma.HasLexemesWith(func(s *sql.Selector) {
 				column := s.C(entlexeme.FieldCategories)
 				var preds []*sql.Predicate
 				for _, category := range categories {
@@ -630,10 +719,14 @@ type lemmaGroup struct {
 func groupLemmaRows(lemmas []*entdb.Lemma) map[string]*lemmaGroup {
 	groups := make(map[string]*lemmaGroup)
 	for _, lemma := range lemmas {
-		lexeme, err := lemma.Edges.LexemeOrErr()
-		if err != nil {
+		// With new schema: Lemma 1:N Lexeme
+		// Get the first lexeme to determine language
+		lexemes, err := lemma.Edges.LexemesOrErr()
+		if err != nil || len(lexemes) == 0 {
 			continue
 		}
+		// Use the first lexeme's language (all lexemes of a lemma should have the same language)
+		lexeme := lexemes[0]
 		key := lexeme.LanguageCode + ":" + lemma.Normalized
 		group := groups[key]
 		if group == nil {
@@ -669,15 +762,18 @@ func collectLexemeIDs(lemmas []*entdb.Lemma) []int64 {
 	seen := make(map[int64]struct{})
 	ids := make([]int64, 0, len(lemmas))
 	for _, lemma := range lemmas {
-		lexeme, err := lemma.Edges.LexemeOrErr()
+		// With new schema: Lemma 1:N Lexeme
+		lexemes, err := lemma.Edges.LexemesOrErr()
 		if err != nil {
 			continue
 		}
-		if _, ok := seen[lexeme.ID]; ok {
-			continue
+		for _, lexeme := range lexemes {
+			if _, ok := seen[lexeme.ID]; ok {
+				continue
+			}
+			seen[lexeme.ID] = struct{}{}
+			ids = append(ids, lexeme.ID)
 		}
-		seen[lexeme.ID] = struct{}{}
-		ids = append(ids, lexeme.ID)
 	}
 	return ids
 }
@@ -831,9 +927,51 @@ func normalizeLanguageCodes(filter *entity.WordStatsFilter) []string {
 	return codes
 }
 
+// UpdateFormPhonetics updates phonetics for a specific form type of a lemma.
+func (r *lemmaRepository) UpdateFormPhonetics(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, phonetics []entity.Phonetic) error {
+	if lemmaID == 0 {
+		return fmt.Errorf("lemma_id required")
+	}
+	if len(phonetics) == 0 {
+		return nil // Nothing to update
+	}
+
+	// Update the form
+	_, err := r.client.LexemeForm.Update().
+		Where(
+			entlexemeform.LemmaIDEQ(lemmaID),
+			entlexemeform.FormTypeEQ(string(formType)),
+		).
+		SetPhonetics(phonetics).
+		Save(ctx)
+
+	return translateDBError(err, "lexeme_form")
+}
+
+// UpdateFormSyllables updates syllables for a specific form type of a lemma.
+func (r *lemmaRepository) UpdateFormSyllables(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, syllables []string) error {
+	if lemmaID == 0 {
+		return fmt.Errorf("lemma_id required")
+	}
+	if len(syllables) == 0 {
+		return nil // Nothing to update
+	}
+
+	// Update the form
+	_, err := r.client.LexemeForm.Update().
+		Where(
+			entlexemeform.LemmaIDEQ(lemmaID),
+			entlexemeform.FormTypeEQ(string(formType)),
+		).
+		SetSyllables(syllables).
+		Save(ctx)
+
+	return translateDBError(err, "lexeme_form")
+}
+
 func (r *lemmaRepository) countForms(ctx context.Context, langCodes []string) (int, error) {
 	query := r.client.LexemeForm.Query().
-		Where(entlexemeform.HasLemmaWith(entlemma.HasLexemeWith(func(s *sql.Selector) {
+		Where(entlexemeform.HasLemmaWith(entlemma.HasLexemesWith(func(s *sql.Selector) {
 			if len(langCodes) == 0 {
 				return
 			}

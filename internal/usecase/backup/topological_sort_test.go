@@ -49,21 +49,27 @@ func TestTopologicalSort(t *testing.T) {
 	}
 
 	// Specific checks for known dependencies
-	lemmaPos, hasLemma := positions["lemma"]
+	lemmaPos, hasLemma := positions["lemmas"]
 	lexemesPos, hasLexemes := positions["lexemes"]
 	lexemeFormsPos, hasLexemeForms := positions["lexeme_forms"]
 
+	// Lemma must come before lexemes (lexemes has FK to lemmas)
 	if hasLemma && hasLexemes {
 		if lemmaPos >= lexemesPos {
-			t.Errorf("lemma (pos %d) should come before lexemes (pos %d)", lemmaPos, lexemesPos)
+			t.Errorf("lemmas (pos %d) should come before lexemes (pos %d)", lemmaPos, lexemesPos)
 		}
 	}
 
-	if hasLexemes && hasLexemeForms {
-		if lexemesPos >= lexemeFormsPos {
-			t.Errorf("lexemes (pos %d) should come before lexeme_forms (pos %d)", lexemesPos, lexemeFormsPos)
+	// Lemma must come before lexeme_forms (lexeme_forms has FK to lemmas)
+	if hasLemma && hasLexemeForms {
+		if lemmaPos >= lexemeFormsPos {
+			t.Errorf("lemmas (pos %d) should come before lexeme_forms (pos %d)", lemmaPos, lexemeFormsPos)
 		}
 	}
+
+	// Note: lexemes and lexeme_forms both only depend on lemmas, not on each other.
+	// Their relative order is determined by alphabetical sorting and is not critical
+	// for backup/restore operations as long as FK constraints are respected.
 
 	// Verify deterministic order: running again should give same result
 	tables2, err := svc.selectTables(nil)

@@ -208,7 +208,6 @@ DATABASE_URL=file:./data/vocnet.db go run . serve
 
 # PostgreSQL
 make db-up  # Start container
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/vocnet go run . db-init
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/vocnet go run . serve
 
 # Stop database
@@ -239,6 +238,85 @@ Configuration via environment variables (see `.env.example`):
 - `LOG_LEVEL`: Logging level (debug, info, warn, error)
 
 Load `.env` file automatically on startup.
+
+## Pipeline Data Management
+
+The semantic distillation pipeline requires three data sources: ConceptNet, ECDICT, and WordNet. The `pipeline` command provides tools to manage these data sources.
+
+### Pipeline Commands
+
+```bash
+# Process a single word through the pipeline
+go run . pipeline process <term> [--language en] [--tier 2]
+
+# Check pipeline status for a word
+go run . pipeline status <term> [--language en]
+
+# View word snapshot
+go run . pipeline snapshot <term> [--language en]
+
+# Check data source availability
+go run . pipeline data check
+
+# Download all missing data sources
+go run . pipeline data download
+
+# Download specific data source
+go run . pipeline data download conceptnet
+go run . pipeline data download ecdict
+go run . pipeline data download wordnet
+go run . pipeline data download moby
+
+# List data sources and their status
+go run . pipeline data list
+
+# Quick setup: download all data sources
+make pipeline-setup
+```
+
+### Data Source Configuration
+
+Configure the pipeline data directory in `.env`:
+
+```bash
+# Pipeline data directory (all data sources are stored under this directory)
+PIPELINE_DATA_DIR=./data
+
+# Auto-download missing sources (default: false)
+PIPELINE_AUTO_DOWNLOAD=false
+
+# Cache directory for downloads (default: system cache dir)
+# PIPELINE_CACHE_DIR=~/.cache/vocnet
+```
+
+Data sources are stored under subdirectories of `PIPELINE_DATA_DIR`:
+- `conceptnet/conceptnet-assertions-5.7.0.csv`
+- `ecdict/ecdict.db`
+- `wordnet/`
+- `moby/mhyph.txt`
+
+### Data Source Details
+
+- **ConceptNet**: Downloaded from `https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz` (~350MB compressed, ~1.5GB uncompressed)
+- **ECDICT**: Downloaded from `https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip`
+- **WordNet**: Downloaded from `https://wordnetcode.princeton.edu/wn3.1.dict.tar.gz`
+- **Moby**: Downloaded from `https://raw.githubusercontent.com/words/moby/master/words.txt` (Moby Hyphenation data for syllable parsing)
+
+Downloads are cached in `~/.cache/vocnet/` (or `$PIPELINE_CACHE_DIR`) to avoid re-downloading.
+
+### Auto-Download
+
+Enable auto-download to automatically fetch missing data sources:
+
+```bash
+# One-time for current command
+PIPELINE_AUTO_DOWNLOAD=true go run . pipeline process hello
+
+# Permanently in .env
+echo "PIPELINE_AUTO_DOWNLOAD=true" >> .env
+```
+
+When auto-download is disabled and data is missing, the pipeline will show helpful error messages with download instructions.
 
 ## Import Scripts
 

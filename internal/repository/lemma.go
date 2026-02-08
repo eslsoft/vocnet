@@ -21,6 +21,19 @@ type LemmaRepository interface {
 	// to a displayable lemma surface. Used for returning relations without exposing IDs.
 	ResolveLemmaSurfacesByLexemeExternalIDs(ctx context.Context, externalIDs []string, language entity.Language) (map[string]string, error)
 
-	// CreateMinimal creates a minimal lemma+form for a lexeme (used by pipeline)
-	CreateMinimal(ctx context.Context, lexemeID int64, surface string, language entity.Language) (*entity.Lemma, error)
+	// CreateMinimal creates a minimal lemma+form (used by pipeline)
+	// Returns the created lemma without any lexemes yet
+	CreateMinimal(ctx context.Context, surface string, language entity.Language) (*entity.Lemma, error)
+
+	// Update updates an existing lemma (used by pipeline to save WikidataQID, etc.)
+	Update(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error)
+
+	// CreateForms creates additional word forms (past, plural, etc.) for a lemma
+	CreateForms(ctx context.Context, lemmaID int64, forms []entity.LemmaForm) error
+
+	// UpdateFormPhonetics updates phonetics for a specific form type of a lemma
+	UpdateFormPhonetics(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, phonetics []entity.Phonetic) error
+
+	// UpdateFormSyllables updates syllables for a specific form type of a lemma
+	UpdateFormSyllables(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, syllables []string) error
 }

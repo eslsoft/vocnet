@@ -1,0 +1,109 @@
+package datasource
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+)
+
+const (
+	mobyURL      = "https://raw.githubusercontent.com/words/moby/master/words.txt"
+	mobyFilename = "mhyph.txt"
+)
+
+// MobySource manages the Moby Hyphenation data source
+type MobySource struct {
+	path     string
+	cacheDir string
+	logger   *slog.Logger
+}
+
+// NewMobySource creates a new Moby data source
+func NewMobySource(dataDir, cacheDir string, logger *slog.Logger) *MobySource {
+	return &MobySource{
+		path:     filepath.Join(dataDir, "moby", mobyFilename),
+		cacheDir: cacheDir,
+		logger:   logger,
+	}
+}
+
+func (m *MobySource) Name() string {
+	return "Moby"
+}
+
+func (m *MobySource) Path() string {
+	return m.path
+}
+
+func (m *MobySource) DownloadURL() string {
+	return mobyURL
+}
+
+func (m *MobySource) Exists() bool {
+	info, err := os.Stat(m.path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir() && info.Size() > 0
+}
+
+func (m *MobySource) Download(ctx context.Context) error {
+	// Create directory if needed
+	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	m.logger.Info("downloading Moby hyphenation data",
+		"url", mobyURL,
+		"target", m.path)
+
+	// Download file using existing helper
+	if err := downloadWithProgress(ctx, mobyURL, m.path, m.logger); err != nil {
+		return fmt.Errorf("download moby data: %w", err)
+	}
+
+	// Verify download
+	if err := m.Verify(); err != nil {
+		// Clean up failed download
+		_ = os.Remove(m.path)
+		return fmt.Errorf("verify download: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MobySource) Verify() error {
+	// Check file exists
+	info, err := os.Stat(m.path)
+	if err != nil {
+		return fmt.Errorf("moby data file not found: %w", err)
+	}
+
+	// Check it's not a directory
+	if info.IsDir() {
+		return fmt.Errorf("moby path is a directory, expected file: %s", m.path)
+	}
+
+	// Check file has content
+	if info.Size() == 0 {
+		return fmt.Errorf("moby data file is empty: %s", m.path)
+	}
+
+	// Basic content check - try to open and read first line
+	file, err := os.Open(m.path)
+	if err != nil {
+		return fmt.Errorf("cannot open moby file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	// Read first few bytes to verify it's a text file
+	buf := make([]byte, 100)
+	n, err := file.Read(buf)
+	if err != nil && n == 0 {
+		return fmt.Errorf("cannot read moby file: %w", err)
+	}
+
+	return nil
+}

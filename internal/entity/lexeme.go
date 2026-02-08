@@ -34,6 +34,7 @@ const (
 // Lexeme captures a semantic entry with its forms, senses, and metadata.
 type Lexeme struct {
 	ID           int64
+	LemmaID      int64  // Foreign key to Lemma
 	ExternalID   string // Wikidata Lexeme ID (e.g. "L123456")
 	Language     Language
 	PartOfSpeech string

@@ -7,7 +7,6 @@ import (
 // Lemma represents the canonical form of a word, along with its associated lexemes.
 type Lemma struct {
 	ID          int64
-	LexemeID    string
 	Surface     string
 	Normalized  string
 	Variant     string

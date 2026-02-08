@@ -31,6 +31,13 @@ type WikidataForm struct {
 	FormID         string
 	Representation string
 	Features       []string // grammatical features as QIDs
+	Phonetics      []WikidataPhonetic
+}
+
+// WikidataPhonetic represents pronunciation data from Wikidata.
+type WikidataPhonetic struct {
+	IPA     string
+	Dialect string // e.g., "US", "UK", "RP", etc.
 }
 
 // WikidataProvider fetches lexeme data from Wikidata.
