@@ -20,6 +20,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
+	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 )
 
@@ -33,7 +34,7 @@ type Server struct {
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler, reviewPlanSvc learningv1connect.ReviewPlanServiceHandler, statsSvc learningv1connect.StatsServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler, reviewPlanSvc learningv1connect.ReviewPlanServiceHandler, statsSvc learningv1connect.StatsServiceHandler, pipelineSvc pipelinev1connect.PipelineServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
@@ -62,6 +63,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 	mux.Handle(wordbookv1connect.NewWordbookServiceHandler(wordbookSvc, interceptors))
 	mux.Handle(learningv1connect.NewReviewPlanServiceHandler(reviewPlanSvc, interceptors))
 	mux.Handle(learningv1connect.NewStatsServiceHandler(statsSvc, interceptors))
+	mux.Handle(pipelinev1connect.NewPipelineServiceHandler(pipelineSvc, interceptors))
 
 	return &Server{
 		config: cfg,
@@ -145,9 +147,20 @@ func getPublicProcedures() []string {
 		"/dict.v1.DictService/ListWords",
 	}
 
+	// Pipeline read-only procedures (public)
+	pipelineProcedures := []string{
+		"/pipeline.v1.PipelineService/GetPipelineStatus",
+		"/pipeline.v1.PipelineService/GetWordSnapshot",
+		"/pipeline.v1.PipelineService/ListWordSnapshots",
+		"/pipeline.v1.PipelineService/GetEvidence",
+		"/pipeline.v1.PipelineService/GetJob",
+		"/pipeline.v1.PipelineService/ListJobs",
+		"/pipeline.v1.PipelineService/ListDataSources",
+	}
+
 	// Note: Some wordbook procedures may optionally support public access
 	// (e.g., GetWordbook can access public wordbooks)
 	// but the auth interceptor will still be called - GetUserIDOrZero handles this
 
-	return dictProcedures
+	return append(dictProcedures, pipelineProcedures...)
 }

@@ -76,6 +76,60 @@ func (r *wordSnapshotRepository) GetByTerm(ctx context.Context, term string, lan
 	return mapEntWordSnapshot(row), nil
 }
 
+func (r *wordSnapshotRepository) List(ctx context.Context, query *repository.ListSnapshotsQuery) ([]*entity.WordSnapshot, int, error) {
+	q := r.client.WordSnapshot.Query()
+
+	if query.Language != "" {
+		q = q.Where(entwordsnapshot.LanguageEQ(query.Language))
+	}
+	if query.MinQScore > 0 {
+		q = q.Where(entwordsnapshot.QscoreGTE(query.MinQScore))
+	}
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count snapshots: %w", err)
+	}
+
+	// Apply ordering
+	orderFunc := entwordsnapshot.ByQscore()
+	switch query.OrderBy {
+	case "synthesized_at":
+		orderFunc = entwordsnapshot.BySynthesizedAt()
+	case "term":
+		orderFunc = entwordsnapshot.ByTerm()
+	default:
+		orderFunc = entwordsnapshot.ByQscore()
+	}
+	if query.Desc {
+		q = q.Order(orderFunc, entwordsnapshot.ByID())
+	} else {
+		q = q.Order(orderFunc, entwordsnapshot.ByID())
+	}
+
+	// Apply pagination
+	pageSize := int(query.PageSize)
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	pageNo := int(query.PageNo)
+	if pageNo <= 0 {
+		pageNo = 1
+	}
+	q = q.Limit(pageSize).Offset((pageNo - 1) * pageSize)
+
+	rows, err := q.All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list snapshots: %w", err)
+	}
+
+	snapshots := make([]*entity.WordSnapshot, len(rows))
+	for i, row := range rows {
+		snapshots[i] = mapEntWordSnapshot(row)
+	}
+	return snapshots, total, nil
+}
+
 func (r *wordSnapshotRepository) getByID(ctx context.Context, id int64) (*entity.WordSnapshot, error) {
 	row, err := r.client.WordSnapshot.Get(ctx, id)
 	if err != nil {

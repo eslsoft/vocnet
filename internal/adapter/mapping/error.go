@@ -39,6 +39,13 @@ func ToPbError(err error) error {
 		return connect.NewError(connect.CodeAlreadyExists, err)
 	case errors.Is(err, entity.ErrBuiltinWordbookLocked):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
+	case errors.Is(err, entity.ErrPipelineJobNotFound),
+		errors.Is(err, entity.ErrSnapshotNotFound),
+		errors.Is(err, entity.ErrLemmaNotFound),
+		errors.Is(err, entity.ErrDataSourceNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, entity.ErrJobNotCancellable):
+		return connect.NewError(connect.CodeFailedPrecondition, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}

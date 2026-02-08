@@ -3,27 +3,30 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 
-	"github.com/eslsoft/vocnet/internal/adapter/repository"
-	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/infrastructure/config"
-	"github.com/eslsoft/vocnet/internal/infrastructure/database"
-	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
-	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
-	"github.com/eslsoft/vocnet/pkg/wordbook"
+	pipelinev1 "github.com/eslsoft/vocnet/pkg/api/pipeline/v1"
+	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 )
+
+var pipelineServerURL string
 
 var pipelineCmd = &cobra.Command{
 	Use:   "pipeline",
 	Short: "Vocabulary distillation pipeline operations",
+}
+
+func newPipelineClient() pipelinev1connect.PipelineServiceClient {
+	return pipelinev1connect.NewPipelineServiceClient(http.DefaultClient, pipelineServerURL)
 }
 
 // Source management commands
@@ -36,50 +39,38 @@ var sourceListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all data sources and their status",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
+		client := newPipelineClient()
+		ctx := context.Background()
 
-		logger, err := server.NewLogger(cfg)
+		resp, err := client.ListDataSources(ctx, connect.NewRequest(&pipelinev1.ListDataSourcesRequest{}))
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-		statuses, err := mgr.CheckAll()
-		if err != nil {
-			return fmt.Errorf("check data sources: %w", err)
+			return fmt.Errorf("list data sources: %w", err)
 		}
 
 		fmt.Println("Pipeline Data Sources:")
 		table := tablewriter.NewTable(os.Stdout)
 		table.Header("STATUS", "SOURCE", "PATH", "INFO")
-		for _, status := range statuses {
+		var missing []string
+		for _, s := range resp.Msg.GetSources() {
 			symbol := "✗"
 			info := "not found"
-			if status.Available {
+			if s.GetAvailable() {
 				symbol = "✓"
-				if status.Size > 0 {
-					info = fmt.Sprintf("%.1f MB", float64(status.Size)/(1024*1024))
+				if s.GetSizeBytes() > 0 {
+					info = fmt.Sprintf("%.1f MB", float64(s.GetSizeBytes())/(1024*1024))
 				} else {
 					info = "verified"
 				}
-			} else if status.Exists {
-				info = fmt.Sprintf("invalid: %s", status.ErrorMsg)
+			} else if s.GetErrorMessage() != "" {
+				info = fmt.Sprintf("invalid: %s", s.GetErrorMessage())
 			}
 
-			_ = table.Append([]string{symbol, status.Name, status.Path, info})
+			_ = table.Append([]string{symbol, s.GetName(), s.GetPath(), info})
+			if !s.GetAvailable() {
+				missing = append(missing, strings.ToLower(s.GetName()))
+			}
 		}
 		_ = table.Render()
-
-		// Check if any missing
-		var missing []string
-		for _, status := range statuses {
-			if !status.Available {
-				missing = append(missing, strings.ToLower(status.Name))
-			}
-		}
 
 		if len(missing) > 0 {
 			fmt.Printf("\nTo download missing sources, run:\n")
@@ -105,23 +96,14 @@ Examples:
   vocnet pipeline source download conceptnet # Download only ConceptNet
   vocnet pipeline source download ecdict wordnet # Download ECDICT and WordNet`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
+		client := newPipelineClient()
 		ctx := context.Background()
 
-		// If no sources specified, download all missing
 		if len(args) == 0 {
+			// Download all missing
 			fmt.Println("Checking and downloading missing data sources...")
-			if err := mgr.DownloadMissing(ctx); err != nil {
+			_, err := client.DownloadDataSource(ctx, connect.NewRequest(&pipelinev1.DownloadDataSourceRequest{}))
+			if err != nil {
 				return fmt.Errorf("download missing: %w", err)
 			}
 			fmt.Println("\nAll data sources are now available.")
@@ -131,7 +113,10 @@ Examples:
 		// Download specific sources
 		for _, source := range args {
 			fmt.Printf("Downloading %s...\n", source)
-			if err := mgr.DownloadSource(ctx, source); err != nil {
+			_, err := client.DownloadDataSource(ctx, connect.NewRequest(&pipelinev1.DownloadDataSourceRequest{
+				Name: source,
+			}))
+			if err != nil {
 				return fmt.Errorf("download %s: %w", source, err)
 			}
 		}
@@ -160,15 +145,14 @@ File formats:
 		wb, _ := cmd.Flags().GetString("wordbook")
 		name, _ := cmd.Flags().GetString("name")
 
-		deps, err := newPipelineDeps()
-		if err != nil {
-			return err
-		}
-		defer deps.cleanup()
-
+		client := newPipelineClient()
 		ctx := context.Background()
 
-		var job *entity.PipelineJob
+		req := &pipelinev1.SubmitJobRequest{
+			Language: language,
+			Tier:     tier,
+			Name:     name,
+		}
 
 		switch {
 		case file != "":
@@ -176,34 +160,24 @@ File formats:
 			if err != nil {
 				return fmt.Errorf("parse file: %w", err)
 			}
-			job, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
-			if err != nil {
-				return err
-			}
+			req.Terms = terms
 		case wb != "":
-			terms, wbName, err := resolveWordbook(wb)
-			if err != nil {
-				return err
-			}
-			if name == "" {
-				name = wbName
-			}
-			job, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
-			if err != nil {
-				return err
-			}
+			req.WordbookName = wb
 		case len(args) > 0:
-			job, err = deps.svc.SubmitWord(ctx, args[0], language, tier)
-			if err != nil {
-				return err
-			}
+			req.Term = args[0]
 		default:
 			return fmt.Errorf("provide a term, --file, or --wordbook")
 		}
 
+		resp, err := client.SubmitJob(ctx, connect.NewRequest(req))
+		if err != nil {
+			return err
+		}
+
+		job := resp.Msg
 		fmt.Printf("Job #%d created: %s \"%s\" (%d terms)\n",
-			job.ID, job.JobType, job.Name, job.TotalTerms)
-		fmt.Printf("Use \"vocnet pipeline job %d\" to check progress.\n", job.ID)
+			job.GetId(), job.GetJobType(), job.GetName(), job.GetTotalTerms())
+		fmt.Printf("Use \"vocnet pipeline job %d\" to check progress.\n", job.GetId())
 		return nil
 	},
 }
@@ -215,55 +189,41 @@ var jobsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		statusFlag, _ := cmd.Flags().GetString("status")
 
-		deps, err := newPipelineDeps()
-		if err != nil {
-			return err
-		}
-		defer deps.cleanup()
-
+		client := newPipelineClient()
 		ctx := context.Background()
 
-		var statusFilter *entity.JobStatus
-		if statusFlag != "" {
-			s := entity.JobStatus(strings.ToUpper(statusFlag))
-			statusFilter = &s
-		}
-
-		jobs, err := deps.svc.ListJobs(ctx, statusFilter)
+		resp, err := client.ListJobs(ctx, connect.NewRequest(&pipelinev1.ListJobsRequest{
+			Status: statusFlag,
+		}))
 		if err != nil {
 			return err
 		}
 
+		jobs := resp.Msg.GetJobs()
 		if len(jobs) == 0 {
 			fmt.Println("No jobs found.")
 			return nil
 		}
 
 		table := tablewriter.NewTable(os.Stdout)
-		table.Header("ID", "TYPE", "STATUS", "PROGRESS", "STAGES", "NAME", "CREATED")
+		table.Header("ID", "TYPE", "STATUS", "PROGRESS", "NAME", "CREATED")
 		for _, j := range jobs {
-			progress := fmt.Sprintf("%d/%d", j.Processed+j.Skipped+j.Failed, j.TotalTerms)
-			displayName := j.Name
+			progress := fmt.Sprintf("%d/%d", j.GetProcessed()+j.GetSkipped()+j.GetFailed(), j.GetTotalTerms())
+			displayName := j.GetName()
 			if len(displayName) > 30 {
 				displayName = displayName[:27] + "..."
 			}
-
-			stages := "-"
-			if j.JobType == entity.JobTypeSingleWord {
-				sp, err := deps.svc.GetJobStageProgress(ctx, j)
-				if err == nil && sp != nil {
-					stages = sp.String()
-				}
+			createdAt := ""
+			if j.GetCreatedAt() != nil {
+				createdAt = j.GetCreatedAt().AsTime().Format("2006-01-02 15:04")
 			}
-
 			_ = table.Append([]string{
-				strconv.FormatInt(j.ID, 10),
-				string(j.JobType),
-				string(j.Status),
+				strconv.FormatInt(j.GetId(), 10),
+				j.GetJobType(),
+				j.GetStatus(),
 				progress,
-				stages,
 				displayName,
-				j.CreatedAt.Format("2006-01-02 15:04"),
+				createdAt,
 			})
 		}
 		_ = table.Render()
@@ -282,132 +242,106 @@ var jobCmd = &cobra.Command{
 			return fmt.Errorf("invalid job ID: %w", err)
 		}
 
-		deps, err := newPipelineDeps()
-		if err != nil {
-			return err
-		}
-		defer deps.cleanup()
-
+		client := newPipelineClient()
 		ctx := context.Background()
 
-		detail, err := deps.svc.GetJobDetail(ctx, id)
+		resp, err := client.GetJob(ctx, connect.NewRequest(&pipelinev1.GetJobRequest{Id: id}))
 		if err != nil {
 			return fmt.Errorf("get job: %w", err)
 		}
 
-		j := detail.Job
-		fmt.Printf("Job #%d: %s\n", j.ID, j.Name)
-		fmt.Printf("Type:      %s\n", j.JobType)
-		fmt.Printf("Status:    %s\n", j.Status)
-		fmt.Printf("Language:  %s\n", j.Language)
-		fmt.Printf("Tier:      %d\n", j.Tier)
+		j := resp.Msg
+		fmt.Printf("Job #%d: %s\n", j.GetId(), j.GetName())
+		fmt.Printf("Type:      %s\n", j.GetJobType())
+		fmt.Printf("Status:    %s\n", j.GetStatus())
+		fmt.Printf("Language:  %s\n", j.GetLanguage())
+		fmt.Printf("Tier:      %d\n", j.GetTier())
 		fmt.Printf("Progress:  %d/%d processed, %d skipped, %d failed\n",
-			j.Processed, j.TotalTerms, j.Skipped, j.Failed)
-		fmt.Printf("Created:   %s\n", j.CreatedAt.Format("2006-01-02 15:04:05"))
-		if j.StartedAt != nil {
-			fmt.Printf("Started:   %s\n", j.StartedAt.Format("2006-01-02 15:04:05"))
+			j.GetProcessed(), j.GetTotalTerms(), j.GetSkipped(), j.GetFailed())
+		if j.GetCreatedAt() != nil {
+			fmt.Printf("Created:   %s\n", j.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"))
 		}
-		if j.CompletedAt != nil {
-			fmt.Printf("Completed: %s\n", j.CompletedAt.Format("2006-01-02 15:04:05"))
+		if j.GetStartedAt() != nil {
+			fmt.Printf("Started:   %s\n", j.GetStartedAt().AsTime().Format("2006-01-02 15:04:05"))
 		}
-		if j.StartedAt != nil && j.CompletedAt != nil {
-			duration := j.CompletedAt.Sub(*j.StartedAt)
+		if j.GetCompletedAt() != nil {
+			fmt.Printf("Completed: %s\n", j.GetCompletedAt().AsTime().Format("2006-01-02 15:04:05"))
+		}
+		if j.GetStartedAt() != nil && j.GetCompletedAt() != nil {
+			duration := j.GetCompletedAt().AsTime().Sub(j.GetStartedAt().AsTime())
 			fmt.Printf("Duration:  %s\n", duration.Truncate(100*time.Millisecond))
 		}
-		if j.ErrorMessage != "" {
-			fmt.Printf("Error:     %s\n", j.ErrorMessage)
+		if j.GetErrorMessage() != "" {
+			fmt.Printf("Error:     %s\n", j.GetErrorMessage())
 		}
 
-		// Show stage details for single-word jobs
-		if len(detail.Tasks) > 0 {
-			fmt.Println("\nStages:")
-			table := tablewriter.NewTable(os.Stdout)
-			table.Header("PHASE", "NAME", "STATUS", "DURATION")
-			for _, task := range detail.Tasks {
-				phase := entity.PipelinePhase(task.Phase)
-				dur := "-"
-				if task.StartedAt != nil && task.CompletedAt != nil {
-					dur = task.CompletedAt.Sub(*task.StartedAt).Truncate(100 * time.Millisecond).String()
-				}
-				_ = table.Append([]string{
-					strconv.Itoa(int(task.Phase)),
-					phase.Name(),
-					string(task.Status),
-					dur,
-				})
-				if task.ErrorMessage != "" {
-					_ = table.Append([]string{"", "", fmt.Sprintf("  error: %s", task.ErrorMessage), ""})
+		// Show stage details for single-word jobs via GetPipelineStatus
+		if j.GetJobType() == "SINGLE_WORD" {
+			// Extract term from the job name (format: "word: <term>")
+			term := strings.TrimPrefix(j.GetName(), "word: ")
+			if term != "" && term != j.GetName() {
+				statusResp, err := client.GetPipelineStatus(ctx, connect.NewRequest(&pipelinev1.GetPipelineStatusRequest{
+					Term:     term,
+					Language: j.GetLanguage(),
+				}))
+				if err == nil && len(statusResp.Msg.GetPhases()) > 0 {
+					fmt.Println("\nStages:")
+					stageTable := tablewriter.NewTable(os.Stdout)
+					stageTable.Header("PHASE", "NAME", "STATUS", "DURATION")
+					for _, phase := range statusResp.Msg.GetPhases() {
+						dur := "-"
+						if phase.GetStartedAt() != nil && phase.GetCompletedAt() != nil {
+							d := phase.GetCompletedAt().AsTime().Sub(phase.GetStartedAt().AsTime())
+							dur = d.Truncate(100 * time.Millisecond).String()
+						}
+						_ = stageTable.Append([]string{
+							strconv.Itoa(int(phase.GetPhase())),
+							phase.GetName(),
+							phase.GetStatus(),
+							dur,
+						})
+						if phase.GetErrorMessage() != "" {
+							_ = stageTable.Append([]string{"", "", fmt.Sprintf("  error: %s", phase.GetErrorMessage()), ""})
+						}
+					}
+					_ = stageTable.Render()
 				}
 			}
-			_ = table.Render()
 		}
 
 		return nil
 	},
 }
 
-// pipelineDeps bundles CLI dependencies for pipeline commands.
-type pipelineDeps struct {
-	svc     *pipeline.PipelineService
-	cleanup func()
-}
-
-// newPipelineDeps creates the common dependencies for pipeline CLI commands.
-func newPipelineDeps() (*pipelineDeps, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
-	}
-
-	logger, err := server.NewLogger(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("create logger: %w", err)
-	}
-
-	entClient, cleanup, err := database.NewEntClient(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("create ent client: %w", err)
-	}
-
-	jobRepo := repository.NewPipelineJobRepository(entClient)
-	taskRepo := repository.NewPipelineTaskRepository(entClient)
-	lemmaRepo := repository.NewLemmaRepository(entClient)
-	svc := pipeline.NewPipelineService(jobRepo, taskRepo, lemmaRepo, logger)
-
-	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
-}
-
-// resolveWordbook finds a builtin wordbook by name or ID and returns its terms.
-func resolveWordbook(nameOrID string) ([]string, string, error) {
-	builtins := wordbook.GetBuiltinWordbooks()
-
-	// Try by ID
-	if id, err := strconv.ParseInt(nameOrID, 10, 64); err == nil {
-		for _, wb := range builtins {
-			if wb.Id == id {
-				return wb.Terms, wb.Name, nil
-			}
+// cancelCmd cancels a pending or running pipeline job
+var cancelCmd = &cobra.Command{
+	Use:   "cancel <id>",
+	Short: "Cancel a pending or running pipeline job",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid job ID: %w", err)
 		}
-		return nil, "", fmt.Errorf("wordbook with ID %d not found", id)
-	}
 
-	// Try by name (case-insensitive)
-	for _, wb := range builtins {
-		if strings.EqualFold(wb.Name, nameOrID) {
-			return wb.Terms, wb.Name, nil
+		client := newPipelineClient()
+		ctx := context.Background()
+
+		resp, err := client.CancelJob(ctx, connect.NewRequest(&pipelinev1.CancelJobRequest{Id: id}))
+		if err != nil {
+			return err
 		}
-	}
 
-	// List available
-	var names []string
-	for _, wb := range builtins {
-		names = append(names, fmt.Sprintf("  %d: %s (%d terms)", wb.Id, wb.Name, len(wb.Terms)))
-	}
-	return nil, "", fmt.Errorf("wordbook %q not found. Available:\n%s", nameOrID, strings.Join(names, "\n"))
+		fmt.Printf("Job #%d cancelled (was: %s)\n", resp.Msg.GetId(), resp.Msg.GetStatus())
+		return nil
+	},
 }
 
 func init() {
 	rootCmd.AddCommand(pipelineCmd)
+
+	// Server URL flag on the pipeline command (inherited by subcommands)
+	pipelineCmd.PersistentFlags().StringVar(&pipelineServerURL, "server", "http://localhost:8080", "Pipeline API server URL")
 
 	// Source management commands
 	pipelineCmd.AddCommand(sourceCmd)
@@ -425,4 +359,5 @@ func init() {
 	jobsCmd.Flags().String("status", "", "Filter by status (PENDING, RUNNING, COMPLETED, FAILED)")
 
 	pipelineCmd.AddCommand(jobCmd)
+	pipelineCmd.AddCommand(cancelCmd)
 }

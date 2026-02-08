@@ -16,6 +16,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
+	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 	"github.com/google/wire"
 )
@@ -59,15 +60,19 @@ func Initialize() (*Container, func(), error) {
 	reviewPlanServiceServer := connectrpc.NewReviewPlanServiceServer(reviewPlanUsecase)
 	statsUsecase := usecase.NewStatsUsecase(learnedWordRepository, dailyStatsRepository)
 	statsServiceServer := connectrpc.NewStatsServiceServer(statsUsecase)
-	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer, statsServiceServer)
+	pipelineJobRepository := repository.NewPipelineJobRepository(client)
+	pipelineTaskRepository := repository.NewPipelineTaskRepository(client)
+	wordSnapshotRepository := repository.NewWordSnapshotRepository(client)
+	evidenceRepository := repository.NewEvidenceRepository(client)
+	manager := provideDataSourceManager(configConfig, logger)
+	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineTaskRepository, wordSnapshotRepository, evidenceRepository, lemmaRepository, manager, logger)
+	pipelineServiceServer := connectrpc.NewPipelineServiceServer(pipelineService)
+	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer, statsServiceServer, pipelineServiceServer)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	pipelineJobRepository := repository.NewPipelineJobRepository(client)
-	pipelineTaskRepository := repository.NewPipelineTaskRepository(client)
-	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineTaskRepository, lemmaRepository, logger)
 	container := &Container{
 		Logger:          logger,
 		Config:          configConfig,
@@ -92,10 +97,14 @@ var authSet = wire.NewSet(
 	provideJWTValidator,
 )
 
+var infrastructureSet = wire.NewSet(
+	provideDataSourceManager,
+)
+
 var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineTaskRepository, repository.NewSemanticRelationRepository, repository.NewWordSnapshotRepository, repository.NewPipelineJobRepository)
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase, pipeline.NewPipelineService)
 
-var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, connectrpc.NewReviewPlanServiceServer, connectrpc.NewStatsServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)), wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*connectrpc.ReviewPlanServiceServer)), wire.Bind(new(learningv1connect.StatsServiceHandler), new(*connectrpc.StatsServiceServer)))
+var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, connectrpc.NewReviewPlanServiceServer, connectrpc.NewStatsServiceServer, connectrpc.NewPipelineServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)), wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*connectrpc.ReviewPlanServiceServer)), wire.Bind(new(learningv1connect.StatsServiceHandler), new(*connectrpc.StatsServiceServer)), wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*connectrpc.PipelineServiceServer)))
 
 var serverSet = wire.NewSet(server.NewLogger, server.NewServer)

@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
+	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 )
 
 // provideJWTValidator creates a JWT validator from configuration
@@ -33,4 +35,9 @@ func provideJWTValidator(cfg *config.Config) (*auth.JWTValidator, func(), error)
 	}
 
 	return validator, cleanup, nil
+}
+
+// provideDataSourceManager creates a data source manager for the pipeline.
+func provideDataSourceManager(cfg *config.Config, logger *slog.Logger) *datasource.Manager {
+	return datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
 }

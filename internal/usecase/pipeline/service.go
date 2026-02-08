@@ -8,31 +8,45 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo  repository.PipelineJobRepository
-	taskRepo repository.PipelineTaskRepository
-	lemmaRepo repository.LemmaRepository
-	logger   *slog.Logger
+	jobRepo      repository.PipelineJobRepository
+	taskRepo     repository.PipelineTaskRepository
+	snapshotRepo repository.WordSnapshotRepository
+	evidenceRepo repository.EvidenceRepository
+	lemmaRepo    repository.LemmaRepository
+	dsMgr        *datasource.Manager
+	logger       *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
 func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
 	taskRepo repository.PipelineTaskRepository,
+	snapshotRepo repository.WordSnapshotRepository,
+	evidenceRepo repository.EvidenceRepository,
 	lemmaRepo repository.LemmaRepository,
+	dsMgr *datasource.Manager,
 	logger *slog.Logger,
 ) *PipelineService {
 	return &PipelineService{
-		jobRepo:   jobRepo,
-		taskRepo:  taskRepo,
-		lemmaRepo: lemmaRepo,
-		logger:    logger,
+		jobRepo:      jobRepo,
+		taskRepo:     taskRepo,
+		snapshotRepo: snapshotRepo,
+		evidenceRepo: evidenceRepo,
+		lemmaRepo:    lemmaRepo,
+		dsMgr:        dsMgr,
+		logger:       logger,
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Job management
+// ---------------------------------------------------------------------------
 
 // SubmitWord creates a single-word pipeline job.
 func (s *PipelineService) SubmitWord(ctx context.Context, term, language string, tier int32) (*entity.PipelineJob, error) {
@@ -99,9 +113,141 @@ func (s *PipelineService) GetJob(ctx context.Context, id int64) (*entity.Pipelin
 }
 
 // ListJobs returns pipeline jobs, optionally filtered by status.
-func (s *PipelineService) ListJobs(ctx context.Context, status *entity.JobStatus) ([]*entity.PipelineJob, error) {
-	return s.jobRepo.List(ctx, status, 50)
+func (s *PipelineService) ListJobs(ctx context.Context, status *entity.JobStatus, limit int) ([]*entity.PipelineJob, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	return s.jobRepo.List(ctx, status, limit)
 }
+
+// CancelJob cancels a pending or running pipeline job.
+func (s *PipelineService) CancelJob(ctx context.Context, id int64) (*entity.PipelineJob, error) {
+	job, err := s.jobRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if job.Status != entity.JobStatusPending && job.Status != entity.JobStatusRunning {
+		return nil, entity.ErrJobNotCancellable
+	}
+
+	if err := s.jobRepo.UpdateStatus(ctx, id, entity.JobStatusCancelled, "cancelled by user"); err != nil {
+		return nil, err
+	}
+
+	return s.jobRepo.GetByID(ctx, id)
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline status & results
+// ---------------------------------------------------------------------------
+
+// GetPipelineStatus returns the task statuses for a word's pipeline.
+func (s *PipelineService) GetPipelineStatus(ctx context.Context, term, language string) (*entity.Lemma, []*entity.PipelineTask, error) {
+	if language == "" {
+		language = "en"
+	}
+
+	lemma, err := s.lemmaRepo.LookupByForm(ctx, term, entity.Language(language))
+	if err != nil {
+		return nil, nil, entity.ErrLemmaNotFound
+	}
+
+	tasks, err := s.taskRepo.ListByLemma(ctx, lemma.ID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list tasks: %w", err)
+	}
+
+	return lemma, tasks, nil
+}
+
+// GetWordSnapshot returns the materialized snapshot for a word.
+func (s *PipelineService) GetWordSnapshot(ctx context.Context, term, language string) (*entity.WordSnapshot, error) {
+	if language == "" {
+		language = "en"
+	}
+
+	snapshot, err := s.snapshotRepo.GetByTerm(ctx, term, language)
+	if err != nil {
+		return nil, entity.ErrSnapshotNotFound
+	}
+	return snapshot, nil
+}
+
+// ListWordSnapshots returns a paginated list of snapshots.
+func (s *PipelineService) ListWordSnapshots(ctx context.Context, query *repository.ListSnapshotsQuery) ([]*entity.WordSnapshot, int, error) {
+	return s.snapshotRepo.List(ctx, query)
+}
+
+// GetEvidence returns raw evidence for a word, optionally filtered by phase and provider.
+func (s *PipelineService) GetEvidence(ctx context.Context, term, language string, phase int32, provider string) ([]*entity.RawEvidence, error) {
+	if language == "" {
+		language = "en"
+	}
+
+	lemma, err := s.lemmaRepo.LookupByForm(ctx, term, entity.Language(language))
+	if err != nil {
+		return nil, entity.ErrLemmaNotFound
+	}
+
+	var evidences []*entity.RawEvidence
+	if phase > 0 {
+		evidences, err = s.evidenceRepo.FindByLemmaAndPhase(ctx, lemma.ID, phase)
+	} else {
+		evidences, err = s.evidenceRepo.FindByLemma(ctx, lemma.ID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find evidence: %w", err)
+	}
+
+	// Filter by provider if specified
+	if provider != "" {
+		filtered := make([]*entity.RawEvidence, 0, len(evidences))
+		for _, e := range evidences {
+			if e.Provider == provider {
+				filtered = append(filtered, e)
+			}
+		}
+		evidences = filtered
+	}
+
+	return evidences, nil
+}
+
+// ---------------------------------------------------------------------------
+// Data source management
+// ---------------------------------------------------------------------------
+
+// ListDataSources returns the status of all pipeline data sources.
+func (s *PipelineService) ListDataSources(ctx context.Context) ([]datasource.Status, error) {
+	if s.dsMgr == nil {
+		return nil, fmt.Errorf("data source manager not configured")
+	}
+	return s.dsMgr.CheckAll()
+}
+
+// DownloadDataSource downloads a specific or all missing data sources.
+func (s *PipelineService) DownloadDataSource(ctx context.Context, name string) ([]datasource.Status, error) {
+	if s.dsMgr == nil {
+		return nil, fmt.Errorf("data source manager not configured")
+	}
+
+	if name == "" {
+		if err := s.dsMgr.DownloadMissing(ctx); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.dsMgr.DownloadSource(ctx, name); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.dsMgr.CheckAll()
+}
+
+// ---------------------------------------------------------------------------
+// Job detail & stage progress
+// ---------------------------------------------------------------------------
 
 // GetJobStageProgress computes stage progress for a single-word job.
 // Returns nil for wordbook jobs (too expensive for list view).

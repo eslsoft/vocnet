@@ -1342,6 +1342,679 @@ func (x *Evidence) GetFetchedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// SubmitJobRequest creates an async pipeline job.
+type SubmitJobRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Exactly one of term, terms, or wordbook_name must be set.
+	Term          string   `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`                                     // Single word submission
+	Terms         []string `protobuf:"bytes,2,rep,name=terms,proto3" json:"terms,omitempty"`                                   // Batch term submission
+	WordbookName  string   `protobuf:"bytes,3,opt,name=wordbook_name,json=wordbookName,proto3" json:"wordbook_name,omitempty"` // Built-in wordbook name or ID
+	Language      string   `protobuf:"bytes,4,opt,name=language,proto3" json:"language,omitempty"`                             // Language code (default "en")
+	Tier          int32    `protobuf:"varint,5,opt,name=tier,proto3" json:"tier,omitempty"`                                    // Priority tier (default 2)
+	Name          string   `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`                                     // Optional custom job name
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitJobRequest) Reset() {
+	*x = SubmitJobRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitJobRequest) ProtoMessage() {}
+
+func (x *SubmitJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitJobRequest.ProtoReflect.Descriptor instead.
+func (*SubmitJobRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *SubmitJobRequest) GetTerm() string {
+	if x != nil {
+		return x.Term
+	}
+	return ""
+}
+
+func (x *SubmitJobRequest) GetTerms() []string {
+	if x != nil {
+		return x.Terms
+	}
+	return nil
+}
+
+func (x *SubmitJobRequest) GetWordbookName() string {
+	if x != nil {
+		return x.WordbookName
+	}
+	return ""
+}
+
+func (x *SubmitJobRequest) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *SubmitJobRequest) GetTier() int32 {
+	if x != nil {
+		return x.Tier
+	}
+	return 0
+}
+
+func (x *SubmitJobRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// PipelineJob represents an async pipeline processing job.
+type PipelineJob struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	JobType  string                 `protobuf:"bytes,2,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"` // SINGLE_WORD, WORDBOOK
+	Status   string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                  // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+	Name     string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	Language string                 `protobuf:"bytes,5,opt,name=language,proto3" json:"language,omitempty"`
+	Tier     int32                  `protobuf:"varint,6,opt,name=tier,proto3" json:"tier,omitempty"`
+	// Progress tracking
+	TotalTerms    int32                  `protobuf:"varint,7,opt,name=total_terms,json=totalTerms,proto3" json:"total_terms,omitempty"`
+	Processed     int32                  `protobuf:"varint,8,opt,name=processed,proto3" json:"processed,omitempty"`
+	Skipped       int32                  `protobuf:"varint,9,opt,name=skipped,proto3" json:"skipped,omitempty"`
+	Failed        int32                  `protobuf:"varint,10,opt,name=failed,proto3" json:"failed,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,11,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PipelineJob) Reset() {
+	*x = PipelineJob{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PipelineJob) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PipelineJob) ProtoMessage() {}
+
+func (x *PipelineJob) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PipelineJob.ProtoReflect.Descriptor instead.
+func (*PipelineJob) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *PipelineJob) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetJobType() string {
+	if x != nil {
+		return x.JobType
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetTier() int32 {
+	if x != nil {
+		return x.Tier
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetTotalTerms() int32 {
+	if x != nil {
+		return x.TotalTerms
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetProcessed() int32 {
+	if x != nil {
+		return x.Processed
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetSkipped() int32 {
+	if x != nil {
+		return x.Skipped
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetFailed() int32 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *PipelineJob) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+func (x *PipelineJob) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// GetJobRequest requests details of a specific job.
+type GetJobRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetJobRequest) Reset() {
+	*x = GetJobRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetJobRequest) ProtoMessage() {}
+
+func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
+func (*GetJobRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *GetJobRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+// ListJobsRequest requests a filtered list of pipeline jobs.
+type ListJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"` // Filter by status (empty = all)
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`  // Max results (default 50)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsRequest) Reset() {
+	*x = ListJobsRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsRequest) ProtoMessage() {}
+
+func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
+func (*ListJobsRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ListJobsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListJobsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// ListJobsResponse contains a list of pipeline jobs.
+type ListJobsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*PipelineJob         `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsResponse) Reset() {
+	*x = ListJobsResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsResponse) ProtoMessage() {}
+
+func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
+func (*ListJobsResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListJobsResponse) GetJobs() []*PipelineJob {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+// CancelJobRequest cancels a pipeline job.
+type CancelJobRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelJobRequest) Reset() {
+	*x = CancelJobRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelJobRequest) ProtoMessage() {}
+
+func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelJobRequest.ProtoReflect.Descriptor instead.
+func (*CancelJobRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *CancelJobRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+// ListDataSourcesRequest requests status of all data sources.
+type ListDataSourcesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDataSourcesRequest) Reset() {
+	*x = ListDataSourcesRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDataSourcesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDataSourcesRequest) ProtoMessage() {}
+
+func (x *ListDataSourcesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDataSourcesRequest.ProtoReflect.Descriptor instead.
+func (*ListDataSourcesRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{25}
+}
+
+// ListDataSourcesResponse contains data source statuses.
+type ListDataSourcesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sources       []*DataSourceStatus    `protobuf:"bytes,1,rep,name=sources,proto3" json:"sources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDataSourcesResponse) Reset() {
+	*x = ListDataSourcesResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDataSourcesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDataSourcesResponse) ProtoMessage() {}
+
+func (x *ListDataSourcesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDataSourcesResponse.ProtoReflect.Descriptor instead.
+func (*ListDataSourcesResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *ListDataSourcesResponse) GetSources() []*DataSourceStatus {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+// DataSourceStatus represents the status of a pipeline data source.
+type DataSourceStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Available     bool                   `protobuf:"varint,3,opt,name=available,proto3" json:"available,omitempty"`
+	SizeBytes     int64                  `protobuf:"varint,4,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DataSourceStatus) Reset() {
+	*x = DataSourceStatus{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataSourceStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataSourceStatus) ProtoMessage() {}
+
+func (x *DataSourceStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataSourceStatus.ProtoReflect.Descriptor instead.
+func (*DataSourceStatus) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DataSourceStatus) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DataSourceStatus) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DataSourceStatus) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *DataSourceStatus) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *DataSourceStatus) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+// DownloadDataSourceRequest requests download of a specific data source.
+type DownloadDataSourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // Source name: conceptnet, ecdict, wordnet, moby (empty = all missing)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadDataSourceRequest) Reset() {
+	*x = DownloadDataSourceRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadDataSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadDataSourceRequest) ProtoMessage() {}
+
+func (x *DownloadDataSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadDataSourceRequest.ProtoReflect.Descriptor instead.
+func (*DownloadDataSourceRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *DownloadDataSourceRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// DownloadDataSourceResponse confirms download completion.
+type DownloadDataSourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sources       []*DataSourceStatus    `protobuf:"bytes,1,rep,name=sources,proto3" json:"sources,omitempty"` // Updated statuses after download
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadDataSourceResponse) Reset() {
+	*x = DownloadDataSourceResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadDataSourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadDataSourceResponse) ProtoMessage() {}
+
+func (x *DownloadDataSourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadDataSourceResponse.ProtoReflect.Descriptor instead.
+func (*DownloadDataSourceResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *DownloadDataSourceResponse) GetSources() []*DataSourceStatus {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
 var File_pipeline_v1_pipeline_service_proto protoreflect.FileDescriptor
 
 const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
@@ -1446,7 +2119,56 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"\acontent\x18\x04 \x01(\v2\x17.google.protobuf.StructR\acontent\x12%\n" +
 	"\x0eschema_version\x18\x05 \x01(\tR\rschemaVersion\x129\n" +
 	"\n" +
-	"fetched_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tfetchedAt2\x98\x04\n" +
+	"fetched_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tfetchedAt\"\xa5\x01\n" +
+	"\x10SubmitJobRequest\x12\x12\n" +
+	"\x04term\x18\x01 \x01(\tR\x04term\x12\x14\n" +
+	"\x05terms\x18\x02 \x03(\tR\x05terms\x12#\n" +
+	"\rwordbook_name\x18\x03 \x01(\tR\fwordbookName\x12\x1a\n" +
+	"\blanguage\x18\x04 \x01(\tR\blanguage\x12\x12\n" +
+	"\x04tier\x18\x05 \x01(\x05R\x04tier\x12\x12\n" +
+	"\x04name\x18\x06 \x01(\tR\x04name\"\xdf\x03\n" +
+	"\vPipelineJob\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
+	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12\x1a\n" +
+	"\blanguage\x18\x05 \x01(\tR\blanguage\x12\x12\n" +
+	"\x04tier\x18\x06 \x01(\x05R\x04tier\x12\x1f\n" +
+	"\vtotal_terms\x18\a \x01(\x05R\n" +
+	"totalTerms\x12\x1c\n" +
+	"\tprocessed\x18\b \x01(\x05R\tprocessed\x12\x18\n" +
+	"\askipped\x18\t \x01(\x05R\askipped\x12\x16\n" +
+	"\x06failed\x18\n" +
+	" \x01(\x05R\x06failed\x12#\n" +
+	"\rerror_message\x18\v \x01(\tR\ferrorMessage\x129\n" +
+	"\n" +
+	"started_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
+	"\fcompleted_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x129\n" +
+	"\n" +
+	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x1f\n" +
+	"\rGetJobRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\"?\n" +
+	"\x0fListJobsRequest\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"@\n" +
+	"\x10ListJobsResponse\x12,\n" +
+	"\x04jobs\x18\x01 \x03(\v2\x18.pipeline.v1.PipelineJobR\x04jobs\"\"\n" +
+	"\x10CancelJobRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\"\x18\n" +
+	"\x16ListDataSourcesRequest\"R\n" +
+	"\x17ListDataSourcesResponse\x127\n" +
+	"\asources\x18\x01 \x03(\v2\x1d.pipeline.v1.DataSourceStatusR\asources\"\x9c\x01\n" +
+	"\x10DataSourceStatus\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1c\n" +
+	"\tavailable\x18\x03 \x01(\bR\tavailable\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x04 \x01(\x03R\tsizeBytes\x12#\n" +
+	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage\"/\n" +
+	"\x19DownloadDataSourceRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"U\n" +
+	"\x1aDownloadDataSourceResponse\x127\n" +
+	"\asources\x18\x01 \x03(\v2\x1d.pipeline.v1.DataSourceStatusR\asources2\xf2\a\n" +
 	"\x0fPipelineService\x12P\n" +
 	"\vProcessWord\x12\x1f.pipeline.v1.ProcessWordRequest\x1a .pipeline.v1.ProcessWordResponse\x12W\n" +
 	"\x11GetPipelineStatus\x12%.pipeline.v1.GetPipelineStatusRequest\x1a\x1b.pipeline.v1.PipelineStatus\x12I\n" +
@@ -1454,7 +2176,13 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"RetryPhase\x12\x1e.pipeline.v1.RetryPhaseRequest\x1a\x1b.pipeline.v1.PipelineStatus\x12Y\n" +
 	"\x0fGetWordSnapshot\x12#.pipeline.v1.GetWordSnapshotRequest\x1a!.pipeline.v1.WordSnapshotResponse\x12b\n" +
 	"\x11ListWordSnapshots\x12%.pipeline.v1.ListWordSnapshotsRequest\x1a&.pipeline.v1.ListWordSnapshotsResponse\x12P\n" +
-	"\vGetEvidence\x12\x1f.pipeline.v1.GetEvidenceRequest\x1a .pipeline.v1.GetEvidenceResponseB\xae\x01\n" +
+	"\vGetEvidence\x12\x1f.pipeline.v1.GetEvidenceRequest\x1a .pipeline.v1.GetEvidenceResponse\x12D\n" +
+	"\tSubmitJob\x12\x1d.pipeline.v1.SubmitJobRequest\x1a\x18.pipeline.v1.PipelineJob\x12>\n" +
+	"\x06GetJob\x12\x1a.pipeline.v1.GetJobRequest\x1a\x18.pipeline.v1.PipelineJob\x12G\n" +
+	"\bListJobs\x12\x1c.pipeline.v1.ListJobsRequest\x1a\x1d.pipeline.v1.ListJobsResponse\x12D\n" +
+	"\tCancelJob\x12\x1d.pipeline.v1.CancelJobRequest\x1a\x18.pipeline.v1.PipelineJob\x12\\\n" +
+	"\x0fListDataSources\x12#.pipeline.v1.ListDataSourcesRequest\x1a$.pipeline.v1.ListDataSourcesResponse\x12e\n" +
+	"\x12DownloadDataSource\x12&.pipeline.v1.DownloadDataSourceRequest\x1a'.pipeline.v1.DownloadDataSourceResponseB\xae\x01\n" +
 	"\x0fcom.pipeline.v1B\x14PipelineServiceProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1\xa2\x02\x03PXX\xaa\x02\vPipeline.V1\xca\x02\vPipeline\\V1\xe2\x02\x17Pipeline\\V1\\GPBMetadata\xea\x02\fPipeline::V1b\x06proto3"
 
 var (
@@ -1469,64 +2197,93 @@ func file_pipeline_v1_pipeline_service_proto_rawDescGZIP() []byte {
 	return file_pipeline_v1_pipeline_service_proto_rawDescData
 }
 
-var file_pipeline_v1_pipeline_service_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_pipeline_v1_pipeline_service_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_pipeline_v1_pipeline_service_proto_goTypes = []any{
-	(*ProcessWordRequest)(nil),        // 0: pipeline.v1.ProcessWordRequest
-	(*ProcessWordResponse)(nil),       // 1: pipeline.v1.ProcessWordResponse
-	(*GetPipelineStatusRequest)(nil),  // 2: pipeline.v1.GetPipelineStatusRequest
-	(*PipelineStatus)(nil),            // 3: pipeline.v1.PipelineStatus
-	(*PhaseStatus)(nil),               // 4: pipeline.v1.PhaseStatus
-	(*RetryPhaseRequest)(nil),         // 5: pipeline.v1.RetryPhaseRequest
-	(*GetWordSnapshotRequest)(nil),    // 6: pipeline.v1.GetWordSnapshotRequest
-	(*WordSnapshotResponse)(nil),      // 7: pipeline.v1.WordSnapshotResponse
-	(*SnapshotLexeme)(nil),            // 8: pipeline.v1.SnapshotLexeme
-	(*SnapshotSense)(nil),             // 9: pipeline.v1.SnapshotSense
-	(*SnapshotForm)(nil),              // 10: pipeline.v1.SnapshotForm
-	(*Phonetic)(nil),                  // 11: pipeline.v1.Phonetic
-	(*SnapshotRelation)(nil),          // 12: pipeline.v1.SnapshotRelation
-	(*QualityScore)(nil),              // 13: pipeline.v1.QualityScore
-	(*ListWordSnapshotsRequest)(nil),  // 14: pipeline.v1.ListWordSnapshotsRequest
-	(*ListWordSnapshotsResponse)(nil), // 15: pipeline.v1.ListWordSnapshotsResponse
-	(*GetEvidenceRequest)(nil),        // 16: pipeline.v1.GetEvidenceRequest
-	(*GetEvidenceResponse)(nil),       // 17: pipeline.v1.GetEvidenceResponse
-	(*Evidence)(nil),                  // 18: pipeline.v1.Evidence
-	(*timestamppb.Timestamp)(nil),     // 19: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),           // 20: google.protobuf.Struct
+	(*ProcessWordRequest)(nil),         // 0: pipeline.v1.ProcessWordRequest
+	(*ProcessWordResponse)(nil),        // 1: pipeline.v1.ProcessWordResponse
+	(*GetPipelineStatusRequest)(nil),   // 2: pipeline.v1.GetPipelineStatusRequest
+	(*PipelineStatus)(nil),             // 3: pipeline.v1.PipelineStatus
+	(*PhaseStatus)(nil),                // 4: pipeline.v1.PhaseStatus
+	(*RetryPhaseRequest)(nil),          // 5: pipeline.v1.RetryPhaseRequest
+	(*GetWordSnapshotRequest)(nil),     // 6: pipeline.v1.GetWordSnapshotRequest
+	(*WordSnapshotResponse)(nil),       // 7: pipeline.v1.WordSnapshotResponse
+	(*SnapshotLexeme)(nil),             // 8: pipeline.v1.SnapshotLexeme
+	(*SnapshotSense)(nil),              // 9: pipeline.v1.SnapshotSense
+	(*SnapshotForm)(nil),               // 10: pipeline.v1.SnapshotForm
+	(*Phonetic)(nil),                   // 11: pipeline.v1.Phonetic
+	(*SnapshotRelation)(nil),           // 12: pipeline.v1.SnapshotRelation
+	(*QualityScore)(nil),               // 13: pipeline.v1.QualityScore
+	(*ListWordSnapshotsRequest)(nil),   // 14: pipeline.v1.ListWordSnapshotsRequest
+	(*ListWordSnapshotsResponse)(nil),  // 15: pipeline.v1.ListWordSnapshotsResponse
+	(*GetEvidenceRequest)(nil),         // 16: pipeline.v1.GetEvidenceRequest
+	(*GetEvidenceResponse)(nil),        // 17: pipeline.v1.GetEvidenceResponse
+	(*Evidence)(nil),                   // 18: pipeline.v1.Evidence
+	(*SubmitJobRequest)(nil),           // 19: pipeline.v1.SubmitJobRequest
+	(*PipelineJob)(nil),                // 20: pipeline.v1.PipelineJob
+	(*GetJobRequest)(nil),              // 21: pipeline.v1.GetJobRequest
+	(*ListJobsRequest)(nil),            // 22: pipeline.v1.ListJobsRequest
+	(*ListJobsResponse)(nil),           // 23: pipeline.v1.ListJobsResponse
+	(*CancelJobRequest)(nil),           // 24: pipeline.v1.CancelJobRequest
+	(*ListDataSourcesRequest)(nil),     // 25: pipeline.v1.ListDataSourcesRequest
+	(*ListDataSourcesResponse)(nil),    // 26: pipeline.v1.ListDataSourcesResponse
+	(*DataSourceStatus)(nil),           // 27: pipeline.v1.DataSourceStatus
+	(*DownloadDataSourceRequest)(nil),  // 28: pipeline.v1.DownloadDataSourceRequest
+	(*DownloadDataSourceResponse)(nil), // 29: pipeline.v1.DownloadDataSourceResponse
+	(*timestamppb.Timestamp)(nil),      // 30: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),            // 31: google.protobuf.Struct
 }
 var file_pipeline_v1_pipeline_service_proto_depIdxs = []int32{
 	3,  // 0: pipeline.v1.ProcessWordResponse.status:type_name -> pipeline.v1.PipelineStatus
 	7,  // 1: pipeline.v1.ProcessWordResponse.snapshot:type_name -> pipeline.v1.WordSnapshotResponse
 	4,  // 2: pipeline.v1.PipelineStatus.phases:type_name -> pipeline.v1.PhaseStatus
-	19, // 3: pipeline.v1.PhaseStatus.started_at:type_name -> google.protobuf.Timestamp
-	19, // 4: pipeline.v1.PhaseStatus.completed_at:type_name -> google.protobuf.Timestamp
+	30, // 3: pipeline.v1.PhaseStatus.started_at:type_name -> google.protobuf.Timestamp
+	30, // 4: pipeline.v1.PhaseStatus.completed_at:type_name -> google.protobuf.Timestamp
 	8,  // 5: pipeline.v1.WordSnapshotResponse.lexemes:type_name -> pipeline.v1.SnapshotLexeme
 	12, // 6: pipeline.v1.WordSnapshotResponse.relations:type_name -> pipeline.v1.SnapshotRelation
 	13, // 7: pipeline.v1.WordSnapshotResponse.qscore:type_name -> pipeline.v1.QualityScore
-	19, // 8: pipeline.v1.WordSnapshotResponse.synthesized_at:type_name -> google.protobuf.Timestamp
+	30, // 8: pipeline.v1.WordSnapshotResponse.synthesized_at:type_name -> google.protobuf.Timestamp
 	9,  // 9: pipeline.v1.SnapshotLexeme.senses:type_name -> pipeline.v1.SnapshotSense
 	10, // 10: pipeline.v1.SnapshotLexeme.forms:type_name -> pipeline.v1.SnapshotForm
 	11, // 11: pipeline.v1.SnapshotLexeme.phonetics:type_name -> pipeline.v1.Phonetic
 	7,  // 12: pipeline.v1.ListWordSnapshotsResponse.snapshots:type_name -> pipeline.v1.WordSnapshotResponse
 	18, // 13: pipeline.v1.GetEvidenceResponse.evidences:type_name -> pipeline.v1.Evidence
-	20, // 14: pipeline.v1.Evidence.content:type_name -> google.protobuf.Struct
-	19, // 15: pipeline.v1.Evidence.fetched_at:type_name -> google.protobuf.Timestamp
-	0,  // 16: pipeline.v1.PipelineService.ProcessWord:input_type -> pipeline.v1.ProcessWordRequest
-	2,  // 17: pipeline.v1.PipelineService.GetPipelineStatus:input_type -> pipeline.v1.GetPipelineStatusRequest
-	5,  // 18: pipeline.v1.PipelineService.RetryPhase:input_type -> pipeline.v1.RetryPhaseRequest
-	6,  // 19: pipeline.v1.PipelineService.GetWordSnapshot:input_type -> pipeline.v1.GetWordSnapshotRequest
-	14, // 20: pipeline.v1.PipelineService.ListWordSnapshots:input_type -> pipeline.v1.ListWordSnapshotsRequest
-	16, // 21: pipeline.v1.PipelineService.GetEvidence:input_type -> pipeline.v1.GetEvidenceRequest
-	1,  // 22: pipeline.v1.PipelineService.ProcessWord:output_type -> pipeline.v1.ProcessWordResponse
-	3,  // 23: pipeline.v1.PipelineService.GetPipelineStatus:output_type -> pipeline.v1.PipelineStatus
-	3,  // 24: pipeline.v1.PipelineService.RetryPhase:output_type -> pipeline.v1.PipelineStatus
-	7,  // 25: pipeline.v1.PipelineService.GetWordSnapshot:output_type -> pipeline.v1.WordSnapshotResponse
-	15, // 26: pipeline.v1.PipelineService.ListWordSnapshots:output_type -> pipeline.v1.ListWordSnapshotsResponse
-	17, // 27: pipeline.v1.PipelineService.GetEvidence:output_type -> pipeline.v1.GetEvidenceResponse
-	22, // [22:28] is the sub-list for method output_type
-	16, // [16:22] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	31, // 14: pipeline.v1.Evidence.content:type_name -> google.protobuf.Struct
+	30, // 15: pipeline.v1.Evidence.fetched_at:type_name -> google.protobuf.Timestamp
+	30, // 16: pipeline.v1.PipelineJob.started_at:type_name -> google.protobuf.Timestamp
+	30, // 17: pipeline.v1.PipelineJob.completed_at:type_name -> google.protobuf.Timestamp
+	30, // 18: pipeline.v1.PipelineJob.created_at:type_name -> google.protobuf.Timestamp
+	20, // 19: pipeline.v1.ListJobsResponse.jobs:type_name -> pipeline.v1.PipelineJob
+	27, // 20: pipeline.v1.ListDataSourcesResponse.sources:type_name -> pipeline.v1.DataSourceStatus
+	27, // 21: pipeline.v1.DownloadDataSourceResponse.sources:type_name -> pipeline.v1.DataSourceStatus
+	0,  // 22: pipeline.v1.PipelineService.ProcessWord:input_type -> pipeline.v1.ProcessWordRequest
+	2,  // 23: pipeline.v1.PipelineService.GetPipelineStatus:input_type -> pipeline.v1.GetPipelineStatusRequest
+	5,  // 24: pipeline.v1.PipelineService.RetryPhase:input_type -> pipeline.v1.RetryPhaseRequest
+	6,  // 25: pipeline.v1.PipelineService.GetWordSnapshot:input_type -> pipeline.v1.GetWordSnapshotRequest
+	14, // 26: pipeline.v1.PipelineService.ListWordSnapshots:input_type -> pipeline.v1.ListWordSnapshotsRequest
+	16, // 27: pipeline.v1.PipelineService.GetEvidence:input_type -> pipeline.v1.GetEvidenceRequest
+	19, // 28: pipeline.v1.PipelineService.SubmitJob:input_type -> pipeline.v1.SubmitJobRequest
+	21, // 29: pipeline.v1.PipelineService.GetJob:input_type -> pipeline.v1.GetJobRequest
+	22, // 30: pipeline.v1.PipelineService.ListJobs:input_type -> pipeline.v1.ListJobsRequest
+	24, // 31: pipeline.v1.PipelineService.CancelJob:input_type -> pipeline.v1.CancelJobRequest
+	25, // 32: pipeline.v1.PipelineService.ListDataSources:input_type -> pipeline.v1.ListDataSourcesRequest
+	28, // 33: pipeline.v1.PipelineService.DownloadDataSource:input_type -> pipeline.v1.DownloadDataSourceRequest
+	1,  // 34: pipeline.v1.PipelineService.ProcessWord:output_type -> pipeline.v1.ProcessWordResponse
+	3,  // 35: pipeline.v1.PipelineService.GetPipelineStatus:output_type -> pipeline.v1.PipelineStatus
+	3,  // 36: pipeline.v1.PipelineService.RetryPhase:output_type -> pipeline.v1.PipelineStatus
+	7,  // 37: pipeline.v1.PipelineService.GetWordSnapshot:output_type -> pipeline.v1.WordSnapshotResponse
+	15, // 38: pipeline.v1.PipelineService.ListWordSnapshots:output_type -> pipeline.v1.ListWordSnapshotsResponse
+	17, // 39: pipeline.v1.PipelineService.GetEvidence:output_type -> pipeline.v1.GetEvidenceResponse
+	20, // 40: pipeline.v1.PipelineService.SubmitJob:output_type -> pipeline.v1.PipelineJob
+	20, // 41: pipeline.v1.PipelineService.GetJob:output_type -> pipeline.v1.PipelineJob
+	23, // 42: pipeline.v1.PipelineService.ListJobs:output_type -> pipeline.v1.ListJobsResponse
+	20, // 43: pipeline.v1.PipelineService.CancelJob:output_type -> pipeline.v1.PipelineJob
+	26, // 44: pipeline.v1.PipelineService.ListDataSources:output_type -> pipeline.v1.ListDataSourcesResponse
+	29, // 45: pipeline.v1.PipelineService.DownloadDataSource:output_type -> pipeline.v1.DownloadDataSourceResponse
+	34, // [34:46] is the sub-list for method output_type
+	22, // [22:34] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_pipeline_v1_pipeline_service_proto_init() }
@@ -1540,7 +2297,7 @@ func file_pipeline_v1_pipeline_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pipeline_v1_pipeline_service_proto_rawDesc), len(file_pipeline_v1_pipeline_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

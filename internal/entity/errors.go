@@ -39,4 +39,8 @@ var (
 	ErrDuplicateReviewPlan   = errors.New("review plan already exists")
 
 	ErrPipelineJobNotFound = errors.New("pipeline job not found")
+	ErrSnapshotNotFound    = errors.New("word snapshot not found")
+	ErrLemmaNotFound       = errors.New("lemma not found")
+	ErrDataSourceNotFound  = errors.New("data source not found")
+	ErrJobNotCancellable   = errors.New("only pending or running jobs can be cancelled")
 )

@@ -9,7 +9,7 @@ option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
 
 // PipelineService manages the vocabulary distillation pipeline.
 service PipelineService {
-  // ProcessWord runs the full pipeline for a given term.
+  // ProcessWord runs the full pipeline for a given term (synchronous).
   rpc ProcessWord(ProcessWordRequest) returns (ProcessWordResponse);
 
   // GetPipelineStatus returns the status of pipeline tasks for a word.
@@ -26,7 +26,29 @@ service PipelineService {
 
   // GetEvidence returns raw evidence for a word.
   rpc GetEvidence(GetEvidenceRequest) returns (GetEvidenceResponse);
+
+  // SubmitJob creates an async pipeline job for one or more terms.
+  rpc SubmitJob(SubmitJobRequest) returns (PipelineJob);
+
+  // GetJob returns the details of a pipeline job.
+  rpc GetJob(GetJobRequest) returns (PipelineJob);
+
+  // ListJobs returns a list of pipeline jobs.
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+
+  // CancelJob cancels a pending or running pipeline job.
+  rpc CancelJob(CancelJobRequest) returns (PipelineJob);
+
+  // ListDataSources returns the status of all pipeline data sources.
+  rpc ListDataSources(ListDataSourcesRequest) returns (ListDataSourcesResponse);
+
+  // DownloadDataSource downloads a specific data source.
+  rpc DownloadDataSource(DownloadDataSourceRequest) returns (DownloadDataSourceResponse);
 }
+
+// ---------------------------------------------------------------------------
+// Word-level pipeline RPCs
+// ---------------------------------------------------------------------------
 
 // ProcessWordRequest initiates pipeline processing for a word.
 message ProcessWordRequest {
@@ -74,6 +96,10 @@ message RetryPhaseRequest {
   string language = 2;
   int32 phase = 3; // Phase number to retry
 }
+
+// ---------------------------------------------------------------------------
+// Snapshot RPCs
+// ---------------------------------------------------------------------------
 
 // GetWordSnapshotRequest requests a word snapshot.
 message GetWordSnapshotRequest {
@@ -158,6 +184,10 @@ message ListWordSnapshotsResponse {
   int32 page_no = 3;
 }
 
+// ---------------------------------------------------------------------------
+// Evidence RPCs
+// ---------------------------------------------------------------------------
+
 // GetEvidenceRequest requests raw evidence for a word.
 message GetEvidenceRequest {
   string term = 1;
@@ -179,4 +209,94 @@ message Evidence {
   google.protobuf.Struct content = 4;   // Raw JSON response
   string schema_version = 5;
   google.protobuf.Timestamp fetched_at = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Job management RPCs
+// ---------------------------------------------------------------------------
+
+// SubmitJobRequest creates an async pipeline job.
+message SubmitJobRequest {
+  // Exactly one of term, terms, or wordbook_name must be set.
+  string term = 1;                   // Single word submission
+  repeated string terms = 2;         // Batch term submission
+  string wordbook_name = 3;          // Built-in wordbook name or ID
+
+  string language = 4;               // Language code (default "en")
+  int32 tier = 5;                    // Priority tier (default 2)
+  string name = 6;                   // Optional custom job name
+}
+
+// PipelineJob represents an async pipeline processing job.
+message PipelineJob {
+  int64 id = 1;
+  string job_type = 2;              // SINGLE_WORD, WORDBOOK
+  string status = 3;                // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+  string name = 4;
+  string language = 5;
+  int32 tier = 6;
+
+  // Progress tracking
+  int32 total_terms = 7;
+  int32 processed = 8;
+  int32 skipped = 9;
+  int32 failed = 10;
+
+  string error_message = 11;
+
+  google.protobuf.Timestamp started_at = 12;
+  google.protobuf.Timestamp completed_at = 13;
+  google.protobuf.Timestamp created_at = 14;
+}
+
+// GetJobRequest requests details of a specific job.
+message GetJobRequest {
+  int64 id = 1;
+}
+
+// ListJobsRequest requests a filtered list of pipeline jobs.
+message ListJobsRequest {
+  string status = 1;                 // Filter by status (empty = all)
+  int32 limit = 2;                   // Max results (default 50)
+}
+
+// ListJobsResponse contains a list of pipeline jobs.
+message ListJobsResponse {
+  repeated PipelineJob jobs = 1;
+}
+
+// CancelJobRequest cancels a pipeline job.
+message CancelJobRequest {
+  int64 id = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Data source management RPCs
+// ---------------------------------------------------------------------------
+
+// ListDataSourcesRequest requests status of all data sources.
+message ListDataSourcesRequest {}
+
+// ListDataSourcesResponse contains data source statuses.
+message ListDataSourcesResponse {
+  repeated DataSourceStatus sources = 1;
+}
+
+// DataSourceStatus represents the status of a pipeline data source.
+message DataSourceStatus {
+  string name = 1;
+  string path = 2;
+  bool available = 3;
+  int64 size_bytes = 4;
+  string error_message = 5;
+}
+
+// DownloadDataSourceRequest requests download of a specific data source.
+message DownloadDataSourceRequest {
+  string name = 1;                   // Source name: conceptnet, ecdict, wordnet, moby (empty = all missing)
+}
+
+// DownloadDataSourceResponse confirms download completion.
+message DownloadDataSourceResponse {
+  repeated DataSourceStatus sources = 1; // Updated statuses after download
 }
