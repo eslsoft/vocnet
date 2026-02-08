@@ -3,116 +3,103 @@ package conceptnet
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
+
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 )
 
-// Reader implements ConceptNetProvider using local CSV data file.
-// ConceptNet assertions format: /c/en/term	/r/RelatedTo	/c/en/target	...
+// Reader implements ConceptNetProvider using a SQLite index built from the CSV.
+// On first use, the CSV is scanned once to build a SQLite database for fast lookups.
 type Reader struct {
-	dataPath string
+	db      *sql.DB
+	csvPath string
 }
 
 // NewReader creates a new ConceptNet local data reader.
+// It builds a SQLite index from the CSV if one doesn't already exist.
 func NewReader(dataPath string) (*Reader, error) {
+	return NewReaderWithLogger(dataPath, nil)
+}
+
+// NewReaderWithLogger creates a new ConceptNet reader with optional logger for index build progress.
+func NewReaderWithLogger(dataPath string, logger *slog.Logger) (*Reader, error) {
 	if dataPath == "" {
 		return nil, fmt.Errorf("conceptnet data path is required")
 	}
 	if _, err := os.Stat(dataPath); err != nil {
 		return nil, fmt.Errorf("conceptnet data file not found: %w", err)
 	}
-	return &Reader{
-		dataPath: dataPath,
-	}, nil
+
+	dbPath := dataPath + ".idx.db"
+
+	// Build index if needed
+	if err := ensureIndex(dataPath, dbPath, logger); err != nil {
+		return nil, fmt.Errorf("build conceptnet index: %w", err)
+	}
+
+	db, err := sql.Open("sqlite3", dbPath+"?mode=ro&_journal_mode=OFF&cache=shared")
+	if err != nil {
+		return nil, fmt.Errorf("open conceptnet index: %w", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping conceptnet index: %w", err)
+	}
+
+	return &Reader{db: db, csvPath: dataPath}, nil
 }
 
-// FetchRelations reads semantic relations for a term from local ConceptNet CSV file.
-// Returns the edges and a summary map for evidence storage.
+// Close closes the database connection.
+func (r *Reader) Close() error {
+	if r.db != nil {
+		return r.db.Close()
+	}
+	return nil
+}
+
+// FetchRelations queries the SQLite index for semantic relations of a term.
 func (r *Reader) FetchRelations(ctx context.Context, term string, language string) ([]provider.ConceptNetEdge, map[string]any, error) {
 	if language == "" {
 		language = "en"
 	}
 
-	file, err := os.Open(r.dataPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("open conceptnet file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	// Build the search pattern: /c/<lang>/<term>
 	searchTerm := fmt.Sprintf("/c/%s/%s", language, strings.ToLower(term))
 
+	query := `
+		SELECT relation, start_uri, end_uri, weight
+		FROM edges
+		WHERE start_uri = ? OR end_uri = ?
+		LIMIT 100
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, searchTerm, searchTerm)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query conceptnet index: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
 	edges := make([]provider.ConceptNetEdge, 0)
-	scanner := bufio.NewScanner(file)
-	// Increase buffer size for large lines
-	buf := make([]byte, 1024*1024) // 1MB buffer
-	scanner.Buffer(buf, 1024*1024)
-
-	lineCount := 0
-	matchCount := 0
-
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return nil, nil, ctx.Err()
-		default:
-		}
-
-		lineCount++
-		line := scanner.Text()
-
-		// Quick check if line contains our term
-		if !strings.Contains(line, searchTerm) {
+	for rows.Next() {
+		var relation, startURI, endURI string
+		var weight float64
+		if err := rows.Scan(&relation, &startURI, &endURI, &weight); err != nil {
 			continue
 		}
 
-		// Parse CSV fields (tab-separated)
-		reader := csv.NewReader(strings.NewReader(line))
-		reader.Comma = '\t'
-		reader.LazyQuotes = true
-
-		fields, err := reader.Read()
-		if err != nil {
-			// Skip malformed lines
-			continue
-		}
-
-		// ConceptNet 5.7 CSV format (tab-separated):
-		// 0: assertion_uri (e.g., /a/[/r/RelatedTo/,/c/en/hello/,/c/en/greeting/])
-		// 1: relation_uri (/r/RelatedTo)
-		// 2: start (/c/en/hello)
-		// 3: end (/c/en/greeting)
-		// 4: metadata JSON (contains weight)
-		if len(fields) < 5 {
-			continue
-		}
-
-		// assertionURI := fields[0] // Not used
-		relationURI := fields[1]
-		startURI := fields[2]
-		endURI := fields[3]
-		metadataJSON := fields[4]
-
-		// Extract weight from metadata JSON
-		weight := extractWeight(metadataJSON)
-
-		// Check if either start or end matches our search term
-		if startURI != searchTerm && endURI != searchTerm {
-			continue
-		}
-
-		// Extract relation type from URI (/r/Synonym → Synonym)
-		relLabel := extractRelationLabel(relationURI)
+		relLabel := extractRelationLabel(relation)
 		relType := mapConceptNetRelation(relLabel)
 		if relType == "" {
 			continue
 		}
 
-		// Extract term labels
 		startLabel := extractTermLabel(startURI)
 		endLabel := extractTermLabel(endURI)
 		if startLabel == "" || endLabel == "" {
@@ -126,28 +113,214 @@ func (r *Reader) FetchRelations(ctx context.Context, term string, language strin
 			Weight:       weight,
 			SurfaceText:  fmt.Sprintf("%s %s %s", startLabel, relLabel, endLabel),
 		})
+	}
 
-		matchCount++
-		// Limit to 100 relations per term
-		if matchCount >= 100 {
-			break
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterate conceptnet rows: %w", err)
+	}
+
+	evidence := map[string]any{
+		"source":      "conceptnet-indexed",
+		"term":        term,
+		"language":    language,
+		"edges_found": len(edges),
+	}
+
+	return edges, evidence, nil
+}
+
+// ensureIndex checks if the SQLite index exists and is valid; if not, builds it from the CSV.
+func ensureIndex(csvPath, dbPath string, logger *slog.Logger) error {
+	// Check if index already exists and is newer than the CSV
+	csvInfo, err := os.Stat(csvPath)
+	if err != nil {
+		return fmt.Errorf("stat csv: %w", err)
+	}
+
+	if dbInfo, err := os.Stat(dbPath); err == nil {
+		if dbInfo.ModTime().After(csvInfo.ModTime()) && dbInfo.Size() > 0 {
+			// Index exists and is newer than CSV — validate it
+			if validateIndex(dbPath) == nil {
+				return nil
+			}
+		}
+		// Index is stale or invalid, rebuild
+		_ = os.Remove(dbPath)
+	}
+
+	return buildIndex(csvPath, dbPath, logger)
+}
+
+// validateIndex checks that the SQLite index is structurally valid.
+func validateIndex(dbPath string) error {
+	db, err := sql.Open("sqlite3", dbPath+"?mode=ro")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM edges LIMIT 1").Scan(&count); err != nil {
+		return err
+	}
+	if count == 0 {
+		return fmt.Errorf("empty index")
+	}
+	return nil
+}
+
+// buildIndex scans the ConceptNet CSV and builds a SQLite index.
+func buildIndex(csvPath, dbPath string, logger *slog.Logger) error {
+	if logger != nil {
+		logger.Info("building ConceptNet SQLite index (one-time operation)", "csv", csvPath, "db", dbPath)
+	}
+
+	// Build to a temp file, rename on success to avoid partial indices
+	tmpPath := dbPath + ".tmp"
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	db, err := sql.Open("sqlite3", tmpPath)
+	if err != nil {
+		return fmt.Errorf("create index db: %w", err)
+	}
+
+	// Performance pragmas for bulk insert
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=OFF",
+		"PRAGMA synchronous=OFF",
+		"PRAGMA cache_size=-1048576", // 1GB cache
+		"PRAGMA temp_store=MEMORY",
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			_ = db.Close()
+			return fmt.Errorf("set pragma: %w", err)
+		}
+	}
+
+	// Create table without indices (add after bulk insert)
+	_, err = db.Exec(`
+		CREATE TABLE edges (
+			start_uri TEXT NOT NULL,
+			end_uri   TEXT NOT NULL,
+			relation  TEXT NOT NULL,
+			weight    REAL NOT NULL DEFAULT 1.0
+		)
+	`)
+	if err != nil {
+		_ = db.Close()
+		return fmt.Errorf("create table: %w", err)
+	}
+
+	// Open CSV
+	file, err := os.Open(csvPath)
+	if err != nil {
+		_ = db.Close()
+		return fmt.Errorf("open csv: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	tx, err := db.Begin()
+	if err != nil {
+		_ = db.Close()
+		return fmt.Errorf("begin tx: %w", err)
+	}
+
+	stmt, err := tx.Prepare("INSERT INTO edges (start_uri, end_uri, relation, weight) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		_ = tx.Rollback()
+		_ = db.Close()
+		return fmt.Errorf("prepare insert: %w", err)
+	}
+
+	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	lineCount := 0
+	insertCount := 0
+
+	for scanner.Scan() {
+		lineCount++
+
+		line := scanner.Text()
+
+		// Parse tab-separated fields
+		reader := csv.NewReader(strings.NewReader(line))
+		reader.Comma = '\t'
+		reader.LazyQuotes = true
+
+		fields, err := reader.Read()
+		if err != nil || len(fields) < 5 {
+			continue
+		}
+
+		relationURI := fields[1]
+		startURI := fields[2]
+		endURI := fields[3]
+		metadataJSON := fields[4]
+
+		// Only index relations we actually care about
+		relLabel := extractRelationLabel(relationURI)
+		if mapConceptNetRelation(relLabel) == "" {
+			continue
+		}
+
+		weight := extractWeight(metadataJSON)
+
+		if _, err := stmt.Exec(startURI, endURI, relationURI, weight); err != nil {
+			continue
+		}
+		insertCount++
+
+		// Log progress periodically
+		if logger != nil && lineCount%5_000_000 == 0 {
+			logger.Info("indexing ConceptNet", "lines_scanned", lineCount, "edges_indexed", insertCount)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, nil, fmt.Errorf("scan conceptnet file: %w", err)
+		_ = tx.Rollback()
+		_ = db.Close()
+		return fmt.Errorf("scan csv: %w", err)
 	}
 
-	// Create evidence summary
-	evidence := map[string]any{
-		"source":        "conceptnet-local",
-		"term":          term,
-		"language":      language,
-		"edges_found":   len(edges),
-		"lines_scanned": lineCount,
+	_ = stmt.Close()
+
+	if err := tx.Commit(); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("commit: %w", err)
 	}
 
-	return edges, evidence, nil
+	if logger != nil {
+		logger.Info("creating indices", "edges_indexed", insertCount)
+	}
+
+	// Create indices after bulk insert (much faster than during)
+	for _, ddl := range []string{
+		"CREATE INDEX idx_edges_start ON edges(start_uri)",
+		"CREATE INDEX idx_edges_end ON edges(end_uri)",
+	} {
+		if _, err := db.Exec(ddl); err != nil {
+			_ = db.Close()
+			return fmt.Errorf("create index: %w", err)
+		}
+	}
+
+	_ = db.Close()
+
+	// Atomically rename temp to final
+	if err := os.Rename(tmpPath, dbPath); err != nil {
+		return fmt.Errorf("rename index: %w", err)
+	}
+
+	if logger != nil {
+		logger.Info("ConceptNet index built",
+			"lines_scanned", lineCount,
+			"edges_indexed", insertCount,
+		)
+	}
+
+	return nil
 }
 
 // extractRelationLabel extracts label from relation URI
