@@ -49,6 +49,10 @@ func NewReaderWithLogger(dataPath string, logger *slog.Logger) (*Reader, error) 
 		return nil, fmt.Errorf("open conceptnet index: %w", err)
 	}
 
+	// SQLite is a single-file database; limit the pool to avoid extra file handles and locking issues.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping conceptnet index: %w", err)
@@ -144,8 +148,9 @@ func ensureIndex(csvPath, dbPath string, logger *slog.Logger) error {
 				return nil
 			}
 		}
-		// Index is stale or invalid, rebuild
-		_ = os.Remove(dbPath)
+		// Index is stale or invalid — buildIndex writes to a temp file and
+		// atomically renames it over dbPath, so we don't delete the old index
+		// here (active readers may still be using it).
 	}
 
 	return buildIndex(csvPath, dbPath, logger)
