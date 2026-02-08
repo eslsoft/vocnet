@@ -106,7 +106,7 @@ func (p *Pipeline) Run(ctx context.Context, term string, language string, tier i
 				"stage", stage.Number,
 				"name", stage.Name,
 				"error", err)
-			// Continue to next stage
+			return nil, fmt.Errorf("execute stage %d (%s): %w", stage.Number, stage.Name, err)
 		}
 	}
 

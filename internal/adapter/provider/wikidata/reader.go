@@ -103,7 +103,16 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var lexemes []provider.WikidataLexeme
+	type lexemeRow struct {
+		id   string
+		lang string
+		pos  string
+		data string
+	}
+
+	// Read all rows first, then perform follow-up queries (senses/forms).
+	// This avoids deadlock when MaxOpenConns=1 and the driver serializes queries.
+	var parsedRows []lexemeRow
 	var rawDataList []map[string]any
 
 	for rows.Next() {
@@ -111,27 +120,12 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 		if err := rows.Scan(&id, &lemma, &lang, &pos, &data); err != nil {
 			return nil, nil, fmt.Errorf("scan wikidata row: %w", err)
 		}
-
-		// Convert to provider.WikidataLexeme
-		wl := provider.WikidataLexeme{
-			LexemeID: id,
-			Language: lang,
-			POS:      pos,
-		}
-
-		// Fetch senses
-		senses, err := r.fetchSenses(ctx, id)
-		if err == nil {
-			wl.Senses = senses
-		}
-
-		// Fetch forms
-		forms, err := r.fetchForms(ctx, id)
-		if err == nil {
-			wl.Forms = forms
-		}
-
-		lexemes = append(lexemes, wl)
+		parsedRows = append(parsedRows, lexemeRow{
+			id:   id,
+			lang: lang,
+			pos:  pos,
+			data: data,
+		})
 
 		// Store raw data for evidence
 		var rawData map[string]any
@@ -141,6 +135,24 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("iterate wikidata rows: %w", err)
+	}
+
+	lexemes := make([]provider.WikidataLexeme, 0, len(parsedRows))
+	for _, row := range parsedRows {
+		wl := provider.WikidataLexeme{
+			LexemeID: row.id,
+			Language: row.lang,
+			POS:      row.pos,
+		}
+		senses, err := r.fetchSenses(ctx, row.id)
+		if err == nil {
+			wl.Senses = senses
+		}
+		forms, err := r.fetchForms(ctx, row.id)
+		if err == nil {
+			wl.Forms = forms
+		}
+		lexemes = append(lexemes, wl)
 	}
 
 	evidence := map[string]any{
