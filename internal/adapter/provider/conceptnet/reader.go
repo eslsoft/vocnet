@@ -314,7 +314,12 @@ func buildIndex(csvPath, dbPath string, logger *slog.Logger) error {
 
 	_ = db.Close()
 
-	// Atomically rename temp to final
+	// Replace any existing index file with the newly built one in a
+	// cross-platform way. On Windows, os.Rename fails if the target
+	// already exists, so remove it first (ignoring "not exists").
+	if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove existing index: %w", err)
+	}
 	if err := os.Rename(tmpPath, dbPath); err != nil {
 		return fmt.Errorf("rename index: %w", err)
 	}
