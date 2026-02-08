@@ -6,8 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
@@ -52,22 +52,25 @@ var sourceListCmd = &cobra.Command{
 		}
 
 		fmt.Println("Pipeline Data Sources:")
+		table := tablewriter.NewTable(os.Stdout)
+		table.Header("STATUS", "SOURCE", "PATH", "INFO")
 		for _, status := range statuses {
 			symbol := "✗"
-			statusMsg := "not found"
+			info := "not found"
 			if status.Available {
 				symbol = "✓"
 				if status.Size > 0 {
-					statusMsg = fmt.Sprintf("%.1f MB", float64(status.Size)/(1024*1024))
+					info = fmt.Sprintf("%.1f MB", float64(status.Size)/(1024*1024))
 				} else {
-					statusMsg = "verified"
+					info = "verified"
 				}
 			} else if status.Exists {
-				statusMsg = fmt.Sprintf("invalid: %s", status.ErrorMsg)
+				info = fmt.Sprintf("invalid: %s", status.ErrorMsg)
 			}
 
-			fmt.Printf("  %s %-12s %s (%s)\n", symbol, status.Name+":", status.Path, statusMsg)
+			_ = table.Append([]string{symbol, status.Name, status.Path, info})
 		}
+		_ = table.Render()
 
 		// Check if any missing
 		var missing []string
@@ -259,24 +262,24 @@ var jobsCmd = &cobra.Command{
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		_, _ = fmt.Fprintln(w, "ID\tTYPE\tSTATUS\tPROGRESS\tNAME\tCREATED")
+		table := tablewriter.NewTable(os.Stdout)
+		table.Header("ID", "TYPE", "STATUS", "PROGRESS", "NAME", "CREATED")
 		for _, j := range jobs {
 			progress := fmt.Sprintf("%d/%d", j.Processed+j.Skipped+j.Failed, j.TotalTerms)
 			displayName := j.Name
 			if len(displayName) > 30 {
 				displayName = displayName[:27] + "..."
 			}
-			_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n",
-				j.ID,
-				j.JobType,
-				j.Status,
+			_ = table.Append([]string{
+				strconv.FormatInt(j.ID, 10),
+				string(j.JobType),
+				string(j.Status),
 				progress,
 				displayName,
 				j.CreatedAt.Format("2006-01-02 15:04"),
-			)
+			})
 		}
-		_ = w.Flush()
+		_ = table.Render()
 		return nil
 	},
 }
