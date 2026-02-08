@@ -168,15 +168,12 @@ func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stag
 
 	// Save snapshot if produced
 	if mergedResult.Snapshot != nil {
-		if err := p.persistence.SaveSnapshot(ctx, mergedResult.Snapshot); err != nil {
+		if err := p.persistence.SaveSnapshot(ctx, pctx.Lemma.ID, mergedResult.Snapshot); err != nil {
 			errMsg := fmt.Sprintf("save snapshot: %s", err)
 			_ = p.updateTaskStatus(ctx, pctx.Lemma.ID, phaseNum, entity.TaskStatusFailed, errMsg)
 			return fmt.Errorf("save snapshot: %w", err)
 		}
 	}
-
-	// Refresh context from DB (reload lexemes/forms that were persisted)
-	p.refreshContext(ctx, pctx)
 
 	// Mark completed
 	if err := p.updateTaskStatus(ctx, pctx.Lemma.ID, phaseNum, entity.TaskStatusCompleted, ""); err != nil {
@@ -185,22 +182,6 @@ func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stag
 
 	p.logger.Info("stage completed", "stage", phaseNum, "name", stage.Name)
 	return nil
-}
-
-// refreshContext reloads lexemes and forms from DB after persistence.
-func (p *Pipeline) refreshContext(ctx context.Context, pctx *PipelineContext) {
-	// Reload lemma (may have updated QID, forms, etc.)
-	lemma, err := p.lemmaRepo.GetByID(ctx, pctx.Lemma.ID)
-	if err == nil {
-		pctx.Lemma = lemma
-		pctx.Forms = lemma.Forms
-	}
-
-	// Reload lexemes
-	lexemes, err := p.lexemeRepo.ListByLemmaID(ctx, pctx.Lemma.ID)
-	if err == nil {
-		pctx.Lexemes = lexemes
-	}
 }
 
 // updateTaskStatus updates the status of a pipeline task.
@@ -215,29 +196,6 @@ func (p *Pipeline) updateTaskStatus(ctx context.Context, lemmaID int64, phaseNum
 	}
 
 	return nil
-}
-
-// GetStatus returns the pipeline status for a given term.
-func (p *Pipeline) GetStatus(ctx context.Context, term string, language string) ([]*entity.PipelineTask, error) {
-	if p.lemmaRepo == nil {
-		return nil, fmt.Errorf("pipeline not configured for status queries")
-	}
-
-	lang := entity.ParseLanguage(language)
-	lemma, err := p.lemmaRepo.LookupByForm(ctx, term, lang)
-	if err != nil {
-		return nil, err
-	}
-	return p.taskRepo.ListByLemma(ctx, lemma.ID)
-}
-
-// GetSnapshot returns the snapshot for a given term.
-func (p *Pipeline) GetSnapshot(ctx context.Context, term string, language string) (*entity.WordSnapshot, error) {
-	if p.snapshotRepo == nil {
-		return nil, fmt.Errorf("pipeline not configured for snapshot queries")
-	}
-
-	return p.snapshotRepo.GetByTerm(ctx, term, language)
 }
 
 // mergeProcessResults accumulates src into dst.

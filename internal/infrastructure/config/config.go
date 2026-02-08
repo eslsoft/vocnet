@@ -52,6 +52,9 @@ type PipelineConfig struct {
 	DataDir      string `mapstructure:"data_dir"`      // Base data directory (default: ./data)
 	AutoDownload bool   `mapstructure:"auto_download"`  // Auto-download missing data sources
 	CacheDir     string `mapstructure:"cache_dir"`      // Data cache directory
+	LLMBaseURL   string `mapstructure:"llm_base_url"`   // OpenAI-compatible endpoint
+	LLMAPIKey    string `mapstructure:"llm_api_key"`    // API key for LLM provider
+	LLMModel     string `mapstructure:"llm_model"`      // Model name (e.g. gpt-4o-mini)
 }
 
 // Load reads configuration from file and environment variables
@@ -106,6 +109,9 @@ func setDefaults() {
 	viper.SetDefault("pipeline.data_dir", "./data")
 	viper.SetDefault("pipeline.auto_download", false)
 	viper.SetDefault("pipeline.cache_dir", "") // Empty means use system cache dir
+	viper.SetDefault("pipeline.llm_base_url", "https://api.openai.com/v1")
+	viper.SetDefault("pipeline.llm_api_key", "")
+	viper.SetDefault("pipeline.llm_model", "gpt-4o-mini")
 }
 
 func bindEnvAliases() error {
@@ -115,6 +121,9 @@ func bindEnvAliases() error {
 		"pipeline.data_dir":      {"PIPELINE_DATA_DIR"},
 		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
 		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
+		"pipeline.llm_base_url": {"PIPELINE_LLM_BASE_URL"},
+		"pipeline.llm_api_key":  {"PIPELINE_LLM_API_KEY"},
+		"pipeline.llm_model":    {"PIPELINE_LLM_MODEL"},
 	}
 
 	for key, envs := range bindings {

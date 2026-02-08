@@ -256,19 +256,16 @@ go run . pipeline status <term> [--language en]
 go run . pipeline snapshot <term> [--language en]
 
 # Check data source availability
-go run . pipeline data check
+go run . pipeline source list
 
 # Download all missing data sources
-go run . pipeline data download
+go run . pipeline source download
 
 # Download specific data source
-go run . pipeline data download conceptnet
-go run . pipeline data download ecdict
-go run . pipeline data download wordnet
-go run . pipeline data download moby
-
-# List data sources and their status
-go run . pipeline data list
+go run . pipeline source download conceptnet
+go run . pipeline source download ecdict
+go run . pipeline source download wordnet
+go run . pipeline source download moby
 
 # Quick setup: download all data sources
 make pipeline-setup

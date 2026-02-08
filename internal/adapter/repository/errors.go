@@ -27,6 +27,8 @@ func translateDBError(err error, entityType string) error {
 			return entity.ErrLearnedLexemeNotFound
 		case "wordbook":
 			return entity.ErrWordbookNotFound
+		case "pipeline_job":
+			return entity.ErrPipelineJobNotFound
 		default:
 			return err
 		}

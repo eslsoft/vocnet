@@ -3,24 +3,21 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
+	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
-	"github.com/eslsoft/vocnet/internal/adapter/provider"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/conceptnet"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/ecdict"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/moby"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/wordnet"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
+	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
+	"github.com/eslsoft/vocnet/pkg/wordbook"
 )
 
 var pipelineCmd = &cobra.Command{
@@ -28,263 +25,15 @@ var pipelineCmd = &cobra.Command{
 	Short: "Vocabulary distillation pipeline operations",
 }
 
-// processCmd processes a single word through the pipeline
-var processCmd = &cobra.Command{
-	Use:   "process <term>",
-	Short: "Process a single word through the distillation pipeline",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		term := args[0]
-		language, _ := cmd.Flags().GetString("language")
-		tier, _ := cmd.Flags().GetInt32("tier")
-
-		// Initialize dependencies
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		// Check and optionally download data sources
-		if err := ensureDataSources(cfg, logger); err != nil {
-			return err
-		}
-
-		entClient, cleanup, err := database.NewEntClient(cfg)
-		if err != nil {
-			return fmt.Errorf("create ent client: %w", err)
-		}
-		defer cleanup()
-
-		// Initialize repositories
-		lemmaRepo := repository.NewLemmaRepository(entClient)
-		lexemeRepo := repository.NewLexemeRepository(entClient)
-		evidenceRepo := repository.NewEvidenceRepository(entClient)
-		taskRepo := repository.NewPipelineTaskRepository(entClient)
-		relationRepo := repository.NewSemanticRelationRepository(entClient)
-		snapshotRepo := repository.NewWordSnapshotRepository(entClient)
-
-		// Initialize providers
-		wikidataProvider := wikidata.NewClient()
-
-		// Resolve data source paths
-		paths := datasource.ResolvePaths(cfg.Pipeline.DataDir)
-
-		// Use local ConceptNet reader if available
-		var conceptnetProvider provider.ConceptNetProvider
-		reader, err := conceptnet.NewReader(paths.ConceptNet)
-		if err != nil {
-			logger.Warn("Failed to create ConceptNet reader, falling back to API client", "error", err)
-			conceptnetProvider = conceptnet.NewClient()
-		} else {
-			conceptnetProvider = reader
-			logger.Info("Using local ConceptNet data", "path", paths.ConceptNet)
-		}
-
-		// Use local ECDICT reader if available
-		var ecdictReader *ecdict.Reader
-		ecdictReader, err = ecdict.NewReader(paths.ECDICT)
-		if err != nil {
-			logger.Warn("Failed to create ECDICT reader, Phase 2 will be skipped", "error", err)
-		} else {
-			logger.Info("Using local ECDICT data", "path", paths.ECDICT)
-		}
-
-		// Use local WordNet reader if available
-		wordnetReader := wordnet.NewReader(paths.WordNet)
-		logger.Info("Using local WordNet data", "path", paths.WordNet)
-
-		// Use local Moby reader if available
-		var mobyReader *moby.Reader
-		mobyReader, err = moby.NewReader(paths.Moby)
-		if err != nil {
-			logger.Warn("Failed to create Moby reader, syllables will not be available", "error", err)
-		} else {
-			logger.Info("Using local Moby syllable data", "path", paths.Moby)
-		}
-
-		// Initialize pipeline stages
-		aggregator := pipeline.NewDataAggregator()
-		persistence := pipeline.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
-		validator := pipeline.NewValidator(lemmaRepo, lexemeRepo, logger)
-
-		stages := []*pipeline.Stage{
-			pipeline.NewStage("discovery", 1,
-				pipeline.NewWikidataProcessor(wikidataProvider, logger),
-				pipeline.NewCategoryInferProcessor(),
-			),
-			pipeline.NewStage("lexical", 2,
-				pipeline.NewECDICTProcessor(ecdictReader),
-				pipeline.NewMobyProcessor(mobyReader),
-			),
-			pipeline.NewStage("relational", 3,
-				pipeline.NewConceptNetProcessor(conceptnetProvider),
-				pipeline.NewWordNetProcessor(wordnetReader),
-			),
-			pipeline.NewStage("intellectual", 4), // empty MVP placeholder
-			pipeline.NewStage("synthesis", 5,
-				pipeline.NewSnapshotProcessor(),
-			),
-		}
-
-		p := pipeline.NewPipeline(stages, validator, persistence, taskRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
-
-		// Execute pipeline
-		ctx := context.Background()
-		result, err := p.Run(ctx, term, language, tier)
-		if err != nil {
-			return fmt.Errorf("process word: %w", err)
-		}
-
-		// Print results
-		fmt.Printf("Pipeline completed for: %s\n", term)
-		fmt.Printf("Lemma ID: %d\n", result.Lemma.ID)
-		if result.Lemma.WikidataQID != "" {
-			fmt.Printf("Wikidata QID: %s\n", result.Lemma.WikidataQID)
-		}
-		fmt.Println("\nPhase Status:")
-		for _, task := range result.Tasks {
-			status := string(task.Status)
-			errMsg := ""
-			if task.ErrorMessage != "" {
-				errMsg = fmt.Sprintf(" (error: %s)", task.ErrorMessage)
-			}
-			fmt.Printf("  Phase %d (%s): %s%s\n", task.Phase, getPhaseNameByNumber(task.Phase), status, errMsg)
-		}
-
-		if result.Snapshot != nil {
-			fmt.Printf("\nSnapshot generated (v%d)\n", result.Snapshot.Version)
-			fmt.Printf("  Quality Score: %.1f\n", result.Snapshot.QScore)
-			fmt.Printf("  Lexemes: %d\n", len(result.Snapshot.Data.Lexemes))
-			fmt.Printf("  Relations: %d\n", len(result.Snapshot.Data.Relations))
-		}
-
-		return nil
-	},
+// Source management commands
+var sourceCmd = &cobra.Command{
+	Use:   "source",
+	Short: "Manage offline data sources (ConceptNet, ECDICT, WordNet, Moby)",
 }
 
-// statusCmd shows pipeline status for a word
-var statusCmd = &cobra.Command{
-	Use:   "status <term>",
-	Short: "Check processing status for a word",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		term := args[0]
-		language, _ := cmd.Flags().GetString("language")
-
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		entClient, cleanup, err := database.NewEntClient(cfg)
-		if err != nil {
-			return fmt.Errorf("create ent client: %w", err)
-		}
-		defer cleanup()
-
-		taskRepo := repository.NewPipelineTaskRepository(entClient)
-		lemmaRepo := repository.NewLemmaRepository(entClient)
-		snapshotRepo := repository.NewWordSnapshotRepository(entClient)
-		lexemeRepo := repository.NewLexemeRepository(entClient)
-
-		p := pipeline.NewPipeline(nil, nil, nil, taskRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
-
-		ctx := context.Background()
-		tasks, err := p.GetStatus(ctx, term, language)
-		if err != nil {
-			return fmt.Errorf("get status: %w", err)
-		}
-
-		fmt.Printf("Pipeline status for: %s\n", term)
-		for _, task := range tasks {
-			fmt.Printf("  Phase %d (%s): %s\n", task.Phase, getPhaseNameByNumber(task.Phase), task.Status)
-		}
-
-		return nil
-	},
-}
-
-// snapshotCmd shows word snapshot
-var snapshotCmd = &cobra.Command{
-	Use:   "snapshot <term>",
-	Short: "View word snapshot data",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		term := args[0]
-		language, _ := cmd.Flags().GetString("language")
-
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		entClient, cleanup, err := database.NewEntClient(cfg)
-		if err != nil {
-			return fmt.Errorf("create ent client: %w", err)
-		}
-		defer cleanup()
-
-		snapshotRepo := repository.NewWordSnapshotRepository(entClient)
-		lemmaRepo := repository.NewLemmaRepository(entClient)
-		lexemeRepo := repository.NewLexemeRepository(entClient)
-		taskRepo := repository.NewPipelineTaskRepository(entClient)
-
-		p := pipeline.NewPipeline(nil, nil, nil, taskRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
-
-		ctx := context.Background()
-		snapshot, err := p.GetSnapshot(ctx, term, language)
-		if err != nil {
-			return fmt.Errorf("get snapshot: %w", err)
-		}
-
-		fmt.Printf("Snapshot for: %s (v%d)\n", snapshot.Term, snapshot.Version)
-		fmt.Printf("Language: %s\n", snapshot.Language)
-		if snapshot.WikidataQID != "" {
-			fmt.Printf("Wikidata QID: %s\n", snapshot.WikidataQID)
-		}
-		fmt.Printf("Quality Score: %.1f (completeness: %.1f, depth: %.1f, density: %.1f, validity: %.1f)\n",
-			snapshot.QScore, snapshot.QScoreCompleteness, snapshot.QScoreDepth, snapshot.QScoreDensity, snapshot.QScoreValidity)
-		fmt.Printf("Synthesized: %s\n", snapshot.SynthesizedAt.Format("2006-01-02 15:04:05"))
-
-		fmt.Printf("\nLexemes: %d\n", len(snapshot.Data.Lexemes))
-		for i, lex := range snapshot.Data.Lexemes {
-			fmt.Printf("  %d. POS: %s, Senses: %d\n", i+1, lex.POS, len(lex.Senses))
-		}
-
-		fmt.Printf("\nRelations: %d\n", len(snapshot.Data.Relations))
-		for i, rel := range snapshot.Data.Relations {
-			fmt.Printf("  %d. %s → %s (provider: %s, strength: %.2f)\n",
-				i+1, rel.RelationType, rel.TargetTerm, rel.Provider, rel.Strength)
-		}
-
-		return nil
-	},
-}
-
-// Data management commands
-var dataCmd = &cobra.Command{
-	Use:   "data",
-	Short: "Manage pipeline data sources",
-}
-
-var dataCheckCmd = &cobra.Command{
-	Use:   "check",
-	Short: "Verify all data sources exist and are valid",
+var sourceListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all data sources and their status",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -330,7 +79,7 @@ var dataCheckCmd = &cobra.Command{
 
 		if len(missing) > 0 {
 			fmt.Printf("\nTo download missing sources, run:\n")
-			fmt.Printf("  vocnet pipeline data download %s\n", strings.Join(missing, " "))
+			fmt.Printf("  vocnet pipeline source download %s\n", strings.Join(missing, " "))
 			return fmt.Errorf("missing data sources")
 		}
 
@@ -339,18 +88,18 @@ var dataCheckCmd = &cobra.Command{
 	},
 }
 
-var dataDownloadCmd = &cobra.Command{
+var sourceDownloadCmd = &cobra.Command{
 	Use:   "download [source...]",
 	Short: "Download missing data sources",
 	Long: `Download data sources required by the pipeline.
 If no source is specified, downloads all missing sources.
 
-Available sources: conceptnet, ecdict, wordnet
+Available sources: conceptnet, ecdict, wordnet, moby
 
 Examples:
-  vocnet pipeline data download            # Download all missing sources
-  vocnet pipeline data download conceptnet # Download only ConceptNet
-  vocnet pipeline data download ecdict wordnet # Download ECDICT and WordNet`,
+  vocnet pipeline source download            # Download all missing sources
+  vocnet pipeline source download conceptnet # Download only ConceptNet
+  vocnet pipeline source download ecdict wordnet # Download ECDICT and WordNet`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -388,10 +137,25 @@ Examples:
 	},
 }
 
-var dataListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List configured data sources and their status",
+// submitCmd submits a pipeline job for async processing
+var submitCmd = &cobra.Command{
+	Use:   "submit [term]",
+	Short: "Submit a pipeline job for async processing",
+	Long: `Submit a pipeline job. Supports:
+  - Single word: pipeline submit <term>
+  - File: pipeline submit --file words.txt
+  - Built-in wordbook: pipeline submit --wordbook CEFR-A1
+
+File formats:
+  .txt  — one word per line (blank lines and # comments ignored)
+  .json — JSON string array ["word1", "word2"]`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		language, _ := cmd.Flags().GetString("language")
+		tier, _ := cmd.Flags().GetInt32("tier")
+		file, _ := cmd.Flags().GetString("file")
+		wb, _ := cmd.Flags().GetString("wordbook")
+		name, _ := cmd.Flags().GetString("name")
+
 		cfg, err := config.Load()
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
@@ -402,83 +166,225 @@ var dataListCmd = &cobra.Command{
 			return fmt.Errorf("create logger: %w", err)
 		}
 
-		mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-		statuses, err := mgr.CheckAll()
+		entClient, cleanup, err := database.NewEntClient(cfg)
 		if err != nil {
-			return fmt.Errorf("check data sources: %w", err)
+			return fmt.Errorf("create ent client: %w", err)
+		}
+		defer cleanup()
+
+		jobRepo := repository.NewPipelineJobRepository(entClient)
+		svc := pipeline.NewPipelineService(jobRepo, logger)
+		ctx := context.Background()
+
+		var job *entity.PipelineJob
+
+		switch {
+		case file != "":
+			terms, err := pipeline.ParseTermFile(file)
+			if err != nil {
+				return fmt.Errorf("parse file: %w", err)
+			}
+			job, err = svc.SubmitTerms(ctx, name, terms, language, tier)
+			if err != nil {
+				return err
+			}
+		case wb != "":
+			terms, wbName, err := resolveWordbook(wb)
+			if err != nil {
+				return err
+			}
+			if name == "" {
+				name = wbName
+			}
+			job, err = svc.SubmitTerms(ctx, name, terms, language, tier)
+			if err != nil {
+				return err
+			}
+		case len(args) > 0:
+			job, err = svc.SubmitWord(ctx, args[0], language, tier)
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("provide a term, --file, or --wordbook")
 		}
 
-		fmt.Println("Configured Data Sources:")
-		for _, status := range statuses {
-			fmt.Printf("\n%s:\n", status.Name)
-			fmt.Printf("  Path: %s\n", status.Path)
-			fmt.Printf("  Status: %v\n", status.Available)
-			if !status.Available && status.ErrorMsg != "" {
-				fmt.Printf("  Error: %s\n", status.ErrorMsg)
+		fmt.Printf("Job #%d created: %s \"%s\" (%d terms)\n",
+			job.ID, job.JobType, job.Name, job.TotalTerms)
+		fmt.Printf("Use \"vocnet pipeline job %d\" to check progress.\n", job.ID)
+		return nil
+	},
+}
+
+// jobsCmd lists pipeline jobs
+var jobsCmd = &cobra.Command{
+	Use:   "jobs",
+	Short: "List pipeline jobs",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		statusFlag, _ := cmd.Flags().GetString("status")
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+
+		logger, err := server.NewLogger(cfg)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+
+		entClient, cleanup, err := database.NewEntClient(cfg)
+		if err != nil {
+			return fmt.Errorf("create ent client: %w", err)
+		}
+		defer cleanup()
+
+		jobRepo := repository.NewPipelineJobRepository(entClient)
+		svc := pipeline.NewPipelineService(jobRepo, logger)
+		ctx := context.Background()
+
+		var statusFilter *entity.JobStatus
+		if statusFlag != "" {
+			s := entity.JobStatus(strings.ToUpper(statusFlag))
+			statusFilter = &s
+		}
+
+		jobs, err := svc.ListJobs(ctx, statusFilter)
+		if err != nil {
+			return err
+		}
+
+		if len(jobs) == 0 {
+			fmt.Println("No jobs found.")
+			return nil
+		}
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+		_, _ = fmt.Fprintln(w, "ID\tTYPE\tSTATUS\tPROGRESS\tNAME\tCREATED")
+		for _, j := range jobs {
+			progress := fmt.Sprintf("%d/%d", j.Processed+j.Skipped+j.Failed, j.TotalTerms)
+			displayName := j.Name
+			if len(displayName) > 30 {
+				displayName = displayName[:27] + "..."
 			}
+			_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n",
+				j.ID,
+				j.JobType,
+				j.Status,
+				progress,
+				displayName,
+				j.CreatedAt.Format("2006-01-02 15:04"),
+			)
+		}
+		_ = w.Flush()
+		return nil
+	},
+}
+
+// jobCmd shows details for a single pipeline job
+var jobCmd = &cobra.Command{
+	Use:   "job <id>",
+	Short: "View pipeline job details",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid job ID: %w", err)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+
+		logger, err := server.NewLogger(cfg)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+
+		entClient, cleanup, err := database.NewEntClient(cfg)
+		if err != nil {
+			return fmt.Errorf("create ent client: %w", err)
+		}
+		defer cleanup()
+
+		jobRepo := repository.NewPipelineJobRepository(entClient)
+		svc := pipeline.NewPipelineService(jobRepo, logger)
+		ctx := context.Background()
+
+		j, err := svc.GetJob(ctx, id)
+		if err != nil {
+			return fmt.Errorf("get job: %w", err)
+		}
+
+		fmt.Printf("Job #%d: %s\n", j.ID, j.Name)
+		fmt.Printf("Type:      %s\n", j.JobType)
+		fmt.Printf("Status:    %s\n", j.Status)
+		fmt.Printf("Language:  %s\n", j.Language)
+		fmt.Printf("Tier:      %d\n", j.Tier)
+		fmt.Printf("Progress:  %d/%d processed, %d skipped, %d failed\n",
+			j.Processed, j.TotalTerms, j.Skipped, j.Failed)
+		fmt.Printf("Created:   %s\n", j.CreatedAt.Format("2006-01-02 15:04:05"))
+		if j.StartedAt != nil {
+			fmt.Printf("Started:   %s\n", j.StartedAt.Format("2006-01-02 15:04:05"))
+		}
+		if j.CompletedAt != nil {
+			fmt.Printf("Completed: %s\n", j.CompletedAt.Format("2006-01-02 15:04:05"))
+		}
+		if j.ErrorMessage != "" {
+			fmt.Printf("Error:     %s\n", j.ErrorMessage)
 		}
 
 		return nil
 	},
 }
 
+// resolveWordbook finds a builtin wordbook by name or ID and returns its terms.
+func resolveWordbook(nameOrID string) ([]string, string, error) {
+	builtins := wordbook.GetBuiltinWordbooks()
+
+	// Try by ID
+	if id, err := strconv.ParseInt(nameOrID, 10, 64); err == nil {
+		for _, wb := range builtins {
+			if wb.Id == id {
+				return wb.Terms, wb.Name, nil
+			}
+		}
+		return nil, "", fmt.Errorf("wordbook with ID %d not found", id)
+	}
+
+	// Try by name (case-insensitive)
+	for _, wb := range builtins {
+		if strings.EqualFold(wb.Name, nameOrID) {
+			return wb.Terms, wb.Name, nil
+		}
+	}
+
+	// List available
+	var names []string
+	for _, wb := range builtins {
+		names = append(names, fmt.Sprintf("  %d: %s (%d terms)", wb.Id, wb.Name, len(wb.Terms)))
+	}
+	return nil, "", fmt.Errorf("wordbook %q not found. Available:\n%s", nameOrID, strings.Join(names, "\n"))
+}
+
 func init() {
 	rootCmd.AddCommand(pipelineCmd)
 
-	// Process command
-	pipelineCmd.AddCommand(processCmd)
-	processCmd.Flags().String("language", "en", "Language code")
-	processCmd.Flags().Int32("tier", 2, "Priority tier (1=Core, 2=Extended, 3=LongTail)")
+	// Source management commands
+	pipelineCmd.AddCommand(sourceCmd)
+	sourceCmd.AddCommand(sourceListCmd, sourceDownloadCmd)
 
-	// Status command
-	pipelineCmd.AddCommand(statusCmd)
-	statusCmd.Flags().String("language", "en", "Language code")
+	// Async job commands
+	pipelineCmd.AddCommand(submitCmd)
+	submitCmd.Flags().String("language", "en", "Language code")
+	submitCmd.Flags().Int32("tier", 2, "Priority tier (1=Core, 2=Extended, 3=LongTail)")
+	submitCmd.Flags().String("file", "", "Path to term file (txt/json)")
+	submitCmd.Flags().String("wordbook", "", "Built-in wordbook name or ID")
+	submitCmd.Flags().String("name", "", "Custom job name")
 
-	// Snapshot command
-	pipelineCmd.AddCommand(snapshotCmd)
-	snapshotCmd.Flags().String("language", "en", "Language code")
+	pipelineCmd.AddCommand(jobsCmd)
+	jobsCmd.Flags().String("status", "", "Filter by status (PENDING, RUNNING, COMPLETED, FAILED)")
 
-	// Data management commands
-	pipelineCmd.AddCommand(dataCmd)
-	dataCmd.AddCommand(dataCheckCmd)
-	dataCmd.AddCommand(dataDownloadCmd)
-	dataCmd.AddCommand(dataListCmd)
-}
-
-// ensureDataSources checks if required data sources are available
-// and optionally downloads them if auto-download is enabled
-func ensureDataSources(cfg *config.Config, logger *slog.Logger) error {
-	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	ctx := context.Background()
-
-	// Check if data sources are available
-	if err := mgr.EnsureAvailable(ctx, cfg.Pipeline.AutoDownload, "conceptnet", "ecdict", "wordnet"); err != nil {
-		if !cfg.Pipeline.AutoDownload {
-			fmt.Fprintln(os.Stderr, "\nError:", err)
-			fmt.Fprintln(os.Stderr, "\nTo download missing data sources, run:")
-			fmt.Fprintln(os.Stderr, "  vocnet pipeline data download")
-			fmt.Fprintln(os.Stderr, "\nOr enable auto-download:")
-			fmt.Fprintln(os.Stderr, "  export PIPELINE_AUTO_DOWNLOAD=true")
-		}
-		return err
-	}
-
-	return nil
-}
-
-func getPhaseNameByNumber(phase int32) string {
-	switch phase {
-	case 1:
-		return "discovery"
-	case 2:
-		return "lexical"
-	case 3:
-		return "relational"
-	case 4:
-		return "intellectual"
-	case 5:
-		return "synthesis"
-	default:
-		return "unknown"
-	}
+	pipelineCmd.AddCommand(jobCmd)
 }

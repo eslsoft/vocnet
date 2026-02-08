@@ -37,4 +37,6 @@ var (
 	ErrInvalidReviewPlanID   = errors.New("invalid review plan id")
 	ErrInvalidReviewPlanName = errors.New("invalid review plan name")
 	ErrDuplicateReviewPlan   = errors.New("review plan already exists")
+
+	ErrPipelineJobNotFound = errors.New("pipeline job not found")
 )

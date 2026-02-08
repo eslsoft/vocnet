@@ -27,8 +27,8 @@ func (p *ConceptNetProcessor) Process(ctx context.Context, pctx *PipelineContext
 		return &ProcessResult{Status: ProcessStatusSkipped}, nil
 	}
 
-	sourceLexemeID := getSourceLexemeID(pctx)
-	if sourceLexemeID == 0 {
+	sourceExtID := getPrimaryExternalID(pctx)
+	if sourceExtID == "" {
 		return &ProcessResult{Status: ProcessStatusNoData}, nil
 	}
 
@@ -53,13 +53,12 @@ func (p *ConceptNetProcessor) Process(ctx context.Context, pctx *PipelineContext
 		}
 
 		relations = append(relations, &entity.SemanticRelation{
-			SourceLexemeID: sourceLexemeID,
-			TargetLexemeID: nil,
-			TargetTerm:     targetTerm,
-			RelationType:   edge.RelationType,
-			Provider:       "conceptnet",
-			Strength:       edge.Weight,
-			SenseMapped:    false,
+			SourceExternalID: sourceExtID,
+			TargetTerm:       targetTerm,
+			RelationType:     edge.RelationType,
+			Provider:         "conceptnet",
+			Strength:         edge.Weight,
+			SenseMapped:      false,
 		})
 	}
 
@@ -87,8 +86,8 @@ func (p *WordNetProcessor) Process(ctx context.Context, pctx *PipelineContext) (
 		return &ProcessResult{Status: ProcessStatusSkipped}, nil
 	}
 
-	sourceLexemeID := getSourceLexemeID(pctx)
-	if sourceLexemeID == 0 {
+	sourceExtID := getPrimaryExternalID(pctx)
+	if sourceExtID == "" {
 		return &ProcessResult{Status: ProcessStatusNoData}, nil
 	}
 
@@ -124,13 +123,12 @@ func (p *WordNetProcessor) Process(ctx context.Context, pctx *PipelineContext) (
 		for i := 0; i < len(hypernymPath)-1; i++ {
 			parentSynset := hypernymPath[i+1]
 			relations = append(relations, &entity.SemanticRelation{
-				SourceLexemeID: sourceLexemeID,
-				TargetLexemeID: nil,
-				TargetTerm:     fmt.Sprintf("synset:%s (%s)", parentSynset.Offset, parentSynset.Words[0]),
-				RelationType:   entity.RelationHypernym,
-				Provider:       "wordnet",
-				Strength:       1.0,
-				SenseMapped:    true,
+				SourceExternalID: sourceExtID,
+				TargetTerm:       fmt.Sprintf("synset:%s (%s)", parentSynset.Offset, parentSynset.Words[0]),
+				RelationType:     entity.RelationHypernym,
+				Provider:         "wordnet",
+				Strength:         1.0,
+				SenseMapped:      true,
 			})
 		}
 	}
@@ -147,13 +145,12 @@ func (p *WordNetProcessor) Process(ctx context.Context, pctx *PipelineContext) (
 		}
 
 		relations = append(relations, &entity.SemanticRelation{
-			SourceLexemeID: sourceLexemeID,
-			TargetLexemeID: nil,
-			TargetTerm:     fmt.Sprintf("synset:%s", rel.TargetID),
-			RelationType:   relType,
-			Provider:       "wordnet",
-			Strength:       1.0,
-			SenseMapped:    true,
+			SourceExternalID: sourceExtID,
+			TargetTerm:       fmt.Sprintf("synset:%s", rel.TargetID),
+			RelationType:     relType,
+			Provider:         "wordnet",
+			Strength:         1.0,
+			SenseMapped:      true,
 		})
 	}
 
@@ -164,11 +161,10 @@ func (p *WordNetProcessor) Process(ctx context.Context, pctx *PipelineContext) (
 	}, nil
 }
 
-// getSourceLexemeID returns the primary lexeme ID from the pipeline context.
-// Shared by ConceptNetProcessor and WordNetProcessor.
-func getSourceLexemeID(pctx *PipelineContext) int64 {
+// getPrimaryExternalID returns the Wikidata ExternalID of the primary lexeme.
+func getPrimaryExternalID(pctx *PipelineContext) string {
 	if len(pctx.Lexemes) == 0 {
-		return 0
+		return ""
 	}
-	return pctx.Lexemes[0].ID
+	return pctx.Lexemes[0].ExternalID
 }

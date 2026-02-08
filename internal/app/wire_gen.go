@@ -13,6 +13,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
@@ -64,11 +65,15 @@ func Initialize() (*Container, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
+	pipelineJobRepository := repository.NewPipelineJobRepository(client)
+	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, logger)
 	container := &Container{
 		Logger:          logger,
+		Config:          configConfig,
 		Server:          serverServer,
 		EntClient:       client,
 		WordbookUsecase: wordbookUsecase,
+		PipelineService: pipelineService,
 	}
 	return container, func() {
 		cleanup2()
@@ -86,9 +91,9 @@ var authSet = wire.NewSet(
 	provideJWTValidator,
 )
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineTaskRepository, repository.NewSemanticRelationRepository, repository.NewWordSnapshotRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineTaskRepository, repository.NewSemanticRelationRepository, repository.NewWordSnapshotRepository, repository.NewPipelineJobRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase, pipeline.NewPipelineService)
 
 var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, connectrpc.NewReviewPlanServiceServer, connectrpc.NewStatsServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)), wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*connectrpc.ReviewPlanServiceServer)), wire.Bind(new(learningv1connect.StatsServiceHandler), new(*connectrpc.StatsServiceServer)))
 

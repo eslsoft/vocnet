@@ -66,8 +66,11 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 		return fmt.Errorf("save lexemes: %w", err)
 	}
 
-	// Save relations
+	// Save relations (resolve ExternalID → DB SourceLexemeID first)
 	if len(result.Relations) > 0 {
+		if err := p.resolveRelationIDs(ctx, result.Relations); err != nil {
+			return fmt.Errorf("resolve relation IDs: %w", err)
+		}
 		if _, err := p.relationRepo.BatchCreate(ctx, result.Relations); err != nil {
 			return fmt.Errorf("save relations: %w", err)
 		}
@@ -76,8 +79,9 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 	return nil
 }
 
-// SaveSnapshot persists a word snapshot.
-func (p *Persistence) SaveSnapshot(ctx context.Context, snapshot *entity.WordSnapshot) error {
+// SaveSnapshot persists a word snapshot, backfilling LemmaID.
+func (p *Persistence) SaveSnapshot(ctx context.Context, lemmaID int64, snapshot *entity.WordSnapshot) error {
+	snapshot.LemmaID = lemmaID
 	_, err := p.snapshotRepo.CreateOrUpdate(ctx, snapshot)
 	if err != nil {
 		return fmt.Errorf("save snapshot: %w", err)
@@ -232,5 +236,35 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 		}
 	}
 
+	return nil
+}
+
+// resolveRelationIDs resolves SourceExternalID → DB SourceLexemeID for all relations.
+func (p *Persistence) resolveRelationIDs(ctx context.Context, relations []*entity.SemanticRelation) error {
+	// Collect unique ExternalIDs
+	extIDs := make(map[string]bool)
+	for _, rel := range relations {
+		if rel.SourceExternalID != "" {
+			extIDs[rel.SourceExternalID] = true
+		}
+	}
+
+	// Resolve ExternalID → DB ID
+	extIDToDBID := make(map[string]int64)
+	for extID := range extIDs {
+		lex, err := p.lexemeRepo.GetByExternalID(ctx, extID)
+		if err != nil {
+			p.logger.Warn("could not resolve lexeme ExternalID", "external_id", extID, "error", err)
+			continue
+		}
+		extIDToDBID[extID] = lex.ID
+	}
+
+	// Backfill SourceLexemeID
+	for _, rel := range relations {
+		if dbID, ok := extIDToDBID[rel.SourceExternalID]; ok {
+			rel.SourceLexemeID = dbID
+		}
+	}
 	return nil
 }

@@ -64,7 +64,6 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 	qscore := p.qualityCalculator.Calculate(snapshotData)
 
 	snapshot := &entity.WordSnapshot{
-		LemmaID:            pctx.Lemma.ID,
 		Term:               pctx.Lemma.Surface,
 		Language:            pctx.Language.Code(),
 		WikidataQID:        pctx.Lemma.WikidataQID,

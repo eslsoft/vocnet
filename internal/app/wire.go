@@ -11,6 +11,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
@@ -40,6 +41,7 @@ var repositorySet = wire.NewSet(
 	repository.NewPipelineTaskRepository,
 	repository.NewSemanticRelationRepository,
 	repository.NewWordSnapshotRepository,
+	repository.NewPipelineJobRepository,
 )
 
 var usecaseSet = wire.NewSet(
@@ -51,6 +53,7 @@ var usecaseSet = wire.NewSet(
 	usecase.NewFSRSAlgorithm,
 	usecase.NewReviewPlanUsecase,
 	usecase.NewStatsUsecase,
+	pipeline.NewPipelineService,
 )
 
 var serviceSet = wire.NewSet(
@@ -81,7 +84,7 @@ func Initialize() (*Container, func(), error) {
 		usecaseSet,
 		serviceSet,
 		serverSet,
-		wire.Struct(new(Container), "Logger", "Server", "EntClient", "WordbookUsecase"),
+		wire.Struct(new(Container), "*"),
 	)
 	return nil, nil, nil
 }
