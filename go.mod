@@ -5,7 +5,7 @@ go 1.25
 require (
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/cors v0.1.0
-	entgo.io/ent v0.14.5
+	entgo.io/ent v0.14.6-0.20260108211107-2eb36418a02e
 	github.com/MicahParks/keyfunc/v3 v3.7.0
 	github.com/envoyproxy/protoc-gen-validate v1.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
