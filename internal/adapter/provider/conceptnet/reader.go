@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -91,7 +91,7 @@ func (r *Reader) FetchRelations(ctx context.Context, term string, language strin
 		var relation, startURI, endURI string
 		var weight float64
 		if err := rows.Scan(&relation, &startURI, &endURI, &weight); err != nil {
-			continue
+			return nil, nil, fmt.Errorf("scan conceptnet row: %w", err)
 		}
 
 		relLabel := extractRelationLabel(relation)
@@ -159,14 +159,12 @@ func validateIndex(dbPath string) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM edges LIMIT 1").Scan(&count); err != nil {
-		return err
-	}
-	if count == 0 {
+	var dummy int
+	err = db.QueryRow("SELECT 1 FROM edges LIMIT 1").Scan(&dummy)
+	if err == sql.ErrNoRows {
 		return fmt.Errorf("empty index")
 	}
-	return nil
+	return err
 }
 
 // buildIndex scans the ConceptNet CSV and builds a SQLite index.
@@ -176,7 +174,12 @@ func buildIndex(csvPath, dbPath string, logger *slog.Logger) error {
 	}
 
 	// Build to a temp file, rename on success to avoid partial indices
-	tmpPath := dbPath + ".tmp"
+	tmpFile, err := os.CreateTemp(filepath.Dir(dbPath), "conceptnet-idx-*.db.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
 
 	db, err := sql.Open("sqlite3", tmpPath)
@@ -188,7 +191,7 @@ func buildIndex(csvPath, dbPath string, logger *slog.Logger) error {
 	for _, pragma := range []string{
 		"PRAGMA journal_mode=OFF",
 		"PRAGMA synchronous=OFF",
-		"PRAGMA cache_size=-1048576", // 1GB cache
+		"PRAGMA cache_size=-262144", // 256MB cache
 		"PRAGMA temp_store=MEMORY",
 	} {
 		if _, err := db.Exec(pragma); err != nil {
@@ -244,13 +247,9 @@ func buildIndex(csvPath, dbPath string, logger *slog.Logger) error {
 
 		line := scanner.Text()
 
-		// Parse tab-separated fields
-		reader := csv.NewReader(strings.NewReader(line))
-		reader.Comma = '\t'
-		reader.LazyQuotes = true
-
-		fields, err := reader.Read()
-		if err != nil || len(fields) < 5 {
+		// Parse tab-separated fields (avoid csv.Reader for performance on ~34M lines)
+		fields := strings.SplitN(line, "\t", 6)
+		if len(fields) < 5 {
 			continue
 		}
 
