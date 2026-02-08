@@ -170,7 +170,6 @@ func buildPipelineWorker(cfg *config.Config, entClient *entdb.Client, logger *sl
 	} else {
 		conceptnetProvider = reader
 	}
-	defer func() { _ = conceptnetProvider.Close() }()
 
 	var ecdictReader *ecdict.Reader
 	ecdictReader, err = ecdict.NewReader(paths.ECDICT)
