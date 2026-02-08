@@ -3,25 +3,29 @@ package wordnet
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 )
 
 // Reader reads WordNet data files to extract synsets and relations.
 // All data files are loaded into memory at initialization for fast lookups.
+// The reader is safe for concurrent use after creation.
 type Reader struct {
 	dataDir string
 	// wordIndex maps lowercase word -> []*Synset for each POS file
 	wordIndex map[string][]*Synset
 	// offsetIndex maps "pos:offset" -> *Synset for direct synset lookups
 	offsetIndex map[string]*Synset
-	loaded      bool
+	once        sync.Once
+	loadErr     error
 }
 
 // NewReader creates a WordNet reader for the given data directory.
@@ -53,20 +57,20 @@ type Relation struct {
 }
 
 // ensureLoaded loads all WordNet data files into memory on first access.
+// Uses sync.Once for concurrency safety.
 func (r *Reader) ensureLoaded() error {
-	if r.loaded {
-		return nil
-	}
-
-	for _, filename := range []string{"data.noun", "data.verb", "data.adj", "data.adv"} {
-		if err := r.loadDataFile(filename); err != nil {
-			// Non-fatal: file might not exist
-			continue
+	r.once.Do(func() {
+		for _, filename := range []string{"data.noun", "data.verb", "data.adj", "data.adv"} {
+			if err := r.loadDataFile(filename); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				r.loadErr = fmt.Errorf("load %s: %w", filename, err)
+				return
+			}
 		}
-	}
-
-	r.loaded = true
-	return nil
+	})
+	return r.loadErr
 }
 
 // loadDataFile parses a single WordNet data file and indexes its synsets.
@@ -74,7 +78,7 @@ func (r *Reader) loadDataFile(filename string) error {
 	filePath := filepath.Join(r.dataDir, filename)
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("open wordnet file %s: %w", filename, err)
+		return err
 	}
 	defer func() { _ = file.Close() }()
 
@@ -121,7 +125,10 @@ func (r *Reader) LookupSynsets(ctx context.Context, word string, pos string) ([]
 	// Filter by POS if specified
 	posFilter := normalizePOS(pos)
 
-	// Separate exact case matches from case-insensitive
+	// Separate exact case matches from case-insensitive.
+	// synset.Words stores words with spaces (underscores converted to spaces),
+	// so normalize the input word the same way for exact comparison.
+	wordWithSpaces := strings.ReplaceAll(word, "_", " ")
 	exactMatches := make([]*Synset, 0)
 	caseInsensitiveMatches := make([]*Synset, 0)
 
@@ -130,7 +137,7 @@ func (r *Reader) LookupSynsets(ctx context.Context, word string, pos string) ([]
 			continue
 		}
 
-		if slices.Contains(synset.Words, word) {
+		if slices.Contains(synset.Words, wordWithSpaces) {
 			exactMatches = append(exactMatches, synset)
 		} else {
 			caseInsensitiveMatches = append(caseInsensitiveMatches, synset)
