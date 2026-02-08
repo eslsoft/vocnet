@@ -81,10 +81,12 @@ func (s *WikidataSource) Download(ctx context.Context) error {
 		return fmt.Errorf("extract: %w", err)
 	}
 
-	// Build SQLite index
+	// Build SQLite index (only if needed)
 	indexer := NewWikidataIndexer(s.path, s.logger)
-	if err := indexer.BuildIndex(); err != nil {
-		return fmt.Errorf("build index: %w", err)
+	if indexer.NeedsIndex() {
+		if err := indexer.BuildIndex(); err != nil {
+			return fmt.Errorf("build index: %w", err)
+		}
 	}
 
 	return nil
