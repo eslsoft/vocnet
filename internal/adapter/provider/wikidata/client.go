@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
@@ -162,26 +163,32 @@ LIMIT 10`, langQID(langCode), strings.ToLower(term))
 		return nil, rawResponse, fmt.Errorf("parse sparql: %w", err)
 	}
 
-	lexemes := make([]provider.WikidataLexeme, 0, len(sparqlResult.Results.Bindings))
-	for _, binding := range sparqlResult.Results.Bindings {
+	bindings := sparqlResult.Results.Bindings
+	lexemes := make([]provider.WikidataLexeme, len(bindings))
+
+	// Fetch lexeme details in parallel
+	var wg sync.WaitGroup
+	for i, binding := range bindings {
 		lexemeID := extractID(binding.Lexeme.Value)
 		posQID := extractID(binding.Pos.Value)
 
-		lex := provider.WikidataLexeme{
+		lexemes[i] = provider.WikidataLexeme{
 			LexemeID: lexemeID,
 			Language: langCode,
 			POS:      mapWikidataPOS(posQID),
 		}
 
-		// Fetch detailed lexeme data (senses and forms)
-		senses, forms, err := c.fetchLexemeDetail(ctx, lexemeID)
-		if err == nil {
-			lex.Senses = senses
-			lex.Forms = forms
-		}
-
-		lexemes = append(lexemes, lex)
+		wg.Add(1)
+		go func(idx int, id string) {
+			defer wg.Done()
+			senses, forms, err := c.fetchLexemeDetail(ctx, id)
+			if err == nil {
+				lexemes[idx].Senses = senses
+				lexemes[idx].Forms = forms
+			}
+		}(i, lexemeID)
 	}
+	wg.Wait()
 
 	return lexemes, rawResponse, nil
 }
