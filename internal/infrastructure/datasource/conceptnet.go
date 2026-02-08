@@ -15,17 +15,17 @@ const (
 
 // ConceptNetSource implements DataSource for ConceptNet data
 type ConceptNetSource struct {
-	path     string
-	cacheDir string
-	logger   *slog.Logger
+	path       string
+	logger     *slog.Logger
+	downloader *Downloader
 }
 
 // NewConceptNetSource creates a new ConceptNet data source
-func NewConceptNetSource(dataDir, cacheDir string, logger *slog.Logger) *ConceptNetSource {
+func NewConceptNetSource(dataDir string, downloader *Downloader, logger *slog.Logger) *ConceptNetSource {
 	return &ConceptNetSource{
-		path:     filepath.Join(dataDir, "conceptnet", conceptNetFilename),
-		cacheDir: cacheDir,
-		logger:   logger,
+		path:       filepath.Join(dataDir, "conceptnet", conceptNetFilename),
+		logger:     logger,
+		downloader: downloader,
 	}
 }
 
@@ -54,27 +54,16 @@ func (s *ConceptNetSource) Download(ctx context.Context) error {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
-	// Check cache
-	cachePath, fromCache, err := prepareCachePath(conceptNetURL, s.cacheDir, "conceptnet-5.7.0.csv.gz")
+	artifactPath, err := s.downloader.Fetch(ctx, DownloadRequest{
+		Source: s.Name(),
+		URL:    conceptNetURL,
+	})
 	if err != nil {
-		return fmt.Errorf("prepare cache: %w", err)
-	}
-
-	// Download if not cached
-	if !fromCache {
-		s.logger.Info("downloading ConceptNet", "url", conceptNetURL)
-		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
-		defer cancel()
-
-		if err := downloadWithProgress(ctx, conceptNetURL, cachePath, s.logger); err != nil {
-			return fmt.Errorf("download: %w", err)
-		}
-	} else {
-		s.logger.Info("using cached ConceptNet", "path", cachePath)
+		return err
 	}
 
 	// Extract .gz file
-	if err := extractGz(cachePath, s.path, s.logger); err != nil {
+	if err := extractGz(artifactPath, s.path, s.logger); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
 

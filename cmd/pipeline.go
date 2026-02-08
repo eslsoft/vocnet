@@ -29,7 +29,7 @@ var pipelineCmd = &cobra.Command{
 // Source management commands
 var sourceCmd = &cobra.Command{
 	Use:   "source",
-	Short: "Manage offline data sources (ConceptNet, ECDICT, WordNet, Moby)",
+	Short: "Manage offline data sources (ConceptNet, ECDICT, WordNet, Moby, Wikidata)",
 }
 
 var sourceListCmd = &cobra.Command{
@@ -98,12 +98,13 @@ var sourceDownloadCmd = &cobra.Command{
 	Long: `Download data sources required by the pipeline.
 If no source is specified, downloads all missing sources.
 
-Available sources: conceptnet, ecdict, wordnet, moby
+Available sources: conceptnet, ecdict, wordnet, moby, wikidata
 
 Examples:
   vocnet pipeline source download            # Download all missing sources
   vocnet pipeline source download conceptnet # Download only ConceptNet
-  vocnet pipeline source download ecdict wordnet # Download ECDICT and WordNet`,
+  vocnet pipeline source download ecdict wordnet # Download ECDICT and WordNet
+  vocnet pipeline source download wikidata # Download only Wikidata`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {

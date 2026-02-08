@@ -109,7 +109,7 @@ func setDefaults() {
 
 	// Pipeline defaults
 	viper.SetDefault("pipeline.data_dir", "./data")
-	viper.SetDefault("pipeline.auto_download", false)
+	viper.SetDefault("pipeline.auto_download", true)
 	viper.SetDefault("pipeline.cache_dir", "") // Empty means use system cache dir
 	viper.SetDefault("pipeline.llm_base_url", "https://api.openai.com/v1")
 	viper.SetDefault("pipeline.llm_api_key", "")

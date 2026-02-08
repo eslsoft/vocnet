@@ -16,17 +16,17 @@ const (
 
 // ECDICTSource implements DataSource for ECDICT data
 type ECDICTSource struct {
-	path     string
-	cacheDir string
-	logger   *slog.Logger
+	path       string
+	logger     *slog.Logger
+	downloader *Downloader
 }
 
 // NewECDICTSource creates a new ECDICT data source
-func NewECDICTSource(dataDir, cacheDir string, logger *slog.Logger) *ECDICTSource {
+func NewECDICTSource(dataDir string, downloader *Downloader, logger *slog.Logger) *ECDICTSource {
 	return &ECDICTSource{
-		path:     filepath.Join(dataDir, "ecdict", ecdictDefaultFilename),
-		cacheDir: cacheDir,
-		logger:   logger,
+		path:       filepath.Join(dataDir, "ecdict", ecdictDefaultFilename),
+		logger:     logger,
+		downloader: downloader,
 	}
 }
 
@@ -57,27 +57,16 @@ func (s *ECDICTSource) Download(ctx context.Context) error {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
-	// Check cache
-	cachePath, fromCache, err := prepareCachePath(url, s.cacheDir, "ecdict.zip")
+	artifactPath, err := s.downloader.Fetch(ctx, DownloadRequest{
+		Source: s.Name(),
+		URL:    url,
+	})
 	if err != nil {
-		return fmt.Errorf("prepare cache: %w", err)
-	}
-
-	// Download if not cached
-	if !fromCache {
-		s.logger.Info("downloading ECDICT", "url", url)
-		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
-		defer cancel()
-
-		if err := downloadWithProgress(ctx, url, cachePath, s.logger); err != nil {
-			return fmt.Errorf("download: %w", err)
-		}
-	} else {
-		s.logger.Info("using cached ECDICT", "path", cachePath)
+		return err
 	}
 
 	// Extract .db file from zip
-	extractedPath, err := extractZipSingle(cachePath, destDir, func(name string) bool {
+	extractedPath, err := extractZipSingle(artifactPath, destDir, func(name string) bool {
 		return strings.HasSuffix(name, ".db") || strings.HasSuffix(name, ".sqlite")
 	}, s.logger)
 	if err != nil {

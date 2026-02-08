@@ -67,13 +67,14 @@ func NewManager(cfg *config.Config, logger *slog.Logger, cacheDir string) *Manag
 	}
 
 	dataDir := cfg.Pipeline.DataDir
+	downloader := NewDownloader(cacheDir, logger)
 
 	// Register data sources
-	m.sources["conceptnet"] = NewConceptNetSource(dataDir, cacheDir, logger)
-	m.sources["ecdict"] = NewECDICTSource(dataDir, cacheDir, logger)
-	m.sources["wordnet"] = NewWordNetSource(dataDir, cacheDir, logger)
-	m.sources["moby"] = NewMobySource(dataDir, cacheDir, logger)
-	m.sources["wikidata"] = NewWikidataSource(dataDir, cacheDir, logger)
+	m.sources["conceptnet"] = NewConceptNetSource(dataDir, downloader, logger)
+	m.sources["ecdict"] = NewECDICTSource(dataDir, downloader, logger)
+	m.sources["wordnet"] = NewWordNetSource(dataDir, downloader, logger)
+	m.sources["moby"] = NewMobySource(dataDir, downloader, logger)
+	m.sources["wikidata"] = NewWikidataSource(dataDir, downloader, logger)
 
 	return m
 }
@@ -191,7 +192,7 @@ func (m *Manager) EnsureAvailable(ctx context.Context, autoDownload bool, requir
 	}
 
 	// Otherwise, return error with helpful message
-	return fmt.Errorf("missing data sources: %v. Run 'vocnet pipeline data download' to download them", missing)
+	return fmt.Errorf("missing data sources: %v. Run 'vocnet pipeline source download' to download them", missing)
 }
 
 // ListSources returns all registered data source names

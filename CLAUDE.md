@@ -282,8 +282,8 @@ Configure the pipeline data directory in `.env`:
 # Pipeline data directory (all data sources are stored under this directory)
 PIPELINE_DATA_DIR=./data
 
-# Auto-download missing sources (default: false)
-PIPELINE_AUTO_DOWNLOAD=false
+# Auto-download missing sources (default: true)
+PIPELINE_AUTO_DOWNLOAD=true
 
 # Cache directory for downloads (default: system cache dir)
 # PIPELINE_CACHE_DIR=~/.cache/vocnet
@@ -308,7 +308,7 @@ Downloads are cached in `~/.cache/vocnet/` (or `$PIPELINE_CACHE_DIR`) to avoid r
 
 ### Auto-Download
 
-Enable auto-download to automatically fetch missing data sources:
+Auto-download is enabled by default. To explicitly enable it:
 
 ```bash
 # One-time for current command

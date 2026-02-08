@@ -185,7 +185,7 @@ clean: ## Clean build artifacts and generated files
 .PHONY: pipeline-setup
 pipeline-setup: ## Download all pipeline data sources
 	@echo "Downloading pipeline data sources..."
-	go run . pipeline data download
+	go run . pipeline source download
 
 .PHONY: sense-cleaner
 sense-cleaner: ## Run sense cleaner (use ARGS for flags, e.g., make sense-cleaner ARGS="-dry-run -limit 10")

@@ -15,17 +15,17 @@ const (
 
 // MobySource manages the Moby Hyphenation data source
 type MobySource struct {
-	path     string
-	cacheDir string
-	logger   *slog.Logger
+	path       string
+	logger     *slog.Logger
+	downloader *Downloader
 }
 
 // NewMobySource creates a new Moby data source
-func NewMobySource(dataDir, cacheDir string, logger *slog.Logger) *MobySource {
+func NewMobySource(dataDir string, downloader *Downloader, logger *slog.Logger) *MobySource {
 	return &MobySource{
-		path:     filepath.Join(dataDir, "moby", mobyFilename),
-		cacheDir: cacheDir,
-		logger:   logger,
+		path:       filepath.Join(dataDir, "moby", mobyFilename),
+		logger:     logger,
+		downloader: downloader,
 	}
 }
 
@@ -50,18 +50,11 @@ func (m *MobySource) Exists() bool {
 }
 
 func (m *MobySource) Download(ctx context.Context) error {
-	// Create directory if needed
-	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil {
-		return fmt.Errorf("create directory: %w", err)
-	}
-
-	m.logger.Info("downloading Moby hyphenation data",
-		"url", mobyURL,
-		"target", m.path)
-
-	// Download file using existing helper
-	if err := downloadWithProgress(ctx, mobyURL, m.path, m.logger); err != nil {
-		return fmt.Errorf("download moby data: %w", err)
+	if err := m.downloader.DownloadFile(ctx, DownloadRequest{
+		Source: m.Name(),
+		URL:    mobyURL,
+	}, m.path, ".moby-*"); err != nil {
+		return fmt.Errorf("copy cache to destination: %w", err)
 	}
 
 	// Verify download

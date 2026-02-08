@@ -15,17 +15,17 @@ const (
 
 // WordNetSource implements DataSource for WordNet data
 type WordNetSource struct {
-	path     string
-	cacheDir string
-	logger   *slog.Logger
+	path       string
+	logger     *slog.Logger
+	downloader *Downloader
 }
 
 // NewWordNetSource creates a new WordNet data source
-func NewWordNetSource(dataDir, cacheDir string, logger *slog.Logger) *WordNetSource {
+func NewWordNetSource(dataDir string, downloader *Downloader, logger *slog.Logger) *WordNetSource {
 	return &WordNetSource{
-		path:     filepath.Join(dataDir, "wordnet"),
-		cacheDir: cacheDir,
-		logger:   logger,
+		path:       filepath.Join(dataDir, "wordnet"),
+		logger:     logger,
+		downloader: downloader,
 	}
 }
 
@@ -70,27 +70,16 @@ func (s *WordNetSource) Download(ctx context.Context) error {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
-	// Check cache
-	cachePath, fromCache, err := prepareCachePath(wordNetURL, s.cacheDir, wordNetFilename)
+	artifactPath, err := s.downloader.Fetch(ctx, DownloadRequest{
+		Source: s.Name(),
+		URL:    wordNetURL,
+	})
 	if err != nil {
-		return fmt.Errorf("prepare cache: %w", err)
-	}
-
-	// Download if not cached
-	if !fromCache {
-		s.logger.Info("downloading WordNet", "url", wordNetURL)
-		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
-		defer cancel()
-
-		if err := downloadWithProgress(ctx, wordNetURL, cachePath, s.logger); err != nil {
-			return fmt.Errorf("download: %w", err)
-		}
-	} else {
-		s.logger.Info("using cached WordNet", "path", cachePath)
+		return err
 	}
 
 	// Extract tar.gz
-	if err := extractTarGz(cachePath, s.path, s.logger); err != nil {
+	if err := extractTarGz(artifactPath, s.path, s.logger); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
 

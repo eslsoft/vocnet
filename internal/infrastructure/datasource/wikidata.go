@@ -18,17 +18,17 @@ const (
 
 // WikidataSource implements DataSource for Wikidata lexemes data
 type WikidataSource struct {
-	path     string
-	cacheDir string
-	logger   *slog.Logger
+	path       string
+	logger     *slog.Logger
+	downloader *Downloader
 }
 
 // NewWikidataSource creates a new Wikidata data source
-func NewWikidataSource(dataDir, cacheDir string, logger *slog.Logger) *WikidataSource {
+func NewWikidataSource(dataDir string, downloader *Downloader, logger *slog.Logger) *WikidataSource {
 	return &WikidataSource{
-		path:     filepath.Join(dataDir, "wikidata", wikidataLexemesFilename),
-		cacheDir: cacheDir,
-		logger:   logger,
+		path:       filepath.Join(dataDir, "wikidata", wikidataLexemesFilename),
+		logger:     logger,
+		downloader: downloader,
 	}
 }
 
@@ -57,27 +57,16 @@ func (s *WikidataSource) Download(ctx context.Context) error {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
-	// Check cache
-	cachePath, fromCache, err := prepareCachePath(wikidataLexemesURL, s.cacheDir, wikidataCacheFilename)
+	artifactPath, err := s.downloader.Fetch(ctx, DownloadRequest{
+		Source: s.Name(),
+		URL:    wikidataLexemesURL,
+	})
 	if err != nil {
-		return fmt.Errorf("prepare cache: %w", err)
-	}
-
-	// Download if not cached
-	if !fromCache {
-		s.logger.Info("downloading Wikidata lexemes", "url", wikidataLexemesURL)
-		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
-		defer cancel()
-
-		if err := downloadWithProgress(ctx, wikidataLexemesURL, cachePath, s.logger); err != nil {
-			return fmt.Errorf("download: %w", err)
-		}
-	} else {
-		s.logger.Info("using cached Wikidata lexemes", "path", cachePath)
+		return err
 	}
 
 	// Extract .bz2 file
-	if err := extractBz2(cachePath, s.path, s.logger); err != nil {
+	if err := extractBz2(artifactPath, s.path, s.logger); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
 
