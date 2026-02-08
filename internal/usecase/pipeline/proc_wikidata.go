@@ -26,7 +26,7 @@ func (p *WikidataProcessor) Name() string { return "wikidata" }
 
 func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.wikidata == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped}, nil
+		return nil, &ErrProcessorSkipped{Reason: "wikidata not available"}
 	}
 
 	term := pctx.Term

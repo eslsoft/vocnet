@@ -24,7 +24,7 @@ func (p *ConceptNetProcessor) Name() string { return "conceptnet" }
 
 func (p *ConceptNetProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.conceptnet == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped}, nil
+		return nil, &ErrProcessorSkipped{Reason: "conceptnet not available"}
 	}
 
 	sourceExtID := getPrimaryExternalID(pctx)
@@ -83,7 +83,7 @@ func (p *WordNetProcessor) Name() string { return "wordnet" }
 
 func (p *WordNetProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.reader == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped}, nil
+		return nil, &ErrProcessorSkipped{Reason: "wordnet not available"}
 	}
 
 	sourceExtID := getPrimaryExternalID(pctx)

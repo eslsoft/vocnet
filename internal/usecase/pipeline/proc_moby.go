@@ -21,7 +21,7 @@ func (p *MobyProcessor) Name() string { return "moby" }
 
 func (p *MobyProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.reader == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped}, nil
+		return nil, &ErrProcessorSkipped{Reason: "moby not available"}
 	}
 
 	if len(pctx.Forms) == 0 {

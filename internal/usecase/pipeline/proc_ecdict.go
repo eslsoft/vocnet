@@ -28,7 +28,7 @@ func (p *ECDICTProcessor) Name() string { return "ecdict" }
 
 func (p *ECDICTProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.reader == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped}, nil
+		return nil, &ErrProcessorSkipped{Reason: "ecdict not available"}
 	}
 
 	entry, err := p.reader.Lookup(ctx, pctx.Term)

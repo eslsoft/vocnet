@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -151,27 +152,26 @@ func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stag
 		procStart := time.Now()
 		result, err := proc.Process(ctx, pctx)
 		if err != nil {
+			// Processor skipped (not configured) → log and continue
+			var skipErr *ErrProcessorSkipped
+			if errors.As(err, &skipErr) {
+				logger.Warn("processor skipped", "processor", proc.Name(), "reason", skipErr.Reason)
+				continue
+			}
+
+			// Real error → fail the stage
 			errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
 			_ = p.updateTaskStatus(ctx, pctx.Lemma.ID, phaseNum, entity.TaskStatusFailed, errMsg)
 			return fmt.Errorf("processor %s: %w", proc.Name(), err)
 		}
 
-		if result == nil {
-			logger.Debug("processor completed", "processor", proc.Name(), "status", "nil", "duration", time.Since(procStart))
-			continue
-		}
-
-		if result.SkipReason != "" {
-			logger.Warn("processor skipped", "processor", proc.Name(), "reason", result.SkipReason)
-		} else {
-			logger.Debug("processor completed", "processor", proc.Name(), "status", result.Status, "duration", time.Since(procStart))
-		}
-
-		if result.Status == ProcessStatusSkipped || result.Status == ProcessStatusNoData {
+		if result == nil || result.Status == ProcessStatusNoData {
+			logger.Debug("processor completed", "processor", proc.Name(), "status", "no_data", "duration", time.Since(procStart))
 			continue
 		}
 
 		executedCount++
+		logger.Debug("processor completed", "processor", proc.Name(), "status", "executed", "duration", time.Since(procStart))
 
 		// Merge processor result into context so next processor can see it
 		pctx.Accumulate(result)

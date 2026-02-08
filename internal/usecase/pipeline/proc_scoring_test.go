@@ -13,8 +13,8 @@ func TestScoringProcessor_NilProvider(t *testing.T) {
 	p := NewScoringProcessor(nil, testLogger())
 	result, err := p.Process(context.Background(), &PipelineContext{})
 
-	require.NoError(t, err)
-	assert.Equal(t, ProcessStatusSkipped, result.Status)
+	assert.Nil(t, result)
+	assert.True(t, IsProcessorSkipped(err))
 }
 
 func TestScoringProcessor_NoRelations(t *testing.T) {

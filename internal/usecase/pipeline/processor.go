@@ -2,6 +2,8 @@ package pipeline
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 )
@@ -11,9 +13,25 @@ type ProcessStatus int
 
 const (
 	ProcessStatusExecuted ProcessStatus = iota
-	ProcessStatusSkipped                // Processor chose to skip (nil reader)
 	ProcessStatusNoData                 // Ran but source had no data
 )
+
+// ErrProcessorSkipped signals that a processor cannot run because its
+// dependency (provider, reader, etc.) is not configured. The caller
+// decides whether to skip or abort.
+type ErrProcessorSkipped struct {
+	Reason string
+}
+
+func (e *ErrProcessorSkipped) Error() string {
+	return fmt.Sprintf("processor skipped: %s", e.Reason)
+}
+
+// IsProcessorSkipped returns true if err (or any wrapped error) is ErrProcessorSkipped.
+func IsProcessorSkipped(err error) bool {
+	var target *ErrProcessorSkipped
+	return errors.As(err, &target)
+}
 
 // Processor is the smallest work unit in the pipeline.
 // Processors are pure data transformers: they read PipelineContext + their own data source
@@ -26,7 +44,6 @@ type Processor interface {
 // ProcessResult contains the outputs of a single processor execution.
 type ProcessResult struct {
 	Status        ProcessStatus
-	SkipReason    string // human-readable reason when Status == ProcessStatusSkipped
 	Evidence      []*entity.RawEvidence
 	Lexemes       []*entity.Lexeme
 	Relations     []*entity.SemanticRelation

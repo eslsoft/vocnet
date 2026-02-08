@@ -14,8 +14,8 @@ func TestSenseMappingProcessor_NilProvider(t *testing.T) {
 	p := NewSenseMappingProcessor(nil, testLogger())
 	result, err := p.Process(context.Background(), &PipelineContext{})
 
-	require.NoError(t, err)
-	assert.Equal(t, ProcessStatusSkipped, result.Status)
+	assert.Nil(t, result)
+	assert.True(t, IsProcessorSkipped(err))
 }
 
 func TestSenseMappingProcessor_NoUnmappedRelations(t *testing.T) {

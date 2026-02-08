@@ -25,7 +25,7 @@ func (p *EnrichmentProcessor) Name() string { return "enrichment" }
 
 func (p *EnrichmentProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.llm == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped, SkipReason: "llm not configured"}, nil
+		return nil, &ErrProcessorSkipped{Reason: "llm not configured"}
 	}
 
 	// Identify incomplete lexemes
