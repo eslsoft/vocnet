@@ -15,6 +15,7 @@ import (
 )
 
 // Reader implements WikidataProvider using a local SQLite index.
+// The index must be built by the datasource layer before using this reader.
 type Reader struct {
 	db       *sql.DB
 	jsonPath string
@@ -22,7 +23,7 @@ type Reader struct {
 }
 
 // NewReader creates a new Wikidata local data reader.
-// It builds a SQLite index from the JSON dump if one doesn't already exist.
+// It expects the SQLite index to already exist (built by datasource layer).
 func NewReader(dataPath string) (*Reader, error) {
 	return NewReaderWithLogger(dataPath, nil)
 }
@@ -36,12 +37,11 @@ func NewReaderWithLogger(dataPath string, logger *slog.Logger) (*Reader, error) 
 		return nil, fmt.Errorf("wikidata data file not found: %w", err)
 	}
 
-	indexer := NewIndexer(dataPath, logger)
-	if err := indexer.EnsureIndex(); err != nil {
-		return nil, fmt.Errorf("build wikidata index: %w", err)
+	dbPath := dataPath + ".idx.db"
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil, fmt.Errorf("wikidata index not found (run 'vocnet pipeline source download wikidata' first): %w", err)
 	}
 
-	dbPath := indexer.DBPath()
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open wikidata index: %w", err)
@@ -110,12 +110,6 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 		var id, lemma, lang, pos, data string
 		if err := rows.Scan(&id, &lemma, &lang, &pos, &data); err != nil {
 			return nil, nil, fmt.Errorf("scan wikidata row: %w", err)
-		}
-
-		// Parse stored JSON data
-		var lexemeData lexemeJSON
-		if err := json.Unmarshal([]byte(data), &lexemeData); err != nil {
-			continue
 		}
 
 		// Convert to provider.WikidataLexeme

@@ -81,6 +81,12 @@ func (s *WikidataSource) Download(ctx context.Context) error {
 		return fmt.Errorf("extract: %w", err)
 	}
 
+	// Build SQLite index
+	indexer := NewWikidataIndexer(s.path, s.logger)
+	if err := indexer.BuildIndex(); err != nil {
+		return fmt.Errorf("build index: %w", err)
+	}
+
 	return nil
 }
 
@@ -115,13 +121,19 @@ func (s *WikidataSource) Verify() error {
 	}
 
 	// Check if it looks like JSON (starts with { or [)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if buf[i] == '{' || buf[i] == '[' {
-			return nil
+			break
 		}
 		if buf[i] != ' ' && buf[i] != '\n' && buf[i] != '\r' && buf[i] != '\t' {
 			return fmt.Errorf("file does not appear to be JSON")
 		}
+	}
+
+	// Verify SQLite index exists and is valid
+	indexer := NewWikidataIndexer(s.path, nil)
+	if indexer.NeedsIndex() {
+		return fmt.Errorf("SQLite index missing or invalid")
 	}
 
 	return nil

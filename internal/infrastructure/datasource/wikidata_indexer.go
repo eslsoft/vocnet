@@ -1,4 +1,4 @@
-package wikidata
+package datasource
 
 import (
 	"bufio"
@@ -13,16 +13,16 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Indexer builds a SQLite index from the Wikidata lexemes JSON dump.
-type Indexer struct {
+// WikidataIndexer builds a SQLite index from the Wikidata lexemes JSON dump.
+type WikidataIndexer struct {
 	jsonPath string
 	dbPath   string
 	logger   *slog.Logger
 }
 
-// NewIndexer creates a new Wikidata indexer.
-func NewIndexer(jsonPath string, logger *slog.Logger) *Indexer {
-	return &Indexer{
+// NewWikidataIndexer creates a new Wikidata indexer.
+func NewWikidataIndexer(jsonPath string, logger *slog.Logger) *WikidataIndexer {
+	return &WikidataIndexer{
 		jsonPath: jsonPath,
 		dbPath:   jsonPath + ".idx.db",
 		logger:   logger,
@@ -30,30 +30,34 @@ func NewIndexer(jsonPath string, logger *slog.Logger) *Indexer {
 }
 
 // DBPath returns the path to the SQLite index database.
-func (idx *Indexer) DBPath() string {
+func (idx *WikidataIndexer) DBPath() string {
 	return idx.dbPath
 }
 
-// EnsureIndex builds the index if it doesn't exist or is stale.
-func (idx *Indexer) EnsureIndex() error {
+// NeedsIndex returns true if the index needs to be built or rebuilt.
+func (idx *WikidataIndexer) NeedsIndex() bool {
 	jsonInfo, err := os.Stat(idx.jsonPath)
 	if err != nil {
-		return fmt.Errorf("stat json: %w", err)
+		return true
 	}
 
-	if dbInfo, err := os.Stat(idx.dbPath); err == nil {
-		if dbInfo.ModTime().After(jsonInfo.ModTime()) && dbInfo.Size() > 0 {
-			if idx.validateIndex() == nil {
-				return nil
-			}
+	dbInfo, err := os.Stat(idx.dbPath)
+	if err != nil {
+		return true
+	}
+
+	// Check if index is newer than source and valid
+	if dbInfo.ModTime().After(jsonInfo.ModTime()) && dbInfo.Size() > 0 {
+		if idx.validateIndex() == nil {
+			return false
 		}
 	}
 
-	return idx.BuildIndex()
+	return true
 }
 
 // validateIndex checks that the SQLite index is structurally valid.
-func (idx *Indexer) validateIndex() error {
+func (idx *WikidataIndexer) validateIndex() error {
 	db, err := sql.Open("sqlite", idx.dbPath)
 	if err != nil {
 		return err
@@ -69,9 +73,9 @@ func (idx *Indexer) validateIndex() error {
 }
 
 // BuildIndex scans the Wikidata JSON dump and builds a SQLite index.
-func (idx *Indexer) BuildIndex() error {
+func (idx *WikidataIndexer) BuildIndex() error {
 	if idx.logger != nil {
-		idx.logger.Info("building Wikidata SQLite index (one-time operation)", "json", idx.jsonPath, "db", idx.dbPath)
+		idx.logger.Info("building Wikidata SQLite index", "json", idx.jsonPath, "db", idx.dbPath)
 	}
 
 	// Build to a temp file, rename on success
@@ -144,7 +148,7 @@ func (idx *Indexer) BuildIndex() error {
 	return nil
 }
 
-func (idx *Indexer) createTables(db *sql.DB) error {
+func (idx *WikidataIndexer) createTables(db *sql.DB) error {
 	ddl := `
 		CREATE TABLE lexemes (
 			id TEXT PRIMARY KEY,
@@ -178,7 +182,7 @@ func (idx *Indexer) createTables(db *sql.DB) error {
 	return nil
 }
 
-func (idx *Indexer) createIndices(db *sql.DB) error {
+func (idx *WikidataIndexer) createIndices(db *sql.DB) error {
 	if idx.logger != nil {
 		idx.logger.Info("creating indices")
 	}
@@ -200,40 +204,40 @@ func (idx *Indexer) createIndices(db *sql.DB) error {
 	return nil
 }
 
-// lexemeJSON represents the JSON structure of a Wikidata lexeme.
-type lexemeJSON struct {
-	Type            string                    `json:"type"`
-	ID              string                    `json:"id"`
-	Lemmas          map[string]lemmaValue     `json:"lemmas"`
-	LexicalCategory string                    `json:"lexicalCategory"`
-	Language        string                    `json:"language"`
-	Senses          []senseJSON               `json:"senses"`
-	Forms           []formJSON                `json:"forms"`
+// wikidataLexemeJSON represents the JSON structure of a Wikidata lexeme.
+type wikidataLexemeJSON struct {
+	Type            string                          `json:"type"`
+	ID              string                          `json:"id"`
+	Lemmas          map[string]wikidataLemmaValue   `json:"lemmas"`
+	LexicalCategory string                          `json:"lexicalCategory"`
+	Language        string                          `json:"language"`
+	Senses          []wikidataSenseJSON             `json:"senses"`
+	Forms           []wikidataFormJSON              `json:"forms"`
 }
 
-type lemmaValue struct {
+type wikidataLemmaValue struct {
 	Language string `json:"language"`
 	Value    string `json:"value"`
 }
 
-type senseJSON struct {
-	ID      string                `json:"id"`
-	Glosses map[string]glossValue `json:"glosses"`
+type wikidataSenseJSON struct {
+	ID      string                        `json:"id"`
+	Glosses map[string]wikidataGlossValue `json:"glosses"`
 }
 
-type glossValue struct {
+type wikidataGlossValue struct {
 	Language string `json:"language"`
 	Value    string `json:"value"`
 }
 
-type formJSON struct {
-	ID                  string                 `json:"id"`
-	Representations     map[string]lemmaValue  `json:"representations"`
-	GrammaticalFeatures []string               `json:"grammaticalFeatures"`
-	Claims              map[string][]claimJSON `json:"claims"`
+type wikidataFormJSON struct {
+	ID                  string                         `json:"id"`
+	Representations     map[string]wikidataLemmaValue  `json:"representations"`
+	GrammaticalFeatures []string                       `json:"grammaticalFeatures"`
+	Claims              map[string][]wikidataClaimJSON `json:"claims"`
 }
 
-type claimJSON struct {
+type wikidataClaimJSON struct {
 	Mainsnak struct {
 		Datavalue struct {
 			Value any `json:"value"`
@@ -241,21 +245,21 @@ type claimJSON struct {
 	} `json:"mainsnak"`
 }
 
-// inserter holds prepared statements for batch inserts.
-type inserter struct {
+// wikidataInserter holds prepared statements for batch inserts.
+type wikidataInserter struct {
 	tx         *sql.Tx
 	lexemeStmt *sql.Stmt
 	formStmt   *sql.Stmt
 	senseStmt  *sql.Stmt
 }
 
-func newInserter(db *sql.DB) (*inserter, error) {
+func newWikidataInserter(db *sql.DB) (*wikidataInserter, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 
-	ins := &inserter{tx: tx}
+	ins := &wikidataInserter{tx: tx}
 	if err := ins.prepareStatements(); err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -263,7 +267,7 @@ func newInserter(db *sql.DB) (*inserter, error) {
 	return ins, nil
 }
 
-func (ins *inserter) prepareStatements() error {
+func (ins *wikidataInserter) prepareStatements() error {
 	var err error
 	ins.lexemeStmt, err = ins.tx.Prepare("INSERT INTO lexemes (id, lemma, lemma_lower, language, pos, data) VALUES (?, ?, ?, ?, ?, ?)")
 	if err != nil {
@@ -282,7 +286,7 @@ func (ins *inserter) prepareStatements() error {
 	return nil
 }
 
-func (ins *inserter) close() {
+func (ins *wikidataInserter) close() {
 	if ins.lexemeStmt != nil {
 		_ = ins.lexemeStmt.Close()
 	}
@@ -294,14 +298,14 @@ func (ins *inserter) close() {
 	}
 }
 
-func (ins *inserter) rollback() {
+func (ins *wikidataInserter) rollback() {
 	ins.close()
 	if ins.tx != nil {
 		_ = ins.tx.Rollback()
 	}
 }
 
-func (ins *inserter) commit() error {
+func (ins *wikidataInserter) commit() error {
 	ins.close()
 	if ins.tx != nil {
 		return ins.tx.Commit()
@@ -309,7 +313,7 @@ func (ins *inserter) commit() error {
 	return nil
 }
 
-func (ins *inserter) restart(db *sql.DB) error {
+func (ins *wikidataInserter) restart(db *sql.DB) error {
 	if err := ins.commit(); err != nil {
 		return err
 	}
@@ -321,8 +325,8 @@ func (ins *inserter) restart(db *sql.DB) error {
 	return ins.prepareStatements()
 }
 
-func (idx *Indexer) parseAndInsert(db *sql.DB, file *os.File) error {
-	ins, err := newInserter(db)
+func (idx *WikidataIndexer) parseAndInsert(db *sql.DB, file *os.File) error {
+	ins, err := newWikidataInserter(db)
 	if err != nil {
 		return err
 	}
@@ -389,7 +393,7 @@ func (idx *Indexer) parseAndInsert(db *sql.DB, file *os.File) error {
 	return nil
 }
 
-func (idx *Indexer) parseLine(line string) (*lexemeJSON, bool) {
+func (idx *WikidataIndexer) parseLine(line string) (*wikidataLexemeJSON, bool) {
 	// Skip array brackets and commas
 	if line == "[" || line == "]" || line == "" {
 		return nil, false
@@ -398,7 +402,7 @@ func (idx *Indexer) parseLine(line string) (*lexemeJSON, bool) {
 	// Remove trailing comma
 	line = strings.TrimSuffix(line, ",")
 
-	var lexeme lexemeJSON
+	var lexeme wikidataLexemeJSON
 	if err := json.Unmarshal([]byte(line), &lexeme); err != nil {
 		return nil, false
 	}
@@ -411,7 +415,7 @@ func (idx *Indexer) parseLine(line string) (*lexemeJSON, bool) {
 	return &lexeme, true
 }
 
-func (idx *Indexer) insertLexeme(ins *inserter, lexeme *lexemeJSON) (bool, error) {
+func (idx *WikidataIndexer) insertLexeme(ins *wikidataInserter, lexeme *wikidataLexemeJSON) (bool, error) {
 	// Get the first lemma (primary representation)
 	var lemma, lemmaLang string
 	for _, l := range lexeme.Lemmas {
@@ -425,13 +429,13 @@ func (idx *Indexer) insertLexeme(ins *inserter, lexeme *lexemeJSON) (bool, error
 	}
 
 	// Map language QID to ISO code
-	langCode := mapLanguageQID(lexeme.Language)
+	langCode := mapWikidataLanguageQID(lexeme.Language)
 	if langCode == "" {
 		langCode = lemmaLang
 	}
 
 	// Map POS QID to string
-	pos := mapPOSQID(lexeme.LexicalCategory)
+	pos := mapWikidataPOSQID(lexeme.LexicalCategory)
 
 	// Store full JSON data for later retrieval
 	data, _ := json.Marshal(lexeme)
@@ -446,7 +450,7 @@ func (idx *Indexer) insertLexeme(ins *inserter, lexeme *lexemeJSON) (bool, error
 	return true, nil
 }
 
-func (idx *Indexer) insertForms(ins *inserter, lexeme *lexemeJSON) error {
+func (idx *WikidataIndexer) insertForms(ins *wikidataInserter, lexeme *wikidataLexemeJSON) error {
 	for _, form := range lexeme.Forms {
 		var repr string
 		for _, r := range form.Representations {
@@ -458,7 +462,7 @@ func (idx *Indexer) insertForms(ins *inserter, lexeme *lexemeJSON) error {
 		}
 
 		features, _ := json.Marshal(form.GrammaticalFeatures)
-		ipa := extractIPA(form.Claims)
+		ipa := extractWikidataIPA(form.Claims)
 
 		_, err := ins.formStmt.Exec(form.ID, lexeme.ID, repr, strings.ToLower(repr), string(features), ipa)
 		if err != nil && !strings.Contains(err.Error(), "UNIQUE constraint failed") {
@@ -468,9 +472,9 @@ func (idx *Indexer) insertForms(ins *inserter, lexeme *lexemeJSON) error {
 	return nil
 }
 
-func (idx *Indexer) insertSenses(ins *inserter, lexeme *lexemeJSON) error {
+func (idx *WikidataIndexer) insertSenses(ins *wikidataInserter, lexeme *wikidataLexemeJSON) error {
 	for _, sense := range lexeme.Senses {
-		glossEn, glossZh := extractGlosses(sense.Glosses)
+		glossEn, glossZh := extractWikidataGlosses(sense.Glosses)
 
 		_, err := ins.senseStmt.Exec(sense.ID, lexeme.ID, glossEn, glossZh)
 		if err != nil && !strings.Contains(err.Error(), "UNIQUE constraint failed") {
@@ -480,7 +484,7 @@ func (idx *Indexer) insertSenses(ins *inserter, lexeme *lexemeJSON) error {
 	return nil
 }
 
-func extractGlosses(glosses map[string]glossValue) (string, string) {
+func extractWikidataGlosses(glosses map[string]wikidataGlossValue) (string, string) {
 	var glossEn, glossZh string
 	if g, ok := glosses["en"]; ok {
 		glossEn = g.Value
@@ -501,8 +505,8 @@ func extractGlosses(glosses map[string]glossValue) (string, string) {
 	return glossEn, glossZh
 }
 
-// extractIPA extracts IPA pronunciation from form claims (P898).
-func extractIPA(claims map[string][]claimJSON) string {
+// extractWikidataIPA extracts IPA pronunciation from form claims (P898).
+func extractWikidataIPA(claims map[string][]wikidataClaimJSON) string {
 	p898Claims, ok := claims["P898"]
 	if !ok || len(p898Claims) == 0 {
 		return ""
@@ -516,8 +520,8 @@ func extractIPA(claims map[string][]claimJSON) string {
 	return ""
 }
 
-// mapLanguageQID maps Wikidata language QID to ISO 639-1 code.
-func mapLanguageQID(qid string) string {
+// mapWikidataLanguageQID maps Wikidata language QID to ISO 639-1 code.
+func mapWikidataLanguageQID(qid string) string {
 	switch qid {
 	case "Q1860":
 		return "en"
@@ -576,8 +580,8 @@ func mapLanguageQID(qid string) string {
 	}
 }
 
-// mapPOSQID maps Wikidata POS QID to a standard POS string.
-func mapPOSQID(qid string) string {
+// mapWikidataPOSQID maps Wikidata POS QID to a standard POS string.
+func mapWikidataPOSQID(qid string) string {
 	switch qid {
 	case "Q1084":
 		return "noun"

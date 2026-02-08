@@ -78,6 +78,12 @@ func (s *ConceptNetSource) Download(ctx context.Context) error {
 		return fmt.Errorf("extract: %w", err)
 	}
 
+	// Build SQLite index
+	indexer := NewConceptNetIndexer(s.path, s.logger)
+	if err := indexer.BuildIndex(); err != nil {
+		return fmt.Errorf("build index: %w", err)
+	}
+
 	return nil
 }
 
@@ -108,6 +114,12 @@ func (s *ConceptNetSource) Verify() error {
 	buf := make([]byte, 1024)
 	if _, err := f.Read(buf); err != nil {
 		return fmt.Errorf("read file: %w", err)
+	}
+
+	// Verify SQLite index exists and is valid
+	indexer := NewConceptNetIndexer(s.path, nil)
+	if indexer.NeedsIndex() {
+		return fmt.Errorf("SQLite index missing or invalid")
 	}
 
 	return nil
