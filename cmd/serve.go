@@ -70,13 +70,13 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("sync builtin wordbooks: %w", err)
 		}
 
-		// Start pipeline worker
-		worker, err := buildPipelineWorker(container.Config, container.EntClient, logger)
+		// Start pipeline worker pool
+		workerPool, err := buildPipelineWorkerPool(container.Config, container.EntClient, logger)
 		if err != nil {
 			logger.Warn("pipeline worker disabled", "error", err)
 		} else {
 			go func() {
-				if err := worker.Start(ctx); err != nil {
+				if err := workerPool.Start(ctx); err != nil {
 					logger.Error("pipeline worker error", "error", err)
 				}
 			}()
@@ -140,8 +140,8 @@ func syncBuiltinWordbooks(ctx context.Context, container *app.Container) error {
 	return container.WordbookUsecase.SyncBuiltin(ctx, books)
 }
 
-// buildPipelineWorker constructs the Pipeline and Worker from config and ent client.
-func buildPipelineWorker(cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.Worker, error) {
+// buildPipelineWorkerPool constructs the Pipeline and WorkerPool from config and ent client.
+func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, error) {
 	// Repositories
 	lemmaRepo := repository.NewLemmaRepository(entClient)
 	lexemeRepo := repository.NewLexemeRepository(entClient)
@@ -231,5 +231,18 @@ func buildPipelineWorker(cfg *config.Config, entClient *entdb.Client, logger *sl
 
 	p := pipeline.NewPipeline(stages, validator, persistence, taskRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
 
-	return pipeline.NewWorker(jobRepo, snapshotRepo, p, logger), nil
+	// Configure worker pool
+	workerCount := cfg.Pipeline.WorkerCount
+	if workerCount <= 0 {
+		workerCount = 1
+	}
+	rateLimit := cfg.Pipeline.RateLimit
+	if rateLimit <= 0 {
+		rateLimit = 2
+	}
+
+	return pipeline.NewWorkerPool(jobRepo, snapshotRepo, p, logger, pipeline.WorkerPoolConfig{
+		WorkerCount: workerCount,
+		RateLimit:   float64(rateLimit),
+	}), nil
 }

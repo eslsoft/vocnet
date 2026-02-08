@@ -346,6 +346,35 @@ var jobCmd = &cobra.Command{
 	},
 }
 
+// jobControlCmd creates a cobra command for job control actions.
+func jobControlCmd(use, short string, action entity.JobAction, pastTense string) *cobra.Command {
+	return &cobra.Command{
+		Use:   use + " <id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid job ID: %w", err)
+			}
+
+			deps, err := newPipelineDeps()
+			if err != nil {
+				return err
+			}
+			defer deps.cleanup()
+
+			ctx := context.Background()
+			if err := deps.svc.ControlJob(ctx, id, action); err != nil {
+				return fmt.Errorf("%s job: %w", use, err)
+			}
+
+			fmt.Printf("Job #%d %s.\n", id, pastTense)
+			return nil
+		},
+	}
+}
+
 // pipelineDeps bundles CLI dependencies for pipeline commands.
 type pipelineDeps struct {
 	svc     *pipeline.PipelineService
@@ -422,7 +451,13 @@ func init() {
 	submitCmd.Flags().String("name", "", "Custom job name")
 
 	pipelineCmd.AddCommand(jobsCmd)
-	jobsCmd.Flags().String("status", "", "Filter by status (PENDING, RUNNING, COMPLETED, FAILED)")
+	jobsCmd.Flags().String("status", "", "Filter by status (PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED)")
 
 	pipelineCmd.AddCommand(jobCmd)
+
+	// Job control commands
+	pipelineCmd.AddCommand(jobControlCmd("pause", "Pause a running or pending job", entity.JobActionPause, "paused"))
+	pipelineCmd.AddCommand(jobControlCmd("resume", "Resume a paused job", entity.JobActionResume, "resumed"))
+	pipelineCmd.AddCommand(jobControlCmd("cancel", "Cancel a pending, running, or paused job", entity.JobActionCancel, "cancelled"))
+	pipelineCmd.AddCommand(jobControlCmd("retry", "Retry a failed or cancelled job", entity.JobActionRetry, "queued for retry"))
 }

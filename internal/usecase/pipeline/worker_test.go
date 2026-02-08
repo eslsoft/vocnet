@@ -51,28 +51,30 @@ func TestDeduplicateTerms(t *testing.T) {
 	}
 }
 
-func TestWorkerStop(t *testing.T) {
-	w := &Worker{
-		pollInterval: time.Second,
-		logger:       slog.New(slog.NewTextHandler(os.Stderr, nil)),
-	}
+func TestWorkerPoolStop(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	pool := NewWorkerPool(nil, nil, nil, logger, WorkerPoolConfig{
+		WorkerCount:  1,
+		PollInterval: time.Second,
+		RateLimit:    2.0,
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
 	go func() {
-		_ = w.Start(ctx)
+		_ = pool.Start(ctx)
 		close(done)
 	}()
 
-	// Give worker a moment to start
+	// Give worker pool a moment to start
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 
 	select {
 	case <-done:
-		// Worker stopped successfully
+		// Worker pool stopped successfully
 	case <-time.After(2 * time.Second):
-		t.Fatal("worker did not stop within timeout")
+		t.Fatal("worker pool did not stop within timeout")
 	}
 }
