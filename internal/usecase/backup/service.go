@@ -20,8 +20,8 @@ import (
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/schema/field"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent/migrate"
-	_ "github.com/lib/pq"           // ensure postgres driver available
-	_ "github.com/mattn/go-sqlite3" // ensure sqlite driver available
+	_ "github.com/lib/pq"      // ensure postgres driver available
+	_ "modernc.org/sqlite"     // ensure sqlite driver available
 )
 
 const (

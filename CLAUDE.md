@@ -241,7 +241,9 @@ Load `.env` file automatically on startup.
 
 ## Pipeline Data Management
 
-The semantic distillation pipeline requires three data sources: ConceptNet, ECDICT, and WordNet. The `pipeline` command provides tools to manage these data sources.
+The semantic distillation pipeline requires five data sources: ConceptNet, ECDICT, WordNet, Moby, and Wikidata. The `pipeline` command provides tools to manage these data sources.
+
+All data sources use local SQLite databases for efficient querying. The project uses `modernc.org/sqlite` (CGO-free) as the SQLite driver.
 
 ### Pipeline Commands
 
@@ -266,6 +268,7 @@ go run . pipeline source download conceptnet
 go run . pipeline source download ecdict
 go run . pipeline source download wordnet
 go run . pipeline source download moby
+go run . pipeline source download wikidata
 
 # Quick setup: download all data sources
 make pipeline-setup
@@ -287,17 +290,19 @@ PIPELINE_AUTO_DOWNLOAD=false
 ```
 
 Data sources are stored under subdirectories of `PIPELINE_DATA_DIR`:
-- `conceptnet/conceptnet-assertions-5.7.0.csv`
+- `conceptnet/conceptnet-assertions-5.7.0.csv` (+ `.idx.db` SQLite index)
 - `ecdict/ecdict.db`
 - `wordnet/`
 - `moby/mhyph.txt`
+- `wikidata/lexemes.json` (+ `.idx.db` SQLite index)
 
 ### Data Source Details
 
-- **ConceptNet**: Downloaded from `https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz` (~350MB compressed, ~1.5GB uncompressed)
+- **ConceptNet**: Downloaded from `https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz` (~350MB compressed, ~1.5GB uncompressed). A SQLite index is built automatically on first use.
 - **ECDICT**: Downloaded from `https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip`
 - **WordNet**: Downloaded from `https://wordnetcode.princeton.edu/wn3.1.dict.tar.gz`
 - **Moby**: Downloaded from `https://raw.githubusercontent.com/words/moby/master/words.txt` (Moby Hyphenation data for syllable parsing)
+- **Wikidata**: Downloaded from `https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.bz2` (~420MB compressed, ~4GB uncompressed). Contains lexeme data (senses, forms, IPA). A SQLite index is built automatically on first use.
 
 Downloads are cached in `~/.cache/vocnet/` (or `$PIPELINE_CACHE_DIR`) to avoid re-downloading.
 

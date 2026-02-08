@@ -153,23 +153,26 @@ func buildPipelineWorker(cfg *config.Config, entClient *entdb.Client, logger *sl
 
 	// Ensure data sources are available (auto-download if configured)
 	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	if err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "conceptnet", "ecdict", "wordnet", "moby"); err != nil {
+	if err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "conceptnet", "ecdict", "wordnet", "moby", "wikidata"); err != nil {
 		logger.Warn("some pipeline data sources unavailable", "error", err)
 	}
 
-	// Providers
-	wikidataProvider := wikidata.NewClient()
-
 	paths := datasource.ResolvePaths(cfg.Pipeline.DataDir)
 
-	var conceptnetProvider provider.ConceptNetProvider
-	reader, err := conceptnet.NewReaderWithLogger(paths.ConceptNet, logger)
+	// Providers
+	var wikidataProvider provider.WikidataProvider
+	wikidataReader, err := wikidata.NewReaderWithLogger(paths.Wikidata, logger)
 	if err != nil {
-		logger.Warn("ConceptNet unavailable, falling back to API", "error", err)
-		conceptnetProvider = conceptnet.NewClient()
-	} else {
-		conceptnetProvider = reader
+		return nil, fmt.Errorf("wikidata unavailable (run 'vocnet pipeline source download wikidata' first): %w", err)
 	}
+	wikidataProvider = wikidataReader
+
+	var conceptnetProvider provider.ConceptNetProvider
+	conceptnetReader, err := conceptnet.NewReaderWithLogger(paths.ConceptNet, logger)
+	if err != nil {
+		return nil, fmt.Errorf("conceptnet unavailable (run 'vocnet pipeline source download conceptnet' first): %w", err)
+	}
+	conceptnetProvider = conceptnetReader
 
 	var ecdictReader *ecdict.Reader
 	ecdictReader, err = ecdict.NewReader(paths.ECDICT)

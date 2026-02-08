@@ -16,7 +16,6 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.11.1
-	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/olekukonko/tablewriter v1.1.3
 	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	github.com/rs/cors v1.11.1
@@ -60,6 +59,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/mattn/go-sqlite3 v1.14.33 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
