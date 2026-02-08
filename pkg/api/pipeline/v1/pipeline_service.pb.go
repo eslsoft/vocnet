@@ -487,7 +487,6 @@ type WordSnapshotResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
 	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
-	WikidataQid   string                 `protobuf:"bytes,3,opt,name=wikidata_qid,json=wikidataQid,proto3" json:"wikidata_qid,omitempty"`
 	Version       int32                  `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
 	Lexemes       []*SnapshotLexeme      `protobuf:"bytes,5,rep,name=lexemes,proto3" json:"lexemes,omitempty"`
 	Relations     []*SnapshotRelation    `protobuf:"bytes,6,rep,name=relations,proto3" json:"relations,omitempty"`
@@ -537,13 +536,6 @@ func (x *WordSnapshotResponse) GetTerm() string {
 func (x *WordSnapshotResponse) GetLanguage() string {
 	if x != nil {
 		return x.Language
-	}
-	return ""
-}
-
-func (x *WordSnapshotResponse) GetWikidataQid() string {
-	if x != nil {
-		return x.WikidataQid
 	}
 	return ""
 }
@@ -1379,11 +1371,10 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"\x05phase\x18\x03 \x01(\x05R\x05phase\"H\n" +
 	"\x16GetWordSnapshotRequest\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\"\xed\x02\n" +
+	"\blanguage\x18\x02 \x01(\tR\blanguage\"\xca\x02\n" +
 	"\x14WordSnapshotResponse\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\x12!\n" +
-	"\fwikidata_qid\x18\x03 \x01(\tR\vwikidataQid\x12\x18\n" +
+	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x18\n" +
 	"\aversion\x18\x04 \x01(\x05R\aversion\x125\n" +
 	"\alexemes\x18\x05 \x03(\v2\x1b.pipeline.v1.SnapshotLexemeR\alexemes\x12;\n" +
 	"\trelations\x18\x06 \x03(\v2\x1d.pipeline.v1.SnapshotRelationR\trelations\x121\n" +

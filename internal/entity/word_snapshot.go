@@ -56,7 +56,6 @@ type WordSnapshot struct {
 	LemmaID            int64
 	Term               string
 	Language           string
-	WikidataQID        string
 	Version            int32
 	Data               SnapshotData
 	QScore             float64

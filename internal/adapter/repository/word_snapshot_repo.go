@@ -28,7 +28,6 @@ func (r *wordSnapshotRepository) CreateOrUpdate(ctx context.Context, snapshot *e
 		SetLemmaID(snapshot.LemmaID).
 		SetTerm(snapshot.Term).
 		SetLanguage(snapshot.Language).
-		SetWikidataQid(snapshot.WikidataQID).
 		SetVersion(snapshot.Version).
 		SetData(snapshot.Data).
 		SetQscore(snapshot.QScore).
@@ -92,8 +91,7 @@ func mapEntWordSnapshot(row *entdb.WordSnapshot) *entity.WordSnapshot {
 		ID:                 row.ID,
 		LemmaID:            row.LemmaID,
 		Term:               row.Term,
-		Language:            row.Language,
-		WikidataQID:        row.WikidataQid,
+		Language:           row.Language,
 		Version:            row.Version,
 		Data:               row.Data,
 		QScore:             row.Qscore,

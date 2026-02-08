@@ -370,7 +370,7 @@ func (r *lemmaRepository) CreateMinimal(ctx context.Context, surface string, lan
 	return r.GetByID(ctx, lemmaRow.ID)
 }
 
-// Update updates an existing lemma (used by pipeline to save WikidataQID, etc.).
+// Update updates an existing lemma.
 func (r *lemmaRepository) Update(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error) {
 	if lemma.ID == 0 {
 		return nil, fmt.Errorf("lemma ID required")
@@ -385,9 +385,6 @@ func (r *lemmaRepository) Update(ctx context.Context, lemma *entity.Lemma) (*ent
 	}
 	if lemma.Variant != "" {
 		update.SetVariant(lemma.Variant)
-	}
-	if lemma.WikidataQID != "" {
-		update.SetWikidataQid(lemma.WikidataQID)
 	}
 
 	_, err := update.Save(ctx)
@@ -674,7 +671,6 @@ func mapEntLemma(lemmaRow *entdb.Lemma) *entity.Lemma {
 		Surface:     lemmaRow.Surface,
 		Normalized:  lemmaRow.Normalized,
 		Variant:     lemmaRow.Variant,
-		WikidataQID: lemmaRow.WikidataQid,
 		Forms:       forms,
 		CreatedAt:   lemmaRow.CreatedAt,
 		UpdatedAt:   lemmaRow.UpdatedAt,

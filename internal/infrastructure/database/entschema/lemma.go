@@ -35,10 +35,6 @@ func (Lemma) Fields() []ent.Field {
 			Default(true).
 			Comment("Whether this is the primary lemma (for variant handling)"),
 
-		field.String("wikidata_qid").
-			Optional().
-			Comment("Wikidata entity Q-ID (e.g. Q7553)"),
-
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -82,8 +78,6 @@ func (Lemma) Indexes() []ent.Index {
 		// Unique constraint: one lemma per surface form (case-sensitive)
 		// Note: Different spellings (color/colour) are separate lemmas
 		index.Fields("surface").Unique(),
-		// Query by wikidata QID
-		index.Fields("wikidata_qid"),
 	}
 }
 

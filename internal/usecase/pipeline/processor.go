@@ -49,7 +49,7 @@ type ProcessResult struct {
 	Relations     []*entity.SemanticRelation
 	Forms         []*entity.LemmaForm
 	FormsByLexeme map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
-	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma (e.g., QID)
+	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma
 	Snapshot      *entity.WordSnapshot           // only set by SnapshotProcessor
 }
 

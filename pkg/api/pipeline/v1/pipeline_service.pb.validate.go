@@ -958,8 +958,6 @@ func (m *WordSnapshotResponse) validate(all bool) error {
 
 	// no validation rules for Language
 
-	// no validation rules for WikidataQid
-
 	// no validation rules for Version
 
 	for idx, item := range m.GetLexemes() {

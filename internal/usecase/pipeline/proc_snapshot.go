@@ -73,7 +73,6 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 	snapshot := &entity.WordSnapshot{
 		Term:               pctx.Lemma.Surface,
 		Language:           pctx.Language.Code(),
-		WikidataQID:        pctx.Lemma.WikidataQID,
 		Version:            1,
 		Data:               snapshotData,
 		QScore:             qscore.Overall,

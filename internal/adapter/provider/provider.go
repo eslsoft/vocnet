@@ -4,13 +4,6 @@ import (
 	"context"
 )
 
-// WikidataEntity represents a Wikidata entity search result.
-type WikidataEntity struct {
-	QID         string
-	Label       string
-	Description string
-}
-
 // WikidataLexeme represents a Wikidata lexeme with its senses and forms.
 type WikidataLexeme struct {
 	LexemeID string // e.g. "L123456"
@@ -42,7 +35,6 @@ type WikidataPhonetic struct {
 
 // WikidataProvider fetches lexeme data from Wikidata.
 type WikidataProvider interface {
-	SearchEntity(ctx context.Context, term string, language string) (*WikidataEntity, error)
 	FetchLexemes(ctx context.Context, term string, language string) ([]WikidataLexeme, map[string]any, error)
 }
 

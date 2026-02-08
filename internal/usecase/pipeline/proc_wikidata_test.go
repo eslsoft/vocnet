@@ -11,23 +11,15 @@ import (
 )
 
 type mockWikidataProvider struct {
-	searchEntityFn func(ctx context.Context, term string, language string) (*provider.WikidataEntity, error)
 	fetchLexemesFn func(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error)
-}
-
-func (m *mockWikidataProvider) SearchEntity(ctx context.Context, term string, language string) (*provider.WikidataEntity, error) {
-	return m.searchEntityFn(ctx, term, language)
 }
 
 func (m *mockWikidataProvider) FetchLexemes(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
 	return m.fetchLexemesFn(ctx, term, language)
 }
 
-func TestWikidataProcessor_Process_AllowsMissingEntitySearchWhenLexemesExist(t *testing.T) {
+func TestWikidataProcessor_Process_ExecutesWhenLexemesExist(t *testing.T) {
 	p := NewWikidataProcessor(&mockWikidataProvider{
-		searchEntityFn: func(ctx context.Context, term string, language string) (*provider.WikidataEntity, error) {
-			return nil, nil
-		},
 		fetchLexemesFn: func(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
 			return []provider.WikidataLexeme{
 				{
@@ -68,11 +60,8 @@ func TestWikidataProcessor_Process_AllowsMissingEntitySearchWhenLexemesExist(t *
 	assert.Nil(t, result.LemmaUpdate)
 }
 
-func TestWikidataProcessor_Process_RejectsWhenNoLexemeAndNoEntity(t *testing.T) {
+func TestWikidataProcessor_Process_RejectsWhenNoLexeme(t *testing.T) {
 	p := NewWikidataProcessor(&mockWikidataProvider{
-		searchEntityFn: func(ctx context.Context, term string, language string) (*provider.WikidataEntity, error) {
-			return nil, nil
-		},
 		fetchLexemesFn: func(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
 			return nil, map[string]any{"source": "test"}, nil
 		},
@@ -92,9 +81,6 @@ func TestWikidataProcessor_Process_RejectsWhenNoLexemeAndNoEntity(t *testing.T) 
 
 func TestWikidataProcessor_Process_RejectsLowConfidenceAmbiguousMatch(t *testing.T) {
 	p := NewWikidataProcessor(&mockWikidataProvider{
-		searchEntityFn: func(ctx context.Context, term string, language string) (*provider.WikidataEntity, error) {
-			return nil, nil
-		},
 		fetchLexemesFn: func(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
 			return []provider.WikidataLexeme{
 					{LexemeID: "L1", Language: "en", POS: "noun"},

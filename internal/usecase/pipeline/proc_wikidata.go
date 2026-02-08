@@ -12,7 +12,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/util"
 )
 
-// WikidataProcessor fetches Wikidata QID + lexemes + forms.
+// WikidataProcessor fetches lexemes + forms from Wikidata.
 type WikidataProcessor struct {
 	wikidata provider.WikidataProvider
 	logger   *slog.Logger
@@ -33,7 +33,7 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 	term := pctx.Term
 	lang := pctx.Language
 
-	// Fetch lexemes first. Local indexed providers may not support entity search.
+	// Fetch lexemes.
 	lexemes, rawResp, err := p.wikidata.FetchLexemes(ctx, term, lang.Code())
 	if err != nil {
 		return nil, fmt.Errorf("fetch lexemes: %w", err)
@@ -42,24 +42,8 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		return nil, fmt.Errorf("low-confidence lexeme match rejected for: %s", term)
 	}
 
-	entityResult, err := p.wikidata.SearchEntity(ctx, term, lang.Code())
-	if err != nil {
-		return nil, fmt.Errorf("wikidata search: %w", err)
-	}
-
 	if len(lexemes) == 0 {
-		if entityResult == nil || entityResult.QID == "" {
-			return nil, fmt.Errorf("word not found in Wikidata: %s (non-standard vocabulary rejected)", term)
-		}
-		return nil, fmt.Errorf("no Wikidata lexemes found for: %s (QID: %s)", term, entityResult.QID)
-	}
-
-	// Update lemma with QID when available.
-	var updatedLemma *entity.Lemma
-	if entityResult != nil && entityResult.QID != "" {
-		lemma := *pctx.Lemma
-		lemma.WikidataQID = entityResult.QID
-		updatedLemma = &lemma
+		return nil, fmt.Errorf("word not found in Wikidata: %s (non-standard vocabulary rejected)", term)
 	}
 
 	// Create evidence
@@ -157,7 +141,6 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		Lexemes:       entityLexemes,
 		Forms:         allForms,
 		FormsByLexeme: formsByLexeme,
-		LemmaUpdate:   updatedLemma,
 	}, nil
 }
 

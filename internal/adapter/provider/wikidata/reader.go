@@ -73,15 +73,6 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// SearchEntity searches for a Wikidata entity by term.
-// Note: This returns nil for local reader as entity search requires API.
-// The local dump only contains lexemes, not general entities.
-func (r *Reader) SearchEntity(ctx context.Context, term string, language string) (*provider.WikidataEntity, error) {
-	// Local dump doesn't contain entity search capability
-	// Return nil to indicate no entity found (caller can fall back to API if needed)
-	return nil, nil
-}
-
 // FetchLexemes fetches Wikidata lexemes for a given term from the local index.
 func (r *Reader) FetchLexemes(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
 	if language == "" {

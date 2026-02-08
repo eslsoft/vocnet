@@ -85,7 +85,6 @@ message GetWordSnapshotRequest {
 message WordSnapshotResponse {
   string term = 1;
   string language = 2;
-  string wikidata_qid = 3;
   int32 version = 4;
   repeated SnapshotLexeme lexemes = 5;
   repeated SnapshotRelation relations = 6;

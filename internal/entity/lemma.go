@@ -10,7 +10,6 @@ type Lemma struct {
 	Surface     string
 	Normalized  string
 	Variant     string
-	WikidataQID string // Wikidata entity Q-ID (e.g. "Q7553")
 	Syllables   []string
 	Forms       []*LemmaForm
 

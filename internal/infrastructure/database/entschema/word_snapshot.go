@@ -30,9 +30,6 @@ func (WordSnapshot) Fields() []ent.Field {
 		field.String("language").
 			NotEmpty().
 			Comment("Redundant language code"),
-		field.String("wikidata_qid").
-			Optional().
-			Comment("Redundant Wikidata QID"),
 		field.Int32("version").
 			Default(1).
 			Comment("Snapshot version (incremented on each synthesis)"),

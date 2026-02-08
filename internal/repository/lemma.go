@@ -25,7 +25,7 @@ type LemmaRepository interface {
 	// Returns the created lemma without any lexemes yet
 	CreateMinimal(ctx context.Context, surface string, language entity.Language) (*entity.Lemma, error)
 
-	// Update updates an existing lemma (used by pipeline to save WikidataQID, etc.)
+	// Update updates an existing lemma
 	Update(ctx context.Context, lemma *entity.Lemma) (*entity.Lemma, error)
 
 	// CreateForms creates additional word forms (past, plural, etc.) for a lemma
