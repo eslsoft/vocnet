@@ -25,7 +25,7 @@ func (p *SenseMappingProcessor) Name() string { return "sense_mapping" }
 
 func (p *SenseMappingProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.llm == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped}, nil
+		return &ProcessResult{Status: ProcessStatusSkipped, SkipReason: "llm not configured"}, nil
 	}
 
 	// Collect unmapped relations

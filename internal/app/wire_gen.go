@@ -66,7 +66,8 @@ func Initialize() (*Container, func(), error) {
 		return nil, nil, err
 	}
 	pipelineJobRepository := repository.NewPipelineJobRepository(client)
-	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, logger)
+	pipelineTaskRepository := repository.NewPipelineTaskRepository(client)
+	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineTaskRepository, lemmaRepository, logger)
 	container := &Container{
 		Logger:          logger,
 		Config:          configConfig,

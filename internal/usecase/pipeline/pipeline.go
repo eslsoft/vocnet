@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -26,6 +27,11 @@ type ProcessWordResult struct {
 	Lemma    *entity.Lemma
 	Tasks    []*entity.PipelineTask
 	Snapshot *entity.WordSnapshot
+}
+
+// RunOptions carries optional per-run configuration.
+type RunOptions struct {
+	Logger *slog.Logger // job-scoped logger; falls back to Pipeline.logger if nil
 }
 
 // NewPipeline creates a new Pipeline coordinator.
@@ -52,7 +58,15 @@ func NewPipeline(
 }
 
 // Run executes the full pipeline for a given term.
-func (p *Pipeline) Run(ctx context.Context, term string, language string, tier int32) (*ProcessWordResult, error) {
+func (p *Pipeline) Run(ctx context.Context, term string, language string, tier int32, opts *RunOptions) (*ProcessWordResult, error) {
+	runStart := time.Now()
+
+	// Resolve logger
+	runLogger := p.logger
+	if opts != nil && opts.Logger != nil {
+		runLogger = opts.Logger
+	}
+
 	// Apply defaults
 	if language == "" {
 		language = "en"
@@ -69,7 +83,7 @@ func (p *Pipeline) Run(ctx context.Context, term string, language string, tier i
 		return nil, fmt.Errorf("ensure lemma: %w", err)
 	}
 
-	p.logger.Info("processing word", "term", term, "lemma_id", pctx.Lemma.ID)
+	runLogger.Info("processing word", "term", term, "lemma_id", pctx.Lemma.ID)
 
 	// Step 2: Create pipeline tasks for all stages
 	for _, stage := range p.stages {
@@ -86,14 +100,16 @@ func (p *Pipeline) Run(ctx context.Context, term string, language string, tier i
 
 	// Step 3: Execute all stages
 	for _, stage := range p.stages {
-		if err := p.executeStage(ctx, pctx, stage); err != nil {
-			p.logger.Error("stage failed",
+		if err := p.executeStage(ctx, pctx, stage, runLogger); err != nil {
+			runLogger.Error("stage failed",
 				"stage", stage.Number,
 				"name", stage.Name,
 				"error", err)
 			// Continue to next stage
 		}
 	}
+
+	runLogger.Info("pipeline run completed", "term", term, "duration", time.Since(runStart))
 
 	// Step 4: Gather final state
 	tasks, err := p.taskRepo.ListByLemma(ctx, pctx.Lemma.ID)
@@ -111,8 +127,9 @@ func (p *Pipeline) Run(ctx context.Context, term string, language string, tier i
 }
 
 // executeStage runs a single stage: all processors sequentially, then persists.
-func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stage *Stage) error {
+func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stage *Stage, logger *slog.Logger) error {
 	phaseNum := int32(stage.Number)
+	stageStart := time.Now()
 
 	// No processors → skip
 	if len(stage.Processors) == 0 {
@@ -124,12 +141,14 @@ func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stag
 		return err
 	}
 
-	p.logger.Info("executing stage", "stage", phaseNum, "name", stage.Name)
+	logger.Info("executing stage", "stage", phaseNum, "name", stage.Name)
 
 	// Accumulate results from all processors in this stage
 	mergedResult := &ProcessResult{}
+	executedCount := 0
 
 	for _, proc := range stage.Processors {
+		procStart := time.Now()
 		result, err := proc.Process(ctx, pctx)
 		if err != nil {
 			errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
@@ -137,15 +156,37 @@ func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stag
 			return fmt.Errorf("processor %s: %w", proc.Name(), err)
 		}
 
-		if result == nil || result.Status == ProcessStatusSkipped || result.Status == ProcessStatusNoData {
+		if result == nil {
+			logger.Debug("processor completed", "processor", proc.Name(), "status", "nil", "duration", time.Since(procStart))
 			continue
 		}
+
+		if result.SkipReason != "" {
+			logger.Warn("processor skipped", "processor", proc.Name(), "reason", result.SkipReason)
+		} else {
+			logger.Debug("processor completed", "processor", proc.Name(), "status", result.Status, "duration", time.Since(procStart))
+		}
+
+		if result.Status == ProcessStatusSkipped || result.Status == ProcessStatusNoData {
+			continue
+		}
+
+		executedCount++
 
 		// Merge processor result into context so next processor can see it
 		pctx.Accumulate(result)
 
 		// Also merge into stage-level result for persistence
 		mergeProcessResults(mergedResult, result)
+	}
+
+	// All processors skipped → mark stage as skipped
+	if executedCount == 0 {
+		if err := p.updateTaskStatus(ctx, pctx.Lemma.ID, phaseNum, entity.TaskStatusSkipped, ""); err != nil {
+			return err
+		}
+		logger.Info("stage skipped", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart))
+		return nil
 	}
 
 	// Persist stage results
@@ -180,7 +221,7 @@ func (p *Pipeline) executeStage(ctx context.Context, pctx *PipelineContext, stag
 		return err
 	}
 
-	p.logger.Info("stage completed", "stage", phaseNum, "name", stage.Name)
+	logger.Info("stage completed", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart))
 	return nil
 }
 

@@ -43,7 +43,7 @@ func (v *Validator) EnsureLemma(ctx context.Context, term string, language entit
 	// Try to find existing lemma
 	existingLemma, err := v.lemmaRepo.LookupByForm(ctx, term, language)
 	if err == nil {
-		v.logger.Info("lemma found", "term", term, "lemma_id", existingLemma.ID)
+		v.logger.Debug("lemma found", "term", term, "lemma_id", existingLemma.ID)
 		pctx.Lemma = existingLemma
 
 		// Load existing lexemes
@@ -63,7 +63,7 @@ func (v *Validator) EnsureLemma(ctx context.Context, term string, language entit
 		return nil, fmt.Errorf("create lemma: %w", err)
 	}
 
-	v.logger.Info("created lemma", "term", term, "lemma_id", lemma.ID)
+	v.logger.Debug("created lemma", "term", term, "lemma_id", lemma.ID)
 	pctx.Lemma = lemma
 	return pctx, nil
 }

@@ -25,7 +25,7 @@ func (p *ScoringProcessor) Name() string { return "scoring" }
 
 func (p *ScoringProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
 	if p.llm == nil {
-		return &ProcessResult{Status: ProcessStatusSkipped}, nil
+		return &ProcessResult{Status: ProcessStatusSkipped, SkipReason: "llm not configured"}, nil
 	}
 
 	if len(pctx.Relations) == 0 {

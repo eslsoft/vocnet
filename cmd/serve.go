@@ -194,6 +194,8 @@ func buildPipelineWorker(cfg *config.Config, entClient *entdb.Client, logger *sl
 			cfg.Pipeline.LLMModel,
 			cacheRepo,
 		)
+	} else {
+		logger.Warn("LLM not configured, phase 4 (intellectual) will be skipped — set PIPELINE_LLM_API_KEY to enable")
 	}
 
 	// Build pipeline

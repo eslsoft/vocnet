@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -159,24 +160,12 @@ File formats:
 		wb, _ := cmd.Flags().GetString("wordbook")
 		name, _ := cmd.Flags().GetString("name")
 
-		cfg, err := config.Load()
+		deps, err := newPipelineDeps()
 		if err != nil {
-			return fmt.Errorf("load config: %w", err)
+			return err
 		}
+		defer deps.cleanup()
 
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		entClient, cleanup, err := database.NewEntClient(cfg)
-		if err != nil {
-			return fmt.Errorf("create ent client: %w", err)
-		}
-		defer cleanup()
-
-		jobRepo := repository.NewPipelineJobRepository(entClient)
-		svc := pipeline.NewPipelineService(jobRepo, logger)
 		ctx := context.Background()
 
 		var job *entity.PipelineJob
@@ -187,7 +176,7 @@ File formats:
 			if err != nil {
 				return fmt.Errorf("parse file: %w", err)
 			}
-			job, err = svc.SubmitTerms(ctx, name, terms, language, tier)
+			job, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
 			if err != nil {
 				return err
 			}
@@ -199,12 +188,12 @@ File formats:
 			if name == "" {
 				name = wbName
 			}
-			job, err = svc.SubmitTerms(ctx, name, terms, language, tier)
+			job, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
 			if err != nil {
 				return err
 			}
 		case len(args) > 0:
-			job, err = svc.SubmitWord(ctx, args[0], language, tier)
+			job, err = deps.svc.SubmitWord(ctx, args[0], language, tier)
 			if err != nil {
 				return err
 			}
@@ -226,24 +215,12 @@ var jobsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		statusFlag, _ := cmd.Flags().GetString("status")
 
-		cfg, err := config.Load()
+		deps, err := newPipelineDeps()
 		if err != nil {
-			return fmt.Errorf("load config: %w", err)
+			return err
 		}
+		defer deps.cleanup()
 
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		entClient, cleanup, err := database.NewEntClient(cfg)
-		if err != nil {
-			return fmt.Errorf("create ent client: %w", err)
-		}
-		defer cleanup()
-
-		jobRepo := repository.NewPipelineJobRepository(entClient)
-		svc := pipeline.NewPipelineService(jobRepo, logger)
 		ctx := context.Background()
 
 		var statusFilter *entity.JobStatus
@@ -252,7 +229,7 @@ var jobsCmd = &cobra.Command{
 			statusFilter = &s
 		}
 
-		jobs, err := svc.ListJobs(ctx, statusFilter)
+		jobs, err := deps.svc.ListJobs(ctx, statusFilter)
 		if err != nil {
 			return err
 		}
@@ -263,18 +240,28 @@ var jobsCmd = &cobra.Command{
 		}
 
 		table := tablewriter.NewTable(os.Stdout)
-		table.Header("ID", "TYPE", "STATUS", "PROGRESS", "NAME", "CREATED")
+		table.Header("ID", "TYPE", "STATUS", "PROGRESS", "STAGES", "NAME", "CREATED")
 		for _, j := range jobs {
 			progress := fmt.Sprintf("%d/%d", j.Processed+j.Skipped+j.Failed, j.TotalTerms)
 			displayName := j.Name
 			if len(displayName) > 30 {
 				displayName = displayName[:27] + "..."
 			}
+
+			stages := "-"
+			if j.JobType == entity.JobTypeSingleWord {
+				sp, err := deps.svc.GetJobStageProgress(ctx, j)
+				if err == nil && sp != nil {
+					stages = sp.String()
+				}
+			}
+
 			_ = table.Append([]string{
 				strconv.FormatInt(j.ID, 10),
 				string(j.JobType),
 				string(j.Status),
 				progress,
+				stages,
 				displayName,
 				j.CreatedAt.Format("2006-01-02 15:04"),
 			})
@@ -295,31 +282,20 @@ var jobCmd = &cobra.Command{
 			return fmt.Errorf("invalid job ID: %w", err)
 		}
 
-		cfg, err := config.Load()
+		deps, err := newPipelineDeps()
 		if err != nil {
-			return fmt.Errorf("load config: %w", err)
+			return err
 		}
+		defer deps.cleanup()
 
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		entClient, cleanup, err := database.NewEntClient(cfg)
-		if err != nil {
-			return fmt.Errorf("create ent client: %w", err)
-		}
-		defer cleanup()
-
-		jobRepo := repository.NewPipelineJobRepository(entClient)
-		svc := pipeline.NewPipelineService(jobRepo, logger)
 		ctx := context.Background()
 
-		j, err := svc.GetJob(ctx, id)
+		detail, err := deps.svc.GetJobDetail(ctx, id)
 		if err != nil {
 			return fmt.Errorf("get job: %w", err)
 		}
 
+		j := detail.Job
 		fmt.Printf("Job #%d: %s\n", j.ID, j.Name)
 		fmt.Printf("Type:      %s\n", j.JobType)
 		fmt.Printf("Status:    %s\n", j.Status)
@@ -334,12 +310,71 @@ var jobCmd = &cobra.Command{
 		if j.CompletedAt != nil {
 			fmt.Printf("Completed: %s\n", j.CompletedAt.Format("2006-01-02 15:04:05"))
 		}
+		if j.StartedAt != nil && j.CompletedAt != nil {
+			duration := j.CompletedAt.Sub(*j.StartedAt)
+			fmt.Printf("Duration:  %s\n", duration.Truncate(100*time.Millisecond))
+		}
 		if j.ErrorMessage != "" {
 			fmt.Printf("Error:     %s\n", j.ErrorMessage)
 		}
 
+		// Show stage details for single-word jobs
+		if len(detail.Tasks) > 0 {
+			fmt.Println("\nStages:")
+			table := tablewriter.NewTable(os.Stdout)
+			table.Header("PHASE", "NAME", "STATUS", "DURATION")
+			for _, task := range detail.Tasks {
+				phase := entity.PipelinePhase(task.Phase)
+				dur := "-"
+				if task.StartedAt != nil && task.CompletedAt != nil {
+					dur = task.CompletedAt.Sub(*task.StartedAt).Truncate(100 * time.Millisecond).String()
+				}
+				_ = table.Append([]string{
+					strconv.Itoa(int(task.Phase)),
+					phase.Name(),
+					string(task.Status),
+					dur,
+				})
+				if task.ErrorMessage != "" {
+					_ = table.Append([]string{"", "", fmt.Sprintf("  error: %s", task.ErrorMessage), ""})
+				}
+			}
+			_ = table.Render()
+		}
+
 		return nil
 	},
+}
+
+// pipelineDeps bundles CLI dependencies for pipeline commands.
+type pipelineDeps struct {
+	svc     *pipeline.PipelineService
+	cleanup func()
+}
+
+// newPipelineDeps creates the common dependencies for pipeline CLI commands.
+func newPipelineDeps() (*pipelineDeps, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	logger, err := server.NewLogger(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create logger: %w", err)
+	}
+
+	entClient, cleanup, err := database.NewEntClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create ent client: %w", err)
+	}
+
+	jobRepo := repository.NewPipelineJobRepository(entClient)
+	taskRepo := repository.NewPipelineTaskRepository(entClient)
+	lemmaRepo := repository.NewLemmaRepository(entClient)
+	svc := pipeline.NewPipelineService(jobRepo, taskRepo, lemmaRepo, logger)
+
+	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
 }
 
 // resolveWordbook finds a builtin wordbook by name or ID and returns its terms.

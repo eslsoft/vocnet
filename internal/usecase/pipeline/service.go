@@ -13,18 +13,24 @@ import (
 
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo repository.PipelineJobRepository
-	logger  *slog.Logger
+	jobRepo  repository.PipelineJobRepository
+	taskRepo repository.PipelineTaskRepository
+	lemmaRepo repository.LemmaRepository
+	logger   *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
 func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
+	taskRepo repository.PipelineTaskRepository,
+	lemmaRepo repository.LemmaRepository,
 	logger *slog.Logger,
 ) *PipelineService {
 	return &PipelineService{
-		jobRepo: jobRepo,
-		logger:  logger,
+		jobRepo:   jobRepo,
+		taskRepo:  taskRepo,
+		lemmaRepo: lemmaRepo,
+		logger:    logger,
 	}
 }
 
@@ -95,6 +101,54 @@ func (s *PipelineService) GetJob(ctx context.Context, id int64) (*entity.Pipelin
 // ListJobs returns pipeline jobs, optionally filtered by status.
 func (s *PipelineService) ListJobs(ctx context.Context, status *entity.JobStatus) ([]*entity.PipelineJob, error) {
 	return s.jobRepo.List(ctx, status, 50)
+}
+
+// GetJobStageProgress computes stage progress for a single-word job.
+// Returns nil for wordbook jobs (too expensive for list view).
+func (s *PipelineService) GetJobStageProgress(ctx context.Context, job *entity.PipelineJob) (*entity.StageProgressSummary, error) {
+	if job.JobType != entity.JobTypeSingleWord || job.Term == "" {
+		return nil, nil
+	}
+
+	lemma, err := s.lemmaRepo.LookupByForm(ctx, job.Term, entity.ParseLanguage(job.Language))
+	if err != nil {
+		return nil, nil // lemma not found yet — job hasn't started
+	}
+
+	tasks, err := s.taskRepo.ListByLemma(ctx, lemma.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks: %w", err)
+	}
+
+	return entity.ComputeStageProgress(tasks), nil
+}
+
+// JobDetail bundles a job with its per-stage task details.
+type JobDetail struct {
+	Job   *entity.PipelineJob
+	Tasks []*entity.PipelineTask // per-stage tasks (single-word jobs only)
+}
+
+// GetJobDetail returns a job along with stage-level details (for single-word jobs).
+func (s *PipelineService) GetJobDetail(ctx context.Context, id int64) (*JobDetail, error) {
+	job, err := s.jobRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &JobDetail{Job: job}
+
+	if job.JobType == entity.JobTypeSingleWord && job.Term != "" {
+		lemma, err := s.lemmaRepo.LookupByForm(ctx, job.Term, entity.ParseLanguage(job.Language))
+		if err == nil {
+			tasks, err := s.taskRepo.ListByLemma(ctx, lemma.ID)
+			if err == nil {
+				detail.Tasks = tasks
+			}
+		}
+	}
+
+	return detail, nil
 }
 
 // deduplicateTerms removes duplicates and empty strings from a term list.

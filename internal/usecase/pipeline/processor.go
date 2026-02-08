@@ -26,6 +26,7 @@ type Processor interface {
 // ProcessResult contains the outputs of a single processor execution.
 type ProcessResult struct {
 	Status        ProcessStatus
+	SkipReason    string // human-readable reason when Status == ProcessStatusSkipped
 	Evidence      []*entity.RawEvidence
 	Lexemes       []*entity.Lexeme
 	Relations     []*entity.SemanticRelation

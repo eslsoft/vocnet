@@ -78,25 +78,33 @@ func (w *Worker) pollOnce(ctx context.Context) {
 		return // No pending jobs
 	}
 
-	w.logger.Info("processing job", "job_id", job.ID, "name", job.Name, "type", job.JobType)
-	w.processJob(ctx, job)
+	jobLogger := w.logger.With("job_id", job.ID)
+	jobLogger.Info("processing job", "name", job.Name, "type", job.JobType, "total_terms", len(w.buildTerms(job)))
+	w.processJob(ctx, job, jobLogger)
 }
 
-func (w *Worker) processJob(ctx context.Context, job *entity.PipelineJob) {
-	// Build terms list
-	var terms []string
+// buildTerms extracts the term list from a job.
+func (w *Worker) buildTerms(job *entity.PipelineJob) []string {
 	switch job.JobType {
 	case entity.JobTypeSingleWord:
-		terms = []string{job.Term}
+		return []string{job.Term}
 	case entity.JobTypeWordbook:
-		terms = job.Terms
+		return job.Terms
+	default:
+		return nil
 	}
+}
 
+func (w *Worker) processJob(ctx context.Context, job *entity.PipelineJob, jobLogger *slog.Logger) {
+	jobStart := time.Now()
+	terms := w.buildTerms(job)
+
+	var processed, skipped, failed int
 	for _, term := range terms {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
-			w.logger.Warn("job interrupted by shutdown", "job_id", job.ID)
+			jobLogger.Warn("job interrupted by shutdown")
 			// Mark back as PENDING so it can be resumed
 			_ = w.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
 			return
@@ -105,10 +113,12 @@ func (w *Worker) processJob(ctx context.Context, job *entity.PipelineJob) {
 
 		// Rate limit for Wikidata API
 		if err := w.rateLimiter.Wait(ctx); err != nil {
-			w.logger.Warn("rate limiter interrupted", "job_id", job.ID, "error", err)
+			jobLogger.Warn("rate limiter interrupted", "error", err)
 			_ = w.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
 			return
 		}
+
+		termLogger := jobLogger.With("term", term)
 
 		// Check if snapshot already exists → skip.
 		// On resume, previously processed terms hit this path and increment
@@ -117,23 +127,27 @@ func (w *Worker) processJob(ctx context.Context, job *entity.PipelineJob) {
 		_, err := w.snapshotRepo.GetByTerm(ctx, term, job.Language)
 		if err == nil {
 			_ = w.jobRepo.IncrementSkipped(ctx, job.ID)
-			w.logger.Debug("skipped (snapshot exists)", "term", term, "job_id", job.ID)
+			skipped++
+			termLogger.Debug("skipped (snapshot exists)")
 			continue
 		}
 
 		// Process the word
-		_, err = w.pipeline.Run(ctx, term, job.Language, job.Tier)
+		termStart := time.Now()
+		_, err = w.pipeline.Run(ctx, term, job.Language, job.Tier, &RunOptions{Logger: termLogger})
 		if err != nil {
 			_ = w.jobRepo.IncrementFailed(ctx, job.ID)
-			w.logger.Warn("failed to process term", "term", term, "job_id", job.ID, "error", err)
+			failed++
+			termLogger.Warn("failed to process term", "error", err)
 			continue
 		}
 
 		_ = w.jobRepo.IncrementProcessed(ctx, job.ID)
-		w.logger.Debug("processed", "term", term, "job_id", job.ID)
+		processed++
+		termLogger.Debug("term processed", "duration", time.Since(termStart))
 	}
 
 	// All done
 	_ = w.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
-	w.logger.Info("job completed", "job_id", job.ID, "name", job.Name)
+	jobLogger.Info("job completed", "duration", time.Since(jobStart), "processed", processed, "skipped", skipped, "failed", failed)
 }
