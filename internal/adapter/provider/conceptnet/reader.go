@@ -11,6 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
+	"github.com/eslsoft/vocnet/internal/entity"
 )
 
 // Reader implements ConceptNetProvider using a SQLite index.
@@ -154,4 +155,26 @@ func extractTermLabel(uri string) string {
 		return strings.Join(parts[3:], "/")
 	}
 	return ""
+}
+
+// mapConceptNetRelation maps a ConceptNet relation label to our relation type constants.
+func mapConceptNetRelation(label string) string {
+	switch label {
+	case "Synonym":
+		return entity.RelationSynonym
+	case "Antonym":
+		return entity.RelationAntonym
+	case "IsA":
+		return entity.RelationHypernym
+	case "RelatedTo":
+		return entity.RelationAssociation
+	case "Causes":
+		return entity.RelationCauseEffect
+	case "PartOf", "HasA":
+		return entity.RelationPartWhole
+	case "DerivedFrom", "EtymologicallyDerivedFrom":
+		return entity.RelationDerivative
+	default:
+		return ""
+	}
 }
