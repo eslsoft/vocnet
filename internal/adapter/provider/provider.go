@@ -58,4 +58,5 @@ type ConceptNetEdge struct {
 // ConceptNetProvider fetches relation data from ConceptNet.
 type ConceptNetProvider interface {
 	FetchRelations(ctx context.Context, term string, language string) ([]ConceptNetEdge, map[string]any, error)
+	Close() error
 }
