@@ -194,35 +194,3 @@ func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jo
 	_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
 	jobLogger.Info("job completed", "duration", time.Since(jobStart), "processed", processed, "skipped", skipped, "failed", failed)
 }
-
-// Worker is a single background consumer that processes pipeline jobs.
-//
-// Deprecated: Use WorkerPool instead for better concurrency control.
-type Worker struct {
-	pool *WorkerPool
-}
-
-// NewWorker creates a new pipeline Worker (wraps WorkerPool with 1 worker).
-func NewWorker(
-	jobRepo repository.PipelineJobRepository,
-	snapshotRepo repository.WordSnapshotRepository,
-	pipeline *Pipeline,
-	logger *slog.Logger,
-) *Worker {
-	pool := NewWorkerPool(jobRepo, snapshotRepo, pipeline, logger, WorkerPoolConfig{
-		WorkerCount:  1,
-		PollInterval: 5 * time.Second,
-		RateLimit:    2.0,
-	})
-	return &Worker{pool: pool}
-}
-
-// Start begins the background job processing loop.
-func (w *Worker) Start(ctx context.Context) error {
-	return w.pool.Start(ctx)
-}
-
-// Stop gracefully stops the worker.
-func (w *Worker) Stop() {
-	w.pool.Stop()
-}
