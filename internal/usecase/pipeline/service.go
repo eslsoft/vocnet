@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -150,7 +151,10 @@ func (s *PipelineService) GetPipelineStatus(ctx context.Context, term, language 
 
 	lemma, err := s.lemmaRepo.LookupByForm(ctx, term, entity.Language(language))
 	if err != nil {
-		return nil, nil, entity.ErrLemmaNotFound
+		if errors.Is(err, entity.ErrLemmaNotFound) {
+			return nil, nil, entity.ErrLemmaNotFound
+		}
+		return nil, nil, fmt.Errorf("lookup lemma: %w", err)
 	}
 
 	tasks, err := s.taskRepo.ListByLemma(ctx, lemma.ID)
@@ -169,7 +173,10 @@ func (s *PipelineService) GetWordSnapshot(ctx context.Context, term, language st
 
 	snapshot, err := s.snapshotRepo.GetByTerm(ctx, term, language)
 	if err != nil {
-		return nil, entity.ErrSnapshotNotFound
+		if errors.Is(err, entity.ErrWordNotFound) {
+			return nil, entity.ErrSnapshotNotFound
+		}
+		return nil, fmt.Errorf("get snapshot: %w", err)
 	}
 	return snapshot, nil
 }
@@ -187,7 +194,10 @@ func (s *PipelineService) GetEvidence(ctx context.Context, term, language string
 
 	lemma, err := s.lemmaRepo.LookupByForm(ctx, term, entity.Language(language))
 	if err != nil {
-		return nil, entity.ErrLemmaNotFound
+		if errors.Is(err, entity.ErrLemmaNotFound) {
+			return nil, entity.ErrLemmaNotFound
+		}
+		return nil, fmt.Errorf("lookup lemma: %w", err)
 	}
 
 	var evidences []*entity.RawEvidence

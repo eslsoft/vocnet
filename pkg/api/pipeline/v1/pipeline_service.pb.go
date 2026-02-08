@@ -1446,6 +1446,7 @@ type PipelineJob struct {
 	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Term          string                 `protobuf:"bytes,15,opt,name=term,proto3" json:"term,omitempty"` // Target term (for SINGLE_WORD jobs)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1576,6 +1577,13 @@ func (x *PipelineJob) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *PipelineJob) GetTerm() string {
+	if x != nil {
+		return x.Term
+	}
+	return ""
 }
 
 // GetJobRequest requests details of a specific job.
@@ -2126,7 +2134,7 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"\rwordbook_name\x18\x03 \x01(\tR\fwordbookName\x12\x1a\n" +
 	"\blanguage\x18\x04 \x01(\tR\blanguage\x12\x12\n" +
 	"\x04tier\x18\x05 \x01(\x05R\x04tier\x12\x12\n" +
-	"\x04name\x18\x06 \x01(\tR\x04name\"\xdf\x03\n" +
+	"\x04name\x18\x06 \x01(\tR\x04name\"\xf3\x03\n" +
 	"\vPipelineJob\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
 	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12\x16\n" +
@@ -2145,7 +2153,8 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"started_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
 	"\fcompleted_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x129\n" +
 	"\n" +
-	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x1f\n" +
+	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x12\n" +
+	"\x04term\x18\x0f \x01(\tR\x04term\"\x1f\n" +
 	"\rGetJobRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"?\n" +
 	"\x0fListJobsRequest\x12\x16\n" +

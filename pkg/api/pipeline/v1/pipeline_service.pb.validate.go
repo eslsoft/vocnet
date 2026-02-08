@@ -2813,6 +2813,8 @@ func (m *PipelineJob) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for Term
+
 	if len(errors) > 0 {
 		return PipelineJobMultiError(errors)
 	}

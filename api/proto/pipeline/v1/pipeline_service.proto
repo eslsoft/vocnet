@@ -247,6 +247,8 @@ message PipelineJob {
   google.protobuf.Timestamp started_at = 12;
   google.protobuf.Timestamp completed_at = 13;
   google.protobuf.Timestamp created_at = 14;
+
+  string term = 15;                 // Target term (for SINGLE_WORD jobs)
 }
 
 // GetJobRequest requests details of a specific job.

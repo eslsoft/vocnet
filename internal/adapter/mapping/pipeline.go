@@ -1,6 +1,8 @@
 package mapping
 
 import (
+	"log/slog"
+
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 	pipelinev1 "github.com/eslsoft/vocnet/pkg/api/pipeline/v1"
@@ -25,6 +27,7 @@ func ToPbPipelineJob(j *entity.PipelineJob) *pipelinev1.PipelineJob {
 		Name:         j.Name,
 		Language:     j.Language,
 		Tier:         j.Tier,
+		Term:         j.Term,
 		TotalTerms:   j.TotalTerms,
 		Processed:    j.Processed,
 		Skipped:      j.Skipped,
@@ -166,6 +169,8 @@ func ToPbEvidence(e *entity.RawEvidence) *pipelinev1.Evidence {
 	if e.Content != nil {
 		if s, err := structpb.NewStruct(e.Content); err == nil {
 			pb.Content = s
+		} else {
+			slog.Warn("failed to serialize evidence content to protobuf", "evidence_id", e.ID, "error", err)
 		}
 	}
 

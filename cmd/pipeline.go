@@ -26,7 +26,8 @@ var pipelineCmd = &cobra.Command{
 }
 
 func newPipelineClient() pipelinev1connect.PipelineServiceClient {
-	return pipelinev1connect.NewPipelineServiceClient(http.DefaultClient, pipelineServerURL)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	return pipelinev1connect.NewPipelineServiceClient(httpClient, pipelineServerURL)
 }
 
 // Source management commands
@@ -276,10 +277,9 @@ var jobCmd = &cobra.Command{
 		}
 
 		// Show stage details for single-word jobs via GetPipelineStatus
-		if j.GetJobType() == "SINGLE_WORD" {
-			// Extract term from the job name (format: "word: <term>")
-			term := strings.TrimPrefix(j.GetName(), "word: ")
-			if term != "" && term != j.GetName() {
+		if j.GetJobType() == "SINGLE_WORD" && j.GetTerm() != "" {
+			term := j.GetTerm()
+			{
 				statusResp, err := client.GetPipelineStatus(ctx, connect.NewRequest(&pipelinev1.GetPipelineStatusRequest{
 					Term:     term,
 					Language: j.GetLanguage(),
@@ -332,7 +332,7 @@ var cancelCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("Job #%d cancelled (was: %s)\n", resp.Msg.GetId(), resp.Msg.GetStatus())
+		fmt.Printf("Job #%d cancelled (status: %s)\n", resp.Msg.GetId(), resp.Msg.GetStatus())
 		return nil
 	},
 }

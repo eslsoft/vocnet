@@ -8,8 +8,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/samber/lo"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -48,7 +46,7 @@ func (s *PipelineServiceServer) ProcessWord(_ context.Context, _ *connect.Reques
 
 func (s *PipelineServiceServer) GetPipelineStatus(ctx context.Context, req *connect.Request[pipelinev1.GetPipelineStatusRequest]) (*connect.Response[pipelinev1.PipelineStatus], error) {
 	if req.Msg == nil || strings.TrimSpace(req.Msg.GetTerm()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "term is required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("term is required"))
 	}
 
 	lemma, tasks, err := s.svc.GetPipelineStatus(ctx, req.Msg.GetTerm(), req.Msg.GetLanguage())
@@ -70,7 +68,7 @@ func (s *PipelineServiceServer) RetryPhase(_ context.Context, _ *connect.Request
 
 func (s *PipelineServiceServer) GetWordSnapshot(ctx context.Context, req *connect.Request[pipelinev1.GetWordSnapshotRequest]) (*connect.Response[pipelinev1.WordSnapshotResponse], error) {
 	if req.Msg == nil || strings.TrimSpace(req.Msg.GetTerm()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "term is required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("term is required"))
 	}
 
 	snapshot, err := s.svc.GetWordSnapshot(ctx, req.Msg.GetTerm(), req.Msg.GetLanguage())
@@ -83,7 +81,7 @@ func (s *PipelineServiceServer) GetWordSnapshot(ctx context.Context, req *connec
 
 func (s *PipelineServiceServer) ListWordSnapshots(ctx context.Context, req *connect.Request[pipelinev1.ListWordSnapshotsRequest]) (*connect.Response[pipelinev1.ListWordSnapshotsResponse], error) {
 	if req.Msg == nil {
-		return nil, status.Error(codes.InvalidArgument, "request required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("request required"))
 	}
 
 	query := &repository.ListSnapshotsQuery{
@@ -115,7 +113,7 @@ func (s *PipelineServiceServer) ListWordSnapshots(ctx context.Context, req *conn
 
 func (s *PipelineServiceServer) GetEvidence(ctx context.Context, req *connect.Request[pipelinev1.GetEvidenceRequest]) (*connect.Response[pipelinev1.GetEvidenceResponse], error) {
 	if req.Msg == nil || strings.TrimSpace(req.Msg.GetTerm()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "term is required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("term is required"))
 	}
 
 	evidences, err := s.svc.GetEvidence(ctx, req.Msg.GetTerm(), req.Msg.GetLanguage(), req.Msg.GetPhase(), req.Msg.GetProvider())
@@ -136,7 +134,7 @@ func (s *PipelineServiceServer) GetEvidence(ctx context.Context, req *connect.Re
 
 func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Request[pipelinev1.SubmitJobRequest]) (*connect.Response[pipelinev1.PipelineJob], error) {
 	if req.Msg == nil {
-		return nil, status.Error(codes.InvalidArgument, "request required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("request required"))
 	}
 
 	msg := req.Msg
@@ -146,6 +144,21 @@ func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Requ
 	language := msg.GetLanguage()
 	tier := msg.GetTier()
 	name := msg.GetName()
+
+	// Enforce mutual exclusivity: exactly one of term, terms, or wordbook_name
+	setCount := 0
+	if term != "" {
+		setCount++
+	}
+	if len(terms) > 0 {
+		setCount++
+	}
+	if wbName != "" {
+		setCount++
+	}
+	if setCount > 1 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("exactly one of term, terms, or wordbook_name must be set"))
+	}
 
 	var job *entity.PipelineJob
 	var err error
@@ -166,7 +179,7 @@ func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Requ
 	case term != "":
 		job, err = s.svc.SubmitWord(ctx, term, language, tier)
 	default:
-		return nil, status.Error(codes.InvalidArgument, "one of term, terms, or wordbook_name is required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("one of term, terms, or wordbook_name is required"))
 	}
 
 	if err != nil {
@@ -179,7 +192,7 @@ func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Requ
 //nolint:dupl // GetJob and CancelJob are distinct RPCs with identical structure
 func (s *PipelineServiceServer) GetJob(ctx context.Context, req *connect.Request[pipelinev1.GetJobRequest]) (*connect.Response[pipelinev1.PipelineJob], error) {
 	if req.Msg == nil || req.Msg.GetId() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "job id is required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("job id is required"))
 	}
 
 	job, err := s.svc.GetJob(ctx, req.Msg.GetId())
@@ -192,7 +205,7 @@ func (s *PipelineServiceServer) GetJob(ctx context.Context, req *connect.Request
 
 func (s *PipelineServiceServer) ListJobs(ctx context.Context, req *connect.Request[pipelinev1.ListJobsRequest]) (*connect.Response[pipelinev1.ListJobsResponse], error) {
 	if req.Msg == nil {
-		return nil, status.Error(codes.InvalidArgument, "request required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("request required"))
 	}
 
 	var statusFilter *entity.JobStatus
@@ -217,7 +230,7 @@ func (s *PipelineServiceServer) ListJobs(ctx context.Context, req *connect.Reque
 //nolint:dupl // CancelJob and GetJob are distinct RPCs with identical structure
 func (s *PipelineServiceServer) CancelJob(ctx context.Context, req *connect.Request[pipelinev1.CancelJobRequest]) (*connect.Response[pipelinev1.PipelineJob], error) {
 	if req.Msg == nil || req.Msg.GetId() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "job id is required")
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("job id is required"))
 	}
 
 	job, err := s.svc.CancelJob(ctx, req.Msg.GetId())
