@@ -26,7 +26,7 @@ var pipelineCmd = &cobra.Command{
 }
 
 func newPipelineClient() pipelinev1connect.PipelineServiceClient {
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{Timeout: 10 * time.Minute}
 	return pipelinev1connect.NewPipelineServiceClient(httpClient, pipelineServerURL)
 }
 
