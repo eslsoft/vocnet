@@ -267,7 +267,9 @@ func buildIndex(csvPath, dbPath string, logger *slog.Logger) error {
 		weight := extractWeight(metadataJSON)
 
 		if _, err := stmt.Exec(startURI, endURI, relationURI, weight); err != nil {
-			continue
+			_ = tx.Rollback()
+			_ = db.Close()
+			return fmt.Errorf("insert edge (%s, %s, %s): %w", startURI, endURI, relationURI, err)
 		}
 		insertCount++
 
