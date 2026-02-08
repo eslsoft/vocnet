@@ -59,3 +59,10 @@ type ConceptNetEdge struct {
 type ConceptNetProvider interface {
 	FetchRelations(ctx context.Context, term string, language string) ([]ConceptNetEdge, map[string]any, error)
 }
+
+// ClosableConceptNetProvider is an optional extension of ConceptNetProvider
+// for implementations that require resource cleanup.
+type ClosableConceptNetProvider interface {
+	ConceptNetProvider
+	Close() error
+}

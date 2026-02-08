@@ -31,6 +31,9 @@ func NewClient() *Client {
 	}
 }
 
+// Close is a no-op for the API client (no resources to release).
+func (c *Client) Close() error { return nil }
+
 // FetchRelations fetches semantic relations for a term from ConceptNet.
 // Returns the edges and the raw API response for evidence storage.
 func (c *Client) FetchRelations(ctx context.Context, term string, language string) ([]provider.ConceptNetEdge, map[string]any, error) {

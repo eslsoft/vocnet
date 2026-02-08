@@ -3,23 +3,38 @@ package wordnet
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 )
 
 // Reader reads WordNet data files to extract synsets and relations.
+// All data files are loaded into memory at initialization for fast lookups.
+// The reader is safe for concurrent use after creation.
 type Reader struct {
 	dataDir string
+	// wordIndex maps lowercase word -> []*Synset for each POS file
+	wordIndex map[string][]*Synset
+	// offsetIndex maps "pos:offset" -> *Synset for direct synset lookups
+	offsetIndex map[string]*Synset
+	once        sync.Once
+	loadErr     error
 }
 
 // NewReader creates a WordNet reader for the given data directory.
 func NewReader(dataDir string) *Reader {
-	return &Reader{dataDir: dataDir}
+	return &Reader{
+		dataDir:     dataDir,
+		wordIndex:   make(map[string][]*Synset),
+		offsetIndex: make(map[string]*Synset),
+	}
 }
 
 // Synset represents a WordNet synset (synonym set).
@@ -41,38 +56,107 @@ type Relation struct {
 	TargetWord string
 }
 
-// LookupSynsets finds all synsets for a given word.
-func (r *Reader) LookupSynsets(ctx context.Context, word string, pos string) ([]*Synset, error) {
-	// Determine which data file to read based on POS
-	var filename string
-	switch pos {
-	case "n", "noun":
-		filename = "data.noun"
-	case "v", "verb":
-		filename = "data.verb"
-	case "a", "adj", "adjective":
-		filename = "data.adj"
-	case "r", "adv", "adverb":
-		filename = "data.adv"
-	default:
-		// Search all files
-		synsets := make([]*Synset, 0)
-		for _, pos := range []string{"noun", "verb", "adj", "adv"} {
-			results, err := r.searchDataFile(ctx, word, fmt.Sprintf("data.%s", pos))
-			if err != nil {
-				continue
+// ensureLoaded loads all WordNet data files into memory on first access.
+// Uses sync.Once for concurrency safety.
+func (r *Reader) ensureLoaded() error {
+	r.once.Do(func() {
+		for _, filename := range []string{"data.noun", "data.verb", "data.adj", "data.adv"} {
+			if err := r.loadDataFile(filename); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				r.loadErr = fmt.Errorf("load %s: %w", filename, err)
+				return
 			}
-			synsets = append(synsets, results...)
 		}
-		return synsets, nil
+	})
+	return r.loadErr
+}
+
+// loadDataFile parses a single WordNet data file and indexes its synsets.
+func (r *Reader) loadDataFile(filename string) error {
+	filePath := filepath.Join(r.dataDir, filename)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, " ") || line == "" {
+			continue // Skip license header
+		}
+
+		synset, err := parseSynsetLine(line)
+		if err != nil {
+			continue
+		}
+
+		// Index by offset+POS for direct lookups
+		key := synset.POS + ":" + synset.Offset
+		r.offsetIndex[key] = synset
+
+		// Index by each word in the synset
+		for _, w := range synset.Words {
+			wordKey := strings.ToLower(strings.ReplaceAll(w, " ", "_"))
+			r.wordIndex[wordKey] = append(r.wordIndex[wordKey], synset)
+		}
 	}
 
-	return r.searchDataFile(ctx, word, filename)
+	return scanner.Err()
+}
+
+// LookupSynsets finds all synsets for a given word.
+func (r *Reader) LookupSynsets(ctx context.Context, word string, pos string) ([]*Synset, error) {
+	if err := r.ensureLoaded(); err != nil {
+		return nil, err
+	}
+
+	normalizedWord := strings.ToLower(strings.ReplaceAll(word, " ", "_"))
+	candidates := r.wordIndex[normalizedWord]
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	// Filter by POS if specified
+	posFilter := normalizePOS(pos)
+
+	// Separate exact case matches from case-insensitive.
+	// synset.Words stores words with spaces (underscores converted to spaces),
+	// so normalize the input word the same way for exact comparison.
+	wordWithSpaces := strings.ReplaceAll(word, "_", " ")
+	exactMatches := make([]*Synset, 0)
+	caseInsensitiveMatches := make([]*Synset, 0)
+
+	for _, synset := range candidates {
+		if posFilter != "" && synset.POS != posFilter {
+			continue
+		}
+
+		if slices.Contains(synset.Words, wordWithSpaces) {
+			exactMatches = append(exactMatches, synset)
+		} else {
+			caseInsensitiveMatches = append(caseInsensitiveMatches, synset)
+		}
+	}
+
+	result := make([]*Synset, 0, len(exactMatches)+len(caseInsensitiveMatches))
+	result = append(result, exactMatches...)
+	result = append(result, caseInsensitiveMatches...)
+	return result, nil
 }
 
 // GetHypernymPath retrieves the hypernym hierarchy path for a synset.
 // This is used to calculate semantic depth.
 func (r *Reader) GetHypernymPath(ctx context.Context, synset *Synset) ([]*Synset, error) {
+	if err := r.ensureLoaded(); err != nil {
+		return nil, err
+	}
+
 	path := []*Synset{synset}
 	visited := make(map[string]bool)
 	visited[synset.Offset] = true
@@ -85,9 +169,10 @@ func (r *Reader) GetHypernymPath(ctx context.Context, synset *Synset) ([]*Synset
 			break // Avoid cycles
 		}
 
-		// Load hypernym synset
-		hypernym, err := r.loadSynsetByID(ctx, hypernymID, current.POS)
-		if err != nil {
+		// Look up hypernym from in-memory index
+		key := current.POS + ":" + hypernymID
+		hypernym, ok := r.offsetIndex[key]
+		if !ok {
 			break
 		}
 
@@ -99,121 +184,25 @@ func (r *Reader) GetHypernymPath(ctx context.Context, synset *Synset) ([]*Synset
 	return path, nil
 }
 
-// searchDataFile searches a specific WordNet data file for matching synsets.
-func (r *Reader) searchDataFile(ctx context.Context, word string, filename string) ([]*Synset, error) {
-	filePath := filepath.Join(r.dataDir, filename)
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("open wordnet file %s: %w", filename, err)
-	}
-	defer func() { _ = file.Close() }()
-
-	synsets := make([]*Synset, 0)
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer
-
-	normalizedWord := strings.ToLower(strings.ReplaceAll(word, " ", "_"))
-
-	// First pass: collect exact case matches (prioritize lowercase)
-	exactMatches := make([]*Synset, 0)
-	caseInsensitiveMatches := make([]*Synset, 0)
-
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		line := scanner.Text()
-		if strings.HasPrefix(line, " ") || line == "" {
-			continue // Skip license header
-		}
-
-		synset, err := r.parseSynsetLine(line)
-		if err != nil {
-			continue
-		}
-
-		// Check if word matches any word in this synset
-		for _, w := range synset.Words {
-			if w == word {
-				// Exact case match (highest priority)
-				exactMatches = append(exactMatches, synset)
-				break
-			} else if strings.ToLower(w) == normalizedWord {
-				// Case-insensitive match (lower priority)
-				caseInsensitiveMatches = append(caseInsensitiveMatches, synset)
-				break
-			}
-		}
-	}
-
-	// Prioritize exact matches, then case-insensitive
-	synsets = append(synsets, exactMatches...)
-	synsets = append(synsets, caseInsensitiveMatches...)
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan file: %w", err)
-	}
-
-	return synsets, nil
-}
-
-// loadSynsetByID loads a specific synset by its offset ID.
-func (r *Reader) loadSynsetByID(ctx context.Context, offset string, pos string) (*Synset, error) {
-	var filename string
+// normalizePOS converts POS string variants to single-letter WordNet codes.
+func normalizePOS(pos string) string {
 	switch pos {
-	case "n":
-		filename = "data.noun"
-	case "v":
-		filename = "data.verb"
-	case "a":
-		filename = "data.adj"
-	case "r":
-		filename = "data.adv"
+	case "n", "noun":
+		return "n"
+	case "v", "verb":
+		return "v"
+	case "a", "adj", "adjective":
+		return "a"
+	case "r", "adv", "adverb":
+		return "r"
 	default:
-		return nil, fmt.Errorf("unknown POS: %s", pos)
+		return "" // no filter
 	}
-
-	filePath := filepath.Join(r.dataDir, filename)
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		line := scanner.Text()
-		if !strings.HasPrefix(line, offset) {
-			continue
-		}
-
-		synset, err := r.parseSynsetLine(line)
-		if err != nil {
-			continue
-		}
-
-		if synset.Offset == offset {
-			return synset, nil
-		}
-	}
-
-	return nil, fmt.Errorf("synset not found: %s", offset)
 }
 
 // parseSynsetLine parses a WordNet data file line into a Synset struct.
 // Format: synset_offset lex_filenum ss_type w_cnt word lex_id [word lex_id...] p_cnt [ptr...] [frames...] | gloss
-func (r *Reader) parseSynsetLine(line string) (*Synset, error) {
+func parseSynsetLine(line string) (*Synset, error) {
 	// Split at | to separate data from gloss
 	parts := strings.SplitN(line, " | ", 2)
 	data := strings.TrimSpace(parts[0])

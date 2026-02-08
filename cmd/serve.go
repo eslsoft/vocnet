@@ -163,7 +163,7 @@ func buildPipelineWorker(cfg *config.Config, entClient *entdb.Client, logger *sl
 	paths := datasource.ResolvePaths(cfg.Pipeline.DataDir)
 
 	var conceptnetProvider provider.ConceptNetProvider
-	reader, err := conceptnet.NewReader(paths.ConceptNet)
+	reader, err := conceptnet.NewReaderWithLogger(paths.ConceptNet, logger)
 	if err != nil {
 		logger.Warn("ConceptNet unavailable, falling back to API", "error", err)
 		conceptnetProvider = conceptnet.NewClient()
