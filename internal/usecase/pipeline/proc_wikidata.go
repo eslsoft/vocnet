@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
@@ -36,6 +37,9 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 	lexemes, rawResp, err := p.wikidata.FetchLexemes(ctx, term, lang.Code())
 	if err != nil {
 		return nil, fmt.Errorf("fetch lexemes: %w", err)
+	}
+	if rejectLowConfidenceLexemeMatch(rawResp) {
+		return nil, fmt.Errorf("low-confidence lexeme match rejected for: %s", term)
 	}
 
 	entityResult, err := p.wikidata.SearchEntity(ctx, term, lang.Code())
@@ -138,6 +142,10 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		})
 	}
 
+	// Preserve the requested spelling variant at lemma level.
+	// This guarantees entries like "favourite"/"favorite" are both queryable via lemma forms.
+	allForms = ensureSurfaceForm(allForms, term)
+
 	p.logger.Info("wikidata processor completed",
 		"term", term,
 		"lexemes", len(entityLexemes),
@@ -151,6 +159,29 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		FormsByLexeme: formsByLexeme,
 		LemmaUpdate:   updatedLemma,
 	}, nil
+}
+
+func ensureSurfaceForm(forms []*entity.LemmaForm, surface string) []*entity.LemmaForm {
+	surface = strings.TrimSpace(surface)
+	if surface == "" {
+		return forms
+	}
+
+	normalized := strings.ToLower(surface)
+	for _, f := range forms {
+		if f == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(f.Surface), surface) && f.FormType == entity.LexemeFormTypeLemma {
+			return forms
+		}
+	}
+
+	return append(forms, &entity.LemmaForm{
+		Surface:    surface,
+		Normalized: normalized,
+		FormType:   entity.LexemeFormTypeLemma,
+	})
 }
 
 // mapGrammaticalFeaturesToFormType maps Wikidata grammatical features to LexemeFormType.
@@ -202,5 +233,44 @@ func defaultDialect(lang entity.Language) string {
 		return "zh-CN"
 	default:
 		return lang.Code()
+	}
+}
+
+func rejectLowConfidenceLexemeMatch(evidence map[string]any) bool {
+	if len(evidence) == 0 {
+		return false
+	}
+	score, ok := evidence["match_score"]
+	if !ok {
+		return false
+	}
+	scoreNum, ok := score.(int)
+	if !ok {
+		if f, okf := score.(float64); okf {
+			scoreNum = int(f)
+			ok = true
+		}
+	}
+	if !ok {
+		return false
+	}
+	if scoreNum > 40 {
+		return false
+	}
+	countAny, ok := evidence["candidate_count"]
+	if !ok {
+		return false
+	}
+	switch v := countAny.(type) {
+	case int:
+		return v > 1
+	case int32:
+		return v > 1
+	case int64:
+		return v > 1
+	case float64:
+		return int(v) > 1
+	default:
+		return false
 	}
 }

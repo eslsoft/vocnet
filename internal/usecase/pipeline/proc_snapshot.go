@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -37,9 +38,15 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 			})
 		}
 
+		lemmaForms := formsForLexeme(pctx, lex.ExternalID)
+		snapshotForms := toSnapshotForms(lemmaForms)
+		snapshotPhonetics := collectPhonetics(lemmaForms)
+
 		snapshotLexemes = append(snapshotLexemes, entity.SnapshotLexeme{
-			POS:    lex.PartOfSpeech,
-			Senses: senses,
+			POS:       lex.PartOfSpeech,
+			Senses:    senses,
+			Forms:     snapshotForms,
+			Phonetics: snapshotPhonetics,
 		})
 	}
 
@@ -65,7 +72,7 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 
 	snapshot := &entity.WordSnapshot{
 		Term:               pctx.Lemma.Surface,
-		Language:            pctx.Language.Code(),
+		Language:           pctx.Language.Code(),
 		WikidataQID:        pctx.Lemma.WikidataQID,
 		Version:            1,
 		Data:               snapshotData,
@@ -89,4 +96,67 @@ func extractExampleTexts(examples []entity.SenseExample) []string {
 		texts = append(texts, ex.Text)
 	}
 	return texts
+}
+
+func formsForLexeme(pctx *PipelineContext, externalID string) []*entity.LemmaForm {
+	if pctx == nil {
+		return nil
+	}
+	if externalID != "" && pctx.FormsByLexeme != nil {
+		if forms := pctx.FormsByLexeme[externalID]; len(forms) > 0 {
+			return forms
+		}
+	}
+	return pctx.Forms
+}
+
+func toSnapshotForms(forms []*entity.LemmaForm) []entity.SnapshotForm {
+	out := make([]entity.SnapshotForm, 0, len(forms))
+	seen := make(map[string]struct{}, len(forms))
+	for _, f := range forms {
+		if f == nil {
+			continue
+		}
+		surface := strings.TrimSpace(f.Surface)
+		if surface == "" {
+			continue
+		}
+		key := surface + ":" + string(f.FormType)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, entity.SnapshotForm{
+			Surface:     surface,
+			FormType:    string(f.FormType),
+			IsIrregular: f.IsIrregular,
+		})
+	}
+	return out
+}
+
+func collectPhonetics(forms []*entity.LemmaForm) []entity.Phonetic {
+	var out []entity.Phonetic
+	seen := map[string]struct{}{}
+	for _, f := range forms {
+		if f == nil {
+			continue
+		}
+		for _, ph := range f.Phonetics {
+			ipa := strings.TrimSpace(ph.IPA)
+			if ipa == "" {
+				continue
+			}
+			key := ipa + "|" + strings.TrimSpace(ph.Dialect)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, entity.Phonetic{
+				IPA:     ipa,
+				Dialect: strings.TrimSpace(ph.Dialect),
+			})
+		}
+	}
+	return out
 }

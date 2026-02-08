@@ -63,7 +63,8 @@ func TestWikidataProcessor_Process_AllowsMissingEntitySearchWhenLexemesExist(t *
 	require.NotNil(t, result)
 	assert.Equal(t, ProcessStatusExecuted, result.Status)
 	assert.Len(t, result.Lexemes, 1)
-	assert.Len(t, result.Forms, 1)
+	assert.Len(t, result.Forms, 2)
+	assert.Equal(t, "mission", result.Forms[1].Surface)
 	assert.Nil(t, result.LemmaUpdate)
 }
 
@@ -87,4 +88,32 @@ func TestWikidataProcessor_Process_RejectsWhenNoLexemeAndNoEntity(t *testing.T) 
 	assert.Nil(t, result)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "word not found in Wikidata")
+}
+
+func TestWikidataProcessor_Process_RejectsLowConfidenceAmbiguousMatch(t *testing.T) {
+	p := NewWikidataProcessor(&mockWikidataProvider{
+		searchEntityFn: func(ctx context.Context, term string, language string) (*provider.WikidataEntity, error) {
+			return nil, nil
+		},
+		fetchLexemesFn: func(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
+			return []provider.WikidataLexeme{
+					{LexemeID: "L1", Language: "en", POS: "noun"},
+					{LexemeID: "L2", Language: "en", POS: "verb"},
+				}, map[string]any{
+					"match_score":     40,
+					"candidate_count": 2,
+				}, nil
+		},
+	}, testLogger())
+
+	pctx := &PipelineContext{
+		Term:     "edgecase",
+		Language: entity.LanguageEnglish,
+		Lemma:    &entity.Lemma{ID: 1, Surface: "edgecase"},
+	}
+
+	result, err := p.Process(context.Background(), pctx)
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "low-confidence lexeme match rejected")
 }

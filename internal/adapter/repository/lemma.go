@@ -334,6 +334,17 @@ func (r *lemmaRepository) CreateMinimal(ctx context.Context, surface string, lan
 		Save(ctx)
 	if err != nil {
 		_ = tx.Rollback()
+		// Idempotent retry path: if another worker already created the same lemma surface,
+		// return the existing row instead of failing the pipeline.
+		if entdb.IsConstraintError(err) {
+			existing, getErr := r.client.Lemma.Query().
+				Where(entlemma.NormalizedEQ(normalized)).
+				WithForms().
+				First(ctx)
+			if getErr == nil && existing != nil {
+				return mapEntLemma(existing), nil
+			}
+		}
 		return nil, translateDBError(err, "lemma")
 	}
 
@@ -454,7 +465,6 @@ func (r *lemmaRepository) CreateForms(ctx context.Context, lemmaID int64, forms 
 
 	return nil
 }
-
 
 type wordStatsAccumulator struct {
 	langAcc         map[string]*languageAccumulator

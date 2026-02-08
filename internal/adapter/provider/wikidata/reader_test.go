@@ -42,12 +42,53 @@ func TestReaderFetchLexemes_WithSensesAndForms_NoDeadlock(t *testing.T) {
 	require.Equal(t, 1, evidence["lexemes_found"])
 }
 
+func TestReaderFetchLexemes_IndexedKeySearch(t *testing.T) {
+	dir := t.TempDir()
+	dataPath := filepath.Join(dir, "lexemes.json")
+	require.NoError(t, os.WriteFile(dataPath, []byte("[]"), 0o644))
+
+	dbPath := dataPath + ".idx.db"
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	require.NoError(t, createTestSchema(db))
+	require.NoError(t, seedFallbackData(db))
+
+	r, err := NewReaderWithLogger(dataPath, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = r.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// "could" exists as a form, not lemma, but should be found via indexed key query.
+	lexemes, evidence, err := r.FetchLexemes(ctx, "could", "en")
+	require.NoError(t, err)
+	require.Len(t, lexemes, 1)
+	require.Equal(t, "L1888", lexemes[0].LexemeID)
+	require.Equal(t, normalizeSearchKey("could"), evidence["query_key"])
+	require.Equal(t, "exact_form", evidence["match_level"])
+	require.Equal(t, 90, evidence["match_score"])
+
+	// "favourite" should hit "favorite" via orthography key normalization.
+	lexemes, evidence, err = r.FetchLexemes(ctx, "favourite", "en")
+	require.NoError(t, err)
+	require.Len(t, lexemes, 1)
+	require.Equal(t, "L5897", lexemes[0].LexemeID)
+	require.Equal(t, orthographyKey("favourite"), evidence["orth_key"])
+	require.Equal(t, "orth_lemma", evidence["match_level"])
+	require.Equal(t, 50, evidence["match_score"])
+}
+
 func createTestSchema(db *sql.DB) error {
 	stmts := []string{
 		`create table if not exists lexemes (
 			id text primary key,
 			lemma text not null,
 			lemma_lower text not null,
+			lemma_key text not null,
+			lemma_orth_key text not null,
 			language text not null,
 			pos text not null,
 			data text not null
@@ -63,6 +104,8 @@ func createTestSchema(db *sql.DB) error {
 			lexeme_id text not null,
 			representation text not null,
 			representation_lower text not null,
+			representation_key text not null,
+			representation_orth_key text not null,
 			features text,
 			ipa text
 		);`,
@@ -77,17 +120,37 @@ func createTestSchema(db *sql.DB) error {
 }
 
 func seedMissionData(db *sql.DB) error {
-	if _, err := db.Exec(`insert into lexemes (id, lemma, lemma_lower, language, pos, data) values (?, ?, ?, ?, ?, ?)`,
-		"L4208", "mission", "mission", "en", "noun", `{"id":"L4208"}`); err != nil {
+	if _, err := db.Exec(`insert into lexemes (id, lemma, lemma_lower, lemma_key, lemma_orth_key, language, pos, data) values (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"L4208", "mission", "mission", normalizeSearchKey("mission"), orthographyKey("mission"), "en", "noun", `{"id":"L4208"}`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`insert into senses (id, lexeme_id, gloss_en, gloss_zh) values (?, ?, ?, ?)`,
 		"S1", "L4208", "important assignment", "任务"); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`insert into forms (id, lexeme_id, representation, representation_lower, features, ipa) values (?, ?, ?, ?, ?, ?)`,
-		"F1", "L4208", "missions", "missions", `["Q146786"]`, "/ˈmɪʃənz/"); err != nil {
+	if _, err := db.Exec(`insert into forms (id, lexeme_id, representation, representation_lower, representation_key, representation_orth_key, features, ipa) values (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"F1", "L4208", "missions", "missions", normalizeSearchKey("missions"), orthographyKey("missions"), `["Q146786"]`, "/ˈmɪʃənz/"); err != nil {
 		return err
 	}
+	return nil
+}
+
+func seedFallbackData(db *sql.DB) error {
+	// could -> form of can
+	if _, err := db.Exec(`insert into lexemes (id, lemma, lemma_lower, lemma_key, lemma_orth_key, language, pos, data) values (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"L1888", "can", "can", normalizeSearchKey("can"), orthographyKey("can"), "en", "verb", `{"id":"L1888"}`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`insert into forms (id, lexeme_id, representation, representation_lower, representation_key, representation_orth_key, features, ipa) values (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"F1888-1", "L1888", "could", "could", normalizeSearchKey("could"), orthographyKey("could"), `["Q1230649"]`, ""); err != nil {
+		return err
+	}
+
+	// favorite -> lemma variant target for "favourite"
+	if _, err := db.Exec(`insert into lexemes (id, lemma, lemma_lower, lemma_key, lemma_orth_key, language, pos, data) values (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"L5897", "favorite", "favorite", normalizeSearchKey("favorite"), orthographyKey("favorite"), "en", "adjective", `{"id":"L5897"}`); err != nil {
+		return err
+	}
+
 	return nil
 }

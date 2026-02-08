@@ -50,7 +50,7 @@ type ProcessResult struct {
 	Forms         []*entity.LemmaForm
 	FormsByLexeme map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
 	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma (e.g., QID)
-	Snapshot      *entity.WordSnapshot            // only set by SnapshotProcessor
+	Snapshot      *entity.WordSnapshot           // only set by SnapshotProcessor
 }
 
 // PipelineContext carries accumulated state through all pipeline stages.
@@ -59,12 +59,13 @@ type PipelineContext struct {
 	Language entity.Language
 	Tier     int32
 
-	Lemma     *entity.Lemma
-	Lexemes   []*entity.Lexeme
-	Relations []*entity.SemanticRelation
-	Forms     []*entity.LemmaForm
-	Evidence  []*entity.RawEvidence
-	Snapshot  *entity.WordSnapshot
+	Lemma         *entity.Lemma
+	Lexemes       []*entity.Lexeme
+	Relations     []*entity.SemanticRelation
+	Forms         []*entity.LemmaForm
+	FormsByLexeme map[string][]*entity.LemmaForm
+	Evidence      []*entity.RawEvidence
+	Snapshot      *entity.WordSnapshot
 }
 
 // Accumulate merges a ProcessResult into the pipeline context.
@@ -84,6 +85,9 @@ func (pc *PipelineContext) Accumulate(r *ProcessResult) {
 	}
 	if r.Forms != nil {
 		pc.Forms = mergeForms(pc.Forms, r.Forms)
+	}
+	if r.FormsByLexeme != nil {
+		pc.FormsByLexeme = mergeFormsByLexeme(pc.FormsByLexeme, r.FormsByLexeme)
 	}
 	if r.LemmaUpdate != nil {
 		// Apply lemma updates to context
@@ -128,6 +132,19 @@ func mergeForms(existing, new []*entity.LemmaForm) []*entity.LemmaForm {
 			existing = append(existing, f)
 			seen[key] = true
 		}
+	}
+	return existing
+}
+
+func mergeFormsByLexeme(existing, incoming map[string][]*entity.LemmaForm) map[string][]*entity.LemmaForm {
+	if len(incoming) == 0 {
+		return existing
+	}
+	if existing == nil {
+		existing = make(map[string][]*entity.LemmaForm, len(incoming))
+	}
+	for lexemeID, forms := range incoming {
+		existing[lexemeID] = mergeForms(existing[lexemeID], forms)
 	}
 	return existing
 }

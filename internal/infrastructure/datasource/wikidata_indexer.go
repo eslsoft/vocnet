@@ -154,6 +154,8 @@ func (idx *WikidataIndexer) createTables(db *sql.DB) error {
 			id TEXT PRIMARY KEY,
 			lemma TEXT NOT NULL,
 			lemma_lower TEXT NOT NULL,
+			lemma_key TEXT NOT NULL,
+			lemma_orth_key TEXT NOT NULL,
 			language TEXT NOT NULL,
 			pos TEXT NOT NULL,
 			data TEXT NOT NULL
@@ -164,6 +166,8 @@ func (idx *WikidataIndexer) createTables(db *sql.DB) error {
 			lexeme_id TEXT NOT NULL,
 			representation TEXT NOT NULL,
 			representation_lower TEXT NOT NULL,
+			representation_key TEXT NOT NULL,
+			representation_orth_key TEXT NOT NULL,
 			features TEXT,
 			ipa TEXT
 		);
@@ -189,9 +193,13 @@ func (idx *WikidataIndexer) createIndices(db *sql.DB) error {
 
 	indices := []string{
 		"CREATE INDEX idx_lexemes_lemma_lang ON lexemes(lemma_lower, language)",
+		"CREATE INDEX idx_lexemes_lemma_key_lang ON lexemes(lemma_key, language)",
+		"CREATE INDEX idx_lexemes_lemma_orth_key_lang ON lexemes(lemma_orth_key, language)",
 		"CREATE INDEX idx_lexemes_language ON lexemes(language)",
 		"CREATE INDEX idx_forms_lexeme ON forms(lexeme_id)",
 		"CREATE INDEX idx_forms_repr ON forms(representation_lower)",
+		"CREATE INDEX idx_forms_repr_key ON forms(representation_key)",
+		"CREATE INDEX idx_forms_repr_orth_key ON forms(representation_orth_key)",
 		"CREATE INDEX idx_senses_lexeme ON senses(lexeme_id)",
 	}
 
@@ -206,13 +214,13 @@ func (idx *WikidataIndexer) createIndices(db *sql.DB) error {
 
 // wikidataLexemeJSON represents the JSON structure of a Wikidata lexeme.
 type wikidataLexemeJSON struct {
-	Type            string                          `json:"type"`
-	ID              string                          `json:"id"`
-	Lemmas          map[string]wikidataLemmaValue   `json:"lemmas"`
-	LexicalCategory string                          `json:"lexicalCategory"`
-	Language        string                          `json:"language"`
-	Senses          []wikidataSenseJSON             `json:"senses"`
-	Forms           []wikidataFormJSON              `json:"forms"`
+	Type            string                        `json:"type"`
+	ID              string                        `json:"id"`
+	Lemmas          map[string]wikidataLemmaValue `json:"lemmas"`
+	LexicalCategory string                        `json:"lexicalCategory"`
+	Language        string                        `json:"language"`
+	Senses          []wikidataSenseJSON           `json:"senses"`
+	Forms           []wikidataFormJSON            `json:"forms"`
 }
 
 type wikidataLemmaValue struct {
@@ -269,12 +277,12 @@ func newWikidataInserter(db *sql.DB) (*wikidataInserter, error) {
 
 func (ins *wikidataInserter) prepareStatements() error {
 	var err error
-	ins.lexemeStmt, err = ins.tx.Prepare("INSERT INTO lexemes (id, lemma, lemma_lower, language, pos, data) VALUES (?, ?, ?, ?, ?, ?)")
+	ins.lexemeStmt, err = ins.tx.Prepare("INSERT INTO lexemes (id, lemma, lemma_lower, lemma_key, lemma_orth_key, language, pos, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return fmt.Errorf("prepare lexeme insert: %w", err)
 	}
 
-	ins.formStmt, err = ins.tx.Prepare("INSERT INTO forms (id, lexeme_id, representation, representation_lower, features, ipa) VALUES (?, ?, ?, ?, ?, ?)")
+	ins.formStmt, err = ins.tx.Prepare("INSERT INTO forms (id, lexeme_id, representation, representation_lower, representation_key, representation_orth_key, features, ipa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return fmt.Errorf("prepare form insert: %w", err)
 	}
@@ -440,7 +448,16 @@ func (idx *WikidataIndexer) insertLexeme(ins *wikidataInserter, lexeme *wikidata
 	// Store full JSON data for later retrieval
 	data, _ := json.Marshal(lexeme)
 
-	_, err := ins.lexemeStmt.Exec(lexeme.ID, lemma, strings.ToLower(lemma), langCode, pos, string(data))
+	_, err := ins.lexemeStmt.Exec(
+		lexeme.ID,
+		lemma,
+		strings.ToLower(lemma),
+		normalizeSearchKey(lemma),
+		orthographyKey(lemma),
+		langCode,
+		pos,
+		string(data),
+	)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return false, nil
@@ -464,7 +481,16 @@ func (idx *WikidataIndexer) insertForms(ins *wikidataInserter, lexeme *wikidataL
 		features, _ := json.Marshal(form.GrammaticalFeatures)
 		ipa := extractWikidataIPA(form.Claims)
 
-		_, err := ins.formStmt.Exec(form.ID, lexeme.ID, repr, strings.ToLower(repr), string(features), ipa)
+		_, err := ins.formStmt.Exec(
+			form.ID,
+			lexeme.ID,
+			repr,
+			strings.ToLower(repr),
+			normalizeSearchKey(repr),
+			orthographyKey(repr),
+			string(features),
+			ipa,
+		)
 		if err != nil && !strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return fmt.Errorf("insert form %s: %w", form.ID, err)
 		}
@@ -614,4 +640,41 @@ func mapWikidataPOSQID(qid string) string {
 	default:
 		return qid
 	}
+}
+
+func normalizeSearchKey(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return s
+	}
+	replacer := strings.NewReplacer(
+		"’", "",
+		"‘", "",
+		"ʼ", "",
+		".", "",
+		"'", "",
+		"-", "",
+		"_", "",
+		" ", "",
+	)
+	return replacer.Replace(s)
+}
+
+func orthographyKey(s string) string {
+	key := normalizeSearchKey(s)
+	if key == "" {
+		return key
+	}
+
+	// Canonicalize common UK/US spelling variants.
+	key = strings.ReplaceAll(key, "our", "or")
+	key = strings.ReplaceAll(key, "ise", "ize")
+	key = strings.ReplaceAll(key, "yse", "yze")
+	if strings.HasSuffix(key, "re") && len(key) > 4 {
+		key = strings.TrimSuffix(key, "re") + "er"
+	}
+	if strings.HasSuffix(key, "ice") && len(key) > 4 {
+		key = strings.TrimSuffix(key, "ice") + "ize" // practise/practice
+	}
+	return key
 }
