@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -50,9 +51,13 @@ func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQue
 			continue
 		}
 
-		lemma, err := s.lemmaRepo.GetByID(ctx, snapshot.LemmaID)
-		if err != nil {
-			return nil, 0, err
+		// ListLemmas is snapshot-centric: build list item directly from latest snapshot.
+		lemma := &entity.Lemma{
+			ID:         snapshot.LemmaID,
+			Surface:    snapshot.Term,
+			Normalized: strings.ToLower(snapshot.Term),
+			CreatedAt:  snapshot.CreatedAt,
+			UpdatedAt:  snapshot.UpdatedAt,
 		}
 
 		items = append(items, &LemmaListItem{
