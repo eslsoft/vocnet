@@ -189,6 +189,16 @@ func (r *pipelineJobRepository) UpdateStatus(ctx context.Context, id int64, stat
 	return nil
 }
 
+func (r *pipelineJobRepository) CountByStatus(ctx context.Context, status entity.JobStatus) (int, error) {
+	count, err := r.client.PipelineJob.Query().
+		Where(entpipelinejob.StatusEQ(string(status))).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count pipeline jobs by status: %w", err)
+	}
+	return count, nil
+}
+
 func (r *pipelineJobRepository) ChangeStatus(ctx context.Context, id int64, action entity.JobAction) error {
 	job, err := r.client.PipelineJob.Get(ctx, id)
 	if err != nil {

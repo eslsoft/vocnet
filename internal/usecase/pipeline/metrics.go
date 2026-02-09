@@ -13,6 +13,7 @@ type WorkerPoolMetrics struct {
 	jobsProcessed *prometheus.CounterVec
 	jobDuration   prometheus.Histogram
 	jobsPerMinute prometheus.Gauge
+	pendingJobs   prometheus.Gauge
 	uptime        prometheus.Gauge
 
 	// Internal tracking for rate calculation
@@ -24,6 +25,7 @@ type WorkerPoolMetrics struct {
 	processed atomic.Int64
 	succeeded atomic.Int64
 	failed    atomic.Int64
+	pending   atomic.Int64
 }
 
 type jobRecord struct {
@@ -59,6 +61,12 @@ func NewWorkerPoolMetricsWithRegistry(reg prometheus.Registerer) *WorkerPoolMetr
 				Help: "Current rate of jobs per minute (1-min window)",
 			},
 		),
+		pendingJobs: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_pending_jobs",
+				Help: "Number of pending jobs in queue",
+			},
+		),
 		uptime: prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name: "vocnet_pipeline_uptime_seconds",
@@ -74,6 +82,7 @@ func NewWorkerPoolMetricsWithRegistry(reg prometheus.Registerer) *WorkerPoolMetr
 		reg.MustRegister(m.jobsProcessed)
 		reg.MustRegister(m.jobDuration)
 		reg.MustRegister(m.jobsPerMinute)
+		reg.MustRegister(m.pendingJobs)
 		reg.MustRegister(m.uptime)
 	}
 
@@ -136,12 +145,19 @@ func (m *WorkerPoolMetrics) updateRateGauge() {
 	m.uptime.Set(now.Sub(m.startTime).Seconds())
 }
 
+// SetPendingJobs updates the pending jobs count.
+func (m *WorkerPoolMetrics) SetPendingJobs(count int64) {
+	m.pending.Store(count)
+	m.pendingJobs.Set(float64(count))
+}
+
 // MetricsSnapshot is a point-in-time snapshot of metrics for CLI display.
 type MetricsSnapshot struct {
 	UptimeSeconds       float64 `json:"uptime_seconds"`
 	JobsProcessed       int64   `json:"jobs_processed"`
 	JobsSucceeded       int64   `json:"jobs_succeeded"`
 	JobsFailed          int64   `json:"jobs_failed"`
+	PendingJobs         int64   `json:"pending_jobs"`
 	JobsPerMinute       float64 `json:"jobs_per_minute"`
 	AvgDurationMs       float64 `json:"avg_duration_ms"`
 	RecentJobsPerMinute float64 `json:"recent_jobs_per_minute"`
@@ -154,12 +170,14 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 	processed := m.processed.Load()
 	succeeded := m.succeeded.Load()
 	failed := m.failed.Load()
+	pending := m.pending.Load()
 
 	snapshot := MetricsSnapshot{
 		UptimeSeconds: now.Sub(m.startTime).Seconds(),
 		JobsProcessed: processed,
 		JobsSucceeded: succeeded,
 		JobsFailed:    failed,
+		PendingJobs:   pending,
 	}
 
 	m.recentJobsMutex <- struct{}{}

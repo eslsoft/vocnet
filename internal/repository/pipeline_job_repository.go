@@ -25,6 +25,9 @@ type PipelineJobRepository interface {
 	// UpdateStatus updates the job status and optional error message.
 	UpdateStatus(ctx context.Context, id int64, status entity.JobStatus, errorMsg string) error
 
+	// CountByStatus counts the number of jobs with the given status.
+	CountByStatus(ctx context.Context, status entity.JobStatus) (int, error)
+
 	// ChangeStatus performs a validated state transition (pause/resume/cancel/retry).
 	ChangeStatus(ctx context.Context, id int64, action entity.JobAction) error
 }

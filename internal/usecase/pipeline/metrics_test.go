@@ -82,3 +82,21 @@ func TestWorkerPoolMetrics_Reset(t *testing.T) {
 		t.Errorf("expected 0 failed jobs after reset, got %d", snapshot.JobsFailed)
 	}
 }
+
+func TestWorkerPoolMetrics_PendingJobs(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewWorkerPoolMetricsWithRegistry(reg)
+
+	m.SetPendingJobs(42)
+
+	snapshot := m.Snapshot()
+	if snapshot.PendingJobs != 42 {
+		t.Errorf("expected 42 pending jobs, got %d", snapshot.PendingJobs)
+	}
+
+	m.SetPendingJobs(0)
+	snapshot = m.Snapshot()
+	if snapshot.PendingJobs != 0 {
+		t.Errorf("expected 0 pending jobs, got %d", snapshot.PendingJobs)
+	}
+}
