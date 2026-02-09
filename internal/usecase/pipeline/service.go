@@ -12,16 +12,10 @@ import (
 
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo    repository.PipelineJobRepository
-	taskRepo   repository.PipelineTaskRepository
-	lemmaRepo  repository.LemmaRepository
-	logger     *slog.Logger
-	dispatcher JobDispatcher
-}
-
-// JobDispatcher dispatches async job execution to an orchestration backend.
-type JobDispatcher interface {
-	DispatchJob(ctx context.Context, job *entity.PipelineJob) error
+	jobRepo   repository.PipelineJobRepository
+	taskRepo  repository.PipelineTaskRepository
+	lemmaRepo repository.LemmaRepository
+	logger    *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
@@ -37,11 +31,6 @@ func NewPipelineService(
 		lemmaRepo: lemmaRepo,
 		logger:    logger,
 	}
-}
-
-// SetDispatcher configures an async dispatcher for newly submitted jobs.
-func (s *PipelineService) SetDispatcher(dispatcher JobDispatcher) {
-	s.dispatcher = dispatcher
 }
 
 // SubmitWord creates a single-word pipeline job.
@@ -68,15 +57,7 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 		TotalTerms: 1,
 	}
 
-	created, err := s.jobRepo.Create(ctx, job)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.dispatch(ctx, created); err != nil {
-		_ = s.jobRepo.UpdateStatus(ctx, created.ID, entity.JobStatusFailed, err.Error())
-		return nil, err
-	}
-	return created, nil
+	return s.jobRepo.Create(ctx, job)
 }
 
 // SubmitTerms creates one job per term for bulk execution (e.g. wordbook submit).
@@ -111,10 +92,6 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 		}
 		created, err := s.jobRepo.Create(ctx, job)
 		if err != nil {
-			return nil, err
-		}
-		if err := s.dispatch(ctx, created); err != nil {
-			_ = s.jobRepo.UpdateStatus(ctx, created.ID, entity.JobStatusFailed, err.Error())
 			return nil, err
 		}
 		jobs = append(jobs, created)
@@ -168,28 +145,7 @@ func (s *PipelineService) GetJobDetail(ctx context.Context, id int64) (*JobDetai
 
 // ControlJob performs a state transition on a job (pause/resume/cancel/retry).
 func (s *PipelineService) ControlJob(ctx context.Context, id int64, action entity.JobAction) error {
-	if err := s.jobRepo.ChangeStatus(ctx, id, action); err != nil {
-		return err
-	}
-
-	if action == entity.JobActionRetry {
-		job, err := s.jobRepo.GetByID(ctx, id)
-		if err != nil {
-			return err
-		}
-		if err := s.dispatch(ctx, job); err != nil {
-			_ = s.jobRepo.UpdateStatus(ctx, id, entity.JobStatusFailed, err.Error())
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *PipelineService) dispatch(ctx context.Context, job *entity.PipelineJob) error {
-	if s.dispatcher == nil {
-		return nil
-	}
-	return s.dispatcher.DispatchJob(ctx, job)
+	return s.jobRepo.ChangeStatus(ctx, id, action)
 }
 
 // deduplicateTerms removes duplicates and empty strings from a term list.

@@ -16,7 +16,6 @@ type Config struct {
 	Log      LogConfig      `mapstructure:"log"`
 	Auth     AuthConfig     `mapstructure:"auth"`
 	Pipeline PipelineConfig `mapstructure:"pipeline"`
-	Temporal TemporalConfig `mapstructure:"temporal"`
 	LLM      LLMConfig      `mapstructure:"llm"`
 }
 
@@ -54,15 +53,7 @@ type PipelineConfig struct {
 	DataDir      string `mapstructure:"data_dir"`      // Base system data directory (default: ./data)
 	AutoDownload bool   `mapstructure:"auto_download"` // Auto-download missing data sources
 	CacheDir     string `mapstructure:"cache_dir"`     // Data cache directory
-	WorkerCount  int    `mapstructure:"worker_count"`  // Number of concurrent activity workers (default: 10)
-}
-
-// TemporalConfig holds Temporal orchestration configuration.
-type TemporalConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`    // Enable temporal-based orchestration
-	HostPort  string `mapstructure:"host_port"`  // Temporal frontend address
-	Namespace string `mapstructure:"namespace"`  // Temporal namespace
-	TaskQueue string `mapstructure:"task_queue"` // Temporal task queue
+	WorkerCount  int    `mapstructure:"worker_count"`  // Number of concurrent workers (default: 10)
 }
 
 // LLMConfig holds LLM provider configuration
@@ -126,12 +117,6 @@ func setDefaults() {
 	viper.SetDefault("pipeline.cache_dir", "") // Empty means use system cache dir
 	viper.SetDefault("pipeline.worker_count", 10)
 
-	// Temporal defaults
-	viper.SetDefault("temporal.enabled", true)
-	viper.SetDefault("temporal.host_port", "localhost:7233")
-	viper.SetDefault("temporal.namespace", "default")
-	viper.SetDefault("temporal.task_queue", "vocnet-pipeline")
-
 	// LLM defaults
 	viper.SetDefault("llm.base_url", "https://api.openai.com/v1")
 	viper.SetDefault("llm.api_key", "")
@@ -140,19 +125,15 @@ func setDefaults() {
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
-		"database.dsn":           {"DATABASE_URL"},
-		"auth.jwks_url":          {"AUTH_JWKS_URL"},
-		"pipeline.data_dir":      {"PIPELINE_DATA_DIR"},
-		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
-		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
-		"pipeline.worker_count":  {"PIPELINE_WORKER_COUNT"},
-		"temporal.enabled":       {"TEMPORAL_ENABLED"},
-		"temporal.host_port":     {"TEMPORAL_HOST_PORT"},
-		"temporal.namespace":     {"TEMPORAL_NAMESPACE"},
-		"temporal.task_queue":    {"TEMPORAL_TASK_QUEUE"},
-		"llm.base_url":           {"LLM_BASE_URL"},
-		"llm.api_key":            {"LLM_API_KEY"},
-		"llm.model":              {"LLM_MODEL"},
+		"database.dsn":            {"DATABASE_URL"},
+		"auth.jwks_url":           {"AUTH_JWKS_URL"},
+		"pipeline.data_dir":       {"PIPELINE_DATA_DIR"},
+		"pipeline.auto_download":  {"PIPELINE_AUTO_DOWNLOAD"},
+		"pipeline.cache_dir":      {"PIPELINE_CACHE_DIR"},
+		"pipeline.worker_count":   {"PIPELINE_WORKER_COUNT"},
+		"llm.base_url":            {"LLM_BASE_URL"},
+		"llm.api_key":             {"LLM_API_KEY"},
+		"llm.model":               {"LLM_MODEL"},
 	}
 
 	for key, envs := range bindings {

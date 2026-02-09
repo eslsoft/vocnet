@@ -81,6 +81,40 @@ func (r *pipelineJobRepository) List(ctx context.Context, status *entity.JobStat
 }
 
 func (r *pipelineJobRepository) ClaimNext(ctx context.Context) (*entity.PipelineJob, error) {
+	rows, err := r.claimBatch(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
+}
+
+func (r *pipelineJobRepository) ClaimNextBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error) {
+	return r.claimBatch(ctx, limit)
+}
+
+func (r *pipelineJobRepository) claimBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+
+	out := make([]*entity.PipelineJob, 0, limit)
+	for range limit {
+		row, err := r.claimOneTx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if row == nil {
+			break
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+func (r *pipelineJobRepository) claimOneTx(ctx context.Context) (*entity.PipelineJob, error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)

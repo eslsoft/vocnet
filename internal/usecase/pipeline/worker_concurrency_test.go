@@ -35,15 +35,33 @@ func (r *claimOnlyJobRepo) List(context.Context, *entity.JobStatus, int) ([]*ent
 }
 
 func (r *claimOnlyJobRepo) ClaimNext(context.Context) (*entity.PipelineJob, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if len(r.pending) == 0 {
+	jobs, err := r.ClaimNextBatch(context.Background(), 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
 		return nil, nil
 	}
-	job := r.pending[0]
-	r.pending = r.pending[1:]
-	r.claimed++
-	return job, nil
+	return jobs[0], nil
+}
+
+func (r *claimOnlyJobRepo) ClaimNextBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.pending) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	if limit > len(r.pending) {
+		limit = len(r.pending)
+	}
+	out := make([]*entity.PipelineJob, 0, limit)
+	for range limit {
+		job := r.pending[0]
+		r.pending = r.pending[1:]
+		r.claimed++
+		out = append(out, job)
+	}
+	return out, nil
 }
 
 func (r *claimOnlyJobRepo) IncrementProcessed(context.Context, int64) error {

@@ -35,6 +35,7 @@ type WorkerPool struct {
 
 	// inFlight tracks claimed jobs that are either running or queued inside the workerpool.
 	inFlight atomic.Int64
+	wakeCh   chan struct{}
 
 	processFn func(context.Context, *entity.PipelineJob, *slog.Logger)
 }
@@ -65,6 +66,7 @@ func NewWorkerPool(
 		logger:   logger.With("component", "pipeline-worker-pool"),
 		config:   config,
 		done:     make(chan struct{}),
+		wakeCh:   make(chan struct{}, 1),
 		metrics:  NewWorkerPoolMetricsWithRegistry(config.MetricsRegisterer),
 	}
 	wp.processFn = wp.processJob
@@ -86,6 +88,7 @@ func (p *WorkerPool) Start(ctx context.Context) error {
 
 	pollTicker := time.NewTicker(p.config.PollInterval)
 	defer pollTicker.Stop()
+	p.pollAndSubmit(ctx) // warm up immediately on startup
 
 	// Progress logging ticker (nil if disabled)
 	var progressTicker *time.Ticker
@@ -106,6 +109,8 @@ func (p *WorkerPool) Start(ctx context.Context) error {
 			return nil
 		case <-pollTicker.C:
 			p.pollAndSubmit(ctx)
+		case <-p.wakeCh:
+			p.pollAndSubmit(ctx) // refill immediately when a worker completes
 		case <-progressCh:
 			p.logProgress()
 		}
@@ -155,6 +160,10 @@ func (p *WorkerPool) logProgress() {
 }
 
 func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
+	if p.jobRepo == nil {
+		return
+	}
+
 	// Update pending jobs count
 	count, err := p.jobRepo.CountByStatus(ctx, entity.JobStatusPending)
 	if err != nil {
@@ -169,17 +178,12 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 		return
 	}
 
-	// Claim only enough jobs to fill currently available worker slots.
-	for range availableSlots {
-		job, err := p.jobRepo.ClaimNext(ctx)
-		if err != nil {
-			p.logger.Error("failed to claim job", "error", err)
-			return
-		}
-		if job == nil {
-			return // No more pending jobs
-		}
-
+	jobs, err := p.jobRepo.ClaimNextBatch(ctx, availableSlots)
+	if err != nil {
+		p.logger.Error("failed to claim jobs", "error", err)
+		return
+	}
+	for _, job := range jobs {
 		jobLogger := p.logger.With("job_id", job.ID)
 		jobLogger.Info("submitting job to pool", "name", job.Name, "type", job.JobType)
 
@@ -191,9 +195,17 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 			defer func() {
 				p.inFlight.Add(-1)
 				p.metrics.SetInFlightJobs(p.inFlight.Load(), p.config.WorkerCount)
+				p.signalWake()
 			}()
 			p.processFn(ctx, j, jl)
 		})
+	}
+}
+
+func (p *WorkerPool) signalWake() {
+	select {
+	case p.wakeCh <- struct{}{}:
+	default:
 	}
 }
 

@@ -14,6 +14,8 @@ type PipelineJobRepository interface {
 
 	// ClaimNext atomically claims the next PENDING job (CAS: PENDING → RUNNING).
 	ClaimNext(ctx context.Context) (*entity.PipelineJob, error)
+	// ClaimNextBatch atomically claims up to limit PENDING jobs.
+	ClaimNextBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error)
 
 	// IncrementProcessed atomically increments the processed counter.
 	IncrementProcessed(ctx context.Context, id int64) error
