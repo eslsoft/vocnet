@@ -24,11 +24,569 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type PipelineJobType int32
+
+const (
+	PipelineJobType_PIPELINE_JOB_TYPE_UNSPECIFIED PipelineJobType = 0
+	PipelineJobType_PIPELINE_JOB_TYPE_SINGLE_WORD PipelineJobType = 1
+	PipelineJobType_PIPELINE_JOB_TYPE_WORDBOOK    PipelineJobType = 2
+)
+
+// Enum value maps for PipelineJobType.
+var (
+	PipelineJobType_name = map[int32]string{
+		0: "PIPELINE_JOB_TYPE_UNSPECIFIED",
+		1: "PIPELINE_JOB_TYPE_SINGLE_WORD",
+		2: "PIPELINE_JOB_TYPE_WORDBOOK",
+	}
+	PipelineJobType_value = map[string]int32{
+		"PIPELINE_JOB_TYPE_UNSPECIFIED": 0,
+		"PIPELINE_JOB_TYPE_SINGLE_WORD": 1,
+		"PIPELINE_JOB_TYPE_WORDBOOK":    2,
+	}
+)
+
+func (x PipelineJobType) Enum() *PipelineJobType {
+	p := new(PipelineJobType)
+	*p = x
+	return p
+}
+
+func (x PipelineJobType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PipelineJobType) Descriptor() protoreflect.EnumDescriptor {
+	return file_pipeline_v1_pipeline_service_proto_enumTypes[0].Descriptor()
+}
+
+func (PipelineJobType) Type() protoreflect.EnumType {
+	return &file_pipeline_v1_pipeline_service_proto_enumTypes[0]
+}
+
+func (x PipelineJobType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PipelineJobType.Descriptor instead.
+func (PipelineJobType) EnumDescriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{0}
+}
+
+type PipelineJobStatus int32
+
+const (
+	PipelineJobStatus_PIPELINE_JOB_STATUS_UNSPECIFIED PipelineJobStatus = 0
+	PipelineJobStatus_PIPELINE_JOB_STATUS_PENDING     PipelineJobStatus = 1
+	PipelineJobStatus_PIPELINE_JOB_STATUS_RUNNING     PipelineJobStatus = 2
+	PipelineJobStatus_PIPELINE_JOB_STATUS_PAUSED      PipelineJobStatus = 3
+	PipelineJobStatus_PIPELINE_JOB_STATUS_COMPLETED   PipelineJobStatus = 4
+	PipelineJobStatus_PIPELINE_JOB_STATUS_FAILED      PipelineJobStatus = 5
+	PipelineJobStatus_PIPELINE_JOB_STATUS_CANCELLED   PipelineJobStatus = 6
+)
+
+// Enum value maps for PipelineJobStatus.
+var (
+	PipelineJobStatus_name = map[int32]string{
+		0: "PIPELINE_JOB_STATUS_UNSPECIFIED",
+		1: "PIPELINE_JOB_STATUS_PENDING",
+		2: "PIPELINE_JOB_STATUS_RUNNING",
+		3: "PIPELINE_JOB_STATUS_PAUSED",
+		4: "PIPELINE_JOB_STATUS_COMPLETED",
+		5: "PIPELINE_JOB_STATUS_FAILED",
+		6: "PIPELINE_JOB_STATUS_CANCELLED",
+	}
+	PipelineJobStatus_value = map[string]int32{
+		"PIPELINE_JOB_STATUS_UNSPECIFIED": 0,
+		"PIPELINE_JOB_STATUS_PENDING":     1,
+		"PIPELINE_JOB_STATUS_RUNNING":     2,
+		"PIPELINE_JOB_STATUS_PAUSED":      3,
+		"PIPELINE_JOB_STATUS_COMPLETED":   4,
+		"PIPELINE_JOB_STATUS_FAILED":      5,
+		"PIPELINE_JOB_STATUS_CANCELLED":   6,
+	}
+)
+
+func (x PipelineJobStatus) Enum() *PipelineJobStatus {
+	p := new(PipelineJobStatus)
+	*p = x
+	return p
+}
+
+func (x PipelineJobStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PipelineJobStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_pipeline_v1_pipeline_service_proto_enumTypes[1].Descriptor()
+}
+
+func (PipelineJobStatus) Type() protoreflect.EnumType {
+	return &file_pipeline_v1_pipeline_service_proto_enumTypes[1]
+}
+
+func (x PipelineJobStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PipelineJobStatus.Descriptor instead.
+func (PipelineJobStatus) EnumDescriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{1}
+}
+
+type PipelinePhase int32
+
+const (
+	PipelinePhase_PIPELINE_PHASE_UNSPECIFIED  PipelinePhase = 0
+	PipelinePhase_PIPELINE_PHASE_DISCOVERY    PipelinePhase = 1
+	PipelinePhase_PIPELINE_PHASE_LEXICAL      PipelinePhase = 2
+	PipelinePhase_PIPELINE_PHASE_RELATIONAL   PipelinePhase = 3
+	PipelinePhase_PIPELINE_PHASE_INTELLECTUAL PipelinePhase = 4
+	PipelinePhase_PIPELINE_PHASE_SYNTHESIS    PipelinePhase = 5
+)
+
+// Enum value maps for PipelinePhase.
+var (
+	PipelinePhase_name = map[int32]string{
+		0: "PIPELINE_PHASE_UNSPECIFIED",
+		1: "PIPELINE_PHASE_DISCOVERY",
+		2: "PIPELINE_PHASE_LEXICAL",
+		3: "PIPELINE_PHASE_RELATIONAL",
+		4: "PIPELINE_PHASE_INTELLECTUAL",
+		5: "PIPELINE_PHASE_SYNTHESIS",
+	}
+	PipelinePhase_value = map[string]int32{
+		"PIPELINE_PHASE_UNSPECIFIED":  0,
+		"PIPELINE_PHASE_DISCOVERY":    1,
+		"PIPELINE_PHASE_LEXICAL":      2,
+		"PIPELINE_PHASE_RELATIONAL":   3,
+		"PIPELINE_PHASE_INTELLECTUAL": 4,
+		"PIPELINE_PHASE_SYNTHESIS":    5,
+	}
+)
+
+func (x PipelinePhase) Enum() *PipelinePhase {
+	p := new(PipelinePhase)
+	*p = x
+	return p
+}
+
+func (x PipelinePhase) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PipelinePhase) Descriptor() protoreflect.EnumDescriptor {
+	return file_pipeline_v1_pipeline_service_proto_enumTypes[2].Descriptor()
+}
+
+func (PipelinePhase) Type() protoreflect.EnumType {
+	return &file_pipeline_v1_pipeline_service_proto_enumTypes[2]
+}
+
+func (x PipelinePhase) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PipelinePhase.Descriptor instead.
+func (PipelinePhase) EnumDescriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{2}
+}
+
+type PipelineStageStatus int32
+
+const (
+	PipelineStageStatus_PIPELINE_STAGE_STATUS_UNSPECIFIED PipelineStageStatus = 0
+	PipelineStageStatus_PIPELINE_STAGE_STATUS_PENDING     PipelineStageStatus = 1
+	PipelineStageStatus_PIPELINE_STAGE_STATUS_RUNNING     PipelineStageStatus = 2
+	PipelineStageStatus_PIPELINE_STAGE_STATUS_COMPLETED   PipelineStageStatus = 3
+	PipelineStageStatus_PIPELINE_STAGE_STATUS_FAILED      PipelineStageStatus = 4
+	PipelineStageStatus_PIPELINE_STAGE_STATUS_SKIPPED     PipelineStageStatus = 5
+)
+
+// Enum value maps for PipelineStageStatus.
+var (
+	PipelineStageStatus_name = map[int32]string{
+		0: "PIPELINE_STAGE_STATUS_UNSPECIFIED",
+		1: "PIPELINE_STAGE_STATUS_PENDING",
+		2: "PIPELINE_STAGE_STATUS_RUNNING",
+		3: "PIPELINE_STAGE_STATUS_COMPLETED",
+		4: "PIPELINE_STAGE_STATUS_FAILED",
+		5: "PIPELINE_STAGE_STATUS_SKIPPED",
+	}
+	PipelineStageStatus_value = map[string]int32{
+		"PIPELINE_STAGE_STATUS_UNSPECIFIED": 0,
+		"PIPELINE_STAGE_STATUS_PENDING":     1,
+		"PIPELINE_STAGE_STATUS_RUNNING":     2,
+		"PIPELINE_STAGE_STATUS_COMPLETED":   3,
+		"PIPELINE_STAGE_STATUS_FAILED":      4,
+		"PIPELINE_STAGE_STATUS_SKIPPED":     5,
+	}
+)
+
+func (x PipelineStageStatus) Enum() *PipelineStageStatus {
+	p := new(PipelineStageStatus)
+	*p = x
+	return p
+}
+
+func (x PipelineStageStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PipelineStageStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_pipeline_v1_pipeline_service_proto_enumTypes[3].Descriptor()
+}
+
+func (PipelineStageStatus) Type() protoreflect.EnumType {
+	return &file_pipeline_v1_pipeline_service_proto_enumTypes[3]
+}
+
+func (x PipelineStageStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PipelineStageStatus.Descriptor instead.
+func (PipelineStageStatus) EnumDescriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{3}
+}
+
+type PipelineActionType int32
+
+const (
+	PipelineActionType_PIPELINE_ACTION_TYPE_UNSPECIFIED PipelineActionType = 0
+	PipelineActionType_PIPELINE_ACTION_TYPE_CANCEL      PipelineActionType = 1
+	// Retry creates a new pipeline run/job; it does not mutate stage execution of old job.
+	PipelineActionType_PIPELINE_ACTION_TYPE_RETRY PipelineActionType = 2
+)
+
+// Enum value maps for PipelineActionType.
+var (
+	PipelineActionType_name = map[int32]string{
+		0: "PIPELINE_ACTION_TYPE_UNSPECIFIED",
+		1: "PIPELINE_ACTION_TYPE_CANCEL",
+		2: "PIPELINE_ACTION_TYPE_RETRY",
+	}
+	PipelineActionType_value = map[string]int32{
+		"PIPELINE_ACTION_TYPE_UNSPECIFIED": 0,
+		"PIPELINE_ACTION_TYPE_CANCEL":      1,
+		"PIPELINE_ACTION_TYPE_RETRY":       2,
+	}
+)
+
+func (x PipelineActionType) Enum() *PipelineActionType {
+	p := new(PipelineActionType)
+	*p = x
+	return p
+}
+
+func (x PipelineActionType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PipelineActionType) Descriptor() protoreflect.EnumDescriptor {
+	return file_pipeline_v1_pipeline_service_proto_enumTypes[4].Descriptor()
+}
+
+func (PipelineActionType) Type() protoreflect.EnumType {
+	return &file_pipeline_v1_pipeline_service_proto_enumTypes[4]
+}
+
+func (x PipelineActionType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PipelineActionType.Descriptor instead.
+func (PipelineActionType) EnumDescriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{4}
+}
+
+type LemmaLevel int32
+
+const (
+	LemmaLevel_LEMMA_LEVEL_UNSPECIFIED LemmaLevel = 0
+	LemmaLevel_LEMMA_LEVEL_A1          LemmaLevel = 1
+	LemmaLevel_LEMMA_LEVEL_A2          LemmaLevel = 2
+	LemmaLevel_LEMMA_LEVEL_B1          LemmaLevel = 3
+	LemmaLevel_LEMMA_LEVEL_B2          LemmaLevel = 4
+	LemmaLevel_LEMMA_LEVEL_C1          LemmaLevel = 5
+	LemmaLevel_LEMMA_LEVEL_C2          LemmaLevel = 6
+	LemmaLevel_LEMMA_LEVEL_OTHER       LemmaLevel = 99
+)
+
+// Enum value maps for LemmaLevel.
+var (
+	LemmaLevel_name = map[int32]string{
+		0:  "LEMMA_LEVEL_UNSPECIFIED",
+		1:  "LEMMA_LEVEL_A1",
+		2:  "LEMMA_LEVEL_A2",
+		3:  "LEMMA_LEVEL_B1",
+		4:  "LEMMA_LEVEL_B2",
+		5:  "LEMMA_LEVEL_C1",
+		6:  "LEMMA_LEVEL_C2",
+		99: "LEMMA_LEVEL_OTHER",
+	}
+	LemmaLevel_value = map[string]int32{
+		"LEMMA_LEVEL_UNSPECIFIED": 0,
+		"LEMMA_LEVEL_A1":          1,
+		"LEMMA_LEVEL_A2":          2,
+		"LEMMA_LEVEL_B1":          3,
+		"LEMMA_LEVEL_B2":          4,
+		"LEMMA_LEVEL_C1":          5,
+		"LEMMA_LEVEL_C2":          6,
+		"LEMMA_LEVEL_OTHER":       99,
+	}
+)
+
+func (x LemmaLevel) Enum() *LemmaLevel {
+	p := new(LemmaLevel)
+	*p = x
+	return p
+}
+
+func (x LemmaLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (LemmaLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_pipeline_v1_pipeline_service_proto_enumTypes[5].Descriptor()
+}
+
+func (LemmaLevel) Type() protoreflect.EnumType {
+	return &file_pipeline_v1_pipeline_service_proto_enumTypes[5]
+}
+
+func (x LemmaLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use LemmaLevel.Descriptor instead.
+func (LemmaLevel) EnumDescriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{5}
+}
+
+type SubmitJobRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
+	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
+	Tier          int32                  `protobuf:"varint,3,opt,name=tier,proto3" json:"tier,omitempty"`
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitJobRequest) Reset() {
+	*x = SubmitJobRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitJobRequest) ProtoMessage() {}
+
+func (x *SubmitJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitJobRequest.ProtoReflect.Descriptor instead.
+func (*SubmitJobRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SubmitJobRequest) GetTerm() string {
+	if x != nil {
+		return x.Term
+	}
+	return ""
+}
+
+func (x *SubmitJobRequest) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *SubmitJobRequest) GetTier() int32 {
+	if x != nil {
+		return x.Tier
+	}
+	return 0
+}
+
+func (x *SubmitJobRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type SubmitJobResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Job           *PipelineJob           `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitJobResponse) Reset() {
+	*x = SubmitJobResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitJobResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitJobResponse) ProtoMessage() {}
+
+func (x *SubmitJobResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitJobResponse.ProtoReflect.Descriptor instead.
+func (*SubmitJobResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *SubmitJobResponse) GetJob() *PipelineJob {
+	if x != nil {
+		return x.Job
+	}
+	return nil
+}
+
+type ActionJobRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         int64                  `protobuf:"varint,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Action        PipelineActionType     `protobuf:"varint,2,opt,name=action,proto3,enum=pipeline.v1.PipelineActionType" json:"action,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionJobRequest) Reset() {
+	*x = ActionJobRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionJobRequest) ProtoMessage() {}
+
+func (x *ActionJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionJobRequest.ProtoReflect.Descriptor instead.
+func (*ActionJobRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ActionJobRequest) GetJobId() int64 {
+	if x != nil {
+		return x.JobId
+	}
+	return 0
+}
+
+func (x *ActionJobRequest) GetAction() PipelineActionType {
+	if x != nil {
+		return x.Action
+	}
+	return PipelineActionType_PIPELINE_ACTION_TYPE_UNSPECIFIED
+}
+
+type ActionJobResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// For cancel action, this is the updated job.
+	Job *PipelineJob `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	// For retry action, this is the newly created job.
+	NewJob        *PipelineJob `protobuf:"bytes,2,opt,name=new_job,json=newJob,proto3" json:"new_job,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionJobResponse) Reset() {
+	*x = ActionJobResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionJobResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionJobResponse) ProtoMessage() {}
+
+func (x *ActionJobResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionJobResponse.ProtoReflect.Descriptor instead.
+func (*ActionJobResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ActionJobResponse) GetJob() *PipelineJob {
+	if x != nil {
+		return x.Job
+	}
+	return nil
+}
+
+func (x *ActionJobResponse) GetNewJob() *PipelineJob {
+	if x != nil {
+		return x.NewJob
+	}
+	return nil
+}
+
 type ListJobsRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Pagination *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
-	// Optional filter: PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED.
-	Status string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	// Optional filter. UNSPECIFIED means no status filter.
+	Status PipelineJobStatus `protobuf:"varint,2,opt,name=status,proto3,enum=pipeline.v1.PipelineJobStatus" json:"status,omitempty"`
 	// Optional filter by lemma ID.
 	LemmaId       int64 `protobuf:"varint,3,opt,name=lemma_id,json=lemmaId,proto3" json:"lemma_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -37,7 +595,7 @@ type ListJobsRequest struct {
 
 func (x *ListJobsRequest) Reset() {
 	*x = ListJobsRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[0]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49,7 +607,7 @@ func (x *ListJobsRequest) String() string {
 func (*ListJobsRequest) ProtoMessage() {}
 
 func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[0]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62,7 +620,7 @@ func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListJobsRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{0}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListJobsRequest) GetPagination() *v1.PaginationRequest {
@@ -72,11 +630,11 @@ func (x *ListJobsRequest) GetPagination() *v1.PaginationRequest {
 	return nil
 }
 
-func (x *ListJobsRequest) GetStatus() string {
+func (x *ListJobsRequest) GetStatus() PipelineJobStatus {
 	if x != nil {
 		return x.Status
 	}
-	return ""
+	return PipelineJobStatus_PIPELINE_JOB_STATUS_UNSPECIFIED
 }
 
 func (x *ListJobsRequest) GetLemmaId() int64 {
@@ -89,8 +647,8 @@ func (x *ListJobsRequest) GetLemmaId() int64 {
 type PipelineJob struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	JobType       string                 `protobuf:"bytes,2,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"` // SINGLE_WORD, WORDBOOK
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                  // PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED
+	JobType       PipelineJobType        `protobuf:"varint,2,opt,name=job_type,json=jobType,proto3,enum=pipeline.v1.PipelineJobType" json:"job_type,omitempty"`
+	Status        PipelineJobStatus      `protobuf:"varint,3,opt,name=status,proto3,enum=pipeline.v1.PipelineJobStatus" json:"status,omitempty"`
 	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	Language      string                 `protobuf:"bytes,5,opt,name=language,proto3" json:"language,omitempty"`
 	Tier          int32                  `protobuf:"varint,6,opt,name=tier,proto3" json:"tier,omitempty"`
@@ -110,7 +668,7 @@ type PipelineJob struct {
 
 func (x *PipelineJob) Reset() {
 	*x = PipelineJob{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[1]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -122,7 +680,7 @@ func (x *PipelineJob) String() string {
 func (*PipelineJob) ProtoMessage() {}
 
 func (x *PipelineJob) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[1]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -135,7 +693,7 @@ func (x *PipelineJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PipelineJob.ProtoReflect.Descriptor instead.
 func (*PipelineJob) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{1}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PipelineJob) GetId() int64 {
@@ -145,18 +703,18 @@ func (x *PipelineJob) GetId() int64 {
 	return 0
 }
 
-func (x *PipelineJob) GetJobType() string {
+func (x *PipelineJob) GetJobType() PipelineJobType {
 	if x != nil {
 		return x.JobType
 	}
-	return ""
+	return PipelineJobType_PIPELINE_JOB_TYPE_UNSPECIFIED
 }
 
-func (x *PipelineJob) GetStatus() string {
+func (x *PipelineJob) GetStatus() PipelineJobStatus {
 	if x != nil {
 		return x.Status
 	}
-	return ""
+	return PipelineJobStatus_PIPELINE_JOB_STATUS_UNSPECIFIED
 }
 
 func (x *PipelineJob) GetName() string {
@@ -260,7 +818,7 @@ type ListJobsResponse struct {
 
 func (x *ListJobsResponse) Reset() {
 	*x = ListJobsResponse{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -272,7 +830,7 @@ func (x *ListJobsResponse) String() string {
 func (*ListJobsResponse) ProtoMessage() {}
 
 func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -285,7 +843,7 @@ func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
 func (*ListJobsResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{2}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListJobsResponse) GetJobs() []*PipelineJob {
@@ -311,7 +869,7 @@ type ListJobStagesRequest struct {
 
 func (x *ListJobStagesRequest) Reset() {
 	*x = ListJobStagesRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -323,7 +881,7 @@ func (x *ListJobStagesRequest) String() string {
 func (*ListJobStagesRequest) ProtoMessage() {}
 
 func (x *ListJobStagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -336,7 +894,7 @@ func (x *ListJobStagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobStagesRequest.ProtoReflect.Descriptor instead.
 func (*ListJobStagesRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{3}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListJobStagesRequest) GetJobId() int64 {
@@ -351,9 +909,9 @@ type PipelineStage struct {
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	JobId         int64                  `protobuf:"varint,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
 	LemmaId       int64                  `protobuf:"varint,3,opt,name=lemma_id,json=lemmaId,proto3" json:"lemma_id,omitempty"`
-	Phase         int32                  `protobuf:"varint,4,opt,name=phase,proto3" json:"phase,omitempty"`                         // 1..5
+	Phase         PipelinePhase          `protobuf:"varint,4,opt,name=phase,proto3,enum=pipeline.v1.PipelinePhase" json:"phase,omitempty"`
 	PhaseName     string                 `protobuf:"bytes,5,opt,name=phase_name,json=phaseName,proto3" json:"phase_name,omitempty"` // discovery, lexical, relational, intellectual, synthesis
-	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`                        // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED
+	Status        PipelineStageStatus    `protobuf:"varint,6,opt,name=status,proto3,enum=pipeline.v1.PipelineStageStatus" json:"status,omitempty"`
 	Attempts      int32                  `protobuf:"varint,7,opt,name=attempts,proto3" json:"attempts,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,8,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
@@ -366,7 +924,7 @@ type PipelineStage struct {
 
 func (x *PipelineStage) Reset() {
 	*x = PipelineStage{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -378,7 +936,7 @@ func (x *PipelineStage) String() string {
 func (*PipelineStage) ProtoMessage() {}
 
 func (x *PipelineStage) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -391,7 +949,7 @@ func (x *PipelineStage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PipelineStage.ProtoReflect.Descriptor instead.
 func (*PipelineStage) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{4}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PipelineStage) GetId() int64 {
@@ -415,11 +973,11 @@ func (x *PipelineStage) GetLemmaId() int64 {
 	return 0
 }
 
-func (x *PipelineStage) GetPhase() int32 {
+func (x *PipelineStage) GetPhase() PipelinePhase {
 	if x != nil {
 		return x.Phase
 	}
-	return 0
+	return PipelinePhase_PIPELINE_PHASE_UNSPECIFIED
 }
 
 func (x *PipelineStage) GetPhaseName() string {
@@ -429,11 +987,11 @@ func (x *PipelineStage) GetPhaseName() string {
 	return ""
 }
 
-func (x *PipelineStage) GetStatus() string {
+func (x *PipelineStage) GetStatus() PipelineStageStatus {
 	if x != nil {
 		return x.Status
 	}
-	return ""
+	return PipelineStageStatus_PIPELINE_STAGE_STATUS_UNSPECIFIED
 }
 
 func (x *PipelineStage) GetAttempts() int32 {
@@ -487,7 +1045,7 @@ type ListJobStagesResponse struct {
 
 func (x *ListJobStagesResponse) Reset() {
 	*x = ListJobStagesResponse{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -499,7 +1057,7 @@ func (x *ListJobStagesResponse) String() string {
 func (*ListJobStagesResponse) ProtoMessage() {}
 
 func (x *ListJobStagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -512,7 +1070,7 @@ func (x *ListJobStagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobStagesResponse.ProtoReflect.Descriptor instead.
 func (*ListJobStagesResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{5}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListJobStagesResponse) GetStages() []*PipelineStage {
@@ -533,7 +1091,7 @@ type ListLemmasRequest struct {
 
 func (x *ListLemmasRequest) Reset() {
 	*x = ListLemmasRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -545,7 +1103,7 @@ func (x *ListLemmasRequest) String() string {
 func (*ListLemmasRequest) ProtoMessage() {}
 
 func (x *ListLemmasRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -558,7 +1116,7 @@ func (x *ListLemmasRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLemmasRequest.ProtoReflect.Descriptor instead.
 func (*ListLemmasRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{6}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListLemmasRequest) GetPagination() *v1.PaginationRequest {
@@ -580,7 +1138,7 @@ type LemmaItem struct {
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Surface       string                 `protobuf:"bytes,2,opt,name=surface,proto3" json:"surface,omitempty"`
 	Normalized    string                 `protobuf:"bytes,3,opt,name=normalized,proto3" json:"normalized,omitempty"`
-	Level         string                 `protobuf:"bytes,4,opt,name=level,proto3" json:"level,omitempty"`
+	Level         LemmaLevel             `protobuf:"varint,4,opt,name=level,proto3,enum=pipeline.v1.LemmaLevel" json:"level,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -589,7 +1147,7 @@ type LemmaItem struct {
 
 func (x *LemmaItem) Reset() {
 	*x = LemmaItem{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -601,7 +1159,7 @@ func (x *LemmaItem) String() string {
 func (*LemmaItem) ProtoMessage() {}
 
 func (x *LemmaItem) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -614,7 +1172,7 @@ func (x *LemmaItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LemmaItem.ProtoReflect.Descriptor instead.
 func (*LemmaItem) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{7}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *LemmaItem) GetId() int64 {
@@ -638,11 +1196,11 @@ func (x *LemmaItem) GetNormalized() string {
 	return ""
 }
 
-func (x *LemmaItem) GetLevel() string {
+func (x *LemmaItem) GetLevel() LemmaLevel {
 	if x != nil {
 		return x.Level
 	}
-	return ""
+	return LemmaLevel_LEMMA_LEVEL_UNSPECIFIED
 }
 
 func (x *LemmaItem) GetCreatedAt() *timestamppb.Timestamp {
@@ -669,7 +1227,7 @@ type ListLemmasResponse struct {
 
 func (x *ListLemmasResponse) Reset() {
 	*x = ListLemmasResponse{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -681,7 +1239,7 @@ func (x *ListLemmasResponse) String() string {
 func (*ListLemmasResponse) ProtoMessage() {}
 
 func (x *ListLemmasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -694,7 +1252,7 @@ func (x *ListLemmasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLemmasResponse.ProtoReflect.Descriptor instead.
 func (*ListLemmasResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{8}
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListLemmasResponse) GetLemmas() []*LemmaItem {
@@ -715,17 +1273,30 @@ var File_pipeline_v1_pipeline_service_proto protoreflect.FileDescriptor
 
 const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"\n" +
-	"\"pipeline/v1/pipeline_service.proto\x12\vpipeline.v1\x1a\x15common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\x8b\x01\n" +
+	"\"pipeline/v1/pipeline_service.proto\x12\vpipeline.v1\x1a\x15common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"s\n" +
+	"\x10SubmitJobRequest\x12\x1b\n" +
+	"\x04term\x18\x01 \x01(\tB\a\xfaB\x04r\x02\x10\x01R\x04term\x12\x1a\n" +
+	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x12\n" +
+	"\x04tier\x18\x03 \x01(\x05R\x04tier\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\"?\n" +
+	"\x11SubmitJobResponse\x12*\n" +
+	"\x03job\x18\x01 \x01(\v2\x18.pipeline.v1.PipelineJobR\x03job\"u\n" +
+	"\x10ActionJobRequest\x12\x1e\n" +
+	"\x06job_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x05jobId\x12A\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x1f.pipeline.v1.PipelineActionTypeB\b\xfaB\x05\x82\x01\x02\x10\x01R\x06action\"r\n" +
+	"\x11ActionJobResponse\x12*\n" +
+	"\x03job\x18\x01 \x01(\v2\x18.pipeline.v1.PipelineJobR\x03job\x121\n" +
+	"\anew_job\x18\x02 \x01(\v2\x18.pipeline.v1.PipelineJobR\x06newJob\"\xab\x01\n" +
 	"\x0fListJobsRequest\x12<\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
-	"pagination\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\x12\"\n" +
-	"\blemma_id\x18\x03 \x01(\x03B\a\xfaB\x04\"\x02(\x00R\alemmaId\"\xae\x04\n" +
+	"pagination\x126\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x1e.pipeline.v1.PipelineJobStatusR\x06status\x12\"\n" +
+	"\blemma_id\x18\x03 \x01(\x03B\a\xfaB\x04\"\x02(\x00R\alemmaId\"\xec\x04\n" +
 	"\vPipelineJob\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
-	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\x12\x12\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x127\n" +
+	"\bjob_type\x18\x02 \x01(\x0e2\x1c.pipeline.v1.PipelineJobTypeR\ajobType\x126\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1e.pipeline.v1.PipelineJobStatusR\x06status\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12\x1a\n" +
 	"\blanguage\x18\x05 \x01(\tR\blanguage\x12\x12\n" +
 	"\x04tier\x18\x06 \x01(\x05R\x04tier\x12\x12\n" +
@@ -750,15 +1321,15 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
 	"pagination\"6\n" +
 	"\x14ListJobStagesRequest\x12\x1e\n" +
-	"\x06job_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x05jobId\"\xcf\x03\n" +
+	"\x06job_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x05jobId\"\x8d\x04\n" +
 	"\rPipelineStage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\x03R\x05jobId\x12\x19\n" +
-	"\blemma_id\x18\x03 \x01(\x03R\alemmaId\x12\x14\n" +
-	"\x05phase\x18\x04 \x01(\x05R\x05phase\x12\x1d\n" +
+	"\blemma_id\x18\x03 \x01(\x03R\alemmaId\x120\n" +
+	"\x05phase\x18\x04 \x01(\x0e2\x1a.pipeline.v1.PipelinePhaseR\x05phase\x12\x1d\n" +
 	"\n" +
-	"phase_name\x18\x05 \x01(\tR\tphaseName\x12\x16\n" +
-	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1a\n" +
+	"phase_name\x18\x05 \x01(\tR\tphaseName\x128\n" +
+	"\x06status\x18\x06 \x01(\x0e2 .pipeline.v1.PipelineStageStatusR\x06status\x12\x1a\n" +
 	"\battempts\x18\a \x01(\x05R\battempts\x12#\n" +
 	"\rerror_message\x18\b \x01(\tR\ferrorMessage\x129\n" +
 	"\n" +
@@ -775,14 +1346,14 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
 	"pagination\x12\x18\n" +
-	"\akeyword\x18\x02 \x01(\tR\akeyword\"\xe1\x01\n" +
+	"\akeyword\x18\x02 \x01(\tR\akeyword\"\xfa\x01\n" +
 	"\tLemmaItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x18\n" +
 	"\asurface\x18\x02 \x01(\tR\asurface\x12\x1e\n" +
 	"\n" +
 	"normalized\x18\x03 \x01(\tR\n" +
-	"normalized\x12\x14\n" +
-	"\x05level\x18\x04 \x01(\tR\x05level\x129\n" +
+	"normalized\x12-\n" +
+	"\x05level\x18\x04 \x01(\x0e2\x17.pipeline.v1.LemmaLevelR\x05level\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
@@ -791,10 +1362,53 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"\x06lemmas\x18\x01 \x03(\v2\x16.pipeline.v1.LemmaItemR\x06lemmas\x12=\n" +
 	"\n" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
-	"pagination2\x81\x02\n" +
-	"\x0fPipelineService\x12G\n" +
+	"pagination*w\n" +
+	"\x0fPipelineJobType\x12!\n" +
+	"\x1dPIPELINE_JOB_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dPIPELINE_JOB_TYPE_SINGLE_WORD\x10\x01\x12\x1e\n" +
+	"\x1aPIPELINE_JOB_TYPE_WORDBOOK\x10\x02*\x80\x02\n" +
+	"\x11PipelineJobStatus\x12#\n" +
+	"\x1fPIPELINE_JOB_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bPIPELINE_JOB_STATUS_PENDING\x10\x01\x12\x1f\n" +
+	"\x1bPIPELINE_JOB_STATUS_RUNNING\x10\x02\x12\x1e\n" +
+	"\x1aPIPELINE_JOB_STATUS_PAUSED\x10\x03\x12!\n" +
+	"\x1dPIPELINE_JOB_STATUS_COMPLETED\x10\x04\x12\x1e\n" +
+	"\x1aPIPELINE_JOB_STATUS_FAILED\x10\x05\x12!\n" +
+	"\x1dPIPELINE_JOB_STATUS_CANCELLED\x10\x06*\xc7\x01\n" +
+	"\rPipelinePhase\x12\x1e\n" +
+	"\x1aPIPELINE_PHASE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18PIPELINE_PHASE_DISCOVERY\x10\x01\x12\x1a\n" +
+	"\x16PIPELINE_PHASE_LEXICAL\x10\x02\x12\x1d\n" +
+	"\x19PIPELINE_PHASE_RELATIONAL\x10\x03\x12\x1f\n" +
+	"\x1bPIPELINE_PHASE_INTELLECTUAL\x10\x04\x12\x1c\n" +
+	"\x18PIPELINE_PHASE_SYNTHESIS\x10\x05*\xec\x01\n" +
+	"\x13PipelineStageStatus\x12%\n" +
+	"!PIPELINE_STAGE_STATUS_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dPIPELINE_STAGE_STATUS_PENDING\x10\x01\x12!\n" +
+	"\x1dPIPELINE_STAGE_STATUS_RUNNING\x10\x02\x12#\n" +
+	"\x1fPIPELINE_STAGE_STATUS_COMPLETED\x10\x03\x12 \n" +
+	"\x1cPIPELINE_STAGE_STATUS_FAILED\x10\x04\x12!\n" +
+	"\x1dPIPELINE_STAGE_STATUS_SKIPPED\x10\x05*{\n" +
+	"\x12PipelineActionType\x12$\n" +
+	" PIPELINE_ACTION_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bPIPELINE_ACTION_TYPE_CANCEL\x10\x01\x12\x1e\n" +
+	"\x1aPIPELINE_ACTION_TYPE_RETRY\x10\x02*\xb8\x01\n" +
+	"\n" +
+	"LemmaLevel\x12\x1b\n" +
+	"\x17LEMMA_LEVEL_UNSPECIFIED\x10\x00\x12\x12\n" +
+	"\x0eLEMMA_LEVEL_A1\x10\x01\x12\x12\n" +
+	"\x0eLEMMA_LEVEL_A2\x10\x02\x12\x12\n" +
+	"\x0eLEMMA_LEVEL_B1\x10\x03\x12\x12\n" +
+	"\x0eLEMMA_LEVEL_B2\x10\x04\x12\x12\n" +
+	"\x0eLEMMA_LEVEL_C1\x10\x05\x12\x12\n" +
+	"\x0eLEMMA_LEVEL_C2\x10\x06\x12\x15\n" +
+	"\x11LEMMA_LEVEL_OTHER\x10c2\xca\x02\n" +
+	"\x0fPipelineService\x12J\n" +
+	"\tSubmitJob\x12\x1d.pipeline.v1.SubmitJobRequest\x1a\x1e.pipeline.v1.SubmitJobResponse\x12J\n" +
+	"\tActionJob\x12\x1d.pipeline.v1.ActionJobRequest\x1a\x1e.pipeline.v1.ActionJobResponse\x12G\n" +
 	"\bListJobs\x12\x1c.pipeline.v1.ListJobsRequest\x1a\x1d.pipeline.v1.ListJobsResponse\x12V\n" +
-	"\rListJobStages\x12!.pipeline.v1.ListJobStagesRequest\x1a\".pipeline.v1.ListJobStagesResponse\x12M\n" +
+	"\rListJobStages\x12!.pipeline.v1.ListJobStagesRequest\x1a\".pipeline.v1.ListJobStagesResponse2]\n" +
+	"\fLemmaService\x12M\n" +
 	"\n" +
 	"ListLemmas\x12\x1e.pipeline.v1.ListLemmasRequest\x1a\x1f.pipeline.v1.ListLemmasResponseB\xae\x01\n" +
 	"\x0fcom.pipeline.v1B\x14PipelineServiceProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1\xa2\x02\x03PXX\xaa\x02\vPipeline.V1\xca\x02\vPipeline\\V1\xe2\x02\x17Pipeline\\V1\\GPBMetadata\xea\x02\fPipeline::V1b\x06proto3"
@@ -811,50 +1425,75 @@ func file_pipeline_v1_pipeline_service_proto_rawDescGZIP() []byte {
 	return file_pipeline_v1_pipeline_service_proto_rawDescData
 }
 
-var file_pipeline_v1_pipeline_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_pipeline_v1_pipeline_service_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_pipeline_v1_pipeline_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_pipeline_v1_pipeline_service_proto_goTypes = []any{
-	(*ListJobsRequest)(nil),       // 0: pipeline.v1.ListJobsRequest
-	(*PipelineJob)(nil),           // 1: pipeline.v1.PipelineJob
-	(*ListJobsResponse)(nil),      // 2: pipeline.v1.ListJobsResponse
-	(*ListJobStagesRequest)(nil),  // 3: pipeline.v1.ListJobStagesRequest
-	(*PipelineStage)(nil),         // 4: pipeline.v1.PipelineStage
-	(*ListJobStagesResponse)(nil), // 5: pipeline.v1.ListJobStagesResponse
-	(*ListLemmasRequest)(nil),     // 6: pipeline.v1.ListLemmasRequest
-	(*LemmaItem)(nil),             // 7: pipeline.v1.LemmaItem
-	(*ListLemmasResponse)(nil),    // 8: pipeline.v1.ListLemmasResponse
-	(*v1.PaginationRequest)(nil),  // 9: common.v1.PaginationRequest
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
-	(*v1.PaginationResponse)(nil), // 11: common.v1.PaginationResponse
+	(PipelineJobType)(0),          // 0: pipeline.v1.PipelineJobType
+	(PipelineJobStatus)(0),        // 1: pipeline.v1.PipelineJobStatus
+	(PipelinePhase)(0),            // 2: pipeline.v1.PipelinePhase
+	(PipelineStageStatus)(0),      // 3: pipeline.v1.PipelineStageStatus
+	(PipelineActionType)(0),       // 4: pipeline.v1.PipelineActionType
+	(LemmaLevel)(0),               // 5: pipeline.v1.LemmaLevel
+	(*SubmitJobRequest)(nil),      // 6: pipeline.v1.SubmitJobRequest
+	(*SubmitJobResponse)(nil),     // 7: pipeline.v1.SubmitJobResponse
+	(*ActionJobRequest)(nil),      // 8: pipeline.v1.ActionJobRequest
+	(*ActionJobResponse)(nil),     // 9: pipeline.v1.ActionJobResponse
+	(*ListJobsRequest)(nil),       // 10: pipeline.v1.ListJobsRequest
+	(*PipelineJob)(nil),           // 11: pipeline.v1.PipelineJob
+	(*ListJobsResponse)(nil),      // 12: pipeline.v1.ListJobsResponse
+	(*ListJobStagesRequest)(nil),  // 13: pipeline.v1.ListJobStagesRequest
+	(*PipelineStage)(nil),         // 14: pipeline.v1.PipelineStage
+	(*ListJobStagesResponse)(nil), // 15: pipeline.v1.ListJobStagesResponse
+	(*ListLemmasRequest)(nil),     // 16: pipeline.v1.ListLemmasRequest
+	(*LemmaItem)(nil),             // 17: pipeline.v1.LemmaItem
+	(*ListLemmasResponse)(nil),    // 18: pipeline.v1.ListLemmasResponse
+	(*v1.PaginationRequest)(nil),  // 19: common.v1.PaginationRequest
+	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
+	(*v1.PaginationResponse)(nil), // 21: common.v1.PaginationResponse
 }
 var file_pipeline_v1_pipeline_service_proto_depIdxs = []int32{
-	9,  // 0: pipeline.v1.ListJobsRequest.pagination:type_name -> common.v1.PaginationRequest
-	10, // 1: pipeline.v1.PipelineJob.started_at:type_name -> google.protobuf.Timestamp
-	10, // 2: pipeline.v1.PipelineJob.completed_at:type_name -> google.protobuf.Timestamp
-	10, // 3: pipeline.v1.PipelineJob.created_at:type_name -> google.protobuf.Timestamp
-	10, // 4: pipeline.v1.PipelineJob.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 5: pipeline.v1.ListJobsResponse.jobs:type_name -> pipeline.v1.PipelineJob
-	11, // 6: pipeline.v1.ListJobsResponse.pagination:type_name -> common.v1.PaginationResponse
-	10, // 7: pipeline.v1.PipelineStage.started_at:type_name -> google.protobuf.Timestamp
-	10, // 8: pipeline.v1.PipelineStage.completed_at:type_name -> google.protobuf.Timestamp
-	10, // 9: pipeline.v1.PipelineStage.created_at:type_name -> google.protobuf.Timestamp
-	10, // 10: pipeline.v1.PipelineStage.updated_at:type_name -> google.protobuf.Timestamp
-	4,  // 11: pipeline.v1.ListJobStagesResponse.stages:type_name -> pipeline.v1.PipelineStage
-	9,  // 12: pipeline.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
-	10, // 13: pipeline.v1.LemmaItem.created_at:type_name -> google.protobuf.Timestamp
-	10, // 14: pipeline.v1.LemmaItem.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 15: pipeline.v1.ListLemmasResponse.lemmas:type_name -> pipeline.v1.LemmaItem
-	11, // 16: pipeline.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
-	0,  // 17: pipeline.v1.PipelineService.ListJobs:input_type -> pipeline.v1.ListJobsRequest
-	3,  // 18: pipeline.v1.PipelineService.ListJobStages:input_type -> pipeline.v1.ListJobStagesRequest
-	6,  // 19: pipeline.v1.PipelineService.ListLemmas:input_type -> pipeline.v1.ListLemmasRequest
-	2,  // 20: pipeline.v1.PipelineService.ListJobs:output_type -> pipeline.v1.ListJobsResponse
-	5,  // 21: pipeline.v1.PipelineService.ListJobStages:output_type -> pipeline.v1.ListJobStagesResponse
-	8,  // 22: pipeline.v1.PipelineService.ListLemmas:output_type -> pipeline.v1.ListLemmasResponse
-	20, // [20:23] is the sub-list for method output_type
-	17, // [17:20] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	11, // 0: pipeline.v1.SubmitJobResponse.job:type_name -> pipeline.v1.PipelineJob
+	4,  // 1: pipeline.v1.ActionJobRequest.action:type_name -> pipeline.v1.PipelineActionType
+	11, // 2: pipeline.v1.ActionJobResponse.job:type_name -> pipeline.v1.PipelineJob
+	11, // 3: pipeline.v1.ActionJobResponse.new_job:type_name -> pipeline.v1.PipelineJob
+	19, // 4: pipeline.v1.ListJobsRequest.pagination:type_name -> common.v1.PaginationRequest
+	1,  // 5: pipeline.v1.ListJobsRequest.status:type_name -> pipeline.v1.PipelineJobStatus
+	0,  // 6: pipeline.v1.PipelineJob.job_type:type_name -> pipeline.v1.PipelineJobType
+	1,  // 7: pipeline.v1.PipelineJob.status:type_name -> pipeline.v1.PipelineJobStatus
+	20, // 8: pipeline.v1.PipelineJob.started_at:type_name -> google.protobuf.Timestamp
+	20, // 9: pipeline.v1.PipelineJob.completed_at:type_name -> google.protobuf.Timestamp
+	20, // 10: pipeline.v1.PipelineJob.created_at:type_name -> google.protobuf.Timestamp
+	20, // 11: pipeline.v1.PipelineJob.updated_at:type_name -> google.protobuf.Timestamp
+	11, // 12: pipeline.v1.ListJobsResponse.jobs:type_name -> pipeline.v1.PipelineJob
+	21, // 13: pipeline.v1.ListJobsResponse.pagination:type_name -> common.v1.PaginationResponse
+	2,  // 14: pipeline.v1.PipelineStage.phase:type_name -> pipeline.v1.PipelinePhase
+	3,  // 15: pipeline.v1.PipelineStage.status:type_name -> pipeline.v1.PipelineStageStatus
+	20, // 16: pipeline.v1.PipelineStage.started_at:type_name -> google.protobuf.Timestamp
+	20, // 17: pipeline.v1.PipelineStage.completed_at:type_name -> google.protobuf.Timestamp
+	20, // 18: pipeline.v1.PipelineStage.created_at:type_name -> google.protobuf.Timestamp
+	20, // 19: pipeline.v1.PipelineStage.updated_at:type_name -> google.protobuf.Timestamp
+	14, // 20: pipeline.v1.ListJobStagesResponse.stages:type_name -> pipeline.v1.PipelineStage
+	19, // 21: pipeline.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
+	5,  // 22: pipeline.v1.LemmaItem.level:type_name -> pipeline.v1.LemmaLevel
+	20, // 23: pipeline.v1.LemmaItem.created_at:type_name -> google.protobuf.Timestamp
+	20, // 24: pipeline.v1.LemmaItem.updated_at:type_name -> google.protobuf.Timestamp
+	17, // 25: pipeline.v1.ListLemmasResponse.lemmas:type_name -> pipeline.v1.LemmaItem
+	21, // 26: pipeline.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
+	6,  // 27: pipeline.v1.PipelineService.SubmitJob:input_type -> pipeline.v1.SubmitJobRequest
+	8,  // 28: pipeline.v1.PipelineService.ActionJob:input_type -> pipeline.v1.ActionJobRequest
+	10, // 29: pipeline.v1.PipelineService.ListJobs:input_type -> pipeline.v1.ListJobsRequest
+	13, // 30: pipeline.v1.PipelineService.ListJobStages:input_type -> pipeline.v1.ListJobStagesRequest
+	16, // 31: pipeline.v1.LemmaService.ListLemmas:input_type -> pipeline.v1.ListLemmasRequest
+	7,  // 32: pipeline.v1.PipelineService.SubmitJob:output_type -> pipeline.v1.SubmitJobResponse
+	9,  // 33: pipeline.v1.PipelineService.ActionJob:output_type -> pipeline.v1.ActionJobResponse
+	12, // 34: pipeline.v1.PipelineService.ListJobs:output_type -> pipeline.v1.ListJobsResponse
+	15, // 35: pipeline.v1.PipelineService.ListJobStages:output_type -> pipeline.v1.ListJobStagesResponse
+	18, // 36: pipeline.v1.LemmaService.ListLemmas:output_type -> pipeline.v1.ListLemmasResponse
+	32, // [32:37] is the sub-list for method output_type
+	27, // [27:32] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_pipeline_v1_pipeline_service_proto_init() }
@@ -867,13 +1506,14 @@ func file_pipeline_v1_pipeline_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pipeline_v1_pipeline_service_proto_rawDesc), len(file_pipeline_v1_pipeline_service_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   9,
+			NumEnums:      6,
+			NumMessages:   13,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_pipeline_v1_pipeline_service_proto_goTypes,
 		DependencyIndexes: file_pipeline_v1_pipeline_service_proto_depIdxs,
+		EnumInfos:         file_pipeline_v1_pipeline_service_proto_enumTypes,
 		MessageInfos:      file_pipeline_v1_pipeline_service_proto_msgTypes,
 	}.Build()
 	File_pipeline_v1_pipeline_service_proto = out.File

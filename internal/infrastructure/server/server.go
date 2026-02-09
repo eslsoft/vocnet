@@ -35,7 +35,7 @@ type Server struct {
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler, reviewPlanSvc learningv1connect.ReviewPlanServiceHandler, statsSvc learningv1connect.StatsServiceHandler, pipelineSvc pipelinev1connect.PipelineServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler, reviewPlanSvc learningv1connect.ReviewPlanServiceHandler, statsSvc learningv1connect.StatsServiceHandler, pipelineSvc pipelinev1connect.PipelineServiceHandler, lemmaSvc pipelinev1connect.LemmaServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
@@ -65,6 +65,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 	mux.Handle(learningv1connect.NewReviewPlanServiceHandler(reviewPlanSvc, interceptors))
 	mux.Handle(learningv1connect.NewStatsServiceHandler(statsSvc, interceptors))
 	mux.Handle(pipelinev1connect.NewPipelineServiceHandler(pipelineSvc, interceptors))
+	mux.Handle(pipelinev1connect.NewLemmaServiceHandler(lemmaSvc, interceptors))
 
 	return &Server{
 		config:  cfg,

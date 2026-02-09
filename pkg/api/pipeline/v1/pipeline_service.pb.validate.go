@@ -35,6 +35,536 @@ var (
 	_ = sort.Sort
 )
 
+// Validate checks the field values on SubmitJobRequest with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *SubmitJobRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SubmitJobRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// SubmitJobRequestMultiError, or nil if none found.
+func (m *SubmitJobRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SubmitJobRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetTerm()) < 1 {
+		err := SubmitJobRequestValidationError{
+			field:  "Term",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	// no validation rules for Language
+
+	// no validation rules for Tier
+
+	// no validation rules for Name
+
+	if len(errors) > 0 {
+		return SubmitJobRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// SubmitJobRequestMultiError is an error wrapping multiple validation errors
+// returned by SubmitJobRequest.ValidateAll() if the designated constraints
+// aren't met.
+type SubmitJobRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SubmitJobRequestMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SubmitJobRequestMultiError) AllErrors() []error { return m }
+
+// SubmitJobRequestValidationError is the validation error returned by
+// SubmitJobRequest.Validate if the designated constraints aren't met.
+type SubmitJobRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SubmitJobRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SubmitJobRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SubmitJobRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SubmitJobRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SubmitJobRequestValidationError) ErrorName() string { return "SubmitJobRequestValidationError" }
+
+// Error satisfies the builtin error interface
+func (e SubmitJobRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSubmitJobRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SubmitJobRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SubmitJobRequestValidationError{}
+
+// Validate checks the field values on SubmitJobResponse with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *SubmitJobResponse) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SubmitJobResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// SubmitJobResponseMultiError, or nil if none found.
+func (m *SubmitJobResponse) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SubmitJobResponse) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if all {
+		switch v := interface{}(m.GetJob()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, SubmitJobResponseValidationError{
+					field:  "Job",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, SubmitJobResponseValidationError{
+					field:  "Job",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetJob()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SubmitJobResponseValidationError{
+				field:  "Job",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return SubmitJobResponseMultiError(errors)
+	}
+
+	return nil
+}
+
+// SubmitJobResponseMultiError is an error wrapping multiple validation errors
+// returned by SubmitJobResponse.ValidateAll() if the designated constraints
+// aren't met.
+type SubmitJobResponseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SubmitJobResponseMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SubmitJobResponseMultiError) AllErrors() []error { return m }
+
+// SubmitJobResponseValidationError is the validation error returned by
+// SubmitJobResponse.Validate if the designated constraints aren't met.
+type SubmitJobResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SubmitJobResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SubmitJobResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SubmitJobResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SubmitJobResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SubmitJobResponseValidationError) ErrorName() string {
+	return "SubmitJobResponseValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e SubmitJobResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSubmitJobResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SubmitJobResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SubmitJobResponseValidationError{}
+
+// Validate checks the field values on ActionJobRequest with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *ActionJobRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ActionJobRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ActionJobRequestMultiError, or nil if none found.
+func (m *ActionJobRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ActionJobRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if m.GetJobId() <= 0 {
+		err := ActionJobRequestValidationError{
+			field:  "JobId",
+			reason: "value must be greater than 0",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if _, ok := PipelineActionType_name[int32(m.GetAction())]; !ok {
+		err := ActionJobRequestValidationError{
+			field:  "Action",
+			reason: "value must be one of the defined enum values",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return ActionJobRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// ActionJobRequestMultiError is an error wrapping multiple validation errors
+// returned by ActionJobRequest.ValidateAll() if the designated constraints
+// aren't met.
+type ActionJobRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ActionJobRequestMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ActionJobRequestMultiError) AllErrors() []error { return m }
+
+// ActionJobRequestValidationError is the validation error returned by
+// ActionJobRequest.Validate if the designated constraints aren't met.
+type ActionJobRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ActionJobRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ActionJobRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ActionJobRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ActionJobRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ActionJobRequestValidationError) ErrorName() string { return "ActionJobRequestValidationError" }
+
+// Error satisfies the builtin error interface
+func (e ActionJobRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sActionJobRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ActionJobRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ActionJobRequestValidationError{}
+
+// Validate checks the field values on ActionJobResponse with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *ActionJobResponse) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ActionJobResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ActionJobResponseMultiError, or nil if none found.
+func (m *ActionJobResponse) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ActionJobResponse) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if all {
+		switch v := interface{}(m.GetJob()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ActionJobResponseValidationError{
+					field:  "Job",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ActionJobResponseValidationError{
+					field:  "Job",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetJob()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ActionJobResponseValidationError{
+				field:  "Job",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetNewJob()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ActionJobResponseValidationError{
+					field:  "NewJob",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ActionJobResponseValidationError{
+					field:  "NewJob",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetNewJob()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ActionJobResponseValidationError{
+				field:  "NewJob",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return ActionJobResponseMultiError(errors)
+	}
+
+	return nil
+}
+
+// ActionJobResponseMultiError is an error wrapping multiple validation errors
+// returned by ActionJobResponse.ValidateAll() if the designated constraints
+// aren't met.
+type ActionJobResponseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ActionJobResponseMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ActionJobResponseMultiError) AllErrors() []error { return m }
+
+// ActionJobResponseValidationError is the validation error returned by
+// ActionJobResponse.Validate if the designated constraints aren't met.
+type ActionJobResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ActionJobResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ActionJobResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ActionJobResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ActionJobResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ActionJobResponseValidationError) ErrorName() string {
+	return "ActionJobResponseValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ActionJobResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sActionJobResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ActionJobResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ActionJobResponseValidationError{}
+
 // Validate checks the field values on ListJobsRequest with the rules defined
 // in the proto definition for this message. If any rules are violated, the
 // first error encountered is returned, or nil if there are no violations.

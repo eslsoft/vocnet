@@ -8,30 +8,114 @@ import "validate/validate.proto";
 
 option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
 
-// PipelineService provides query APIs for pipeline jobs/stages and lemmas.
+enum PipelineJobType {
+  PIPELINE_JOB_TYPE_UNSPECIFIED = 0;
+  PIPELINE_JOB_TYPE_SINGLE_WORD = 1;
+  PIPELINE_JOB_TYPE_WORDBOOK = 2;
+}
+
+enum PipelineJobStatus {
+  PIPELINE_JOB_STATUS_UNSPECIFIED = 0;
+  PIPELINE_JOB_STATUS_PENDING = 1;
+  PIPELINE_JOB_STATUS_RUNNING = 2;
+  PIPELINE_JOB_STATUS_PAUSED = 3;
+  PIPELINE_JOB_STATUS_COMPLETED = 4;
+  PIPELINE_JOB_STATUS_FAILED = 5;
+  PIPELINE_JOB_STATUS_CANCELLED = 6;
+}
+
+enum PipelinePhase {
+  PIPELINE_PHASE_UNSPECIFIED = 0;
+  PIPELINE_PHASE_DISCOVERY = 1;
+  PIPELINE_PHASE_LEXICAL = 2;
+  PIPELINE_PHASE_RELATIONAL = 3;
+  PIPELINE_PHASE_INTELLECTUAL = 4;
+  PIPELINE_PHASE_SYNTHESIS = 5;
+}
+
+enum PipelineStageStatus {
+  PIPELINE_STAGE_STATUS_UNSPECIFIED = 0;
+  PIPELINE_STAGE_STATUS_PENDING = 1;
+  PIPELINE_STAGE_STATUS_RUNNING = 2;
+  PIPELINE_STAGE_STATUS_COMPLETED = 3;
+  PIPELINE_STAGE_STATUS_FAILED = 4;
+  PIPELINE_STAGE_STATUS_SKIPPED = 5;
+}
+
+enum PipelineActionType {
+  PIPELINE_ACTION_TYPE_UNSPECIFIED = 0;
+  PIPELINE_ACTION_TYPE_CANCEL = 1;
+  // Retry creates a new pipeline run/job; it does not mutate stage execution of old job.
+  PIPELINE_ACTION_TYPE_RETRY = 2;
+}
+
+enum LemmaLevel {
+  LEMMA_LEVEL_UNSPECIFIED = 0;
+  LEMMA_LEVEL_A1 = 1;
+  LEMMA_LEVEL_A2 = 2;
+  LEMMA_LEVEL_B1 = 3;
+  LEMMA_LEVEL_B2 = 4;
+  LEMMA_LEVEL_C1 = 5;
+  LEMMA_LEVEL_C2 = 6;
+  LEMMA_LEVEL_OTHER = 99;
+}
+
+// PipelineService provides pipeline job APIs.
 service PipelineService {
+  // SubmitJob submits a new pipeline run.
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+
+  // ActionJob performs generic control actions for a job.
+  rpc ActionJob(ActionJobRequest) returns (ActionJobResponse);
+
   // ListJobs lists pipeline jobs with optional filters.
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
 
   // ListJobStages lists all stages (tasks) under one job.
   rpc ListJobStages(ListJobStagesRequest) returns (ListJobStagesResponse);
+}
 
+// LemmaService provides lemma list APIs.
+service LemmaService {
   // ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
   rpc ListLemmas(ListLemmasRequest) returns (ListLemmasResponse);
 }
 
+message SubmitJobRequest {
+  string term = 1 [(validate.rules).string.min_len = 1];
+  string language = 2;
+  int32 tier = 3;
+  string name = 4;
+}
+
+message SubmitJobResponse {
+  PipelineJob job = 1;
+}
+
+message ActionJobRequest {
+  int64 job_id = 1 [(validate.rules).int64.gt = 0];
+  PipelineActionType action = 2 [(validate.rules).enum.defined_only = true];
+}
+
+message ActionJobResponse {
+  // For cancel action, this is the updated job.
+  PipelineJob job = 1;
+  // For retry action, this is the newly created job.
+  PipelineJob new_job = 2;
+}
+
 message ListJobsRequest {
   common.v1.PaginationRequest pagination = 1;
-  // Optional filter: PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED.
-  string status = 2;
+  // Optional filter. UNSPECIFIED means no status filter.
+  PipelineJobStatus status = 2;
   // Optional filter by lemma ID.
   int64 lemma_id = 3 [(validate.rules).int64.gte = 0];
 }
 
 message PipelineJob {
   int64 id = 1;
-  string job_type = 2; // SINGLE_WORD, WORDBOOK
-  string status = 3; // PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED
+  PipelineJobType job_type = 2;
+  PipelineJobStatus status = 3;
   string name = 4;
   string language = 5;
   int32 tier = 6;
@@ -60,9 +144,9 @@ message PipelineStage {
   int64 id = 1;
   int64 job_id = 2;
   int64 lemma_id = 3;
-  int32 phase = 4; // 1..5
+  PipelinePhase phase = 4;
   string phase_name = 5; // discovery, lexical, relational, intellectual, synthesis
-  string status = 6; // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED
+  PipelineStageStatus status = 6;
   int32 attempts = 7;
   string error_message = 8;
   google.protobuf.Timestamp started_at = 9;
@@ -85,7 +169,7 @@ message LemmaItem {
   int64 id = 1;
   string surface = 2;
   string normalized = 3;
-  string level = 4;
+  LemmaLevel level = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
 }

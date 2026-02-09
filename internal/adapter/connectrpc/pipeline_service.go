@@ -2,8 +2,6 @@ package connectrpc
 
 import (
 	"context"
-	"strings"
-	"time"
 
 	"connectrpc.com/connect"
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
@@ -12,7 +10,6 @@ import (
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	pipelinev1 "github.com/eslsoft/vocnet/pkg/api/pipeline/v1"
 	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var _ pipelinev1connect.PipelineServiceHandler = (*PipelineServiceServer)(nil)
@@ -26,32 +23,63 @@ func NewPipelineServiceServer(pipelineUC *pipelineuc.PipelineService) *PipelineS
 	return &PipelineServiceServer{pipelineUC: pipelineUC}
 }
 
-func (s *PipelineServiceServer) ListJobs(ctx context.Context, req *connect.Request[pipelinev1.ListJobsRequest]) (*connect.Response[pipelinev1.ListJobsResponse], error) {
+func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Request[pipelinev1.SubmitJobRequest]) (*connect.Response[pipelinev1.SubmitJobResponse], error) {
 	if req == nil || req.Msg == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
 	}
 
-	var status *entity.JobStatus
-	if raw := strings.TrimSpace(req.Msg.GetStatus()); raw != "" {
-		s := entity.JobStatus(strings.ToUpper(raw))
-		switch s {
-		case entity.JobStatusPending,
-			entity.JobStatusRunning,
-			entity.JobStatusPaused,
-			entity.JobStatusCompleted,
-			entity.JobStatusFailed,
-			entity.JobStatusCancelled:
-			status = &s
-		default:
-			return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
+	job, err := s.pipelineUC.SubmitJob(ctx, req.Msg.GetTerm(), req.Msg.GetLanguage(), req.Msg.GetTier(), req.Msg.GetName())
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	return connect.NewResponse(&pipelinev1.SubmitJobResponse{Job: toPBPipelineJob(job)}), nil
+}
+
+func (s *PipelineServiceServer) ActionJob(ctx context.Context, req *connect.Request[pipelinev1.ActionJobRequest]) (*connect.Response[pipelinev1.ActionJobResponse], error) {
+	if req == nil || req.Msg == nil || req.Msg.GetJobId() == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
+	}
+
+	switch req.Msg.GetAction() {
+	case pipelinev1.PipelineActionType_PIPELINE_ACTION_TYPE_CANCEL:
+		if err := s.pipelineUC.CancelJob(ctx, req.Msg.GetJobId()); err != nil {
+			return nil, mapping.ToPbError(err)
 		}
+		job, err := s.pipelineUC.GetJob(ctx, req.Msg.GetJobId())
+		if err != nil {
+			return nil, mapping.ToPbError(err)
+		}
+		return connect.NewResponse(&pipelinev1.ActionJobResponse{Job: toPBPipelineJob(job)}), nil
+
+	case pipelinev1.PipelineActionType_PIPELINE_ACTION_TYPE_RETRY:
+		newJob, err := s.pipelineUC.RetryAsNewJob(ctx, req.Msg.GetJobId())
+		if err != nil {
+			return nil, mapping.ToPbError(err)
+		}
+		oldJob, err := s.pipelineUC.GetJob(ctx, req.Msg.GetJobId())
+		if err != nil {
+			return nil, mapping.ToPbError(err)
+		}
+		return connect.NewResponse(&pipelinev1.ActionJobResponse{
+			Job:    toPBPipelineJob(oldJob),
+			NewJob: toPBPipelineJob(newJob),
+		}), nil
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
+	}
+}
+
+func (s *PipelineServiceServer) ListJobs(ctx context.Context, req *connect.Request[pipelinev1.ListJobsRequest]) (*connect.Response[pipelinev1.ListJobsResponse], error) {
+	if req == nil || req.Msg == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
 	}
 
 	pagination := convertPagination(req.Msg.GetPagination())
 	jobs, total, err := s.pipelineUC.ListJobsFiltered(ctx, &pipelineuc.ListJobsQuery{
 		PageNo:   pagination.PageNo,
 		PageSize: pagination.PageSize,
-		Status:   status,
+		Status:   toEntityJobStatusPtr(req.Msg.GetStatus()),
 		LemmaID:  req.Msg.GetLemmaId(),
 	})
 	if err != nil {
@@ -85,96 +113,4 @@ func (s *PipelineServiceServer) ListJobStages(ctx context.Context, req *connect.
 	}
 
 	return connect.NewResponse(resp), nil
-}
-
-func (s *PipelineServiceServer) ListLemmas(ctx context.Context, req *connect.Request[pipelinev1.ListLemmasRequest]) (*connect.Response[pipelinev1.ListLemmasResponse], error) {
-	if req == nil || req.Msg == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
-	}
-
-	pagination := convertPagination(req.Msg.GetPagination())
-	lemmas, total, err := s.pipelineUC.ListLemmas(ctx, &pipelineuc.ListLemmasQuery{
-		PageNo:   pagination.PageNo,
-		PageSize: pagination.PageSize,
-		Keyword:  req.Msg.GetKeyword(),
-	})
-	if err != nil {
-		return nil, mapping.ToPbError(err)
-	}
-
-	resp := &pipelinev1.ListLemmasResponse{
-		Pagination: &commonv1.PaginationResponse{Total: int32(total), PageNo: pagination.PageNo}, // nolint:gosec
-		Lemmas:     make([]*pipelinev1.LemmaItem, 0, len(lemmas)),
-	}
-	for _, lemma := range lemmas {
-		resp.Lemmas = append(resp.Lemmas, toPBLemmaItem(lemma))
-	}
-
-	return connect.NewResponse(resp), nil
-}
-
-func toPBPipelineJob(job *entity.PipelineJob) *pipelinev1.PipelineJob {
-	if job == nil {
-		return nil
-	}
-	return &pipelinev1.PipelineJob{
-		Id:           job.ID,
-		JobType:      string(job.JobType),
-		Status:       string(job.Status),
-		Name:         job.Name,
-		Language:     job.Language,
-		Tier:         job.Tier,
-		Term:         job.Term,
-		TotalTerms:   job.TotalTerms,
-		Processed:    job.Processed,
-		Skipped:      job.Skipped,
-		Failed:       job.Failed,
-		ErrorMessage: job.ErrorMessage,
-		StartedAt:    toPBTimestamp(job.StartedAt),
-		CompletedAt:  toPBTimestamp(job.CompletedAt),
-		CreatedAt:    timestamppb.New(job.CreatedAt),
-		UpdatedAt:    timestamppb.New(job.UpdatedAt),
-	}
-}
-
-func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
-	if stage == nil {
-		return nil
-	}
-	phase := entity.PipelinePhase(stage.Phase)
-	return &pipelinev1.PipelineStage{
-		Id:           stage.ID,
-		JobId:        stage.JobID,
-		LemmaId:      stage.LemmaID,
-		Phase:        stage.Phase,
-		PhaseName:    phase.Name(),
-		Status:       string(stage.Status),
-		Attempts:     stage.Attempts,
-		ErrorMessage: stage.ErrorMessage,
-		StartedAt:    toPBTimestamp(stage.StartedAt),
-		CompletedAt:  toPBTimestamp(stage.CompletedAt),
-		CreatedAt:    timestamppb.New(stage.CreatedAt),
-		UpdatedAt:    timestamppb.New(stage.UpdatedAt),
-	}
-}
-
-func toPBLemmaItem(lemma *entity.Lemma) *pipelinev1.LemmaItem {
-	if lemma == nil {
-		return nil
-	}
-	return &pipelinev1.LemmaItem{
-		Id:         lemma.ID,
-		Surface:    lemma.Surface,
-		Normalized: lemma.Normalized,
-		Level:      lemma.Level,
-		CreatedAt:  timestamppb.New(lemma.CreatedAt),
-		UpdatedAt:  timestamppb.New(lemma.UpdatedAt),
-	}
-}
-
-func toPBTimestamp(t *time.Time) *timestamppb.Timestamp {
-	if t == nil {
-		return nil
-	}
-	return timestamppb.New(*t)
 }

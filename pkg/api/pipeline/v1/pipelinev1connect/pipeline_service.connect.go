@@ -23,6 +23,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// PipelineServiceName is the fully-qualified name of the PipelineService service.
 	PipelineServiceName = "pipeline.v1.PipelineService"
+	// LemmaServiceName is the fully-qualified name of the LemmaService service.
+	LemmaServiceName = "pipeline.v1.LemmaService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -33,25 +35,32 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// PipelineServiceSubmitJobProcedure is the fully-qualified name of the PipelineService's SubmitJob
+	// RPC.
+	PipelineServiceSubmitJobProcedure = "/pipeline.v1.PipelineService/SubmitJob"
+	// PipelineServiceActionJobProcedure is the fully-qualified name of the PipelineService's ActionJob
+	// RPC.
+	PipelineServiceActionJobProcedure = "/pipeline.v1.PipelineService/ActionJob"
 	// PipelineServiceListJobsProcedure is the fully-qualified name of the PipelineService's ListJobs
 	// RPC.
 	PipelineServiceListJobsProcedure = "/pipeline.v1.PipelineService/ListJobs"
 	// PipelineServiceListJobStagesProcedure is the fully-qualified name of the PipelineService's
 	// ListJobStages RPC.
 	PipelineServiceListJobStagesProcedure = "/pipeline.v1.PipelineService/ListJobStages"
-	// PipelineServiceListLemmasProcedure is the fully-qualified name of the PipelineService's
-	// ListLemmas RPC.
-	PipelineServiceListLemmasProcedure = "/pipeline.v1.PipelineService/ListLemmas"
+	// LemmaServiceListLemmasProcedure is the fully-qualified name of the LemmaService's ListLemmas RPC.
+	LemmaServiceListLemmasProcedure = "/pipeline.v1.LemmaService/ListLemmas"
 )
 
 // PipelineServiceClient is a client for the pipeline.v1.PipelineService service.
 type PipelineServiceClient interface {
+	// SubmitJob submits a new pipeline run.
+	SubmitJob(context.Context, *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error)
+	// ActionJob performs generic control actions for a job.
+	ActionJob(context.Context, *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error)
 	// ListJobs lists pipeline jobs with optional filters.
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	// ListJobStages lists all stages (tasks) under one job.
 	ListJobStages(context.Context, *connect.Request[v1.ListJobStagesRequest]) (*connect.Response[v1.ListJobStagesResponse], error)
-	// ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
-	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
 }
 
 // NewPipelineServiceClient constructs a client for the pipeline.v1.PipelineService service. By
@@ -65,6 +74,18 @@ func NewPipelineServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 	baseURL = strings.TrimRight(baseURL, "/")
 	pipelineServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("PipelineService").Methods()
 	return &pipelineServiceClient{
+		submitJob: connect.NewClient[v1.SubmitJobRequest, v1.SubmitJobResponse](
+			httpClient,
+			baseURL+PipelineServiceSubmitJobProcedure,
+			connect.WithSchema(pipelineServiceMethods.ByName("SubmitJob")),
+			connect.WithClientOptions(opts...),
+		),
+		actionJob: connect.NewClient[v1.ActionJobRequest, v1.ActionJobResponse](
+			httpClient,
+			baseURL+PipelineServiceActionJobProcedure,
+			connect.WithSchema(pipelineServiceMethods.ByName("ActionJob")),
+			connect.WithClientOptions(opts...),
+		),
 		listJobs: connect.NewClient[v1.ListJobsRequest, v1.ListJobsResponse](
 			httpClient,
 			baseURL+PipelineServiceListJobsProcedure,
@@ -77,20 +98,25 @@ func NewPipelineServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(pipelineServiceMethods.ByName("ListJobStages")),
 			connect.WithClientOptions(opts...),
 		),
-		listLemmas: connect.NewClient[v1.ListLemmasRequest, v1.ListLemmasResponse](
-			httpClient,
-			baseURL+PipelineServiceListLemmasProcedure,
-			connect.WithSchema(pipelineServiceMethods.ByName("ListLemmas")),
-			connect.WithClientOptions(opts...),
-		),
 	}
 }
 
 // pipelineServiceClient implements PipelineServiceClient.
 type pipelineServiceClient struct {
+	submitJob     *connect.Client[v1.SubmitJobRequest, v1.SubmitJobResponse]
+	actionJob     *connect.Client[v1.ActionJobRequest, v1.ActionJobResponse]
 	listJobs      *connect.Client[v1.ListJobsRequest, v1.ListJobsResponse]
 	listJobStages *connect.Client[v1.ListJobStagesRequest, v1.ListJobStagesResponse]
-	listLemmas    *connect.Client[v1.ListLemmasRequest, v1.ListLemmasResponse]
+}
+
+// SubmitJob calls pipeline.v1.PipelineService.SubmitJob.
+func (c *pipelineServiceClient) SubmitJob(ctx context.Context, req *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error) {
+	return c.submitJob.CallUnary(ctx, req)
+}
+
+// ActionJob calls pipeline.v1.PipelineService.ActionJob.
+func (c *pipelineServiceClient) ActionJob(ctx context.Context, req *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error) {
+	return c.actionJob.CallUnary(ctx, req)
 }
 
 // ListJobs calls pipeline.v1.PipelineService.ListJobs.
@@ -103,19 +129,16 @@ func (c *pipelineServiceClient) ListJobStages(ctx context.Context, req *connect.
 	return c.listJobStages.CallUnary(ctx, req)
 }
 
-// ListLemmas calls pipeline.v1.PipelineService.ListLemmas.
-func (c *pipelineServiceClient) ListLemmas(ctx context.Context, req *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error) {
-	return c.listLemmas.CallUnary(ctx, req)
-}
-
 // PipelineServiceHandler is an implementation of the pipeline.v1.PipelineService service.
 type PipelineServiceHandler interface {
+	// SubmitJob submits a new pipeline run.
+	SubmitJob(context.Context, *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error)
+	// ActionJob performs generic control actions for a job.
+	ActionJob(context.Context, *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error)
 	// ListJobs lists pipeline jobs with optional filters.
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	// ListJobStages lists all stages (tasks) under one job.
 	ListJobStages(context.Context, *connect.Request[v1.ListJobStagesRequest]) (*connect.Response[v1.ListJobStagesResponse], error)
-	// ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
-	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
 }
 
 // NewPipelineServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -125,6 +148,18 @@ type PipelineServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewPipelineServiceHandler(svc PipelineServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	pipelineServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("PipelineService").Methods()
+	pipelineServiceSubmitJobHandler := connect.NewUnaryHandler(
+		PipelineServiceSubmitJobProcedure,
+		svc.SubmitJob,
+		connect.WithSchema(pipelineServiceMethods.ByName("SubmitJob")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pipelineServiceActionJobHandler := connect.NewUnaryHandler(
+		PipelineServiceActionJobProcedure,
+		svc.ActionJob,
+		connect.WithSchema(pipelineServiceMethods.ByName("ActionJob")),
+		connect.WithHandlerOptions(opts...),
+	)
 	pipelineServiceListJobsHandler := connect.NewUnaryHandler(
 		PipelineServiceListJobsProcedure,
 		svc.ListJobs,
@@ -137,20 +172,16 @@ func NewPipelineServiceHandler(svc PipelineServiceHandler, opts ...connect.Handl
 		connect.WithSchema(pipelineServiceMethods.ByName("ListJobStages")),
 		connect.WithHandlerOptions(opts...),
 	)
-	pipelineServiceListLemmasHandler := connect.NewUnaryHandler(
-		PipelineServiceListLemmasProcedure,
-		svc.ListLemmas,
-		connect.WithSchema(pipelineServiceMethods.ByName("ListLemmas")),
-		connect.WithHandlerOptions(opts...),
-	)
 	return "/pipeline.v1.PipelineService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case PipelineServiceSubmitJobProcedure:
+			pipelineServiceSubmitJobHandler.ServeHTTP(w, r)
+		case PipelineServiceActionJobProcedure:
+			pipelineServiceActionJobHandler.ServeHTTP(w, r)
 		case PipelineServiceListJobsProcedure:
 			pipelineServiceListJobsHandler.ServeHTTP(w, r)
 		case PipelineServiceListJobStagesProcedure:
 			pipelineServiceListJobStagesHandler.ServeHTTP(w, r)
-		case PipelineServiceListLemmasProcedure:
-			pipelineServiceListLemmasHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -160,6 +191,14 @@ func NewPipelineServiceHandler(svc PipelineServiceHandler, opts ...connect.Handl
 // UnimplementedPipelineServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedPipelineServiceHandler struct{}
 
+func (UnimplementedPipelineServiceHandler) SubmitJob(context.Context, *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.SubmitJob is not implemented"))
+}
+
+func (UnimplementedPipelineServiceHandler) ActionJob(context.Context, *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ActionJob is not implemented"))
+}
+
 func (UnimplementedPipelineServiceHandler) ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ListJobs is not implemented"))
 }
@@ -168,6 +207,74 @@ func (UnimplementedPipelineServiceHandler) ListJobStages(context.Context, *conne
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ListJobStages is not implemented"))
 }
 
-func (UnimplementedPipelineServiceHandler) ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ListLemmas is not implemented"))
+// LemmaServiceClient is a client for the pipeline.v1.LemmaService service.
+type LemmaServiceClient interface {
+	// ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
+	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
+}
+
+// NewLemmaServiceClient constructs a client for the pipeline.v1.LemmaService service. By default,
+// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
+// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
+// or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewLemmaServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) LemmaServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	lemmaServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("LemmaService").Methods()
+	return &lemmaServiceClient{
+		listLemmas: connect.NewClient[v1.ListLemmasRequest, v1.ListLemmasResponse](
+			httpClient,
+			baseURL+LemmaServiceListLemmasProcedure,
+			connect.WithSchema(lemmaServiceMethods.ByName("ListLemmas")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// lemmaServiceClient implements LemmaServiceClient.
+type lemmaServiceClient struct {
+	listLemmas *connect.Client[v1.ListLemmasRequest, v1.ListLemmasResponse]
+}
+
+// ListLemmas calls pipeline.v1.LemmaService.ListLemmas.
+func (c *lemmaServiceClient) ListLemmas(ctx context.Context, req *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error) {
+	return c.listLemmas.CallUnary(ctx, req)
+}
+
+// LemmaServiceHandler is an implementation of the pipeline.v1.LemmaService service.
+type LemmaServiceHandler interface {
+	// ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
+	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
+}
+
+// NewLemmaServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewLemmaServiceHandler(svc LemmaServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	lemmaServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("LemmaService").Methods()
+	lemmaServiceListLemmasHandler := connect.NewUnaryHandler(
+		LemmaServiceListLemmasProcedure,
+		svc.ListLemmas,
+		connect.WithSchema(lemmaServiceMethods.ByName("ListLemmas")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/pipeline.v1.LemmaService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case LemmaServiceListLemmasProcedure:
+			lemmaServiceListLemmasHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedLemmaServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedLemmaServiceHandler struct{}
+
+func (UnimplementedLemmaServiceHandler) ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.LemmaService.ListLemmas is not implemented"))
 }

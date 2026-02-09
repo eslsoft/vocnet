@@ -59,6 +59,37 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 	return s.jobRepo.Create(ctx, job)
 }
 
+// SubmitJob creates a pipeline job for API calls.
+// If name is empty, a default name is generated from term.
+func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, tier int32, name string) (*entity.PipelineJob, error) {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return nil, fmt.Errorf("term is required")
+	}
+	if language == "" {
+		language = "en"
+	}
+	if tier == 0 {
+		tier = 2
+	}
+
+	jobName := strings.TrimSpace(name)
+	if jobName == "" {
+		jobName = fmt.Sprintf("word: %s", term)
+	}
+
+	job := &entity.PipelineJob{
+		JobType:    entity.JobTypeSingleWord,
+		Status:     entity.JobStatusPending,
+		Name:       jobName,
+		Language:   language,
+		Tier:       tier,
+		Term:       term,
+		TotalTerms: 1,
+	}
+	return s.jobRepo.Create(ctx, job)
+}
+
 // SubmitTerms creates one job per term for bulk execution (e.g. wordbook submit).
 func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []string, language string, tier int32) ([]*entity.PipelineJob, error) {
 	// Deduplicate and trim
@@ -253,6 +284,35 @@ func (s *PipelineService) ListLemmas(ctx context.Context, query *ListLemmasQuery
 		},
 		Keyword: strings.TrimSpace(query.Keyword),
 	})
+}
+
+// CancelJob cancels a pending/running/paused job.
+func (s *PipelineService) CancelJob(ctx context.Context, id int64) error {
+	return s.jobRepo.ChangeStatus(ctx, id, entity.JobActionCancel)
+}
+
+// RetryAsNewJob creates a new job from an existing job.
+// It does not resume/retry the old job execution.
+func (s *PipelineService) RetryAsNewJob(ctx context.Context, id int64) (*entity.PipelineJob, error) {
+	oldJob, err := s.jobRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(oldJob.Term) == "" {
+		return nil, entity.ErrInvalidInput
+	}
+
+	newJob := &entity.PipelineJob{
+		JobType:    oldJob.JobType,
+		Status:     entity.JobStatusPending,
+		Name:       oldJob.Name,
+		Language:   oldJob.Language,
+		Tier:       oldJob.Tier,
+		Term:       oldJob.Term,
+		TotalTerms: 1,
+	}
+	return s.jobRepo.Create(ctx, newJob)
 }
 
 // ControlJob performs a state transition on a job (pause/resume/cancel/retry).
