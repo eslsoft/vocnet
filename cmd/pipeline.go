@@ -423,10 +423,7 @@ func newPipelineDeps() (*pipelineDeps, error) {
 var statsCmd = &cobra.Command{
 	Use:   "stats",
 	Short: "Show pipeline worker pool statistics",
-	Long: `Query the running server's metrics endpoint to display:
-  - Worker pool metrics (jobs processed, rate, avg duration)
-  - Queue status (pending, running, completed, failed)
-  - Estimated remaining time
+	Long: `Query the running server's metrics endpoint to display worker pool metrics (uptime, jobs processed, rate, average duration).
 
 The server must be running for this command to work.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
