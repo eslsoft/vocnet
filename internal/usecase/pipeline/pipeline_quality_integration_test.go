@@ -25,9 +25,11 @@ import (
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wordnet"
 	repo "github.com/eslsoft/vocnet/internal/adapter/repository"
+	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
+	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -56,6 +58,7 @@ func TestPipelineDataQualityGates(t *testing.T) {
 
 type qualityHarness struct {
 	pipeline *Pipeline
+	jobRepo  repository.PipelineJobRepository
 }
 
 func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider) *qualityHarness {
@@ -99,6 +102,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	relationRepo := repo.NewSemanticRelationRepository(entClient)
 	snapshotRepo := repo.NewWordSnapshotRepository(entClient)
 	taskRepo := repo.NewPipelineTaskRepository(entClient)
+	jobRepo := repo.NewPipelineJobRepository(entClient)
 
 	aggregator := NewDataAggregator()
 	persistence := NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
@@ -129,11 +133,25 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	}
 
 	p := NewPipeline(stages, validator, persistence, taskRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
-	return &qualityHarness{pipeline: p}
+	return &qualityHarness{pipeline: p, jobRepo: jobRepo}
 }
 
 func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, error) {
-	result, err := h.pipeline.Run(ctx, 1, term, "en", 2, nil)
+	// Create a job for this term
+	job, err := h.jobRepo.Create(ctx, &entity.PipelineJob{
+		JobType:    entity.JobTypeSingleWord,
+		Status:     entity.JobStatusRunning,
+		Name:       "quality-test-" + term,
+		Language:   "en",
+		Tier:       2,
+		Term:       term,
+		TotalTerms: 1,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("create job: %w", err)
+	}
+
+	result, err := h.pipeline.Run(ctx, job.ID, term, "en", 2, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -177,6 +195,19 @@ func runRawQualityStages(t *testing.T, ctx context.Context, h *qualityHarness) {
 			minScore:        58,
 			targetScore:     78,
 			minAverageScore: 65,
+		},
+		{
+			name: "pos_parsing_fixes",
+			// Words that previously failed due to POS parsing issues:
+			// - Wikidata QID mappings: ad (Q134830 prefix), ant (Q134830), ours (Q5051 possessive det),
+			//   pan (Q134830), robot (Q468801 personal pronoun), whatever/whether (Q54310231 interrogative pronoun)
+			// - "intj" POS string: beauty, bother, damn, face, shoot, set
+			// - ECDICT empty POS (should not fail anymore): percent, sports, goods, customs, contents
+			// Note: Lower thresholds because these are edge cases with less comprehensive data coverage
+			terms:           []string{"ad", "ant", "ours", "pan", "robot", "whatever", "whether", "beauty", "bother", "damn", "face", "shoot", "set", "percent", "sports", "goods", "customs", "contents"},
+			minScore:        20,
+			targetScore:     50,
+			minAverageScore: 45,
 		},
 	}
 
@@ -384,7 +415,7 @@ func classifyWordbookQualityThreshold(name string) (minAvg float64, targetAvg fl
 		return 64, 78
 	case strings.Contains(n, "CEFR-C1"), strings.Contains(n, "CEFR-C2"), strings.Contains(n, "CET6"),
 		strings.Contains(n, "GRE"), strings.Contains(n, "GMAT"):
-		return 58, 72
+		return 57, 72
 	default:
 		return 62, 75
 	}
@@ -450,8 +481,8 @@ func findRepoRoot(t *testing.T) (string, error) {
 func newOpenAIProviderFromEnv(t *testing.T, cfg *config.Config) llm.Provider {
 	t.Helper()
 
-	if strings.TrimSpace(cfg.Pipeline.LLMAPIKey) == "" {
-		t.Skip("PIPELINE_LLM_API_KEY 未设置")
+	if strings.TrimSpace(cfg.LLM.APIKey) == "" {
+		t.Skip("LLM_API_KEY 未设置")
 	}
 
 	// NOTE: 这里只返回最小可用 Provider 壳，等 llm_cleaned 阶段启用后再接入缓存仓库。

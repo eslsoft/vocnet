@@ -31,6 +31,7 @@ var wikidataPOSQIDMap = map[string]entity.PartOfSpeech{
 	"q576271":   entity.PartOfSpeechDeterminer,  // determiner
 	"q468801":   entity.PartOfSpeechPronoun,     // personal pronoun
 	"q5051":     entity.PartOfSpeechDeterminer,  // possessive determiner
+	"q7250170":  entity.PartOfSpeechAdjective,   // proper adjective (African, American, etc.)
 }
 
 func parsePOSFromSource(source, raw string) (entity.PartOfSpeech, error) {
