@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -30,12 +29,7 @@ type ListSnapshotsQuery struct {
 	PageSize int32
 }
 
-type LemmaListItem struct {
-	Lemma    *entity.Lemma
-	Snapshot *entity.WordSnapshot
-}
-
-func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*LemmaListItem, int64, error) {
+func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*entity.WordSnapshot, int64, error) {
 	if query == nil {
 		query = &ListLemmasQuery{}
 	}
@@ -45,28 +39,7 @@ func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQue
 		return nil, 0, err
 	}
 
-	items := make([]*LemmaListItem, 0, len(snapshots))
-	for _, snapshot := range snapshots {
-		if snapshot == nil {
-			continue
-		}
-
-		// ListLemmas is snapshot-centric: build list item directly from latest snapshot.
-		lemma := &entity.Lemma{
-			ID:         snapshot.LemmaID,
-			Surface:    snapshot.Term,
-			Normalized: strings.ToLower(snapshot.Term),
-			CreatedAt:  snapshot.CreatedAt,
-			UpdatedAt:  snapshot.UpdatedAt,
-		}
-
-		items = append(items, &LemmaListItem{
-			Lemma:    lemma,
-			Snapshot: snapshot,
-		})
-	}
-
-	return items, total, nil
+	return snapshots, total, nil
 }
 
 func (s *LemmaQueryService) ListSnapshots(ctx context.Context, query *ListSnapshotsQuery) ([]*entity.WordSnapshot, int64, error) {

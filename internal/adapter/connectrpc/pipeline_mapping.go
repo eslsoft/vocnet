@@ -65,6 +65,20 @@ func toPBLemma(lemma *entity.Lemma, snapshot *entity.WordSnapshot) *dictv1.Lemma
 	return out
 }
 
+func toPBLemmaFromSnapshot(snapshot *entity.WordSnapshot) *dictv1.Lemma {
+	if snapshot == nil {
+		return nil
+	}
+	return &dictv1.Lemma{
+		Id:             snapshot.LemmaID,
+		Surface:        snapshot.Term,
+		Normalized:     strings.ToLower(snapshot.Term),
+		LatestSnapshot: toPBSnapshot(snapshot),
+		CreatedAt:      timestamppb.New(snapshot.CreatedAt),
+		UpdatedAt:      timestamppb.New(snapshot.UpdatedAt),
+	}
+}
+
 func toPBSnapshot(snapshot *entity.WordSnapshot) *dictv1.Snapshot {
 	if snapshot == nil {
 		return nil
