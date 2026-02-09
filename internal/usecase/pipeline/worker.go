@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/gammazero/workerpool"
@@ -29,6 +30,11 @@ type WorkerPool struct {
 	cancel  context.CancelFunc
 	done    chan struct{} // signals when Start() has fully completed
 	metrics *WorkerPoolMetrics
+
+	// inFlight tracks claimed jobs that are either running or queued inside the workerpool.
+	inFlight atomic.Int64
+
+	processFn func(context.Context, *entity.PipelineJob, *slog.Logger)
 }
 
 // NewWorkerPool creates a new worker pool with the given configuration.
@@ -48,7 +54,7 @@ func NewWorkerPool(
 		config.ProgressLogInterval = 30 * time.Second
 	}
 
-	return &WorkerPool{
+	wp := &WorkerPool{
 		jobRepo:  jobRepo,
 		pipeline: pipeline,
 		logger:   logger.With("component", "pipeline-worker-pool"),
@@ -56,6 +62,8 @@ func NewWorkerPool(
 		done:     make(chan struct{}),
 		metrics:  NewWorkerPoolMetrics(),
 	}
+	wp.processFn = wp.processJob
+	return wp
 }
 
 // Start begins the worker pool and polls for jobs.
@@ -150,8 +158,13 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 		p.metrics.SetPendingJobs(int64(count))
 	}
 
-	// Claim up to WorkerCount jobs to fill the pool
-	for range p.config.WorkerCount {
+	availableSlots := p.config.WorkerCount - int(p.inFlight.Load())
+	if availableSlots <= 0 {
+		return
+	}
+
+	// Claim only enough jobs to fill currently available worker slots.
+	for range availableSlots {
 		job, err := p.jobRepo.ClaimNext(ctx)
 		if err != nil {
 			p.logger.Error("failed to claim job", "error", err)
@@ -165,9 +178,11 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 		jobLogger.Info("submitting job to pool", "name", job.Name, "type", job.JobType)
 
 		// Submit job to worker pool - capture loop variables
+		p.inFlight.Add(1)
 		j, jl := job, jobLogger
 		p.pool.Submit(func() {
-			p.processJob(ctx, j, jl)
+			defer p.inFlight.Add(-1)
+			p.processFn(ctx, j, jl)
 		})
 	}
 }
