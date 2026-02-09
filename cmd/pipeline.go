@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/prometheus/common/expfmt"
 	"github.com/spf13/cobra"
 
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
@@ -489,46 +489,55 @@ func fetchPipelineStats(serverURL string) (*PipelineStats, error) {
 		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	// Parse Prometheus text format using official parser
+	var parser expfmt.TextParser
+	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to parse metrics: %w", err)
 	}
 
 	stats := &PipelineStats{}
-	lines := strings.Split(string(body), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
 
-		// Parse metric lines
-		switch {
-		case strings.HasPrefix(line, "vocnet_pipeline_uptime_seconds "):
-			stats.UptimeSeconds = parseMetricValue(line)
-		case strings.HasPrefix(line, "vocnet_pipeline_jobs_per_minute "):
-			stats.JobsPerMinute = parseMetricValue(line)
-		case strings.Contains(line, `vocnet_pipeline_jobs_processed_total{status="succeeded"}`):
-			stats.JobsSucceeded = parseMetricValue(line)
-		case strings.Contains(line, `vocnet_pipeline_jobs_processed_total{status="failed"}`):
-			stats.JobsFailed = parseMetricValue(line)
-		case strings.HasPrefix(line, "vocnet_pipeline_job_duration_seconds_sum "):
-			stats.JobDurationSum = parseMetricValue(line)
-		case strings.HasPrefix(line, "vocnet_pipeline_job_duration_seconds_count "):
-			stats.JobDurationCount = parseMetricValue(line)
+	// Extract uptime
+	if mf, ok := metricFamilies["vocnet_pipeline_uptime_seconds"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.UptimeSeconds = m.GetGauge().GetValue()
+		}
+	}
+
+	// Extract jobs per minute
+	if mf, ok := metricFamilies["vocnet_pipeline_jobs_per_minute"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.JobsPerMinute = m.GetGauge().GetValue()
+		}
+	}
+
+	// Extract jobs processed by status
+	if mf, ok := metricFamilies["vocnet_pipeline_jobs_processed_total"]; ok {
+		for _, m := range mf.GetMetric() {
+			for _, label := range m.GetLabel() {
+				if label.GetName() == "status" {
+					switch label.GetValue() {
+					case "succeeded":
+						stats.JobsSucceeded = m.GetCounter().GetValue()
+					case "failed":
+						stats.JobsFailed = m.GetCounter().GetValue()
+					}
+				}
+			}
+		}
+	}
+
+	// Extract job duration histogram
+	if mf, ok := metricFamilies["vocnet_pipeline_job_duration_seconds"]; ok {
+		for _, m := range mf.GetMetric() {
+			h := m.GetHistogram()
+			stats.JobDurationSum = h.GetSampleSum()
+			stats.JobDurationCount = float64(h.GetSampleCount())
 		}
 	}
 
 	return stats, nil
-}
-
-func parseMetricValue(line string) float64 {
-	parts := strings.Fields(line)
-	if len(parts) >= 2 {
-		val, _ := strconv.ParseFloat(parts[len(parts)-1], 64)
-		return val
-	}
-	return 0
 }
 
 func printStats(stats *PipelineStats) {
