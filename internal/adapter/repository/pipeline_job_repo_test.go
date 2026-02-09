@@ -98,7 +98,7 @@ func TestPipelineJobRepositoryCreate_AllowsNewAfterTerminalStatus(t *testing.T) 
 	require.Equal(t, 2, total)
 }
 
-func TestPipelineJobRepositoryClaimNext_SkipsPendingIfSameTermRunning(t *testing.T) {
+func TestPipelineJobRepositoryClaimNextBatch_SkipsPendingIfSameTermRunning(t *testing.T) {
 	repo, client := newTestJobRepo(t)
 	ctx := context.Background()
 
@@ -139,15 +139,17 @@ func TestPipelineJobRepositoryClaimNext_SkipsPendingIfSameTermRunning(t *testing
 		Save(ctx)
 	require.NoError(t, err)
 
-	claimed, err := repo.ClaimNext(ctx)
+	claimedBatch, err := repo.ClaimNextBatch(ctx, 1)
 	require.NoError(t, err)
+	require.Len(t, claimedBatch, 1)
+	claimed := claimedBatch[0]
 	require.NotNil(t, claimed)
 	require.Equal(t, "wise", claimed.Term)
 	require.Equal(t, entity.JobStatusRunning, claimed.Status)
 
-	claimed, err = repo.ClaimNext(ctx)
+	claimedBatch, err = repo.ClaimNextBatch(ctx, 1)
 	require.NoError(t, err)
-	require.Nil(t, claimed)
+	require.Empty(t, claimedBatch)
 
 	_, err = client.PipelineJob.UpdateOneID(runningGraph.ID).
 		SetStatus(string(entity.JobStatusCompleted)).
@@ -155,8 +157,10 @@ func TestPipelineJobRepositoryClaimNext_SkipsPendingIfSameTermRunning(t *testing
 		Save(ctx)
 	require.NoError(t, err)
 
-	claimed, err = repo.ClaimNext(ctx)
+	claimedBatch, err = repo.ClaimNextBatch(ctx, 1)
 	require.NoError(t, err)
+	require.Len(t, claimedBatch, 1)
+	claimed = claimedBatch[0]
 	require.NotNil(t, claimed)
 	require.Equal(t, graphPending.ID, claimed.ID)
 	require.Equal(t, entity.JobStatusRunning, claimed.Status)
