@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: pipeline/v1/linguistics.proto
+// source: dict/v1/linguistics.proto
 
-package pipelinev1
+package dictv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -21,59 +21,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Phonetic is a reusable phonetic representation for linguistic payloads.
-type Phonetic struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ipa           string                 `protobuf:"bytes,1,opt,name=ipa,proto3" json:"ipa,omitempty"`
-	Dialect       string                 `protobuf:"bytes,2,opt,name=dialect,proto3" json:"dialect,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Phonetic) Reset() {
-	*x = Phonetic{}
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Phonetic) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Phonetic) ProtoMessage() {}
-
-func (x *Phonetic) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Phonetic.ProtoReflect.Descriptor instead.
-func (*Phonetic) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_linguistics_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *Phonetic) GetIpa() string {
-	if x != nil {
-		return x.Ipa
-	}
-	return ""
-}
-
-func (x *Phonetic) GetDialect() string {
-	if x != nil {
-		return x.Dialect
-	}
-	return ""
-}
-
 // LexemeSense is a reusable lexical sense representation.
 type LexemeSense struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -88,7 +35,7 @@ type LexemeSense struct {
 
 func (x *LexemeSense) Reset() {
 	*x = LexemeSense{}
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[1]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -100,7 +47,7 @@ func (x *LexemeSense) String() string {
 func (*LexemeSense) ProtoMessage() {}
 
 func (x *LexemeSense) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[1]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -113,7 +60,7 @@ func (x *LexemeSense) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LexemeSense.ProtoReflect.Descriptor instead.
 func (*LexemeSense) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_linguistics_proto_rawDescGZIP(), []int{1}
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *LexemeSense) GetLanguage() string {
@@ -163,7 +110,7 @@ type LemmaForm struct {
 
 func (x *LemmaForm) Reset() {
 	*x = LemmaForm{}
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[2]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -175,7 +122,7 @@ func (x *LemmaForm) String() string {
 func (*LemmaForm) ProtoMessage() {}
 
 func (x *LemmaForm) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[2]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -188,7 +135,7 @@ func (x *LemmaForm) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LemmaForm.ProtoReflect.Descriptor instead.
 func (*LemmaForm) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_linguistics_proto_rawDescGZIP(), []int{2}
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *LemmaForm) GetSurface() string {
@@ -225,7 +172,7 @@ type Lexeme struct {
 
 func (x *Lexeme) Reset() {
 	*x = Lexeme{}
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[3]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -237,7 +184,7 @@ func (x *Lexeme) String() string {
 func (*Lexeme) ProtoMessage() {}
 
 func (x *Lexeme) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[3]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -250,7 +197,7 @@ func (x *Lexeme) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Lexeme.ProtoReflect.Descriptor instead.
 func (*Lexeme) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_linguistics_proto_rawDescGZIP(), []int{3}
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Lexeme) GetPos() string {
@@ -297,7 +244,7 @@ type SemanticRelation struct {
 
 func (x *SemanticRelation) Reset() {
 	*x = SemanticRelation{}
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[4]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -309,7 +256,7 @@ func (x *SemanticRelation) String() string {
 func (*SemanticRelation) ProtoMessage() {}
 
 func (x *SemanticRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_linguistics_proto_msgTypes[4]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -322,7 +269,7 @@ func (x *SemanticRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SemanticRelation.ProtoReflect.Descriptor instead.
 func (*SemanticRelation) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_linguistics_proto_rawDescGZIP(), []int{4}
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SemanticRelation) GetRelationType() string {
@@ -374,14 +321,11 @@ func (x *SemanticRelation) GetTargetResolved() bool {
 	return false
 }
 
-var File_pipeline_v1_linguistics_proto protoreflect.FileDescriptor
+var File_dict_v1_linguistics_proto protoreflect.FileDescriptor
 
-const file_pipeline_v1_linguistics_proto_rawDesc = "" +
+const file_dict_v1_linguistics_proto_rawDesc = "" +
 	"\n" +
-	"\x1dpipeline/v1/linguistics.proto\x12\vpipeline.v1\"6\n" +
-	"\bPhonetic\x12\x10\n" +
-	"\x03ipa\x18\x01 \x01(\tR\x03ipa\x12\x18\n" +
-	"\adialect\x18\x02 \x01(\tR\adialect\"\x9a\x01\n" +
+	"\x19dict/v1/linguistics.proto\x12\adict.v1\x1a\x12dict/v1/word.proto\"\x9a\x01\n" +
 	"\vLexemeSense\x12\x1a\n" +
 	"\blanguage\x18\x01 \x01(\tR\blanguage\x12\x14\n" +
 	"\x05gloss\x18\x02 \x01(\tR\x05gloss\x12\x1a\n" +
@@ -391,12 +335,12 @@ const file_pipeline_v1_linguistics_proto_rawDesc = "" +
 	"\tLemmaForm\x12\x18\n" +
 	"\asurface\x18\x01 \x01(\tR\asurface\x12\x1b\n" +
 	"\tform_type\x18\x02 \x01(\tR\bformType\x12!\n" +
-	"\fis_irregular\x18\x03 \x01(\bR\visIrregular\"\xaf\x01\n" +
+	"\fis_irregular\x18\x03 \x01(\bR\visIrregular\"\xa3\x01\n" +
 	"\x06Lexeme\x12\x10\n" +
-	"\x03pos\x18\x01 \x01(\tR\x03pos\x120\n" +
-	"\x06senses\x18\x02 \x03(\v2\x18.pipeline.v1.LexemeSenseR\x06senses\x12,\n" +
-	"\x05forms\x18\x03 \x03(\v2\x16.pipeline.v1.LemmaFormR\x05forms\x123\n" +
-	"\tphonetics\x18\x04 \x03(\v2\x15.pipeline.v1.PhoneticR\tphonetics\"\xfb\x01\n" +
+	"\x03pos\x18\x01 \x01(\tR\x03pos\x12,\n" +
+	"\x06senses\x18\x02 \x03(\v2\x14.dict.v1.LexemeSenseR\x06senses\x12(\n" +
+	"\x05forms\x18\x03 \x03(\v2\x12.dict.v1.LemmaFormR\x05forms\x12/\n" +
+	"\tphonetics\x18\x04 \x03(\v2\x11.dict.v1.PhoneticR\tphonetics\"\xfb\x01\n" +
 	"\x10SemanticRelation\x12#\n" +
 	"\rrelation_type\x18\x01 \x01(\tR\frelationType\x12\x1f\n" +
 	"\vtarget_term\x18\x02 \x01(\tR\n" +
@@ -406,33 +350,33 @@ const file_pipeline_v1_linguistics_proto_rawDesc = "" +
 	"\bprovider\x18\x04 \x01(\tR\bprovider\x12\x1a\n" +
 	"\bstrength\x18\x05 \x01(\x01R\bstrength\x12!\n" +
 	"\fsense_mapped\x18\x06 \x01(\bR\vsenseMapped\x12'\n" +
-	"\x0ftarget_resolved\x18\a \x01(\bR\x0etargetResolvedB\xaa\x01\n" +
-	"\x0fcom.pipeline.v1B\x10LinguisticsProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1\xa2\x02\x03PXX\xaa\x02\vPipeline.V1\xca\x02\vPipeline\\V1\xe2\x02\x17Pipeline\\V1\\GPBMetadata\xea\x02\fPipeline::V1b\x06proto3"
+	"\x0ftarget_resolved\x18\a \x01(\bR\x0etargetResolvedB\x8e\x01\n" +
+	"\vcom.dict.v1B\x10LinguisticsProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
 
 var (
-	file_pipeline_v1_linguistics_proto_rawDescOnce sync.Once
-	file_pipeline_v1_linguistics_proto_rawDescData []byte
+	file_dict_v1_linguistics_proto_rawDescOnce sync.Once
+	file_dict_v1_linguistics_proto_rawDescData []byte
 )
 
-func file_pipeline_v1_linguistics_proto_rawDescGZIP() []byte {
-	file_pipeline_v1_linguistics_proto_rawDescOnce.Do(func() {
-		file_pipeline_v1_linguistics_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_pipeline_v1_linguistics_proto_rawDesc), len(file_pipeline_v1_linguistics_proto_rawDesc)))
+func file_dict_v1_linguistics_proto_rawDescGZIP() []byte {
+	file_dict_v1_linguistics_proto_rawDescOnce.Do(func() {
+		file_dict_v1_linguistics_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_dict_v1_linguistics_proto_rawDesc), len(file_dict_v1_linguistics_proto_rawDesc)))
 	})
-	return file_pipeline_v1_linguistics_proto_rawDescData
+	return file_dict_v1_linguistics_proto_rawDescData
 }
 
-var file_pipeline_v1_linguistics_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
-var file_pipeline_v1_linguistics_proto_goTypes = []any{
-	(*Phonetic)(nil),         // 0: pipeline.v1.Phonetic
-	(*LexemeSense)(nil),      // 1: pipeline.v1.LexemeSense
-	(*LemmaForm)(nil),        // 2: pipeline.v1.LemmaForm
-	(*Lexeme)(nil),           // 3: pipeline.v1.Lexeme
-	(*SemanticRelation)(nil), // 4: pipeline.v1.SemanticRelation
+var file_dict_v1_linguistics_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_dict_v1_linguistics_proto_goTypes = []any{
+	(*LexemeSense)(nil),      // 0: dict.v1.LexemeSense
+	(*LemmaForm)(nil),        // 1: dict.v1.LemmaForm
+	(*Lexeme)(nil),           // 2: dict.v1.Lexeme
+	(*SemanticRelation)(nil), // 3: dict.v1.SemanticRelation
+	(*Phonetic)(nil),         // 4: dict.v1.Phonetic
 }
-var file_pipeline_v1_linguistics_proto_depIdxs = []int32{
-	1, // 0: pipeline.v1.Lexeme.senses:type_name -> pipeline.v1.LexemeSense
-	2, // 1: pipeline.v1.Lexeme.forms:type_name -> pipeline.v1.LemmaForm
-	0, // 2: pipeline.v1.Lexeme.phonetics:type_name -> pipeline.v1.Phonetic
+var file_dict_v1_linguistics_proto_depIdxs = []int32{
+	0, // 0: dict.v1.Lexeme.senses:type_name -> dict.v1.LexemeSense
+	1, // 1: dict.v1.Lexeme.forms:type_name -> dict.v1.LemmaForm
+	4, // 2: dict.v1.Lexeme.phonetics:type_name -> dict.v1.Phonetic
 	3, // [3:3] is the sub-list for method output_type
 	3, // [3:3] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -440,26 +384,27 @@ var file_pipeline_v1_linguistics_proto_depIdxs = []int32{
 	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_pipeline_v1_linguistics_proto_init() }
-func file_pipeline_v1_linguistics_proto_init() {
-	if File_pipeline_v1_linguistics_proto != nil {
+func init() { file_dict_v1_linguistics_proto_init() }
+func file_dict_v1_linguistics_proto_init() {
+	if File_dict_v1_linguistics_proto != nil {
 		return
 	}
+	file_dict_v1_word_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pipeline_v1_linguistics_proto_rawDesc), len(file_pipeline_v1_linguistics_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_linguistics_proto_rawDesc), len(file_dict_v1_linguistics_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_pipeline_v1_linguistics_proto_goTypes,
-		DependencyIndexes: file_pipeline_v1_linguistics_proto_depIdxs,
-		MessageInfos:      file_pipeline_v1_linguistics_proto_msgTypes,
+		GoTypes:           file_dict_v1_linguistics_proto_goTypes,
+		DependencyIndexes: file_dict_v1_linguistics_proto_depIdxs,
+		MessageInfos:      file_dict_v1_linguistics_proto_msgTypes,
 	}.Build()
-	File_pipeline_v1_linguistics_proto = out.File
-	file_pipeline_v1_linguistics_proto_goTypes = nil
-	file_pipeline_v1_linguistics_proto_depIdxs = nil
+	File_dict_v1_linguistics_proto = out.File
+	file_dict_v1_linguistics_proto_goTypes = nil
+	file_dict_v1_linguistics_proto_depIdxs = nil
 }

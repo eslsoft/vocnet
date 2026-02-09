@@ -8,6 +8,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	pipelineuc "github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
+	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	pipelinev1 "github.com/eslsoft/vocnet/pkg/api/pipeline/v1"
 	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 )
@@ -40,10 +41,10 @@ func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Reques
 
 	resp := &pipelinev1.ListLemmasResponse{
 		Pagination: &commonv1.PaginationResponse{Total: int32(total), PageNo: pagination.PageNo}, // nolint:gosec
-		Lemmas:     make([]*pipelinev1.LemmaItem, 0, len(items)),
+		Lemmas:     make([]*dictv1.Lemma, 0, len(items)),
 	}
 	for _, item := range items {
-		resp.Lemmas = append(resp.Lemmas, toPBLemmaItem(item.Lemma, item.Snapshot))
+		resp.Lemmas = append(resp.Lemmas, toPBLemma(item.Lemma, item.Snapshot))
 	}
 
 	return connect.NewResponse(resp), nil

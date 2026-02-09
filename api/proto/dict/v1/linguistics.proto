@@ -1,14 +1,10 @@
 syntax = "proto3";
 
-package pipeline.v1;
+package dict.v1;
 
-option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
+import "dict/v1/word.proto";
 
-// Phonetic is a reusable phonetic representation for linguistic payloads.
-message Phonetic {
-  string ipa = 1;
-  string dialect = 2;
-}
+option go_package = "github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1";
 
 // LexemeSense is a reusable lexical sense representation.
 message LexemeSense {
