@@ -18,6 +18,8 @@ type PipelineTask struct {
 func (PipelineTask) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
+		field.Int64("job_id").
+			Comment("Foreign key to pipeline_jobs table"),
 		field.Int64("lemma_id").
 			Comment("Foreign key to lemmas table"),
 		field.Int32("phase").
@@ -52,8 +54,14 @@ func (PipelineTask) Fields() []ent.Field {
 func (PipelineTask) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("lemma", Lemma.Type).
-			Ref("pipeline_tasks").
+			Ref("pipeline_stages").
 			Field("lemma_id").
+			Required().
+			Unique().
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.From("job", PipelineJob.Type).
+			Ref("stages").
+			Field("job_id").
 			Required().
 			Unique().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
@@ -62,7 +70,8 @@ func (PipelineTask) Edges() []ent.Edge {
 
 func (PipelineTask) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("lemma_id", "phase").Unique(),
+		index.Fields("job_id", "phase").Unique(),
+		index.Fields("lemma_id"),
 		index.Fields("status"),
 		index.Fields("status", "tier"),
 	}
@@ -70,6 +79,6 @@ func (PipelineTask) Indexes() []ent.Index {
 
 func (PipelineTask) Annotations() []schema.Annotation {
 	return []schema.Annotation{
-		entsql.Annotation{Table: "pipeline_tasks"},
+		entsql.Annotation{Table: "pipeline_stages"},
 	}
 }

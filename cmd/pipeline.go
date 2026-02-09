@@ -169,6 +169,7 @@ File formats:
 
 		ctx := context.Background()
 
+		var jobs []*entity.PipelineJob
 		var job *entity.PipelineJob
 
 		switch {
@@ -177,7 +178,7 @@ File formats:
 			if err != nil {
 				return fmt.Errorf("parse file: %w", err)
 			}
-			job, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
+			jobs, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
 			if err != nil {
 				return err
 			}
@@ -189,7 +190,7 @@ File formats:
 			if name == "" {
 				name = wbName
 			}
-			job, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
+			jobs, err = deps.svc.SubmitTerms(ctx, name, terms, language, tier)
 			if err != nil {
 				return err
 			}
@@ -198,13 +199,22 @@ File formats:
 			if err != nil {
 				return err
 			}
+			jobs = []*entity.PipelineJob{job}
 		default:
 			return fmt.Errorf("provide a term, --file, or --wordbook")
 		}
 
-		fmt.Printf("Job #%d created: %s \"%s\" (%d terms)\n",
-			job.ID, job.JobType, job.Name, job.TotalTerms)
-		fmt.Printf("Use \"vocnet pipeline job %d\" to check progress.\n", job.ID)
+		if len(jobs) == 1 {
+			j := jobs[0]
+			fmt.Printf("Job #%d created: %s \"%s\" (%d terms)\n",
+				j.ID, j.JobType, j.Name, j.TotalTerms)
+			fmt.Printf("Use \"vocnet pipeline job %d\" to check progress.\n", j.ID)
+			return nil
+		}
+
+		fmt.Printf("%d jobs created.\n", len(jobs))
+		fmt.Printf("First job ID: %d\n", jobs[0].ID)
+		fmt.Printf("Use \"vocnet pipeline jobs\" to check progress.\n")
 		return nil
 	},
 }

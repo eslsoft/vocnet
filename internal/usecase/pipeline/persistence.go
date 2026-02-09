@@ -85,14 +85,49 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 	return nil
 }
 
-// SaveSnapshot persists a word snapshot, backfilling LemmaID.
-func (p *Persistence) SaveSnapshot(ctx context.Context, lemmaID int64, snapshot *entity.WordSnapshot) error {
-	snapshot.LemmaID = lemmaID
+// SaveSnapshot persists a new snapshot version for a lemma.
+func (p *Persistence) SaveSnapshot(ctx context.Context, jobID int64, lemma *entity.Lemma, forms []*entity.LemmaForm, snapshot *entity.WordSnapshot) error {
+	if lemma == nil {
+		return fmt.Errorf("lemma is required")
+	}
+	terms := collectSnapshotTerms(lemma, forms)
+	snapshot.LemmaID = lemma.ID
+	snapshot.JobID = &jobID
+	snapshot.Terms = terms
+	snapshot.Latest = true
 	_, err := p.snapshotRepo.CreateOrUpdate(ctx, snapshot)
 	if err != nil {
 		return fmt.Errorf("save snapshot: %w", err)
 	}
 	return nil
+}
+
+func collectSnapshotTerms(lemma *entity.Lemma, forms []*entity.LemmaForm) []string {
+	seen := make(map[string]struct{})
+	terms := make([]string, 0, 1+len(forms))
+
+	appendTerm := func(v string) {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if v == "" {
+			return
+		}
+		if _, ok := seen[v]; ok {
+			return
+		}
+		seen[v] = struct{}{}
+		terms = append(terms, v)
+	}
+
+	if lemma != nil {
+		appendTerm(lemma.Surface)
+	}
+	for _, f := range forms {
+		if f == nil {
+			continue
+		}
+		appendTerm(f.Surface)
+	}
+	return terms
 }
 
 // collectUniqueForms deduplicates forms from the process result.
@@ -485,12 +520,12 @@ func chooseTargetLexemeID(source *entity.Lexeme, candidates []*repository.Lexeme
 		return nil
 	}
 
-	sourcePOS := strings.ToLower(strings.TrimSpace(source.PartOfSpeech))
+	sourcePOS := source.PartOfSpeech
 	for _, c := range candidates {
 		if c == nil || c.LexemeID == 0 || c.LexemeID == source.ID {
 			continue
 		}
-		if sourcePOS != "" && strings.ToLower(strings.TrimSpace(c.Pos)) == sourcePOS {
+		if sourcePOS != entity.PartOfSpeechUnspecified && strings.ToLower(strings.TrimSpace(c.Pos)) == string(sourcePOS) {
 			id := c.LexemeID
 			return &id
 		}

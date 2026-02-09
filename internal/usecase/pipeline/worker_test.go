@@ -53,7 +53,7 @@ func TestDeduplicateTerms(t *testing.T) {
 
 func TestWorkerPoolStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	pool := NewWorkerPool(nil, nil, nil, logger, WorkerPoolConfig{
+	pool := NewWorkerPool(nil, nil, logger, WorkerPoolConfig{
 		WorkerCount:  1,
 		PollInterval: time.Second,
 		RateLimit:    2.0,

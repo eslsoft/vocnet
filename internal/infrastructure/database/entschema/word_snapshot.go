@@ -22,14 +22,24 @@ func (WordSnapshot) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.Int64("lemma_id").
-			Unique().
-			Comment("Foreign key to lemmas table (one snapshot per lemma)"),
+			Comment("Foreign key to lemmas table"),
+		field.Int64("job_id").
+			Optional().
+			Nillable().
+			Comment("Pipeline job that produced this snapshot"),
 		field.String("term").
 			NotEmpty().
-			Comment("Redundant headword"),
+			Comment("Redundant headword for display"),
+		field.JSON("terms", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Lookup terms (headword + normalized forms)"),
 		field.String("language").
 			NotEmpty().
 			Comment("Redundant language code"),
+		field.Bool("latest").
+			Default(true).
+			Comment("Whether this row is the latest snapshot version for the lemma"),
 		field.Int32("version").
 			Default(1).
 			Comment("Snapshot version (incremented on each synthesis)"),
@@ -65,17 +75,23 @@ func (WordSnapshot) Fields() []ent.Field {
 func (WordSnapshot) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("lemma", Lemma.Type).
-			Ref("word_snapshot").
+			Ref("word_snapshots").
 			Field("lemma_id").
 			Required().
 			Unique().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.From("job", PipelineJob.Type).
+			Ref("snapshot").
+			Field("job_id").
+			Unique(),
 	}
 }
 
 func (WordSnapshot) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("term", "language"),
+		index.Fields("lemma_id", "version").Unique(),
+		index.Fields("lemma_id", "latest"),
+		index.Fields("term", "language", "latest"),
 		index.Fields("qscore"),
 	}
 }

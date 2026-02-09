@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -13,10 +12,10 @@ import (
 
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo  repository.PipelineJobRepository
-	taskRepo repository.PipelineTaskRepository
+	jobRepo   repository.PipelineJobRepository
+	taskRepo  repository.PipelineTaskRepository
 	lemmaRepo repository.LemmaRepository
-	logger   *slog.Logger
+	logger    *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
@@ -61,8 +60,8 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 	return s.jobRepo.Create(ctx, job)
 }
 
-// SubmitTerms creates a wordbook pipeline job from a list of terms.
-func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []string, language string, tier int32) (*entity.PipelineJob, error) {
+// SubmitTerms creates one job per term for bulk execution (e.g. wordbook submit).
+func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []string, language string, tier int32) ([]*entity.PipelineJob, error) {
 	// Deduplicate and trim
 	terms = deduplicateTerms(terms)
 	if len(terms) == 0 {
@@ -76,21 +75,28 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 		tier = 2
 	}
 
-	if name == "" {
-		name = fmt.Sprintf("wordbook: %d terms (%s)", len(terms), time.Now().Format("2006-01-02 15:04"))
+	jobs := make([]*entity.PipelineJob, 0, len(terms))
+	for _, term := range terms {
+		jobName := name
+		if jobName == "" {
+			jobName = fmt.Sprintf("word: %s", term)
+		}
+		job := &entity.PipelineJob{
+			JobType:    entity.JobTypeSingleWord,
+			Status:     entity.JobStatusPending,
+			Name:       jobName,
+			Language:   language,
+			Tier:       tier,
+			Term:       term,
+			TotalTerms: 1,
+		}
+		created, err := s.jobRepo.Create(ctx, job)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, created)
 	}
-
-	job := &entity.PipelineJob{
-		JobType:    entity.JobTypeWordbook,
-		Status:     entity.JobStatusPending,
-		Name:       name,
-		Language:   language,
-		Tier:       tier,
-		Terms:      terms,
-		TotalTerms: int32(len(terms)),
-	}
-
-	return s.jobRepo.Create(ctx, job)
+	return jobs, nil
 }
 
 // GetJob returns a pipeline job by ID.
@@ -106,16 +112,7 @@ func (s *PipelineService) ListJobs(ctx context.Context, status *entity.JobStatus
 // GetJobStageProgress computes stage progress for a single-word job.
 // Returns nil for wordbook jobs (too expensive for list view).
 func (s *PipelineService) GetJobStageProgress(ctx context.Context, job *entity.PipelineJob) (*entity.StageProgressSummary, error) {
-	if job.JobType != entity.JobTypeSingleWord || job.Term == "" {
-		return nil, nil
-	}
-
-	lemma, err := s.lemmaRepo.LookupByForm(ctx, job.Term, entity.ParseLanguage(job.Language))
-	if err != nil {
-		return nil, nil // lemma not found yet — job hasn't started
-	}
-
-	tasks, err := s.taskRepo.ListByLemma(ctx, lemma.ID)
+	tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
@@ -138,14 +135,9 @@ func (s *PipelineService) GetJobDetail(ctx context.Context, id int64) (*JobDetai
 
 	detail := &JobDetail{Job: job}
 
-	if job.JobType == entity.JobTypeSingleWord && job.Term != "" {
-		lemma, err := s.lemmaRepo.LookupByForm(ctx, job.Term, entity.ParseLanguage(job.Language))
-		if err == nil {
-			tasks, err := s.taskRepo.ListByLemma(ctx, lemma.ID)
-			if err == nil {
-				detail.Tasks = tasks
-			}
-		}
+	tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
+	if err == nil {
+		detail.Tasks = tasks
 	}
 
 	return detail, nil

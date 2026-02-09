@@ -21,11 +21,10 @@ type WorkerPoolConfig struct {
 
 // WorkerPool manages concurrent pipeline job processing using gammazero/workerpool.
 type WorkerPool struct {
-	jobRepo      repository.PipelineJobRepository
-	snapshotRepo repository.WordSnapshotRepository
-	pipeline     *Pipeline
-	logger       *slog.Logger
-	config       WorkerPoolConfig
+	jobRepo  repository.PipelineJobRepository
+	pipeline *Pipeline
+	logger   *slog.Logger
+	config   WorkerPoolConfig
 
 	pool        *workerpool.WorkerPool
 	rateLimiter *rate.Limiter
@@ -35,7 +34,6 @@ type WorkerPool struct {
 // NewWorkerPool creates a new worker pool with the given configuration.
 func NewWorkerPool(
 	jobRepo repository.PipelineJobRepository,
-	snapshotRepo repository.WordSnapshotRepository,
 	pipeline *Pipeline,
 	logger *slog.Logger,
 	config WorkerPoolConfig,
@@ -51,12 +49,11 @@ func NewWorkerPool(
 	}
 
 	return &WorkerPool{
-		jobRepo:      jobRepo,
-		snapshotRepo: snapshotRepo,
-		pipeline:     pipeline,
-		logger:       logger.With("component", "pipeline-worker-pool"),
-		config:       config,
-		rateLimiter:  rate.NewLimiter(rate.Limit(config.RateLimit), 1),
+		jobRepo:     jobRepo,
+		pipeline:    pipeline,
+		logger:      logger.With("component", "pipeline-worker-pool"),
+		config:      config,
+		rateLimiter: rate.NewLimiter(rate.Limit(config.RateLimit), 1),
 	}
 }
 
@@ -113,84 +110,62 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 	})
 }
 
-// buildTerms extracts the term list from a job.
-func (p *WorkerPool) buildTerms(job *entity.PipelineJob) []string {
-	switch job.JobType {
-	case entity.JobTypeSingleWord:
-		return []string{job.Term}
-	case entity.JobTypeWordbook:
-		return job.Terms
-	default:
-		return nil
-	}
-}
-
 func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jobLogger *slog.Logger) {
 	jobStart := time.Now()
-	terms := p.buildTerms(job)
-
-	var processed, skipped, failed int
-	for _, term := range terms {
-		// Check context cancellation (server shutdown)
-		select {
-		case <-ctx.Done():
-			jobLogger.Warn("job interrupted by shutdown")
-			// Mark back as PENDING so it can be resumed
-			_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
-			return
-		default:
-		}
-
-		// Check if job was paused or cancelled by user
-		currentJob, err := p.jobRepo.GetByID(ctx, job.ID)
-		if err != nil {
-			jobLogger.Error("failed to check job status", "error", err)
-			continue
-		}
-
-		switch currentJob.Status {
-		case entity.JobStatusPaused:
-			jobLogger.Info("job paused by user", "processed", processed, "skipped", skipped, "failed", failed)
-			return
-		case entity.JobStatusCancelled:
-			jobLogger.Info("job cancelled by user", "processed", processed, "skipped", skipped, "failed", failed)
-			return
-		}
-
-		// Rate limit for API calls
-		if err := p.rateLimiter.Wait(ctx); err != nil {
-			jobLogger.Warn("rate limiter interrupted", "error", err)
-			_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
-			return
-		}
-
-		termLogger := jobLogger.With("term", term)
-
-		// Check if snapshot already exists → skip.
-		_, err = p.snapshotRepo.GetByTerm(ctx, term, job.Language)
-		if err == nil {
-			_ = p.jobRepo.IncrementSkipped(ctx, job.ID)
-			skipped++
-			termLogger.Debug("skipped (snapshot exists)")
-			continue
-		}
-
-		// Process the word
-		termStart := time.Now()
-		_, err = p.pipeline.Run(ctx, term, job.Language, job.Tier, &RunOptions{Logger: termLogger})
-		if err != nil {
-			_ = p.jobRepo.IncrementFailed(ctx, job.ID)
-			failed++
-			termLogger.Warn("failed to process term", "error", err)
-			continue
-		}
-
-		_ = p.jobRepo.IncrementProcessed(ctx, job.ID)
-		processed++
-		termLogger.Debug("term processed", "duration", time.Since(termStart))
+	term := job.Term
+	if term == "" && len(job.Terms) > 0 {
+		term = job.Terms[0]
+	}
+	if term == "" {
+		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, "empty term")
+		jobLogger.Warn("job has no term, marked failed")
+		return
 	}
 
-	// All done
+	// Check context cancellation (server shutdown)
+	select {
+	case <-ctx.Done():
+		jobLogger.Warn("job interrupted by shutdown")
+		// Mark back as PENDING so it can be resumed
+		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
+		return
+	default:
+	}
+
+	// Check if job was paused or cancelled by user
+	currentJob, err := p.jobRepo.GetByID(ctx, job.ID)
+	if err != nil {
+		jobLogger.Error("failed to check job status", "error", err)
+		return
+	}
+
+	switch currentJob.Status {
+	case entity.JobStatusPaused:
+		jobLogger.Info("job paused by user")
+		return
+	case entity.JobStatusCancelled:
+		jobLogger.Info("job cancelled by user")
+		return
+	}
+
+	// Rate limit for API calls
+	if err := p.rateLimiter.Wait(ctx); err != nil {
+		jobLogger.Warn("rate limiter interrupted", "error", err)
+		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
+		return
+	}
+
+	termLogger := jobLogger.With("term", term)
+	termStart := time.Now()
+	_, err = p.pipeline.Run(ctx, job.ID, term, job.Language, job.Tier, &RunOptions{Logger: termLogger})
+	if err != nil {
+		_ = p.jobRepo.IncrementFailed(ctx, job.ID)
+		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
+		termLogger.Warn("failed to process term", "error", err)
+		return
+	}
+
+	_ = p.jobRepo.IncrementProcessed(ctx, job.ID)
 	_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
-	jobLogger.Info("job completed", "duration", time.Since(jobStart), "processed", processed, "skipped", skipped, "failed", failed)
+	jobLogger.Info("job completed", "duration", time.Since(jobStart), "processed", 1, "failed", 0, "term_duration", time.Since(termStart))
 }

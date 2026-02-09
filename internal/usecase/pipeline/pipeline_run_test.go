@@ -28,6 +28,7 @@ func (m *memoryTaskRepo) CreateOrUpdate(ctx context.Context, task *entity.Pipeli
 	if existing, ok := m.tasksByPhase[task.Phase]; ok {
 		existing.Status = task.Status
 		existing.Tier = task.Tier
+		existing.JobID = task.JobID
 		return existing, nil
 	}
 
@@ -38,18 +39,23 @@ func (m *memoryTaskRepo) CreateOrUpdate(ctx context.Context, task *entity.Pipeli
 	return &copied, nil
 }
 
-func (m *memoryTaskRepo) GetByLemmaAndPhase(ctx context.Context, lemmaID int64, phase int32) (*entity.PipelineTask, error) {
+func (m *memoryTaskRepo) GetByJobAndPhase(ctx context.Context, jobID int64, phase int32) (*entity.PipelineTask, error) {
 	task, ok := m.tasksByPhase[phase]
 	if !ok {
+		return nil, errors.New("task not found")
+	}
+	if task.JobID != jobID {
 		return nil, errors.New("task not found")
 	}
 	return task, nil
 }
 
-func (m *memoryTaskRepo) ListByLemma(ctx context.Context, lemmaID int64) ([]*entity.PipelineTask, error) {
+func (m *memoryTaskRepo) ListByJob(ctx context.Context, jobID int64) ([]*entity.PipelineTask, error) {
 	out := make([]*entity.PipelineTask, 0, len(m.tasksByPhase))
 	for _, task := range m.tasksByPhase {
-		out = append(out, task)
+		if task.JobID == jobID {
+			out = append(out, task)
+		}
 	}
 	return out, nil
 }
@@ -133,17 +139,17 @@ func TestPipelineRun_AbortOnStageError(t *testing.T) {
 		testLogger(),
 	)
 
-	result, err := p.Run(context.Background(), "mission", "en", 2, nil)
+	result, err := p.Run(context.Background(), 1, "mission", "en", 2, nil)
 	assert.Nil(t, result)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "execute stage 1")
 	assert.False(t, stage2Executed, "next stage should not execute after stage error")
 
-	stage1Task, err := taskRepo.GetByLemmaAndPhase(context.Background(), existingLemma.ID, 1)
+	stage1Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 1)
 	require.NoError(t, err)
 	assert.Equal(t, entity.TaskStatusFailed, stage1Task.Status)
 
-	stage2Task, err := taskRepo.GetByLemmaAndPhase(context.Background(), existingLemma.ID, 2)
+	stage2Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 2)
 	require.NoError(t, err)
 	assert.Equal(t, entity.TaskStatusPending, stage2Task.Status)
 }
@@ -191,16 +197,16 @@ func TestPipelineRun_ContinueOnExplicitProcessorSkip(t *testing.T) {
 		testLogger(),
 	)
 
-	result, err := p.Run(context.Background(), "mission", "en", 2, nil)
+	result, err := p.Run(context.Background(), 1, "mission", "en", 2, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, stage2Executed, "explicit skip should not abort subsequent stages")
 
-	stage1Task, err := taskRepo.GetByLemmaAndPhase(context.Background(), existingLemma.ID, 1)
+	stage1Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 1)
 	require.NoError(t, err)
 	assert.Equal(t, entity.TaskStatusSkipped, stage1Task.Status)
 
-	stage2Task, err := taskRepo.GetByLemmaAndPhase(context.Background(), existingLemma.ID, 2)
+	stage2Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 2)
 	require.NoError(t, err)
 	assert.Equal(t, entity.TaskStatusSkipped, stage2Task.Status)
 }

@@ -57,8 +57,11 @@ type SnapshotData struct {
 type WordSnapshot struct {
 	ID                 int64
 	LemmaID            int64
+	JobID              *int64
 	Term               string
+	Terms              []string
 	Language           string
+	Latest             bool
 	Version            int32
 	Data               SnapshotData
 	QScore             float64

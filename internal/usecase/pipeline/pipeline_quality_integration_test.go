@@ -135,7 +135,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 }
 
 func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, error) {
-	result, err := h.pipeline.Run(ctx, term, "en", 2, nil)
+	result, err := h.pipeline.Run(ctx, 1, term, "en", 2, nil)
 	if err != nil {
 		return 0, err
 	}

@@ -25,12 +25,13 @@ func (r *pipelineTaskRepository) CreateOrUpdate(ctx context.Context, task *entit
 	}
 
 	row, err := r.client.PipelineTask.Create().
+		SetJobID(task.JobID).
 		SetLemmaID(task.LemmaID).
 		SetPhase(task.Phase).
 		SetStatus(string(task.Status)).
 		SetTier(task.Tier).
 		SetAttempts(task.Attempts).
-		OnConflictColumns("lemma_id", "phase").
+		OnConflictColumns("job_id", "phase").
 		UpdateNewValues().
 		ID(ctx)
 	if err != nil {
@@ -40,10 +41,10 @@ func (r *pipelineTaskRepository) CreateOrUpdate(ctx context.Context, task *entit
 	return r.getByID(ctx, row)
 }
 
-func (r *pipelineTaskRepository) GetByLemmaAndPhase(ctx context.Context, lemmaID int64, phase int32) (*entity.PipelineTask, error) {
+func (r *pipelineTaskRepository) GetByJobAndPhase(ctx context.Context, jobID int64, phase int32) (*entity.PipelineTask, error) {
 	row, err := r.client.PipelineTask.Query().
 		Where(
-			entpipelinetask.LemmaIDEQ(lemmaID),
+			entpipelinetask.JobIDEQ(jobID),
 			entpipelinetask.PhaseEQ(phase),
 		).
 		First(ctx)
@@ -56,9 +57,9 @@ func (r *pipelineTaskRepository) GetByLemmaAndPhase(ctx context.Context, lemmaID
 	return mapEntPipelineTask(row), nil
 }
 
-func (r *pipelineTaskRepository) ListByLemma(ctx context.Context, lemmaID int64) ([]*entity.PipelineTask, error) {
+func (r *pipelineTaskRepository) ListByJob(ctx context.Context, jobID int64) ([]*entity.PipelineTask, error) {
 	rows, err := r.client.PipelineTask.Query().
-		Where(entpipelinetask.LemmaIDEQ(lemmaID)).
+		Where(entpipelinetask.JobIDEQ(jobID)).
 		Order(entpipelinetask.ByPhase()).
 		All(ctx)
 	if err != nil {
@@ -105,6 +106,7 @@ func mapEntPipelineTask(row *entdb.PipelineTask) *entity.PipelineTask {
 	}
 	return &entity.PipelineTask{
 		ID:           row.ID,
+		JobID:        row.JobID,
 		LemmaID:      row.LemmaID,
 		Phase:        row.Phase,
 		Status:       entity.TaskStatus(row.Status),

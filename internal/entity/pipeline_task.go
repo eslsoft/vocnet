@@ -20,11 +20,11 @@ const (
 type PipelinePhase int32
 
 const (
-	PhaseDiscovery     PipelinePhase = 1
-	PhaseLexical       PipelinePhase = 2
-	PhaseRelational    PipelinePhase = 3
-	PhaseIntellectual  PipelinePhase = 4
-	PhaseSynthesis     PipelinePhase = 5
+	PhaseDiscovery    PipelinePhase = 1
+	PhaseLexical      PipelinePhase = 2
+	PhaseRelational   PipelinePhase = 3
+	PhaseIntellectual PipelinePhase = 4
+	PhaseSynthesis    PipelinePhase = 5
 )
 
 // PhaseName returns a human-readable name for the phase.
@@ -45,9 +45,10 @@ func (p PipelinePhase) Name() string {
 	}
 }
 
-// PipelineTask tracks the execution state of a single pipeline phase for a lemma.
+// PipelineTask tracks the execution state of a single pipeline phase for a job.
 type PipelineTask struct {
 	ID           int64
+	JobID        int64
 	LemmaID      int64
 	Phase        int32
 	Status       TaskStatus

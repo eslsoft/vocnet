@@ -70,13 +70,12 @@ func (Lemma) Edges() []ent.Edge {
 		edge.To("raw_evidences", RawEvidence.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
-		// Lemma -> PipelineTask (一对多)
-		edge.To("pipeline_tasks", PipelineTask.Type).
+		// Lemma -> PipelineStage (一对多)
+		edge.To("pipeline_stages", PipelineTask.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
-		// Lemma -> WordSnapshot (一对一)
-		edge.To("word_snapshot", WordSnapshot.Type).
-			Unique().
+		// Lemma -> WordSnapshot (一对多版本)
+		edge.To("word_snapshots", WordSnapshot.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }

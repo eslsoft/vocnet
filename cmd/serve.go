@@ -250,7 +250,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 		rateLimit = 2
 	}
 
-	return pipeline.NewWorkerPool(jobRepo, snapshotRepo, p, logger, pipeline.WorkerPoolConfig{
+	return pipeline.NewWorkerPool(jobRepo, p, logger, pipeline.WorkerPoolConfig{
 		WorkerCount: workerCount,
 		RateLimit:   float64(rateLimit),
 	}), nil

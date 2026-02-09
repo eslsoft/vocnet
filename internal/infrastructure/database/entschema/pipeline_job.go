@@ -7,6 +7,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -68,7 +69,13 @@ func (PipelineJob) Fields() []ent.Field {
 }
 
 func (PipelineJob) Edges() []ent.Edge {
-	return nil
+	return []ent.Edge{
+		edge.To("stages", PipelineTask.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("snapshot", WordSnapshot.Type).
+			Unique().
+			Annotations(entsql.OnDelete(entsql.SetNull)),
+	}
 }
 
 func (PipelineJob) Indexes() []ent.Index {
