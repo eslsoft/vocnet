@@ -87,12 +87,8 @@ var serveCmd = &cobra.Command{
 		// Build server
 		srv := container.Server
 
-		// Register pipeline metrics endpoint
-		if workerPool != nil {
-			jobRepo := repository.NewPipelineJobRepository(container.EntClient)
-			metricsHandler := server.NewMetricsHandler(workerPool, jobRepo)
-			srv.RegisterMetricsHandler(metricsHandler)
-		}
+		// Register prometheus metrics endpoint (metrics are auto-registered by WorkerPool)
+		srv.RegisterMetricsHandler(server.MetricsHandler())
 
 		// Run gRPC & HTTP concurrently
 		errCh := make(chan error, 2)

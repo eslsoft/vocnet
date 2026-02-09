@@ -3,10 +3,13 @@ package pipeline
 import (
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestWorkerPoolMetrics_RecordJob(t *testing.T) {
-	m := NewWorkerPoolMetrics()
+	reg := prometheus.NewRegistry()
+	m := NewWorkerPoolMetricsWithRegistry(reg)
 
 	// Record some successful jobs
 	m.RecordJob(100*time.Millisecond, true)
@@ -37,7 +40,8 @@ func TestWorkerPoolMetrics_RecordJob(t *testing.T) {
 }
 
 func TestWorkerPoolMetrics_RateCalculation(t *testing.T) {
-	m := NewWorkerPoolMetrics()
+	reg := prometheus.NewRegistry()
+	m := NewWorkerPoolMetricsWithRegistry(reg)
 
 	// Record 10 jobs quickly
 	for range 10 {
@@ -58,7 +62,8 @@ func TestWorkerPoolMetrics_RateCalculation(t *testing.T) {
 }
 
 func TestWorkerPoolMetrics_Reset(t *testing.T) {
-	m := NewWorkerPoolMetrics()
+	reg := prometheus.NewRegistry()
+	m := NewWorkerPoolMetricsWithRegistry(reg)
 
 	m.RecordJob(100*time.Millisecond, true)
 	m.RecordJob(100*time.Millisecond, false)

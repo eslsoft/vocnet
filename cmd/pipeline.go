@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -471,36 +471,18 @@ func runStatsWatch(serverURL string) error {
 	return nil
 }
 
-// PipelineStatsResponse mirrors server.PipelineStatsResponse for CLI parsing.
-type PipelineStatsResponse struct {
-	Worker                    WorkerMetrics `json:"worker"`
-	Queue                     QueueStats    `json:"queue"`
-	EstimatedRemainingSeconds float64       `json:"estimated_remaining_seconds"`
+// PipelineStats holds parsed Prometheus metrics for CLI display.
+type PipelineStats struct {
+	UptimeSeconds       float64
+	JobsSucceeded       float64
+	JobsFailed          float64
+	JobsPerMinute       float64
+	JobDurationSum      float64
+	JobDurationCount    float64
 }
 
-type WorkerMetrics struct {
-	UptimeSeconds       float64 `json:"uptime_seconds"`
-	JobsProcessed       int64   `json:"jobs_processed"`
-	JobsSucceeded       int64   `json:"jobs_succeeded"`
-	JobsFailed          int64   `json:"jobs_failed"`
-	JobsPerMinute       float64 `json:"jobs_per_minute"`
-	AvgDurationMs       float64 `json:"avg_duration_ms"`
-	RecentJobsPerMinute float64 `json:"recent_jobs_per_minute"`
-	RecentAvgDurationMs float64 `json:"recent_avg_duration_ms"`
-}
-
-type QueueStats struct {
-	Pending   int64 `json:"pending"`
-	Running   int64 `json:"running"`
-	Completed int64 `json:"completed"`
-	Failed    int64 `json:"failed"`
-	Paused    int64 `json:"paused"`
-	Cancelled int64 `json:"cancelled"`
-	Total     int64 `json:"total"`
-}
-
-func fetchPipelineStats(serverURL string) (*PipelineStatsResponse, error) {
-	resp, err := http.Get(serverURL + "/metrics/pipeline")
+func fetchPipelineStats(serverURL string) (*PipelineStats, error) {
+	resp, err := http.Get(serverURL + "/metrics")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to server: %w", err)
 	}
@@ -510,54 +492,64 @@ func fetchPipelineStats(serverURL string) (*PipelineStatsResponse, error) {
 		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	var stats PipelineStatsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	return &stats, nil
+	stats := &PipelineStats{}
+	lines := strings.Split(string(body), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse metric lines
+		switch {
+		case strings.HasPrefix(line, "vocnet_pipeline_uptime_seconds "):
+			stats.UptimeSeconds = parseMetricValue(line)
+		case strings.HasPrefix(line, "vocnet_pipeline_jobs_per_minute "):
+			stats.JobsPerMinute = parseMetricValue(line)
+		case strings.Contains(line, `vocnet_pipeline_jobs_processed_total{status="succeeded"}`):
+			stats.JobsSucceeded = parseMetricValue(line)
+		case strings.Contains(line, `vocnet_pipeline_jobs_processed_total{status="failed"}`):
+			stats.JobsFailed = parseMetricValue(line)
+		case strings.HasPrefix(line, "vocnet_pipeline_job_duration_seconds_sum "):
+			stats.JobDurationSum = parseMetricValue(line)
+		case strings.HasPrefix(line, "vocnet_pipeline_job_duration_seconds_count "):
+			stats.JobDurationCount = parseMetricValue(line)
+		}
+	}
+
+	return stats, nil
 }
 
-func printStats(stats *PipelineStatsResponse) {
+func parseMetricValue(line string) float64 {
+	parts := strings.Fields(line)
+	if len(parts) >= 2 {
+		val, _ := strconv.ParseFloat(parts[len(parts)-1], 64)
+		return val
+	}
+	return 0
+}
+
+func printStats(stats *PipelineStats) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	fmt.Printf("Pipeline Stats (%s)\n", now)
 	fmt.Println(strings.Repeat("=", 50))
 
 	// Worker metrics
 	fmt.Println("\n📊 Worker Pool:")
-	fmt.Printf("  Uptime:         %s\n", formatDuration(stats.Worker.UptimeSeconds))
-	fmt.Printf("  Processed:      %d (✓ %d, ✗ %d)\n",
-		stats.Worker.JobsProcessed, stats.Worker.JobsSucceeded, stats.Worker.JobsFailed)
-	fmt.Printf("  Rate (5min):    %.1f jobs/min\n", stats.Worker.JobsPerMinute)
-	fmt.Printf("  Rate (1min):    %.1f jobs/min\n", stats.Worker.RecentJobsPerMinute)
-	fmt.Printf("  Avg Duration:   %.0f ms\n", stats.Worker.AvgDurationMs)
+	fmt.Printf("  Uptime:         %s\n", formatDuration(stats.UptimeSeconds))
 
-	// Queue stats
-	fmt.Println("\n📋 Queue:")
-	fmt.Printf("  Pending:        %d\n", stats.Queue.Pending)
-	fmt.Printf("  Running:        %d\n", stats.Queue.Running)
-	fmt.Printf("  Completed:      %d\n", stats.Queue.Completed)
-	fmt.Printf("  Failed:         %d\n", stats.Queue.Failed)
-	if stats.Queue.Paused > 0 {
-		fmt.Printf("  Paused:         %d\n", stats.Queue.Paused)
-	}
-	if stats.Queue.Cancelled > 0 {
-		fmt.Printf("  Cancelled:      %d\n", stats.Queue.Cancelled)
-	}
-	fmt.Printf("  Total:          %d\n", stats.Queue.Total)
+	total := int64(stats.JobsSucceeded + stats.JobsFailed)
+	fmt.Printf("  Processed:      %d (✓ %.0f, ✗ %.0f)\n", total, stats.JobsSucceeded, stats.JobsFailed)
+	fmt.Printf("  Rate (1min):    %.1f jobs/min\n", stats.JobsPerMinute)
 
-	// Progress
-	remaining := stats.Queue.Pending + stats.Queue.Running
-	if stats.Queue.Total > 0 {
-		completed := stats.Queue.Completed + stats.Queue.Failed + stats.Queue.Cancelled
-		progress := float64(completed) / float64(stats.Queue.Total) * 100
-		fmt.Printf("\n⏱️  Progress:      %.1f%% (%d/%d)\n", progress, completed, stats.Queue.Total)
-	}
-
-	// ETA
-	if stats.EstimatedRemainingSeconds > 0 && remaining > 0 {
-		fmt.Printf("🕐 ETA:           ~%s (%d jobs remaining)\n",
-			formatDuration(stats.EstimatedRemainingSeconds), remaining)
+	if stats.JobDurationCount > 0 {
+		avgMs := (stats.JobDurationSum / stats.JobDurationCount) * 1000
+		fmt.Printf("  Avg Duration:   %.0f ms\n", avgMs)
 	}
 }
 

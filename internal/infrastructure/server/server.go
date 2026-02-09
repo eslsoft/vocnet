@@ -109,7 +109,7 @@ func (s *Server) StartHTTP() error {
 
 // RegisterMetricsHandler registers the metrics endpoint.
 func (s *Server) RegisterMetricsHandler(handler http.Handler) {
-	s.httpMux.Handle("/metrics/pipeline", handler)
+	s.httpMux.Handle("/metrics", handler)
 }
 
 // Shutdown gracefully shuts down the server

@@ -3,54 +3,103 @@ package pipeline
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-// WorkerPoolMetrics tracks worker pool performance metrics.
+// WorkerPoolMetrics tracks worker pool performance metrics using Prometheus.
 type WorkerPoolMetrics struct {
-	// Counters
-	jobsProcessed atomic.Int64
-	jobsSucceeded atomic.Int64
-	jobsFailed    atomic.Int64
+	// Prometheus metrics
+	jobsProcessed *prometheus.CounterVec
+	jobDuration   prometheus.Histogram
+	jobsPerMinute prometheus.Gauge
+	uptime        prometheus.Gauge
 
-	// Timing
-	startTime      time.Time
-	totalDurationNs atomic.Int64 // total processing duration in nanoseconds
-
-	// Rate tracking (sliding window)
+	// Internal tracking for rate calculation
+	startTime       time.Time
 	recentJobs      []jobRecord
-	recentJobsMutex chan struct{} // simple mutex using channel
+	recentJobsMutex chan struct{}
+
+	// Atomic counters for snapshot
+	processed atomic.Int64
+	succeeded atomic.Int64
+	failed    atomic.Int64
 }
 
 type jobRecord struct {
-	timestamp time.Time
+	timestamp  time.Time
 	durationNs int64
-	succeeded  bool
 }
 
-// NewWorkerPoolMetrics creates a new metrics collector.
+// NewWorkerPoolMetrics creates a new metrics collector with Prometheus registration.
 func NewWorkerPoolMetrics() *WorkerPoolMetrics {
-	return &WorkerPoolMetrics{
+	return NewWorkerPoolMetricsWithRegistry(prometheus.DefaultRegisterer)
+}
+
+// NewWorkerPoolMetricsWithRegistry creates metrics with a custom registry (for testing).
+func NewWorkerPoolMetricsWithRegistry(reg prometheus.Registerer) *WorkerPoolMetrics {
+	m := &WorkerPoolMetrics{
+		jobsProcessed: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "vocnet_pipeline_jobs_processed_total",
+				Help: "Total number of pipeline jobs processed",
+			},
+			[]string{"status"},
+		),
+		jobDuration: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "vocnet_pipeline_job_duration_seconds",
+				Help:    "Duration of pipeline job processing in seconds",
+				Buckets: prometheus.ExponentialBuckets(0.1, 2, 10),
+			},
+		),
+		jobsPerMinute: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_jobs_per_minute",
+				Help: "Current rate of jobs per minute (1-min window)",
+			},
+		),
+		uptime: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_uptime_seconds",
+				Help: "Worker pool uptime in seconds",
+			},
+		),
 		startTime:       time.Now(),
 		recentJobs:      make([]jobRecord, 0, 1000),
 		recentJobsMutex: make(chan struct{}, 1),
 	}
+
+	if reg != nil {
+		reg.MustRegister(m.jobsProcessed)
+		reg.MustRegister(m.jobDuration)
+		reg.MustRegister(m.jobsPerMinute)
+		reg.MustRegister(m.uptime)
+	}
+
+	return m
 }
 
 // RecordJob records a completed job.
 func (m *WorkerPoolMetrics) RecordJob(duration time.Duration, succeeded bool) {
-	m.jobsProcessed.Add(1)
-	if succeeded {
-		m.jobsSucceeded.Add(1)
-	} else {
-		m.jobsFailed.Add(1)
-	}
-	m.totalDurationNs.Add(duration.Nanoseconds())
+	m.processed.Add(1)
 
-	// Add to recent jobs (for rate calculation)
+	status := "succeeded"
+	if succeeded {
+		m.succeeded.Add(1)
+	} else {
+		m.failed.Add(1)
+		status = "failed"
+	}
+
+	// Update Prometheus metrics
+	m.jobsProcessed.WithLabelValues(status).Inc()
+	m.jobDuration.Observe(duration.Seconds())
+
+	// Track for rate calculation
 	record := jobRecord{
 		timestamp:  time.Now(),
 		durationNs: duration.Nanoseconds(),
-		succeeded:  succeeded,
 	}
 
 	m.recentJobsMutex <- struct{}{}
@@ -66,36 +115,45 @@ func (m *WorkerPoolMetrics) RecordJob(duration time.Duration, succeeded bool) {
 	}
 	filtered = append(filtered, record)
 	m.recentJobs = filtered
+
+	// Update rate gauge
+	m.updateRateGauge()
 }
 
-// Snapshot returns a point-in-time snapshot of metrics.
+// updateRateGauge updates the jobs per minute gauge.
+func (m *WorkerPoolMetrics) updateRateGauge() {
+	now := time.Now()
+	cutoff1min := now.Add(-1 * time.Minute)
+
+	var count1min int64
+	for _, r := range m.recentJobs {
+		if r.timestamp.After(cutoff1min) {
+			count1min++
+		}
+	}
+
+	m.jobsPerMinute.Set(float64(count1min))
+	m.uptime.Set(now.Sub(m.startTime).Seconds())
+}
+
+// MetricsSnapshot is a point-in-time snapshot of metrics for CLI display.
 type MetricsSnapshot struct {
-	// Uptime
-	UptimeSeconds float64 `json:"uptime_seconds"`
-
-	// Job counts
-	JobsProcessed int64 `json:"jobs_processed"`
-	JobsSucceeded int64 `json:"jobs_succeeded"`
-	JobsFailed    int64 `json:"jobs_failed"`
-
-	// Rate (jobs per minute, based on last 5 minutes)
-	JobsPerMinute float64 `json:"jobs_per_minute"`
-
-	// Average duration
-	AvgDurationMs float64 `json:"avg_duration_ms"`
-
-	// Recent rate (last minute)
+	UptimeSeconds       float64 `json:"uptime_seconds"`
+	JobsProcessed       int64   `json:"jobs_processed"`
+	JobsSucceeded       int64   `json:"jobs_succeeded"`
+	JobsFailed          int64   `json:"jobs_failed"`
+	JobsPerMinute       float64 `json:"jobs_per_minute"`
+	AvgDurationMs       float64 `json:"avg_duration_ms"`
 	RecentJobsPerMinute float64 `json:"recent_jobs_per_minute"`
 	RecentAvgDurationMs float64 `json:"recent_avg_duration_ms"`
 }
 
-// Snapshot returns current metrics.
+// Snapshot returns current metrics for CLI display.
 func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 	now := time.Now()
-	processed := m.jobsProcessed.Load()
-	succeeded := m.jobsSucceeded.Load()
-	failed := m.jobsFailed.Load()
-	totalDuration := m.totalDurationNs.Load()
+	processed := m.processed.Load()
+	succeeded := m.succeeded.Load()
+	failed := m.failed.Load()
 
 	snapshot := MetricsSnapshot{
 		UptimeSeconds: now.Sub(m.startTime).Seconds(),
@@ -104,11 +162,6 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 		JobsFailed:    failed,
 	}
 
-	if processed > 0 {
-		snapshot.AvgDurationMs = float64(totalDuration) / float64(processed) / 1e6
-	}
-
-	// Calculate rates from recent jobs
 	m.recentJobsMutex <- struct{}{}
 	defer func() { <-m.recentJobsMutex }()
 
@@ -135,6 +188,7 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 			if elapsed5min > 0 {
 				snapshot.JobsPerMinute = float64(count5min) / elapsed5min
 			}
+			snapshot.AvgDurationMs = float64(duration5min) / float64(count5min) / 1e6
 		}
 
 		if count1min > 0 {
@@ -148,13 +202,15 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 
 // Reset resets all metrics.
 func (m *WorkerPoolMetrics) Reset() {
-	m.jobsProcessed.Store(0)
-	m.jobsSucceeded.Store(0)
-	m.jobsFailed.Store(0)
-	m.totalDurationNs.Store(0)
+	m.processed.Store(0)
+	m.succeeded.Store(0)
+	m.failed.Store(0)
 	m.startTime = time.Now()
 
 	m.recentJobsMutex <- struct{}{}
 	m.recentJobs = make([]jobRecord, 0, 1000)
 	<-m.recentJobsMutex
+
+	m.jobsPerMinute.Set(0)
+	m.uptime.Set(0)
 }
