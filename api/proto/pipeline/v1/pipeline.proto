@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package pipeline.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
+
+enum PipelineStatus {
+  PIPELINE_STATUS_UNSPECIFIED = 0;
+  PIPELINE_STATUS_PENDING = 1;
+  PIPELINE_STATUS_RUNNING = 2;
+  PIPELINE_STATUS_PAUSED = 3;
+  PIPELINE_STATUS_COMPLETED = 4;
+  PIPELINE_STATUS_FAILED = 5;
+  PIPELINE_STATUS_CANCELLED = 6;
+  PIPELINE_STATUS_SKIPPED = 7;
+}
+
+enum PipelinePhase {
+  PIPELINE_PHASE_UNSPECIFIED = 0;
+  PIPELINE_PHASE_DISCOVERY = 1;
+  PIPELINE_PHASE_LEXICAL = 2;
+  PIPELINE_PHASE_RELATIONAL = 3;
+  PIPELINE_PHASE_INTELLECTUAL = 4;
+  PIPELINE_PHASE_SYNTHESIS = 5;
+}
+
+enum PipelineActionType {
+  PIPELINE_ACTION_TYPE_UNSPECIFIED = 0;
+  PIPELINE_ACTION_TYPE_CANCEL = 1;
+  // Renew creates a new pipeline run/job; it does not mutate stage execution of old job.
+  PIPELINE_ACTION_TYPE_RENEW = 2;
+}
+
+message PipelineJob {
+  int64 id = 1;
+  PipelineStatus status = 2;
+  string name = 3;
+  string language = 4;
+  int32 tier = 5;
+  string term = 6;
+  string error_message = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp completed_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message PipelineStage {
+  int64 id = 1;
+  int64 job_id = 2;
+  int64 lemma_id = 3;
+  PipelinePhase phase = 4;
+  PipelineStatus status = 5;
+  int32 attempts = 6;
+  string error_message = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp completed_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}

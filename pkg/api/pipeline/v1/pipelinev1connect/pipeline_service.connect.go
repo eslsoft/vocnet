@@ -33,40 +33,30 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// PipelineServiceProcessWordProcedure is the fully-qualified name of the PipelineService's
-	// ProcessWord RPC.
-	PipelineServiceProcessWordProcedure = "/pipeline.v1.PipelineService/ProcessWord"
-	// PipelineServiceGetPipelineStatusProcedure is the fully-qualified name of the PipelineService's
-	// GetPipelineStatus RPC.
-	PipelineServiceGetPipelineStatusProcedure = "/pipeline.v1.PipelineService/GetPipelineStatus"
-	// PipelineServiceRetryPhaseProcedure is the fully-qualified name of the PipelineService's
-	// RetryPhase RPC.
-	PipelineServiceRetryPhaseProcedure = "/pipeline.v1.PipelineService/RetryPhase"
-	// PipelineServiceGetWordSnapshotProcedure is the fully-qualified name of the PipelineService's
-	// GetWordSnapshot RPC.
-	PipelineServiceGetWordSnapshotProcedure = "/pipeline.v1.PipelineService/GetWordSnapshot"
-	// PipelineServiceListWordSnapshotsProcedure is the fully-qualified name of the PipelineService's
-	// ListWordSnapshots RPC.
-	PipelineServiceListWordSnapshotsProcedure = "/pipeline.v1.PipelineService/ListWordSnapshots"
-	// PipelineServiceGetEvidenceProcedure is the fully-qualified name of the PipelineService's
-	// GetEvidence RPC.
-	PipelineServiceGetEvidenceProcedure = "/pipeline.v1.PipelineService/GetEvidence"
+	// PipelineServiceSubmitJobProcedure is the fully-qualified name of the PipelineService's SubmitJob
+	// RPC.
+	PipelineServiceSubmitJobProcedure = "/pipeline.v1.PipelineService/SubmitJob"
+	// PipelineServiceActionJobProcedure is the fully-qualified name of the PipelineService's ActionJob
+	// RPC.
+	PipelineServiceActionJobProcedure = "/pipeline.v1.PipelineService/ActionJob"
+	// PipelineServiceListJobsProcedure is the fully-qualified name of the PipelineService's ListJobs
+	// RPC.
+	PipelineServiceListJobsProcedure = "/pipeline.v1.PipelineService/ListJobs"
+	// PipelineServiceListJobStagesProcedure is the fully-qualified name of the PipelineService's
+	// ListJobStages RPC.
+	PipelineServiceListJobStagesProcedure = "/pipeline.v1.PipelineService/ListJobStages"
 )
 
 // PipelineServiceClient is a client for the pipeline.v1.PipelineService service.
 type PipelineServiceClient interface {
-	// ProcessWord runs the full pipeline for a given term.
-	ProcessWord(context.Context, *connect.Request[v1.ProcessWordRequest]) (*connect.Response[v1.ProcessWordResponse], error)
-	// GetPipelineStatus returns the status of pipeline tasks for a word.
-	GetPipelineStatus(context.Context, *connect.Request[v1.GetPipelineStatusRequest]) (*connect.Response[v1.PipelineStatus], error)
-	// RetryPhase retries a failed phase for a word.
-	RetryPhase(context.Context, *connect.Request[v1.RetryPhaseRequest]) (*connect.Response[v1.PipelineStatus], error)
-	// GetWordSnapshot returns the materialized snapshot for a word.
-	GetWordSnapshot(context.Context, *connect.Request[v1.GetWordSnapshotRequest]) (*connect.Response[v1.WordSnapshotResponse], error)
-	// ListWordSnapshots returns a paginated list of word snapshots.
-	ListWordSnapshots(context.Context, *connect.Request[v1.ListWordSnapshotsRequest]) (*connect.Response[v1.ListWordSnapshotsResponse], error)
-	// GetEvidence returns raw evidence for a word.
-	GetEvidence(context.Context, *connect.Request[v1.GetEvidenceRequest]) (*connect.Response[v1.GetEvidenceResponse], error)
+	// SubmitJob submits a new pipeline run.
+	SubmitJob(context.Context, *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error)
+	// ActionJob performs generic control actions for a job.
+	ActionJob(context.Context, *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error)
+	// ListJobs lists pipeline jobs with optional filters.
+	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
+	// ListJobStages lists all stages (tasks) under one job.
+	ListJobStages(context.Context, *connect.Request[v1.ListJobStagesRequest]) (*connect.Response[v1.ListJobStagesResponse], error)
 }
 
 // NewPipelineServiceClient constructs a client for the pipeline.v1.PipelineService service. By
@@ -80,40 +70,28 @@ func NewPipelineServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 	baseURL = strings.TrimRight(baseURL, "/")
 	pipelineServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("PipelineService").Methods()
 	return &pipelineServiceClient{
-		processWord: connect.NewClient[v1.ProcessWordRequest, v1.ProcessWordResponse](
+		submitJob: connect.NewClient[v1.SubmitJobRequest, v1.SubmitJobResponse](
 			httpClient,
-			baseURL+PipelineServiceProcessWordProcedure,
-			connect.WithSchema(pipelineServiceMethods.ByName("ProcessWord")),
+			baseURL+PipelineServiceSubmitJobProcedure,
+			connect.WithSchema(pipelineServiceMethods.ByName("SubmitJob")),
 			connect.WithClientOptions(opts...),
 		),
-		getPipelineStatus: connect.NewClient[v1.GetPipelineStatusRequest, v1.PipelineStatus](
+		actionJob: connect.NewClient[v1.ActionJobRequest, v1.ActionJobResponse](
 			httpClient,
-			baseURL+PipelineServiceGetPipelineStatusProcedure,
-			connect.WithSchema(pipelineServiceMethods.ByName("GetPipelineStatus")),
+			baseURL+PipelineServiceActionJobProcedure,
+			connect.WithSchema(pipelineServiceMethods.ByName("ActionJob")),
 			connect.WithClientOptions(opts...),
 		),
-		retryPhase: connect.NewClient[v1.RetryPhaseRequest, v1.PipelineStatus](
+		listJobs: connect.NewClient[v1.ListJobsRequest, v1.ListJobsResponse](
 			httpClient,
-			baseURL+PipelineServiceRetryPhaseProcedure,
-			connect.WithSchema(pipelineServiceMethods.ByName("RetryPhase")),
+			baseURL+PipelineServiceListJobsProcedure,
+			connect.WithSchema(pipelineServiceMethods.ByName("ListJobs")),
 			connect.WithClientOptions(opts...),
 		),
-		getWordSnapshot: connect.NewClient[v1.GetWordSnapshotRequest, v1.WordSnapshotResponse](
+		listJobStages: connect.NewClient[v1.ListJobStagesRequest, v1.ListJobStagesResponse](
 			httpClient,
-			baseURL+PipelineServiceGetWordSnapshotProcedure,
-			connect.WithSchema(pipelineServiceMethods.ByName("GetWordSnapshot")),
-			connect.WithClientOptions(opts...),
-		),
-		listWordSnapshots: connect.NewClient[v1.ListWordSnapshotsRequest, v1.ListWordSnapshotsResponse](
-			httpClient,
-			baseURL+PipelineServiceListWordSnapshotsProcedure,
-			connect.WithSchema(pipelineServiceMethods.ByName("ListWordSnapshots")),
-			connect.WithClientOptions(opts...),
-		),
-		getEvidence: connect.NewClient[v1.GetEvidenceRequest, v1.GetEvidenceResponse](
-			httpClient,
-			baseURL+PipelineServiceGetEvidenceProcedure,
-			connect.WithSchema(pipelineServiceMethods.ByName("GetEvidence")),
+			baseURL+PipelineServiceListJobStagesProcedure,
+			connect.WithSchema(pipelineServiceMethods.ByName("ListJobStages")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -121,58 +99,42 @@ func NewPipelineServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 
 // pipelineServiceClient implements PipelineServiceClient.
 type pipelineServiceClient struct {
-	processWord       *connect.Client[v1.ProcessWordRequest, v1.ProcessWordResponse]
-	getPipelineStatus *connect.Client[v1.GetPipelineStatusRequest, v1.PipelineStatus]
-	retryPhase        *connect.Client[v1.RetryPhaseRequest, v1.PipelineStatus]
-	getWordSnapshot   *connect.Client[v1.GetWordSnapshotRequest, v1.WordSnapshotResponse]
-	listWordSnapshots *connect.Client[v1.ListWordSnapshotsRequest, v1.ListWordSnapshotsResponse]
-	getEvidence       *connect.Client[v1.GetEvidenceRequest, v1.GetEvidenceResponse]
+	submitJob     *connect.Client[v1.SubmitJobRequest, v1.SubmitJobResponse]
+	actionJob     *connect.Client[v1.ActionJobRequest, v1.ActionJobResponse]
+	listJobs      *connect.Client[v1.ListJobsRequest, v1.ListJobsResponse]
+	listJobStages *connect.Client[v1.ListJobStagesRequest, v1.ListJobStagesResponse]
 }
 
-// ProcessWord calls pipeline.v1.PipelineService.ProcessWord.
-func (c *pipelineServiceClient) ProcessWord(ctx context.Context, req *connect.Request[v1.ProcessWordRequest]) (*connect.Response[v1.ProcessWordResponse], error) {
-	return c.processWord.CallUnary(ctx, req)
+// SubmitJob calls pipeline.v1.PipelineService.SubmitJob.
+func (c *pipelineServiceClient) SubmitJob(ctx context.Context, req *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error) {
+	return c.submitJob.CallUnary(ctx, req)
 }
 
-// GetPipelineStatus calls pipeline.v1.PipelineService.GetPipelineStatus.
-func (c *pipelineServiceClient) GetPipelineStatus(ctx context.Context, req *connect.Request[v1.GetPipelineStatusRequest]) (*connect.Response[v1.PipelineStatus], error) {
-	return c.getPipelineStatus.CallUnary(ctx, req)
+// ActionJob calls pipeline.v1.PipelineService.ActionJob.
+func (c *pipelineServiceClient) ActionJob(ctx context.Context, req *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error) {
+	return c.actionJob.CallUnary(ctx, req)
 }
 
-// RetryPhase calls pipeline.v1.PipelineService.RetryPhase.
-func (c *pipelineServiceClient) RetryPhase(ctx context.Context, req *connect.Request[v1.RetryPhaseRequest]) (*connect.Response[v1.PipelineStatus], error) {
-	return c.retryPhase.CallUnary(ctx, req)
+// ListJobs calls pipeline.v1.PipelineService.ListJobs.
+func (c *pipelineServiceClient) ListJobs(ctx context.Context, req *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error) {
+	return c.listJobs.CallUnary(ctx, req)
 }
 
-// GetWordSnapshot calls pipeline.v1.PipelineService.GetWordSnapshot.
-func (c *pipelineServiceClient) GetWordSnapshot(ctx context.Context, req *connect.Request[v1.GetWordSnapshotRequest]) (*connect.Response[v1.WordSnapshotResponse], error) {
-	return c.getWordSnapshot.CallUnary(ctx, req)
-}
-
-// ListWordSnapshots calls pipeline.v1.PipelineService.ListWordSnapshots.
-func (c *pipelineServiceClient) ListWordSnapshots(ctx context.Context, req *connect.Request[v1.ListWordSnapshotsRequest]) (*connect.Response[v1.ListWordSnapshotsResponse], error) {
-	return c.listWordSnapshots.CallUnary(ctx, req)
-}
-
-// GetEvidence calls pipeline.v1.PipelineService.GetEvidence.
-func (c *pipelineServiceClient) GetEvidence(ctx context.Context, req *connect.Request[v1.GetEvidenceRequest]) (*connect.Response[v1.GetEvidenceResponse], error) {
-	return c.getEvidence.CallUnary(ctx, req)
+// ListJobStages calls pipeline.v1.PipelineService.ListJobStages.
+func (c *pipelineServiceClient) ListJobStages(ctx context.Context, req *connect.Request[v1.ListJobStagesRequest]) (*connect.Response[v1.ListJobStagesResponse], error) {
+	return c.listJobStages.CallUnary(ctx, req)
 }
 
 // PipelineServiceHandler is an implementation of the pipeline.v1.PipelineService service.
 type PipelineServiceHandler interface {
-	// ProcessWord runs the full pipeline for a given term.
-	ProcessWord(context.Context, *connect.Request[v1.ProcessWordRequest]) (*connect.Response[v1.ProcessWordResponse], error)
-	// GetPipelineStatus returns the status of pipeline tasks for a word.
-	GetPipelineStatus(context.Context, *connect.Request[v1.GetPipelineStatusRequest]) (*connect.Response[v1.PipelineStatus], error)
-	// RetryPhase retries a failed phase for a word.
-	RetryPhase(context.Context, *connect.Request[v1.RetryPhaseRequest]) (*connect.Response[v1.PipelineStatus], error)
-	// GetWordSnapshot returns the materialized snapshot for a word.
-	GetWordSnapshot(context.Context, *connect.Request[v1.GetWordSnapshotRequest]) (*connect.Response[v1.WordSnapshotResponse], error)
-	// ListWordSnapshots returns a paginated list of word snapshots.
-	ListWordSnapshots(context.Context, *connect.Request[v1.ListWordSnapshotsRequest]) (*connect.Response[v1.ListWordSnapshotsResponse], error)
-	// GetEvidence returns raw evidence for a word.
-	GetEvidence(context.Context, *connect.Request[v1.GetEvidenceRequest]) (*connect.Response[v1.GetEvidenceResponse], error)
+	// SubmitJob submits a new pipeline run.
+	SubmitJob(context.Context, *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error)
+	// ActionJob performs generic control actions for a job.
+	ActionJob(context.Context, *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error)
+	// ListJobs lists pipeline jobs with optional filters.
+	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
+	// ListJobStages lists all stages (tasks) under one job.
+	ListJobStages(context.Context, *connect.Request[v1.ListJobStagesRequest]) (*connect.Response[v1.ListJobStagesResponse], error)
 }
 
 // NewPipelineServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -182,56 +144,40 @@ type PipelineServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewPipelineServiceHandler(svc PipelineServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	pipelineServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("PipelineService").Methods()
-	pipelineServiceProcessWordHandler := connect.NewUnaryHandler(
-		PipelineServiceProcessWordProcedure,
-		svc.ProcessWord,
-		connect.WithSchema(pipelineServiceMethods.ByName("ProcessWord")),
+	pipelineServiceSubmitJobHandler := connect.NewUnaryHandler(
+		PipelineServiceSubmitJobProcedure,
+		svc.SubmitJob,
+		connect.WithSchema(pipelineServiceMethods.ByName("SubmitJob")),
 		connect.WithHandlerOptions(opts...),
 	)
-	pipelineServiceGetPipelineStatusHandler := connect.NewUnaryHandler(
-		PipelineServiceGetPipelineStatusProcedure,
-		svc.GetPipelineStatus,
-		connect.WithSchema(pipelineServiceMethods.ByName("GetPipelineStatus")),
+	pipelineServiceActionJobHandler := connect.NewUnaryHandler(
+		PipelineServiceActionJobProcedure,
+		svc.ActionJob,
+		connect.WithSchema(pipelineServiceMethods.ByName("ActionJob")),
 		connect.WithHandlerOptions(opts...),
 	)
-	pipelineServiceRetryPhaseHandler := connect.NewUnaryHandler(
-		PipelineServiceRetryPhaseProcedure,
-		svc.RetryPhase,
-		connect.WithSchema(pipelineServiceMethods.ByName("RetryPhase")),
+	pipelineServiceListJobsHandler := connect.NewUnaryHandler(
+		PipelineServiceListJobsProcedure,
+		svc.ListJobs,
+		connect.WithSchema(pipelineServiceMethods.ByName("ListJobs")),
 		connect.WithHandlerOptions(opts...),
 	)
-	pipelineServiceGetWordSnapshotHandler := connect.NewUnaryHandler(
-		PipelineServiceGetWordSnapshotProcedure,
-		svc.GetWordSnapshot,
-		connect.WithSchema(pipelineServiceMethods.ByName("GetWordSnapshot")),
-		connect.WithHandlerOptions(opts...),
-	)
-	pipelineServiceListWordSnapshotsHandler := connect.NewUnaryHandler(
-		PipelineServiceListWordSnapshotsProcedure,
-		svc.ListWordSnapshots,
-		connect.WithSchema(pipelineServiceMethods.ByName("ListWordSnapshots")),
-		connect.WithHandlerOptions(opts...),
-	)
-	pipelineServiceGetEvidenceHandler := connect.NewUnaryHandler(
-		PipelineServiceGetEvidenceProcedure,
-		svc.GetEvidence,
-		connect.WithSchema(pipelineServiceMethods.ByName("GetEvidence")),
+	pipelineServiceListJobStagesHandler := connect.NewUnaryHandler(
+		PipelineServiceListJobStagesProcedure,
+		svc.ListJobStages,
+		connect.WithSchema(pipelineServiceMethods.ByName("ListJobStages")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/pipeline.v1.PipelineService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case PipelineServiceProcessWordProcedure:
-			pipelineServiceProcessWordHandler.ServeHTTP(w, r)
-		case PipelineServiceGetPipelineStatusProcedure:
-			pipelineServiceGetPipelineStatusHandler.ServeHTTP(w, r)
-		case PipelineServiceRetryPhaseProcedure:
-			pipelineServiceRetryPhaseHandler.ServeHTTP(w, r)
-		case PipelineServiceGetWordSnapshotProcedure:
-			pipelineServiceGetWordSnapshotHandler.ServeHTTP(w, r)
-		case PipelineServiceListWordSnapshotsProcedure:
-			pipelineServiceListWordSnapshotsHandler.ServeHTTP(w, r)
-		case PipelineServiceGetEvidenceProcedure:
-			pipelineServiceGetEvidenceHandler.ServeHTTP(w, r)
+		case PipelineServiceSubmitJobProcedure:
+			pipelineServiceSubmitJobHandler.ServeHTTP(w, r)
+		case PipelineServiceActionJobProcedure:
+			pipelineServiceActionJobHandler.ServeHTTP(w, r)
+		case PipelineServiceListJobsProcedure:
+			pipelineServiceListJobsHandler.ServeHTTP(w, r)
+		case PipelineServiceListJobStagesProcedure:
+			pipelineServiceListJobStagesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -241,26 +187,18 @@ func NewPipelineServiceHandler(svc PipelineServiceHandler, opts ...connect.Handl
 // UnimplementedPipelineServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedPipelineServiceHandler struct{}
 
-func (UnimplementedPipelineServiceHandler) ProcessWord(context.Context, *connect.Request[v1.ProcessWordRequest]) (*connect.Response[v1.ProcessWordResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ProcessWord is not implemented"))
+func (UnimplementedPipelineServiceHandler) SubmitJob(context.Context, *connect.Request[v1.SubmitJobRequest]) (*connect.Response[v1.SubmitJobResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.SubmitJob is not implemented"))
 }
 
-func (UnimplementedPipelineServiceHandler) GetPipelineStatus(context.Context, *connect.Request[v1.GetPipelineStatusRequest]) (*connect.Response[v1.PipelineStatus], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.GetPipelineStatus is not implemented"))
+func (UnimplementedPipelineServiceHandler) ActionJob(context.Context, *connect.Request[v1.ActionJobRequest]) (*connect.Response[v1.ActionJobResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ActionJob is not implemented"))
 }
 
-func (UnimplementedPipelineServiceHandler) RetryPhase(context.Context, *connect.Request[v1.RetryPhaseRequest]) (*connect.Response[v1.PipelineStatus], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.RetryPhase is not implemented"))
+func (UnimplementedPipelineServiceHandler) ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ListJobs is not implemented"))
 }
 
-func (UnimplementedPipelineServiceHandler) GetWordSnapshot(context.Context, *connect.Request[v1.GetWordSnapshotRequest]) (*connect.Response[v1.WordSnapshotResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.GetWordSnapshot is not implemented"))
-}
-
-func (UnimplementedPipelineServiceHandler) ListWordSnapshots(context.Context, *connect.Request[v1.ListWordSnapshotsRequest]) (*connect.Response[v1.ListWordSnapshotsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ListWordSnapshots is not implemented"))
-}
-
-func (UnimplementedPipelineServiceHandler) GetEvidence(context.Context, *connect.Request[v1.GetEvidenceRequest]) (*connect.Response[v1.GetEvidenceResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.GetEvidence is not implemented"))
+func (UnimplementedPipelineServiceHandler) ListJobStages(context.Context, *connect.Request[v1.ListJobStagesRequest]) (*connect.Response[v1.ListJobStagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ListJobStages is not implemented"))
 }

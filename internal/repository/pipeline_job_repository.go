@@ -11,6 +11,7 @@ type PipelineJobRepository interface {
 	Create(ctx context.Context, job *entity.PipelineJob) (*entity.PipelineJob, error)
 	GetByID(ctx context.Context, id int64) (*entity.PipelineJob, error)
 	List(ctx context.Context, status *entity.JobStatus, limit int) ([]*entity.PipelineJob, error)
+	ListFiltered(ctx context.Context, query *ListPipelineJobsQuery) ([]*entity.PipelineJob, int64, error)
 
 	// ClaimNextBatch atomically claims up to limit PENDING jobs.
 	ClaimNextBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error)
@@ -23,4 +24,10 @@ type PipelineJobRepository interface {
 
 	// ChangeStatus performs a validated state transition (pause/resume/cancel/retry).
 	ChangeStatus(ctx context.Context, id int64, action entity.JobAction) error
+}
+
+type ListPipelineJobsQuery struct {
+	Pagination
+	Status  *entity.JobStatus
+	LemmaID int64
 }

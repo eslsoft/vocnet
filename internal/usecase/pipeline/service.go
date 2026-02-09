@@ -12,24 +12,21 @@ import (
 
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo   repository.PipelineJobRepository
-	taskRepo  repository.PipelineTaskRepository
-	lemmaRepo repository.LemmaRepository
-	logger    *slog.Logger
+	jobRepo  repository.PipelineJobRepository
+	taskRepo repository.PipelineTaskRepository
+	logger   *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
 func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
 	taskRepo repository.PipelineTaskRepository,
-	lemmaRepo repository.LemmaRepository,
 	logger *slog.Logger,
 ) *PipelineService {
 	return &PipelineService{
-		jobRepo:   jobRepo,
-		taskRepo:  taskRepo,
-		lemmaRepo: lemmaRepo,
-		logger:    logger,
+		jobRepo:  jobRepo,
+		taskRepo: taskRepo,
+		logger:   logger,
 	}
 }
 
@@ -48,13 +45,42 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 	}
 
 	job := &entity.PipelineJob{
-		Status:     entity.JobStatusPending,
-		Name:       fmt.Sprintf("word: %s", term),
-		Language:   language,
-		Tier:       tier,
-		Term:       term,
+		Status:   entity.JobStatusPending,
+		Name:     fmt.Sprintf("word: %s", term),
+		Language: language,
+		Tier:     tier,
+		Term:     term,
 	}
 
+	return s.jobRepo.Create(ctx, job)
+}
+
+// SubmitJob creates a pipeline job for API calls.
+// If name is empty, a default name is generated from term.
+func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, tier int32, name string) (*entity.PipelineJob, error) {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return nil, fmt.Errorf("term is required")
+	}
+	if language == "" {
+		language = "en"
+	}
+	if tier == 0 {
+		tier = 2
+	}
+
+	jobName := strings.TrimSpace(name)
+	if jobName == "" {
+		jobName = fmt.Sprintf("word: %s", term)
+	}
+
+	job := &entity.PipelineJob{
+		Status:   entity.JobStatusPending,
+		Name:     jobName,
+		Language: language,
+		Tier:     tier,
+		Term:     term,
+	}
 	return s.jobRepo.Create(ctx, job)
 }
 
@@ -80,11 +106,11 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 			jobName = fmt.Sprintf("word: %s", term)
 		}
 		job := &entity.PipelineJob{
-			Status:     entity.JobStatusPending,
-			Name:       jobName,
-			Language:   language,
-			Tier:       tier,
-			Term:       term,
+			Status:   entity.JobStatusPending,
+			Name:     jobName,
+			Language: language,
+			Tier:     tier,
+			Term:     term,
 		}
 		created, err := s.jobRepo.Create(ctx, job)
 		if err != nil {
@@ -105,7 +131,44 @@ func (s *PipelineService) ListJobs(ctx context.Context, status *entity.JobStatus
 	return s.jobRepo.List(ctx, status, 50)
 }
 
-// GetJobStageProgress computes stage progress for a job.
+// ListJobsQuery defines optional filters and pagination for querying jobs.
+type ListJobsQuery struct {
+	PageNo   int32
+	PageSize int32
+	Status   *entity.JobStatus
+	LemmaID  int64
+}
+
+// ListJobsFiltered returns jobs filtered by status/lemma_id with pagination.
+func (s *PipelineService) ListJobsFiltered(ctx context.Context, query *ListJobsQuery) ([]*entity.PipelineJob, int64, error) {
+	if query == nil {
+		query = &ListJobsQuery{}
+	}
+
+	pageNo := query.PageNo
+	if pageNo <= 0 {
+		pageNo = 1
+	}
+	pageSize := query.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 10000 {
+		pageSize = 10000
+	}
+
+	return s.jobRepo.ListFiltered(ctx, &repository.ListPipelineJobsQuery{
+		Pagination: repository.Pagination{
+			PageNo:   pageNo,
+			PageSize: pageSize,
+		},
+		Status:  query.Status,
+		LemmaID: query.LemmaID,
+	})
+}
+
+// GetJobStageProgress computes stage progress for a single-word job.
+// Returns nil for wordbook jobs (too expensive for list view).
 func (s *PipelineService) GetJobStageProgress(ctx context.Context, job *entity.PipelineJob) (*entity.StageProgressSummary, error) {
 	tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
 	if err != nil {
@@ -136,6 +199,46 @@ func (s *PipelineService) GetJobDetail(ctx context.Context, id int64) (*JobDetai
 	}
 
 	return detail, nil
+}
+
+// ListJobStages lists all stages for a given job.
+func (s *PipelineService) ListJobStages(ctx context.Context, jobID int64) ([]*entity.PipelineTask, error) {
+	if jobID == 0 {
+		return nil, entity.ErrInvalidInput
+	}
+
+	if _, err := s.jobRepo.GetByID(ctx, jobID); err != nil {
+		return nil, err
+	}
+
+	return s.taskRepo.ListByJob(ctx, jobID)
+}
+
+// CancelJob cancels a pending/running/paused job.
+func (s *PipelineService) CancelJob(ctx context.Context, id int64) error {
+	return s.jobRepo.ChangeStatus(ctx, id, entity.JobActionCancel)
+}
+
+// RenewAsNewJob creates a new job from an existing job.
+// It does not resume/retry the old job execution.
+func (s *PipelineService) RenewAsNewJob(ctx context.Context, id int64) (*entity.PipelineJob, error) {
+	oldJob, err := s.jobRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(oldJob.Term) == "" {
+		return nil, entity.ErrInvalidInput
+	}
+
+	newJob := &entity.PipelineJob{
+		Status:   entity.JobStatusPending,
+		Name:     oldJob.Name,
+		Language: oldJob.Language,
+		Tier:     oldJob.Tier,
+		Term:     oldJob.Term,
+	}
+	return s.jobRepo.Create(ctx, newJob)
 }
 
 // ControlJob performs a state transition on a job (pause/resume/cancel/retry).

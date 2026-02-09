@@ -407,8 +407,7 @@ func newPipelineDeps() (*pipelineDeps, error) {
 
 	jobRepo := repository.NewPipelineJobRepository(entClient)
 	taskRepo := repository.NewPipelineTaskRepository(entClient)
-	lemmaRepo := repository.NewLemmaRepository(entClient)
-	svc := pipeline.NewPipelineService(jobRepo, taskRepo, lemmaRepo, logger)
+	svc := pipeline.NewPipelineService(jobRepo, taskRepo, logger)
 
 	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
 }

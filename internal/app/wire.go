@@ -15,6 +15,7 @@ import (
 
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
+	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 )
 
@@ -54,6 +55,7 @@ var usecaseSet = wire.NewSet(
 	usecase.NewReviewPlanUsecase,
 	usecase.NewStatsUsecase,
 	pipeline.NewPipelineService,
+	pipeline.NewLemmaQueryService,
 )
 
 var serviceSet = wire.NewSet(
@@ -62,11 +64,15 @@ var serviceSet = wire.NewSet(
 	adaptergrpc.NewWordbookServiceServer,
 	adaptergrpc.NewReviewPlanServiceServer,
 	adaptergrpc.NewStatsServiceServer,
+	adaptergrpc.NewPipelineServiceServer,
+	adaptergrpc.NewLemmaServiceServer,
 	wire.Bind(new(learningv1connect.LearningServiceHandler), new(*adaptergrpc.LearningServiceServer)),
 	wire.Bind(new(dictv1connect.DictServiceHandler), new(*adaptergrpc.DictServiceServer)),
 	wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*adaptergrpc.WordbookServiceServer)),
 	wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*adaptergrpc.ReviewPlanServiceServer)),
 	wire.Bind(new(learningv1connect.StatsServiceHandler), new(*adaptergrpc.StatsServiceServer)),
+	wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*adaptergrpc.PipelineServiceServer)),
+	wire.Bind(new(pipelinev1connect.LemmaServiceHandler), new(*adaptergrpc.LemmaServiceServer)),
 )
 
 var serverSet = wire.NewSet(
