@@ -10,6 +10,20 @@ permissions:
   packages: write
 
 jobs:
+  publish-buf-module:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Publish Protobuf API to BSR
+      uses: bufbuild/buf-action@v1
+      with:
+        token: ${{ secrets.BUF_TOKEN }}
+        input: api/proto
+        push: true
+
   release:
     runs-on: ubuntu-latest
     env:
