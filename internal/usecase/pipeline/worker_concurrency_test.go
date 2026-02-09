@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gammazero/workerpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -84,7 +85,8 @@ func TestWorkerPoolPollAndSubmit_ClaimBoundedByAvailableSlots(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	pool := NewWorkerPool(repo, nil, logger, WorkerPoolConfig{
-		WorkerCount: 2,
+		WorkerCount:       2,
+		MetricsRegisterer: prometheus.NewRegistry(),
 	})
 	pool.pool = workerpool.New(2)
 	defer pool.pool.StopWait()

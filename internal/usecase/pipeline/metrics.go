@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"errors"
 	"sync/atomic"
 	"time"
 
@@ -80,11 +79,11 @@ func NewWorkerPoolMetricsWithRegistry(reg prometheus.Registerer) *WorkerPoolMetr
 	}
 
 	if reg != nil {
-		m.jobsProcessed = registerOrReuseCounterVec(reg, m.jobsProcessed)
-		m.jobDuration = registerOrReuseHistogram(reg, m.jobDuration)
-		m.jobsPerMinute = registerOrReuseGauge(reg, m.jobsPerMinute)
-		m.pendingJobs = registerOrReuseGauge(reg, m.pendingJobs)
-		m.uptime = registerOrReuseGauge(reg, m.uptime)
+		reg.MustRegister(m.jobsProcessed)
+		reg.MustRegister(m.jobDuration)
+		reg.MustRegister(m.jobsPerMinute)
+		reg.MustRegister(m.pendingJobs)
+		reg.MustRegister(m.uptime)
 	}
 
 	return m
@@ -232,49 +231,4 @@ func (m *WorkerPoolMetrics) Reset() {
 
 	m.jobsPerMinute.Set(0)
 	m.uptime.Set(0)
-}
-
-func registerOrReuseCounterVec(reg prometheus.Registerer, collector *prometheus.CounterVec) *prometheus.CounterVec {
-	if err := reg.Register(collector); err != nil {
-		var already prometheus.AlreadyRegisteredError
-		if errors.As(err, &already) {
-			existing, ok := already.ExistingCollector.(*prometheus.CounterVec)
-			if !ok {
-				panic(err)
-			}
-			return existing
-		}
-		panic(err)
-	}
-	return collector
-}
-
-func registerOrReuseHistogram(reg prometheus.Registerer, collector prometheus.Histogram) prometheus.Histogram {
-	if err := reg.Register(collector); err != nil {
-		var already prometheus.AlreadyRegisteredError
-		if errors.As(err, &already) {
-			existing, ok := already.ExistingCollector.(prometheus.Histogram)
-			if !ok {
-				panic(err)
-			}
-			return existing
-		}
-		panic(err)
-	}
-	return collector
-}
-
-func registerOrReuseGauge(reg prometheus.Registerer, collector prometheus.Gauge) prometheus.Gauge {
-	if err := reg.Register(collector); err != nil {
-		var already prometheus.AlreadyRegisteredError
-		if errors.As(err, &already) {
-			existing, ok := already.ExistingCollector.(prometheus.Gauge)
-			if !ok {
-				panic(err)
-			}
-			return existing
-		}
-		panic(err)
-	}
-	return collector
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -54,8 +55,9 @@ func TestDeduplicateTerms(t *testing.T) {
 func TestWorkerPoolStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	pool := NewWorkerPool(nil, nil, logger, WorkerPoolConfig{
-		WorkerCount:  1,
-		PollInterval: time.Second,
+		WorkerCount:       1,
+		PollInterval:      time.Second,
+		MetricsRegisterer: prometheus.NewRegistry(),
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

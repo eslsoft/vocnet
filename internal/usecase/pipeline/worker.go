@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gammazero/workerpool"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -14,9 +15,10 @@ import (
 
 // WorkerPoolConfig configures the worker pool.
 type WorkerPoolConfig struct {
-	WorkerCount       int           // Number of concurrent workers (default: 1)
-	PollInterval      time.Duration // Interval between job polls (default: 5s)
-	ProgressLogInterval time.Duration // Interval between progress logs (default: 30s, 0 to disable)
+	WorkerCount         int                   // Number of concurrent workers (default: 1)
+	PollInterval        time.Duration         // Interval between job polls (default: 5s)
+	ProgressLogInterval time.Duration         // Interval between progress logs (default: 30s, 0 to disable)
+	MetricsRegisterer   prometheus.Registerer // Metrics registry (default: prometheus.DefaultRegisterer)
 }
 
 // WorkerPool manages concurrent pipeline job processing using gammazero/workerpool.
@@ -53,6 +55,9 @@ func NewWorkerPool(
 	if config.ProgressLogInterval == 0 {
 		config.ProgressLogInterval = 30 * time.Second
 	}
+	if config.MetricsRegisterer == nil {
+		config.MetricsRegisterer = prometheus.DefaultRegisterer
+	}
 
 	wp := &WorkerPool{
 		jobRepo:  jobRepo,
@@ -60,7 +65,7 @@ func NewWorkerPool(
 		logger:   logger.With("component", "pipeline-worker-pool"),
 		config:   config,
 		done:     make(chan struct{}),
-		metrics:  NewWorkerPoolMetrics(),
+		metrics:  NewWorkerPoolMetricsWithRegistry(config.MetricsRegisterer),
 	}
 	wp.processFn = wp.processJob
 	return wp
