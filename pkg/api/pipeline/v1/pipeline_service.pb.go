@@ -7,9 +7,10 @@
 package pipelinev1
 
 import (
+	_ "github.com/envoyproxy/protoc-gen-validate/validate"
+	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -23,31 +24,31 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ProcessWordRequest initiates pipeline processing for a word.
-type ProcessWordRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`             // The word to process
-	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`     // Language code (default "en")
-	Tier          int32                  `protobuf:"varint,3,opt,name=tier,proto3" json:"tier,omitempty"`            // Priority tier: 1=Core, 2=Extended, 3=LongTail (default 2)
-	Phases        []int32                `protobuf:"varint,4,rep,packed,name=phases,proto3" json:"phases,omitempty"` // Specific phases to run (empty = all phases)
+type ListJobsRequest struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Pagination *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	// Optional filter: PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED.
+	Status string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	// Optional filter by lemma ID.
+	LemmaId       int64 `protobuf:"varint,3,opt,name=lemma_id,json=lemmaId,proto3" json:"lemma_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ProcessWordRequest) Reset() {
-	*x = ProcessWordRequest{}
+func (x *ListJobsRequest) Reset() {
+	*x = ListJobsRequest{}
 	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ProcessWordRequest) String() string {
+func (x *ListJobsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ProcessWordRequest) ProtoMessage() {}
+func (*ListJobsRequest) ProtoMessage() {}
 
-func (x *ProcessWordRequest) ProtoReflect() protoreflect.Message {
+func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -59,64 +60,68 @@ func (x *ProcessWordRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ProcessWordRequest.ProtoReflect.Descriptor instead.
-func (*ProcessWordRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
+func (*ListJobsRequest) Descriptor() ([]byte, []int) {
 	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ProcessWordRequest) GetTerm() string {
+func (x *ListJobsRequest) GetPagination() *v1.PaginationRequest {
 	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *ProcessWordRequest) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-func (x *ProcessWordRequest) GetTier() int32 {
-	if x != nil {
-		return x.Tier
-	}
-	return 0
-}
-
-func (x *ProcessWordRequest) GetPhases() []int32 {
-	if x != nil {
-		return x.Phases
+		return x.Pagination
 	}
 	return nil
 }
 
-// ProcessWordResponse contains the result of pipeline execution.
-type ProcessWordResponse struct {
+func (x *ListJobsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListJobsRequest) GetLemmaId() int64 {
+	if x != nil {
+		return x.LemmaId
+	}
+	return 0
+}
+
+type PipelineJob struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	LemmaId       int64                  `protobuf:"varint,1,opt,name=lemma_id,json=lemmaId,proto3" json:"lemma_id,omitempty"`
-	Term          string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`
-	Status        *PipelineStatus        `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
-	Snapshot      *WordSnapshotResponse  `protobuf:"bytes,4,opt,name=snapshot,proto3" json:"snapshot,omitempty"` // may be null if synthesis not yet run
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	JobType       string                 `protobuf:"bytes,2,opt,name=job_type,json=jobType,proto3" json:"job_type,omitempty"` // SINGLE_WORD, WORDBOOK
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                  // PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	Language      string                 `protobuf:"bytes,5,opt,name=language,proto3" json:"language,omitempty"`
+	Tier          int32                  `protobuf:"varint,6,opt,name=tier,proto3" json:"tier,omitempty"`
+	Term          string                 `protobuf:"bytes,7,opt,name=term,proto3" json:"term,omitempty"`
+	TotalTerms    int32                  `protobuf:"varint,8,opt,name=total_terms,json=totalTerms,proto3" json:"total_terms,omitempty"`
+	Processed     int32                  `protobuf:"varint,9,opt,name=processed,proto3" json:"processed,omitempty"`
+	Skipped       int32                  `protobuf:"varint,10,opt,name=skipped,proto3" json:"skipped,omitempty"`
+	Failed        int32                  `protobuf:"varint,11,opt,name=failed,proto3" json:"failed,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,12,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ProcessWordResponse) Reset() {
-	*x = ProcessWordResponse{}
+func (x *PipelineJob) Reset() {
+	*x = PipelineJob{}
 	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ProcessWordResponse) String() string {
+func (x *PipelineJob) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ProcessWordResponse) ProtoMessage() {}
+func (*PipelineJob) ProtoMessage() {}
 
-func (x *ProcessWordResponse) ProtoReflect() protoreflect.Message {
+func (x *PipelineJob) ProtoReflect() protoreflect.Message {
 	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -128,1208 +133,580 @@ func (x *ProcessWordResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ProcessWordResponse.ProtoReflect.Descriptor instead.
-func (*ProcessWordResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use PipelineJob.ProtoReflect.Descriptor instead.
+func (*PipelineJob) Descriptor() ([]byte, []int) {
 	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ProcessWordResponse) GetLemmaId() int64 {
-	if x != nil {
-		return x.LemmaId
-	}
-	return 0
-}
-
-func (x *ProcessWordResponse) GetTerm() string {
-	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *ProcessWordResponse) GetStatus() *PipelineStatus {
-	if x != nil {
-		return x.Status
-	}
-	return nil
-}
-
-func (x *ProcessWordResponse) GetSnapshot() *WordSnapshotResponse {
-	if x != nil {
-		return x.Snapshot
-	}
-	return nil
-}
-
-// GetPipelineStatusRequest requests the status of a word's pipeline.
-type GetPipelineStatusRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
-	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetPipelineStatusRequest) Reset() {
-	*x = GetPipelineStatusRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetPipelineStatusRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetPipelineStatusRequest) ProtoMessage() {}
-
-func (x *GetPipelineStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetPipelineStatusRequest.ProtoReflect.Descriptor instead.
-func (*GetPipelineStatusRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *GetPipelineStatusRequest) GetTerm() string {
-	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *GetPipelineStatusRequest) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-// PipelineStatus shows the execution state of all phases for a word.
-type PipelineStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	LemmaId       int64                  `protobuf:"varint,1,opt,name=lemma_id,json=lemmaId,proto3" json:"lemma_id,omitempty"`
-	Term          string                 `protobuf:"bytes,2,opt,name=term,proto3" json:"term,omitempty"`
-	Phases        []*PhaseStatus         `protobuf:"bytes,3,rep,name=phases,proto3" json:"phases,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PipelineStatus) Reset() {
-	*x = PipelineStatus{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PipelineStatus) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PipelineStatus) ProtoMessage() {}
-
-func (x *PipelineStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PipelineStatus.ProtoReflect.Descriptor instead.
-func (*PipelineStatus) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *PipelineStatus) GetLemmaId() int64 {
-	if x != nil {
-		return x.LemmaId
-	}
-	return 0
-}
-
-func (x *PipelineStatus) GetTerm() string {
-	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *PipelineStatus) GetPhases() []*PhaseStatus {
-	if x != nil {
-		return x.Phases
-	}
-	return nil
-}
-
-// PhaseStatus represents the state of a single pipeline phase.
-type PhaseStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Phase         int32                  `protobuf:"varint,1,opt,name=phase,proto3" json:"phase,omitempty"`                                  // Phase number (1-5)
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                     // Phase name: discovery, lexical, relational, intellectual, synthesis
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                                 // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED
-	Attempts      int32                  `protobuf:"varint,4,opt,name=attempts,proto3" json:"attempts,omitempty"`                            // Retry count
-	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"` // Last error message (if failed)
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PhaseStatus) Reset() {
-	*x = PhaseStatus{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PhaseStatus) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PhaseStatus) ProtoMessage() {}
-
-func (x *PhaseStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PhaseStatus.ProtoReflect.Descriptor instead.
-func (*PhaseStatus) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *PhaseStatus) GetPhase() int32 {
-	if x != nil {
-		return x.Phase
-	}
-	return 0
-}
-
-func (x *PhaseStatus) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *PhaseStatus) GetStatus() string {
-	if x != nil {
-		return x.Status
-	}
-	return ""
-}
-
-func (x *PhaseStatus) GetAttempts() int32 {
-	if x != nil {
-		return x.Attempts
-	}
-	return 0
-}
-
-func (x *PhaseStatus) GetErrorMessage() string {
-	if x != nil {
-		return x.ErrorMessage
-	}
-	return ""
-}
-
-func (x *PhaseStatus) GetStartedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.StartedAt
-	}
-	return nil
-}
-
-func (x *PhaseStatus) GetCompletedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CompletedAt
-	}
-	return nil
-}
-
-// RetryPhaseRequest retries a failed phase.
-type RetryPhaseRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
-	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
-	Phase         int32                  `protobuf:"varint,3,opt,name=phase,proto3" json:"phase,omitempty"` // Phase number to retry
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RetryPhaseRequest) Reset() {
-	*x = RetryPhaseRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RetryPhaseRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RetryPhaseRequest) ProtoMessage() {}
-
-func (x *RetryPhaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RetryPhaseRequest.ProtoReflect.Descriptor instead.
-func (*RetryPhaseRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *RetryPhaseRequest) GetTerm() string {
-	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *RetryPhaseRequest) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-func (x *RetryPhaseRequest) GetPhase() int32 {
-	if x != nil {
-		return x.Phase
-	}
-	return 0
-}
-
-// GetWordSnapshotRequest requests a word snapshot.
-type GetWordSnapshotRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
-	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetWordSnapshotRequest) Reset() {
-	*x = GetWordSnapshotRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetWordSnapshotRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetWordSnapshotRequest) ProtoMessage() {}
-
-func (x *GetWordSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetWordSnapshotRequest.ProtoReflect.Descriptor instead.
-func (*GetWordSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *GetWordSnapshotRequest) GetTerm() string {
-	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *GetWordSnapshotRequest) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-// WordSnapshotResponse contains the materialized word snapshot.
-type WordSnapshotResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
-	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
-	Version       int32                  `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
-	Lexemes       []*SnapshotLexeme      `protobuf:"bytes,5,rep,name=lexemes,proto3" json:"lexemes,omitempty"`
-	Relations     []*SnapshotRelation    `protobuf:"bytes,6,rep,name=relations,proto3" json:"relations,omitempty"`
-	Qscore        *QualityScore          `protobuf:"bytes,7,opt,name=qscore,proto3" json:"qscore,omitempty"`
-	SynthesizedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=synthesized_at,json=synthesizedAt,proto3" json:"synthesized_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *WordSnapshotResponse) Reset() {
-	*x = WordSnapshotResponse{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *WordSnapshotResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*WordSnapshotResponse) ProtoMessage() {}
-
-func (x *WordSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use WordSnapshotResponse.ProtoReflect.Descriptor instead.
-func (*WordSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *WordSnapshotResponse) GetTerm() string {
-	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *WordSnapshotResponse) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-func (x *WordSnapshotResponse) GetVersion() int32 {
-	if x != nil {
-		return x.Version
-	}
-	return 0
-}
-
-func (x *WordSnapshotResponse) GetLexemes() []*SnapshotLexeme {
-	if x != nil {
-		return x.Lexemes
-	}
-	return nil
-}
-
-func (x *WordSnapshotResponse) GetRelations() []*SnapshotRelation {
-	if x != nil {
-		return x.Relations
-	}
-	return nil
-}
-
-func (x *WordSnapshotResponse) GetQscore() *QualityScore {
-	if x != nil {
-		return x.Qscore
-	}
-	return nil
-}
-
-func (x *WordSnapshotResponse) GetSynthesizedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.SynthesizedAt
-	}
-	return nil
-}
-
-// SnapshotLexeme represents a POS-grouped lexeme in a snapshot.
-type SnapshotLexeme struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pos           string                 `protobuf:"bytes,1,opt,name=pos,proto3" json:"pos,omitempty"`
-	Senses        []*SnapshotSense       `protobuf:"bytes,2,rep,name=senses,proto3" json:"senses,omitempty"`
-	Forms         []*SnapshotForm        `protobuf:"bytes,3,rep,name=forms,proto3" json:"forms,omitempty"`
-	Phonetics     []*Phonetic            `protobuf:"bytes,4,rep,name=phonetics,proto3" json:"phonetics,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SnapshotLexeme) Reset() {
-	*x = SnapshotLexeme{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SnapshotLexeme) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SnapshotLexeme) ProtoMessage() {}
-
-func (x *SnapshotLexeme) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SnapshotLexeme.ProtoReflect.Descriptor instead.
-func (*SnapshotLexeme) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *SnapshotLexeme) GetPos() string {
-	if x != nil {
-		return x.Pos
-	}
-	return ""
-}
-
-func (x *SnapshotLexeme) GetSenses() []*SnapshotSense {
-	if x != nil {
-		return x.Senses
-	}
-	return nil
-}
-
-func (x *SnapshotLexeme) GetForms() []*SnapshotForm {
-	if x != nil {
-		return x.Forms
-	}
-	return nil
-}
-
-func (x *SnapshotLexeme) GetPhonetics() []*Phonetic {
-	if x != nil {
-		return x.Phonetics
-	}
-	return nil
-}
-
-// SnapshotSense is a single sense/definition in a snapshot.
-type SnapshotSense struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Language      string                 `protobuf:"bytes,1,opt,name=language,proto3" json:"language,omitempty"`
-	Gloss         string                 `protobuf:"bytes,2,opt,name=gloss,proto3" json:"gloss,omitempty"`
-	Examples      []string               `protobuf:"bytes,3,rep,name=examples,proto3" json:"examples,omitempty"`
-	Provider      string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`                            // Data source: wikidata, wordnet, ecdict, etc.
-	TrustWeight   float64                `protobuf:"fixed64,5,opt,name=trust_weight,json=trustWeight,proto3" json:"trust_weight,omitempty"` // Trust score 0.0-1.0
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SnapshotSense) Reset() {
-	*x = SnapshotSense{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SnapshotSense) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SnapshotSense) ProtoMessage() {}
-
-func (x *SnapshotSense) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SnapshotSense.ProtoReflect.Descriptor instead.
-func (*SnapshotSense) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *SnapshotSense) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-func (x *SnapshotSense) GetGloss() string {
-	if x != nil {
-		return x.Gloss
-	}
-	return ""
-}
-
-func (x *SnapshotSense) GetExamples() []string {
-	if x != nil {
-		return x.Examples
-	}
-	return nil
-}
-
-func (x *SnapshotSense) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
-func (x *SnapshotSense) GetTrustWeight() float64 {
-	if x != nil {
-		return x.TrustWeight
-	}
-	return 0
-}
-
-// SnapshotForm is an inflected form in a snapshot.
-type SnapshotForm struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Surface       string                 `protobuf:"bytes,1,opt,name=surface,proto3" json:"surface,omitempty"`
-	FormType      string                 `protobuf:"bytes,2,opt,name=form_type,json=formType,proto3" json:"form_type,omitempty"` // LEMMA, PLURAL, PAST, etc.
-	IsIrregular   bool                   `protobuf:"varint,3,opt,name=is_irregular,json=isIrregular,proto3" json:"is_irregular,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SnapshotForm) Reset() {
-	*x = SnapshotForm{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SnapshotForm) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SnapshotForm) ProtoMessage() {}
-
-func (x *SnapshotForm) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SnapshotForm.ProtoReflect.Descriptor instead.
-func (*SnapshotForm) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *SnapshotForm) GetSurface() string {
-	if x != nil {
-		return x.Surface
-	}
-	return ""
-}
-
-func (x *SnapshotForm) GetFormType() string {
-	if x != nil {
-		return x.FormType
-	}
-	return ""
-}
-
-func (x *SnapshotForm) GetIsIrregular() bool {
-	if x != nil {
-		return x.IsIrregular
-	}
-	return false
-}
-
-// Phonetic represents an IPA pronunciation.
-type Phonetic struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ipa           string                 `protobuf:"bytes,1,opt,name=ipa,proto3" json:"ipa,omitempty"`
-	Dialect       string                 `protobuf:"bytes,2,opt,name=dialect,proto3" json:"dialect,omitempty"` // en-US, en-GB, etc.
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Phonetic) Reset() {
-	*x = Phonetic{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Phonetic) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Phonetic) ProtoMessage() {}
-
-func (x *Phonetic) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Phonetic.ProtoReflect.Descriptor instead.
-func (*Phonetic) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *Phonetic) GetIpa() string {
-	if x != nil {
-		return x.Ipa
-	}
-	return ""
-}
-
-func (x *Phonetic) GetDialect() string {
-	if x != nil {
-		return x.Dialect
-	}
-	return ""
-}
-
-// SnapshotRelation is a semantic relation in a snapshot.
-type SnapshotRelation struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RelationType  string                 `protobuf:"bytes,1,opt,name=relation_type,json=relationType,proto3" json:"relation_type,omitempty"` // SYNONYM, ANTONYM, HYPERNYM, etc.
-	TargetTerm    string                 `protobuf:"bytes,2,opt,name=target_term,json=targetTerm,proto3" json:"target_term,omitempty"`
-	Provider      string                 `protobuf:"bytes,3,opt,name=provider,proto3" json:"provider,omitempty"`
-	Strength      float64                `protobuf:"fixed64,4,opt,name=strength,proto3" json:"strength,omitempty"`                         // Relation strength 0.0-1.0
-	SenseMapped   bool                   `protobuf:"varint,5,opt,name=sense_mapped,json=senseMapped,proto3" json:"sense_mapped,omitempty"` // Whether sense-level disambiguation is done
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SnapshotRelation) Reset() {
-	*x = SnapshotRelation{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SnapshotRelation) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SnapshotRelation) ProtoMessage() {}
-
-func (x *SnapshotRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SnapshotRelation.ProtoReflect.Descriptor instead.
-func (*SnapshotRelation) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *SnapshotRelation) GetRelationType() string {
-	if x != nil {
-		return x.RelationType
-	}
-	return ""
-}
-
-func (x *SnapshotRelation) GetTargetTerm() string {
-	if x != nil {
-		return x.TargetTerm
-	}
-	return ""
-}
-
-func (x *SnapshotRelation) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
-func (x *SnapshotRelation) GetStrength() float64 {
-	if x != nil {
-		return x.Strength
-	}
-	return 0
-}
-
-func (x *SnapshotRelation) GetSenseMapped() bool {
-	if x != nil {
-		return x.SenseMapped
-	}
-	return false
-}
-
-// QualityScore represents multi-dimensional quality metrics.
-type QualityScore struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Overall       float64                `protobuf:"fixed64,1,opt,name=overall,proto3" json:"overall,omitempty"`
-	Completeness  float64                `protobuf:"fixed64,2,opt,name=completeness,proto3" json:"completeness,omitempty"`
-	Depth         float64                `protobuf:"fixed64,3,opt,name=depth,proto3" json:"depth,omitempty"`
-	Density       float64                `protobuf:"fixed64,4,opt,name=density,proto3" json:"density,omitempty"`
-	Validity      float64                `protobuf:"fixed64,5,opt,name=validity,proto3" json:"validity,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *QualityScore) Reset() {
-	*x = QualityScore{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *QualityScore) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*QualityScore) ProtoMessage() {}
-
-func (x *QualityScore) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use QualityScore.ProtoReflect.Descriptor instead.
-func (*QualityScore) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *QualityScore) GetOverall() float64 {
-	if x != nil {
-		return x.Overall
-	}
-	return 0
-}
-
-func (x *QualityScore) GetCompleteness() float64 {
-	if x != nil {
-		return x.Completeness
-	}
-	return 0
-}
-
-func (x *QualityScore) GetDepth() float64 {
-	if x != nil {
-		return x.Depth
-	}
-	return 0
-}
-
-func (x *QualityScore) GetDensity() float64 {
-	if x != nil {
-		return x.Density
-	}
-	return 0
-}
-
-func (x *QualityScore) GetValidity() float64 {
-	if x != nil {
-		return x.Validity
-	}
-	return 0
-}
-
-// ListWordSnapshotsRequest requests a paginated list of snapshots.
-type ListWordSnapshotsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageNo        int32                  `protobuf:"varint,2,opt,name=page_no,json=pageNo,proto3" json:"page_no,omitempty"`
-	Language      string                 `protobuf:"bytes,3,opt,name=language,proto3" json:"language,omitempty"`
-	MinQscore     float64                `protobuf:"fixed64,4,opt,name=min_qscore,json=minQscore,proto3" json:"min_qscore,omitempty"` // Filter by minimum quality score
-	OrderBy       string                 `protobuf:"bytes,5,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`         // qscore, synthesized_at, term
-	Desc          bool                   `protobuf:"varint,6,opt,name=desc,proto3" json:"desc,omitempty"`                             // Sort descending
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListWordSnapshotsRequest) Reset() {
-	*x = ListWordSnapshotsRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListWordSnapshotsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListWordSnapshotsRequest) ProtoMessage() {}
-
-func (x *ListWordSnapshotsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListWordSnapshotsRequest.ProtoReflect.Descriptor instead.
-func (*ListWordSnapshotsRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *ListWordSnapshotsRequest) GetPageSize() int32 {
-	if x != nil {
-		return x.PageSize
-	}
-	return 0
-}
-
-func (x *ListWordSnapshotsRequest) GetPageNo() int32 {
-	if x != nil {
-		return x.PageNo
-	}
-	return 0
-}
-
-func (x *ListWordSnapshotsRequest) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-func (x *ListWordSnapshotsRequest) GetMinQscore() float64 {
-	if x != nil {
-		return x.MinQscore
-	}
-	return 0
-}
-
-func (x *ListWordSnapshotsRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
-	}
-	return ""
-}
-
-func (x *ListWordSnapshotsRequest) GetDesc() bool {
-	if x != nil {
-		return x.Desc
-	}
-	return false
-}
-
-// ListWordSnapshotsResponse contains a paginated list of snapshots.
-type ListWordSnapshotsResponse struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Snapshots     []*WordSnapshotResponse `protobuf:"bytes,1,rep,name=snapshots,proto3" json:"snapshots,omitempty"`
-	Total         int32                   `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	PageNo        int32                   `protobuf:"varint,3,opt,name=page_no,json=pageNo,proto3" json:"page_no,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListWordSnapshotsResponse) Reset() {
-	*x = ListWordSnapshotsResponse{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListWordSnapshotsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListWordSnapshotsResponse) ProtoMessage() {}
-
-func (x *ListWordSnapshotsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListWordSnapshotsResponse.ProtoReflect.Descriptor instead.
-func (*ListWordSnapshotsResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *ListWordSnapshotsResponse) GetSnapshots() []*WordSnapshotResponse {
-	if x != nil {
-		return x.Snapshots
-	}
-	return nil
-}
-
-func (x *ListWordSnapshotsResponse) GetTotal() int32 {
-	if x != nil {
-		return x.Total
-	}
-	return 0
-}
-
-func (x *ListWordSnapshotsResponse) GetPageNo() int32 {
-	if x != nil {
-		return x.PageNo
-	}
-	return 0
-}
-
-// GetEvidenceRequest requests raw evidence for a word.
-type GetEvidenceRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`
-	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
-	Phase         int32                  `protobuf:"varint,3,opt,name=phase,proto3" json:"phase,omitempty"`      // Filter by phase (0 = all phases)
-	Provider      string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"` // Filter by provider (empty = all providers)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetEvidenceRequest) Reset() {
-	*x = GetEvidenceRequest{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[16]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetEvidenceRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetEvidenceRequest) ProtoMessage() {}
-
-func (x *GetEvidenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[16]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetEvidenceRequest.ProtoReflect.Descriptor instead.
-func (*GetEvidenceRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *GetEvidenceRequest) GetTerm() string {
-	if x != nil {
-		return x.Term
-	}
-	return ""
-}
-
-func (x *GetEvidenceRequest) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-func (x *GetEvidenceRequest) GetPhase() int32 {
-	if x != nil {
-		return x.Phase
-	}
-	return 0
-}
-
-func (x *GetEvidenceRequest) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
-// GetEvidenceResponse contains raw evidence envelopes.
-type GetEvidenceResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Evidences     []*Evidence            `protobuf:"bytes,1,rep,name=evidences,proto3" json:"evidences,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetEvidenceResponse) Reset() {
-	*x = GetEvidenceResponse{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetEvidenceResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetEvidenceResponse) ProtoMessage() {}
-
-func (x *GetEvidenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetEvidenceResponse.ProtoReflect.Descriptor instead.
-func (*GetEvidenceResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{17}
-}
-
-func (x *GetEvidenceResponse) GetEvidences() []*Evidence {
-	if x != nil {
-		return x.Evidences
-	}
-	return nil
-}
-
-// Evidence represents a raw evidence envelope.
-type Evidence struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Provider      string                 `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
-	Phase         int32                  `protobuf:"varint,3,opt,name=phase,proto3" json:"phase,omitempty"`
-	Content       *structpb.Struct       `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"` // Raw JSON response
-	SchemaVersion string                 `protobuf:"bytes,5,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
-	FetchedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=fetched_at,json=fetchedAt,proto3" json:"fetched_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Evidence) Reset() {
-	*x = Evidence{}
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Evidence) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Evidence) ProtoMessage() {}
-
-func (x *Evidence) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Evidence.ProtoReflect.Descriptor instead.
-func (*Evidence) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *Evidence) GetId() int64 {
+func (x *PipelineJob) GetId() int64 {
 	if x != nil {
 		return x.Id
 	}
 	return 0
 }
 
-func (x *Evidence) GetProvider() string {
+func (x *PipelineJob) GetJobType() string {
 	if x != nil {
-		return x.Provider
+		return x.JobType
 	}
 	return ""
 }
 
-func (x *Evidence) GetPhase() int32 {
+func (x *PipelineJob) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetTier() int32 {
+	if x != nil {
+		return x.Tier
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetTerm() string {
+	if x != nil {
+		return x.Term
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetTotalTerms() int32 {
+	if x != nil {
+		return x.TotalTerms
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetProcessed() int32 {
+	if x != nil {
+		return x.Processed
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetSkipped() int32 {
+	if x != nil {
+		return x.Skipped
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetFailed() int32 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
+}
+
+func (x *PipelineJob) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *PipelineJob) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *PipelineJob) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+func (x *PipelineJob) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *PipelineJob) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ListJobsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*PipelineJob         `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	Pagination    *v1.PaginationResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsResponse) Reset() {
+	*x = ListJobsResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsResponse) ProtoMessage() {}
+
+func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
+func (*ListJobsResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListJobsResponse) GetJobs() []*PipelineJob {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+func (x *ListJobsResponse) GetPagination() *v1.PaginationResponse {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+type ListJobStagesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         int64                  `protobuf:"varint,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobStagesRequest) Reset() {
+	*x = ListJobStagesRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobStagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobStagesRequest) ProtoMessage() {}
+
+func (x *ListJobStagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobStagesRequest.ProtoReflect.Descriptor instead.
+func (*ListJobStagesRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ListJobStagesRequest) GetJobId() int64 {
+	if x != nil {
+		return x.JobId
+	}
+	return 0
+}
+
+type PipelineStage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	JobId         int64                  `protobuf:"varint,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	LemmaId       int64                  `protobuf:"varint,3,opt,name=lemma_id,json=lemmaId,proto3" json:"lemma_id,omitempty"`
+	Phase         int32                  `protobuf:"varint,4,opt,name=phase,proto3" json:"phase,omitempty"`                         // 1..5
+	PhaseName     string                 `protobuf:"bytes,5,opt,name=phase_name,json=phaseName,proto3" json:"phase_name,omitempty"` // discovery, lexical, relational, intellectual, synthesis
+	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`                        // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED
+	Attempts      int32                  `protobuf:"varint,7,opt,name=attempts,proto3" json:"attempts,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,8,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PipelineStage) Reset() {
+	*x = PipelineStage{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PipelineStage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PipelineStage) ProtoMessage() {}
+
+func (x *PipelineStage) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PipelineStage.ProtoReflect.Descriptor instead.
+func (*PipelineStage) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *PipelineStage) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *PipelineStage) GetJobId() int64 {
+	if x != nil {
+		return x.JobId
+	}
+	return 0
+}
+
+func (x *PipelineStage) GetLemmaId() int64 {
+	if x != nil {
+		return x.LemmaId
+	}
+	return 0
+}
+
+func (x *PipelineStage) GetPhase() int32 {
 	if x != nil {
 		return x.Phase
 	}
 	return 0
 }
 
-func (x *Evidence) GetContent() *structpb.Struct {
+func (x *PipelineStage) GetPhaseName() string {
 	if x != nil {
-		return x.Content
-	}
-	return nil
-}
-
-func (x *Evidence) GetSchemaVersion() string {
-	if x != nil {
-		return x.SchemaVersion
+		return x.PhaseName
 	}
 	return ""
 }
 
-func (x *Evidence) GetFetchedAt() *timestamppb.Timestamp {
+func (x *PipelineStage) GetStatus() string {
 	if x != nil {
-		return x.FetchedAt
+		return x.Status
+	}
+	return ""
+}
+
+func (x *PipelineStage) GetAttempts() int32 {
+	if x != nil {
+		return x.Attempts
+	}
+	return 0
+}
+
+func (x *PipelineStage) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *PipelineStage) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *PipelineStage) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+func (x *PipelineStage) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *PipelineStage) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ListJobStagesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stages        []*PipelineStage       `protobuf:"bytes,1,rep,name=stages,proto3" json:"stages,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobStagesResponse) Reset() {
+	*x = ListJobStagesResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobStagesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobStagesResponse) ProtoMessage() {}
+
+func (x *ListJobStagesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobStagesResponse.ProtoReflect.Descriptor instead.
+func (*ListJobStagesResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListJobStagesResponse) GetStages() []*PipelineStage {
+	if x != nil {
+		return x.Stages
+	}
+	return nil
+}
+
+type ListLemmasRequest struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Pagination *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	// Optional fuzzy search on lemma surface / normalized form.
+	Keyword       string `protobuf:"bytes,2,opt,name=keyword,proto3" json:"keyword,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLemmasRequest) Reset() {
+	*x = ListLemmasRequest{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLemmasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLemmasRequest) ProtoMessage() {}
+
+func (x *ListLemmasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLemmasRequest.ProtoReflect.Descriptor instead.
+func (*ListLemmasRequest) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListLemmasRequest) GetPagination() *v1.PaginationRequest {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+func (x *ListLemmasRequest) GetKeyword() string {
+	if x != nil {
+		return x.Keyword
+	}
+	return ""
+}
+
+type LemmaItem struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Surface       string                 `protobuf:"bytes,2,opt,name=surface,proto3" json:"surface,omitempty"`
+	Normalized    string                 `protobuf:"bytes,3,opt,name=normalized,proto3" json:"normalized,omitempty"`
+	Level         string                 `protobuf:"bytes,4,opt,name=level,proto3" json:"level,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LemmaItem) Reset() {
+	*x = LemmaItem{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LemmaItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LemmaItem) ProtoMessage() {}
+
+func (x *LemmaItem) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LemmaItem.ProtoReflect.Descriptor instead.
+func (*LemmaItem) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *LemmaItem) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *LemmaItem) GetSurface() string {
+	if x != nil {
+		return x.Surface
+	}
+	return ""
+}
+
+func (x *LemmaItem) GetNormalized() string {
+	if x != nil {
+		return x.Normalized
+	}
+	return ""
+}
+
+func (x *LemmaItem) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
+func (x *LemmaItem) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *LemmaItem) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ListLemmasResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Lemmas        []*LemmaItem           `protobuf:"bytes,1,rep,name=lemmas,proto3" json:"lemmas,omitempty"`
+	Pagination    *v1.PaginationResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLemmasResponse) Reset() {
+	*x = ListLemmasResponse{}
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLemmasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLemmasResponse) ProtoMessage() {}
+
+func (x *ListLemmasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pipeline_v1_pipeline_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLemmasResponse.ProtoReflect.Descriptor instead.
+func (*ListLemmasResponse) Descriptor() ([]byte, []int) {
+	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListLemmasResponse) GetLemmas() []*LemmaItem {
+	if x != nil {
+		return x.Lemmas
+	}
+	return nil
+}
+
+func (x *ListLemmasResponse) GetPagination() *v1.PaginationResponse {
+	if x != nil {
+		return x.Pagination
 	}
 	return nil
 }
@@ -1338,114 +715,88 @@ var File_pipeline_v1_pipeline_service_proto protoreflect.FileDescriptor
 
 const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"\n" +
-	"\"pipeline/v1/pipeline_service.proto\x12\vpipeline.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"p\n" +
-	"\x12ProcessWordRequest\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x12\n" +
-	"\x04tier\x18\x03 \x01(\x05R\x04tier\x12\x16\n" +
-	"\x06phases\x18\x04 \x03(\x05R\x06phases\"\xb8\x01\n" +
-	"\x13ProcessWordResponse\x12\x19\n" +
-	"\blemma_id\x18\x01 \x01(\x03R\alemmaId\x12\x12\n" +
-	"\x04term\x18\x02 \x01(\tR\x04term\x123\n" +
-	"\x06status\x18\x03 \x01(\v2\x1b.pipeline.v1.PipelineStatusR\x06status\x12=\n" +
-	"\bsnapshot\x18\x04 \x01(\v2!.pipeline.v1.WordSnapshotResponseR\bsnapshot\"J\n" +
-	"\x18GetPipelineStatusRequest\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\"q\n" +
-	"\x0ePipelineStatus\x12\x19\n" +
-	"\blemma_id\x18\x01 \x01(\x03R\alemmaId\x12\x12\n" +
-	"\x04term\x18\x02 \x01(\tR\x04term\x120\n" +
-	"\x06phases\x18\x03 \x03(\v2\x18.pipeline.v1.PhaseStatusR\x06phases\"\x8a\x02\n" +
-	"\vPhaseStatus\x12\x14\n" +
-	"\x05phase\x18\x01 \x01(\x05R\x05phase\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1a\n" +
-	"\battempts\x18\x04 \x01(\x05R\battempts\x12#\n" +
-	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage\x129\n" +
+	"\"pipeline/v1/pipeline_service.proto\x12\vpipeline.v1\x1a\x15common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\x8b\x01\n" +
+	"\x0fListJobsRequest\x12<\n" +
 	"\n" +
-	"started_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
-	"\fcompleted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"Y\n" +
-	"\x11RetryPhaseRequest\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x14\n" +
-	"\x05phase\x18\x03 \x01(\x05R\x05phase\"H\n" +
-	"\x16GetWordSnapshotRequest\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\"\xca\x02\n" +
-	"\x14WordSnapshotResponse\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x18\n" +
-	"\aversion\x18\x04 \x01(\x05R\aversion\x125\n" +
-	"\alexemes\x18\x05 \x03(\v2\x1b.pipeline.v1.SnapshotLexemeR\alexemes\x12;\n" +
-	"\trelations\x18\x06 \x03(\v2\x1d.pipeline.v1.SnapshotRelationR\trelations\x121\n" +
-	"\x06qscore\x18\a \x01(\v2\x19.pipeline.v1.QualityScoreR\x06qscore\x12A\n" +
-	"\x0esynthesized_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\rsynthesizedAt\"\xbc\x01\n" +
-	"\x0eSnapshotLexeme\x12\x10\n" +
-	"\x03pos\x18\x01 \x01(\tR\x03pos\x122\n" +
-	"\x06senses\x18\x02 \x03(\v2\x1a.pipeline.v1.SnapshotSenseR\x06senses\x12/\n" +
-	"\x05forms\x18\x03 \x03(\v2\x19.pipeline.v1.SnapshotFormR\x05forms\x123\n" +
-	"\tphonetics\x18\x04 \x03(\v2\x15.pipeline.v1.PhoneticR\tphonetics\"\x9c\x01\n" +
-	"\rSnapshotSense\x12\x1a\n" +
-	"\blanguage\x18\x01 \x01(\tR\blanguage\x12\x14\n" +
-	"\x05gloss\x18\x02 \x01(\tR\x05gloss\x12\x1a\n" +
-	"\bexamples\x18\x03 \x03(\tR\bexamples\x12\x1a\n" +
-	"\bprovider\x18\x04 \x01(\tR\bprovider\x12!\n" +
-	"\ftrust_weight\x18\x05 \x01(\x01R\vtrustWeight\"h\n" +
-	"\fSnapshotForm\x12\x18\n" +
-	"\asurface\x18\x01 \x01(\tR\asurface\x12\x1b\n" +
-	"\tform_type\x18\x02 \x01(\tR\bformType\x12!\n" +
-	"\fis_irregular\x18\x03 \x01(\bR\visIrregular\"6\n" +
-	"\bPhonetic\x12\x10\n" +
-	"\x03ipa\x18\x01 \x01(\tR\x03ipa\x12\x18\n" +
-	"\adialect\x18\x02 \x01(\tR\adialect\"\xb3\x01\n" +
-	"\x10SnapshotRelation\x12#\n" +
-	"\rrelation_type\x18\x01 \x01(\tR\frelationType\x12\x1f\n" +
-	"\vtarget_term\x18\x02 \x01(\tR\n" +
-	"targetTerm\x12\x1a\n" +
-	"\bprovider\x18\x03 \x01(\tR\bprovider\x12\x1a\n" +
-	"\bstrength\x18\x04 \x01(\x01R\bstrength\x12!\n" +
-	"\fsense_mapped\x18\x05 \x01(\bR\vsenseMapped\"\x98\x01\n" +
-	"\fQualityScore\x12\x18\n" +
-	"\aoverall\x18\x01 \x01(\x01R\aoverall\x12\"\n" +
-	"\fcompleteness\x18\x02 \x01(\x01R\fcompleteness\x12\x14\n" +
-	"\x05depth\x18\x03 \x01(\x01R\x05depth\x12\x18\n" +
-	"\adensity\x18\x04 \x01(\x01R\adensity\x12\x1a\n" +
-	"\bvalidity\x18\x05 \x01(\x01R\bvalidity\"\xba\x01\n" +
-	"\x18ListWordSnapshotsRequest\x12\x1b\n" +
-	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x17\n" +
-	"\apage_no\x18\x02 \x01(\x05R\x06pageNo\x12\x1a\n" +
-	"\blanguage\x18\x03 \x01(\tR\blanguage\x12\x1d\n" +
+	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
+	"pagination\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\"\n" +
+	"\blemma_id\x18\x03 \x01(\x03B\a\xfaB\x04\"\x02(\x00R\alemmaId\"\xae\x04\n" +
+	"\vPipelineJob\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
+	"\bjob_type\x18\x02 \x01(\tR\ajobType\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12\x1a\n" +
+	"\blanguage\x18\x05 \x01(\tR\blanguage\x12\x12\n" +
+	"\x04tier\x18\x06 \x01(\x05R\x04tier\x12\x12\n" +
+	"\x04term\x18\a \x01(\tR\x04term\x12\x1f\n" +
+	"\vtotal_terms\x18\b \x01(\x05R\n" +
+	"totalTerms\x12\x1c\n" +
+	"\tprocessed\x18\t \x01(\x05R\tprocessed\x12\x18\n" +
+	"\askipped\x18\n" +
+	" \x01(\x05R\askipped\x12\x16\n" +
+	"\x06failed\x18\v \x01(\x05R\x06failed\x12#\n" +
+	"\rerror_message\x18\f \x01(\tR\ferrorMessage\x129\n" +
 	"\n" +
-	"min_qscore\x18\x04 \x01(\x01R\tminQscore\x12\x19\n" +
-	"\border_by\x18\x05 \x01(\tR\aorderBy\x12\x12\n" +
-	"\x04desc\x18\x06 \x01(\bR\x04desc\"\x8b\x01\n" +
-	"\x19ListWordSnapshotsResponse\x12?\n" +
-	"\tsnapshots\x18\x01 \x03(\v2!.pipeline.v1.WordSnapshotResponseR\tsnapshots\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x17\n" +
-	"\apage_no\x18\x03 \x01(\x05R\x06pageNo\"v\n" +
-	"\x12GetEvidenceRequest\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\tR\x04term\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x14\n" +
-	"\x05phase\x18\x03 \x01(\x05R\x05phase\x12\x1a\n" +
-	"\bprovider\x18\x04 \x01(\tR\bprovider\"J\n" +
-	"\x13GetEvidenceResponse\x123\n" +
-	"\tevidences\x18\x01 \x03(\v2\x15.pipeline.v1.EvidenceR\tevidences\"\xe1\x01\n" +
-	"\bEvidence\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1a\n" +
-	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x14\n" +
-	"\x05phase\x18\x03 \x01(\x05R\x05phase\x121\n" +
-	"\acontent\x18\x04 \x01(\v2\x17.google.protobuf.StructR\acontent\x12%\n" +
-	"\x0eschema_version\x18\x05 \x01(\tR\rschemaVersion\x129\n" +
+	"started_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
+	"\fcompleted_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x129\n" +
 	"\n" +
-	"fetched_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tfetchedAt2\x98\x04\n" +
-	"\x0fPipelineService\x12P\n" +
-	"\vProcessWord\x12\x1f.pipeline.v1.ProcessWordRequest\x1a .pipeline.v1.ProcessWordResponse\x12W\n" +
-	"\x11GetPipelineStatus\x12%.pipeline.v1.GetPipelineStatusRequest\x1a\x1b.pipeline.v1.PipelineStatus\x12I\n" +
+	"created_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"RetryPhase\x12\x1e.pipeline.v1.RetryPhaseRequest\x1a\x1b.pipeline.v1.PipelineStatus\x12Y\n" +
-	"\x0fGetWordSnapshot\x12#.pipeline.v1.GetWordSnapshotRequest\x1a!.pipeline.v1.WordSnapshotResponse\x12b\n" +
-	"\x11ListWordSnapshots\x12%.pipeline.v1.ListWordSnapshotsRequest\x1a&.pipeline.v1.ListWordSnapshotsResponse\x12P\n" +
-	"\vGetEvidence\x12\x1f.pipeline.v1.GetEvidenceRequest\x1a .pipeline.v1.GetEvidenceResponseB\xae\x01\n" +
+	"updated_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x7f\n" +
+	"\x10ListJobsResponse\x12,\n" +
+	"\x04jobs\x18\x01 \x03(\v2\x18.pipeline.v1.PipelineJobR\x04jobs\x12=\n" +
+	"\n" +
+	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
+	"pagination\"6\n" +
+	"\x14ListJobStagesRequest\x12\x1e\n" +
+	"\x06job_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x05jobId\"\xcf\x03\n" +
+	"\rPipelineStage\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x15\n" +
+	"\x06job_id\x18\x02 \x01(\x03R\x05jobId\x12\x19\n" +
+	"\blemma_id\x18\x03 \x01(\x03R\alemmaId\x12\x14\n" +
+	"\x05phase\x18\x04 \x01(\x05R\x05phase\x12\x1d\n" +
+	"\n" +
+	"phase_name\x18\x05 \x01(\tR\tphaseName\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1a\n" +
+	"\battempts\x18\a \x01(\x05R\battempts\x12#\n" +
+	"\rerror_message\x18\b \x01(\tR\ferrorMessage\x129\n" +
+	"\n" +
+	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
+	"\fcompleted_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x129\n" +
+	"\n" +
+	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"K\n" +
+	"\x15ListJobStagesResponse\x122\n" +
+	"\x06stages\x18\x01 \x03(\v2\x1a.pipeline.v1.PipelineStageR\x06stages\"k\n" +
+	"\x11ListLemmasRequest\x12<\n" +
+	"\n" +
+	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
+	"pagination\x12\x18\n" +
+	"\akeyword\x18\x02 \x01(\tR\akeyword\"\xe1\x01\n" +
+	"\tLemmaItem\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x18\n" +
+	"\asurface\x18\x02 \x01(\tR\asurface\x12\x1e\n" +
+	"\n" +
+	"normalized\x18\x03 \x01(\tR\n" +
+	"normalized\x12\x14\n" +
+	"\x05level\x18\x04 \x01(\tR\x05level\x129\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x83\x01\n" +
+	"\x12ListLemmasResponse\x12.\n" +
+	"\x06lemmas\x18\x01 \x03(\v2\x16.pipeline.v1.LemmaItemR\x06lemmas\x12=\n" +
+	"\n" +
+	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
+	"pagination2\x81\x02\n" +
+	"\x0fPipelineService\x12G\n" +
+	"\bListJobs\x12\x1c.pipeline.v1.ListJobsRequest\x1a\x1d.pipeline.v1.ListJobsResponse\x12V\n" +
+	"\rListJobStages\x12!.pipeline.v1.ListJobStagesRequest\x1a\".pipeline.v1.ListJobStagesResponse\x12M\n" +
+	"\n" +
+	"ListLemmas\x12\x1e.pipeline.v1.ListLemmasRequest\x1a\x1f.pipeline.v1.ListLemmasResponseB\xae\x01\n" +
 	"\x0fcom.pipeline.v1B\x14PipelineServiceProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1\xa2\x02\x03PXX\xaa\x02\vPipeline.V1\xca\x02\vPipeline\\V1\xe2\x02\x17Pipeline\\V1\\GPBMetadata\xea\x02\fPipeline::V1b\x06proto3"
 
 var (
@@ -1460,64 +811,50 @@ func file_pipeline_v1_pipeline_service_proto_rawDescGZIP() []byte {
 	return file_pipeline_v1_pipeline_service_proto_rawDescData
 }
 
-var file_pipeline_v1_pipeline_service_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_pipeline_v1_pipeline_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_pipeline_v1_pipeline_service_proto_goTypes = []any{
-	(*ProcessWordRequest)(nil),        // 0: pipeline.v1.ProcessWordRequest
-	(*ProcessWordResponse)(nil),       // 1: pipeline.v1.ProcessWordResponse
-	(*GetPipelineStatusRequest)(nil),  // 2: pipeline.v1.GetPipelineStatusRequest
-	(*PipelineStatus)(nil),            // 3: pipeline.v1.PipelineStatus
-	(*PhaseStatus)(nil),               // 4: pipeline.v1.PhaseStatus
-	(*RetryPhaseRequest)(nil),         // 5: pipeline.v1.RetryPhaseRequest
-	(*GetWordSnapshotRequest)(nil),    // 6: pipeline.v1.GetWordSnapshotRequest
-	(*WordSnapshotResponse)(nil),      // 7: pipeline.v1.WordSnapshotResponse
-	(*SnapshotLexeme)(nil),            // 8: pipeline.v1.SnapshotLexeme
-	(*SnapshotSense)(nil),             // 9: pipeline.v1.SnapshotSense
-	(*SnapshotForm)(nil),              // 10: pipeline.v1.SnapshotForm
-	(*Phonetic)(nil),                  // 11: pipeline.v1.Phonetic
-	(*SnapshotRelation)(nil),          // 12: pipeline.v1.SnapshotRelation
-	(*QualityScore)(nil),              // 13: pipeline.v1.QualityScore
-	(*ListWordSnapshotsRequest)(nil),  // 14: pipeline.v1.ListWordSnapshotsRequest
-	(*ListWordSnapshotsResponse)(nil), // 15: pipeline.v1.ListWordSnapshotsResponse
-	(*GetEvidenceRequest)(nil),        // 16: pipeline.v1.GetEvidenceRequest
-	(*GetEvidenceResponse)(nil),       // 17: pipeline.v1.GetEvidenceResponse
-	(*Evidence)(nil),                  // 18: pipeline.v1.Evidence
-	(*timestamppb.Timestamp)(nil),     // 19: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),           // 20: google.protobuf.Struct
+	(*ListJobsRequest)(nil),       // 0: pipeline.v1.ListJobsRequest
+	(*PipelineJob)(nil),           // 1: pipeline.v1.PipelineJob
+	(*ListJobsResponse)(nil),      // 2: pipeline.v1.ListJobsResponse
+	(*ListJobStagesRequest)(nil),  // 3: pipeline.v1.ListJobStagesRequest
+	(*PipelineStage)(nil),         // 4: pipeline.v1.PipelineStage
+	(*ListJobStagesResponse)(nil), // 5: pipeline.v1.ListJobStagesResponse
+	(*ListLemmasRequest)(nil),     // 6: pipeline.v1.ListLemmasRequest
+	(*LemmaItem)(nil),             // 7: pipeline.v1.LemmaItem
+	(*ListLemmasResponse)(nil),    // 8: pipeline.v1.ListLemmasResponse
+	(*v1.PaginationRequest)(nil),  // 9: common.v1.PaginationRequest
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(*v1.PaginationResponse)(nil), // 11: common.v1.PaginationResponse
 }
 var file_pipeline_v1_pipeline_service_proto_depIdxs = []int32{
-	3,  // 0: pipeline.v1.ProcessWordResponse.status:type_name -> pipeline.v1.PipelineStatus
-	7,  // 1: pipeline.v1.ProcessWordResponse.snapshot:type_name -> pipeline.v1.WordSnapshotResponse
-	4,  // 2: pipeline.v1.PipelineStatus.phases:type_name -> pipeline.v1.PhaseStatus
-	19, // 3: pipeline.v1.PhaseStatus.started_at:type_name -> google.protobuf.Timestamp
-	19, // 4: pipeline.v1.PhaseStatus.completed_at:type_name -> google.protobuf.Timestamp
-	8,  // 5: pipeline.v1.WordSnapshotResponse.lexemes:type_name -> pipeline.v1.SnapshotLexeme
-	12, // 6: pipeline.v1.WordSnapshotResponse.relations:type_name -> pipeline.v1.SnapshotRelation
-	13, // 7: pipeline.v1.WordSnapshotResponse.qscore:type_name -> pipeline.v1.QualityScore
-	19, // 8: pipeline.v1.WordSnapshotResponse.synthesized_at:type_name -> google.protobuf.Timestamp
-	9,  // 9: pipeline.v1.SnapshotLexeme.senses:type_name -> pipeline.v1.SnapshotSense
-	10, // 10: pipeline.v1.SnapshotLexeme.forms:type_name -> pipeline.v1.SnapshotForm
-	11, // 11: pipeline.v1.SnapshotLexeme.phonetics:type_name -> pipeline.v1.Phonetic
-	7,  // 12: pipeline.v1.ListWordSnapshotsResponse.snapshots:type_name -> pipeline.v1.WordSnapshotResponse
-	18, // 13: pipeline.v1.GetEvidenceResponse.evidences:type_name -> pipeline.v1.Evidence
-	20, // 14: pipeline.v1.Evidence.content:type_name -> google.protobuf.Struct
-	19, // 15: pipeline.v1.Evidence.fetched_at:type_name -> google.protobuf.Timestamp
-	0,  // 16: pipeline.v1.PipelineService.ProcessWord:input_type -> pipeline.v1.ProcessWordRequest
-	2,  // 17: pipeline.v1.PipelineService.GetPipelineStatus:input_type -> pipeline.v1.GetPipelineStatusRequest
-	5,  // 18: pipeline.v1.PipelineService.RetryPhase:input_type -> pipeline.v1.RetryPhaseRequest
-	6,  // 19: pipeline.v1.PipelineService.GetWordSnapshot:input_type -> pipeline.v1.GetWordSnapshotRequest
-	14, // 20: pipeline.v1.PipelineService.ListWordSnapshots:input_type -> pipeline.v1.ListWordSnapshotsRequest
-	16, // 21: pipeline.v1.PipelineService.GetEvidence:input_type -> pipeline.v1.GetEvidenceRequest
-	1,  // 22: pipeline.v1.PipelineService.ProcessWord:output_type -> pipeline.v1.ProcessWordResponse
-	3,  // 23: pipeline.v1.PipelineService.GetPipelineStatus:output_type -> pipeline.v1.PipelineStatus
-	3,  // 24: pipeline.v1.PipelineService.RetryPhase:output_type -> pipeline.v1.PipelineStatus
-	7,  // 25: pipeline.v1.PipelineService.GetWordSnapshot:output_type -> pipeline.v1.WordSnapshotResponse
-	15, // 26: pipeline.v1.PipelineService.ListWordSnapshots:output_type -> pipeline.v1.ListWordSnapshotsResponse
-	17, // 27: pipeline.v1.PipelineService.GetEvidence:output_type -> pipeline.v1.GetEvidenceResponse
-	22, // [22:28] is the sub-list for method output_type
-	16, // [16:22] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	9,  // 0: pipeline.v1.ListJobsRequest.pagination:type_name -> common.v1.PaginationRequest
+	10, // 1: pipeline.v1.PipelineJob.started_at:type_name -> google.protobuf.Timestamp
+	10, // 2: pipeline.v1.PipelineJob.completed_at:type_name -> google.protobuf.Timestamp
+	10, // 3: pipeline.v1.PipelineJob.created_at:type_name -> google.protobuf.Timestamp
+	10, // 4: pipeline.v1.PipelineJob.updated_at:type_name -> google.protobuf.Timestamp
+	1,  // 5: pipeline.v1.ListJobsResponse.jobs:type_name -> pipeline.v1.PipelineJob
+	11, // 6: pipeline.v1.ListJobsResponse.pagination:type_name -> common.v1.PaginationResponse
+	10, // 7: pipeline.v1.PipelineStage.started_at:type_name -> google.protobuf.Timestamp
+	10, // 8: pipeline.v1.PipelineStage.completed_at:type_name -> google.protobuf.Timestamp
+	10, // 9: pipeline.v1.PipelineStage.created_at:type_name -> google.protobuf.Timestamp
+	10, // 10: pipeline.v1.PipelineStage.updated_at:type_name -> google.protobuf.Timestamp
+	4,  // 11: pipeline.v1.ListJobStagesResponse.stages:type_name -> pipeline.v1.PipelineStage
+	9,  // 12: pipeline.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
+	10, // 13: pipeline.v1.LemmaItem.created_at:type_name -> google.protobuf.Timestamp
+	10, // 14: pipeline.v1.LemmaItem.updated_at:type_name -> google.protobuf.Timestamp
+	7,  // 15: pipeline.v1.ListLemmasResponse.lemmas:type_name -> pipeline.v1.LemmaItem
+	11, // 16: pipeline.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
+	0,  // 17: pipeline.v1.PipelineService.ListJobs:input_type -> pipeline.v1.ListJobsRequest
+	3,  // 18: pipeline.v1.PipelineService.ListJobStages:input_type -> pipeline.v1.ListJobStagesRequest
+	6,  // 19: pipeline.v1.PipelineService.ListLemmas:input_type -> pipeline.v1.ListLemmasRequest
+	2,  // 20: pipeline.v1.PipelineService.ListJobs:output_type -> pipeline.v1.ListJobsResponse
+	5,  // 21: pipeline.v1.PipelineService.ListJobStages:output_type -> pipeline.v1.ListJobStagesResponse
+	8,  // 22: pipeline.v1.PipelineService.ListLemmas:output_type -> pipeline.v1.ListLemmasResponse
+	20, // [20:23] is the sub-list for method output_type
+	17, // [17:20] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_pipeline_v1_pipeline_service_proto_init() }
@@ -1531,7 +868,7 @@ func file_pipeline_v1_pipeline_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pipeline_v1_pipeline_service_proto_rawDesc), len(file_pipeline_v1_pipeline_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
