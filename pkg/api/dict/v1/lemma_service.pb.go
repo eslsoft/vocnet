@@ -2,13 +2,12 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: pipeline/v1/lemma_service.proto
+// source: dict/v1/lemma_service.proto
 
-package pipelinev1
+package dictv1
 
 import (
 	v1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
-	v11 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -34,7 +33,7 @@ type ListLemmasRequest struct {
 
 func (x *ListLemmasRequest) Reset() {
 	*x = ListLemmasRequest{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[0]
+	mi := &file_dict_v1_lemma_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +45,7 @@ func (x *ListLemmasRequest) String() string {
 func (*ListLemmasRequest) ProtoMessage() {}
 
 func (x *ListLemmasRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[0]
+	mi := &file_dict_v1_lemma_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +58,7 @@ func (x *ListLemmasRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLemmasRequest.ProtoReflect.Descriptor instead.
 func (*ListLemmasRequest) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{0}
+	return file_dict_v1_lemma_service_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ListLemmasRequest) GetPagination() *v1.PaginationRequest {
@@ -78,7 +77,7 @@ func (x *ListLemmasRequest) GetKeyword() string {
 
 type ListLemmasResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Lemmas        []*v11.Lemma           `protobuf:"bytes,1,rep,name=lemmas,proto3" json:"lemmas,omitempty"`
+	Lemmas        []*Lemma               `protobuf:"bytes,1,rep,name=lemmas,proto3" json:"lemmas,omitempty"`
 	Pagination    *v1.PaginationResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -86,7 +85,7 @@ type ListLemmasResponse struct {
 
 func (x *ListLemmasResponse) Reset() {
 	*x = ListLemmasResponse{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[1]
+	mi := &file_dict_v1_lemma_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -98,7 +97,7 @@ func (x *ListLemmasResponse) String() string {
 func (*ListLemmasResponse) ProtoMessage() {}
 
 func (x *ListLemmasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[1]
+	mi := &file_dict_v1_lemma_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -111,10 +110,10 @@ func (x *ListLemmasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLemmasResponse.ProtoReflect.Descriptor instead.
 func (*ListLemmasResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{1}
+	return file_dict_v1_lemma_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ListLemmasResponse) GetLemmas() []*v11.Lemma {
+func (x *ListLemmasResponse) GetLemmas() []*Lemma {
 	if x != nil {
 		return x.Lemmas
 	}
@@ -128,11 +127,11 @@ func (x *ListLemmasResponse) GetPagination() *v1.PaginationResponse {
 	return nil
 }
 
-var File_pipeline_v1_lemma_service_proto protoreflect.FileDescriptor
+var File_dict_v1_lemma_service_proto protoreflect.FileDescriptor
 
-const file_pipeline_v1_lemma_service_proto_rawDesc = "" +
+const file_dict_v1_lemma_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1fpipeline/v1/lemma_service.proto\x12\vpipeline.v1\x1a\x15common/v1/types.proto\x1a\x13dict/v1/lemma.proto\"k\n" +
+	"\x1bdict/v1/lemma_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x13dict/v1/lemma.proto\"k\n" +
 	"\x11ListLemmasRequest\x12<\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
@@ -142,38 +141,38 @@ const file_pipeline_v1_lemma_service_proto_rawDesc = "" +
 	"\x06lemmas\x18\x01 \x03(\v2\x0e.dict.v1.LemmaR\x06lemmas\x12=\n" +
 	"\n" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
-	"pagination2]\n" +
-	"\fLemmaService\x12M\n" +
+	"pagination2U\n" +
+	"\fLemmaService\x12E\n" +
 	"\n" +
-	"ListLemmas\x12\x1e.pipeline.v1.ListLemmasRequest\x1a\x1f.pipeline.v1.ListLemmasResponseB\xab\x01\n" +
-	"\x0fcom.pipeline.v1B\x11LemmaServiceProtoP\x01Z8github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1\xa2\x02\x03PXX\xaa\x02\vPipeline.V1\xca\x02\vPipeline\\V1\xe2\x02\x17Pipeline\\V1\\GPBMetadata\xea\x02\fPipeline::V1b\x06proto3"
+	"ListLemmas\x12\x1a.dict.v1.ListLemmasRequest\x1a\x1b.dict.v1.ListLemmasResponseB\x8f\x01\n" +
+	"\vcom.dict.v1B\x11LemmaServiceProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
 
 var (
-	file_pipeline_v1_lemma_service_proto_rawDescOnce sync.Once
-	file_pipeline_v1_lemma_service_proto_rawDescData []byte
+	file_dict_v1_lemma_service_proto_rawDescOnce sync.Once
+	file_dict_v1_lemma_service_proto_rawDescData []byte
 )
 
-func file_pipeline_v1_lemma_service_proto_rawDescGZIP() []byte {
-	file_pipeline_v1_lemma_service_proto_rawDescOnce.Do(func() {
-		file_pipeline_v1_lemma_service_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_pipeline_v1_lemma_service_proto_rawDesc), len(file_pipeline_v1_lemma_service_proto_rawDesc)))
+func file_dict_v1_lemma_service_proto_rawDescGZIP() []byte {
+	file_dict_v1_lemma_service_proto_rawDescOnce.Do(func() {
+		file_dict_v1_lemma_service_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_dict_v1_lemma_service_proto_rawDesc), len(file_dict_v1_lemma_service_proto_rawDesc)))
 	})
-	return file_pipeline_v1_lemma_service_proto_rawDescData
+	return file_dict_v1_lemma_service_proto_rawDescData
 }
 
-var file_pipeline_v1_lemma_service_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_pipeline_v1_lemma_service_proto_goTypes = []any{
-	(*ListLemmasRequest)(nil),     // 0: pipeline.v1.ListLemmasRequest
-	(*ListLemmasResponse)(nil),    // 1: pipeline.v1.ListLemmasResponse
+var file_dict_v1_lemma_service_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_dict_v1_lemma_service_proto_goTypes = []any{
+	(*ListLemmasRequest)(nil),     // 0: dict.v1.ListLemmasRequest
+	(*ListLemmasResponse)(nil),    // 1: dict.v1.ListLemmasResponse
 	(*v1.PaginationRequest)(nil),  // 2: common.v1.PaginationRequest
-	(*v11.Lemma)(nil),             // 3: dict.v1.Lemma
+	(*Lemma)(nil),                 // 3: dict.v1.Lemma
 	(*v1.PaginationResponse)(nil), // 4: common.v1.PaginationResponse
 }
-var file_pipeline_v1_lemma_service_proto_depIdxs = []int32{
-	2, // 0: pipeline.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
-	3, // 1: pipeline.v1.ListLemmasResponse.lemmas:type_name -> dict.v1.Lemma
-	4, // 2: pipeline.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
-	0, // 3: pipeline.v1.LemmaService.ListLemmas:input_type -> pipeline.v1.ListLemmasRequest
-	1, // 4: pipeline.v1.LemmaService.ListLemmas:output_type -> pipeline.v1.ListLemmasResponse
+var file_dict_v1_lemma_service_proto_depIdxs = []int32{
+	2, // 0: dict.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
+	3, // 1: dict.v1.ListLemmasResponse.lemmas:type_name -> dict.v1.Lemma
+	4, // 2: dict.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
+	0, // 3: dict.v1.LemmaService.ListLemmas:input_type -> dict.v1.ListLemmasRequest
+	1, // 4: dict.v1.LemmaService.ListLemmas:output_type -> dict.v1.ListLemmasResponse
 	4, // [4:5] is the sub-list for method output_type
 	3, // [3:4] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -181,26 +180,27 @@ var file_pipeline_v1_lemma_service_proto_depIdxs = []int32{
 	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_pipeline_v1_lemma_service_proto_init() }
-func file_pipeline_v1_lemma_service_proto_init() {
-	if File_pipeline_v1_lemma_service_proto != nil {
+func init() { file_dict_v1_lemma_service_proto_init() }
+func file_dict_v1_lemma_service_proto_init() {
+	if File_dict_v1_lemma_service_proto != nil {
 		return
 	}
+	file_dict_v1_lemma_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pipeline_v1_lemma_service_proto_rawDesc), len(file_pipeline_v1_lemma_service_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_lemma_service_proto_rawDesc), len(file_dict_v1_lemma_service_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_pipeline_v1_lemma_service_proto_goTypes,
-		DependencyIndexes: file_pipeline_v1_lemma_service_proto_depIdxs,
-		MessageInfos:      file_pipeline_v1_lemma_service_proto_msgTypes,
+		GoTypes:           file_dict_v1_lemma_service_proto_goTypes,
+		DependencyIndexes: file_dict_v1_lemma_service_proto_depIdxs,
+		MessageInfos:      file_dict_v1_lemma_service_proto_msgTypes,
 	}.Build()
-	File_pipeline_v1_lemma_service_proto = out.File
-	file_pipeline_v1_lemma_service_proto_goTypes = nil
-	file_pipeline_v1_lemma_service_proto_depIdxs = nil
+	File_dict_v1_lemma_service_proto = out.File
+	file_dict_v1_lemma_service_proto_goTypes = nil
+	file_dict_v1_lemma_service_proto_depIdxs = nil
 }

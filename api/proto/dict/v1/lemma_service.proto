@@ -1,15 +1,15 @@
 syntax = "proto3";
 
-package pipeline.v1;
+package dict.v1;
 
 import "common/v1/types.proto";
 import "dict/v1/lemma.proto";
 
-option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
+option go_package = "github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1";
 
 // LemmaService provides lemma list APIs.
 service LemmaService {
-  // ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
+  // ListLemmas lists lemmas with optional fuzzy keyword matching.
   rpc ListLemmas(ListLemmasRequest) returns (ListLemmasResponse);
 }
 
@@ -20,6 +20,6 @@ message ListLemmasRequest {
 }
 
 message ListLemmasResponse {
-  repeated dict.v1.Lemma lemmas = 1;
+  repeated Lemma lemmas = 1;
   common.v1.PaginationResponse pagination = 2;
 }
