@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
@@ -489,9 +491,13 @@ func fetchPipelineStats(serverURL string) (*PipelineStats, error) {
 		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
+	return parsePipelineStats(resp.Body)
+}
+
+func parsePipelineStats(r io.Reader) (*PipelineStats, error) {
 	// Parse Prometheus text format using official parser
-	var parser expfmt.TextParser
-	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
+	parser := expfmt.NewTextParser(model.UTF8Validation)
+	metricFamilies, err := parser.TextToMetricFamilies(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse metrics: %w", err)
 	}
