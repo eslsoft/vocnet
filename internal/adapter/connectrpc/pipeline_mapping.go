@@ -54,38 +54,43 @@ func toPBLemma(lemma *entity.Lemma, snapshot *entity.WordSnapshot) *dictv1.Lemma
 		return nil
 	}
 	out := &dictv1.Lemma{
-		Id:         lemma.ID,
-		Surface:    lemma.Surface,
-		Normalized: lemma.Normalized,
-		Level:      toPBLemmaLevel(lemma.Level),
-		CreatedAt:  timestamppb.New(lemma.CreatedAt),
-		UpdatedAt:  timestamppb.New(lemma.UpdatedAt),
+		Id:            lemma.ID,
+		Surface:       lemma.Surface,
+		Normalized:    lemma.Normalized,
+		Level:         toPBLemmaLevel(lemma.Level),
+		CreatedAt:     timestamppb.New(lemma.CreatedAt),
+		UpdatedAt:     timestamppb.New(lemma.UpdatedAt),
+		LatestSnapshot: toPBSnapshot(snapshot),
 	}
-	if snapshot == nil {
-		return out
-	}
-
-	out.SnapshotId = &snapshot.ID
-	out.SnapshotJobId = snapshot.JobID
-	out.SnapshotTerm = snapshot.Term
-	out.SnapshotTerms = snapshot.Terms
-	out.SnapshotLanguage = snapshot.Language
-	out.SnapshotLatest = snapshot.Latest
-	out.SnapshotVersion = snapshot.Version
-	out.SnapshotData = toPBLemmaData(snapshot.Data)
-	out.SnapshotQScore = snapshot.QScore
-	out.SnapshotQScoreCompleteness = snapshot.QScoreCompleteness
-	out.SnapshotQScoreDepth = snapshot.QScoreDepth
-	out.SnapshotQScoreDensity = snapshot.QScoreDensity
-	out.SnapshotQScoreValidity = snapshot.QScoreValidity
-	out.SnapshotSynthesizedAt = timestamppb.New(snapshot.SynthesizedAt)
-	out.SnapshotCreatedAt = timestamppb.New(snapshot.CreatedAt)
-	out.SnapshotUpdatedAt = timestamppb.New(snapshot.UpdatedAt)
-
 	return out
 }
 
-func toPBLemmaData(data entity.SnapshotData) *dictv1.LemmaData {
+func toPBSnapshot(snapshot *entity.WordSnapshot) *dictv1.Snapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &dictv1.Snapshot{
+		Id:                snapshot.ID,
+		LemmaId:           snapshot.LemmaID,
+		JobId:             snapshot.JobID,
+		Term:              snapshot.Term,
+		Terms:             snapshot.Terms,
+		Language:          snapshot.Language,
+		Latest:            snapshot.Latest,
+		Version:           snapshot.Version,
+		Data:              toPBSnapshotData(snapshot.Data),
+		QScore:            snapshot.QScore,
+		QScoreCompleteness: snapshot.QScoreCompleteness,
+		QScoreDepth:       snapshot.QScoreDepth,
+		QScoreDensity:     snapshot.QScoreDensity,
+		QScoreValidity:    snapshot.QScoreValidity,
+		SynthesizedAt:     timestamppb.New(snapshot.SynthesizedAt),
+		CreatedAt:         timestamppb.New(snapshot.CreatedAt),
+		UpdatedAt:         timestamppb.New(snapshot.UpdatedAt),
+	}
+}
+
+func toPBSnapshotData(data entity.SnapshotData) *dictv1.SnapshotData {
 	lexemes := make([]*dictv1.Lexeme, 0, len(data.Lexemes))
 	for _, lexeme := range data.Lexemes {
 		lexemes = append(lexemes, toPBLexeme(lexeme))
@@ -96,7 +101,7 @@ func toPBLemmaData(data entity.SnapshotData) *dictv1.LemmaData {
 		relations = append(relations, toPBSemanticRelation(relation))
 	}
 
-	return &dictv1.LemmaData{
+	return &dictv1.SnapshotData{
 		Lexemes:   lexemes,
 		Relations: relations,
 	}

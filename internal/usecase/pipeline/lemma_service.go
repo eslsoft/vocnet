@@ -24,6 +24,12 @@ type ListLemmasQuery struct {
 	Keyword  string
 }
 
+type ListSnapshotsQuery struct {
+	LemmaID  int64
+	PageNo   int32
+	PageSize int32
+}
+
 type LemmaListItem struct {
 	Lemma    *entity.Lemma
 	Snapshot *entity.WordSnapshot
@@ -34,52 +40,40 @@ func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQue
 		query = &ListLemmasQuery{}
 	}
 
-	pageNo := query.PageNo
-	if pageNo <= 0 {
-		pageNo = 1
-	}
-	pageSize := query.PageSize
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 10000 {
-		pageSize = 10000
-	}
-
-	lemmas, total, err := s.lemmaRepo.List(ctx, &repository.ListWordsQuery{
-		Pagination: repository.Pagination{
-			PageNo:   pageNo,
-			PageSize: pageSize,
-		},
-		Keyword: strings.TrimSpace(query.Keyword),
-	})
+	snapshots, total, err := s.snapshotRepo.ListLatest(ctx, query.PageNo, query.PageSize, query.Keyword)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	lemmaIDs := make([]int64, 0, len(lemmas))
-	for _, lemma := range lemmas {
-		if lemma == nil {
+	items := make([]*LemmaListItem, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		if snapshot == nil {
 			continue
 		}
-		lemmaIDs = append(lemmaIDs, lemma.ID)
-	}
 
-	snapshotByLemmaID, err := s.snapshotRepo.ListLatestByLemmaIDs(ctx, lemmaIDs)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	items := make([]*LemmaListItem, 0, len(lemmas))
-	for _, lemma := range lemmas {
-		if lemma == nil {
-			continue
+		lemma, err := s.lemmaRepo.GetByID(ctx, snapshot.LemmaID)
+		if err != nil {
+			// Snapshot is the source of truth for this list endpoint.
+			// If lemma row is missing, return a minimal placeholder.
+			lemma = &entity.Lemma{
+				ID:         snapshot.LemmaID,
+				Surface:    snapshot.Term,
+				Normalized: strings.ToLower(snapshot.Term),
+			}
 		}
+
 		items = append(items, &LemmaListItem{
 			Lemma:    lemma,
-			Snapshot: snapshotByLemmaID[lemma.ID],
+			Snapshot: snapshot,
 		})
 	}
 
 	return items, total, nil
+}
+
+func (s *LemmaQueryService) ListSnapshots(ctx context.Context, query *ListSnapshotsQuery) ([]*entity.WordSnapshot, int64, error) {
+	if query == nil || query.LemmaID <= 0 {
+		return nil, 0, entity.ErrInvalidInput
+	}
+	return s.snapshotRepo.ListByLemmaID(ctx, query.LemmaID, query.PageNo, query.PageSize)
 }

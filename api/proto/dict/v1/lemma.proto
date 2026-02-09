@@ -17,12 +17,31 @@ enum LemmaLevel {
   LEMMA_LEVEL_C2 = 6;
 }
 
-message LemmaData {
+message SnapshotData {
   repeated Lexeme lexemes = 1;
   repeated SemanticRelation relations = 2;
 }
 
-// Lemma merges base lemma info and latest snapshot payload.
+message Snapshot {
+  int64 id = 1;
+  int64 lemma_id = 2;
+  optional int64 job_id = 3;
+  string term = 4;
+  repeated string terms = 5;
+  string language = 6;
+  bool latest = 7;
+  int32 version = 8;
+  SnapshotData data = 9;
+  double q_score = 10;
+  double q_score_completeness = 11;
+  double q_score_depth = 12;
+  double q_score_density = 13;
+  double q_score_validity = 14;
+  google.protobuf.Timestamp synthesized_at = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+}
+
 message Lemma {
   int64 id = 1;
   string surface = 2;
@@ -30,21 +49,5 @@ message Lemma {
   LemmaLevel level = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
-
-  optional int64 snapshot_id = 7;
-  optional int64 snapshot_job_id = 8;
-  string snapshot_term = 9;
-  repeated string snapshot_terms = 10;
-  string snapshot_language = 11;
-  bool snapshot_latest = 12;
-  int32 snapshot_version = 13;
-  LemmaData snapshot_data = 14;
-  double snapshot_q_score = 15;
-  double snapshot_q_score_completeness = 16;
-  double snapshot_q_score_depth = 17;
-  double snapshot_q_score_density = 18;
-  double snapshot_q_score_validity = 19;
-  google.protobuf.Timestamp snapshot_synthesized_at = 20;
-  google.protobuf.Timestamp snapshot_created_at = 21;
-  google.protobuf.Timestamp snapshot_updated_at = 22;
+  Snapshot latest_snapshot = 7;
 }

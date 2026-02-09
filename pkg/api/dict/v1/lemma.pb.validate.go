@@ -35,22 +35,22 @@ var (
 	_ = sort.Sort
 )
 
-// Validate checks the field values on LemmaData with the rules defined in the
-// proto definition for this message. If any rules are violated, the first
+// Validate checks the field values on SnapshotData with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
-func (m *LemmaData) Validate() error {
+func (m *SnapshotData) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on LemmaData with the rules defined in
-// the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in LemmaDataMultiError, or nil
-// if none found.
-func (m *LemmaData) ValidateAll() error {
+// ValidateAll checks the field values on SnapshotData with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in SnapshotDataMultiError, or
+// nil if none found.
+func (m *SnapshotData) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *LemmaData) validate(all bool) error {
+func (m *SnapshotData) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
@@ -64,7 +64,7 @@ func (m *LemmaData) validate(all bool) error {
 			switch v := interface{}(item).(type) {
 			case interface{ ValidateAll() error }:
 				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, LemmaDataValidationError{
+					errors = append(errors, SnapshotDataValidationError{
 						field:  fmt.Sprintf("Lexemes[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
@@ -72,7 +72,7 @@ func (m *LemmaData) validate(all bool) error {
 				}
 			case interface{ Validate() error }:
 				if err := v.Validate(); err != nil {
-					errors = append(errors, LemmaDataValidationError{
+					errors = append(errors, SnapshotDataValidationError{
 						field:  fmt.Sprintf("Lexemes[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
@@ -81,7 +81,7 @@ func (m *LemmaData) validate(all bool) error {
 			}
 		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
-				return LemmaDataValidationError{
+				return SnapshotDataValidationError{
 					field:  fmt.Sprintf("Lexemes[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -98,7 +98,7 @@ func (m *LemmaData) validate(all bool) error {
 			switch v := interface{}(item).(type) {
 			case interface{ ValidateAll() error }:
 				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, LemmaDataValidationError{
+					errors = append(errors, SnapshotDataValidationError{
 						field:  fmt.Sprintf("Relations[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
@@ -106,7 +106,7 @@ func (m *LemmaData) validate(all bool) error {
 				}
 			case interface{ Validate() error }:
 				if err := v.Validate(); err != nil {
-					errors = append(errors, LemmaDataValidationError{
+					errors = append(errors, SnapshotDataValidationError{
 						field:  fmt.Sprintf("Relations[%v]", idx),
 						reason: "embedded message failed validation",
 						cause:  err,
@@ -115,7 +115,7 @@ func (m *LemmaData) validate(all bool) error {
 			}
 		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
-				return LemmaDataValidationError{
+				return SnapshotDataValidationError{
 					field:  fmt.Sprintf("Relations[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -126,18 +126,18 @@ func (m *LemmaData) validate(all bool) error {
 	}
 
 	if len(errors) > 0 {
-		return LemmaDataMultiError(errors)
+		return SnapshotDataMultiError(errors)
 	}
 
 	return nil
 }
 
-// LemmaDataMultiError is an error wrapping multiple validation errors returned
-// by LemmaData.ValidateAll() if the designated constraints aren't met.
-type LemmaDataMultiError []error
+// SnapshotDataMultiError is an error wrapping multiple validation errors
+// returned by SnapshotData.ValidateAll() if the designated constraints aren't met.
+type SnapshotDataMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m LemmaDataMultiError) Error() string {
+func (m SnapshotDataMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -146,11 +146,11 @@ func (m LemmaDataMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m LemmaDataMultiError) AllErrors() []error { return m }
+func (m SnapshotDataMultiError) AllErrors() []error { return m }
 
-// LemmaDataValidationError is the validation error returned by
-// LemmaData.Validate if the designated constraints aren't met.
-type LemmaDataValidationError struct {
+// SnapshotDataValidationError is the validation error returned by
+// SnapshotData.Validate if the designated constraints aren't met.
+type SnapshotDataValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -158,22 +158,22 @@ type LemmaDataValidationError struct {
 }
 
 // Field function returns field value.
-func (e LemmaDataValidationError) Field() string { return e.field }
+func (e SnapshotDataValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e LemmaDataValidationError) Reason() string { return e.reason }
+func (e SnapshotDataValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e LemmaDataValidationError) Cause() error { return e.cause }
+func (e SnapshotDataValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e LemmaDataValidationError) Key() bool { return e.key }
+func (e SnapshotDataValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e LemmaDataValidationError) ErrorName() string { return "LemmaDataValidationError" }
+func (e SnapshotDataValidationError) ErrorName() string { return "SnapshotDataValidationError" }
 
 // Error satisfies the builtin error interface
-func (e LemmaDataValidationError) Error() string {
+func (e SnapshotDataValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -185,14 +185,14 @@ func (e LemmaDataValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sLemmaData.%s: %s%s",
+		"invalid %sSnapshotData.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = LemmaDataValidationError{}
+var _ error = SnapshotDataValidationError{}
 
 var _ interface {
 	Field() string
@@ -200,7 +200,248 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = LemmaDataValidationError{}
+} = SnapshotDataValidationError{}
+
+// Validate checks the field values on Snapshot with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *Snapshot) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Snapshot with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in SnapshotMultiError, or nil
+// if none found.
+func (m *Snapshot) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Snapshot) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Id
+
+	// no validation rules for LemmaId
+
+	// no validation rules for Term
+
+	// no validation rules for Language
+
+	// no validation rules for Latest
+
+	// no validation rules for Version
+
+	if all {
+		switch v := interface{}(m.GetData()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "Data",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "Data",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetData()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SnapshotValidationError{
+				field:  "Data",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for QScore
+
+	// no validation rules for QScoreCompleteness
+
+	// no validation rules for QScoreDepth
+
+	// no validation rules for QScoreDensity
+
+	// no validation rules for QScoreValidity
+
+	if all {
+		switch v := interface{}(m.GetSynthesizedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "SynthesizedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "SynthesizedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetSynthesizedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SnapshotValidationError{
+				field:  "SynthesizedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetCreatedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "CreatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "CreatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetCreatedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SnapshotValidationError{
+				field:  "CreatedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetUpdatedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "UpdatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, SnapshotValidationError{
+					field:  "UpdatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetUpdatedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SnapshotValidationError{
+				field:  "UpdatedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if m.JobId != nil {
+		// no validation rules for JobId
+	}
+
+	if len(errors) > 0 {
+		return SnapshotMultiError(errors)
+	}
+
+	return nil
+}
+
+// SnapshotMultiError is an error wrapping multiple validation errors returned
+// by Snapshot.ValidateAll() if the designated constraints aren't met.
+type SnapshotMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SnapshotMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SnapshotMultiError) AllErrors() []error { return m }
+
+// SnapshotValidationError is the validation error returned by
+// Snapshot.Validate if the designated constraints aren't met.
+type SnapshotValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SnapshotValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SnapshotValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SnapshotValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SnapshotValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SnapshotValidationError) ErrorName() string { return "SnapshotValidationError" }
+
+// Error satisfies the builtin error interface
+func (e SnapshotValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSnapshot.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SnapshotValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SnapshotValidationError{}
 
 // Validate checks the field values on Lemma with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
@@ -289,20 +530,12 @@ func (m *Lemma) validate(all bool) error {
 		}
 	}
 
-	// no validation rules for SnapshotTerm
-
-	// no validation rules for SnapshotLanguage
-
-	// no validation rules for SnapshotLatest
-
-	// no validation rules for SnapshotVersion
-
 	if all {
-		switch v := interface{}(m.GetSnapshotData()).(type) {
+		switch v := interface{}(m.GetLatestSnapshot()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
 				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotData",
+					field:  "LatestSnapshot",
 					reason: "embedded message failed validation",
 					cause:  err,
 				})
@@ -310,125 +543,20 @@ func (m *Lemma) validate(all bool) error {
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
 				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotData",
+					field:  "LatestSnapshot",
 					reason: "embedded message failed validation",
 					cause:  err,
 				})
 			}
 		}
-	} else if v, ok := interface{}(m.GetSnapshotData()).(interface{ Validate() error }); ok {
+	} else if v, ok := interface{}(m.GetLatestSnapshot()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return LemmaValidationError{
-				field:  "SnapshotData",
+				field:  "LatestSnapshot",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}
 		}
-	}
-
-	// no validation rules for SnapshotQScore
-
-	// no validation rules for SnapshotQScoreCompleteness
-
-	// no validation rules for SnapshotQScoreDepth
-
-	// no validation rules for SnapshotQScoreDensity
-
-	// no validation rules for SnapshotQScoreValidity
-
-	if all {
-		switch v := interface{}(m.GetSnapshotSynthesizedAt()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotSynthesizedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotSynthesizedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetSnapshotSynthesizedAt()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return LemmaValidationError{
-				field:  "SnapshotSynthesizedAt",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	if all {
-		switch v := interface{}(m.GetSnapshotCreatedAt()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotCreatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotCreatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetSnapshotCreatedAt()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return LemmaValidationError{
-				field:  "SnapshotCreatedAt",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	if all {
-		switch v := interface{}(m.GetSnapshotUpdatedAt()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotUpdatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, LemmaValidationError{
-					field:  "SnapshotUpdatedAt",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetSnapshotUpdatedAt()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return LemmaValidationError{
-				field:  "SnapshotUpdatedAt",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
-		}
-	}
-
-	if m.SnapshotId != nil {
-		// no validation rules for SnapshotId
-	}
-
-	if m.SnapshotJobId != nil {
-		// no validation rules for SnapshotJobId
 	}
 
 	if len(errors) > 0 {

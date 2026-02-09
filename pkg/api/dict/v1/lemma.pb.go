@@ -83,7 +83,7 @@ func (LemmaLevel) EnumDescriptor() ([]byte, []int) {
 	return file_dict_v1_lemma_proto_rawDescGZIP(), []int{0}
 }
 
-type LemmaData struct {
+type SnapshotData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Lexemes       []*Lexeme              `protobuf:"bytes,1,rep,name=lexemes,proto3" json:"lexemes,omitempty"`
 	Relations     []*SemanticRelation    `protobuf:"bytes,2,rep,name=relations,proto3" json:"relations,omitempty"`
@@ -91,20 +91,20 @@ type LemmaData struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LemmaData) Reset() {
-	*x = LemmaData{}
+func (x *SnapshotData) Reset() {
+	*x = SnapshotData{}
 	mi := &file_dict_v1_lemma_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LemmaData) String() string {
+func (x *SnapshotData) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LemmaData) ProtoMessage() {}
+func (*SnapshotData) ProtoMessage() {}
 
-func (x *LemmaData) ProtoReflect() protoreflect.Message {
+func (x *SnapshotData) ProtoReflect() protoreflect.Message {
 	mi := &file_dict_v1_lemma_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -116,57 +116,213 @@ func (x *LemmaData) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LemmaData.ProtoReflect.Descriptor instead.
-func (*LemmaData) Descriptor() ([]byte, []int) {
+// Deprecated: Use SnapshotData.ProtoReflect.Descriptor instead.
+func (*SnapshotData) Descriptor() ([]byte, []int) {
 	return file_dict_v1_lemma_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *LemmaData) GetLexemes() []*Lexeme {
+func (x *SnapshotData) GetLexemes() []*Lexeme {
 	if x != nil {
 		return x.Lexemes
 	}
 	return nil
 }
 
-func (x *LemmaData) GetRelations() []*SemanticRelation {
+func (x *SnapshotData) GetRelations() []*SemanticRelation {
 	if x != nil {
 		return x.Relations
 	}
 	return nil
 }
 
-// Lemma merges base lemma info and latest snapshot payload.
+type Snapshot struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	LemmaId            int64                  `protobuf:"varint,2,opt,name=lemma_id,json=lemmaId,proto3" json:"lemma_id,omitempty"`
+	JobId              *int64                 `protobuf:"varint,3,opt,name=job_id,json=jobId,proto3,oneof" json:"job_id,omitempty"`
+	Term               string                 `protobuf:"bytes,4,opt,name=term,proto3" json:"term,omitempty"`
+	Terms              []string               `protobuf:"bytes,5,rep,name=terms,proto3" json:"terms,omitempty"`
+	Language           string                 `protobuf:"bytes,6,opt,name=language,proto3" json:"language,omitempty"`
+	Latest             bool                   `protobuf:"varint,7,opt,name=latest,proto3" json:"latest,omitempty"`
+	Version            int32                  `protobuf:"varint,8,opt,name=version,proto3" json:"version,omitempty"`
+	Data               *SnapshotData          `protobuf:"bytes,9,opt,name=data,proto3" json:"data,omitempty"`
+	QScore             float64                `protobuf:"fixed64,10,opt,name=q_score,json=qScore,proto3" json:"q_score,omitempty"`
+	QScoreCompleteness float64                `protobuf:"fixed64,11,opt,name=q_score_completeness,json=qScoreCompleteness,proto3" json:"q_score_completeness,omitempty"`
+	QScoreDepth        float64                `protobuf:"fixed64,12,opt,name=q_score_depth,json=qScoreDepth,proto3" json:"q_score_depth,omitempty"`
+	QScoreDensity      float64                `protobuf:"fixed64,13,opt,name=q_score_density,json=qScoreDensity,proto3" json:"q_score_density,omitempty"`
+	QScoreValidity     float64                `protobuf:"fixed64,14,opt,name=q_score_validity,json=qScoreValidity,proto3" json:"q_score_validity,omitempty"`
+	SynthesizedAt      *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=synthesized_at,json=synthesizedAt,proto3" json:"synthesized_at,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *Snapshot) Reset() {
+	*x = Snapshot{}
+	mi := &file_dict_v1_lemma_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Snapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Snapshot) ProtoMessage() {}
+
+func (x *Snapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_lemma_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
+func (*Snapshot) Descriptor() ([]byte, []int) {
+	return file_dict_v1_lemma_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Snapshot) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *Snapshot) GetLemmaId() int64 {
+	if x != nil {
+		return x.LemmaId
+	}
+	return 0
+}
+
+func (x *Snapshot) GetJobId() int64 {
+	if x != nil && x.JobId != nil {
+		return *x.JobId
+	}
+	return 0
+}
+
+func (x *Snapshot) GetTerm() string {
+	if x != nil {
+		return x.Term
+	}
+	return ""
+}
+
+func (x *Snapshot) GetTerms() []string {
+	if x != nil {
+		return x.Terms
+	}
+	return nil
+}
+
+func (x *Snapshot) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *Snapshot) GetLatest() bool {
+	if x != nil {
+		return x.Latest
+	}
+	return false
+}
+
+func (x *Snapshot) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *Snapshot) GetData() *SnapshotData {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *Snapshot) GetQScore() float64 {
+	if x != nil {
+		return x.QScore
+	}
+	return 0
+}
+
+func (x *Snapshot) GetQScoreCompleteness() float64 {
+	if x != nil {
+		return x.QScoreCompleteness
+	}
+	return 0
+}
+
+func (x *Snapshot) GetQScoreDepth() float64 {
+	if x != nil {
+		return x.QScoreDepth
+	}
+	return 0
+}
+
+func (x *Snapshot) GetQScoreDensity() float64 {
+	if x != nil {
+		return x.QScoreDensity
+	}
+	return 0
+}
+
+func (x *Snapshot) GetQScoreValidity() float64 {
+	if x != nil {
+		return x.QScoreValidity
+	}
+	return 0
+}
+
+func (x *Snapshot) GetSynthesizedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SynthesizedAt
+	}
+	return nil
+}
+
+func (x *Snapshot) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *Snapshot) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
 type Lemma struct {
-	state                      protoimpl.MessageState `protogen:"open.v1"`
-	Id                         int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Surface                    string                 `protobuf:"bytes,2,opt,name=surface,proto3" json:"surface,omitempty"`
-	Normalized                 string                 `protobuf:"bytes,3,opt,name=normalized,proto3" json:"normalized,omitempty"`
-	Level                      LemmaLevel             `protobuf:"varint,4,opt,name=level,proto3,enum=dict.v1.LemmaLevel" json:"level,omitempty"`
-	CreatedAt                  *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt                  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	SnapshotId                 *int64                 `protobuf:"varint,7,opt,name=snapshot_id,json=snapshotId,proto3,oneof" json:"snapshot_id,omitempty"`
-	SnapshotJobId              *int64                 `protobuf:"varint,8,opt,name=snapshot_job_id,json=snapshotJobId,proto3,oneof" json:"snapshot_job_id,omitempty"`
-	SnapshotTerm               string                 `protobuf:"bytes,9,opt,name=snapshot_term,json=snapshotTerm,proto3" json:"snapshot_term,omitempty"`
-	SnapshotTerms              []string               `protobuf:"bytes,10,rep,name=snapshot_terms,json=snapshotTerms,proto3" json:"snapshot_terms,omitempty"`
-	SnapshotLanguage           string                 `protobuf:"bytes,11,opt,name=snapshot_language,json=snapshotLanguage,proto3" json:"snapshot_language,omitempty"`
-	SnapshotLatest             bool                   `protobuf:"varint,12,opt,name=snapshot_latest,json=snapshotLatest,proto3" json:"snapshot_latest,omitempty"`
-	SnapshotVersion            int32                  `protobuf:"varint,13,opt,name=snapshot_version,json=snapshotVersion,proto3" json:"snapshot_version,omitempty"`
-	SnapshotData               *LemmaData             `protobuf:"bytes,14,opt,name=snapshot_data,json=snapshotData,proto3" json:"snapshot_data,omitempty"`
-	SnapshotQScore             float64                `protobuf:"fixed64,15,opt,name=snapshot_q_score,json=snapshotQScore,proto3" json:"snapshot_q_score,omitempty"`
-	SnapshotQScoreCompleteness float64                `protobuf:"fixed64,16,opt,name=snapshot_q_score_completeness,json=snapshotQScoreCompleteness,proto3" json:"snapshot_q_score_completeness,omitempty"`
-	SnapshotQScoreDepth        float64                `protobuf:"fixed64,17,opt,name=snapshot_q_score_depth,json=snapshotQScoreDepth,proto3" json:"snapshot_q_score_depth,omitempty"`
-	SnapshotQScoreDensity      float64                `protobuf:"fixed64,18,opt,name=snapshot_q_score_density,json=snapshotQScoreDensity,proto3" json:"snapshot_q_score_density,omitempty"`
-	SnapshotQScoreValidity     float64                `protobuf:"fixed64,19,opt,name=snapshot_q_score_validity,json=snapshotQScoreValidity,proto3" json:"snapshot_q_score_validity,omitempty"`
-	SnapshotSynthesizedAt      *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=snapshot_synthesized_at,json=snapshotSynthesizedAt,proto3" json:"snapshot_synthesized_at,omitempty"`
-	SnapshotCreatedAt          *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=snapshot_created_at,json=snapshotCreatedAt,proto3" json:"snapshot_created_at,omitempty"`
-	SnapshotUpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=snapshot_updated_at,json=snapshotUpdatedAt,proto3" json:"snapshot_updated_at,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Surface        string                 `protobuf:"bytes,2,opt,name=surface,proto3" json:"surface,omitempty"`
+	Normalized     string                 `protobuf:"bytes,3,opt,name=normalized,proto3" json:"normalized,omitempty"`
+	Level          LemmaLevel             `protobuf:"varint,4,opt,name=level,proto3,enum=dict.v1.LemmaLevel" json:"level,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	LatestSnapshot *Snapshot              `protobuf:"bytes,7,opt,name=latest_snapshot,json=latestSnapshot,proto3" json:"latest_snapshot,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Lemma) Reset() {
 	*x = Lemma{}
-	mi := &file_dict_v1_lemma_proto_msgTypes[1]
+	mi := &file_dict_v1_lemma_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -178,7 +334,7 @@ func (x *Lemma) String() string {
 func (*Lemma) ProtoMessage() {}
 
 func (x *Lemma) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_lemma_proto_msgTypes[1]
+	mi := &file_dict_v1_lemma_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -191,7 +347,7 @@ func (x *Lemma) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Lemma.ProtoReflect.Descriptor instead.
 func (*Lemma) Descriptor() ([]byte, []int) {
-	return file_dict_v1_lemma_proto_rawDescGZIP(), []int{1}
+	return file_dict_v1_lemma_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Lemma) GetId() int64 {
@@ -236,114 +392,9 @@ func (x *Lemma) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *Lemma) GetSnapshotId() int64 {
-	if x != nil && x.SnapshotId != nil {
-		return *x.SnapshotId
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotJobId() int64 {
-	if x != nil && x.SnapshotJobId != nil {
-		return *x.SnapshotJobId
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotTerm() string {
+func (x *Lemma) GetLatestSnapshot() *Snapshot {
 	if x != nil {
-		return x.SnapshotTerm
-	}
-	return ""
-}
-
-func (x *Lemma) GetSnapshotTerms() []string {
-	if x != nil {
-		return x.SnapshotTerms
-	}
-	return nil
-}
-
-func (x *Lemma) GetSnapshotLanguage() string {
-	if x != nil {
-		return x.SnapshotLanguage
-	}
-	return ""
-}
-
-func (x *Lemma) GetSnapshotLatest() bool {
-	if x != nil {
-		return x.SnapshotLatest
-	}
-	return false
-}
-
-func (x *Lemma) GetSnapshotVersion() int32 {
-	if x != nil {
-		return x.SnapshotVersion
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotData() *LemmaData {
-	if x != nil {
-		return x.SnapshotData
-	}
-	return nil
-}
-
-func (x *Lemma) GetSnapshotQScore() float64 {
-	if x != nil {
-		return x.SnapshotQScore
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotQScoreCompleteness() float64 {
-	if x != nil {
-		return x.SnapshotQScoreCompleteness
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotQScoreDepth() float64 {
-	if x != nil {
-		return x.SnapshotQScoreDepth
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotQScoreDensity() float64 {
-	if x != nil {
-		return x.SnapshotQScoreDensity
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotQScoreValidity() float64 {
-	if x != nil {
-		return x.SnapshotQScoreValidity
-	}
-	return 0
-}
-
-func (x *Lemma) GetSnapshotSynthesizedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.SnapshotSynthesizedAt
-	}
-	return nil
-}
-
-func (x *Lemma) GetSnapshotCreatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.SnapshotCreatedAt
-	}
-	return nil
-}
-
-func (x *Lemma) GetSnapshotUpdatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.SnapshotUpdatedAt
+		return x.LatestSnapshot
 	}
 	return nil
 }
@@ -352,10 +403,32 @@ var File_dict_v1_lemma_proto protoreflect.FileDescriptor
 
 const file_dict_v1_lemma_proto_rawDesc = "" +
 	"\n" +
-	"\x13dict/v1/lemma.proto\x12\adict.v1\x1a\x19dict/v1/linguistics.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"o\n" +
-	"\tLemmaData\x12)\n" +
+	"\x13dict/v1/lemma.proto\x12\adict.v1\x1a\x19dict/v1/linguistics.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"r\n" +
+	"\fSnapshotData\x12)\n" +
 	"\alexemes\x18\x01 \x03(\v2\x0f.dict.v1.LexemeR\alexemes\x127\n" +
-	"\trelations\x18\x02 \x03(\v2\x19.dict.v1.SemanticRelationR\trelations\"\xf1\b\n" +
+	"\trelations\x18\x02 \x03(\v2\x19.dict.v1.SemanticRelationR\trelations\"\xf9\x04\n" +
+	"\bSnapshot\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
+	"\blemma_id\x18\x02 \x01(\x03R\alemmaId\x12\x1a\n" +
+	"\x06job_id\x18\x03 \x01(\x03H\x00R\x05jobId\x88\x01\x01\x12\x12\n" +
+	"\x04term\x18\x04 \x01(\tR\x04term\x12\x14\n" +
+	"\x05terms\x18\x05 \x03(\tR\x05terms\x12\x1a\n" +
+	"\blanguage\x18\x06 \x01(\tR\blanguage\x12\x16\n" +
+	"\x06latest\x18\a \x01(\bR\x06latest\x12\x18\n" +
+	"\aversion\x18\b \x01(\x05R\aversion\x12)\n" +
+	"\x04data\x18\t \x01(\v2\x15.dict.v1.SnapshotDataR\x04data\x12\x17\n" +
+	"\aq_score\x18\n" +
+	" \x01(\x01R\x06qScore\x120\n" +
+	"\x14q_score_completeness\x18\v \x01(\x01R\x12qScoreCompleteness\x12\"\n" +
+	"\rq_score_depth\x18\f \x01(\x01R\vqScoreDepth\x12&\n" +
+	"\x0fq_score_density\x18\r \x01(\x01R\rqScoreDensity\x12(\n" +
+	"\x10q_score_validity\x18\x0e \x01(\x01R\x0eqScoreValidity\x12A\n" +
+	"\x0esynthesized_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\rsynthesizedAt\x129\n" +
+	"\n" +
+	"created_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\t\n" +
+	"\a_job_id\"\xae\x02\n" +
 	"\x05Lemma\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x18\n" +
 	"\asurface\x18\x02 \x01(\tR\asurface\x12\x1e\n" +
@@ -366,27 +439,8 @@ const file_dict_v1_lemma_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12$\n" +
-	"\vsnapshot_id\x18\a \x01(\x03H\x00R\n" +
-	"snapshotId\x88\x01\x01\x12+\n" +
-	"\x0fsnapshot_job_id\x18\b \x01(\x03H\x01R\rsnapshotJobId\x88\x01\x01\x12#\n" +
-	"\rsnapshot_term\x18\t \x01(\tR\fsnapshotTerm\x12%\n" +
-	"\x0esnapshot_terms\x18\n" +
-	" \x03(\tR\rsnapshotTerms\x12+\n" +
-	"\x11snapshot_language\x18\v \x01(\tR\x10snapshotLanguage\x12'\n" +
-	"\x0fsnapshot_latest\x18\f \x01(\bR\x0esnapshotLatest\x12)\n" +
-	"\x10snapshot_version\x18\r \x01(\x05R\x0fsnapshotVersion\x127\n" +
-	"\rsnapshot_data\x18\x0e \x01(\v2\x12.dict.v1.LemmaDataR\fsnapshotData\x12(\n" +
-	"\x10snapshot_q_score\x18\x0f \x01(\x01R\x0esnapshotQScore\x12A\n" +
-	"\x1dsnapshot_q_score_completeness\x18\x10 \x01(\x01R\x1asnapshotQScoreCompleteness\x123\n" +
-	"\x16snapshot_q_score_depth\x18\x11 \x01(\x01R\x13snapshotQScoreDepth\x127\n" +
-	"\x18snapshot_q_score_density\x18\x12 \x01(\x01R\x15snapshotQScoreDensity\x129\n" +
-	"\x19snapshot_q_score_validity\x18\x13 \x01(\x01R\x16snapshotQScoreValidity\x12R\n" +
-	"\x17snapshot_synthesized_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\x15snapshotSynthesizedAt\x12J\n" +
-	"\x13snapshot_created_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotCreatedAt\x12J\n" +
-	"\x13snapshot_updated_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\x11snapshotUpdatedAtB\x0e\n" +
-	"\f_snapshot_idB\x12\n" +
-	"\x10_snapshot_job_id*\xa1\x01\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12:\n" +
+	"\x0flatest_snapshot\x18\a \x01(\v2\x11.dict.v1.SnapshotR\x0elatestSnapshot*\xa1\x01\n" +
 	"\n" +
 	"LemmaLevel\x12\x1b\n" +
 	"\x17LEMMA_LEVEL_UNSPECIFIED\x10\x00\x12\x12\n" +
@@ -412,30 +466,32 @@ func file_dict_v1_lemma_proto_rawDescGZIP() []byte {
 }
 
 var file_dict_v1_lemma_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_dict_v1_lemma_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_dict_v1_lemma_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_dict_v1_lemma_proto_goTypes = []any{
 	(LemmaLevel)(0),               // 0: dict.v1.LemmaLevel
-	(*LemmaData)(nil),             // 1: dict.v1.LemmaData
-	(*Lemma)(nil),                 // 2: dict.v1.Lemma
-	(*Lexeme)(nil),                // 3: dict.v1.Lexeme
-	(*SemanticRelation)(nil),      // 4: dict.v1.SemanticRelation
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*SnapshotData)(nil),          // 1: dict.v1.SnapshotData
+	(*Snapshot)(nil),              // 2: dict.v1.Snapshot
+	(*Lemma)(nil),                 // 3: dict.v1.Lemma
+	(*Lexeme)(nil),                // 4: dict.v1.Lexeme
+	(*SemanticRelation)(nil),      // 5: dict.v1.SemanticRelation
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_dict_v1_lemma_proto_depIdxs = []int32{
-	3, // 0: dict.v1.LemmaData.lexemes:type_name -> dict.v1.Lexeme
-	4, // 1: dict.v1.LemmaData.relations:type_name -> dict.v1.SemanticRelation
-	0, // 2: dict.v1.Lemma.level:type_name -> dict.v1.LemmaLevel
-	5, // 3: dict.v1.Lemma.created_at:type_name -> google.protobuf.Timestamp
-	5, // 4: dict.v1.Lemma.updated_at:type_name -> google.protobuf.Timestamp
-	1, // 5: dict.v1.Lemma.snapshot_data:type_name -> dict.v1.LemmaData
-	5, // 6: dict.v1.Lemma.snapshot_synthesized_at:type_name -> google.protobuf.Timestamp
-	5, // 7: dict.v1.Lemma.snapshot_created_at:type_name -> google.protobuf.Timestamp
-	5, // 8: dict.v1.Lemma.snapshot_updated_at:type_name -> google.protobuf.Timestamp
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	4,  // 0: dict.v1.SnapshotData.lexemes:type_name -> dict.v1.Lexeme
+	5,  // 1: dict.v1.SnapshotData.relations:type_name -> dict.v1.SemanticRelation
+	1,  // 2: dict.v1.Snapshot.data:type_name -> dict.v1.SnapshotData
+	6,  // 3: dict.v1.Snapshot.synthesized_at:type_name -> google.protobuf.Timestamp
+	6,  // 4: dict.v1.Snapshot.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 5: dict.v1.Snapshot.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: dict.v1.Lemma.level:type_name -> dict.v1.LemmaLevel
+	6,  // 7: dict.v1.Lemma.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 8: dict.v1.Lemma.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 9: dict.v1.Lemma.latest_snapshot:type_name -> dict.v1.Snapshot
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_dict_v1_lemma_proto_init() }
@@ -451,7 +507,7 @@ func file_dict_v1_lemma_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_lemma_proto_rawDesc), len(file_dict_v1_lemma_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

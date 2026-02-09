@@ -332,3 +332,301 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ListLemmasResponseValidationError{}
+
+// Validate checks the field values on ListSnapshotsRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *ListSnapshotsRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ListSnapshotsRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ListSnapshotsRequestMultiError, or nil if none found.
+func (m *ListSnapshotsRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ListSnapshotsRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for LemmaId
+
+	if all {
+		switch v := interface{}(m.GetPagination()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ListSnapshotsRequestValidationError{
+					field:  "Pagination",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ListSnapshotsRequestValidationError{
+					field:  "Pagination",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetPagination()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ListSnapshotsRequestValidationError{
+				field:  "Pagination",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return ListSnapshotsRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// ListSnapshotsRequestMultiError is an error wrapping multiple validation
+// errors returned by ListSnapshotsRequest.ValidateAll() if the designated
+// constraints aren't met.
+type ListSnapshotsRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ListSnapshotsRequestMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ListSnapshotsRequestMultiError) AllErrors() []error { return m }
+
+// ListSnapshotsRequestValidationError is the validation error returned by
+// ListSnapshotsRequest.Validate if the designated constraints aren't met.
+type ListSnapshotsRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ListSnapshotsRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ListSnapshotsRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ListSnapshotsRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ListSnapshotsRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ListSnapshotsRequestValidationError) ErrorName() string {
+	return "ListSnapshotsRequestValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ListSnapshotsRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sListSnapshotsRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ListSnapshotsRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ListSnapshotsRequestValidationError{}
+
+// Validate checks the field values on ListSnapshotsResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *ListSnapshotsResponse) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ListSnapshotsResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ListSnapshotsResponseMultiError, or nil if none found.
+func (m *ListSnapshotsResponse) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ListSnapshotsResponse) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	for idx, item := range m.GetSnapshots() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, ListSnapshotsResponseValidationError{
+						field:  fmt.Sprintf("Snapshots[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, ListSnapshotsResponseValidationError{
+						field:  fmt.Sprintf("Snapshots[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return ListSnapshotsResponseValidationError{
+					field:  fmt.Sprintf("Snapshots[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if all {
+		switch v := interface{}(m.GetPagination()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ListSnapshotsResponseValidationError{
+					field:  "Pagination",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ListSnapshotsResponseValidationError{
+					field:  "Pagination",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetPagination()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ListSnapshotsResponseValidationError{
+				field:  "Pagination",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return ListSnapshotsResponseMultiError(errors)
+	}
+
+	return nil
+}
+
+// ListSnapshotsResponseMultiError is an error wrapping multiple validation
+// errors returned by ListSnapshotsResponse.ValidateAll() if the designated
+// constraints aren't met.
+type ListSnapshotsResponseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ListSnapshotsResponseMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ListSnapshotsResponseMultiError) AllErrors() []error { return m }
+
+// ListSnapshotsResponseValidationError is the validation error returned by
+// ListSnapshotsResponse.Validate if the designated constraints aren't met.
+type ListSnapshotsResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ListSnapshotsResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ListSnapshotsResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ListSnapshotsResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ListSnapshotsResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ListSnapshotsResponseValidationError) ErrorName() string {
+	return "ListSnapshotsResponseValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ListSnapshotsResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sListSnapshotsResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ListSnapshotsResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ListSnapshotsResponseValidationError{}

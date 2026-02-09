@@ -48,3 +48,29 @@ func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Reques
 
 	return connect.NewResponse(resp), nil
 }
+
+func (s *LemmaServiceServer) ListSnapshots(ctx context.Context, req *connect.Request[dictv1.ListSnapshotsRequest]) (*connect.Response[dictv1.ListSnapshotsResponse], error) {
+	if req == nil || req.Msg == nil || req.Msg.GetLemmaId() <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
+	}
+
+	pagination := convertPagination(req.Msg.GetPagination())
+	snapshots, total, err := s.lemmaUC.ListSnapshots(ctx, &pipelineuc.ListSnapshotsQuery{
+		LemmaID:  req.Msg.GetLemmaId(),
+		PageNo:   pagination.PageNo,
+		PageSize: pagination.PageSize,
+	})
+	if err != nil {
+		return nil, mapping.ToPbError(err)
+	}
+
+	resp := &dictv1.ListSnapshotsResponse{
+		Pagination: &commonv1.PaginationResponse{Total: int32(total), PageNo: pagination.PageNo}, // nolint:gosec
+		Snapshots:  make([]*dictv1.Snapshot, 0, len(snapshots)),
+	}
+	for _, snapshot := range snapshots {
+		resp.Snapshots = append(resp.Snapshots, toPBSnapshot(snapshot))
+	}
+
+	return connect.NewResponse(resp), nil
+}

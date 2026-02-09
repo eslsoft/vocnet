@@ -89,6 +89,14 @@ func (n *nopSnapshotRepo) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []i
 	return map[int64]*entity.WordSnapshot{}, nil
 }
 
+func (n *nopSnapshotRepo) ListLatest(ctx context.Context, pageNo int32, pageSize int32, keyword string) ([]*entity.WordSnapshot, int64, error) {
+	return []*entity.WordSnapshot{}, 0, nil
+}
+
+func (n *nopSnapshotRepo) ListByLemmaID(ctx context.Context, lemmaID int64, pageNo int32, pageSize int32) ([]*entity.WordSnapshot, int64, error) {
+	return []*entity.WordSnapshot{}, 0, nil
+}
+
 type stubProcessor struct {
 	name      string
 	processFn func(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error)
