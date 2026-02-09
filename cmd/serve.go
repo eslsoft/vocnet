@@ -98,12 +98,18 @@ var serveCmd = &cobra.Command{
 		case sig := <-sigCh:
 			logger.Info("received shutdown signal", "signal", sig.String())
 			cancel() // Stop worker
+			if workerPool != nil {
+				workerPool.Wait() // Wait for worker pool to finish in-flight jobs
+			}
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
 			_ = srv.Shutdown(shutdownCtx)
 			return nil
 		case err := <-errCh:
 			cancel() // Stop worker
+			if workerPool != nil {
+				workerPool.Wait() // Wait for worker pool to finish in-flight jobs
+			}
 			if err != nil {
 				return err
 			}

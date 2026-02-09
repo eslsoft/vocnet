@@ -26,6 +26,7 @@ type WorkerPool struct {
 
 	pool   *workerpool.WorkerPool
 	cancel context.CancelFunc
+	done   chan struct{} // signals when Start() has fully completed
 }
 
 // NewWorkerPool creates a new worker pool with the given configuration.
@@ -47,12 +48,15 @@ func NewWorkerPool(
 		pipeline: pipeline,
 		logger:   logger.With("component", "pipeline-worker-pool"),
 		config:   config,
+		done:     make(chan struct{}),
 	}
 }
 
 // Start begins the worker pool and polls for jobs.
 // It blocks until the context is cancelled or Stop is called.
 func (p *WorkerPool) Start(ctx context.Context) error {
+	defer close(p.done) // signal completion when Start exits
+
 	ctx, p.cancel = context.WithCancel(ctx)
 	p.pool = workerpool.New(p.config.WorkerCount)
 
@@ -67,6 +71,7 @@ func (p *WorkerPool) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			p.logger.Info("pipeline worker pool stopping, waiting for in-flight jobs...")
 			p.pool.StopWait()
 			p.logger.Info("pipeline worker pool stopped")
 			return nil
@@ -76,11 +81,17 @@ func (p *WorkerPool) Start(ctx context.Context) error {
 	}
 }
 
-// Stop gracefully stops all workers.
+// Stop gracefully stops all workers and waits for completion.
 func (p *WorkerPool) Stop() {
 	if p.cancel != nil {
 		p.cancel()
 	}
+}
+
+// Wait blocks until the worker pool has fully stopped.
+// Should be called after Stop() to ensure graceful shutdown.
+func (p *WorkerPool) Wait() {
+	<-p.done
 }
 
 func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
