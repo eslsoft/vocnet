@@ -66,6 +66,22 @@ func TestPipelineJobRepositoryCreate_ReusesActiveSingleWordJob(t *testing.T) {
 	require.Equal(t, 1, total)
 }
 
+func TestPipelineJobRepositoryCreate_SingleWordRequiresTerm(t *testing.T) {
+	repo, _ := newTestJobRepo(t)
+	ctx := context.Background()
+
+	_, err := repo.Create(ctx, &entity.PipelineJob{
+		JobType:    entity.JobTypeSingleWord,
+		Status:     entity.JobStatusPending,
+		Name:       "word: empty term",
+		Language:   "en",
+		Tier:       2,
+		Term:       "   ",
+		TotalTerms: 1,
+	})
+	require.ErrorIs(t, err, entity.ErrInvalidInput)
+}
+
 func TestPipelineJobRepositoryCreate_AllowsNewAfterTerminalStatus(t *testing.T) {
 	repo, client := newTestJobRepo(t)
 	ctx := context.Background()
