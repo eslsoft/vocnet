@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
@@ -168,7 +169,9 @@ func (sc *SenseCleaner) buildWordDataList(ctx context.Context, wordsToProcess []
 					q.Where(lexeme.LanguageCodeEQ(sc.config.languageFilter))
 				}
 				if sc.config.posFilter != "" {
-					q.Where(lexeme.PosEQ(sc.config.posFilter))
+					if parsedPOS, ok := entity.ParsePartOfSpeech(sc.config.posFilter); ok {
+						q.Where(lexeme.PosEQ(parsedPOS))
+					}
 				}
 				q.Where(func(s *sql.Selector) {
 					s.Where(sql.NEQ(s.C(lexeme.FieldSenses), "[]"))
@@ -289,7 +292,7 @@ func (sc *SenseCleaner) processWord(ctx context.Context, wordData *WordData) Wor
 		totalSensesBefore += len(lex.Senses)
 		allLexemeData = append(allLexemeData, LexemeData{
 			LexemeID:   lex.ExternalID,
-			POS:        lex.Pos,
+			POS:        string(lex.Pos),
 			Senses:     lex.Senses,
 			SenseGloss: lex.SenseGloss,
 		})
@@ -355,7 +358,7 @@ func (sc *SenseCleaner) processWord(ctx context.Context, wordData *WordData) Wor
 			result.Examples = append(result.Examples, CleaningExample{
 				LexemeID:    originalLexeme.ExternalID,
 				Lemma:       wordData.Term,
-				POS:         originalLexeme.Pos,
+				POS:         string(originalLexeme.Pos),
 				Before:      originalLexeme.Senses,
 				After:       cleanedLexeme.Senses,
 				BeforeGloss: originalLexeme.SenseGloss,

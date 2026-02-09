@@ -134,14 +134,6 @@ func (r *wordSnapshotRepository) GetByTerm(ctx context.Context, term string, lan
 	return mapEntWordSnapshot(row), nil
 }
 
-func (r *wordSnapshotRepository) getByID(ctx context.Context, id int64) (*entity.WordSnapshot, error) {
-	row, err := r.client.WordSnapshot.Get(ctx, id)
-	if err != nil {
-		return nil, translateDBError(err, "word_snapshot")
-	}
-	return mapEntWordSnapshot(row), nil
-}
-
 func mapEntWordSnapshot(row *entdb.WordSnapshot) *entity.WordSnapshot {
 	if row == nil {
 		return nil

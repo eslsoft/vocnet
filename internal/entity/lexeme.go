@@ -37,7 +37,7 @@ type Lexeme struct {
 	LemmaID      int64  // Foreign key to Lemma
 	ExternalID   string // Wikidata Lexeme ID (e.g. "L123456")
 	Language     Language
-	PartOfSpeech string
+	PartOfSpeech PartOfSpeech
 	EntryType    LexemeEntryType
 	SenseGloss   string
 	Senses       []LexemeSense

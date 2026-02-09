@@ -130,7 +130,7 @@ func TestToPbWord_PopulatesMeanings_WithLexemeSenses(t *testing.T) {
 		Lexemies: []entity.Lexeme{
 			{
 				ExternalID:   "L100",
-				PartOfSpeech: "v.",
+				PartOfSpeech: entity.PartOfSpeechVerb,
 				Senses: []entity.LexemeSense{
 					{Language: entity.LanguageEnglish, Gloss: "to move quickly"},
 				},
@@ -143,7 +143,7 @@ func TestToPbWord_PopulatesMeanings_WithLexemeSenses(t *testing.T) {
 	if assert.Len(t, pbWord.Meanings, 1) {
 		meaning := pbWord.Meanings[0]
 		assert.Equal(t, "L100", meaning.LexemeId)
-		assert.Equal(t, "v.", meaning.Pos)
+		assert.Equal(t, "verb", meaning.Pos)
 		if assert.Len(t, meaning.Definitions, 1) {
 			assert.Equal(t, "to move quickly", meaning.Definitions[0].Gloss)
 		}

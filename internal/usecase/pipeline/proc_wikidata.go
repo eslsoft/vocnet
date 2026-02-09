@@ -61,6 +61,11 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 	formsByLexeme := make(map[string][]*entity.LemmaForm)
 
 	for _, lex := range lexemes {
+		pos, err := parsePOSFromSource("wikidata", lex.POS)
+		if err != nil {
+			return nil, fmt.Errorf("wikidata lexeme %s pos mapping failed: %w", lex.LexemeID, err)
+		}
+
 		senses := make([]entity.LexemeSense, 0, len(lex.Senses))
 		for _, s := range lex.Senses {
 			for sLang, gloss := range s.Glosses {
@@ -119,7 +124,7 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		entityLexemes = append(entityLexemes, &entity.Lexeme{
 			ExternalID:   lex.LexemeID,
 			Language:     entity.ParseLanguage(lex.Language),
-			PartOfSpeech: normalizePOSLabel(lex.POS),
+			PartOfSpeech: pos,
 			EntryType:    entity.LexemeEntryTypeWord,
 			SenseGloss:   pickSenseGloss(senses),
 			Senses:       senses,

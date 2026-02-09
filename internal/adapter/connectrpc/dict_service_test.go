@@ -46,7 +46,7 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 		dictv1.FormType_FORM_TYPE_IMPERATIVE:            entity.LexemeFormTypeImperative,
 		dictv1.FormType_FORM_TYPE_SUBJUNCTIVE:           entity.LexemeFormTypeSubjunctive,
 		dictv1.FormType_FORM_TYPE_GERUND:                entity.LexemeFormTypeGerund,
-		dictv1.FormType_FORM_TYPE_SHORT_FORM:             entity.LexemeFormTypeShortForm,
+		dictv1.FormType_FORM_TYPE_SHORT_FORM:            entity.LexemeFormTypeShortForm,
 	}
 
 	// Create Lemma first (if not exists)
@@ -110,11 +110,14 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 
 	// Create lexemes with reference to lemma
 	for _, meaning := range word.Meanings {
+		parsedPOS, ok := entity.ParsePartOfSpeech(meaning.Pos)
+		require.Truef(t, ok, "invalid pos in test fixture: %q", meaning.Pos)
+
 		// Create Lexeme with reference to Lemma
 		lexQuery := client.Lexeme.Create().
 			SetExternalID(meaning.LexemeId).
 			SetLanguageCode(langCode).
-			SetPos(meaning.Pos).
+			SetPos(parsedPOS).
 			SetCategories(word.Categories).
 			SetLemma(lemmaRecord) // Set the lemma relationship
 

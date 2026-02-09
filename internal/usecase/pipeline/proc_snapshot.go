@@ -43,7 +43,7 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		snapshotPhonetics := collectPhonetics(lemmaForms)
 
 		snapshotLexemes = append(snapshotLexemes, entity.SnapshotLexeme{
-			POS:       lex.PartOfSpeech,
+			POS:       string(lex.PartOfSpeech),
 			Senses:    senses,
 			Forms:     snapshotForms,
 			Phonetics: snapshotPhonetics,

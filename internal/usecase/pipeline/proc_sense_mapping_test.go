@@ -23,7 +23,7 @@ func TestSenseMappingProcessor_NoUnmappedRelations(t *testing.T) {
 	pctx := &PipelineContext{
 		Term: "hello",
 		Lexemes: []*entity.Lexeme{
-			{ID: 1, ExternalID: "L100", PartOfSpeech: "noun"},
+			{ID: 1, ExternalID: "L100", PartOfSpeech: entity.PartOfSpeechNoun},
 		},
 		Relations: []*entity.SemanticRelation{
 			{TargetTerm: "world", RelationType: "SYNONYM", SenseMapped: true},
@@ -60,7 +60,7 @@ func TestSenseMappingProcessor_MapsRelations(t *testing.T) {
 	pctx := &PipelineContext{
 		Term: "hello",
 		Lexemes: []*entity.Lexeme{
-			{ID: 42, ExternalID: "L100", PartOfSpeech: "noun", SenseGloss: "a greeting"},
+			{ID: 42, ExternalID: "L100", PartOfSpeech: entity.PartOfSpeechNoun, SenseGloss: "a greeting"},
 		},
 		Relations: []*entity.SemanticRelation{rel1, rel2},
 	}

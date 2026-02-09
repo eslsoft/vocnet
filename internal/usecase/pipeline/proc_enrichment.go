@@ -168,7 +168,7 @@ func buildEnrichmentPrompt(term string, lexemes []*entity.Lexeme) string {
 	for _, lex := range lexemes {
 		data = append(data, lexemeData{
 			LexemeID:   lex.ExternalID,
-			POS:        lex.PartOfSpeech,
+			POS:        string(lex.PartOfSpeech),
 			SenseGloss: lex.SenseGloss,
 			Senses:     lex.Senses,
 		})

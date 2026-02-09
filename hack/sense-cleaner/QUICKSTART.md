@@ -74,7 +74,7 @@ You can still apply language and POS filters to the CEFR-B1 words:
 go run ./hack/sense-cleaner/... -language en -limit 50
 
 # Clean only verbs from CEFR-B1
-go run ./hack/sense-cleaner/... -pos VERB -limit 50
+go run ./hack/sense-cleaner/... -pos verb -limit 50
 ```
 
 ### Choose a Wordbook
@@ -138,7 +138,7 @@ go run ./hack/sense-cleaner/... -batch-size 5
 
 - **Start Small**: Use `-limit 10` to test
 - **Resume with Offset**: Use `-offset 200` to continue from a specific wordbook index
-- **Use Filters**: `-language en -pos VERB` to focus
+- **Use Filters**: `-language en -pos verb` to focus
 - **Monitor Costs**: OpenAI API charges per token (see README.md)
 - **Check Examples**: Review report before large runs
 - **Backup First**: Always backup database before production runs

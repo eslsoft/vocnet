@@ -257,7 +257,7 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 				FormType:    form.FormType,
 				IsIrregular: form.IsIrregular,
 				LemmaText:   lemma.Surface,
-				Pos:         lexeme.Pos,
+				Pos:         string(lexeme.Pos),
 			}
 
 			// Map back to original surface forms (case-insensitive comparison using normalized)

@@ -23,7 +23,7 @@ This document describes, stage by stage, which data source each processor uses a
   - Lexeme-level:
     - `ExternalID` (`LexemeID`, e.g. `L123`)
     - `Language`
-    - `PartOfSpeech` (normalized POS label)
+    - `PartOfSpeech` (mapped to internal enum `entity.PartOfSpeech`)
     - `Senses` (from `sense.Glosses` language map)
     - `SenseGloss` (picked from senses)
     - `Categories` (inferred from senses)
@@ -40,6 +40,7 @@ This document describes, stage by stage, which data source each processor uses a
     - `SchemaVersion=wikidata-2025`
 - Key quality gate:
   - Rejects low-confidence multi-candidate matches (`match_score <= 40` and `candidate_count > 1`)
+  - Rejects unmapped/unknown POS (including unknown Wikidata POS QIDs)
 
 ### Processor: `category-infer` (`NewCategoryInferProcessor`)
 
@@ -73,7 +74,7 @@ This document describes, stage by stage, which data source each processor uses a
     - `Senses` from:
       - `definition` -> English senses
       - `translation` -> Chinese senses
-    - `PartOfSpeech` from `pos` (normalized)
+    - `PartOfSpeech` from `pos` (mapped to internal enum `entity.PartOfSpeech`)
     - `Categories` from `tags` (domain categories)
     - `Completeness` (scored from available fields)
   - Lemma enrichment:
@@ -86,6 +87,8 @@ This document describes, stage by stage, which data source each processor uses a
     - `word`, `phonetic`, `definition`, `translation`, `pos`, `tags`
     - `bnc`, `frq`, `collins`, `oxford`, `exchange`
     - `Provider=ecdict`, `Phase=lexical`, `SchemaVersion=ecdict-1.0`
+- Key quality gate:
+  - Rejects unmapped/unknown POS from ECDICT `pos`
 
 ### Processor: `moby` (`NewMobyProcessor`)
 
@@ -209,6 +212,12 @@ This stage uses the LLM provider (`internal/adapter/provider/llm`), not offline 
     - Quality scores (`QScore`, completeness/depth/density/validity)
 - Evidence:
   - None (snapshot entity is emitted, not raw evidence)
+
+## Cross-Stage POS Validation
+
+- Pipeline performs strict POS validation on `PipelineContext.Lexemes`.
+- Any lexeme with POS outside internal enum `entity.PartOfSpeech` fails the pipeline run.
+- This serves as a future-proof guardrail so newly introduced data-source POS values cannot silently pass through.
 
 ## Source-to-Stage Quick Matrix
 

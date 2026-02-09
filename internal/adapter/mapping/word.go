@@ -213,7 +213,7 @@ func aggregateMeanings(lexemes []entity.Lexeme) []*dictv1.Meaning {
 			meanings[externalID] = &bucket{
 				meaning: &dictv1.Meaning{
 					LexemeId: externalID,
-					Pos:      lex.PartOfSpeech,
+					Pos:      string(lex.PartOfSpeech),
 				},
 				index: len(order),
 			}

@@ -32,9 +32,9 @@ func (Lexeme) Fields() []ent.Field {
 		field.String("language_code").
 			Default("").
 			Comment("Language code: en, zh-Hans, es, etc."),
-		field.String("pos").
-			Default("").
-			Comment("Part of speech: NOUN, VERB, ADJ, ADV, PROPN, etc."),
+		field.Enum("pos").
+			GoType(entity.PartOfSpeech("")).
+			Comment("Canonical internal POS enum (UPOS + controlled extensions)"),
 		field.String("entry_type").
 			Default("WORD").
 			Comment("WORD or PHRASE"),

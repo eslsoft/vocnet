@@ -273,15 +273,8 @@ func densityBaseScore(uniqueRelationCount int) float64 {
 }
 
 func isValidPOS(pos string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(pos))
-	switch normalized {
-	case "noun", "verb", "adjective", "adverb", "proper noun",
-		"pronoun", "determiner", "preposition", "conjunction",
-		"interjection", "article", "numeral", "particle":
-		return true
-	default:
-		return false
-	}
+	parsed, ok := entity.ParsePartOfSpeech(pos)
+	return ok && entity.IsValidPartOfSpeech(parsed)
 }
 
 func clampUnit(v float64) float64 {

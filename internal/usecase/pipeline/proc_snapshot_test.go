@@ -22,7 +22,7 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 		Lexemes: []*entity.Lexeme{
 			{
 				ExternalID:   "L5897",
-				PartOfSpeech: "adjective",
+				PartOfSpeech: entity.PartOfSpeechAdjective,
 				Senses: []entity.LexemeSense{
 					{Language: entity.LanguageEnglish, Gloss: "preferred above all others"},
 				},

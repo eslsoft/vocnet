@@ -41,7 +41,10 @@ func (p *ECDICTProcessor) Process(ctx context.Context, pctx *PipelineContext) (*
 	}
 
 	// Parse ECDICT data
-	parsed := p.parseECDICT(entry)
+	parsed, err := p.parseECDICT(entry)
+	if err != nil {
+		return nil, err
+	}
 
 	// Build result lexeme: enrich existing or create new
 	var lexeme *entity.Lexeme
@@ -80,18 +83,22 @@ type parsedECDICTData struct {
 	Frequencies  []entity.Frequency
 	Categories   []string
 	Completeness int32
-	POS          string
+	POS          entity.PartOfSpeech
 }
 
-func (p *ECDICTProcessor) parseECDICT(entry *ecdict.ECDICTEntry) *parsedECDICTData {
+func (p *ECDICTProcessor) parseECDICT(entry *ecdict.ECDICTEntry) (*parsedECDICTData, error) {
+	pos, err := parsePOSFromSource("ecdict", entry.POS)
+	if err != nil {
+		return nil, fmt.Errorf("ecdict pos mapping failed: %w", err)
+	}
 	return &parsedECDICTData{
 		Evidence:     createECDICTEvidence(entry),
 		Senses:       parseSensesFromECDICT(entry),
 		Frequencies:  parseFrequenciesFromECDICT(entry),
 		Categories:   ExtractDomainCategories(entry.Tags),
 		Completeness: calculateCompletenessScore(entry),
-		POS:          normalizePOSLabel(entry.POS),
-	}
+		POS:          pos,
+	}, nil
 }
 
 func enrichExistingLexeme(lexeme *entity.Lexeme, data *parsedECDICTData, aggregator *DataAggregator) *entity.Lexeme {
@@ -100,7 +107,7 @@ func enrichExistingLexeme(lexeme *entity.Lexeme, data *parsedECDICTData, aggrega
 	if len(data.Senses) > 0 {
 		enriched.Senses = aggregator.MergeSenses(lexeme.Senses, data.Senses)
 	}
-	if data.POS != "" && strings.TrimSpace(lexeme.PartOfSpeech) == "" {
+	if data.POS != entity.PartOfSpeechUnspecified && lexeme.PartOfSpeech == entity.PartOfSpeechUnspecified {
 		enriched.PartOfSpeech = data.POS
 	}
 	if strings.TrimSpace(enriched.SenseGloss) == "" {

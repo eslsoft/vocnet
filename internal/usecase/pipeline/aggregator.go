@@ -170,7 +170,7 @@ func (a *DataAggregator) EnrichLexeme(existing *entity.Lexeme, new *entity.Lexem
 	}
 
 	// Update scalar fields if empty or new value is better
-	if enriched.PartOfSpeech == "" && new.PartOfSpeech != "" {
+	if enriched.PartOfSpeech == entity.PartOfSpeechUnspecified && new.PartOfSpeech != entity.PartOfSpeechUnspecified {
 		enriched.PartOfSpeech = new.PartOfSpeech
 	}
 	if enriched.SenseGloss == "" && new.SenseGloss != "" {

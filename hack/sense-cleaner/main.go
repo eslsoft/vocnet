@@ -49,7 +49,7 @@ func parseFlags() config {
 	flag.IntVar(&cfg.offset, "offset", 0, "Start offset in wordbook terms (0-based)")
 	flag.BoolVar(&cfg.dryRun, "dry-run", false, "Preview changes without updating database")
 	flag.StringVar(&cfg.languageFilter, "language", "", "Filter by language code (e.g., en)")
-	flag.StringVar(&cfg.posFilter, "pos", "", "Filter by part of speech (e.g., VERB)")
+	flag.StringVar(&cfg.posFilter, "pos", "", "Filter by part of speech (e.g., verb)")
 	flag.StringVar(&cfg.wordbookName, "wordbook", "CEFR-B1", "Wordbook name (partial match, case-insensitive)")
 	flag.Int64Var(&cfg.wordbookID, "wordbook-id", 0, "Wordbook ID (overrides --wordbook)")
 	flag.StringVar(&cfg.outputReport, "output", "reports/sense_cleaning_report.json", "Output report path")

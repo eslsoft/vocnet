@@ -445,14 +445,14 @@ func wordNetPOSCandidates(lexemes []*entity.Lexeme) []string {
 		if lex == nil {
 			continue
 		}
-		switch strings.ToLower(strings.TrimSpace(lex.PartOfSpeech)) {
-		case "noun", "proper noun", "pronoun", "determiner", "article", "numeral":
+		switch lex.PartOfSpeech {
+		case entity.PartOfSpeechNoun, entity.PartOfSpeechProperNoun, entity.PartOfSpeechPronoun, entity.PartOfSpeechDeterminer, entity.PartOfSpeechNumeral:
 			add("noun")
-		case "verb":
+		case entity.PartOfSpeechVerb:
 			add("verb")
-		case "adjective":
+		case entity.PartOfSpeechAdjective:
 			add("adjective")
-		case "adverb":
+		case entity.PartOfSpeechAdverb:
 			add("adverb")
 		}
 	}

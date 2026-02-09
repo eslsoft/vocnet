@@ -103,3 +103,28 @@ func TestWikidataProcessor_Process_RejectsLowConfidenceAmbiguousMatch(t *testing
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "low-confidence lexeme match rejected")
 }
+
+func TestWikidataProcessor_Process_FailsOnUnknownWikidataPOSQID(t *testing.T) {
+	p := NewWikidataProcessor(&mockWikidataProvider{
+		fetchLexemesFn: func(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
+			return []provider.WikidataLexeme{
+				{
+					LexemeID: "L1",
+					Language: "en",
+					POS:      "Q999999999",
+				},
+			}, map[string]any{"source": "test"}, nil
+		},
+	}, testLogger())
+
+	pctx := &PipelineContext{
+		Term:     "edgecase",
+		Language: entity.LanguageEnglish,
+		Lemma:    &entity.Lemma{ID: 1, Surface: "edgecase"},
+	}
+
+	result, err := p.Process(context.Background(), pctx)
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pos mapping failed")
+}

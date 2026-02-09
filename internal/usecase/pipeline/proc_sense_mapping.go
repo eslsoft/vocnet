@@ -133,7 +133,7 @@ func buildSenseMappingPrompt(term string, lexemes []*entity.Lexeme, relations []
 	for _, lex := range lexemes {
 		lexSummaries = append(lexSummaries, lexemeSummary{
 			ExternalID: lex.ExternalID,
-			POS:        lex.PartOfSpeech,
+			POS:        string(lex.PartOfSpeech),
 			SenseGloss: lex.SenseGloss,
 		})
 	}

@@ -9,8 +9,8 @@ import (
 
 func TestWordNetPOSCandidates(t *testing.T) {
 	got := wordNetPOSCandidates([]*entity.Lexeme{
-		{PartOfSpeech: "verb"},
-		{PartOfSpeech: "adverb"},
+		{PartOfSpeech: entity.PartOfSpeechVerb},
+		{PartOfSpeech: entity.PartOfSpeechAdverb},
 	})
 
 	// First positions should prioritize observed POS from lexical stage.
