@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -24,6 +25,27 @@ func NewPipelineJobRepository(client *entdb.Client) repository.PipelineJobReposi
 func (r *pipelineJobRepository) Create(ctx context.Context, job *entity.PipelineJob) (*entity.PipelineJob, error) {
 	if job == nil {
 		return nil, entity.ErrInvalidInput
+	}
+	job.Term = strings.TrimSpace(job.Term)
+
+	// Idempotent enqueue for single-word jobs:
+	// if the same term (case-insensitive) is already pending/running in the same language,
+	// return that existing job instead of creating a duplicate concurrent candidate.
+	if job.Term != "" {
+		active, err := r.client.PipelineJob.Query().
+			Where(
+				entpipelinejob.StatusIn(string(entity.JobStatusPending), string(entity.JobStatusRunning)),
+				entpipelinejob.LanguageEQ(job.Language),
+				entpipelinejob.TermEqualFold(job.Term),
+			).
+			Order(entpipelinejob.ByCreatedAt()).
+			First(ctx)
+		if err == nil {
+			return mapEntPipelineJob(active), nil
+		}
+		if err != nil && !entdb.IsNotFound(err) {
+			return nil, fmt.Errorf("find active job by term: %w", err)
+		}
 	}
 
 	create := r.client.PipelineJob.Create().
@@ -109,15 +131,13 @@ func (r *pipelineJobRepository) claimOneTx(ctx context.Context) (*entity.Pipelin
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 
-	// Find the oldest PENDING job.
-	// The transaction serializes the SELECT + UPDATE so two workers cannot claim
-	// the same row. SQLite is single-writer so inherently safe; PostgreSQL
-	// serializes via the transaction isolation.
-	row, err := tx.PipelineJob.Query().
+	// Find oldest pending candidates and pick the first that is not blocked by
+	// another RUNNING job of the same term+language.
+	candidates, err := tx.PipelineJob.Query().
 		Where(entpipelinejob.StatusEQ(string(entity.JobStatusPending))).
 		Order(entpipelinejob.ByCreatedAt()).
-		Limit(1).
-		First(ctx)
+		Limit(32).
+		All(ctx)
 	if err != nil {
 		_ = tx.Rollback()
 		if entdb.IsNotFound(err) {
@@ -125,23 +145,55 @@ func (r *pipelineJobRepository) claimOneTx(ctx context.Context) (*entity.Pipelin
 		}
 		return nil, fmt.Errorf("query pending job: %w", err)
 	}
-
-	// CAS: PENDING → RUNNING (only if still PENDING to prevent double-claim)
-	now := time.Now()
-	affected, err := tx.PipelineJob.Update().
-		Where(
-			entpipelinejob.ID(row.ID),
-			entpipelinejob.StatusEQ(string(entity.JobStatusPending)),
-		).
-		SetStatus(string(entity.JobStatusRunning)).
-		SetStartedAt(now).
-		Save(ctx)
-	if err != nil {
+	if len(candidates) == 0 {
 		_ = tx.Rollback()
-		return nil, fmt.Errorf("claim job: %w", err)
+		return nil, nil
 	}
-	if affected == 0 {
-		// Another worker claimed this job between our SELECT and UPDATE
+
+	var claimedID int64
+	for _, row := range candidates {
+		if row == nil {
+			continue
+		}
+		// Prevent simultaneous execution for same term in same language.
+		if row.Term != "" {
+			runningCount, err := tx.PipelineJob.Query().
+				Where(
+					entpipelinejob.StatusEQ(string(entity.JobStatusRunning)),
+					entpipelinejob.LanguageEQ(row.Language),
+					entpipelinejob.TermEqualFold(row.Term),
+				).
+				Count(ctx)
+			if err != nil {
+				_ = tx.Rollback()
+				return nil, fmt.Errorf("check running duplicate term: %w", err)
+			}
+			if runningCount > 0 {
+				continue
+			}
+		}
+
+		// CAS: PENDING → RUNNING (only if still PENDING to prevent double-claim)
+		now := time.Now()
+		affected, err := tx.PipelineJob.Update().
+			Where(
+				entpipelinejob.ID(row.ID),
+				entpipelinejob.StatusEQ(string(entity.JobStatusPending)),
+			).
+			SetStatus(string(entity.JobStatusRunning)).
+			SetStartedAt(now).
+			Save(ctx)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("claim job: %w", err)
+		}
+		if affected == 0 {
+			continue
+		}
+		claimedID = row.ID
+		break
+	}
+	if claimedID == 0 {
 		_ = tx.Rollback()
 		return nil, nil
 	}
@@ -151,7 +203,7 @@ func (r *pipelineJobRepository) claimOneTx(ctx context.Context) (*entity.Pipelin
 	}
 
 	// Re-read the row to get the updated state
-	updated, err := r.client.PipelineJob.Get(ctx, row.ID)
+	updated, err := r.client.PipelineJob.Get(ctx, claimedID)
 	if err != nil {
 		return nil, fmt.Errorf("read claimed job: %w", err)
 	}

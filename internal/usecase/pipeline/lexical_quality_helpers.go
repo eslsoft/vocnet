@@ -50,6 +50,19 @@ var wikidataPOSQIDMap = map[string]entity.PartOfSpeech{
 	"q102786":    entity.PartOfSpeechAbbreviation, // abbreviation (who)
 	"q1778442":   entity.PartOfSpeechVerb,         // verb phrase (makeup)
 	"q107614077": entity.PartOfSpeechAffix,        // combining form (step)
+	"q1964223":   entity.PartOfSpeechSuffix,       // name suffix
+	"q953129":    entity.PartOfSpeechPronoun,      // reflexive pronoun
+	"q66614499":  entity.PartOfSpeechSuffix,       // verbal suffix
+	"q106610283": entity.PartOfSpeechSuffix,       // adverbial suffix
+	"q161873":    entity.PartOfSpeechAdposition,   // postposition
+	"q131431824": entity.PartOfSpeechVerb,         // proper verb
+	"q5978305":   entity.PartOfSpeechSCONJ,        // conjunctive locution
+	"q101244":    entity.PartOfSpeechAbbreviation, // acronym
+	"q1462657":   entity.PartOfSpeechPronoun,      // reciprocal pronoun
+	"q3397768":   entity.PartOfSpeechAdposition,   // prepositional syntagma
+	"q10319522":  entity.PartOfSpeechAdposition,   // prepositional locution
+	"q1167104":   entity.PartOfSpeechSCONJ,        // conjunctive adverb
+	"q29888377":  entity.PartOfSpeechNoun,         // nominal locution
 }
 
 func parsePOSFromSource(source, raw string) (entity.PartOfSpeech, error) {
