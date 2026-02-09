@@ -217,6 +217,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 		),
 		pipeline.NewStage("relational", 3,
 			pipeline.NewConceptNetProcessor(conceptnetProvider),
+			pipeline.NewWikidataRelationProcessor(wikidataProvider),
 			pipeline.NewWordNetProcessor(wordnetReader),
 		),
 		pipeline.NewStage("intellectual", 4,

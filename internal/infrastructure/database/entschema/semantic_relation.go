@@ -24,6 +24,9 @@ func (SemanticRelation) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Foreign key to target lexeme (null = unresolved)"),
+		field.String("target_ref").
+			Default("").
+			Comment("Stable target reference URI, e.g. wikidata://lexeme/L123"),
 		field.String("target_term").
 			NotEmpty().
 			Comment("Target word display text (always set)"),
@@ -68,6 +71,7 @@ func (SemanticRelation) Indexes() []ent.Index {
 		index.Fields("source_lexeme_id", "target_lexeme_id", "relation_type").Unique(),
 		index.Fields("source_lexeme_id"),
 		index.Fields("target_lexeme_id"),
+		index.Fields("target_ref"),
 		index.Fields("relation_type"),
 	}
 }

@@ -27,6 +27,7 @@ func (r *semanticRelationRepository) BatchCreate(ctx context.Context, relations 
 	for _, rel := range relations {
 		b := r.client.SemanticRelation.Create().
 			SetSourceLexemeID(rel.SourceLexemeID).
+			SetTargetRef(rel.TargetRef).
 			SetTargetTerm(rel.TargetTerm).
 			SetRelationType(rel.RelationType).
 			SetProvider(rel.Provider).
@@ -87,6 +88,7 @@ func mapEntSemanticRelation(row *entdb.SemanticRelation) *entity.SemanticRelatio
 		ID:             row.ID,
 		SourceLexemeID: row.SourceLexemeID,
 		TargetLexemeID: row.TargetLexemeID,
+		TargetRef:      row.TargetRef,
 		TargetTerm:     row.TargetTerm,
 		RelationType:   row.RelationType,
 		Provider:       row.Provider,

@@ -119,8 +119,9 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		entityLexemes = append(entityLexemes, &entity.Lexeme{
 			ExternalID:   lex.LexemeID,
 			Language:     entity.ParseLanguage(lex.Language),
-			PartOfSpeech: lex.POS,
+			PartOfSpeech: normalizePOSLabel(lex.POS),
 			EntryType:    entity.LexemeEntryTypeWord,
+			SenseGloss:   pickSenseGloss(senses),
 			Senses:       senses,
 			Categories:   categories,
 		})

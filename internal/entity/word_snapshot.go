@@ -13,11 +13,11 @@ type QualityScore struct {
 
 // SnapshotSense represents a single definition/gloss within a snapshot.
 type SnapshotSense struct {
-	Language    string  `json:"language"`
-	Gloss       string  `json:"gloss"`
+	Language    string   `json:"language"`
+	Gloss       string   `json:"gloss"`
 	Examples    []string `json:"examples,omitempty"`
-	Provider    string  `json:"provider,omitempty"`
-	TrustWeight float64 `json:"trust_weight,omitempty"`
+	Provider    string   `json:"provider,omitempty"`
+	TrustWeight float64  `json:"trust_weight,omitempty"`
 }
 
 // SnapshotForm represents an inflected form within a snapshot.
@@ -39,9 +39,12 @@ type SnapshotLexeme struct {
 type SnapshotRelation struct {
 	RelationType string  `json:"relation_type"`
 	TargetTerm   string  `json:"target_term"`
+	TargetRef    string  `json:"target_ref,omitempty"`
 	Provider     string  `json:"provider"`
 	Strength     float64 `json:"strength"`
 	SenseMapped  bool    `json:"sense_mapped,omitempty"`
+	// TargetResolved indicates whether this relation resolved to an internal target lexeme.
+	TargetResolved bool `json:"target_resolved,omitempty"`
 }
 
 // SnapshotData is the self-contained materialized snapshot stored as JSON.

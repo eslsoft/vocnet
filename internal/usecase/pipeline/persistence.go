@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -71,7 +72,12 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 		if err := p.resolveRelationIDs(ctx, result.Relations); err != nil {
 			return fmt.Errorf("resolve relation IDs: %w", err)
 		}
-		if _, err := p.relationRepo.BatchCreate(ctx, result.Relations); err != nil {
+		relations := deduplicateRelations(result.Relations)
+		relations, err := p.filterExistingUniqueRelations(ctx, relations)
+		if err != nil {
+			return fmt.Errorf("filter existing relations: %w", err)
+		}
+		if _, err := p.relationRepo.BatchCreate(ctx, relations); err != nil {
 			return fmt.Errorf("save relations: %w", err)
 		}
 	}
@@ -241,30 +247,314 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 
 // resolveRelationIDs resolves SourceExternalID → DB SourceLexemeID for all relations.
 func (p *Persistence) resolveRelationIDs(ctx context.Context, relations []*entity.SemanticRelation) error {
-	// Collect unique ExternalIDs
+	sourceLexemeByExternalID := p.loadRelationLexemeIndex(ctx, relations)
+	targetLookup := p.loadRelationTargetLookup(ctx, relations, sourceLexemeByExternalID)
+	for _, rel := range relations {
+		srcLex := sourceLexemeByExternalID[rel.SourceExternalID]
+		if srcLex == nil {
+			continue
+		}
+		rel.SourceLexemeID = srcLex.ID
+
+		p.resolveRelationTarget(rel, srcLex, sourceLexemeByExternalID, targetLookup)
+	}
+	return nil
+}
+
+func collectExternalIDsForRelations(relations []*entity.SemanticRelation) map[string]bool {
 	extIDs := make(map[string]bool)
 	for _, rel := range relations {
+		if rel == nil {
+			continue
+		}
 		if rel.SourceExternalID != "" {
 			extIDs[rel.SourceExternalID] = true
 		}
+		if ext := parseWikidataLexemeRef(rel.TargetRef); ext != "" {
+			extIDs[ext] = true
+		}
 	}
+	return extIDs
+}
 
-	// Resolve ExternalID → DB ID
-	extIDToDBID := make(map[string]int64)
+func (p *Persistence) loadRelationLexemeIndex(ctx context.Context, relations []*entity.SemanticRelation) map[string]*entity.Lexeme {
+	extIDs := collectExternalIDsForRelations(relations)
+	sourceLexemeByExternalID := make(map[string]*entity.Lexeme, len(extIDs))
 	for extID := range extIDs {
 		lex, err := p.lexemeRepo.GetByExternalID(ctx, extID)
 		if err != nil {
 			p.logger.Warn("could not resolve lexeme ExternalID", "external_id", extID, "error", err)
 			continue
 		}
-		extIDToDBID[extID] = lex.ID
+		sourceLexemeByExternalID[extID] = lex
 	}
+	return sourceLexemeByExternalID
+}
 
-	// Backfill SourceLexemeID
+func collectTargetTermsByLanguage(relations []*entity.SemanticRelation, sourceLexemeByExternalID map[string]*entity.Lexeme) map[entity.Language]map[string]struct{} {
+	targetTermsByLang := make(map[entity.Language]map[string]struct{})
 	for _, rel := range relations {
-		if dbID, ok := extIDToDBID[rel.SourceExternalID]; ok {
-			rel.SourceLexemeID = dbID
+		if rel == nil {
+			continue
+		}
+		srcLex := sourceLexemeByExternalID[rel.SourceExternalID]
+		if srcLex == nil {
+			continue
+		}
+		if rel.TargetLexemeID != nil || strings.TrimSpace(rel.TargetTerm) == "" {
+			continue
+		}
+		lang := srcLex.Language
+		if targetTermsByLang[lang] == nil {
+			targetTermsByLang[lang] = make(map[string]struct{})
+		}
+		for _, candidate := range relationTargetLookupTerms(rel.TargetTerm) {
+			targetTermsByLang[lang][candidate] = struct{}{}
 		}
 	}
+	return targetTermsByLang
+}
+
+func (p *Persistence) loadRelationTargetLookup(ctx context.Context, relations []*entity.SemanticRelation, sourceLexemeByExternalID map[string]*entity.Lexeme) map[entity.Language]map[string][]*repository.LexemeFormInfo {
+	targetTermsByLang := collectTargetTermsByLanguage(relations, sourceLexemeByExternalID)
+	targetLookup := make(map[entity.Language]map[string][]*repository.LexemeFormInfo, len(targetTermsByLang))
+	for lang, termSet := range targetTermsByLang {
+		terms := make([]string, 0, len(termSet))
+		for term := range termSet {
+			terms = append(terms, term)
+		}
+		info, err := p.lexemeRepo.BatchLookupFormInfo(ctx, terms, lang)
+		if err != nil {
+			p.logger.Warn("failed to batch resolve relation targets", "language", lang, "error", err)
+			continue
+		}
+		targetLookup[lang] = info
+	}
+	return targetLookup
+}
+
+func (p *Persistence) resolveRelationTarget(
+	rel *entity.SemanticRelation,
+	srcLex *entity.Lexeme,
+	sourceLexemeByExternalID map[string]*entity.Lexeme,
+	targetLookup map[entity.Language]map[string][]*repository.LexemeFormInfo,
+) {
+	if rel.TargetLexemeID != nil {
+		if strings.TrimSpace(rel.TargetRef) == "" {
+			rel.TargetRef = internalLexemeRef(*rel.TargetLexemeID)
+		}
+		return
+	}
+
+	if ext := parseWikidataLexemeRef(rel.TargetRef); ext != "" {
+		targetLex := sourceLexemeByExternalID[ext]
+		if targetLex != nil && targetLex.ID != srcLex.ID {
+			id := targetLex.ID
+			rel.TargetLexemeID = &id
+			return
+		}
+	}
+
+	candidatesByTerm := targetLookup[srcLex.Language]
+	if candidatesByTerm == nil {
+		return
+	}
+	for _, lookupTerm := range relationTargetLookupTerms(rel.TargetTerm) {
+		candidates := candidatesByTerm[lookupTerm]
+		targetID := chooseTargetLexemeID(srcLex, candidates)
+		if targetID != nil {
+			rel.TargetLexemeID = targetID
+			if strings.TrimSpace(rel.TargetRef) == "" {
+				rel.TargetRef = internalLexemeRef(*targetID)
+			}
+			break
+		}
+	}
+}
+
+func relationTargetLookupTerms(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	candidates := make([]string, 0, 4)
+	seen := map[string]struct{}{}
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		candidates = append(candidates, s)
+	}
+
+	add(trimmed)
+	add(strings.ReplaceAll(trimmed, "_", " "))
+
+	if strings.HasPrefix(trimmed, "synset:") {
+		if open := strings.Index(trimmed, "("); open >= 0 {
+			if close := strings.LastIndex(trimmed, ")"); close > open+1 {
+				add(trimmed[open+1 : close])
+			}
+		}
+	}
+
+	return candidates
+}
+
+func deduplicateRelations(relations []*entity.SemanticRelation) []*entity.SemanticRelation {
+	if len(relations) <= 1 {
+		return relations
+	}
+
+	merged := make(map[string]*entity.SemanticRelation, len(relations))
+	for _, rel := range relations {
+		if rel == nil {
+			continue
+		}
+		targetID := "nil"
+		if rel.TargetLexemeID != nil {
+			targetID = fmt.Sprintf("%d", *rel.TargetLexemeID)
+		}
+		// Keep consistent with DB uniqueness while avoiding over-collapse:
+		// - Resolved edge: unique by (source_lexeme_id, target_lexeme_id, relation_type)
+		// - Unresolved edge: keep target_term dimension to preserve distinct textual neighbors.
+		key := fmt.Sprintf("%d|%s|%s",
+			rel.SourceLexemeID,
+			targetID,
+			rel.RelationType,
+		)
+		if rel.TargetLexemeID == nil {
+			key += "|" + strings.ToLower(strings.TrimSpace(rel.TargetRef))
+			key += "|" + strings.ToLower(strings.TrimSpace(rel.TargetTerm))
+		}
+		existing, ok := merged[key]
+		if !ok {
+			merged[key] = rel
+			continue
+		}
+
+		if rel.Strength > existing.Strength {
+			existing.Strength = rel.Strength
+		}
+		existing.SenseMapped = existing.SenseMapped || rel.SenseMapped
+		if existing.TargetLexemeID == nil && rel.TargetLexemeID != nil {
+			existing.TargetLexemeID = rel.TargetLexemeID
+		}
+		if strings.TrimSpace(existing.TargetRef) == "" && strings.TrimSpace(rel.TargetRef) != "" {
+			existing.TargetRef = rel.TargetRef
+		}
+		// Keep higher-trust provider for merged edge.
+		if providerTrustRank(rel.Provider) > providerTrustRank(existing.Provider) {
+			existing.Provider = rel.Provider
+		}
+		// Keep a stable, non-empty display term.
+		if strings.TrimSpace(existing.TargetTerm) == "" && strings.TrimSpace(rel.TargetTerm) != "" {
+			existing.TargetTerm = rel.TargetTerm
+		}
+	}
+
+	out := make([]*entity.SemanticRelation, 0, len(merged))
+	for _, rel := range merged {
+		out = append(out, rel)
+	}
+	return out
+}
+
+func providerTrustRank(provider string) int {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "wordnet":
+		return 4
+	case "llm":
+		return 3
+	case "ecdict":
+		return 2
+	case "conceptnet":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func chooseTargetLexemeID(source *entity.Lexeme, candidates []*repository.LexemeFormInfo) *int64 {
+	if source == nil || len(candidates) == 0 {
+		return nil
+	}
+
+	sourcePOS := strings.ToLower(strings.TrimSpace(source.PartOfSpeech))
+	for _, c := range candidates {
+		if c == nil || c.LexemeID == 0 || c.LexemeID == source.ID {
+			continue
+		}
+		if sourcePOS != "" && strings.ToLower(strings.TrimSpace(c.Pos)) == sourcePOS {
+			id := c.LexemeID
+			return &id
+		}
+	}
+
+	for _, c := range candidates {
+		if c == nil || c.LexemeID == 0 || c.LexemeID == source.ID {
+			continue
+		}
+		id := c.LexemeID
+		return &id
+	}
+
 	return nil
+}
+
+func (p *Persistence) filterExistingUniqueRelations(ctx context.Context, relations []*entity.SemanticRelation) ([]*entity.SemanticRelation, error) {
+	if len(relations) == 0 {
+		return relations, nil
+	}
+
+	sourceIDs := make(map[int64]struct{})
+	for _, rel := range relations {
+		if rel == nil || rel.SourceLexemeID == 0 || rel.TargetLexemeID == nil {
+			continue
+		}
+		sourceIDs[rel.SourceLexemeID] = struct{}{}
+	}
+	if len(sourceIDs) == 0 {
+		return relations, nil
+	}
+
+	existingKeys := make(map[string]struct{})
+	for sourceID := range sourceIDs {
+		existing, err := p.relationRepo.FindBySourceLexeme(ctx, sourceID)
+		if err != nil {
+			return nil, err
+		}
+		for _, rel := range existing {
+			key, ok := relationUniqueKey(rel)
+			if !ok {
+				continue
+			}
+			existingKeys[key] = struct{}{}
+		}
+	}
+
+	out := make([]*entity.SemanticRelation, 0, len(relations))
+	for _, rel := range relations {
+		key, ok := relationUniqueKey(rel)
+		if ok {
+			if _, exists := existingKeys[key]; exists {
+				continue
+			}
+			existingKeys[key] = struct{}{}
+		}
+		out = append(out, rel)
+	}
+	return out, nil
+}
+
+func relationUniqueKey(rel *entity.SemanticRelation) (string, bool) {
+	if rel == nil || rel.TargetLexemeID == nil || rel.SourceLexemeID == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%d|%d|%s", rel.SourceLexemeID, *rel.TargetLexemeID, rel.RelationType), true
 }

@@ -54,11 +54,13 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 	snapshotRelations := make([]entity.SnapshotRelation, 0, len(pctx.Relations))
 	for _, rel := range pctx.Relations {
 		snapshotRelations = append(snapshotRelations, entity.SnapshotRelation{
-			RelationType: rel.RelationType,
-			TargetTerm:   rel.TargetTerm,
-			Provider:     rel.Provider,
-			Strength:     rel.Strength,
-			SenseMapped:  rel.SenseMapped,
+			RelationType:   rel.RelationType,
+			TargetTerm:     rel.TargetTerm,
+			TargetRef:      rel.TargetRef,
+			Provider:       rel.Provider,
+			Strength:       rel.Strength,
+			SenseMapped:    rel.SenseMapped,
+			TargetResolved: rel.TargetLexemeID != nil,
 		})
 	}
 

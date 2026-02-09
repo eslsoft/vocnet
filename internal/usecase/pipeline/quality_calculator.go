@@ -1,137 +1,154 @@
 package pipeline
 
-import "github.com/eslsoft/vocnet/internal/entity"
+import (
+	"math"
+	"strings"
+
+	"github.com/eslsoft/vocnet/internal/entity"
+)
 
 // QualityScoreCalculator computes multi-dimensional quality scores for word snapshots.
-// This extracts the complex scoring logic from Phase 5.
+//
+// Scoring follows the design doc direction:
+// - Completeness (C): lexical structure coverage (lemma/lexeme/forms/phonetics)
+// - Depth (D): hypernym path depth signal
+// - Density (R): effective relation density (after structural quality penalties)
+// - Validity (V): consistency/quality signals from relation mapping and source consensus
+//
+// Overall = 0.35*C + 0.25*D + 0.25*R + 0.15*V
+// All dimensions are in [0, 100].
 type QualityScoreCalculator struct{}
 
 func NewQualityScoreCalculator() *QualityScoreCalculator {
 	return &QualityScoreCalculator{}
 }
 
-// Calculate computes a quality score (0-100 scale) across four dimensions.
 func (c *QualityScoreCalculator) Calculate(data entity.SnapshotData) entity.QualityScore {
 	completeness := c.calculateCompleteness(data)
 	depth := c.calculateDepth(data)
 	density := c.calculateDensity(data)
 	validity := c.calculateValidity(data)
 
-	// Overall: weighted average emphasizing completeness
-	overall := (completeness*0.35 + depth*0.25 + density*0.25 + validity*0.15)
+	overall := (completeness * 0.35) + (depth * 0.25) + (density * 0.25) + (validity * 0.15)
 
 	return entity.QualityScore{
-		Overall:      overall,
-		Completeness: completeness,
-		Depth:        depth,
-		Density:      density,
-		Validity:     validity,
+		Overall:      clampScore(overall),
+		Completeness: clampScore(completeness),
+		Depth:        clampScore(depth),
+		Density:      clampScore(density),
+		Validity:     clampScore(validity),
 	}
 }
 
-// calculateCompleteness measures data presence (0-100).
+// calculateCompleteness focuses on lexical structure coverage.
 func (c *QualityScoreCalculator) calculateCompleteness(data entity.SnapshotData) float64 {
-	score := 0.0
-
-	// Basic structure (40 points)
-	score += c.scoreBasicStructure(data)
-
-	// Senses (30 points)
-	score += c.scoreSenses(data)
-
-	// Relations (30 points)
-	score += c.scoreRelations(data)
-
-	return score
-}
-
-// scoreBasicStructure scores basic lexeme presence.
-func (c *QualityScoreCalculator) scoreBasicStructure(data entity.SnapshotData) float64 {
 	if len(data.Lexemes) == 0 {
 		return 0
 	}
 
-	score := 20.0
+	lexemeCount := float64(len(data.Lexemes))
+	validPOS := 0
+	withSenses := 0
+	withForms := 0
+	withPhonetics := 0
 
-	// Check if lexemes have meaningful data
 	for _, lex := range data.Lexemes {
-		if lex.POS != "" {
-			score += 10
-			break
+		if isValidPOS(lex.POS) {
+			validPOS++
+		}
+		if len(lex.Senses) > 0 {
+			withSenses++
+		}
+		if len(lex.Forms) > 0 {
+			withForms++
+		}
+		if len(lex.Phonetics) > 0 {
+			withPhonetics++
 		}
 	}
 
-	// Bonus for multiple lexemes
-	if len(data.Lexemes) > 1 {
-		score += 10
-	}
+	posCoverage := float64(validPOS) / lexemeCount
+	senseCoverage := float64(withSenses) / lexemeCount
+	formCoverage := float64(withForms) / lexemeCount
+	phoneticCoverage := float64(withPhonetics) / lexemeCount
 
-	return score
+	// Relation integrity is part of structural completeness:
+	// lots of unresolved/unmapped/out-of-range edges should not look "complete".
+	relationIntegrity := (0.6 * c.resolvedRelationRatio(data)) +
+		(0.2 * c.senseMappedRatio(data)) +
+		(0.2 * c.inRangeStrengthRatio(data))
+
+	return (18 * posCoverage) +
+		(22 * senseCoverage) +
+		(22 * formCoverage) +
+		(18 * phoneticCoverage) +
+		(20 * relationIntegrity)
 }
 
-// scoreSenses scores sense richness.
-func (c *QualityScoreCalculator) scoreSenses(data entity.SnapshotData) float64 {
-	totalSenses := 0
-	for _, lex := range data.Lexemes {
-		totalSenses += len(lex.Senses)
-	}
-
-	if totalSenses == 0 {
-		return 0
-	}
-
-	senseScore := float64(totalSenses) * 3
-	if senseScore > 30 {
-		senseScore = 30
-	}
-
-	return senseScore
-}
-
-// scoreRelations scores relation presence.
-func (c *QualityScoreCalculator) scoreRelations(data entity.SnapshotData) float64 {
-	if len(data.Relations) == 0 {
-		return 0
-	}
-
-	relScore := float64(len(data.Relations)) * 0.3
-	if relScore > 30 {
-		relScore = 30
-	}
-
-	return relScore
-}
-
-// calculateDepth measures semantic hierarchy depth (0-100).
-// Per design doc: "上位词层级路径完整度，必须确保能追溯至根节点"
+// calculateDepth measures taxonomy depth via WordNet hypernym signal.
 func (c *QualityScoreCalculator) calculateDepth(data entity.SnapshotData) float64 {
-	// Count WordNet hypernym relations
 	hypernymCount := c.countHypernyms(data)
-
-	// If no WordNet data, score is 0 (per design doc requirement)
 	if hypernymCount == 0 {
 		return 0
 	}
 
-	// Score based on hypernym depth:
-	// 1 level = 16.7, 3 levels = 50, 6 levels = 100
-	score := (float64(hypernymCount) / 6.0) * 100
-	if score > 100 {
-		score = 100
+	// Design intent: depth should reward a usable taxonomy path and root reachability.
+	// We use edge count as path proxy plus a root-hit bonus ("entity" for WordNet noun tree).
+	pathCoverage := clampUnit(float64(hypernymCount) / 8.0)
+	rootReach := 0.0
+	if c.hasHypernymRoot(data) {
+		rootReach = 1.0
 	}
 
-	// Bonus for examples in senses (up to 10 points)
-	if c.hasExamples(data) && score < 100 {
-		score += 10
-		if score > 100 {
-			score = 100
-		}
-	}
-
-	return score
+	score := (70 * pathCoverage) + (30 * rootReach)
+	return clampScore(score)
 }
 
-// countHypernyms counts WordNet hypernym relations.
+// calculateDensity measures effective relation density, not raw edge count.
+//
+// We penalize relation volume when links are unresolved or mostly not sense-mapped.
+func (c *QualityScoreCalculator) calculateDensity(data entity.SnapshotData) float64 {
+	uniqueCount := c.countUniqueRelations(data)
+	if uniqueCount == 0 {
+		return 0
+	}
+
+	base := densityBaseScore(uniqueCount)
+
+	resolvedRatio := c.resolvedRelationRatio(data)
+	mappedRatio := c.senseMappedRatio(data)
+
+	// Structural quality factor keeps density honest.
+	// - Resolved target coverage is dominant (completeness)
+	// - Sense mapping improves semantic precision (accuracy)
+	qualityFactor := (0.7 * resolvedRatio) + (0.3 * mappedRatio)
+
+	return clampScore(base * qualityFactor)
+}
+
+// calculateValidity measures relation trust/consistency quality.
+func (c *QualityScoreCalculator) calculateValidity(data entity.SnapshotData) float64 {
+	relCount := len(data.Relations)
+	if relCount == 0 {
+		return 0
+	}
+
+	providerDiversity := clampUnit(float64(c.providerCount(data)-1) / 2.0) // 1 provider=0, 3+=1
+	mappedRatio := c.senseMappedRatio(data)
+	resolvedRatio := c.resolvedRelationRatio(data)
+	inRangeStrengthRatio := c.inRangeStrengthRatio(data)
+	duplicatePenalty := c.duplicateRatio(data) // higher is worse
+
+	score :=
+		(25 * providerDiversity) +
+			(25 * mappedRatio) +
+			(25 * resolvedRatio) +
+			(15 * inRangeStrengthRatio) +
+			(10 * (1.0 - duplicatePenalty))
+
+	return clampScore(score)
+}
+
 func (c *QualityScoreCalculator) countHypernyms(data entity.SnapshotData) int {
 	count := 0
 	for _, rel := range data.Relations {
@@ -142,125 +159,150 @@ func (c *QualityScoreCalculator) countHypernyms(data entity.SnapshotData) int {
 	return count
 }
 
-// hasExamples checks if any sense has examples.
-func (c *QualityScoreCalculator) hasExamples(data entity.SnapshotData) bool {
-	for _, lex := range data.Lexemes {
-		for _, sense := range lex.Senses {
-			if len(sense.Examples) > 0 {
-				return true
-			}
+func (c *QualityScoreCalculator) hasHypernymRoot(data entity.SnapshotData) bool {
+	for _, rel := range data.Relations {
+		if rel.Provider != "wordnet" || rel.RelationType != entity.RelationHypernym {
+			continue
+		}
+		if strings.Contains(strings.ToLower(rel.TargetTerm), "entity") {
+			return true
 		}
 	}
 	return false
 }
 
-// calculateDensity measures relation network density (0-100).
-func (c *QualityScoreCalculator) calculateDensity(data entity.SnapshotData) float64 {
-	relationCount := len(data.Relations)
+func (c *QualityScoreCalculator) countUniqueRelations(data entity.SnapshotData) int {
+	if len(data.Relations) == 0 {
+		return 0
+	}
+	seen := make(map[string]struct{}, len(data.Relations))
+	for _, rel := range data.Relations {
+		key := strings.ToLower(strings.TrimSpace(rel.Provider)) + "|" +
+			strings.ToUpper(strings.TrimSpace(rel.RelationType)) + "|" +
+			strings.ToLower(strings.TrimSpace(rel.TargetTerm))
+		seen[key] = struct{}{}
+	}
+	return len(seen)
+}
 
-	// Base score by relation count
-	var score float64
+func (c *QualityScoreCalculator) providerCount(data entity.SnapshotData) int {
+	providers := make(map[string]struct{})
+	for _, rel := range data.Relations {
+		p := strings.TrimSpace(strings.ToLower(rel.Provider))
+		if p == "" {
+			continue
+		}
+		providers[p] = struct{}{}
+	}
+	return len(providers)
+}
+
+func (c *QualityScoreCalculator) senseMappedRatio(data entity.SnapshotData) float64 {
+	if len(data.Relations) == 0 {
+		return 0
+	}
+	mapped := 0
+	for _, rel := range data.Relations {
+		if rel.SenseMapped {
+			mapped++
+		}
+	}
+	return float64(mapped) / float64(len(data.Relations))
+}
+
+func (c *QualityScoreCalculator) resolvedRelationRatio(data entity.SnapshotData) float64 {
+	if len(data.Relations) == 0 {
+		return 0
+	}
+	resolved := 0
+	for _, rel := range data.Relations {
+		if rel.TargetResolved || strings.TrimSpace(rel.TargetRef) != "" {
+			resolved++
+		}
+	}
+	return float64(resolved) / float64(len(data.Relations))
+}
+
+func (c *QualityScoreCalculator) inRangeStrengthRatio(data entity.SnapshotData) float64 {
+	if len(data.Relations) == 0 {
+		return 0
+	}
+	inRange := 0
+	for _, rel := range data.Relations {
+		if rel.Strength >= 0 && rel.Strength <= 1 {
+			inRange++
+		}
+	}
+	return float64(inRange) / float64(len(data.Relations))
+}
+
+func (c *QualityScoreCalculator) duplicateRatio(data entity.SnapshotData) float64 {
+	if len(data.Relations) == 0 {
+		return 0
+	}
+	seen := make(map[string]struct{}, len(data.Relations))
+	duplicates := 0
+	for _, rel := range data.Relations {
+		key := strings.ToLower(strings.TrimSpace(rel.Provider)) + "|" +
+			strings.ToUpper(strings.TrimSpace(rel.RelationType)) + "|" +
+			strings.ToLower(strings.TrimSpace(rel.TargetTerm))
+		if _, ok := seen[key]; ok {
+			duplicates++
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+	return float64(duplicates) / float64(len(data.Relations))
+}
+
+func densityBaseScore(uniqueRelationCount int) float64 {
 	switch {
-	case relationCount == 0:
-		score = 0
-	case relationCount <= 10:
-		score = 30 // Sparse
-	case relationCount <= 30:
-		score = 50 // Moderate
-	case relationCount <= 50:
-		score = 70 // Good
-	case relationCount <= 100:
-		score = 85 // Very good
+	case uniqueRelationCount == 0:
+		return 0
+	case uniqueRelationCount <= 10:
+		return 30
+	case uniqueRelationCount <= 30:
+		return 50
+	case uniqueRelationCount <= 50:
+		return 70
+	case uniqueRelationCount <= 100:
+		return 85
 	default:
-		score = 100 // Excellent
+		return 100
 	}
-
-	// Bonus for relation diversity
-	if c.hasRelationDiversity(data) && score < 100 {
-		score += 10
-		if score > 100 {
-			score = 100
-		}
-	}
-
-	return score
 }
 
-// hasRelationDiversity checks for 3+ relation types.
-func (c *QualityScoreCalculator) hasRelationDiversity(data entity.SnapshotData) bool {
-	relationTypes := make(map[string]bool)
-	for _, rel := range data.Relations {
-		relationTypes[rel.RelationType] = true
+func isValidPOS(pos string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(pos))
+	switch normalized {
+	case "noun", "verb", "adjective", "adverb", "proper noun",
+		"pronoun", "determiner", "preposition", "conjunction",
+		"interjection", "article", "numeral", "particle":
+		return true
+	default:
+		return false
 	}
-	return len(relationTypes) >= 3
 }
 
-// calculateValidity measures trust and quality (0-100).
-func (c *QualityScoreCalculator) calculateValidity(data entity.SnapshotData) float64 {
-	score := 50.0 // Base score
-
-	// Provider diversity bonus
-	score += c.scoreProviderDiversity(data)
-
-	// Sense richness bonus
-	score += c.scoreSenseRichness(data)
-
-	// Strong relations bonus
-	score += c.scoreStrongRelations(data)
-
-	if score > 100 {
-		score = 100
+func clampUnit(v float64) float64 {
+	if v < 0 {
+		return 0
 	}
-
-	return score
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
-// scoreProviderDiversity scores data source diversity.
-func (c *QualityScoreCalculator) scoreProviderDiversity(data entity.SnapshotData) float64 {
-	providers := make(map[string]bool)
-	for _, rel := range data.Relations {
-		if rel.Provider != "" {
-			providers[rel.Provider] = true
-		}
+func clampScore(v float64) float64 {
+	if v < 0 {
+		return 0
 	}
-
-	if len(providers) >= 2 {
-		return 20
-	} else if len(providers) == 1 {
-		return 10
+	if v > 100 {
+		return 100
 	}
-
-	return 0
-}
-
-// scoreSenseRichness scores sense count.
-func (c *QualityScoreCalculator) scoreSenseRichness(data entity.SnapshotData) float64 {
-	totalSenses := 0
-	for _, lex := range data.Lexemes {
-		totalSenses += len(lex.Senses)
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0
 	}
-
-	if totalSenses > 10 {
-		return 15
-	} else if totalSenses > 5 {
-		return 10
-	}
-
-	return 0
-}
-
-// scoreStrongRelations scores high-strength relations.
-func (c *QualityScoreCalculator) scoreStrongRelations(data entity.SnapshotData) float64 {
-	strongCount := 0
-	for _, rel := range data.Relations {
-		if rel.Strength > 2.0 {
-			strongCount++
-		}
-	}
-
-	if strongCount > 0 {
-		return 15
-	}
-
-	return 0
+	return v
 }

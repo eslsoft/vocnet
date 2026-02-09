@@ -88,7 +88,7 @@ func (p *ECDICTProcessor) parseECDICT(entry *ecdict.ECDICTEntry) *parsedECDICTDa
 		Frequencies:  parseFrequenciesFromECDICT(entry),
 		Categories:   ExtractDomainCategories(entry.Tags),
 		Completeness: calculateCompletenessScore(entry),
-		POS:          entry.POS,
+		POS:          normalizePOSLabel(entry.POS),
 	}
 }
 
@@ -101,8 +101,11 @@ func enrichExistingLexeme(lexeme *entity.Lexeme, data *parsedECDICTData, aggrega
 	if len(data.Frequencies) > 0 {
 		enriched.Frequencies = data.Frequencies
 	}
-	if data.POS != "" && lexeme.PartOfSpeech == "" {
+	if data.POS != "" && strings.TrimSpace(lexeme.PartOfSpeech) == "" {
 		enriched.PartOfSpeech = data.POS
+	}
+	if strings.TrimSpace(enriched.SenseGloss) == "" {
+		enriched.SenseGloss = pickSenseGloss(enriched.Senses)
 	}
 	if lexeme.Completeness == 0 {
 		enriched.Completeness = data.Completeness
@@ -120,6 +123,7 @@ func createLexemeFromECDICT(data *parsedECDICTData) *entity.Lexeme {
 		Language:     entity.LanguageEnglish,
 		PartOfSpeech: data.POS,
 		EntryType:    entity.LexemeEntryTypeWord,
+		SenseGloss:   pickSenseGloss(data.Senses),
 		Senses:       data.Senses,
 		Frequencies:  data.Frequencies,
 		Categories:   data.Categories,
