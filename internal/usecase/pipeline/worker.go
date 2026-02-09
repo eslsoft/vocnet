@@ -13,8 +13,9 @@ import (
 
 // WorkerPoolConfig configures the worker pool.
 type WorkerPoolConfig struct {
-	WorkerCount  int           // Number of concurrent workers (default: 1)
-	PollInterval time.Duration // Interval between job polls (default: 5s)
+	WorkerCount       int           // Number of concurrent workers (default: 1)
+	PollInterval      time.Duration // Interval between job polls (default: 5s)
+	ProgressLogInterval time.Duration // Interval between progress logs (default: 30s, 0 to disable)
 }
 
 // WorkerPool manages concurrent pipeline job processing using gammazero/workerpool.
@@ -24,9 +25,10 @@ type WorkerPool struct {
 	logger   *slog.Logger
 	config   WorkerPoolConfig
 
-	pool   *workerpool.WorkerPool
-	cancel context.CancelFunc
-	done   chan struct{} // signals when Start() has fully completed
+	pool    *workerpool.WorkerPool
+	cancel  context.CancelFunc
+	done    chan struct{} // signals when Start() has fully completed
+	metrics *WorkerPoolMetrics
 }
 
 // NewWorkerPool creates a new worker pool with the given configuration.
@@ -42,6 +44,9 @@ func NewWorkerPool(
 	if config.PollInterval <= 0 {
 		config.PollInterval = 5 * time.Second
 	}
+	if config.ProgressLogInterval == 0 {
+		config.ProgressLogInterval = 30 * time.Second
+	}
 
 	return &WorkerPool{
 		jobRepo:  jobRepo,
@@ -49,6 +54,7 @@ func NewWorkerPool(
 		logger:   logger.With("component", "pipeline-worker-pool"),
 		config:   config,
 		done:     make(chan struct{}),
+		metrics:  NewWorkerPoolMetrics(),
 	}
 }
 
@@ -65,18 +71,30 @@ func (p *WorkerPool) Start(ctx context.Context) error {
 		"poll_interval", p.config.PollInterval.String(),
 	)
 
-	ticker := time.NewTicker(p.config.PollInterval)
-	defer ticker.Stop()
+	pollTicker := time.NewTicker(p.config.PollInterval)
+	defer pollTicker.Stop()
+
+	// Progress logging ticker (nil if disabled)
+	var progressTicker *time.Ticker
+	var progressCh <-chan time.Time
+	if p.config.ProgressLogInterval > 0 {
+		progressTicker = time.NewTicker(p.config.ProgressLogInterval)
+		progressCh = progressTicker.C
+		defer progressTicker.Stop()
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			p.logger.Info("pipeline worker pool stopping, waiting for in-flight jobs...")
 			p.pool.StopWait()
+			p.logProgress() // Final progress report
 			p.logger.Info("pipeline worker pool stopped")
 			return nil
-		case <-ticker.C:
+		case <-pollTicker.C:
 			p.pollAndSubmit(ctx)
+		case <-progressCh:
+			p.logProgress()
 		}
 	}
 }
@@ -92,6 +110,34 @@ func (p *WorkerPool) Stop() {
 // Should be called after Stop() to ensure graceful shutdown.
 func (p *WorkerPool) Wait() {
 	<-p.done
+}
+
+// Metrics returns the current metrics snapshot.
+func (p *WorkerPool) Metrics() MetricsSnapshot {
+	return p.metrics.Snapshot()
+}
+
+// GetMetrics returns the underlying metrics collector (for external access).
+func (p *WorkerPool) GetMetrics() *WorkerPoolMetrics {
+	return p.metrics
+}
+
+// logProgress logs the current progress metrics.
+func (p *WorkerPool) logProgress() {
+	m := p.metrics.Snapshot()
+	if m.JobsProcessed == 0 {
+		return // Nothing to report
+	}
+
+	p.logger.Info("pipeline progress",
+		"processed", m.JobsProcessed,
+		"succeeded", m.JobsSucceeded,
+		"failed", m.JobsFailed,
+		"rate_per_min", m.JobsPerMinute,
+		"recent_rate_per_min", m.RecentJobsPerMinute,
+		"avg_duration_ms", m.AvgDurationMs,
+		"uptime_s", m.UptimeSeconds,
+	)
 }
 
 func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
@@ -158,14 +204,17 @@ func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jo
 	termLogger := jobLogger.With("term", term)
 	termStart := time.Now()
 	_, err = p.pipeline.Run(ctx, job.ID, term, job.Language, job.Tier, &RunOptions{Logger: termLogger})
+	duration := time.Since(termStart)
 	if err != nil {
+		p.metrics.RecordJob(duration, false)
 		_ = p.jobRepo.IncrementFailed(ctx, job.ID)
 		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
 		termLogger.Warn("failed to process term", "error", err)
 		return
 	}
 
+	p.metrics.RecordJob(duration, true)
 	_ = p.jobRepo.IncrementProcessed(ctx, job.ID)
 	_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
-	jobLogger.Info("job completed", "duration", time.Since(jobStart).String(), "processed", 1, "failed", 0, "term_duration", time.Since(termStart).String())
+	jobLogger.Info("job completed", "duration", time.Since(jobStart).String(), "processed", 1, "failed", 0, "term_duration", duration.String())
 }

@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -417,6 +419,163 @@ func newPipelineDeps() (*pipelineDeps, error) {
 	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
 }
 
+// statsCmd shows pipeline worker pool statistics
+var statsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show pipeline worker pool statistics",
+	Long: `Query the running server's metrics endpoint to display:
+  - Worker pool metrics (jobs processed, rate, avg duration)
+  - Queue status (pending, running, completed, failed)
+  - Estimated remaining time
+
+The server must be running for this command to work.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		serverURL, _ := cmd.Flags().GetString("url")
+		watch, _ := cmd.Flags().GetBool("watch")
+
+		if watch {
+			return runStatsWatch(serverURL)
+		}
+		return runStatsOnce(serverURL)
+	},
+}
+
+func runStatsOnce(serverURL string) error {
+	stats, err := fetchPipelineStats(serverURL)
+	if err != nil {
+		return err
+	}
+	printStats(stats)
+	return nil
+}
+
+func runStatsWatch(serverURL string) error {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	// Print initial stats
+	if err := runStatsOnce(serverURL); err != nil {
+		return err
+	}
+
+	fmt.Println("\nWatching... (press Ctrl+C to stop)")
+
+	for range ticker.C {
+		// Clear screen and move cursor to top
+		fmt.Print("\033[H\033[2J")
+		if err := runStatsOnce(serverURL); err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+		fmt.Println("\nWatching... (press Ctrl+C to stop)")
+	}
+	return nil
+}
+
+// PipelineStatsResponse mirrors server.PipelineStatsResponse for CLI parsing.
+type PipelineStatsResponse struct {
+	Worker                    WorkerMetrics `json:"worker"`
+	Queue                     QueueStats    `json:"queue"`
+	EstimatedRemainingSeconds float64       `json:"estimated_remaining_seconds"`
+}
+
+type WorkerMetrics struct {
+	UptimeSeconds       float64 `json:"uptime_seconds"`
+	JobsProcessed       int64   `json:"jobs_processed"`
+	JobsSucceeded       int64   `json:"jobs_succeeded"`
+	JobsFailed          int64   `json:"jobs_failed"`
+	JobsPerMinute       float64 `json:"jobs_per_minute"`
+	AvgDurationMs       float64 `json:"avg_duration_ms"`
+	RecentJobsPerMinute float64 `json:"recent_jobs_per_minute"`
+	RecentAvgDurationMs float64 `json:"recent_avg_duration_ms"`
+}
+
+type QueueStats struct {
+	Pending   int64 `json:"pending"`
+	Running   int64 `json:"running"`
+	Completed int64 `json:"completed"`
+	Failed    int64 `json:"failed"`
+	Paused    int64 `json:"paused"`
+	Cancelled int64 `json:"cancelled"`
+	Total     int64 `json:"total"`
+}
+
+func fetchPipelineStats(serverURL string) (*PipelineStatsResponse, error) {
+	resp, err := http.Get(serverURL + "/metrics/pipeline")
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to server: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	var stats PipelineStatsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &stats, nil
+}
+
+func printStats(stats *PipelineStatsResponse) {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	fmt.Printf("Pipeline Stats (%s)\n", now)
+	fmt.Println(strings.Repeat("=", 50))
+
+	// Worker metrics
+	fmt.Println("\n📊 Worker Pool:")
+	fmt.Printf("  Uptime:         %s\n", formatDuration(stats.Worker.UptimeSeconds))
+	fmt.Printf("  Processed:      %d (✓ %d, ✗ %d)\n",
+		stats.Worker.JobsProcessed, stats.Worker.JobsSucceeded, stats.Worker.JobsFailed)
+	fmt.Printf("  Rate (5min):    %.1f jobs/min\n", stats.Worker.JobsPerMinute)
+	fmt.Printf("  Rate (1min):    %.1f jobs/min\n", stats.Worker.RecentJobsPerMinute)
+	fmt.Printf("  Avg Duration:   %.0f ms\n", stats.Worker.AvgDurationMs)
+
+	// Queue stats
+	fmt.Println("\n📋 Queue:")
+	fmt.Printf("  Pending:        %d\n", stats.Queue.Pending)
+	fmt.Printf("  Running:        %d\n", stats.Queue.Running)
+	fmt.Printf("  Completed:      %d\n", stats.Queue.Completed)
+	fmt.Printf("  Failed:         %d\n", stats.Queue.Failed)
+	if stats.Queue.Paused > 0 {
+		fmt.Printf("  Paused:         %d\n", stats.Queue.Paused)
+	}
+	if stats.Queue.Cancelled > 0 {
+		fmt.Printf("  Cancelled:      %d\n", stats.Queue.Cancelled)
+	}
+	fmt.Printf("  Total:          %d\n", stats.Queue.Total)
+
+	// Progress
+	remaining := stats.Queue.Pending + stats.Queue.Running
+	if stats.Queue.Total > 0 {
+		completed := stats.Queue.Completed + stats.Queue.Failed + stats.Queue.Cancelled
+		progress := float64(completed) / float64(stats.Queue.Total) * 100
+		fmt.Printf("\n⏱️  Progress:      %.1f%% (%d/%d)\n", progress, completed, stats.Queue.Total)
+	}
+
+	// ETA
+	if stats.EstimatedRemainingSeconds > 0 && remaining > 0 {
+		fmt.Printf("🕐 ETA:           ~%s (%d jobs remaining)\n",
+			formatDuration(stats.EstimatedRemainingSeconds), remaining)
+	}
+}
+
+func formatDuration(seconds float64) string {
+	d := time.Duration(seconds * float64(time.Second))
+	if d < time.Minute {
+		return d.Round(time.Second).String()
+	}
+	if d < time.Hour {
+		mins := int(d.Minutes())
+		secs := int(d.Seconds()) % 60
+		return fmt.Sprintf("%dm%ds", mins, secs)
+	}
+	hours := int(d.Hours())
+	mins := int(d.Minutes()) % 60
+	return fmt.Sprintf("%dh%dm", hours, mins)
+}
+
 // resolveWordbook finds a builtin wordbook by name or ID and returns its terms.
 func resolveWordbook(nameOrID string) ([]string, string, error) {
 	builtins := wordbook.GetBuiltinWordbooks()
@@ -471,4 +630,9 @@ func init() {
 	pipelineCmd.AddCommand(jobControlCmd("resume", "Resume a paused job", entity.JobActionResume, "resumed"))
 	pipelineCmd.AddCommand(jobControlCmd("cancel", "Cancel a pending, running, or paused job", entity.JobActionCancel, "cancelled"))
 	pipelineCmd.AddCommand(jobControlCmd("retry", "Retry a failed or cancelled job", entity.JobActionRetry, "queued for retry"))
+
+	// Stats command
+	pipelineCmd.AddCommand(statsCmd)
+	statsCmd.Flags().String("url", "http://localhost:8080", "Server URL")
+	statsCmd.Flags().BoolP("watch", "w", false, "Watch mode (refresh every 2 seconds)")
 }
