@@ -20,6 +20,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
+	temporalinfra "github.com/eslsoft/vocnet/internal/infrastructure/orchestration/temporal"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
@@ -165,7 +166,7 @@ File formats:
 		wb, _ := cmd.Flags().GetString("wordbook")
 		name, _ := cmd.Flags().GetString("name")
 
-		deps, err := newPipelineDeps()
+		deps, err := newPipelineDeps(true)
 		if err != nil {
 			return err
 		}
@@ -230,7 +231,7 @@ var jobsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		statusFlag, _ := cmd.Flags().GetString("status")
 
-		deps, err := newPipelineDeps()
+		deps, err := newPipelineDeps(false)
 		if err != nil {
 			return err
 		}
@@ -297,7 +298,7 @@ var jobCmd = &cobra.Command{
 			return fmt.Errorf("invalid job ID: %w", err)
 		}
 
-		deps, err := newPipelineDeps()
+		deps, err := newPipelineDeps(false)
 		if err != nil {
 			return err
 		}
@@ -373,7 +374,7 @@ func jobControlCmd(use, short string, action entity.JobAction, pastTense string)
 				return fmt.Errorf("invalid job ID: %w", err)
 			}
 
-			deps, err := newPipelineDeps()
+			deps, err := newPipelineDeps(action == entity.JobActionRetry)
 			if err != nil {
 				return err
 			}
@@ -397,7 +398,7 @@ type pipelineDeps struct {
 }
 
 // newPipelineDeps creates the common dependencies for pipeline CLI commands.
-func newPipelineDeps() (*pipelineDeps, error) {
+func newPipelineDeps(requireDispatcher bool) (*pipelineDeps, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
@@ -418,7 +419,33 @@ func newPipelineDeps() (*pipelineDeps, error) {
 	lemmaRepo := repository.NewLemmaRepository(entClient)
 	svc := pipeline.NewPipelineService(jobRepo, taskRepo, lemmaRepo, logger)
 
-	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
+	if !cfg.Temporal.Enabled {
+		if requireDispatcher {
+			cleanup()
+			return nil, fmt.Errorf("temporal orchestration disabled (set TEMPORAL_ENABLED=true)")
+		}
+		return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
+	}
+
+	temporalClient, err := temporalinfra.NewClient(cfg)
+	if err != nil {
+		if requireDispatcher {
+			cleanup()
+			return nil, fmt.Errorf("create temporal client: %w", err)
+		}
+		return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
+	}
+
+	dispatcher := temporalinfra.NewDispatcher(temporalClient, cfg.Temporal.TaskQueue, logger)
+	svc.SetDispatcher(dispatcher)
+
+	return &pipelineDeps{
+		svc: svc,
+		cleanup: func() {
+			temporalClient.Close()
+			cleanup()
+		},
+	}, nil
 }
 
 // statsCmd shows pipeline worker pool statistics
