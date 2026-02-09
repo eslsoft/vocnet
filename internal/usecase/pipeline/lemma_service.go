@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -53,13 +52,7 @@ func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQue
 
 		lemma, err := s.lemmaRepo.GetByID(ctx, snapshot.LemmaID)
 		if err != nil {
-			// Snapshot is the source of truth for this list endpoint.
-			// If lemma row is missing, return a minimal placeholder.
-			lemma = &entity.Lemma{
-				ID:         snapshot.LemmaID,
-				Surface:    snapshot.Term,
-				Normalized: strings.ToLower(snapshot.Term),
-			}
+			return nil, 0, err
 		}
 
 		items = append(items, &LemmaListItem{
