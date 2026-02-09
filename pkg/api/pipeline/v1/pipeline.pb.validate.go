@@ -59,8 +59,6 @@ func (m *PipelineJob) validate(all bool) error {
 
 	// no validation rules for Id
 
-	// no validation rules for JobType
-
 	// no validation rules for Status
 
 	// no validation rules for Name
@@ -70,14 +68,6 @@ func (m *PipelineJob) validate(all bool) error {
 	// no validation rules for Tier
 
 	// no validation rules for Term
-
-	// no validation rules for TotalTerms
-
-	// no validation rules for Processed
-
-	// no validation rules for Skipped
-
-	// no validation rules for Failed
 
 	// no validation rules for ErrorMessage
 
@@ -274,22 +264,22 @@ var _ interface {
 	ErrorName() string
 } = PipelineJobValidationError{}
 
-// Validate checks the field values on PipelineDropStage with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// first error encountered is returned, or nil if there are no violations.
-func (m *PipelineDropStage) Validate() error {
+// Validate checks the field values on PipelineStage with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *PipelineStage) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on PipelineDropStage with the rules
-// defined in the proto definition for this message. If any rules are
-// violated, the result is a list of violation errors wrapped in
-// PipelineDropStageMultiError, or nil if none found.
-func (m *PipelineDropStage) ValidateAll() error {
+// ValidateAll checks the field values on PipelineStage with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in PipelineStageMultiError, or
+// nil if none found.
+func (m *PipelineStage) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *PipelineDropStage) validate(all bool) error {
+func (m *PipelineStage) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
@@ -314,7 +304,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		switch v := interface{}(m.GetStartedAt()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "StartedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -322,7 +312,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 			}
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "StartedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -331,7 +321,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		}
 	} else if v, ok := interface{}(m.GetStartedAt()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return PipelineDropStageValidationError{
+			return PipelineStageValidationError{
 				field:  "StartedAt",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -343,7 +333,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		switch v := interface{}(m.GetCompletedAt()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "CompletedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -351,7 +341,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 			}
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "CompletedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -360,7 +350,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		}
 	} else if v, ok := interface{}(m.GetCompletedAt()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return PipelineDropStageValidationError{
+			return PipelineStageValidationError{
 				field:  "CompletedAt",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -372,7 +362,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		switch v := interface{}(m.GetCreatedAt()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "CreatedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -380,7 +370,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 			}
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "CreatedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -389,7 +379,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		}
 	} else if v, ok := interface{}(m.GetCreatedAt()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return PipelineDropStageValidationError{
+			return PipelineStageValidationError{
 				field:  "CreatedAt",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -401,7 +391,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		switch v := interface{}(m.GetUpdatedAt()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "UpdatedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -409,7 +399,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 			}
 		case interface{ Validate() error }:
 			if err := v.Validate(); err != nil {
-				errors = append(errors, PipelineDropStageValidationError{
+				errors = append(errors, PipelineStageValidationError{
 					field:  "UpdatedAt",
 					reason: "embedded message failed validation",
 					cause:  err,
@@ -418,7 +408,7 @@ func (m *PipelineDropStage) validate(all bool) error {
 		}
 	} else if v, ok := interface{}(m.GetUpdatedAt()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return PipelineDropStageValidationError{
+			return PipelineStageValidationError{
 				field:  "UpdatedAt",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -427,19 +417,19 @@ func (m *PipelineDropStage) validate(all bool) error {
 	}
 
 	if len(errors) > 0 {
-		return PipelineDropStageMultiError(errors)
+		return PipelineStageMultiError(errors)
 	}
 
 	return nil
 }
 
-// PipelineDropStageMultiError is an error wrapping multiple validation errors
-// returned by PipelineDropStage.ValidateAll() if the designated constraints
+// PipelineStageMultiError is an error wrapping multiple validation errors
+// returned by PipelineStage.ValidateAll() if the designated constraints
 // aren't met.
-type PipelineDropStageMultiError []error
+type PipelineStageMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m PipelineDropStageMultiError) Error() string {
+func (m PipelineStageMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -448,11 +438,11 @@ func (m PipelineDropStageMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m PipelineDropStageMultiError) AllErrors() []error { return m }
+func (m PipelineStageMultiError) AllErrors() []error { return m }
 
-// PipelineDropStageValidationError is the validation error returned by
-// PipelineDropStage.Validate if the designated constraints aren't met.
-type PipelineDropStageValidationError struct {
+// PipelineStageValidationError is the validation error returned by
+// PipelineStage.Validate if the designated constraints aren't met.
+type PipelineStageValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -460,24 +450,22 @@ type PipelineDropStageValidationError struct {
 }
 
 // Field function returns field value.
-func (e PipelineDropStageValidationError) Field() string { return e.field }
+func (e PipelineStageValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e PipelineDropStageValidationError) Reason() string { return e.reason }
+func (e PipelineStageValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e PipelineDropStageValidationError) Cause() error { return e.cause }
+func (e PipelineStageValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e PipelineDropStageValidationError) Key() bool { return e.key }
+func (e PipelineStageValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e PipelineDropStageValidationError) ErrorName() string {
-	return "PipelineDropStageValidationError"
-}
+func (e PipelineStageValidationError) ErrorName() string { return "PipelineStageValidationError" }
 
 // Error satisfies the builtin error interface
-func (e PipelineDropStageValidationError) Error() string {
+func (e PipelineStageValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -489,14 +477,14 @@ func (e PipelineDropStageValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sPipelineDropStage.%s: %s%s",
+		"invalid %sPipelineStage.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = PipelineDropStageValidationError{}
+var _ error = PipelineStageValidationError{}
 
 var _ interface {
 	Field() string
@@ -504,4 +492,4 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = PipelineDropStageValidationError{}
+} = PipelineStageValidationError{}

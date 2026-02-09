@@ -291,9 +291,9 @@ func (s *PipelineService) CancelJob(ctx context.Context, id int64) error {
 	return s.jobRepo.ChangeStatus(ctx, id, entity.JobActionCancel)
 }
 
-// RetryAsNewJob creates a new job from an existing job.
+// RenewAsNewJob creates a new job from an existing job.
 // It does not resume/retry the old job execution.
-func (s *PipelineService) RetryAsNewJob(ctx context.Context, id int64) (*entity.PipelineJob, error) {
+func (s *PipelineService) RenewAsNewJob(ctx context.Context, id int64) (*entity.PipelineJob, error) {
 	oldJob, err := s.jobRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err

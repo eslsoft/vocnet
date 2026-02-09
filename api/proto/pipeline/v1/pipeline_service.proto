@@ -42,14 +42,14 @@ message ActionJobRequest {
 message ActionJobResponse {
   // For cancel action, this is the updated job.
   PipelineJob job = 1;
-  // For retry action, this is the newly created job.
+  // For renew action, this is the newly created job.
   PipelineJob new_job = 2;
 }
 
 message ListJobsRequest {
   common.v1.PaginationRequest pagination = 1;
   // Optional filter. UNSPECIFIED means no status filter.
-  PipelineJobStatus status = 2;
+  PipelineStatus status = 2;
   // Optional filter by lemma ID.
   int64 lemma_id = 3 [(validate.rules).int64.gte = 0];
 }
@@ -64,5 +64,5 @@ message ListJobStagesRequest {
 }
 
 message ListJobStagesResponse {
-  repeated PipelineDropStage stages = 1;
+  repeated PipelineStage stages = 1;
 }

@@ -28,7 +28,6 @@ enum LemmaLevel {
   LEMMA_LEVEL_B2 = 4;
   LEMMA_LEVEL_C1 = 5;
   LEMMA_LEVEL_C2 = 6;
-  LEMMA_LEVEL_OTHER = 99;
 }
 
 message LemmaItem {

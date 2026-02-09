@@ -15,16 +15,11 @@ func toPBPipelineJob(job *entity.PipelineJob) *pipelinev1.PipelineJob {
 	}
 	return &pipelinev1.PipelineJob{
 		Id:           job.ID,
-		JobType:      toPBJobType(job.JobType),
-		Status:       toPBJobStatus(job.Status),
+		Status:       toPBStatus(job.Status),
 		Name:         job.Name,
 		Language:     job.Language,
 		Tier:         job.Tier,
 		Term:         job.Term,
-		TotalTerms:   job.TotalTerms,
-		Processed:    job.Processed,
-		Skipped:      job.Skipped,
-		Failed:       job.Failed,
 		ErrorMessage: job.ErrorMessage,
 		StartedAt:    toPBTimestamp(job.StartedAt),
 		CompletedAt:  toPBTimestamp(job.CompletedAt),
@@ -33,17 +28,17 @@ func toPBPipelineJob(job *entity.PipelineJob) *pipelinev1.PipelineJob {
 	}
 }
 
-func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineDropStage {
+func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
 	if stage == nil {
 		return nil
 	}
 	phase := entity.PipelinePhase(stage.Phase)
-	return &pipelinev1.PipelineDropStage{
+	return &pipelinev1.PipelineStage{
 		Id:           stage.ID,
 		JobId:        stage.JobID,
 		LemmaId:      stage.LemmaID,
 		Phase:        toPBPipelinePhase(phase),
-		Status:       toPBStageStatus(stage.Status),
+		Status:       toPBStatusFromTask(stage.Status),
 		Attempts:     stage.Attempts,
 		ErrorMessage: stage.ErrorMessage,
 		StartedAt:    toPBTimestamp(stage.StartedAt),
@@ -74,37 +69,26 @@ func toPBTimestamp(t *time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(*t)
 }
 
-func toPBJobType(t entity.JobType) pipelinev1.PipelineJobType {
-	switch t {
-	case entity.JobTypeSingleWord:
-		return pipelinev1.PipelineJobType_PIPELINE_JOB_TYPE_SINGLE_WORD
-	case entity.JobTypeWordbook:
-		return pipelinev1.PipelineJobType_PIPELINE_JOB_TYPE_WORDBOOK
-	default:
-		return pipelinev1.PipelineJobType_PIPELINE_JOB_TYPE_UNSPECIFIED
-	}
-}
-
-func toPBJobStatus(s entity.JobStatus) pipelinev1.PipelineJobStatus {
+func toPBStatus(s entity.JobStatus) pipelinev1.PipelineStatus {
 	switch s {
 	case entity.JobStatusPending:
-		return pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_PENDING
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_PENDING
 	case entity.JobStatusRunning:
-		return pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_RUNNING
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_RUNNING
 	case entity.JobStatusPaused:
-		return pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_PAUSED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_PAUSED
 	case entity.JobStatusCompleted:
-		return pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_COMPLETED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_COMPLETED
 	case entity.JobStatusFailed:
-		return pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_FAILED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_FAILED
 	case entity.JobStatusCancelled:
-		return pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_CANCELLED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_CANCELLED
 	default:
-		return pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_UNSPECIFIED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_UNSPECIFIED
 	}
 }
 
-func toEntityJobStatusPtr(s pipelinev1.PipelineJobStatus) *entity.JobStatus {
+func toEntityJobStatusPtr(s pipelinev1.PipelineStatus) *entity.JobStatus {
 	v, ok := toEntityJobStatus(s)
 	if !ok {
 		return nil
@@ -112,19 +96,19 @@ func toEntityJobStatusPtr(s pipelinev1.PipelineJobStatus) *entity.JobStatus {
 	return &v
 }
 
-func toEntityJobStatus(s pipelinev1.PipelineJobStatus) (entity.JobStatus, bool) {
+func toEntityJobStatus(s pipelinev1.PipelineStatus) (entity.JobStatus, bool) {
 	switch s {
-	case pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_PENDING:
+	case pipelinev1.PipelineStatus_PIPELINE_STATUS_PENDING:
 		return entity.JobStatusPending, true
-	case pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_RUNNING:
+	case pipelinev1.PipelineStatus_PIPELINE_STATUS_RUNNING:
 		return entity.JobStatusRunning, true
-	case pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_PAUSED:
+	case pipelinev1.PipelineStatus_PIPELINE_STATUS_PAUSED:
 		return entity.JobStatusPaused, true
-	case pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_COMPLETED:
+	case pipelinev1.PipelineStatus_PIPELINE_STATUS_COMPLETED:
 		return entity.JobStatusCompleted, true
-	case pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_FAILED:
+	case pipelinev1.PipelineStatus_PIPELINE_STATUS_FAILED:
 		return entity.JobStatusFailed, true
-	case pipelinev1.PipelineJobStatus_PIPELINE_JOB_STATUS_CANCELLED:
+	case pipelinev1.PipelineStatus_PIPELINE_STATUS_CANCELLED:
 		return entity.JobStatusCancelled, true
 	default:
 		return "", false
@@ -148,20 +132,20 @@ func toPBPipelinePhase(p entity.PipelinePhase) pipelinev1.PipelinePhase {
 	}
 }
 
-func toPBStageStatus(s entity.TaskStatus) pipelinev1.PipelineStageStatus {
+func toPBStatusFromTask(s entity.TaskStatus) pipelinev1.PipelineStatus {
 	switch s {
 	case entity.TaskStatusPending:
-		return pipelinev1.PipelineStageStatus_PIPELINE_STAGE_STATUS_PENDING
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_PENDING
 	case entity.TaskStatusRunning:
-		return pipelinev1.PipelineStageStatus_PIPELINE_STAGE_STATUS_RUNNING
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_RUNNING
 	case entity.TaskStatusCompleted:
-		return pipelinev1.PipelineStageStatus_PIPELINE_STAGE_STATUS_COMPLETED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_COMPLETED
 	case entity.TaskStatusFailed:
-		return pipelinev1.PipelineStageStatus_PIPELINE_STAGE_STATUS_FAILED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_FAILED
 	case entity.TaskStatusSkipped:
-		return pipelinev1.PipelineStageStatus_PIPELINE_STAGE_STATUS_SKIPPED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_SKIPPED
 	default:
-		return pipelinev1.PipelineStageStatus_PIPELINE_STAGE_STATUS_UNSPECIFIED
+		return pipelinev1.PipelineStatus_PIPELINE_STATUS_UNSPECIFIED
 	}
 }
 
@@ -182,6 +166,6 @@ func toPBLemmaLevel(level string) pipelinev1.LemmaLevel {
 	case "C2":
 		return pipelinev1.LemmaLevel_LEMMA_LEVEL_C2
 	default:
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_OTHER
+		return pipelinev1.LemmaLevel_LEMMA_LEVEL_UNSPECIFIED
 	}
 }

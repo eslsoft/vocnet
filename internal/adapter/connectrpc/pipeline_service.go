@@ -52,8 +52,8 @@ func (s *PipelineServiceServer) ActionJob(ctx context.Context, req *connect.Requ
 		}
 		return connect.NewResponse(&pipelinev1.ActionJobResponse{Job: toPBPipelineJob(job)}), nil
 
-	case pipelinev1.PipelineActionType_PIPELINE_ACTION_TYPE_RETRY:
-		newJob, err := s.pipelineUC.RetryAsNewJob(ctx, req.Msg.GetJobId())
+	case pipelinev1.PipelineActionType_PIPELINE_ACTION_TYPE_RENEW:
+		newJob, err := s.pipelineUC.RenewAsNewJob(ctx, req.Msg.GetJobId())
 		if err != nil {
 			return nil, mapping.ToPbError(err)
 		}
@@ -107,7 +107,7 @@ func (s *PipelineServiceServer) ListJobStages(ctx context.Context, req *connect.
 		return nil, mapping.ToPbError(err)
 	}
 
-	resp := &pipelinev1.ListJobStagesResponse{Stages: make([]*pipelinev1.PipelineDropStage, 0, len(stages))}
+	resp := &pipelinev1.ListJobStagesResponse{Stages: make([]*pipelinev1.PipelineStage, 0, len(stages))}
 	for _, st := range stages {
 		resp.Stages = append(resp.Stages, toPBPipelineStage(st))
 	}

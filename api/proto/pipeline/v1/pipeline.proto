@@ -6,20 +6,15 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
 
-enum PipelineJobType {
-  PIPELINE_JOB_TYPE_UNSPECIFIED = 0;
-  PIPELINE_JOB_TYPE_SINGLE_WORD = 1;
-  PIPELINE_JOB_TYPE_WORDBOOK = 2;
-}
-
-enum PipelineJobStatus {
-  PIPELINE_JOB_STATUS_UNSPECIFIED = 0;
-  PIPELINE_JOB_STATUS_PENDING = 1;
-  PIPELINE_JOB_STATUS_RUNNING = 2;
-  PIPELINE_JOB_STATUS_PAUSED = 3;
-  PIPELINE_JOB_STATUS_COMPLETED = 4;
-  PIPELINE_JOB_STATUS_FAILED = 5;
-  PIPELINE_JOB_STATUS_CANCELLED = 6;
+enum PipelineStatus {
+  PIPELINE_STATUS_UNSPECIFIED = 0;
+  PIPELINE_STATUS_PENDING = 1;
+  PIPELINE_STATUS_RUNNING = 2;
+  PIPELINE_STATUS_PAUSED = 3;
+  PIPELINE_STATUS_COMPLETED = 4;
+  PIPELINE_STATUS_FAILED = 5;
+  PIPELINE_STATUS_CANCELLED = 6;
+  PIPELINE_STATUS_SKIPPED = 7;
 }
 
 enum PipelinePhase {
@@ -31,47 +26,33 @@ enum PipelinePhase {
   PIPELINE_PHASE_SYNTHESIS = 5;
 }
 
-enum PipelineStageStatus {
-  PIPELINE_STAGE_STATUS_UNSPECIFIED = 0;
-  PIPELINE_STAGE_STATUS_PENDING = 1;
-  PIPELINE_STAGE_STATUS_RUNNING = 2;
-  PIPELINE_STAGE_STATUS_COMPLETED = 3;
-  PIPELINE_STAGE_STATUS_FAILED = 4;
-  PIPELINE_STAGE_STATUS_SKIPPED = 5;
-}
-
 enum PipelineActionType {
   PIPELINE_ACTION_TYPE_UNSPECIFIED = 0;
   PIPELINE_ACTION_TYPE_CANCEL = 1;
-  // Retry creates a new pipeline run/job; it does not mutate stage execution of old job.
-  PIPELINE_ACTION_TYPE_RETRY = 2;
+  // Renew creates a new pipeline run/job; it does not mutate stage execution of old job.
+  PIPELINE_ACTION_TYPE_RENEW = 2;
 }
 
 message PipelineJob {
   int64 id = 1;
-  PipelineJobType job_type = 2;
-  PipelineJobStatus status = 3;
-  string name = 4;
-  string language = 5;
-  int32 tier = 6;
-  string term = 7;
-  int32 total_terms = 8;
-  int32 processed = 9;
-  int32 skipped = 10;
-  int32 failed = 11;
-  string error_message = 12;
-  google.protobuf.Timestamp started_at = 13;
-  google.protobuf.Timestamp completed_at = 14;
-  google.protobuf.Timestamp created_at = 15;
-  google.protobuf.Timestamp updated_at = 16;
+  PipelineStatus status = 2;
+  string name = 3;
+  string language = 4;
+  int32 tier = 5;
+  string term = 6;
+  string error_message = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp completed_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
 }
 
-message PipelineDropStage {
+message PipelineStage {
   int64 id = 1;
   int64 job_id = 2;
   int64 lemma_id = 3;
   PipelinePhase phase = 4;
-  PipelineStageStatus status = 5;
+  PipelineStatus status = 5;
   int32 attempts = 6;
   string error_message = 7;
   google.protobuf.Timestamp started_at = 8;

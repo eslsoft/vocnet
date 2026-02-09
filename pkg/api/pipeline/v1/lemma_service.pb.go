@@ -33,20 +33,18 @@ const (
 	LemmaLevel_LEMMA_LEVEL_B2          LemmaLevel = 4
 	LemmaLevel_LEMMA_LEVEL_C1          LemmaLevel = 5
 	LemmaLevel_LEMMA_LEVEL_C2          LemmaLevel = 6
-	LemmaLevel_LEMMA_LEVEL_OTHER       LemmaLevel = 99
 )
 
 // Enum value maps for LemmaLevel.
 var (
 	LemmaLevel_name = map[int32]string{
-		0:  "LEMMA_LEVEL_UNSPECIFIED",
-		1:  "LEMMA_LEVEL_A1",
-		2:  "LEMMA_LEVEL_A2",
-		3:  "LEMMA_LEVEL_B1",
-		4:  "LEMMA_LEVEL_B2",
-		5:  "LEMMA_LEVEL_C1",
-		6:  "LEMMA_LEVEL_C2",
-		99: "LEMMA_LEVEL_OTHER",
+		0: "LEMMA_LEVEL_UNSPECIFIED",
+		1: "LEMMA_LEVEL_A1",
+		2: "LEMMA_LEVEL_A2",
+		3: "LEMMA_LEVEL_B1",
+		4: "LEMMA_LEVEL_B2",
+		5: "LEMMA_LEVEL_C1",
+		6: "LEMMA_LEVEL_C2",
 	}
 	LemmaLevel_value = map[string]int32{
 		"LEMMA_LEVEL_UNSPECIFIED": 0,
@@ -56,7 +54,6 @@ var (
 		"LEMMA_LEVEL_B2":          4,
 		"LEMMA_LEVEL_C1":          5,
 		"LEMMA_LEVEL_C2":          6,
-		"LEMMA_LEVEL_OTHER":       99,
 	}
 )
 
@@ -301,7 +298,7 @@ const file_pipeline_v1_lemma_service_proto_rawDesc = "" +
 	"\x06lemmas\x18\x01 \x03(\v2\x16.pipeline.v1.LemmaItemR\x06lemmas\x12=\n" +
 	"\n" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
-	"pagination*\xb8\x01\n" +
+	"pagination*\xa1\x01\n" +
 	"\n" +
 	"LemmaLevel\x12\x1b\n" +
 	"\x17LEMMA_LEVEL_UNSPECIFIED\x10\x00\x12\x12\n" +
@@ -310,8 +307,7 @@ const file_pipeline_v1_lemma_service_proto_rawDesc = "" +
 	"\x0eLEMMA_LEVEL_B1\x10\x03\x12\x12\n" +
 	"\x0eLEMMA_LEVEL_B2\x10\x04\x12\x12\n" +
 	"\x0eLEMMA_LEVEL_C1\x10\x05\x12\x12\n" +
-	"\x0eLEMMA_LEVEL_C2\x10\x06\x12\x15\n" +
-	"\x11LEMMA_LEVEL_OTHER\x10c2]\n" +
+	"\x0eLEMMA_LEVEL_C2\x10\x062]\n" +
 	"\fLemmaService\x12M\n" +
 	"\n" +
 	"ListLemmas\x12\x1e.pipeline.v1.ListLemmasRequest\x1a\x1f.pipeline.v1.ListLemmasResponseB\xab\x01\n" +
