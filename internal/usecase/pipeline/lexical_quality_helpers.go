@@ -8,30 +8,48 @@ import (
 )
 
 var wikidataPOSQIDMap = map[string]entity.PartOfSpeech{
-	"q1084":     entity.PartOfSpeechNoun,
-	"q24905":    entity.PartOfSpeechVerb,
-	"q34698":    entity.PartOfSpeechAdjective,
-	"q380057":   entity.PartOfSpeechAdverb,
-	"q147276":   entity.PartOfSpeechProperNoun,
-	"q36224":    entity.PartOfSpeechPronoun,
-	"q4833830":  entity.PartOfSpeechAdposition,
-	"q163875":   entity.PartOfSpeechAdposition,
-	"q36484":    entity.PartOfSpeechCCONJ,
-	"q83034":    entity.PartOfSpeechInterjection,
-	"q1931259":  entity.PartOfSpeechDeterminer,
-	"q63116":    entity.PartOfSpeechNumeral,
-	"q184943":   entity.PartOfSpeechSuffix,
-	"q62155":    entity.PartOfSpeechNoun,
-	"q169872":   entity.PartOfSpeechAbbreviation,
-	"q187931":   entity.PartOfSpeechAffix,
-	"q1401131":  entity.PartOfSpeechPrefix,
-	"q102047":   entity.PartOfSpeechSuffix,
-	"q134830":   entity.PartOfSpeechPrefix,      // prefix
-	"q54310231": entity.PartOfSpeechPronoun,     // interrogative pronoun
-	"q576271":   entity.PartOfSpeechDeterminer,  // determiner
-	"q468801":   entity.PartOfSpeechPronoun,     // personal pronoun
-	"q5051":     entity.PartOfSpeechDeterminer,  // possessive determiner
-	"q7250170":  entity.PartOfSpeechAdjective,   // proper adjective (African, American, etc.)
+	"q1084":      entity.PartOfSpeechNoun,
+	"q24905":     entity.PartOfSpeechVerb,
+	"q34698":     entity.PartOfSpeechAdjective,
+	"q380057":    entity.PartOfSpeechAdverb,
+	"q147276":    entity.PartOfSpeechProperNoun,
+	"q36224":     entity.PartOfSpeechPronoun,
+	"q4833830":   entity.PartOfSpeechAdposition,
+	"q163875":    entity.PartOfSpeechAdposition,
+	"q36484":     entity.PartOfSpeechCCONJ,
+	"q83034":     entity.PartOfSpeechInterjection,
+	"q1931259":   entity.PartOfSpeechDeterminer,
+	"q63116":     entity.PartOfSpeechNumeral,
+	"q184943":    entity.PartOfSpeechSuffix,
+	"q62155":     entity.PartOfSpeechNoun,
+	"q169872":    entity.PartOfSpeechAbbreviation,
+	"q187931":    entity.PartOfSpeechAffix,
+	"q1401131":   entity.PartOfSpeechPrefix,
+	"q102047":    entity.PartOfSpeechSuffix,
+	"q134830":    entity.PartOfSpeechPrefix,     // prefix
+	"q54310231":  entity.PartOfSpeechPronoun,    // interrogative pronoun
+	"q576271":    entity.PartOfSpeechDeterminer, // determiner
+	"q468801":    entity.PartOfSpeechPronoun,    // personal pronoun
+	"q5051":      entity.PartOfSpeechDeterminer, // possessive determiner
+	"q7250170":   entity.PartOfSpeechAdjective,  // proper adjective (African, American, etc.)
+	"q10265745":  entity.PartOfSpeechDeterminer, // demonstrative determiner
+	"q1050744":   entity.PartOfSpeechPronoun,    // relative pronoun
+	"q10535365":  entity.PartOfSpeechParticle,   // infinitive marker (to)
+	"q113076880": entity.PartOfSpeechAdverb,     // postpositive adverb (ago)
+	"q113198319": entity.PartOfSpeechParticle,   // adverbial particle (no)
+	"q1668170":   entity.PartOfSpeechAdverb,     // interrogative adverb (where, when)
+	"q1989081":   entity.PartOfSpeechPronoun,    // reflexive personal pronoun (yourself)
+	"q2304610":   entity.PartOfSpeechPronoun,    // interrogative word (how, why)
+	"q2865743":   entity.PartOfSpeechDeterminer, // definite article (the)
+	"q34793275":  entity.PartOfSpeechPronoun,    // demonstrative pronoun (there, those)
+	"q3813849":   entity.PartOfSpeechDeterminer, // indefinite article (an)
+	"q3976700":   entity.PartOfSpeechSuffix,     // adjectival suffix (like, way)
+	"q66614509":  entity.PartOfSpeechSuffix,     // nominal suffix (phone)
+	"q956030":    entity.PartOfSpeechPronoun,       // indefinite pronoun (any, one, another)
+	"q7233569":   entity.PartOfSpeechAdjective,    // postpositive adjective (ago)
+	"q102786":    entity.PartOfSpeechAbbreviation, // abbreviation (who)
+	"q1778442":   entity.PartOfSpeechVerb,         // verb phrase (makeup)
+	"q107614077": entity.PartOfSpeechAffix,        // combining form (step)
 }
 
 func parsePOSFromSource(source, raw string) (entity.PartOfSpeech, error) {
