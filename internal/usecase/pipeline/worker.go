@@ -185,7 +185,7 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 	}
 	for _, job := range jobs {
 		jobLogger := p.logger.With("job_id", job.ID)
-		jobLogger.Info("submitting job to pool", "name", job.Name, "type", job.JobType)
+		jobLogger.Info("submitting job to pool", "name", job.Name)
 
 		// Submit job to worker pool - capture loop variables
 		p.inFlight.Add(1)
@@ -212,9 +212,6 @@ func (p *WorkerPool) signalWake() {
 func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jobLogger *slog.Logger) {
 	jobStart := time.Now()
 	term := job.Term
-	if term == "" && len(job.Terms) > 0 {
-		term = job.Terms[0]
-	}
 	if term == "" {
 		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, "empty term")
 		jobLogger.Warn("job has no term, marked failed")
@@ -253,14 +250,12 @@ func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jo
 	duration := time.Since(termStart)
 	if err != nil {
 		p.metrics.RecordJob(duration, false)
-		_ = p.jobRepo.IncrementFailed(ctx, job.ID)
 		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
 		termLogger.Warn("failed to process term", "error", err)
 		return
 	}
 
 	p.metrics.RecordJob(duration, true)
-	_ = p.jobRepo.IncrementProcessed(ctx, job.ID)
 	_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
-	jobLogger.Info("job completed", "duration", time.Since(jobStart).String(), "processed", 1, "failed", 0, "term_duration", duration.String())
+	jobLogger.Info("job completed", "duration", time.Since(jobStart).String(), "term_duration", duration.String())
 }

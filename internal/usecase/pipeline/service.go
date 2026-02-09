@@ -48,13 +48,11 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 	}
 
 	job := &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
 		Status:     entity.JobStatusPending,
 		Name:       fmt.Sprintf("word: %s", term),
 		Language:   language,
 		Tier:       tier,
 		Term:       term,
-		TotalTerms: 1,
 	}
 
 	return s.jobRepo.Create(ctx, job)
@@ -82,13 +80,11 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 			jobName = fmt.Sprintf("word: %s", term)
 		}
 		job := &entity.PipelineJob{
-			JobType:    entity.JobTypeSingleWord,
 			Status:     entity.JobStatusPending,
 			Name:       jobName,
 			Language:   language,
 			Tier:       tier,
 			Term:       term,
-			TotalTerms: 1,
 		}
 		created, err := s.jobRepo.Create(ctx, job)
 		if err != nil {
@@ -109,8 +105,7 @@ func (s *PipelineService) ListJobs(ctx context.Context, status *entity.JobStatus
 	return s.jobRepo.List(ctx, status, 50)
 }
 
-// GetJobStageProgress computes stage progress for a single-word job.
-// Returns nil for wordbook jobs (too expensive for list view).
+// GetJobStageProgress computes stage progress for a job.
 func (s *PipelineService) GetJobStageProgress(ctx context.Context, job *entity.PipelineJob) (*entity.StageProgressSummary, error) {
 	tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
 	if err != nil {
@@ -126,7 +121,7 @@ type JobDetail struct {
 	Tasks []*entity.PipelineTask // per-stage tasks (single-word jobs only)
 }
 
-// GetJobDetail returns a job along with stage-level details (for single-word jobs).
+// GetJobDetail returns a job along with stage-level details.
 func (s *PipelineService) GetJobDetail(ctx context.Context, id int64) (*JobDetail, error) {
 	job, err := s.jobRepo.GetByID(ctx, id)
 	if err != nil {

@@ -53,18 +53,6 @@ func (r *claimOnlyJobRepo) ClaimNextBatch(ctx context.Context, limit int) ([]*en
 	return out, nil
 }
 
-func (r *claimOnlyJobRepo) IncrementProcessed(context.Context, int64) error {
-	return nil
-}
-
-func (r *claimOnlyJobRepo) IncrementSkipped(context.Context, int64) error {
-	return nil
-}
-
-func (r *claimOnlyJobRepo) IncrementFailed(context.Context, int64) error {
-	return nil
-}
-
 func (r *claimOnlyJobRepo) UpdateStatus(context.Context, int64, entity.JobStatus, string) error {
 	return nil
 }

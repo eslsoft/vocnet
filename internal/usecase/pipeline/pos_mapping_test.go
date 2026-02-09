@@ -49,6 +49,35 @@ func TestParsePOSFromSource_WikidataUnknownQIDFails(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParsePOSFromSource_WikidataAdditionalQIDMappings(t *testing.T) {
+	tests := []struct {
+		qid      string
+		expected entity.PartOfSpeech
+	}{
+		{qid: "Q1964223", expected: entity.PartOfSpeechSuffix},
+		{qid: "Q953129", expected: entity.PartOfSpeechPronoun},
+		{qid: "Q66614499", expected: entity.PartOfSpeechSuffix},
+		{qid: "Q106610283", expected: entity.PartOfSpeechSuffix},
+		{qid: "Q161873", expected: entity.PartOfSpeechAdposition},
+		{qid: "Q131431824", expected: entity.PartOfSpeechVerb},
+		{qid: "Q5978305", expected: entity.PartOfSpeechSCONJ},
+		{qid: "Q101244", expected: entity.PartOfSpeechAbbreviation},
+		{qid: "Q1462657", expected: entity.PartOfSpeechPronoun},
+		{qid: "Q3397768", expected: entity.PartOfSpeechAdposition},
+		{qid: "Q10319522", expected: entity.PartOfSpeechAdposition},
+		{qid: "Q1167104", expected: entity.PartOfSpeechSCONJ},
+		{qid: "Q29888377", expected: entity.PartOfSpeechNoun},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.qid, func(t *testing.T) {
+			pos, err := parsePOSFromSource("wikidata", tt.qid)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, pos)
+		})
+	}
+}
+
 func TestValidateContextPOS_FailsOnInvalidValue(t *testing.T) {
 	err := validateContextPOS(&PipelineContext{
 		Lexemes: []*entity.Lexeme{{ExternalID: "L1", PartOfSpeech: entity.PartOfSpeech("Q134830")}},

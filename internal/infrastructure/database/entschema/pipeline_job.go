@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"entgo.io/ent"
-	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
@@ -19,9 +18,6 @@ type PipelineJob struct {
 func (PipelineJob) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.String("job_type").
-			NotEmpty().
-			Comment("SINGLE_WORD or WORDBOOK"),
 		field.String("status").
 			NotEmpty().
 			Default("PENDING").
@@ -37,19 +33,7 @@ func (PipelineJob) Fields() []ent.Field {
 			Comment("Priority tier: 1=Core, 2=Extended, 3=LongTail"),
 		field.String("term").
 			Optional().
-			Comment("Term for single word jobs"),
-		field.JSON("terms", []string{}).
-			Optional().
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-			Comment("Terms list for wordbook jobs"),
-		field.Int32("total_terms").
-			Default(0),
-		field.Int32("processed").
-			Default(0),
-		field.Int32("skipped").
-			Default(0),
-		field.Int32("failed").
-			Default(0),
+			Comment("Term to process"),
 		field.String("error_message").
 			Optional().
 			Comment("Error message if job failed"),
