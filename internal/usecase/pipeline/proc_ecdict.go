@@ -87,10 +87,10 @@ type parsedECDICTData struct {
 }
 
 func (p *ECDICTProcessor) parseECDICT(entry *ecdict.ECDICTEntry) (*parsedECDICTData, error) {
-	pos, err := parsePOSFromSource("ecdict", entry.POS)
-	if err != nil {
-		return nil, fmt.Errorf("ecdict pos mapping failed: %w", err)
-	}
+	// Parse POS but don't fail if empty - ECDICT still provides valuable data
+	// (definitions, translations, frequencies) even without POS
+	pos, _ := parsePOSFromSource("ecdict", entry.POS)
+	// pos will be PartOfSpeechUnspecified if parsing fails
 	return &parsedECDICTData{
 		Evidence:     createECDICTEvidence(entry),
 		Senses:       parseSensesFromECDICT(entry),

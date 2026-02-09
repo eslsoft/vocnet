@@ -88,6 +88,7 @@ var partOfSpeechAliasMap = map[string]PartOfSpeech{
 	"subordinator": PartOfSpeechSCONJ,
 	"part":         PartOfSpeechParticle,
 	"particle":     PartOfSpeechParticle,
+	"intj":         PartOfSpeechInterjection,
 	"interj":       PartOfSpeechInterjection,
 	"interjection": PartOfSpeechInterjection,
 	"aux":          PartOfSpeechAuxiliary,

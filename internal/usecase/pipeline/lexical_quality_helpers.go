@@ -8,24 +8,29 @@ import (
 )
 
 var wikidataPOSQIDMap = map[string]entity.PartOfSpeech{
-	"q1084":    entity.PartOfSpeechNoun,
-	"q24905":   entity.PartOfSpeechVerb,
-	"q34698":   entity.PartOfSpeechAdjective,
-	"q380057":  entity.PartOfSpeechAdverb,
-	"q147276":  entity.PartOfSpeechProperNoun,
-	"q36224":   entity.PartOfSpeechPronoun,
-	"q4833830": entity.PartOfSpeechAdposition,
-	"q163875":  entity.PartOfSpeechAdposition,
-	"q36484":   entity.PartOfSpeechCCONJ,
-	"q83034":   entity.PartOfSpeechInterjection,
-	"q1931259": entity.PartOfSpeechDeterminer,
-	"q63116":   entity.PartOfSpeechNumeral,
-	"q184943":  entity.PartOfSpeechSuffix,
-	"q62155":   entity.PartOfSpeechNoun,
-	"q169872":  entity.PartOfSpeechAbbreviation,
-	"q187931":  entity.PartOfSpeechAffix,
-	"q1401131": entity.PartOfSpeechPrefix,
-	"q102047":  entity.PartOfSpeechSuffix,
+	"q1084":     entity.PartOfSpeechNoun,
+	"q24905":    entity.PartOfSpeechVerb,
+	"q34698":    entity.PartOfSpeechAdjective,
+	"q380057":   entity.PartOfSpeechAdverb,
+	"q147276":   entity.PartOfSpeechProperNoun,
+	"q36224":    entity.PartOfSpeechPronoun,
+	"q4833830":  entity.PartOfSpeechAdposition,
+	"q163875":   entity.PartOfSpeechAdposition,
+	"q36484":    entity.PartOfSpeechCCONJ,
+	"q83034":    entity.PartOfSpeechInterjection,
+	"q1931259":  entity.PartOfSpeechDeterminer,
+	"q63116":    entity.PartOfSpeechNumeral,
+	"q184943":   entity.PartOfSpeechSuffix,
+	"q62155":    entity.PartOfSpeechNoun,
+	"q169872":   entity.PartOfSpeechAbbreviation,
+	"q187931":   entity.PartOfSpeechAffix,
+	"q1401131":  entity.PartOfSpeechPrefix,
+	"q102047":   entity.PartOfSpeechSuffix,
+	"q134830":   entity.PartOfSpeechPrefix,      // prefix
+	"q54310231": entity.PartOfSpeechPronoun,     // interrogative pronoun
+	"q576271":   entity.PartOfSpeechDeterminer,  // determiner
+	"q468801":   entity.PartOfSpeechPronoun,     // personal pronoun
+	"q5051":     entity.PartOfSpeechDeterminer,  // possessive determiner
 }
 
 func parsePOSFromSource(source, raw string) (entity.PartOfSpeech, error) {
