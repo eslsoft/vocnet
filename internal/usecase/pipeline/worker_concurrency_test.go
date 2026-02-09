@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/repository"
 )
 
 type claimOnlyJobRepo struct {
@@ -31,6 +32,10 @@ func (r *claimOnlyJobRepo) GetByID(context.Context, int64) (*entity.PipelineJob,
 }
 
 func (r *claimOnlyJobRepo) List(context.Context, *entity.JobStatus, int) ([]*entity.PipelineJob, error) {
+	panic("not implemented")
+}
+
+func (r *claimOnlyJobRepo) ListFiltered(context.Context, *repository.ListPipelineJobsQuery) ([]*entity.PipelineJob, int64, error) {
 	panic("not implemented")
 }
 

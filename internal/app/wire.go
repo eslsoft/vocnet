@@ -55,6 +55,7 @@ var usecaseSet = wire.NewSet(
 	usecase.NewReviewPlanUsecase,
 	usecase.NewStatsUsecase,
 	pipeline.NewPipelineService,
+	pipeline.NewLemmaQueryService,
 )
 
 var serviceSet = wire.NewSet(

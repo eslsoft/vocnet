@@ -16,11 +16,11 @@ var _ pipelinev1connect.LemmaServiceHandler = (*LemmaServiceServer)(nil)
 
 type LemmaServiceServer struct {
 	pipelinev1connect.UnimplementedLemmaServiceHandler
-	pipelineUC *pipelineuc.PipelineService
+	lemmaUC *pipelineuc.LemmaQueryService
 }
 
-func NewLemmaServiceServer(pipelineUC *pipelineuc.PipelineService) *LemmaServiceServer {
-	return &LemmaServiceServer{pipelineUC: pipelineUC}
+func NewLemmaServiceServer(lemmaUC *pipelineuc.LemmaQueryService) *LemmaServiceServer {
+	return &LemmaServiceServer{lemmaUC: lemmaUC}
 }
 
 func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Request[pipelinev1.ListLemmasRequest]) (*connect.Response[pipelinev1.ListLemmasResponse], error) {
@@ -29,7 +29,7 @@ func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Reques
 	}
 
 	pagination := convertPagination(req.Msg.GetPagination())
-	lemmas, total, err := s.pipelineUC.ListLemmas(ctx, &pipelineuc.ListLemmasQuery{
+	lemmas, total, err := s.lemmaUC.ListLemmas(ctx, &pipelineuc.ListLemmasQuery{
 		PageNo:   pagination.PageNo,
 		PageSize: pagination.PageSize,
 		Keyword:  req.Msg.GetKeyword(),

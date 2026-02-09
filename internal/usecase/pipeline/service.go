@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -13,24 +12,21 @@ import (
 
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo   repository.PipelineJobRepository
-	taskRepo  repository.PipelineTaskRepository
-	lemmaRepo repository.LemmaRepository
-	logger    *slog.Logger
+	jobRepo  repository.PipelineJobRepository
+	taskRepo repository.PipelineTaskRepository
+	logger   *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
 func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
 	taskRepo repository.PipelineTaskRepository,
-	lemmaRepo repository.LemmaRepository,
 	logger *slog.Logger,
 ) *PipelineService {
 	return &PipelineService{
-		jobRepo:   jobRepo,
-		taskRepo:  taskRepo,
-		lemmaRepo: lemmaRepo,
-		logger:    logger,
+		jobRepo:  jobRepo,
+		taskRepo: taskRepo,
+		logger:   logger,
 	}
 }
 
@@ -49,11 +45,11 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 	}
 
 	job := &entity.PipelineJob{
-		Status:     entity.JobStatusPending,
-		Name:       fmt.Sprintf("word: %s", term),
-		Language:   language,
-		Tier:       tier,
-		Term:       term,
+		Status:   entity.JobStatusPending,
+		Name:     fmt.Sprintf("word: %s", term),
+		Language: language,
+		Tier:     tier,
+		Term:     term,
 	}
 
 	return s.jobRepo.Create(ctx, job)
@@ -110,11 +106,11 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 			jobName = fmt.Sprintf("word: %s", term)
 		}
 		job := &entity.PipelineJob{
-			Status:     entity.JobStatusPending,
-			Name:       jobName,
-			Language:   language,
-			Tier:       tier,
-			Term:       term,
+			Status:   entity.JobStatusPending,
+			Name:     jobName,
+			Language: language,
+			Tier:     tier,
+			Term:     term,
 		}
 		created, err := s.jobRepo.Create(ctx, job)
 		if err != nil {
@@ -161,46 +157,14 @@ func (s *PipelineService) ListJobsFiltered(ctx context.Context, query *ListJobsQ
 		pageSize = 10000
 	}
 
-	// Fetch all matching status first; lemma filtering is applied below.
-	jobs, err := s.jobRepo.List(ctx, query.Status, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if query.LemmaID > 0 {
-		filtered := make([]*entity.PipelineJob, 0, len(jobs))
-		for _, job := range jobs {
-			tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
-			if err != nil {
-				return nil, 0, fmt.Errorf("list tasks for job %d: %w", job.ID, err)
-			}
-			for _, task := range tasks {
-				if task.LemmaID == query.LemmaID {
-					filtered = append(filtered, job)
-					break
-				}
-			}
-		}
-		jobs = filtered
-	}
-
-	// Keep stable order: latest first.
-	sort.SliceStable(jobs, func(i, j int) bool {
-		return jobs[i].CreatedAt.After(jobs[j].CreatedAt)
+	return s.jobRepo.ListFiltered(ctx, &repository.ListPipelineJobsQuery{
+		Pagination: repository.Pagination{
+			PageNo:   pageNo,
+			PageSize: pageSize,
+		},
+		Status:  query.Status,
+		LemmaID: query.LemmaID,
 	})
-
-	total := int64(len(jobs))
-	offset := int((pageNo - 1) * pageSize)
-	if offset >= len(jobs) {
-		return []*entity.PipelineJob{}, total, nil
-	}
-
-	end := offset + int(pageSize)
-	if end > len(jobs) {
-		end = len(jobs)
-	}
-
-	return jobs[offset:end], total, nil
 }
 
 // GetJobStageProgress computes stage progress for a single-word job.
@@ -248,40 +212,6 @@ func (s *PipelineService) ListJobStages(ctx context.Context, jobID int64) ([]*en
 	}
 
 	return s.taskRepo.ListByJob(ctx, jobID)
-}
-
-// ListLemmasQuery defines filters for lemma listing.
-type ListLemmasQuery struct {
-	PageNo   int32
-	PageSize int32
-	Keyword  string
-}
-
-// ListLemmas lists lemmas for choosing a lemma and then querying related jobs.
-func (s *PipelineService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*entity.Lemma, int64, error) {
-	if query == nil {
-		query = &ListLemmasQuery{}
-	}
-
-	pageNo := query.PageNo
-	if pageNo <= 0 {
-		pageNo = 1
-	}
-	pageSize := query.PageSize
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 10000 {
-		pageSize = 10000
-	}
-
-	return s.lemmaRepo.List(ctx, &repository.ListWordsQuery{
-		Pagination: repository.Pagination{
-			PageNo:   pageNo,
-			PageSize: pageSize,
-		},
-		Keyword: strings.TrimSpace(query.Keyword),
-	})
 }
 
 // CancelJob cancels a pending/running/paused job.

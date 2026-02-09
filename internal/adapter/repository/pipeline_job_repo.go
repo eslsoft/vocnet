@@ -11,6 +11,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entpipelinejob "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/pipelinejob"
+	entpipelinetask "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/pipelinetask"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
@@ -92,6 +93,41 @@ func (r *pipelineJobRepository) List(ctx context.Context, status *entity.JobStat
 		out = append(out, mapEntPipelineJob(row))
 	}
 	return out, nil
+}
+
+func (r *pipelineJobRepository) ListFiltered(ctx context.Context, query *repository.ListPipelineJobsQuery) ([]*entity.PipelineJob, int64, error) {
+	if query == nil {
+		query = &repository.ListPipelineJobsQuery{}
+	}
+
+	q := r.client.PipelineJob.Query().Order(entpipelinejob.ByCreatedAt(sql.OrderDesc()))
+	if query.Status != nil {
+		q.Where(entpipelinejob.StatusEQ(string(*query.Status)))
+	}
+	if query.LemmaID > 0 {
+		q.Where(entpipelinejob.HasStagesWith(entpipelinetask.LemmaIDEQ(query.LemmaID)))
+	}
+
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count pipeline jobs: %w", err)
+	}
+
+	if query.PageSize > 0 {
+		q.Limit(int(query.PageSize)).Offset(int(query.Offset()))
+	}
+
+	rows, err := q.All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list pipeline jobs: %w", err)
+	}
+
+	out := make([]*entity.PipelineJob, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, mapEntPipelineJob(row))
+	}
+
+	return out, int64(total), nil
 }
 
 func (r *pipelineJobRepository) ClaimNextBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error) {
