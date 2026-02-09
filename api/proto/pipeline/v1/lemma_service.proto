@@ -4,7 +4,7 @@ package pipeline.v1;
 
 import "common/v1/types.proto";
 import "google/protobuf/timestamp.proto";
-import "pipeline/v1/pipeline.proto";
+import "pipeline/v1/linguistics.proto";
 
 option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
 
@@ -41,45 +41,9 @@ message LemmaItem {
   LemmaSnapshot snapshot = 7;
 }
 
-message LemmaSnapshotPhonetic {
-  string ipa = 1;
-  string dialect = 2;
-}
-
-message LemmaSnapshotSense {
-  string language = 1;
-  string gloss = 2;
-  repeated string examples = 3;
-  string provider = 4;
-  double trust_weight = 5;
-}
-
-message LemmaSnapshotForm {
-  string surface = 1;
-  string form_type = 2;
-  bool is_irregular = 3;
-}
-
-message LemmaSnapshotLexeme {
-  string pos = 1;
-  repeated LemmaSnapshotSense senses = 2;
-  repeated LemmaSnapshotForm forms = 3;
-  repeated LemmaSnapshotPhonetic phonetics = 4;
-}
-
-message LemmaSnapshotRelation {
-  string relation_type = 1;
-  string target_term = 2;
-  string target_ref = 3;
-  string provider = 4;
-  double strength = 5;
-  bool sense_mapped = 6;
-  bool target_resolved = 7;
-}
-
 message LemmaSnapshotData {
-  repeated LemmaSnapshotLexeme lexemes = 1;
-  repeated LemmaSnapshotRelation relations = 2;
+  repeated Lexeme lexemes = 1;
+  repeated SemanticRelation relations = 2;
 }
 
 message LemmaSnapshot {

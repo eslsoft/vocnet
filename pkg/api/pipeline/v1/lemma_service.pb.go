@@ -230,365 +230,17 @@ func (x *LemmaItem) GetSnapshot() *LemmaSnapshot {
 	return nil
 }
 
-type LemmaSnapshotPhonetic struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ipa           string                 `protobuf:"bytes,1,opt,name=ipa,proto3" json:"ipa,omitempty"`
-	Dialect       string                 `protobuf:"bytes,2,opt,name=dialect,proto3" json:"dialect,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LemmaSnapshotPhonetic) Reset() {
-	*x = LemmaSnapshotPhonetic{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LemmaSnapshotPhonetic) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LemmaSnapshotPhonetic) ProtoMessage() {}
-
-func (x *LemmaSnapshotPhonetic) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LemmaSnapshotPhonetic.ProtoReflect.Descriptor instead.
-func (*LemmaSnapshotPhonetic) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *LemmaSnapshotPhonetic) GetIpa() string {
-	if x != nil {
-		return x.Ipa
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotPhonetic) GetDialect() string {
-	if x != nil {
-		return x.Dialect
-	}
-	return ""
-}
-
-type LemmaSnapshotSense struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Language      string                 `protobuf:"bytes,1,opt,name=language,proto3" json:"language,omitempty"`
-	Gloss         string                 `protobuf:"bytes,2,opt,name=gloss,proto3" json:"gloss,omitempty"`
-	Examples      []string               `protobuf:"bytes,3,rep,name=examples,proto3" json:"examples,omitempty"`
-	Provider      string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
-	TrustWeight   float64                `protobuf:"fixed64,5,opt,name=trust_weight,json=trustWeight,proto3" json:"trust_weight,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LemmaSnapshotSense) Reset() {
-	*x = LemmaSnapshotSense{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LemmaSnapshotSense) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LemmaSnapshotSense) ProtoMessage() {}
-
-func (x *LemmaSnapshotSense) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LemmaSnapshotSense.ProtoReflect.Descriptor instead.
-func (*LemmaSnapshotSense) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *LemmaSnapshotSense) GetLanguage() string {
-	if x != nil {
-		return x.Language
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotSense) GetGloss() string {
-	if x != nil {
-		return x.Gloss
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotSense) GetExamples() []string {
-	if x != nil {
-		return x.Examples
-	}
-	return nil
-}
-
-func (x *LemmaSnapshotSense) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotSense) GetTrustWeight() float64 {
-	if x != nil {
-		return x.TrustWeight
-	}
-	return 0
-}
-
-type LemmaSnapshotForm struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Surface       string                 `protobuf:"bytes,1,opt,name=surface,proto3" json:"surface,omitempty"`
-	FormType      string                 `protobuf:"bytes,2,opt,name=form_type,json=formType,proto3" json:"form_type,omitempty"`
-	IsIrregular   bool                   `protobuf:"varint,3,opt,name=is_irregular,json=isIrregular,proto3" json:"is_irregular,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LemmaSnapshotForm) Reset() {
-	*x = LemmaSnapshotForm{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LemmaSnapshotForm) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LemmaSnapshotForm) ProtoMessage() {}
-
-func (x *LemmaSnapshotForm) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LemmaSnapshotForm.ProtoReflect.Descriptor instead.
-func (*LemmaSnapshotForm) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *LemmaSnapshotForm) GetSurface() string {
-	if x != nil {
-		return x.Surface
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotForm) GetFormType() string {
-	if x != nil {
-		return x.FormType
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotForm) GetIsIrregular() bool {
-	if x != nil {
-		return x.IsIrregular
-	}
-	return false
-}
-
-type LemmaSnapshotLexeme struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Pos           string                   `protobuf:"bytes,1,opt,name=pos,proto3" json:"pos,omitempty"`
-	Senses        []*LemmaSnapshotSense    `protobuf:"bytes,2,rep,name=senses,proto3" json:"senses,omitempty"`
-	Forms         []*LemmaSnapshotForm     `protobuf:"bytes,3,rep,name=forms,proto3" json:"forms,omitempty"`
-	Phonetics     []*LemmaSnapshotPhonetic `protobuf:"bytes,4,rep,name=phonetics,proto3" json:"phonetics,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LemmaSnapshotLexeme) Reset() {
-	*x = LemmaSnapshotLexeme{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LemmaSnapshotLexeme) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LemmaSnapshotLexeme) ProtoMessage() {}
-
-func (x *LemmaSnapshotLexeme) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LemmaSnapshotLexeme.ProtoReflect.Descriptor instead.
-func (*LemmaSnapshotLexeme) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *LemmaSnapshotLexeme) GetPos() string {
-	if x != nil {
-		return x.Pos
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotLexeme) GetSenses() []*LemmaSnapshotSense {
-	if x != nil {
-		return x.Senses
-	}
-	return nil
-}
-
-func (x *LemmaSnapshotLexeme) GetForms() []*LemmaSnapshotForm {
-	if x != nil {
-		return x.Forms
-	}
-	return nil
-}
-
-func (x *LemmaSnapshotLexeme) GetPhonetics() []*LemmaSnapshotPhonetic {
-	if x != nil {
-		return x.Phonetics
-	}
-	return nil
-}
-
-type LemmaSnapshotRelation struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	RelationType   string                 `protobuf:"bytes,1,opt,name=relation_type,json=relationType,proto3" json:"relation_type,omitempty"`
-	TargetTerm     string                 `protobuf:"bytes,2,opt,name=target_term,json=targetTerm,proto3" json:"target_term,omitempty"`
-	TargetRef      string                 `protobuf:"bytes,3,opt,name=target_ref,json=targetRef,proto3" json:"target_ref,omitempty"`
-	Provider       string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
-	Strength       float64                `protobuf:"fixed64,5,opt,name=strength,proto3" json:"strength,omitempty"`
-	SenseMapped    bool                   `protobuf:"varint,6,opt,name=sense_mapped,json=senseMapped,proto3" json:"sense_mapped,omitempty"`
-	TargetResolved bool                   `protobuf:"varint,7,opt,name=target_resolved,json=targetResolved,proto3" json:"target_resolved,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *LemmaSnapshotRelation) Reset() {
-	*x = LemmaSnapshotRelation{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LemmaSnapshotRelation) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LemmaSnapshotRelation) ProtoMessage() {}
-
-func (x *LemmaSnapshotRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LemmaSnapshotRelation.ProtoReflect.Descriptor instead.
-func (*LemmaSnapshotRelation) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *LemmaSnapshotRelation) GetRelationType() string {
-	if x != nil {
-		return x.RelationType
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotRelation) GetTargetTerm() string {
-	if x != nil {
-		return x.TargetTerm
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotRelation) GetTargetRef() string {
-	if x != nil {
-		return x.TargetRef
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotRelation) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
-func (x *LemmaSnapshotRelation) GetStrength() float64 {
-	if x != nil {
-		return x.Strength
-	}
-	return 0
-}
-
-func (x *LemmaSnapshotRelation) GetSenseMapped() bool {
-	if x != nil {
-		return x.SenseMapped
-	}
-	return false
-}
-
-func (x *LemmaSnapshotRelation) GetTargetResolved() bool {
-	if x != nil {
-		return x.TargetResolved
-	}
-	return false
-}
-
 type LemmaSnapshotData struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Lexemes       []*LemmaSnapshotLexeme   `protobuf:"bytes,1,rep,name=lexemes,proto3" json:"lexemes,omitempty"`
-	Relations     []*LemmaSnapshotRelation `protobuf:"bytes,2,rep,name=relations,proto3" json:"relations,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Lexemes       []*Lexeme              `protobuf:"bytes,1,rep,name=lexemes,proto3" json:"lexemes,omitempty"`
+	Relations     []*SemanticRelation    `protobuf:"bytes,2,rep,name=relations,proto3" json:"relations,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LemmaSnapshotData) Reset() {
 	*x = LemmaSnapshotData{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[7]
+	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -600,7 +252,7 @@ func (x *LemmaSnapshotData) String() string {
 func (*LemmaSnapshotData) ProtoMessage() {}
 
 func (x *LemmaSnapshotData) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[7]
+	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -613,17 +265,17 @@ func (x *LemmaSnapshotData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LemmaSnapshotData.ProtoReflect.Descriptor instead.
 func (*LemmaSnapshotData) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{7}
+	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *LemmaSnapshotData) GetLexemes() []*LemmaSnapshotLexeme {
+func (x *LemmaSnapshotData) GetLexemes() []*Lexeme {
 	if x != nil {
 		return x.Lexemes
 	}
 	return nil
 }
 
-func (x *LemmaSnapshotData) GetRelations() []*LemmaSnapshotRelation {
+func (x *LemmaSnapshotData) GetRelations() []*SemanticRelation {
 	if x != nil {
 		return x.Relations
 	}
@@ -655,7 +307,7 @@ type LemmaSnapshot struct {
 
 func (x *LemmaSnapshot) Reset() {
 	*x = LemmaSnapshot{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[8]
+	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -667,7 +319,7 @@ func (x *LemmaSnapshot) String() string {
 func (*LemmaSnapshot) ProtoMessage() {}
 
 func (x *LemmaSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[8]
+	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -680,7 +332,7 @@ func (x *LemmaSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LemmaSnapshot.ProtoReflect.Descriptor instead.
 func (*LemmaSnapshot) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{8}
+	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *LemmaSnapshot) GetId() int64 {
@@ -812,7 +464,7 @@ type ListLemmasResponse struct {
 
 func (x *ListLemmasResponse) Reset() {
 	*x = ListLemmasResponse{}
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[9]
+	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -824,7 +476,7 @@ func (x *ListLemmasResponse) String() string {
 func (*ListLemmasResponse) ProtoMessage() {}
 
 func (x *ListLemmasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[9]
+	mi := &file_pipeline_v1_lemma_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -837,7 +489,7 @@ func (x *ListLemmasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLemmasResponse.ProtoReflect.Descriptor instead.
 func (*ListLemmasResponse) Descriptor() ([]byte, []int) {
-	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{9}
+	return file_pipeline_v1_lemma_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListLemmasResponse) GetLemmas() []*LemmaItem {
@@ -858,7 +510,7 @@ var File_pipeline_v1_lemma_service_proto protoreflect.FileDescriptor
 
 const file_pipeline_v1_lemma_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1fpipeline/v1/lemma_service.proto\x12\vpipeline.v1\x1a\x15common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1apipeline/v1/pipeline.proto\"k\n" +
+	"\x1fpipeline/v1/lemma_service.proto\x12\vpipeline.v1\x1a\x15common/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dpipeline/v1/linguistics.proto\"k\n" +
 	"\x11ListLemmasRequest\x12<\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
@@ -875,38 +527,10 @@ const file_pipeline_v1_lemma_service_proto_rawDesc = "" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x126\n" +
-	"\bsnapshot\x18\a \x01(\v2\x1a.pipeline.v1.LemmaSnapshotR\bsnapshot\"C\n" +
-	"\x15LemmaSnapshotPhonetic\x12\x10\n" +
-	"\x03ipa\x18\x01 \x01(\tR\x03ipa\x12\x18\n" +
-	"\adialect\x18\x02 \x01(\tR\adialect\"\xa1\x01\n" +
-	"\x12LemmaSnapshotSense\x12\x1a\n" +
-	"\blanguage\x18\x01 \x01(\tR\blanguage\x12\x14\n" +
-	"\x05gloss\x18\x02 \x01(\tR\x05gloss\x12\x1a\n" +
-	"\bexamples\x18\x03 \x03(\tR\bexamples\x12\x1a\n" +
-	"\bprovider\x18\x04 \x01(\tR\bprovider\x12!\n" +
-	"\ftrust_weight\x18\x05 \x01(\x01R\vtrustWeight\"m\n" +
-	"\x11LemmaSnapshotForm\x12\x18\n" +
-	"\asurface\x18\x01 \x01(\tR\asurface\x12\x1b\n" +
-	"\tform_type\x18\x02 \x01(\tR\bformType\x12!\n" +
-	"\fis_irregular\x18\x03 \x01(\bR\visIrregular\"\xd8\x01\n" +
-	"\x13LemmaSnapshotLexeme\x12\x10\n" +
-	"\x03pos\x18\x01 \x01(\tR\x03pos\x127\n" +
-	"\x06senses\x18\x02 \x03(\v2\x1f.pipeline.v1.LemmaSnapshotSenseR\x06senses\x124\n" +
-	"\x05forms\x18\x03 \x03(\v2\x1e.pipeline.v1.LemmaSnapshotFormR\x05forms\x12@\n" +
-	"\tphonetics\x18\x04 \x03(\v2\".pipeline.v1.LemmaSnapshotPhoneticR\tphonetics\"\x80\x02\n" +
-	"\x15LemmaSnapshotRelation\x12#\n" +
-	"\rrelation_type\x18\x01 \x01(\tR\frelationType\x12\x1f\n" +
-	"\vtarget_term\x18\x02 \x01(\tR\n" +
-	"targetTerm\x12\x1d\n" +
-	"\n" +
-	"target_ref\x18\x03 \x01(\tR\ttargetRef\x12\x1a\n" +
-	"\bprovider\x18\x04 \x01(\tR\bprovider\x12\x1a\n" +
-	"\bstrength\x18\x05 \x01(\x01R\bstrength\x12!\n" +
-	"\fsense_mapped\x18\x06 \x01(\bR\vsenseMapped\x12'\n" +
-	"\x0ftarget_resolved\x18\a \x01(\bR\x0etargetResolved\"\x91\x01\n" +
-	"\x11LemmaSnapshotData\x12:\n" +
-	"\alexemes\x18\x01 \x03(\v2 .pipeline.v1.LemmaSnapshotLexemeR\alexemes\x12@\n" +
-	"\trelations\x18\x02 \x03(\v2\".pipeline.v1.LemmaSnapshotRelationR\trelations\"\x87\x05\n" +
+	"\bsnapshot\x18\a \x01(\v2\x1a.pipeline.v1.LemmaSnapshotR\bsnapshot\"\x7f\n" +
+	"\x11LemmaSnapshotData\x12-\n" +
+	"\alexemes\x18\x01 \x03(\v2\x13.pipeline.v1.LexemeR\alexemes\x12;\n" +
+	"\trelations\x18\x02 \x03(\v2\x1d.pipeline.v1.SemanticRelationR\trelations\"\x87\x05\n" +
 	"\rLemmaSnapshot\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
 	"\blemma_id\x18\x02 \x01(\x03R\alemmaId\x12\x1a\n" +
@@ -961,47 +585,41 @@ func file_pipeline_v1_lemma_service_proto_rawDescGZIP() []byte {
 }
 
 var file_pipeline_v1_lemma_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_pipeline_v1_lemma_service_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_pipeline_v1_lemma_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_pipeline_v1_lemma_service_proto_goTypes = []any{
 	(LemmaLevel)(0),               // 0: pipeline.v1.LemmaLevel
 	(*ListLemmasRequest)(nil),     // 1: pipeline.v1.ListLemmasRequest
 	(*LemmaItem)(nil),             // 2: pipeline.v1.LemmaItem
-	(*LemmaSnapshotPhonetic)(nil), // 3: pipeline.v1.LemmaSnapshotPhonetic
-	(*LemmaSnapshotSense)(nil),    // 4: pipeline.v1.LemmaSnapshotSense
-	(*LemmaSnapshotForm)(nil),     // 5: pipeline.v1.LemmaSnapshotForm
-	(*LemmaSnapshotLexeme)(nil),   // 6: pipeline.v1.LemmaSnapshotLexeme
-	(*LemmaSnapshotRelation)(nil), // 7: pipeline.v1.LemmaSnapshotRelation
-	(*LemmaSnapshotData)(nil),     // 8: pipeline.v1.LemmaSnapshotData
-	(*LemmaSnapshot)(nil),         // 9: pipeline.v1.LemmaSnapshot
-	(*ListLemmasResponse)(nil),    // 10: pipeline.v1.ListLemmasResponse
-	(*v1.PaginationRequest)(nil),  // 11: common.v1.PaginationRequest
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	(*v1.PaginationResponse)(nil), // 13: common.v1.PaginationResponse
+	(*LemmaSnapshotData)(nil),     // 3: pipeline.v1.LemmaSnapshotData
+	(*LemmaSnapshot)(nil),         // 4: pipeline.v1.LemmaSnapshot
+	(*ListLemmasResponse)(nil),    // 5: pipeline.v1.ListLemmasResponse
+	(*v1.PaginationRequest)(nil),  // 6: common.v1.PaginationRequest
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*Lexeme)(nil),                // 8: pipeline.v1.Lexeme
+	(*SemanticRelation)(nil),      // 9: pipeline.v1.SemanticRelation
+	(*v1.PaginationResponse)(nil), // 10: common.v1.PaginationResponse
 }
 var file_pipeline_v1_lemma_service_proto_depIdxs = []int32{
-	11, // 0: pipeline.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
+	6,  // 0: pipeline.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
 	0,  // 1: pipeline.v1.LemmaItem.level:type_name -> pipeline.v1.LemmaLevel
-	12, // 2: pipeline.v1.LemmaItem.created_at:type_name -> google.protobuf.Timestamp
-	12, // 3: pipeline.v1.LemmaItem.updated_at:type_name -> google.protobuf.Timestamp
-	9,  // 4: pipeline.v1.LemmaItem.snapshot:type_name -> pipeline.v1.LemmaSnapshot
-	4,  // 5: pipeline.v1.LemmaSnapshotLexeme.senses:type_name -> pipeline.v1.LemmaSnapshotSense
-	5,  // 6: pipeline.v1.LemmaSnapshotLexeme.forms:type_name -> pipeline.v1.LemmaSnapshotForm
-	3,  // 7: pipeline.v1.LemmaSnapshotLexeme.phonetics:type_name -> pipeline.v1.LemmaSnapshotPhonetic
-	6,  // 8: pipeline.v1.LemmaSnapshotData.lexemes:type_name -> pipeline.v1.LemmaSnapshotLexeme
-	7,  // 9: pipeline.v1.LemmaSnapshotData.relations:type_name -> pipeline.v1.LemmaSnapshotRelation
-	8,  // 10: pipeline.v1.LemmaSnapshot.data:type_name -> pipeline.v1.LemmaSnapshotData
-	12, // 11: pipeline.v1.LemmaSnapshot.synthesized_at:type_name -> google.protobuf.Timestamp
-	12, // 12: pipeline.v1.LemmaSnapshot.created_at:type_name -> google.protobuf.Timestamp
-	12, // 13: pipeline.v1.LemmaSnapshot.updated_at:type_name -> google.protobuf.Timestamp
-	2,  // 14: pipeline.v1.ListLemmasResponse.lemmas:type_name -> pipeline.v1.LemmaItem
-	13, // 15: pipeline.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
-	1,  // 16: pipeline.v1.LemmaService.ListLemmas:input_type -> pipeline.v1.ListLemmasRequest
-	10, // 17: pipeline.v1.LemmaService.ListLemmas:output_type -> pipeline.v1.ListLemmasResponse
-	17, // [17:18] is the sub-list for method output_type
-	16, // [16:17] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	7,  // 2: pipeline.v1.LemmaItem.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 3: pipeline.v1.LemmaItem.updated_at:type_name -> google.protobuf.Timestamp
+	4,  // 4: pipeline.v1.LemmaItem.snapshot:type_name -> pipeline.v1.LemmaSnapshot
+	8,  // 5: pipeline.v1.LemmaSnapshotData.lexemes:type_name -> pipeline.v1.Lexeme
+	9,  // 6: pipeline.v1.LemmaSnapshotData.relations:type_name -> pipeline.v1.SemanticRelation
+	3,  // 7: pipeline.v1.LemmaSnapshot.data:type_name -> pipeline.v1.LemmaSnapshotData
+	7,  // 8: pipeline.v1.LemmaSnapshot.synthesized_at:type_name -> google.protobuf.Timestamp
+	7,  // 9: pipeline.v1.LemmaSnapshot.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 10: pipeline.v1.LemmaSnapshot.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 11: pipeline.v1.ListLemmasResponse.lemmas:type_name -> pipeline.v1.LemmaItem
+	10, // 12: pipeline.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
+	1,  // 13: pipeline.v1.LemmaService.ListLemmas:input_type -> pipeline.v1.ListLemmasRequest
+	5,  // 14: pipeline.v1.LemmaService.ListLemmas:output_type -> pipeline.v1.ListLemmasResponse
+	14, // [14:15] is the sub-list for method output_type
+	13, // [13:14] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_pipeline_v1_lemma_service_proto_init() }
@@ -1009,15 +627,15 @@ func file_pipeline_v1_lemma_service_proto_init() {
 	if File_pipeline_v1_lemma_service_proto != nil {
 		return
 	}
-	file_pipeline_v1_pipeline_proto_init()
-	file_pipeline_v1_lemma_service_proto_msgTypes[8].OneofWrappers = []any{}
+	file_pipeline_v1_linguistics_proto_init()
+	file_pipeline_v1_lemma_service_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pipeline_v1_lemma_service_proto_rawDesc), len(file_pipeline_v1_lemma_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

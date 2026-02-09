@@ -89,14 +89,14 @@ func toPBLemmaSnapshot(snapshot *entity.WordSnapshot) *pipelinev1.LemmaSnapshot 
 }
 
 func toPBLemmaSnapshotData(data entity.SnapshotData) *pipelinev1.LemmaSnapshotData {
-	lexemes := make([]*pipelinev1.LemmaSnapshotLexeme, 0, len(data.Lexemes))
+	lexemes := make([]*pipelinev1.Lexeme, 0, len(data.Lexemes))
 	for _, lexeme := range data.Lexemes {
-		lexemes = append(lexemes, toPBLemmaSnapshotLexeme(lexeme))
+		lexemes = append(lexemes, toPBLexeme(lexeme))
 	}
 
-	relations := make([]*pipelinev1.LemmaSnapshotRelation, 0, len(data.Relations))
+	relations := make([]*pipelinev1.SemanticRelation, 0, len(data.Relations))
 	for _, relation := range data.Relations {
-		relations = append(relations, toPBLemmaSnapshotRelation(relation))
+		relations = append(relations, toPBSemanticRelation(relation))
 	}
 
 	return &pipelinev1.LemmaSnapshotData{
@@ -105,23 +105,23 @@ func toPBLemmaSnapshotData(data entity.SnapshotData) *pipelinev1.LemmaSnapshotDa
 	}
 }
 
-func toPBLemmaSnapshotLexeme(lexeme entity.SnapshotLexeme) *pipelinev1.LemmaSnapshotLexeme {
-	senses := make([]*pipelinev1.LemmaSnapshotSense, 0, len(lexeme.Senses))
+func toPBLexeme(lexeme entity.SnapshotLexeme) *pipelinev1.Lexeme {
+	senses := make([]*pipelinev1.LexemeSense, 0, len(lexeme.Senses))
 	for _, sense := range lexeme.Senses {
-		senses = append(senses, toPBLemmaSnapshotSense(sense))
+		senses = append(senses, toPBLexemeSense(sense))
 	}
 
-	forms := make([]*pipelinev1.LemmaSnapshotForm, 0, len(lexeme.Forms))
+	forms := make([]*pipelinev1.LexemeForm, 0, len(lexeme.Forms))
 	for _, form := range lexeme.Forms {
-		forms = append(forms, toPBLemmaSnapshotForm(form))
+		forms = append(forms, toPBLexemeForm(form))
 	}
 
-	phonetics := make([]*pipelinev1.LemmaSnapshotPhonetic, 0, len(lexeme.Phonetics))
+	phonetics := make([]*pipelinev1.LexemePhonetic, 0, len(lexeme.Phonetics))
 	for _, phonetic := range lexeme.Phonetics {
-		phonetics = append(phonetics, toPBLemmaSnapshotPhonetic(phonetic))
+		phonetics = append(phonetics, toPBLexemePhonetic(phonetic))
 	}
 
-	return &pipelinev1.LemmaSnapshotLexeme{
+	return &pipelinev1.Lexeme{
 		Pos:       lexeme.POS,
 		Senses:    senses,
 		Forms:     forms,
@@ -129,8 +129,8 @@ func toPBLemmaSnapshotLexeme(lexeme entity.SnapshotLexeme) *pipelinev1.LemmaSnap
 	}
 }
 
-func toPBLemmaSnapshotSense(sense entity.SnapshotSense) *pipelinev1.LemmaSnapshotSense {
-	return &pipelinev1.LemmaSnapshotSense{
+func toPBLexemeSense(sense entity.SnapshotSense) *pipelinev1.LexemeSense {
+	return &pipelinev1.LexemeSense{
 		Language:    sense.Language,
 		Gloss:       sense.Gloss,
 		Examples:    sense.Examples,
@@ -139,23 +139,23 @@ func toPBLemmaSnapshotSense(sense entity.SnapshotSense) *pipelinev1.LemmaSnapsho
 	}
 }
 
-func toPBLemmaSnapshotForm(form entity.SnapshotForm) *pipelinev1.LemmaSnapshotForm {
-	return &pipelinev1.LemmaSnapshotForm{
+func toPBLexemeForm(form entity.SnapshotForm) *pipelinev1.LexemeForm {
+	return &pipelinev1.LexemeForm{
 		Surface:     form.Surface,
 		FormType:    form.FormType,
 		IsIrregular: form.IsIrregular,
 	}
 }
 
-func toPBLemmaSnapshotPhonetic(phonetic entity.Phonetic) *pipelinev1.LemmaSnapshotPhonetic {
-	return &pipelinev1.LemmaSnapshotPhonetic{
+func toPBLexemePhonetic(phonetic entity.Phonetic) *pipelinev1.LexemePhonetic {
+	return &pipelinev1.LexemePhonetic{
 		Ipa:     phonetic.IPA,
 		Dialect: phonetic.Dialect,
 	}
 }
 
-func toPBLemmaSnapshotRelation(relation entity.SnapshotRelation) *pipelinev1.LemmaSnapshotRelation {
-	return &pipelinev1.LemmaSnapshotRelation{
+func toPBSemanticRelation(relation entity.SnapshotRelation) *pipelinev1.SemanticRelation {
+	return &pipelinev1.SemanticRelation{
 		RelationType:   relation.RelationType,
 		TargetTerm:     relation.TargetTerm,
 		TargetRef:      relation.TargetRef,
