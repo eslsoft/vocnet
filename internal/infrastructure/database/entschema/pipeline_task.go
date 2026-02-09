@@ -54,13 +54,13 @@ func (PipelineTask) Fields() []ent.Field {
 func (PipelineTask) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("lemma", Lemma.Type).
-			Ref("pipeline_stages").
+			Ref("pipeline_tasks").
 			Field("lemma_id").
 			Required().
 			Unique().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.From("job", PipelineJob.Type).
-			Ref("stages").
+			Ref("tasks").
 			Field("job_id").
 			Required().
 			Unique().
@@ -79,6 +79,6 @@ func (PipelineTask) Indexes() []ent.Index {
 
 func (PipelineTask) Annotations() []schema.Annotation {
 	return []schema.Annotation{
-		entsql.Annotation{Table: "pipeline_stages"},
+		entsql.Annotation{Table: "pipeline_tasks"},
 	}
 }
