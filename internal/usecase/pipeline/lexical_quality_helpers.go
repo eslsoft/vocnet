@@ -38,7 +38,7 @@ func parsePOSFromSource(source, raw string) (entity.PartOfSpeech, error) {
 	case "wikidata":
 		return parseWikidataPOS(raw)
 	case "ecdict":
-		return parseDelimitedPOS(raw)
+		return parseECDICTPOS(raw)
 	case "wordnet":
 		return parseWordNetPOS(raw)
 	default:
@@ -55,6 +55,82 @@ func parseWikidataPOS(raw string) (entity.PartOfSpeech, error) {
 		return entity.PartOfSpeechUnspecified, fmt.Errorf("unmapped wikidata pos qid: %s", raw)
 	}
 	return parseDelimitedPOS(raw)
+}
+
+// ecdictPOSMap maps ECDICT single-letter POS codes to canonical POS.
+// ECDICT uses: n=noun, v=verb, j=adjective, r=adverb, a=article/determiner,
+// t=particle (infinitive "to"), p=preposition, c=conjunction, etc.
+var ecdictPOSMap = map[string]entity.PartOfSpeech{
+	"n": entity.PartOfSpeechNoun,
+	"v": entity.PartOfSpeechVerb,
+	"j": entity.PartOfSpeechAdjective,
+	"r": entity.PartOfSpeechAdverb,
+	"a": entity.PartOfSpeechDeterminer, // article/determiner (the, my, your)
+	"t": entity.PartOfSpeechParticle,   // infinitive marker "to"
+	"s": entity.PartOfSpeechAdjective,  // satellite adjective
+	"p": entity.PartOfSpeechAdposition,
+	"c": entity.PartOfSpeechCCONJ,
+	"u": entity.PartOfSpeechInterjection,
+	"i": entity.PartOfSpeechInterjection,
+	"m": entity.PartOfSpeechNumeral,
+	"d": entity.PartOfSpeechDeterminer,
+	"x": entity.PartOfSpeechOther,
+}
+
+// parseECDICTPOS parses ECDICT POS format like "n:100", "v:15/n:85", "j:88/n:12".
+// It extracts the POS with highest percentage and maps to canonical POS.
+func parseECDICTPOS(raw string) (entity.PartOfSpeech, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return entity.PartOfSpeechUnspecified, fmt.Errorf("empty pos")
+	}
+
+	// Split by "/" to handle multi-POS like "v:15/n:85"
+	parts := strings.Split(raw, "/")
+
+	var bestPOS string
+	bestWeight := -1
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Handle format "x:NN" where x is POS letter and NN is percentage
+		if idx := strings.Index(part, ":"); idx > 0 {
+			posCode := strings.TrimSpace(part[:idx])
+			weightStr := strings.TrimSpace(part[idx+1:])
+
+			weight := 0
+			_, _ = fmt.Sscanf(weightStr, "%d", &weight)
+
+			if weight > bestWeight {
+				bestWeight = weight
+				bestPOS = posCode
+			}
+		} else if bestPOS == "" {
+			// Plain POS without weight (e.g., just "n")
+			bestPOS = part
+		}
+	}
+
+	if bestPOS == "" {
+		return entity.PartOfSpeechUnspecified, fmt.Errorf("no valid pos in: %s", raw)
+	}
+
+	// Map ECDICT POS code to canonical POS
+	posLower := strings.ToLower(bestPOS)
+	if mapped, ok := ecdictPOSMap[posLower]; ok {
+		return mapped, nil
+	}
+
+	// Fallback to standard parsing
+	if pos, ok := entity.ParsePartOfSpeech(bestPOS); ok {
+		return pos, nil
+	}
+
+	return entity.PartOfSpeechUnspecified, fmt.Errorf("unmapped ecdict pos: %s", raw)
 }
 
 func parseWordNetPOS(raw string) (entity.PartOfSpeech, error) {
