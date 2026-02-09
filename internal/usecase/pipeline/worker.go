@@ -58,7 +58,7 @@ func (p *WorkerPool) Start(ctx context.Context) error {
 
 	p.logger.Info("pipeline worker pool started",
 		"worker_count", p.config.WorkerCount,
-		"poll_interval", p.config.PollInterval,
+		"poll_interval", p.config.PollInterval.String(),
 	)
 
 	ticker := time.NewTicker(p.config.PollInterval)
@@ -84,22 +84,26 @@ func (p *WorkerPool) Stop() {
 }
 
 func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
-	job, err := p.jobRepo.ClaimNext(ctx)
-	if err != nil {
-		p.logger.Error("failed to claim job", "error", err)
-		return
-	}
-	if job == nil {
-		return // No pending jobs
-	}
+	// Claim up to WorkerCount jobs to fill the pool
+	for range p.config.WorkerCount {
+		job, err := p.jobRepo.ClaimNext(ctx)
+		if err != nil {
+			p.logger.Error("failed to claim job", "error", err)
+			return
+		}
+		if job == nil {
+			return // No more pending jobs
+		}
 
-	jobLogger := p.logger.With("job_id", job.ID)
-	jobLogger.Info("submitting job to pool", "name", job.Name, "type", job.JobType)
+		jobLogger := p.logger.With("job_id", job.ID)
+		jobLogger.Info("submitting job to pool", "name", job.Name, "type", job.JobType)
 
-	// Submit job to worker pool
-	p.pool.Submit(func() {
-		p.processJob(ctx, job, jobLogger)
-	})
+		// Submit job to worker pool - capture loop variables
+		j, jl := job, jobLogger
+		p.pool.Submit(func() {
+			p.processJob(ctx, j, jl)
+		})
+	}
 }
 
 func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jobLogger *slog.Logger) {
@@ -152,5 +156,5 @@ func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jo
 
 	_ = p.jobRepo.IncrementProcessed(ctx, job.ID)
 	_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
-	jobLogger.Info("job completed", "duration", time.Since(jobStart), "processed", 1, "failed", 0, "term_duration", time.Since(termStart))
+	jobLogger.Info("job completed", "duration", time.Since(jobStart).String(), "processed", 1, "failed", 0, "term_duration", time.Since(termStart).String())
 }

@@ -114,7 +114,7 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 		}
 	}
 
-	runLogger.Info("pipeline run completed", "term", term, "duration", time.Since(runStart))
+	runLogger.Info("pipeline run completed", "term", term, "duration", time.Since(runStart).String())
 
 	// Step 4: Gather final state
 	tasks, err := p.taskRepo.ListByJob(ctx, jobID)
@@ -170,12 +170,12 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		}
 
 		if result == nil || result.Status == ProcessStatusNoData {
-			logger.Debug("processor completed", "processor", proc.Name(), "status", "no_data", "duration", time.Since(procStart))
+			logger.Debug("processor completed", "processor", proc.Name(), "status", "no_data", "duration", time.Since(procStart).String())
 			continue
 		}
 
 		executedCount++
-		logger.Debug("processor completed", "processor", proc.Name(), "status", "executed", "duration", time.Since(procStart))
+		logger.Debug("processor completed", "processor", proc.Name(), "status", "executed", "duration", time.Since(procStart).String())
 
 		// Merge processor result into context so next processor can see it
 		pctx.Accumulate(result)
@@ -194,7 +194,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		if err := p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusSkipped, ""); err != nil {
 			return err
 		}
-		logger.Info("stage skipped", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart))
+		logger.Info("stage skipped", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart).String())
 		return nil
 	}
 
@@ -230,7 +230,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		return err
 	}
 
-	logger.Info("stage completed", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart))
+	logger.Info("stage completed", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart).String())
 	return nil
 }
 
