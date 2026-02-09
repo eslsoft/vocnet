@@ -21,7 +21,7 @@ func TestCEFRJProcessor_Process(t *testing.T) {
 		"address,verb,B1\n"
 	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
 
-	reader, err := cefrj.NewReader(csvPath)
+	reader, err := cefrj.NewReader(dir)
 	require.NoError(t, err)
 
 	p := NewCEFRJProcessor(reader)
@@ -41,7 +41,7 @@ func TestCEFRJProcessor_Process(t *testing.T) {
 	require.Equal(t, "A1", res.LemmaUpdate.Level)
 	require.Len(t, res.Evidence, 1)
 	require.Equal(t, "cefrj", res.Evidence[0].Provider)
-	require.Equal(t, "cefrj-1.5", res.Evidence[0].SchemaVersion)
+	require.Equal(t, "cefrj-1.5+c1c2-1.0", res.Evidence[0].SchemaVersion)
 }
 
 func TestCEFRJProcessor_KeepLowerLevel(t *testing.T) {
@@ -53,7 +53,7 @@ func TestCEFRJProcessor_KeepLowerLevel(t *testing.T) {
 		"address,noun,B1\n"
 	require.NoError(t, os.WriteFile(csvPath, []byte(content), 0644))
 
-	reader, err := cefrj.NewReader(csvPath)
+	reader, err := cefrj.NewReader(dir)
 	require.NoError(t, err)
 
 	p := NewCEFRJProcessor(reader)

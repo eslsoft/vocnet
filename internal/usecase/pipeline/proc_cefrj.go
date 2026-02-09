@@ -48,7 +48,7 @@ func (p *CEFRJProcessor) Process(ctx context.Context, pctx *PipelineContext) (*P
 		Provider:      "cefrj",
 		Phase:         int32(entity.PhaseLexical),
 		Content:       buildCEFRJEvidence(entry),
-		SchemaVersion: "cefrj-1.5",
+		SchemaVersion: "cefrj-1.5+c1c2-1.0",
 		FetchedAt:     time.Now(),
 	}
 

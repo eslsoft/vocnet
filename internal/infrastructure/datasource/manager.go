@@ -37,7 +37,7 @@ func ResolvePaths(dataDir string) DataPaths {
 		WordNet:    filepath.Join(dataDir, "wordnet"),
 		Moby:       filepath.Join(dataDir, "moby", mobyFilename),
 		Wikidata:   filepath.Join(dataDir, "wikidata", wikidataLexemesFilename),
-		CEFRJ:      filepath.Join(dataDir, "cefrj", cefrjFilename),
+		CEFRJ:      filepath.Join(dataDir, "cefrj"),
 	}
 }
 

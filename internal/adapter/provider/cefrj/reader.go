@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -28,19 +29,69 @@ type Entry struct {
 
 // Reader provides CEFR-J vocabulary lookup from CSV data.
 type Reader struct {
-	path  string
+	paths []string
 	index map[string]*Entry // normalized term -> aggregated entry
 }
 
-// NewReader creates a CEFR-J reader from CSV file path.
-func NewReader(csvPath string) (*Reader, error) {
-	if strings.TrimSpace(csvPath) == "" {
-		return nil, fmt.Errorf("cefrj csv path is required")
+// NewReader creates a CEFR-J reader from a directory containing CSV files.
+func NewReader(csvDir string) (*Reader, error) {
+	csvDir = strings.TrimSpace(csvDir)
+	if csvDir == "" {
+		return nil, fmt.Errorf("cefrj csv directory is required")
+	}
+	info, err := os.Stat(csvDir)
+	if err != nil {
+		return nil, fmt.Errorf("stat cefrj directory %q: %w", csvDir, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("cefrj path %q is not a directory", csvDir)
 	}
 
+	paths, err := collectCSVPathsFromDir(csvDir)
+	if err != nil {
+		return nil, err
+	}
+
+	r := &Reader{paths: paths, index: make(map[string]*Entry)}
+	for _, csvPath := range paths {
+		if err := r.loadCSV(csvPath); err != nil {
+			return nil, err
+		}
+	}
+	if len(r.index) == 0 {
+		return nil, fmt.Errorf("cefrj csv parsed but no valid rows")
+	}
+
+	return r, nil
+}
+
+func collectCSVPathsFromDir(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read cefrj directory %q: %w", dir, err)
+	}
+
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.ToLower(filepath.Ext(entry.Name())) != ".csv" {
+			continue
+		}
+		paths = append(paths, filepath.Join(dir, entry.Name()))
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no cefrj csv files found in %s", dir)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func (r *Reader) loadCSV(csvPath string) error {
 	f, err := os.Open(csvPath)
 	if err != nil {
-		return nil, fmt.Errorf("open cefrj csv: %w", err)
+		return fmt.Errorf("open cefrj csv %q: %w", csvPath, err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -48,13 +99,12 @@ func NewReader(csvPath string) (*Reader, error) {
 	cr.FieldsPerRecord = -1
 	records, err := cr.ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("read cefrj csv: %w", err)
+		return fmt.Errorf("read cefrj csv %q: %w", csvPath, err)
 	}
 	if len(records) < 2 {
-		return nil, fmt.Errorf("cefrj csv has no data rows")
+		return fmt.Errorf("cefrj csv %q has no data rows", csvPath)
 	}
 
-	r := &Reader{path: csvPath, index: make(map[string]*Entry, len(records))}
 	for _, row := range records[1:] {
 		if len(row) < 3 {
 			continue
@@ -97,11 +147,7 @@ func NewReader(csvPath string) (*Reader, error) {
 		}
 	}
 
-	if len(r.index) == 0 {
-		return nil, fmt.Errorf("cefrj csv parsed but no valid rows")
-	}
-
-	return r, nil
+	return nil
 }
 
 // Lookup finds CEFR-J entry by term (case-insensitive).

@@ -54,7 +54,9 @@ This document describes, stage by stage, which data source each processor uses a
 
 ### Processor: `cefrj` (`NewCEFRJProcessor`)
 
-- Data source: CEFR-J CSV (`internal/adapter/provider/cefrj`)
+- Data source: CEFR-J CSVs (`internal/adapter/provider/cefrj`)
+  - Base: `cefrj-vocabulary-profile-1.5.csv`
+  - Supplement: `octanove-vocabulary-profile-c1c2-1.0.csv`
 - Input query: lookup by term (case-insensitive; CEFR-J headword variants split by `/`)
 - Extracted data:
   - Lemma enrichment:
@@ -63,7 +65,7 @@ This document describes, stage by stage, which data source each processor uses a
     - If lemma already has a level, processor keeps the lower one between existing and CEFR-J
   - Evidence content fields:
     - `headword`, `min_level`, `levels_by_pos`, `matched_forms`
-    - `Provider=cefrj`, `Phase=lexical`, `SchemaVersion=cefrj-1.5`
+    - `Provider=cefrj`, `Phase=lexical`, `SchemaVersion=cefrj-1.5+c1c2-1.0`
 
 ### Processor: `ecdict` (`NewECDICTProcessor`)
 
