@@ -172,7 +172,7 @@ func (s *PipelineService) ListJobsFiltered(ctx context.Context, query *ListJobsQ
 		for _, job := range jobs {
 			tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
 			if err != nil {
-				continue
+				return nil, 0, fmt.Errorf("list tasks for job %d: %w", job.ID, err)
 			}
 			for _, task := range tasks {
 				if task.LemmaID == query.LemmaID {
