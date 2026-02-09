@@ -168,6 +168,171 @@ var _ interface {
 	ErrorName() string
 } = ListLemmasRequestValidationError{}
 
+// Validate checks the field values on LemmaItem with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LemmaItem) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaItem with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LemmaItemMultiError, or nil
+// if none found.
+func (m *LemmaItem) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaItem) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Id
+
+	// no validation rules for Surface
+
+	// no validation rules for Normalized
+
+	// no validation rules for Level
+
+	if all {
+		switch v := interface{}(m.GetCreatedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LemmaItemValidationError{
+					field:  "CreatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LemmaItemValidationError{
+					field:  "CreatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetCreatedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LemmaItemValidationError{
+				field:  "CreatedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetUpdatedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LemmaItemValidationError{
+					field:  "UpdatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LemmaItemValidationError{
+					field:  "UpdatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetUpdatedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LemmaItemValidationError{
+				field:  "UpdatedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return LemmaItemMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaItemMultiError is an error wrapping multiple validation errors returned
+// by LemmaItem.ValidateAll() if the designated constraints aren't met.
+type LemmaItemMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaItemMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaItemMultiError) AllErrors() []error { return m }
+
+// LemmaItemValidationError is the validation error returned by
+// LemmaItem.Validate if the designated constraints aren't met.
+type LemmaItemValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaItemValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaItemValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaItemValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaItemValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaItemValidationError) ErrorName() string { return "LemmaItemValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LemmaItemValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaItem.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaItemValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaItemValidationError{}
+
 // Validate checks the field values on ListLemmasResponse with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.

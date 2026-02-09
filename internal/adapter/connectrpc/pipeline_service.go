@@ -107,7 +107,7 @@ func (s *PipelineServiceServer) ListJobStages(ctx context.Context, req *connect.
 		return nil, mapping.ToPbError(err)
 	}
 
-	resp := &pipelinev1.ListJobStagesResponse{Stages: make([]*pipelinev1.PipelineStage, 0, len(stages))}
+	resp := &pipelinev1.ListJobStagesResponse{Stages: make([]*pipelinev1.PipelineDropStage, 0, len(stages))}
 	for _, st := range stages {
 		resp.Stages = append(resp.Stages, toPBPipelineStage(st))
 	}

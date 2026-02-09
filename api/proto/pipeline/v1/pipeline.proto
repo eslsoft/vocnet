@@ -47,17 +47,6 @@ enum PipelineActionType {
   PIPELINE_ACTION_TYPE_RETRY = 2;
 }
 
-enum LemmaLevel {
-  LEMMA_LEVEL_UNSPECIFIED = 0;
-  LEMMA_LEVEL_A1 = 1;
-  LEMMA_LEVEL_A2 = 2;
-  LEMMA_LEVEL_B1 = 3;
-  LEMMA_LEVEL_B2 = 4;
-  LEMMA_LEVEL_C1 = 5;
-  LEMMA_LEVEL_C2 = 6;
-  LEMMA_LEVEL_OTHER = 99;
-}
-
 message PipelineJob {
   int64 id = 1;
   PipelineJobType job_type = 2;
@@ -77,26 +66,16 @@ message PipelineJob {
   google.protobuf.Timestamp updated_at = 16;
 }
 
-message PipelineStage {
+message PipelineDropStage {
   int64 id = 1;
   int64 job_id = 2;
   int64 lemma_id = 3;
   PipelinePhase phase = 4;
-  string phase_name = 5; // discovery, lexical, relational, intellectual, synthesis
-  PipelineStageStatus status = 6;
-  int32 attempts = 7;
-  string error_message = 8;
-  google.protobuf.Timestamp started_at = 9;
-  google.protobuf.Timestamp completed_at = 10;
-  google.protobuf.Timestamp created_at = 11;
-  google.protobuf.Timestamp updated_at = 12;
-}
-
-message LemmaItem {
-  int64 id = 1;
-  string surface = 2;
-  string normalized = 3;
-  LemmaLevel level = 4;
-  google.protobuf.Timestamp created_at = 5;
-  google.protobuf.Timestamp updated_at = 6;
+  PipelineStageStatus status = 5;
+  int32 attempts = 6;
+  string error_message = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp completed_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
 }

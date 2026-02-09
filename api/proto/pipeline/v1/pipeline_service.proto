@@ -64,5 +64,5 @@ message ListJobStagesRequest {
 }
 
 message ListJobStagesResponse {
-  repeated PipelineStage stages = 1;
+  repeated PipelineDropStage stages = 1;
 }

@@ -33,17 +33,16 @@ func toPBPipelineJob(job *entity.PipelineJob) *pipelinev1.PipelineJob {
 	}
 }
 
-func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
+func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineDropStage {
 	if stage == nil {
 		return nil
 	}
 	phase := entity.PipelinePhase(stage.Phase)
-	return &pipelinev1.PipelineStage{
+	return &pipelinev1.PipelineDropStage{
 		Id:           stage.ID,
 		JobId:        stage.JobID,
 		LemmaId:      stage.LemmaID,
 		Phase:        toPBPipelinePhase(phase),
-		PhaseName:    phase.Name(),
 		Status:       toPBStageStatus(stage.Status),
 		Attempts:     stage.Attempts,
 		ErrorMessage: stage.ErrorMessage,

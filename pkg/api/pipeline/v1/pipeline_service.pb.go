@@ -401,7 +401,7 @@ func (x *ListJobStagesRequest) GetJobId() int64 {
 
 type ListJobStagesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Stages        []*PipelineStage       `protobuf:"bytes,1,rep,name=stages,proto3" json:"stages,omitempty"`
+	Stages        []*PipelineDropStage   `protobuf:"bytes,1,rep,name=stages,proto3" json:"stages,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -436,7 +436,7 @@ func (*ListJobStagesResponse) Descriptor() ([]byte, []int) {
 	return file_pipeline_v1_pipeline_service_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *ListJobStagesResponse) GetStages() []*PipelineStage {
+func (x *ListJobStagesResponse) GetStages() []*PipelineDropStage {
 	if x != nil {
 		return x.Stages
 	}
@@ -473,9 +473,9 @@ const file_pipeline_v1_pipeline_service_proto_rawDesc = "" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
 	"pagination\"6\n" +
 	"\x14ListJobStagesRequest\x12\x1e\n" +
-	"\x06job_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x05jobId\"K\n" +
-	"\x15ListJobStagesResponse\x122\n" +
-	"\x06stages\x18\x01 \x03(\v2\x1a.pipeline.v1.PipelineStageR\x06stages2\xca\x02\n" +
+	"\x06job_id\x18\x01 \x01(\x03B\a\xfaB\x04\"\x02 \x00R\x05jobId\"O\n" +
+	"\x15ListJobStagesResponse\x126\n" +
+	"\x06stages\x18\x01 \x03(\v2\x1e.pipeline.v1.PipelineDropStageR\x06stages2\xca\x02\n" +
 	"\x0fPipelineService\x12J\n" +
 	"\tSubmitJob\x12\x1d.pipeline.v1.SubmitJobRequest\x1a\x1e.pipeline.v1.SubmitJobResponse\x12J\n" +
 	"\tActionJob\x12\x1d.pipeline.v1.ActionJobRequest\x1a\x1e.pipeline.v1.ActionJobResponse\x12G\n" +
@@ -510,7 +510,7 @@ var file_pipeline_v1_pipeline_service_proto_goTypes = []any{
 	(*v1.PaginationRequest)(nil),  // 10: common.v1.PaginationRequest
 	(PipelineJobStatus)(0),        // 11: pipeline.v1.PipelineJobStatus
 	(*v1.PaginationResponse)(nil), // 12: common.v1.PaginationResponse
-	(*PipelineStage)(nil),         // 13: pipeline.v1.PipelineStage
+	(*PipelineDropStage)(nil),     // 13: pipeline.v1.PipelineDropStage
 }
 var file_pipeline_v1_pipeline_service_proto_depIdxs = []int32{
 	8,  // 0: pipeline.v1.SubmitJobResponse.job:type_name -> pipeline.v1.PipelineJob
@@ -521,7 +521,7 @@ var file_pipeline_v1_pipeline_service_proto_depIdxs = []int32{
 	11, // 5: pipeline.v1.ListJobsRequest.status:type_name -> pipeline.v1.PipelineJobStatus
 	8,  // 6: pipeline.v1.ListJobsResponse.jobs:type_name -> pipeline.v1.PipelineJob
 	12, // 7: pipeline.v1.ListJobsResponse.pagination:type_name -> common.v1.PaginationResponse
-	13, // 8: pipeline.v1.ListJobStagesResponse.stages:type_name -> pipeline.v1.PipelineStage
+	13, // 8: pipeline.v1.ListJobStagesResponse.stages:type_name -> pipeline.v1.PipelineDropStage
 	0,  // 9: pipeline.v1.PipelineService.SubmitJob:input_type -> pipeline.v1.SubmitJobRequest
 	2,  // 10: pipeline.v1.PipelineService.ActionJob:input_type -> pipeline.v1.ActionJobRequest
 	4,  // 11: pipeline.v1.PipelineService.ListJobs:input_type -> pipeline.v1.ListJobsRequest
