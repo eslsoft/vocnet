@@ -72,17 +72,8 @@ type PipelineJob struct {
 	Language string
 	Tier     int32
 
-	// Single word job
+	// Single-word job term.
 	Term string
-
-	// Wordbook job
-	Terms []string
-
-	// Progress
-	TotalTerms int32
-	Processed  int32
-	Skipped    int32
-	Failed     int32
 
 	ErrorMessage string
 

@@ -211,15 +211,14 @@ File formats:
 
 		if len(jobs) == 1 {
 			j := jobs[0]
-			fmt.Printf("Job #%d created: \"%s\" (%d terms)\n",
-				j.ID, j.Name, j.TotalTerms)
-			fmt.Printf("Use \"vocnet pipeline job %d\" to check progress.\n", j.ID)
+			fmt.Printf("Job #%d created: \"%s\"\n", j.ID, j.Name)
+			fmt.Printf("Use \"vocnet pipeline job %d\" to check status.\n", j.ID)
 			return nil
 		}
 
 		fmt.Printf("%d jobs created.\n", len(jobs))
 		fmt.Printf("First job ID: %d\n", jobs[0].ID)
-		fmt.Printf("Use \"vocnet pipeline jobs\" to check progress.\n")
+		fmt.Printf("Use \"vocnet pipeline jobs\" to check status.\n")
 		return nil
 	},
 }
@@ -256,9 +255,8 @@ var jobsCmd = &cobra.Command{
 		}
 
 		table := tablewriter.NewTable(os.Stdout)
-		table.Header("ID", "STATUS", "PROGRESS", "STAGES", "NAME", "CREATED")
+		table.Header("ID", "STATUS", "STAGES", "NAME", "CREATED")
 		for _, j := range jobs {
-			progress := fmt.Sprintf("%d/%d", j.Processed+j.Skipped+j.Failed, j.TotalTerms)
 			displayName := j.Name
 			if len(displayName) > 30 {
 				displayName = displayName[:27] + "..."
@@ -273,7 +271,6 @@ var jobsCmd = &cobra.Command{
 			_ = table.Append([]string{
 				strconv.FormatInt(j.ID, 10),
 				string(j.Status),
-				progress,
 				stages,
 				displayName,
 				j.CreatedAt.Format("2006-01-02 15:04"),
@@ -313,8 +310,6 @@ var jobCmd = &cobra.Command{
 		fmt.Printf("Status:    %s\n", j.Status)
 		fmt.Printf("Language:  %s\n", j.Language)
 		fmt.Printf("Tier:      %d\n", j.Tier)
-		fmt.Printf("Progress:  %d/%d processed, %d skipped, %d failed\n",
-			j.Processed, j.TotalTerms, j.Skipped, j.Failed)
 		fmt.Printf("Created:   %s\n", j.CreatedAt.Format("2006-01-02 15:04:05"))
 		if j.StartedAt != nil {
 			fmt.Printf("Started:   %s\n", j.StartedAt.Format("2006-01-02 15:04:05"))

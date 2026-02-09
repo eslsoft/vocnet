@@ -53,11 +53,7 @@ func (r *pipelineJobRepository) Create(ctx context.Context, job *entity.Pipeline
 		SetName(job.Name).
 		SetLanguage(job.Language).
 		SetTier(job.Tier).
-		SetTotalTerms(job.TotalTerms).
 		SetTerm(job.Term)
-	if len(job.Terms) > 0 {
-		create.SetTerms(job.Terms)
-	}
 
 	row, err := create.Save(ctx)
 	if err != nil {
@@ -213,36 +209,6 @@ func normalizePipelineJobForCreate(job *entity.PipelineJob) error {
 	return nil
 }
 
-func (r *pipelineJobRepository) IncrementProcessed(ctx context.Context, id int64) error {
-	_, err := r.client.PipelineJob.UpdateOneID(id).
-		AddProcessed(1).
-		Save(ctx)
-	if err != nil {
-		return translateDBError(err, "pipeline_job")
-	}
-	return nil
-}
-
-func (r *pipelineJobRepository) IncrementSkipped(ctx context.Context, id int64) error {
-	_, err := r.client.PipelineJob.UpdateOneID(id).
-		AddSkipped(1).
-		Save(ctx)
-	if err != nil {
-		return translateDBError(err, "pipeline_job")
-	}
-	return nil
-}
-
-func (r *pipelineJobRepository) IncrementFailed(ctx context.Context, id int64) error {
-	_, err := r.client.PipelineJob.UpdateOneID(id).
-		AddFailed(1).
-		Save(ctx)
-	if err != nil {
-		return translateDBError(err, "pipeline_job")
-	}
-	return nil
-}
-
 func (r *pipelineJobRepository) UpdateStatus(ctx context.Context, id int64, status entity.JobStatus, errorMsg string) error {
 	update := r.client.PipelineJob.UpdateOneID(id).
 		SetStatus(string(status))
@@ -318,11 +284,6 @@ func mapEntPipelineJob(row *entdb.PipelineJob) *entity.PipelineJob {
 		Language:     row.Language,
 		Tier:         row.Tier,
 		Term:         row.Term,
-		Terms:        row.Terms,
-		TotalTerms:   row.TotalTerms,
-		Processed:    row.Processed,
-		Skipped:      row.Skipped,
-		Failed:       row.Failed,
 		ErrorMessage: row.ErrorMessage,
 		StartedAt:    row.StartedAt,
 		CompletedAt:  row.CompletedAt,

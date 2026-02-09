@@ -44,7 +44,6 @@ func TestPipelineJobRepositoryCreate_ReusesActiveSingleWordJob(t *testing.T) {
 		Language:   "en",
 		Tier:       2,
 		Term:       "graph",
-		TotalTerms: 1,
 	})
 	require.NoError(t, err)
 
@@ -54,7 +53,6 @@ func TestPipelineJobRepositoryCreate_ReusesActiveSingleWordJob(t *testing.T) {
 		Language:   "en",
 		Tier:       2,
 		Term:       "Graph",
-		TotalTerms: 1,
 	})
 	require.NoError(t, err)
 	require.Equal(t, first.ID, second.ID)
@@ -74,7 +72,6 @@ func TestPipelineJobRepositoryCreate_SingleWordRequiresTerm(t *testing.T) {
 		Language:   "en",
 		Tier:       2,
 		Term:       "   ",
-		TotalTerms: 1,
 	})
 	require.ErrorIs(t, err, entity.ErrInvalidInput)
 }
@@ -89,7 +86,6 @@ func TestPipelineJobRepositoryCreate_AllowsNewAfterTerminalStatus(t *testing.T) 
 		Language:   "en",
 		Tier:       2,
 		Term:       "graph",
-		TotalTerms: 1,
 	})
 	require.NoError(t, err)
 
@@ -99,7 +95,6 @@ func TestPipelineJobRepositoryCreate_AllowsNewAfterTerminalStatus(t *testing.T) 
 		Language:   "en",
 		Tier:       2,
 		Term:       "graph",
-		TotalTerms: 1,
 	})
 	require.NoError(t, err)
 	require.NotEqual(t, first.ID, second.ID)
@@ -120,7 +115,6 @@ func TestPipelineJobRepositoryClaimNextBatch_SkipsPendingIfSameTermRunning(t *te
 		SetLanguage("en").
 		SetTier(2).
 		SetTerm("graph").
-		SetTotalTerms(1).
 		SetCreatedAt(base).
 		Save(ctx)
 	require.NoError(t, err)
@@ -131,7 +125,6 @@ func TestPipelineJobRepositoryClaimNextBatch_SkipsPendingIfSameTermRunning(t *te
 		SetLanguage("en").
 		SetTier(2).
 		SetTerm("graph").
-		SetTotalTerms(1).
 		SetCreatedAt(base.Add(time.Second)).
 		Save(ctx)
 	require.NoError(t, err)
@@ -142,7 +135,6 @@ func TestPipelineJobRepositoryClaimNextBatch_SkipsPendingIfSameTermRunning(t *te
 		SetLanguage("en").
 		SetTier(2).
 		SetTerm("wise").
-		SetTotalTerms(1).
 		SetCreatedAt(base.Add(2 * time.Second)).
 		Save(ctx)
 	require.NoError(t, err)

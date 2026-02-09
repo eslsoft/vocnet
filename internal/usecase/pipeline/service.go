@@ -53,7 +53,6 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 		Language:   language,
 		Tier:       tier,
 		Term:       term,
-		TotalTerms: 1,
 	}
 
 	return s.jobRepo.Create(ctx, job)
@@ -86,7 +85,6 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 			Language:   language,
 			Tier:       tier,
 			Term:       term,
-			TotalTerms: 1,
 		}
 		created, err := s.jobRepo.Create(ctx, job)
 		if err != nil {

@@ -144,7 +144,6 @@ func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, err
 		Language:   "en",
 		Tier:       2,
 		Term:       term,
-		TotalTerms: 1,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create job: %w", err)

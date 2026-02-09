@@ -15,13 +15,6 @@ type PipelineJobRepository interface {
 	// ClaimNextBatch atomically claims up to limit PENDING jobs.
 	ClaimNextBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error)
 
-	// IncrementProcessed atomically increments the processed counter.
-	IncrementProcessed(ctx context.Context, id int64) error
-	// IncrementSkipped atomically increments the skipped counter.
-	IncrementSkipped(ctx context.Context, id int64) error
-	// IncrementFailed atomically increments the failed counter.
-	IncrementFailed(ctx context.Context, id int64) error
-
 	// UpdateStatus updates the job status and optional error message.
 	UpdateStatus(ctx context.Context, id int64, status entity.JobStatus, errorMsg string) error
 
