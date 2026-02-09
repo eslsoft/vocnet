@@ -10,7 +10,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 )
 
-// ECDICTProcessor enriches lexemes with senses, frequencies, and domain categories from ECDICT.
+// ECDICTProcessor enriches lexemes (senses/categories) and lemma metadata (frequencies) from ECDICT.
 type ECDICTProcessor struct {
 	reader     *ecdict.Reader
 	aggregator *DataAggregator
@@ -50,6 +50,7 @@ func (p *ECDICTProcessor) Process(ctx context.Context, pctx *PipelineContext) (*
 	} else {
 		lexeme = createLexemeFromECDICT(parsed)
 	}
+	lemmaUpdate := buildLemmaUpdate(pctx.Lemma, parsed, p.aggregator)
 
 	// Build form updates with ECDICT phonetic for the lemma form
 	var forms []*entity.LemmaForm
@@ -64,10 +65,11 @@ func (p *ECDICTProcessor) Process(ctx context.Context, pctx *PipelineContext) (*
 	}
 
 	return &ProcessResult{
-		Status:   ProcessStatusExecuted,
-		Evidence: []*entity.RawEvidence{parsed.Evidence},
-		Lexemes:  []*entity.Lexeme{lexeme},
-		Forms:    forms,
+		Status:      ProcessStatusExecuted,
+		Evidence:    []*entity.RawEvidence{parsed.Evidence},
+		Lexemes:     []*entity.Lexeme{lexeme},
+		Forms:       forms,
+		LemmaUpdate: lemmaUpdate,
 	}, nil
 }
 
@@ -98,9 +100,6 @@ func enrichExistingLexeme(lexeme *entity.Lexeme, data *parsedECDICTData, aggrega
 	if len(data.Senses) > 0 {
 		enriched.Senses = aggregator.MergeSenses(lexeme.Senses, data.Senses)
 	}
-	if len(data.Frequencies) > 0 {
-		enriched.Frequencies = data.Frequencies
-	}
 	if data.POS != "" && strings.TrimSpace(lexeme.PartOfSpeech) == "" {
 		enriched.PartOfSpeech = data.POS
 	}
@@ -125,10 +124,20 @@ func createLexemeFromECDICT(data *parsedECDICTData) *entity.Lexeme {
 		EntryType:    entity.LexemeEntryTypeWord,
 		SenseGloss:   pickSenseGloss(data.Senses),
 		Senses:       data.Senses,
-		Frequencies:  data.Frequencies,
 		Categories:   data.Categories,
 		Completeness: data.Completeness,
 	}
+}
+
+func buildLemmaUpdate(lemma *entity.Lemma, data *parsedECDICTData, aggregator *DataAggregator) *entity.Lemma {
+	if lemma == nil {
+		return nil
+	}
+	updated := *lemma
+	if len(data.Frequencies) > 0 {
+		updated.Frequencies = aggregator.MergeFrequencies(lemma.Frequencies, data.Frequencies)
+	}
+	return &updated
 }
 
 func createECDICTEvidence(entry *ecdict.ECDICTEntry) *entity.RawEvidence {

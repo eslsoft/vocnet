@@ -38,13 +38,6 @@ func (Lexeme) Fields() []ent.Field {
 		field.String("entry_type").
 			Default("WORD").
 			Comment("WORD or PHRASE"),
-		field.String("level").
-			Optional().
-			Comment("CEFR level: A1, A2, B1, B2, C1, C2"),
-		field.JSON("frequencies", []entity.Frequency{}).
-			Default([]entity.Frequency{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-			Comment("Frequency data"),
 
 		// Semantics
 		field.String("sense_gloss").

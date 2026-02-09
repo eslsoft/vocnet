@@ -10,6 +10,8 @@ type Lemma struct {
 	Surface     string
 	Normalized  string
 	Variant     string
+	Level       string
+	Frequencies []Frequency
 	Syllables   []string
 	Forms       []*LemmaForm
 

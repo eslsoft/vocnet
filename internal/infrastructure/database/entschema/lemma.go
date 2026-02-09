@@ -4,11 +4,14 @@ import (
 	"time"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+
+	"github.com/eslsoft/vocnet/internal/entity"
 )
 
 type Lemma struct {
@@ -34,6 +37,13 @@ func (Lemma) Fields() []ent.Field {
 		field.Bool("is_primary").
 			Default(true).
 			Comment("Whether this is the primary lemma (for variant handling)"),
+		field.String("level").
+			Optional().
+			Comment("CEFR level: A1, A2, B1, B2, C1, C2"),
+		field.JSON("frequencies", []entity.Frequency{}).
+			Default([]entity.Frequency{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Lemma-level frequency data"),
 
 		field.Time("created_at").
 			Default(time.Now).

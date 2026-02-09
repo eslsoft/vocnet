@@ -39,8 +39,6 @@ type Lexeme struct {
 	Language     Language
 	PartOfSpeech string
 	EntryType    LexemeEntryType
-	Level        string
-	Frequencies  []Frequency
 	SenseGloss   string
 	Senses       []LexemeSense
 	Categories   []string

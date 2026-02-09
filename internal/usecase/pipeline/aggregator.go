@@ -164,11 +164,6 @@ func (a *DataAggregator) EnrichLexeme(existing *entity.Lexeme, new *entity.Lexem
 		enriched.Senses = a.MergeSenses(existing.Senses, new.Senses)
 	}
 
-	// Merge frequencies
-	if len(new.Frequencies) > 0 {
-		enriched.Frequencies = a.MergeFrequencies(existing.Frequencies, new.Frequencies)
-	}
-
 	// Merge categories
 	if len(new.Categories) > 0 {
 		enriched.Categories = a.MergeCategories(existing.Categories, new.Categories)

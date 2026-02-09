@@ -386,6 +386,8 @@ func (r *lemmaRepository) Update(ctx context.Context, lemma *entity.Lemma) (*ent
 	if lemma.Variant != "" {
 		update.SetVariant(lemma.Variant)
 	}
+	update.SetLevel(strings.TrimSpace(lemma.Level))
+	update.SetFrequencies(append([]entity.Frequency{}, lemma.Frequencies...))
 
 	_, err := update.Save(ctx)
 	if err != nil {
@@ -671,6 +673,8 @@ func mapEntLemma(lemmaRow *entdb.Lemma) *entity.Lemma {
 		Surface:     lemmaRow.Surface,
 		Normalized:  lemmaRow.Normalized,
 		Variant:     lemmaRow.Variant,
+		Level:       lemmaRow.Level,
+		Frequencies: append([]entity.Frequency{}, lemmaRow.Frequencies...),
 		Forms:       forms,
 		CreatedAt:   lemmaRow.CreatedAt,
 		UpdatedAt:   lemmaRow.UpdatedAt,

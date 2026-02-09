@@ -98,9 +98,7 @@ func normalizeLexemePayload(in *entity.Lexeme) (*entity.Lexeme, error) {
 		out.EntryType = entity.LexemeEntryTypeWord
 	}
 	// Note: LemmaText field removed from entity.Lexeme
-	out.Level = strings.TrimSpace(out.Level)
 	out.SenseGloss = strings.TrimSpace(out.SenseGloss)
-	out.Frequencies = append([]entity.Frequency{}, out.Frequencies...)
 	out.Categories = append([]string{}, out.Categories...)
 
 	// ExternalID must be provided (from Wikidata)

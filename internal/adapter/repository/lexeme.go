@@ -58,12 +58,6 @@ func (r *lexemeRepository) Create(ctx context.Context, lexeme *entity.Lexeme) (*
 	if lexeme.EntryType != "" {
 		lexemeCreate.SetEntryType(string(lexeme.EntryType))
 	}
-	if lexeme.Level != "" {
-		lexemeCreate.SetLevel(lexeme.Level)
-	}
-	if len(lexeme.Frequencies) > 0 {
-		lexemeCreate.SetFrequencies(lexeme.Frequencies)
-	}
 
 	lexemeRow, err := lexemeCreate.Save(ctx)
 	if err != nil {
@@ -112,12 +106,6 @@ func (r *lexemeRepository) Update(ctx context.Context, lexeme *entity.Lexeme) (*
 	}
 	if lexeme.EntryType != "" {
 		update.SetEntryType(string(lexeme.EntryType))
-	}
-	if lexeme.Level != "" {
-		update.SetLevel(lexeme.Level)
-	}
-	if len(lexeme.Frequencies) > 0 {
-		update.SetFrequencies(lexeme.Frequencies)
 	}
 
 	lexemeRow, err := update.Save(ctx)
@@ -454,8 +442,6 @@ func mapEntLexeme(rec *entdb.Lexeme) *entity.Lexeme {
 		Language:     entity.ParseLanguage(rec.LanguageCode),
 		PartOfSpeech: rec.Pos,
 		EntryType:    entity.LexemeEntryType(rec.EntryType),
-		Level:        rec.Level,
-		Frequencies:  append([]entity.Frequency{}, rec.Frequencies...),
 		SenseGloss:   rec.SenseGloss,
 		Categories:   append([]string{}, rec.Categories...),
 		Completeness: rec.Completeness,
