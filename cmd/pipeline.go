@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
@@ -511,78 +512,64 @@ func parsePipelineStats(r io.Reader) (*PipelineStats, error) {
 
 	stats := &PipelineStats{}
 
-	// Extract uptime
-	if mf, ok := metricFamilies["vocnet_pipeline_uptime_seconds"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.UptimeSeconds = m.GetGauge().GetValue()
-		}
-	}
+	stats.UptimeSeconds = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_uptime_seconds")
+	stats.JobsPerMinute = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_jobs_per_minute")
+	stats.PendingJobs = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_pending_jobs")
+	stats.InFlightJobs = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_in_flight_jobs")
+	stats.QueueTotal = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_queue_total")
+	stats.WorkerUtilization = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_worker_utilization")
+	stats.SuccessRate1m = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_success_rate_1m")
+	stats.ErrorRate1m = getGaugeMetricValue(metricFamilies, "vocnet_pipeline_error_rate_1m")
+	stats.JobsSucceeded, stats.JobsFailed = getJobsProcessedByStatus(metricFamilies)
+	stats.JobDurationSum, stats.JobDurationCount = getJobDurationStats(metricFamilies)
 
-	// Extract jobs per minute
-	if mf, ok := metricFamilies["vocnet_pipeline_jobs_per_minute"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.JobsPerMinute = m.GetGauge().GetValue()
-		}
-	}
+	return stats, nil
+}
 
-	// Extract pending jobs
-	if mf, ok := metricFamilies["vocnet_pipeline_pending_jobs"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.PendingJobs = m.GetGauge().GetValue()
-		}
+func getGaugeMetricValue(metricFamilies map[string]*dto.MetricFamily, metricName string) float64 {
+	mf, ok := metricFamilies[metricName]
+	if !ok {
+		return 0
 	}
-	if mf, ok := metricFamilies["vocnet_pipeline_in_flight_jobs"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.InFlightJobs = m.GetGauge().GetValue()
-		}
+	var value float64
+	for _, m := range mf.GetMetric() {
+		value = m.GetGauge().GetValue()
 	}
-	if mf, ok := metricFamilies["vocnet_pipeline_queue_total"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.QueueTotal = m.GetGauge().GetValue()
-		}
-	}
-	if mf, ok := metricFamilies["vocnet_pipeline_worker_utilization"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.WorkerUtilization = m.GetGauge().GetValue()
-		}
-	}
-	if mf, ok := metricFamilies["vocnet_pipeline_success_rate_1m"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.SuccessRate1m = m.GetGauge().GetValue()
-		}
-	}
-	if mf, ok := metricFamilies["vocnet_pipeline_error_rate_1m"]; ok {
-		for _, m := range mf.GetMetric() {
-			stats.ErrorRate1m = m.GetGauge().GetValue()
-		}
-	}
+	return value
+}
 
-	// Extract jobs processed by status
-	if mf, ok := metricFamilies["vocnet_pipeline_jobs_processed_total"]; ok {
-		for _, m := range mf.GetMetric() {
-			for _, label := range m.GetLabel() {
-				if label.GetName() == "status" {
-					switch label.GetValue() {
-					case "succeeded":
-						stats.JobsSucceeded = m.GetCounter().GetValue()
-					case "failed":
-						stats.JobsFailed = m.GetCounter().GetValue()
-					}
-				}
+func getJobsProcessedByStatus(metricFamilies map[string]*dto.MetricFamily) (succeeded float64, failed float64) {
+	mf, ok := metricFamilies["vocnet_pipeline_jobs_processed_total"]
+	if !ok {
+		return 0, 0
+	}
+	for _, m := range mf.GetMetric() {
+		for _, label := range m.GetLabel() {
+			if label.GetName() != "status" {
+				continue
+			}
+			switch label.GetValue() {
+			case "succeeded":
+				succeeded = m.GetCounter().GetValue()
+			case "failed":
+				failed = m.GetCounter().GetValue()
 			}
 		}
 	}
+	return succeeded, failed
+}
 
-	// Extract job duration histogram
-	if mf, ok := metricFamilies["vocnet_pipeline_job_duration_seconds"]; ok {
-		for _, m := range mf.GetMetric() {
-			h := m.GetHistogram()
-			stats.JobDurationSum = h.GetSampleSum()
-			stats.JobDurationCount = float64(h.GetSampleCount())
-		}
+func getJobDurationStats(metricFamilies map[string]*dto.MetricFamily) (sum float64, count float64) {
+	mf, ok := metricFamilies["vocnet_pipeline_job_duration_seconds"]
+	if !ok {
+		return 0, 0
 	}
-
-	return stats, nil
+	for _, m := range mf.GetMetric() {
+		h := m.GetHistogram()
+		sum = h.GetSampleSum()
+		count = float64(h.GetSampleCount())
+	}
+	return sum, count
 }
 
 func printStats(stats *PipelineStats) {
