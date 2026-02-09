@@ -16,6 +16,7 @@ type Config struct {
 	Log      LogConfig      `mapstructure:"log"`
 	Auth     AuthConfig     `mapstructure:"auth"`
 	Pipeline PipelineConfig `mapstructure:"pipeline"`
+	LLM      LLMConfig      `mapstructure:"llm"`
 }
 
 // ServerConfig holds server configuration
@@ -49,14 +50,17 @@ type AuthConfig struct {
 
 // PipelineConfig holds pipeline data source configuration
 type PipelineConfig struct {
-	DataDir      string `mapstructure:"data_dir"`       // Base system data directory (default: ./data)
-	AutoDownload bool   `mapstructure:"auto_download"`  // Auto-download missing data sources
-	CacheDir     string `mapstructure:"cache_dir"`      // Data cache directory
-	LLMBaseURL   string `mapstructure:"llm_base_url"`   // OpenAI-compatible endpoint
-	LLMAPIKey    string `mapstructure:"llm_api_key"`    // API key for LLM provider
-	LLMModel     string `mapstructure:"llm_model"`      // Model name (e.g. gpt-4o-mini)
-	WorkerCount  int    `mapstructure:"worker_count"`   // Number of concurrent workers (default: 1)
-	RateLimit    int    `mapstructure:"rate_limit"`     // Rate limit per second for API calls (default: 2)
+	DataDir      string `mapstructure:"data_dir"`      // Base system data directory (default: ./data)
+	AutoDownload bool   `mapstructure:"auto_download"` // Auto-download missing data sources
+	CacheDir     string `mapstructure:"cache_dir"`     // Data cache directory
+	WorkerCount  int    `mapstructure:"worker_count"`  // Number of concurrent workers (default: 10)
+}
+
+// LLMConfig holds LLM provider configuration
+type LLMConfig struct {
+	BaseURL string `mapstructure:"base_url"` // OpenAI-compatible endpoint (default: https://api.openai.com/v1)
+	APIKey  string `mapstructure:"api_key"`  // API key for LLM provider
+	Model   string `mapstructure:"model"`    // Model name (default: gpt-4o-mini)
 }
 
 // Load reads configuration from file and environment variables
@@ -111,25 +115,25 @@ func setDefaults() {
 	viper.SetDefault("pipeline.data_dir", "./data")
 	viper.SetDefault("pipeline.auto_download", true)
 	viper.SetDefault("pipeline.cache_dir", "") // Empty means use system cache dir
-	viper.SetDefault("pipeline.llm_base_url", "https://api.openai.com/v1")
-	viper.SetDefault("pipeline.llm_api_key", "")
-	viper.SetDefault("pipeline.llm_model", "gpt-4o-mini")
-	viper.SetDefault("pipeline.worker_count", 1)
-	viper.SetDefault("pipeline.rate_limit", 2)
+	viper.SetDefault("pipeline.worker_count", 10)
+
+	// LLM defaults
+	viper.SetDefault("llm.base_url", "https://api.openai.com/v1")
+	viper.SetDefault("llm.api_key", "")
+	viper.SetDefault("llm.model", "gpt-4o-mini")
 }
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
 		"database.dsn":            {"DATABASE_URL"},
 		"auth.jwks_url":           {"AUTH_JWKS_URL"},
-		"pipeline.data_dir":      {"PIPELINE_DATA_DIR"},
-		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
-		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
-		"pipeline.llm_base_url":  {"PIPELINE_LLM_BASE_URL"},
-		"pipeline.llm_api_key":   {"PIPELINE_LLM_API_KEY"},
-		"pipeline.llm_model":     {"PIPELINE_LLM_MODEL"},
-		"pipeline.worker_count":  {"PIPELINE_WORKER_COUNT"},
-		"pipeline.rate_limit":    {"PIPELINE_RATE_LIMIT"},
+		"pipeline.data_dir":       {"PIPELINE_DATA_DIR"},
+		"pipeline.auto_download":  {"PIPELINE_AUTO_DOWNLOAD"},
+		"pipeline.cache_dir":      {"PIPELINE_CACHE_DIR"},
+		"pipeline.worker_count":   {"PIPELINE_WORKER_COUNT"},
+		"llm.base_url":            {"LLM_BASE_URL"},
+		"llm.api_key":             {"LLM_API_KEY"},
+		"llm.model":               {"LLM_MODEL"},
 	}
 
 	for key, envs := range bindings {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gammazero/workerpool"
-	"golang.org/x/time/rate"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -16,7 +15,6 @@ import (
 type WorkerPoolConfig struct {
 	WorkerCount  int           // Number of concurrent workers (default: 1)
 	PollInterval time.Duration // Interval between job polls (default: 5s)
-	RateLimit    float64       // Rate limit per second for API calls (default: 2.0)
 }
 
 // WorkerPool manages concurrent pipeline job processing using gammazero/workerpool.
@@ -26,9 +24,8 @@ type WorkerPool struct {
 	logger   *slog.Logger
 	config   WorkerPoolConfig
 
-	pool        *workerpool.WorkerPool
-	rateLimiter *rate.Limiter
-	cancel      context.CancelFunc
+	pool   *workerpool.WorkerPool
+	cancel context.CancelFunc
 }
 
 // NewWorkerPool creates a new worker pool with the given configuration.
@@ -44,16 +41,12 @@ func NewWorkerPool(
 	if config.PollInterval <= 0 {
 		config.PollInterval = 5 * time.Second
 	}
-	if config.RateLimit <= 0 {
-		config.RateLimit = 2.0
-	}
 
 	return &WorkerPool{
-		jobRepo:     jobRepo,
-		pipeline:    pipeline,
-		logger:      logger.With("component", "pipeline-worker-pool"),
-		config:      config,
-		rateLimiter: rate.NewLimiter(rate.Limit(config.RateLimit), 1),
+		jobRepo:  jobRepo,
+		pipeline: pipeline,
+		logger:   logger.With("component", "pipeline-worker-pool"),
+		config:   config,
 	}
 }
 
@@ -66,7 +59,6 @@ func (p *WorkerPool) Start(ctx context.Context) error {
 	p.logger.Info("pipeline worker pool started",
 		"worker_count", p.config.WorkerCount,
 		"poll_interval", p.config.PollInterval,
-		"rate_limit", p.config.RateLimit,
 	)
 
 	ticker := time.NewTicker(p.config.PollInterval)
@@ -145,13 +137,6 @@ func (p *WorkerPool) processJob(ctx context.Context, job *entity.PipelineJob, jo
 		return
 	case entity.JobStatusCancelled:
 		jobLogger.Info("job cancelled by user")
-		return
-	}
-
-	// Rate limit for API calls
-	if err := p.rateLimiter.Wait(ctx); err != nil {
-		jobLogger.Warn("rate limiter interrupted", "error", err)
-		_ = p.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusPending, "")
 		return
 	}
 

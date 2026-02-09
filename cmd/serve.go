@@ -194,16 +194,16 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 	}
 
 	var llmProvider llm.Provider
-	if cfg.Pipeline.LLMAPIKey != "" {
+	if cfg.LLM.APIKey != "" {
 		cacheRepo := repository.NewDistillCacheRepository(entClient)
 		llmProvider = llm.NewOpenAIProvider(
-			cfg.Pipeline.LLMBaseURL,
-			cfg.Pipeline.LLMAPIKey,
-			cfg.Pipeline.LLMModel,
+			cfg.LLM.BaseURL,
+			cfg.LLM.APIKey,
+			cfg.LLM.Model,
 			cacheRepo,
 		)
 	} else {
-		logger.Warn("LLM not configured, phase 4 (intellectual) will be skipped — set PIPELINE_LLM_API_KEY to enable")
+		logger.Warn("LLM not configured, phase 4 (intellectual) will be skipped — set LLM_API_KEY to enable")
 	}
 
 	// Build pipeline
@@ -243,13 +243,8 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 	if workerCount <= 0 {
 		workerCount = 1
 	}
-	rateLimit := cfg.Pipeline.RateLimit
-	if rateLimit <= 0 {
-		rateLimit = 2
-	}
 
 	return pipeline.NewWorkerPool(jobRepo, p, logger, pipeline.WorkerPoolConfig{
 		WorkerCount: workerCount,
-		RateLimit:   float64(rateLimit),
 	}), nil
 }

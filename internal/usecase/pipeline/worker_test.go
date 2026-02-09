@@ -56,7 +56,6 @@ func TestWorkerPoolStop(t *testing.T) {
 	pool := NewWorkerPool(nil, nil, logger, WorkerPoolConfig{
 		WorkerCount:  1,
 		PollInterval: time.Second,
-		RateLimit:    2.0,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
