@@ -34,17 +34,6 @@ func (r *claimOnlyJobRepo) List(context.Context, *entity.JobStatus, int) ([]*ent
 	panic("not implemented")
 }
 
-func (r *claimOnlyJobRepo) ClaimNext(context.Context) (*entity.PipelineJob, error) {
-	jobs, err := r.ClaimNextBatch(context.Background(), 1)
-	if err != nil {
-		return nil, err
-	}
-	if len(jobs) == 0 {
-		return nil, nil
-	}
-	return jobs[0], nil
-}
-
 func (r *claimOnlyJobRepo) ClaimNextBatch(ctx context.Context, limit int) ([]*entity.PipelineJob, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
