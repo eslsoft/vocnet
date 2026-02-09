@@ -4,8 +4,8 @@ package pipeline.v1;
 
 option go_package = "github.com/eslsoft/vocnet/pkg/api/pipeline/v1;pipelinev1";
 
-// LexemePhonetic is a reusable phonetic representation for linguistic payloads.
-message LexemePhonetic {
+// Phonetic is a reusable phonetic representation for linguistic payloads.
+message Phonetic {
   string ipa = 1;
   string dialect = 2;
 }
@@ -19,8 +19,8 @@ message LexemeSense {
   double trust_weight = 5;
 }
 
-// LexemeForm is a reusable inflected form representation.
-message LexemeForm {
+// LemmaForm is a reusable inflected form representation.
+message LemmaForm {
   string surface = 1;
   string form_type = 2;
   bool is_irregular = 3;
@@ -30,8 +30,8 @@ message LexemeForm {
 message Lexeme {
   string pos = 1;
   repeated LexemeSense senses = 2;
-  repeated LexemeForm forms = 3;
-  repeated LexemePhonetic phonetics = 4;
+  repeated LemmaForm forms = 3;
+  repeated Phonetic phonetics = 4;
 }
 
 // SemanticRelation is a reusable semantic relation representation.

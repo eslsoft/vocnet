@@ -35,22 +35,22 @@ var (
 	_ = sort.Sort
 )
 
-// Validate checks the field values on LexemePhonetic with the rules defined in
-// the proto definition for this message. If any rules are violated, the first
+// Validate checks the field values on Phonetic with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
-func (m *LexemePhonetic) Validate() error {
+func (m *Phonetic) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on LexemePhonetic with the rules defined
-// in the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in LexemePhoneticMultiError,
-// or nil if none found.
-func (m *LexemePhonetic) ValidateAll() error {
+// ValidateAll checks the field values on Phonetic with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in PhoneticMultiError, or nil
+// if none found.
+func (m *Phonetic) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *LexemePhonetic) validate(all bool) error {
+func (m *Phonetic) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
@@ -62,19 +62,18 @@ func (m *LexemePhonetic) validate(all bool) error {
 	// no validation rules for Dialect
 
 	if len(errors) > 0 {
-		return LexemePhoneticMultiError(errors)
+		return PhoneticMultiError(errors)
 	}
 
 	return nil
 }
 
-// LexemePhoneticMultiError is an error wrapping multiple validation errors
-// returned by LexemePhonetic.ValidateAll() if the designated constraints
-// aren't met.
-type LexemePhoneticMultiError []error
+// PhoneticMultiError is an error wrapping multiple validation errors returned
+// by Phonetic.ValidateAll() if the designated constraints aren't met.
+type PhoneticMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m LexemePhoneticMultiError) Error() string {
+func (m PhoneticMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -83,11 +82,11 @@ func (m LexemePhoneticMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m LexemePhoneticMultiError) AllErrors() []error { return m }
+func (m PhoneticMultiError) AllErrors() []error { return m }
 
-// LexemePhoneticValidationError is the validation error returned by
-// LexemePhonetic.Validate if the designated constraints aren't met.
-type LexemePhoneticValidationError struct {
+// PhoneticValidationError is the validation error returned by
+// Phonetic.Validate if the designated constraints aren't met.
+type PhoneticValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -95,22 +94,22 @@ type LexemePhoneticValidationError struct {
 }
 
 // Field function returns field value.
-func (e LexemePhoneticValidationError) Field() string { return e.field }
+func (e PhoneticValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e LexemePhoneticValidationError) Reason() string { return e.reason }
+func (e PhoneticValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e LexemePhoneticValidationError) Cause() error { return e.cause }
+func (e PhoneticValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e LexemePhoneticValidationError) Key() bool { return e.key }
+func (e PhoneticValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e LexemePhoneticValidationError) ErrorName() string { return "LexemePhoneticValidationError" }
+func (e PhoneticValidationError) ErrorName() string { return "PhoneticValidationError" }
 
 // Error satisfies the builtin error interface
-func (e LexemePhoneticValidationError) Error() string {
+func (e PhoneticValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -122,14 +121,14 @@ func (e LexemePhoneticValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sLexemePhonetic.%s: %s%s",
+		"invalid %sPhonetic.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = LexemePhoneticValidationError{}
+var _ error = PhoneticValidationError{}
 
 var _ interface {
 	Field() string
@@ -137,7 +136,7 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = LexemePhoneticValidationError{}
+} = PhoneticValidationError{}
 
 // Validate checks the field values on LexemeSense with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
@@ -246,22 +245,22 @@ var _ interface {
 	ErrorName() string
 } = LexemeSenseValidationError{}
 
-// Validate checks the field values on LexemeForm with the rules defined in the
+// Validate checks the field values on LemmaForm with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
-func (m *LexemeForm) Validate() error {
+func (m *LemmaForm) Validate() error {
 	return m.validate(false)
 }
 
-// ValidateAll checks the field values on LexemeForm with the rules defined in
+// ValidateAll checks the field values on LemmaForm with the rules defined in
 // the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in LexemeFormMultiError, or
-// nil if none found.
-func (m *LexemeForm) ValidateAll() error {
+// result is a list of violation errors wrapped in LemmaFormMultiError, or nil
+// if none found.
+func (m *LemmaForm) ValidateAll() error {
 	return m.validate(true)
 }
 
-func (m *LexemeForm) validate(all bool) error {
+func (m *LemmaForm) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
@@ -275,18 +274,18 @@ func (m *LexemeForm) validate(all bool) error {
 	// no validation rules for IsIrregular
 
 	if len(errors) > 0 {
-		return LexemeFormMultiError(errors)
+		return LemmaFormMultiError(errors)
 	}
 
 	return nil
 }
 
-// LexemeFormMultiError is an error wrapping multiple validation errors
-// returned by LexemeForm.ValidateAll() if the designated constraints aren't met.
-type LexemeFormMultiError []error
+// LemmaFormMultiError is an error wrapping multiple validation errors returned
+// by LemmaForm.ValidateAll() if the designated constraints aren't met.
+type LemmaFormMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
-func (m LexemeFormMultiError) Error() string {
+func (m LemmaFormMultiError) Error() string {
 	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
@@ -295,11 +294,11 @@ func (m LexemeFormMultiError) Error() string {
 }
 
 // AllErrors returns a list of validation violation errors.
-func (m LexemeFormMultiError) AllErrors() []error { return m }
+func (m LemmaFormMultiError) AllErrors() []error { return m }
 
-// LexemeFormValidationError is the validation error returned by
-// LexemeForm.Validate if the designated constraints aren't met.
-type LexemeFormValidationError struct {
+// LemmaFormValidationError is the validation error returned by
+// LemmaForm.Validate if the designated constraints aren't met.
+type LemmaFormValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -307,22 +306,22 @@ type LexemeFormValidationError struct {
 }
 
 // Field function returns field value.
-func (e LexemeFormValidationError) Field() string { return e.field }
+func (e LemmaFormValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e LexemeFormValidationError) Reason() string { return e.reason }
+func (e LemmaFormValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e LexemeFormValidationError) Cause() error { return e.cause }
+func (e LemmaFormValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e LexemeFormValidationError) Key() bool { return e.key }
+func (e LemmaFormValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e LexemeFormValidationError) ErrorName() string { return "LexemeFormValidationError" }
+func (e LemmaFormValidationError) ErrorName() string { return "LemmaFormValidationError" }
 
 // Error satisfies the builtin error interface
-func (e LexemeFormValidationError) Error() string {
+func (e LemmaFormValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -334,14 +333,14 @@ func (e LexemeFormValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sLexemeForm.%s: %s%s",
+		"invalid %sLemmaForm.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = LexemeFormValidationError{}
+var _ error = LemmaFormValidationError{}
 
 var _ interface {
 	Field() string
@@ -349,7 +348,7 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = LexemeFormValidationError{}
+} = LemmaFormValidationError{}
 
 // Validate checks the field values on Lexeme with the rules defined in the
 // proto definition for this message. If any rules are violated, the first

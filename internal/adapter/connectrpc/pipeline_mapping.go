@@ -111,12 +111,12 @@ func toPBLexeme(lexeme entity.SnapshotLexeme) *pipelinev1.Lexeme {
 		senses = append(senses, toPBLexemeSense(sense))
 	}
 
-	forms := make([]*pipelinev1.LexemeForm, 0, len(lexeme.Forms))
+	forms := make([]*pipelinev1.LemmaForm, 0, len(lexeme.Forms))
 	for _, form := range lexeme.Forms {
 		forms = append(forms, toPBLexemeForm(form))
 	}
 
-	phonetics := make([]*pipelinev1.LexemePhonetic, 0, len(lexeme.Phonetics))
+	phonetics := make([]*pipelinev1.Phonetic, 0, len(lexeme.Phonetics))
 	for _, phonetic := range lexeme.Phonetics {
 		phonetics = append(phonetics, toPBLexemePhonetic(phonetic))
 	}
@@ -139,16 +139,16 @@ func toPBLexemeSense(sense entity.SnapshotSense) *pipelinev1.LexemeSense {
 	}
 }
 
-func toPBLexemeForm(form entity.SnapshotForm) *pipelinev1.LexemeForm {
-	return &pipelinev1.LexemeForm{
+func toPBLexemeForm(form entity.SnapshotForm) *pipelinev1.LemmaForm {
+	return &pipelinev1.LemmaForm{
 		Surface:     form.Surface,
 		FormType:    form.FormType,
 		IsIrregular: form.IsIrregular,
 	}
 }
 
-func toPBLexemePhonetic(phonetic entity.Phonetic) *pipelinev1.LexemePhonetic {
-	return &pipelinev1.LexemePhonetic{
+func toPBLexemePhonetic(phonetic entity.Phonetic) *pipelinev1.Phonetic {
+	return &pipelinev1.Phonetic{
 		Ipa:     phonetic.IPA,
 		Dialect: phonetic.Dialect,
 	}

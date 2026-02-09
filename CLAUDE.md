@@ -111,8 +111,6 @@ Proto definitions are in `api/proto/`:
 
 **Proto Organization Rules (Required):**
 - Keep service contract files focused on RPCs and request/response messages. Do not embed large reusable domain message sets directly in `*_service.proto`.
-- Reusable message structures (e.g., lexeme/form/sense/relation/phonetic) must be defined in dedicated proto files and imported where needed.
-- Prefer extracting cross-endpoint linguistic/domain models into a shared proto file within the same versioned package first; only introduce a new package when there is a clear bounded context split.
 
 **After modifying `.proto` files**, regenerate code:
 ```bash

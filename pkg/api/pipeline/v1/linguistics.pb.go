@@ -21,8 +21,8 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// LexemePhonetic is a reusable phonetic representation for linguistic payloads.
-type LexemePhonetic struct {
+// Phonetic is a reusable phonetic representation for linguistic payloads.
+type Phonetic struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ipa           string                 `protobuf:"bytes,1,opt,name=ipa,proto3" json:"ipa,omitempty"`
 	Dialect       string                 `protobuf:"bytes,2,opt,name=dialect,proto3" json:"dialect,omitempty"`
@@ -30,20 +30,20 @@ type LexemePhonetic struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LexemePhonetic) Reset() {
-	*x = LexemePhonetic{}
+func (x *Phonetic) Reset() {
+	*x = Phonetic{}
 	mi := &file_pipeline_v1_linguistics_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LexemePhonetic) String() string {
+func (x *Phonetic) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LexemePhonetic) ProtoMessage() {}
+func (*Phonetic) ProtoMessage() {}
 
-func (x *LexemePhonetic) ProtoReflect() protoreflect.Message {
+func (x *Phonetic) ProtoReflect() protoreflect.Message {
 	mi := &file_pipeline_v1_linguistics_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -55,19 +55,19 @@ func (x *LexemePhonetic) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LexemePhonetic.ProtoReflect.Descriptor instead.
-func (*LexemePhonetic) Descriptor() ([]byte, []int) {
+// Deprecated: Use Phonetic.ProtoReflect.Descriptor instead.
+func (*Phonetic) Descriptor() ([]byte, []int) {
 	return file_pipeline_v1_linguistics_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *LexemePhonetic) GetIpa() string {
+func (x *Phonetic) GetIpa() string {
 	if x != nil {
 		return x.Ipa
 	}
 	return ""
 }
 
-func (x *LexemePhonetic) GetDialect() string {
+func (x *Phonetic) GetDialect() string {
 	if x != nil {
 		return x.Dialect
 	}
@@ -151,8 +151,8 @@ func (x *LexemeSense) GetTrustWeight() float64 {
 	return 0
 }
 
-// LexemeForm is a reusable inflected form representation.
-type LexemeForm struct {
+// LemmaForm is a reusable inflected form representation.
+type LemmaForm struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Surface       string                 `protobuf:"bytes,1,opt,name=surface,proto3" json:"surface,omitempty"`
 	FormType      string                 `protobuf:"bytes,2,opt,name=form_type,json=formType,proto3" json:"form_type,omitempty"`
@@ -161,20 +161,20 @@ type LexemeForm struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LexemeForm) Reset() {
-	*x = LexemeForm{}
+func (x *LemmaForm) Reset() {
+	*x = LemmaForm{}
 	mi := &file_pipeline_v1_linguistics_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LexemeForm) String() string {
+func (x *LemmaForm) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LexemeForm) ProtoMessage() {}
+func (*LemmaForm) ProtoMessage() {}
 
-func (x *LexemeForm) ProtoReflect() protoreflect.Message {
+func (x *LemmaForm) ProtoReflect() protoreflect.Message {
 	mi := &file_pipeline_v1_linguistics_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -186,26 +186,26 @@ func (x *LexemeForm) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LexemeForm.ProtoReflect.Descriptor instead.
-func (*LexemeForm) Descriptor() ([]byte, []int) {
+// Deprecated: Use LemmaForm.ProtoReflect.Descriptor instead.
+func (*LemmaForm) Descriptor() ([]byte, []int) {
 	return file_pipeline_v1_linguistics_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *LexemeForm) GetSurface() string {
+func (x *LemmaForm) GetSurface() string {
 	if x != nil {
 		return x.Surface
 	}
 	return ""
 }
 
-func (x *LexemeForm) GetFormType() string {
+func (x *LemmaForm) GetFormType() string {
 	if x != nil {
 		return x.FormType
 	}
 	return ""
 }
 
-func (x *LexemeForm) GetIsIrregular() bool {
+func (x *LemmaForm) GetIsIrregular() bool {
 	if x != nil {
 		return x.IsIrregular
 	}
@@ -217,8 +217,8 @@ type Lexeme struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Pos           string                 `protobuf:"bytes,1,opt,name=pos,proto3" json:"pos,omitempty"`
 	Senses        []*LexemeSense         `protobuf:"bytes,2,rep,name=senses,proto3" json:"senses,omitempty"`
-	Forms         []*LexemeForm          `protobuf:"bytes,3,rep,name=forms,proto3" json:"forms,omitempty"`
-	Phonetics     []*LexemePhonetic      `protobuf:"bytes,4,rep,name=phonetics,proto3" json:"phonetics,omitempty"`
+	Forms         []*LemmaForm           `protobuf:"bytes,3,rep,name=forms,proto3" json:"forms,omitempty"`
+	Phonetics     []*Phonetic            `protobuf:"bytes,4,rep,name=phonetics,proto3" json:"phonetics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -267,14 +267,14 @@ func (x *Lexeme) GetSenses() []*LexemeSense {
 	return nil
 }
 
-func (x *Lexeme) GetForms() []*LexemeForm {
+func (x *Lexeme) GetForms() []*LemmaForm {
 	if x != nil {
 		return x.Forms
 	}
 	return nil
 }
 
-func (x *Lexeme) GetPhonetics() []*LexemePhonetic {
+func (x *Lexeme) GetPhonetics() []*Phonetic {
 	if x != nil {
 		return x.Phonetics
 	}
@@ -378,8 +378,8 @@ var File_pipeline_v1_linguistics_proto protoreflect.FileDescriptor
 
 const file_pipeline_v1_linguistics_proto_rawDesc = "" +
 	"\n" +
-	"\x1dpipeline/v1/linguistics.proto\x12\vpipeline.v1\"<\n" +
-	"\x0eLexemePhonetic\x12\x10\n" +
+	"\x1dpipeline/v1/linguistics.proto\x12\vpipeline.v1\"6\n" +
+	"\bPhonetic\x12\x10\n" +
 	"\x03ipa\x18\x01 \x01(\tR\x03ipa\x12\x18\n" +
 	"\adialect\x18\x02 \x01(\tR\adialect\"\x9a\x01\n" +
 	"\vLexemeSense\x12\x1a\n" +
@@ -387,17 +387,16 @@ const file_pipeline_v1_linguistics_proto_rawDesc = "" +
 	"\x05gloss\x18\x02 \x01(\tR\x05gloss\x12\x1a\n" +
 	"\bexamples\x18\x03 \x03(\tR\bexamples\x12\x1a\n" +
 	"\bprovider\x18\x04 \x01(\tR\bprovider\x12!\n" +
-	"\ftrust_weight\x18\x05 \x01(\x01R\vtrustWeight\"f\n" +
-	"\n" +
-	"LexemeForm\x12\x18\n" +
+	"\ftrust_weight\x18\x05 \x01(\x01R\vtrustWeight\"e\n" +
+	"\tLemmaForm\x12\x18\n" +
 	"\asurface\x18\x01 \x01(\tR\asurface\x12\x1b\n" +
 	"\tform_type\x18\x02 \x01(\tR\bformType\x12!\n" +
-	"\fis_irregular\x18\x03 \x01(\bR\visIrregular\"\xb6\x01\n" +
+	"\fis_irregular\x18\x03 \x01(\bR\visIrregular\"\xaf\x01\n" +
 	"\x06Lexeme\x12\x10\n" +
 	"\x03pos\x18\x01 \x01(\tR\x03pos\x120\n" +
-	"\x06senses\x18\x02 \x03(\v2\x18.pipeline.v1.LexemeSenseR\x06senses\x12-\n" +
-	"\x05forms\x18\x03 \x03(\v2\x17.pipeline.v1.LexemeFormR\x05forms\x129\n" +
-	"\tphonetics\x18\x04 \x03(\v2\x1b.pipeline.v1.LexemePhoneticR\tphonetics\"\xfb\x01\n" +
+	"\x06senses\x18\x02 \x03(\v2\x18.pipeline.v1.LexemeSenseR\x06senses\x12,\n" +
+	"\x05forms\x18\x03 \x03(\v2\x16.pipeline.v1.LemmaFormR\x05forms\x123\n" +
+	"\tphonetics\x18\x04 \x03(\v2\x15.pipeline.v1.PhoneticR\tphonetics\"\xfb\x01\n" +
 	"\x10SemanticRelation\x12#\n" +
 	"\rrelation_type\x18\x01 \x01(\tR\frelationType\x12\x1f\n" +
 	"\vtarget_term\x18\x02 \x01(\tR\n" +
@@ -424,16 +423,16 @@ func file_pipeline_v1_linguistics_proto_rawDescGZIP() []byte {
 
 var file_pipeline_v1_linguistics_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_pipeline_v1_linguistics_proto_goTypes = []any{
-	(*LexemePhonetic)(nil),   // 0: pipeline.v1.LexemePhonetic
+	(*Phonetic)(nil),         // 0: pipeline.v1.Phonetic
 	(*LexemeSense)(nil),      // 1: pipeline.v1.LexemeSense
-	(*LexemeForm)(nil),       // 2: pipeline.v1.LexemeForm
+	(*LemmaForm)(nil),        // 2: pipeline.v1.LemmaForm
 	(*Lexeme)(nil),           // 3: pipeline.v1.Lexeme
 	(*SemanticRelation)(nil), // 4: pipeline.v1.SemanticRelation
 }
 var file_pipeline_v1_linguistics_proto_depIdxs = []int32{
 	1, // 0: pipeline.v1.Lexeme.senses:type_name -> pipeline.v1.LexemeSense
-	2, // 1: pipeline.v1.Lexeme.forms:type_name -> pipeline.v1.LexemeForm
-	0, // 2: pipeline.v1.Lexeme.phonetics:type_name -> pipeline.v1.LexemePhonetic
+	2, // 1: pipeline.v1.Lexeme.forms:type_name -> pipeline.v1.LemmaForm
+	0, // 2: pipeline.v1.Lexeme.phonetics:type_name -> pipeline.v1.Phonetic
 	3, // [3:3] is the sub-list for method output_type
 	3, // [3:3] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
