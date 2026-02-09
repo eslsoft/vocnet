@@ -473,8 +473,10 @@ func runStatsWatch(serverURL string) error {
 // PipelineStats holds parsed Prometheus metrics for CLI display.
 type PipelineStats struct {
 	UptimeSeconds       float64
+	JobsProcessed       float64
 	JobsSucceeded       float64
 	JobsFailed          float64
+	PendingJobs         float64
 	JobsPerMinute       float64
 	JobDurationSum      float64
 	JobDurationCount    float64
@@ -518,6 +520,13 @@ func parsePipelineStats(r io.Reader) (*PipelineStats, error) {
 		}
 	}
 
+	// Extract pending jobs
+	if mf, ok := metricFamilies["vocnet_pipeline_pending_jobs"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.PendingJobs = m.GetGauge().GetValue()
+		}
+	}
+
 	// Extract jobs processed by status
 	if mf, ok := metricFamilies["vocnet_pipeline_jobs_processed_total"]; ok {
 		for _, m := range mf.GetMetric() {
@@ -557,11 +566,19 @@ func printStats(stats *PipelineStats) {
 
 	total := int64(stats.JobsSucceeded + stats.JobsFailed)
 	fmt.Printf("  Processed:      %d (✓ %.0f, ✗ %.0f)\n", total, stats.JobsSucceeded, stats.JobsFailed)
-	fmt.Printf("  Rate (1min):    %.1f jobs/min\n", stats.JobsPerMinute)
+	fmt.Printf("  Pending:        %.0f\n", stats.PendingJobs)
+
+	jobsPerSec := stats.JobsPerMinute / 60.0
+	fmt.Printf("  Rate:           %.1f jobs/min (%.2f jobs/sec)\n", stats.JobsPerMinute, jobsPerSec)
 
 	if stats.JobDurationCount > 0 {
 		avgMs := (stats.JobDurationSum / stats.JobDurationCount) * 1000
 		fmt.Printf("  Avg Duration:   %.0f ms\n", avgMs)
+	}
+
+	if stats.PendingJobs > 0 && stats.JobsPerMinute > 0 {
+		etaSeconds := stats.PendingJobs / jobsPerSec
+		fmt.Printf("  ETA:            %s\n", formatDuration(etaSeconds))
 	}
 }
 

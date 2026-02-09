@@ -133,6 +133,7 @@ func (p *WorkerPool) logProgress() {
 		"processed", m.JobsProcessed,
 		"succeeded", m.JobsSucceeded,
 		"failed", m.JobsFailed,
+		"pending", m.PendingJobs,
 		"rate_per_min", m.JobsPerMinute,
 		"recent_rate_per_min", m.RecentJobsPerMinute,
 		"avg_duration_ms", m.AvgDurationMs,
@@ -141,6 +142,14 @@ func (p *WorkerPool) logProgress() {
 }
 
 func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
+	// Update pending jobs count
+	count, err := p.jobRepo.CountByStatus(ctx, entity.JobStatusPending)
+	if err != nil {
+		p.logger.Error("failed to count pending jobs", "error", err)
+	} else {
+		p.metrics.SetPendingJobs(int64(count))
+	}
+
 	// Claim up to WorkerCount jobs to fill the pool
 	for range p.config.WorkerCount {
 		job, err := p.jobRepo.ClaimNext(ctx)
