@@ -23,8 +23,6 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// PipelineServiceName is the fully-qualified name of the PipelineService service.
 	PipelineServiceName = "pipeline.v1.PipelineService"
-	// LemmaServiceName is the fully-qualified name of the LemmaService service.
-	LemmaServiceName = "pipeline.v1.LemmaService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -47,8 +45,6 @@ const (
 	// PipelineServiceListJobStagesProcedure is the fully-qualified name of the PipelineService's
 	// ListJobStages RPC.
 	PipelineServiceListJobStagesProcedure = "/pipeline.v1.PipelineService/ListJobStages"
-	// LemmaServiceListLemmasProcedure is the fully-qualified name of the LemmaService's ListLemmas RPC.
-	LemmaServiceListLemmasProcedure = "/pipeline.v1.LemmaService/ListLemmas"
 )
 
 // PipelineServiceClient is a client for the pipeline.v1.PipelineService service.
@@ -205,76 +201,4 @@ func (UnimplementedPipelineServiceHandler) ListJobs(context.Context, *connect.Re
 
 func (UnimplementedPipelineServiceHandler) ListJobStages(context.Context, *connect.Request[v1.ListJobStagesRequest]) (*connect.Response[v1.ListJobStagesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.PipelineService.ListJobStages is not implemented"))
-}
-
-// LemmaServiceClient is a client for the pipeline.v1.LemmaService service.
-type LemmaServiceClient interface {
-	// ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
-	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
-}
-
-// NewLemmaServiceClient constructs a client for the pipeline.v1.LemmaService service. By default,
-// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
-// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
-// or connect.WithGRPCWeb() options.
-//
-// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
-// http://api.acme.com or https://acme.com/grpc).
-func NewLemmaServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) LemmaServiceClient {
-	baseURL = strings.TrimRight(baseURL, "/")
-	lemmaServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("LemmaService").Methods()
-	return &lemmaServiceClient{
-		listLemmas: connect.NewClient[v1.ListLemmasRequest, v1.ListLemmasResponse](
-			httpClient,
-			baseURL+LemmaServiceListLemmasProcedure,
-			connect.WithSchema(lemmaServiceMethods.ByName("ListLemmas")),
-			connect.WithClientOptions(opts...),
-		),
-	}
-}
-
-// lemmaServiceClient implements LemmaServiceClient.
-type lemmaServiceClient struct {
-	listLemmas *connect.Client[v1.ListLemmasRequest, v1.ListLemmasResponse]
-}
-
-// ListLemmas calls pipeline.v1.LemmaService.ListLemmas.
-func (c *lemmaServiceClient) ListLemmas(ctx context.Context, req *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error) {
-	return c.listLemmas.CallUnary(ctx, req)
-}
-
-// LemmaServiceHandler is an implementation of the pipeline.v1.LemmaService service.
-type LemmaServiceHandler interface {
-	// ListLemmas lists lemmas for selecting a lemma and then querying its jobs.
-	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
-}
-
-// NewLemmaServiceHandler builds an HTTP handler from the service implementation. It returns the
-// path on which to mount the handler and the handler itself.
-//
-// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
-// and JSON codecs. They also support gzip compression.
-func NewLemmaServiceHandler(svc LemmaServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	lemmaServiceMethods := v1.File_pipeline_v1_pipeline_service_proto.Services().ByName("LemmaService").Methods()
-	lemmaServiceListLemmasHandler := connect.NewUnaryHandler(
-		LemmaServiceListLemmasProcedure,
-		svc.ListLemmas,
-		connect.WithSchema(lemmaServiceMethods.ByName("ListLemmas")),
-		connect.WithHandlerOptions(opts...),
-	)
-	return "/pipeline.v1.LemmaService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case LemmaServiceListLemmasProcedure:
-			lemmaServiceListLemmasHandler.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	})
-}
-
-// UnimplementedLemmaServiceHandler returns CodeUnimplemented from all methods.
-type UnimplementedLemmaServiceHandler struct{}
-
-func (UnimplementedLemmaServiceHandler) ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pipeline.v1.LemmaService.ListLemmas is not implemented"))
 }
