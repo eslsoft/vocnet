@@ -10,11 +10,12 @@ import (
 
 // LemmaQueryService provides read-only lemma queries for pipeline-related APIs.
 type LemmaQueryService struct {
-	lemmaRepo repository.LemmaRepository
+	lemmaRepo    repository.LemmaRepository
+	snapshotRepo repository.WordSnapshotRepository
 }
 
-func NewLemmaQueryService(lemmaRepo repository.LemmaRepository) *LemmaQueryService {
-	return &LemmaQueryService{lemmaRepo: lemmaRepo}
+func NewLemmaQueryService(lemmaRepo repository.LemmaRepository, snapshotRepo repository.WordSnapshotRepository) *LemmaQueryService {
+	return &LemmaQueryService{lemmaRepo: lemmaRepo, snapshotRepo: snapshotRepo}
 }
 
 type ListLemmasQuery struct {
@@ -23,7 +24,12 @@ type ListLemmasQuery struct {
 	Keyword  string
 }
 
-func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*entity.Lemma, int64, error) {
+type LemmaListItem struct {
+	Lemma    *entity.Lemma
+	Snapshot *entity.WordSnapshot
+}
+
+func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*LemmaListItem, int64, error) {
 	if query == nil {
 		query = &ListLemmasQuery{}
 	}
@@ -40,11 +46,40 @@ func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQue
 		pageSize = 10000
 	}
 
-	return s.lemmaRepo.List(ctx, &repository.ListWordsQuery{
+	lemmas, total, err := s.lemmaRepo.List(ctx, &repository.ListWordsQuery{
 		Pagination: repository.Pagination{
 			PageNo:   pageNo,
 			PageSize: pageSize,
 		},
 		Keyword: strings.TrimSpace(query.Keyword),
 	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	lemmaIDs := make([]int64, 0, len(lemmas))
+	for _, lemma := range lemmas {
+		if lemma == nil {
+			continue
+		}
+		lemmaIDs = append(lemmaIDs, lemma.ID)
+	}
+
+	snapshotByLemmaID, err := s.snapshotRepo.ListLatestByLemmaIDs(ctx, lemmaIDs)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]*LemmaListItem, 0, len(lemmas))
+	for _, lemma := range lemmas {
+		if lemma == nil {
+			continue
+		}
+		items = append(items, &LemmaListItem{
+			Lemma:    lemma,
+			Snapshot: snapshotByLemmaID[lemma.ID],
+		})
+	}
+
+	return items, total, nil
 }

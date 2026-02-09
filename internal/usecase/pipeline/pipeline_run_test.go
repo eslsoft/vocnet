@@ -85,6 +85,10 @@ func (n *nopSnapshotRepo) GetByTerm(ctx context.Context, term string, language s
 	return nil, nil
 }
 
+func (n *nopSnapshotRepo) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []int64) (map[int64]*entity.WordSnapshot, error) {
+	return map[int64]*entity.WordSnapshot{}, nil
+}
+
 type stubProcessor struct {
 	name      string
 	processFn func(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error)

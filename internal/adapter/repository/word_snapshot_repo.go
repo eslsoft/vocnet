@@ -134,6 +134,37 @@ func (r *wordSnapshotRepository) GetByTerm(ctx context.Context, term string, lan
 	return mapEntWordSnapshot(row), nil
 }
 
+func (r *wordSnapshotRepository) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []int64) (map[int64]*entity.WordSnapshot, error) {
+	out := make(map[int64]*entity.WordSnapshot, len(lemmaIDs))
+	if len(lemmaIDs) == 0 {
+		return out, nil
+	}
+
+	rows, err := r.client.WordSnapshot.Query().
+		Where(
+			entwordsnapshot.LemmaIDIn(lemmaIDs...),
+			entwordsnapshot.LatestEQ(true),
+		).
+		Order(entwordsnapshot.ByVersion(sql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list latest snapshots by lemma ids: %w", err)
+	}
+
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		// Keep the first row per lemma (highest version because of ordering).
+		if _, exists := out[row.LemmaID]; exists {
+			continue
+		}
+		out[row.LemmaID] = mapEntWordSnapshot(row)
+	}
+
+	return out, nil
+}
+
 func mapEntWordSnapshot(row *entdb.WordSnapshot) *entity.WordSnapshot {
 	if row == nil {
 		return nil

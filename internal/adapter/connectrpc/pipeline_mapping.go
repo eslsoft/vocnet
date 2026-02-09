@@ -48,7 +48,7 @@ func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
 	}
 }
 
-func toPBLemmaItem(lemma *entity.Lemma) *pipelinev1.LemmaItem {
+func toPBLemmaItem(lemma *entity.Lemma, snapshot *entity.WordSnapshot) *pipelinev1.LemmaItem {
 	if lemma == nil {
 		return nil
 	}
@@ -59,6 +59,110 @@ func toPBLemmaItem(lemma *entity.Lemma) *pipelinev1.LemmaItem {
 		Level:      toPBLemmaLevel(lemma.Level),
 		CreatedAt:  timestamppb.New(lemma.CreatedAt),
 		UpdatedAt:  timestamppb.New(lemma.UpdatedAt),
+		Snapshot:   toPBLemmaSnapshot(snapshot),
+	}
+}
+
+func toPBLemmaSnapshot(snapshot *entity.WordSnapshot) *pipelinev1.LemmaSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &pipelinev1.LemmaSnapshot{
+		Id:                 snapshot.ID,
+		LemmaId:            snapshot.LemmaID,
+		JobId:              snapshot.JobID,
+		Term:               snapshot.Term,
+		Terms:              snapshot.Terms,
+		Language:           snapshot.Language,
+		Latest:             snapshot.Latest,
+		Version:            snapshot.Version,
+		Data:               toPBLemmaSnapshotData(snapshot.Data),
+		QScore:             snapshot.QScore,
+		QScoreCompleteness: snapshot.QScoreCompleteness,
+		QScoreDepth:        snapshot.QScoreDepth,
+		QScoreDensity:      snapshot.QScoreDensity,
+		QScoreValidity:     snapshot.QScoreValidity,
+		SynthesizedAt:      timestamppb.New(snapshot.SynthesizedAt),
+		CreatedAt:          timestamppb.New(snapshot.CreatedAt),
+		UpdatedAt:          timestamppb.New(snapshot.UpdatedAt),
+	}
+}
+
+func toPBLemmaSnapshotData(data entity.SnapshotData) *pipelinev1.LemmaSnapshotData {
+	lexemes := make([]*pipelinev1.LemmaSnapshotLexeme, 0, len(data.Lexemes))
+	for _, lexeme := range data.Lexemes {
+		lexemes = append(lexemes, toPBLemmaSnapshotLexeme(lexeme))
+	}
+
+	relations := make([]*pipelinev1.LemmaSnapshotRelation, 0, len(data.Relations))
+	for _, relation := range data.Relations {
+		relations = append(relations, toPBLemmaSnapshotRelation(relation))
+	}
+
+	return &pipelinev1.LemmaSnapshotData{
+		Lexemes:   lexemes,
+		Relations: relations,
+	}
+}
+
+func toPBLemmaSnapshotLexeme(lexeme entity.SnapshotLexeme) *pipelinev1.LemmaSnapshotLexeme {
+	senses := make([]*pipelinev1.LemmaSnapshotSense, 0, len(lexeme.Senses))
+	for _, sense := range lexeme.Senses {
+		senses = append(senses, toPBLemmaSnapshotSense(sense))
+	}
+
+	forms := make([]*pipelinev1.LemmaSnapshotForm, 0, len(lexeme.Forms))
+	for _, form := range lexeme.Forms {
+		forms = append(forms, toPBLemmaSnapshotForm(form))
+	}
+
+	phonetics := make([]*pipelinev1.LemmaSnapshotPhonetic, 0, len(lexeme.Phonetics))
+	for _, phonetic := range lexeme.Phonetics {
+		phonetics = append(phonetics, toPBLemmaSnapshotPhonetic(phonetic))
+	}
+
+	return &pipelinev1.LemmaSnapshotLexeme{
+		Pos:       lexeme.POS,
+		Senses:    senses,
+		Forms:     forms,
+		Phonetics: phonetics,
+	}
+}
+
+func toPBLemmaSnapshotSense(sense entity.SnapshotSense) *pipelinev1.LemmaSnapshotSense {
+	return &pipelinev1.LemmaSnapshotSense{
+		Language:    sense.Language,
+		Gloss:       sense.Gloss,
+		Examples:    sense.Examples,
+		Provider:    sense.Provider,
+		TrustWeight: sense.TrustWeight,
+	}
+}
+
+func toPBLemmaSnapshotForm(form entity.SnapshotForm) *pipelinev1.LemmaSnapshotForm {
+	return &pipelinev1.LemmaSnapshotForm{
+		Surface:     form.Surface,
+		FormType:    form.FormType,
+		IsIrregular: form.IsIrregular,
+	}
+}
+
+func toPBLemmaSnapshotPhonetic(phonetic entity.Phonetic) *pipelinev1.LemmaSnapshotPhonetic {
+	return &pipelinev1.LemmaSnapshotPhonetic{
+		Ipa:     phonetic.IPA,
+		Dialect: phonetic.Dialect,
+	}
+}
+
+func toPBLemmaSnapshotRelation(relation entity.SnapshotRelation) *pipelinev1.LemmaSnapshotRelation {
+	return &pipelinev1.LemmaSnapshotRelation{
+		RelationType:   relation.RelationType,
+		TargetTerm:     relation.TargetTerm,
+		TargetRef:      relation.TargetRef,
+		Provider:       relation.Provider,
+		Strength:       relation.Strength,
+		SenseMapped:    relation.SenseMapped,
+		TargetResolved: relation.TargetResolved,
 	}
 }
 

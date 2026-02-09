@@ -256,6 +256,35 @@ func (m *LemmaItem) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetSnapshot()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LemmaItemValidationError{
+					field:  "Snapshot",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LemmaItemValidationError{
+					field:  "Snapshot",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetSnapshot()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LemmaItemValidationError{
+				field:  "Snapshot",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return LemmaItemMultiError(errors)
 	}
@@ -332,6 +361,1064 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = LemmaItemValidationError{}
+
+// Validate checks the field values on LemmaSnapshotPhonetic with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *LemmaSnapshotPhonetic) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaSnapshotPhonetic with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LemmaSnapshotPhoneticMultiError, or nil if none found.
+func (m *LemmaSnapshotPhonetic) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaSnapshotPhonetic) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Ipa
+
+	// no validation rules for Dialect
+
+	if len(errors) > 0 {
+		return LemmaSnapshotPhoneticMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaSnapshotPhoneticMultiError is an error wrapping multiple validation
+// errors returned by LemmaSnapshotPhonetic.ValidateAll() if the designated
+// constraints aren't met.
+type LemmaSnapshotPhoneticMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaSnapshotPhoneticMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaSnapshotPhoneticMultiError) AllErrors() []error { return m }
+
+// LemmaSnapshotPhoneticValidationError is the validation error returned by
+// LemmaSnapshotPhonetic.Validate if the designated constraints aren't met.
+type LemmaSnapshotPhoneticValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaSnapshotPhoneticValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaSnapshotPhoneticValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaSnapshotPhoneticValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaSnapshotPhoneticValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaSnapshotPhoneticValidationError) ErrorName() string {
+	return "LemmaSnapshotPhoneticValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LemmaSnapshotPhoneticValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaSnapshotPhonetic.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaSnapshotPhoneticValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaSnapshotPhoneticValidationError{}
+
+// Validate checks the field values on LemmaSnapshotSense with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *LemmaSnapshotSense) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaSnapshotSense with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LemmaSnapshotSenseMultiError, or nil if none found.
+func (m *LemmaSnapshotSense) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaSnapshotSense) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Language
+
+	// no validation rules for Gloss
+
+	// no validation rules for Provider
+
+	// no validation rules for TrustWeight
+
+	if len(errors) > 0 {
+		return LemmaSnapshotSenseMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaSnapshotSenseMultiError is an error wrapping multiple validation errors
+// returned by LemmaSnapshotSense.ValidateAll() if the designated constraints
+// aren't met.
+type LemmaSnapshotSenseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaSnapshotSenseMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaSnapshotSenseMultiError) AllErrors() []error { return m }
+
+// LemmaSnapshotSenseValidationError is the validation error returned by
+// LemmaSnapshotSense.Validate if the designated constraints aren't met.
+type LemmaSnapshotSenseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaSnapshotSenseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaSnapshotSenseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaSnapshotSenseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaSnapshotSenseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaSnapshotSenseValidationError) ErrorName() string {
+	return "LemmaSnapshotSenseValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LemmaSnapshotSenseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaSnapshotSense.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaSnapshotSenseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaSnapshotSenseValidationError{}
+
+// Validate checks the field values on LemmaSnapshotForm with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *LemmaSnapshotForm) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaSnapshotForm with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LemmaSnapshotFormMultiError, or nil if none found.
+func (m *LemmaSnapshotForm) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaSnapshotForm) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Surface
+
+	// no validation rules for FormType
+
+	// no validation rules for IsIrregular
+
+	if len(errors) > 0 {
+		return LemmaSnapshotFormMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaSnapshotFormMultiError is an error wrapping multiple validation errors
+// returned by LemmaSnapshotForm.ValidateAll() if the designated constraints
+// aren't met.
+type LemmaSnapshotFormMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaSnapshotFormMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaSnapshotFormMultiError) AllErrors() []error { return m }
+
+// LemmaSnapshotFormValidationError is the validation error returned by
+// LemmaSnapshotForm.Validate if the designated constraints aren't met.
+type LemmaSnapshotFormValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaSnapshotFormValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaSnapshotFormValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaSnapshotFormValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaSnapshotFormValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaSnapshotFormValidationError) ErrorName() string {
+	return "LemmaSnapshotFormValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LemmaSnapshotFormValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaSnapshotForm.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaSnapshotFormValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaSnapshotFormValidationError{}
+
+// Validate checks the field values on LemmaSnapshotLexeme with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *LemmaSnapshotLexeme) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaSnapshotLexeme with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LemmaSnapshotLexemeMultiError, or nil if none found.
+func (m *LemmaSnapshotLexeme) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaSnapshotLexeme) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Pos
+
+	for idx, item := range m.GetSenses() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LemmaSnapshotLexemeValidationError{
+						field:  fmt.Sprintf("Senses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LemmaSnapshotLexemeValidationError{
+						field:  fmt.Sprintf("Senses[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LemmaSnapshotLexemeValidationError{
+					field:  fmt.Sprintf("Senses[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetForms() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LemmaSnapshotLexemeValidationError{
+						field:  fmt.Sprintf("Forms[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LemmaSnapshotLexemeValidationError{
+						field:  fmt.Sprintf("Forms[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LemmaSnapshotLexemeValidationError{
+					field:  fmt.Sprintf("Forms[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetPhonetics() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LemmaSnapshotLexemeValidationError{
+						field:  fmt.Sprintf("Phonetics[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LemmaSnapshotLexemeValidationError{
+						field:  fmt.Sprintf("Phonetics[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LemmaSnapshotLexemeValidationError{
+					field:  fmt.Sprintf("Phonetics[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return LemmaSnapshotLexemeMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaSnapshotLexemeMultiError is an error wrapping multiple validation
+// errors returned by LemmaSnapshotLexeme.ValidateAll() if the designated
+// constraints aren't met.
+type LemmaSnapshotLexemeMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaSnapshotLexemeMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaSnapshotLexemeMultiError) AllErrors() []error { return m }
+
+// LemmaSnapshotLexemeValidationError is the validation error returned by
+// LemmaSnapshotLexeme.Validate if the designated constraints aren't met.
+type LemmaSnapshotLexemeValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaSnapshotLexemeValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaSnapshotLexemeValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaSnapshotLexemeValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaSnapshotLexemeValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaSnapshotLexemeValidationError) ErrorName() string {
+	return "LemmaSnapshotLexemeValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LemmaSnapshotLexemeValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaSnapshotLexeme.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaSnapshotLexemeValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaSnapshotLexemeValidationError{}
+
+// Validate checks the field values on LemmaSnapshotRelation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *LemmaSnapshotRelation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaSnapshotRelation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LemmaSnapshotRelationMultiError, or nil if none found.
+func (m *LemmaSnapshotRelation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaSnapshotRelation) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for RelationType
+
+	// no validation rules for TargetTerm
+
+	// no validation rules for TargetRef
+
+	// no validation rules for Provider
+
+	// no validation rules for Strength
+
+	// no validation rules for SenseMapped
+
+	// no validation rules for TargetResolved
+
+	if len(errors) > 0 {
+		return LemmaSnapshotRelationMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaSnapshotRelationMultiError is an error wrapping multiple validation
+// errors returned by LemmaSnapshotRelation.ValidateAll() if the designated
+// constraints aren't met.
+type LemmaSnapshotRelationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaSnapshotRelationMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaSnapshotRelationMultiError) AllErrors() []error { return m }
+
+// LemmaSnapshotRelationValidationError is the validation error returned by
+// LemmaSnapshotRelation.Validate if the designated constraints aren't met.
+type LemmaSnapshotRelationValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaSnapshotRelationValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaSnapshotRelationValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaSnapshotRelationValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaSnapshotRelationValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaSnapshotRelationValidationError) ErrorName() string {
+	return "LemmaSnapshotRelationValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LemmaSnapshotRelationValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaSnapshotRelation.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaSnapshotRelationValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaSnapshotRelationValidationError{}
+
+// Validate checks the field values on LemmaSnapshotData with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *LemmaSnapshotData) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaSnapshotData with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// LemmaSnapshotDataMultiError, or nil if none found.
+func (m *LemmaSnapshotData) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaSnapshotData) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	for idx, item := range m.GetLexemes() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LemmaSnapshotDataValidationError{
+						field:  fmt.Sprintf("Lexemes[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LemmaSnapshotDataValidationError{
+						field:  fmt.Sprintf("Lexemes[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LemmaSnapshotDataValidationError{
+					field:  fmt.Sprintf("Lexemes[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetRelations() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LemmaSnapshotDataValidationError{
+						field:  fmt.Sprintf("Relations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LemmaSnapshotDataValidationError{
+						field:  fmt.Sprintf("Relations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LemmaSnapshotDataValidationError{
+					field:  fmt.Sprintf("Relations[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return LemmaSnapshotDataMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaSnapshotDataMultiError is an error wrapping multiple validation errors
+// returned by LemmaSnapshotData.ValidateAll() if the designated constraints
+// aren't met.
+type LemmaSnapshotDataMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaSnapshotDataMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaSnapshotDataMultiError) AllErrors() []error { return m }
+
+// LemmaSnapshotDataValidationError is the validation error returned by
+// LemmaSnapshotData.Validate if the designated constraints aren't met.
+type LemmaSnapshotDataValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaSnapshotDataValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaSnapshotDataValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaSnapshotDataValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaSnapshotDataValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaSnapshotDataValidationError) ErrorName() string {
+	return "LemmaSnapshotDataValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LemmaSnapshotDataValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaSnapshotData.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaSnapshotDataValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaSnapshotDataValidationError{}
+
+// Validate checks the field values on LemmaSnapshot with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LemmaSnapshot) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LemmaSnapshot with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LemmaSnapshotMultiError, or
+// nil if none found.
+func (m *LemmaSnapshot) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LemmaSnapshot) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Id
+
+	// no validation rules for LemmaId
+
+	// no validation rules for Term
+
+	// no validation rules for Language
+
+	// no validation rules for Latest
+
+	// no validation rules for Version
+
+	if all {
+		switch v := interface{}(m.GetData()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "Data",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "Data",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetData()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LemmaSnapshotValidationError{
+				field:  "Data",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for QScore
+
+	// no validation rules for QScoreCompleteness
+
+	// no validation rules for QScoreDepth
+
+	// no validation rules for QScoreDensity
+
+	// no validation rules for QScoreValidity
+
+	if all {
+		switch v := interface{}(m.GetSynthesizedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "SynthesizedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "SynthesizedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetSynthesizedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LemmaSnapshotValidationError{
+				field:  "SynthesizedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetCreatedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "CreatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "CreatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetCreatedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LemmaSnapshotValidationError{
+				field:  "CreatedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetUpdatedAt()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "UpdatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LemmaSnapshotValidationError{
+					field:  "UpdatedAt",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetUpdatedAt()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LemmaSnapshotValidationError{
+				field:  "UpdatedAt",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if m.JobId != nil {
+		// no validation rules for JobId
+	}
+
+	if len(errors) > 0 {
+		return LemmaSnapshotMultiError(errors)
+	}
+
+	return nil
+}
+
+// LemmaSnapshotMultiError is an error wrapping multiple validation errors
+// returned by LemmaSnapshot.ValidateAll() if the designated constraints
+// aren't met.
+type LemmaSnapshotMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LemmaSnapshotMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LemmaSnapshotMultiError) AllErrors() []error { return m }
+
+// LemmaSnapshotValidationError is the validation error returned by
+// LemmaSnapshot.Validate if the designated constraints aren't met.
+type LemmaSnapshotValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LemmaSnapshotValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LemmaSnapshotValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LemmaSnapshotValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LemmaSnapshotValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LemmaSnapshotValidationError) ErrorName() string { return "LemmaSnapshotValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LemmaSnapshotValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLemmaSnapshot.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LemmaSnapshotValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LemmaSnapshotValidationError{}
 
 // Validate checks the field values on ListLemmasResponse with the rules
 // defined in the proto definition for this message. If any rules are

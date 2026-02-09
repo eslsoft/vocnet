@@ -64,7 +64,8 @@ func Initialize() (*Container, func(), error) {
 	pipelineTaskRepository := repository.NewPipelineTaskRepository(client)
 	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineTaskRepository, logger)
 	pipelineServiceServer := connectrpc.NewPipelineServiceServer(pipelineService)
-	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository)
+	wordSnapshotRepository := repository.NewWordSnapshotRepository(client)
+	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository, wordSnapshotRepository)
 	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
 	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer, statsServiceServer, pipelineServiceServer, lemmaServiceServer)
 	if err != nil {

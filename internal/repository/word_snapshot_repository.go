@@ -11,4 +11,5 @@ type WordSnapshotRepository interface {
 	CreateOrUpdate(ctx context.Context, snapshot *entity.WordSnapshot) (*entity.WordSnapshot, error)
 	GetByLemma(ctx context.Context, lemmaID int64) (*entity.WordSnapshot, error)
 	GetByTerm(ctx context.Context, term string, language string) (*entity.WordSnapshot, error)
+	ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []int64) (map[int64]*entity.WordSnapshot, error)
 }

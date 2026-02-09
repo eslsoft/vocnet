@@ -29,7 +29,7 @@ func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Reques
 	}
 
 	pagination := convertPagination(req.Msg.GetPagination())
-	lemmas, total, err := s.lemmaUC.ListLemmas(ctx, &pipelineuc.ListLemmasQuery{
+	items, total, err := s.lemmaUC.ListLemmas(ctx, &pipelineuc.ListLemmasQuery{
 		PageNo:   pagination.PageNo,
 		PageSize: pagination.PageSize,
 		Keyword:  req.Msg.GetKeyword(),
@@ -40,10 +40,10 @@ func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Reques
 
 	resp := &pipelinev1.ListLemmasResponse{
 		Pagination: &commonv1.PaginationResponse{Total: int32(total), PageNo: pagination.PageNo}, // nolint:gosec
-		Lemmas:     make([]*pipelinev1.LemmaItem, 0, len(lemmas)),
+		Lemmas:     make([]*pipelinev1.LemmaItem, 0, len(items)),
 	}
-	for _, lemma := range lemmas {
-		resp.Lemmas = append(resp.Lemmas, toPBLemmaItem(lemma))
+	for _, item := range items {
+		resp.Lemmas = append(resp.Lemmas, toPBLemmaItem(item.Lemma, item.Snapshot))
 	}
 
 	return connect.NewResponse(resp), nil
