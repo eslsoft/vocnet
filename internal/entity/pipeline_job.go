@@ -64,18 +64,9 @@ func (action JobAction) TargetStatus() JobStatus {
 	return jobTransitions[action].to
 }
 
-// JobType represents the type of pipeline job.
-type JobType string
-
-const (
-	JobTypeSingleWord JobType = "SINGLE_WORD"
-	JobTypeWordbook   JobType = "WORDBOOK"
-)
-
 // PipelineJob represents an async pipeline processing job.
 type PipelineJob struct {
 	ID       int64
-	JobType  JobType
 	Status   JobStatus
 	Name     string
 	Language string

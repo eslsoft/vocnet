@@ -39,7 +39,6 @@ func TestPipelineJobRepositoryCreate_ReusesActiveSingleWordJob(t *testing.T) {
 	ctx := context.Background()
 
 	first, err := repo.Create(ctx, &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
 		Status:     entity.JobStatusPending,
 		Name:       "word: graph",
 		Language:   "en",
@@ -50,7 +49,6 @@ func TestPipelineJobRepositoryCreate_ReusesActiveSingleWordJob(t *testing.T) {
 	require.NoError(t, err)
 
 	second, err := repo.Create(ctx, &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
 		Status:     entity.JobStatusPending,
 		Name:       "word: Graph duplicate submit",
 		Language:   "en",
@@ -71,7 +69,6 @@ func TestPipelineJobRepositoryCreate_SingleWordRequiresTerm(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := repo.Create(ctx, &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
 		Status:     entity.JobStatusPending,
 		Name:       "word: empty term",
 		Language:   "en",
@@ -87,7 +84,6 @@ func TestPipelineJobRepositoryCreate_AllowsNewAfterTerminalStatus(t *testing.T) 
 	ctx := context.Background()
 
 	first, err := repo.Create(ctx, &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
 		Status:     entity.JobStatusCompleted,
 		Name:       "word: graph completed",
 		Language:   "en",
@@ -98,7 +94,6 @@ func TestPipelineJobRepositoryCreate_AllowsNewAfterTerminalStatus(t *testing.T) 
 	require.NoError(t, err)
 
 	second, err := repo.Create(ctx, &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
 		Status:     entity.JobStatusPending,
 		Name:       "word: graph rerun",
 		Language:   "en",
@@ -120,7 +115,6 @@ func TestPipelineJobRepositoryClaimNextBatch_SkipsPendingIfSameTermRunning(t *te
 
 	base := time.Now().Add(-time.Hour)
 	runningGraph, err := client.PipelineJob.Create().
-		SetJobType(string(entity.JobTypeSingleWord)).
 		SetStatus(string(entity.JobStatusRunning)).
 		SetName("word: graph running").
 		SetLanguage("en").
@@ -132,7 +126,6 @@ func TestPipelineJobRepositoryClaimNextBatch_SkipsPendingIfSameTermRunning(t *te
 	require.NoError(t, err)
 
 	graphPending, err := client.PipelineJob.Create().
-		SetJobType(string(entity.JobTypeSingleWord)).
 		SetStatus(string(entity.JobStatusPending)).
 		SetName("word: graph pending").
 		SetLanguage("en").
@@ -144,7 +137,6 @@ func TestPipelineJobRepositoryClaimNextBatch_SkipsPendingIfSameTermRunning(t *te
 	require.NoError(t, err)
 
 	_, err = client.PipelineJob.Create().
-		SetJobType(string(entity.JobTypeSingleWord)).
 		SetStatus(string(entity.JobStatusPending)).
 		SetName("word: wise pending").
 		SetLanguage("en").

@@ -211,8 +211,8 @@ File formats:
 
 		if len(jobs) == 1 {
 			j := jobs[0]
-			fmt.Printf("Job #%d created: %s \"%s\" (%d terms)\n",
-				j.ID, j.JobType, j.Name, j.TotalTerms)
+			fmt.Printf("Job #%d created: \"%s\" (%d terms)\n",
+				j.ID, j.Name, j.TotalTerms)
 			fmt.Printf("Use \"vocnet pipeline job %d\" to check progress.\n", j.ID)
 			return nil
 		}
@@ -256,7 +256,7 @@ var jobsCmd = &cobra.Command{
 		}
 
 		table := tablewriter.NewTable(os.Stdout)
-		table.Header("ID", "TYPE", "STATUS", "PROGRESS", "STAGES", "NAME", "CREATED")
+		table.Header("ID", "STATUS", "PROGRESS", "STAGES", "NAME", "CREATED")
 		for _, j := range jobs {
 			progress := fmt.Sprintf("%d/%d", j.Processed+j.Skipped+j.Failed, j.TotalTerms)
 			displayName := j.Name
@@ -265,16 +265,13 @@ var jobsCmd = &cobra.Command{
 			}
 
 			stages := "-"
-			if j.JobType == entity.JobTypeSingleWord {
-				sp, err := deps.svc.GetJobStageProgress(ctx, j)
-				if err == nil && sp != nil {
-					stages = sp.String()
-				}
+			sp, err := deps.svc.GetJobStageProgress(ctx, j)
+			if err == nil && sp != nil {
+				stages = sp.String()
 			}
 
 			_ = table.Append([]string{
 				strconv.FormatInt(j.ID, 10),
-				string(j.JobType),
 				string(j.Status),
 				progress,
 				stages,
@@ -313,7 +310,6 @@ var jobCmd = &cobra.Command{
 
 		j := detail.Job
 		fmt.Printf("Job #%d: %s\n", j.ID, j.Name)
-		fmt.Printf("Type:      %s\n", j.JobType)
 		fmt.Printf("Status:    %s\n", j.Status)
 		fmt.Printf("Language:  %s\n", j.Language)
 		fmt.Printf("Tier:      %d\n", j.Tier)

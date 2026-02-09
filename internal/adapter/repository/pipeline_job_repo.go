@@ -30,37 +30,31 @@ func (r *pipelineJobRepository) Create(ctx context.Context, job *entity.Pipeline
 		return nil, err
 	}
 
-	// Idempotent enqueue for single-word jobs:
+	// Idempotent enqueue:
 	// if the same term (case-insensitive) is already pending/running in the same language,
 	// return that existing job instead of creating a duplicate concurrent candidate.
-	if job.JobType == entity.JobTypeSingleWord {
-		active, err := r.client.PipelineJob.Query().
-			Where(
-				entpipelinejob.StatusIn(string(entity.JobStatusPending), string(entity.JobStatusRunning)),
-				entpipelinejob.LanguageEQ(job.Language),
-				entpipelinejob.TermEqualFold(job.Term),
-			).
-			Order(entpipelinejob.ByCreatedAt()).
-			First(ctx)
-		if err == nil {
-			return mapEntPipelineJob(active), nil
-		}
-		if err != nil && !entdb.IsNotFound(err) {
-			return nil, fmt.Errorf("find active job by term: %w", err)
-		}
+	active, err := r.client.PipelineJob.Query().
+		Where(
+			entpipelinejob.StatusIn(string(entity.JobStatusPending), string(entity.JobStatusRunning)),
+			entpipelinejob.LanguageEQ(job.Language),
+			entpipelinejob.TermEqualFold(job.Term),
+		).
+		Order(entpipelinejob.ByCreatedAt()).
+		First(ctx)
+	if err == nil {
+		return mapEntPipelineJob(active), nil
+	}
+	if err != nil && !entdb.IsNotFound(err) {
+		return nil, fmt.Errorf("find active job by term: %w", err)
 	}
 
 	create := r.client.PipelineJob.Create().
-		SetJobType(string(job.JobType)).
 		SetStatus(string(job.Status)).
 		SetName(job.Name).
 		SetLanguage(job.Language).
 		SetTier(job.Tier).
-		SetTotalTerms(job.TotalTerms)
-
-	if job.JobType == entity.JobTypeSingleWord {
-		create.SetTerm(job.Term)
-	}
+		SetTotalTerms(job.TotalTerms).
+		SetTerm(job.Term)
 	if len(job.Terms) > 0 {
 		create.SetTerms(job.Terms)
 	}
@@ -158,21 +152,19 @@ func (r *pipelineJobRepository) claimOneTx(ctx context.Context) (*entity.Pipelin
 			continue
 		}
 		// Prevent simultaneous execution for same term in same language.
-		if entity.JobType(row.JobType) == entity.JobTypeSingleWord {
-			runningCount, err := tx.PipelineJob.Query().
-				Where(
-					entpipelinejob.StatusEQ(string(entity.JobStatusRunning)),
-					entpipelinejob.LanguageEQ(row.Language),
-					entpipelinejob.TermEqualFold(row.Term),
-				).
-				Count(ctx)
-			if err != nil {
-				_ = tx.Rollback()
-				return nil, fmt.Errorf("check running duplicate term: %w", err)
-			}
-			if runningCount > 0 {
-				continue
-			}
+		runningCount, err := tx.PipelineJob.Query().
+			Where(
+				entpipelinejob.StatusEQ(string(entity.JobStatusRunning)),
+				entpipelinejob.LanguageEQ(row.Language),
+				entpipelinejob.TermEqualFold(row.Term),
+			).
+			Count(ctx)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("check running duplicate term: %w", err)
+		}
+		if runningCount > 0 {
+			continue
 		}
 
 		// CAS: PENDING → RUNNING (only if still PENDING to prevent double-claim)
@@ -215,7 +207,7 @@ func (r *pipelineJobRepository) claimOneTx(ctx context.Context) (*entity.Pipelin
 
 func normalizePipelineJobForCreate(job *entity.PipelineJob) error {
 	job.Term = strings.TrimSpace(job.Term)
-	if job.JobType == entity.JobTypeSingleWord && job.Term == "" {
+	if job.Term == "" {
 		return entity.ErrInvalidInput
 	}
 	return nil
@@ -321,7 +313,6 @@ func mapEntPipelineJob(row *entdb.PipelineJob) *entity.PipelineJob {
 	}
 	return &entity.PipelineJob{
 		ID:           row.ID,
-		JobType:      entity.JobType(row.JobType),
 		Status:       entity.JobStatus(row.Status),
 		Name:         row.Name,
 		Language:     row.Language,

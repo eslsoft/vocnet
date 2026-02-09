@@ -139,7 +139,6 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, error) {
 	// Create a job for this term
 	job, err := h.jobRepo.Create(ctx, &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
 		Status:     entity.JobStatusRunning,
 		Name:       "quality-test-" + term,
 		Language:   "en",

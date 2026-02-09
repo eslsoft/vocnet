@@ -19,9 +19,6 @@ type PipelineJob struct {
 func (PipelineJob) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.String("job_type").
-			NotEmpty().
-			Comment("SINGLE_WORD or WORDBOOK"),
 		field.String("status").
 			NotEmpty().
 			Default("PENDING").

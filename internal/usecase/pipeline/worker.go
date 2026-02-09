@@ -185,7 +185,7 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 	}
 	for _, job := range jobs {
 		jobLogger := p.logger.With("job_id", job.ID)
-		jobLogger.Info("submitting job to pool", "name", job.Name, "type", job.JobType)
+		jobLogger.Info("submitting job to pool", "name", job.Name)
 
 		// Submit job to worker pool - capture loop variables
 		p.inFlight.Add(1)
