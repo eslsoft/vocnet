@@ -3,12 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/prometheus/common/expfmt"
 	"github.com/spf13/cobra"
 
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
@@ -417,6 +419,161 @@ func newPipelineDeps() (*pipelineDeps, error) {
 	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
 }
 
+// statsCmd shows pipeline worker pool statistics
+var statsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show pipeline worker pool statistics",
+	Long: `Query the running server's metrics endpoint to display worker pool metrics (uptime, jobs processed, rate, average duration).
+
+The server must be running for this command to work.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		serverURL, _ := cmd.Flags().GetString("url")
+		watch, _ := cmd.Flags().GetBool("watch")
+
+		if watch {
+			return runStatsWatch(serverURL)
+		}
+		return runStatsOnce(serverURL)
+	},
+}
+
+func runStatsOnce(serverURL string) error {
+	stats, err := fetchPipelineStats(serverURL)
+	if err != nil {
+		return err
+	}
+	printStats(stats)
+	return nil
+}
+
+func runStatsWatch(serverURL string) error {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	// Print initial stats
+	if err := runStatsOnce(serverURL); err != nil {
+		return err
+	}
+
+	fmt.Println("\nWatching... (press Ctrl+C to stop)")
+
+	for range ticker.C {
+		// Clear screen and move cursor to top
+		fmt.Print("\033[H\033[2J")
+		if err := runStatsOnce(serverURL); err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+		fmt.Println("\nWatching... (press Ctrl+C to stop)")
+	}
+	return nil
+}
+
+// PipelineStats holds parsed Prometheus metrics for CLI display.
+type PipelineStats struct {
+	UptimeSeconds       float64
+	JobsSucceeded       float64
+	JobsFailed          float64
+	JobsPerMinute       float64
+	JobDurationSum      float64
+	JobDurationCount    float64
+}
+
+func fetchPipelineStats(serverURL string) (*PipelineStats, error) {
+	resp, err := http.Get(serverURL + "/metrics")
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to server: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	// Parse Prometheus text format using official parser
+	var parser expfmt.TextParser
+	metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse metrics: %w", err)
+	}
+
+	stats := &PipelineStats{}
+
+	// Extract uptime
+	if mf, ok := metricFamilies["vocnet_pipeline_uptime_seconds"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.UptimeSeconds = m.GetGauge().GetValue()
+		}
+	}
+
+	// Extract jobs per minute
+	if mf, ok := metricFamilies["vocnet_pipeline_jobs_per_minute"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.JobsPerMinute = m.GetGauge().GetValue()
+		}
+	}
+
+	// Extract jobs processed by status
+	if mf, ok := metricFamilies["vocnet_pipeline_jobs_processed_total"]; ok {
+		for _, m := range mf.GetMetric() {
+			for _, label := range m.GetLabel() {
+				if label.GetName() == "status" {
+					switch label.GetValue() {
+					case "succeeded":
+						stats.JobsSucceeded = m.GetCounter().GetValue()
+					case "failed":
+						stats.JobsFailed = m.GetCounter().GetValue()
+					}
+				}
+			}
+		}
+	}
+
+	// Extract job duration histogram
+	if mf, ok := metricFamilies["vocnet_pipeline_job_duration_seconds"]; ok {
+		for _, m := range mf.GetMetric() {
+			h := m.GetHistogram()
+			stats.JobDurationSum = h.GetSampleSum()
+			stats.JobDurationCount = float64(h.GetSampleCount())
+		}
+	}
+
+	return stats, nil
+}
+
+func printStats(stats *PipelineStats) {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	fmt.Printf("Pipeline Stats (%s)\n", now)
+	fmt.Println(strings.Repeat("=", 50))
+
+	// Worker metrics
+	fmt.Println("\n📊 Worker Pool:")
+	fmt.Printf("  Uptime:         %s\n", formatDuration(stats.UptimeSeconds))
+
+	total := int64(stats.JobsSucceeded + stats.JobsFailed)
+	fmt.Printf("  Processed:      %d (✓ %.0f, ✗ %.0f)\n", total, stats.JobsSucceeded, stats.JobsFailed)
+	fmt.Printf("  Rate (1min):    %.1f jobs/min\n", stats.JobsPerMinute)
+
+	if stats.JobDurationCount > 0 {
+		avgMs := (stats.JobDurationSum / stats.JobDurationCount) * 1000
+		fmt.Printf("  Avg Duration:   %.0f ms\n", avgMs)
+	}
+}
+
+func formatDuration(seconds float64) string {
+	d := time.Duration(seconds * float64(time.Second))
+	if d < time.Minute {
+		return d.Round(time.Second).String()
+	}
+	if d < time.Hour {
+		mins := int(d.Minutes())
+		secs := int(d.Seconds()) % 60
+		return fmt.Sprintf("%dm%ds", mins, secs)
+	}
+	hours := int(d.Hours())
+	mins := int(d.Minutes()) % 60
+	return fmt.Sprintf("%dh%dm", hours, mins)
+}
+
 // resolveWordbook finds a builtin wordbook by name or ID and returns its terms.
 func resolveWordbook(nameOrID string) ([]string, string, error) {
 	builtins := wordbook.GetBuiltinWordbooks()
@@ -471,4 +628,9 @@ func init() {
 	pipelineCmd.AddCommand(jobControlCmd("resume", "Resume a paused job", entity.JobActionResume, "resumed"))
 	pipelineCmd.AddCommand(jobControlCmd("cancel", "Cancel a pending, running, or paused job", entity.JobActionCancel, "cancelled"))
 	pipelineCmd.AddCommand(jobControlCmd("retry", "Retry a failed or cancelled job", entity.JobActionRetry, "queued for retry"))
+
+	// Stats command
+	pipelineCmd.AddCommand(statsCmd)
+	statsCmd.Flags().String("url", "http://localhost:8080", "Server URL")
+	statsCmd.Flags().BoolP("watch", "w", false, "Watch mode (refresh every 2 seconds)")
 }

@@ -28,6 +28,7 @@ type Server struct {
 	config       *config.Config
 	grpcServer   *grpc.Server
 	httpServer   *http.Server
+	httpMux      *http.ServeMux
 	logger       *slog.Logger
 	jwtValidator *auth.JWTValidator
 }
@@ -64,7 +65,8 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 	mux.Handle(learningv1connect.NewStatsServiceHandler(statsSvc, interceptors))
 
 	return &Server{
-		config: cfg,
+		config:  cfg,
+		httpMux: mux,
 		httpServer: &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Server.HTTPPort),
 			Handler:           h2c.NewHandler(withCORS(mux), &http2.Server{}),
@@ -103,6 +105,11 @@ func (s *Server) StartHTTP() error {
 	}
 
 	return nil
+}
+
+// RegisterMetricsHandler registers the metrics endpoint.
+func (s *Server) RegisterMetricsHandler(handler http.Handler) {
+	s.httpMux.Handle("/metrics", handler)
 }
 
 // Shutdown gracefully shuts down the server

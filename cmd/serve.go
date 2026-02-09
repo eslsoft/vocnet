@@ -47,6 +47,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
+	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/pkg/safeconv"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
@@ -85,6 +86,9 @@ var serveCmd = &cobra.Command{
 
 		// Build server
 		srv := container.Server
+
+		// Register prometheus metrics endpoint (metrics are auto-registered by WorkerPool)
+		srv.RegisterMetricsHandler(server.MetricsHandler())
 
 		// Run gRPC & HTTP concurrently
 		errCh := make(chan error, 2)
