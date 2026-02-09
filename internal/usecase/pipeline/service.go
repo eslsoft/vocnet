@@ -79,13 +79,11 @@ func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, 
 	}
 
 	job := &entity.PipelineJob{
-		JobType:    entity.JobTypeSingleWord,
-		Status:     entity.JobStatusPending,
-		Name:       jobName,
-		Language:   language,
-		Tier:       tier,
-		Term:       term,
-		TotalTerms: 1,
+		Status:   entity.JobStatusPending,
+		Name:     jobName,
+		Language: language,
+		Tier:     tier,
+		Term:     term,
 	}
 	return s.jobRepo.Create(ctx, job)
 }
@@ -304,13 +302,11 @@ func (s *PipelineService) RenewAsNewJob(ctx context.Context, id int64) (*entity.
 	}
 
 	newJob := &entity.PipelineJob{
-		JobType:    oldJob.JobType,
-		Status:     entity.JobStatusPending,
-		Name:       oldJob.Name,
-		Language:   oldJob.Language,
-		Tier:       oldJob.Tier,
-		Term:       oldJob.Term,
-		TotalTerms: 1,
+		Status:   entity.JobStatusPending,
+		Name:     oldJob.Name,
+		Language: oldJob.Language,
+		Tier:     oldJob.Tier,
+		Term:     oldJob.Term,
 	}
 	return s.jobRepo.Create(ctx, newJob)
 }
