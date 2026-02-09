@@ -51,6 +51,19 @@ This document describes, stage by stage, which data source each processor uses a
 
 ## Stage 2: Lexical
 
+### Processor: `cefrj` (`NewCEFRJProcessor`)
+
+- Data source: CEFR-J CSV (`internal/adapter/provider/cefrj`)
+- Input query: lookup by term (case-insensitive; CEFR-J headword variants split by `/`)
+- Extracted data:
+  - Lemma enrichment:
+    - `Lemma.Level` (CEFR level)
+    - Rule: when multiple CEFR-J rows match a lemma, choose the minimum CEFR level by order `A1 < A2 < B1 < B2 < C1 < C2`
+    - If lemma already has a level, processor keeps the lower one between existing and CEFR-J
+  - Evidence content fields:
+    - `headword`, `min_level`, `levels_by_pos`, `matched_forms`
+    - `Provider=cefrj`, `Phase=lexical`, `SchemaVersion=cefrj-1.5`
+
 ### Processor: `ecdict` (`NewECDICTProcessor`)
 
 - Data source: ECDICT SQLite (`internal/adapter/provider/ecdict`)
@@ -203,6 +216,7 @@ This stage uses the LLM provider (`internal/adapter/provider/llm`), not offline 
 |---|---|---|---|---|---|
 | Wikidata | ✅ | ❌ | ✅ | ❌ | ❌ |
 | ECDICT | ❌ | ✅ | ❌ | ❌ | ❌ |
+| CEFRJ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Moby | ❌ | ✅ | ❌ | ❌ | ❌ |
 | ConceptNet | ❌ | ❌ | ✅ | ❌ | ❌ |
 | WordNet | ❌ | ❌ | ✅ | ❌ | ❌ |
@@ -212,6 +226,7 @@ This stage uses the LLM provider (`internal/adapter/provider/llm`), not offline 
 `✅` details:
 - Wikidata: discovery=`wikidata`; relational=`wikidata_relations`
 - ECDICT: lexical=`ecdict`
+- CEFRJ: lexical=`cefrj`
 - Moby: lexical=`moby`
 - ConceptNet: relational=`conceptnet`
 - WordNet: relational=`wordnet`

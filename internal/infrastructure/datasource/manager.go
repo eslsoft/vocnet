@@ -26,6 +26,7 @@ type DataPaths struct {
 	WordNet    string
 	Moby       string
 	Wikidata   string
+	CEFRJ      string
 }
 
 // ResolvePaths computes all data source paths from a base directory.
@@ -36,6 +37,7 @@ func ResolvePaths(dataDir string) DataPaths {
 		WordNet:    filepath.Join(dataDir, "wordnet"),
 		Moby:       filepath.Join(dataDir, "moby", mobyFilename),
 		Wikidata:   filepath.Join(dataDir, "wikidata", wikidataLexemesFilename),
+		CEFRJ:      filepath.Join(dataDir, "cefrj", cefrjFilename),
 	}
 }
 
@@ -75,6 +77,7 @@ func NewManager(cfg *config.Config, logger *slog.Logger, cacheDir string) *Manag
 	m.sources["wordnet"] = NewWordNetSource(dataDir, downloader, logger)
 	m.sources["moby"] = NewMobySource(dataDir, downloader, logger)
 	m.sources["wikidata"] = NewWikidataSource(dataDir, downloader, logger)
+	m.sources["cefrj"] = NewCEFRJSource(dataDir, downloader, logger)
 
 	return m
 }
@@ -217,6 +220,8 @@ func toSourceKey(name string) string {
 		return "moby"
 	case "Wikidata":
 		return "wikidata"
+	case "CEFRJ":
+		return "cefrj"
 	default:
 		return name
 	}

@@ -29,7 +29,7 @@ var pipelineCmd = &cobra.Command{
 // Source management commands
 var sourceCmd = &cobra.Command{
 	Use:   "source",
-	Short: "Manage offline data sources (ConceptNet, ECDICT, WordNet, Moby, Wikidata)",
+	Short: "Manage offline data sources (ConceptNet, ECDICT, WordNet, Moby, Wikidata, CEFRJ)",
 }
 
 var sourceListCmd = &cobra.Command{
@@ -98,7 +98,7 @@ var sourceDownloadCmd = &cobra.Command{
 	Long: `Download data sources required by the pipeline.
 If no source is specified, downloads all missing sources.
 
-Available sources: conceptnet, ecdict, wordnet, moby, wikidata
+Available sources: conceptnet, ecdict, wordnet, moby, wikidata, cefrj
 
 Examples:
   vocnet pipeline source download            # Download all missing sources

@@ -34,6 +34,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
+	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/conceptnet"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/ecdict"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
@@ -153,7 +154,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 
 	// Ensure data sources are available (auto-download if configured)
 	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	if err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "conceptnet", "ecdict", "wordnet", "moby", "wikidata"); err != nil {
+	if err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "conceptnet", "ecdict", "wordnet", "moby", "wikidata", "cefrj"); err != nil {
 		logger.Warn("some pipeline data sources unavailable", "error", err)
 	}
 
@@ -188,6 +189,12 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 		logger.Warn("Moby unavailable, syllables will not be available", "error", err)
 	}
 
+	var cefrjReader *cefrj.Reader
+	cefrjReader, err = cefrj.NewReader(paths.CEFRJ)
+	if err != nil {
+		logger.Warn("CEFR-J unavailable, lemma CEFR levels will not be available", "error", err)
+	}
+
 	var llmProvider llm.Provider
 	if cfg.Pipeline.LLMAPIKey != "" {
 		cacheRepo := repository.NewDistillCacheRepository(entClient)
@@ -212,6 +219,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 			pipeline.NewCategoryInferProcessor(),
 		),
 		pipeline.NewStage("lexical", 2,
+			pipeline.NewCEFRJProcessor(cefrjReader),
 			pipeline.NewECDICTProcessor(ecdictReader),
 			pipeline.NewMobyProcessor(mobyReader),
 		),
