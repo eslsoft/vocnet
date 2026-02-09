@@ -158,39 +158,37 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 		logger.Warn("some pipeline data sources unavailable", "error", err)
 	}
 
-	paths := datasource.ResolvePaths(cfg.Pipeline.DataDir)
-
 	// Providers
 	var wikidataProvider provider.WikidataProvider
-	wikidataReader, err := wikidata.NewReaderWithLogger(paths.Wikidata, logger)
+	wikidataReader, err := wikidata.NewReaderWithLogger(datasource.WikidataDataPath(cfg.Pipeline.DataDir), logger)
 	if err != nil {
 		return nil, fmt.Errorf("wikidata unavailable (run 'vocnet pipeline source download wikidata' first): %w", err)
 	}
 	wikidataProvider = wikidataReader
 
 	var conceptnetProvider provider.ConceptNetProvider
-	conceptnetReader, err := conceptnet.NewReaderWithLogger(paths.ConceptNet, logger)
+	conceptnetReader, err := conceptnet.NewReaderWithLogger(datasource.ConceptNetDataPath(cfg.Pipeline.DataDir), logger)
 	if err != nil {
 		return nil, fmt.Errorf("conceptnet unavailable (run 'vocnet pipeline source download conceptnet' first): %w", err)
 	}
 	conceptnetProvider = conceptnetReader
 
 	var ecdictReader *ecdict.Reader
-	ecdictReader, err = ecdict.NewReader(paths.ECDICT)
+	ecdictReader, err = ecdict.NewReader(datasource.ECDICTDataPath(cfg.Pipeline.DataDir))
 	if err != nil {
 		logger.Warn("ECDICT unavailable, Phase 2 will be skipped", "error", err)
 	}
 
-	wordnetReader := wordnet.NewReader(paths.WordNet)
+	wordnetReader := wordnet.NewReader(datasource.WordNetDataDir(cfg.Pipeline.DataDir))
 
 	var mobyReader *moby.Reader
-	mobyReader, err = moby.NewReader(paths.Moby)
+	mobyReader, err = moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
 	if err != nil {
 		logger.Warn("Moby unavailable, syllables will not be available", "error", err)
 	}
 
 	var cefrjReader *cefrj.Reader
-	cefrjReader, err = cefrj.NewReader(paths.CEFRJ)
+	cefrjReader, err = cefrj.NewReader(datasource.CEFRJDataDir(cfg.Pipeline.DataDir))
 	if err != nil {
 		logger.Warn("CEFR-J unavailable, lemma CEFR levels will not be available", "error", err)
 	}

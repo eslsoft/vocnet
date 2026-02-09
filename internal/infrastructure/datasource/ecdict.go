@@ -21,10 +21,15 @@ type ECDICTSource struct {
 	downloader *Downloader
 }
 
+// ECDICTDataPath returns the ECDICT database path under fixed datasource layout.
+func ECDICTDataPath(dataDir string) string {
+	return filepath.Join(dataDir, "datasources", "ecdict", ecdictDefaultFilename)
+}
+
 // NewECDICTSource creates a new ECDICT data source
 func NewECDICTSource(dataDir string, downloader *Downloader, logger *slog.Logger) *ECDICTSource {
 	return &ECDICTSource{
-		path:       filepath.Join(dataDir, "ecdict", ecdictDefaultFilename),
+		path:       ECDICTDataPath(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}

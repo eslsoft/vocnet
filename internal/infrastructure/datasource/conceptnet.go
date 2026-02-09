@@ -20,10 +20,15 @@ type ConceptNetSource struct {
 	downloader *Downloader
 }
 
+// ConceptNetDataPath returns the ConceptNet data file path under fixed datasource layout.
+func ConceptNetDataPath(dataDir string) string {
+	return filepath.Join(dataDir, "datasources", "conceptnet", conceptNetFilename)
+}
+
 // NewConceptNetSource creates a new ConceptNet data source
 func NewConceptNetSource(dataDir string, downloader *Downloader, logger *slog.Logger) *ConceptNetSource {
 	return &ConceptNetSource{
-		path:       filepath.Join(dataDir, "conceptnet", conceptNetFilename),
+		path:       ConceptNetDataPath(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}

@@ -20,10 +20,15 @@ type WordNetSource struct {
 	downloader *Downloader
 }
 
+// WordNetDataDir returns the WordNet data directory under fixed datasource layout.
+func WordNetDataDir(dataDir string) string {
+	return filepath.Join(dataDir, "datasources", "wordnet")
+}
+
 // NewWordNetSource creates a new WordNet data source
 func NewWordNetSource(dataDir string, downloader *Downloader, logger *slog.Logger) *WordNetSource {
 	return &WordNetSource{
-		path:       filepath.Join(dataDir, "wordnet"),
+		path:       WordNetDataDir(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}

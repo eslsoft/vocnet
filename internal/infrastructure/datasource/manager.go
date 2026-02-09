@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 )
@@ -17,28 +16,6 @@ type DataSource interface {
 	Exists() bool        // Check if file/dir exists
 	Download(ctx context.Context) error
 	Verify() error // Verify integrity after download
-}
-
-// DataPaths holds resolved paths for all pipeline data sources.
-type DataPaths struct {
-	ConceptNet string
-	ECDICT     string
-	WordNet    string
-	Moby       string
-	Wikidata   string
-	CEFRJ      string
-}
-
-// ResolvePaths computes all data source paths from a base directory.
-func ResolvePaths(dataDir string) DataPaths {
-	return DataPaths{
-		ConceptNet: filepath.Join(dataDir, "conceptnet", conceptNetFilename),
-		ECDICT:     filepath.Join(dataDir, "ecdict", ecdictDefaultFilename),
-		WordNet:    filepath.Join(dataDir, "wordnet"),
-		Moby:       filepath.Join(dataDir, "moby", mobyFilename),
-		Wikidata:   filepath.Join(dataDir, "wikidata", wikidataLexemesFilename),
-		CEFRJ:      filepath.Join(dataDir, "cefrj"),
-	}
 }
 
 // Status represents the status of a data source

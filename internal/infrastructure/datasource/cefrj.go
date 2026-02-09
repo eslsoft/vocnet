@@ -25,15 +25,24 @@ type CEFRJSource struct {
 	downloader *Downloader
 }
 
-// NewCEFRJSource creates a new CEFR-J data source.
-func NewCEFRJSource(dataDir string, downloader *Downloader, logger *slog.Logger) *CEFRJSource {
+// CEFRJDataDir returns the CEFR-J directory under fixed datasource layout.
+func CEFRJDataDir(dataDir string) string {
+	return filepath.Join(dataDir, "datasources", "cefrj")
+}
+
+func cefrjDataPaths(dataDir string) []string {
+	baseDir := CEFRJDataDir(dataDir)
 	paths := make([]string, 0, len(cefrjArtifactFilenames))
 	for _, filename := range cefrjArtifactFilenames {
-		paths = append(paths, filepath.Join(dataDir, "cefrj", filename))
+		paths = append(paths, filepath.Join(baseDir, filename))
 	}
+	return paths
+}
 
+// NewCEFRJSource creates a new CEFR-J data source.
+func NewCEFRJSource(dataDir string, downloader *Downloader, logger *slog.Logger) *CEFRJSource {
 	return &CEFRJSource{
-		paths:      paths,
+		paths:      cefrjDataPaths(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}

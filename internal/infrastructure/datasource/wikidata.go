@@ -23,10 +23,15 @@ type WikidataSource struct {
 	downloader *Downloader
 }
 
+// WikidataDataPath returns the Wikidata lexeme JSON path under fixed datasource layout.
+func WikidataDataPath(dataDir string) string {
+	return filepath.Join(dataDir, "datasources", "wikidata", wikidataLexemesFilename)
+}
+
 // NewWikidataSource creates a new Wikidata data source
 func NewWikidataSource(dataDir string, downloader *Downloader, logger *slog.Logger) *WikidataSource {
 	return &WikidataSource{
-		path:       filepath.Join(dataDir, "wikidata", wikidataLexemesFilename),
+		path:       WikidataDataPath(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}

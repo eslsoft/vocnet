@@ -61,23 +61,21 @@ type qualityHarness struct {
 func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider) *qualityHarness {
 	t.Helper()
 
-	paths := datasource.ResolvePaths(cfg.Pipeline.DataDir)
-
-	wikidataReader, err := wikidata.NewReaderWithLogger(paths.Wikidata, logger)
+	wikidataReader, err := wikidata.NewReaderWithLogger(datasource.WikidataDataPath(cfg.Pipeline.DataDir), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = wikidataReader.Close() })
 
-	conceptnetReader, err := conceptnet.NewReaderWithLogger(paths.ConceptNet, logger)
+	conceptnetReader, err := conceptnet.NewReaderWithLogger(datasource.ConceptNetDataPath(cfg.Pipeline.DataDir), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conceptnetReader.Close() })
 
-	ecdictReader, err := ecdict.NewReader(paths.ECDICT)
+	ecdictReader, err := ecdict.NewReader(datasource.ECDICTDataPath(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ecdictReader.Close() })
 
-	wordnetReader := wordnet.NewReader(paths.WordNet)
+	wordnetReader := wordnet.NewReader(datasource.WordNetDataDir(cfg.Pipeline.DataDir))
 
-	mobyReader, err := moby.NewReader(paths.Moby)
+	mobyReader, err := moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = mobyReader.Close() })
 

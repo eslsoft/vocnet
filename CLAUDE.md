@@ -279,7 +279,8 @@ make pipeline-setup
 Configure the pipeline data directory in `.env`:
 
 ```bash
-# Pipeline data directory (all data sources are stored under this directory)
+# Pipeline system data directory
+# Data sources are fixed under: ${PIPELINE_DATA_DIR}/datasources/
 PIPELINE_DATA_DIR=./data
 
 # Auto-download missing sources (default: true)

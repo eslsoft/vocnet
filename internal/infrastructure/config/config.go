@@ -49,7 +49,7 @@ type AuthConfig struct {
 
 // PipelineConfig holds pipeline data source configuration
 type PipelineConfig struct {
-	DataDir      string `mapstructure:"data_dir"`       // Base data directory (default: ./data)
+	DataDir      string `mapstructure:"data_dir"`       // Base system data directory (default: ./data)
 	AutoDownload bool   `mapstructure:"auto_download"`  // Auto-download missing data sources
 	CacheDir     string `mapstructure:"cache_dir"`      // Data cache directory
 	LLMBaseURL   string `mapstructure:"llm_base_url"`   // OpenAI-compatible endpoint

@@ -20,10 +20,15 @@ type MobySource struct {
 	downloader *Downloader
 }
 
+// MobyDataPath returns the Moby data file path under fixed datasource layout.
+func MobyDataPath(dataDir string) string {
+	return filepath.Join(dataDir, "datasources", "moby", mobyFilename)
+}
+
 // NewMobySource creates a new Moby data source
 func NewMobySource(dataDir string, downloader *Downloader, logger *slog.Logger) *MobySource {
 	return &MobySource{
-		path:       filepath.Join(dataDir, "moby", mobyFilename),
+		path:       MobyDataPath(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}
