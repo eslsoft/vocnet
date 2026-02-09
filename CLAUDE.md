@@ -320,6 +320,19 @@ echo "PIPELINE_AUTO_DOWNLOAD=true" >> .env
 
 When auto-download is disabled and data is missing, the pipeline will show helpful error messages with download instructions.
 
+### Pipeline Stage Documentation Sync (Required)
+
+The stage-to-source extraction matrix is documented in:
+
+- `docs/design/pipeline-stage-data-sources.md`
+
+When modifying any pipeline behavior below, update that document in the same PR:
+
+- Stage order or processor composition in `cmd/serve.go`
+- Processor extraction logic in `internal/usecase/pipeline/`
+- Evidence payload/schema versions
+- Data source/provider mapping changes (Wikidata, ECDICT, WordNet, Moby, ConceptNet, LLM)
+
 ## Import Scripts
 
 Dictionary initialization tool lives in `hack/dictinit/`:
