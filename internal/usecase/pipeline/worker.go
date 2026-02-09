@@ -162,6 +162,7 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 	} else {
 		p.metrics.SetPendingJobs(int64(count))
 	}
+	p.metrics.SetInFlightJobs(p.inFlight.Load(), p.config.WorkerCount)
 
 	availableSlots := p.config.WorkerCount - int(p.inFlight.Load())
 	if availableSlots <= 0 {
@@ -184,9 +185,13 @@ func (p *WorkerPool) pollAndSubmit(ctx context.Context) {
 
 		// Submit job to worker pool - capture loop variables
 		p.inFlight.Add(1)
+		p.metrics.SetInFlightJobs(p.inFlight.Load(), p.config.WorkerCount)
 		j, jl := job, jobLogger
 		p.pool.Submit(func() {
-			defer p.inFlight.Add(-1)
+			defer func() {
+				p.inFlight.Add(-1)
+				p.metrics.SetInFlightJobs(p.inFlight.Load(), p.config.WorkerCount)
+			}()
 			p.processFn(ctx, j, jl)
 		})
 	}

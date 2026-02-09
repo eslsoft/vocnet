@@ -100,3 +100,46 @@ func TestWorkerPoolMetrics_PendingJobs(t *testing.T) {
 		t.Errorf("expected 0 pending jobs, got %d", snapshot.PendingJobs)
 	}
 }
+
+func TestWorkerPoolMetrics_InFlightAndUtilization(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewWorkerPoolMetricsWithRegistry(reg)
+
+	m.SetPendingJobs(3)
+	m.SetInFlightJobs(2, 4)
+
+	snapshot := m.Snapshot()
+	if snapshot.InFlightJobs != 2 {
+		t.Errorf("expected 2 in-flight jobs, got %d", snapshot.InFlightJobs)
+	}
+	if snapshot.QueueTotal != 5 {
+		t.Errorf("expected queue total 5, got %d", snapshot.QueueTotal)
+	}
+	if snapshot.WorkerUtilization < 0.49 || snapshot.WorkerUtilization > 0.51 {
+		t.Errorf("expected utilization ~0.5, got %.2f", snapshot.WorkerUtilization)
+	}
+}
+
+func TestWorkerPoolMetrics_RecentSuccessAndErrorRate(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewWorkerPoolMetricsWithRegistry(reg)
+
+	m.RecordJob(100*time.Millisecond, true)
+	m.RecordJob(120*time.Millisecond, true)
+	m.RecordJob(80*time.Millisecond, false)
+	m.RecordJob(90*time.Millisecond, false)
+
+	snapshot := m.Snapshot()
+	if snapshot.RecentSucceeded1m != 2 {
+		t.Errorf("expected 2 recent succeeded jobs, got %d", snapshot.RecentSucceeded1m)
+	}
+	if snapshot.RecentFailed1m != 2 {
+		t.Errorf("expected 2 recent failed jobs, got %d", snapshot.RecentFailed1m)
+	}
+	if snapshot.SuccessRate1m < 0.49 || snapshot.SuccessRate1m > 0.51 {
+		t.Errorf("expected success rate ~0.5, got %.2f", snapshot.SuccessRate1m)
+	}
+	if snapshot.ErrorRate1m < 0.49 || snapshot.ErrorRate1m > 0.51 {
+		t.Errorf("expected error rate ~0.5, got %.2f", snapshot.ErrorRate1m)
+	}
+}

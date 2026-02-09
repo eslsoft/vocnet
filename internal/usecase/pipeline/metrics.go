@@ -14,6 +14,11 @@ type WorkerPoolMetrics struct {
 	jobDuration   prometheus.Histogram
 	jobsPerMinute prometheus.Gauge
 	pendingJobs   prometheus.Gauge
+	inFlightJobs  prometheus.Gauge
+	queueTotal    prometheus.Gauge
+	utilization   prometheus.Gauge
+	successRate1m prometheus.Gauge
+	errorRate1m   prometheus.Gauge
 	uptime        prometheus.Gauge
 
 	// Internal tracking for rate calculation
@@ -26,11 +31,14 @@ type WorkerPoolMetrics struct {
 	succeeded atomic.Int64
 	failed    atomic.Int64
 	pending   atomic.Int64
+	inFlight  atomic.Int64
+	workers   atomic.Int64
 }
 
 type jobRecord struct {
 	timestamp  time.Time
 	durationNs int64
+	succeeded  bool
 }
 
 // NewWorkerPoolMetrics creates a new metrics collector with Prometheus registration.
@@ -67,6 +75,36 @@ func NewWorkerPoolMetricsWithRegistry(reg prometheus.Registerer) *WorkerPoolMetr
 				Help: "Number of pending jobs in queue",
 			},
 		),
+		inFlightJobs: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_in_flight_jobs",
+				Help: "Number of jobs currently running or queued in workerpool",
+			},
+		),
+		queueTotal: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_queue_total",
+				Help: "Total queue depth including pending and in-flight jobs",
+			},
+		),
+		utilization: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_worker_utilization",
+				Help: "Current worker utilization ratio in [0,1]",
+			},
+		),
+		successRate1m: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_success_rate_1m",
+				Help: "Success ratio over the last 1 minute in [0,1]",
+			},
+		),
+		errorRate1m: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "vocnet_pipeline_error_rate_1m",
+				Help: "Failure ratio over the last 1 minute in [0,1]",
+			},
+		),
 		uptime: prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name: "vocnet_pipeline_uptime_seconds",
@@ -83,6 +121,11 @@ func NewWorkerPoolMetricsWithRegistry(reg prometheus.Registerer) *WorkerPoolMetr
 		reg.MustRegister(m.jobDuration)
 		reg.MustRegister(m.jobsPerMinute)
 		reg.MustRegister(m.pendingJobs)
+		reg.MustRegister(m.inFlightJobs)
+		reg.MustRegister(m.queueTotal)
+		reg.MustRegister(m.utilization)
+		reg.MustRegister(m.successRate1m)
+		reg.MustRegister(m.errorRate1m)
 		reg.MustRegister(m.uptime)
 	}
 
@@ -109,6 +152,7 @@ func (m *WorkerPoolMetrics) RecordJob(duration time.Duration, succeeded bool) {
 	record := jobRecord{
 		timestamp:  time.Now(),
 		durationNs: duration.Nanoseconds(),
+		succeeded:  succeeded,
 	}
 
 	m.recentJobsMutex <- struct{}{}
@@ -134,14 +178,26 @@ func (m *WorkerPoolMetrics) updateRateGauge() {
 	now := time.Now()
 	cutoff1min := now.Add(-1 * time.Minute)
 
-	var count1min int64
+	var count1min, success1min, failed1min int64
 	for _, r := range m.recentJobs {
 		if r.timestamp.After(cutoff1min) {
 			count1min++
+			if r.succeeded {
+				success1min++
+			} else {
+				failed1min++
+			}
 		}
 	}
 
 	m.jobsPerMinute.Set(float64(count1min))
+	if count1min > 0 {
+		m.successRate1m.Set(float64(success1min) / float64(count1min))
+		m.errorRate1m.Set(float64(failed1min) / float64(count1min))
+	} else {
+		m.successRate1m.Set(0)
+		m.errorRate1m.Set(0)
+	}
 	m.uptime.Set(now.Sub(m.startTime).Seconds())
 }
 
@@ -149,6 +205,29 @@ func (m *WorkerPoolMetrics) updateRateGauge() {
 func (m *WorkerPoolMetrics) SetPendingJobs(count int64) {
 	m.pending.Store(count)
 	m.pendingJobs.Set(float64(count))
+	m.queueTotal.Set(float64(count + m.inFlight.Load()))
+}
+
+// SetInFlightJobs updates in-flight jobs and worker utilization.
+func (m *WorkerPoolMetrics) SetInFlightJobs(count int64, workerCount int) {
+	m.inFlight.Store(count)
+	m.workers.Store(int64(workerCount))
+	m.inFlightJobs.Set(float64(count))
+	m.queueTotal.Set(float64(count + m.pending.Load()))
+
+	if workerCount <= 0 {
+		m.utilization.Set(0)
+		return
+	}
+
+	ratio := float64(count) / float64(workerCount)
+	if ratio > 1 {
+		ratio = 1
+	}
+	if ratio < 0 {
+		ratio = 0
+	}
+	m.utilization.Set(ratio)
 }
 
 // MetricsSnapshot is a point-in-time snapshot of metrics for CLI display.
@@ -162,6 +241,13 @@ type MetricsSnapshot struct {
 	AvgDurationMs       float64 `json:"avg_duration_ms"`
 	RecentJobsPerMinute float64 `json:"recent_jobs_per_minute"`
 	RecentAvgDurationMs float64 `json:"recent_avg_duration_ms"`
+	RecentSucceeded1m   int64   `json:"recent_succeeded_1m"`
+	RecentFailed1m      int64   `json:"recent_failed_1m"`
+	SuccessRate1m       float64 `json:"success_rate_1m"`
+	ErrorRate1m         float64 `json:"error_rate_1m"`
+	InFlightJobs        int64   `json:"in_flight_jobs"`
+	QueueTotal          int64   `json:"queue_total"`
+	WorkerUtilization   float64 `json:"worker_utilization"`
 }
 
 // Snapshot returns current metrics for CLI display.
@@ -171,6 +257,8 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 	succeeded := m.succeeded.Load()
 	failed := m.failed.Load()
 	pending := m.pending.Load()
+	inFlight := m.inFlight.Load()
+	workerCount := m.workers.Load()
 
 	snapshot := MetricsSnapshot{
 		UptimeSeconds: now.Sub(m.startTime).Seconds(),
@@ -178,6 +266,8 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 		JobsSucceeded: succeeded,
 		JobsFailed:    failed,
 		PendingJobs:   pending,
+		InFlightJobs:  inFlight,
+		QueueTotal:    pending + inFlight,
 	}
 
 	m.recentJobsMutex <- struct{}{}
@@ -188,6 +278,7 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 		cutoff1min := now.Add(-1 * time.Minute)
 
 		var count5min, count1min int64
+		var success1min, failed1min int64
 		var duration5min, duration1min int64
 
 		for _, r := range m.recentJobs {
@@ -198,6 +289,11 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 			if r.timestamp.After(cutoff1min) {
 				count1min++
 				duration1min += r.durationNs
+				if r.succeeded {
+					success1min++
+				} else {
+					failed1min++
+				}
 			}
 		}
 
@@ -212,6 +308,17 @@ func (m *WorkerPoolMetrics) Snapshot() MetricsSnapshot {
 		if count1min > 0 {
 			snapshot.RecentJobsPerMinute = float64(count1min)
 			snapshot.RecentAvgDurationMs = float64(duration1min) / float64(count1min) / 1e6
+			snapshot.RecentSucceeded1m = success1min
+			snapshot.RecentFailed1m = failed1min
+			snapshot.SuccessRate1m = float64(success1min) / float64(count1min)
+			snapshot.ErrorRate1m = float64(failed1min) / float64(count1min)
+		}
+	}
+
+	if workerCount > 0 && snapshot.InFlightJobs > 0 {
+		snapshot.WorkerUtilization = float64(snapshot.InFlightJobs) / float64(workerCount)
+		if snapshot.WorkerUtilization > 1 {
+			snapshot.WorkerUtilization = 1
 		}
 	}
 
@@ -230,5 +337,11 @@ func (m *WorkerPoolMetrics) Reset() {
 	<-m.recentJobsMutex
 
 	m.jobsPerMinute.Set(0)
+	m.pendingJobs.Set(0)
+	m.inFlightJobs.Set(0)
+	m.queueTotal.Set(0)
+	m.utilization.Set(0)
+	m.successRate1m.Set(0)
+	m.errorRate1m.Set(0)
 	m.uptime.Set(0)
 }

@@ -472,14 +472,19 @@ func runStatsWatch(serverURL string) error {
 
 // PipelineStats holds parsed Prometheus metrics for CLI display.
 type PipelineStats struct {
-	UptimeSeconds       float64
-	JobsProcessed       float64
-	JobsSucceeded       float64
-	JobsFailed          float64
-	PendingJobs         float64
-	JobsPerMinute       float64
-	JobDurationSum      float64
-	JobDurationCount    float64
+	UptimeSeconds     float64
+	JobsProcessed     float64
+	JobsSucceeded     float64
+	JobsFailed        float64
+	PendingJobs       float64
+	InFlightJobs      float64
+	QueueTotal        float64
+	WorkerUtilization float64
+	JobsPerMinute     float64
+	SuccessRate1m     float64
+	ErrorRate1m       float64
+	JobDurationSum    float64
+	JobDurationCount  float64
 }
 
 func fetchPipelineStats(serverURL string) (*PipelineStats, error) {
@@ -526,6 +531,31 @@ func parsePipelineStats(r io.Reader) (*PipelineStats, error) {
 			stats.PendingJobs = m.GetGauge().GetValue()
 		}
 	}
+	if mf, ok := metricFamilies["vocnet_pipeline_in_flight_jobs"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.InFlightJobs = m.GetGauge().GetValue()
+		}
+	}
+	if mf, ok := metricFamilies["vocnet_pipeline_queue_total"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.QueueTotal = m.GetGauge().GetValue()
+		}
+	}
+	if mf, ok := metricFamilies["vocnet_pipeline_worker_utilization"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.WorkerUtilization = m.GetGauge().GetValue()
+		}
+	}
+	if mf, ok := metricFamilies["vocnet_pipeline_success_rate_1m"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.SuccessRate1m = m.GetGauge().GetValue()
+		}
+	}
+	if mf, ok := metricFamilies["vocnet_pipeline_error_rate_1m"]; ok {
+		for _, m := range mf.GetMetric() {
+			stats.ErrorRate1m = m.GetGauge().GetValue()
+		}
+	}
 
 	// Extract jobs processed by status
 	if mf, ok := metricFamilies["vocnet_pipeline_jobs_processed_total"]; ok {
@@ -566,18 +596,20 @@ func printStats(stats *PipelineStats) {
 
 	total := int64(stats.JobsSucceeded + stats.JobsFailed)
 	fmt.Printf("  Processed:      %d (✓ %.0f, ✗ %.0f)\n", total, stats.JobsSucceeded, stats.JobsFailed)
-	fmt.Printf("  Pending:        %.0f\n", stats.PendingJobs)
+	fmt.Printf("  Queue:          total=%.0f, pending=%.0f, in-flight=%.0f\n", stats.QueueTotal, stats.PendingJobs, stats.InFlightJobs)
+	fmt.Printf("  Utilization:    %.0f%%\n", stats.WorkerUtilization*100)
 
 	jobsPerSec := stats.JobsPerMinute / 60.0
 	fmt.Printf("  Rate:           %.1f jobs/min (%.2f jobs/sec)\n", stats.JobsPerMinute, jobsPerSec)
+	fmt.Printf("  1m Health:      success=%.0f%%, error=%.0f%%\n", stats.SuccessRate1m*100, stats.ErrorRate1m*100)
 
 	if stats.JobDurationCount > 0 {
 		avgMs := (stats.JobDurationSum / stats.JobDurationCount) * 1000
 		fmt.Printf("  Avg Duration:   %.0f ms\n", avgMs)
 	}
 
-	if stats.PendingJobs > 0 && stats.JobsPerMinute > 0 {
-		etaSeconds := stats.PendingJobs / jobsPerSec
+	if stats.QueueTotal > 0 && stats.JobsPerMinute > 0 {
+		etaSeconds := stats.QueueTotal / jobsPerSec
 		fmt.Printf("  ETA:            %s\n", formatDuration(etaSeconds))
 	}
 }

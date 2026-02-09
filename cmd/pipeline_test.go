@@ -18,6 +18,30 @@ vocnet_pipeline_uptime_seconds 3600
 # TYPE vocnet_pipeline_jobs_per_minute gauge
 vocnet_pipeline_jobs_per_minute 12.5
 
+# HELP vocnet_pipeline_pending_jobs Gauge
+# TYPE vocnet_pipeline_pending_jobs gauge
+vocnet_pipeline_pending_jobs 8
+
+# HELP vocnet_pipeline_in_flight_jobs Gauge
+# TYPE vocnet_pipeline_in_flight_jobs gauge
+vocnet_pipeline_in_flight_jobs 2
+
+# HELP vocnet_pipeline_queue_total Gauge
+# TYPE vocnet_pipeline_queue_total gauge
+vocnet_pipeline_queue_total 10
+
+# HELP vocnet_pipeline_worker_utilization Gauge
+# TYPE vocnet_pipeline_worker_utilization gauge
+vocnet_pipeline_worker_utilization 0.5
+
+# HELP vocnet_pipeline_success_rate_1m Gauge
+# TYPE vocnet_pipeline_success_rate_1m gauge
+vocnet_pipeline_success_rate_1m 0.8
+
+# HELP vocnet_pipeline_error_rate_1m Gauge
+# TYPE vocnet_pipeline_error_rate_1m gauge
+vocnet_pipeline_error_rate_1m 0.2
+
 # HELP vocnet_pipeline_jobs_processed_total Counter
 # TYPE vocnet_pipeline_jobs_processed_total counter
 vocnet_pipeline_jobs_processed_total{status="succeeded"} 100
@@ -36,6 +60,12 @@ vocnet_pipeline_job_duration_seconds_count 105
 
 	assert.Equal(t, 3600.0, stats.UptimeSeconds)
 	assert.Equal(t, 12.5, stats.JobsPerMinute)
+	assert.Equal(t, 8.0, stats.PendingJobs)
+	assert.Equal(t, 2.0, stats.InFlightJobs)
+	assert.Equal(t, 10.0, stats.QueueTotal)
+	assert.Equal(t, 0.5, stats.WorkerUtilization)
+	assert.Equal(t, 0.8, stats.SuccessRate1m)
+	assert.Equal(t, 0.2, stats.ErrorRate1m)
 	assert.Equal(t, 100.0, stats.JobsSucceeded)
 	assert.Equal(t, 5.0, stats.JobsFailed)
 	assert.Equal(t, 50.0, stats.JobDurationSum)
