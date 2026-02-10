@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
+	dictv1 "github.com/eslsoft/vocnet/pkg/api/dict/v1"
 	pipelinev1 "github.com/eslsoft/vocnet/pkg/api/pipeline/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -48,17 +49,120 @@ func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
 	}
 }
 
-func toPBLemmaItem(lemma *entity.Lemma) *pipelinev1.LemmaItem {
-	if lemma == nil {
+func toPBLemmaFromSnapshot(snapshot *entity.WordSnapshot) *dictv1.Lemma {
+	if snapshot == nil {
 		return nil
 	}
-	return &pipelinev1.LemmaItem{
-		Id:         lemma.ID,
-		Surface:    lemma.Surface,
-		Normalized: lemma.Normalized,
-		Level:      toPBLemmaLevel(lemma.Level),
-		CreatedAt:  timestamppb.New(lemma.CreatedAt),
-		UpdatedAt:  timestamppb.New(lemma.UpdatedAt),
+	return &dictv1.Lemma{
+		Id:             snapshot.LemmaID,
+		Surface:        snapshot.Term,
+		Normalized:     strings.ToLower(snapshot.Term),
+		LatestSnapshot: toPBSnapshot(snapshot),
+		CreatedAt:      timestamppb.New(snapshot.CreatedAt),
+		UpdatedAt:      timestamppb.New(snapshot.UpdatedAt),
+	}
+}
+
+func toPBSnapshot(snapshot *entity.WordSnapshot) *dictv1.Snapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &dictv1.Snapshot{
+		Id:                snapshot.ID,
+		LemmaId:           snapshot.LemmaID,
+		JobId:             snapshot.JobID,
+		Term:              snapshot.Term,
+		Terms:             snapshot.Terms,
+		Language:          snapshot.Language,
+		Latest:            snapshot.Latest,
+		Version:           snapshot.Version,
+		Data:              toPBSnapshotData(snapshot.Data),
+		QScore:            snapshot.QScore,
+		QScoreCompleteness: snapshot.QScoreCompleteness,
+		QScoreDepth:       snapshot.QScoreDepth,
+		QScoreDensity:     snapshot.QScoreDensity,
+		QScoreValidity:    snapshot.QScoreValidity,
+		SynthesizedAt:     timestamppb.New(snapshot.SynthesizedAt),
+		CreatedAt:         timestamppb.New(snapshot.CreatedAt),
+		UpdatedAt:         timestamppb.New(snapshot.UpdatedAt),
+	}
+}
+
+func toPBSnapshotData(data entity.SnapshotData) *dictv1.SnapshotData {
+	lexemes := make([]*dictv1.Lexeme, 0, len(data.Lexemes))
+	for _, lexeme := range data.Lexemes {
+		lexemes = append(lexemes, toPBLexeme(lexeme))
+	}
+
+	relations := make([]*dictv1.SemanticRelation, 0, len(data.Relations))
+	for _, relation := range data.Relations {
+		relations = append(relations, toPBSemanticRelation(relation))
+	}
+
+	return &dictv1.SnapshotData{
+		Lexemes:   lexemes,
+		Relations: relations,
+	}
+}
+
+func toPBLexeme(lexeme entity.SnapshotLexeme) *dictv1.Lexeme {
+	senses := make([]*dictv1.LexemeSense, 0, len(lexeme.Senses))
+	for _, sense := range lexeme.Senses {
+		senses = append(senses, toPBLexemeSense(sense))
+	}
+
+	forms := make([]*dictv1.LemmaForm, 0, len(lexeme.Forms))
+	for _, form := range lexeme.Forms {
+		forms = append(forms, toPBLexemeForm(form))
+	}
+
+	phonetics := make([]*dictv1.Phonetic, 0, len(lexeme.Phonetics))
+	for _, phonetic := range lexeme.Phonetics {
+		phonetics = append(phonetics, toPBLexemePhonetic(phonetic))
+	}
+
+	return &dictv1.Lexeme{
+		Pos:       lexeme.POS,
+		Senses:    senses,
+		Forms:     forms,
+		Phonetics: phonetics,
+	}
+}
+
+func toPBLexemeSense(sense entity.SnapshotSense) *dictv1.LexemeSense {
+	return &dictv1.LexemeSense{
+		Language:    sense.Language,
+		Gloss:       sense.Gloss,
+		Examples:    sense.Examples,
+		Provider:    sense.Provider,
+		TrustWeight: sense.TrustWeight,
+	}
+}
+
+func toPBLexemeForm(form entity.SnapshotForm) *dictv1.LemmaForm {
+	return &dictv1.LemmaForm{
+		Surface:     form.Surface,
+		FormType:    form.FormType,
+		IsIrregular: form.IsIrregular,
+	}
+}
+
+func toPBLexemePhonetic(phonetic entity.Phonetic) *dictv1.Phonetic {
+	return &dictv1.Phonetic{
+		Ipa:     phonetic.IPA,
+		Dialect: phonetic.Dialect,
+	}
+}
+
+func toPBSemanticRelation(relation entity.SnapshotRelation) *dictv1.SemanticRelation {
+	return &dictv1.SemanticRelation{
+		RelationType:   relation.RelationType,
+		TargetTerm:     relation.TargetTerm,
+		TargetRef:      relation.TargetRef,
+		Provider:       relation.Provider,
+		Strength:       relation.Strength,
+		SenseMapped:    relation.SenseMapped,
+		TargetResolved: relation.TargetResolved,
 	}
 }
 
@@ -146,26 +250,5 @@ func toPBStatusFromTask(s entity.TaskStatus) pipelinev1.PipelineStatus {
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_SKIPPED
 	default:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_UNSPECIFIED
-	}
-}
-
-func toPBLemmaLevel(level string) pipelinev1.LemmaLevel {
-	switch strings.ToUpper(strings.TrimSpace(level)) {
-	case "":
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_UNSPECIFIED
-	case "A1":
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_A1
-	case "A2":
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_A2
-	case "B1":
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_B1
-	case "B2":
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_B2
-	case "C1":
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_C1
-	case "C2":
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_C2
-	default:
-		return pipelinev1.LemmaLevel_LEMMA_LEVEL_UNSPECIFIED
 	}
 }

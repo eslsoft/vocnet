@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -10,11 +9,12 @@ import (
 
 // LemmaQueryService provides read-only lemma queries for pipeline-related APIs.
 type LemmaQueryService struct {
-	lemmaRepo repository.LemmaRepository
+	lemmaRepo    repository.LemmaRepository
+	snapshotRepo repository.WordSnapshotRepository
 }
 
-func NewLemmaQueryService(lemmaRepo repository.LemmaRepository) *LemmaQueryService {
-	return &LemmaQueryService{lemmaRepo: lemmaRepo}
+func NewLemmaQueryService(lemmaRepo repository.LemmaRepository, snapshotRepo repository.WordSnapshotRepository) *LemmaQueryService {
+	return &LemmaQueryService{lemmaRepo: lemmaRepo, snapshotRepo: snapshotRepo}
 }
 
 type ListLemmasQuery struct {
@@ -23,28 +23,28 @@ type ListLemmasQuery struct {
 	Keyword  string
 }
 
-func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*entity.Lemma, int64, error) {
+type ListSnapshotsQuery struct {
+	LemmaID  int64
+	PageNo   int32
+	PageSize int32
+}
+
+func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*entity.WordSnapshot, int64, error) {
 	if query == nil {
 		query = &ListLemmasQuery{}
 	}
 
-	pageNo := query.PageNo
-	if pageNo <= 0 {
-		pageNo = 1
-	}
-	pageSize := query.PageSize
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 10000 {
-		pageSize = 10000
+	snapshots, total, err := s.snapshotRepo.ListLatest(ctx, query.PageNo, query.PageSize, query.Keyword)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	return s.lemmaRepo.List(ctx, &repository.ListWordsQuery{
-		Pagination: repository.Pagination{
-			PageNo:   pageNo,
-			PageSize: pageSize,
-		},
-		Keyword: strings.TrimSpace(query.Keyword),
-	})
+	return snapshots, total, nil
+}
+
+func (s *LemmaQueryService) ListSnapshots(ctx context.Context, query *ListSnapshotsQuery) ([]*entity.WordSnapshot, int64, error) {
+	if query == nil || query.LemmaID <= 0 {
+		return nil, 0, entity.ErrInvalidInput
+	}
+	return s.snapshotRepo.ListByLemmaID(ctx, query.LemmaID, query.PageNo, query.PageSize)
 }

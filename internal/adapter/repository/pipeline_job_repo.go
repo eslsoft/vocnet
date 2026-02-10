@@ -105,7 +105,7 @@ func (r *pipelineJobRepository) ListFiltered(ctx context.Context, query *reposit
 		q.Where(entpipelinejob.StatusEQ(string(*query.Status)))
 	}
 	if query.LemmaID > 0 {
-		q.Where(entpipelinejob.HasStagesWith(entpipelinetask.LemmaIDEQ(query.LemmaID)))
+		q.Where(entpipelinejob.HasTasksWith(entpipelinetask.LemmaIDEQ(query.LemmaID)))
 	}
 
 	total, err := q.Clone().Count(ctx)

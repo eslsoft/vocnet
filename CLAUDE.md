@@ -109,6 +109,9 @@ Proto definitions are in `api/proto/`:
 - `wordbook/`: Wordbook services (preset word lists)
 - `common/`: Shared types (enums, pagination)
 
+**Proto Organization Rules (Required):**
+- Keep service contract files focused on RPCs and request/response messages. Do not embed large reusable domain message sets directly in `*_service.proto`.
+
 **After modifying `.proto` files**, regenerate code:
 ```bash
 make generate

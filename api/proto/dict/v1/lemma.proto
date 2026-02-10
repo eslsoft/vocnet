@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package dict.v1;
+
+import "dict/v1/linguistics.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1";
+
+enum LemmaLevel {
+  LEMMA_LEVEL_UNSPECIFIED = 0;
+  LEMMA_LEVEL_A1 = 1;
+  LEMMA_LEVEL_A2 = 2;
+  LEMMA_LEVEL_B1 = 3;
+  LEMMA_LEVEL_B2 = 4;
+  LEMMA_LEVEL_C1 = 5;
+  LEMMA_LEVEL_C2 = 6;
+}
+
+message SnapshotData {
+  repeated Lexeme lexemes = 1;
+  repeated SemanticRelation relations = 2;
+}
+
+message Snapshot {
+  int64 id = 1;
+  int64 lemma_id = 2;
+  optional int64 job_id = 3;
+  string term = 4;
+  repeated string terms = 5;
+  string language = 6;
+  bool latest = 7;
+  int32 version = 8;
+  SnapshotData data = 9;
+  double q_score = 10;
+  double q_score_completeness = 11;
+  double q_score_depth = 12;
+  double q_score_density = 13;
+  double q_score_validity = 14;
+  google.protobuf.Timestamp synthesized_at = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+}
+
+message Lemma {
+  int64 id = 1;
+  string surface = 2;
+  string normalized = 3;
+  LemmaLevel level = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  Snapshot latest_snapshot = 7;
+}

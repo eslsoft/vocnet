@@ -46,6 +46,9 @@ func Initialize() (*Container, func(), error) {
 	lexemeRepository := repository.NewLexemeRepository(client)
 	wordUsecase := usecase.NewWordUsecase(lemmaRepository, lexemeRepository)
 	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
+	wordSnapshotRepository := repository.NewWordSnapshotRepository(client)
+	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository, wordSnapshotRepository)
+	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
 	wordbookRepository := repository.NewWordbookRepository(client)
 	learnedWordRepository := repository.NewLearnedWordRepository(client, wordbookRepository)
 	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
@@ -64,9 +67,7 @@ func Initialize() (*Container, func(), error) {
 	pipelineTaskRepository := repository.NewPipelineTaskRepository(client)
 	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineTaskRepository, logger)
 	pipelineServiceServer := connectrpc.NewPipelineServiceServer(pipelineService)
-	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository)
-	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
-	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer, statsServiceServer, pipelineServiceServer, lemmaServiceServer)
+	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, lemmaServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer, statsServiceServer, pipelineServiceServer)
 	if err != nil {
 		cleanup2()
 		cleanup()
@@ -100,6 +101,6 @@ var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLe
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
 
-var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, connectrpc.NewReviewPlanServiceServer, connectrpc.NewStatsServiceServer, connectrpc.NewPipelineServiceServer, connectrpc.NewLemmaServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)), wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*connectrpc.ReviewPlanServiceServer)), wire.Bind(new(learningv1connect.StatsServiceHandler), new(*connectrpc.StatsServiceServer)), wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*connectrpc.PipelineServiceServer)), wire.Bind(new(pipelinev1connect.LemmaServiceHandler), new(*connectrpc.LemmaServiceServer)))
+var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, connectrpc.NewReviewPlanServiceServer, connectrpc.NewStatsServiceServer, connectrpc.NewPipelineServiceServer, connectrpc.NewLemmaServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(dictv1connect.LemmaServiceHandler), new(*connectrpc.LemmaServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)), wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*connectrpc.ReviewPlanServiceServer)), wire.Bind(new(learningv1connect.StatsServiceHandler), new(*connectrpc.StatsServiceServer)), wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*connectrpc.PipelineServiceServer)))
 
 var serverSet = wire.NewSet(server.NewLogger, server.NewServer)

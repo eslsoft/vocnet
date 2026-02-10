@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package dict.v1;
+
+import "dict/v1/word.proto";
+
+option go_package = "github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1";
+
+// LexemeSense is a reusable lexical sense representation.
+message LexemeSense {
+  string language = 1;
+  string gloss = 2;
+  repeated string examples = 3;
+  string provider = 4;
+  double trust_weight = 5;
+}
+
+// LemmaForm is a reusable inflected form representation.
+message LemmaForm {
+  string surface = 1;
+  string form_type = 2;
+  bool is_irregular = 3;
+}
+
+// Lexeme is a reusable POS-grouped lexical representation.
+message Lexeme {
+  string pos = 1;
+  repeated LexemeSense senses = 2;
+  repeated LemmaForm forms = 3;
+  repeated Phonetic phonetics = 4;
+}
+
+// SemanticRelation is a reusable semantic relation representation.
+message SemanticRelation {
+  string relation_type = 1;
+  string target_term = 2;
+  string target_ref = 3;
+  string provider = 4;
+  double strength = 5;
+  bool sense_mapped = 6;
+  bool target_resolved = 7;
+}

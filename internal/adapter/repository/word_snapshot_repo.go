@@ -134,6 +134,117 @@ func (r *wordSnapshotRepository) GetByTerm(ctx context.Context, term string, lan
 	return mapEntWordSnapshot(row), nil
 }
 
+func (r *wordSnapshotRepository) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []int64) (map[int64]*entity.WordSnapshot, error) {
+	out := make(map[int64]*entity.WordSnapshot, len(lemmaIDs))
+	if len(lemmaIDs) == 0 {
+		return out, nil
+	}
+
+	rows, err := r.client.WordSnapshot.Query().
+		Where(
+			entwordsnapshot.LemmaIDIn(lemmaIDs...),
+			entwordsnapshot.LatestEQ(true),
+		).
+		Order(entwordsnapshot.ByVersion(sql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list latest snapshots by lemma ids: %w", err)
+	}
+
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		// Keep the first row per lemma (highest version because of ordering).
+		if _, exists := out[row.LemmaID]; exists {
+			continue
+		}
+		out[row.LemmaID] = mapEntWordSnapshot(row)
+	}
+
+	return out, nil
+}
+
+func (r *wordSnapshotRepository) ListLatest(ctx context.Context, pageNo int32, pageSize int32, keyword string) ([]*entity.WordSnapshot, int64, error) {
+	if pageNo <= 0 {
+		pageNo = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 10000 {
+		pageSize = 10000
+	}
+
+	q := r.client.WordSnapshot.Query().
+		Where(entwordsnapshot.LatestEQ(true))
+
+	trimmedKeyword := strings.TrimSpace(keyword)
+	if trimmedKeyword != "" {
+		q = q.Where(entwordsnapshot.TermContainsFold(trimmedKeyword))
+	}
+
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count latest snapshots: %w", err)
+	}
+
+	offset := int((pageNo - 1) * pageSize)
+	rows, err := q.
+		Order(entwordsnapshot.BySynthesizedAt(sql.OrderDesc()), entwordsnapshot.ByVersion(sql.OrderDesc())).
+		Limit(int(pageSize)).
+		Offset(offset).
+		All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list latest snapshots: %w", err)
+	}
+
+	out := make([]*entity.WordSnapshot, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, mapEntWordSnapshot(row))
+	}
+	return out, int64(total), nil
+}
+
+func (r *wordSnapshotRepository) ListByLemmaID(ctx context.Context, lemmaID int64, pageNo int32, pageSize int32) ([]*entity.WordSnapshot, int64, error) {
+	if lemmaID <= 0 {
+		return nil, 0, entity.ErrInvalidInput
+	}
+	if pageNo <= 0 {
+		pageNo = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 10000 {
+		pageSize = 10000
+	}
+
+	q := r.client.WordSnapshot.Query().
+		Where(entwordsnapshot.LemmaIDEQ(lemmaID))
+
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count snapshots by lemma id: %w", err)
+	}
+
+	offset := int((pageNo - 1) * pageSize)
+	rows, err := q.
+		Order(entwordsnapshot.ByVersion(sql.OrderDesc()), entwordsnapshot.ByCreatedAt(sql.OrderDesc())).
+		Limit(int(pageSize)).
+		Offset(offset).
+		All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list snapshots by lemma id: %w", err)
+	}
+
+	out := make([]*entity.WordSnapshot, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, mapEntWordSnapshot(row))
+	}
+	return out, int64(total), nil
+}
+
 func mapEntWordSnapshot(row *entdb.WordSnapshot) *entity.WordSnapshot {
 	if row == nil {
 		return nil
