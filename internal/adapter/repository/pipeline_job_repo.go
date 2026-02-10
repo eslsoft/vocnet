@@ -11,7 +11,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entpipelinejob "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/pipelinejob"
-	entpipelinetask "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/pipelinetask"
+	entpipelinestage "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/pipelinestage"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
@@ -105,7 +105,7 @@ func (r *pipelineJobRepository) ListFiltered(ctx context.Context, query *reposit
 		q.Where(entpipelinejob.StatusEQ(string(*query.Status)))
 	}
 	if query.LemmaID > 0 {
-		q.Where(entpipelinejob.HasTasksWith(entpipelinetask.LemmaIDEQ(query.LemmaID)))
+		q.Where(entpipelinejob.HasStagesWith(entpipelinestage.LemmaIDEQ(query.LemmaID)))
 	}
 
 	total, err := q.Clone().Count(ctx)

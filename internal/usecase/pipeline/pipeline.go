@@ -16,7 +16,7 @@ type Pipeline struct {
 	stages       []*Stage
 	validator    *Validator
 	persistence  *Persistence
-	taskRepo     repository.PipelineTaskRepository
+	stageRepo    repository.PipelineStageRepository
 	snapshotRepo repository.WordSnapshotRepository
 	lemmaRepo    repository.LemmaRepository
 	lexemeRepo   repository.LexemeRepository
@@ -26,7 +26,7 @@ type Pipeline struct {
 // ProcessWordResult contains the output of processing a single word.
 type ProcessWordResult struct {
 	Lemma    *entity.Lemma
-	Tasks    []*entity.PipelineTask
+	Stages   []*entity.PipelineStage
 	Snapshot *entity.WordSnapshot
 }
 
@@ -40,7 +40,7 @@ func NewPipeline(
 	stages []*Stage,
 	validator *Validator,
 	persistence *Persistence,
-	taskRepo repository.PipelineTaskRepository,
+	stageRepo repository.PipelineStageRepository,
 	snapshotRepo repository.WordSnapshotRepository,
 	lemmaRepo repository.LemmaRepository,
 	lexemeRepo repository.LexemeRepository,
@@ -50,7 +50,7 @@ func NewPipeline(
 		stages:       stages,
 		validator:    validator,
 		persistence:  persistence,
-		taskRepo:     taskRepo,
+		stageRepo:    stageRepo,
 		snapshotRepo: snapshotRepo,
 		lemmaRepo:    lemmaRepo,
 		lexemeRepo:   lexemeRepo,
@@ -89,17 +89,17 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 
 	runLogger.Info("processing word", "term", term, "lemma_id", pctx.Lemma.ID)
 
-	// Step 2: Create pipeline tasks for all stages
+	// Step 2: Create pipeline stages for all phases
 	for _, stage := range p.stages {
-		_, err := p.taskRepo.CreateOrUpdate(ctx, &entity.PipelineTask{
+		_, err := p.stageRepo.CreateOrUpdate(ctx, &entity.PipelineStage{
 			JobID:   jobID,
 			LemmaID: pctx.Lemma.ID,
 			Phase:   int32(stage.Number),
-			Status:  entity.TaskStatusPending,
+			Status:  entity.StageStatusPending,
 			Tier:    tier,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("create task for stage %d: %w", stage.Number, err)
+			return nil, fmt.Errorf("create stage for phase %d: %w", stage.Number, err)
 		}
 	}
 
@@ -117,16 +117,16 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 	runLogger.Info("pipeline run completed", "term", term, "duration", time.Since(runStart).String())
 
 	// Step 4: Gather final state
-	tasks, err := p.taskRepo.ListByJob(ctx, jobID)
+	stages, err := p.stageRepo.ListByJob(ctx, jobID)
 	if err != nil {
-		return nil, fmt.Errorf("list tasks: %w", err)
+		return nil, fmt.Errorf("list stages: %w", err)
 	}
 
 	snapshot, _ := p.snapshotRepo.GetByLemma(ctx, pctx.Lemma.ID)
 
 	return &ProcessWordResult{
 		Lemma:    pctx.Lemma,
-		Tasks:    tasks,
+		Stages:   stages,
 		Snapshot: snapshot,
 	}, nil
 }
@@ -138,11 +138,11 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 
 	// No processors → skip
 	if len(stage.Processors) == 0 {
-		return p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusSkipped, "")
+		return p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusSkipped, "")
 	}
 
 	// Mark as running
-	if err := p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusRunning, ""); err != nil {
+	if err := p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusRunning, ""); err != nil {
 		return err
 	}
 
@@ -165,7 +165,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 
 			// Real error → fail the stage
 			errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
-			_ = p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusFailed, errMsg)
+			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
 			return fmt.Errorf("processor %s: %w", proc.Name(), err)
 		}
 
@@ -181,7 +181,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		pctx.Accumulate(result)
 		if err := validateContextPOS(pctx); err != nil {
 			errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
-			_ = p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusFailed, errMsg)
+			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
 			return fmt.Errorf("processor %s: %w", proc.Name(), err)
 		}
 
@@ -191,7 +191,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 
 	// All processors skipped → mark stage as skipped
 	if executedCount == 0 {
-		if err := p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusSkipped, ""); err != nil {
+		if err := p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusSkipped, ""); err != nil {
 			return err
 		}
 		logger.Info("stage skipped", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart).String())
@@ -201,7 +201,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 	// Persist stage results
 	if err := p.persistence.SaveStageResult(ctx, pctx.Lemma, mergedResult); err != nil {
 		errMsg := fmt.Sprintf("persist error: %s", err)
-		_ = p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusFailed, errMsg)
+		_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
 		return fmt.Errorf("persist results: %w", err)
 	}
 
@@ -211,7 +211,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		updated.ID = pctx.Lemma.ID
 		if _, err := p.lemmaRepo.Update(ctx, &updated); err != nil {
 			errMsg := fmt.Sprintf("update lemma: %s", err)
-			_ = p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusFailed, errMsg)
+			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
 			return fmt.Errorf("update lemma: %w", err)
 		}
 	}
@@ -220,13 +220,13 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 	if mergedResult.Snapshot != nil {
 		if err := p.persistence.SaveSnapshot(ctx, jobID, pctx.Lemma, pctx.Forms, mergedResult.Snapshot); err != nil {
 			errMsg := fmt.Sprintf("save snapshot: %s", err)
-			_ = p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusFailed, errMsg)
+			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
 			return fmt.Errorf("save snapshot: %w", err)
 		}
 	}
 
 	// Mark completed
-	if err := p.updateTaskStatus(ctx, jobID, phaseNum, entity.TaskStatusCompleted, ""); err != nil {
+	if err := p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusCompleted, ""); err != nil {
 		return err
 	}
 
@@ -249,15 +249,15 @@ func validateContextPOS(pctx *PipelineContext) error {
 	return nil
 }
 
-// updateTaskStatus updates the status of a pipeline task.
-func (p *Pipeline) updateTaskStatus(ctx context.Context, jobID int64, phaseNum int32, status entity.TaskStatus, errorMsg string) error {
-	task, err := p.taskRepo.GetByJobAndPhase(ctx, jobID, phaseNum)
+// updateStageStatus updates the status of a pipeline stage.
+func (p *Pipeline) updateStageStatus(ctx context.Context, jobID int64, phaseNum int32, status entity.StageStatus, errorMsg string) error {
+	stage, err := p.stageRepo.GetByJobAndPhase(ctx, jobID, phaseNum)
 	if err != nil {
-		return fmt.Errorf("get task for phase %d: %w", phaseNum, err)
+		return fmt.Errorf("get stage for phase %d: %w", phaseNum, err)
 	}
 
-	if err := p.taskRepo.UpdateStatus(ctx, task.ID, status, errorMsg); err != nil {
-		return fmt.Errorf("update task status: %w", err)
+	if err := p.stageRepo.UpdateStatus(ctx, stage.ID, status, errorMsg); err != nil {
+		return fmt.Errorf("update stage status: %w", err)
 	}
 
 	return nil

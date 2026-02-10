@@ -5,15 +5,15 @@ import (
 	"time"
 )
 
-// TaskStatus represents the state of a pipeline task.
-type TaskStatus string
+// StageStatus represents the state of a pipeline stage.
+type StageStatus string
 
 const (
-	TaskStatusPending   TaskStatus = "PENDING"
-	TaskStatusRunning   TaskStatus = "RUNNING"
-	TaskStatusCompleted TaskStatus = "COMPLETED"
-	TaskStatusFailed    TaskStatus = "FAILED"
-	TaskStatusSkipped   TaskStatus = "SKIPPED"
+	StageStatusPending   StageStatus = "PENDING"
+	StageStatusRunning   StageStatus = "RUNNING"
+	StageStatusCompleted StageStatus = "COMPLETED"
+	StageStatusFailed    StageStatus = "FAILED"
+	StageStatusSkipped   StageStatus = "SKIPPED"
 )
 
 // PipelinePhase enumerates the five pipeline stages.
@@ -45,13 +45,13 @@ func (p PipelinePhase) Name() string {
 	}
 }
 
-// PipelineTask tracks the execution state of a single pipeline phase for a job.
-type PipelineTask struct {
+// PipelineStage tracks the execution state of a single pipeline phase for a job.
+type PipelineStage struct {
 	ID           int64
 	JobID        int64
 	LemmaID      int64
 	Phase        int32
-	Status       TaskStatus
+	Status       StageStatus
 	Tier         int32 // 1=Core, 2=Extended, 3=LongTail
 	Attempts     int32
 	ErrorMessage string
@@ -61,7 +61,7 @@ type PipelineTask struct {
 	UpdatedAt    time.Time
 }
 
-// StageProgressSummary aggregates task statuses for display.
+// StageProgressSummary aggregates stage statuses for display.
 type StageProgressSummary struct {
 	Total     int
 	Completed int
@@ -99,20 +99,20 @@ func (s *StageProgressSummary) String() string {
 	return result
 }
 
-// ComputeStageProgress computes a StageProgressSummary from a list of tasks.
-func ComputeStageProgress(tasks []*PipelineTask) *StageProgressSummary {
-	s := &StageProgressSummary{Total: len(tasks)}
-	for _, t := range tasks {
+// ComputeStageProgress computes a StageProgressSummary from a list of stages.
+func ComputeStageProgress(stages []*PipelineStage) *StageProgressSummary {
+	s := &StageProgressSummary{Total: len(stages)}
+	for _, t := range stages {
 		switch t.Status {
-		case TaskStatusCompleted:
+		case StageStatusCompleted:
 			s.Completed++
-		case TaskStatusFailed:
+		case StageStatusFailed:
 			s.Failed++
-		case TaskStatusSkipped:
+		case StageStatusSkipped:
 			s.Skipped++
-		case TaskStatusRunning:
+		case StageStatusRunning:
 			s.Running++
-		case TaskStatusPending:
+		case StageStatusPending:
 			s.Pending++
 		}
 	}

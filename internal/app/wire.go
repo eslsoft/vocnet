@@ -39,7 +39,7 @@ var repositorySet = wire.NewSet(
 	repository.NewReviewPlanRepository,
 	repository.NewDailyStatsRepository,
 	repository.NewEvidenceRepository,
-	repository.NewPipelineTaskRepository,
+	repository.NewPipelineStageRepository,
 	repository.NewSemanticRelationRepository,
 	repository.NewWordSnapshotRepository,
 	repository.NewPipelineJobRepository,

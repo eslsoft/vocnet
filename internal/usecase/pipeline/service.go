@@ -12,21 +12,21 @@ import (
 
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo  repository.PipelineJobRepository
-	taskRepo repository.PipelineTaskRepository
-	logger   *slog.Logger
+	jobRepo   repository.PipelineJobRepository
+	stageRepo repository.PipelineStageRepository
+	logger    *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
 func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
-	taskRepo repository.PipelineTaskRepository,
+	stageRepo repository.PipelineStageRepository,
 	logger *slog.Logger,
 ) *PipelineService {
 	return &PipelineService{
-		jobRepo:  jobRepo,
-		taskRepo: taskRepo,
-		logger:   logger,
+		jobRepo:   jobRepo,
+		stageRepo: stageRepo,
+		logger:    logger,
 	}
 }
 
@@ -170,18 +170,18 @@ func (s *PipelineService) ListJobsFiltered(ctx context.Context, query *ListJobsQ
 // GetJobStageProgress computes stage progress for a single-word job.
 // Returns nil for wordbook jobs (too expensive for list view).
 func (s *PipelineService) GetJobStageProgress(ctx context.Context, job *entity.PipelineJob) (*entity.StageProgressSummary, error) {
-	tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
+	stages, err := s.stageRepo.ListByJob(ctx, job.ID)
 	if err != nil {
-		return nil, fmt.Errorf("list tasks: %w", err)
+		return nil, fmt.Errorf("list stages: %w", err)
 	}
 
-	return entity.ComputeStageProgress(tasks), nil
+	return entity.ComputeStageProgress(stages), nil
 }
 
-// JobDetail bundles a job with its per-stage task details.
+// JobDetail bundles a job with its per-stage detail details.
 type JobDetail struct {
-	Job   *entity.PipelineJob
-	Tasks []*entity.PipelineTask // per-stage tasks (single-word jobs only)
+	Job    *entity.PipelineJob
+	Stages []*entity.PipelineStage // per-stage details (single-word jobs only)
 }
 
 // GetJobDetail returns a job along with stage-level details.
@@ -193,16 +193,16 @@ func (s *PipelineService) GetJobDetail(ctx context.Context, id int64) (*JobDetai
 
 	detail := &JobDetail{Job: job}
 
-	tasks, err := s.taskRepo.ListByJob(ctx, job.ID)
+	stages, err := s.stageRepo.ListByJob(ctx, job.ID)
 	if err == nil {
-		detail.Tasks = tasks
+		detail.Stages = stages
 	}
 
 	return detail, nil
 }
 
 // ListJobStages lists all stages for a given job.
-func (s *PipelineService) ListJobStages(ctx context.Context, jobID int64) ([]*entity.PipelineTask, error) {
+func (s *PipelineService) ListJobStages(ctx context.Context, jobID int64) ([]*entity.PipelineStage, error) {
 	if jobID == 0 {
 		return nil, entity.ErrInvalidInput
 	}
@@ -211,7 +211,7 @@ func (s *PipelineService) ListJobStages(ctx context.Context, jobID int64) ([]*en
 		return nil, err
 	}
 
-	return s.taskRepo.ListByJob(ctx, jobID)
+	return s.stageRepo.ListByJob(ctx, jobID)
 }
 
 // CancelJob cancels a pending/running/paused job.

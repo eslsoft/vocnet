@@ -54,7 +54,7 @@ func (PipelineJob) Fields() []ent.Field {
 
 func (PipelineJob) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.To("tasks", PipelineTask.Type).
+		edge.To("stages", PipelineStage.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("snapshot", WordSnapshot.Type).
 			Unique().
