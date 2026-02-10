@@ -64,8 +64,8 @@ func Initialize() (*Container, func(), error) {
 	statsUsecase := usecase.NewStatsUsecase(learnedWordRepository, dailyStatsRepository)
 	statsServiceServer := connectrpc.NewStatsServiceServer(statsUsecase)
 	pipelineJobRepository := repository.NewPipelineJobRepository(client)
-	pipelineTaskRepository := repository.NewPipelineTaskRepository(client)
-	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineTaskRepository, logger)
+	pipelineStageRepository := repository.NewPipelineStageRepository(client)
+	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineStageRepository, logger)
 	pipelineServiceServer := connectrpc.NewPipelineServiceServer(pipelineService)
 	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, lemmaServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer, statsServiceServer, pipelineServiceServer)
 	if err != nil {
@@ -97,7 +97,7 @@ var authSet = wire.NewSet(
 	provideJWTValidator,
 )
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineTaskRepository, repository.NewSemanticRelationRepository, repository.NewWordSnapshotRepository, repository.NewPipelineJobRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewWordSnapshotRepository, repository.NewPipelineJobRepository)
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
 

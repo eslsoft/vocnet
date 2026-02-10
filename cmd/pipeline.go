@@ -326,24 +326,24 @@ var jobCmd = &cobra.Command{
 		}
 
 		// Show stage details for single-word jobs
-		if len(detail.Tasks) > 0 {
+		if len(detail.Stages) > 0 {
 			fmt.Println("\nStages:")
 			table := tablewriter.NewTable(os.Stdout)
 			table.Header("PHASE", "NAME", "STATUS", "DURATION")
-			for _, task := range detail.Tasks {
-				phase := entity.PipelinePhase(task.Phase)
+			for _, stage := range detail.Stages {
+				phase := entity.PipelinePhase(stage.Phase)
 				dur := "-"
-				if task.StartedAt != nil && task.CompletedAt != nil {
-					dur = task.CompletedAt.Sub(*task.StartedAt).Truncate(100 * time.Millisecond).String()
+				if stage.StartedAt != nil && stage.CompletedAt != nil {
+					dur = stage.CompletedAt.Sub(*stage.StartedAt).Truncate(100 * time.Millisecond).String()
 				}
 				_ = table.Append([]string{
-					strconv.Itoa(int(task.Phase)),
+					strconv.Itoa(int(stage.Phase)),
 					phase.Name(),
-					string(task.Status),
+					string(stage.Status),
 					dur,
 				})
-				if task.ErrorMessage != "" {
-					_ = table.Append([]string{"", "", fmt.Sprintf("  error: %s", task.ErrorMessage), ""})
+				if stage.ErrorMessage != "" {
+					_ = table.Append([]string{"", "", fmt.Sprintf("  error: %s", stage.ErrorMessage), ""})
 				}
 			}
 			_ = table.Render()
@@ -406,8 +406,8 @@ func newPipelineDeps() (*pipelineDeps, error) {
 	}
 
 	jobRepo := repository.NewPipelineJobRepository(entClient)
-	taskRepo := repository.NewPipelineTaskRepository(entClient)
-	svc := pipeline.NewPipelineService(jobRepo, taskRepo, logger)
+	stageRepo := repository.NewPipelineStageRepository(entClient)
+	svc := pipeline.NewPipelineService(jobRepo, stageRepo, logger)
 
 	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
 }

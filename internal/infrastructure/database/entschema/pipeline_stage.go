@@ -11,11 +11,11 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-type PipelineTask struct {
+type PipelineStage struct {
 	ent.Schema
 }
 
-func (PipelineTask) Fields() []ent.Field {
+func (PipelineStage) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.Int64("job_id").
@@ -51,16 +51,16 @@ func (PipelineTask) Fields() []ent.Field {
 	}
 }
 
-func (PipelineTask) Edges() []ent.Edge {
+func (PipelineStage) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("lemma", Lemma.Type).
-			Ref("pipeline_tasks").
+			Ref("pipeline_stages").
 			Field("lemma_id").
 			Required().
 			Unique().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.From("job", PipelineJob.Type).
-			Ref("tasks").
+			Ref("stages").
 			Field("job_id").
 			Required().
 			Unique().
@@ -68,7 +68,7 @@ func (PipelineTask) Edges() []ent.Edge {
 	}
 }
 
-func (PipelineTask) Indexes() []ent.Index {
+func (PipelineStage) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("job_id", "phase").Unique(),
 		index.Fields("lemma_id"),
@@ -77,8 +77,8 @@ func (PipelineTask) Indexes() []ent.Index {
 	}
 }
 
-func (PipelineTask) Annotations() []schema.Annotation {
+func (PipelineStage) Annotations() []schema.Annotation {
 	return []schema.Annotation{
-		entsql.Annotation{Table: "pipeline_tasks"},
+		entsql.Annotation{Table: "pipeline_stages"},
 	}
 }

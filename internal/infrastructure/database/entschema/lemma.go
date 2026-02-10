@@ -71,7 +71,7 @@ func (Lemma) Edges() []ent.Edge {
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
 		// Lemma -> PipelineStage (一对多)
-		edge.To("pipeline_tasks", PipelineTask.Type).
+		edge.To("pipeline_stages", PipelineStage.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
 		// Lemma -> WordSnapshot (一对多版本)

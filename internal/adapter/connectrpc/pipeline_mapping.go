@@ -29,7 +29,7 @@ func toPBPipelineJob(job *entity.PipelineJob) *pipelinev1.PipelineJob {
 	}
 }
 
-func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
+func toPBPipelineStage(stage *entity.PipelineStage) *pipelinev1.PipelineStage {
 	if stage == nil {
 		return nil
 	}
@@ -39,7 +39,7 @@ func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
 		JobId:        stage.JobID,
 		LemmaId:      stage.LemmaID,
 		Phase:        toPBPipelinePhase(phase),
-		Status:       toPBStatusFromTask(stage.Status),
+		Status:       toPBStatusFromStage(stage.Status),
 		Attempts:     stage.Attempts,
 		ErrorMessage: stage.ErrorMessage,
 		StartedAt:    toPBTimestamp(stage.StartedAt),
@@ -68,7 +68,7 @@ func toPBSnapshot(snapshot *entity.WordSnapshot) *dictv1.Snapshot {
 		return nil
 	}
 	return &dictv1.Snapshot{
-		Id:                snapshot.ID,
+		Id:                 snapshot.ID,
 		LemmaId:           snapshot.LemmaID,
 		JobId:             snapshot.JobID,
 		Term:              snapshot.Term,
@@ -236,17 +236,17 @@ func toPBPipelinePhase(p entity.PipelinePhase) pipelinev1.PipelinePhase {
 	}
 }
 
-func toPBStatusFromTask(s entity.TaskStatus) pipelinev1.PipelineStatus {
+func toPBStatusFromStage(s entity.StageStatus) pipelinev1.PipelineStatus {
 	switch s {
-	case entity.TaskStatusPending:
+	case entity.StageStatusPending:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_PENDING
-	case entity.TaskStatusRunning:
+	case entity.StageStatusRunning:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_RUNNING
-	case entity.TaskStatusCompleted:
+	case entity.StageStatusCompleted:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_COMPLETED
-	case entity.TaskStatusFailed:
+	case entity.StageStatusFailed:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_FAILED
-	case entity.TaskStatusSkipped:
+	case entity.StageStatusSkipped:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_SKIPPED
 	default:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_UNSPECIFIED

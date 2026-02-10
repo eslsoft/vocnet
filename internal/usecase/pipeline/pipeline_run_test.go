@@ -12,63 +12,63 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type memoryTaskRepo struct {
-	tasksByPhase map[int32]*entity.PipelineTask
-	nextID       int64
+type memoryStageRepo struct {
+	stagesByPhase map[int32]*entity.PipelineStage
+	nextID        int64
 }
 
-func newMemoryTaskRepo() *memoryTaskRepo {
-	return &memoryTaskRepo{
-		tasksByPhase: make(map[int32]*entity.PipelineTask),
-		nextID:       1,
+func newMemoryStageRepo() *memoryStageRepo {
+	return &memoryStageRepo{
+		stagesByPhase: make(map[int32]*entity.PipelineStage),
+		nextID:        1,
 	}
 }
 
-func (m *memoryTaskRepo) CreateOrUpdate(ctx context.Context, task *entity.PipelineTask) (*entity.PipelineTask, error) {
-	if existing, ok := m.tasksByPhase[task.Phase]; ok {
-		existing.Status = task.Status
-		existing.Tier = task.Tier
-		existing.JobID = task.JobID
+func (m *memoryStageRepo) CreateOrUpdate(ctx context.Context, stage *entity.PipelineStage) (*entity.PipelineStage, error) {
+	if existing, ok := m.stagesByPhase[stage.Phase]; ok {
+		existing.Status = stage.Status
+		existing.Tier = stage.Tier
+		existing.JobID = stage.JobID
 		return existing, nil
 	}
 
-	copied := *task
+	copied := *stage
 	copied.ID = m.nextID
 	m.nextID++
-	m.tasksByPhase[task.Phase] = &copied
+	m.stagesByPhase[stage.Phase] = &copied
 	return &copied, nil
 }
 
-func (m *memoryTaskRepo) GetByJobAndPhase(ctx context.Context, jobID int64, phase int32) (*entity.PipelineTask, error) {
-	task, ok := m.tasksByPhase[phase]
+func (m *memoryStageRepo) GetByJobAndPhase(ctx context.Context, jobID int64, phase int32) (*entity.PipelineStage, error) {
+	stage, ok := m.stagesByPhase[phase]
 	if !ok {
-		return nil, errors.New("task not found")
+		return nil, errors.New("stage not found")
 	}
-	if task.JobID != jobID {
-		return nil, errors.New("task not found")
+	if stage.JobID != jobID {
+		return nil, errors.New("stage not found")
 	}
-	return task, nil
+	return stage, nil
 }
 
-func (m *memoryTaskRepo) ListByJob(ctx context.Context, jobID int64) ([]*entity.PipelineTask, error) {
-	out := make([]*entity.PipelineTask, 0, len(m.tasksByPhase))
-	for _, task := range m.tasksByPhase {
-		if task.JobID == jobID {
-			out = append(out, task)
+func (m *memoryStageRepo) ListByJob(ctx context.Context, jobID int64) ([]*entity.PipelineStage, error) {
+	out := make([]*entity.PipelineStage, 0, len(m.stagesByPhase))
+	for _, stage := range m.stagesByPhase {
+		if stage.JobID == jobID {
+			out = append(out, stage)
 		}
 	}
 	return out, nil
 }
 
-func (m *memoryTaskRepo) UpdateStatus(ctx context.Context, id int64, status entity.TaskStatus, errorMsg string) error {
-	for _, task := range m.tasksByPhase {
-		if task.ID == id {
-			task.Status = status
-			task.ErrorMessage = errorMsg
+func (m *memoryStageRepo) UpdateStatus(ctx context.Context, id int64, status entity.StageStatus, errorMsg string) error {
+	for _, stage := range m.stagesByPhase {
+		if stage.ID == id {
+			stage.Status = status
+			stage.ErrorMessage = errorMsg
 			return nil
 		}
 	}
-	return errors.New("task not found")
+	return errors.New("stage not found")
 }
 
 type nopSnapshotRepo struct{}
@@ -124,7 +124,7 @@ func TestPipelineRun_AbortOnStageError(t *testing.T) {
 		Return(nil, nil)
 
 	stage2Executed := false
-	taskRepo := newMemoryTaskRepo()
+	stageRepo := newMemoryStageRepo()
 
 	p := NewPipeline(
 		[]*Stage{
@@ -144,7 +144,7 @@ func TestPipelineRun_AbortOnStageError(t *testing.T) {
 		},
 		NewValidator(lemmaRepo, lexemeRepo, testLogger()),
 		nil,
-		taskRepo,
+		stageRepo,
 		&nopSnapshotRepo{},
 		lemmaRepo,
 		lexemeRepo,
@@ -157,13 +157,13 @@ func TestPipelineRun_AbortOnStageError(t *testing.T) {
 	assert.Contains(t, err.Error(), "execute stage 1")
 	assert.False(t, stage2Executed, "next stage should not execute after stage error")
 
-	stage1Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 1)
+	stage1, err := stageRepo.GetByJobAndPhase(context.Background(), 1, 1)
 	require.NoError(t, err)
-	assert.Equal(t, entity.TaskStatusFailed, stage1Task.Status)
+	assert.Equal(t, entity.StageStatusFailed, stage1.Status)
 
-	stage2Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 2)
+	stage2, err := stageRepo.GetByJobAndPhase(context.Background(), 1, 2)
 	require.NoError(t, err)
-	assert.Equal(t, entity.TaskStatusPending, stage2Task.Status)
+	assert.Equal(t, entity.StageStatusPending, stage2.Status)
 }
 
 func TestPipelineRun_ContinueOnExplicitProcessorSkip(t *testing.T) {
@@ -182,7 +182,7 @@ func TestPipelineRun_ContinueOnExplicitProcessorSkip(t *testing.T) {
 		Return(nil, nil)
 
 	stage2Executed := false
-	taskRepo := newMemoryTaskRepo()
+	stageRepo := newMemoryStageRepo()
 
 	p := NewPipeline(
 		[]*Stage{
@@ -202,7 +202,7 @@ func TestPipelineRun_ContinueOnExplicitProcessorSkip(t *testing.T) {
 		},
 		NewValidator(lemmaRepo, lexemeRepo, testLogger()),
 		nil,
-		taskRepo,
+		stageRepo,
 		&nopSnapshotRepo{},
 		lemmaRepo,
 		lexemeRepo,
@@ -214,11 +214,11 @@ func TestPipelineRun_ContinueOnExplicitProcessorSkip(t *testing.T) {
 	require.NotNil(t, result)
 	assert.True(t, stage2Executed, "explicit skip should not abort subsequent stages")
 
-	stage1Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 1)
+	stage1, err := stageRepo.GetByJobAndPhase(context.Background(), 1, 1)
 	require.NoError(t, err)
-	assert.Equal(t, entity.TaskStatusSkipped, stage1Task.Status)
+	assert.Equal(t, entity.StageStatusSkipped, stage1.Status)
 
-	stage2Task, err := taskRepo.GetByJobAndPhase(context.Background(), 1, 2)
+	stage2, err := stageRepo.GetByJobAndPhase(context.Background(), 1, 2)
 	require.NoError(t, err)
-	assert.Equal(t, entity.TaskStatusSkipped, stage2Task.Status)
+	assert.Equal(t, entity.StageStatusSkipped, stage2.Status)
 }

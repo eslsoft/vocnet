@@ -157,7 +157,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 	lemmaRepo := repository.NewLemmaRepository(entClient)
 	lexemeRepo := repository.NewLexemeRepository(entClient)
 	evidenceRepo := repository.NewEvidenceRepository(entClient)
-	taskRepo := repository.NewPipelineTaskRepository(entClient)
+	stageRepo := repository.NewPipelineStageRepository(entClient)
 	relationRepo := repository.NewSemanticRelationRepository(entClient)
 	snapshotRepo := repository.NewWordSnapshotRepository(entClient)
 	jobRepo := repository.NewPipelineJobRepository(entClient)
@@ -246,7 +246,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 		),
 	}
 
-	p := pipeline.NewPipeline(stages, validator, persistence, taskRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
+	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
 
 	// Configure worker pool
 	workerCount := cfg.Pipeline.WorkerCount

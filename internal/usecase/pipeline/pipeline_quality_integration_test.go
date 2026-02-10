@@ -101,7 +101,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	evidenceRepo := repo.NewEvidenceRepository(entClient)
 	relationRepo := repo.NewSemanticRelationRepository(entClient)
 	snapshotRepo := repo.NewWordSnapshotRepository(entClient)
-	taskRepo := repo.NewPipelineTaskRepository(entClient)
+	stageRepo := repo.NewPipelineStageRepository(entClient)
 	jobRepo := repo.NewPipelineJobRepository(entClient)
 
 	aggregator := NewDataAggregator()
@@ -132,7 +132,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 		),
 	}
 
-	p := NewPipeline(stages, validator, persistence, taskRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
+	p := NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
 	return &qualityHarness{pipeline: p, jobRepo: jobRepo}
 }
 
