@@ -49,22 +49,6 @@ func toPBPipelineStage(stage *entity.PipelineTask) *pipelinev1.PipelineStage {
 	}
 }
 
-func toPBLemma(lemma *entity.Lemma, snapshot *entity.WordSnapshot) *dictv1.Lemma {
-	if lemma == nil {
-		return nil
-	}
-	out := &dictv1.Lemma{
-		Id:            lemma.ID,
-		Surface:       lemma.Surface,
-		Normalized:    lemma.Normalized,
-		Level:         toPBLemmaLevel(lemma.Level),
-		CreatedAt:     timestamppb.New(lemma.CreatedAt),
-		UpdatedAt:     timestamppb.New(lemma.UpdatedAt),
-		LatestSnapshot: toPBSnapshot(snapshot),
-	}
-	return out
-}
-
 func toPBLemmaFromSnapshot(snapshot *entity.WordSnapshot) *dictv1.Lemma {
 	if snapshot == nil {
 		return nil
@@ -266,26 +250,5 @@ func toPBStatusFromTask(s entity.TaskStatus) pipelinev1.PipelineStatus {
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_SKIPPED
 	default:
 		return pipelinev1.PipelineStatus_PIPELINE_STATUS_UNSPECIFIED
-	}
-}
-
-func toPBLemmaLevel(level string) dictv1.LemmaLevel {
-	switch strings.ToUpper(strings.TrimSpace(level)) {
-	case "":
-		return dictv1.LemmaLevel_LEMMA_LEVEL_UNSPECIFIED
-	case "A1":
-		return dictv1.LemmaLevel_LEMMA_LEVEL_A1
-	case "A2":
-		return dictv1.LemmaLevel_LEMMA_LEVEL_A2
-	case "B1":
-		return dictv1.LemmaLevel_LEMMA_LEVEL_B1
-	case "B2":
-		return dictv1.LemmaLevel_LEMMA_LEVEL_B2
-	case "C1":
-		return dictv1.LemmaLevel_LEMMA_LEVEL_C1
-	case "C2":
-		return dictv1.LemmaLevel_LEMMA_LEVEL_C2
-	default:
-		return dictv1.LemmaLevel_LEMMA_LEVEL_UNSPECIFIED
 	}
 }
