@@ -55,12 +55,22 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 	require.NotNil(t, res)
 	require.NotNil(t, res.LemmaSnapshot)
 	require.NotEmpty(t, res.LemmaSnapshot.Payload.Lexemes)
+	require.NotEmpty(t, res.LemmaSnapshot.Payload.Forms)
 
 	lex := res.LemmaSnapshot.Payload.Lexemes[0]
-	require.NotEmpty(t, lex.Forms)
-	require.Equal(t, "favorite", lex.Forms[0].Surface)
-	require.NotEmpty(t, lex.Forms[0].Phonetics)
-	require.Equal(t, "en-US", lex.Forms[0].Phonetics[0].Dialect)
+	require.Equal(t, "L5897", lex.ExternalID)
+	require.Equal(t, string(entity.PartOfSpeechAdjective), lex.POS)
+
+	var found *entity.LemmaSnapshotForm
+	for i := range res.LemmaSnapshot.Payload.Forms {
+		if res.LemmaSnapshot.Payload.Forms[i].Surface == "favorite" {
+			found = &res.LemmaSnapshot.Payload.Forms[i]
+			break
+		}
+	}
+	require.NotNil(t, found)
+	require.NotEmpty(t, found.Phonetics)
+	require.Equal(t, "en-US", found.Phonetics[0].Dialect)
 
 	// Quality.Overall should be calculated from the fully assembled snapshot data.
 	require.Greater(t, res.LemmaSnapshot.Quality.Completeness, 0.0)

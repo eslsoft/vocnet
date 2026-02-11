@@ -49,8 +49,6 @@ func (c *QualityScoreCalculator) calculateCompleteness(data entity.LemmaSnapshot
 	lexemeCount := float64(len(data.Lexemes))
 	validPOS := 0
 	withSenses := 0
-	withForms := 0
-	withPhonetics := 0
 
 	for _, lex := range data.Lexemes {
 		if isValidPOS(lex.POS) {
@@ -59,25 +57,23 @@ func (c *QualityScoreCalculator) calculateCompleteness(data entity.LemmaSnapshot
 		if len(lex.Senses) > 0 {
 			withSenses++
 		}
-		if len(lex.Forms) > 0 {
-			withForms++
-		}
-		hasPhonetics := false
-		for _, form := range lex.Forms {
-			if len(form.Phonetics) > 0 {
-				hasPhonetics = true
-				break
-			}
-		}
-		if hasPhonetics {
+	}
+
+	formCount := len(data.Forms)
+	withPhonetics := 0
+	for _, form := range data.Forms {
+		if len(form.Phonetics) > 0 {
 			withPhonetics++
 		}
 	}
 
 	posCoverage := float64(validPOS) / lexemeCount
 	senseCoverage := float64(withSenses) / lexemeCount
-	formCoverage := float64(withForms) / lexemeCount
-	phoneticCoverage := float64(withPhonetics) / lexemeCount
+	formCoverage := clampUnit(float64(formCount) / lexemeCount)
+	phoneticCoverage := 0.0
+	if formCount > 0 {
+		phoneticCoverage = float64(withPhonetics) / float64(formCount)
+	}
 
 	// Relation integrity is part of structural completeness:
 	// lots of unresolved/unmapped/out-of-range edges should not look "complete".

@@ -53,10 +53,14 @@ func toPBLemmaFromSnapshot(snapshot *entity.LemmaSnapshot) *dictv1.Lemma {
 		return nil
 	}
 	lexemes := make([]*dictv1.Lexeme, 0, len(snapshot.Payload.Lexemes))
-	forms := make([]*dictv1.LemmaForm, 0)
+	forms := make([]*dictv1.LemmaForm, 0, len(snapshot.Payload.Forms))
 	for _, lexeme := range snapshot.Payload.Lexemes {
 		lexemes = append(lexemes, toPBLexeme(lexeme))
-		forms = append(forms, toPBLexemeForms(lexeme)...)
+	}
+	for _, form := range snapshot.Payload.Forms {
+		pbForm := toPBLexemeForm(form)
+		pbForm.Phonetics = toPBPhonetics(form.Phonetics)
+		forms = append(forms, pbForm)
 	}
 
 	relations := make([]*dictv1.SemanticRelation, 0, len(snapshot.Payload.Relations))
@@ -153,17 +157,6 @@ func toPBLexemeForm(form entity.LemmaSnapshotForm) *dictv1.LemmaForm {
 		FormType:  form.FormType,
 		Irregular: form.IsIrregular,
 	}
-}
-
-func toPBLexemeForms(lexeme entity.LemmaSnapshotLexeme) []*dictv1.LemmaForm {
-	forms := make([]*dictv1.LemmaForm, 0, len(lexeme.Forms))
-	for _, form := range lexeme.Forms {
-		pbForm := toPBLexemeForm(form)
-		pbForm.Phonetics = toPBPhonetics(form.Phonetics)
-		forms = append(forms, pbForm)
-	}
-
-	return forms
 }
 
 func toPBPhonetics(phonetics []entity.Phonetic) []*dictv1.Phonetic {

@@ -24,11 +24,11 @@ func TestQualityScoreCalculator_PenalizesUnresolvedDenseGraph(t *testing.T) {
 		Lexemes: []entity.LemmaSnapshotLexeme{{
 			POS:    "noun",
 			Senses: []entity.LemmaSnapshotSense{{Language: "en", Gloss: "x"}},
-			Forms: []entity.LemmaSnapshotForm{{
-				Surface:   "x",
-				FormType:  "LEMMA",
-				Phonetics: []entity.Phonetic{{IPA: "/x/", Dialect: "en-US"}},
-			}},
+		}},
+		Forms: []entity.LemmaSnapshotForm{{
+			Surface:   "x",
+			FormType:  "LEMMA",
+			Phonetics: []entity.Phonetic{{IPA: "/x/", Dialect: "en-US"}},
 		}},
 		Relations: rels,
 	}
@@ -68,21 +68,15 @@ func TestQualityScoreCalculator_RewardsResolvedMappedGraph(t *testing.T) {
 			{
 				POS:    "noun",
 				Senses: []entity.LemmaSnapshotSense{{Language: "en", Gloss: "a"}},
-				Forms: []entity.LemmaSnapshotForm{{
-					Surface:   "a",
-					FormType:  "LEMMA",
-					Phonetics: []entity.Phonetic{{IPA: "/a/", Dialect: "en-US"}},
-				}},
 			},
 			{
 				POS:    "verb",
 				Senses: []entity.LemmaSnapshotSense{{Language: "en", Gloss: "b"}},
-				Forms: []entity.LemmaSnapshotForm{{
-					Surface:   "b",
-					FormType:  "LEMMA",
-					Phonetics: []entity.Phonetic{{IPA: "/b/", Dialect: "en-US"}},
-				}},
 			},
+		},
+		Forms: []entity.LemmaSnapshotForm{
+			{Surface: "a", FormType: "LEMMA", Phonetics: []entity.Phonetic{{IPA: "/a/", Dialect: "en-US"}}},
+			{Surface: "b", FormType: "LEMMA", Phonetics: []entity.Phonetic{{IPA: "/b/", Dialect: "en-US"}}},
 		},
 		Relations: rels,
 	}

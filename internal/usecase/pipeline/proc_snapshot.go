@@ -38,8 +38,6 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 			})
 		}
 
-		lemmaForms := formsForLexeme(pctx, lex.ExternalID)
-		snapshotForms := toLemmaSnapshotForms(lemmaForms)
 		language := pctx.Language.Code()
 		if lex.Language != "" {
 			language = lex.Language.Code()
@@ -48,10 +46,8 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 		snapshotLexemes = append(snapshotLexemes, entity.LemmaSnapshotLexeme{
 			ExternalID: lex.ExternalID,
 			Language:   language,
-			EntryType:  string(lex.EntryType),
 			POS:        string(lex.PartOfSpeech),
 			Senses:     senses,
-			Forms:      snapshotForms,
 			Categories: append([]string{}, lex.Categories...),
 		})
 	}
@@ -75,8 +71,11 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 		frequencies = append([]entity.Frequency{}, pctx.Lemma.Frequencies...)
 	}
 
+	snapshotForms := collectSnapshotForms(pctx)
+
 	snapshotData := entity.LemmaSnapshotData{
 		Lexemes:     snapshotLexemes,
+		Forms:       snapshotForms,
 		Frequencies: frequencies,
 		Relations:   snapshotRelations,
 	}
@@ -123,8 +122,8 @@ func summarizeSnapshotData(data entity.LemmaSnapshotData) (int32, int32, int32, 
 
 	for _, lex := range data.Lexemes {
 		senseCount += int32(len(lex.Senses))
-		formCount += int32(len(lex.Forms))
 	}
+	formCount = int32(len(data.Forms))
 	for _, rel := range data.Relations {
 		provider := strings.ToLower(strings.TrimSpace(rel.Provider))
 		if provider != "" {
@@ -143,16 +142,17 @@ func extractExampleTexts(examples []entity.SenseExample) []string {
 	return texts
 }
 
-func formsForLexeme(pctx *PipelineContext, externalID string) []*entity.LemmaForm {
+func collectSnapshotForms(pctx *PipelineContext) []entity.LemmaSnapshotForm {
 	if pctx == nil {
 		return nil
 	}
-	if externalID != "" && pctx.FormsByLexeme != nil {
-		if forms := pctx.FormsByLexeme[externalID]; len(forms) > 0 {
-			return forms
-		}
+
+	var merged []*entity.LemmaForm
+	merged = append(merged, pctx.Forms...)
+	for _, forms := range pctx.FormsByLexeme {
+		merged = append(merged, forms...)
 	}
-	return pctx.Forms
+	return toLemmaSnapshotForms(merged)
 }
 
 func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm {

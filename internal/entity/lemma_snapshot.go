@@ -32,10 +32,8 @@ type LemmaSnapshotForm struct {
 type LemmaSnapshotLexeme struct {
 	ExternalID string               `json:"external_id,omitempty"`
 	Language   string               `json:"language,omitempty"`
-	EntryType  string               `json:"entry_type,omitempty"`
 	POS        string               `json:"pos"`
 	Senses     []LemmaSnapshotSense `json:"senses,omitempty"`
-	Forms      []LemmaSnapshotForm  `json:"forms,omitempty"`
 	Categories []string             `json:"categories,omitempty"`
 }
 
@@ -53,6 +51,7 @@ type LemmaSnapshotRelation struct {
 // LemmaSnapshotData is the self-contained materialized snapshot payload stored as JSON.
 type LemmaSnapshotData struct {
 	Lexemes     []LemmaSnapshotLexeme   `json:"lexemes,omitempty"`
+	Forms       []LemmaSnapshotForm     `json:"forms,omitempty"`
 	Frequencies []Frequency             `json:"frequencies,omitempty"`
 	Relations   []LemmaSnapshotRelation `json:"relations,omitempty"`
 }
