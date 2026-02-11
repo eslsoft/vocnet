@@ -91,10 +91,11 @@ type Lemma struct {
 	Level         LemmaLevel             `protobuf:"varint,4,opt,name=level,proto3,enum=dict.v1.LemmaLevel" json:"level,omitempty"`
 	Forms         []*LemmaForm           `protobuf:"bytes,7,rep,name=forms,proto3" json:"forms,omitempty"`
 	Lexemes       []*Lexeme              `protobuf:"bytes,8,rep,name=lexemes,proto3" json:"lexemes,omitempty"`
-	Relations     []*SemanticRelation    `protobuf:"bytes,9,rep,name=relations,proto3" json:"relations,omitempty"`
-	Phrases       []*Phrase              `protobuf:"bytes,10,rep,name=phrases,proto3" json:"phrases,omitempty"`
-	Etymology     *Etymology             `protobuf:"bytes,11,opt,name=etymology,proto3" json:"etymology,omitempty"`
-	Qscore        *QualityScore          `protobuf:"bytes,12,opt,name=qscore,proto3" json:"qscore,omitempty"`
+	Frequencies   []*Frequency           `protobuf:"bytes,9,rep,name=frequencies,proto3" json:"frequencies,omitempty"`
+	Relations     []*SemanticRelation    `protobuf:"bytes,10,rep,name=relations,proto3" json:"relations,omitempty"`
+	Phrases       []*Phrase              `protobuf:"bytes,11,rep,name=phrases,proto3" json:"phrases,omitempty"`
+	Etymology     *Etymology             `protobuf:"bytes,12,opt,name=etymology,proto3" json:"etymology,omitempty"`
+	Qscore        *QualityScore          `protobuf:"bytes,13,opt,name=qscore,proto3" json:"qscore,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -169,6 +170,13 @@ func (x *Lemma) GetForms() []*LemmaForm {
 func (x *Lemma) GetLexemes() []*Lexeme {
 	if x != nil {
 		return x.Lexemes
+	}
+	return nil
+}
+
+func (x *Lemma) GetFrequencies() []*Frequency {
+	if x != nil {
+		return x.Frequencies
 	}
 	return nil
 }
@@ -470,11 +478,64 @@ func (x *QualityScore) GetValidity() float64 {
 	return 0
 }
 
+// Frequency represents the frequency of a lemma in different corpora, used for usage-based ranking and filtering.
+type Frequency struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Corpus        string                 `protobuf:"bytes,1,opt,name=corpus,proto3" json:"corpus,omitempty"` // Corpus/source name
+	Count         int64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`  // Frequency count in that corpus
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Frequency) Reset() {
+	*x = Frequency{}
+	mi := &file_dict_v1_lemma_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Frequency) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Frequency) ProtoMessage() {}
+
+func (x *Frequency) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_lemma_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Frequency.ProtoReflect.Descriptor instead.
+func (*Frequency) Descriptor() ([]byte, []int) {
+	return file_dict_v1_lemma_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Frequency) GetCorpus() string {
+	if x != nil {
+		return x.Corpus
+	}
+	return ""
+}
+
+func (x *Frequency) GetCount() int64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
 var File_dict_v1_lemma_proto protoreflect.FileDescriptor
 
 const file_dict_v1_lemma_proto_rawDesc = "" +
 	"\n" +
-	"\x13dict/v1/lemma.proto\x12\adict.v1\x1a\x19dict/v1/linguistics.proto\x1a\x14dict/v1/phrase.proto\x1a\x12dict/v1/word.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8c\x04\n" +
+	"\x13dict/v1/lemma.proto\x12\adict.v1\x1a\x19dict/v1/linguistics.proto\x1a\x14dict/v1/phrase.proto\x1a\x12dict/v1/word.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc2\x04\n" +
 	"\x05Lemma\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x18\n" +
 	"\asurface\x18\x02 \x01(\tR\asurface\x12\x1e\n" +
@@ -483,12 +544,13 @@ const file_dict_v1_lemma_proto_rawDesc = "" +
 	"normalized\x12)\n" +
 	"\x05level\x18\x04 \x01(\x0e2\x13.dict.v1.LemmaLevelR\x05level\x12(\n" +
 	"\x05forms\x18\a \x03(\v2\x12.dict.v1.LemmaFormR\x05forms\x12)\n" +
-	"\alexemes\x18\b \x03(\v2\x0f.dict.v1.LexemeR\alexemes\x127\n" +
-	"\trelations\x18\t \x03(\v2\x19.dict.v1.SemanticRelationR\trelations\x12)\n" +
-	"\aphrases\x18\n" +
-	" \x03(\v2\x0f.dict.v1.PhraseR\aphrases\x120\n" +
-	"\tetymology\x18\v \x01(\v2\x12.dict.v1.EtymologyR\tetymology\x12-\n" +
-	"\x06qscore\x18\f \x01(\v2\x15.dict.v1.QualityScoreR\x06qscore\x129\n" +
+	"\alexemes\x18\b \x03(\v2\x0f.dict.v1.LexemeR\alexemes\x124\n" +
+	"\vfrequencies\x18\t \x03(\v2\x12.dict.v1.FrequencyR\vfrequencies\x127\n" +
+	"\trelations\x18\n" +
+	" \x03(\v2\x19.dict.v1.SemanticRelationR\trelations\x12)\n" +
+	"\aphrases\x18\v \x03(\v2\x0f.dict.v1.PhraseR\aphrases\x120\n" +
+	"\tetymology\x18\f \x01(\v2\x12.dict.v1.EtymologyR\tetymology\x12-\n" +
+	"\x06qscore\x18\r \x01(\v2\x15.dict.v1.QualityScoreR\x06qscore\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
@@ -515,7 +577,10 @@ const file_dict_v1_lemma_proto_rawDesc = "" +
 	"\fcompleteness\x18\x02 \x01(\x01R\fcompleteness\x12\x14\n" +
 	"\x05depth\x18\x03 \x01(\x01R\x05depth\x12\x18\n" +
 	"\adensity\x18\x04 \x01(\x01R\adensity\x12\x1a\n" +
-	"\bvalidity\x18\x05 \x01(\x01R\bvalidity*\xa1\x01\n" +
+	"\bvalidity\x18\x05 \x01(\x01R\bvalidity\"9\n" +
+	"\tFrequency\x12\x16\n" +
+	"\x06corpus\x18\x01 \x01(\tR\x06corpus\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x03R\x05count*\xa1\x01\n" +
 	"\n" +
 	"LemmaLevel\x12\x1b\n" +
 	"\x17LEMMA_LEVEL_UNSPECIFIED\x10\x00\x12\x12\n" +
@@ -541,40 +606,42 @@ func file_dict_v1_lemma_proto_rawDescGZIP() []byte {
 }
 
 var file_dict_v1_lemma_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_dict_v1_lemma_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_dict_v1_lemma_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_dict_v1_lemma_proto_goTypes = []any{
 	(LemmaLevel)(0),               // 0: dict.v1.LemmaLevel
 	(*Lemma)(nil),                 // 1: dict.v1.Lemma
 	(*LemmaForm)(nil),             // 2: dict.v1.LemmaForm
 	(*LemmaSnapshot)(nil),         // 3: dict.v1.LemmaSnapshot
 	(*QualityScore)(nil),          // 4: dict.v1.QualityScore
-	(*Lexeme)(nil),                // 5: dict.v1.Lexeme
-	(*SemanticRelation)(nil),      // 6: dict.v1.SemanticRelation
-	(*Phrase)(nil),                // 7: dict.v1.Phrase
-	(*Etymology)(nil),             // 8: dict.v1.Etymology
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
-	(*Phonetic)(nil),              // 10: dict.v1.Phonetic
+	(*Frequency)(nil),             // 5: dict.v1.Frequency
+	(*Lexeme)(nil),                // 6: dict.v1.Lexeme
+	(*SemanticRelation)(nil),      // 7: dict.v1.SemanticRelation
+	(*Phrase)(nil),                // 8: dict.v1.Phrase
+	(*Etymology)(nil),             // 9: dict.v1.Etymology
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(*Phonetic)(nil),              // 11: dict.v1.Phonetic
 }
 var file_dict_v1_lemma_proto_depIdxs = []int32{
 	0,  // 0: dict.v1.Lemma.level:type_name -> dict.v1.LemmaLevel
 	2,  // 1: dict.v1.Lemma.forms:type_name -> dict.v1.LemmaForm
-	5,  // 2: dict.v1.Lemma.lexemes:type_name -> dict.v1.Lexeme
-	6,  // 3: dict.v1.Lemma.relations:type_name -> dict.v1.SemanticRelation
-	7,  // 4: dict.v1.Lemma.phrases:type_name -> dict.v1.Phrase
-	8,  // 5: dict.v1.Lemma.etymology:type_name -> dict.v1.Etymology
-	4,  // 6: dict.v1.Lemma.qscore:type_name -> dict.v1.QualityScore
-	9,  // 7: dict.v1.Lemma.created_at:type_name -> google.protobuf.Timestamp
-	9,  // 8: dict.v1.Lemma.updated_at:type_name -> google.protobuf.Timestamp
-	10, // 9: dict.v1.LemmaForm.phonetics:type_name -> dict.v1.Phonetic
-	1,  // 10: dict.v1.LemmaSnapshot.lemma:type_name -> dict.v1.Lemma
-	9,  // 11: dict.v1.LemmaSnapshot.synthesized_at:type_name -> google.protobuf.Timestamp
-	9,  // 12: dict.v1.LemmaSnapshot.created_at:type_name -> google.protobuf.Timestamp
-	9,  // 13: dict.v1.LemmaSnapshot.updated_at:type_name -> google.protobuf.Timestamp
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	6,  // 2: dict.v1.Lemma.lexemes:type_name -> dict.v1.Lexeme
+	5,  // 3: dict.v1.Lemma.frequencies:type_name -> dict.v1.Frequency
+	7,  // 4: dict.v1.Lemma.relations:type_name -> dict.v1.SemanticRelation
+	8,  // 5: dict.v1.Lemma.phrases:type_name -> dict.v1.Phrase
+	9,  // 6: dict.v1.Lemma.etymology:type_name -> dict.v1.Etymology
+	4,  // 7: dict.v1.Lemma.qscore:type_name -> dict.v1.QualityScore
+	10, // 8: dict.v1.Lemma.created_at:type_name -> google.protobuf.Timestamp
+	10, // 9: dict.v1.Lemma.updated_at:type_name -> google.protobuf.Timestamp
+	11, // 10: dict.v1.LemmaForm.phonetics:type_name -> dict.v1.Phonetic
+	1,  // 11: dict.v1.LemmaSnapshot.lemma:type_name -> dict.v1.Lemma
+	10, // 12: dict.v1.LemmaSnapshot.synthesized_at:type_name -> google.protobuf.Timestamp
+	10, // 13: dict.v1.LemmaSnapshot.created_at:type_name -> google.protobuf.Timestamp
+	10, // 14: dict.v1.LemmaSnapshot.updated_at:type_name -> google.protobuf.Timestamp
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_dict_v1_lemma_proto_init() }
@@ -591,7 +658,7 @@ func file_dict_v1_lemma_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_lemma_proto_rawDesc), len(file_dict_v1_lemma_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

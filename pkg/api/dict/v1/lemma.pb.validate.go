@@ -132,6 +132,40 @@ func (m *Lemma) validate(all bool) error {
 
 	}
 
+	for idx, item := range m.GetFrequencies() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LemmaValidationError{
+						field:  fmt.Sprintf("Frequencies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LemmaValidationError{
+						field:  fmt.Sprintf("Frequencies[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LemmaValidationError{
+					field:  fmt.Sprintf("Frequencies[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	for idx, item := range m.GetRelations() {
 		_, _ = idx, item
 
@@ -866,3 +900,106 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = QualityScoreValidationError{}
+
+// Validate checks the field values on Frequency with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *Frequency) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Frequency with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in FrequencyMultiError, or nil
+// if none found.
+func (m *Frequency) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Frequency) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Corpus
+
+	// no validation rules for Count
+
+	if len(errors) > 0 {
+		return FrequencyMultiError(errors)
+	}
+
+	return nil
+}
+
+// FrequencyMultiError is an error wrapping multiple validation errors returned
+// by Frequency.ValidateAll() if the designated constraints aren't met.
+type FrequencyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FrequencyMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FrequencyMultiError) AllErrors() []error { return m }
+
+// FrequencyValidationError is the validation error returned by
+// Frequency.Validate if the designated constraints aren't met.
+type FrequencyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e FrequencyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e FrequencyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e FrequencyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e FrequencyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e FrequencyValidationError) ErrorName() string { return "FrequencyValidationError" }
+
+// Error satisfies the builtin error interface
+func (e FrequencyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sFrequency.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = FrequencyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = FrequencyValidationError{}

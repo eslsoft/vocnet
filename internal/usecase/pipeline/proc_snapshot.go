@@ -64,9 +64,15 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		})
 	}
 
+	var frequencies []entity.Frequency
+	if pctx.Lemma != nil {
+		frequencies = append([]entity.Frequency{}, pctx.Lemma.Frequencies...)
+	}
+
 	snapshotData := entity.SnapshotData{
-		Lexemes:   snapshotLexemes,
-		Relations: snapshotRelations,
+		Lexemes:     snapshotLexemes,
+		Frequencies: frequencies,
+		Relations:   snapshotRelations,
 	}
 
 	// Calculate quality score

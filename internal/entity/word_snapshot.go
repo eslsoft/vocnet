@@ -49,8 +49,9 @@ type SnapshotRelation struct {
 
 // SnapshotData is the self-contained materialized snapshot stored as JSON.
 type SnapshotData struct {
-	Lexemes   []SnapshotLexeme   `json:"lexemes,omitempty"`
-	Relations []SnapshotRelation `json:"relations,omitempty"`
+	Lexemes     []SnapshotLexeme   `json:"lexemes,omitempty"`
+	Frequencies []Frequency        `json:"frequencies,omitempty"`
+	Relations   []SnapshotRelation `json:"relations,omitempty"`
 }
 
 // WordSnapshot is the materialized, self-contained view of a word's knowledge.

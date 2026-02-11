@@ -66,12 +66,13 @@ func toPBLemmaFromSnapshot(snapshot *entity.WordSnapshot) *dictv1.Lemma {
 	}
 
 	return &dictv1.Lemma{
-		Id:         snapshot.LemmaID,
-		Surface:    snapshot.Term,
-		Normalized: strings.ToLower(snapshot.Term),
-		Forms:      forms,
-		Lexemes:    lexemes,
-		Relations:  relations,
+		Id:          snapshot.LemmaID,
+		Surface:     snapshot.Term,
+		Normalized:  strings.ToLower(snapshot.Term),
+		Forms:       forms,
+		Lexemes:     lexemes,
+		Frequencies: toPBFrequencies(snapshot.Data.Frequencies),
+		Relations:   relations,
 		Qscore: &dictv1.QualityScore{
 			Overall:      snapshot.QScore,
 			Completeness: snapshot.QScoreCompleteness,
@@ -104,6 +105,17 @@ func toPBLemmaSnapshot(snapshot *entity.WordSnapshot) *dictv1.LemmaSnapshot {
 		CreatedAt:     timestamppb.New(snapshot.CreatedAt),
 		UpdatedAt:     timestamppb.New(snapshot.UpdatedAt),
 	}
+}
+
+func toPBFrequencies(frequencies []entity.Frequency) []*dictv1.Frequency {
+	out := make([]*dictv1.Frequency, 0, len(frequencies))
+	for _, frequency := range frequencies {
+		out = append(out, &dictv1.Frequency{
+			Corpus: frequency.Corpus,
+			Count:  frequency.Count,
+		})
+	}
+	return out
 }
 
 func toPBLexeme(lexeme entity.SnapshotLexeme) *dictv1.Lexeme {
