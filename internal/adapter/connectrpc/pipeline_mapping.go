@@ -132,6 +132,7 @@ func toPBLexeme(lexeme entity.LemmaSnapshotLexeme) *dictv1.Lexeme {
 	}
 
 	return &dictv1.Lexeme{
+		Id:           lexeme.ExternalID,
 		Pos:          lexeme.POS,
 		PrimaryGloss: primaryGloss,
 		Senses:       senses,
@@ -156,21 +157,24 @@ func toPBLexemeForm(form entity.LemmaSnapshotForm) *dictv1.LemmaForm {
 
 func toPBLexemeForms(lexeme entity.LemmaSnapshotLexeme) []*dictv1.LemmaForm {
 	forms := make([]*dictv1.LemmaForm, 0, len(lexeme.Forms))
-	phonetics := make([]*dictv1.Phonetic, 0, len(lexeme.Phonetics))
-	for _, phonetic := range lexeme.Phonetics {
-		phonetics = append(phonetics, &dictv1.Phonetic{
-			Ipa:     phonetic.IPA,
-			Dialect: phonetic.Dialect,
-		})
-	}
-
 	for _, form := range lexeme.Forms {
 		pbForm := toPBLexemeForm(form)
-		pbForm.Phonetics = phonetics
+		pbForm.Phonetics = toPBPhonetics(form.Phonetics)
 		forms = append(forms, pbForm)
 	}
 
 	return forms
+}
+
+func toPBPhonetics(phonetics []entity.Phonetic) []*dictv1.Phonetic {
+	out := make([]*dictv1.Phonetic, 0, len(phonetics))
+	for _, phonetic := range phonetics {
+		out = append(out, &dictv1.Phonetic{
+			Ipa:     phonetic.IPA,
+			Dialect: phonetic.Dialect,
+		})
+	}
+	return out
 }
 
 func toPBSemanticRelation(relation entity.LemmaSnapshotRelation) *dictv1.SemanticRelation {

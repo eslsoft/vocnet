@@ -22,17 +22,21 @@ type LemmaSnapshotSense struct {
 
 // LemmaSnapshotForm represents an inflected form within a snapshot.
 type LemmaSnapshotForm struct {
-	Surface     string `json:"surface"`
-	FormType    string `json:"form_type"`
-	IsIrregular bool   `json:"is_irregular,omitempty"`
+	Surface     string     `json:"surface"`
+	FormType    string     `json:"form_type"`
+	IsIrregular bool       `json:"is_irregular,omitempty"`
+	Phonetics   []Phonetic `json:"phonetics,omitempty"`
 }
 
 // LemmaSnapshotLexeme represents a POS-grouped lexeme entry within a snapshot.
 type LemmaSnapshotLexeme struct {
-	POS       string               `json:"pos"`
-	Senses    []LemmaSnapshotSense `json:"senses,omitempty"`
-	Forms     []LemmaSnapshotForm  `json:"forms,omitempty"`
-	Phonetics []Phonetic           `json:"phonetics,omitempty"`
+	ExternalID string               `json:"external_id,omitempty"`
+	Language   string               `json:"language,omitempty"`
+	EntryType  string               `json:"entry_type,omitempty"`
+	POS        string               `json:"pos"`
+	Senses     []LemmaSnapshotSense `json:"senses,omitempty"`
+	Forms      []LemmaSnapshotForm  `json:"forms,omitempty"`
+	Categories []string             `json:"categories,omitempty"`
 }
 
 // LemmaSnapshotRelation represents a semantic relation within a snapshot.

@@ -40,13 +40,19 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 
 		lemmaForms := formsForLexeme(pctx, lex.ExternalID)
 		snapshotForms := toLemmaSnapshotForms(lemmaForms)
-		snapshotPhonetics := collectPhonetics(lemmaForms)
+		language := pctx.Language.Code()
+		if lex.Language != "" {
+			language = lex.Language.Code()
+		}
 
 		snapshotLexemes = append(snapshotLexemes, entity.LemmaSnapshotLexeme{
-			POS:       string(lex.PartOfSpeech),
-			Senses:    senses,
-			Forms:     snapshotForms,
-			Phonetics: snapshotPhonetics,
+			ExternalID: lex.ExternalID,
+			Language:   language,
+			EntryType:  string(lex.EntryType),
+			POS:        string(lex.PartOfSpeech),
+			Senses:     senses,
+			Forms:      snapshotForms,
+			Categories: append([]string{}, lex.Categories...),
 		})
 	}
 
@@ -169,33 +175,29 @@ func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm 
 			Surface:     surface,
 			FormType:    string(f.FormType),
 			IsIrregular: f.IsIrregular,
+			Phonetics:   normalizeFormPhonetics(f.Phonetics),
 		})
 	}
 	return out
 }
 
-func collectPhonetics(forms []*entity.LemmaForm) []entity.Phonetic {
+func normalizeFormPhonetics(phonetics []entity.Phonetic) []entity.Phonetic {
 	var out []entity.Phonetic
 	seen := map[string]struct{}{}
-	for _, f := range forms {
-		if f == nil {
+	for _, ph := range phonetics {
+		ipa := strings.TrimSpace(ph.IPA)
+		if ipa == "" {
 			continue
 		}
-		for _, ph := range f.Phonetics {
-			ipa := strings.TrimSpace(ph.IPA)
-			if ipa == "" {
-				continue
-			}
-			key := ipa + "|" + strings.TrimSpace(ph.Dialect)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, entity.Phonetic{
-				IPA:     ipa,
-				Dialect: strings.TrimSpace(ph.Dialect),
-			})
+		key := ipa + "|" + strings.TrimSpace(ph.Dialect)
+		if _, ok := seen[key]; ok {
+			continue
 		}
+		seen[key] = struct{}{}
+		out = append(out, entity.Phonetic{
+			IPA:     ipa,
+			Dialect: strings.TrimSpace(ph.Dialect),
+		})
 	}
 	return out
 }

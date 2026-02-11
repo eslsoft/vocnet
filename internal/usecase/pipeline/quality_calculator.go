@@ -62,7 +62,14 @@ func (c *QualityScoreCalculator) calculateCompleteness(data entity.LemmaSnapshot
 		if len(lex.Forms) > 0 {
 			withForms++
 		}
-		if len(lex.Phonetics) > 0 {
+		hasPhonetics := false
+		for _, form := range lex.Forms {
+			if len(form.Phonetics) > 0 {
+				hasPhonetics = true
+				break
+			}
+		}
+		if hasPhonetics {
 			withPhonetics++
 		}
 	}
