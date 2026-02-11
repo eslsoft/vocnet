@@ -10,10 +10,10 @@ import (
 // LemmaQueryService provides read-only lemma queries for pipeline-related APIs.
 type LemmaQueryService struct {
 	lemmaRepo    repository.LemmaRepository
-	snapshotRepo repository.WordSnapshotRepository
+	snapshotRepo repository.LemmaSnapshotRepository
 }
 
-func NewLemmaQueryService(lemmaRepo repository.LemmaRepository, snapshotRepo repository.WordSnapshotRepository) *LemmaQueryService {
+func NewLemmaQueryService(lemmaRepo repository.LemmaRepository, snapshotRepo repository.LemmaSnapshotRepository) *LemmaQueryService {
 	return &LemmaQueryService{lemmaRepo: lemmaRepo, snapshotRepo: snapshotRepo}
 }
 
@@ -29,7 +29,7 @@ type ListSnapshotsQuery struct {
 	PageSize int32
 }
 
-func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*entity.WordSnapshot, int64, error) {
+func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQuery) ([]*entity.LemmaSnapshot, int64, error) {
 	if query == nil {
 		query = &ListLemmasQuery{}
 	}
@@ -42,7 +42,7 @@ func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQue
 	return snapshots, total, nil
 }
 
-func (s *LemmaQueryService) ListSnapshots(ctx context.Context, query *ListSnapshotsQuery) ([]*entity.WordSnapshot, int64, error) {
+func (s *LemmaQueryService) ListSnapshots(ctx context.Context, query *ListSnapshotsQuery) ([]*entity.LemmaSnapshot, int64, error) {
 	if query == nil || query.LemmaID <= 0 {
 		return nil, 0, entity.ErrInvalidInput
 	}

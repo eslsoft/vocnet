@@ -41,7 +41,7 @@ var repositorySet = wire.NewSet(
 	repository.NewEvidenceRepository,
 	repository.NewPipelineStageRepository,
 	repository.NewSemanticRelationRepository,
-	repository.NewWordSnapshotRepository,
+	repository.NewLemmaSnapshotRepository,
 	repository.NewPipelineJobRepository,
 )
 

@@ -10,7 +10,7 @@ import (
 )
 
 func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) {
-	p := NewSnapshotProcessor()
+	p := NewLemmaSnapshotProcessor()
 
 	pctx := &PipelineContext{
 		Term:     "favourite",
@@ -53,15 +53,15 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 	res, err := p.Process(context.Background(), pctx)
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	require.NotNil(t, res.Snapshot)
-	require.NotEmpty(t, res.Snapshot.Data.Lexemes)
+	require.NotNil(t, res.LemmaSnapshot)
+	require.NotEmpty(t, res.LemmaSnapshot.Payload.Lexemes)
 
-	lex := res.Snapshot.Data.Lexemes[0]
+	lex := res.LemmaSnapshot.Payload.Lexemes[0]
 	require.NotEmpty(t, lex.Forms)
 	require.Equal(t, "favorite", lex.Forms[0].Surface)
 	require.NotEmpty(t, lex.Phonetics)
 	require.Equal(t, "en-US", lex.Phonetics[0].Dialect)
 
-	// QScore should be calculated from the fully assembled snapshot data.
-	require.Greater(t, res.Snapshot.QScoreCompleteness, 0.0)
+	// Quality.Overall should be calculated from the fully assembled snapshot data.
+	require.Greater(t, res.LemmaSnapshot.Quality.Completeness, 0.0)
 }

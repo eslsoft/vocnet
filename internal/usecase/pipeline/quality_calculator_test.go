@@ -9,9 +9,9 @@ import (
 
 func TestQualityScoreCalculator_PenalizesUnresolvedDenseGraph(t *testing.T) {
 	calc := NewQualityScoreCalculator()
-	rels := make([]entity.SnapshotRelation, 0, 120)
+	rels := make([]entity.LemmaSnapshotRelation, 0, 120)
 	for i := 0; i < 120; i++ {
-		rels = append(rels, entity.SnapshotRelation{
+		rels = append(rels, entity.LemmaSnapshotRelation{
 			RelationType: entity.RelationAssociation,
 			TargetTerm:   "target",
 			Provider:     "conceptnet",
@@ -20,11 +20,11 @@ func TestQualityScoreCalculator_PenalizesUnresolvedDenseGraph(t *testing.T) {
 		})
 	}
 
-	data := entity.SnapshotData{
-		Lexemes: []entity.SnapshotLexeme{{
+	data := entity.LemmaSnapshotData{
+		Lexemes: []entity.LemmaSnapshotLexeme{{
 			POS:       "noun",
-			Senses:    []entity.SnapshotSense{{Language: "en", Gloss: "x"}},
-			Forms:     []entity.SnapshotForm{{Surface: "x", FormType: "LEMMA"}},
+			Senses:    []entity.LemmaSnapshotSense{{Language: "en", Gloss: "x"}},
+			Forms:     []entity.LemmaSnapshotForm{{Surface: "x", FormType: "LEMMA"}},
 			Phonetics: []entity.Phonetic{{IPA: "/x/", Dialect: "en-US"}},
 		}},
 		Relations: rels,
@@ -38,7 +38,7 @@ func TestQualityScoreCalculator_PenalizesUnresolvedDenseGraph(t *testing.T) {
 func TestQualityScoreCalculator_RewardsResolvedMappedGraph(t *testing.T) {
 	calc := NewQualityScoreCalculator()
 
-	rels := []entity.SnapshotRelation{}
+	rels := []entity.LemmaSnapshotRelation{}
 	for i := 0; i < 24; i++ {
 		provider := "conceptnet"
 		relType := entity.RelationAssociation
@@ -50,7 +50,7 @@ func TestQualityScoreCalculator_RewardsResolvedMappedGraph(t *testing.T) {
 				target = "synset:00001740 (entity)"
 			}
 		}
-		rels = append(rels, entity.SnapshotRelation{
+		rels = append(rels, entity.LemmaSnapshotRelation{
 			RelationType:   relType,
 			TargetTerm:     target,
 			Provider:       provider,
@@ -60,18 +60,18 @@ func TestQualityScoreCalculator_RewardsResolvedMappedGraph(t *testing.T) {
 		})
 	}
 
-	data := entity.SnapshotData{
-		Lexemes: []entity.SnapshotLexeme{
+	data := entity.LemmaSnapshotData{
+		Lexemes: []entity.LemmaSnapshotLexeme{
 			{
 				POS:       "noun",
-				Senses:    []entity.SnapshotSense{{Language: "en", Gloss: "a"}},
-				Forms:     []entity.SnapshotForm{{Surface: "a", FormType: "LEMMA"}},
+				Senses:    []entity.LemmaSnapshotSense{{Language: "en", Gloss: "a"}},
+				Forms:     []entity.LemmaSnapshotForm{{Surface: "a", FormType: "LEMMA"}},
 				Phonetics: []entity.Phonetic{{IPA: "/a/", Dialect: "en-US"}},
 			},
 			{
 				POS:       "verb",
-				Senses:    []entity.SnapshotSense{{Language: "en", Gloss: "b"}},
-				Forms:     []entity.SnapshotForm{{Surface: "b", FormType: "LEMMA"}},
+				Senses:    []entity.LemmaSnapshotSense{{Language: "en", Gloss: "b"}},
+				Forms:     []entity.LemmaSnapshotForm{{Surface: "b", FormType: "LEMMA"}},
 				Phonetics: []entity.Phonetic{{IPA: "/b/", Dialect: "en-US"}},
 			},
 		},
@@ -87,10 +87,10 @@ func TestQualityScoreCalculator_RewardsResolvedMappedGraph(t *testing.T) {
 func TestQualityScoreCalculator_PenalizesMissingFormAndPhonetics(t *testing.T) {
 	calc := NewQualityScoreCalculator()
 
-	data := entity.SnapshotData{
-		Lexemes: []entity.SnapshotLexeme{
-			{POS: "noun", Senses: []entity.SnapshotSense{{Language: "en", Gloss: "a"}}},
-			{POS: "verb", Senses: []entity.SnapshotSense{{Language: "en", Gloss: "b"}}},
+	data := entity.LemmaSnapshotData{
+		Lexemes: []entity.LemmaSnapshotLexeme{
+			{POS: "noun", Senses: []entity.LemmaSnapshotSense{{Language: "en", Gloss: "a"}}},
+			{POS: "verb", Senses: []entity.LemmaSnapshotSense{{Language: "en", Gloss: "b"}}},
 		},
 	}
 

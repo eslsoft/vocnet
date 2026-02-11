@@ -46,8 +46,8 @@ func Initialize() (*Container, func(), error) {
 	lexemeRepository := repository.NewLexemeRepository(client)
 	wordUsecase := usecase.NewWordUsecase(lemmaRepository, lexemeRepository)
 	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
-	wordSnapshotRepository := repository.NewWordSnapshotRepository(client)
-	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository, wordSnapshotRepository)
+	lemmaSnapshotRepository := repository.NewLemmaSnapshotRepository(client)
+	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository, lemmaSnapshotRepository)
 	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
 	wordbookRepository := repository.NewWordbookRepository(client)
 	learnedWordRepository := repository.NewLearnedWordRepository(client, wordbookRepository)
@@ -97,7 +97,7 @@ var authSet = wire.NewSet(
 	provideJWTValidator,
 )
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewWordSnapshotRepository, repository.NewPipelineJobRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewLemmaSnapshotRepository, repository.NewPipelineJobRepository)
 
 var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
 

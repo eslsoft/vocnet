@@ -50,7 +50,7 @@ type ProcessResult struct {
 	Forms         []*entity.LemmaForm
 	FormsByLexeme map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
 	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma
-	Snapshot      *entity.WordSnapshot           // only set by SnapshotProcessor
+	LemmaSnapshot *entity.LemmaSnapshot          // only set by LemmaSnapshotProcessor
 }
 
 // PipelineContext carries accumulated state through all pipeline stages.
@@ -65,7 +65,7 @@ type PipelineContext struct {
 	Forms         []*entity.LemmaForm
 	FormsByLexeme map[string][]*entity.LemmaForm
 	Evidence      []*entity.RawEvidence
-	Snapshot      *entity.WordSnapshot
+	LemmaSnapshot *entity.LemmaSnapshot
 }
 
 // Accumulate merges a ProcessResult into the pipeline context.
@@ -95,8 +95,8 @@ func (pc *PipelineContext) Accumulate(r *ProcessResult) {
 		updated.ID = pc.Lemma.ID
 		pc.Lemma = &updated
 	}
-	if r.Snapshot != nil {
-		pc.Snapshot = r.Snapshot
+	if r.LemmaSnapshot != nil {
+		pc.LemmaSnapshot = r.LemmaSnapshot
 	}
 }
 

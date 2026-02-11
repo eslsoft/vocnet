@@ -8,28 +8,28 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 )
 
-// SnapshotProcessor builds the materialized word snapshot and calculates QScore.
+// LemmaSnapshotProcessor builds the materialized lemma snapshot and calculates quality.
 // It reads all data from PipelineContext — no DB queries.
-type SnapshotProcessor struct {
+type LemmaSnapshotProcessor struct {
 	qualityCalculator *QualityScoreCalculator
 }
 
-// NewSnapshotProcessor creates a new SnapshotProcessor.
-func NewSnapshotProcessor() *SnapshotProcessor {
-	return &SnapshotProcessor{
+// NewLemmaSnapshotProcessor creates a new LemmaSnapshotProcessor.
+func NewLemmaSnapshotProcessor() *LemmaSnapshotProcessor {
+	return &LemmaSnapshotProcessor{
 		qualityCalculator: NewQualityScoreCalculator(),
 	}
 }
 
-func (p *SnapshotProcessor) Name() string { return "snapshot" }
+func (p *LemmaSnapshotProcessor) Name() string { return "snapshot" }
 
-func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
-	// Build snapshot lexemes from context
-	snapshotLexemes := make([]entity.SnapshotLexeme, 0, len(pctx.Lexemes))
+func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
+	// Build snapshot lexemes from context.
+	snapshotLexemes := make([]entity.LemmaSnapshotLexeme, 0, len(pctx.Lexemes))
 	for _, lex := range pctx.Lexemes {
-		senses := make([]entity.SnapshotSense, 0, len(lex.Senses))
+		senses := make([]entity.LemmaSnapshotSense, 0, len(lex.Senses))
 		for _, s := range lex.Senses {
-			senses = append(senses, entity.SnapshotSense{
+			senses = append(senses, entity.LemmaSnapshotSense{
 				Language:    s.Language.Code(),
 				Gloss:       s.Gloss,
 				Examples:    extractExampleTexts(s.Examples),
@@ -39,10 +39,10 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		}
 
 		lemmaForms := formsForLexeme(pctx, lex.ExternalID)
-		snapshotForms := toSnapshotForms(lemmaForms)
+		snapshotForms := toLemmaSnapshotForms(lemmaForms)
 		snapshotPhonetics := collectPhonetics(lemmaForms)
 
-		snapshotLexemes = append(snapshotLexemes, entity.SnapshotLexeme{
+		snapshotLexemes = append(snapshotLexemes, entity.LemmaSnapshotLexeme{
 			POS:       string(lex.PartOfSpeech),
 			Senses:    senses,
 			Forms:     snapshotForms,
@@ -50,10 +50,10 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		})
 	}
 
-	// Build snapshot relations from context
-	snapshotRelations := make([]entity.SnapshotRelation, 0, len(pctx.Relations))
+	// Build snapshot relations from context.
+	snapshotRelations := make([]entity.LemmaSnapshotRelation, 0, len(pctx.Relations))
 	for _, rel := range pctx.Relations {
-		snapshotRelations = append(snapshotRelations, entity.SnapshotRelation{
+		snapshotRelations = append(snapshotRelations, entity.LemmaSnapshotRelation{
 			RelationType:   rel.RelationType,
 			TargetTerm:     rel.TargetTerm,
 			TargetRef:      rel.TargetRef,
@@ -69,32 +69,64 @@ func (p *SnapshotProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 		frequencies = append([]entity.Frequency{}, pctx.Lemma.Frequencies...)
 	}
 
-	snapshotData := entity.SnapshotData{
+	snapshotData := entity.LemmaSnapshotData{
 		Lexemes:     snapshotLexemes,
 		Frequencies: frequencies,
 		Relations:   snapshotRelations,
 	}
 
-	// Calculate quality score
-	qscore := p.qualityCalculator.Calculate(snapshotData)
+	quality := p.qualityCalculator.Calculate(snapshotData)
+	lexemeCount, senseCount, formCount, relationCount, providerCount := summarizeSnapshotData(snapshotData)
 
-	snapshot := &entity.WordSnapshot{
-		Term:               pctx.Lemma.Surface,
-		Language:           pctx.Language.Code(),
-		Version:            1,
-		Data:               snapshotData,
-		QScore:             qscore.Overall,
-		QScoreCompleteness: qscore.Completeness,
-		QScoreDepth:        qscore.Depth,
-		QScoreDensity:      qscore.Density,
-		QScoreValidity:     qscore.Validity,
-		SynthesizedAt:      time.Now(),
+	now := time.Now()
+	normalized := ""
+	surface := ""
+	if pctx.Lemma != nil {
+		surface = strings.TrimSpace(pctx.Lemma.Surface)
+		normalized = strings.ToLower(surface)
+	}
+
+	snapshot := &entity.LemmaSnapshot{
+		Surface:       surface,
+		Normalized:    normalized,
+		Language:      pctx.Language.Code(),
+		Version:       1,
+		SchemaVersion: 1,
+		Payload:       snapshotData,
+		Quality:       quality,
+		LexemeCount:   lexemeCount,
+		SenseCount:    senseCount,
+		FormCount:     formCount,
+		RelationCount: relationCount,
+		ProviderCount: providerCount,
+		SynthesizedAt: now,
 	}
 
 	return &ProcessResult{
-		Status:   ProcessStatusExecuted,
-		Snapshot: snapshot,
+		Status:        ProcessStatusExecuted,
+		LemmaSnapshot: snapshot,
 	}, nil
+}
+
+func summarizeSnapshotData(data entity.LemmaSnapshotData) (int32, int32, int32, int32, int32) {
+	lexemeCount := int32(len(data.Lexemes))
+	relationCount := int32(len(data.Relations))
+	senseCount := int32(0)
+	formCount := int32(0)
+	providers := make(map[string]struct{})
+
+	for _, lex := range data.Lexemes {
+		senseCount += int32(len(lex.Senses))
+		formCount += int32(len(lex.Forms))
+	}
+	for _, rel := range data.Relations {
+		provider := strings.ToLower(strings.TrimSpace(rel.Provider))
+		if provider != "" {
+			providers[provider] = struct{}{}
+		}
+	}
+
+	return lexemeCount, senseCount, formCount, relationCount, int32(len(providers))
 }
 
 func extractExampleTexts(examples []entity.SenseExample) []string {
@@ -117,8 +149,8 @@ func formsForLexeme(pctx *PipelineContext, externalID string) []*entity.LemmaFor
 	return pctx.Forms
 }
 
-func toSnapshotForms(forms []*entity.LemmaForm) []entity.SnapshotForm {
-	out := make([]entity.SnapshotForm, 0, len(forms))
+func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm {
+	out := make([]entity.LemmaSnapshotForm, 0, len(forms))
 	seen := make(map[string]struct{}, len(forms))
 	for _, f := range forms {
 		if f == nil {
@@ -133,7 +165,7 @@ func toSnapshotForms(forms []*entity.LemmaForm) []entity.SnapshotForm {
 			continue
 		}
 		seen[key] = struct{}{}
-		out = append(out, entity.SnapshotForm{
+		out = append(out, entity.LemmaSnapshotForm{
 			Surface:     surface,
 			FormType:    string(f.FormType),
 			IsIrregular: f.IsIrregular,

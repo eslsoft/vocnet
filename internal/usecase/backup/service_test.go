@@ -122,7 +122,7 @@ func TestServiceExportTablesFilter(t *testing.T) {
 	}
 }
 
-func seedData(t *testing.T, ctx context.Context, client *entdb.Client) ([]wordSnapshot, []LearnedWordSnapshot) {
+func seedData(t *testing.T, ctx context.Context, client *entdb.Client) ([]lemmaSnapshot, []LearnedLemmaSnapshot) {
 	t.Helper()
 	createdAt := time.Date(2025, 1, 1, 8, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(90 * time.Minute)
@@ -183,7 +183,7 @@ func seedData(t *testing.T, ctx context.Context, client *entdb.Client) ([]wordSn
 	return snapshotWords(t, ctx, client), snapshotLearnedWords(t, ctx, client)
 }
 
-type wordSnapshot struct {
+type lemmaSnapshot struct {
 	ID         int
 	Text       string
 	Language   string
@@ -199,7 +199,7 @@ type wordSnapshot struct {
 	UpdatedAt  time.Time
 }
 
-type LearnedWordSnapshot struct {
+type LearnedLemmaSnapshot struct {
 	ID                 int
 	UserID             int64
 	Term               string
@@ -223,15 +223,15 @@ type LearnedWordSnapshot struct {
 	UpdatedAt          time.Time
 }
 
-func snapshotWords(t *testing.T, ctx context.Context, client *entdb.Client) []wordSnapshot {
+func snapshotWords(t *testing.T, ctx context.Context, client *entdb.Client) []lemmaSnapshot {
 	t.Helper()
 	rows, err := client.Lemma.Query().Order(entlemma.ByID()).All(ctx)
 	if err != nil {
 		t.Fatalf("list words: %v", err)
 	}
-	result := make([]wordSnapshot, 0, len(rows))
+	result := make([]lemmaSnapshot, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, wordSnapshot{
+		result = append(result, lemmaSnapshot{
 			ID:         row.ID,
 			Text:       row.Text,
 			Language:   row.Language,
@@ -250,15 +250,15 @@ func snapshotWords(t *testing.T, ctx context.Context, client *entdb.Client) []wo
 	return result
 }
 
-func snapshotLearnedWords(t *testing.T, ctx context.Context, client *entdb.Client) []LearnedWordSnapshot {
+func snapshotLearnedWords(t *testing.T, ctx context.Context, client *entdb.Client) []LearnedLemmaSnapshot {
 	t.Helper()
 	rows, err := client.LearnedLexeme.Query().Order(entlearnedlexeme.ByID()).All(ctx)
 	if err != nil {
 		t.Fatalf("list user words: %v", err)
 	}
-	result := make([]LearnedWordSnapshot, 0, len(rows))
+	result := make([]LearnedLemmaSnapshot, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, LearnedWordSnapshot{
+		result = append(result, LearnedLemmaSnapshot{
 			ID:                 row.ID,
 			UserID:             row.UserID,
 			Term:               row.Term,

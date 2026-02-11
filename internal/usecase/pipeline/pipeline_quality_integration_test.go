@@ -100,7 +100,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	lexemeRepo := repo.NewLexemeRepository(entClient)
 	evidenceRepo := repo.NewEvidenceRepository(entClient)
 	relationRepo := repo.NewSemanticRelationRepository(entClient)
-	snapshotRepo := repo.NewWordSnapshotRepository(entClient)
+	snapshotRepo := repo.NewLemmaSnapshotRepository(entClient)
 	stageRepo := repo.NewPipelineStageRepository(entClient)
 	jobRepo := repo.NewPipelineJobRepository(entClient)
 
@@ -128,7 +128,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 			NewScoringProcessor(llmProvider, logger),
 		),
 		NewStage("synthesis", 5,
-			NewSnapshotProcessor(),
+			NewLemmaSnapshotProcessor(),
 		),
 	}
 
@@ -139,11 +139,11 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, error) {
 	// Create a job for this term
 	job, err := h.jobRepo.Create(ctx, &entity.PipelineJob{
-		Status:     entity.JobStatusRunning,
-		Name:       "quality-test-" + term,
-		Language:   "en",
-		Tier:       2,
-		Term:       term,
+		Status:   entity.JobStatusRunning,
+		Name:     "quality-test-" + term,
+		Language: "en",
+		Tier:     2,
+		Term:     term,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("create job: %w", err)
@@ -153,10 +153,10 @@ func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, err
 	if err != nil {
 		return 0, err
 	}
-	if result == nil || result.Snapshot == nil {
+	if result == nil || result.LemmaSnapshot == nil {
 		return 0, fmt.Errorf("snapshot missing")
 	}
-	return result.Snapshot.QScore, nil
+	return result.LemmaSnapshot.Quality.Overall, nil
 }
 
 type stageRequirement struct {
