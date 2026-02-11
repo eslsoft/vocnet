@@ -34,7 +34,6 @@ type LemmaSnapshotLexeme struct {
 	Language   string               `json:"language,omitempty"`
 	POS        string               `json:"pos"`
 	Senses     []LemmaSnapshotSense `json:"senses,omitempty"`
-	Categories []string             `json:"categories,omitempty"`
 }
 
 // LemmaSnapshotRelation represents a semantic relation within a snapshot.
@@ -52,6 +51,7 @@ type LemmaSnapshotRelation struct {
 type LemmaSnapshotData struct {
 	Lexemes     []LemmaSnapshotLexeme   `json:"lexemes,omitempty"`
 	Forms       []LemmaSnapshotForm     `json:"forms,omitempty"`
+	Categories  []string                `json:"categories,omitempty"`
 	Frequencies []Frequency             `json:"frequencies,omitempty"`
 	Relations   []LemmaSnapshotRelation `json:"relations,omitempty"`
 }

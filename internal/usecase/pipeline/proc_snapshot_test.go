@@ -23,6 +23,7 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 			{
 				ExternalID:   "L5897",
 				PartOfSpeech: entity.PartOfSpeechAdjective,
+				Categories:   []string{"domain:common", "usage:variant"},
 				Senses: []entity.LexemeSense{
 					{Language: entity.LanguageEnglish, Gloss: "preferred above all others"},
 				},
@@ -56,6 +57,7 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 	require.NotNil(t, res.LemmaSnapshot)
 	require.NotEmpty(t, res.LemmaSnapshot.Payload.Lexemes)
 	require.NotEmpty(t, res.LemmaSnapshot.Payload.Forms)
+	require.ElementsMatch(t, []string{"domain:common", "usage:variant"}, res.LemmaSnapshot.Payload.Categories)
 
 	lex := res.LemmaSnapshot.Payload.Lexemes[0]
 	require.Equal(t, "L5897", lex.ExternalID)

@@ -48,7 +48,6 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 			Language:   language,
 			POS:        string(lex.PartOfSpeech),
 			Senses:     senses,
-			Categories: append([]string{}, lex.Categories...),
 		})
 	}
 
@@ -72,10 +71,12 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 	}
 
 	snapshotForms := collectSnapshotForms(pctx)
+	snapshotCategories := collectSnapshotCategories(pctx.Lexemes)
 
 	snapshotData := entity.LemmaSnapshotData{
 		Lexemes:     snapshotLexemes,
 		Forms:       snapshotForms,
+		Categories:  snapshotCategories,
 		Frequencies: frequencies,
 		Relations:   snapshotRelations,
 	}
@@ -153,6 +154,31 @@ func collectSnapshotForms(pctx *PipelineContext) []entity.LemmaSnapshotForm {
 		merged = append(merged, forms...)
 	}
 	return toLemmaSnapshotForms(merged)
+}
+
+func collectSnapshotCategories(lexemes []*entity.Lexeme) []string {
+	if len(lexemes) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, lex := range lexemes {
+		if lex == nil {
+			continue
+		}
+		for _, cat := range lex.Categories {
+			cat = strings.TrimSpace(cat)
+			if cat == "" {
+				continue
+			}
+			if _, ok := seen[cat]; ok {
+				continue
+			}
+			seen[cat] = struct{}{}
+			out = append(out, cat)
+		}
+	}
+	return out
 }
 
 func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm {
