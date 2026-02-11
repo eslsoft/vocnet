@@ -2,32 +2,21 @@ syntax = "proto3";
 
 package dict.v1;
 
-import "dict/v1/word.proto";
-
 option go_package = "github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1";
+
+// Lexeme is a reusable POS-grouped lexical representation.
+message Lexeme {
+  string id = 1;
+  string pos = 2;
+  string primary_gloss = 3;
+  repeated LexemeSense senses = 4;
+}
 
 // LexemeSense is a reusable lexical sense representation.
 message LexemeSense {
   string language = 1;
   string gloss = 2;
   repeated string examples = 3;
-  string provider = 4;
-  double trust_weight = 5;
-}
-
-// LemmaForm is a reusable inflected form representation.
-message LemmaForm {
-  string surface = 1;
-  string form_type = 2;
-  bool is_irregular = 3;
-}
-
-// Lexeme is a reusable POS-grouped lexical representation.
-message Lexeme {
-  string pos = 1;
-  repeated LexemeSense senses = 2;
-  repeated LemmaForm forms = 3;
-  repeated Phonetic phonetics = 4;
 }
 
 // SemanticRelation is a reusable semantic relation representation.
@@ -37,6 +26,18 @@ message SemanticRelation {
   string target_ref = 3;
   string provider = 4;
   double strength = 5;
-  bool sense_mapped = 6;
-  bool target_resolved = 7;
+}
+
+// Etymology is a reusable etymology representation.
+message Etymology {
+  string root = 2;
+  repeated Derivation derivations = 3;
+  repeated string affixes = 5;
+  repeated string cognates = 4;
+}
+
+message Derivation {
+  string surface = 1;
+  string language = 2;
+  string meaning = 3;
 }

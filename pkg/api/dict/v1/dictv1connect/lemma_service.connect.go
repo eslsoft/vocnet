@@ -35,17 +35,17 @@ const (
 const (
 	// LemmaServiceListLemmasProcedure is the fully-qualified name of the LemmaService's ListLemmas RPC.
 	LemmaServiceListLemmasProcedure = "/dict.v1.LemmaService/ListLemmas"
-	// LemmaServiceListSnapshotsProcedure is the fully-qualified name of the LemmaService's
-	// ListSnapshots RPC.
-	LemmaServiceListSnapshotsProcedure = "/dict.v1.LemmaService/ListSnapshots"
+	// LemmaServiceListLemmaSnapshotsProcedure is the fully-qualified name of the LemmaService's
+	// ListLemmaSnapshots RPC.
+	LemmaServiceListLemmaSnapshotsProcedure = "/dict.v1.LemmaService/ListLemmaSnapshots"
 )
 
 // LemmaServiceClient is a client for the dict.v1.LemmaService service.
 type LemmaServiceClient interface {
 	// ListLemmas lists lemmas with optional fuzzy keyword matching.
 	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
-	// ListSnapshots lists all snapshots for one lemma.
-	ListSnapshots(context.Context, *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListSnapshotsResponse], error)
+	// ListLemmaSnapshots lists all snapshots for one lemma.
+	ListLemmaSnapshots(context.Context, *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListLemmaSnapshotsResponse], error)
 }
 
 // NewLemmaServiceClient constructs a client for the dict.v1.LemmaService service. By default, it
@@ -65,10 +65,10 @@ func NewLemmaServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(lemmaServiceMethods.ByName("ListLemmas")),
 			connect.WithClientOptions(opts...),
 		),
-		listSnapshots: connect.NewClient[v1.ListSnapshotsRequest, v1.ListSnapshotsResponse](
+		listLemmaSnapshots: connect.NewClient[v1.ListSnapshotsRequest, v1.ListLemmaSnapshotsResponse](
 			httpClient,
-			baseURL+LemmaServiceListSnapshotsProcedure,
-			connect.WithSchema(lemmaServiceMethods.ByName("ListSnapshots")),
+			baseURL+LemmaServiceListLemmaSnapshotsProcedure,
+			connect.WithSchema(lemmaServiceMethods.ByName("ListLemmaSnapshots")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -76,8 +76,8 @@ func NewLemmaServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // lemmaServiceClient implements LemmaServiceClient.
 type lemmaServiceClient struct {
-	listLemmas    *connect.Client[v1.ListLemmasRequest, v1.ListLemmasResponse]
-	listSnapshots *connect.Client[v1.ListSnapshotsRequest, v1.ListSnapshotsResponse]
+	listLemmas         *connect.Client[v1.ListLemmasRequest, v1.ListLemmasResponse]
+	listLemmaSnapshots *connect.Client[v1.ListSnapshotsRequest, v1.ListLemmaSnapshotsResponse]
 }
 
 // ListLemmas calls dict.v1.LemmaService.ListLemmas.
@@ -85,17 +85,17 @@ func (c *lemmaServiceClient) ListLemmas(ctx context.Context, req *connect.Reques
 	return c.listLemmas.CallUnary(ctx, req)
 }
 
-// ListSnapshots calls dict.v1.LemmaService.ListSnapshots.
-func (c *lemmaServiceClient) ListSnapshots(ctx context.Context, req *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListSnapshotsResponse], error) {
-	return c.listSnapshots.CallUnary(ctx, req)
+// ListLemmaSnapshots calls dict.v1.LemmaService.ListLemmaSnapshots.
+func (c *lemmaServiceClient) ListLemmaSnapshots(ctx context.Context, req *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListLemmaSnapshotsResponse], error) {
+	return c.listLemmaSnapshots.CallUnary(ctx, req)
 }
 
 // LemmaServiceHandler is an implementation of the dict.v1.LemmaService service.
 type LemmaServiceHandler interface {
 	// ListLemmas lists lemmas with optional fuzzy keyword matching.
 	ListLemmas(context.Context, *connect.Request[v1.ListLemmasRequest]) (*connect.Response[v1.ListLemmasResponse], error)
-	// ListSnapshots lists all snapshots for one lemma.
-	ListSnapshots(context.Context, *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListSnapshotsResponse], error)
+	// ListLemmaSnapshots lists all snapshots for one lemma.
+	ListLemmaSnapshots(context.Context, *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListLemmaSnapshotsResponse], error)
 }
 
 // NewLemmaServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -111,18 +111,18 @@ func NewLemmaServiceHandler(svc LemmaServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(lemmaServiceMethods.ByName("ListLemmas")),
 		connect.WithHandlerOptions(opts...),
 	)
-	lemmaServiceListSnapshotsHandler := connect.NewUnaryHandler(
-		LemmaServiceListSnapshotsProcedure,
-		svc.ListSnapshots,
-		connect.WithSchema(lemmaServiceMethods.ByName("ListSnapshots")),
+	lemmaServiceListLemmaSnapshotsHandler := connect.NewUnaryHandler(
+		LemmaServiceListLemmaSnapshotsProcedure,
+		svc.ListLemmaSnapshots,
+		connect.WithSchema(lemmaServiceMethods.ByName("ListLemmaSnapshots")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/dict.v1.LemmaService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case LemmaServiceListLemmasProcedure:
 			lemmaServiceListLemmasHandler.ServeHTTP(w, r)
-		case LemmaServiceListSnapshotsProcedure:
-			lemmaServiceListSnapshotsHandler.ServeHTTP(w, r)
+		case LemmaServiceListLemmaSnapshotsProcedure:
+			lemmaServiceListLemmaSnapshotsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -136,6 +136,6 @@ func (UnimplementedLemmaServiceHandler) ListLemmas(context.Context, *connect.Req
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.LemmaService.ListLemmas is not implemented"))
 }
 
-func (UnimplementedLemmaServiceHandler) ListSnapshots(context.Context, *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListSnapshotsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.LemmaService.ListSnapshots is not implemented"))
+func (UnimplementedLemmaServiceHandler) ListLemmaSnapshots(context.Context, *connect.Request[v1.ListSnapshotsRequest]) (*connect.Response[v1.ListLemmaSnapshotsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dict.v1.LemmaService.ListLemmaSnapshots is not implemented"))
 }

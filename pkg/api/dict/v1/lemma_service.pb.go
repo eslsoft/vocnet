@@ -179,28 +179,28 @@ func (x *ListSnapshotsRequest) GetPagination() *v1.PaginationRequest {
 	return nil
 }
 
-type ListSnapshotsResponse struct {
+type ListLemmaSnapshotsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Snapshots     []*Snapshot            `protobuf:"bytes,1,rep,name=snapshots,proto3" json:"snapshots,omitempty"`
+	Snapshots     []*LemmaSnapshot       `protobuf:"bytes,1,rep,name=snapshots,proto3" json:"snapshots,omitempty"`
 	Pagination    *v1.PaginationResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListSnapshotsResponse) Reset() {
-	*x = ListSnapshotsResponse{}
+func (x *ListLemmaSnapshotsResponse) Reset() {
+	*x = ListLemmaSnapshotsResponse{}
 	mi := &file_dict_v1_lemma_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListSnapshotsResponse) String() string {
+func (x *ListLemmaSnapshotsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListSnapshotsResponse) ProtoMessage() {}
+func (*ListLemmaSnapshotsResponse) ProtoMessage() {}
 
-func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
+func (x *ListLemmaSnapshotsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_dict_v1_lemma_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -212,19 +212,19 @@ func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListSnapshotsResponse.ProtoReflect.Descriptor instead.
-func (*ListSnapshotsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListLemmaSnapshotsResponse.ProtoReflect.Descriptor instead.
+func (*ListLemmaSnapshotsResponse) Descriptor() ([]byte, []int) {
 	return file_dict_v1_lemma_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *ListSnapshotsResponse) GetSnapshots() []*Snapshot {
+func (x *ListLemmaSnapshotsResponse) GetSnapshots() []*LemmaSnapshot {
 	if x != nil {
 		return x.Snapshots
 	}
 	return nil
 }
 
-func (x *ListSnapshotsResponse) GetPagination() *v1.PaginationResponse {
+func (x *ListLemmaSnapshotsResponse) GetPagination() *v1.PaginationResponse {
 	if x != nil {
 		return x.Pagination
 	}
@@ -250,16 +250,16 @@ const file_dict_v1_lemma_service_proto_rawDesc = "" +
 	"\blemma_id\x18\x01 \x01(\x03R\alemmaId\x12<\n" +
 	"\n" +
 	"pagination\x18\x02 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
-	"pagination\"\x87\x01\n" +
-	"\x15ListSnapshotsResponse\x12/\n" +
-	"\tsnapshots\x18\x01 \x03(\v2\x11.dict.v1.SnapshotR\tsnapshots\x12=\n" +
+	"pagination\"\x91\x01\n" +
+	"\x1aListLemmaSnapshotsResponse\x124\n" +
+	"\tsnapshots\x18\x01 \x03(\v2\x16.dict.v1.LemmaSnapshotR\tsnapshots\x12=\n" +
 	"\n" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
-	"pagination2\xa5\x01\n" +
+	"pagination2\xaf\x01\n" +
 	"\fLemmaService\x12E\n" +
 	"\n" +
-	"ListLemmas\x12\x1a.dict.v1.ListLemmasRequest\x1a\x1b.dict.v1.ListLemmasResponse\x12N\n" +
-	"\rListSnapshots\x12\x1d.dict.v1.ListSnapshotsRequest\x1a\x1e.dict.v1.ListSnapshotsResponseB\x8f\x01\n" +
+	"ListLemmas\x12\x1a.dict.v1.ListLemmasRequest\x1a\x1b.dict.v1.ListLemmasResponse\x12X\n" +
+	"\x12ListLemmaSnapshots\x12\x1d.dict.v1.ListSnapshotsRequest\x1a#.dict.v1.ListLemmaSnapshotsResponseB\x8f\x01\n" +
 	"\vcom.dict.v1B\x11LemmaServiceProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
 
 var (
@@ -276,26 +276,26 @@ func file_dict_v1_lemma_service_proto_rawDescGZIP() []byte {
 
 var file_dict_v1_lemma_service_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_dict_v1_lemma_service_proto_goTypes = []any{
-	(*ListLemmasRequest)(nil),     // 0: dict.v1.ListLemmasRequest
-	(*ListLemmasResponse)(nil),    // 1: dict.v1.ListLemmasResponse
-	(*ListSnapshotsRequest)(nil),  // 2: dict.v1.ListSnapshotsRequest
-	(*ListSnapshotsResponse)(nil), // 3: dict.v1.ListSnapshotsResponse
-	(*v1.PaginationRequest)(nil),  // 4: common.v1.PaginationRequest
-	(*Lemma)(nil),                 // 5: dict.v1.Lemma
-	(*v1.PaginationResponse)(nil), // 6: common.v1.PaginationResponse
-	(*Snapshot)(nil),              // 7: dict.v1.Snapshot
+	(*ListLemmasRequest)(nil),          // 0: dict.v1.ListLemmasRequest
+	(*ListLemmasResponse)(nil),         // 1: dict.v1.ListLemmasResponse
+	(*ListSnapshotsRequest)(nil),       // 2: dict.v1.ListSnapshotsRequest
+	(*ListLemmaSnapshotsResponse)(nil), // 3: dict.v1.ListLemmaSnapshotsResponse
+	(*v1.PaginationRequest)(nil),       // 4: common.v1.PaginationRequest
+	(*Lemma)(nil),                      // 5: dict.v1.Lemma
+	(*v1.PaginationResponse)(nil),      // 6: common.v1.PaginationResponse
+	(*LemmaSnapshot)(nil),              // 7: dict.v1.LemmaSnapshot
 }
 var file_dict_v1_lemma_service_proto_depIdxs = []int32{
 	4, // 0: dict.v1.ListLemmasRequest.pagination:type_name -> common.v1.PaginationRequest
 	5, // 1: dict.v1.ListLemmasResponse.lemmas:type_name -> dict.v1.Lemma
 	6, // 2: dict.v1.ListLemmasResponse.pagination:type_name -> common.v1.PaginationResponse
 	4, // 3: dict.v1.ListSnapshotsRequest.pagination:type_name -> common.v1.PaginationRequest
-	7, // 4: dict.v1.ListSnapshotsResponse.snapshots:type_name -> dict.v1.Snapshot
-	6, // 5: dict.v1.ListSnapshotsResponse.pagination:type_name -> common.v1.PaginationResponse
+	7, // 4: dict.v1.ListLemmaSnapshotsResponse.snapshots:type_name -> dict.v1.LemmaSnapshot
+	6, // 5: dict.v1.ListLemmaSnapshotsResponse.pagination:type_name -> common.v1.PaginationResponse
 	0, // 6: dict.v1.LemmaService.ListLemmas:input_type -> dict.v1.ListLemmasRequest
-	2, // 7: dict.v1.LemmaService.ListSnapshots:input_type -> dict.v1.ListSnapshotsRequest
+	2, // 7: dict.v1.LemmaService.ListLemmaSnapshots:input_type -> dict.v1.ListSnapshotsRequest
 	1, // 8: dict.v1.LemmaService.ListLemmas:output_type -> dict.v1.ListLemmasResponse
-	3, // 9: dict.v1.LemmaService.ListSnapshots:output_type -> dict.v1.ListSnapshotsResponse
+	3, // 9: dict.v1.LemmaService.ListLemmaSnapshots:output_type -> dict.v1.ListLemmaSnapshotsResponse
 	8, // [8:10] is the sub-list for method output_type
 	6, // [6:8] is the sub-list for method input_type
 	6, // [6:6] is the sub-list for extension type_name

@@ -21,21 +21,88 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Lexeme is a reusable POS-grouped lexical representation.
+type Lexeme struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Pos           string                 `protobuf:"bytes,2,opt,name=pos,proto3" json:"pos,omitempty"`
+	PrimaryGloss  string                 `protobuf:"bytes,3,opt,name=primary_gloss,json=primaryGloss,proto3" json:"primary_gloss,omitempty"`
+	Senses        []*LexemeSense         `protobuf:"bytes,4,rep,name=senses,proto3" json:"senses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Lexeme) Reset() {
+	*x = Lexeme{}
+	mi := &file_dict_v1_linguistics_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Lexeme) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Lexeme) ProtoMessage() {}
+
+func (x *Lexeme) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_linguistics_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Lexeme.ProtoReflect.Descriptor instead.
+func (*Lexeme) Descriptor() ([]byte, []int) {
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *Lexeme) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Lexeme) GetPos() string {
+	if x != nil {
+		return x.Pos
+	}
+	return ""
+}
+
+func (x *Lexeme) GetPrimaryGloss() string {
+	if x != nil {
+		return x.PrimaryGloss
+	}
+	return ""
+}
+
+func (x *Lexeme) GetSenses() []*LexemeSense {
+	if x != nil {
+		return x.Senses
+	}
+	return nil
+}
+
 // LexemeSense is a reusable lexical sense representation.
 type LexemeSense struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Language      string                 `protobuf:"bytes,1,opt,name=language,proto3" json:"language,omitempty"`
 	Gloss         string                 `protobuf:"bytes,2,opt,name=gloss,proto3" json:"gloss,omitempty"`
 	Examples      []string               `protobuf:"bytes,3,rep,name=examples,proto3" json:"examples,omitempty"`
-	Provider      string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
-	TrustWeight   float64                `protobuf:"fixed64,5,opt,name=trust_weight,json=trustWeight,proto3" json:"trust_weight,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LexemeSense) Reset() {
 	*x = LexemeSense{}
-	mi := &file_dict_v1_linguistics_proto_msgTypes[0]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +114,7 @@ func (x *LexemeSense) String() string {
 func (*LexemeSense) ProtoMessage() {}
 
 func (x *LexemeSense) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_linguistics_proto_msgTypes[0]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +127,7 @@ func (x *LexemeSense) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LexemeSense.ProtoReflect.Descriptor instead.
 func (*LexemeSense) Descriptor() ([]byte, []int) {
-	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{0}
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *LexemeSense) GetLanguage() string {
@@ -84,167 +151,21 @@ func (x *LexemeSense) GetExamples() []string {
 	return nil
 }
 
-func (x *LexemeSense) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
-func (x *LexemeSense) GetTrustWeight() float64 {
-	if x != nil {
-		return x.TrustWeight
-	}
-	return 0
-}
-
-// LemmaForm is a reusable inflected form representation.
-type LemmaForm struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Surface       string                 `protobuf:"bytes,1,opt,name=surface,proto3" json:"surface,omitempty"`
-	FormType      string                 `protobuf:"bytes,2,opt,name=form_type,json=formType,proto3" json:"form_type,omitempty"`
-	IsIrregular   bool                   `protobuf:"varint,3,opt,name=is_irregular,json=isIrregular,proto3" json:"is_irregular,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LemmaForm) Reset() {
-	*x = LemmaForm{}
-	mi := &file_dict_v1_linguistics_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LemmaForm) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LemmaForm) ProtoMessage() {}
-
-func (x *LemmaForm) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_linguistics_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LemmaForm.ProtoReflect.Descriptor instead.
-func (*LemmaForm) Descriptor() ([]byte, []int) {
-	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *LemmaForm) GetSurface() string {
-	if x != nil {
-		return x.Surface
-	}
-	return ""
-}
-
-func (x *LemmaForm) GetFormType() string {
-	if x != nil {
-		return x.FormType
-	}
-	return ""
-}
-
-func (x *LemmaForm) GetIsIrregular() bool {
-	if x != nil {
-		return x.IsIrregular
-	}
-	return false
-}
-
-// Lexeme is a reusable POS-grouped lexical representation.
-type Lexeme struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pos           string                 `protobuf:"bytes,1,opt,name=pos,proto3" json:"pos,omitempty"`
-	Senses        []*LexemeSense         `protobuf:"bytes,2,rep,name=senses,proto3" json:"senses,omitempty"`
-	Forms         []*LemmaForm           `protobuf:"bytes,3,rep,name=forms,proto3" json:"forms,omitempty"`
-	Phonetics     []*Phonetic            `protobuf:"bytes,4,rep,name=phonetics,proto3" json:"phonetics,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Lexeme) Reset() {
-	*x = Lexeme{}
-	mi := &file_dict_v1_linguistics_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Lexeme) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Lexeme) ProtoMessage() {}
-
-func (x *Lexeme) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_linguistics_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Lexeme.ProtoReflect.Descriptor instead.
-func (*Lexeme) Descriptor() ([]byte, []int) {
-	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *Lexeme) GetPos() string {
-	if x != nil {
-		return x.Pos
-	}
-	return ""
-}
-
-func (x *Lexeme) GetSenses() []*LexemeSense {
-	if x != nil {
-		return x.Senses
-	}
-	return nil
-}
-
-func (x *Lexeme) GetForms() []*LemmaForm {
-	if x != nil {
-		return x.Forms
-	}
-	return nil
-}
-
-func (x *Lexeme) GetPhonetics() []*Phonetic {
-	if x != nil {
-		return x.Phonetics
-	}
-	return nil
-}
-
 // SemanticRelation is a reusable semantic relation representation.
 type SemanticRelation struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	RelationType   string                 `protobuf:"bytes,1,opt,name=relation_type,json=relationType,proto3" json:"relation_type,omitempty"`
-	TargetTerm     string                 `protobuf:"bytes,2,opt,name=target_term,json=targetTerm,proto3" json:"target_term,omitempty"`
-	TargetRef      string                 `protobuf:"bytes,3,opt,name=target_ref,json=targetRef,proto3" json:"target_ref,omitempty"`
-	Provider       string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
-	Strength       float64                `protobuf:"fixed64,5,opt,name=strength,proto3" json:"strength,omitempty"`
-	SenseMapped    bool                   `protobuf:"varint,6,opt,name=sense_mapped,json=senseMapped,proto3" json:"sense_mapped,omitempty"`
-	TargetResolved bool                   `protobuf:"varint,7,opt,name=target_resolved,json=targetResolved,proto3" json:"target_resolved,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RelationType  string                 `protobuf:"bytes,1,opt,name=relation_type,json=relationType,proto3" json:"relation_type,omitempty"`
+	TargetTerm    string                 `protobuf:"bytes,2,opt,name=target_term,json=targetTerm,proto3" json:"target_term,omitempty"`
+	TargetRef     string                 `protobuf:"bytes,3,opt,name=target_ref,json=targetRef,proto3" json:"target_ref,omitempty"`
+	Provider      string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
+	Strength      float64                `protobuf:"fixed64,5,opt,name=strength,proto3" json:"strength,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SemanticRelation) Reset() {
 	*x = SemanticRelation{}
-	mi := &file_dict_v1_linguistics_proto_msgTypes[3]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -256,7 +177,7 @@ func (x *SemanticRelation) String() string {
 func (*SemanticRelation) ProtoMessage() {}
 
 func (x *SemanticRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_dict_v1_linguistics_proto_msgTypes[3]
+	mi := &file_dict_v1_linguistics_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -269,7 +190,7 @@ func (x *SemanticRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SemanticRelation.ProtoReflect.Descriptor instead.
 func (*SemanticRelation) Descriptor() ([]byte, []int) {
-	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{3}
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SemanticRelation) GetRelationType() string {
@@ -307,40 +228,149 @@ func (x *SemanticRelation) GetStrength() float64 {
 	return 0
 }
 
-func (x *SemanticRelation) GetSenseMapped() bool {
-	if x != nil {
-		return x.SenseMapped
-	}
-	return false
+// Etymology is a reusable etymology representation.
+type Etymology struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Root          string                 `protobuf:"bytes,2,opt,name=root,proto3" json:"root,omitempty"`
+	Derivations   []*Derivation          `protobuf:"bytes,3,rep,name=derivations,proto3" json:"derivations,omitempty"`
+	Affixes       []string               `protobuf:"bytes,5,rep,name=affixes,proto3" json:"affixes,omitempty"`
+	Cognates      []string               `protobuf:"bytes,4,rep,name=cognates,proto3" json:"cognates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SemanticRelation) GetTargetResolved() bool {
+func (x *Etymology) Reset() {
+	*x = Etymology{}
+	mi := &file_dict_v1_linguistics_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Etymology) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Etymology) ProtoMessage() {}
+
+func (x *Etymology) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_linguistics_proto_msgTypes[3]
 	if x != nil {
-		return x.TargetResolved
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
 	}
-	return false
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Etymology.ProtoReflect.Descriptor instead.
+func (*Etymology) Descriptor() ([]byte, []int) {
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Etymology) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *Etymology) GetDerivations() []*Derivation {
+	if x != nil {
+		return x.Derivations
+	}
+	return nil
+}
+
+func (x *Etymology) GetAffixes() []string {
+	if x != nil {
+		return x.Affixes
+	}
+	return nil
+}
+
+func (x *Etymology) GetCognates() []string {
+	if x != nil {
+		return x.Cognates
+	}
+	return nil
+}
+
+type Derivation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Surface       string                 `protobuf:"bytes,1,opt,name=surface,proto3" json:"surface,omitempty"`
+	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
+	Meaning       string                 `protobuf:"bytes,3,opt,name=meaning,proto3" json:"meaning,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Derivation) Reset() {
+	*x = Derivation{}
+	mi := &file_dict_v1_linguistics_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Derivation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Derivation) ProtoMessage() {}
+
+func (x *Derivation) ProtoReflect() protoreflect.Message {
+	mi := &file_dict_v1_linguistics_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Derivation.ProtoReflect.Descriptor instead.
+func (*Derivation) Descriptor() ([]byte, []int) {
+	return file_dict_v1_linguistics_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Derivation) GetSurface() string {
+	if x != nil {
+		return x.Surface
+	}
+	return ""
+}
+
+func (x *Derivation) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *Derivation) GetMeaning() string {
+	if x != nil {
+		return x.Meaning
+	}
+	return ""
 }
 
 var File_dict_v1_linguistics_proto protoreflect.FileDescriptor
 
 const file_dict_v1_linguistics_proto_rawDesc = "" +
 	"\n" +
-	"\x19dict/v1/linguistics.proto\x12\adict.v1\x1a\x12dict/v1/word.proto\"\x9a\x01\n" +
+	"\x19dict/v1/linguistics.proto\x12\adict.v1\"}\n" +
+	"\x06Lexeme\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
+	"\x03pos\x18\x02 \x01(\tR\x03pos\x12#\n" +
+	"\rprimary_gloss\x18\x03 \x01(\tR\fprimaryGloss\x12,\n" +
+	"\x06senses\x18\x04 \x03(\v2\x14.dict.v1.LexemeSenseR\x06senses\"[\n" +
 	"\vLexemeSense\x12\x1a\n" +
 	"\blanguage\x18\x01 \x01(\tR\blanguage\x12\x14\n" +
 	"\x05gloss\x18\x02 \x01(\tR\x05gloss\x12\x1a\n" +
-	"\bexamples\x18\x03 \x03(\tR\bexamples\x12\x1a\n" +
-	"\bprovider\x18\x04 \x01(\tR\bprovider\x12!\n" +
-	"\ftrust_weight\x18\x05 \x01(\x01R\vtrustWeight\"e\n" +
-	"\tLemmaForm\x12\x18\n" +
-	"\asurface\x18\x01 \x01(\tR\asurface\x12\x1b\n" +
-	"\tform_type\x18\x02 \x01(\tR\bformType\x12!\n" +
-	"\fis_irregular\x18\x03 \x01(\bR\visIrregular\"\xa3\x01\n" +
-	"\x06Lexeme\x12\x10\n" +
-	"\x03pos\x18\x01 \x01(\tR\x03pos\x12,\n" +
-	"\x06senses\x18\x02 \x03(\v2\x14.dict.v1.LexemeSenseR\x06senses\x12(\n" +
-	"\x05forms\x18\x03 \x03(\v2\x12.dict.v1.LemmaFormR\x05forms\x12/\n" +
-	"\tphonetics\x18\x04 \x03(\v2\x11.dict.v1.PhoneticR\tphonetics\"\xfb\x01\n" +
+	"\bexamples\x18\x03 \x03(\tR\bexamples\"\xaf\x01\n" +
 	"\x10SemanticRelation\x12#\n" +
 	"\rrelation_type\x18\x01 \x01(\tR\frelationType\x12\x1f\n" +
 	"\vtarget_term\x18\x02 \x01(\tR\n" +
@@ -348,9 +378,17 @@ const file_dict_v1_linguistics_proto_rawDesc = "" +
 	"\n" +
 	"target_ref\x18\x03 \x01(\tR\ttargetRef\x12\x1a\n" +
 	"\bprovider\x18\x04 \x01(\tR\bprovider\x12\x1a\n" +
-	"\bstrength\x18\x05 \x01(\x01R\bstrength\x12!\n" +
-	"\fsense_mapped\x18\x06 \x01(\bR\vsenseMapped\x12'\n" +
-	"\x0ftarget_resolved\x18\a \x01(\bR\x0etargetResolvedB\x8e\x01\n" +
+	"\bstrength\x18\x05 \x01(\x01R\bstrength\"\x8c\x01\n" +
+	"\tEtymology\x12\x12\n" +
+	"\x04root\x18\x02 \x01(\tR\x04root\x125\n" +
+	"\vderivations\x18\x03 \x03(\v2\x13.dict.v1.DerivationR\vderivations\x12\x18\n" +
+	"\aaffixes\x18\x05 \x03(\tR\aaffixes\x12\x1a\n" +
+	"\bcognates\x18\x04 \x03(\tR\bcognates\"\\\n" +
+	"\n" +
+	"Derivation\x12\x18\n" +
+	"\asurface\x18\x01 \x01(\tR\asurface\x12\x1a\n" +
+	"\blanguage\x18\x02 \x01(\tR\blanguage\x12\x18\n" +
+	"\ameaning\x18\x03 \x01(\tR\ameaningB\x8e\x01\n" +
 	"\vcom.dict.v1B\x10LinguisticsProtoP\x01Z0github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1\xa2\x02\x03DXX\xaa\x02\aDict.V1\xca\x02\aDict\\V1\xe2\x02\x13Dict\\V1\\GPBMetadata\xea\x02\bDict::V1b\x06proto3"
 
 var (
@@ -365,23 +403,22 @@ func file_dict_v1_linguistics_proto_rawDescGZIP() []byte {
 	return file_dict_v1_linguistics_proto_rawDescData
 }
 
-var file_dict_v1_linguistics_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_dict_v1_linguistics_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_dict_v1_linguistics_proto_goTypes = []any{
-	(*LexemeSense)(nil),      // 0: dict.v1.LexemeSense
-	(*LemmaForm)(nil),        // 1: dict.v1.LemmaForm
-	(*Lexeme)(nil),           // 2: dict.v1.Lexeme
-	(*SemanticRelation)(nil), // 3: dict.v1.SemanticRelation
-	(*Phonetic)(nil),         // 4: dict.v1.Phonetic
+	(*Lexeme)(nil),           // 0: dict.v1.Lexeme
+	(*LexemeSense)(nil),      // 1: dict.v1.LexemeSense
+	(*SemanticRelation)(nil), // 2: dict.v1.SemanticRelation
+	(*Etymology)(nil),        // 3: dict.v1.Etymology
+	(*Derivation)(nil),       // 4: dict.v1.Derivation
 }
 var file_dict_v1_linguistics_proto_depIdxs = []int32{
-	0, // 0: dict.v1.Lexeme.senses:type_name -> dict.v1.LexemeSense
-	1, // 1: dict.v1.Lexeme.forms:type_name -> dict.v1.LemmaForm
-	4, // 2: dict.v1.Lexeme.phonetics:type_name -> dict.v1.Phonetic
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	1, // 0: dict.v1.Lexeme.senses:type_name -> dict.v1.LexemeSense
+	4, // 1: dict.v1.Etymology.derivations:type_name -> dict.v1.Derivation
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_dict_v1_linguistics_proto_init() }
@@ -389,14 +426,13 @@ func file_dict_v1_linguistics_proto_init() {
 	if File_dict_v1_linguistics_proto != nil {
 		return
 	}
-	file_dict_v1_word_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dict_v1_linguistics_proto_rawDesc), len(file_dict_v1_linguistics_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

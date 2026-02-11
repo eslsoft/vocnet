@@ -35,218 +35,6 @@ var (
 	_ = sort.Sort
 )
 
-// Validate checks the field values on LexemeSense with the rules defined in
-// the proto definition for this message. If any rules are violated, the first
-// error encountered is returned, or nil if there are no violations.
-func (m *LexemeSense) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on LexemeSense with the rules defined in
-// the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in LexemeSenseMultiError, or
-// nil if none found.
-func (m *LexemeSense) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *LexemeSense) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	// no validation rules for Language
-
-	// no validation rules for Gloss
-
-	// no validation rules for Provider
-
-	// no validation rules for TrustWeight
-
-	if len(errors) > 0 {
-		return LexemeSenseMultiError(errors)
-	}
-
-	return nil
-}
-
-// LexemeSenseMultiError is an error wrapping multiple validation errors
-// returned by LexemeSense.ValidateAll() if the designated constraints aren't met.
-type LexemeSenseMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m LexemeSenseMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m LexemeSenseMultiError) AllErrors() []error { return m }
-
-// LexemeSenseValidationError is the validation error returned by
-// LexemeSense.Validate if the designated constraints aren't met.
-type LexemeSenseValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e LexemeSenseValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e LexemeSenseValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e LexemeSenseValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e LexemeSenseValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e LexemeSenseValidationError) ErrorName() string { return "LexemeSenseValidationError" }
-
-// Error satisfies the builtin error interface
-func (e LexemeSenseValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sLexemeSense.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = LexemeSenseValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = LexemeSenseValidationError{}
-
-// Validate checks the field values on LemmaForm with the rules defined in the
-// proto definition for this message. If any rules are violated, the first
-// error encountered is returned, or nil if there are no violations.
-func (m *LemmaForm) Validate() error {
-	return m.validate(false)
-}
-
-// ValidateAll checks the field values on LemmaForm with the rules defined in
-// the proto definition for this message. If any rules are violated, the
-// result is a list of violation errors wrapped in LemmaFormMultiError, or nil
-// if none found.
-func (m *LemmaForm) ValidateAll() error {
-	return m.validate(true)
-}
-
-func (m *LemmaForm) validate(all bool) error {
-	if m == nil {
-		return nil
-	}
-
-	var errors []error
-
-	// no validation rules for Surface
-
-	// no validation rules for FormType
-
-	// no validation rules for IsIrregular
-
-	if len(errors) > 0 {
-		return LemmaFormMultiError(errors)
-	}
-
-	return nil
-}
-
-// LemmaFormMultiError is an error wrapping multiple validation errors returned
-// by LemmaForm.ValidateAll() if the designated constraints aren't met.
-type LemmaFormMultiError []error
-
-// Error returns a concatenation of all the error messages it wraps.
-func (m LemmaFormMultiError) Error() string {
-	msgs := make([]string, 0, len(m))
-	for _, err := range m {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// AllErrors returns a list of validation violation errors.
-func (m LemmaFormMultiError) AllErrors() []error { return m }
-
-// LemmaFormValidationError is the validation error returned by
-// LemmaForm.Validate if the designated constraints aren't met.
-type LemmaFormValidationError struct {
-	field  string
-	reason string
-	cause  error
-	key    bool
-}
-
-// Field function returns field value.
-func (e LemmaFormValidationError) Field() string { return e.field }
-
-// Reason function returns reason value.
-func (e LemmaFormValidationError) Reason() string { return e.reason }
-
-// Cause function returns cause value.
-func (e LemmaFormValidationError) Cause() error { return e.cause }
-
-// Key function returns key value.
-func (e LemmaFormValidationError) Key() bool { return e.key }
-
-// ErrorName returns error name.
-func (e LemmaFormValidationError) ErrorName() string { return "LemmaFormValidationError" }
-
-// Error satisfies the builtin error interface
-func (e LemmaFormValidationError) Error() string {
-	cause := ""
-	if e.cause != nil {
-		cause = fmt.Sprintf(" | caused by: %v", e.cause)
-	}
-
-	key := ""
-	if e.key {
-		key = "key for "
-	}
-
-	return fmt.Sprintf(
-		"invalid %sLemmaForm.%s: %s%s",
-		key,
-		e.field,
-		e.reason,
-		cause)
-}
-
-var _ error = LemmaFormValidationError{}
-
-var _ interface {
-	Field() string
-	Reason() string
-	Key() bool
-	Cause() error
-	ErrorName() string
-} = LemmaFormValidationError{}
-
 // Validate checks the field values on Lexeme with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
@@ -268,7 +56,11 @@ func (m *Lexeme) validate(all bool) error {
 
 	var errors []error
 
+	// no validation rules for Id
+
 	// no validation rules for Pos
+
+	// no validation rules for PrimaryGloss
 
 	for idx, item := range m.GetSenses() {
 		_, _ = idx, item
@@ -296,74 +88,6 @@ func (m *Lexeme) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return LexemeValidationError{
 					field:  fmt.Sprintf("Senses[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
-
-	for idx, item := range m.GetForms() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, LexemeValidationError{
-						field:  fmt.Sprintf("Forms[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, LexemeValidationError{
-						field:  fmt.Sprintf("Forms[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return LexemeValidationError{
-					field:  fmt.Sprintf("Forms[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
-			}
-		}
-
-	}
-
-	for idx, item := range m.GetPhonetics() {
-		_, _ = idx, item
-
-		if all {
-			switch v := interface{}(item).(type) {
-			case interface{ ValidateAll() error }:
-				if err := v.ValidateAll(); err != nil {
-					errors = append(errors, LexemeValidationError{
-						field:  fmt.Sprintf("Phonetics[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			case interface{ Validate() error }:
-				if err := v.Validate(); err != nil {
-					errors = append(errors, LexemeValidationError{
-						field:  fmt.Sprintf("Phonetics[%v]", idx),
-						reason: "embedded message failed validation",
-						cause:  err,
-					})
-				}
-			}
-		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return LexemeValidationError{
-					field:  fmt.Sprintf("Phonetics[%v]", idx),
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -449,6 +173,109 @@ var _ interface {
 	ErrorName() string
 } = LexemeValidationError{}
 
+// Validate checks the field values on LexemeSense with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LexemeSense) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LexemeSense with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LexemeSenseMultiError, or
+// nil if none found.
+func (m *LexemeSense) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LexemeSense) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Language
+
+	// no validation rules for Gloss
+
+	if len(errors) > 0 {
+		return LexemeSenseMultiError(errors)
+	}
+
+	return nil
+}
+
+// LexemeSenseMultiError is an error wrapping multiple validation errors
+// returned by LexemeSense.ValidateAll() if the designated constraints aren't met.
+type LexemeSenseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LexemeSenseMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LexemeSenseMultiError) AllErrors() []error { return m }
+
+// LexemeSenseValidationError is the validation error returned by
+// LexemeSense.Validate if the designated constraints aren't met.
+type LexemeSenseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LexemeSenseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LexemeSenseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LexemeSenseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LexemeSenseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LexemeSenseValidationError) ErrorName() string { return "LexemeSenseValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LexemeSenseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLexemeSense.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LexemeSenseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LexemeSenseValidationError{}
+
 // Validate checks the field values on SemanticRelation with the rules defined
 // in the proto definition for this message. If any rules are violated, the
 // first error encountered is returned, or nil if there are no violations.
@@ -480,10 +307,6 @@ func (m *SemanticRelation) validate(all bool) error {
 	// no validation rules for Provider
 
 	// no validation rules for Strength
-
-	// no validation rules for SenseMapped
-
-	// no validation rules for TargetResolved
 
 	if len(errors) > 0 {
 		return SemanticRelationMultiError(errors)
@@ -562,3 +385,243 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = SemanticRelationValidationError{}
+
+// Validate checks the field values on Etymology with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *Etymology) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Etymology with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in EtymologyMultiError, or nil
+// if none found.
+func (m *Etymology) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Etymology) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Root
+
+	for idx, item := range m.GetDerivations() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, EtymologyValidationError{
+						field:  fmt.Sprintf("Derivations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, EtymologyValidationError{
+						field:  fmt.Sprintf("Derivations[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return EtymologyValidationError{
+					field:  fmt.Sprintf("Derivations[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return EtymologyMultiError(errors)
+	}
+
+	return nil
+}
+
+// EtymologyMultiError is an error wrapping multiple validation errors returned
+// by Etymology.ValidateAll() if the designated constraints aren't met.
+type EtymologyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m EtymologyMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m EtymologyMultiError) AllErrors() []error { return m }
+
+// EtymologyValidationError is the validation error returned by
+// Etymology.Validate if the designated constraints aren't met.
+type EtymologyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e EtymologyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e EtymologyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e EtymologyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e EtymologyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e EtymologyValidationError) ErrorName() string { return "EtymologyValidationError" }
+
+// Error satisfies the builtin error interface
+func (e EtymologyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sEtymology.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = EtymologyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = EtymologyValidationError{}
+
+// Validate checks the field values on Derivation with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *Derivation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Derivation with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in DerivationMultiError, or
+// nil if none found.
+func (m *Derivation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Derivation) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Surface
+
+	// no validation rules for Language
+
+	// no validation rules for Meaning
+
+	if len(errors) > 0 {
+		return DerivationMultiError(errors)
+	}
+
+	return nil
+}
+
+// DerivationMultiError is an error wrapping multiple validation errors
+// returned by Derivation.ValidateAll() if the designated constraints aren't met.
+type DerivationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m DerivationMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m DerivationMultiError) AllErrors() []error { return m }
+
+// DerivationValidationError is the validation error returned by
+// Derivation.Validate if the designated constraints aren't met.
+type DerivationValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e DerivationValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e DerivationValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e DerivationValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e DerivationValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e DerivationValidationError) ErrorName() string { return "DerivationValidationError" }
+
+// Error satisfies the builtin error interface
+func (e DerivationValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sDerivation.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = DerivationValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = DerivationValidationError{}

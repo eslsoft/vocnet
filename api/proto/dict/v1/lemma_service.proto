@@ -11,8 +11,8 @@ option go_package = "github.com/eslsoft/vocnet/pkg/api/dict/v1;dictv1";
 service LemmaService {
   // ListLemmas lists lemmas with optional fuzzy keyword matching.
   rpc ListLemmas(ListLemmasRequest) returns (ListLemmasResponse);
-  // ListSnapshots lists all snapshots for one lemma.
-  rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
+  // ListLemmaSnapshots lists all snapshots for one lemma.
+  rpc ListLemmaSnapshots(ListSnapshotsRequest) returns (ListLemmaSnapshotsResponse);
 }
 
 message ListLemmasRequest {
@@ -31,7 +31,7 @@ message ListSnapshotsRequest {
   common.v1.PaginationRequest pagination = 2;
 }
 
-message ListSnapshotsResponse {
-  repeated Snapshot snapshots = 1;
+message ListLemmaSnapshotsResponse {
+  repeated LemmaSnapshot snapshots = 1;
   common.v1.PaginationResponse pagination = 2;
 }

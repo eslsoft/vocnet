@@ -49,7 +49,7 @@ func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Reques
 	return connect.NewResponse(resp), nil
 }
 
-func (s *LemmaServiceServer) ListSnapshots(ctx context.Context, req *connect.Request[dictv1.ListSnapshotsRequest]) (*connect.Response[dictv1.ListSnapshotsResponse], error) {
+func (s *LemmaServiceServer) ListLemmaSnapshots(ctx context.Context, req *connect.Request[dictv1.ListSnapshotsRequest]) (*connect.Response[dictv1.ListLemmaSnapshotsResponse], error) {
 	if req == nil || req.Msg == nil || req.Msg.GetLemmaId() <= 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
 	}
@@ -64,12 +64,12 @@ func (s *LemmaServiceServer) ListSnapshots(ctx context.Context, req *connect.Req
 		return nil, mapping.ToPbError(err)
 	}
 
-	resp := &dictv1.ListSnapshotsResponse{
+	resp := &dictv1.ListLemmaSnapshotsResponse{
 		Pagination: &commonv1.PaginationResponse{Total: int32(total), PageNo: pagination.PageNo}, // nolint:gosec
-		Snapshots:  make([]*dictv1.Snapshot, 0, len(snapshots)),
+		Snapshots:  make([]*dictv1.LemmaSnapshot, 0, len(snapshots)),
 	}
 	for _, snapshot := range snapshots {
-		resp.Snapshots = append(resp.Snapshots, toPBSnapshot(snapshot))
+		resp.Snapshots = append(resp.Snapshots, toPBLemmaSnapshot(snapshot))
 	}
 
 	return connect.NewResponse(resp), nil
