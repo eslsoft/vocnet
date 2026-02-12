@@ -18,9 +18,15 @@ func NewLemmaQueryService(lemmaRepo repository.LemmaRepository, snapshotRepo rep
 }
 
 type ListLemmasQuery struct {
-	PageNo   int32
-	PageSize int32
-	Keyword  string
+	PageNo     int32
+	PageSize   int32
+	Keyword    string
+	Categories []string
+	Levels     []string
+	POS        []string
+	MinQScore  *float64
+	SortBy     string
+	SortDesc   bool
 }
 
 type ListSnapshotsQuery struct {
@@ -34,7 +40,17 @@ func (s *LemmaQueryService) ListLemmas(ctx context.Context, query *ListLemmasQue
 		query = &ListLemmasQuery{}
 	}
 
-	snapshots, total, err := s.snapshotRepo.ListLatest(ctx, query.PageNo, query.PageSize, query.Keyword)
+	snapshots, total, err := s.snapshotRepo.ListLatest(ctx, &repository.ListLatestLemmaSnapshotsQuery{
+		PageNo:     query.PageNo,
+		PageSize:   query.PageSize,
+		Keyword:    query.Keyword,
+		Categories: query.Categories,
+		Levels:     query.Levels,
+		POS:        query.POS,
+		MinQScore:  query.MinQScore,
+		SortBy:     query.SortBy,
+		SortDesc:   query.SortDesc,
+	})
 	if err != nil {
 		return nil, 0, err
 	}

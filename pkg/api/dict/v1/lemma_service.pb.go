@@ -26,7 +26,19 @@ type ListLemmasRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Pagination *v1.PaginationRequest  `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 	// Optional fuzzy search on lemma surface / normalized form.
-	Keyword       string `protobuf:"bytes,2,opt,name=keyword,proto3" json:"keyword,omitempty"`
+	Keyword string `protobuf:"bytes,2,opt,name=keyword,proto3" json:"keyword,omitempty"`
+	// Optional category filters (match any).
+	Categories []string `protobuf:"bytes,3,rep,name=categories,proto3" json:"categories,omitempty"`
+	// Optional level filters (match any, e.g. A1/A2/B1/B2/C1/C2).
+	Levels []string `protobuf:"bytes,4,rep,name=levels,proto3" json:"levels,omitempty"`
+	// Optional part-of-speech filters (match any).
+	Pos []string `protobuf:"bytes,5,rep,name=pos,proto3" json:"pos,omitempty"`
+	// Optional minimum quality score threshold [0,100].
+	MinQscore *float64 `protobuf:"fixed64,6,opt,name=min_qscore,json=minQscore,proto3,oneof" json:"min_qscore,omitempty"`
+	// Optional ordering field: surface, quality_overall, synthesized_at, updated_at, created_at.
+	OrderBy string `protobuf:"bytes,7,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	// Optional sort direction. false: asc, true: desc.
+	OrderDesc     bool `protobuf:"varint,8,opt,name=order_desc,json=orderDesc,proto3" json:"order_desc,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -73,6 +85,48 @@ func (x *ListLemmasRequest) GetKeyword() string {
 		return x.Keyword
 	}
 	return ""
+}
+
+func (x *ListLemmasRequest) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
+func (x *ListLemmasRequest) GetLevels() []string {
+	if x != nil {
+		return x.Levels
+	}
+	return nil
+}
+
+func (x *ListLemmasRequest) GetPos() []string {
+	if x != nil {
+		return x.Pos
+	}
+	return nil
+}
+
+func (x *ListLemmasRequest) GetMinQscore() float64 {
+	if x != nil && x.MinQscore != nil {
+		return *x.MinQscore
+	}
+	return 0
+}
+
+func (x *ListLemmasRequest) GetOrderBy() string {
+	if x != nil {
+		return x.OrderBy
+	}
+	return ""
+}
+
+func (x *ListLemmasRequest) GetOrderDesc() bool {
+	if x != nil {
+		return x.OrderDesc
+	}
+	return false
 }
 
 type ListLemmasResponse struct {
@@ -235,12 +289,23 @@ var File_dict_v1_lemma_service_proto protoreflect.FileDescriptor
 
 const file_dict_v1_lemma_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1bdict/v1/lemma_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x13dict/v1/lemma.proto\"k\n" +
+	"\x1bdict/v1/lemma_service.proto\x12\adict.v1\x1a\x15common/v1/types.proto\x1a\x13dict/v1/lemma.proto\"\xa2\x02\n" +
 	"\x11ListLemmasRequest\x12<\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
 	"pagination\x12\x18\n" +
-	"\akeyword\x18\x02 \x01(\tR\akeyword\"{\n" +
+	"\akeyword\x18\x02 \x01(\tR\akeyword\x12\x1e\n" +
+	"\n" +
+	"categories\x18\x03 \x03(\tR\n" +
+	"categories\x12\x16\n" +
+	"\x06levels\x18\x04 \x03(\tR\x06levels\x12\x10\n" +
+	"\x03pos\x18\x05 \x03(\tR\x03pos\x12\"\n" +
+	"\n" +
+	"min_qscore\x18\x06 \x01(\x01H\x00R\tminQscore\x88\x01\x01\x12\x19\n" +
+	"\border_by\x18\a \x01(\tR\aorderBy\x12\x1d\n" +
+	"\n" +
+	"order_desc\x18\b \x01(\bR\torderDescB\r\n" +
+	"\v_min_qscore\"{\n" +
 	"\x12ListLemmasResponse\x12&\n" +
 	"\x06lemmas\x18\x01 \x03(\v2\x0e.dict.v1.LemmaR\x06lemmas\x12=\n" +
 	"\n" +
@@ -309,6 +374,7 @@ func file_dict_v1_lemma_service_proto_init() {
 		return
 	}
 	file_dict_v1_lemma_proto_init()
+	file_dict_v1_lemma_service_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

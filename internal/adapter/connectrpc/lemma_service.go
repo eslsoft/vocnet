@@ -29,10 +29,21 @@ func (s *LemmaServiceServer) ListLemmas(ctx context.Context, req *connect.Reques
 	}
 
 	pagination := convertPagination(req.Msg.GetPagination())
+	var minQScore *float64
+	if req.Msg.MinQscore != nil {
+		minQScore = req.Msg.MinQscore
+	}
+
 	snapshots, total, err := s.lemmaUC.ListLemmas(ctx, &pipelineuc.ListLemmasQuery{
-		PageNo:   pagination.PageNo,
-		PageSize: pagination.PageSize,
-		Keyword:  req.Msg.GetKeyword(),
+		PageNo:     pagination.PageNo,
+		PageSize:   pagination.PageSize,
+		Keyword:    req.Msg.GetKeyword(),
+		Categories: req.Msg.GetCategories(),
+		Levels:     req.Msg.GetLevels(),
+		POS:        req.Msg.GetPos(),
+		MinQScore:  minQScore,
+		SortBy:     req.Msg.GetOrderBy(),
+		SortDesc:   req.Msg.GetOrderDesc(),
 	})
 	if err != nil {
 		return nil, mapping.ToPbError(err)

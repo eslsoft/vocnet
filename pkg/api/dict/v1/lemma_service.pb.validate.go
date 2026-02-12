@@ -88,6 +88,14 @@ func (m *ListLemmasRequest) validate(all bool) error {
 
 	// no validation rules for Keyword
 
+	// no validation rules for OrderBy
+
+	// no validation rules for OrderDesc
+
+	if m.MinQscore != nil {
+		// no validation rules for MinQscore
+	}
+
 	if len(errors) > 0 {
 		return ListLemmasRequestMultiError(errors)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/mocks"
+	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,7 +90,7 @@ func (n *nopSnapshotRepo) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []i
 	return map[int64]*entity.LemmaSnapshot{}, nil
 }
 
-func (n *nopSnapshotRepo) ListLatest(ctx context.Context, pageNo int32, pageSize int32, keyword string) ([]*entity.LemmaSnapshot, int64, error) {
+func (n *nopSnapshotRepo) ListLatest(ctx context.Context, query *repository.ListLatestLemmaSnapshotsQuery) ([]*entity.LemmaSnapshot, int64, error) {
 	return []*entity.LemmaSnapshot{}, 0, nil
 }
 

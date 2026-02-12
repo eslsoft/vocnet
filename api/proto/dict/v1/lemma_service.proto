@@ -19,6 +19,18 @@ message ListLemmasRequest {
   common.v1.PaginationRequest pagination = 1;
   // Optional fuzzy search on lemma surface / normalized form.
   string keyword = 2;
+  // Optional category filters (match any).
+  repeated string categories = 3;
+  // Optional level filters (match any, e.g. A1/A2/B1/B2/C1/C2).
+  repeated string levels = 4;
+  // Optional part-of-speech filters (match any).
+  repeated string pos = 5;
+  // Optional minimum quality score threshold [0,100].
+  optional double min_qscore = 6;
+  // Optional ordering field: surface, quality_overall, synthesized_at, updated_at, created_at.
+  string order_by = 7;
+  // Optional sort direction. false: asc, true: desc.
+  bool order_desc = 8;
 }
 
 message ListLemmasResponse {

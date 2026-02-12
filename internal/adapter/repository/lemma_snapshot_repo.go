@@ -171,23 +171,38 @@ func (r *lemmaSnapshotRepository) ListLatestByLemmaIDs(ctx context.Context, lemm
 	return out, nil
 }
 
-func (r *lemmaSnapshotRepository) ListLatest(ctx context.Context, pageNo int32, pageSize int32, keyword string) ([]*entity.LemmaSnapshot, int64, error) {
-	if pageNo <= 0 {
-		pageNo = 1
+func (r *lemmaSnapshotRepository) ListLatest(ctx context.Context, query *repository.ListLatestLemmaSnapshotsQuery) ([]*entity.LemmaSnapshot, int64, error) {
+	if query == nil {
+		query = &repository.ListLatestLemmaSnapshotsQuery{}
 	}
-	if pageSize <= 0 {
-		pageSize = 20
+	if query.PageNo <= 0 {
+		query.PageNo = 1
 	}
-	if pageSize > 10000 {
-		pageSize = 10000
+	if query.PageSize <= 0 {
+		query.PageSize = 20
+	}
+	if query.PageSize > 10000 {
+		query.PageSize = 10000
 	}
 
 	q := r.client.LemmaSnapshot.Query().
 		Where(entlemmasnapshot.IsLatestEQ(true))
 
-	trimmedKeyword := strings.TrimSpace(keyword)
+	trimmedKeyword := strings.TrimSpace(query.Keyword)
 	if trimmedKeyword != "" {
 		q = q.Where(entlemmasnapshot.SurfaceContainsFold(trimmedKeyword))
+	}
+	if query.MinQScore != nil {
+		q = q.Where(entlemmasnapshot.QualityOverallGTE(*query.MinQScore))
+	}
+	if len(query.Categories) > 0 {
+		q = q.Where(containsAnyJSONField(entlemmasnapshot.FieldPayload, "categories", query.Categories))
+	}
+	if len(query.Levels) > 0 {
+		q = q.Where(containsAnyJSONField(entlemmasnapshot.FieldPayload, "categories", query.Levels))
+	}
+	if len(query.POS) > 0 {
+		q = q.Where(containsAnyPOS(entlemmasnapshot.FieldPayload, query.POS))
 	}
 
 	total, err := q.Clone().Count(ctx)
@@ -195,10 +210,9 @@ func (r *lemmaSnapshotRepository) ListLatest(ctx context.Context, pageNo int32, 
 		return nil, 0, fmt.Errorf("count latest snapshots: %w", err)
 	}
 
-	offset := int((pageNo - 1) * pageSize)
-	rows, err := q.
-		Order(entlemmasnapshot.BySynthesizedAt(sql.OrderDesc()), entlemmasnapshot.ByVersion(sql.OrderDesc())).
-		Limit(int(pageSize)).
+	offset := int((query.PageNo - 1) * query.PageSize)
+	rows, err := applyListLatestSort(q, query.SortBy, query.SortDesc).
+		Limit(int(query.PageSize)).
 		Offset(offset).
 		All(ctx)
 	if err != nil {
@@ -210,6 +224,59 @@ func (r *lemmaSnapshotRepository) ListLatest(ctx context.Context, pageNo int32, 
 		out = append(out, mapEntLemmaSnapshot(row))
 	}
 	return out, int64(total), nil
+}
+
+func containsAnyJSONField(column, jsonPath string, values []string) func(*sql.Selector) {
+	return func(s *sql.Selector) {
+		preds := make([]*sql.Predicate, 0, len(values))
+		for _, value := range values {
+			trimmed := strings.TrimSpace(value)
+			if trimmed == "" {
+				continue
+			}
+			preds = append(preds, sqljson.ValueContains(s.C(column), []string{trimmed}, sqljson.Path(jsonPath)))
+		}
+		if len(preds) > 0 {
+			s.Where(sql.Or(preds...))
+		}
+	}
+}
+
+func containsAnyPOS(column string, posValues []string) func(*sql.Selector) {
+	return func(s *sql.Selector) {
+		preds := make([]*sql.Predicate, 0, len(posValues))
+		for _, pos := range posValues {
+			trimmed := strings.TrimSpace(pos)
+			if trimmed == "" {
+				continue
+			}
+			preds = append(preds, sqljson.ValueContains(s.C(column), []map[string]string{{"pos": trimmed}}, sqljson.Path("lexemes")))
+		}
+		if len(preds) > 0 {
+			s.Where(sql.Or(preds...))
+		}
+	}
+}
+
+func applyListLatestSort(q *entdb.LemmaSnapshotQuery, sortBy string, desc bool) *entdb.LemmaSnapshotQuery {
+	order := sql.OrderAsc()
+	if desc {
+		order = sql.OrderDesc()
+	}
+	switch strings.TrimSpace(sortBy) {
+	case "surface":
+		return q.Order(entlemmasnapshot.BySurface(order), entlemmasnapshot.ByVersion(sql.OrderDesc()))
+	case "quality_overall":
+		return q.Order(entlemmasnapshot.ByQualityOverall(order), entlemmasnapshot.BySynthesizedAt(sql.OrderDesc()))
+	case "updated_at":
+		return q.Order(entlemmasnapshot.ByUpdatedAt(order), entlemmasnapshot.ByVersion(sql.OrderDesc()))
+	case "created_at":
+		return q.Order(entlemmasnapshot.ByCreatedAt(order), entlemmasnapshot.ByVersion(sql.OrderDesc()))
+	case "synthesized_at":
+		return q.Order(entlemmasnapshot.BySynthesizedAt(order), entlemmasnapshot.ByVersion(sql.OrderDesc()))
+	default:
+		return q.Order(entlemmasnapshot.BySynthesizedAt(sql.OrderDesc()), entlemmasnapshot.ByVersion(sql.OrderDesc()))
+	}
 }
 
 func (r *lemmaSnapshotRepository) ListByLemmaID(ctx context.Context, lemmaID int64, pageNo int32, pageSize int32) ([]*entity.LemmaSnapshot, int64, error) {
