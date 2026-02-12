@@ -25,13 +25,19 @@ type LemmaForm struct {
 	LemmaID     int64
 	Surface     string
 	Normalized  string
-	FormType    LexemeFormType
+	FormType    FormType
 	IsIrregular bool
 	Phonetics   []Phonetic
 	Syllables   []string
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Frequency represents the frequency of a lemma in different corpora, used for usage-based ranking and filtering.
+type Frequency struct {
+	Corpus string `json:"corpus"`
+	Count  int64  `json:"count"`
 }
 
 // Phonetic stores IPA/dialect pairs for surfaced forms.

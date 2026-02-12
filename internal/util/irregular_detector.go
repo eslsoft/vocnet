@@ -9,7 +9,7 @@ import (
 
 // IsIrregularForm determines if a given inflected form is irregular
 // based on standard English morphological rules.
-func IsIrregularForm(lemma, form string, formType entity.LexemeFormType) bool {
+func IsIrregularForm(lemma, form string, formType entity.FormType) bool {
 	if lemma == "" || form == "" {
 		return false
 	}
@@ -23,11 +23,11 @@ func IsIrregularForm(lemma, form string, formType entity.LexemeFormType) bool {
 		// But we'll consider it regular unless it's a zero-marked inflection
 		// that should have a suffix
 		switch formType {
-		case entity.LexemeFormTypePlural:
+		case entity.FormTypePlural:
 			// "sheep" → "sheep" is irregular, but we can't detect without more context
 			// We'll be conservative and call it regular
 			return false
-		case entity.LexemeFormTypePast, entity.LexemeFormTypePastParticiple:
+		case entity.FormTypePast, entity.FormTypePastParticiple:
 			// "cut" → "cut" is irregular (should be "cutted")
 			return true
 		default:
@@ -36,25 +36,25 @@ func IsIrregularForm(lemma, form string, formType entity.LexemeFormType) bool {
 	}
 
 	switch formType {
-	case entity.LexemeFormTypePlural:
+	case entity.FormTypePlural:
 		return !isRegularPlural(lemma, form)
 
-	case entity.LexemeFormTypePast:
+	case entity.FormTypePast:
 		return !isRegularPast(lemma, form)
 
-	case entity.LexemeFormTypePastParticiple:
+	case entity.FormTypePastParticiple:
 		return !isRegularPastParticiple(lemma, form)
 
-	case entity.LexemeFormTypePresentParticiple:
+	case entity.FormTypePresentParticiple:
 		return !isRegularPresentParticiple(lemma, form)
 
-	case entity.LexemeFormTypeThirdPersonSingular:
+	case entity.FormTypeThirdPersonSingular:
 		return !isRegularThirdPerson(lemma, form)
 
-	case entity.LexemeFormTypeComparative:
+	case entity.FormTypeComparative:
 		return !isRegularComparative(lemma, form)
 
-	case entity.LexemeFormTypeSuperlative:
+	case entity.FormTypeSuperlative:
 		return !isRegularSuperlative(lemma, form)
 
 	default:

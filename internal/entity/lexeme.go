@@ -12,25 +12,6 @@ const (
 	LexemeEntryTypeIdiom       LexemeEntryType = "IDIOM"
 )
 
-// LexemeFormType enumerates normalized surface-form categories.
-type LexemeFormType string
-
-const (
-	LexemeFormTypeUnspecified         LexemeFormType = ""
-	LexemeFormTypeLemma               LexemeFormType = "LEMMA"
-	LexemeFormTypePlural              LexemeFormType = "PLURAL"
-	LexemeFormTypePast                LexemeFormType = "PAST"
-	LexemeFormTypePastParticiple      LexemeFormType = "PAST_PARTICIPLE"
-	LexemeFormTypePresentParticiple   LexemeFormType = "PRESENT_PARTICIPLE"
-	LexemeFormTypeThirdPersonSingular LexemeFormType = "THIRD_PERSON_SINGULAR"
-	LexemeFormTypeComparative         LexemeFormType = "COMPARATIVE"
-	LexemeFormTypeSuperlative         LexemeFormType = "SUPERLATIVE"
-	LexemeFormTypeImperative          LexemeFormType = "IMPERATIVE"
-	LexemeFormTypeSubjunctive         LexemeFormType = "SUBJUNCTIVE"
-	LexemeFormTypeGerund              LexemeFormType = "GERUND"
-	LexemeFormTypeShortForm           LexemeFormType = "SHORT_FORM"
-)
-
 // Lexeme captures a semantic entry with its forms, senses, and metadata.
 type Lexeme struct {
 	ID           int64
@@ -46,11 +27,6 @@ type Lexeme struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
-}
-
-type Frequency struct {
-	Corpus string `json:"corpus"`
-	Count  int64  `json:"count"`
 }
 
 // LexemeSense models a language-specific gloss for a particular part of speech.

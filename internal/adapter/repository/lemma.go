@@ -659,7 +659,7 @@ func mapEntLemma(lemmaRow *entdb.Lemma) *entity.Lemma {
 			LemmaID:     formRow.LemmaID,
 			Surface:     formRow.Surface,
 			Normalized:  formRow.Normalized,
-			FormType:    entity.LexemeFormType(formRow.FormType),
+			FormType:    entity.FormType(formRow.FormType),
 			IsIrregular: formRow.IsIrregular,
 			Phonetics:   formRow.Phonetics,
 			Syllables:   formRow.Syllables,
@@ -938,7 +938,7 @@ func normalizeLanguageCodes(filter *entity.WordStatsFilter) []string {
 }
 
 // UpdateFormPhonetics updates phonetics for a specific form type of a lemma.
-func (r *lemmaRepository) UpdateFormPhonetics(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, phonetics []entity.Phonetic) error {
+func (r *lemmaRepository) UpdateFormPhonetics(ctx context.Context, lemmaID int64, formType entity.FormType, phonetics []entity.Phonetic) error {
 	if lemmaID == 0 {
 		return fmt.Errorf("lemma_id required")
 	}
@@ -959,7 +959,7 @@ func (r *lemmaRepository) UpdateFormPhonetics(ctx context.Context, lemmaID int64
 }
 
 // UpdateFormSyllables updates syllables for a specific form type of a lemma.
-func (r *lemmaRepository) UpdateFormSyllables(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, syllables []string) error {
+func (r *lemmaRepository) UpdateFormSyllables(ctx context.Context, lemmaID int64, formType entity.FormType, syllables []string) error {
 	if lemmaID == 0 {
 		return fmt.Errorf("lemma_id required")
 	}

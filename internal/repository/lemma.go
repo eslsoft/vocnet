@@ -32,8 +32,8 @@ type LemmaRepository interface {
 	CreateForms(ctx context.Context, lemmaID int64, forms []entity.LemmaForm) error
 
 	// UpdateFormPhonetics updates phonetics for a specific form type of a lemma
-	UpdateFormPhonetics(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, phonetics []entity.Phonetic) error
+	UpdateFormPhonetics(ctx context.Context, lemmaID int64, formType entity.FormType, phonetics []entity.Phonetic) error
 
 	// UpdateFormSyllables updates syllables for a specific form type of a lemma
-	UpdateFormSyllables(ctx context.Context, lemmaID int64, formType entity.LexemeFormType, syllables []string) error
+	UpdateFormSyllables(ctx context.Context, lemmaID int64, formType entity.FormType, syllables []string) error
 }

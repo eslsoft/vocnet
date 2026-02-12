@@ -32,7 +32,7 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 		Forms: []*entity.LemmaForm{
 			{
 				Surface:  "favourite",
-				FormType: entity.LexemeFormTypeLemma,
+				FormType: entity.FormTypeLemma,
 				Phonetics: []entity.Phonetic{
 					{IPA: "/ˈfeɪv(ə)rɪt/", Dialect: "en-GB"},
 				},
@@ -42,7 +42,7 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 			"L5897": {
 				{
 					Surface:  "favorite",
-					FormType: entity.LexemeFormTypeLemma,
+					FormType: entity.FormTypeLemma,
 					Phonetics: []entity.Phonetic{
 						{IPA: "/ˈfeɪv(ə)rɪt/", Dialect: "en-US"},
 					},

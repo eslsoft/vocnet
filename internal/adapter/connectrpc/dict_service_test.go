@@ -34,19 +34,19 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 		langCode = "zh"
 	}
 
-	var formTypeMap = map[dictv1.FormType]entity.LexemeFormType{
-		dictv1.FormType_FORM_TYPE_LEMMA:                 entity.LexemeFormTypeLemma,
-		dictv1.FormType_FORM_TYPE_PLURAL:                entity.LexemeFormTypePlural,
-		dictv1.FormType_FORM_TYPE_PAST:                  entity.LexemeFormTypePast,
-		dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:       entity.LexemeFormTypePastParticiple,
-		dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    entity.LexemeFormTypePresentParticiple,
-		dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: entity.LexemeFormTypeThirdPersonSingular,
-		dictv1.FormType_FORM_TYPE_COMPARATIVE:           entity.LexemeFormTypeComparative,
-		dictv1.FormType_FORM_TYPE_SUPERLATIVE:           entity.LexemeFormTypeSuperlative,
-		dictv1.FormType_FORM_TYPE_IMPERATIVE:            entity.LexemeFormTypeImperative,
-		dictv1.FormType_FORM_TYPE_SUBJUNCTIVE:           entity.LexemeFormTypeSubjunctive,
-		dictv1.FormType_FORM_TYPE_GERUND:                entity.LexemeFormTypeGerund,
-		dictv1.FormType_FORM_TYPE_SHORT_FORM:            entity.LexemeFormTypeShortForm,
+	var formTypeMap = map[dictv1.FormType]entity.FormType{
+		dictv1.FormType_FORM_TYPE_LEMMA:                 entity.FormTypeLemma,
+		dictv1.FormType_FORM_TYPE_PLURAL:                entity.FormTypePlural,
+		dictv1.FormType_FORM_TYPE_PAST:                  entity.FormTypePast,
+		dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE:       entity.FormTypePastParticiple,
+		dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE:    entity.FormTypePresentParticiple,
+		dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR: entity.FormTypeThirdPersonSingular,
+		dictv1.FormType_FORM_TYPE_COMPARATIVE:           entity.FormTypeComparative,
+		dictv1.FormType_FORM_TYPE_SUPERLATIVE:           entity.FormTypeSuperlative,
+		dictv1.FormType_FORM_TYPE_IMPERATIVE:            entity.FormTypeImperative,
+		dictv1.FormType_FORM_TYPE_SUBJUNCTIVE:           entity.FormTypeSubjunctive,
+		dictv1.FormType_FORM_TYPE_GERUND:                entity.FormTypeGerund,
+		dictv1.FormType_FORM_TYPE_SHORT_FORM:            entity.FormTypeShortForm,
 	}
 
 	// Create Lemma first (if not exists)
@@ -76,7 +76,7 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 		SetLemma(lemmaRecord).
 		SetSurface(word.Term).
 		SetNormalized(strings.ToLower(word.Term)).
-		SetFormType(string(entity.LexemeFormTypeLemma))
+		SetFormType(string(entity.FormTypeLemma))
 
 	// Add phonetics to lemma form
 	if len(word.Phonetics) > 0 {
@@ -96,7 +96,7 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 	for _, form := range word.RelatedForms {
 		ft := formTypeMap[form.FormType]
 		if ft == "" {
-			ft = entity.LexemeFormTypeUnspecified
+			ft = entity.FormTypeUnspecified
 		}
 		_, err = client.LexemeForm.Create().
 			SetLemma(lemmaRecord).
@@ -830,7 +830,7 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 		// `findFormByText` finds "Test".
 		// `isQueriedLemma` = false (because FormType_LEMMA? Wait.)
 		// `Test` form type is LEMMA.
-		// `isQueriedLemma` checks `formType == entity.LexemeFormTypeLemma`.
+		// `isQueriedLemma` checks `formType == entity.FormTypeLemma`.
 		// Yes. So it builds Lemma View.
 		// `buildLemmaView` uses `entry.QueriedTerm` ("Test") or Lemma Surface ("test").
 		// `displayTerm := entry.QueriedTerm`.

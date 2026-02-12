@@ -23,28 +23,28 @@ func TestToPbWord_PopulatesRelatedForms_ForForms(t *testing.T) {
 			LemmaID:    lemmaID,
 			Surface:    "run",
 			Normalized: "run",
-			FormType:   entity.LexemeFormTypeLemma,
+			FormType:   entity.FormTypeLemma,
 		},
 		{
 			ID:         runsFormID,
 			LemmaID:    lemmaID,
 			Surface:    "runs",
 			Normalized: "runs",
-			FormType:   entity.LexemeFormTypeThirdPersonSingular,
+			FormType:   entity.FormTypeThirdPersonSingular,
 		},
 		{
 			ID:         runningFormID,
 			LemmaID:    lemmaID,
 			Surface:    "running",
 			Normalized: "running",
-			FormType:   entity.LexemeFormTypePresentParticiple,
+			FormType:   entity.FormTypePresentParticiple,
 		},
 		{
 			ID:         ranFormID,
 			LemmaID:    lemmaID,
 			Surface:    "ran",
 			Normalized: "ran",
-			FormType:   entity.LexemeFormTypePast,
+			FormType:   entity.FormTypePast,
 		},
 	}
 
@@ -89,9 +89,9 @@ func TestToPbWord_PopulatesRelatedForms_ForLemma(t *testing.T) {
 	// Setup same data
 	lemmaID := int64(1)
 	forms := []*entity.LemmaForm{
-		{ID: 10, LemmaID: lemmaID, Surface: "run", Normalized: "run", FormType: entity.LexemeFormTypeLemma},
-		{ID: 11, LemmaID: lemmaID, Surface: "runs", Normalized: "runs", FormType: entity.LexemeFormTypeThirdPersonSingular},
-		{ID: 12, LemmaID: lemmaID, Surface: "running", Normalized: "running", FormType: entity.LexemeFormTypePresentParticiple},
+		{ID: 10, LemmaID: lemmaID, Surface: "run", Normalized: "run", FormType: entity.FormTypeLemma},
+		{ID: 11, LemmaID: lemmaID, Surface: "runs", Normalized: "runs", FormType: entity.FormTypeThirdPersonSingular},
+		{ID: 12, LemmaID: lemmaID, Surface: "running", Normalized: "running", FormType: entity.FormTypePresentParticiple},
 	}
 	lemma := &entity.Lemma{ID: lemmaID, Surface: "run", Normalized: "run", Forms: forms}
 
@@ -120,7 +120,7 @@ func TestToPbWord_PopulatesRelatedForms_ForLemma(t *testing.T) {
 func TestToPbWord_PopulatesMeanings_WithLexemeSenses(t *testing.T) {
 	lemmaID := int64(1)
 	forms := []*entity.LemmaForm{
-		{ID: 10, LemmaID: lemmaID, Surface: "run", Normalized: "run", FormType: entity.LexemeFormTypeLemma},
+		{ID: 10, LemmaID: lemmaID, Surface: "run", Normalized: "run", FormType: entity.FormTypeLemma},
 	}
 	lemma := &entity.Lemma{ID: lemmaID, Surface: "run", Normalized: "run", Forms: forms}
 

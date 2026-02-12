@@ -161,7 +161,7 @@ func ensureSurfaceForm(forms []*entity.LemmaForm, surface string) []*entity.Lemm
 		if f == nil {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(f.Surface), surface) && f.FormType == entity.LexemeFormTypeLemma {
+		if strings.EqualFold(strings.TrimSpace(f.Surface), surface) && f.FormType == entity.FormTypeLemma {
 			return forms
 		}
 	}
@@ -169,14 +169,14 @@ func ensureSurfaceForm(forms []*entity.LemmaForm, surface string) []*entity.Lemm
 	return append(forms, &entity.LemmaForm{
 		Surface:    surface,
 		Normalized: normalized,
-		FormType:   entity.LexemeFormTypeLemma,
+		FormType:   entity.FormTypeLemma,
 	})
 }
 
-// mapGrammaticalFeaturesToFormType maps Wikidata grammatical features to LexemeFormType.
-func mapGrammaticalFeaturesToFormType(features []string) entity.LexemeFormType {
+// mapGrammaticalFeaturesToFormType maps Wikidata grammatical features to FormType.
+func mapGrammaticalFeaturesToFormType(features []string) entity.FormType {
 	if len(features) == 0 {
-		return entity.LexemeFormTypeLemma
+		return entity.FormTypeLemma
 	}
 
 	hasThirdPerson := false
@@ -185,17 +185,17 @@ func mapGrammaticalFeaturesToFormType(features []string) entity.LexemeFormType {
 	for _, qid := range features {
 		switch qid {
 		case "Q146786": // plural
-			return entity.LexemeFormTypePlural
+			return entity.FormTypePlural
 		case "Q1994301", "Q1230649": // past tense / simple past
-			return entity.LexemeFormTypePast
+			return entity.FormTypePast
 		case "Q12612489", "Q1392475": // past participle
-			return entity.LexemeFormTypePastParticiple
+			return entity.FormTypePastParticiple
 		case "Q10345583": // present participle / gerund
-			return entity.LexemeFormTypePresentParticiple
+			return entity.FormTypePresentParticiple
 		case "Q14169499": // comparative
-			return entity.LexemeFormTypeComparative
+			return entity.FormTypeComparative
 		case "Q1817208": // superlative
-			return entity.LexemeFormTypeSuperlative
+			return entity.FormTypeSuperlative
 		case "Q51929049", "Q51929074": // third person
 			hasThirdPerson = true
 		case "Q110786": // singular
@@ -206,10 +206,10 @@ func mapGrammaticalFeaturesToFormType(features []string) entity.LexemeFormType {
 	}
 
 	if hasThirdPerson && hasSingular {
-		return entity.LexemeFormTypeThirdPersonSingular
+		return entity.FormTypeThirdPersonSingular
 	}
 
-	return entity.LexemeFormTypeLemma
+	return entity.FormTypeLemma
 }
 
 // defaultDialect returns the default BCP 47 dialect tag for a language

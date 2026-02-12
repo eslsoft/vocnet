@@ -29,20 +29,20 @@ var (
 	}
 
 	// nolint:dupl
-	entityFormTypeMap = map[entity.LexemeFormType]dictv1.FormType{
-		entity.LexemeFormTypeLemma:               dictv1.FormType_FORM_TYPE_LEMMA,
-		entity.LexemeFormTypePlural:              dictv1.FormType_FORM_TYPE_PLURAL,
-		entity.LexemeFormTypePast:                dictv1.FormType_FORM_TYPE_PAST,
-		entity.LexemeFormTypePastParticiple:      dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE,
-		entity.LexemeFormTypePresentParticiple:   dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE,
-		entity.LexemeFormTypeThirdPersonSingular: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR,
-		entity.LexemeFormTypeComparative:         dictv1.FormType_FORM_TYPE_COMPARATIVE,
-		entity.LexemeFormTypeSuperlative:         dictv1.FormType_FORM_TYPE_SUPERLATIVE,
-		entity.LexemeFormTypeImperative:          dictv1.FormType_FORM_TYPE_IMPERATIVE,
-		entity.LexemeFormTypeSubjunctive:         dictv1.FormType_FORM_TYPE_SUBJUNCTIVE,
-		entity.LexemeFormTypeGerund:              dictv1.FormType_FORM_TYPE_GERUND,
-		entity.LexemeFormTypeShortForm:           dictv1.FormType_FORM_TYPE_SHORT_FORM,
-		entity.LexemeFormTypeUnspecified:         dictv1.FormType_FORM_TYPE_UNSPECIFIED,
+	entityFormTypeMap = map[entity.FormType]dictv1.FormType{
+		entity.FormTypeLemma:               dictv1.FormType_FORM_TYPE_LEMMA,
+		entity.FormTypePlural:              dictv1.FormType_FORM_TYPE_PLURAL,
+		entity.FormTypePast:                dictv1.FormType_FORM_TYPE_PAST,
+		entity.FormTypePastParticiple:      dictv1.FormType_FORM_TYPE_PAST_PARTICIPLE,
+		entity.FormTypePresentParticiple:   dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE,
+		entity.FormTypeThirdPersonSingular: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR,
+		entity.FormTypeComparative:         dictv1.FormType_FORM_TYPE_COMPARATIVE,
+		entity.FormTypeSuperlative:         dictv1.FormType_FORM_TYPE_SUPERLATIVE,
+		entity.FormTypeImperative:          dictv1.FormType_FORM_TYPE_IMPERATIVE,
+		entity.FormTypeSubjunctive:         dictv1.FormType_FORM_TYPE_SUBJUNCTIVE,
+		entity.FormTypeGerund:              dictv1.FormType_FORM_TYPE_GERUND,
+		entity.FormTypeShortForm:           dictv1.FormType_FORM_TYPE_SHORT_FORM,
+		entity.FormTypeUnspecified:         dictv1.FormType_FORM_TYPE_UNSPECIFIED,
 	}
 )
 
@@ -60,7 +60,7 @@ func ToPbLanguage(lang entity.Language) commonv1.Language {
 	return commonv1.Language_LANGUAGE_UNSPECIFIED
 }
 
-func toPbFormType(in entity.LexemeFormType) dictv1.FormType {
+func toPbFormType(in entity.FormType) dictv1.FormType {
 	if pbType, ok := entityFormTypeMap[in]; ok {
 		return pbType
 	}

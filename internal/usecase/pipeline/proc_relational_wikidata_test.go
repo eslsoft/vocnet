@@ -39,7 +39,7 @@ func TestWikidataRelationProcessor_Process(t *testing.T) {
 			{ExternalID: "L2", PartOfSpeech: entity.PartOfSpeechVerb},
 		},
 		Forms: []*entity.LemmaForm{
-			{Surface: "bank", FormType: entity.LexemeFormTypeLemma},
+			{Surface: "bank", FormType: entity.FormTypeLemma},
 		},
 	}
 

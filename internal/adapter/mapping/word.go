@@ -18,7 +18,7 @@ func ToPbWord(entry *entity.WordEntry) *dictv1.Word {
 
 	// Check if the queried term matches the lemma surface (is queried lemma)
 	queriedForm := findFormByText(entry.Lemma.Forms, entry.QueriedTerm)
-	isQueriedLemma := queriedForm != nil && queriedForm.FormType == entity.LexemeFormTypeLemma
+	isQueriedLemma := queriedForm != nil && queriedForm.FormType == entity.FormTypeLemma
 
 	if isQueriedLemma {
 		return buildLemmaView(entry, queriedForm)
@@ -84,7 +84,7 @@ func buildLemmaView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dic
 
 func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dictv1.Word {
 	var phonetics []entity.Phonetic
-	var formType entity.LexemeFormType
+	var formType entity.FormType
 	var isIrregular bool
 
 	if queriedForm != nil {

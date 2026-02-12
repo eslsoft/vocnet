@@ -60,7 +60,7 @@ func (p *ECDICTProcessor) Process(ctx context.Context, pctx *PipelineContext) (*
 	if entry.Phonetic != "" {
 		forms = append(forms, &entity.LemmaForm{
 			Surface:  pctx.Term,
-			FormType: entity.LexemeFormTypeLemma,
+			FormType: entity.FormTypeLemma,
 			Phonetics: []entity.Phonetic{
 				{IPA: entry.Phonetic, Dialect: "en-GB"},
 			},
