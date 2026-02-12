@@ -21,8 +21,6 @@ jobs:
       uses: bufbuild/buf-action@v1
       with:
         token: ${{ secrets.BUF_TOKEN }}
-        input: api/proto
-        push: true
 
   release:
     runs-on: ubuntu-latest
