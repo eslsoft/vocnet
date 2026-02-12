@@ -41,6 +41,7 @@ message LemmaForm {
   string form_type = 2;
   bool irregular = 3;
   repeated Phonetic phonetics = 4;
+  repeated string syllables = 5;
 }
 
 // LemmaSnapshot is a snapshot of lemma at a specific time, used for versioning and history tracking.

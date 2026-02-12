@@ -37,6 +37,7 @@ message RelatedForm {
   string term = 1; // Surface form text (e.g., "apples")
   FormType form_type = 2; // Type of this form
   bool irregular = 3; // Whether this is irregular
+  repeated string syllables = 4; // Syllabification (e.g. ["ap", "ples"])
 }
 
 message Phonetic {

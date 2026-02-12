@@ -464,6 +464,8 @@ func (r *lemmaRepository) CreateForms(ctx context.Context, lemmaID int64, forms 
 			SetNormalized(normalized).
 			SetFormType(string(form.FormType)).
 			SetIsIrregular(form.IsIrregular).
+			SetPhonetics(form.Phonetics).
+			SetSyllables(form.Syllables).
 			Save(ctx)
 		if err != nil {
 			_ = tx.Rollback()

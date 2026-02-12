@@ -334,6 +334,7 @@ type RelatedForm struct {
 	Term          string                 `protobuf:"bytes,1,opt,name=term,proto3" json:"term,omitempty"`                                                // Surface form text (e.g., "apples")
 	FormType      FormType               `protobuf:"varint,2,opt,name=form_type,json=formType,proto3,enum=dict.v1.FormType" json:"form_type,omitempty"` // Type of this form
 	Irregular     bool                   `protobuf:"varint,3,opt,name=irregular,proto3" json:"irregular,omitempty"`                                     // Whether this is irregular
+	Syllables     []string               `protobuf:"bytes,4,rep,name=syllables,proto3" json:"syllables,omitempty"`                                      // Syllabification (e.g. ["ap", "ples"])
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -387,6 +388,13 @@ func (x *RelatedForm) GetIrregular() bool {
 		return x.Irregular
 	}
 	return false
+}
+
+func (x *RelatedForm) GetSyllables() []string {
+	if x != nil {
+		return x.Syllables
+	}
+	return nil
 }
 
 type Phonetic struct {
@@ -718,11 +726,12 @@ const file_dict_v1_word_proto_rawDesc = "" +
 	"created_at\x18d \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\b\n" +
-	"\x06_lemma\"o\n" +
+	"\x06_lemma\"\x8d\x01\n" +
 	"\vRelatedForm\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\tR\x04term\x12.\n" +
 	"\tform_type\x18\x02 \x01(\x0e2\x11.dict.v1.FormTypeR\bformType\x12\x1c\n" +
-	"\tirregular\x18\x03 \x01(\bR\tirregular\"6\n" +
+	"\tirregular\x18\x03 \x01(\bR\tirregular\x12\x1c\n" +
+	"\tsyllables\x18\x04 \x03(\tR\tsyllables\"6\n" +
 	"\bPhonetic\x12\x10\n" +
 	"\x03ipa\x18\x01 \x01(\tR\x03ipa\x12\x18\n" +
 	"\adialect\x18\x02 \x01(\tR\adialect\"\xcf\x01\n" +

@@ -123,6 +123,11 @@ func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dict
 		term = queriedForm.Surface
 	}
 
+	syllables := entry.Lemma.Syllables
+	if queriedForm != nil && len(queriedForm.Syllables) > 0 {
+		syllables = queriedForm.Syllables
+	}
+
 	word := &dictv1.Word{
 		Id:           entry.Lemma.ID,
 		Term:         term,
@@ -132,7 +137,7 @@ func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dict
 		Phonetics:    mapPhonetics(phonetics),
 		Meanings:     aggregateMeanings(entry.Lexemies),
 		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
-		Syllables:    entry.Lemma.Syllables,
+		Syllables:    syllables,
 		Categories:   categories,
 		Irregular:    isIrregular,
 		Completeness: completeness,
@@ -187,6 +192,7 @@ func buildRelatedForms(allForms []*entity.LemmaForm, excludeForm *entity.LemmaFo
 			Term:      form.Surface,
 			FormType:  toPbFormType(form.FormType),
 			Irregular: form.IsIrregular,
+			Syllables: form.Syllables,
 		})
 	}
 	sort.Slice(forms, func(i, j int) bool {

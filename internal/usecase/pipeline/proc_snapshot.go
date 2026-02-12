@@ -66,8 +66,10 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 	}
 
 	var frequencies []entity.Frequency
+	var syllables []string
 	if pctx.Lemma != nil {
 		frequencies = append([]entity.Frequency{}, pctx.Lemma.Frequencies...)
+		syllables = append([]string{}, pctx.Lemma.Syllables...)
 	}
 
 	snapshotForms := collectSnapshotForms(pctx)
@@ -79,6 +81,7 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 		Categories:  snapshotCategories,
 		Frequencies: frequencies,
 		Relations:   snapshotRelations,
+		Syllables:   syllables,
 	}
 
 	quality := p.qualityCalculator.Calculate(snapshotData)
@@ -202,6 +205,7 @@ func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm 
 			FormType:    string(f.FormType),
 			IsIrregular: f.IsIrregular,
 			Phonetics:   normalizeFormPhonetics(f.Phonetics),
+			Syllables:   f.Syllables,
 		})
 	}
 	return out

@@ -230,6 +230,7 @@ type LemmaForm struct {
 	FormType      string                 `protobuf:"bytes,2,opt,name=form_type,json=formType,proto3" json:"form_type,omitempty"`
 	Irregular     bool                   `protobuf:"varint,3,opt,name=irregular,proto3" json:"irregular,omitempty"`
 	Phonetics     []*Phonetic            `protobuf:"bytes,4,rep,name=phonetics,proto3" json:"phonetics,omitempty"`
+	Syllables     []string               `protobuf:"bytes,5,rep,name=syllables,proto3" json:"syllables,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -288,6 +289,13 @@ func (x *LemmaForm) GetIrregular() bool {
 func (x *LemmaForm) GetPhonetics() []*Phonetic {
 	if x != nil {
 		return x.Phonetics
+	}
+	return nil
+}
+
+func (x *LemmaForm) GetSyllables() []string {
+	if x != nil {
+		return x.Syllables
 	}
 	return nil
 }
@@ -554,12 +562,13 @@ const file_dict_v1_lemma_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x91\x01\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xaf\x01\n" +
 	"\tLemmaForm\x12\x18\n" +
 	"\asurface\x18\x01 \x01(\tR\asurface\x12\x1b\n" +
 	"\tform_type\x18\x02 \x01(\tR\bformType\x12\x1c\n" +
 	"\tirregular\x18\x03 \x01(\bR\tirregular\x12/\n" +
-	"\tphonetics\x18\x04 \x03(\v2\x11.dict.v1.PhoneticR\tphonetics\"\xe2\x02\n" +
+	"\tphonetics\x18\x04 \x03(\v2\x11.dict.v1.PhoneticR\tphonetics\x12\x1c\n" +
+	"\tsyllables\x18\x05 \x03(\tR\tsyllables\"\xe2\x02\n" +
 	"\rLemmaSnapshot\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
 	"\blemma_id\x18\x02 \x01(\x03R\alemmaId\x12$\n" +

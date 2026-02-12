@@ -177,6 +177,7 @@ func toPBLexemeForm(form entity.LemmaSnapshotForm) *dictv1.LemmaForm {
 		Surface:   form.Surface,
 		FormType:  form.FormType,
 		Irregular: form.IsIrregular,
+		Syllables: form.Syllables,
 	}
 }
 

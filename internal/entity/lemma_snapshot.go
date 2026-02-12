@@ -26,6 +26,7 @@ type LemmaSnapshotForm struct {
 	FormType    string     `json:"form_type"`
 	IsIrregular bool       `json:"is_irregular,omitempty"`
 	Phonetics   []Phonetic `json:"phonetics,omitempty"`
+	Syllables   []string   `json:"syllables,omitempty"`
 }
 
 // LemmaSnapshotLexeme represents a POS-grouped lexeme entry within a snapshot.
@@ -54,6 +55,7 @@ type LemmaSnapshotData struct {
 	Categories  []string                `json:"categories,omitempty"`
 	Frequencies []Frequency             `json:"frequencies,omitempty"`
 	Relations   []LemmaSnapshotRelation `json:"relations,omitempty"`
+	Syllables   []string                `json:"syllables,omitempty"`
 }
 
 // LemmaSnapshot is the materialized, self-contained view of a lemma's knowledge.
