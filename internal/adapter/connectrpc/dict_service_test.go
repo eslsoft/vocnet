@@ -471,6 +471,8 @@ func TestDictService_GetWordStats(t *testing.T) {
 	require.NotNil(t, stats.Summary)
 	assert.EqualValues(t, 2, stats.Summary.TotalWords)
 	assert.EqualValues(t, 2, stats.Summary.TotalLexemes)
+	assert.EqualValues(t, 0, stats.Summary.TotalRelations)
+	assert.InDelta(t, 0.0, stats.Summary.AvgQscore, 0.0001)
 
 	// Stats relies on CreatedAt. Since we just created them, they are new.
 	// But in test environment time moves fast.

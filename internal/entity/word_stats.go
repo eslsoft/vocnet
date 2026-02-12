@@ -19,7 +19,9 @@ type WordStatsSummary struct {
 	TotalWords      int64
 	TotalLexemes    int64
 	TotalForms      int64
+	TotalRelations  int64
 	AvgCompleteness float64
+	AvgQScore       float64
 	NewLast24h      int64
 	NewLast7d       int64
 }

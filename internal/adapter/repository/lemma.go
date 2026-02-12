@@ -12,8 +12,10 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
+	entlemmasnapshot "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemmasnapshot"
 	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
 	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
+	entsemanticrelation "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/semanticrelation"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
@@ -239,6 +241,18 @@ func (r *lemmaRepository) Stats(ctx context.Context, filter *entity.WordStatsFil
 		return nil, err
 	}
 	stats.Summary.TotalForms = int64(formCount)
+
+	relationCount, err := r.countRelations(ctx, langCodes)
+	if err != nil {
+		return nil, err
+	}
+	stats.Summary.TotalRelations = int64(relationCount)
+
+	avgQScore, err := r.averageQScore(ctx, langCodes)
+	if err != nil {
+		return nil, err
+	}
+	stats.Summary.AvgQScore = avgQScore
 
 	return stats, nil
 }
@@ -993,6 +1007,45 @@ func (r *lemmaRepository) countForms(ctx context.Context, langCodes []string) (i
 		return 0, fmt.Errorf("count forms: %w", err)
 	}
 	return count, nil
+}
+
+func (r *lemmaRepository) countRelations(ctx context.Context, langCodes []string) (int, error) {
+	query := r.client.SemanticRelation.Query()
+	if len(langCodes) > 0 {
+		query = query.Where(entsemanticrelation.HasSourceLexemeWith(
+			entlexeme.LanguageCodeIn(langCodes...),
+		))
+	}
+
+	count, err := query.Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count relations: %w", err)
+	}
+	return count, nil
+}
+
+func (r *lemmaRepository) averageQScore(ctx context.Context, langCodes []string) (float64, error) {
+	query := r.client.LemmaSnapshot.Query().
+		Where(entlemmasnapshot.IsLatestEQ(true))
+
+	if len(langCodes) > 0 {
+		query = query.Where(entlemmasnapshot.LanguageIn(langCodes...))
+	}
+
+	var rows []struct {
+		Sum   float64 `json:"sum"`
+		Count int64   `json:"count"`
+	}
+	if err := query.Aggregate(
+		entdb.Sum(entlemmasnapshot.FieldQualityOverall),
+		entdb.Count(),
+	).Scan(ctx, &rows); err != nil {
+		return 0, fmt.Errorf("avg qscore: %w", err)
+	}
+	if len(rows) == 0 || rows[0].Count == 0 {
+		return 0, nil
+	}
+	return rows[0].Sum / float64(rows[0].Count), nil
 }
 
 func stringsToInterfaces(values []string) []interface{} {

@@ -27,6 +27,8 @@ message WordStatsSummary {
   double avg_completeness = 4;
   int64 new_words_last_24h = 5;
   int64 new_words_last_7d = 6;
+  int64 total_relations = 7;
+  double avg_qscore = 8;
 }
 
 // Global coverage ratios derived from the corpus.

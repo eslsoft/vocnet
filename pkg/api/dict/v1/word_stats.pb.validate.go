@@ -437,6 +437,10 @@ func (m *WordStatsSummary) validate(all bool) error {
 
 	// no validation rules for NewWordsLast_7D
 
+	// no validation rules for TotalRelations
+
+	// no validation rules for AvgQscore
+
 	if len(errors) > 0 {
 		return WordStatsSummaryMultiError(errors)
 	}

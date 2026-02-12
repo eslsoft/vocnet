@@ -154,6 +154,8 @@ type WordStatsSummary struct {
 	AvgCompleteness  float64                `protobuf:"fixed64,4,opt,name=avg_completeness,json=avgCompleteness,proto3" json:"avg_completeness,omitempty"`
 	NewWordsLast_24H int64                  `protobuf:"varint,5,opt,name=new_words_last_24h,json=newWordsLast24h,proto3" json:"new_words_last_24h,omitempty"`
 	NewWordsLast_7D  int64                  `protobuf:"varint,6,opt,name=new_words_last_7d,json=newWordsLast7d,proto3" json:"new_words_last_7d,omitempty"`
+	TotalRelations   int64                  `protobuf:"varint,7,opt,name=total_relations,json=totalRelations,proto3" json:"total_relations,omitempty"`
+	AvgQscore        float64                `protobuf:"fixed64,8,opt,name=avg_qscore,json=avgQscore,proto3" json:"avg_qscore,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -226,6 +228,20 @@ func (x *WordStatsSummary) GetNewWordsLast_24H() int64 {
 func (x *WordStatsSummary) GetNewWordsLast_7D() int64 {
 	if x != nil {
 		return x.NewWordsLast_7D
+	}
+	return 0
+}
+
+func (x *WordStatsSummary) GetTotalRelations() int64 {
+	if x != nil {
+		return x.TotalRelations
+	}
+	return 0
+}
+
+func (x *WordStatsSummary) GetAvgQscore() float64 {
+	if x != nil {
+		return x.AvgQscore
 	}
 	return 0
 }
@@ -534,7 +550,7 @@ const file_dict_v1_word_stats_proto_rawDesc = "" +
 	"\bcoverage\x18\x02 \x01(\v2\x15.dict.v1.WordCoverageR\bcoverage\x128\n" +
 	"\tlanguages\x18\x03 \x03(\v2\x1a.dict.v1.WordLanguageStatsR\tlanguages\x12=\n" +
 	"\x0etop_categories\x18\x04 \x03(\v2\x16.dict.v1.CategoryStatsR\rtopCategories\x12?\n" +
-	"\fcompleteness\x18\x05 \x03(\v2\x1b.dict.v1.CompletenessBucketR\fcompleteness\"\xfc\x01\n" +
+	"\fcompleteness\x18\x05 \x03(\v2\x1b.dict.v1.CompletenessBucketR\fcompleteness\"\xc4\x02\n" +
 	"\x10WordStatsSummary\x12\x1f\n" +
 	"\vtotal_words\x18\x01 \x01(\x03R\n" +
 	"totalWords\x12#\n" +
@@ -543,7 +559,10 @@ const file_dict_v1_word_stats_proto_rawDesc = "" +
 	"totalForms\x12)\n" +
 	"\x10avg_completeness\x18\x04 \x01(\x01R\x0favgCompleteness\x12+\n" +
 	"\x12new_words_last_24h\x18\x05 \x01(\x03R\x0fnewWordsLast24h\x12)\n" +
-	"\x11new_words_last_7d\x18\x06 \x01(\x03R\x0enewWordsLast7d\"\x84\x01\n" +
+	"\x11new_words_last_7d\x18\x06 \x01(\x03R\x0enewWordsLast7d\x12'\n" +
+	"\x0ftotal_relations\x18\a \x01(\x03R\x0etotalRelations\x12\x1d\n" +
+	"\n" +
+	"avg_qscore\x18\b \x01(\x01R\tavgQscore\"\x84\x01\n" +
 	"\fWordCoverage\x12\x1c\n" +
 	"\tphonetics\x18\x01 \x01(\x01R\tphonetics\x12\x1e\n" +
 	"\n" +
