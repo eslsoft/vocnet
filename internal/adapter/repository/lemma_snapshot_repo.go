@@ -10,6 +10,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
 	entlemmasnapshot "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemmasnapshot"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
@@ -108,6 +109,7 @@ func (r *lemmaSnapshotRepository) GetByLemma(ctx context.Context, lemmaID int64)
 			entlemmasnapshot.LemmaIDEQ(lemmaID),
 			entlemmasnapshot.IsLatestEQ(true),
 		).
+		WithLemma().
 		Order(entlemmasnapshot.ByVersion(sql.OrderDesc())).
 		First(ctx)
 	if err != nil {
@@ -130,6 +132,7 @@ func (r *lemmaSnapshotRepository) GetByTerm(ctx context.Context, term string, la
 				s.Where(sqljson.ValueContains(column, normalized))
 			},
 		).
+		WithLemma().
 		Order(entlemmasnapshot.ByVersion(sql.OrderDesc())).
 		First(ctx)
 	if err != nil {
@@ -152,6 +155,7 @@ func (r *lemmaSnapshotRepository) ListLatestByLemmaIDs(ctx context.Context, lemm
 			entlemmasnapshot.LemmaIDIn(lemmaIDs...),
 			entlemmasnapshot.IsLatestEQ(true),
 		).
+		WithLemma().
 		Order(entlemmasnapshot.ByVersion(sql.OrderDesc())).
 		All(ctx)
 	if err != nil {
@@ -186,7 +190,8 @@ func (r *lemmaSnapshotRepository) ListLatest(ctx context.Context, query *reposit
 	}
 
 	q := r.client.LemmaSnapshot.Query().
-		Where(entlemmasnapshot.IsLatestEQ(true))
+		Where(entlemmasnapshot.IsLatestEQ(true)).
+		WithLemma()
 
 	trimmedKeyword := strings.TrimSpace(query.Keyword)
 	if trimmedKeyword != "" {
@@ -199,7 +204,17 @@ func (r *lemmaSnapshotRepository) ListLatest(ctx context.Context, query *reposit
 		q = q.Where(containsAnyJSONField(entlemmasnapshot.FieldPayload, "categories", query.Categories))
 	}
 	if len(query.Levels) > 0 {
-		q = q.Where(containsAnyJSONField(entlemmasnapshot.FieldPayload, "categories", query.Levels))
+		levels := make([]string, 0, len(query.Levels))
+		for _, level := range query.Levels {
+			trimmed := strings.TrimSpace(level)
+			if trimmed == "" {
+				continue
+			}
+			levels = append(levels, strings.ToUpper(trimmed))
+		}
+		if len(levels) > 0 {
+			q = q.Where(entlemmasnapshot.HasLemmaWith(entlemma.LevelIn(levels...)))
+		}
 	}
 	if len(query.POS) > 0 {
 		q = q.Where(containsAnyPOS(entlemmasnapshot.FieldPayload, query.POS))
@@ -294,7 +309,8 @@ func (r *lemmaSnapshotRepository) ListByLemmaID(ctx context.Context, lemmaID int
 	}
 
 	q := r.client.LemmaSnapshot.Query().
-		Where(entlemmasnapshot.LemmaIDEQ(lemmaID))
+		Where(entlemmasnapshot.LemmaIDEQ(lemmaID)).
+		WithLemma()
 
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
@@ -322,12 +338,17 @@ func mapEntLemmaSnapshot(row *entdb.LemmaSnapshot) *entity.LemmaSnapshot {
 	if row == nil {
 		return nil
 	}
+	level := ""
+	if row.Edges.Lemma != nil {
+		level = row.Edges.Lemma.Level
+	}
 	return &entity.LemmaSnapshot{
 		ID:            row.ID,
 		LemmaID:       row.LemmaID,
 		JobID:         row.JobID,
 		Surface:       row.Surface,
 		Normalized:    row.Normalized,
+		Level:         level,
 		LookupTerms:   row.LookupTerms,
 		Language:      row.Language,
 		IsLatest:      row.IsLatest,

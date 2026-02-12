@@ -63,6 +63,7 @@ type LemmaSnapshot struct {
 	JobID         *int64
 	Surface       string
 	Normalized    string
+	Level         string
 	LookupTerms   []string
 	Language      string
 	IsLatest      bool

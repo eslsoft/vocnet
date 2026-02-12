@@ -1,6 +1,7 @@
 package connectrpc
 
 import (
+	"strings"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -72,6 +73,7 @@ func toPBLemmaFromSnapshot(snapshot *entity.LemmaSnapshot) *dictv1.Lemma {
 		Id:          snapshot.LemmaID,
 		Surface:     snapshot.Surface,
 		Normalized:  snapshot.Normalized,
+		Level:       toPBLemmaLevel(snapshot.Level),
 		Forms:       forms,
 		Lexemes:     lexemes,
 		Frequencies: toPBFrequencies(snapshot.Payload.Frequencies),
@@ -85,6 +87,25 @@ func toPBLemmaFromSnapshot(snapshot *entity.LemmaSnapshot) *dictv1.Lemma {
 		},
 		CreatedAt: timestamppb.New(snapshot.CreatedAt),
 		UpdatedAt: timestamppb.New(snapshot.UpdatedAt),
+	}
+}
+
+func toPBLemmaLevel(level string) dictv1.LemmaLevel {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "A1":
+		return dictv1.LemmaLevel_LEMMA_LEVEL_A1
+	case "A2":
+		return dictv1.LemmaLevel_LEMMA_LEVEL_A2
+	case "B1":
+		return dictv1.LemmaLevel_LEMMA_LEVEL_B1
+	case "B2":
+		return dictv1.LemmaLevel_LEMMA_LEVEL_B2
+	case "C1":
+		return dictv1.LemmaLevel_LEMMA_LEVEL_C1
+	case "C2":
+		return dictv1.LemmaLevel_LEMMA_LEVEL_C2
+	default:
+		return dictv1.LemmaLevel_LEMMA_LEVEL_UNSPECIFIED
 	}
 }
 
