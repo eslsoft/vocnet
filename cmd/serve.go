@@ -32,7 +32,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/eslsoft/vocnet/internal/adapter/mapping"
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/conceptnet"
@@ -43,14 +42,11 @@ import (
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wordnet"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
 	"github.com/eslsoft/vocnet/internal/app"
-	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
-	"github.com/eslsoft/vocnet/pkg/safeconv"
-	"github.com/eslsoft/vocnet/pkg/wordbook"
 )
 
 // serveCmd represents the serve command
@@ -67,10 +63,6 @@ var serveCmd = &cobra.Command{
 		logger := container.Logger
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-
-		if err := syncBuiltinWordbooks(ctx, container); err != nil {
-			return fmt.Errorf("sync builtin wordbooks: %w", err)
-		}
 
 		// Start pipeline worker pool
 		workerPool, err := buildPipelineWorkerPool(container.Config, container.EntClient, logger)
@@ -134,21 +126,6 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// serveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-}
-
-func syncBuiltinWordbooks(ctx context.Context, container *app.Container) error {
-	builtin := wordbook.GetBuiltinWordbooks()
-	books := make([]*entity.Wordbook, 0, len(builtin))
-	for idx, wb := range builtin {
-		ent := mapping.ToEntityWordbook(wb)
-		if ent == nil {
-			continue
-		}
-		ent.Source = entity.WordbookSourceBuiltin
-		ent.SortOrder = safeconv.IntToInt32(idx + 1)
-		books = append(books, ent)
-	}
-	return container.WordbookUsecase.SyncBuiltin(ctx, books)
 }
 
 // buildPipelineWorkerPool constructs the Pipeline and WorkerPool from config and ent client.

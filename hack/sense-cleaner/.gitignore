@@ -1,8 +1,0 @@
-# Environment variables
-.env
-
-# Build artifacts
-sense-cleaner
-
-# Logs
-*.log

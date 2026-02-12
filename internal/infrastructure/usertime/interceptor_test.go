@@ -23,8 +23,8 @@ func TestNewUsertimeInterceptor(t *testing.T) {
 	}
 
 	// Verify non-public procedures are not registered
-	if interceptor.publicProcedures["/learning.v1.LearningService/GetFlashCards"] {
-		t.Error("Expected GetFlashCards to not be public")
+	if interceptor.publicProcedures["/pipeline.v1.PipelineService/SubmitJob"] {
+		t.Error("Expected SubmitJob to not be public")
 	}
 }
 

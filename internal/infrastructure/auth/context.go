@@ -33,7 +33,7 @@ func MustGetUserID(ctx context.Context) uuid.UUID {
 }
 
 // GetUserIDOrZero retrieves user ID from context, returns zero value if not found
-// Used for optional auth scenarios (e.g., Wordbook's GetWordbook can access public wordbooks)
+// Used for optional auth scenarios on public endpoints.
 func GetUserIDOrZero(ctx context.Context) uuid.UUID {
 	val := ctx.Value(userIDContextKey)
 	if val == nil {

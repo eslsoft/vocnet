@@ -25,20 +25,8 @@ func ToPbError(err error) error {
 		return connect.NewError(connect.CodeAlreadyExists, err)
 	case errors.Is(err, entity.ErrDuplicateWord):
 		return connect.NewError(connect.CodeAlreadyExists, err)
-	case errors.Is(err, entity.ErrDuplicateLearnedWord):
-		return connect.NewError(connect.CodeAlreadyExists, err)
 	case errors.Is(err, entity.ErrDuplicateLearnedLexeme):
 		return connect.NewError(connect.CodeAlreadyExists, err)
-	case errors.Is(err, entity.ErrInvalidWordbookID),
-		errors.Is(err, entity.ErrInvalidWordbookName),
-		errors.Is(err, entity.ErrInvalidWordbookUser):
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, entity.ErrWordbookNotFound):
-		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, entity.ErrDuplicateWordbook):
-		return connect.NewError(connect.CodeAlreadyExists, err)
-	case errors.Is(err, entity.ErrBuiltinWordbookLocked):
-		return connect.NewError(connect.CodeFailedPrecondition, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}

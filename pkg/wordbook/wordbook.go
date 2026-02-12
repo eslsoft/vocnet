@@ -3,14 +3,18 @@ package wordbook
 import (
 	"embed"
 	"encoding/json"
-
-	commonv1 "github.com/eslsoft/vocnet/pkg/api/common/v1"
-	wordbookv1 "github.com/eslsoft/vocnet/pkg/api/wordbook/v1"
-	"github.com/eslsoft/vocnet/pkg/safeconv"
-	"github.com/samber/lo"
 )
 
-var builtinWordbooks = []*wordbookv1.Wordbook{
+type Wordbook struct {
+	Id          int64
+	Name        string
+	Description string
+	Annotations map[string]string
+	Terms       []string
+	Language    string
+}
+
+var builtinWordbooks = []*Wordbook{
 	{
 		Id:          101,
 		Name:        "CEFR-A1",
@@ -19,8 +23,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🌱",
 			"icon.bgColor": "#81D4FA",
 		},
-		Terms:      readBuiltinWordbookTerms("CEFR-A1"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CEFR-A1"),
 	},
 	{
 		Id:          102,
@@ -30,8 +33,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🌿",
 			"icon.bgColor": "#B39DDB",
 		},
-		Terms:      readBuiltinWordbookTerms("CEFR-A2"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CEFR-A2"),
 	},
 	{
 		Id:          103,
@@ -41,8 +43,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🌳",
 			"icon.bgColor": "#A1887F",
 		},
-		Terms:      readBuiltinWordbookTerms("CEFR-B1"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CEFR-B1"),
 	},
 	{
 		Id:          104,
@@ -52,8 +53,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🏔️",
 			"icon.bgColor": "#EF5350",
 		},
-		Terms:      readBuiltinWordbookTerms("CEFR-B2"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CEFR-B2"),
 	},
 	{
 		Id:          105,
@@ -63,8 +63,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🏆",
 			"icon.bgColor": "#5C6BC0",
 		},
-		Terms:      readBuiltinWordbookTerms("CEFR-C1"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CEFR-C1"),
 	},
 	{
 		Id:          106,
@@ -74,8 +73,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "👑",
 			"icon.bgColor": "#9575CD",
 		},
-		Terms:      readBuiltinWordbookTerms("CEFR-C2"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CEFR-C2"),
 	},
 	{
 		Id:          107,
@@ -85,8 +83,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "📘",
 			"icon.bgColor": "#F06292",
 		},
-		Terms:      readBuiltinWordbookTerms("Oxford-3000"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("Oxford-3000"),
 	},
 	{
 		Id:          108,
@@ -96,8 +93,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "📕",
 			"icon.bgColor": "#4DD0E1",
 		},
-		Terms:      readBuiltinWordbookTerms("Oxford-5000"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("Oxford-5000"),
 	},
 	{
 		Id:          109,
@@ -107,8 +103,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🎓",
 			"icon.bgColor": "#FFA726",
 		},
-		Terms:      readBuiltinWordbookTerms("CET4"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CET4"),
 	},
 	{
 		Id:          110,
@@ -118,8 +113,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🎯",
 			"icon.bgColor": "#7986CB",
 		},
-		Terms:      readBuiltinWordbookTerms("CET6"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("CET6"),
 	},
 	{
 		Id:          111,
@@ -129,8 +123,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "💼",
 			"icon.bgColor": "#42A5F5",
 		},
-		Terms:      readBuiltinWordbookTerms("GMAT"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("GMAT"),
 	},
 	{
 		Id:          112,
@@ -140,8 +133,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🔬",
 			"icon.bgColor": "#BA68C8",
 		},
-		Terms:      readBuiltinWordbookTerms("GRE"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("GRE"),
 	},
 	{
 		Id:          113,
@@ -151,8 +143,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🌍",
 			"icon.bgColor": "#FFB74D",
 		},
-		Terms:      readBuiltinWordbookTerms("IELTS"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("IELTS"),
 	},
 	{
 		Id:          114,
@@ -162,8 +153,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "🎓",
 			"icon.bgColor": "#EC407A",
 		},
-		Terms:      readBuiltinWordbookTerms("SAT"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("SAT"),
 	},
 	{
 		Id:          115,
@@ -173,8 +163,7 @@ var builtinWordbooks = []*wordbookv1.Wordbook{
 			"icon.emoji":   "✈️",
 			"icon.bgColor": "#FF7043",
 		},
-		Terms:      readBuiltinWordbookTerms("TOEFL"),
-		Visibility: wordbookv1.VisibilityType_VISIBILITY_TYPE_PUBLIC,
+		Terms: readBuiltinWordbookTerms("TOEFL"),
 	},
 }
 
@@ -195,10 +184,6 @@ func readBuiltinWordbookTerms(name string) []string {
 	return terms
 }
 
-func GetBuiltinWordbooks() []*wordbookv1.Wordbook {
-	return lo.Map(builtinWordbooks, func(item *wordbookv1.Wordbook, index int) *wordbookv1.Wordbook {
-		item.Language = commonv1.Language_LANGUAGE_ENGLISH
-		item.Status = &wordbookv1.WordbookStats{TotalWords: safeconv.IntToInt32(len(item.Terms))}
-		return item
-	})
+func GetBuiltinWordbooks() []*Wordbook {
+	return builtinWordbooks
 }

@@ -19,9 +19,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
-	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
-	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 )
 
 // Server represents the application server
@@ -35,7 +33,7 @@ type Server struct {
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, lemmaSvc dictv1connect.LemmaServiceHandler, learningSvc learningv1connect.LearningServiceHandler, wordbookSvc wordbookv1connect.WordbookServiceHandler, reviewPlanSvc learningv1connect.ReviewPlanServiceHandler, statsSvc learningv1connect.StatsServiceHandler, pipelineSvc pipelinev1connect.PipelineServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, lemmaSvc dictv1connect.LemmaServiceHandler, pipelineSvc pipelinev1connect.PipelineServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
@@ -48,7 +46,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 	usertimeInterceptor := usertime.NewUsertimeInterceptor(publicProcedures)
 
 	// Create auth interceptor with public procedures
-	// Dict service is public, Learning and Wordbook services require authentication
+	// Dict service is public, pipeline service requires authentication
 	authInterceptor := auth.NewAuthInterceptor(jwtValidator, publicProcedures)
 
 	// Combine interceptors: logger first, then usertime, then auth
@@ -61,10 +59,6 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 	mux := http.NewServeMux()
 	mux.Handle(dictv1connect.NewDictServiceHandler(dictSvc, interceptors))
 	mux.Handle(dictv1connect.NewLemmaServiceHandler(lemmaSvc, interceptors))
-	mux.Handle(learningv1connect.NewLearningServiceHandler(learningSvc, interceptors))
-	mux.Handle(wordbookv1connect.NewWordbookServiceHandler(wordbookSvc, interceptors))
-	mux.Handle(learningv1connect.NewReviewPlanServiceHandler(reviewPlanSvc, interceptors))
-	mux.Handle(learningv1connect.NewStatsServiceHandler(statsSvc, interceptors))
 	mux.Handle(pipelinev1connect.NewPipelineServiceHandler(pipelineSvc, interceptors))
 
 	return &Server{
@@ -146,7 +140,7 @@ func withCORS(h http.Handler) http.Handler {
 }
 
 // getPublicProcedures returns a list of procedures that don't require authentication
-// All Dict service procedures are public, while Learning and Wordbook require auth
+// All Dict service procedures are public.
 func getPublicProcedures() []string {
 	// Dict service procedures (all public)
 	dictProcedures := []string{
@@ -155,10 +149,6 @@ func getPublicProcedures() []string {
 		"/dict.v1.DictService/ListWords",
 		"/dict.v1.LemmaService/ListLemmas",
 	}
-
-	// Note: Some wordbook procedures may optionally support public access
-	// (e.g., GetWordbook can access public wordbooks)
-	// but the auth interceptor will still be called - GetUserIDOrZero handles this
 
 	return dictProcedures
 }

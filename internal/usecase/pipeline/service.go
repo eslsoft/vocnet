@@ -84,7 +84,7 @@ func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, 
 	return s.jobRepo.Create(ctx, job)
 }
 
-// SubmitTerms creates one job per term for bulk execution (e.g. wordbook submit).
+// SubmitTerms creates one job per term for bulk execution.
 func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []string, language string, tier int32) ([]*entity.PipelineJob, error) {
 	// Deduplicate and trim
 	terms = deduplicateTerms(terms)
@@ -168,7 +168,6 @@ func (s *PipelineService) ListJobsFiltered(ctx context.Context, query *ListJobsQ
 }
 
 // GetJobStageProgress computes stage progress for a single-word job.
-// Returns nil for wordbook jobs (too expensive for list view).
 func (s *PipelineService) GetJobStageProgress(ctx context.Context, job *entity.PipelineJob) (*entity.StageProgressSummary, error) {
 	stages, err := s.stageRepo.ListByJob(ctx, job.ID)
 	if err != nil {

@@ -13,9 +13,6 @@ var (
 	ErrLearnedLexemeNotFound    = errors.New("user lexeme not found")
 	ErrDuplicateLearnedLexeme   = errors.New("user lexeme already exists")
 	ErrInvalidLearnedLexemeText = errors.New("invalid user lexeme text")
-	ErrLearnedWordNotFound      = errors.New("user word not found")
-	ErrDuplicateLearnedWord     = errors.New("user word already exists")
-	ErrInvalidLearnedWordText   = errors.New("invalid user word text")
 	ErrLexemeRequired           = errors.New("lexeme id is required")
 	ErrLexemeNotFound           = errors.New("lexeme not found")
 	ErrLanguageMismatch         = errors.New("language mismatch")
@@ -25,18 +22,6 @@ var (
 	ErrWordNotFound             = errors.New("word not found")
 	ErrInvalidWordID            = errors.New("invalid word id")
 	ErrDuplicateWord            = errors.New("word already exists")
-
-	ErrWordbookNotFound      = errors.New("wordbook not found")
-	ErrInvalidWordbookID     = errors.New("invalid wordbook id")
-	ErrInvalidWordbookName   = errors.New("invalid wordbook name")
-	ErrInvalidWordbookUser   = errors.New("invalid wordbook owner")
-	ErrBuiltinWordbookLocked = errors.New("builtin wordbook is read-only")
-	ErrDuplicateWordbook     = errors.New("wordbook already exists")
-
-	ErrReviewPlanNotFound    = errors.New("review plan not found")
-	ErrInvalidReviewPlanID   = errors.New("invalid review plan id")
-	ErrInvalidReviewPlanName = errors.New("invalid review plan name")
-	ErrDuplicateReviewPlan   = errors.New("review plan already exists")
 
 	ErrPipelineJobNotFound = errors.New("pipeline job not found")
 )

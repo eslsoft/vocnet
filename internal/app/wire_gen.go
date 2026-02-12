@@ -15,9 +15,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/usecase"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
-	"github.com/eslsoft/vocnet/pkg/api/learning/v1/learningv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
-	"github.com/eslsoft/vocnet/pkg/api/wordbook/v1/wordbookv1connect"
 	"github.com/google/wire"
 )
 
@@ -49,25 +47,11 @@ func Initialize() (*Container, func(), error) {
 	lemmaSnapshotRepository := repository.NewLemmaSnapshotRepository(client)
 	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository, lemmaSnapshotRepository)
 	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
-	wordbookRepository := repository.NewWordbookRepository(client)
-	learnedWordRepository := repository.NewLearnedWordRepository(client, wordbookRepository)
-	learnedWordUsecase := usecase.NewLearnedWordUsecase(learnedWordRepository, lexemeRepository)
-	learningServiceServer := connectrpc.NewLearningServiceServer(learnedWordUsecase)
-	wordbookUsecase := usecase.NewWordbookUsecase(wordbookRepository, learnedWordRepository)
-	wordbookServiceServer := connectrpc.NewWordbookServiceServer(wordbookUsecase)
-	reviewPlanRepository := repository.NewReviewPlanRepository(client)
-	dailyStatsRepository := repository.NewDailyStatsRepository(client)
-	cardGeneratorFactory := usecase.NewCardGeneratorFactory(lexemeRepository)
-	reviewAlgorithm := usecase.NewFSRSAlgorithm()
-	reviewPlanUsecase := usecase.NewReviewPlanUsecase(reviewPlanRepository, wordbookRepository, learnedWordRepository, dailyStatsRepository, cardGeneratorFactory, reviewAlgorithm)
-	reviewPlanServiceServer := connectrpc.NewReviewPlanServiceServer(reviewPlanUsecase)
-	statsUsecase := usecase.NewStatsUsecase(learnedWordRepository, dailyStatsRepository)
-	statsServiceServer := connectrpc.NewStatsServiceServer(statsUsecase)
 	pipelineJobRepository := repository.NewPipelineJobRepository(client)
 	pipelineStageRepository := repository.NewPipelineStageRepository(client)
 	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineStageRepository, logger)
 	pipelineServiceServer := connectrpc.NewPipelineServiceServer(pipelineService)
-	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, lemmaServiceServer, learningServiceServer, wordbookServiceServer, reviewPlanServiceServer, statsServiceServer, pipelineServiceServer)
+	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, lemmaServiceServer, pipelineServiceServer)
 	if err != nil {
 		cleanup2()
 		cleanup()
@@ -78,7 +62,6 @@ func Initialize() (*Container, func(), error) {
 		Config:          configConfig,
 		Server:          serverServer,
 		EntClient:       client,
-		WordbookUsecase: wordbookUsecase,
 		PipelineService: pipelineService,
 	}
 	return container, func() {
@@ -97,10 +80,10 @@ var authSet = wire.NewSet(
 	provideJWTValidator,
 )
 
-var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLearnedWordRepository, repository.NewLemmaRepository, repository.NewWordbookRepository, repository.NewReviewPlanRepository, repository.NewDailyStatsRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewLemmaSnapshotRepository, repository.NewPipelineJobRepository)
+var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLemmaRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewLemmaSnapshotRepository, repository.NewPipelineJobRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, usecase.NewLearnedWordUsecase, usecase.NewWordbookUsecase, usecase.NewCardGeneratorFactory, usecase.NewFSRSAlgorithm, usecase.NewReviewPlanUsecase, usecase.NewStatsUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
 
-var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewLearningServiceServer, connectrpc.NewWordbookServiceServer, connectrpc.NewReviewPlanServiceServer, connectrpc.NewStatsServiceServer, connectrpc.NewPipelineServiceServer, connectrpc.NewLemmaServiceServer, wire.Bind(new(learningv1connect.LearningServiceHandler), new(*connectrpc.LearningServiceServer)), wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(dictv1connect.LemmaServiceHandler), new(*connectrpc.LemmaServiceServer)), wire.Bind(new(wordbookv1connect.WordbookServiceHandler), new(*connectrpc.WordbookServiceServer)), wire.Bind(new(learningv1connect.ReviewPlanServiceHandler), new(*connectrpc.ReviewPlanServiceServer)), wire.Bind(new(learningv1connect.StatsServiceHandler), new(*connectrpc.StatsServiceServer)), wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*connectrpc.PipelineServiceServer)))
+var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewPipelineServiceServer, connectrpc.NewLemmaServiceServer, wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(dictv1connect.LemmaServiceHandler), new(*connectrpc.LemmaServiceServer)), wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*connectrpc.PipelineServiceServer)))
 
 var serverSet = wire.NewSet(server.NewLogger, server.NewServer)

@@ -25,8 +25,6 @@ func translateDBError(err error, entityType string) error {
 			return entity.ErrLexemeNotFound
 		case "learned_lexeme":
 			return entity.ErrLearnedLexemeNotFound
-		case "wordbook":
-			return entity.ErrWordbookNotFound
 		case "pipeline_job":
 			return entity.ErrPipelineJobNotFound
 		default:
@@ -45,12 +43,8 @@ func translateDBError(err error, entityType string) error {
 				return entity.ErrDuplicateWord
 			case "lexeme":
 				return entity.ErrDuplicateLexeme
-			case "learned_word":
-				return entity.ErrDuplicateLearnedWord
 			case "learned_lexeme":
 				return entity.ErrDuplicateLearnedLexeme
-			case "wordbook":
-				return entity.ErrDuplicateWordbook
 			}
 		}
 
@@ -62,12 +56,8 @@ func translateDBError(err error, entityType string) error {
 				return entity.ErrDuplicateWord
 			case "lexeme":
 				return entity.ErrDuplicateLexeme
-			case "learned_word":
-				return entity.ErrDuplicateLearnedWord
 			case "learned_lexeme":
 				return entity.ErrDuplicateLearnedLexeme
-			case "wordbook":
-				return entity.ErrDuplicateWordbook
 			}
 		}
 	}
