@@ -31,13 +31,8 @@ func Initialize() (*Container, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	jwtValidator, cleanup, err := provideJWTValidator(configConfig)
+	client, cleanup, err := database.NewEntClient(configConfig)
 	if err != nil {
-		return nil, nil, err
-	}
-	client, cleanup2, err := database.NewEntClient(configConfig)
-	if err != nil {
-		cleanup()
 		return nil, nil, err
 	}
 	lemmaRepository := repository.NewLemmaRepository(client)
@@ -51,9 +46,8 @@ func Initialize() (*Container, func(), error) {
 	pipelineStageRepository := repository.NewPipelineStageRepository(client)
 	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineStageRepository, logger)
 	pipelineServiceServer := connectrpc.NewPipelineServiceServer(pipelineService)
-	serverServer, err := server.NewServer(configConfig, logger, jwtValidator, dictServiceServer, lemmaServiceServer, pipelineServiceServer)
+	serverServer, err := server.NewServer(configConfig, logger, dictServiceServer, lemmaServiceServer, pipelineServiceServer)
 	if err != nil {
-		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
@@ -65,7 +59,6 @@ func Initialize() (*Container, func(), error) {
 		PipelineService: pipelineService,
 	}
 	return container, func() {
-		cleanup2()
 		cleanup()
 	}, nil
 }
@@ -75,10 +68,6 @@ func Initialize() (*Container, func(), error) {
 var configSet = wire.NewSet(config.Load)
 
 var databaseSet = wire.NewSet(database.NewEntClient)
-
-var authSet = wire.NewSet(
-	provideJWTValidator,
-)
 
 var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLemmaRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewLemmaSnapshotRepository, repository.NewPipelineJobRepository)
 

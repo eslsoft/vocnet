@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -14,7 +13,6 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Log      LogConfig      `mapstructure:"log"`
-	Auth     AuthConfig     `mapstructure:"auth"`
 	Pipeline PipelineConfig `mapstructure:"pipeline"`
 	LLM      LLMConfig      `mapstructure:"llm"`
 }
@@ -40,12 +38,6 @@ type LogConfig struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
 	File   string `mapstructure:"file"` // File path for log output, empty means stdout/stderr
-}
-
-// AuthConfig holds JWT authentication configuration
-type AuthConfig struct {
-	JWKSURL       string        `mapstructure:"jwks_url"`       // JWKS endpoint URL from Supabase
-	RefreshPeriod time.Duration `mapstructure:"refresh_period"` // How often to refresh JWKS keys
 }
 
 // PipelineConfig holds pipeline data source configuration
@@ -107,10 +99,6 @@ func setDefaults() {
 	viper.SetDefault("log.format", "json")
 	viper.SetDefault("log.file", "") // Empty means stdout/stderr
 
-	// Auth defaults
-	viper.SetDefault("auth.jwks_url", "")
-	viper.SetDefault("auth.refresh_period", time.Hour)
-
 	// Pipeline defaults
 	viper.SetDefault("pipeline.data_dir", "./data")
 	viper.SetDefault("pipeline.auto_download", true)
@@ -125,15 +113,14 @@ func setDefaults() {
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
-		"database.dsn":            {"DATABASE_URL"},
-		"auth.jwks_url":           {"AUTH_JWKS_URL"},
-		"pipeline.data_dir":       {"PIPELINE_DATA_DIR"},
-		"pipeline.auto_download":  {"PIPELINE_AUTO_DOWNLOAD"},
-		"pipeline.cache_dir":      {"PIPELINE_CACHE_DIR"},
-		"pipeline.worker_count":   {"PIPELINE_WORKER_COUNT"},
-		"llm.base_url":            {"LLM_BASE_URL"},
-		"llm.api_key":             {"LLM_API_KEY"},
-		"llm.model":               {"LLM_MODEL"},
+		"database.dsn":           {"DATABASE_URL"},
+		"pipeline.data_dir":      {"PIPELINE_DATA_DIR"},
+		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
+		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
+		"pipeline.worker_count":  {"PIPELINE_WORKER_COUNT"},
+		"llm.base_url":           {"LLM_BASE_URL"},
+		"llm.api_key":            {"LLM_API_KEY"},
+		"llm.model":              {"LLM_MODEL"},
 	}
 
 	for key, envs := range bindings {

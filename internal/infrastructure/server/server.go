@@ -15,9 +15,7 @@ import (
 	"google.golang.org/grpc"
 
 	"connectrpc.com/connect"
-	"github.com/eslsoft/vocnet/internal/infrastructure/auth"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
-	"github.com/eslsoft/vocnet/internal/infrastructure/usertime"
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 )
@@ -29,31 +27,19 @@ type Server struct {
 	httpServer   *http.Server
 	httpMux      *http.ServeMux
 	logger       *slog.Logger
-	jwtValidator *auth.JWTValidator
 }
 
 // NewServer creates a new server instance from pre-wired dependencies.
-func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTValidator, dictSvc dictv1connect.DictServiceHandler, lemmaSvc dictv1connect.LemmaServiceHandler, pipelineSvc pipelinev1connect.PipelineServiceHandler) (*Server, error) {
+func NewServer(cfg *config.Config, logger *slog.Logger, dictSvc dictv1connect.DictServiceHandler, lemmaSvc dictv1connect.LemmaServiceHandler, pipelineSvc pipelinev1connect.PipelineServiceHandler) (*Server, error) {
 	// Create access logger interceptor with file support
 	accessLoggerInterceptor, err := LoggerWithConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create access logger: %w", err)
 	}
 
-	// Create usertime interceptor with public procedures
-	// Public procedures don't require timezone, protected procedures do
-	publicProcedures := getPublicProcedures()
-	usertimeInterceptor := usertime.NewUsertimeInterceptor(publicProcedures)
-
-	// Create auth interceptor with public procedures
-	// Dict service is public, pipeline service requires authentication
-	authInterceptor := auth.NewAuthInterceptor(jwtValidator, publicProcedures)
-
-	// Combine interceptors: logger first, then usertime, then auth
+	// Only keep access logging interceptor.
 	interceptors := connect.WithInterceptors(
 		accessLoggerInterceptor,
-		connect.UnaryInterceptorFunc(usertimeInterceptor.WrapUnary),
-		connect.UnaryInterceptorFunc(authInterceptor.WrapUnary),
 	)
 
 	mux := http.NewServeMux()
@@ -69,8 +55,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, jwtValidator *auth.JWTVa
 			Handler:           h2c.NewHandler(withCORS(mux), &http2.Server{}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-		logger:       logger,
-		jwtValidator: jwtValidator,
+		logger: logger,
 	}, nil
 }
 
@@ -118,13 +103,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.logger.Error("failed to shutdown HTTP server", "error", err)
 	}
 
-	// Close JWT validator
-	if s.jwtValidator != nil {
-		if err := s.jwtValidator.Close(); err != nil {
-			s.logger.Error("failed to close JWT validator", "error", err)
-		}
-	}
-
 	s.logger.Info("server shutdown complete")
 	return nil
 }
@@ -133,22 +111,8 @@ func withCORS(h http.Handler) http.Handler {
 	middleware := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: connectcors.AllowedMethods(),
-		AllowedHeaders: append(connectcors.AllowedHeaders(), usertime.TimezoneHeader),
+		AllowedHeaders: connectcors.AllowedHeaders(),
 		ExposedHeaders: connectcors.ExposedHeaders(),
 	})
 	return middleware.Handler(h)
-}
-
-// getPublicProcedures returns a list of procedures that don't require authentication
-// All Dict service procedures are public.
-func getPublicProcedures() []string {
-	// Dict service procedures (all public)
-	dictProcedures := []string{
-		"/dict.v1.DictService/LookupWord",
-		"/dict.v1.DictService/LookupWordForms",
-		"/dict.v1.DictService/ListWords",
-		"/dict.v1.LemmaService/ListLemmas",
-	}
-
-	return dictProcedures
 }
