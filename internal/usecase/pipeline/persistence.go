@@ -16,7 +16,7 @@ type Persistence struct {
 	lexemeRepo   repository.LexemeRepository
 	evidenceRepo repository.EvidenceRepository
 	relationRepo repository.SemanticRelationRepository
-	snapshotRepo repository.WordSnapshotRepository
+	snapshotRepo repository.LemmaSnapshotRepository
 	aggregator   *DataAggregator
 	logger       *slog.Logger
 }
@@ -27,7 +27,7 @@ func NewPersistence(
 	lexemeRepo repository.LexemeRepository,
 	evidenceRepo repository.EvidenceRepository,
 	relationRepo repository.SemanticRelationRepository,
-	snapshotRepo repository.WordSnapshotRepository,
+	snapshotRepo repository.LemmaSnapshotRepository,
 	aggregator *DataAggregator,
 	logger *slog.Logger,
 ) *Persistence {
@@ -85,16 +85,16 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 	return nil
 }
 
-// SaveSnapshot persists a new snapshot version for a lemma.
-func (p *Persistence) SaveSnapshot(ctx context.Context, jobID int64, lemma *entity.Lemma, forms []*entity.LemmaForm, snapshot *entity.WordSnapshot) error {
+// SaveLemmaSnapshot persists a new snapshot version for a lemma.
+func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma *entity.Lemma, forms []*entity.LemmaForm, snapshot *entity.LemmaSnapshot) error {
 	if lemma == nil {
 		return fmt.Errorf("lemma is required")
 	}
-	terms := collectSnapshotTerms(lemma, forms)
+	terms := collectLemmaSnapshotLookupTerms(lemma, forms)
 	snapshot.LemmaID = lemma.ID
 	snapshot.JobID = &jobID
-	snapshot.Terms = terms
-	snapshot.Latest = true
+	snapshot.LookupTerms = terms
+	snapshot.IsLatest = true
 	_, err := p.snapshotRepo.CreateOrUpdate(ctx, snapshot)
 	if err != nil {
 		return fmt.Errorf("save snapshot: %w", err)
@@ -102,7 +102,7 @@ func (p *Persistence) SaveSnapshot(ctx context.Context, jobID int64, lemma *enti
 	return nil
 }
 
-func collectSnapshotTerms(lemma *entity.Lemma, forms []*entity.LemmaForm) []string {
+func collectLemmaSnapshotLookupTerms(lemma *entity.Lemma, forms []*entity.LemmaForm) []string {
 	seen := make(map[string]struct{})
 	terms := make([]string, 0, 1+len(forms))
 

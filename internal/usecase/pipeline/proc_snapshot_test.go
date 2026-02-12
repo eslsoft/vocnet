@@ -10,7 +10,7 @@ import (
 )
 
 func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) {
-	p := NewSnapshotProcessor()
+	p := NewLemmaSnapshotProcessor()
 
 	pctx := &PipelineContext{
 		Term:     "favourite",
@@ -23,6 +23,7 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 			{
 				ExternalID:   "L5897",
 				PartOfSpeech: entity.PartOfSpeechAdjective,
+				Categories:   []string{"domain:common", "usage:variant"},
 				Senses: []entity.LexemeSense{
 					{Language: entity.LanguageEnglish, Gloss: "preferred above all others"},
 				},
@@ -53,15 +54,26 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 	res, err := p.Process(context.Background(), pctx)
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	require.NotNil(t, res.Snapshot)
-	require.NotEmpty(t, res.Snapshot.Data.Lexemes)
+	require.NotNil(t, res.LemmaSnapshot)
+	require.NotEmpty(t, res.LemmaSnapshot.Payload.Lexemes)
+	require.NotEmpty(t, res.LemmaSnapshot.Payload.Forms)
+	require.ElementsMatch(t, []string{"domain:common", "usage:variant"}, res.LemmaSnapshot.Payload.Categories)
 
-	lex := res.Snapshot.Data.Lexemes[0]
-	require.NotEmpty(t, lex.Forms)
-	require.Equal(t, "favorite", lex.Forms[0].Surface)
-	require.NotEmpty(t, lex.Phonetics)
-	require.Equal(t, "en-US", lex.Phonetics[0].Dialect)
+	lex := res.LemmaSnapshot.Payload.Lexemes[0]
+	require.Equal(t, "L5897", lex.ExternalID)
+	require.Equal(t, string(entity.PartOfSpeechAdjective), lex.POS)
 
-	// QScore should be calculated from the fully assembled snapshot data.
-	require.Greater(t, res.Snapshot.QScoreCompleteness, 0.0)
+	var found *entity.LemmaSnapshotForm
+	for i := range res.LemmaSnapshot.Payload.Forms {
+		if res.LemmaSnapshot.Payload.Forms[i].Surface == "favorite" {
+			found = &res.LemmaSnapshot.Payload.Forms[i]
+			break
+		}
+	}
+	require.NotNil(t, found)
+	require.NotEmpty(t, found.Phonetics)
+	require.Equal(t, "en-US", found.Phonetics[0].Dialect)
+
+	// Quality.Overall should be calculated from the fully assembled snapshot data.
+	require.Greater(t, res.LemmaSnapshot.Quality.Completeness, 0.0)
 }

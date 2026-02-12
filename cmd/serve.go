@@ -159,7 +159,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 	evidenceRepo := repository.NewEvidenceRepository(entClient)
 	stageRepo := repository.NewPipelineStageRepository(entClient)
 	relationRepo := repository.NewSemanticRelationRepository(entClient)
-	snapshotRepo := repository.NewWordSnapshotRepository(entClient)
+	snapshotRepo := repository.NewLemmaSnapshotRepository(entClient)
 	jobRepo := repository.NewPipelineJobRepository(entClient)
 
 	// Ensure data sources are available (auto-download if configured)
@@ -242,7 +242,7 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 			pipeline.NewScoringProcessor(llmProvider, logger),
 		),
 		pipeline.NewStage("synthesis", 5,
-			pipeline.NewSnapshotProcessor(),
+			pipeline.NewLemmaSnapshotProcessor(),
 		),
 	}
 

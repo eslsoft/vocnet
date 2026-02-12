@@ -17,7 +17,7 @@ type Pipeline struct {
 	validator    *Validator
 	persistence  *Persistence
 	stageRepo    repository.PipelineStageRepository
-	snapshotRepo repository.WordSnapshotRepository
+	snapshotRepo repository.LemmaSnapshotRepository
 	lemmaRepo    repository.LemmaRepository
 	lexemeRepo   repository.LexemeRepository
 	logger       *slog.Logger
@@ -25,9 +25,9 @@ type Pipeline struct {
 
 // ProcessWordResult contains the output of processing a single word.
 type ProcessWordResult struct {
-	Lemma    *entity.Lemma
-	Stages   []*entity.PipelineStage
-	Snapshot *entity.WordSnapshot
+	Lemma         *entity.Lemma
+	Stages        []*entity.PipelineStage
+	LemmaSnapshot *entity.LemmaSnapshot
 }
 
 // RunOptions carries optional per-run configuration.
@@ -41,7 +41,7 @@ func NewPipeline(
 	validator *Validator,
 	persistence *Persistence,
 	stageRepo repository.PipelineStageRepository,
-	snapshotRepo repository.WordSnapshotRepository,
+	snapshotRepo repository.LemmaSnapshotRepository,
 	lemmaRepo repository.LemmaRepository,
 	lexemeRepo repository.LexemeRepository,
 	logger *slog.Logger,
@@ -122,12 +122,12 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 		return nil, fmt.Errorf("list stages: %w", err)
 	}
 
-	snapshot, _ := p.snapshotRepo.GetByLemma(ctx, pctx.Lemma.ID)
+	lemmaSnapshot, _ := p.snapshotRepo.GetByLemma(ctx, pctx.Lemma.ID)
 
 	return &ProcessWordResult{
-		Lemma:    pctx.Lemma,
-		Stages:   stages,
-		Snapshot: snapshot,
+		Lemma:         pctx.Lemma,
+		Stages:        stages,
+		LemmaSnapshot: lemmaSnapshot,
 	}, nil
 }
 
@@ -216,9 +216,9 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		}
 	}
 
-	// Save snapshot if produced
-	if mergedResult.Snapshot != nil {
-		if err := p.persistence.SaveSnapshot(ctx, jobID, pctx.Lemma, pctx.Forms, mergedResult.Snapshot); err != nil {
+	// Save lemma snapshot if produced.
+	if mergedResult.LemmaSnapshot != nil {
+		if err := p.persistence.SaveLemmaSnapshot(ctx, jobID, pctx.Lemma, pctx.Forms, mergedResult.LemmaSnapshot); err != nil {
 			errMsg := fmt.Sprintf("save snapshot: %s", err)
 			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
 			return fmt.Errorf("save snapshot: %w", err)
@@ -283,7 +283,7 @@ func mergeProcessResults(dst, src *ProcessResult) {
 	if src.LemmaUpdate != nil {
 		dst.LemmaUpdate = src.LemmaUpdate
 	}
-	if src.Snapshot != nil {
-		dst.Snapshot = src.Snapshot
+	if src.LemmaSnapshot != nil {
+		dst.LemmaSnapshot = src.LemmaSnapshot
 	}
 }

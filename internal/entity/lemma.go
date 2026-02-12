@@ -34,7 +34,7 @@ type LemmaForm struct {
 	UpdatedAt time.Time
 }
 
-// Phonetic stores IPA/dialect pairs for lexemes.
+// Phonetic stores IPA/dialect pairs for surfaced forms.
 type Phonetic struct {
 	IPA     string `json:"ipa"`
 	Dialect string `json:"dialect,omitempty"`

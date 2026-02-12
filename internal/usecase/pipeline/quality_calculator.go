@@ -7,7 +7,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 )
 
-// QualityScoreCalculator computes multi-dimensional quality scores for word snapshots.
+// QualityScoreCalculator computes multi-dimensional quality scores for lemma snapshots.
 //
 // Scoring follows the design doc direction:
 // - Completeness (C): lexical structure coverage (lemma/lexeme/forms/phonetics)
@@ -23,7 +23,7 @@ func NewQualityScoreCalculator() *QualityScoreCalculator {
 	return &QualityScoreCalculator{}
 }
 
-func (c *QualityScoreCalculator) Calculate(data entity.SnapshotData) entity.QualityScore {
+func (c *QualityScoreCalculator) Calculate(data entity.LemmaSnapshotData) entity.QualityScore {
 	completeness := c.calculateCompleteness(data)
 	depth := c.calculateDepth(data)
 	density := c.calculateDensity(data)
@@ -41,7 +41,7 @@ func (c *QualityScoreCalculator) Calculate(data entity.SnapshotData) entity.Qual
 }
 
 // calculateCompleteness focuses on lexical structure coverage.
-func (c *QualityScoreCalculator) calculateCompleteness(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) calculateCompleteness(data entity.LemmaSnapshotData) float64 {
 	if len(data.Lexemes) == 0 {
 		return 0
 	}
@@ -49,8 +49,6 @@ func (c *QualityScoreCalculator) calculateCompleteness(data entity.SnapshotData)
 	lexemeCount := float64(len(data.Lexemes))
 	validPOS := 0
 	withSenses := 0
-	withForms := 0
-	withPhonetics := 0
 
 	for _, lex := range data.Lexemes {
 		if isValidPOS(lex.POS) {
@@ -59,18 +57,23 @@ func (c *QualityScoreCalculator) calculateCompleteness(data entity.SnapshotData)
 		if len(lex.Senses) > 0 {
 			withSenses++
 		}
-		if len(lex.Forms) > 0 {
-			withForms++
-		}
-		if len(lex.Phonetics) > 0 {
+	}
+
+	formCount := len(data.Forms)
+	withPhonetics := 0
+	for _, form := range data.Forms {
+		if len(form.Phonetics) > 0 {
 			withPhonetics++
 		}
 	}
 
 	posCoverage := float64(validPOS) / lexemeCount
 	senseCoverage := float64(withSenses) / lexemeCount
-	formCoverage := float64(withForms) / lexemeCount
-	phoneticCoverage := float64(withPhonetics) / lexemeCount
+	formCoverage := clampUnit(float64(formCount) / lexemeCount)
+	phoneticCoverage := 0.0
+	if formCount > 0 {
+		phoneticCoverage = float64(withPhonetics) / float64(formCount)
+	}
 
 	// Relation integrity is part of structural completeness:
 	// lots of unresolved/unmapped/out-of-range edges should not look "complete".
@@ -86,7 +89,7 @@ func (c *QualityScoreCalculator) calculateCompleteness(data entity.SnapshotData)
 }
 
 // calculateDepth measures taxonomy depth via WordNet hypernym signal.
-func (c *QualityScoreCalculator) calculateDepth(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) calculateDepth(data entity.LemmaSnapshotData) float64 {
 	hypernymCount := c.countHypernyms(data)
 	if hypernymCount == 0 {
 		return 0
@@ -107,7 +110,7 @@ func (c *QualityScoreCalculator) calculateDepth(data entity.SnapshotData) float6
 // calculateDensity measures effective relation density, not raw edge count.
 //
 // We penalize relation volume when links are unresolved or mostly not sense-mapped.
-func (c *QualityScoreCalculator) calculateDensity(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) calculateDensity(data entity.LemmaSnapshotData) float64 {
 	uniqueCount := c.countUniqueRelations(data)
 	if uniqueCount == 0 {
 		return 0
@@ -127,7 +130,7 @@ func (c *QualityScoreCalculator) calculateDensity(data entity.SnapshotData) floa
 }
 
 // calculateValidity measures relation trust/consistency quality.
-func (c *QualityScoreCalculator) calculateValidity(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) calculateValidity(data entity.LemmaSnapshotData) float64 {
 	relCount := len(data.Relations)
 	if relCount == 0 {
 		return 0
@@ -149,7 +152,7 @@ func (c *QualityScoreCalculator) calculateValidity(data entity.SnapshotData) flo
 	return clampScore(score)
 }
 
-func (c *QualityScoreCalculator) countHypernyms(data entity.SnapshotData) int {
+func (c *QualityScoreCalculator) countHypernyms(data entity.LemmaSnapshotData) int {
 	count := 0
 	for _, rel := range data.Relations {
 		if rel.Provider == "wordnet" && rel.RelationType == entity.RelationHypernym {
@@ -159,7 +162,7 @@ func (c *QualityScoreCalculator) countHypernyms(data entity.SnapshotData) int {
 	return count
 }
 
-func (c *QualityScoreCalculator) hasHypernymRoot(data entity.SnapshotData) bool {
+func (c *QualityScoreCalculator) hasHypernymRoot(data entity.LemmaSnapshotData) bool {
 	for _, rel := range data.Relations {
 		if rel.Provider != "wordnet" || rel.RelationType != entity.RelationHypernym {
 			continue
@@ -171,7 +174,7 @@ func (c *QualityScoreCalculator) hasHypernymRoot(data entity.SnapshotData) bool 
 	return false
 }
 
-func (c *QualityScoreCalculator) countUniqueRelations(data entity.SnapshotData) int {
+func (c *QualityScoreCalculator) countUniqueRelations(data entity.LemmaSnapshotData) int {
 	if len(data.Relations) == 0 {
 		return 0
 	}
@@ -185,7 +188,7 @@ func (c *QualityScoreCalculator) countUniqueRelations(data entity.SnapshotData) 
 	return len(seen)
 }
 
-func (c *QualityScoreCalculator) providerCount(data entity.SnapshotData) int {
+func (c *QualityScoreCalculator) providerCount(data entity.LemmaSnapshotData) int {
 	providers := make(map[string]struct{})
 	for _, rel := range data.Relations {
 		p := strings.TrimSpace(strings.ToLower(rel.Provider))
@@ -197,7 +200,7 @@ func (c *QualityScoreCalculator) providerCount(data entity.SnapshotData) int {
 	return len(providers)
 }
 
-func (c *QualityScoreCalculator) senseMappedRatio(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) senseMappedRatio(data entity.LemmaSnapshotData) float64 {
 	if len(data.Relations) == 0 {
 		return 0
 	}
@@ -210,7 +213,7 @@ func (c *QualityScoreCalculator) senseMappedRatio(data entity.SnapshotData) floa
 	return float64(mapped) / float64(len(data.Relations))
 }
 
-func (c *QualityScoreCalculator) resolvedRelationRatio(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) resolvedRelationRatio(data entity.LemmaSnapshotData) float64 {
 	if len(data.Relations) == 0 {
 		return 0
 	}
@@ -223,7 +226,7 @@ func (c *QualityScoreCalculator) resolvedRelationRatio(data entity.SnapshotData)
 	return float64(resolved) / float64(len(data.Relations))
 }
 
-func (c *QualityScoreCalculator) inRangeStrengthRatio(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) inRangeStrengthRatio(data entity.LemmaSnapshotData) float64 {
 	if len(data.Relations) == 0 {
 		return 0
 	}
@@ -236,7 +239,7 @@ func (c *QualityScoreCalculator) inRangeStrengthRatio(data entity.SnapshotData) 
 	return float64(inRange) / float64(len(data.Relations))
 }
 
-func (c *QualityScoreCalculator) duplicateRatio(data entity.SnapshotData) float64 {
+func (c *QualityScoreCalculator) duplicateRatio(data entity.LemmaSnapshotData) float64 {
 	if len(data.Relations) == 0 {
 		return 0
 	}

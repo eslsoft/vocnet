@@ -1,7 +1,6 @@
 package connectrpc
 
 import (
-	"strings"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -49,43 +48,47 @@ func toPBPipelineStage(stage *entity.PipelineStage) *pipelinev1.PipelineStage {
 	}
 }
 
-func toPBLemmaFromSnapshot(snapshot *entity.WordSnapshot) *dictv1.Lemma {
+func toPBLemmaFromSnapshot(snapshot *entity.LemmaSnapshot) *dictv1.Lemma {
 	if snapshot == nil {
 		return nil
 	}
-	lexemes := make([]*dictv1.Lexeme, 0, len(snapshot.Data.Lexemes))
-	forms := make([]*dictv1.LemmaForm, 0)
-	for _, lexeme := range snapshot.Data.Lexemes {
+	lexemes := make([]*dictv1.Lexeme, 0, len(snapshot.Payload.Lexemes))
+	forms := make([]*dictv1.LemmaForm, 0, len(snapshot.Payload.Forms))
+	for _, lexeme := range snapshot.Payload.Lexemes {
 		lexemes = append(lexemes, toPBLexeme(lexeme))
-		forms = append(forms, toPBLexemeForms(lexeme)...)
+	}
+	for _, form := range snapshot.Payload.Forms {
+		pbForm := toPBLexemeForm(form)
+		pbForm.Phonetics = toPBPhonetics(form.Phonetics)
+		forms = append(forms, pbForm)
 	}
 
-	relations := make([]*dictv1.SemanticRelation, 0, len(snapshot.Data.Relations))
-	for _, relation := range snapshot.Data.Relations {
+	relations := make([]*dictv1.SemanticRelation, 0, len(snapshot.Payload.Relations))
+	for _, relation := range snapshot.Payload.Relations {
 		relations = append(relations, toPBSemanticRelation(relation))
 	}
 
 	return &dictv1.Lemma{
 		Id:          snapshot.LemmaID,
-		Surface:     snapshot.Term,
-		Normalized:  strings.ToLower(snapshot.Term),
+		Surface:     snapshot.Surface,
+		Normalized:  snapshot.Normalized,
 		Forms:       forms,
 		Lexemes:     lexemes,
-		Frequencies: toPBFrequencies(snapshot.Data.Frequencies),
+		Frequencies: toPBFrequencies(snapshot.Payload.Frequencies),
 		Relations:   relations,
 		Qscore: &dictv1.QualityScore{
-			Overall:      snapshot.QScore,
-			Completeness: snapshot.QScoreCompleteness,
-			Depth:        snapshot.QScoreDepth,
-			Density:      snapshot.QScoreDensity,
-			Validity:     snapshot.QScoreValidity,
+			Overall:      snapshot.Quality.Overall,
+			Completeness: snapshot.Quality.Completeness,
+			Depth:        snapshot.Quality.Depth,
+			Density:      snapshot.Quality.Density,
+			Validity:     snapshot.Quality.Validity,
 		},
 		CreatedAt: timestamppb.New(snapshot.CreatedAt),
 		UpdatedAt: timestamppb.New(snapshot.UpdatedAt),
 	}
 }
 
-func toPBLemmaSnapshot(snapshot *entity.WordSnapshot) *dictv1.LemmaSnapshot {
+func toPBLemmaSnapshot(snapshot *entity.LemmaSnapshot) *dictv1.LemmaSnapshot {
 	if snapshot == nil {
 		return nil
 	}
@@ -98,7 +101,7 @@ func toPBLemmaSnapshot(snapshot *entity.WordSnapshot) *dictv1.LemmaSnapshot {
 		Id:            snapshot.ID,
 		LemmaId:       snapshot.LemmaID,
 		Lemma:         toPBLemmaFromSnapshot(snapshot),
-		Latest:        snapshot.Latest,
+		Latest:        snapshot.IsLatest,
 		Version:       snapshot.Version,
 		JobId:         jobID,
 		SynthesizedAt: timestamppb.New(snapshot.SynthesizedAt),
@@ -118,7 +121,7 @@ func toPBFrequencies(frequencies []entity.Frequency) []*dictv1.Frequency {
 	return out
 }
 
-func toPBLexeme(lexeme entity.SnapshotLexeme) *dictv1.Lexeme {
+func toPBLexeme(lexeme entity.LemmaSnapshotLexeme) *dictv1.Lexeme {
 	senses := make([]*dictv1.LexemeSense, 0, len(lexeme.Senses))
 	for _, sense := range lexeme.Senses {
 		senses = append(senses, toPBLexemeSense(sense))
@@ -133,13 +136,14 @@ func toPBLexeme(lexeme entity.SnapshotLexeme) *dictv1.Lexeme {
 	}
 
 	return &dictv1.Lexeme{
+		Id:           lexeme.ExternalID,
 		Pos:          lexeme.POS,
 		PrimaryGloss: primaryGloss,
 		Senses:       senses,
 	}
 }
 
-func toPBLexemeSense(sense entity.SnapshotSense) *dictv1.LexemeSense {
+func toPBLexemeSense(sense entity.LemmaSnapshotSense) *dictv1.LexemeSense {
 	return &dictv1.LexemeSense{
 		Language: sense.Language,
 		Gloss:    sense.Gloss,
@@ -147,7 +151,7 @@ func toPBLexemeSense(sense entity.SnapshotSense) *dictv1.LexemeSense {
 	}
 }
 
-func toPBLexemeForm(form entity.SnapshotForm) *dictv1.LemmaForm {
+func toPBLexemeForm(form entity.LemmaSnapshotForm) *dictv1.LemmaForm {
 	return &dictv1.LemmaForm{
 		Surface:   form.Surface,
 		FormType:  form.FormType,
@@ -155,26 +159,18 @@ func toPBLexemeForm(form entity.SnapshotForm) *dictv1.LemmaForm {
 	}
 }
 
-func toPBLexemeForms(lexeme entity.SnapshotLexeme) []*dictv1.LemmaForm {
-	forms := make([]*dictv1.LemmaForm, 0, len(lexeme.Forms))
-	phonetics := make([]*dictv1.Phonetic, 0, len(lexeme.Phonetics))
-	for _, phonetic := range lexeme.Phonetics {
-		phonetics = append(phonetics, &dictv1.Phonetic{
+func toPBPhonetics(phonetics []entity.Phonetic) []*dictv1.Phonetic {
+	out := make([]*dictv1.Phonetic, 0, len(phonetics))
+	for _, phonetic := range phonetics {
+		out = append(out, &dictv1.Phonetic{
 			Ipa:     phonetic.IPA,
 			Dialect: phonetic.Dialect,
 		})
 	}
-
-	for _, form := range lexeme.Forms {
-		pbForm := toPBLexemeForm(form)
-		pbForm.Phonetics = phonetics
-		forms = append(forms, pbForm)
-	}
-
-	return forms
+	return out
 }
 
-func toPBSemanticRelation(relation entity.SnapshotRelation) *dictv1.SemanticRelation {
+func toPBSemanticRelation(relation entity.LemmaSnapshotRelation) *dictv1.SemanticRelation {
 	return &dictv1.SemanticRelation{
 		RelationType: relation.RelationType,
 		TargetTerm:   relation.TargetTerm,
