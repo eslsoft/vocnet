@@ -139,7 +139,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, error) {
 	// Create a job for this term
 	job, err := h.jobRepo.Create(ctx, &entity.PipelineJob{
-		Status:   entity.JobStatusRunning,
+		Status:   entity.JobStatusPending,
 		Name:     "quality-test-" + term,
 		Language: "en",
 		Tier:     2,
@@ -148,10 +148,17 @@ func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, err
 	if err != nil {
 		return 0, fmt.Errorf("create job: %w", err)
 	}
+	if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusRunning, ""); err != nil {
+		return 0, fmt.Errorf("mark job running: %w", err)
+	}
 
 	result, err := h.pipeline.Run(ctx, job.ID, term, "en", 2, nil)
 	if err != nil {
+		_ = h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
 		return 0, err
+	}
+	if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, ""); err != nil {
+		return 0, fmt.Errorf("mark job completed: %w", err)
 	}
 	if result == nil || result.LemmaSnapshot == nil {
 		return 0, fmt.Errorf("snapshot missing")
