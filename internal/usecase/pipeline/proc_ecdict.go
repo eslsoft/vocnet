@@ -46,13 +46,16 @@ func (p *ECDICTProcessor) Process(ctx context.Context, pctx *PipelineContext) (*
 		return nil, err
 	}
 
-	// Build result lexeme: enrich existing or create new
-	var lexeme *entity.Lexeme
-	if len(pctx.Lexemes) > 0 {
-		lexeme = enrichExistingLexeme(pctx.Lexemes[0], parsed, p.aggregator)
-	} else {
-		lexeme = createLexemeFromECDICT(parsed)
+	// Enrich existing lexemes with matching Chinese translations by POS.
+	// Only add senses where the POS matches; discard unmatched translations.
+	var lexemes []*entity.Lexeme
+	for _, lex := range pctx.Lexemes {
+		enriched := enrichExistingLexeme(lex, parsed, p.aggregator)
+		if enriched != nil {
+			lexemes = append(lexemes, enriched)
+		}
 	}
+
 	lemmaUpdate := buildLemmaUpdate(pctx.Lemma, parsed, p.aggregator)
 
 	// Build form updates with ECDICT phonetic for the lemma form
@@ -70,45 +73,43 @@ func (p *ECDICTProcessor) Process(ctx context.Context, pctx *PipelineContext) (*
 	return &ProcessResult{
 		Status:      ProcessStatusExecuted,
 		Evidence:    []*entity.RawEvidence{parsed.Evidence},
-		Lexemes:     []*entity.Lexeme{lexeme},
+		Lexemes:     lexemes,
 		Forms:       forms,
 		LemmaUpdate: lemmaUpdate,
 	}, nil
 }
 
+// posTaggedSense holds a Chinese translation line with its parsed POS.
+type posTaggedSense struct {
+	POS   entity.PartOfSpeech
+	Gloss string
+}
+
 // parsedECDICTData holds parsed ECDICT data.
 type parsedECDICTData struct {
-	Evidence     *entity.RawEvidence
-	Senses       []entity.LexemeSense
-	Frequencies  []entity.Frequency
-	Categories   []string
-	Completeness int32
-	POS          entity.PartOfSpeech
+	Evidence          *entity.RawEvidence
+	TranslationsByPOS map[entity.PartOfSpeech][]entity.LexemeSense
+	Frequencies       []entity.Frequency
+	Categories        []string
+	Completeness      int32
 }
 
 func (p *ECDICTProcessor) parseECDICT(entry *ecdict.ECDICTEntry) (*parsedECDICTData, error) {
-	// Parse POS but don't fail if empty - ECDICT still provides valuable data
-	// (definitions, translations, frequencies) even without POS
-	pos, _ := parsePOSFromSource("ecdict", entry.POS)
-	// pos will be PartOfSpeechUnspecified if parsing fails
 	return &parsedECDICTData{
-		Evidence:     createECDICTEvidence(entry),
-		Senses:       parseSensesFromECDICT(entry),
-		Frequencies:  parseFrequenciesFromECDICT(entry),
-		Categories:   ExtractDomainCategories(entry.Tags),
-		Completeness: calculateCompletenessScore(entry),
-		POS:          pos,
+		Evidence:          createECDICTEvidence(entry),
+		TranslationsByPOS: parseChineseTranslations(entry.Translation),
+		Frequencies:       parseFrequenciesFromECDICT(entry),
+		Categories:        ExtractDomainCategories(entry.Tags),
+		Completeness:      calculateCompletenessScore(entry),
 	}, nil
 }
 
 func enrichExistingLexeme(lexeme *entity.Lexeme, data *parsedECDICTData, aggregator *DataAggregator) *entity.Lexeme {
 	enriched := *lexeme
 
-	if len(data.Senses) > 0 {
-		enriched.Senses = aggregator.MergeSenses(lexeme.Senses, data.Senses)
-	}
-	if data.POS != entity.PartOfSpeechUnspecified && lexeme.PartOfSpeech == entity.PartOfSpeechUnspecified {
-		enriched.PartOfSpeech = data.POS
+	// Only add Chinese translations whose POS matches this lexeme's POS.
+	if senses, ok := data.TranslationsByPOS[lexeme.PartOfSpeech]; ok && len(senses) > 0 {
+		enriched.Senses = aggregator.MergeSenses(lexeme.Senses, senses)
 	}
 	if strings.TrimSpace(enriched.SenseGloss) == "" {
 		enriched.SenseGloss = pickSenseGloss(enriched.Senses)
@@ -121,19 +122,6 @@ func enrichExistingLexeme(lexeme *entity.Lexeme, data *parsedECDICTData, aggrega
 	}
 
 	return &enriched
-}
-
-func createLexemeFromECDICT(data *parsedECDICTData) *entity.Lexeme {
-	return &entity.Lexeme{
-		ExternalID:   fmt.Sprintf("ecdict-%s", data.Evidence.Content["word"]),
-		Language:     entity.LanguageEnglish,
-		PartOfSpeech: data.POS,
-		EntryType:    entity.LexemeEntryTypeWord,
-		SenseGloss:   pickSenseGloss(data.Senses),
-		Senses:       data.Senses,
-		Categories:   data.Categories,
-		Completeness: data.Completeness,
-	}
 }
 
 func buildLemmaUpdate(lemma *entity.Lemma, data *parsedECDICTData, aggregator *DataAggregator) *entity.Lemma {
@@ -173,28 +161,68 @@ func buildEvidenceContent(entry *ecdict.ECDICTEntry) map[string]any {
 	}
 }
 
-func parseSensesFromECDICT(entry *ecdict.ECDICTEntry) []entity.LexemeSense {
-	senses := []entity.LexemeSense{}
-
-	if entry.Definition != "" {
-		for _, def := range splitAndTrim(entry.Definition, ";") {
-			senses = append(senses, entity.LexemeSense{
-				Language: entity.LanguageEnglish,
-				Gloss:    def,
-			})
-		}
+// parseChineseTranslations parses ECDICT's translation field into POS-grouped Chinese senses.
+// ECDICT translations are newline-separated, each line prefixed with a POS tag:
+//
+//	"n. 世界, 领域\nvt. 使全球化"
+//
+// Lines without a recognizable POS prefix are discarded.
+func parseChineseTranslations(translation string) map[entity.PartOfSpeech][]entity.LexemeSense {
+	if translation == "" {
+		return nil
 	}
 
-	if entry.Translation != "" {
-		for _, trans := range splitAndTrim(entry.Translation, ";") {
-			senses = append(senses, entity.LexemeSense{
-				Language: entity.LanguageChinese,
-				Gloss:    trans,
-			})
+	result := make(map[entity.PartOfSpeech][]entity.LexemeSense)
+	lines := strings.Split(translation, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+
+		tagged := parseTranslationLine(line)
+		if tagged == nil {
+			continue
+		}
+
+		result[tagged.POS] = append(result[tagged.POS], entity.LexemeSense{
+			Language: entity.LanguageChinese,
+			Gloss:    tagged.Gloss,
+		})
 	}
 
-	return senses
+	return result
+}
+
+// parseTranslationLine extracts a POS tag and Chinese gloss from a single translation line.
+// Expected format: "n. 世界, 领域" or "vt. 使全球化".
+// Returns nil if no recognizable POS prefix is found.
+func parseTranslationLine(line string) *posTaggedSense {
+	// Find the POS prefix: everything before the first dot followed by space or end-of-string.
+	dotIdx := strings.Index(line, ".")
+	if dotIdx <= 0 {
+		return nil
+	}
+
+	posRaw := strings.TrimSpace(line[:dotIdx])
+	gloss := strings.TrimSpace(line[dotIdx+1:])
+
+	// Reject if the prefix is too long (real POS prefixes are short: n, vt, vi, adj, adv, etc.)
+	if len(posRaw) > 6 {
+		return nil
+	}
+
+	pos, ok := entity.ParsePartOfSpeech(posRaw)
+	if !ok {
+		return nil
+	}
+
+	if gloss == "" {
+		return nil
+	}
+
+	return &posTaggedSense{POS: pos, Gloss: gloss}
 }
 
 func parseFrequenciesFromECDICT(entry *ecdict.ECDICTEntry) []entity.Frequency {
@@ -220,17 +248,14 @@ func parseFrequenciesFromECDICT(entry *ecdict.ECDICTEntry) []entity.Frequency {
 func calculateCompletenessScore(entry *ecdict.ECDICTEntry) int32 {
 	score := int32(0)
 
-	if entry.Definition != "" {
-		score += 30
-	}
 	if entry.Translation != "" {
-		score += 20
+		score += 40
 	}
 	if entry.Phonetic != "" {
-		score += 15
+		score += 20
 	}
 	if entry.POS != "" {
-		score += 10
+		score += 15
 	}
 	if entry.Collins > 0 {
 		score += 10
@@ -247,18 +272,4 @@ func calculateCompletenessScore(entry *ecdict.ECDICTEntry) int32 {
 	}
 
 	return score
-}
-
-func splitAndTrim(s string, delimiter string) []string {
-	parts := strings.Split(s, delimiter)
-	result := make([]string, 0, len(parts))
-
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-
-	return result
 }
