@@ -758,8 +758,9 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	results := make(chan wordResult, len(terms))
 	var wg sync.WaitGroup
 
-	// Test words in parallel (limit concurrency to avoid overwhelming the system)
-	maxConcurrency := 10 // Adjust based on system resources
+	// Test words in parallel (limit concurrency to avoid database lock contention)
+	// SQLite with WAL mode can handle ~3-4 concurrent writes reasonably well
+	maxConcurrency := 3
 	semaphore := make(chan struct{}, maxConcurrency)
 
 	for _, term := range terms {
