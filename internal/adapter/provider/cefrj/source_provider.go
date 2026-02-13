@@ -1,43 +1,49 @@
-package pipeline
+package cefrj
 
 import (
 	"context"
 	"strings"
 	"time"
 
-	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
 	"github.com/eslsoft/vocnet/internal/entity"
+	"github.com/eslsoft/vocnet/internal/repository"
 )
 
-// CEFRJProcessor enriches lemma level from CEFR-J vocabulary profile.
-type CEFRJProcessor struct {
-	reader *cefrj.Reader
+// SourceProvider wraps a CEFRJ Reader as a unified SourceProvider.
+type SourceProvider struct {
+	reader *Reader
 }
 
-// NewCEFRJProcessor creates a CEFR-J processor.
-func NewCEFRJProcessor(reader *cefrj.Reader) *CEFRJProcessor {
-	return &CEFRJProcessor{reader: reader}
+// NewSourceProvider creates a SourceProvider backed by the given Reader.
+func NewSourceProvider(reader *Reader) *SourceProvider {
+	return &SourceProvider{reader: reader}
 }
 
-func (p *CEFRJProcessor) Name() string { return "cefrj" }
-
-func (p *CEFRJProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
-	if p.reader == nil {
-		return nil, &ErrProcessorSkipped{Reason: "cefrj not available"}
+func (p *SourceProvider) Manifest() repository.SourceManifest {
+	return repository.SourceManifest{
+		Name:         "cefrj",
+		Version:      "1.5.0",
+		Kind:         repository.SourceKindBuiltin,
+		Languages:    []string{"en"},
+		Capabilities: []repository.SourceCapability{repository.CapabilityMetadata},
+		Stage:        "lexical",
 	}
-	if pctx == nil || pctx.Lemma == nil {
-		return &ProcessResult{Status: ProcessStatusNoData}, nil
+}
+
+func (p *SourceProvider) Lookup(ctx context.Context, query repository.SourceQuery) (*repository.SourceResult, error) {
+	if query.Context == nil || query.Context.Lemma == nil {
+		return nil, nil
 	}
 
-	entry, err := p.reader.Lookup(ctx, pctx.Term)
+	entry, err := p.reader.Lookup(ctx, query.Term)
 	if err != nil {
 		return nil, err
 	}
 	if entry == nil || entry.MinLevel == "" {
-		return &ProcessResult{Status: ProcessStatusNoData}, nil
+		return nil, nil
 	}
 
-	updated := *pctx.Lemma
+	updated := *query.Context.Lemma
 	if updated.Level == "" {
 		updated.Level = entry.MinLevel
 	} else {
@@ -47,16 +53,19 @@ func (p *CEFRJProcessor) Process(ctx context.Context, pctx *PipelineContext) (*P
 	evidence := &entity.RawEvidence{
 		Provider:      "cefrj",
 		Phase:         int32(entity.PhaseLexical),
-		Content:       buildCEFRJEvidence(entry),
+		Content:       buildEvidence(entry),
 		SchemaVersion: "cefrj-1.5+c1c2-1.0",
 		FetchedAt:     time.Now(),
 	}
 
-	return &ProcessResult{
-		Status:      ProcessStatusExecuted,
+	return &repository.SourceResult{
 		Evidence:    []*entity.RawEvidence{evidence},
 		LemmaUpdate: &updated,
 	}, nil
+}
+
+func (p *SourceProvider) Close() error {
+	return nil
 }
 
 func minCEFRLevel(a, b string) string {
@@ -77,7 +86,7 @@ func minCEFRLevel(a, b string) string {
 	}
 }
 
-func buildCEFRJEvidence(entry *cefrj.Entry) map[string]any {
+func buildEvidence(entry *Entry) map[string]any {
 	levelsByPOS := make(map[string]any, len(entry.LevelsByPOS))
 	for pos, lv := range entry.LevelsByPOS {
 		levelsByPOS[pos] = lv

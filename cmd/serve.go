@@ -27,6 +27,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,12 +36,10 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/conceptnet"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/ecdict"
+	"github.com/eslsoft/vocnet/internal/adapter/provider/contrib"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/moby"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/wordnet"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
 	"github.com/eslsoft/vocnet/internal/app"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
@@ -65,7 +65,7 @@ var serveCmd = &cobra.Command{
 		defer cancel()
 
 		// Start pipeline worker pool
-		workerPool, err := buildPipelineWorkerPool(container.Config, container.EntClient, logger)
+		workerPool, err := buildPipelineWorkerPool(ctx, container.Config, container.EntClient, logger)
 		if err != nil {
 			logger.Warn("pipeline worker disabled", "error", err)
 		} else {
@@ -116,20 +116,10 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(serveCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// serveCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// serveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 // buildPipelineWorkerPool constructs the Pipeline and WorkerPool from config and ent client.
-func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, error) {
+func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, error) {
 	// Repositories
 	lemmaRepo := repository.NewLemmaRepository(entClient)
 	lexemeRepo := repository.NewLexemeRepository(entClient)
@@ -139,13 +129,18 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 	snapshotRepo := repository.NewLemmaSnapshotRepository(entClient)
 	jobRepo := repository.NewPipelineJobRepository(entClient)
 
-	// Ensure data sources are available (auto-download if configured)
+	// Ensure built-in data sources are available (auto-download if configured)
 	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	if err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "conceptnet", "ecdict", "wordnet", "moby", "wikidata", "cefrj"); err != nil {
+	if err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "wikidata", "moby", "cefrj"); err != nil {
 		logger.Warn("some pipeline data sources unavailable", "error", err)
 	}
 
-	// Providers
+	// SourceRegistry for unified source management
+	registry := pipeline.NewSourceRegistry(logger)
+
+	// --- Built-in providers ---
+
+	// Wikidata (remains as specialized processor due to complex discovery logic)
 	var wikidataProvider provider.WikidataProvider
 	wikidataReader, err := wikidata.NewReaderWithLogger(datasource.WikidataDataPath(cfg.Pipeline.DataDir), logger)
 	if err != nil {
@@ -153,33 +148,26 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 	}
 	wikidataProvider = wikidataReader
 
-	var conceptnetProvider provider.ConceptNetProvider
-	conceptnetReader, err := conceptnet.NewReaderWithLogger(datasource.ConceptNetDataPath(cfg.Pipeline.DataDir), logger)
-	if err != nil {
-		return nil, fmt.Errorf("conceptnet unavailable (run 'vocnet pipeline source download conceptnet' first): %w", err)
-	}
-	conceptnetProvider = conceptnetReader
-
-	var ecdictReader *ecdict.Reader
-	ecdictReader, err = ecdict.NewReader(datasource.ECDICTDataPath(cfg.Pipeline.DataDir))
-	if err != nil {
-		logger.Warn("ECDICT unavailable, Phase 2 will be skipped", "error", err)
-	}
-
-	wordnetReader := wordnet.NewReader(datasource.WordNetDataDir(cfg.Pipeline.DataDir))
-
-	var mobyReader *moby.Reader
-	mobyReader, err = moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
+	// Moby (built-in SourceProvider)
+	mobyReader, err := moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
 	if err != nil {
 		logger.Warn("Moby unavailable, syllables will not be available", "error", err)
+	} else {
+		registry.Register(moby.NewSourceProvider(mobyReader))
 	}
 
-	var cefrjReader *cefrj.Reader
-	cefrjReader, err = cefrj.NewReader(datasource.CEFRJDataDir(cfg.Pipeline.DataDir))
+	// CEFRJ (built-in SourceProvider)
+	cefrjReader, err := cefrj.NewReader(datasource.CEFRJDataDir(cfg.Pipeline.DataDir))
 	if err != nil {
 		logger.Warn("CEFR-J unavailable, lemma CEFR levels will not be available", "error", err)
+	} else {
+		registry.Register(cefrj.NewSourceProvider(cefrjReader))
 	}
 
+	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc. via JSON-RPC over stdio) ---
+	loadContribSources(ctx, cfg, registry, logger)
+
+	// LLM provider (for intellectual stage)
 	var llmProvider llm.Provider
 	if cfg.LLM.APIKey != "" {
 		cacheRepo := repository.NewDistillCacheRepository(entClient)
@@ -193,35 +181,28 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 		logger.Warn("LLM not configured, phase 4 (intellectual) will be skipped — set LLM_API_KEY to enable")
 	}
 
-	// Build pipeline
+	// Build pipeline stages using SourceRegistry + specialized processors
 	aggregator := pipeline.NewDataAggregator()
 	persistence := pipeline.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
 	validator := pipeline.NewValidator(lemmaRepo, lexemeRepo, logger)
 
-	stages := []*pipeline.Stage{
-		pipeline.NewStage("discovery", 1,
+	stages := registry.BuildStages(map[string][]pipeline.Processor{
+		"discovery": {
 			pipeline.NewWikidataProcessor(wikidataProvider, logger),
 			pipeline.NewCategoryInferProcessor(),
-		),
-		pipeline.NewStage("lexical", 2,
-			pipeline.NewCEFRJProcessor(cefrjReader),
-			pipeline.NewECDICTProcessor(ecdictReader),
-			pipeline.NewMobyProcessor(mobyReader),
-		),
-		pipeline.NewStage("relational", 3,
-			pipeline.NewConceptNetProcessor(conceptnetProvider),
+		},
+		"relational": {
 			pipeline.NewWikidataRelationProcessor(wikidataProvider),
-			pipeline.NewWordNetProcessor(wordnetReader),
-		),
-		pipeline.NewStage("intellectual", 4,
+		},
+		"intellectual": {
 			pipeline.NewSenseMappingProcessor(llmProvider, logger),
 			pipeline.NewEnrichmentProcessor(llmProvider, logger),
 			pipeline.NewScoringProcessor(llmProvider, logger),
-		),
-		pipeline.NewStage("synthesis", 5,
+		},
+		"synthesis": {
 			pipeline.NewLemmaSnapshotProcessor(),
-		),
-	}
+		},
+	})
 
 	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
 
@@ -234,4 +215,48 @@ func buildPipelineWorkerPool(cfg *config.Config, entClient *entdb.Client, logger
 	return pipeline.NewWorkerPool(jobRepo, p, logger, pipeline.WorkerPoolConfig{
 		WorkerCount: workerCount,
 	}), nil
+}
+
+// loadContribSources discovers and starts contrib source processes.
+func loadContribSources(ctx context.Context, cfg *config.Config, registry *pipeline.SourceRegistry, logger *slog.Logger) {
+	contribDir := strings.TrimSpace(cfg.Pipeline.ContribDir)
+	contribList := strings.TrimSpace(cfg.Pipeline.ContribList)
+	if contribDir == "" || contribList == "" {
+		return
+	}
+
+	enabled := strings.Split(contribList, ",")
+	for _, name := range enabled {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+
+		// Look for executable in contrib dir
+		execPath := filepath.Join(contribDir, name)
+		if _, err := os.Stat(execPath); err != nil {
+			// Try common extensions
+			found := false
+			for _, ext := range []string{".py", ".sh", ""} {
+				candidate := execPath + ext
+				if _, statErr := os.Stat(candidate); statErr == nil {
+					execPath = candidate
+					found = true
+					break
+				}
+			}
+			if !found {
+				logger.Warn("contrib source not found", "name", name, "path", execPath)
+				continue
+			}
+		}
+
+		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
+		if err != nil {
+			logger.Warn("failed to start contrib source", "name", name, "error", err)
+			continue
+		}
+
+		registry.Register(sp)
+	}
 }

@@ -291,6 +291,10 @@ PIPELINE_AUTO_DOWNLOAD=true
 
 # Cache directory for downloads (default: system cache dir)
 # PIPELINE_CACHE_DIR=~/.cache/vocnet
+
+# Contrib sources (external data sources via JSON-RPC over stdio)
+PIPELINE_CONTRIB_DIR=./contrib/sources
+PIPELINE_CONTRIB_LIST=ecdict,conceptnet,wordnet
 ```
 
 Data sources are stored under subdirectories of `PIPELINE_DATA_DIR`:
@@ -299,6 +303,22 @@ Data sources are stored under subdirectories of `PIPELINE_DATA_DIR`:
 - `wordnet/`
 - `moby/mhyph.txt`
 - `wikidata/lexemes.json` (+ `.idx.db` SQLite index)
+
+### Pipeline Source Architecture
+
+The pipeline uses a unified `SourceProvider` interface (`internal/repository/source_provider.go`). Sources are categorized as:
+
+- **Built-in** (compiled into binary): Wikidata, Moby, CEFR-J
+- **Contrib** (external processes via JSON-RPC over stdio): ECDICT, ConceptNet, WordNet (`contrib/sources/`)
+- **Specialized processors** (unique business logic, not SourceProvider-based): CategoryInfer, SenseMapping, Enrichment, Scoring, Snapshot
+
+Key files:
+- Interface: `internal/repository/source_provider.go`
+- Generic processor: `internal/usecase/pipeline/generic_processor.go`
+- Source registry: `internal/usecase/pipeline/source_registry.go`
+- Contrib bridge: `internal/adapter/provider/contrib/process_provider.go`
+- Contrib protocol: `internal/adapter/provider/contrib/protocol.go`
+- Stage wiring: `cmd/serve.go` (`buildPipelineWorkerPool`)
 
 ### Data Source Details
 
