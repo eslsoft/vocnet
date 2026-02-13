@@ -1,55 +1,63 @@
-# Pipeline Stage Data Sources Matrix
+# Pipeline Phase Data Sources Matrix
 
-This document describes, stage by stage, which data source each processor uses and what data it extracts into the pipeline context.
+This document describes the new fragment-based pipeline architecture and which data sources contribute to each phase.
 
 ## Architecture Overview
 
-The pipeline uses a unified `SourceProvider` interface (`internal/repository/source_provider.go`) for all data sources. Sources are categorized as:
+The pipeline follows a data engineering approach with four phases:
 
-- **Built-in** (`SourceKindBuiltin`): Compiled into the binary, registered via `SourceRegistry` in `cmd/serve.go`
-  - Wikidata (specialized processors due to complex discovery logic)
+```
+Collection → Evaluation → Integration → Snapshot
+```
+
+### Phase Descriptions
+
+1. **Collection (PhaseCollection)**: Concurrent data acquisition from all sources with contract validation
+2. **Evaluation (PhaseEvaluation)**: Quality scoring of data fragments from each source
+3. **Integration (PhaseIntegration)**: Field-level merging based on quality scores
+4. **Snapshot (PhaseSnapshot)**: Final materialized snapshot generation
+
+### Data Source Types
+
+Sources are categorized as:
+
+- **Built-in** (`SourceKindBuiltin`): Compiled into the binary
+  - Wikidata (lexemes, forms, phonetics)
   - Moby (syllable data)
   - CEFR-J (vocabulary levels)
-- **Contrib** (`SourceKindContrib`): External processes communicating via JSON-RPC over stdio (`contrib/sources/`)
+- **Contrib** (`SourceKindContrib`): External processes communicating via JSON-RPC over stdio
   - ECDICT (lexical enrichment, Python)
   - ConceptNet (semantic relations, Python)
   - WordNet (semantic relations, Python)
 - **Specialized processors**: Not SourceProvider-based; contain unique business logic
-  - CategoryInfer, SenseMapping, Enrichment, Scoring, Snapshot
+  - CategoryInfer (infer categories from senses)
+  - FragmentEvaluator (quality scoring)
+  - IntegrationProcessor (field-level merging)
+  - SnapshotProcessor (final snapshot generation)
 
 ### Wiring
 
-Stage wiring source: `cmd/serve.go` (`buildPipelineWorkerPool`)
+Stage wiring source: `cmd/serve.go` (`buildNewPipelineStages`)
 
 1. Built-in SourceProviders are registered in a `SourceRegistry`
 2. Contrib sources are discovered from `PIPELINE_CONTRIB_DIR` + `PIPELINE_CONTRIB_LIST`
-3. `SourceRegistry.BuildStages()` auto-groups sources by stage and wraps them in `GenericSourceProcessor`
-4. Specialized processors are injected separately via the `specialProcessors` map
+3. Stages are manually constructed with explicit phase and processors
+4. Collection phase runs concurrently with all data sources
 
-### Contrib Protocol
+### Partial Data Contract System
 
-External sources implement JSON-RPC 2.0 over stdin/stdout with three methods:
-- `initialize` → returns manifest (name, version, capabilities, stage, languages)
-- `lookup` → term/language/context → `SourceResult` as JSON
-- `shutdown` → graceful stop
+**Key Principle**: Data sources provide partial data, but what they provide must be standardized.
 
-Protocol types: `internal/adapter/provider/contrib/protocol.go`
+Contract validator (`internal/usecase/pipeline/contract.go`) enforces:
+- **Lexeme**: PartOfSpeech cannot be Unspecified; Senses must be non-empty
+- **Form**: Phonetics.IPA must be valid format; Dialect must be ISO 639 (e.g., `en-US` not `US`)
+- **Relation**: Strength must be in [0, 1]; TargetRef must be valid URI
 
-## Scope and Source of Truth
+Non-compliant data is immediately rejected with `ContractViolationError`.
 
-- Stage wiring source: `cmd/serve.go` (`buildPipelineWorkerPool`)
-- Unified interface: `internal/repository/source_provider.go`
-- Generic processor: `internal/usecase/pipeline/generic_processor.go`
-- Source registry: `internal/usecase/pipeline/source_registry.go`
-- Contrib bridge: `internal/adapter/provider/contrib/process_provider.go`
-- This document reflects the current runtime pipeline order:
-  1. `discovery`
-  2. `lexical`
-  3. `relational`
-  4. `intellectual`
-  5. `synthesis`
+## Phase 1: Collection
 
-## Stage 1: Discovery
+All data sources run concurrently in this phase. Each source returns partial data fragments that undergo contract validation.
 
 ### Processor: `wikidata` (`NewWikidataProcessor`) [specialized]
 
@@ -71,10 +79,10 @@ Protocol types: `internal/adapter/provider/contrib/protocol.go`
   - Global form behavior:
     - Ensures the queried surface form is present as a lemma form (`ensureSurfaceForm`)
   - Evidence:
-    - `Provider=wikidata`, `Phase=discovery`
+    - `Provider=wikidata`, `Phase=collection`
     - `Content=rawResp` from provider
     - `SchemaVersion=wikidata-2025`
-- Key quality gate:
+- Contract validation:
   - Rejects low-confidence multi-candidate matches (`match_score <= 40` and `candidate_count > 1`)
   - Rejects unmapped/unknown POS (including unknown Wikidata POS QIDs)
 
@@ -83,10 +91,27 @@ Protocol types: `internal/adapter/provider/contrib/protocol.go`
 - Data source: None (derived from already collected lexeme senses)
 - Extracted/derived data:
   - Additional `Lexeme.Categories` from `InferCategoriesFromSenses`
-- Evidence:
-  - None (no external fetch)
+- Evidence: None (no external fetch)
 
-## Stage 2: Lexical
+### Processor: `wikidata_relations` (`NewWikidataRelationProcessor`) [specialized]
+
+- Data source: Wikidata form lookup (`FetchLexemesByForm`)
+- Input query:
+  - Candidate lookup terms from: requested term + known forms (max 8, deduped)
+- Extracted data:
+  - Cross-lexeme neighborhood relations:
+    - `RelationType=ASSOCIATION`
+    - `TargetRef=wikidata://lexeme/{LexemeID}`
+    - `TargetTerm` (best form surface or fallback)
+    - `Provider=wikidata`
+    - `Strength=0.9`
+    - `SenseMapped=true`
+  - Evidence content:
+    - `source=wikidata-lexeme-neighborhood`
+    - `term`, `language`, `lookup_terms`, `lookup_terms_queried`, `relations_found`
+    - `SchemaVersion=wikidata-relations-v1`
+- Contract validation:
+  - Only keeps targets already present in current context lexeme IDs (avoid noisy expansion)
 
 ### Source: `cefrj` (built-in SourceProvider)
 
@@ -100,10 +125,19 @@ Protocol types: `internal/adapter/provider/contrib/protocol.go`
   - Lemma enrichment:
     - `Lemma.Level` (CEFR level)
     - Rule: when multiple CEFR-J rows match a lemma, choose the minimum CEFR level by order `A1 < A2 < B1 < B2 < C1 < C2`
-    - If lemma already has a level, processor keeps the lower one between existing and CEFR-J
   - Evidence content fields:
     - `headword`, `min_level`, `levels_by_pos`, `matched_forms`
-    - `Provider=cefrj`, `Phase=lexical`, `SchemaVersion=cefrj-1.5+c1c2-1.0`
+    - `Provider=cefrj`, `Phase=collection`, `SchemaVersion=cefrj-1.5+c1c2-1.0`
+
+### Source: `moby` (built-in SourceProvider)
+
+- Adapter: `internal/adapter/provider/moby/source_provider.go`
+- Data source: Moby hyphenation file (`internal/adapter/provider/moby`)
+- Capabilities: `forms`
+- Input query: lookup each existing form surface
+- Extracted data:
+  - `LemmaForm.Syllables`
+- Evidence: None (no raw evidence record emitted)
 
 ### Source: `ecdict` (contrib, Python: `contrib/sources/ecdict.py`)
 
@@ -124,20 +158,7 @@ Protocol types: `internal/adapter/provider/contrib/protocol.go`
   - Evidence content fields:
     - `word`, `phonetic`, `definition`, `translation`, `pos`, `tags`
     - `bnc`, `frq`, `collins`, `oxford`, `exchange`
-    - `Provider=ecdict`, `Phase=lexical`, `SchemaVersion=ecdict-1.0`
-
-### Source: `moby` (built-in SourceProvider)
-
-- Adapter: `internal/adapter/provider/moby/source_provider.go`
-- Data source: Moby hyphenation file (`internal/adapter/provider/moby`)
-- Capabilities: `forms`
-- Input query: lookup each existing form surface
-- Extracted data:
-  - `LemmaForm.Syllables`
-- Evidence:
-  - None (no raw evidence record emitted)
-
-## Stage 3: Relational
+    - `Provider=ecdict`, `Phase=collection`, `SchemaVersion=ecdict-1.0`
 
 ### Source: `conceptnet` (contrib, Python: `contrib/sources/conceptnet.py`)
 
@@ -153,31 +174,11 @@ Protocol types: `internal/adapter/provider/contrib/protocol.go`
     - `Strength` (normalized: `weight / (weight + 1)`)
     - `SenseMapped=false` (for later mapping)
   - Evidence:
-    - `Provider=conceptnet`, `Phase=relational`
+    - `Provider=conceptnet`, `Phase=collection`
     - `SchemaVersion=conceptnet-5.7`
-- Key filter:
+- Contract validation:
   - Drops low-signal edges where `weight <= 1.0`
   - Skips cross-language edges
-
-### Processor: `wikidata_relations` (`NewWikidataRelationProcessor`) [specialized]
-
-- Data source: Wikidata form lookup (`FetchLexemesByForm`)
-- Input query:
-  - Candidate lookup terms from: requested term + known forms (max 8, deduped)
-- Extracted data:
-  - Cross-lexeme neighborhood relations:
-    - `RelationType=ASSOCIATION`
-    - `TargetRef=wikidata://lexeme/{LexemeID}`
-    - `TargetTerm` (best form surface or fallback)
-    - `Provider=wikidata`
-    - `Strength=0.9`
-    - `SenseMapped=true`
-  - Evidence content:
-    - `source=wikidata-lexeme-neighborhood`
-    - `term`, `language`, `lookup_terms`, `lookup_terms_queried`, `relations_found`
-    - `SchemaVersion=wikidata-relations-v1`
-- Key constraint:
-  - Only keeps targets already present in current context lexeme IDs (avoid noisy expansion)
 
 ### Source: `wordnet` (contrib, Python: `contrib/sources/wordnet.py`)
 
@@ -198,52 +199,66 @@ Protocol types: `internal/adapter/provider/contrib/protocol.go`
     - `synsets`: `{offset,pos,words,gloss,relations}`
     - `SchemaVersion=wordnet-3.1`
 
-## Stage 4: Intellectual
+## Phase 2: Evaluation
 
-This stage uses the LLM provider (`internal/adapter/provider/llm`), not offline lexical databases.
+This phase evaluates the quality of data fragments collected from each source.
 
-### Processor: `sense_mapping` (`NewSenseMappingProcessor`) [specialized]
+### Processor: `fragment_evaluator` (`NewFragmentEvaluator`)
 
-- Data source: LLM completion (`JSONMode`)
-- Input payload:
-  - Unmapped relations (`SenseMapped=false`)
-  - Current lexeme summaries (`external_id`, `pos`, `sense_gloss`)
-- Extracted/updated data:
-  - In-place updates of existing relations:
-    - set `SourceExternalID` to mapped lexeme ID
-    - set `SenseMapped=true`
-  - Evidence:
-    - `processor=sense_mapping`, `model=llm`, `cached`, `token_count`, `mapped_count`
-    - `Provider=llm`, `Phase=intellectual`
+- Implementation: `internal/usecase/pipeline/fragment_evaluator.go`
+- Data source: None (evaluates fragments in `PipelineContext`)
+- Scoring engine: `RuleBasedScorer` (`internal/usecase/pipeline/rule_based_scorer.go`)
+- Process:
+  1. Groups evidence by provider
+  2. For each provider, evaluates:
+     - Lexemes (POS validity, senses, categories, ExternalID)
+     - Forms (phonetics, syllables)
+     - Lemma metadata (level, frequencies, syllables)
+     - Relations (target resolution, strength validity)
+  3. Stores evaluated fragments in `PipelineContext.EvaluatedFragments`
+- Output structure:
+  ```go
+  type FieldFragment struct {
+      Type     string     // "lexeme", "form.phonetics", "metadata.level"
+      Data     any        // Actual data
+      Score    FieldScore // Quality assessment (0-100 scale)
+      Provider string     // Data source name
+  }
+  ```
+- Key insight: Each field is scored independently, enabling field-level merging in Integration phase
 
-### Processor: `enrichment` (`NewEnrichmentProcessor`) [specialized]
+## Phase 3: Integration
 
-- Data source: LLM completion (`JSONMode`)
-- Input payload:
-  - Incomplete lexemes (missing gloss/senses/examples)
-- Extracted/updated data:
-  - Lexeme updates:
-    - fill `SenseGloss` if empty
-    - merge new `Senses` (English/Chinese and examples)
-  - Evidence:
-    - `processor=enrichment`, `model=llm`, `cached`, `token_count`, `enriched_count`
-    - `Provider=llm`, `Phase=intellectual`
+This phase performs smart field-level merging based on quality scores.
 
-### Processor: `scoring` (`NewScoringProcessor`) [specialized]
+### Processor: `integration` (`NewIntegrationProcessor`)
 
-- Data source: LLM completion (`JSONMode`)
-- Input payload:
-  - Current relations (`target_term`, `relation_type`, `provider`, `current_strength`)
-- Extracted/updated data:
-  - In-place relation strength updates:
-    - set `Strength` to LLM score clamped to `[0,1]`
-  - Evidence:
-    - `processor=scoring`, `model=llm`, `cached`, `token_count`, `scored_count`
-    - `Provider=llm`, `Phase=intellectual`
+- Implementation: `internal/usecase/pipeline/proc_integration.go`
+- Data source: None (merges fragments from `PipelineContext.EvaluatedFragments`)
+- Process:
+  1. Groups fragments by field key (e.g., `form:run:phonetics`, `metadata:level`)
+  2. For each field, sorts candidates by score descending
+  3. Selects the highest-scoring fragment
+  4. Merges into integrated data structures
+  5. Records data provenance for each field
+- Output:
+  - Updated `PipelineContext.Lexemes`, `Forms`, `Relations`, `Lemma`
+  - Provenance tracking:
+    ```go
+    type DataProvenance struct {
+        Provider     string     // Which provider supplied this data
+        Score        FieldScore // Quality score
+        Timestamp    time.Time  // When it was integrated
+        Alternatives int        // How many candidates were rejected
+    }
+    ```
+- Key benefit: Automatically selects best data at field granularity, not entity granularity
 
-## Stage 5: Synthesis
+## Phase 4: Snapshot
 
-### Processor: `snapshot` (`NewSnapshotProcessor`) [specialized]
+This phase generates the final materialized snapshot.
+
+### Processor: `snapshot` (`NewSnapshotProcessor`)
 
 - Data source: None (pure synthesis from `PipelineContext`)
 - Extracted/derived data:
@@ -251,37 +266,25 @@ This stage uses the LLM provider (`internal/adapter/provider/llm`), not offline 
     - Snapshot lexemes (`POS`, senses, forms, phonetics)
     - Snapshot relations (type/target/provider/strength/mapped/resolved)
     - Quality scores (`QScore`, completeness/depth/density/validity)
-- Evidence:
-  - None (snapshot entity is emitted, not raw evidence)
+- Evidence: None (snapshot entity is emitted, not raw evidence)
 
-## Cross-Stage POS Validation
+## Source-to-Phase Quick Matrix
 
-- Pipeline performs strict POS validation on `PipelineContext.Lexemes`.
-- Any lexeme with POS outside internal enum `entity.PartOfSpeech` fails the pipeline run.
-- This serves as a future-proof guardrail so newly introduced data-source POS values cannot silently pass through.
+| Source | Type | Collection | Evaluation | Integration | Snapshot |
+|---|---|---|---|---|---|
+| Wikidata | builtin (specialized) | ✅ | ❌ | ❌ | ❌ |
+| CategoryInfer | specialized | ✅ | ❌ | ❌ | ❌ |
+| WikidataRelations | specialized | ✅ | ❌ | ❌ | ❌ |
+| CEFR-J | builtin (SourceProvider) | ✅ | ❌ | ❌ | ❌ |
+| Moby | builtin (SourceProvider) | ✅ | ❌ | ❌ | ❌ |
+| ECDICT | contrib (Python) | ✅ | ❌ | ❌ | ❌ |
+| ConceptNet | contrib (Python) | ✅ | ❌ | ❌ | ❌ |
+| WordNet | contrib (Python) | ✅ | ❌ | ❌ | ❌ |
+| FragmentEvaluator | specialized | ❌ | ✅ | ❌ | ❌ |
+| IntegrationProcessor | specialized | ❌ | ❌ | ✅ | ❌ |
+| SnapshotProcessor | specialized | ❌ | ❌ | ❌ | ✅ |
 
-## Source-to-Stage Quick Matrix
-
-| Source | Type | Discovery | Lexical | Relational | Intellectual | Synthesis |
-|---|---|---|---|---|---|---|
-| Wikidata | builtin (specialized) | ✅ | ❌ | ✅ | ❌ | ❌ |
-| CEFR-J | builtin (SourceProvider) | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Moby | builtin (SourceProvider) | ❌ | ✅ | ❌ | ❌ | ❌ |
-| ECDICT | contrib (Python) | ❌ | ✅ | ❌ | ❌ | ❌ |
-| ConceptNet | contrib (Python) | ❌ | ❌ | ✅ | ❌ | ❌ |
-| WordNet | contrib (Python) | ❌ | ❌ | ✅ | ❌ | ❌ |
-| LLM | specialized | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Internal context only | specialized | ✅ | ❌ | ❌ | ❌ | ✅ |
-
-`✅` details:
-- Wikidata: discovery=`wikidata`; relational=`wikidata_relations`
-- CEFR-J: lexical=`cefrj` (SourceProvider)
-- Moby: lexical=`moby` (SourceProvider)
-- ECDICT: lexical=`ecdict` (contrib)
-- ConceptNet: relational=`conceptnet` (contrib)
-- WordNet: relational=`wordnet` (contrib)
-- LLM: intellectual=`sense_mapping`, `enrichment`, `scoring`
-- Internal context only: discovery=`category-infer`; synthesis=`snapshot`
+Note: All data sources run concurrently in Collection phase.
 
 ## Configuration
 
@@ -302,15 +305,43 @@ PIPELINE_CONTRIB_LIST=ecdict,conceptnet,wordnet
 Each contrib source is a script in `PIPELINE_CONTRIB_DIR` that implements the JSON-RPC protocol.
 The `PIPELINE_DATA_DIR` environment variable is inherited by child processes.
 
+## Key Design Decisions
+
+### Why Fragment-Based Evaluation?
+
+Each data source returns partial data. Multiple sources may provide the same field (e.g., phonetics from both Wikidata and ECDICT). The fragment-based approach:
+
+1. **Evaluates each field independently**: A source may provide high-quality phonetics but low-quality senses
+2. **Enables field-level merging**: Integration can select Wikidata's phonetics and ECDICT's senses
+3. **Records provenance**: We know which provider supplied each field and why (quality score)
+
+### Why Contract Validation?
+
+Instead of adapting to dirty data, we push the responsibility to data sources:
+
+- **Standardized formats**: IPA must be valid, Dialect must be ISO 639
+- **No unspecified values**: PartOfSpeech cannot be `unspecified`
+- **Valid ranges**: Relation strength must be [0, 1]
+
+Non-compliant data is rejected immediately with detailed violation reports for debugging.
+
+### Why Concurrent Collection?
+
+Data sources are independent. Running them concurrently:
+
+- **Reduces latency**: Total time = max(source latency), not sum(source latency)
+- **Simplifies logic**: No inter-source dependencies to manage
+- **Enables parallel evaluation**: Fragment evaluation can also be parallelized per-provider
+
 ## Update Rule (Must Keep in Sync)
 
 When any of the following changes, update this document in the same PR:
 
-- Stage order or stage membership in `cmd/serve.go`
-- Added/removed/replaced processor in any stage
+- Phase order or phase membership in `cmd/serve.go`
+- Added/removed/replaced processor in any phase
 - SourceProvider interface or contrib protocol changes
 - Processor extraction fields, filters, scoring/mapping rules
-- Raw evidence payload structure or `SchemaVersion`
+- Contract validation rules or `SchemaVersion`
 - Data source provider API changes affecting extracted outputs
 
 Recommended PR checklist item:

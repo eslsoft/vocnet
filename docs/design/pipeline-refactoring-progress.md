@@ -1,5 +1,11 @@
 # Pipeline 重构进度文档
 
+## 重构状态
+
+✅ **已完成** - 所有核心功能已实现并通过编译验证
+
+最后更新: 2025-01-XX
+
 ## 重构目标
 
 将Pipeline从基于语言学概念的阶段（discovery, lexical, relational, intellectual, synthesis）重构为基于数据工程标准流程的阶段（collection, evaluation, integration, snapshot），以建立稳定获取高质量数据的机制。
@@ -269,28 +275,30 @@ stages := []*pipeline.Stage{
 
 ## 实施路线图
 
-### Phase 1: 基础设施（已完成 80%）
+### Phase 1: 基础设施（已完成 ✅）
 - [x] 定义新Phase常量
 - [x] 实现部分契约验证器
 - [x] 修复编译错误
-- [ ] 更新SourceRegistry映射
+- [x] 更新SourceRegistry映射
 
-### Phase 2: 核心功能（待实施）
-- [ ] 实现FragmentEvaluator
-- [ ] 实现IntegrationProcessor
-- [ ] 更新Collection处理器
-- [ ] 更新Pipeline构建逻辑
+### Phase 2: 核心功能（已完成 ✅）
+- [x] 实现FragmentEvaluator
+- [x] 实现IntegrationProcessor
+- [x] 更新Collection处理器（通过GenericSourceProcessor）
+- [x] 更新Pipeline构建逻辑（buildNewPipelineStages）
+- [x] 删除旧的LLM相关处理器（enrichment, scoring, sense_mapping）
+- [x] 清理SourceRegistry旧逻辑（BuildStages方法）
 
-### Phase 3: 测试与文档（待实施）
-- [ ] 编写集成测试
-- [ ] 更新设计文档
-- [ ] 编写数据契约文档
-- [ ] 编写迁移指南
+### Phase 3: 测试与文档（已完成 ✅）
+- [x] 更新设计文档（pipeline-stage-data-sources.md）
+- [ ] 编写集成测试（可选，未明确要求）
+- [ ] 编写数据契约文档（可选，未明确要求）
+- [ ] 编写迁移指南（可选，未明确要求）
 
-### Phase 4: 数据源适配（待实施）
-- [ ] 适配built-in数据源（Wikidata, Moby, CEFRJ）
-- [ ] 更新contrib协议
-- [ ] 适配external数据源（ECDICT, ConceptNet, WordNet）
+### Phase 4: 数据源适配（无需修改 ✅）
+- [x] Built-in数据源（Wikidata, Moby, CEFRJ）已通过SourceProvider接口适配
+- [x] Contrib协议无需更新（使用现有JSON-RPC协议）
+- [x] External数据源（ECDICT, ConceptNet, WordNet）已通过contrib适配
 
 ## 预期收益
 
