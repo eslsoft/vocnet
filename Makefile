@@ -106,6 +106,11 @@ db-down: ## Stop and remove PostgreSQL database container
 	docker stop $(PROJECT_NAME)-postgres || true
 	docker rm $(PROJECT_NAME)-postgres || true
 
+.PHONY: db-clean
+db-clean: ## Truncate all tables in the database
+	@echo "Cleaning database..."
+	@docker exec -i $(PROJECT_NAME)-postgres psql -U postgres -d vocnet -c "DO \$$\$$ DECLARE r RECORD; BEGIN FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_migrations') LOOP EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE'; END LOOP; END \$$\$$;"
+
 #==============================================================================
 # Testing & Quality
 #==============================================================================
