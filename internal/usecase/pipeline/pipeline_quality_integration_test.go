@@ -451,8 +451,8 @@ func selectBuiltinWordbooksForQualityGate(t *testing.T) []builtinBookRequirement
 		return out
 	}
 
-	// 默认覆盖基础/中阶/高阶词书。
-	names := []string{"CEFR-A1", "CEFR-B1", "CEFR-C1", "IELTS", "GRE"}
+	// 默认测试所有 CEFR 词书（A1-C2 完整覆盖）
+	names := []string{"CEFR-A1", "CEFR-A2", "CEFR-B1", "CEFR-B2", "CEFR-C1", "CEFR-C2"}
 	out := make([]builtinBookRequirement, 0, len(names))
 	for _, name := range names {
 		minAvg, targetAvg := classifyWordbookQualityThreshold(name)
