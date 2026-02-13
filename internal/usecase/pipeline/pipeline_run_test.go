@@ -127,6 +127,9 @@ func TestPipelineRun_AbortOnStageError(t *testing.T) {
 	stage2Executed := false
 	stageRepo := newMemoryStageRepo()
 
+	scorer := NewRuleBasedScorer()
+	evaluator := NewDataEvaluator(scorer, testLogger())
+
 	p := NewPipeline(
 		[]*Stage{
 			NewStage("discovery", 1, &stubProcessor{
@@ -149,6 +152,7 @@ func TestPipelineRun_AbortOnStageError(t *testing.T) {
 		&nopSnapshotRepo{},
 		lemmaRepo,
 		lexemeRepo,
+		evaluator,
 		testLogger(),
 	)
 
@@ -207,6 +211,7 @@ func TestPipelineRun_ContinueOnExplicitProcessorSkip(t *testing.T) {
 		&nopSnapshotRepo{},
 		lemmaRepo,
 		lexemeRepo,
+		NewDataEvaluator(NewRuleBasedScorer(), testLogger()),
 		testLogger(),
 	)
 

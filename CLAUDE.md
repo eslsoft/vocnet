@@ -343,13 +343,25 @@ The pipeline includes a **mandatory** data evaluation system that determines whi
 
 **Usage (required):**
 ```go
-// Evaluator MUST be set before running pipeline
+// Create evaluator
 scorer := pipeline.NewRuleBasedScorer()
 evaluator := pipeline.NewDataEvaluator(scorer, logger)
-pipeline.SetEvaluator(evaluator)
+
+// Pass to pipeline constructor
+pipeline := pipeline.NewPipeline(
+    stages,
+    validator,
+    persistence,
+    stageRepo,
+    snapshotRepo,
+    lemmaRepo,
+    lexemeRepo,
+    evaluator,  // Required parameter
+    logger,
+)
 ```
 
-The pipeline will panic if evaluator is not configured. Legacy fallback merge logic has been removed.
+The evaluator is a required constructor parameter.
 
 **Documentation:**
 - Design: `docs/design/data-evaluation-adoption.md`

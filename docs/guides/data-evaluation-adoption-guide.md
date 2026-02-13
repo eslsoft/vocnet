@@ -8,18 +8,26 @@ The data evaluation and adoption system provides a centralized mechanism to deci
 
 ### Setting Up the Evaluator (Required)
 
-The evaluator **must** be configured before running the pipeline:
+The evaluator **must** be passed to the pipeline constructor:
 
 ```go
 // Create evaluator with rule-based scorer
 scorer := pipeline.NewRuleBasedScorer()
 evaluator := pipeline.NewDataEvaluator(scorer, logger)
 
-// Set in pipeline (REQUIRED)
-pipeline.SetEvaluator(evaluator)
+// Pass to pipeline constructor (REQUIRED)
+pipeline := pipeline.NewPipeline(
+    stages,
+    validator,
+    persistence,
+    stageRepo,
+    snapshotRepo,
+    lemmaRepo,
+    lexemeRepo,
+    evaluator,  // Required parameter
+    logger,
+)
 ```
-
-If the evaluator is not configured, the pipeline will return an error when `Run()` is called.
 
 ## How It Works
 
@@ -204,29 +212,45 @@ All adoption decisions are implicitly tracked via Evidence entities in the pipel
 
 ### Migration Required
 
-If your code was previously running the pipeline without an evaluator, you must now:
+If your code was previously running the pipeline, you must now add the evaluator parameter:
 
 1. Create a scorer (e.g., `NewRuleBasedScorer()`)
 2. Create an evaluator with the scorer
-3. Call `pipeline.SetEvaluator(evaluator)` before `pipeline.Run()`
+3. Pass evaluator to `NewPipeline()` constructor
 
 **Before:**
 ```go
-pipeline := NewPipeline(...)
-// Could run directly without evaluator
+pipeline := NewPipeline(
+    stages,
+    validator,
+    persistence,
+    stageRepo,
+    snapshotRepo,
+    lemmaRepo,
+    lexemeRepo,
+    logger,
+)
 pipeline.Run(ctx, jobID, term, language, tier, opts)
 ```
 
 **After:**
 ```go
-pipeline := NewPipeline(...)
-
-// REQUIRED: Set evaluator
+// Create evaluator
 scorer := pipeline.NewRuleBasedScorer()
 evaluator := pipeline.NewDataEvaluator(scorer, logger)
-pipeline.SetEvaluator(evaluator)
 
-// Now can run
+// Pass evaluator to constructor
+pipeline := NewPipeline(
+    stages,
+    validator,
+    persistence,
+    stageRepo,
+    snapshotRepo,
+    lemmaRepo,
+    lexemeRepo,
+    evaluator,  // New required parameter
+    logger,
+)
 pipeline.Run(ctx, jobID, term, language, tier, opts)
 ```
 
@@ -235,9 +259,8 @@ pipeline.Run(ctx, jobID, term, language, tier, opts)
 ### Issue: Data not being adopted
 
 **Check:**
-1. Is evaluator enabled? (`pipeline.SetEvaluator()`)
-2. Is provider name set in ProcessResult?
-3. Are scores being computed correctly? (add debug logging)
+1. Is provider name set in ProcessResult?
+2. Are scores being computed correctly? (add debug logging)
 
 ### Issue: Wrong data being adopted
 
