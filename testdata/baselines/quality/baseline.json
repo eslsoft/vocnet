@@ -1,0 +1,306 @@
+{
+  "timestamp": "2026-02-13T14:44:36.917119-05:00",
+  "total_books": 5,
+  "total_words": 50,
+  "total_passed": 10,
+  "total_failed": 27,
+  "average_score": 28.24213756613756,
+  "book_reports": [
+    {
+      "name": "CEFR-A1",
+      "total_words": 931,
+      "tested_words": 10,
+      "passed_words": 1,
+      "failed_words": 7,
+      "average_score": 24.343749999999996,
+      "min_score": 21.7,
+      "max_score": 42.849999999999994,
+      "min_requirement": 35,
+      "target_score": 50,
+      "score_distribution": {
+        "0-20": 0,
+        "20-40": 7,
+        "40-60": 1,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "April",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "DVD",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "December",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Friday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "January",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "July",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "June",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "execution_errors": [
+        "CD: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)",
+        "February: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)"
+      ],
+      "status": "error"
+    },
+    {
+      "name": "CEFR-B1",
+      "total_words": 1056,
+      "tested_words": 10,
+      "passed_words": 4,
+      "failed_words": 5,
+      "average_score": 32.584259259259255,
+      "min_score": 21.7,
+      "max_score": 47.599999999999994,
+      "min_requirement": 30,
+      "target_score": 45,
+      "score_distribution": {
+        "0-20": 0,
+        "20-40": 5,
+        "40-60": 4,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "CV",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "DJ",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "absolutely",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accommodation",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "achievement",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "execution_errors": [
+        "account: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)"
+      ],
+      "status": "error"
+    },
+    {
+      "name": "CEFR-C1",
+      "total_words": 1762,
+      "tested_words": 10,
+      "passed_words": 2,
+      "failed_words": 3,
+      "average_score": 30.93,
+      "min_score": 21.7,
+      "max_score": 46.7,
+      "min_requirement": 25,
+      "target_score": 40,
+      "score_distribution": {
+        "0-20": 0,
+        "20-40": 3,
+        "40-60": 2,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "abnormal",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "absence",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abundance",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "execution_errors": [
+        "aboard: execute stage 5 (snapshot): save snapshot: save snapshot: database table is locked: database is deadlocked (6)",
+        "abolish: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)",
+        "abortion: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)",
+        "absent: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)",
+        "academy: execute stage 5 (snapshot): save snapshot: save snapshot: database table is locked: database is deadlocked (6)"
+      ],
+      "status": "error"
+    },
+    {
+      "name": "IELTS",
+      "total_words": 6089,
+      "tested_words": 10,
+      "passed_words": 1,
+      "failed_words": 6,
+      "average_score": 25.27142857142857,
+      "min_score": 21.7,
+      "max_score": 46.7,
+      "min_requirement": 30,
+      "target_score": 45,
+      "score_distribution": {
+        "0-20": 0,
+        "20-40": 6,
+        "40-60": 1,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "Africa",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Alaska",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "America",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "April",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Athens",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Australia",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "execution_errors": [
+        "American: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)",
+        "Asia: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)",
+        "Australian: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)"
+      ],
+      "status": "error"
+    },
+    {
+      "name": "GRE",
+      "total_words": 8728,
+      "tested_words": 10,
+      "passed_words": 2,
+      "failed_words": 6,
+      "average_score": 28.081249999999997,
+      "min_score": 21.7,
+      "max_score": 47.75,
+      "min_requirement": 25,
+      "target_score": 40,
+      "score_distribution": {
+        "0-20": 0,
+        "20-40": 6,
+        "40-60": 2,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "Maxim",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Odyssey",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abase",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abatement",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abbreviate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "execution_errors": [
+        "Trident: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)",
+        "abash: execute stage 1 (collection): persist results: save forms: create forms: database table is locked: database is deadlocked (6)"
+      ],
+      "status": "error"
+    }
+  ],
+  "execution_time": "6.495153417s"
+}
