@@ -129,8 +129,9 @@ test-coverage: test ## Generate HTML test coverage report
 .PHONY: test-quality
 test-quality: ## Run pipeline quality integration tests (all words in default wordbooks)
 	@echo "Running pipeline quality tests..."
-	@echo "Note: Testing ~18K words may take 30-40 minutes"
-	go test -v -tags=integration -timeout=60m \
+	@echo "Note: Testing ~7K words (6 CEFR wordbooks) may take 4-6 minutes"
+	@echo ""
+	stdbuf -oL -eL go test -v -tags=integration -timeout=60m \
 		./internal/usecase/pipeline/... \
 		-run TestPipelineDataQualityGates
 
