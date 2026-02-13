@@ -42,7 +42,10 @@ jobs:
       - name: Download pipeline data sources
         run: |
           mkdir -p data/datasources
+          # Download all required data sources
           go run . pipeline source download
+          # Verify data sources are available
+          go run . pipeline source list
         env:
           PIPELINE_DATA_DIR: ./data
           PIPELINE_AUTO_DOWNLOAD: "true"

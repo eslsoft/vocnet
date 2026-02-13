@@ -493,7 +493,8 @@ func requirePipelineSources(t *testing.T, cfg *config.Config, logger *slog.Logge
 	t.Helper()
 
 	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	err := mgr.EnsureAvailable(context.Background(), false, "wikidata", "moby", "cefrj")
+	// Use auto-download if enabled in config (respects PIPELINE_AUTO_DOWNLOAD env var)
+	err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "wikidata", "moby", "cefrj")
 	if err != nil {
 		t.Skipf("pipeline quality integration requires local data sources under %s: %v", cfg.Pipeline.DataDir, err)
 	}
