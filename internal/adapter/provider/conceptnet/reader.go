@@ -146,13 +146,18 @@ func extractRelationLabel(uri string) string {
 	return ""
 }
 
-// extractTermLabel extracts term from concept URI
-// /c/en/hello → hello
+// extractTermLabel extracts the term from a ConceptNet concept URI.
+// URI format: /c/{lang}/{term}[/{pos}[/{sense}...]]
+// Examples:
+//
+//	/c/en/hello       → hello
+//	/c/en/run/v       → run
+//	/c/en/bank/n/wn/bank_1 → bank
 func extractTermLabel(uri string) string {
 	parts := strings.Split(uri, "/")
+	// parts[0]="" parts[1]="c" parts[2]=lang parts[3]=term [parts[4]=pos ...]
 	if len(parts) >= 4 && parts[1] == "c" {
-		// Join remaining parts in case term contains slashes
-		return strings.Join(parts[3:], "/")
+		return parts[3]
 	}
 	return ""
 }
