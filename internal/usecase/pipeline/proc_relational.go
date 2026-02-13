@@ -54,13 +54,15 @@ func (p *ConceptNetProcessor) Process(ctx context.Context, pctx *PipelineContext
 			continue
 		}
 		targetTerm := edge.EndTerm
+		targetLang := edge.EndLanguage
 		if edge.EndTerm == pctx.Term {
 			targetTerm = edge.StartTerm
+			targetLang = edge.StartLanguage
 		}
 
 		relations = append(relations, &entity.SemanticRelation{
 			SourceExternalID: sourceExtID,
-			TargetRef:        conceptNetTermRef(pctx.Language.Code(), targetTerm),
+			TargetRef:        conceptNetTermRef(targetLang, targetTerm),
 			TargetTerm:       targetTerm,
 			RelationType:     edge.RelationType,
 			Provider:         "conceptnet",

@@ -107,18 +107,24 @@ func (r *Reader) FetchRelations(ctx context.Context, term string, language strin
 			continue
 		}
 
-		startLabel := extractTermLabel(startURI)
-		endLabel := extractTermLabel(endURI)
+		startLang, startLabel := extractTermInfo(startURI)
+		endLang, endLabel := extractTermInfo(endURI)
 		if startLabel == "" || endLabel == "" {
+			continue
+		}
+		// Skip cross-language edges: both endpoints must be in the query language.
+		if startLang != language || endLang != language {
 			continue
 		}
 
 		edges = append(edges, provider.ConceptNetEdge{
-			RelationType: relType,
-			StartTerm:    startLabel,
-			EndTerm:      endLabel,
-			Weight:       weight,
-			SurfaceText:  fmt.Sprintf("%s %s %s", startLabel, relLabel, endLabel),
+			RelationType:  relType,
+			StartTerm:     startLabel,
+			StartLanguage: startLang,
+			EndTerm:       endLabel,
+			EndLanguage:   endLang,
+			Weight:        weight,
+			SurfaceText:   fmt.Sprintf("%s %s %s", startLabel, relLabel, endLabel),
 		})
 	}
 
@@ -146,20 +152,21 @@ func extractRelationLabel(uri string) string {
 	return ""
 }
 
-// extractTermLabel extracts the term from a ConceptNet concept URI.
+// extractTermInfo extracts the language code and term from a ConceptNet concept URI.
 // URI format: /c/{lang}/{term}[/{pos}[/{sense}...]]
 // Examples:
 //
-//	/c/en/hello       → hello
-//	/c/en/run/v       → run
-//	/c/en/bank/n/wn/bank_1 → bank
-func extractTermLabel(uri string) string {
+//	/c/en/hello         → ("en", "hello")
+//	/c/en/run/v         → ("en", "run")
+//	/c/en/bank/n/wn/bank_1 → ("en", "bank")
+//	/c/zh/跑/v          → ("zh", "跑")
+func extractTermInfo(uri string) (lang, term string) {
 	parts := strings.Split(uri, "/")
 	// parts[0]="" parts[1]="c" parts[2]=lang parts[3]=term [parts[4]=pos ...]
 	if len(parts) >= 4 && parts[1] == "c" {
-		return parts[3]
+		return parts[2], parts[3]
 	}
-	return ""
+	return "", ""
 }
 
 // mapConceptNetRelation maps a ConceptNet relation label to our relation type constants.

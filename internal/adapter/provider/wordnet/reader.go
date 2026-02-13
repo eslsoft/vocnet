@@ -153,6 +153,9 @@ func (r *Reader) LookupSynsets(ctx context.Context, word string, pos string) ([]
 // LookupSynsetByOffset retrieves a synset by its POS and offset.
 // Returns nil if not found.
 func (r *Reader) LookupSynsetByOffset(pos, offset string) *Synset {
+	if err := r.ensureLoaded(); err != nil {
+		return nil
+	}
 	key := pos + ":" + offset
 	return r.offsetIndex[key]
 }
