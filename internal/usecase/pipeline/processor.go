@@ -120,17 +120,49 @@ func mergeLexemes(existing, new []*entity.Lexeme) []*entity.Lexeme {
 }
 
 // mergeForms merges new forms into existing list, deduplicating by surface+formType.
+// When a form already exists, enrichment fields (phonetics, syllables) are merged in.
 func mergeForms(existing, new []*entity.LemmaForm) []*entity.LemmaForm {
-	seen := make(map[string]bool)
-	for _, f := range existing {
+	index := make(map[string]int, len(existing)) // key → index in existing
+	for i, f := range existing {
 		key := f.Surface + ":" + string(f.FormType)
-		seen[key] = true
+		index[key] = i
 	}
 	for _, f := range new {
 		key := f.Surface + ":" + string(f.FormType)
-		if !seen[key] {
+		if idx, ok := index[key]; ok {
+			mergeFormFields(existing[idx], f)
+		} else {
+			index[key] = len(existing)
 			existing = append(existing, f)
-			seen[key] = true
+		}
+	}
+	return existing
+}
+
+// mergeFormFields enriches dst with non-empty fields from src.
+func mergeFormFields(dst, src *entity.LemmaForm) {
+	if len(src.Syllables) > 0 && len(dst.Syllables) == 0 {
+		dst.Syllables = src.Syllables
+	}
+	if len(src.Phonetics) > 0 {
+		dst.Phonetics = mergePhonetics(dst.Phonetics, src.Phonetics)
+	}
+	if src.IsIrregular && !dst.IsIrregular {
+		dst.IsIrregular = true
+	}
+}
+
+// mergePhonetics appends new phonetics that don't already exist.
+func mergePhonetics(existing, incoming []entity.Phonetic) []entity.Phonetic {
+	seen := make(map[string]struct{}, len(existing))
+	for _, ph := range existing {
+		seen[ph.IPA+"|"+ph.Dialect] = struct{}{}
+	}
+	for _, ph := range incoming {
+		key := ph.IPA + "|" + ph.Dialect
+		if _, ok := seen[key]; !ok {
+			existing = append(existing, ph)
+			seen[key] = struct{}{}
 		}
 	}
 	return existing

@@ -66,11 +66,10 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 	}
 
 	var frequencies []entity.Frequency
-	var syllables []string
 	if pctx.Lemma != nil {
 		frequencies = append([]entity.Frequency{}, pctx.Lemma.Frequencies...)
-		syllables = append([]string{}, pctx.Lemma.Syllables...)
 	}
+	syllables := findLemmaSyllables(pctx)
 
 	snapshotForms := collectSnapshotForms(pctx)
 	snapshotCategories := collectSnapshotCategories(pctx.Lexemes)
@@ -90,14 +89,17 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 	now := time.Now()
 	normalized := ""
 	surface := ""
+	level := ""
 	if pctx.Lemma != nil {
 		surface = strings.TrimSpace(pctx.Lemma.Surface)
 		normalized = strings.ToLower(surface)
+		level = pctx.Lemma.Level
 	}
 
 	snapshot := &entity.LemmaSnapshot{
 		Surface:       surface,
 		Normalized:    normalized,
+		Level:         level,
 		Language:      pctx.Language.Code(),
 		Version:       1,
 		SchemaVersion: 1,
@@ -209,6 +211,24 @@ func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm 
 		})
 	}
 	return out
+}
+
+// findLemmaSyllables derives lemma-level syllables from pctx.Forms.
+// It looks for the form whose surface matches the lemma surface (case-insensitive).
+func findLemmaSyllables(pctx *PipelineContext) []string {
+	if pctx == nil || pctx.Lemma == nil {
+		return nil
+	}
+	surface := strings.ToLower(strings.TrimSpace(pctx.Lemma.Surface))
+	if surface == "" {
+		return nil
+	}
+	for _, f := range pctx.Forms {
+		if f != nil && strings.ToLower(strings.TrimSpace(f.Surface)) == surface && len(f.Syllables) > 0 {
+			return append([]string{}, f.Syllables...)
+		}
+	}
+	return nil
 }
 
 func normalizeFormPhonetics(phonetics []entity.Phonetic) []entity.Phonetic {
