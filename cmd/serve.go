@@ -37,6 +37,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/contrib"
+	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/moby"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
@@ -166,6 +167,16 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc. via JSON-RPC over stdio) ---
 	loadContribSources(ctx, cfg, registry, logger)
 
+	// --- LLM Provider (optional, for enrichment) ---
+	var llmProvider llm.Provider
+	if cfg.LLM.APIKey != "" {
+		cacheRepo := repository.NewDistillCacheRepository(entClient)
+		llmProvider = llm.NewOpenAIProvider(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.Model, cacheRepo)
+		logger.Info("llm provider initialized", "base_url", cfg.LLM.BaseURL, "model", cfg.LLM.Model)
+	} else {
+		logger.Info("llm provider not configured (LLM_API_KEY not set), enrichment will be skipped")
+	}
+
 	// Build pipeline stages using new Phase system
 	aggregator := pipeline.NewDataAggregator()
 	persistence := pipeline.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
@@ -173,8 +184,8 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	scorer := pipeline.NewRuleBasedScorer()
 	evaluator := pipeline.NewDataEvaluator(scorer, logger)
 
-	// Build stages with new architecture
-	stages := buildNewPipelineStages(registry, wikidataProvider, scorer, logger)
+	// Build stages with new architecture (LLM enrichment is optional)
+	stages := buildNewPipelineStages(registry, wikidataProvider, llmProvider, scorer, logger)
 
 	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 
@@ -193,6 +204,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 func buildNewPipelineStages(
 	registry *pipeline.SourceRegistry,
 	wikidataProvider provider.WikidataProvider,
+	llmProvider llm.Provider,
 	scorer *pipeline.RuleBasedScorer,
 	logger *slog.Logger,
 ) []*pipeline.Stage {
@@ -217,33 +229,45 @@ func buildNewPipelineStages(
 		collectionProcessors...,
 	)
 
+	// Phase 1.5: LLM Enrichment (Fill gaps with LLM-generated data)
+	// Optional: only runs if LLM provider is configured
+	var llmEnrichment *pipeline.Stage
+	if llmProvider != nil {
+		llmEnrichment = pipeline.NewStage(
+			pipeline.PhaseCollection, // Still part of collection phase logically
+			2,
+			pipeline.NewLLMEnrichmentProcessor(llmProvider, logger),
+		)
+	}
+
 	// Phase 2: Evaluation (Quality scoring of fragments)
 	evaluation := pipeline.NewStage(
 		pipeline.PhaseEvaluation,
-		2,
+		3,
 		pipeline.NewFragmentEvaluator(scorer, logger),
 	)
 
 	// Phase 3: Integration (Smart merging based on scores)
 	integration := pipeline.NewStage(
 		pipeline.PhaseIntegration,
-		3,
+		4,
 		pipeline.NewIntegrationProcessor(logger),
 	)
 
 	// Phase 4: Snapshot (Final snapshot generation)
 	snapshot := pipeline.NewStage(
 		pipeline.PhaseSnapshot,
-		4,
+		5,
 		pipeline.NewLemmaSnapshotProcessor(),
 	)
 
-	return []*pipeline.Stage{
-		collection,
-		evaluation,
-		integration,
-		snapshot,
+	stages := []*pipeline.Stage{collection}
+	if llmEnrichment != nil {
+		stages = append(stages, llmEnrichment)
 	}
+	stages = append(stages, evaluation, integration, snapshot)
+
+	return stages
 }
 
 // loadContribSources discovers and starts contrib source processes.

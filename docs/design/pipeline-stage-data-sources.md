@@ -4,18 +4,19 @@ This document describes the new fragment-based pipeline architecture and which d
 
 ## Architecture Overview
 
-The pipeline follows a data engineering approach with four phases:
+The pipeline follows a data engineering approach with five phases:
 
 ```
-Collection → Evaluation → Integration → Snapshot
+Collection → LLM Enrichment → Evaluation → Integration → Snapshot
 ```
 
 ### Phase Descriptions
 
 1. **Collection (PhaseCollection)**: Concurrent data acquisition from all sources with contract validation
-2. **Evaluation (PhaseEvaluation)**: Quality scoring of data fragments from each source
-3. **Integration (PhaseIntegration)**: Field-level merging based on quality scores
-4. **Snapshot (PhaseSnapshot)**: Final materialized snapshot generation
+2. **LLM Enrichment (PhaseCollection)**: Optional AI-powered gap filling (runs only if LLM_API_KEY is configured)
+3. **Evaluation (PhaseEvaluation)**: Quality scoring of data fragments from each source (including LLM)
+4. **Integration (PhaseIntegration)**: Field-level merging based on quality scores
+5. **Snapshot (PhaseSnapshot)**: Final materialized snapshot generation
 
 ### Data Source Types
 
@@ -199,7 +200,46 @@ All data sources run concurrently in this phase. Each source returns partial dat
     - `synsets`: `{offset,pos,words,gloss,relations}`
     - `SchemaVersion=wordnet-3.1`
 
-## Phase 2: Evaluation
+## Phase 2: LLM Enrichment (Optional)
+
+This phase uses LLM to intelligently fill gaps detected in the collected data. It only runs if `LLM_API_KEY` environment variable is configured.
+
+### Processor: `llm_enrichment` (`NewLLMEnrichmentProcessor`)
+
+- Implementation: `internal/usecase/pipeline/proc_llm_enrichment.go`
+- Data source: OpenAI-compatible LLM API (configurable via `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`)
+- Process:
+  1. **Analyze Data Gaps**: Detect what's missing or incomplete:
+     - Incomplete lexemes (missing senses, glosses, examples)
+     - Unmapped relations (SenseMapped=false)
+     - Unscored relations (need quality assessment)
+  2. **Unified LLM Prompt**: Build a single prompt for all enrichment tasks:
+     - Task 1: Fill missing lexeme data (sense_gloss, English/Chinese senses, examples)
+     - Task 2: Map relations to specific lexeme senses (sense mapping)
+     - Task 3: Score relation strengths (0.0-1.0)
+  3. **Apply Enrichments**: Merge LLM-generated data into PipelineContext
+  4. **Generate Evidence**: Record LLM completion as Evidence for later evaluation
+- Input detection rules:
+  - **Incomplete lexemes**: Missing `SenseGloss`, or missing English/Chinese senses, or senses without examples
+  - **Unmapped relations**: `SenseMapped=false`
+  - **Unscored relations**: `Strength=0` or provider is ConceptNet (needs re-scoring)
+- Output:
+  - Updated `PipelineContext.Lexemes` (with enriched senses/glosses/examples)
+  - Updated `PipelineContext.Relations` (with sense mapping and LLM-scored strengths)
+  - Evidence with provider="llm", phase=1, schema_version="llm-enrichment-v2"
+- Key features:
+  - **Smart skipping**: If no gaps detected, processor returns `ProcessStatusNoData` (saves API costs)
+  - **Unified prompting**: Single LLM call for all tasks (reduces latency and cost)
+  - **Quality competition**: LLM data participates in Evaluation phase, not guaranteed to win
+  - **Cache-friendly**: Uses DistillCacheRepository for response caching
+- Configuration:
+  ```bash
+  LLM_BASE_URL=https://api.openai.com/v1  # Default
+  LLM_API_KEY=sk-...                      # Required to enable LLM enrichment
+  LLM_MODEL=gpt-4o-mini                   # Default model
+  ```
+
+## Phase 3: Evaluation
 
 This phase evaluates the quality of data fragments collected from each source.
 
@@ -227,7 +267,35 @@ This phase evaluates the quality of data fragments collected from each source.
   ```
 - Key insight: Each field is scored independently, enabling field-level merging in Integration phase
 
-## Phase 3: Integration
+## Phase 3: Evaluation
+
+This phase evaluates the quality of data fragments collected from each source.
+
+### Processor: `fragment_evaluator` (`NewFragmentEvaluator`)
+
+- Implementation: `internal/usecase/pipeline/fragment_evaluator.go`
+- Data source: None (evaluates fragments in `PipelineContext`)
+- Scoring engine: `RuleBasedScorer` (`internal/usecase/pipeline/rule_based_scorer.go`)
+- Process:
+  1. Groups evidence by provider (including "llm" if enrichment ran)
+  2. For each provider, evaluates:
+     - Lexemes (POS validity, senses, categories, ExternalID)
+     - Forms (phonetics, syllables)
+     - Lemma metadata (level, frequencies, syllables)
+     - Relations (target resolution, strength validity)
+  3. Stores evaluated fragments in `PipelineContext.EvaluatedFragments`
+- Output structure:
+  ```go
+  type FieldFragment struct {
+      Type     string     // "lexeme", "form.phonetics", "metadata.level"
+      Data     any        // Actual data
+      Score    FieldScore // Quality assessment (0-100 scale)
+      Provider string     // Data source name (e.g., "wikidata", "ecdict", "llm")
+  }
+  ```
+- Key insight: Each field is scored independently, enabling field-level merging in Integration phase
+
+## Phase 4: Integration
 
 This phase performs smart field-level merging based on quality scores.
 
@@ -238,7 +306,7 @@ This phase performs smart field-level merging based on quality scores.
 - Process:
   1. Groups fragments by field key (e.g., `form:run:phonetics`, `metadata:level`)
   2. For each field, sorts candidates by score descending
-  3. Selects the highest-scoring fragment
+  3. Selects the highest-scoring fragment (may be from Wikidata, ECDICT, or LLM)
   4. Merges into integrated data structures
   5. Records data provenance for each field
 - Output:
@@ -253,8 +321,9 @@ This phase performs smart field-level merging based on quality scores.
     }
     ```
 - Key benefit: Automatically selects best data at field granularity, not entity granularity
+- LLM data treatment: LLM-generated fields compete fairly with other sources based on quality scores
 
-## Phase 4: Snapshot
+## Phase 5: Snapshot
 
 This phase generates the final materialized snapshot.
 
@@ -270,21 +339,26 @@ This phase generates the final materialized snapshot.
 
 ## Source-to-Phase Quick Matrix
 
-| Source | Type | Collection | Evaluation | Integration | Snapshot |
-|---|---|---|---|---|---|
-| Wikidata | builtin (specialized) | ✅ | ❌ | ❌ | ❌ |
-| CategoryInfer | specialized | ✅ | ❌ | ❌ | ❌ |
-| WikidataRelations | specialized | ✅ | ❌ | ❌ | ❌ |
-| CEFR-J | builtin (SourceProvider) | ✅ | ❌ | ❌ | ❌ |
-| Moby | builtin (SourceProvider) | ✅ | ❌ | ❌ | ❌ |
-| ECDICT | contrib (Python) | ✅ | ❌ | ❌ | ❌ |
-| ConceptNet | contrib (Python) | ✅ | ❌ | ❌ | ❌ |
-| WordNet | contrib (Python) | ✅ | ❌ | ❌ | ❌ |
-| FragmentEvaluator | specialized | ❌ | ✅ | ❌ | ❌ |
-| IntegrationProcessor | specialized | ❌ | ❌ | ✅ | ❌ |
-| SnapshotProcessor | specialized | ❌ | ❌ | ❌ | ✅ |
+| Source | Type | Collection | LLM Enrich | Evaluation | Integration | Snapshot |
+|---|---|---|---|---|---|---|
+| Wikidata | builtin (specialized) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| CategoryInfer | specialized | ✅ | ❌ | ❌ | ❌ | ❌ |
+| WikidataRelations | specialized | ✅ | ❌ | ❌ | ❌ | ❌ |
+| CEFR-J | builtin (SourceProvider) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Moby | builtin (SourceProvider) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| ECDICT | contrib (Python) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| ConceptNet | contrib (Python) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| WordNet | contrib (Python) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| LLM | OpenAI-compatible API | ❌ | ✅ | ❌ | ❌ | ❌ |
+| FragmentEvaluator | specialized | ❌ | ❌ | ✅ | ❌ | ❌ |
+| IntegrationProcessor | specialized | ❌ | ❌ | ❌ | ✅ | ❌ |
+| SnapshotProcessor | specialized | ❌ | ❌ | ❌ | ❌ | ✅ |
 
-Note: All data sources run concurrently in Collection phase.
+Notes:
+- All data sources in Collection phase run concurrently
+- LLM Enrichment is optional (requires `LLM_API_KEY` environment variable)
+- LLM-generated data is evaluated by FragmentEvaluator alongside other sources
+- Integration selects best fragments based on quality scores, not source priority
 
 ## Configuration
 
@@ -332,6 +406,27 @@ Data sources are independent. Running them concurrently:
 - **Reduces latency**: Total time = max(source latency), not sum(source latency)
 - **Simplifies logic**: No inter-source dependencies to manage
 - **Enables parallel evaluation**: Fragment evaluation can also be parallelized per-provider
+
+### Why LLM Enrichment After Collection?
+
+LLM enrichment runs after initial data collection (before evaluation) for several key reasons:
+
+1. **Context-aware gap filling**: LLM can see what other sources provided and intelligently fill only what's missing
+2. **Cost optimization**: Only calls LLM when gaps are detected (not for every word)
+3. **Fair competition**: LLM data is scored by FragmentEvaluator like any other source
+4. **No guaranteed override**: LLM doesn't blindly overwrite high-quality data from other sources
+5. **Unified architecture**: LLM is treated as a data provider, not a post-processor
+
+**LLM as competitor, not fixer**: The key insight is that LLM-generated data may be lower quality than specialized dictionaries (Wikidata, ECDICT) for certain fields. By running LLM before Evaluation, we let the scoring system decide which source is best for each field.
+
+Example scenario:
+- Wikidata provides high-quality IPA phonetics → scored 95
+- LLM generates approximate phonetics → scored 60
+- Integration selects Wikidata's phonetics
+- But LLM provides Chinese senses that Wikidata lacks → scored 80
+- Integration selects LLM's Chinese senses
+
+This wouldn't be possible if LLM ran after Integration as a "fixer".
 
 ## Update Rule (Must Keep in Sync)
 
