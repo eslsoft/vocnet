@@ -51,6 +51,7 @@ type ProcessResult struct {
 	FormsByLexeme map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
 	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma
 	LemmaSnapshot *entity.LemmaSnapshot          // only set by LemmaSnapshotProcessor
+	Provider      string                         // source provider name (for evaluator)
 }
 
 // PipelineContext carries accumulated state through all pipeline stages.
@@ -66,35 +67,76 @@ type PipelineContext struct {
 	FormsByLexeme map[string][]*entity.LemmaForm
 	Evidence      []*entity.RawEvidence
 	LemmaSnapshot *entity.LemmaSnapshot
+
+	// Evaluator for data quality assessment (optional)
+	Evaluator *DataEvaluator
 }
 
 // Accumulate merges a ProcessResult into the pipeline context.
+// If an evaluator is configured, it uses scoring to make adoption decisions.
 func (pc *PipelineContext) Accumulate(r *ProcessResult) {
+	pc.AccumulateWithProvider(r, "")
+}
+
+// AccumulateWithProvider merges a ProcessResult with provider metadata.
+// The provider string helps the evaluator make better decisions.
+func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider string) {
 	if r == nil {
 		return
 	}
 
+	// Evidence: always accumulate
 	if r.Evidence != nil {
 		pc.Evidence = append(pc.Evidence, r.Evidence...)
 	}
-	if r.Lexemes != nil {
-		pc.Lexemes = mergeLexemes(pc.Lexemes, r.Lexemes)
-	}
+
+	// Relations: always accumulate (deduplication happens at persistence)
 	if r.Relations != nil {
 		pc.Relations = append(pc.Relations, r.Relations...)
 	}
-	if r.Forms != nil {
-		pc.Forms = mergeForms(pc.Forms, r.Forms)
+
+	// Lexemes: merge with evaluation if evaluator is configured
+	if r.Lexemes != nil {
+		if pc.Evaluator != nil && provider != "" {
+			merged, _ := pc.Evaluator.EvaluateAndMergeLexemes(pc.Lexemes, r.Lexemes, provider)
+			pc.Lexemes = merged
+		} else {
+			// Fallback: simple merge by ExternalID
+			pc.Lexemes = mergeLexemes(pc.Lexemes, r.Lexemes)
+		}
 	}
+
+	// Forms: merge with evaluation if evaluator is configured
+	if r.Forms != nil {
+		if pc.Evaluator != nil && provider != "" {
+			merged, _ := pc.Evaluator.EvaluateAndMergeForms(pc.Forms, r.Forms, provider)
+			pc.Forms = merged
+		} else {
+			// Fallback: simple merge
+			pc.Forms = mergeForms(pc.Forms, r.Forms)
+		}
+	}
+
+	// FormsByLexeme: merge
 	if r.FormsByLexeme != nil {
 		pc.FormsByLexeme = mergeFormsByLexeme(pc.FormsByLexeme, r.FormsByLexeme)
 	}
+
+	// LemmaUpdate: apply with evaluation if evaluator is configured
 	if r.LemmaUpdate != nil {
-		// Apply lemma updates to context
-		updated := *r.LemmaUpdate
-		updated.ID = pc.Lemma.ID
-		pc.Lemma = &updated
+		if pc.Evaluator != nil && provider != "" {
+			merged, _ := pc.Evaluator.EvaluateAndMergeLemmaUpdate(pc.Lemma, r.LemmaUpdate, provider)
+			merged.ID = pc.Lemma.ID // Preserve ID
+			pc.Lemma = merged
+		} else {
+			// Fallback: simple overwrite
+			updated := *r.LemmaUpdate
+			updated.ID = pc.Lemma.ID
+			pc.Lemma = &updated
+		}
 	}
+
+	// LemmaSnapshot: always overwrite
 	if r.LemmaSnapshot != nil {
 		pc.LemmaSnapshot = r.LemmaSnapshot
 	}

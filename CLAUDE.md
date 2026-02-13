@@ -320,6 +320,42 @@ Key files:
 - Contrib protocol: `internal/adapter/provider/contrib/protocol.go`
 - Stage wiring: `cmd/serve.go` (`buildPipelineWorkerPool`)
 
+### Data Evaluation and Adoption System
+
+The pipeline includes an **optional** data evaluation system that determines which data from multiple sources should be adopted based on quality scoring.
+
+**Key Concepts:**
+- **Field-level scoring**: Each data field (lexemes, forms, lemma metadata, relations) is scored independently (0-100 scale)
+- **Adoption decisions**: Data is adopted if field is empty, or if new score > existing score
+- **Source trust hierarchy**: Used as tiebreaker when scores are equal (Wikidata > WordNet > LLM > ECDICT > ConceptNet)
+
+**Scoring Rules (RuleBasedScorer):**
+- Lexemes: scored on POS validity, senses, categories, ExternalID presence
+- Forms: scored on phonetics and syllables presence
+- Lemma Level: CEFR levels scored inversely (A1=100, A2=90, ..., C2=50)
+- Relations: scored on target resolution, sense-mapping, strength validity
+
+**Architecture:**
+- Interface: `internal/usecase/pipeline/field_scorer.go` (extensible for LLM-based scoring)
+- Built-in scorer: `internal/usecase/pipeline/rule_based_scorer.go`
+- Evaluator: `internal/usecase/pipeline/data_evaluator.go` (orchestrates evaluation)
+- Integration: `internal/usecase/pipeline/processor.go` (`PipelineContext.AccumulateWithProvider`)
+
+**Usage (opt-in):**
+```go
+// Enable evaluator in pipeline setup
+scorer := pipeline.NewRuleBasedScorer()
+evaluator := pipeline.NewDataEvaluator(scorer, logger)
+pipeline.SetEvaluator(evaluator)
+```
+
+When disabled (default), legacy merge behavior is used (simple overwrite/append).
+
+**Documentation:**
+- Design: `docs/design/data-evaluation-adoption.md`
+- Usage guide: `docs/guides/data-evaluation-adoption-guide.md`
+- Tests: `internal/usecase/pipeline/data_evaluation_test.go`
+
 ### Data Source Details
 
 - **ConceptNet**: Downloaded from `https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz` (~350MB compressed, ~1.5GB uncompressed). A SQLite index is built automatically on first use.
