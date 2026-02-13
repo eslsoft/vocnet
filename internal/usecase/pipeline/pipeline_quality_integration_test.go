@@ -7,13 +7,16 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -301,54 +304,32 @@ var qualityGateTermPattern = regexp.MustCompile(`^[A-Za-z]+$`)
 func runBuiltinWordbookStage(t *testing.T, ctx context.Context, h *qualityHarness, llmBoost float64) {
 	t.Helper()
 
+	startTime := time.Now()
 	books := selectBuiltinWordbooksForQualityGate(t)
 	wordsPerBook := envInt("PIPELINE_IT_WORDS_PER_BOOK", 30)
 
-	for _, req := range books {
-		bookTerms, ok := builtinWordbookTerms(req.name)
-		require.Truef(t, ok, "builtin wordbook %q not found", req.name)
+	report := runWordbooksInParallel(t, ctx, h, books, wordsPerBook, llmBoost)
+	report.ExecutionTime = time.Since(startTime).String()
 
-		filteredTerms := filterWordbookTermsForQualityGate(bookTerms)
-		if len(filteredTerms) == 0 {
-			t.Fatalf("builtin wordbook %q has no eligible terms after normalization", req.name)
-		}
+	// Save reports
+	if err := saveQualityReports(t, report); err != nil {
+		t.Logf("failed to save quality reports: %v", err)
+	}
 
-		limit := wordsPerBook
-		if limit <= 0 || limit > len(filteredTerms) {
-			limit = len(filteredTerms)
-		}
-		if limit == 0 {
-			t.Fatalf("builtin wordbook %q has no terms", req.name)
-		}
-
-		terms := dedupeTerms(filteredTerms[:limit])
-		scores := make([]float64, 0, len(terms))
-		errors := make([]string, 0)
-
-		for _, term := range terms {
-			score, err := h.runWord(ctx, term)
-			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s: %v", term, err))
-				continue
-			}
-			scores = append(scores, score)
-		}
-
-		require.Emptyf(t, errors, "wordbook %s execution errors: %s", req.name, strings.Join(errors, "; "))
-
-		avgScore := average(scores)
-		minAverage := req.minAverageScore + llmBoost
-		targetAverage := req.targetAverage + llmBoost
-		t.Logf("[quality][wordbook:%s] sampled=%d eligible=%d avg=%.2f required_min=%.2f target=%.2f",
-			req.name, len(terms), len(filteredTerms), avgScore, minAverage, targetAverage)
-
-		require.GreaterOrEqualf(t, avgScore, minAverage,
-			"wordbook %s average quality score %.2f is below required %.2f", req.name, avgScore, minAverage)
-
-		if avgScore < targetAverage {
-			t.Logf("[quality][wordbook:%s] average score %.2f did not reach target %.2f", req.name, avgScore, targetAverage)
+	// Validate hard gates
+	failedBooks := make([]string, 0)
+	for _, bookReport := range report.BookReports {
+		if bookReport.Status == "failed" || bookReport.Status == "error" {
+			failedBooks = append(failedBooks, fmt.Sprintf("%s (avg=%.2f, required=%.2f)",
+				bookReport.Name, bookReport.AverageScore, bookReport.MinRequirement))
 		}
 	}
+
+	if len(failedBooks) > 0 {
+		t.Fatalf("wordbook quality gates failed:\n%s", strings.Join(failedBooks, "\n"))
+	}
+
+	t.Logf("[quality] all %d wordbooks passed quality gates (avg=%.2f)", report.TotalBooks, report.AverageScore)
 }
 
 func filterWordbookTermsForQualityGate(terms []string) []string {
@@ -577,4 +558,238 @@ func resetSQLiteDBFiles(dbPath string) error {
 		}
 	}
 	return nil
+}
+
+// runWordbooksInParallel runs quality tests for all wordbooks in parallel
+func runWordbooksInParallel(t *testing.T, ctx context.Context, h *qualityHarness, books []builtinBookRequirement, wordsPerBook int, llmBoost float64) *QualityReport {
+	t.Helper()
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	bookReports := make([]WordbookQualityReport, len(books))
+
+	for i, req := range books {
+		wg.Add(1)
+		go func(idx int, bookReq builtinBookRequirement) {
+			defer wg.Done()
+
+			bookReport := runWordbookQualityTest(t, ctx, h, bookReq, wordsPerBook, llmBoost)
+
+			mu.Lock()
+			bookReports[idx] = bookReport
+			mu.Unlock()
+		}(i, req)
+	}
+
+	wg.Wait()
+
+	// Aggregate results
+	report := &QualityReport{
+		Timestamp:   time.Now(),
+		TotalBooks:  len(books),
+		BookReports: bookReports,
+	}
+
+	totalWords := 0
+	totalPassed := 0
+	totalFailed := 0
+	sumScores := 0.0
+
+	for _, bookReport := range bookReports {
+		totalWords += bookReport.TestedWords
+		totalPassed += bookReport.PassedWords
+		totalFailed += bookReport.FailedWords
+		sumScores += bookReport.AverageScore * float64(bookReport.TestedWords)
+	}
+
+	report.TotalWords = totalWords
+	report.TotalPassed = totalPassed
+	report.TotalFailed = totalFailed
+	if totalWords > 0 {
+		report.AverageScore = sumScores / float64(totalWords)
+	}
+
+	return report
+}
+
+// runWordbookQualityTest runs quality test for a single wordbook
+func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness, req builtinBookRequirement, wordsPerBook int, llmBoost float64) WordbookQualityReport {
+	t.Helper()
+
+	bookTerms, ok := builtinWordbookTerms(req.name)
+	if !ok {
+		return WordbookQualityReport{
+			Name:            req.name,
+			Status:          "error",
+			ExecutionErrors: []string{fmt.Sprintf("wordbook %q not found", req.name)},
+		}
+	}
+
+	filteredTerms := filterWordbookTermsForQualityGate(bookTerms)
+	if len(filteredTerms) == 0 {
+		return WordbookQualityReport{
+			Name:            req.name,
+			TotalWords:      len(bookTerms),
+			Status:          "error",
+			ExecutionErrors: []string{"no eligible terms after filtering"},
+		}
+	}
+
+	limit := wordsPerBook
+	if limit <= 0 || limit > len(filteredTerms) {
+		limit = len(filteredTerms)
+	}
+
+	terms := dedupeTerms(filteredTerms[:limit])
+	scores := make([]float64, 0, len(terms))
+	failedTerms := make([]FailedTerm, 0)
+	executionErrors := make([]string, 0)
+	scoreDistribution := map[string]int{
+		"0-20":   0,
+		"20-40":  0,
+		"40-60":  0,
+		"60-80":  0,
+		"80-100": 0,
+	}
+
+	minAverage := req.minAverageScore + llmBoost
+	targetAverage := req.targetAverage + llmBoost
+
+	for _, term := range terms {
+		score, err := h.runWord(ctx, term)
+		if err != nil {
+			executionErrors = append(executionErrors, fmt.Sprintf("%s: %v", term, err))
+			continue
+		}
+		scores = append(scores, score)
+
+		// Update distribution
+		bucket := getScoreBucket(score)
+		scoreDistribution[bucket]++
+
+		// Track failed terms
+		if score < minAverage {
+			failedTerms = append(failedTerms, FailedTerm{
+				Term:           term,
+				Score:          score,
+				MinRequirement: minAverage,
+				Reason:         "below minimum requirement",
+			})
+		}
+	}
+
+	avgScore := average(scores)
+	minScore, maxScore := minMax(scores)
+	passedWords := len(scores) - len(failedTerms)
+	failedWords := len(failedTerms)
+
+	status := "passed"
+	if len(executionErrors) > 0 {
+		status = "error"
+	} else if avgScore < minAverage || len(failedTerms) > 0 {
+		status = "failed"
+	}
+
+	t.Logf("[quality][wordbook:%s] tested=%d avg=%.2f min=%.2f max=%.2f status=%s",
+		req.name, len(terms), avgScore, minScore, maxScore, status)
+
+	return WordbookQualityReport{
+		Name:              req.name,
+		TotalWords:        len(bookTerms),
+		TestedWords:       len(terms),
+		PassedWords:       passedWords,
+		FailedWords:       failedWords,
+		AverageScore:      avgScore,
+		MinScore:          minScore,
+		MaxScore:          maxScore,
+		MinRequirement:    minAverage,
+		TargetScore:       targetAverage,
+		ScoreDistribution: scoreDistribution,
+		FailedTerms:       failedTerms,
+		ExecutionErrors:   executionErrors,
+		Status:            status,
+	}
+}
+
+// saveQualityReports saves the quality report in multiple formats
+func saveQualityReports(t *testing.T, report *QualityReport) error {
+	t.Helper()
+
+	repoRoot, err := findRepoRoot(t)
+	if err != nil {
+		return err
+	}
+
+	reportDir := filepath.Join(repoRoot, "reports", "quality")
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		return fmt.Errorf("create report dir: %w", err)
+	}
+
+	// Save JSON report
+	jsonPath := filepath.Join(reportDir, "latest.json")
+	if err := report.SaveAsJSON(jsonPath); err != nil {
+		return fmt.Errorf("save JSON report: %w", err)
+	}
+	t.Logf("[quality] saved JSON report: %s", jsonPath)
+
+	// Save markdown report
+	mdPath := filepath.Join(reportDir, "latest.md")
+	markdown := report.GenerateMarkdown()
+	if err := os.WriteFile(mdPath, []byte(markdown), 0644); err != nil {
+		return fmt.Errorf("save markdown report: %w", err)
+	}
+	t.Logf("[quality] saved markdown report: %s", mdPath)
+
+	// Compare with baseline if it exists
+	baselineDir := filepath.Join(repoRoot, "testdata", "baselines", "quality")
+	baselinePath := filepath.Join(baselineDir, "baseline.json")
+	if _, err := os.Stat(baselinePath); err == nil {
+		baseline, err := LoadQualityReportFromJSON(baselinePath)
+		if err != nil {
+			t.Logf("[quality] failed to load baseline: %v", err)
+		} else {
+			delta := report.CompareTo(baseline)
+			deltaPath := filepath.Join(reportDir, "delta.md")
+			deltaMarkdown := delta.GenerateMarkdown()
+			if err := os.WriteFile(deltaPath, []byte(deltaMarkdown), 0644); err != nil {
+				t.Logf("[quality] failed to save delta report: %v", err)
+			} else {
+				t.Logf("[quality] saved delta report: %s", deltaPath)
+			}
+		}
+	}
+
+	return nil
+}
+
+func getScoreBucket(score float64) string {
+	switch {
+	case score < 20:
+		return "0-20"
+	case score < 40:
+		return "20-40"
+	case score < 60:
+		return "40-60"
+	case score < 80:
+		return "60-80"
+	default:
+		return "80-100"
+	}
+}
+
+func minMax(values []float64) (min, max float64) {
+	if len(values) == 0 {
+		return 0, 0
+	}
+	min = math.MaxFloat64
+	max = -math.MaxFloat64
+	for _, v := range values {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return min, max
 }
