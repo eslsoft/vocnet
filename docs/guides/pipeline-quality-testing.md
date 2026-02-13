@@ -226,11 +226,23 @@ If baseline becomes outdated:
 
 ### Parallel Execution
 
-Tests run wordbooks in parallel using goroutines:
-1. Each wordbook gets its own goroutine
-2. `sync.WaitGroup` coordinates completion
-3. `sync.Mutex` protects shared report aggregation
-4. Results are collected and merged into final report
+The quality testing system uses **wordbook-level parallelism**:
+1. Each wordbook runs in its own goroutine with an isolated SQLite database
+2. Words within each wordbook are tested **serially** (one by one)
+3. `sync.WaitGroup` coordinates wordbook completion
+4. `sync.Mutex` protects shared report aggregation
+
+**Why no word-level parallelism?**
+- SQLite cannot reliably handle concurrent writes, even with WAL mode and limited concurrency
+- Attempted concurrency limits of 3, 5, 10 all caused database deadlocks
+- Serial word testing eliminates all database lock errors
+- Wordbook-level parallelism still provides good performance
+
+**Performance expectations:**
+- 5 wordbooks × 50 words = 250 words in ~31 seconds
+- 5 wordbooks × 100 words = 500 words in ~60 seconds (estimated)
+- 5 wordbooks with all words (~18,500 total) = ~60-90 minutes (estimated)
+- All 15 wordbooks with all words = ~3-4 hours (estimated)
 
 ### Score Distribution
 
@@ -249,7 +261,7 @@ This helps identify if issues are concentrated in specific score ranges.
 2. **Review delta reports in PRs** - Understand quality impact of changes
 3. **Investigate significant changes** - Deltas > ±2.0 or status changes
 4. **Update baselines consciously** - Don't auto-accept quality drops
-5. **Use appropriate sample sizes** - Balance speed vs coverage (30-50 words/book)
+5. **Use appropriate sample sizes** - Balance speed vs coverage (30-50 words/book for development, 0 for CI)
 
 ## Future Enhancements
 
@@ -260,3 +272,4 @@ Planned improvements:
 - [ ] LLM-enhanced quality stage integration
 - [ ] Automatic retry for flaky test failures
 - [ ] Quality gate policies (e.g., block merge if score drops > 5%)
+- [ ] Investigate PostgreSQL for better concurrent write performance

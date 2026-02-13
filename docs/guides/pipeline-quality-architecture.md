@@ -215,6 +215,8 @@ Current Report + Baseline Report
 
 ## Concurrency Model
 
+The quality testing system uses **wordbook-level parallelism** only:
+
 ```
 Main Test Goroutine
       │
@@ -226,7 +228,8 @@ Main Test Goroutine
            ├─► wg.Add(1)
            └─► go func(wordbook):
                 │
-                ├─► Run wordbook quality test
+                ├─► Create isolated SQLite database for this wordbook
+                ├─► Test words SERIALLY (one by one)
                 ├─► Generate WordbookQualityReport
                 │
                 ├─► mu.Lock()
@@ -240,6 +243,19 @@ Main Test Goroutine
       ▼
    Aggregate results into QualityReport
 ```
+
+**Design Decision: No Word-Level Parallelism**
+
+Words within each wordbook are tested serially (not in parallel) because:
+- SQLite cannot reliably handle concurrent writes even with WAL mode
+- Attempted concurrency limits of 3, 5, 10 all caused database deadlocks
+- Each wordbook has its own isolated database, avoiding inter-wordbook contention
+- Wordbook-level parallelism still provides good performance (5 wordbooks run concurrently)
+
+**Performance Characteristics:**
+- 5 wordbooks × 50 words = 250 words in ~31 seconds
+- Linear scaling within wordbook, parallel scaling across wordbooks
+- No database lock errors or race conditions
 
 ## File Organization
 
