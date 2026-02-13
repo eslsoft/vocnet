@@ -107,28 +107,83 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	registry.Register(moby.NewSourceProvider(mobyReader))
 	registry.Register(cefrj.NewSourceProvider(cefrjReader))
 
-	stages := registry.BuildStages(map[string][]Processor{
-		"discovery": {
-			NewWikidataProcessor(wikidataReader, logger),
-			NewCategoryInferProcessor(),
-		},
-		"relational": {
-			NewWikidataRelationProcessor(wikidataReader),
-		},
-		"intellectual": {
-			NewSenseMappingProcessor(llmProvider, logger),
-			NewEnrichmentProcessor(llmProvider, logger),
-			NewScoringProcessor(llmProvider, logger),
-		},
-		"synthesis": {
-			NewLemmaSnapshotProcessor(),
-		},
-	})
-
+	// Build stages using the same structure as cmd/serve.go
 	scorer := NewRuleBasedScorer()
+	stages := buildQualityTestStages(registry, wikidataReader, llmProvider, scorer, logger)
+
 	evaluator := NewDataEvaluator(scorer, logger)
 	p := NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 	return &qualityHarness{pipeline: p, jobRepo: jobRepo}
+}
+
+// buildQualityTestStages constructs pipeline stages for quality testing
+func buildQualityTestStages(
+	registry *SourceRegistry,
+	wikidataProvider provider.WikidataProvider,
+	llmProvider llm.Provider,
+	scorer *RuleBasedScorer,
+	logger *slog.Logger,
+) []*Stage {
+	// Phase 1: Collection (Concurrent data acquisition from all sources)
+	collectionProcessors := []Processor{
+		// Wikidata remains specialized due to complex discovery logic
+		NewWikidataProcessor(wikidataProvider, logger),
+		NewCategoryInferProcessor(),
+		// Wikidata relations
+		NewWikidataRelationProcessor(wikidataProvider),
+	}
+
+	// Add all registered source providers to collection
+	for _, src := range registry.Sources() {
+		collectionProcessors = append(collectionProcessors,
+			NewGenericSourceProcessor(src, logger))
+	}
+
+	collection := NewConcurrentStage(
+		PhaseCollection,
+		1,
+		collectionProcessors...,
+	)
+
+	// Phase 1.5: LLM Enrichment (Fill gaps with LLM-generated data)
+	// Optional: only runs if LLM provider is configured
+	var llmEnrichment *Stage
+	if llmProvider != nil {
+		llmEnrichment = NewStage(
+			PhaseCollection, // Still part of collection phase logically
+			2,
+			NewLLMEnrichmentProcessor(llmProvider, logger),
+		)
+	}
+
+	// Phase 2: Evaluation (Quality scoring of fragments)
+	evaluation := NewStage(
+		PhaseEvaluation,
+		3,
+		NewFragmentEvaluator(scorer, logger),
+	)
+
+	// Phase 3: Integration (Smart merging based on scores)
+	integration := NewStage(
+		PhaseIntegration,
+		4,
+		NewIntegrationProcessor(logger),
+	)
+
+	// Phase 4: Snapshot (Final snapshot generation)
+	snapshot := NewStage(
+		PhaseSnapshot,
+		5,
+		NewLemmaSnapshotProcessor(),
+	)
+
+	stages := []*Stage{collection}
+	if llmEnrichment != nil {
+		stages = append(stages, llmEnrichment)
+	}
+	stages = append(stages, evaluation, integration, snapshot)
+
+	return stages
 }
 
 func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, error) {
