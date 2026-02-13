@@ -160,13 +160,46 @@ go test -v ./internal/usecase/...
 
 # Run single test
 go test -v -run TestLearnedWordUsecase_UpdateMastery ./internal/usecase/
+
+# Run pipeline quality integration tests (default wordbooks)
+make test-quality
+
+# Run quality tests for ALL wordbooks (comprehensive)
+make test-quality-all
+
+# Run quality tests with reduced sample size (faster)
+make test-quality-fast
+
+# Update quality baseline from latest test results
+make quality-baseline
 ```
 
 **Testing Conventions:**
 - UseCase tests use mocked repositories (`internal/mocks/`)
 - Repository tests use real database (require `DATABASE_URL`)
+- Integration tests use `//go:build integration` tag
 - Table-driven tests preferred
 - Test files named `*_test.go` alongside implementation
+
+**Pipeline Quality Testing:**
+- Integration tests validate data quality for all built-in wordbooks
+- Tests run in parallel for performance
+- Generate detailed reports in `reports/quality/`
+- Compare against baseline in `testdata/baselines/quality/baseline.json`
+- See `docs/guides/pipeline-quality-testing.md` for full documentation
+
+Quick quality test workflow:
+```bash
+# Run quick quality check
+./scripts/quality-test.sh quick
+
+# Run full quality test and update baseline
+./scripts/quality-test.sh full
+./scripts/quality-test.sh baseline
+
+# View quality report
+./scripts/quality-test.sh report
+```
 
 ### Code Generation
 

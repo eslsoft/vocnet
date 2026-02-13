@@ -1,0 +1,751 @@
+{
+  "timestamp": "2026-02-13T15:03:51.179614-05:00",
+  "total_books": 5,
+  "total_words": 150,
+  "total_passed": 45,
+  "total_failed": 105,
+  "average_score": 28.290277777777792,
+  "book_reports": [
+    {
+      "name": "CEFR-A1",
+      "total_words": 931,
+      "tested_words": 30,
+      "passed_words": 8,
+      "failed_words": 22,
+      "average_score": 27.64152777777779,
+      "min_score": 14,
+      "max_score": 46.9875,
+      "min_requirement": 35,
+      "target_score": 50,
+      "score_distribution": {
+        "0-20": 1,
+        "20-40": 23,
+        "40-60": 6,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "April",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "CD",
+          "score": 14,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "DVD",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "December",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "February",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Friday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "January",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "July",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "June",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Monday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "November",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "October",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Saturday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "September",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Sunday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "TV",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Thursday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Tuesday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Wednesday",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "above",
+          "score": 34.65,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "activity",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "actor",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "status": "failed"
+    },
+    {
+      "name": "CEFR-B1",
+      "total_words": 1056,
+      "tested_words": 30,
+      "passed_words": 15,
+      "failed_words": 15,
+      "average_score": 33.31819444444446,
+      "min_score": 21.7,
+      "max_score": 47.599999999999994,
+      "min_requirement": 30,
+      "target_score": 45,
+      "score_distribution": {
+        "0-20": 0,
+        "20-40": 16,
+        "40-60": 14,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "CV",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "DJ",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "absolutely",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accommodation",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "achievement",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "ad",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "addition",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "admire",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "admit",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "afford",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "agent",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "agreement",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "album",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "alcohol",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "alphabet",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "status": "failed"
+    },
+    {
+      "name": "CEFR-C1",
+      "total_words": 1762,
+      "tested_words": 30,
+      "passed_words": 10,
+      "failed_words": 20,
+      "average_score": 29.110000000000014,
+      "min_score": 14,
+      "max_score": 46.7,
+      "min_requirement": 25,
+      "target_score": 40,
+      "score_distribution": {
+        "0-20": 1,
+        "20-40": 20,
+        "40-60": 9,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "abnormal",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abolish",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abortion",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "absence",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abundance",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "academy",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accelerate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "acceptance",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accessible",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accomplishment",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accordance",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accordingly",
+          "score": 14,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accountability",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accountable",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accumulation",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "accusation",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "acquaintance",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "acquisition",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "acre",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "activation",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "status": "failed"
+    },
+    {
+      "name": "IELTS",
+      "total_words": 6089,
+      "tested_words": 30,
+      "passed_words": 8,
+      "failed_words": 22,
+      "average_score": 27.981666666666676,
+      "min_score": 14,
+      "max_score": 46.7,
+      "min_requirement": 30,
+      "target_score": 45,
+      "score_distribution": {
+        "0-20": 1,
+        "20-40": 21,
+        "40-60": 8,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "Africa",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Alaska",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "America",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "April",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Asia",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Athens",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Australia",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Berlin",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Birmingham",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Bristol",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Britain",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "British",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "CD",
+          "score": 14,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Cambridge",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Cantonese",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "December",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Easter",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Egyptian",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "England",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Europe",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "France",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Friday",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "status": "failed"
+    },
+    {
+      "name": "GRE",
+      "total_words": 8728,
+      "tested_words": 30,
+      "passed_words": 4,
+      "failed_words": 26,
+      "average_score": 23.40000000000001,
+      "min_score": 14,
+      "max_score": 47.75,
+      "min_requirement": 25,
+      "target_score": 40,
+      "score_distribution": {
+        "0-20": 5,
+        "20-40": 22,
+        "40-60": 3,
+        "60-80": 0,
+        "80-100": 0
+      },
+      "failed_terms": [
+        {
+          "term": "Maxim",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Odyssey",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "Trident",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abase",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abash",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abatement",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abbreviate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abdicate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abduct",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "aberration",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abet",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abeyance",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abhor",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abhorrent",
+          "score": 14,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abide",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abject",
+          "score": 14,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abjure",
+          "score": 14,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "ablaze",
+          "score": 14,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "ablution",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abnegate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abnegation",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abolish",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abolition",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abominate",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "abortive",
+          "score": 14,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        }
+      ],
+      "status": "failed"
+    }
+  ],
+  "execution_time": "17.139952833s"
+}

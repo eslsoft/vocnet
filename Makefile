@@ -126,6 +126,44 @@ test-coverage: test ## Generate HTML test coverage report
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
+.PHONY: test-quality
+test-quality: ## Run pipeline quality integration tests (all words in default wordbooks)
+	@echo "Running pipeline quality tests..."
+	@echo "Note: Testing ~7K words (6 CEFR wordbooks) may take 4-6 minutes"
+	@echo ""
+	stdbuf -oL -eL go test -v -tags=integration -timeout=60m \
+		./internal/usecase/pipeline/... \
+		-run TestPipelineDataQualityGates
+
+.PHONY: test-quality-all
+test-quality-all: ## Run pipeline quality tests for ALL wordbooks (all words, ~35K total)
+	@echo "Running pipeline quality tests for all wordbooks..."
+	@echo "Note: Testing all 15 wordbooks (~35K words) may take 1-2 hours"
+	PIPELINE_IT_ALL_WORDBOOKS=1 \
+	go test -v -tags=integration -timeout=120m \
+		./internal/usecase/pipeline/... \
+		-run TestPipelineDataQualityGates
+
+.PHONY: test-quality-fast
+test-quality-fast: ## Run pipeline quality tests with reduced sample size (10 words per book)
+	@echo "Running fast pipeline quality tests..."
+	PIPELINE_IT_WORDS_PER_BOOK=10 \
+	go test -v -tags=integration -timeout=15m \
+		./internal/usecase/pipeline/... \
+		-run TestPipelineDataQualityGates
+
+.PHONY: quality-baseline
+quality-baseline: test-quality ## Update quality baseline from latest test results
+	@echo "Updating quality baseline..."
+	@mkdir -p testdata/baselines/quality
+	@if [ -f reports/quality/latest.json ]; then \
+		cp reports/quality/latest.json testdata/baselines/quality/baseline.json; \
+		echo "Baseline updated: testdata/baselines/quality/baseline.json"; \
+	else \
+		echo "Error: No quality report found. Run 'make test-quality' first."; \
+		exit 1; \
+	fi
+
 .PHONY: lint
 lint: ## Run golangci-lint
 	@echo "Running linter..."

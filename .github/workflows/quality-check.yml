@@ -1,0 +1,135 @@
+name: Pipeline Quality Check
+
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+  push:
+    branches: [ main, master, develop ]
+
+jobs:
+  quality-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Cache pipeline data sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/vocnet
+            data/datasources
+          key: pipeline-datasources-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            pipeline-datasources-
+
+      - name: Install tools
+        run: make install-tools
+
+      - name: Generate code
+        run: make generate
+
+      - name: Download pipeline data sources
+        run: |
+          mkdir -p data/datasources
+          # Download all required data sources
+          go run . pipeline source download
+          # Verify data sources are available
+          go run . pipeline source list
+        env:
+          PIPELINE_DATA_DIR: ./data
+          PIPELINE_AUTO_DOWNLOAD: "true"
+
+      - name: Run quality integration tests
+        id: quality_test
+        run: make test-quality
+        env:
+          PIPELINE_DATA_DIR: ./data
+          PIPELINE_IT_DATA_DIR: ./data
+          PIPELINE_IT_DB_PATH: ./data/integration/pipeline-quality.db
+
+      - name: Upload quality reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-reports
+          path: reports/quality/
+
+      - name: Post PR comment with quality delta
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Read delta report if it exists
+            const deltaPath = 'reports/quality/delta.md';
+            const latestPath = 'reports/quality/latest.md';
+
+            let comment = '## 📊 Pipeline Quality Report\n\n';
+
+            if (fs.existsSync(deltaPath)) {
+              const deltaContent = fs.readFileSync(deltaPath, 'utf8');
+              comment += deltaContent;
+            } else if (fs.existsSync(latestPath)) {
+              const latestContent = fs.readFileSync(latestPath, 'utf8');
+              comment += '### No baseline found - showing current quality report\n\n';
+              comment += latestContent;
+            } else {
+              comment += '⚠️ No quality reports generated. Check the test logs for errors.';
+            }
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Pipeline Quality Report')
+            );
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Update baseline on main branch
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          mkdir -p testdata/baselines/quality
+          cp reports/quality/latest.json testdata/baselines/quality/baseline.json
+
+          if [ -n "$(git status --porcelain testdata/baselines/quality/baseline.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add testdata/baselines/quality/baseline.json
+            git commit -m "chore: update quality baseline [skip ci]"
+            git push
+          fi
