@@ -748,23 +748,55 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	minAverage := req.minAverageScore + llmBoost
 	targetAverage := req.targetAverage + llmBoost
 
+	// Parallel test execution within the wordbook for better performance
+	type wordResult struct {
+		term  string
+		score float64
+		err   error
+	}
+
+	results := make(chan wordResult, len(terms))
+	var wg sync.WaitGroup
+
+	// Test words in parallel (limit concurrency to avoid overwhelming the system)
+	maxConcurrency := 10 // Adjust based on system resources
+	semaphore := make(chan struct{}, maxConcurrency)
+
 	for _, term := range terms {
-		score, err := h.runWord(ctx, term)
-		if err != nil {
-			executionErrors = append(executionErrors, fmt.Sprintf("%s: %v", term, err))
+		wg.Add(1)
+		go func(t string) {
+			defer wg.Done()
+			semaphore <- struct{}{}        // Acquire
+			defer func() { <-semaphore }() // Release
+
+			score, err := h.runWord(ctx, t)
+			results <- wordResult{term: t, score: score, err: err}
+		}(term)
+	}
+
+	// Close results channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
+	for result := range results {
+		if result.err != nil {
+			executionErrors = append(executionErrors, fmt.Sprintf("%s: %v", result.term, result.err))
 			continue
 		}
-		scores = append(scores, score)
+		scores = append(scores, result.score)
 
 		// Update distribution
-		bucket := getScoreBucket(score)
+		bucket := getScoreBucket(result.score)
 		scoreDistribution[bucket]++
 
 		// Track failed terms
-		if score < minAverage {
+		if result.score < minAverage {
 			failedTerms = append(failedTerms, FailedTerm{
-				Term:           term,
-				Score:          score,
+				Term:           result.term,
+				Score:          result.score,
 				MinRequirement: minAverage,
 				Reason:         "below minimum requirement",
 			})
