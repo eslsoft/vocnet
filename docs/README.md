@@ -1,6 +1,42 @@
-# 技术概览 (Technical Overview)
+# Vocnet 技术文档中心
 
-本文件提供项目 `vocnet` 的技术与架构说明，原本位于 README 的开发与架构章节已迁移至此，README 现在主要面向功能与快速上手。
+本目录包含 Vocnet 项目的完整技术文档。根目录 README 专注于项目介绍和快速开始，详细的技术内容都在这里。
+
+## 📋 文档导航
+
+### 🏗️ 设计文档 (`design/`)
+核心架构和系统设计文档
+
+- **[词汇基础设施及语义蒸馏流水线](design/vocabulary-infrastructure-and-distillation-pipeline.md)** - 核心Pipeline架构设计 ⭐
+- **[数据评估采纳系统](design/data-evaluation-adoption.md)** - 数据质量评分和选择机制
+- **[Pipeline阶段与数据源对应](design/pipeline-stage-data-sources.md)** - 流水线各阶段的数据源映射
+- **[Category标签系统](design/category-tags-system.md)** - 词汇分类标签设计
+- **[掌握度分解与阶段](design/mastery-breakdown-and-stages.md)** - 四维掌握度系统
+- **[掌握度继承](design/mastery-inheritance.md)** - 掌握度跨词形继承逻辑
+- **[Flashcard系统设计](design/flashcard-system-design.md)** - 复习卡片生成系统
+- **[单词列表过滤](design/list-words-filtering.md)** - 灵活的过滤表达式系统
+
+### 📖 使用指南 (`guides/`)
+实际开发和使用的操作指南
+
+- **[数据评估采纳指南](guides/data-evaluation-adoption-guide.md)** - 数据质量管理使用说明
+- **[Pipeline质量测试指南](guides/pipeline-quality-testing.md)** - 质量测试框架使用 ⭐
+- **[Pipeline质量架构](guides/pipeline-quality-architecture.md)** - 质量测试系统架构说明
+
+### 🔧 开发文档 (`dev/`)
+开发过程中的临时文档和状态追踪
+
+- **[重构计划](dev/REFACTOR_PLAN.md)** - 历史架构重构计划
+- **[Pipeline重构进度](dev/pipeline-refactoring-progress.md)** - 重构实施进度
+- **[质量测试摘要](dev/QUALITY_TESTING_SUMMARY.md)** - 质量测试实现总结
+- **[当前状态](dev/CURRENT_STATUS.md)** - 项目实现状态
+- **[最终状态](dev/FINAL_STATUS.md)** - 完成状态报告
+
+---
+
+## 🏛️ 技术架构概览
+
+本项目提供 `vocnet` 的技术与架构说明，原本位于 README 的开发与架构章节已迁移至此，README 现在主要面向功能与快速上手。
 
 ## 架构原则
 

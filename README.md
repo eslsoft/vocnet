@@ -48,13 +48,13 @@ Vocnet 致力于打造一个开放的词汇网络管理平台，帮助用户集�
 
 使用 vocnet 学习和复习单词，享受科学的记忆管理系统。
 
-📖 [用户指南](docs/guides/user-guide.md)
+📖 [技术文档](docs/README.md) | [掌握度系统](docs/design/mastery-breakdown-and-stages.md)
 
 ### 语言 APP 开发者
 
 接入 vocnet SDK，为你的应用快速集成词汇管理功能。
 
-🛠️ [开发者指南](docs/guides/developer-guide.md)
+🛠️ [技术架构](docs/README.md) | [API文档](CLAUDE.md#api-connectrpc)
 
 **示例场景**：
 
@@ -85,7 +85,7 @@ Vocnet 致力于打造一个开放的词汇网络管理平台，帮助用户集�
 - ✅ **Phase 2**：FSRS 复习系统
 - 🔜 **Phase 3**：OAuth2 生态 · Web 控制台
 
-查看 [完整路线图](docs/roadmap.md)
+查看 [完整技术文档](docs/README.md)
 
 ---
 
@@ -115,23 +115,22 @@ Vocnet 致力于打造一个开放的词汇网络管理平台，帮助用户集�
 ## 🔗 链接
 
 - **官网**：https://vocnet.apps.tftt.cc （计划中）
-- **文档**：[docs/index.md](docs/index.md)
-- **路线图**：[docs/roadmap.md](docs/roadmap.md)
+- **技术文档**：[docs/README.md](docs/README.md)
+- **开发指南**：[CLAUDE.md](CLAUDE.md)
 - **Discussions**：[GitHub Discussions](https://github.com/eslsoft/vocnet/discussions)（计划）
 
 ---
 
 ## 🙋 FAQ
 
-常见问题请查看 [FAQ](docs/faq.md)
+常见问题请查看 [技术文档](docs/README.md)
 
 **快速链接**：
 
-- [vocnet 是什么？](docs/faq.md#vocnet-是什么)
-- [与其他 APP 的区别？](docs/faq.md#与扇贝百词斩等-app-的区别)
-- [我的数据安全吗？](docs/faq.md#我的数据安全吗)
-- [如何接入 vocnet？](docs/faq.md#如何接入-vocnet)
-- [如何自建？](docs/faq.md#如何自建-vocnet)
+- [vocnet 是什么？](#-为什么选择-vocnet)
+- [技术架构？](docs/README.md)
+- [如何开发？](CLAUDE.md)
+- [如何自建？](CLAUDE.md#configuration)
 
 ---
 
@@ -139,6 +138,6 @@ Vocnet 致力于打造一个开放的词汇网络管理平台，帮助用户集�
 
 **一起把"词汇网络管理"做成开放的基础设施** 🚀
 
-[⭐ Star](https://github.com/eslsoft/vocnet) · [📖 文档](docs/index.md) · [💬 讨论](https://github.com/eslsoft/vocnet/discussions)
+[⭐ Star](https://github.com/eslsoft/vocnet) · [📖 技术文档](docs/README.md) · [💬 讨论](https://github.com/eslsoft/vocnet/discussions)
 
 </div>

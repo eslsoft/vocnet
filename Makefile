@@ -153,7 +153,7 @@ test-quality-fast: ## Run pipeline quality tests with reduced sample size (10 wo
 		-run TestPipelineDataQualityGates
 
 .PHONY: quality-baseline
-quality-baseline: test-quality ## Update quality baseline from latest test results
+quality-baseline: ## Update quality baseline from latest test results
 	@echo "Updating quality baseline..."
 	@mkdir -p testdata/baselines/quality
 	@if [ -f reports/quality/latest.json ]; then \
