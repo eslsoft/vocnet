@@ -45,7 +45,7 @@ go test -v -tags=integration -timeout=30m \
 |----------|-------------|---------|
 | `PIPELINE_IT_ALL_WORDBOOKS` | Test all wordbooks (1=yes) | unset (default subset) |
 | `PIPELINE_IT_WORDBOOKS` | Comma-separated list of wordbook names | unset |
-| `PIPELINE_IT_WORDS_PER_BOOK` | Number of words to sample per wordbook | 30 |
+| `PIPELINE_IT_WORDS_PER_BOOK` | Number of words to sample per wordbook (0=all) | 0 (all words) |
 | `PIPELINE_IT_DATA_DIR` | Pipeline data sources directory | `./data` |
 | `PIPELINE_IT_DB_PATH` | Integration test database path | `./data/integration/pipeline-quality.db` |
 

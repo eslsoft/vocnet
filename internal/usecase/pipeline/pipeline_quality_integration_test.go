@@ -385,7 +385,7 @@ func runBuiltinWordbookStage(t *testing.T, ctx context.Context, cfg *config.Conf
 
 	startTime := time.Now()
 	books := selectBuiltinWordbooksForQualityGate(t)
-	wordsPerBook := envInt("PIPELINE_IT_WORDS_PER_BOOK", 30)
+	wordsPerBook := envInt("PIPELINE_IT_WORDS_PER_BOOK", 0) // 0 = test all words
 
 	report := runWordbooksInParallel(t, ctx, cfg, logger, llmProvider, books, wordsPerBook, llmBoost)
 	report.ExecutionTime = time.Since(startTime).String()
