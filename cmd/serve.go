@@ -37,7 +37,6 @@ import (
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/contrib"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/moby"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
@@ -167,46 +166,15 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc. via JSON-RPC over stdio) ---
 	loadContribSources(ctx, cfg, registry, logger)
 
-	// LLM provider (for intellectual stage)
-	var llmProvider llm.Provider
-	if cfg.LLM.APIKey != "" {
-		cacheRepo := repository.NewDistillCacheRepository(entClient)
-		llmProvider = llm.NewOpenAIProvider(
-			cfg.LLM.BaseURL,
-			cfg.LLM.APIKey,
-			cfg.LLM.Model,
-			cacheRepo,
-		)
-	} else {
-		logger.Warn("LLM not configured, phase 4 (intellectual) will be skipped — set LLM_API_KEY to enable")
-	}
-
-	// Build pipeline stages using SourceRegistry + specialized processors
+	// Build pipeline stages using new Phase system
 	aggregator := pipeline.NewDataAggregator()
 	persistence := pipeline.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
 	validator := pipeline.NewValidator(lemmaRepo, lexemeRepo, logger)
-
-	stages := registry.BuildStages(map[string][]pipeline.Processor{
-		"discovery": {
-			pipeline.NewWikidataProcessor(wikidataProvider, logger),
-			pipeline.NewCategoryInferProcessor(),
-		},
-		"relational": {
-			pipeline.NewWikidataRelationProcessor(wikidataProvider),
-		},
-		"intellectual": {
-			pipeline.NewSenseMappingProcessor(llmProvider, logger),
-			pipeline.NewEnrichmentProcessor(llmProvider, logger),
-			pipeline.NewScoringProcessor(llmProvider, logger),
-		},
-		"synthesis": {
-			pipeline.NewLemmaSnapshotProcessor(),
-		},
-	})
-
-	// Create data evaluator for quality-based adoption
 	scorer := pipeline.NewRuleBasedScorer()
 	evaluator := pipeline.NewDataEvaluator(scorer, logger)
+
+	// Build stages with new architecture
+	stages := buildNewPipelineStages(registry, wikidataProvider, scorer, logger)
 
 	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 
@@ -221,6 +189,63 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	}), nil
 }
 
+// buildNewPipelineStages constructs the new phase-based pipeline architecture.
+func buildNewPipelineStages(
+	registry *pipeline.SourceRegistry,
+	wikidataProvider provider.WikidataProvider,
+	scorer *pipeline.RuleBasedScorer,
+	logger *slog.Logger,
+) []*pipeline.Stage {
+	// Phase 1: Collection (Concurrent data acquisition from all sources)
+	collectionProcessors := []pipeline.Processor{
+		// Wikidata remains specialized due to complex discovery logic
+		pipeline.NewWikidataProcessor(wikidataProvider, logger),
+		pipeline.NewCategoryInferProcessor(),
+		// Wikidata relations
+		pipeline.NewWikidataRelationProcessor(wikidataProvider),
+	}
+
+	// Add all registered source providers to collection
+	for _, src := range registry.Sources() {
+		collectionProcessors = append(collectionProcessors,
+			pipeline.NewGenericSourceProcessor(src, logger))
+	}
+
+	collection := pipeline.NewConcurrentStage(
+		pipeline.PhaseCollection,
+		1,
+		collectionProcessors...,
+	)
+
+	// Phase 2: Evaluation (Quality scoring of fragments)
+	evaluation := pipeline.NewStage(
+		pipeline.PhaseEvaluation,
+		2,
+		pipeline.NewFragmentEvaluator(scorer, logger),
+	)
+
+	// Phase 3: Integration (Smart merging based on scores)
+	integration := pipeline.NewStage(
+		pipeline.PhaseIntegration,
+		3,
+		pipeline.NewIntegrationProcessor(logger),
+	)
+
+	// Phase 4: Snapshot (Final snapshot generation)
+	snapshot := pipeline.NewStage(
+		pipeline.PhaseSnapshot,
+		4,
+		pipeline.NewLemmaSnapshotProcessor(),
+	)
+
+	return []*pipeline.Stage{
+		collection,
+		evaluation,
+		integration,
+		snapshot,
+	}
+}
+
 // loadContribSources discovers and starts contrib source processes.
 func loadContribSources(ctx context.Context, cfg *config.Config, registry *pipeline.SourceRegistry, logger *slog.Logger) {
 	contribDir := strings.TrimSpace(cfg.Pipeline.ContribDir)
@@ -229,8 +254,7 @@ func loadContribSources(ctx context.Context, cfg *config.Config, registry *pipel
 		return
 	}
 
-	enabled := strings.Split(contribList, ",")
-	for _, name := range enabled {
+	for name := range strings.SplitSeq(contribList, ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue

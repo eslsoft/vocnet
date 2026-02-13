@@ -70,6 +70,11 @@ type PipelineContext struct {
 
 	// Evaluator for data quality assessment (optional)
 	Evaluator *DataEvaluator
+
+	// EvaluatedFragments stores quality-scored fragments for integration phase
+	// Key: field key (e.g., "lexeme:en:verb", "form:run:phonetics")
+	// Value: list of competing fragments from different providers
+	EvaluatedFragments map[string][]*FieldFragment
 }
 
 // Accumulate merges a ProcessResult into the pipeline context.
