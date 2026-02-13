@@ -2,24 +2,24 @@
 
 ## Overview
 
-The data evaluation and adoption system provides a centralized mechanism to decide which data from multiple sources should be accepted into the pipeline based on quality scoring.
+The data evaluation and adoption system provides a centralized mechanism to decide which data from multiple sources should be accepted into the pipeline based on quality scoring. **This system is now mandatory** for all pipeline operations.
 
 ## Quick Start
 
-### Enabling the Evaluator (Optional)
+### Setting Up the Evaluator (Required)
 
-The evaluator is **opt-in** and can be enabled in the pipeline setup:
+The evaluator **must** be configured before running the pipeline:
 
 ```go
 // Create evaluator with rule-based scorer
 scorer := pipeline.NewRuleBasedScorer()
 evaluator := pipeline.NewDataEvaluator(scorer, logger)
 
-// Enable in pipeline
+// Set in pipeline (REQUIRED)
 pipeline.SetEvaluator(evaluator)
 ```
 
-When disabled (default), the system uses the legacy merge behavior (simple overwrite/append).
+If the evaluator is not configured, the pipeline will return an error when `Run()` is called.
 
 ## How It Works
 
@@ -194,21 +194,41 @@ All adoption decisions are implicitly tracked via Evidence entities in the pipel
 - **Scoring overhead**: O(n) for each field type, typically < 5% of total pipeline time
 - **Memory**: Minimal overhead, only stores scores during evaluation
 - **Scalability**: Scales linearly with data volume
+- **Required**: The evaluator is now mandatory - there is no legacy fallback
 
 ## Migration from Legacy System
 
-### Backward Compatibility
+### Breaking Change
 
-- Evaluator is **opt-in** via feature flag
-- Existing pipelines continue to work unchanged
-- Gradual rollout recommended with A/B testing
+**The legacy merge behavior has been removed.** The evaluator is now mandatory for all pipeline operations.
 
-### Recommended Migration Path
+### Migration Required
 
-1. **Phase 1**: Enable evaluator in dev/staging
-2. **Phase 2**: Compare quality metrics (completeness, validity) with legacy
-3. **Phase 3**: Enable in production for new lemmas only
-4. **Phase 4**: Full rollout
+If your code was previously running the pipeline without an evaluator, you must now:
+
+1. Create a scorer (e.g., `NewRuleBasedScorer()`)
+2. Create an evaluator with the scorer
+3. Call `pipeline.SetEvaluator(evaluator)` before `pipeline.Run()`
+
+**Before:**
+```go
+pipeline := NewPipeline(...)
+// Could run directly without evaluator
+pipeline.Run(ctx, jobID, term, language, tier, opts)
+```
+
+**After:**
+```go
+pipeline := NewPipeline(...)
+
+// REQUIRED: Set evaluator
+scorer := pipeline.NewRuleBasedScorer()
+evaluator := pipeline.NewDataEvaluator(scorer, logger)
+pipeline.SetEvaluator(evaluator)
+
+// Now can run
+pipeline.Run(ctx, jobID, term, language, tier, opts)
+```
 
 ## Troubleshooting
 

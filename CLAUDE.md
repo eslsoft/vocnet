@@ -322,7 +322,7 @@ Key files:
 
 ### Data Evaluation and Adoption System
 
-The pipeline includes an **optional** data evaluation system that determines which data from multiple sources should be adopted based on quality scoring.
+The pipeline includes a **mandatory** data evaluation system that determines which data from multiple sources should be adopted based on quality scoring.
 
 **Key Concepts:**
 - **Field-level scoring**: Each data field (lexemes, forms, lemma metadata, relations) is scored independently (0-100 scale)
@@ -341,15 +341,15 @@ The pipeline includes an **optional** data evaluation system that determines whi
 - Evaluator: `internal/usecase/pipeline/data_evaluator.go` (orchestrates evaluation)
 - Integration: `internal/usecase/pipeline/processor.go` (`PipelineContext.AccumulateWithProvider`)
 
-**Usage (opt-in):**
+**Usage (required):**
 ```go
-// Enable evaluator in pipeline setup
+// Evaluator MUST be set before running pipeline
 scorer := pipeline.NewRuleBasedScorer()
 evaluator := pipeline.NewDataEvaluator(scorer, logger)
 pipeline.SetEvaluator(evaluator)
 ```
 
-When disabled (default), legacy merge behavior is used (simple overwrite/append).
+The pipeline will panic if evaluator is not configured. Legacy fallback merge logic has been removed.
 
 **Documentation:**
 - Design: `docs/design/data-evaluation-adoption.md`

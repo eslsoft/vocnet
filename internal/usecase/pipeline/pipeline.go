@@ -37,6 +37,7 @@ type RunOptions struct {
 }
 
 // NewPipeline creates a new Pipeline coordinator.
+// Note: Evaluator must be set via SetEvaluator() before running the pipeline.
 func NewPipeline(
 	stages []*Stage,
 	validator *Validator,
@@ -55,12 +56,12 @@ func NewPipeline(
 		snapshotRepo: snapshotRepo,
 		lemmaRepo:    lemmaRepo,
 		lexemeRepo:   lexemeRepo,
-		evaluator:    nil, // Set via SetEvaluator if needed
+		evaluator:    nil, // MUST be set via SetEvaluator before Run
 		logger:       logger,
 	}
 }
 
-// SetEvaluator configures an optional data evaluator for quality assessment.
+// SetEvaluator configures the data evaluator (required before running pipeline).
 func (p *Pipeline) SetEvaluator(evaluator *DataEvaluator) {
 	p.evaluator = evaluator
 }
@@ -85,6 +86,11 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 
 	lang := entity.ParseLanguage(language)
 
+	// Ensure evaluator is configured
+	if p.evaluator == nil {
+		return nil, fmt.Errorf("pipeline evaluator not configured - call SetEvaluator() before Run()")
+	}
+
 	// Step 1: Ensure lemma exists
 	pctx, err := p.validator.EnsureLemma(ctx, term, lang, tier)
 	if err != nil {
@@ -94,7 +100,7 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 		return nil, fmt.Errorf("validate initial pos: %w", err)
 	}
 
-	// Set evaluator in context if configured
+	// Set evaluator in context
 	pctx.Evaluator = p.evaluator
 
 	runLogger.Info("processing word", "term", term, "lemma_id", pctx.Lemma.ID)
