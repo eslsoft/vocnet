@@ -13,26 +13,67 @@ The quality testing system:
 
 ## Running Quality Tests
 
+### Unified Command Interface
+
+Quality tests can be run using either Makefile targets (CI-friendly) or the quality test script (developer-friendly). Both interfaces call the same underlying implementation:
+
+**Makefile targets (recommended for CI/automation):**
+```bash
+make test-quality      # All words in default wordbooks (~7K words)
+make test-quality-all  # All words in ALL wordbooks (~35K words)
+make test-quality-fast # Quick sample (10 words/book)
+make quality-baseline  # Update baseline from latest results
+```
+
+**Script interface (recommended for development):**
+```bash
+./scripts/quality-test.sh default  # All words (matches make test-quality)
+./scripts/quality-test.sh all      # All wordbooks (matches make test-quality-all)
+./scripts/quality-test.sh quick    # Quick sample (matches make test-quality-fast)
+./scripts/quality-test.sh sample   # Medium sample (30 words/book)
+./scripts/quality-test.sh full     # Large sample (50 words/book)
+./scripts/quality-test.sh baseline # Update baseline
+./scripts/quality-test.sh compare  # Compare with baseline
+./scripts/quality-test.sh report   # Show latest report
+```
+
 ### Local Development
 
 Run quality tests for default wordbooks (CEFR-A1, B1, C1, IELTS, GRE):
 ```bash
-go test -v -tags=integration -timeout=30m \
+# Using Makefile (CI/automation)
+make test-quality
+
+# Using script (development, with colors and progress)
+./scripts/quality-test.sh default
+
+# Direct go test (if you need custom flags)
+go test -v -tags=integration -timeout=60m \
   ./internal/usecase/pipeline/... \
   -run TestPipelineDataQualityGates
 ```
 
 Run quality tests for ALL wordbooks:
 ```bash
+# Using Makefile
+make test-quality-all
+
+# Using script
+./scripts/quality-test.sh all
+
+# Direct go test
 PIPELINE_IT_ALL_WORDBOOKS=1 \
-PIPELINE_IT_WORDS_PER_BOOK=50 \
-go test -v -tags=integration -timeout=30m \
+go test -v -tags=integration -timeout=120m \
   ./internal/usecase/pipeline/... \
   -run TestPipelineDataQualityGates
 ```
 
 Run specific wordbooks only:
 ```bash
+# Using script (most flexible)
+./scripts/quality-test.sh sample -w "CEFR-A1,CEFR-B1,GRE"
+
+# Using environment variables
 PIPELINE_IT_WORDBOOKS="CEFR-A1,CEFR-B1,GRE" \
 go test -v -tags=integration -timeout=30m \
   ./internal/usecase/pipeline/... \

@@ -161,10 +161,10 @@ go test -v ./internal/usecase/...
 # Run single test
 go test -v -run TestLearnedWordUsecase_UpdateMastery ./internal/usecase/
 
-# Run pipeline quality integration tests (default wordbooks)
+# Run pipeline quality integration tests (all words in default wordbooks)
 make test-quality
 
-# Run quality tests for ALL wordbooks (comprehensive)
+# Run quality tests for ALL wordbooks (all words, comprehensive)
 make test-quality-all
 
 # Run quality tests with reduced sample size (faster)
@@ -190,15 +190,24 @@ make quality-baseline
 
 Quick quality test workflow:
 ```bash
-# Run quick quality check
+# Run quick quality check (10 words/book)
 ./scripts/quality-test.sh quick
 
+# Run default quality test (all words, matches make test-quality)
+./scripts/quality-test.sh default
+
+# Run medium sample test (30 words/book)
+./scripts/quality-test.sh sample
+
 # Run full quality test and update baseline
-./scripts/quality-test.sh full
+./scripts/quality-test.sh all
 ./scripts/quality-test.sh baseline
 
 # View quality report
 ./scripts/quality-test.sh report
+
+# Compare with baseline
+./scripts/quality-test.sh compare
 ```
 
 ### Code Generation

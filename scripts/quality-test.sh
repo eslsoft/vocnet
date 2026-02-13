@@ -42,9 +42,10 @@ Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
     quick           Run quality tests with small sample (10 words/book)
-    default         Run quality tests with default sample (30 words/book)
+    default         Run quality tests with all words (matches make test-quality)
+    sample          Run quality tests with medium sample (30 words/book)
     full            Run quality tests with large sample (50 words/book)
-    all             Run quality tests for ALL wordbooks (50 words/book)
+    all             Run quality tests for ALL wordbooks (all words)
     baseline        Update baseline from latest test results
     compare         Compare latest results with baseline
     report          Show latest quality report
@@ -56,7 +57,8 @@ Options:
 
 Examples:
     $0 quick                          # Quick test (10 words/book)
-    $0 default -v                     # Default test with verbose output
+    $0 default                        # Default test (all words, matches make)
+    $0 sample -v                      # Medium sample with verbose output
     $0 full -w "CEFR-A1,GRE"         # Full test for specific wordbooks
     $0 all                            # Test all wordbooks
     $0 baseline                       # Update baseline
@@ -69,7 +71,11 @@ run_test() {
     local wordbooks="${2:-}"
     local verbose="${3:-false}"
 
-    print_header "Running Quality Tests (${words_per_book} words/book)"
+    if [ "$words_per_book" -eq 0 ]; then
+        print_header "Running Quality Tests (all words)"
+    else
+        print_header "Running Quality Tests (${words_per_book} words/book)"
+    fi
 
     local test_cmd="PIPELINE_IT_WORDS_PER_BOOK=${words_per_book}"
 
@@ -77,9 +83,20 @@ run_test() {
         test_cmd="$test_cmd PIPELINE_IT_WORDBOOKS=\"${wordbooks}\""
     fi
 
-    test_cmd="$test_cmd go test -tags=integration -timeout=30m ./internal/usecase/pipeline/... -run TestPipelineDataQualityGates"
+    # Set timeout based on scope (match original Makefile behavior)
+    local timeout="60m"  # Default matches original make test-quality
+    if [ "$words_per_book" -eq 0 ]; then
+        # For "all words" tests, use longer timeout
+        timeout="60m"   # Keep original 60m for default wordbooks
+    elif [ "$words_per_book" -gt 100 ]; then
+        timeout="120m"  # Only use longer timeout for very large samples
+    fi
 
-    if [ "$verbose" = true ]; then
+    # Use stdbuf like original Makefile for better output buffering
+    test_cmd="$test_cmd stdbuf -oL -eL go test -tags=integration -timeout=${timeout} ./internal/usecase/pipeline/... -run TestPipelineDataQualityGates"
+
+    # For "default" command, always use verbose to match original Makefile behavior
+    if [ "$verbose" = true ] || [ "$words_per_book" -eq 0 ]; then
         test_cmd="$test_cmd -v"
     fi
 
@@ -192,6 +209,9 @@ case "$COMMAND" in
         run_test 10 "$WORDBOOKS" "$VERBOSE"
         ;;
     default)
+        run_test 0 "$WORDBOOKS" "$VERBOSE"  # 0 means all words (matches original Makefile behavior)
+        ;;
+    sample)
         run_test 30 "$WORDBOOKS" "$VERBOSE"
         ;;
     full)
@@ -199,8 +219,8 @@ case "$COMMAND" in
         ;;
     all)
         print_header "Running Quality Tests for ALL Wordbooks"
-        PIPELINE_IT_ALL_WORDBOOKS=1 PIPELINE_IT_WORDS_PER_BOOK=50 \
-        go test -tags=integration -timeout=60m ./internal/usecase/pipeline/... \
+        PIPELINE_IT_ALL_WORDBOOKS=1 PIPELINE_IT_WORDS_PER_BOOK=0 \
+        go test -tags=integration -timeout=120m ./internal/usecase/pipeline/... \
             -run TestPipelineDataQualityGates $([ "$VERBOSE" = true ] && echo "-v")
         if [ $? -eq 0 ]; then
             print_success "All tests passed!"
