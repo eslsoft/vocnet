@@ -114,9 +114,9 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 		if err := p.executeStage(ctx, jobID, pctx, stage, runLogger); err != nil {
 			runLogger.Error("stage failed",
 				"stage", stage.Number,
-				"name", stage.Name,
+				"phase", stage.Phase,
 				"error", err)
-			return nil, fmt.Errorf("execute stage %d (%s): %w", stage.Number, stage.Name, err)
+			return nil, fmt.Errorf("execute stage %d (%s): %w", stage.Number, stage.Phase, err)
 		}
 	}
 
@@ -152,7 +152,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		return err
 	}
 
-	logger.Info("executing stage", "stage", phaseNum, "name", stage.Name)
+	logger.Info("executing stage", "stage", phaseNum, "phase", stage.Phase)
 
 	// Accumulate results from all processors in this stage
 	mergedResult := &ProcessResult{}
@@ -205,7 +205,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		if err := p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusSkipped, ""); err != nil {
 			return err
 		}
-		logger.Info("stage skipped", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart).String())
+		logger.Info("stage skipped", "stage", phaseNum, "phase", stage.Phase, "duration", time.Since(stageStart).String())
 		return nil
 	}
 
@@ -241,7 +241,7 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		return err
 	}
 
-	logger.Info("stage completed", "stage", phaseNum, "name", stage.Name, "duration", time.Since(stageStart).String())
+	logger.Info("stage completed", "stage", phaseNum, "phase", stage.Phase, "duration", time.Since(stageStart).String())
 	return nil
 }
 

@@ -167,46 +167,25 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc. via JSON-RPC over stdio) ---
 	loadContribSources(ctx, cfg, registry, logger)
 
-	// LLM provider (for intellectual stage)
+	// --- LLM Provider (optional, for enrichment) ---
 	var llmProvider llm.Provider
 	if cfg.LLM.APIKey != "" {
 		cacheRepo := repository.NewDistillCacheRepository(entClient)
-		llmProvider = llm.NewOpenAIProvider(
-			cfg.LLM.BaseURL,
-			cfg.LLM.APIKey,
-			cfg.LLM.Model,
-			cacheRepo,
-		)
+		llmProvider = llm.NewOpenAIProvider(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.Model, cacheRepo)
+		logger.Info("llm provider initialized", "base_url", cfg.LLM.BaseURL, "model", cfg.LLM.Model)
 	} else {
-		logger.Warn("LLM not configured, phase 4 (intellectual) will be skipped — set LLM_API_KEY to enable")
+		logger.Info("llm provider not configured (LLM_API_KEY not set), enrichment will be skipped")
 	}
 
-	// Build pipeline stages using SourceRegistry + specialized processors
+	// Build pipeline stages using new Phase system
 	aggregator := pipeline.NewDataAggregator()
 	persistence := pipeline.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
 	validator := pipeline.NewValidator(lemmaRepo, lexemeRepo, logger)
-
-	stages := registry.BuildStages(map[string][]pipeline.Processor{
-		"discovery": {
-			pipeline.NewWikidataProcessor(wikidataProvider, logger),
-			pipeline.NewCategoryInferProcessor(),
-		},
-		"relational": {
-			pipeline.NewWikidataRelationProcessor(wikidataProvider),
-		},
-		"intellectual": {
-			pipeline.NewSenseMappingProcessor(llmProvider, logger),
-			pipeline.NewEnrichmentProcessor(llmProvider, logger),
-			pipeline.NewScoringProcessor(llmProvider, logger),
-		},
-		"synthesis": {
-			pipeline.NewLemmaSnapshotProcessor(),
-		},
-	})
-
-	// Create data evaluator for quality-based adoption
 	scorer := pipeline.NewRuleBasedScorer()
 	evaluator := pipeline.NewDataEvaluator(scorer, logger)
+
+	// Build stages with new architecture (LLM enrichment is optional)
+	stages := buildNewPipelineStages(registry, wikidataProvider, llmProvider, scorer, logger)
 
 	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 
@@ -221,6 +200,76 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	}), nil
 }
 
+// buildNewPipelineStages constructs the new phase-based pipeline architecture.
+func buildNewPipelineStages(
+	registry *pipeline.SourceRegistry,
+	wikidataProvider provider.WikidataProvider,
+	llmProvider llm.Provider,
+	scorer *pipeline.RuleBasedScorer,
+	logger *slog.Logger,
+) []*pipeline.Stage {
+	// Phase 1: Collection (Concurrent data acquisition from all sources)
+	collectionProcessors := []pipeline.Processor{
+		// Wikidata remains specialized due to complex discovery logic
+		pipeline.NewWikidataProcessor(wikidataProvider, logger),
+		pipeline.NewCategoryInferProcessor(),
+		// Wikidata relations
+		pipeline.NewWikidataRelationProcessor(wikidataProvider),
+	}
+
+	// Add all registered source providers to collection
+	for _, src := range registry.Sources() {
+		collectionProcessors = append(collectionProcessors,
+			pipeline.NewGenericSourceProcessor(src, logger))
+	}
+
+	collection := pipeline.NewConcurrentStage(
+		pipeline.PhaseCollection,
+		1,
+		collectionProcessors...,
+	)
+
+	// Phase 1.5: LLM Enrichment (Fill gaps with LLM-generated data)
+	// Optional: only runs if LLM provider is configured
+	var llmEnrichment *pipeline.Stage
+	if llmProvider != nil {
+		llmEnrichment = pipeline.NewStage(
+			pipeline.PhaseCollection, // Still part of collection phase logically
+			2,
+			pipeline.NewLLMEnrichmentProcessor(llmProvider, logger),
+		)
+	}
+
+	// Phase 2: Evaluation (Quality scoring of fragments)
+	evaluation := pipeline.NewStage(
+		pipeline.PhaseEvaluation,
+		3,
+		pipeline.NewFragmentEvaluator(scorer, logger),
+	)
+
+	// Phase 3: Integration (Smart merging based on scores)
+	integration := pipeline.NewStage(
+		pipeline.PhaseIntegration,
+		4,
+		pipeline.NewIntegrationProcessor(logger),
+	)
+
+	// Phase 4: Snapshot (Final snapshot generation)
+	snapshot := pipeline.NewStage(
+		pipeline.PhaseSnapshot,
+		5,
+		pipeline.NewLemmaSnapshotProcessor(),
+	)
+
+	stages := []*pipeline.Stage{collection}
+	if llmEnrichment != nil {
+		stages = append(stages, llmEnrichment)
+	}
+	stages = append(stages, evaluation, integration, snapshot)
+
+	return stages
+}
+
 // loadContribSources discovers and starts contrib source processes.
 func loadContribSources(ctx context.Context, cfg *config.Config, registry *pipeline.SourceRegistry, logger *slog.Logger) {
 	contribDir := strings.TrimSpace(cfg.Pipeline.ContribDir)
@@ -229,8 +278,7 @@ func loadContribSources(ctx context.Context, cfg *config.Config, registry *pipel
 		return
 	}
 
-	enabled := strings.Split(contribList, ",")
-	for _, name := range enabled {
+	for name := range strings.SplitSeq(contribList, ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue

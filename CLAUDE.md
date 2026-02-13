@@ -240,6 +240,26 @@ Configuration via environment variables (see `.env.example`):
 - `AUTH_JWKS_URL`: JWT JWKS endpoint for authentication (Supabase format)
 - `LOG_LEVEL`: Logging level (debug, info, warn, error)
 
+### LLM Enrichment (Optional)
+
+The pipeline includes an optional LLM enrichment phase that intelligently fills data gaps:
+
+- `LLM_BASE_URL`: OpenAI-compatible API endpoint (default: `https://api.openai.com/v1`)
+- `LLM_API_KEY`: API key for LLM provider (required to enable enrichment)
+- `LLM_MODEL`: Model name (default: `gpt-4o-mini`)
+
+**How it works:**
+1. After Collection phase, the pipeline analyzes what data is missing
+2. If gaps are detected (incomplete lexemes, unmapped relations, etc.), LLM is called
+3. LLM-generated data is added to the pipeline context as Evidence
+4. In Evaluation phase, LLM data is scored alongside other sources (Wikidata, ECDICT, etc.)
+5. In Integration phase, the best-quality fragments are selected (may or may not be from LLM)
+
+**Cost optimization:**
+- Only runs if `LLM_API_KEY` is configured
+- Skips LLM call if no gaps detected
+- Uses transparent response caching via `DistillCacheRepository`
+
 Load `.env` file automatically on startup.
 
 ## Pipeline Data Management
