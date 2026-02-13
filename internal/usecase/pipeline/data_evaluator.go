@@ -300,7 +300,8 @@ func (e *DataEvaluator) EvaluateAndMergeLemmaUpdate(
 
 	// Frequencies: merge by corpus
 	if len(update.Frequencies) > 0 {
-		merged.Frequencies = e.mergeFrequencies(existing.Frequencies, update.Frequencies)
+		aggregator := &DataAggregator{}
+		merged.Frequencies = aggregator.MergeFrequencies(existing.Frequencies, update.Frequencies)
 		decisions = append(decisions, AdoptionDecision{
 			ShouldAdopt: true,
 			NewSource:   newProvider,
@@ -319,41 +320,6 @@ func (e *DataEvaluator) EvaluateAndMergeLemmaUpdate(
 	}
 
 	return &merged, decisions
-}
-
-// mergeFrequencies combines frequency lists, overwriting duplicates by corpus.
-func (e *DataEvaluator) mergeFrequencies(existing, new []entity.Frequency) []entity.Frequency {
-	seen := make(map[string]int64)
-	result := make([]entity.Frequency, 0, len(existing)+len(new))
-
-	// Add existing frequencies
-	for _, freq := range existing {
-		if freq.Corpus != "" {
-			seen[freq.Corpus] = freq.Count
-			result = append(result, freq)
-		}
-	}
-
-	// Add new frequencies (overwrite if corpus already exists)
-	for _, freq := range new {
-		if freq.Corpus != "" {
-			if _, ok := seen[freq.Corpus]; ok {
-				// Update existing entry
-				for i := range result {
-					if result[i].Corpus == freq.Corpus {
-						result[i].Count = freq.Count
-						break
-					}
-				}
-			} else {
-				// Add new entry
-				result = append(result, freq)
-				seen[freq.Corpus] = freq.Count
-			}
-		}
-	}
-
-	return result
 }
 
 // inferLexemeProvider attempts to infer the provider from lexeme metadata.
