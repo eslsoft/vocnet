@@ -8,12 +8,22 @@ import (
 )
 
 // stageOrder defines the canonical execution order for pipeline stages.
+// Maps old stage names to new phases and their order.
 var stageOrder = map[string]int{
 	"discovery":    1,
 	"lexical":      2,
 	"relational":   3,
 	"intellectual": 4,
 	"synthesis":    5,
+}
+
+// stageToPhase maps old stage names to new PipelinePhase constants.
+var stageToPhase = map[string]PipelinePhase{
+	"discovery":    PhaseCollection,
+	"lexical":      PhaseCollection,
+	"relational":   PhaseCollection,
+	"intellectual": PhaseEvaluation,
+	"synthesis":    PhaseSnapshot,
 }
 
 // SourceRegistry manages the collection of SourceProviders and builds pipeline stages.
@@ -89,7 +99,13 @@ func (r *SourceRegistry) BuildStages(specialProcessors map[string][]Processor) [
 		if !ok {
 			number = 99
 		}
-		stages = append(stages, NewStage(name, number, procs...))
+		// Map old stage name to new phase
+		phase, ok := stageToPhase[name]
+		if !ok {
+			// Default to collection for unknown stages
+			phase = PhaseCollection
+		}
+		stages = append(stages, NewStage(phase, number, procs...))
 	}
 
 	return stages
