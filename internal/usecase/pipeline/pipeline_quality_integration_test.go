@@ -748,56 +748,26 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	minAverage := req.minAverageScore + llmBoost
 	targetAverage := req.targetAverage + llmBoost
 
-	// Parallel test execution within the wordbook for better performance
-	type wordResult struct {
-		term  string
-		score float64
-		err   error
-	}
-
-	results := make(chan wordResult, len(terms))
-	var wg sync.WaitGroup
-
-	// Test words in parallel (limit concurrency to avoid database lock contention)
-	// SQLite with WAL mode can handle ~3-4 concurrent writes reasonably well
-	maxConcurrency := 3
-	semaphore := make(chan struct{}, maxConcurrency)
-
+	// Test words serially within the wordbook
+	// SQLite cannot reliably handle concurrent writes even with WAL mode and semaphores
+	// Wordbook-level parallelism (different databases) still provides good performance
 	for _, term := range terms {
-		wg.Add(1)
-		go func(t string) {
-			defer wg.Done()
-			semaphore <- struct{}{}        // Acquire
-			defer func() { <-semaphore }() // Release
-
-			score, err := h.runWord(ctx, t)
-			results <- wordResult{term: t, score: score, err: err}
-		}(term)
-	}
-
-	// Close results channel when all goroutines complete
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	// Collect results
-	for result := range results {
-		if result.err != nil {
-			executionErrors = append(executionErrors, fmt.Sprintf("%s: %v", result.term, result.err))
+		score, err := h.runWord(ctx, term)
+		if err != nil {
+			executionErrors = append(executionErrors, fmt.Sprintf("%s: %v", term, err))
 			continue
 		}
-		scores = append(scores, result.score)
+		scores = append(scores, score)
 
 		// Update distribution
-		bucket := getScoreBucket(result.score)
+		bucket := getScoreBucket(score)
 		scoreDistribution[bucket]++
 
 		// Track failed terms
-		if result.score < minAverage {
+		if score < minAverage {
 			failedTerms = append(failedTerms, FailedTerm{
-				Term:           result.term,
-				Score:          result.score,
+				Term:           term,
+				Score:          score,
 				MinRequirement: minAverage,
 				Reason:         "below minimum requirement",
 			})
