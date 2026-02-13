@@ -204,7 +204,11 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 		},
 	})
 
-	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
+	// Create data evaluator for quality-based adoption
+	scorer := pipeline.NewRuleBasedScorer()
+	evaluator := pipeline.NewDataEvaluator(scorer, logger)
+
+	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 
 	// Configure worker pool
 	workerCount := cfg.Pipeline.WorkerCount

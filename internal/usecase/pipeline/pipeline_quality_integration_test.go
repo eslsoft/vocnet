@@ -122,7 +122,9 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 		},
 	})
 
-	p := NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
+	scorer := NewRuleBasedScorer()
+	evaluator := NewDataEvaluator(scorer, logger)
+	p := NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 	return &qualityHarness{pipeline: p, jobRepo: jobRepo}
 }
 

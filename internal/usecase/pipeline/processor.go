@@ -51,6 +51,7 @@ type ProcessResult struct {
 	FormsByLexeme map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
 	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma
 	LemmaSnapshot *entity.LemmaSnapshot          // only set by LemmaSnapshotProcessor
+	Provider      string                         // source provider name (for evaluator)
 }
 
 // PipelineContext carries accumulated state through all pipeline stages.
@@ -66,106 +67,67 @@ type PipelineContext struct {
 	FormsByLexeme map[string][]*entity.LemmaForm
 	Evidence      []*entity.RawEvidence
 	LemmaSnapshot *entity.LemmaSnapshot
+
+	// Evaluator for data quality assessment (optional)
+	Evaluator *DataEvaluator
 }
 
 // Accumulate merges a ProcessResult into the pipeline context.
+// If an evaluator is configured, it uses scoring to make adoption decisions.
 func (pc *PipelineContext) Accumulate(r *ProcessResult) {
+	pc.AccumulateWithProvider(r, "")
+}
+
+// AccumulateWithProvider merges a ProcessResult with provider metadata.
+// The provider string is required for evaluator-based adoption decisions.
+// If evaluator is not configured, this will panic - evaluator is now mandatory.
+func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider string) {
 	if r == nil {
 		return
 	}
 
+	if pc.Evaluator == nil {
+		panic("PipelineContext.Evaluator is nil - evaluator must be configured")
+	}
+
+	// Evidence: always accumulate
 	if r.Evidence != nil {
 		pc.Evidence = append(pc.Evidence, r.Evidence...)
 	}
-	if r.Lexemes != nil {
-		pc.Lexemes = mergeLexemes(pc.Lexemes, r.Lexemes)
-	}
+
+	// Relations: always accumulate (deduplication happens at persistence)
 	if r.Relations != nil {
 		pc.Relations = append(pc.Relations, r.Relations...)
 	}
-	if r.Forms != nil {
-		pc.Forms = mergeForms(pc.Forms, r.Forms)
+
+	// Lexemes: evaluate and merge with quality scoring
+	if r.Lexemes != nil {
+		merged, _ := pc.Evaluator.EvaluateAndMergeLexemes(pc.Lexemes, r.Lexemes, provider)
+		pc.Lexemes = merged
 	}
+
+	// Forms: evaluate and merge with quality scoring
+	if r.Forms != nil {
+		merged, _ := pc.Evaluator.EvaluateAndMergeForms(pc.Forms, r.Forms, provider)
+		pc.Forms = merged
+	}
+
+	// FormsByLexeme: merge (no evaluation needed - keyed by lexeme)
 	if r.FormsByLexeme != nil {
 		pc.FormsByLexeme = mergeFormsByLexeme(pc.FormsByLexeme, r.FormsByLexeme)
 	}
+
+	// LemmaUpdate: evaluate and merge with quality scoring
 	if r.LemmaUpdate != nil {
-		// Apply lemma updates to context
-		updated := *r.LemmaUpdate
-		updated.ID = pc.Lemma.ID
-		pc.Lemma = &updated
+		merged, _ := pc.Evaluator.EvaluateAndMergeLemmaUpdate(pc.Lemma, r.LemmaUpdate, provider)
+		merged.ID = pc.Lemma.ID // Preserve ID
+		pc.Lemma = merged
 	}
+
+	// LemmaSnapshot: always overwrite (latest snapshot)
 	if r.LemmaSnapshot != nil {
 		pc.LemmaSnapshot = r.LemmaSnapshot
 	}
-}
-
-// mergeLexemes merges new lexemes into existing list, updating by ExternalID if matched.
-func mergeLexemes(existing, new []*entity.Lexeme) []*entity.Lexeme {
-	byExtID := make(map[string]int) // ExternalID → index in existing
-	for i, lex := range existing {
-		if lex.ExternalID != "" {
-			byExtID[lex.ExternalID] = i
-		}
-	}
-
-	for _, lex := range new {
-		if idx, ok := byExtID[lex.ExternalID]; ok && lex.ExternalID != "" {
-			existing[idx] = lex // update in-place
-		} else {
-			existing = append(existing, lex)
-		}
-	}
-	return existing
-}
-
-// mergeForms merges new forms into existing list, deduplicating by surface+formType.
-// When a form already exists, enrichment fields (phonetics, syllables) are merged in.
-func mergeForms(existing, new []*entity.LemmaForm) []*entity.LemmaForm {
-	index := make(map[string]int, len(existing)) // key → index in existing
-	for i, f := range existing {
-		key := f.Surface + ":" + string(f.FormType)
-		index[key] = i
-	}
-	for _, f := range new {
-		key := f.Surface + ":" + string(f.FormType)
-		if idx, ok := index[key]; ok {
-			mergeFormFields(existing[idx], f)
-		} else {
-			index[key] = len(existing)
-			existing = append(existing, f)
-		}
-	}
-	return existing
-}
-
-// mergeFormFields enriches dst with non-empty fields from src.
-func mergeFormFields(dst, src *entity.LemmaForm) {
-	if len(src.Syllables) > 0 && len(dst.Syllables) == 0 {
-		dst.Syllables = src.Syllables
-	}
-	if len(src.Phonetics) > 0 {
-		dst.Phonetics = mergePhonetics(dst.Phonetics, src.Phonetics)
-	}
-	if src.IsIrregular && !dst.IsIrregular {
-		dst.IsIrregular = true
-	}
-}
-
-// mergePhonetics appends new phonetics that don't already exist.
-func mergePhonetics(existing, incoming []entity.Phonetic) []entity.Phonetic {
-	seen := make(map[string]struct{}, len(existing))
-	for _, ph := range existing {
-		seen[ph.IPA+"|"+ph.Dialect] = struct{}{}
-	}
-	for _, ph := range incoming {
-		key := ph.IPA + "|" + ph.Dialect
-		if _, ok := seen[key]; !ok {
-			existing = append(existing, ph)
-			seen[key] = struct{}{}
-		}
-	}
-	return existing
 }
 
 func mergeFormsByLexeme(existing, incoming map[string][]*entity.LemmaForm) map[string][]*entity.LemmaForm {
@@ -175,8 +137,25 @@ func mergeFormsByLexeme(existing, incoming map[string][]*entity.LemmaForm) map[s
 	if existing == nil {
 		existing = make(map[string][]*entity.LemmaForm, len(incoming))
 	}
-	for lexemeID, forms := range incoming {
-		existing[lexemeID] = mergeForms(existing[lexemeID], forms)
+
+	// Use evaluator's merge logic if forms need merging
+	for lexemeID, incomingForms := range incoming {
+		existingForms := existing[lexemeID]
+
+		// Simple append for FormsByLexeme - detailed evaluation happens in Forms field
+		index := make(map[string]int)
+		for i, f := range existingForms {
+			key := f.Surface + ":" + string(f.FormType)
+			index[key] = i
+		}
+
+		for _, f := range incomingForms {
+			key := f.Surface + ":" + string(f.FormType)
+			if _, ok := index[key]; !ok {
+				existingForms = append(existingForms, f)
+			}
+		}
+		existing[lexemeID] = existingForms
 	}
 	return existing
 }

@@ -12,17 +12,26 @@ import (
 // It sends only term+language to the source, then converts the raw
 // SourceResult back into a ProcessResult for the pipeline.
 type GenericSourceProcessor struct {
-	source repository.SourceProvider
-	logger *slog.Logger
+	source   repository.SourceProvider
+	logger   *slog.Logger
+	provider string // cached provider name from manifest
 }
 
 // NewGenericSourceProcessor creates a generic processor from a SourceProvider.
 func NewGenericSourceProcessor(source repository.SourceProvider, logger *slog.Logger) *GenericSourceProcessor {
-	return &GenericSourceProcessor{source: source, logger: logger}
+	providerName := ""
+	if source != nil {
+		providerName = source.Manifest().Name
+	}
+	return &GenericSourceProcessor{
+		source:   source,
+		logger:   logger,
+		provider: providerName,
+	}
 }
 
 func (p *GenericSourceProcessor) Name() string {
-	return p.source.Manifest().Name
+	return p.provider
 }
 
 func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *PipelineContext) (*ProcessResult, error) {
@@ -43,7 +52,10 @@ func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *PipelineCont
 		return &ProcessResult{Status: ProcessStatusNoData}, nil
 	}
 
-	return sourceResultToProcessResult(result), nil
+	pr := sourceResultToProcessResult(result)
+	// Attach provider name to ProcessResult for evaluator
+	pr.Provider = p.provider
+	return pr, nil
 }
 
 func sourceResultToProcessResult(sr *repository.SourceResult) *ProcessResult {

@@ -20,6 +20,7 @@ type Pipeline struct {
 	snapshotRepo repository.LemmaSnapshotRepository
 	lemmaRepo    repository.LemmaRepository
 	lexemeRepo   repository.LexemeRepository
+	evaluator    *DataEvaluator
 	logger       *slog.Logger
 }
 
@@ -44,6 +45,7 @@ func NewPipeline(
 	snapshotRepo repository.LemmaSnapshotRepository,
 	lemmaRepo repository.LemmaRepository,
 	lexemeRepo repository.LexemeRepository,
+	evaluator *DataEvaluator,
 	logger *slog.Logger,
 ) *Pipeline {
 	return &Pipeline{
@@ -54,6 +56,7 @@ func NewPipeline(
 		snapshotRepo: snapshotRepo,
 		lemmaRepo:    lemmaRepo,
 		lexemeRepo:   lexemeRepo,
+		evaluator:    evaluator,
 		logger:       logger,
 	}
 }
@@ -86,6 +89,9 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 	if err := validateContextPOS(pctx); err != nil {
 		return nil, fmt.Errorf("validate initial pos: %w", err)
 	}
+
+	// Set evaluator in context
+	pctx.Evaluator = p.evaluator
 
 	runLogger.Info("processing word", "term", term, "lemma_id", pctx.Lemma.ID)
 
@@ -178,7 +184,12 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 		logger.Debug("processor completed", "processor", proc.Name(), "status", "executed", "duration", time.Since(procStart).String())
 
 		// Merge processor result into context so next processor can see it
-		pctx.Accumulate(result)
+		// Use AccumulateWithProvider if result has provider metadata
+		if result.Provider != "" {
+			pctx.AccumulateWithProvider(result, result.Provider)
+		} else {
+			pctx.Accumulate(result)
+		}
 		if err := validateContextPOS(pctx); err != nil {
 			errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
 			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
