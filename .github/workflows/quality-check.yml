@@ -53,9 +53,9 @@ jobs:
       - name: Run quality integration tests
         id: quality_test
         run: |
-          # Run all wordbooks in quality gate
-          PIPELINE_IT_ALL_WORDBOOKS=1 \
-          PIPELINE_IT_WORDS_PER_BOOK=50 \
+          # Run default CEFR wordbooks (A1-C2) with all words
+          # Default behavior: 6 CEFR wordbooks, ~7,265 words, estimated 4-6 minutes
+          PIPELINE_IT_WORDS_PER_BOOK=0 \
           go test -v -tags=integration -timeout=30m \
             ./internal/usecase/pipeline/... \
             -run TestPipelineDataQualityGates
