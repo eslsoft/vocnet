@@ -32,18 +32,6 @@ RELATION_MAP = {
     "-c": "CATEGORY_MEMBER", # member of category
 }
 
-# POS mapping from vocnet PartOfSpeech to WordNet single-letter codes
-POS_TO_WN = {
-    "noun": "n",
-    "proper_noun": "n",
-    "pronoun": "n",
-    "determiner": "n",
-    "numeral": "n",
-    "verb": "v",
-    "adjective": "a",
-    "adverb": "r",
-}
-
 
 class Synset:
     """A WordNet synset (synonym set)."""
@@ -257,18 +245,9 @@ class WordNetSource:
         if not term:
             return {}
 
-        ctx = params.get("context", {})
-        context_lexemes = ctx.get("lexemes", []) if ctx else []
-
-        # Get primary external ID
-        source_ext_id = ""
-        if context_lexemes:
-            source_ext_id = context_lexemes[0].get("external_id", "")
-        if not source_ext_id:
-            return {}
-
-        # Determine POS candidates from context lexemes
-        pos_candidates = self._get_pos_candidates(context_lexemes)
+        # Try all POS — source returns everything it finds,
+        # system decides what to use.
+        pos_candidates = ["noun", "verb", "adjective", "adverb"]
 
         # Collect primary synsets (first match per POS)
         collected = []
@@ -306,7 +285,6 @@ class WordNetSource:
 
                     relations.append(
                         {
-                            "source_external_id": source_ext_id,
                             "target_ref": self._wordnet_synset_ref(parent.offset),
                             "target_term": target_word,
                             "relation_type": "HYPERNYM",
@@ -339,7 +317,6 @@ class WordNetSource:
 
                 relations.append(
                     {
-                        "source_external_id": source_ext_id,
                         "target_ref": self._wordnet_synset_ref(rel.target_id),
                         "target_term": target_term,
                         "relation_type": rel_type,
@@ -380,31 +357,6 @@ class WordNetSource:
             "relations": relations,
             "evidence": evidence,
         }
-
-    def _get_pos_candidates(self, lexemes):
-        """Determine POS candidates from context lexemes, with fallback."""
-        seen = set()
-        out = []
-
-        def add(pos):
-            if pos and pos not in seen:
-                seen.add(pos)
-                out.append(pos)
-
-        for lex in lexemes:
-            pos = lex.get("part_of_speech", "")
-            wn_pos = POS_TO_WN.get(pos, "")
-            if wn_pos:
-                # Map back to full name for consistency
-                wn_to_name = {"n": "noun", "v": "verb", "a": "adjective", "r": "adverb"}
-                add(wn_to_name.get(wn_pos, ""))
-
-        # Fallback
-        add("noun")
-        add("verb")
-        add("adjective")
-        add("adverb")
-        return out
 
     def shutdown(self):
         pass  # No cleanup needed (in-memory data)

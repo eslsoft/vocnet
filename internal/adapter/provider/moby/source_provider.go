@@ -29,28 +29,19 @@ func (p *SourceProvider) Manifest() repository.SourceManifest {
 }
 
 func (p *SourceProvider) Lookup(ctx context.Context, query repository.SourceQuery) (*repository.SourceResult, error) {
-	if query.Context == nil || len(query.Context.Forms) == 0 {
+	syllables, err := p.reader.Lookup(ctx, query.Term)
+	if err != nil || len(syllables) == 0 {
 		return nil, nil
 	}
 
-	var updatedForms []*entity.LemmaForm
-	for _, form := range query.Context.Forms {
-		syllables, err := p.reader.Lookup(ctx, form.Surface)
-		if err != nil || len(syllables) == 0 {
-			continue
-		}
-
-		updated := *form
-		updated.Syllables = syllables
-		updatedForms = append(updatedForms, &updated)
-	}
-
-	if len(updatedForms) == 0 {
-		return nil, nil
+	form := &entity.LemmaForm{
+		Surface:   query.Term,
+		FormType:  entity.FormTypeLemma,
+		Syllables: syllables,
 	}
 
 	return &repository.SourceResult{
-		Forms: updatedForms,
+		Forms: []*entity.LemmaForm{form},
 	}, nil
 }
 

@@ -9,7 +9,8 @@ import (
 )
 
 // GenericSourceProcessor wraps any SourceProvider as a pipeline Processor.
-// It translates PipelineContext into SourceQuery and SourceResult back into ProcessResult.
+// It sends only term+language to the source, then converts the raw
+// SourceResult back into a ProcessResult for the pipeline.
 type GenericSourceProcessor struct {
 	source repository.SourceProvider
 	logger *slog.Logger
@@ -29,7 +30,11 @@ func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *PipelineCont
 		return nil, &ErrProcessorSkipped{Reason: p.Name() + " not available"}
 	}
 
-	query := buildSourceQuery(pctx)
+	query := repository.SourceQuery{
+		Term:     pctx.Term,
+		Language: pctx.Language.Code(),
+	}
+
 	result, err := p.source.Lookup(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("%s lookup: %w", p.Name(), err)
@@ -39,20 +44,6 @@ func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *PipelineCont
 	}
 
 	return sourceResultToProcessResult(result), nil
-}
-
-func buildSourceQuery(pctx *PipelineContext) repository.SourceQuery {
-	query := repository.SourceQuery{
-		Term:     pctx.Term,
-		Language: pctx.Language.Code(),
-		Context: &repository.SourceContext{
-			Lexemes:   pctx.Lexemes,
-			Forms:     pctx.Forms,
-			Relations: pctx.Relations,
-			Lemma:     pctx.Lemma,
-		},
-	}
-	return query
 }
 
 func sourceResultToProcessResult(sr *repository.SourceResult) *ProcessResult {

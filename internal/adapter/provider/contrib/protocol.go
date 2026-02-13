@@ -14,10 +14,10 @@ type Request struct {
 
 // Response is a JSON-RPC 2.0 response.
 type Response struct {
-	JSONRPC string        `json:"jsonrpc"`
-	ID      int           `json:"id"`
-	Result  any           `json:"result,omitempty"`
-	Error   *RPCError     `json:"error,omitempty"`
+	JSONRPC string    `json:"jsonrpc"`
+	ID      int       `json:"id"`
+	Result  any       `json:"result,omitempty"`
+	Error   *RPCError `json:"error,omitempty"`
 }
 
 // RPCError is a JSON-RPC 2.0 error object.
@@ -40,47 +40,10 @@ type InitializeResult struct {
 }
 
 // LookupParams is the request payload for the "lookup" method.
+// Sources receive only term and language — no pipeline context.
 type LookupParams struct {
-	Term     string         `json:"term"`
-	Language string         `json:"language"`
-	Context  *LookupContext `json:"context,omitempty"`
-}
-
-// LookupContext carries pipeline state to the external source.
-type LookupContext struct {
-	Lexemes   []LookupLexeme   `json:"lexemes,omitempty"`
-	Forms     []LookupForm     `json:"forms,omitempty"`
-	Relations []LookupRelation `json:"relations,omitempty"`
-	Lemma     *LookupLemma     `json:"lemma,omitempty"`
-}
-
-// LookupLexeme is a simplified lexeme for the contrib protocol.
-type LookupLexeme struct {
-	ExternalID   string   `json:"external_id"`
-	Language     string   `json:"language"`
-	PartOfSpeech string   `json:"part_of_speech"`
-	SenseGloss   string   `json:"sense_gloss,omitempty"`
-	Categories   []string `json:"categories,omitempty"`
-}
-
-// LookupForm is a simplified form for the contrib protocol.
-type LookupForm struct {
-	Surface  string `json:"surface"`
-	FormType string `json:"form_type"`
-}
-
-// LookupRelation is a simplified relation for the contrib protocol.
-type LookupRelation struct {
-	TargetTerm   string  `json:"target_term"`
-	RelationType string  `json:"relation_type"`
-	Provider     string  `json:"provider"`
-	Strength     float64 `json:"strength"`
-}
-
-// LookupLemma is a simplified lemma for the contrib protocol.
-type LookupLemma struct {
-	Surface string `json:"surface"`
-	Level   string `json:"level,omitempty"`
+	Term     string `json:"term"`
+	Language string `json:"language"`
 }
 
 // LookupResult is the response payload from the "lookup" method.
@@ -96,14 +59,14 @@ type LookupResult struct {
 
 // ResultLexeme is a lexeme returned by the contrib source.
 type ResultLexeme struct {
-	ExternalID   string         `json:"external_id"`
-	Language     string         `json:"language"`
-	PartOfSpeech string         `json:"part_of_speech"`
-	EntryType    string         `json:"entry_type,omitempty"`
-	SenseGloss   string         `json:"sense_gloss,omitempty"`
-	Senses       []ResultSense  `json:"senses,omitempty"`
-	Categories   []string       `json:"categories,omitempty"`
-	Completeness int32          `json:"completeness,omitempty"`
+	ExternalID   string        `json:"external_id"`
+	Language     string        `json:"language"`
+	PartOfSpeech string        `json:"part_of_speech"`
+	EntryType    string        `json:"entry_type,omitempty"`
+	SenseGloss   string        `json:"sense_gloss,omitempty"`
+	Senses       []ResultSense `json:"senses,omitempty"`
+	Categories   []string      `json:"categories,omitempty"`
+	Completeness int32         `json:"completeness,omitempty"`
 }
 
 // ResultSense is a sense returned by the contrib source.

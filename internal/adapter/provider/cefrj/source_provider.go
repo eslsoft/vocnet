@@ -2,7 +2,6 @@ package cefrj
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -31,23 +30,12 @@ func (p *SourceProvider) Manifest() repository.SourceManifest {
 }
 
 func (p *SourceProvider) Lookup(ctx context.Context, query repository.SourceQuery) (*repository.SourceResult, error) {
-	if query.Context == nil || query.Context.Lemma == nil {
-		return nil, nil
-	}
-
 	entry, err := p.reader.Lookup(ctx, query.Term)
 	if err != nil {
 		return nil, err
 	}
 	if entry == nil || entry.MinLevel == "" {
 		return nil, nil
-	}
-
-	updated := *query.Context.Lemma
-	if updated.Level == "" {
-		updated.Level = entry.MinLevel
-	} else {
-		updated.Level = minCEFRLevel(updated.Level, entry.MinLevel)
 	}
 
 	evidence := &entity.RawEvidence{
@@ -60,30 +48,12 @@ func (p *SourceProvider) Lookup(ctx context.Context, query repository.SourceQuer
 
 	return &repository.SourceResult{
 		Evidence:    []*entity.RawEvidence{evidence},
-		LemmaUpdate: &updated,
+		LemmaUpdate: &entity.Lemma{Level: entry.MinLevel},
 	}, nil
 }
 
 func (p *SourceProvider) Close() error {
 	return nil
-}
-
-func minCEFRLevel(a, b string) string {
-	a = strings.ToUpper(strings.TrimSpace(a))
-	b = strings.ToUpper(strings.TrimSpace(b))
-	order := map[string]int{"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
-	av, aok := order[a]
-	bv, bok := order[b]
-	switch {
-	case !aok:
-		return b
-	case !bok:
-		return a
-	case av <= bv:
-		return a
-	default:
-		return b
-	}
 }
 
 func buildEvidence(entry *Entry) map[string]any {

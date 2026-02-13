@@ -36,23 +36,17 @@ type SourceManifest struct {
 }
 
 // SourceQuery is the standardized input for all source lookups.
+// Sources receive only term and language — they return raw data and
+// the system (GenericSourceProcessor) decides how to merge it.
 type SourceQuery struct {
 	Term     string
 	Language string
-	// Context carries accumulated pipeline state that enrichment sources may need.
-	Context *SourceContext
-}
-
-// SourceContext carries read-only pipeline state available to sources.
-type SourceContext struct {
-	Lexemes   []*entity.Lexeme
-	Forms     []*entity.LemmaForm
-	Relations []*entity.SemanticRelation
-	Lemma     *entity.Lemma
 }
 
 // SourceResult is the standardized output from all source lookups.
 // Each source populates only the fields matching its capabilities.
+// Sources return raw data without referencing pipeline context — the
+// system (GenericSourceProcessor) handles merging into pipeline state.
 type SourceResult struct {
 	Lexemes       []*entity.Lexeme
 	Forms         []*entity.LemmaForm

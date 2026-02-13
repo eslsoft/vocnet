@@ -178,43 +178,10 @@ func (p *ProcessSourceProvider) call(ctx context.Context, method string, params 
 }
 
 func buildLookupParams(query repository.SourceQuery) LookupParams {
-	params := LookupParams{
+	return LookupParams{
 		Term:     query.Term,
 		Language: query.Language,
 	}
-	if query.Context != nil {
-		params.Context = &LookupContext{}
-		if query.Context.Lemma != nil {
-			params.Context.Lemma = &LookupLemma{
-				Surface: query.Context.Lemma.Surface,
-				Level:   query.Context.Lemma.Level,
-			}
-		}
-		for _, lex := range query.Context.Lexemes {
-			params.Context.Lexemes = append(params.Context.Lexemes, LookupLexeme{
-				ExternalID:   lex.ExternalID,
-				Language:     string(lex.Language),
-				PartOfSpeech: string(lex.PartOfSpeech),
-				SenseGloss:   lex.SenseGloss,
-				Categories:   lex.Categories,
-			})
-		}
-		for _, f := range query.Context.Forms {
-			params.Context.Forms = append(params.Context.Forms, LookupForm{
-				Surface:  f.Surface,
-				FormType: string(f.FormType),
-			})
-		}
-		for _, r := range query.Context.Relations {
-			params.Context.Relations = append(params.Context.Relations, LookupRelation{
-				TargetTerm:   r.TargetTerm,
-				RelationType: r.RelationType,
-				Provider:     r.Provider,
-				Strength:     r.Strength,
-			})
-		}
-	}
-	return params
 }
 
 func convertLookupResult(lr *LookupResult, providerName string) *repository.SourceResult {

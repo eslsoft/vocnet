@@ -181,26 +181,18 @@ class ECDICTSource:
         categories = extract_domain_categories(entry["tag"])
         completeness = calculate_completeness(entry)
 
-        ctx = params.get("context", {})
-        context_lexemes = ctx.get("lexemes", []) if ctx else []
-
-        # Enrich existing lexemes with POS-matched Chinese translations
+        # Return one lexeme per POS with Chinese translations
         lexemes = []
-        for lex in context_lexemes:
-            pos = lex.get("part_of_speech", "")
-            senses = translations_by_pos.get(pos, [])
-            if senses or categories:
-                enriched = {
-                    "external_id": lex.get("external_id", ""),
-                    "language": lex.get("language", "en"),
+        for pos, senses in translations_by_pos.items():
+            lexemes.append(
+                {
+                    "language": "en",
                     "part_of_speech": pos,
                     "senses": senses,
                     "categories": categories,
                     "completeness": completeness,
                 }
-                if lex.get("sense_gloss"):
-                    enriched["sense_gloss"] = lex["sense_gloss"]
-                lexemes.append(enriched)
+            )
 
         # Build form with phonetics
         forms = []

@@ -101,16 +101,6 @@ class ConceptNetSource:
         if not term or not self.db:
             return {}
 
-        ctx = params.get("context", {})
-        context_lexemes = ctx.get("lexemes", []) if ctx else []
-
-        # Get primary external ID from first context lexeme
-        source_ext_id = ""
-        if context_lexemes:
-            source_ext_id = context_lexemes[0].get("external_id", "")
-        if not source_ext_id:
-            return {}
-
         search_term = f"/c/{language}/{term.lower()}"
 
         cursor = self.db.execute(
@@ -155,7 +145,6 @@ class ConceptNetSource:
 
             relations.append(
                 {
-                    "source_external_id": source_ext_id,
                     "target_ref": concept_net_term_ref(target_lang, target_term),
                     "target_term": target_term,
                     "relation_type": rel_type,
