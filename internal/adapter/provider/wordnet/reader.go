@@ -150,6 +150,13 @@ func (r *Reader) LookupSynsets(ctx context.Context, word string, pos string) ([]
 	return result, nil
 }
 
+// LookupSynsetByOffset retrieves a synset by its POS and offset.
+// Returns nil if not found.
+func (r *Reader) LookupSynsetByOffset(pos, offset string) *Synset {
+	key := pos + ":" + offset
+	return r.offsetIndex[key]
+}
+
 // GetHypernymPath retrieves the hypernym hierarchy path for a synset.
 // This is used to calculate semantic depth.
 func (r *Reader) GetHypernymPath(ctx context.Context, synset *Synset) ([]*Synset, error) {

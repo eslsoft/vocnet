@@ -372,7 +372,7 @@ func (p *WordNetProcessor) appendWordNetHypernyms(
 		rel := &entity.SemanticRelation{
 			SourceExternalID: sourceExtID,
 			TargetRef:        wordnetSynsetRef(parentSynset.Offset),
-			TargetTerm:       fmt.Sprintf("synset:%s (%s)", parentSynset.Offset, targetWord),
+			TargetTerm:       targetWord,
 			RelationType:     entity.RelationHypernym,
 			Provider:         "wordnet",
 			Strength:         1.0,
@@ -397,10 +397,14 @@ func (p *WordNetProcessor) appendWordNetOtherRelations(
 		if relType == "" {
 			continue
 		}
+		targetTerm := rel.TargetID
+		if targetSynset := p.reader.LookupSynsetByOffset(rel.TargetPOS, rel.TargetID); targetSynset != nil && len(targetSynset.Words) > 0 {
+			targetTerm = targetSynset.Words[0]
+		}
 		item := &entity.SemanticRelation{
 			SourceExternalID: sourceExtID,
 			TargetRef:        wordnetSynsetRef(rel.TargetID),
-			TargetTerm:       fmt.Sprintf("synset:%s", rel.TargetID),
+			TargetTerm:       targetTerm,
 			RelationType:     relType,
 			Provider:         "wordnet",
 			Strength:         1.0,
