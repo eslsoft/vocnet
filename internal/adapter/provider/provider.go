@@ -40,11 +40,13 @@ type WikidataProvider interface {
 
 // ConceptNetEdge represents an edge from the ConceptNet API.
 type ConceptNetEdge struct {
-	RelationType string
-	StartTerm    string
-	EndTerm      string
-	Weight       float64
-	SurfaceText  string
+	RelationType  string
+	StartTerm     string
+	StartLanguage string
+	EndTerm       string
+	EndLanguage   string
+	Weight        float64
+	SurfaceText   string
 }
 
 // ConceptNetProvider fetches relation data from ConceptNet.

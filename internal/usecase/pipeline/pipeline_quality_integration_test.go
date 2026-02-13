@@ -18,12 +18,10 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/conceptnet"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/ecdict"
+	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/moby"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/wordnet"
 	repo "github.com/eslsoft/vocnet/internal/adapter/repository"
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
@@ -68,19 +66,12 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = wikidataReader.Close() })
 
-	conceptnetReader, err := conceptnet.NewReaderWithLogger(datasource.ConceptNetDataPath(cfg.Pipeline.DataDir), logger)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conceptnetReader.Close() })
-
-	ecdictReader, err := ecdict.NewReader(datasource.ECDICTDataPath(cfg.Pipeline.DataDir))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ecdictReader.Close() })
-
-	wordnetReader := wordnet.NewReader(datasource.WordNetDataDir(cfg.Pipeline.DataDir))
-
 	mobyReader, err := moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = mobyReader.Close() })
+
+	cefrjReader, err := cefrj.NewReader(datasource.CEFRJDataDir(cfg.Pipeline.DataDir))
+	require.NoError(t, err)
 
 	dbPath := resolvePipelineQualityDBPath(t)
 	require.NoError(t, resetSQLiteDBFiles(dbPath))
@@ -108,29 +99,28 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	persistence := NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
 	validator := NewValidator(lemmaRepo, lexemeRepo, logger)
 
-	stages := []*Stage{
-		NewStage("discovery", 1,
+	// Use SourceRegistry for built-in sources
+	registry := NewSourceRegistry(logger)
+	registry.Register(moby.NewSourceProvider(mobyReader))
+	registry.Register(cefrj.NewSourceProvider(cefrjReader))
+
+	stages := registry.BuildStages(map[string][]Processor{
+		"discovery": {
 			NewWikidataProcessor(wikidataReader, logger),
 			NewCategoryInferProcessor(),
-		),
-		NewStage("lexical", 2,
-			NewECDICTProcessor(ecdictReader),
-			NewMobyProcessor(mobyReader),
-		),
-		NewStage("relational", 3,
-			NewConceptNetProcessor(conceptnetReader),
+		},
+		"relational": {
 			NewWikidataRelationProcessor(wikidataReader),
-			NewWordNetProcessor(wordnetReader),
-		),
-		NewStage("intellectual", 4,
+		},
+		"intellectual": {
 			NewSenseMappingProcessor(llmProvider, logger),
 			NewEnrichmentProcessor(llmProvider, logger),
 			NewScoringProcessor(llmProvider, logger),
-		),
-		NewStage("synthesis", 5,
+		},
+		"synthesis": {
 			NewLemmaSnapshotProcessor(),
-		),
-	}
+		},
+	})
 
 	p := NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, logger)
 	return &qualityHarness{pipeline: p, jobRepo: jobRepo}
@@ -439,7 +429,7 @@ func requirePipelineSources(t *testing.T, cfg *config.Config, logger *slog.Logge
 	t.Helper()
 
 	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	err := mgr.EnsureAvailable(context.Background(), false, "conceptnet", "ecdict", "wordnet", "moby", "wikidata")
+	err := mgr.EnsureAvailable(context.Background(), false, "wikidata", "moby", "cefrj")
 	if err != nil {
 		t.Skipf("pipeline quality integration requires local data sources under %s: %v", cfg.Pipeline.DataDir, err)
 	}
