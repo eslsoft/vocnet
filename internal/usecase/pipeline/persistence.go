@@ -73,7 +73,29 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 			return fmt.Errorf("resolve relation IDs: %w", err)
 		}
 		relations := deduplicateRelations(result.Relations)
-		relations, err := p.filterExistingUniqueRelations(ctx, relations)
+
+		// Filter out relations with unresolved SourceLexemeID
+		validRelations := make([]*entity.SemanticRelation, 0, len(relations))
+		skippedCount := 0
+		for _, rel := range relations {
+			if rel.SourceLexemeID == 0 {
+				skippedCount++
+				p.logger.Debug("skipping relation with unresolved source lexeme",
+					"source_external_id", rel.SourceExternalID,
+					"target_term", rel.TargetTerm,
+					"relation_type", rel.RelationType,
+					"provider", rel.Provider)
+				continue
+			}
+			validRelations = append(validRelations, rel)
+		}
+		if skippedCount > 0 {
+			p.logger.Warn("skipped relations with unresolved source lexemes",
+				"skipped_count", skippedCount,
+				"total_count", len(relations))
+		}
+
+		relations, err := p.filterExistingUniqueRelations(ctx, validRelations)
 		if err != nil {
 			return fmt.Errorf("filter existing relations: %w", err)
 		}
@@ -267,13 +289,19 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 			if _, err := p.updateLexeme(ctx, existing[0], newLex); err != nil {
 				return err
 			}
-		} else if newLex.ID == 0 {
+		} else if newLex.ID == 0 && newLex.ExternalID != "" {
+			// Only create new lexemes if they have ExternalID (from Wikidata)
 			created, err := p.lexemeRepo.Create(ctx, newLex)
 			if err != nil {
 				return fmt.Errorf("create lexeme %s: %w", newLex.ExternalID, err)
 			}
 			existingByExtID[created.ExternalID] = created
 			p.logger.Info("lexeme created", "lexeme_id", created.ID, "external_id", created.ExternalID)
+		} else if newLex.ExternalID == "" {
+			// Lexemes without ExternalID (from contrib sources) can only enrich existing lexemes
+			// If no existing lexeme to enrich, skip this lexeme
+			p.logger.Debug("skipping lexeme without ExternalID - no existing lexeme to enrich",
+				"provider", "contrib", "pos", newLex.PartOfSpeech)
 		}
 	}
 
