@@ -88,8 +88,18 @@ func (fe *FragmentEvaluator) evaluateProvider(pctx *PipelineContext, provider st
 		if lexeme == nil {
 			continue
 		}
-		// Only evaluate lexemes from this provider
-		// (We need to add provider tracking to Lexeme entity)
+		// Only evaluate lexemes if at least one sense came from this provider
+		fromProvider := false
+		for _, s := range lexeme.Senses {
+			if s.Provider == provider {
+				fromProvider = true
+				break
+			}
+		}
+		if !fromProvider {
+			continue
+		}
+
 		key := fmt.Sprintf("lexeme:%s:%s", lexeme.Language, lexeme.PartOfSpeech)
 		score := fe.scorer.ScoreLexeme(lexeme, provider)
 		evaluated.Fragments[key] = &FieldFragment{
@@ -109,19 +119,31 @@ func (fe *FragmentEvaluator) evaluateProvider(pctx *PipelineContext, provider st
 		surface := form.Surface
 
 		// Evaluate phonetics
-		if len(form.Phonetics) > 0 {
+		hasProviderPhonetics := false
+		var providerPhonetics []entity.Phonetic
+		for _, ph := range form.Phonetics {
+			if ph.Provider == provider {
+				hasProviderPhonetics = true
+				providerPhonetics = append(providerPhonetics, ph)
+			}
+		}
+
+		if hasProviderPhonetics {
 			key := fmt.Sprintf("form:%s:phonetics", surface)
 			score := fe.scorer.ScoreForm(form, provider)
 			evaluated.Fragments[key] = &FieldFragment{
 				Type:     "form.phonetics",
-				Data:     form.Phonetics,
+				Data:     providerPhonetics,
 				Score:    score,
 				Provider: provider,
 			}
 		}
 
-		// Evaluate syllables
+		// Evaluate syllables (check if form itself came from this provider if we had a field,
+		// but since it's shared, we use syllables presence as a hint if we can't be sure)
 		if len(form.Syllables) > 0 {
+			// Note: Syllables currently don't have a per-field provider,
+			// so we still have a bit of a legacy "hint" here, but phonetics are now precise.
 			key := fmt.Sprintf("form:%s:syllables", surface)
 			score := fe.scorer.ScoreForm(form, provider)
 			evaluated.Fragments[key] = &FieldFragment{
@@ -131,62 +153,14 @@ func (fe *FragmentEvaluator) evaluateProvider(pctx *PipelineContext, provider st
 				Provider: provider,
 			}
 		}
-
-		// Evaluate form type
-		if form.FormType != entity.FormTypeUnspecified {
-			key := fmt.Sprintf("form:%s:type", surface)
-			score := fe.scorer.ScoreForm(form, provider)
-			evaluated.Fragments[key] = &FieldFragment{
-				Type:     "form.type",
-				Data:     form.FormType,
-				Score:    score,
-				Provider: provider,
-			}
-		}
-	}
-
-	// Evaluate lemma metadata
-	if pctx.Lemma != nil {
-		if pctx.Lemma.Level != "" {
-			key := "metadata:level"
-			score := fe.scorer.ScoreLemmaField("level", pctx.Lemma.Level, provider)
-			evaluated.Fragments[key] = &FieldFragment{
-				Type:     "metadata.level",
-				Data:     pctx.Lemma.Level,
-				Score:    score,
-				Provider: provider,
-			}
-		}
-
-		if len(pctx.Lemma.Frequencies) > 0 {
-			key := "metadata:frequencies"
-			score := fe.scorer.ScoreLemmaField("frequencies", pctx.Lemma.Frequencies, provider)
-			evaluated.Fragments[key] = &FieldFragment{
-				Type:     "metadata.frequencies",
-				Data:     pctx.Lemma.Frequencies,
-				Score:    score,
-				Provider: provider,
-			}
-		}
-
-		if len(pctx.Lemma.Syllables) > 0 {
-			key := "metadata:syllables"
-			score := fe.scorer.ScoreLemmaField("syllables", pctx.Lemma.Syllables, provider)
-			evaluated.Fragments[key] = &FieldFragment{
-				Type:     "metadata.syllables",
-				Data:     pctx.Lemma.Syllables,
-				Score:    score,
-				Provider: provider,
-			}
-		}
 	}
 
 	// Evaluate relations
 	for _, relation := range pctx.Relations {
-		if relation == nil {
+		if relation == nil || relation.Provider != provider {
 			continue
 		}
-		// Relations are already deduplicated, so use unique key
+		// Relations are already deduplicated, and now we only score those belonging to the provider
 		key := fmt.Sprintf("relation:%s:%s:%s", relation.RelationType, relation.TargetRef, relation.Provider)
 		score := fe.scorer.ScoreRelation(relation)
 		evaluated.Fragments[key] = &FieldFragment{

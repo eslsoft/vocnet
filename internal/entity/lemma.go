@@ -42,6 +42,7 @@ type Frequency struct {
 
 // Phonetic stores IPA/dialect pairs for surfaced forms.
 type Phonetic struct {
-	IPA     string `json:"ipa"`
-	Dialect string `json:"dialect,omitempty"`
+	IPA      string `json:"ipa"`
+	Dialect  string `json:"dialect,omitempty"`
+	Provider string `json:"provider,omitempty"`
 }

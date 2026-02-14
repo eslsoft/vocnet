@@ -72,6 +72,7 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 				senses = append(senses, entity.LexemeSense{
 					Language: entity.ParseLanguage(sLang),
 					Gloss:    gloss,
+					Provider: "wikidata",
 				})
 			}
 		}
@@ -90,8 +91,9 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *PipelineContext) 
 					dialect = defaultDialect(lang)
 				}
 				phonetics = append(phonetics, entity.Phonetic{
-					IPA:     ph.IPA,
-					Dialect: dialect,
+					IPA:      ph.IPA,
+					Dialect:  dialect,
+					Provider: "wikidata",
 				})
 			}
 

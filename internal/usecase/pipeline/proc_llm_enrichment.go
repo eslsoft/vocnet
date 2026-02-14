@@ -88,9 +88,14 @@ Always respond with valid JSON only.`,
 }
 
 type dataGaps struct {
-	IncompleteLexemes []*entity.Lexeme          // Lexemes missing senses/gloss/examples
-	UnmappedRelations []*entity.SemanticRelation // Relations with SenseMapped=false
-	UnscoredRelations []*entity.SemanticRelation // Relations without quality scores
+	IncompleteLexemes []*entity.Lexeme           // Lexemes missing senses/gloss/examples
+	UnmappedRelations []relationGap              // Relations with SenseMapped=false
+	UnscoredRelations []relationGap              // Relations without quality scores
+}
+
+type relationGap struct {
+	Index    int // Global index in pctx.Relations
+	Relation *entity.SemanticRelation
 }
 
 func (g *dataGaps) isEmpty() bool {
@@ -110,13 +115,15 @@ func (p *LLMEnrichmentProcessor) analyzeDataGaps(pctx *PipelineContext) *dataGap
 	}
 
 	// Check relation mapping and scoring
-	for _, rel := range pctx.Relations {
-		if !rel.SenseMapped {
-			gaps.UnmappedRelations = append(gaps.UnmappedRelations, rel)
+	for i, rel := range pctx.Relations {
+		needsMapping := !rel.SenseMapped
+		needsScoring := rel.Strength == 0 || rel.Provider == "conceptnet"
+
+		if needsMapping {
+			gaps.UnmappedRelations = append(gaps.UnmappedRelations, relationGap{Index: i, Relation: rel})
 		}
-		if rel.Strength == 0 || rel.Provider == "conceptnet" {
-			// ConceptNet strengths are normalized weights, might need LLM re-scoring
-			gaps.UnscoredRelations = append(gaps.UnscoredRelations, rel)
+		if needsScoring {
+			gaps.UnscoredRelations = append(gaps.UnscoredRelations, relationGap{Index: i, Relation: rel})
 		}
 	}
 
@@ -162,7 +169,7 @@ func (p *LLMEnrichmentProcessor) buildEnrichmentPrompt(pctx *PipelineContext, ga
 	}
 
 	type relationData struct {
-		RelationID   string `json:"relation_id"` // Index in array
+		RelationID   string `json:"relation_id"` // Global index
 		RelationType string `json:"relation_type"`
 		TargetTerm   string `json:"target_term"`
 		Provider     string `json:"provider"`
@@ -212,12 +219,12 @@ Instructions:
 		lexemeSummaryJSON, _ := json.MarshalIndent(lexemeSummary, "", "  ")
 
 		relations := make([]relationData, 0, len(gaps.UnmappedRelations))
-		for i, rel := range gaps.UnmappedRelations {
+		for _, gap := range gaps.UnmappedRelations {
 			relations = append(relations, relationData{
-				RelationID:   fmt.Sprintf("%d", i),
-				RelationType: rel.RelationType,
-				TargetTerm:   rel.TargetTerm,
-				Provider:     rel.Provider,
+				RelationID:   fmt.Sprintf("%d", gap.Index),
+				RelationType: gap.Relation.RelationType,
+				TargetTerm:   gap.Relation.TargetTerm,
+				Provider:     gap.Relation.Provider,
 			})
 		}
 		relationsJSON, _ := json.MarshalIndent(relations, "", "  ")
@@ -239,16 +246,16 @@ Instructions:
 	// Task 3: Relation scoring
 	if len(gaps.UnscoredRelations) > 0 {
 		relations := make([]relationData, 0, len(gaps.UnscoredRelations))
-		for i, rel := range gaps.UnscoredRelations {
+		for _, gap := range gaps.UnscoredRelations {
 			strengthStr := ""
-			if rel.Strength > 0 {
-				strengthStr = fmt.Sprintf("%.2f", rel.Strength)
+			if gap.Relation.Strength > 0 {
+				strengthStr = fmt.Sprintf("%.2f", gap.Relation.Strength)
 			}
 			relations = append(relations, relationData{
-				RelationID:   fmt.Sprintf("%d", i),
-				RelationType: rel.RelationType,
-				TargetTerm:   rel.TargetTerm,
-				Provider:     rel.Provider,
+				RelationID:   fmt.Sprintf("%d", gap.Index),
+				RelationType: gap.Relation.RelationType,
+				TargetTerm:   gap.Relation.TargetTerm,
+				Provider:     gap.Relation.Provider,
 				Strength:     strengthStr,
 			})
 		}
@@ -370,6 +377,10 @@ func (p *LLMEnrichmentProcessor) accumulateLLMData(pctx *PipelineContext, result
 			lex.SenseGloss = enriched.SenseGloss
 		}
 		if len(enriched.Senses) > 0 {
+			// Mark LLM as provider for new senses
+			for i := range enriched.Senses {
+				enriched.Senses[i].Provider = "llm"
+			}
 			lex.Senses = p.mergeSenses(lex.Senses, enriched.Senses)
 		}
 	}
@@ -396,6 +407,10 @@ func (p *LLMEnrichmentProcessor) accumulateLLMData(pctx *PipelineContext, result
 				strength = 1
 			}
 			pctx.Relations[idx].Strength = strength
+			// If original was conceptnet, we mark it as re-scored by LLM
+			if pctx.Relations[idx].Provider == "conceptnet" {
+				pctx.Relations[idx].Provider = "llm" // Upgrade trust
+			}
 		}
 	}
 }

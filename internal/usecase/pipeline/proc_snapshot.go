@@ -33,7 +33,7 @@ func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *PipelineCont
 				Language:    s.Language.Code(),
 				Gloss:       s.Gloss,
 				Examples:    extractExampleTexts(s.Examples),
-				Provider:    "wikidata",
+				Provider:    s.Provider,
 				TrustWeight: 0.8,
 			})
 		}

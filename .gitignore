@@ -67,3 +67,7 @@ docker-compose.override.yml
 # backup
 *.jsonl
 *.jsonl.gz
+
+
+# python
+__pycache__/

@@ -54,6 +54,18 @@ func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *PipelineCont
 		return &ProcessResult{Status: ProcessStatusNoData}, nil
 	}
 
+	// Ensure provider is set on all fragments
+	for _, lex := range result.Lexemes {
+		for i := range lex.Senses {
+			lex.Senses[i].Provider = p.provider
+		}
+	}
+	for _, f := range result.Forms {
+		for i := range f.Phonetics {
+			f.Phonetics[i].Provider = p.provider
+		}
+	}
+
 	pr := sourceResultToProcessResult(result)
 	// Attach provider name to ProcessResult for evaluator
 	pr.Provider = p.provider

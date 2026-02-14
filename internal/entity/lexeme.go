@@ -34,6 +34,7 @@ type LexemeSense struct {
 	Language Language       `json:"language"`
 	Gloss    string         `json:"gloss"`
 	Examples []SenseExample `json:"examples,omitempty"`
+	Provider string         `json:"provider,omitempty"`
 }
 
 // SenseExample illustrates a particular sense.
