@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 )
 
@@ -25,7 +25,7 @@ func NewLemmaSnapshotProcessor() *LemmaSnapshotProcessor {
 
 func (p *LemmaSnapshotProcessor) Name() string { return "snapshot" }
 
-func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *engine.PipelineContext) (*scoring.ProcessResult, error) {
+func (p *LemmaSnapshotProcessor) Process(ctx context.Context, pctx *pipeline.PipelineContext) (*scoring.ProcessResult, error) {
 	// Build snapshot lexemes from context.
 	snapshotLexemes := make([]entity.LemmaSnapshotLexeme, 0, len(pctx.Lexemes))
 	for _, lex := range pctx.Lexemes {
@@ -150,7 +150,7 @@ func extractExampleTexts(examples []entity.SenseExample) []string {
 	return texts
 }
 
-func collectSnapshotForms(pctx *engine.PipelineContext) []entity.LemmaSnapshotForm {
+func collectSnapshotForms(pctx *pipeline.PipelineContext) []entity.LemmaSnapshotForm {
 	if pctx == nil {
 		return nil
 	}
@@ -217,7 +217,7 @@ func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm 
 
 // findLemmaSyllables derives lemma-level syllables from pctx.Forms.
 // It looks for the form whose surface matches the lemma surface (case-insensitive).
-func findLemmaSyllables(pctx *engine.PipelineContext) []string {
+func findLemmaSyllables(pctx *pipeline.PipelineContext) []string {
 	if pctx == nil || pctx.Lemma == nil {
 		return nil
 	}

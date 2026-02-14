@@ -7,7 +7,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/util"
 )
 
@@ -279,7 +279,7 @@ func convertProviderLexeme(lex provider.WikidataLexeme, term string, lang entity
 }
 
 // buildRelationLookupTerms builds lookup terms for relation discovery.
-func buildRelationLookupTerms(pctx *engine.PipelineContext) []string {
+func buildRelationLookupTerms(pctx *pipeline.PipelineContext) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0, 8)
 	add := func(s string) {

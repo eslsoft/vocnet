@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +16,7 @@ func TestFragmentEvaluator_EvaluatesLemmaUpdate(t *testing.T) {
 	evaluator := NewFragmentEvaluator(scorer, testLogger())
 
 	// Create pipeline context with ProcessResults containing LemmaUpdate
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		ProcessResults: []*scoring.ProcessResult{
 			{
 				Provider: "cefrj",
@@ -79,7 +79,7 @@ func TestFragmentEvaluator_IgnoresEmptyLemmaUpdate(t *testing.T) {
 	scorer := scoring.NewRuleBasedScorer()
 	evaluator := NewFragmentEvaluator(scorer, testLogger())
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		ProcessResults: []*scoring.ProcessResult{
 			{
 				Provider:    "cefrj",
@@ -101,7 +101,7 @@ func TestFragmentEvaluator_NoBlindEvaluation(t *testing.T) {
 	scorer := scoring.NewRuleBasedScorer()
 	fe := NewFragmentEvaluator(scorer, testLogger())
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term: "run",
 		Evidence: []*entity.RawEvidence{
 			{Provider: "wikidata"},

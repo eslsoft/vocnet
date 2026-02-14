@@ -6,7 +6,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,7 +54,7 @@ func TestWikidataProcessor_Process_ExecutesWhenLexemesExist(t *testing.T) {
 		},
 	}, testLogger())
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term:     "mission",
 		Language: entity.LanguageEnglish,
 		Lemma:    &entity.Lemma{ID: 1, Surface: "mission"},
@@ -77,7 +77,7 @@ func TestWikidataProcessor_Process_RejectsWhenNoLexeme(t *testing.T) {
 		},
 	}, testLogger())
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term:     "mission",
 		Language: entity.LanguageEnglish,
 		Lemma:    &entity.Lemma{ID: 1, Surface: "mission"},
@@ -102,7 +102,7 @@ func TestWikidataProcessor_Process_RejectsLowConfidenceAmbiguousMatch(t *testing
 		},
 	}, testLogger())
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term:     "edgecase",
 		Language: entity.LanguageEnglish,
 		Lemma:    &entity.Lemma{ID: 1, Surface: "edgecase"},
@@ -127,7 +127,7 @@ func TestWikidataProcessor_Process_FailsOnUnknownWikidataPOSQID(t *testing.T) {
 		},
 	}, testLogger())
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term:     "edgecase",
 		Language: entity.LanguageEnglish,
 		Lemma:    &entity.Lemma{ID: 1, Surface: "edgecase"},
@@ -155,7 +155,7 @@ func TestWikidataProcessor_Process_BuildsRelations(t *testing.T) {
 		},
 	}, testLogger())
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term:     "bank",
 		Language: entity.LanguageEnglish,
 		Lemma:    &entity.Lemma{ID: 1, Surface: "bank"},

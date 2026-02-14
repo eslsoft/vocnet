@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 )
 
 func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) {
 	p := NewLemmaSnapshotProcessor()
 
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term:     "favourite",
 		Language: entity.LanguageEnglish,
 		Lemma: &entity.Lemma{

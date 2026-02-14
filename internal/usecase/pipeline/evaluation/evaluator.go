@@ -6,7 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 )
 
@@ -30,7 +30,7 @@ func (fe *FragmentEvaluator) Name() string {
 }
 
 // Process evaluates all fragments in the pipeline context.
-func (fe *FragmentEvaluator) Process(ctx context.Context, pctx *engine.PipelineContext) (*scoring.ProcessResult, error) {
+func (fe *FragmentEvaluator) Process(ctx context.Context, pctx *pipeline.PipelineContext) (*scoring.ProcessResult, error) {
 	// Group evidence by provider
 	evidenceByProvider := make(map[string][]*entity.RawEvidence)
 	for _, ev := range pctx.Evidence {
@@ -76,7 +76,7 @@ func (fe *FragmentEvaluator) Process(ctx context.Context, pctx *engine.PipelineC
 }
 
 // evaluateProvider evaluates all fragments from a single provider.
-func (fe *FragmentEvaluator) evaluateProvider(pctx *engine.PipelineContext, provider string) *scoring.EvaluatedFragments {
+func (fe *FragmentEvaluator) evaluateProvider(pctx *pipeline.PipelineContext, provider string) *scoring.EvaluatedFragments {
 	evaluated := &scoring.EvaluatedFragments{
 		Provider:  provider,
 		Fragments: make(map[string]*scoring.FieldFragment),
@@ -178,7 +178,7 @@ func (fe *FragmentEvaluator) evaluateProvider(pctx *engine.PipelineContext, prov
 
 // evaluateLemmaUpdates extracts and evaluates metadata fields from processed results
 // that originated from this provider (CEFR levels, frequencies, syllables).
-func (fe *FragmentEvaluator) evaluateLemmaUpdates(pctx *engine.PipelineContext, provider string, evaluated *scoring.EvaluatedFragments) {
+func (fe *FragmentEvaluator) evaluateLemmaUpdates(pctx *pipeline.PipelineContext, provider string, evaluated *scoring.EvaluatedFragments) {
 	// Look through all process results to find LemmaUpdates from this provider
 	for _, result := range pctx.ProcessResults {
 		if result.Provider != provider || result.LemmaUpdate == nil {

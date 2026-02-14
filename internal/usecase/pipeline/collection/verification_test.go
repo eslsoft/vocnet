@@ -8,7 +8,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +66,7 @@ func TestWikidataProcessor_SetsProvider(t *testing.T) {
 	}
 
 	proc := NewWikidataProcessor(mockWiki, testLogger())
-	pctx := &engine.PipelineContext{Term: "dog", Language: entity.LanguageEnglish}
+	pctx := &pipeline.PipelineContext{Term: "dog", Language: entity.LanguageEnglish}
 
 	result, err := proc.Process(context.Background(), pctx)
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func (m *mockLLMProvider) Complete(ctx context.Context, req *llm.CompletionReque
 
 func TestLLMEnrichmentProcessor_CorrectMapping(t *testing.T) {
 	// Setup: context with 2 relations, but only the 2nd one needs mapping (index 1)
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term: "run",
 		Lexemes: []*entity.Lexeme{
 			{ExternalID: "L1", PartOfSpeech: entity.PartOfSpeechNoun, SenseGloss: "movement"},

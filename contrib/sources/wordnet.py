@@ -226,7 +226,7 @@ class WordNetSource:
 
         evidence = {
             "provider": "wordnet",
-            "phase": 3,  # relational
+            "phase": "collection",  # relational
             "content": {
                 "word": term,
                 "synsets_found": len(synsets),

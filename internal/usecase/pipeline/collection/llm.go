@@ -9,7 +9,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 )
 
@@ -27,9 +27,9 @@ func NewLLMEnrichmentProcessor(provider llm.Provider, logger *slog.Logger) *LLME
 
 func (p *LLMEnrichmentProcessor) Name() string { return "llm_enrichment" }
 
-func (p *LLMEnrichmentProcessor) Process(ctx context.Context, pctx *engine.PipelineContext) (*scoring.ProcessResult, error) {
+func (p *LLMEnrichmentProcessor) Process(ctx context.Context, pctx *pipeline.PipelineContext) (*scoring.ProcessResult, error) {
 	if p.llm == nil {
-		return nil, &engine.ErrProcessorSkipped{Reason: "llm not configured"}
+		return nil, &pipeline.ErrProcessorSkipped{Reason: "llm not configured"}
 	}
 
 	// Analyze what's missing or incomplete
@@ -106,7 +106,7 @@ func (g *dataGaps) isEmpty() bool {
 		len(g.UnscoredRelations) == 0
 }
 
-func (p *LLMEnrichmentProcessor) analyzeDataGaps(pctx *engine.PipelineContext) *dataGaps {
+func (p *LLMEnrichmentProcessor) analyzeDataGaps(pctx *pipeline.PipelineContext) *dataGaps {
 	gaps := &dataGaps{}
 
 	// Check lexeme completeness
@@ -162,7 +162,7 @@ func (p *LLMEnrichmentProcessor) needsEnrichment(lex *entity.Lexeme) bool {
 	return false
 }
 
-func (p *LLMEnrichmentProcessor) buildEnrichmentPrompt(pctx *engine.PipelineContext, gaps *dataGaps) string {
+func (p *LLMEnrichmentProcessor) buildEnrichmentPrompt(pctx *pipeline.PipelineContext, gaps *dataGaps) string {
 	type lexemeData struct {
 		LexemeID   string               `json:"lexeme_id"`
 		POS        string               `json:"pos"`
@@ -342,7 +342,7 @@ func (p *LLMEnrichmentProcessor) convertToEvidence(
 	evidence := []*entity.RawEvidence{
 		{
 			Provider: "llm",
-			Phase:    string(engine.PhaseCollection),
+			Phase:    string(pipeline.PhaseCollection),
 			Content: map[string]any{
 				"processor":            "llm_enrichment",
 				"term":                 term,
@@ -361,7 +361,7 @@ func (p *LLMEnrichmentProcessor) convertToEvidence(
 	return evidence
 }
 
-func (p *LLMEnrichmentProcessor) accumulateLLMData(pctx *engine.PipelineContext, result *llmEnrichmentResponse) {
+func (p *LLMEnrichmentProcessor) accumulateLLMData(pctx *pipeline.PipelineContext, result *llmEnrichmentResponse) {
 	// 1. Add enriched lexemes
 	enrichedByID := make(map[string]enrichedLexeme)
 	for _, e := range result.Lexemes {

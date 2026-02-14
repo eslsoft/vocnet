@@ -8,7 +8,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 )
 
@@ -38,9 +38,9 @@ func (p *GenericSourceProcessor) Name() string {
 	return p.provider
 }
 
-func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *engine.PipelineContext) (*scoring.ProcessResult, error) {
+func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *pipeline.PipelineContext) (*scoring.ProcessResult, error) {
 	if p.source == nil {
-		return nil, &engine.ErrProcessorSkipped{Reason: p.Name() + " not available"}
+		return nil, &pipeline.ErrProcessorSkipped{Reason: p.Name() + " not available"}
 	}
 
 	query := repository.SourceQuery{

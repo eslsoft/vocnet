@@ -245,7 +245,7 @@ class ECDICTSource:
         # Evidence
         evidence = {
             "provider": "ecdict",
-            "phase": 2,  # lexical
+            "phase": "collection",  # lexical
             "content": {
                 "word": entry["word"],
                 "phonetic": entry["phonetic"],

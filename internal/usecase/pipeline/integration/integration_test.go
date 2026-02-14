@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 )
 
@@ -117,7 +117,7 @@ func TestIntegrationProcessor_NoEmptyFormType(t *testing.T) {
 	ip := NewIntegrationProcessor(logger)
 
 	// Create a context with evaluated fragments but no existing forms
-	pctx := &engine.PipelineContext{
+	pctx := &pipeline.PipelineContext{
 		Term:     "test",
 		Language: entity.LanguageEnglish,
 		EvaluatedFragments: map[string][]*scoring.FieldFragment{

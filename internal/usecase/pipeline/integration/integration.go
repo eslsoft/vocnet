@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 )
 
@@ -38,7 +38,7 @@ func (ip *IntegrationProcessor) Name() string {
 }
 
 // Process performs smart field-level merging based on quality scores.
-func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *engine.PipelineContext) (*scoring.ProcessResult, error) {
+func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.PipelineContext) (*scoring.ProcessResult, error) {
 	if len(pctx.EvaluatedFragments) == 0 {
 		ip.logger.Warn("no evaluated fragments to integrate")
 		return &scoring.ProcessResult{Status: scoring.ProcessStatusExecuted}, nil
@@ -148,87 +148,27 @@ func (ip *IntegrationProcessor) integrateForms(
 	existingForms []*entity.LemmaForm,
 	provenance map[string]*DataProvenance,
 ) []*entity.LemmaForm {
-	// Build index of existing forms by surface for quick lookup
-	existingBySurface := make(map[string]*entity.LemmaForm)
-	for _, f := range existingForms {
-		if f == nil {
-			continue
-		}
-		// Use the first form found for each surface (preserve FormType from original)
-		if _, exists := existingBySurface[f.Surface]; !exists {
-			existingBySurface[f.Surface] = f
-		}
-	}
-
-	// Group form fragments by surface
+	existingBySurface := ip.indexExistingForms(existingForms)
 	formBySurface := make(map[string]*entity.LemmaForm)
 
 	for key, candidates := range fragments {
-		if len(candidates) == 0 {
+		if !isFormFragment(candidates) {
 			continue
 		}
 
-		// Only process form-related fragments
-		if candidates[0].Type != "form.phonetics" &&
-			candidates[0].Type != "form.syllables" &&
-			candidates[0].Type != "form.type" {
-			continue
-		}
-
-		// Sort by score descending
 		sort.Slice(candidates, func(i, j int) bool {
 			return candidates[i].Score.Score > candidates[j].Score.Score
 		})
 
 		winner := candidates[0]
-
-		// Extract surface from key (e.g., "form:run:phonetics" -> "run")
-		// Simplified key parsing
 		surface := extractSurfaceFromKey(key)
 		if surface == "" {
 			continue
 		}
 
-		// Ensure form exists - prefer existing form to preserve FormType
-		if _, exists := formBySurface[surface]; !exists {
-			if existing, ok := existingBySurface[surface]; ok {
-				// Clone existing form to preserve FormType, IsIrregular, etc.
-				formBySurface[surface] = &entity.LemmaForm{
-					Surface:     existing.Surface,
-					Normalized:  existing.Normalized,
-					FormType:    existing.FormType,
-					IsIrregular: existing.IsIrregular,
-					Phonetics:   existing.Phonetics,
-					Syllables:   existing.Syllables,
-				}
-			} else {
-				// No existing form - create new with default FormType LEMMA
-				formBySurface[surface] = &entity.LemmaForm{
-					Surface:  surface,
-					FormType: entity.FormTypeLemma,
-				}
-			}
-		}
+		form := ip.ensureForm(formBySurface, existingBySurface, surface)
+		ip.applyFormFragment(form, winner)
 
-		form := formBySurface[surface]
-
-		// Apply field-specific data
-		switch candidates[0].Type {
-		case "form.phonetics":
-			if phonetics, ok := winner.Data.([]entity.Phonetic); ok {
-				form.Phonetics = phonetics
-			}
-		case "form.syllables":
-			if syllables, ok := winner.Data.([]string); ok {
-				form.Syllables = syllables
-			}
-		case "form.type":
-			if formType, ok := winner.Data.(entity.FormType); ok {
-				form.FormType = formType
-			}
-		}
-
-		// Record provenance
 		provenance[key] = &DataProvenance{
 			Provider:     winner.Provider,
 			Score:        winner.Score,
@@ -237,21 +177,88 @@ func (ip *IntegrationProcessor) integrateForms(
 		}
 	}
 
-	// Also include existing forms that weren't updated by fragments
-	// This ensures we don't lose forms that only had basic data (no phonetics/syllables)
-	for surface, existing := range existingBySurface {
-		if _, exists := formBySurface[surface]; !exists {
-			formBySurface[surface] = existing
-		}
-	}
+	ip.mergeMissingForms(formBySurface, existingBySurface)
 
-	// Convert map to slice
 	result := make([]*entity.LemmaForm, 0, len(formBySurface))
 	for _, form := range formBySurface {
 		result = append(result, form)
 	}
 
 	return result
+}
+
+func (ip *IntegrationProcessor) indexExistingForms(forms []*entity.LemmaForm) map[string]*entity.LemmaForm {
+	index := make(map[string]*entity.LemmaForm)
+	for _, f := range forms {
+		if f != nil {
+			if _, exists := index[f.Surface]; !exists {
+				index[f.Surface] = f
+			}
+		}
+	}
+	return index
+}
+
+func isFormFragment(candidates []*scoring.FieldFragment) bool {
+	if len(candidates) == 0 {
+		return false
+	}
+	t := candidates[0].Type
+	return t == "form.phonetics" || t == "form.syllables" || t == "form.type"
+}
+
+func (ip *IntegrationProcessor) ensureForm(
+	current map[string]*entity.LemmaForm,
+	existing map[string]*entity.LemmaForm,
+	surface string,
+) *entity.LemmaForm {
+	if form, ok := current[surface]; ok {
+		return form
+	}
+
+	var newForm *entity.LemmaForm
+	if old, ok := existing[surface]; ok {
+		newForm = &entity.LemmaForm{
+			Surface:     old.Surface,
+			Normalized:  old.Normalized,
+			FormType:    old.FormType,
+			IsIrregular: old.IsIrregular,
+			Phonetics:   old.Phonetics,
+			Syllables:   old.Syllables,
+		}
+	} else {
+		newForm = &entity.LemmaForm{
+			Surface:  surface,
+			FormType: entity.FormTypeLemma,
+		}
+	}
+	current[surface] = newForm
+	return newForm
+}
+
+func (ip *IntegrationProcessor) applyFormFragment(form *entity.LemmaForm, winner *scoring.FieldFragment) {
+	switch winner.Type {
+	case "form.phonetics":
+		if phonetics, ok := winner.Data.([]entity.Phonetic); ok {
+			form.Phonetics = phonetics
+		}
+	case "form.syllables":
+		if syllables, ok := winner.Data.([]string); ok {
+			form.Syllables = syllables
+		}
+	case "form.type":
+		if formType, ok := winner.Data.(entity.FormType); ok {
+			form.FormType = formType
+		}
+	}
+}
+
+func (ip *IntegrationProcessor) mergeMissingForms(current map[string]*entity.LemmaForm, existing map[string]*entity.LemmaForm) {
+	for surface, form := range existing {
+		if _, exists := current[surface]; !exists {
+			current[surface] = form
+		}
+	}
 }
 
 // integrateLemmaMetadata merges lemma-level metadata.

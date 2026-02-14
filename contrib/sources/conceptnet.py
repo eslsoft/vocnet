@@ -174,7 +174,7 @@ class ConceptNetSource:
 
         evidence = {
             "provider": "conceptnet",
-            "phase": 3,  # relational
+            "phase": "collection",  # relational
             "content": {
                 "source": "conceptnet-indexed",
                 "term": term,

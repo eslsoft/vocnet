@@ -9,7 +9,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/entity"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
 )
 
@@ -31,9 +31,9 @@ func NewWikidataProcessor(wikidata provider.WikidataProvider, logger *slog.Logge
 
 func (p *WikidataProcessor) Name() string { return "wikidata" }
 
-func (p *WikidataProcessor) Process(ctx context.Context, pctx *engine.PipelineContext) (*scoring.ProcessResult, error) {
+func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.PipelineContext) (*scoring.ProcessResult, error) {
 	if p.wikidata == nil {
-		return nil, &engine.ErrProcessorSkipped{Reason: "wikidata not available"}
+		return nil, &pipeline.ErrProcessorSkipped{Reason: "wikidata not available"}
 	}
 
 	term := pctx.Term
@@ -54,7 +54,7 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *engine.PipelineCo
 	// Create evidence
 	evidence := &entity.RawEvidence{
 		Provider:      "wikidata",
-		Phase:         string(engine.PhaseCollection),
+		Phase:         string(pipeline.PhaseCollection),
 		Content:       rawResp,
 		SchemaVersion: "wikidata-2025",
 		FetchedAt:     time.Now(),
@@ -112,7 +112,7 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *engine.PipelineCo
 }
 
 // buildRelations discovers relations between lexemes via form lookup.
-func (p *WikidataProcessor) buildRelations(ctx context.Context, pctx *engine.PipelineContext, lexemes []*entity.Lexeme) []*entity.SemanticRelation {
+func (p *WikidataProcessor) buildRelations(ctx context.Context, pctx *pipeline.PipelineContext, lexemes []*entity.Lexeme) []*entity.SemanticRelation {
 	lookup, ok := p.wikidata.(wikidataFormLookup)
 	if !ok {
 		return nil
@@ -137,7 +137,7 @@ func (p *WikidataProcessor) buildRelations(ctx context.Context, pctx *engine.Pip
 	}
 
 	// Update pctx with newly discovered lexemes and forms before building lookup terms
-	tempCtx := &engine.PipelineContext{
+	tempCtx := &pipeline.PipelineContext{
 		Term:     pctx.Term,
 		Language: pctx.Language,
 		Lexemes:  lexemes,
