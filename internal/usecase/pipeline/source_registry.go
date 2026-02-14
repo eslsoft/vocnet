@@ -24,7 +24,6 @@ func (r *SourceRegistry) Register(source repository.SourceProvider) {
 	r.logger.Info("registered source provider",
 		"name", m.Name,
 		"kind", m.Kind,
-		"stage", m.Stage,
 		"capabilities", m.Capabilities,
 		"languages", m.Languages,
 	)

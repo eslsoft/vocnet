@@ -60,7 +60,7 @@ func (fe *FragmentEvaluator) Process(ctx context.Context, pctx *pipeline.Pipelin
 		}
 	}
 
-	fe.logger.Info("fragment evaluation completed",
+	fe.logger.Debug("fragment evaluation completed",
 		"providers", len(allProviders),
 		"unique_fields", len(allFragments))
 

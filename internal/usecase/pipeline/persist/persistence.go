@@ -91,7 +91,7 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 			validRelations = append(validRelations, rel)
 		}
 		if skippedCount > 0 {
-			p.logger.Warn("skipped relations with unresolved source lexemes",
+			p.logger.Debug("skipped relations with unresolved source lexemes",
 				"skipped_count", skippedCount,
 				"total_count", len(relations))
 		}
@@ -245,7 +245,7 @@ func (p *Persistence) updateLexeme(ctx context.Context, existing, newLex *entity
 	if _, err := p.lexemeRepo.Update(ctx, enriched); err != nil {
 		return nil, fmt.Errorf("update lexeme %s: %w", newLex.ExternalID, err)
 	}
-	p.logger.Info("lexeme updated", "lexeme_id", enriched.ID, "external_id", enriched.ExternalID)
+	p.logger.Debug("lexeme updated", "lexeme_id", enriched.ID, "external_id", enriched.ExternalID)
 	return enriched, nil
 }
 
@@ -305,7 +305,7 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 				return fmt.Errorf("create lexeme %s: %w", newLex.ExternalID, err)
 			}
 			existingByExtID[created.ExternalID] = created
-			p.logger.Info("lexeme created", "lexeme_id", created.ID, "external_id", created.ExternalID)
+		p.logger.Debug("lexeme created", "lexeme_id", created.ID, "external_id", created.ExternalID)
 		case newLex.ExternalID == "":
 			// Lexemes without ExternalID (from contrib sources) can only enrich existing lexemes
 			// If no existing lexeme to enrich, skip this lexeme
@@ -661,7 +661,7 @@ func (p *Persistence) mapUnmappedContribRelations(relations []*entity.SemanticRe
 	}
 
 	if mapped > 0 || skipped > 0 {
-		p.logger.Info("mapped unmapped contrib relations",
+		p.logger.Debug("mapped unmapped contrib relations",
 			"mapped", mapped,
 			"skipped", skipped)
 	}

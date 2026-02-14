@@ -40,7 +40,6 @@ type InitializeResult struct {
 	Version      string   `json:"version"`
 	Languages    []string `json:"languages"`
 	Capabilities []string `json:"capabilities"`
-	Stage        string   `json:"stage"`
 }
 
 // LookupParams is the request payload for the "lookup" method.
@@ -139,6 +138,5 @@ func (r *InitializeResult) toSourceManifest() repository.SourceManifest {
 		Kind:         repository.SourceKindContrib,
 		Languages:    r.Languages,
 		Capabilities: caps,
-		Stage:        r.Stage,
 	}
 }

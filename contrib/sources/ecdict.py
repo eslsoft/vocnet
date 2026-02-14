@@ -5,9 +5,9 @@ Provides lexeme enrichment (Chinese translations, frequencies, phonetics)
 from the ECDICT SQLite database via JSON-RPC over stdio.
 
 Data source: ECDICT SQLite database (ecdict.db)
-Stage: lexical
 """
 
+import fcntl
 import hashlib
 import json
 import os
@@ -172,7 +172,6 @@ class ECDICTSource:
             "version": "1.0.0",
             "languages": ["en"],
             "capabilities": ["enrichment", "forms", "metadata"],
-            "stage": "lexical",
         }
 
     def lookup(self, params):
@@ -281,9 +280,16 @@ class ECDICTSource:
         url_hash = hashlib.sha256(ECDICT_URL.encode()).hexdigest()[:16]
         cache_file = os.path.join(self.cache_dir, f"ecdict-{url_hash}.zip")
 
-        # Download if not in cache
-        if not os.path.exists(cache_file):
-            self._download_file(ECDICT_URL, cache_file)
+        # Use file lock to prevent concurrent downloads
+        lock_file = cache_file + ".lock"
+        with open(lock_file, 'w') as lf:
+            fcntl.flock(lf, fcntl.LOCK_EX)
+            try:
+                # Re-check after acquiring lock (another process may have downloaded)
+                if not os.path.exists(cache_file):
+                    self._download_file(ECDICT_URL, cache_file)
+            finally:
+                fcntl.flock(lf, fcntl.LOCK_UN)
 
         # Extract database from zip
         os.makedirs(os.path.dirname(db_path), mode=0o755, exist_ok=True)

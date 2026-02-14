@@ -6,7 +6,6 @@ from WordNet via NLTK Python library, eliminating the need for
 manual data file downloads and parsing.
 
 Dependencies: nltk
-Stage: relational
 """
 
 import json
@@ -173,7 +172,6 @@ class WordNetSource:
             "version": "3.1.0",
             "languages": ["en"],
             "capabilities": ["relations"],
-            "stage": "relational",
         }
 
     def lookup(self, params):

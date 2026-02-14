@@ -168,7 +168,7 @@ func (p *GenericSourceProcessor) mapRelationsToContextLexemes(relations []*entit
 	}
 
 	if mapped > 0 {
-		p.logger.Info("mapped contrib relations to context lexemes",
+		p.logger.Debug("mapped contrib relations to context lexemes",
 			"provider", p.provider,
 			"mapped", mapped,
 			"skipped", skipped)

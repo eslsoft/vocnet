@@ -5,9 +5,9 @@ Provides semantic relations from the ConceptNet 5.7 SQLite index
 via JSON-RPC over stdio.
 
 Data source: ConceptNet assertions CSV + SQLite index (*.idx.db)
-Stage: relational
 """
 
+import fcntl
 import gzip
 import hashlib
 import json
@@ -107,7 +107,6 @@ class ConceptNetSource:
             "version": "5.7.0",
             "languages": ["en"],
             "capabilities": ["relations"],
-            "stage": "relational",
         }
 
     def lookup(self, params):
@@ -198,9 +197,16 @@ class ConceptNetSource:
         url_hash = hashlib.sha256(CONCEPTNET_URL.encode()).hexdigest()[:16]
         cache_file = os.path.join(self.cache_dir, f"conceptnet-{url_hash}.csv.gz")
 
-        # Download if not in cache
-        if not os.path.exists(cache_file):
-            self._download_file(CONCEPTNET_URL, cache_file)
+        # Use file lock to prevent concurrent downloads
+        lock_file = cache_file + ".lock"
+        with open(lock_file, 'w') as lf:
+            fcntl.flock(lf, fcntl.LOCK_EX)
+            try:
+                # Re-check after acquiring lock (another process may have downloaded)
+                if not os.path.exists(cache_file):
+                    self._download_file(CONCEPTNET_URL, cache_file)
+            finally:
+                fcntl.flock(lf, fcntl.LOCK_UN)
 
         # Extract CSV from gzip
         os.makedirs(os.path.dirname(csv_path), mode=0o755, exist_ok=True)

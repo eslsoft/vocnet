@@ -24,7 +24,6 @@ func (p *SourceProvider) Manifest() repository.SourceManifest {
 		Kind:         repository.SourceKindBuiltin,
 		Languages:    []string{"en"},
 		Capabilities: []repository.SourceCapability{repository.CapabilityForms},
-		Stage:        "lexical",
 	}
 }
 

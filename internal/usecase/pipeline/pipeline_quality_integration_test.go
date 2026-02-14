@@ -50,7 +50,7 @@ func TestPipelineDataQualityGates(t *testing.T) {
 	cfg := mustLoadPipelineQualityConfig(t)
 	t.Logf("[quality] configuration loaded: data_dir=%s", cfg.Pipeline.DataDir)
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	fmt.Fprintf(os.Stderr, "[quality] preparing data sources...\n")
 	requirePipelineSources(t, cfg, logger)
@@ -944,18 +944,19 @@ func loadTestContribSources(ctx context.Context, registry *pipeline.SourceRegist
 		os.Setenv("PIPELINE_DATA_DIR", absDataDir)
 	}
 
-	logger.Info("[quality] discovering contrib sources", "dir", contribDir)
+	logger.Debug("[quality] discovering contrib sources", "dir", contribDir)
 
 	entries, err := os.ReadDir(contribDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			logger.Warn("[quality] failed to read contrib sources directory", "dir", contribDir, "error", err)
 		}
-		logger.Info("[quality] no contrib sources found")
+		logger.Debug("[quality] no contrib sources found")
 		return
 	}
 
 	loadedCount := 0
+	var loadedNames []string
 	for _, entry := range entries {
 		// Skip directories and hidden files
 		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
@@ -981,7 +982,7 @@ func loadTestContribSources(ctx context.Context, registry *pipeline.SourceRegist
 			continue
 		}
 
-		logger.Info("[quality] starting contrib source", "name", entry.Name())
+		logger.Debug("[quality] starting contrib source", "name", entry.Name())
 		sourceStartTime := time.Now()
 
 		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
@@ -992,15 +993,17 @@ func loadTestContribSources(ctx context.Context, registry *pipeline.SourceRegist
 
 		registry.Register(sp)
 		loadedCount++
+		loadedNames = append(loadedNames, sp.Manifest().Name)
 		sourceElapsed := time.Since(sourceStartTime)
-		logger.Info("[quality] contrib source loaded",
+		logger.Debug("[quality] contrib source loaded",
 			"name", sp.Manifest().Name,
 			"path", execPath,
 			"took", sourceElapsed)
 	}
 
 	totalElapsed := time.Since(startTime)
-	logger.Info("[quality] contrib sources initialization complete",
-		"loaded", loadedCount,
-		"total_time", totalElapsed)
+	logger.Info("[quality] contrib sources loaded",
+		"count", loadedCount,
+		"names", strings.Join(loadedNames, ", "),
+		"took", totalElapsed)
 }

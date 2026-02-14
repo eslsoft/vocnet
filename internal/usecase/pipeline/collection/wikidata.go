@@ -95,7 +95,7 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 	// Phase 2: Build relations
 	relations := p.buildRelations(ctx, pctx, entityLexemes)
 
-	p.logger.Info("wikidata processor completed",
+	p.logger.Debug("wikidata processor completed",
 		"term", term,
 		"lexemes", len(entityLexemes),
 		"forms", len(allForms),

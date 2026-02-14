@@ -53,7 +53,7 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.Pipe
 	integratedLemmaData := ip.integrateLemmaMetadata(pctx.EvaluatedFragments, provenance)
 	integratedRelations := ip.integrateRelations(pctx.EvaluatedFragments, provenance)
 
-	ip.logger.Info("integration completed",
+	ip.logger.Debug("integration completed",
 		"lexemes", len(integratedLexemes),
 		"forms", len(integratedForms),
 		"relations", len(integratedRelations),

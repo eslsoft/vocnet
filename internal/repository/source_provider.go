@@ -32,7 +32,6 @@ type SourceManifest struct {
 	Kind         SourceKind         // builtin or contrib
 	Languages    []string           // Supported languages: ["en"], ["en", "zh"], ["*"]
 	Capabilities []SourceCapability // What this source can produce
-	Stage        string             // Pipeline stage affinity: "discovery", "lexical", "relational"
 }
 
 // SourceQuery is the standardized input for all source lookups.
