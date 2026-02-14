@@ -13,7 +13,6 @@ import (
 const (
 	wikidataLexemesURL      = "https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.bz2"
 	wikidataLexemesFilename = "lexemes.json"
-	wikidataCacheFilename   = "wikidata-lexemes.json.bz2"
 )
 
 // WikidataSource implements DataSource for Wikidata lexemes data

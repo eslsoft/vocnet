@@ -348,29 +348,6 @@ func (e *DataEvaluator) EvaluateAndMergeLemmaUpdate(
 	return &merged, decisions
 }
 
-// inferLexemeProvider attempts to infer the provider from lexeme metadata.
-func (e *DataEvaluator) inferLexemeProvider(lex *entity.Lexeme) string {
-	if lex == nil {
-		return ""
-	}
-	// ExternalID pattern matching
-	if strings.HasPrefix(lex.ExternalID, "L") {
-		return "wikidata"
-	}
-	if strings.HasPrefix(lex.ExternalID, "wn:") || strings.HasPrefix(lex.ExternalID, "synset:") {
-		return "wordnet"
-	}
-	// ECDICT lexemes have Chinese senses and no ExternalID
-	if lex.ExternalID == "" && len(lex.Senses) > 0 {
-		for _, s := range lex.Senses {
-			if s.Language == entity.LanguageChinese {
-				return "ecdict"
-			}
-		}
-	}
-	return ""
-}
-
 // inferFormProvider attempts to infer the provider from form metadata.
 // Forms with syllables likely come from Moby; forms with IPA likely from Wikidata or ECDICT.
 func (e *DataEvaluator) inferFormProvider(f *entity.LemmaForm) string {

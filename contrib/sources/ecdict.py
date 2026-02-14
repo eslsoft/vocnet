@@ -8,10 +8,16 @@ Data source: ECDICT SQLite database (ecdict.db)
 Stage: lexical
 """
 
+import hashlib
 import json
 import os
+import shutil
 import sqlite3
 import sys
+import tempfile
+import urllib.request
+import zipfile
+from pathlib import Path
 
 
 # --- POS mapping (ECDICT short tags -> vocnet PartOfSpeech) ---
@@ -129,22 +135,33 @@ def calculate_completeness(entry):
     return min(score, 100)
 
 
+ECDICT_URL = "https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip"
+ECDICT_MIN_SIZE = 10 * 1024 * 1024  # 10MB
+
+
 class ECDICTSource:
     def __init__(self):
         self.db = None
         self.data_dir = os.environ.get(
             "PIPELINE_DATA_DIR", os.environ.get("ECDICT_DATA_DIR", "./data")
         )
+        self.cache_dir = os.environ.get(
+            "PIPELINE_CACHE_DIR", os.path.join(Path.home(), ".cache", "vocnet")
+        )
 
     def initialize(self):
         db_path = os.path.join(
             self.data_dir, "datasources", "ecdict", "ecdict.db"
         )
-        if not os.path.exists(db_path):
-            raise FileNotFoundError(
-                f"ECDICT database not found: {db_path}. "
-                "Run 'vocnet pipeline source download ecdict' first."
-            )
+
+        # Auto-download if not exists
+        if not os.path.exists(db_path) or not self._verify_db(db_path):
+            print(f"ECDICT database not found, downloading...", file=sys.stderr)
+            try:
+                self._download_and_extract(db_path)
+                print(f"ECDICT database downloaded successfully", file=sys.stderr)
+            except Exception as e:
+                raise RuntimeError(f"Failed to download ECDICT database: {e}")
 
         self.db = sqlite3.connect(db_path)
         self.db.execute("PRAGMA query_only = ON")
@@ -254,6 +271,105 @@ class ECDICTSource:
             result["lemma_update"] = lemma_update
 
         return result
+
+    def _download_and_extract(self, db_path):
+        """Download and extract ECDICT database."""
+        # Prepare cache directory
+        os.makedirs(self.cache_dir, mode=0o755, exist_ok=True)
+
+        # Check cache for downloaded zip
+        url_hash = hashlib.sha256(ECDICT_URL.encode()).hexdigest()[:16]
+        cache_file = os.path.join(self.cache_dir, f"ecdict-{url_hash}.zip")
+
+        # Download if not in cache
+        if not os.path.exists(cache_file):
+            self._download_file(ECDICT_URL, cache_file)
+
+        # Extract database from zip
+        os.makedirs(os.path.dirname(db_path), mode=0o755, exist_ok=True)
+        self._extract_db_from_zip(cache_file, db_path)
+
+        # Verify downloaded database
+        if not self._verify_db(db_path):
+            raise Exception(f"Downloaded database failed verification: {db_path}")
+
+    def _download_file(self, url, dest_path):
+        """Download a file with progress reporting."""
+        with urllib.request.urlopen(url) as response:
+            total_size = int(response.headers.get('Content-Length', 0))
+            downloaded = 0
+            chunk_size = 64 * 1024  # 64KB chunks
+
+            # Use temporary file for atomic write
+            temp_fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(dest_path))
+            try:
+                with os.fdopen(temp_fd, 'wb') as temp_file:
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        temp_file.write(chunk)
+                        downloaded += len(chunk)
+
+                        # Report progress every 10MB
+                        if downloaded % (10 * 1024 * 1024) < chunk_size:
+                            percent = (downloaded / total_size * 100) if total_size else 0
+                            print(f"Download progress: {downloaded // (1024*1024)}MB / {total_size // (1024*1024)}MB ({percent:.1f}%)", file=sys.stderr)
+
+                # Atomic rename
+                os.rename(temp_path, dest_path)
+            except Exception:
+                # Cleanup temp file on any error, then re-raise
+                os.unlink(temp_path)
+                raise
+
+    def _extract_db_from_zip(self, zip_path, dest_path):
+        """Extract .db file from zip archive."""
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            # Find .db or .sqlite file in zip
+            db_files = [f for f in zf.namelist() if f.endswith(('.db', '.sqlite'))]
+            if not db_files:
+                raise Exception("No .db file found in zip archive")
+
+            # Extract first .db file found
+            db_file = db_files[0]
+
+            # Extract to temporary file then move atomically
+            temp_fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(dest_path))
+            try:
+                with os.fdopen(temp_fd, 'wb') as temp_file:
+                    with zf.open(db_file) as source:
+                        shutil.copyfileobj(source, temp_file)
+
+                os.rename(temp_path, dest_path)
+            except Exception:
+                # Cleanup temp file on any error, then re-raise
+                os.unlink(temp_path)
+                raise
+
+    def _verify_db(self, db_path):
+        """Verify database integrity."""
+        try:
+            # Check file size
+            if os.path.getsize(db_path) < ECDICT_MIN_SIZE:
+                return False
+
+            # Verify SQLite header
+            with open(db_path, 'rb') as f:
+                header = f.read(16)
+                if header != b'SQLite format 3\x00':
+                    return False
+
+            # Try to open and query
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                cursor = conn.execute("SELECT COUNT(*) FROM stardict LIMIT 1")
+                cursor.fetchone()
+                return True
+            finally:
+                conn.close()
+        except Exception:
+            return False
 
     def shutdown(self):
         if self.db:

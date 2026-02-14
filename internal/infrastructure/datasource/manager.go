@@ -48,10 +48,9 @@ func NewManager(cfg *config.Config, logger *slog.Logger, cacheDir string) *Manag
 	dataDir := cfg.Pipeline.DataDir
 	downloader := NewDownloader(cacheDir, logger)
 
-	// Register data sources
-	m.sources["conceptnet"] = NewConceptNetSource(dataDir, downloader, logger)
-	m.sources["ecdict"] = NewECDICTSource(dataDir, downloader, logger)
-	m.sources["wordnet"] = NewWordNetSource(dataDir, downloader, logger)
+	// Register Go-based data sources only
+	// Contrib sources (ecdict, conceptnet, wordnet) are managed independently
+	// and auto-download on first use
 	m.sources["moby"] = NewMobySource(dataDir, downloader, logger)
 	m.sources["wikidata"] = NewWikidataSource(dataDir, downloader, logger)
 	m.sources["cefrj"] = NewCEFRJSource(dataDir, downloader, logger)
@@ -187,12 +186,6 @@ func (m *Manager) ListSources() []string {
 // toSourceKey normalizes source name to key (lowercase)
 func toSourceKey(name string) string {
 	switch name {
-	case "ConceptNet":
-		return "conceptnet"
-	case "ECDICT":
-		return "ecdict"
-	case "WordNet":
-		return "wordnet"
 	case "Moby":
 		return "moby"
 	case "Wikidata":
