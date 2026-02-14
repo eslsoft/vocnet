@@ -48,9 +48,29 @@ func NewManager(cfg *config.Config, logger *slog.Logger, cacheDir string) *Manag
 	dataDir := cfg.Pipeline.DataDir
 	downloader := NewDownloader(cacheDir, logger)
 
-	// Register data sources
-	m.sources["conceptnet"] = NewConceptNetSource(dataDir, downloader, logger)
-	m.sources["ecdict"] = NewECDICTSource(dataDir, downloader, logger)
+	// Register contrib-based data sources (ECDICT, ConceptNet)
+	// These handle their own downloads via Python scripts
+	contribDir := cfg.Pipeline.ContribDir
+	if contribDir == "" {
+		contribDir = "contrib/sources"
+	}
+
+	m.sources["conceptnet"] = NewContribDataSource(
+		"ConceptNet",
+		contribDir+"/conceptnet",
+		dataDir,
+		downloader,
+		logger,
+	)
+	m.sources["ecdict"] = NewContribDataSource(
+		"ECDICT",
+		contribDir+"/ecdict",
+		dataDir,
+		downloader,
+		logger,
+	)
+
+	// Register built-in Go-based data sources
 	m.sources["wordnet"] = NewWordNetSource(dataDir, downloader, logger)
 	m.sources["moby"] = NewMobySource(dataDir, downloader, logger)
 	m.sources["wikidata"] = NewWikidataSource(dataDir, downloader, logger)

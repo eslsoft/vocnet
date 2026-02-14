@@ -34,7 +34,12 @@ type ProcessSourceProvider struct {
 // Additional args can be passed as well.
 func NewProcessSourceProvider(ctx context.Context, execPath string, args []string, logger *slog.Logger) (*ProcessSourceProvider, error) {
 	cmd := exec.CommandContext(ctx, execPath, args...)
+	return NewProcessSourceProviderWithCmd(ctx, cmd, logger)
+}
 
+// NewProcessSourceProviderWithCmd starts an external process using the given cmd and initializes
+// the JSON-RPC connection. This allows callers to customize environment variables and other cmd settings.
+func NewProcessSourceProviderWithCmd(ctx context.Context, cmd *exec.Cmd, logger *slog.Logger) (*ProcessSourceProvider, error) {
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("create stdin pipe: %w", err)
@@ -46,6 +51,10 @@ func NewProcessSourceProvider(ctx context.Context, execPath string, args []strin
 	}
 
 	// Capture stderr for debugging
+	execPath := cmd.Path
+	if len(cmd.Args) > 0 {
+		execPath = cmd.Args[0]
+	}
 	cmd.Stderr = &logWriter{logger: logger, name: execPath}
 
 	if err := cmd.Start(); err != nil {
@@ -193,6 +202,12 @@ func (p *ProcessSourceProvider) call(ctx context.Context, method string, params 
 	}
 
 	return nil
+}
+
+// Call invokes a JSON-RPC method on the external process.
+// This is a public wrapper around the private call method for use by data source implementations.
+func (p *ProcessSourceProvider) Call(ctx context.Context, method string, params any, result any) error {
+	return p.call(ctx, method, params, result)
 }
 
 func buildLookupParams(query repository.SourceQuery) LookupParams {
