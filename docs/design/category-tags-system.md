@@ -100,7 +100,7 @@
 
 ### 1. Wikidata 来源的分类
 
-在 `hack/dictinit/internal/dictinit/sources/wikidata/wikidata_stage.go` 中，通过 `inferPOSAndCategories()` 函数从 gloss 文本推断分类：
+在 `internal/usecase/pipeline/collection/wikidata_helpers.go` 中，通过 `inferCategoriesFromSenses()` 函数从 gloss 文本推断分类：
 
 ```go
 // 示例：识别人名
@@ -126,15 +126,15 @@ if strings.Contains(gloss, "city in") {
 
 ### 2. ECDICT 来源的分类
 
-在 `hack/dictinit/internal/dictinit/sources/ecdict/ecdict_enricher.go` 中，通过 `extractDomainMarkers()` 函数提取领域标记：
+ECDICT 作为 contrib source 通过 `contrib/sources/ecdict.py` 提供领域标记：
 
-```go
-// 从定义中提取领域标记
-// 输入: "[计][法] legal computing term"
-// 输出: domains = ["computing", "law"]
+```python
+# 从定义中提取领域标记
+# 输入: "[计][法] legal computing term"
+# 输出: domains = ["computing", "law"]
 
-// 在合并时转换为 categories
-domainCategories := []string{"domain:computing", "domain:law"}
+# 在合并时转换为 categories
+domainCategories = ["domain:computing", "domain:law"]
 ```
 
 **领域标记映射：**
@@ -312,15 +312,14 @@ SELECT * FROM words WHERE categories @> '["proper-noun", "city"]';
 ## 测试覆盖
 
 所有分类相关功能都有完整的单元测试：
-- `TestInferPOSAndCategories` - 测试 gloss 模式识别
-- `TestExtractDomainMarkers` - 测试领域标记提取
-- `TestNormalizeDomainMarker` - 测试中英文域名映射
-- `TestDeduplicateDomains` - 测试去重逻辑
-- `TestAppendUnique` - 测试唯一追加
+- `TestInferCategoriesFromSenses_PersonNames` - 测试人名识别
+- `TestInferCategoriesFromSenses_Places` - 测试地名识别
+- `TestInferCategoriesFromSenses_Time` - 测试时间相关词识别
+- `TestInferCategoriesFromSenses_Organizations` - 测试组织名识别
 
 运行测试：
 ```bash
-go test ./hack/dictinit/... -v -run "Category|Domain|Append"
+go test ./internal/usecase/pipeline/collection/... -v -run "InferCategories"
 ```
 
 ## 迁移指南

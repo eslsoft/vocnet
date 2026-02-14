@@ -23,15 +23,6 @@
 - **[Pipeline质量测试指南](guides/pipeline-quality-testing.md)** - 质量测试框架使用 ⭐
 - **[Pipeline质量架构](guides/pipeline-quality-architecture.md)** - 质量测试系统架构说明
 
-### 🔧 开发文档 (`dev/`)
-开发过程中的临时文档和状态追踪
-
-- **[重构计划](dev/REFACTOR_PLAN.md)** - 历史架构重构计划
-- **[Pipeline重构进度](dev/pipeline-refactoring-progress.md)** - 重构实施进度
-- **[质量测试摘要](dev/QUALITY_TESTING_SUMMARY.md)** - 质量测试实现总结
-- **[当前状态](dev/CURRENT_STATUS.md)** - 项目实现状态
-- **[最终状态](dev/FINAL_STATUS.md)** - 完成状态报告
-
 ---
 
 ## 🏛️ 技术架构概览
@@ -52,19 +43,20 @@
 ```
 ├── cmd/                    # 应用入口 (main)
 ├── api/
-│   ├── proto/             # Protocol Buffer 定义
-│   ├── gen/               # 生成的 gRPC / Gateway 代码
-│   └── openapi/           # 自动生成的 OpenAPI 文档
+│   └── proto/             # Protocol Buffer 定义
+├── pkg/api/               # 生成的 ConnectRPC 代码
 ├── internal/
 │   ├── entity/            # 领域实体
 │   ├── usecase/           # 用例逻辑
 │   ├── adapter/
-│   │   ├── grpc/          # gRPC 服务实现
+│   │   ├── connectrpc/    # ConnectRPC 服务实现
+│   │   ├── mapping/       # Entity ↔ Protobuf 转换
+│   │   ├── provider/      # 外部数据源适配器
 │   │   └── repository/    # 数据访问实现
 │   ├── infrastructure/
 │   │   ├── database/      # 数据库连接、事务
 │   │   ├── config/        # 配置加载
-│   │   └── server/        # gRPC 与 HTTP Server 启动
+│   │   └── server/        # HTTP/gRPC Server 启动
 │   └── mocks/             # 生成的 Mock 文件
 ├── internal/infrastructure/database/entschema/
 │                        # ent Schema 定义
@@ -79,7 +71,7 @@
 | 领域   | 技术                             | 说明                          |
 | ------ | -------------------------------- | ----------------------------- |
 | 语言   | Go (>=1.23)                      | 现代化并发、静态类型          |
-| API    | gRPC + grpc-gateway              | gRPC 为主，自动映射 HTTP/JSON |
+| API    | ConnectRPC                       | gRPC + HTTP/JSON 统一协议     |
 | 数据库 | SQLite (默认) / PostgreSQL + ent | 图式 schema & ORM 代码生成    |
 | 配置   | Viper                            | 支持多源配置与热加载          |
 | 日志   | logrus                           | 结构化日志                    |
@@ -113,21 +105,20 @@ LOG_FORMAT=json
 - 利用 ent 的 Query Builder 编写组合条件、排序及事务逻辑
 - 需要原生 SQL 时可通过 `sql.ExprP` 注入自定义表达式
 
-## gRPC 与 HTTP 网关
+## ConnectRPC 服务
 
 - `.proto` 定义存放于 `api/proto`
-- 使用 `--grpc-gateway_out` 生成 HTTP 端点
-- OpenAPI 文档生成到 `api/openapi/`
-- gRPC 服务在 `internal/adapter/grpc/` 实现
+- 生成的代码输出到 `pkg/api/`
+- ConnectRPC 服务在 `internal/adapter/connectrpc/` 实现
 
 典型服务注册（示例）：
 
 ```go
-grpcServer := grpc.NewServer()
-// userv1.RegisterUserServiceServer(grpcServer, userService)
+// ConnectRPC handler 注册
+mux := http.NewServeMux()
+path, handler := dictv1connect.NewDictServiceHandler(dictService)
+mux.Handle(path, handler)
 ```
-
-HTTP 网关通过 `RegisterXxxHandlerFromEndpoint` 绑定到同一端口或不同监听地址。
 
 ## 代码生成
 
@@ -169,7 +160,9 @@ make mocks      # 生成 gomock 接口实现
 | `api/gen`                                    | 生成的协议及网关代码     |
 | `internal/entity`                            | 领域模型与核心规则       |
 | `internal/usecase`                           | 应用用例 orchestrator    |
-| `internal/adapter/grpc`                      | gRPC 服务实现            |
+| `internal/adapter/connectrpc`                | ConnectRPC 服务实现      |
+| `internal/adapter/mapping`                   | Entity ↔ Protobuf 转换   |
+| `internal/adapter/provider`                  | 外部数据源适配器         |
 | `internal/adapter/repository`                | 数据持久化实现           |
 | `internal/infrastructure/database`           | 数据库连接、ent 生成代码 |
 | `internal/infrastructure/database/entschema` | ent Schema 定义          |

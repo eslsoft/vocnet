@@ -8,7 +8,7 @@
 <p>
 <a href="https://github.com/eslsoft/vocnet/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="license"/></a>
 <a href="https://github.com/eslsoft/vocnet/issues"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="prs"/></a>
-<a href="docs/roadmap.md"><img src="https://img.shields.io/badge/roadmap-active-success" alt="roadmap"/></a>
+<a href="https://github.com/eslsoft/vocnet/issues"><img src="https://img.shields.io/badge/roadmap-active-success" alt="roadmap"/></a>
 <a href="#"><img src="https://img.shields.io/badge/status-alpha-orange" alt="status"/></a>
 </p>
 
@@ -95,8 +95,8 @@ Vocnet 致力于打造一个开放的词汇网络管理平台，帮助用户集�
 
 - 🐛 [报告 Bug](https://github.com/eslsoft/vocnet/issues/new?template=bug_report.md)
 - 💡 [提出功能建议](https://github.com/eslsoft/vocnet/issues/new?template=feature_request.md)
-- 🔧 [贡献代码](docs/contributing/code.md)
-- 📖 [改进文档](docs/contributing/documentation.md)
+- 🔧 [贡献代码](CONTRIBUTING.md)
+- 📖 [改进文档](CONTRIBUTING.md)
 
 详见 [贡献指南](CONTRIBUTING.md)
 

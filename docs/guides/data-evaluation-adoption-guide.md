@@ -272,5 +272,6 @@ pipeline.Run(ctx, jobID, term, language, tier, opts)
 ## References
 
 - Design Document: [`docs/design/data-evaluation-adoption.md`](../design/data-evaluation-adoption.md)
-- Quality Scoring: [`internal/usecase/pipeline/quality_calculator.go`](../../internal/usecase/pipeline/quality_calculator.go)
-- Implementation: [`internal/usecase/pipeline/data_evaluator.go`](../../internal/usecase/pipeline/data_evaluator.go)
+- Quality Scoring: [`internal/usecase/pipeline/snapshot/quality_calculator.go`](../../internal/usecase/pipeline/snapshot/quality_calculator.go)
+- Scorer: [`internal/usecase/pipeline/scoring/scorer.go`](../../internal/usecase/pipeline/scoring/scorer.go)
+- Evaluator: [`internal/usecase/pipeline/evaluation/evaluator.go`](../../internal/usecase/pipeline/evaluation/evaluator.go)

@@ -188,6 +188,6 @@ Implement LLMFieldScorer for advanced semantic evaluation.
 
 ## References
 
-- Pipeline Quality Score: `quality_calculator.go` (inspiration for scoring dimensions)
-- Source Provider Trust: `persistence.go:providerTrustRank()` (existing trust hierarchy)
-- Relation Deduplication: `persistence.go:deduplicateRelations()` (existing merge logic)
+- Pipeline Quality Score: `internal/usecase/pipeline/snapshot/quality_calculator.go`
+- Scorer: `internal/usecase/pipeline/scoring/scorer.go`
+- Persistence: `internal/usecase/pipeline/persist/persistence.go`

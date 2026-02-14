@@ -376,11 +376,11 @@ The pipeline uses a unified `SourceProvider` interface (`internal/repository/sou
 
 Key files:
 - Interface: `internal/repository/source_provider.go`
-- Generic processor: `internal/usecase/pipeline/generic_processor.go`
+- Generic processor: `internal/usecase/pipeline/collection/generic.go`
 - Source registry: `internal/usecase/pipeline/source_registry.go`
 - Contrib bridge: `internal/adapter/provider/contrib/process_provider.go`
 - Contrib protocol: `internal/adapter/provider/contrib/protocol.go`
-- Stage wiring: `cmd/serve.go` (`buildPipelineWorkerPool`)
+- Stage wiring: `cmd/serve.go` (`buildNewPipelineStages`)
 
 ### Data Evaluation and Adoption System
 
@@ -398,10 +398,10 @@ The pipeline includes a **mandatory** data evaluation system that determines whi
 - Relations: scored on target resolution, sense-mapping, strength validity
 
 **Architecture:**
-- Interface: `internal/usecase/pipeline/field_scorer.go` (extensible for LLM-based scoring)
-- Built-in scorer: `internal/usecase/pipeline/rule_based_scorer.go`
-- Evaluator: `internal/usecase/pipeline/data_evaluator.go` (orchestrates evaluation)
-- Integration: `internal/usecase/pipeline/processor.go` (`PipelineContext.AccumulateWithProvider`)
+- Scorer: `internal/usecase/pipeline/scoring/scorer.go` (RuleBasedScorer, FieldScore)
+- Merge logic: `internal/usecase/pipeline/scoring/merge.go` (DataEvaluator, MergeSenses)
+- Evaluator: `internal/usecase/pipeline/evaluation/evaluator.go` (FragmentEvaluator)
+- Integration: `internal/usecase/pipeline/integration/integration.go` (IntegrationProcessor)
 
 **Usage (required):**
 ```go
@@ -428,7 +428,7 @@ The evaluator is a required constructor parameter.
 **Documentation:**
 - Design: `docs/design/data-evaluation-adoption.md`
 - Usage guide: `docs/guides/data-evaluation-adoption-guide.md`
-- Tests: `internal/usecase/pipeline/data_evaluation_test.go`
+- Tests: `internal/usecase/pipeline/scoring/scorer_test.go`, `internal/usecase/pipeline/evaluation/evaluator_test.go`
 
 ### Data Source Details
 
@@ -477,23 +477,6 @@ When modifying any pipeline behavior below, update that document in the same PR:
 - Processor extraction logic in `internal/usecase/pipeline/`
 - Evidence payload/schema versions
 - Data source/provider mapping changes (Wikidata, ECDICT, WordNet, Moby, ConceptNet, LLM)
-
-## Import Scripts
-
-Dictionary initialization tool lives in `hack/dictinit/`:
-
-- `cmd/dictinit/main.go`: CLI entry point
-- `internal/dictinit/pipeline/main.go`: Pipeline configuration
-- `internal/dictinit/sources/wikidata/wikidata_importer.go`: Wikidata lexeme ingestion
-- `internal/dictinit/sources/ecdict/ecdict_enricher.go`: ECDICT enrichment parsing
-- `internal/dictinit/util/irregular_detector.go`: Detect irregular verb forms
-
-Run via CLI commands:
-```bash
-go run ./hack/dictinit/cmd/dictinit --help
-```
-
-Reports are saved to `reports/` directory.
 
 ## Authentication
 
