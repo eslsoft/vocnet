@@ -126,8 +126,13 @@ func (p *ProcessSourceProvider) Close() error {
 }
 
 func (p *ProcessSourceProvider) initialize(ctx context.Context) (repository.SourceManifest, error) {
+	// Use a longer timeout for initialize, as it may need to download data
+	// (e.g., NLTK WordNet data, ConceptNet index building)
+	initCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
 	var initResult InitializeResult
-	if err := p.call(ctx, "initialize", nil, &initResult); err != nil {
+	if err := p.call(initCtx, "initialize", nil, &initResult); err != nil {
 		return repository.SourceManifest{}, err
 	}
 	return initResult.toSourceManifest(), nil

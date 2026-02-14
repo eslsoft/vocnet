@@ -23,14 +23,22 @@ jobs:
           go-version: '1.25.x'
           cache: true
 
+      - name: Install uv (Python package manager)
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
       - name: Cache pipeline data sources
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/vocnet
+            ~/.cache/uv
+            ~/nltk_data
             data/datasources
-          key: pipeline-datasources-v2-${{ hashFiles('internal/infrastructure/datasource/**', 'contrib/sources/**', 'hack/dictinit/**') }}
+          key: pipeline-datasources-v3-${{ hashFiles('internal/infrastructure/datasource/**', 'contrib/sources/**', 'hack/dictinit/**') }}
           restore-keys: |
+            pipeline-datasources-v3-
             pipeline-datasources-v2-
             pipeline-datasources-
 
