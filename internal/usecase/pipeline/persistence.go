@@ -115,12 +115,19 @@ func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma 
 	if lemma == nil {
 		return fmt.Errorf("lemma is required")
 	}
+
+	// Update the lemma entity with any changes (e.g., CEFR level from integration)
+	_, err := p.lemmaRepo.Update(ctx, lemma)
+	if err != nil {
+		return fmt.Errorf("update lemma: %w", err)
+	}
+
 	terms := collectLemmaSnapshotLookupTerms(lemma, forms)
 	snapshot.LemmaID = lemma.ID
 	snapshot.JobID = &jobID
 	snapshot.LookupTerms = terms
 	snapshot.IsLatest = true
-	_, err := p.snapshotRepo.CreateOrUpdate(ctx, snapshot)
+	_, err = p.snapshotRepo.CreateOrUpdate(ctx, snapshot)
 	if err != nil {
 		return fmt.Errorf("save snapshot: %w", err)
 	}

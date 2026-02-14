@@ -49,10 +49,21 @@ func (fe *FragmentEvaluator) Process(ctx context.Context, pctx *PipelineContext)
 		evidenceByProvider[ev.Provider] = append(evidenceByProvider[ev.Provider], ev)
 	}
 
+	// Also collect providers from ProcessResults (for LemmaUpdate, etc.)
+	allProviders := make(map[string]bool)
+	for provider := range evidenceByProvider {
+		allProviders[provider] = true
+	}
+	for _, result := range pctx.ProcessResults {
+		if result.Provider != "" {
+			allProviders[result.Provider] = true
+		}
+	}
+
 	// Evaluate fragments from each provider
 	allFragments := make(map[string][]*FieldFragment) // key: fieldKey, value: competing fragments
 
-	for provider := range evidenceByProvider {
+	for provider := range allProviders {
 		evaluated := fe.evaluateProvider(pctx, provider)
 
 		// Merge into global fragments map
@@ -62,7 +73,7 @@ func (fe *FragmentEvaluator) Process(ctx context.Context, pctx *PipelineContext)
 	}
 
 	fe.logger.Info("fragment evaluation completed",
-		"providers", len(evidenceByProvider),
+		"providers", len(allProviders),
 		"unique_fields", len(allFragments))
 
 	// Store evaluated fragments in context for integration phase
@@ -171,5 +182,57 @@ func (fe *FragmentEvaluator) evaluateProvider(pctx *PipelineContext, provider st
 		}
 	}
 
+	// Evaluate lemma metadata updates from this provider
+	fe.evaluateLemmaUpdates(pctx, provider, evaluated)
+
 	return evaluated
+}
+
+// evaluateLemmaUpdates extracts and evaluates metadata fields from processed results
+// that originated from this provider (CEFR levels, frequencies, syllables).
+func (fe *FragmentEvaluator) evaluateLemmaUpdates(pctx *PipelineContext, provider string, evaluated *EvaluatedFragments) {
+	// Look through all process results to find LemmaUpdates from this provider
+	for _, result := range pctx.ProcessResults {
+		if result.Provider != provider || result.LemmaUpdate == nil {
+			continue
+		}
+
+		update := result.LemmaUpdate
+
+		// Evaluate CEFR level
+		if update.Level != "" {
+			key := "metadata.level"
+			score := fe.scorer.ScoreLemmaField("level", update.Level, provider)
+			evaluated.Fragments[key] = &FieldFragment{
+				Type:     "metadata.level",
+				Data:     update.Level,
+				Score:    score,
+				Provider: provider,
+			}
+		}
+
+		// Evaluate frequencies
+		if len(update.Frequencies) > 0 {
+			key := "metadata.frequencies"
+			score := fe.scorer.ScoreLemmaField("frequencies", update.Frequencies, provider)
+			evaluated.Fragments[key] = &FieldFragment{
+				Type:     "metadata.frequencies",
+				Data:     update.Frequencies,
+				Score:    score,
+				Provider: provider,
+			}
+		}
+
+		// Evaluate syllables
+		if len(update.Syllables) > 0 {
+			key := "metadata.syllables"
+			score := fe.scorer.ScoreLemmaField("syllables", update.Syllables, provider)
+			evaluated.Fragments[key] = &FieldFragment{
+				Type:     "metadata.syllables",
+				Data:     update.Syllables,
+				Score:    score,
+				Provider: provider,
+			}
+		}
+	}
 }

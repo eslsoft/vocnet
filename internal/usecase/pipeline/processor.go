@@ -70,6 +70,9 @@ type PipelineContext struct {
 	Evidence      []*entity.RawEvidence
 	LemmaSnapshot *entity.LemmaSnapshot
 
+	// ProcessResults stores results from each processor for fragment evaluation
+	ProcessResults []*ProcessResult
+
 	// Evaluator for data quality assessment (optional)
 	Evaluator *DataEvaluator
 
@@ -108,6 +111,13 @@ func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider str
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 
+	// Store ProcessResult for fragment evaluation (preserve LemmaUpdate)
+	// Make sure provider is set on the result for fragment evaluation
+	if r.Provider == "" {
+		r.Provider = provider
+	}
+	pc.ProcessResults = append(pc.ProcessResults, r)
+
 	// Evidence: always accumulate
 	if r.Evidence != nil {
 		pc.Evidence = append(pc.Evidence, r.Evidence...)
@@ -135,12 +145,8 @@ func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider str
 		pc.FormsByLexeme = mergeFormsByLexeme(pc.FormsByLexeme, r.FormsByLexeme)
 	}
 
-	// LemmaUpdate: evaluate and merge with quality scoring
-	if r.LemmaUpdate != nil {
-		merged, _ := pc.Evaluator.EvaluateAndMergeLemmaUpdate(pc.Lemma, r.LemmaUpdate, provider)
-		merged.ID = pc.Lemma.ID // Preserve ID
-		pc.Lemma = merged
-	}
+	// LemmaUpdate: DON'T merge immediately - let fragment evaluation handle it
+	// This ensures CEFR levels and other metadata go through quality scoring
 
 	// LemmaSnapshot: always overwrite (latest snapshot)
 	if r.LemmaSnapshot != nil {

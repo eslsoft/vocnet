@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -24,6 +25,10 @@ func NewDataEvaluator(scorer FieldScorer, logger *slog.Logger) *DataEvaluator {
 
 // EvaluateAndMergeLexemes merges new lexemes into existing list with scoring.
 // Returns the merged list and adoption decisions for logging.
+//
+// Matching Strategy:
+// 1. ExternalID-based matching: For sources with unique identifiers (Wikidata)
+// 2. POS-based matching: For sources without ExternalID (ECDICT, some WordNet data)
 func (e *DataEvaluator) EvaluateAndMergeLexemes(
 	existing []*entity.Lexeme,
 	new []*entity.Lexeme,
@@ -33,57 +38,78 @@ func (e *DataEvaluator) EvaluateAndMergeLexemes(
 		return existing, nil
 	}
 
-	byExtID := make(map[string]int) // ExternalID → index in existing
+	// Build matching indices
+	byExtID := make(map[string]int)      // ExternalID → index in existing
+	byLangPOS := make(map[string]int)    // "language:pos" → index in existing
+
 	for i, lex := range existing {
 		if lex.ExternalID != "" {
 			byExtID[lex.ExternalID] = i
+		}
+		// Always build POS index - needed for ECDICT-style sources to match with Wikidata
+		key := lex.Language.Code() + ":" + string(lex.PartOfSpeech)
+		// Use the first lexeme found for this language:pos combination
+		if _, exists := byLangPOS[key]; !exists {
+			byLangPOS[key] = i
 		}
 	}
 
 	var decisions []AdoptionDecision
 
 	for _, newLex := range new {
-		// Try to match by ExternalID
+		var matchedIdx int
+		var found bool
+		var matchType string
+
+		// Strategy 1: Try ExternalID matching first (for Wikidata-like sources)
 		if newLex.ExternalID != "" {
 			if idx, ok := byExtID[newLex.ExternalID]; ok {
-				// Conflict: evaluate which to keep
-				existingLex := existing[idx]
-				decision := e.evaluateLexemeConflict(existingLex, newLex, newProvider)
-				decisions = append(decisions, decision)
-
-				if decision.ShouldAdopt {
-					// Merge: keep ID, update fields
-					enriched := e.mergeLexemeFields(existingLex, newLex)
-					existing[idx] = enriched
-				}
-				continue
+				matchedIdx, found, matchType = idx, true, "external_id"
+			}
+		} else {
+			// Strategy 2: POS-based matching for sources without ExternalID (ECDICT-like)
+			key := newLex.Language.Code() + ":" + string(newLex.PartOfSpeech)
+			if idx, ok := byLangPOS[key]; ok {
+				matchedIdx, found, matchType = idx, true, "language_pos"
 			}
 		}
 
-		// No conflict: always adopt new lexeme
-		existing = append(existing, newLex)
-		decisions = append(decisions, AdoptionDecision{
-			ShouldAdopt: true,
-			NewScore:    e.scorer.ScoreLexeme(newLex, newProvider).Score,
-			NewSource:   newProvider,
-			Reason:      "new lexeme - no conflict",
-		})
+		if found {
+			// Always merge fields when lexemes match (don't use conflict evaluation)
+			existingLex := existing[matchedIdx]
+			enriched := e.mergeLexemeFields(existingLex, newLex)
+			existing[matchedIdx] = enriched
+
+			decisions = append(decisions, AdoptionDecision{
+				ShouldAdopt: true,
+				NewScore:    e.scorer.ScoreLexeme(newLex, newProvider).Score,
+				NewSource:   newProvider,
+				Reason:      fmt.Sprintf("merged fields (matched by %s)", matchType),
+			})
+		} else {
+			// No conflict: always adopt new lexeme
+			existing = append(existing, newLex)
+
+			// Update indices for future matching
+			if newLex.ExternalID != "" {
+				byExtID[newLex.ExternalID] = len(existing) - 1
+			} else {
+				key := newLex.Language.Code() + ":" + string(newLex.PartOfSpeech)
+				if _, exists := byLangPOS[key]; !exists {
+					byLangPOS[key] = len(existing) - 1
+				}
+			}
+
+			decisions = append(decisions, AdoptionDecision{
+				ShouldAdopt: true,
+				NewScore:    e.scorer.ScoreLexeme(newLex, newProvider).Score,
+				NewSource:   newProvider,
+				Reason:      "new lexeme - no conflict",
+			})
+		}
 	}
 
 	return existing, decisions
-}
-
-// evaluateLexemeConflict decides whether to replace existing lexeme with new one.
-func (e *DataEvaluator) evaluateLexemeConflict(
-	existing *entity.Lexeme,
-	new *entity.Lexeme,
-	newProvider string,
-) AdoptionDecision {
-	existingProvider := e.inferLexemeProvider(existing)
-	existingScore := e.scorer.ScoreLexeme(existing, existingProvider)
-	newScore := e.scorer.ScoreLexeme(new, newProvider)
-
-	return DecideAdoption(existingScore, newScore, false)
 }
 
 // mergeLexemeFields intelligently merges fields from new lexeme into existing.
