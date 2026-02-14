@@ -165,7 +165,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	}
 
 	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc. via JSON-RPC over stdio) ---
-	loadContribSources(ctx, cfg, registry, logger)
+	loadContribSources(ctx, registry, logger)
 
 	// --- LLM Provider (optional, for enrichment) ---
 	var llmProvider llm.Provider
@@ -271,44 +271,52 @@ func buildNewPipelineStages(
 }
 
 // loadContribSources discovers and starts contrib source processes.
-func loadContribSources(ctx context.Context, cfg *config.Config, registry *pipeline.SourceRegistry, logger *slog.Logger) {
-	contribDir := strings.TrimSpace(cfg.Pipeline.ContribDir)
-	contribList := strings.TrimSpace(cfg.Pipeline.ContribList)
-	if contribDir == "" || contribList == "" {
+// Scans the contrib/sources directory for executable files.
+func loadContribSources(ctx context.Context, registry *pipeline.SourceRegistry, logger *slog.Logger) {
+	contribDir := "contrib/sources"
+
+	entries, err := os.ReadDir(contribDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Warn("failed to read contrib sources directory", "dir", contribDir, "error", err)
+		}
 		return
 	}
 
-	for name := range strings.SplitSeq(contribList, ",") {
-		name = strings.TrimSpace(name)
-		if name == "" {
+	for _, entry := range entries {
+		// Skip directories and hidden files
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 
-		// Look for executable in contrib dir
-		execPath := filepath.Join(contribDir, name)
-		if _, err := os.Stat(execPath); err != nil {
-			// Try common extensions
-			found := false
-			for _, ext := range []string{".py", ".sh", ""} {
-				candidate := execPath + ext
-				if _, statErr := os.Stat(candidate); statErr == nil {
-					execPath = candidate
-					found = true
-					break
-				}
-			}
-			if !found {
-				logger.Warn("contrib source not found", "name", name, "path", execPath)
-				continue
-			}
+		// Skip Python source files (not executables)
+		if strings.HasSuffix(entry.Name(), ".py") {
+			continue
 		}
 
+		execPath := filepath.Join(contribDir, entry.Name())
+
+		// Check if file is executable
+		info, err := entry.Info()
+		if err != nil {
+			logger.Warn("failed to get file info", "path", execPath, "error", err)
+			continue
+		}
+
+		// Unix: check executable bit
+		if info.Mode()&0111 == 0 {
+			logger.Debug("skipping non-executable file", "path", execPath)
+			continue
+		}
+
+		logger.Info("loading contrib source", "path", execPath)
 		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
 		if err != nil {
-			logger.Warn("failed to start contrib source", "name", name, "error", err)
+			logger.Warn("failed to start contrib source", "path", execPath, "error", err)
 			continue
 		}
 
 		registry.Register(sp)
+		logger.Info("contrib source loaded", "name", sp.Manifest().Name, "path", execPath)
 	}
 }

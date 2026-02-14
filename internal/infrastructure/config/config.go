@@ -46,8 +46,6 @@ type PipelineConfig struct {
 	AutoDownload bool   `mapstructure:"auto_download"` // Auto-download missing data sources
 	CacheDir     string `mapstructure:"cache_dir"`     // Data cache directory
 	WorkerCount  int    `mapstructure:"worker_count"`  // Number of concurrent workers (default: 10)
-	ContribDir   string `mapstructure:"contrib_dir"`   // Directory containing contrib source executables
-	ContribList  string `mapstructure:"contrib_list"`  // Comma-separated list of enabled contrib sources
 }
 
 // LLMConfig holds LLM provider configuration
@@ -122,8 +120,6 @@ func bindEnvAliases() error {
 		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
 		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
 		"pipeline.worker_count":  {"PIPELINE_WORKER_COUNT"},
-		"pipeline.contrib_dir":   {"PIPELINE_CONTRIB_DIR"},
-		"pipeline.contrib_list":  {"PIPELINE_CONTRIB_LIST"},
 		"llm.base_url":           {"LLM_BASE_URL"},
 		"llm.api_key":            {"LLM_API_KEY"},
 		"llm.model":              {"LLM_MODEL"},
