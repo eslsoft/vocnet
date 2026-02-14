@@ -139,6 +139,8 @@ func (p *Pipeline) Run(ctx context.Context, jobID int64, term string, language s
 }
 
 // executeStage runs a single stage: all processors sequentially, then persists.
+//
+//nolint:gocognit // Complex orchestration logic for concurrent/sequential processor execution
 func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *PipelineContext, stage *Stage, logger *slog.Logger) error {
 	phaseNum := int32(stage.Number)
 	stageStart := time.Now()

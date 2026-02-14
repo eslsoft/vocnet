@@ -295,11 +295,12 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 			}
 		}
 
-		if len(existing) > 0 && newLex.ExternalID == "" {
+		switch {
+		case len(existing) > 0 && newLex.ExternalID == "":
 			if _, err := p.updateLexeme(ctx, existing[0], newLex); err != nil {
 				return err
 			}
-		} else if newLex.ID == 0 && newLex.ExternalID != "" {
+		case newLex.ID == 0 && newLex.ExternalID != "":
 			// Only create new lexemes if they have ExternalID (from Wikidata)
 			created, err := p.lexemeRepo.Create(ctx, newLex)
 			if err != nil {
@@ -307,7 +308,7 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 			}
 			existingByExtID[created.ExternalID] = created
 			p.logger.Info("lexeme created", "lexeme_id", created.ID, "external_id", created.ExternalID)
-		} else if newLex.ExternalID == "" {
+		case newLex.ExternalID == "":
 			// Lexemes without ExternalID (from contrib sources) can only enrich existing lexemes
 			// If no existing lexeme to enrich, skip this lexeme
 			p.logger.Debug("skipping lexeme without ExternalID - no existing lexeme to enrich",
