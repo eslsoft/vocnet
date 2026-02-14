@@ -47,7 +47,7 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *PipelineConte
 
 	// Integrate each field type
 	integratedLexemes := ip.integrateLexemes(pctx.EvaluatedFragments, provenance)
-	integratedForms := ip.integrateForms(pctx.EvaluatedFragments, provenance)
+	integratedForms := ip.integrateForms(pctx.EvaluatedFragments, pctx.Forms, provenance)
 	integratedLemmaData := ip.integrateLemmaMetadata(pctx.EvaluatedFragments, provenance)
 	integratedRelations := ip.integrateRelations(pctx.EvaluatedFragments, provenance)
 
@@ -79,9 +79,9 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *PipelineConte
 	}
 
 	return &ProcessResult{
-		Status:  ProcessStatusExecuted,
-		Lexemes: integratedLexemes,
-		Forms:   integratedForms,
+		Status:    ProcessStatusExecuted,
+		Lexemes:   integratedLexemes,
+		Forms:     integratedForms,
 		Relations: integratedRelations,
 	}, nil
 }
@@ -139,10 +139,25 @@ func (ip *IntegrationProcessor) integrateLexemes(
 }
 
 // integrateForms merges form fragments field-by-field.
+// It uses existingForms as the base to preserve FormType and other fields,
+// then applies fragment updates for phonetics, syllables, etc.
 func (ip *IntegrationProcessor) integrateForms(
 	fragments map[string][]*FieldFragment,
+	existingForms []*entity.LemmaForm,
 	provenance map[string]*DataProvenance,
 ) []*entity.LemmaForm {
+	// Build index of existing forms by surface for quick lookup
+	existingBySurface := make(map[string]*entity.LemmaForm)
+	for _, f := range existingForms {
+		if f == nil {
+			continue
+		}
+		// Use the first form found for each surface (preserve FormType from original)
+		if _, exists := existingBySurface[f.Surface]; !exists {
+			existingBySurface[f.Surface] = f
+		}
+	}
+
 	// Group form fragments by surface
 	formBySurface := make(map[string]*entity.LemmaForm)
 
@@ -172,10 +187,24 @@ func (ip *IntegrationProcessor) integrateForms(
 			continue
 		}
 
-		// Ensure form exists
+		// Ensure form exists - prefer existing form to preserve FormType
 		if _, exists := formBySurface[surface]; !exists {
-			formBySurface[surface] = &entity.LemmaForm{
-				Surface: surface,
+			if existing, ok := existingBySurface[surface]; ok {
+				// Clone existing form to preserve FormType, IsIrregular, etc.
+				formBySurface[surface] = &entity.LemmaForm{
+					Surface:     existing.Surface,
+					Normalized:  existing.Normalized,
+					FormType:    existing.FormType,
+					IsIrregular: existing.IsIrregular,
+					Phonetics:   existing.Phonetics,
+					Syllables:   existing.Syllables,
+				}
+			} else {
+				// No existing form - create new with default FormType LEMMA
+				formBySurface[surface] = &entity.LemmaForm{
+					Surface:  surface,
+					FormType: entity.FormTypeLemma,
+				}
 			}
 		}
 
@@ -203,6 +232,14 @@ func (ip *IntegrationProcessor) integrateForms(
 			Score:        winner.Score,
 			Timestamp:    time.Now(),
 			Alternatives: len(candidates) - 1,
+		}
+	}
+
+	// Also include existing forms that weren't updated by fragments
+	// This ensures we don't lose forms that only had basic data (no phonetics/syllables)
+	for surface, existing := range existingBySurface {
+		if _, exists := formBySurface[surface]; !exists {
+			formBySurface[surface] = existing
 		}
 	}
 
