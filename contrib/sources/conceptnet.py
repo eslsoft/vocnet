@@ -240,7 +240,8 @@ class ConceptNetSource:
 
                 # Atomic rename
                 os.rename(temp_path, dest_path)
-            except:
+            except Exception:
+                # Cleanup temp file on any error, then re-raise
                 os.unlink(temp_path)
                 raise
 
@@ -259,7 +260,8 @@ class ConceptNetSource:
                         temp_file.write(chunk)
 
             os.rename(temp_path, dest_path)
-        except:
+        except Exception:
+            # Cleanup temp file on any error, then re-raise
             os.unlink(temp_path)
             raise
 
@@ -320,7 +322,8 @@ class ConceptNetSource:
                             match = re.search(r'"weight":\s*([0-9.]+)', metadata_json)
                             if match:
                                 weight = float(match.group(1))
-                        except:
+                        except ValueError:
+                            # On parse failure, keep default weight of 1.0
                             pass
 
                     cursor.execute(
@@ -348,7 +351,8 @@ class ConceptNetSource:
             os.rename(temp_path, db_path)
 
             print(f"Index built: {line_count} lines scanned, {insert_count} edges indexed", file=sys.stderr)
-        except:
+        except Exception:
+            # Cleanup temp database on any error, then re-raise
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
             raise

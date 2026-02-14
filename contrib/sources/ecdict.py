@@ -318,7 +318,8 @@ class ECDICTSource:
 
                 # Atomic rename
                 os.rename(temp_path, dest_path)
-            except:
+            except Exception:
+                # Cleanup temp file on any error, then re-raise
                 os.unlink(temp_path)
                 raise
 
@@ -341,7 +342,8 @@ class ECDICTSource:
                         shutil.copyfileobj(source, temp_file)
 
                 os.rename(temp_path, dest_path)
-            except:
+            except Exception:
+                # Cleanup temp file on any error, then re-raise
                 os.unlink(temp_path)
                 raise
 
