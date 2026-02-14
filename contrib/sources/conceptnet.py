@@ -86,15 +86,18 @@ class ConceptNetSource:
             self.data_dir,
             "datasources",
             "conceptnet",
-            "conceptnet-assertions-5.7.0.csv",
+            CONCEPTNET_CSV_NAME,
         )
         db_path = csv_path + ".idx.db"
 
-        if not os.path.exists(db_path):
-            raise FileNotFoundError(
-                f"ConceptNet index not found: {db_path}. "
-                "Run 'vocnet pipeline source download conceptnet' first."
-            )
+        # Auto-download and build index if not exists
+        if not os.path.exists(db_path) or not self._verify_index(db_path):
+            print(f"ConceptNet index not found, downloading and building...", file=sys.stderr)
+            try:
+                self._download_and_build_index(csv_path, db_path)
+                print(f"ConceptNet index built successfully", file=sys.stderr)
+            except Exception as e:
+                raise RuntimeError(f"Failed to download/build ConceptNet index: {e}")
 
         self.db = sqlite3.connect(db_path)
         self.db.execute("PRAGMA query_only = ON")
@@ -186,25 +189,8 @@ class ConceptNetSource:
             "evidence": evidence,
         }
 
-    def download(self, params):
+    def _download_and_build_index(self, csv_path, db_path):
         """Download and build ConceptNet SQLite index."""
-        csv_path = os.path.join(
-            self.data_dir,
-            "datasources",
-            "conceptnet",
-            CONCEPTNET_CSV_NAME,
-        )
-        db_path = csv_path + ".idx.db"
-
-        # Check if already exists
-        if os.path.exists(csv_path) and os.path.exists(db_path):
-            if self._verify_csv(csv_path) and self._verify_index(db_path):
-                return {
-                    "status": "already_exists",
-                    "csv_path": csv_path,
-                    "db_path": db_path,
-                }
-
         # Prepare cache directory
         os.makedirs(self.cache_dir, mode=0o755, exist_ok=True)
 
@@ -218,22 +204,16 @@ class ConceptNetSource:
 
         # Extract CSV from gzip
         os.makedirs(os.path.dirname(csv_path), mode=0o755, exist_ok=True)
-        self._extract_gz(cache_file, csv_path)
+        if not os.path.exists(csv_path) or not self._verify_csv(csv_path):
+            self._extract_gz(cache_file, csv_path)
 
         # Build SQLite index
-        self._build_index(csv_path, db_path)
+        if not os.path.exists(db_path) or not self._verify_index(db_path):
+            self._build_index(csv_path, db_path)
 
         # Verify
         if not self._verify_csv(csv_path) or not self._verify_index(db_path):
             raise Exception(f"Downloaded data failed verification")
-
-        return {
-            "status": "downloaded",
-            "csv_path": csv_path,
-            "db_path": db_path,
-            "csv_size": os.path.getsize(csv_path),
-            "db_size": os.path.getsize(db_path),
-        }
 
     def _download_file(self, url, dest_path):
         """Download a file with progress reporting."""
@@ -426,8 +406,6 @@ def main():
                 result = source.initialize()
             elif method == "lookup":
                 result = source.lookup(request.get("params", {}))
-            elif method == "download":
-                result = source.download(request.get("params", {}))
             elif method == "shutdown":
                 source.shutdown()
                 response = {

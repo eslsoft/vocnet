@@ -153,11 +153,15 @@ class ECDICTSource:
         db_path = os.path.join(
             self.data_dir, "datasources", "ecdict", "ecdict.db"
         )
-        if not os.path.exists(db_path):
-            raise FileNotFoundError(
-                f"ECDICT database not found: {db_path}. "
-                "Run 'vocnet pipeline source download ecdict' first."
-            )
+
+        # Auto-download if not exists
+        if not os.path.exists(db_path) or not self._verify_db(db_path):
+            print(f"ECDICT database not found, downloading...", file=sys.stderr)
+            try:
+                self._download_and_extract(db_path)
+                print(f"ECDICT database downloaded successfully", file=sys.stderr)
+            except Exception as e:
+                raise RuntimeError(f"Failed to download ECDICT database: {e}")
 
         self.db = sqlite3.connect(db_path)
         self.db.execute("PRAGMA query_only = ON")
@@ -268,17 +272,8 @@ class ECDICTSource:
 
         return result
 
-    def download(self, params):
+    def _download_and_extract(self, db_path):
         """Download and extract ECDICT database."""
-        db_path = os.path.join(
-            self.data_dir, "datasources", "ecdict", "ecdict.db"
-        )
-
-        # Check if already exists
-        if os.path.exists(db_path):
-            if self._verify_db(db_path):
-                return {"status": "already_exists", "path": db_path}
-
         # Prepare cache directory
         os.makedirs(self.cache_dir, mode=0o755, exist_ok=True)
 
@@ -297,12 +292,6 @@ class ECDICTSource:
         # Verify downloaded database
         if not self._verify_db(db_path):
             raise Exception(f"Downloaded database failed verification: {db_path}")
-
-        return {
-            "status": "downloaded",
-            "path": db_path,
-            "size": os.path.getsize(db_path),
-        }
 
     def _download_file(self, url, dest_path):
         """Download a file with progress reporting."""
@@ -407,8 +396,6 @@ def main():
                 result = source.initialize()
             elif method == "lookup":
                 result = source.lookup(request.get("params", {}))
-            elif method == "download":
-                result = source.download(request.get("params", {}))
             elif method == "shutdown":
                 source.shutdown()
                 response = {
