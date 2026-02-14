@@ -1,4 +1,4 @@
-package datasource
+package wikidata
 
 import (
 	"compress/bzip2"
@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 )
 
 const (
@@ -15,45 +17,45 @@ const (
 	wikidataLexemesFilename = "lexemes.json"
 )
 
-// WikidataSource implements DataSource for Wikidata lexemes data
-type WikidataSource struct {
+// Source implements DataSource for Wikidata lexemes data.
+type Source struct {
 	path       string
 	logger     *slog.Logger
-	downloader *Downloader
+	downloader *datasource.Downloader
 }
 
-// WikidataDataPath returns the Wikidata lexeme JSON path under fixed datasource layout.
-func WikidataDataPath(dataDir string) string {
+// DataPath returns the Wikidata lexeme JSON path under fixed datasource layout.
+func DataPath(dataDir string) string {
 	return filepath.Join(dataDir, "datasources", "wikidata", wikidataLexemesFilename)
 }
 
-// NewWikidataSource creates a new Wikidata data source
-func NewWikidataSource(dataDir string, downloader *Downloader, logger *slog.Logger) *WikidataSource {
-	return &WikidataSource{
-		path:       WikidataDataPath(dataDir),
+// NewSource creates a new Wikidata data source.
+func NewSource(dataDir string, downloader *datasource.Downloader, logger *slog.Logger) *Source {
+	return &Source{
+		path:       DataPath(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}
 }
 
-func (s *WikidataSource) Name() string {
-	return "Wikidata"
+func (s *Source) Name() string {
+	return "wikidata"
 }
 
-func (s *WikidataSource) Path() string {
+func (s *Source) Path() string {
 	return s.path
 }
 
-func (s *WikidataSource) DownloadURL() string {
+func (s *Source) DownloadURL() string {
 	return wikidataLexemesURL
 }
 
-func (s *WikidataSource) Exists() bool {
+func (s *Source) Exists() bool {
 	st, err := os.Stat(s.path)
 	return err == nil && !st.IsDir() && st.Size() > 0
 }
 
-func (s *WikidataSource) Download(ctx context.Context) error {
+func (s *Source) Download(ctx context.Context) error {
 	destDir := filepath.Dir(s.path)
 
 	// Create destination directory
@@ -61,7 +63,7 @@ func (s *WikidataSource) Download(ctx context.Context) error {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
-	artifactPath, err := s.downloader.Fetch(ctx, DownloadRequest{
+	artifactPath, err := s.downloader.Fetch(ctx, datasource.DownloadRequest{
 		Source: s.Name(),
 		URL:    wikidataLexemesURL,
 	})
@@ -85,7 +87,7 @@ func (s *WikidataSource) Download(ctx context.Context) error {
 	return nil
 }
 
-func (s *WikidataSource) Verify() error {
+func (s *Source) Verify() error {
 	st, err := os.Stat(s.path)
 	if err != nil {
 		return fmt.Errorf("stat file: %w", err)
@@ -134,7 +136,7 @@ func (s *WikidataSource) Verify() error {
 	return nil
 }
 
-// extractBz2 extracts a .bz2 file to destination
+// extractBz2 extracts a .bz2 file to destination.
 func extractBz2(archivePath, destPath string, logger *slog.Logger) error {
 	logger.Info("extracting bzip2", "archive", archivePath, "dest", destPath)
 

@@ -42,10 +42,9 @@ type LogConfig struct {
 
 // PipelineConfig holds pipeline data source configuration
 type PipelineConfig struct {
-	DataDir      string `mapstructure:"data_dir"`      // Base system data directory (default: ./data)
-	AutoDownload bool   `mapstructure:"auto_download"` // Auto-download missing data sources
-	CacheDir     string `mapstructure:"cache_dir"`     // Data cache directory
-	WorkerCount  int    `mapstructure:"worker_count"`  // Number of concurrent workers (default: 10)
+	DataDir     string `mapstructure:"data_dir"`     // Base system data directory (default: ./data)
+	CacheDir    string `mapstructure:"cache_dir"`    // Data cache directory
+	WorkerCount int    `mapstructure:"worker_count"` // Number of concurrent workers (default: 10)
 }
 
 // LLMConfig holds LLM provider configuration
@@ -101,7 +100,6 @@ func setDefaults() {
 
 	// Pipeline defaults
 	viper.SetDefault("pipeline.data_dir", "./data")
-	viper.SetDefault("pipeline.auto_download", true)
 	viper.SetDefault("pipeline.cache_dir", "") // Empty means use system cache dir
 	viper.SetDefault("pipeline.worker_count", 10)
 	viper.SetDefault("pipeline.contrib_dir", "")
@@ -115,11 +113,10 @@ func setDefaults() {
 
 func bindEnvAliases() error {
 	bindings := map[string][]string{
-		"database.dsn":           {"DATABASE_URL"},
-		"pipeline.data_dir":      {"PIPELINE_DATA_DIR"},
-		"pipeline.auto_download": {"PIPELINE_AUTO_DOWNLOAD"},
-		"pipeline.cache_dir":     {"PIPELINE_CACHE_DIR"},
-		"pipeline.worker_count":  {"PIPELINE_WORKER_COUNT"},
+		"database.dsn":          {"DATABASE_URL"},
+		"pipeline.data_dir":     {"PIPELINE_DATA_DIR"},
+		"pipeline.cache_dir":    {"PIPELINE_CACHE_DIR"},
+		"pipeline.worker_count": {"PIPELINE_WORKER_COUNT"},
 		"llm.base_url":           {"LLM_BASE_URL"},
 		"llm.api_key":            {"LLM_API_KEY"},
 		"llm.model":              {"LLM_MODEL"},

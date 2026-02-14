@@ -64,15 +64,15 @@ type qualityHarness struct {
 func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider) *qualityHarness {
 	t.Helper()
 
-	wikidataReader, err := wikidata.NewReaderWithLogger(datasource.WikidataDataPath(cfg.Pipeline.DataDir), logger)
+	wikidataReader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = wikidataReader.Close() })
 
-	mobyReader, err := moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
+	mobyReader, err := moby.NewReader(moby.DataPath(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = mobyReader.Close() })
 
-	cefrjReader, err := cefrj.NewReader(datasource.CEFRJDataDir(cfg.Pipeline.DataDir))
+	cefrjReader, err := cefrj.NewReader(cefrj.DataDir(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 
 	dbPath := resolvePipelineQualityDBPath(t)
@@ -148,15 +148,15 @@ func newPipelineQualityHarnessForWordbook(t *testing.T, cfg *config.Config, logg
 	jobRepo := repo.NewPipelineJobRepository(entClient)
 
 	// Reuse data source readers (they are read-only and thread-safe)
-	wikidataReader, err := wikidata.NewReaderWithLogger(datasource.WikidataDataPath(cfg.Pipeline.DataDir), logger)
+	wikidataReader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = wikidataReader.Close() })
 
-	mobyReader, err := moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
+	mobyReader, err := moby.NewReader(moby.DataPath(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = mobyReader.Close() })
 
-	cefrjReader, err := cefrj.NewReader(datasource.CEFRJDataDir(cfg.Pipeline.DataDir))
+	cefrjReader, err := cefrj.NewReader(cefrj.DataDir(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 
 	aggregator := NewDataAggregator()
@@ -499,9 +499,12 @@ func builtinWordbookTerms(name string) ([]string, bool) {
 func requirePipelineSources(t *testing.T, cfg *config.Config, logger *slog.Logger) {
 	t.Helper()
 
-	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	// Use auto-download if enabled in config (respects PIPELINE_AUTO_DOWNLOAD env var)
-	err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "wikidata", "moby", "cefrj")
+	downloader := datasource.NewDownloader(cfg.Pipeline.CacheDir, logger)
+	mgr := datasource.NewManager(logger)
+	mgr.Register(wikidata.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	mgr.Register(moby.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	mgr.Register(cefrj.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	err := mgr.EnsureAvailable(context.Background(), "wikidata", "moby", "cefrj")
 	if err != nil {
 		t.Skipf("pipeline quality integration requires local data sources under %s: %v", cfg.Pipeline.DataDir, err)
 	}

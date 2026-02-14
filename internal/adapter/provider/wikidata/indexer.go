@@ -1,4 +1,4 @@
-package datasource
+package wikidata
 
 import (
 	"bufio"
@@ -640,41 +640,4 @@ func mapWikidataPOSQID(qid string) string {
 	default:
 		return qid
 	}
-}
-
-func normalizeSearchKey(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	if s == "" {
-		return s
-	}
-	replacer := strings.NewReplacer(
-		"’", "",
-		"‘", "",
-		"ʼ", "",
-		".", "",
-		"'", "",
-		"-", "",
-		"_", "",
-		" ", "",
-	)
-	return replacer.Replace(s)
-}
-
-func orthographyKey(s string) string {
-	key := normalizeSearchKey(s)
-	if key == "" {
-		return key
-	}
-
-	// Canonicalize common UK/US spelling variants.
-	key = strings.ReplaceAll(key, "our", "or")
-	key = strings.ReplaceAll(key, "ise", "ize")
-	key = strings.ReplaceAll(key, "yse", "yze")
-	if strings.HasSuffix(key, "re") && len(key) > 4 {
-		key = strings.TrimSuffix(key, "re") + "er"
-	}
-	if strings.HasSuffix(key, "ice") && len(key) > 4 {
-		key = strings.TrimSuffix(key, "ice") + "ize" // practise/practice
-	}
-	return key
 }

@@ -1,4 +1,4 @@
-package datasource
+package moby
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 )
 
 const (
@@ -13,84 +15,84 @@ const (
 	mobyFilename = "mhyph.txt"
 )
 
-// MobySource manages the Moby Hyphenation data source
-type MobySource struct {
+// Source manages the Moby Hyphenation data source.
+type Source struct {
 	path       string
 	logger     *slog.Logger
-	downloader *Downloader
+	downloader *datasource.Downloader
 }
 
-// MobyDataPath returns the Moby data file path under fixed datasource layout.
-func MobyDataPath(dataDir string) string {
+// DataPath returns the Moby data file path under fixed datasource layout.
+func DataPath(dataDir string) string {
 	return filepath.Join(dataDir, "datasources", "moby", mobyFilename)
 }
 
-// NewMobySource creates a new Moby data source
-func NewMobySource(dataDir string, downloader *Downloader, logger *slog.Logger) *MobySource {
-	return &MobySource{
-		path:       MobyDataPath(dataDir),
+// NewSource creates a new Moby data source.
+func NewSource(dataDir string, downloader *datasource.Downloader, logger *slog.Logger) *Source {
+	return &Source{
+		path:       DataPath(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}
 }
 
-func (m *MobySource) Name() string {
-	return "Moby"
+func (s *Source) Name() string {
+	return "moby"
 }
 
-func (m *MobySource) Path() string {
-	return m.path
+func (s *Source) Path() string {
+	return s.path
 }
 
-func (m *MobySource) DownloadURL() string {
+func (s *Source) DownloadURL() string {
 	return mobyURL
 }
 
-func (m *MobySource) Exists() bool {
-	info, err := os.Stat(m.path)
+func (s *Source) Exists() bool {
+	info, err := os.Stat(s.path)
 	if err != nil {
 		return false
 	}
 	return !info.IsDir() && info.Size() > 0
 }
 
-func (m *MobySource) Download(ctx context.Context) error {
-	if err := m.downloader.DownloadFile(ctx, DownloadRequest{
-		Source: m.Name(),
+func (s *Source) Download(ctx context.Context) error {
+	if err := s.downloader.DownloadFile(ctx, datasource.DownloadRequest{
+		Source: s.Name(),
 		URL:    mobyURL,
-	}, m.path, ".moby-*"); err != nil {
+	}, s.path, ".moby-*"); err != nil {
 		return fmt.Errorf("copy cache to destination: %w", err)
 	}
 
 	// Verify download
-	if err := m.Verify(); err != nil {
+	if err := s.Verify(); err != nil {
 		// Clean up failed download
-		_ = os.Remove(m.path)
+		_ = os.Remove(s.path)
 		return fmt.Errorf("verify download: %w", err)
 	}
 
 	return nil
 }
 
-func (m *MobySource) Verify() error {
+func (s *Source) Verify() error {
 	// Check file exists
-	info, err := os.Stat(m.path)
+	info, err := os.Stat(s.path)
 	if err != nil {
 		return fmt.Errorf("moby data file not found: %w", err)
 	}
 
 	// Check it's not a directory
 	if info.IsDir() {
-		return fmt.Errorf("moby path is a directory, expected file: %s", m.path)
+		return fmt.Errorf("moby path is a directory, expected file: %s", s.path)
 	}
 
 	// Check file has content
 	if info.Size() == 0 {
-		return fmt.Errorf("moby data file is empty: %s", m.path)
+		return fmt.Errorf("moby data file is empty: %s", s.path)
 	}
 
 	// Basic content check - try to open and read first line
-	file, err := os.Open(m.path)
+	file, err := os.Open(s.path)
 	if err != nil {
 		return fmt.Errorf("cannot open moby file: %w", err)
 	}

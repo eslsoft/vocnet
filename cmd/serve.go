@@ -129,9 +129,13 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(entClient)
 	jobRepo := repository.NewPipelineJobRepository(entClient)
 
-	// Ensure built-in data sources are available (auto-download if configured)
-	mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-	if err := mgr.EnsureAvailable(context.Background(), cfg.Pipeline.AutoDownload, "wikidata", "moby", "cefrj"); err != nil {
+	// Ensure built-in data sources are available (always auto-downloads if missing)
+	downloader := datasource.NewDownloader(cfg.Pipeline.CacheDir, logger)
+	mgr := datasource.NewManager(logger)
+	mgr.Register(wikidata.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	mgr.Register(moby.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	mgr.Register(cefrj.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	if err := mgr.EnsureAvailable(context.Background(), "wikidata", "moby", "cefrj"); err != nil {
 		logger.Warn("some pipeline data sources unavailable", "error", err)
 	}
 
@@ -142,14 +146,14 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 
 	// Wikidata (remains as specialized processor due to complex discovery logic)
 	var wikidataProvider provider.WikidataProvider
-	wikidataReader, err := wikidata.NewReaderWithLogger(datasource.WikidataDataPath(cfg.Pipeline.DataDir), logger)
+	wikidataReader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
 	if err != nil {
-		return nil, fmt.Errorf("wikidata unavailable (run 'vocnet pipeline source download wikidata' first): %w", err)
+		return nil, fmt.Errorf("wikidata unavailable: %w", err)
 	}
 	wikidataProvider = wikidataReader
 
 	// Moby (built-in SourceProvider)
-	mobyReader, err := moby.NewReader(datasource.MobyDataPath(cfg.Pipeline.DataDir))
+	mobyReader, err := moby.NewReader(moby.DataPath(cfg.Pipeline.DataDir))
 	if err != nil {
 		logger.Warn("Moby unavailable, syllables will not be available", "error", err)
 	} else {
@@ -157,7 +161,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	}
 
 	// CEFRJ (built-in SourceProvider)
-	cefrjReader, err := cefrj.NewReader(datasource.CEFRJDataDir(cfg.Pipeline.DataDir))
+	cefrjReader, err := cefrj.NewReader(cefrj.DataDir(cfg.Pipeline.DataDir))
 	if err != nil {
 		logger.Warn("CEFR-J unavailable, lemma CEFR levels will not be available", "error", err)
 	} else {

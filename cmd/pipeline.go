@@ -20,7 +20,6 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
-	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
@@ -29,132 +28,6 @@ import (
 var pipelineCmd = &cobra.Command{
 	Use:   "pipeline",
 	Short: "Vocabulary distillation pipeline operations",
-}
-
-// Source management commands
-var sourceCmd = &cobra.Command{
-	Use:   "source",
-	Short: "Manage offline data sources (Moby, Wikidata, CEFRJ)",
-	Long: `Manage offline data sources that require manual download.
-
-Note: ConceptNet, ECDICT, and WordNet are contrib sources that auto-download
-on first use and do not need manual management.`,
-}
-
-var sourceListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all data sources and their status",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-		statuses, err := mgr.CheckAll()
-		if err != nil {
-			return fmt.Errorf("check data sources: %w", err)
-		}
-
-		fmt.Println("Pipeline Data Sources:")
-
-		// Add note about contrib sources
-		fmt.Println("\nManaged sources (require manual download):")
-		table := tablewriter.NewTable(os.Stdout)
-		table.Header("STATUS", "SOURCE", "PATH", "INFO")
-		for _, status := range statuses {
-			symbol := "✗"
-			info := "not found"
-			if status.Available {
-				symbol = "✓"
-				if status.Size > 0 {
-					info = fmt.Sprintf("%.1f MB", float64(status.Size)/(1024*1024))
-				} else {
-					info = "verified"
-				}
-			} else if status.Exists {
-				info = fmt.Sprintf("invalid: %s", status.ErrorMsg)
-			}
-
-			_ = table.Append([]string{symbol, status.Name, status.Path, info})
-		}
-		_ = table.Render()
-
-		// Check if any missing
-		var missing []string
-		for _, status := range statuses {
-			if !status.Available {
-				missing = append(missing, strings.ToLower(status.Name))
-			}
-		}
-
-		if len(missing) > 0 {
-			fmt.Printf("\nTo download missing sources, run:\n")
-			fmt.Printf("  vocnet pipeline source download %s\n", strings.Join(missing, " "))
-			return fmt.Errorf("missing data sources")
-		}
-
-		fmt.Println("\nAll managed data sources are available.")
-		fmt.Println("\nNote: Contrib sources (ecdict, conceptnet, wordnet) auto-download on first use.")
-		return nil
-	},
-}
-
-var sourceDownloadCmd = &cobra.Command{
-	Use:   "download [source...]",
-	Short: "Download missing data sources",
-	Long: `Download data sources that require manual download.
-If no source is specified, downloads all missing managed sources.
-
-Available managed sources: moby, wikidata, cefrj
-
-Note: ConceptNet, ECDICT, and WordNet are contrib sources that auto-download
-on first use and do not need manual download commands.
-
-Examples:
-  vocnet pipeline source download            # Download all missing managed sources
-  vocnet pipeline source download moby       # Download only Moby
-  vocnet pipeline source download wikidata   # Download only Wikidata`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("load config: %w", err)
-		}
-
-		logger, err := server.NewLogger(cfg)
-		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
-		}
-
-		mgr := datasource.NewManager(cfg, logger, cfg.Pipeline.CacheDir)
-		ctx := context.Background()
-
-		// If no sources specified, download all missing
-		if len(args) == 0 {
-			fmt.Println("Checking and downloading missing data sources...")
-			if err := mgr.DownloadMissing(ctx); err != nil {
-				return fmt.Errorf("download missing: %w", err)
-			}
-			fmt.Println("\nAll data sources are now available.")
-			return nil
-		}
-
-		// Download specific sources
-		for _, source := range args {
-			fmt.Printf("Downloading %s...\n", source)
-			if err := mgr.DownloadSource(ctx, source); err != nil {
-				return fmt.Errorf("download %s: %w", source, err)
-			}
-		}
-
-		fmt.Println("\nDownload completed.")
-		return nil
-	},
 }
 
 // submitCmd submits a pipeline job for async processing
@@ -647,10 +520,6 @@ func resolveWordbook(nameOrID string) ([]string, string, error) {
 
 func init() {
 	rootCmd.AddCommand(pipelineCmd)
-
-	// Source management commands
-	pipelineCmd.AddCommand(sourceCmd)
-	sourceCmd.AddCommand(sourceListCmd, sourceDownloadCmd)
 
 	// Async job commands
 	pipelineCmd.AddCommand(submitCmd)

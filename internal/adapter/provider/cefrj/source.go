@@ -1,4 +1,4 @@
-package datasource
+package cefrj
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 )
 
 const (
@@ -18,20 +20,20 @@ var cefrjArtifactFilenames = []string{
 	"octanove-vocabulary-profile-c1c2-1.0.csv",
 }
 
-// CEFRJSource manages the CEFR-J vocabulary profile CSV data source.
-type CEFRJSource struct {
+// Source manages the CEFR-J vocabulary profile CSV data source.
+type Source struct {
 	paths      []string
 	logger     *slog.Logger
-	downloader *Downloader
+	downloader *datasource.Downloader
 }
 
-// CEFRJDataDir returns the CEFR-J directory under fixed datasource layout.
-func CEFRJDataDir(dataDir string) string {
+// DataDir returns the CEFR-J directory under fixed datasource layout.
+func DataDir(dataDir string) string {
 	return filepath.Join(dataDir, "datasources", "cefrj")
 }
 
 func cefrjDataPaths(dataDir string) []string {
-	baseDir := CEFRJDataDir(dataDir)
+	baseDir := DataDir(dataDir)
 	paths := make([]string, 0, len(cefrjArtifactFilenames))
 	for _, filename := range cefrjArtifactFilenames {
 		paths = append(paths, filepath.Join(baseDir, filename))
@@ -39,28 +41,28 @@ func cefrjDataPaths(dataDir string) []string {
 	return paths
 }
 
-// NewCEFRJSource creates a new CEFR-J data source.
-func NewCEFRJSource(dataDir string, downloader *Downloader, logger *slog.Logger) *CEFRJSource {
-	return &CEFRJSource{
+// NewSource creates a new CEFR-J data source.
+func NewSource(dataDir string, downloader *datasource.Downloader, logger *slog.Logger) *Source {
+	return &Source{
 		paths:      cefrjDataPaths(dataDir),
 		logger:     logger,
 		downloader: downloader,
 	}
 }
 
-func (s *CEFRJSource) Name() string {
-	return "CEFRJ"
+func (s *Source) Name() string {
+	return "cefrj"
 }
 
-func (s *CEFRJSource) Path() string {
+func (s *Source) Path() string {
 	return s.paths[0]
 }
 
-func (s *CEFRJSource) DownloadURL() string {
+func (s *Source) DownloadURL() string {
 	return buildCEFRJArtifactURL(cefrjArtifactFilenames[0])
 }
 
-func (s *CEFRJSource) Exists() bool {
+func (s *Source) Exists() bool {
 	for _, path := range s.paths {
 		if !fileExistsWithData(path) {
 			return false
@@ -69,10 +71,10 @@ func (s *CEFRJSource) Exists() bool {
 	return true
 }
 
-func (s *CEFRJSource) Download(ctx context.Context) error {
+func (s *Source) Download(ctx context.Context) error {
 	for i, filename := range cefrjArtifactFilenames {
 		path := s.paths[i]
-		if err := s.downloader.DownloadFile(ctx, DownloadRequest{
+		if err := s.downloader.DownloadFile(ctx, datasource.DownloadRequest{
 			Source: s.Name(),
 			URL:    buildCEFRJArtifactURL(filename),
 		}, path, cefrjFileCacheGlobs); err != nil {
@@ -93,7 +95,7 @@ func (s *CEFRJSource) Download(ctx context.Context) error {
 	return nil
 }
 
-func (s *CEFRJSource) Verify() error {
+func (s *Source) Verify() error {
 	for _, path := range s.paths {
 		info, err := os.Stat(path)
 		if err != nil {
