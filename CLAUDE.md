@@ -81,7 +81,7 @@ Review interval calculation happens in `CalculateNextReview()` which:
 #### Lemma vs Lexeme
 - **Lemma** (`internal/entity/lemma.go`): Dictionary headword (e.g., "run")
 - **Lexeme** (`internal/entity/lexeme.go`): Wikidata lexeme with specific grammatical sense
-- **LexemeForm**: Inflected forms (e.g., "runs", "running", "ran")
+- **LemmaForm**: Inflected forms (e.g., "runs", "running", "ran")
 
 Users primarily interact with lemmas. Lexemes provide linguistic enrichment (definitions, categories, forms).
 

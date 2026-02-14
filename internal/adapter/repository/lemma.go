@@ -12,9 +12,9 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
+	entlemmaform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemmaform"
 	entlemmasnapshot "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemmasnapshot"
 	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
-	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entsemanticrelation "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/semanticrelation"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
@@ -59,7 +59,7 @@ func (r *lemmaRepository) LookupByForm(ctx context.Context, surface string, lang
 	lexemeRows, err := r.client.Lexeme.Query().
 		Where(entlexeme.LanguageCodeEQ(langCode)).
 		Where(entlexeme.HasLemmaWith(
-			entlemma.HasFormsWith(entlexemeform.NormalizedEQ(normalized)),
+			entlemma.HasFormsWith(entlemmaform.NormalizedEQ(normalized)),
 		)).
 		WithLemma(func(q *entdb.LemmaQuery) {
 			q.WithForms()
@@ -87,9 +87,9 @@ func (r *lemmaRepository) ListByFormNormalized(ctx context.Context, surface stri
 	normalized := strings.ToLower(surface)
 	langCode := language.CodeOrDefault()
 
-	formRows, err := r.client.LexemeForm.Query().
-		Where(entlexemeform.NormalizedEQ(normalized)).
-		Where(entlexemeform.HasLemmaWith(
+	formRows, err := r.client.LemmaForm.Query().
+		Where(entlemmaform.NormalizedEQ(normalized)).
+		Where(entlemmaform.HasLemmaWith(
 			entlemma.HasLexemesWith(entlexeme.LanguageCodeEQ(langCode)),
 		)).
 		WithLemma(func(q *entdb.LemmaQuery) {
@@ -363,7 +363,7 @@ func (r *lemmaRepository) CreateMinimal(ctx context.Context, surface string, lan
 	}
 
 	// Create a lemma form (LEMMA type) for the surface
-	_, err = tx.LexemeForm.Create().
+	_, err = tx.LemmaForm.Create().
 		SetLemmaID(lemmaRow.ID).
 		SetSurface(surface).
 		SetNormalized(normalized).
@@ -442,11 +442,11 @@ func (r *lemmaRepository) CreateForms(ctx context.Context, lemmaID int64, forms 
 		normalized := strings.ToLower(strings.TrimSpace(form.Surface))
 
 		// Check if form already exists
-		exists, err := tx.LexemeForm.Query().
+		exists, err := tx.LemmaForm.Query().
 			Where(
-				entlexemeform.LemmaIDEQ(lemmaID),
-				entlexemeform.SurfaceEQ(form.Surface),
-				entlexemeform.FormTypeEQ(string(form.FormType)),
+				entlemmaform.LemmaIDEQ(lemmaID),
+				entlemmaform.SurfaceEQ(form.Surface),
+				entlemmaform.FormTypeEQ(string(form.FormType)),
 			).
 			Exist(ctx)
 		if err != nil {
@@ -458,7 +458,7 @@ func (r *lemmaRepository) CreateForms(ctx context.Context, lemmaID int64, forms 
 		}
 
 		// Create form
-		_, err = tx.LexemeForm.Create().
+		_, err = tx.LemmaForm.Create().
 			SetLemmaID(lemmaID).
 			SetSurface(form.Surface).
 			SetNormalized(normalized).
@@ -519,8 +519,8 @@ func (r *lemmaRepository) loadFormLemmaIDs(ctx context.Context, lemmaIDs []int64
 		return formLemmaIDs, phoneticLemmaIDs, nil
 	}
 
-	forms, err := r.client.LexemeForm.Query().
-		Where(entlexemeform.LemmaIDIn(lemmaIDs...)).
+	forms, err := r.client.LemmaForm.Query().
+		Where(entlemmaform.LemmaIDIn(lemmaIDs...)).
 		All(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list forms for stats: %w", err)
@@ -709,7 +709,7 @@ func applyLemmaFilters(q *entdb.LemmaQuery, params *repository.ListWordsQuery) {
 			keywordLower := strings.ToLower(keyword)
 			q.Where(entlemma.Or(
 				entlemma.SurfaceContainsFold(keyword),
-				entlemma.HasFormsWith(entlexemeform.NormalizedContains(keywordLower)),
+				entlemma.HasFormsWith(entlemmaform.NormalizedContains(keywordLower)),
 			))
 		}
 	}
@@ -963,10 +963,10 @@ func (r *lemmaRepository) UpdateFormPhonetics(ctx context.Context, lemmaID int64
 	}
 
 	// Update the form
-	_, err := r.client.LexemeForm.Update().
+	_, err := r.client.LemmaForm.Update().
 		Where(
-			entlexemeform.LemmaIDEQ(lemmaID),
-			entlexemeform.FormTypeEQ(string(formType)),
+			entlemmaform.LemmaIDEQ(lemmaID),
+			entlemmaform.FormTypeEQ(string(formType)),
 		).
 		SetPhonetics(phonetics).
 		Save(ctx)
@@ -984,10 +984,10 @@ func (r *lemmaRepository) UpdateFormSyllables(ctx context.Context, lemmaID int64
 	}
 
 	// Update the form
-	_, err := r.client.LexemeForm.Update().
+	_, err := r.client.LemmaForm.Update().
 		Where(
-			entlexemeform.LemmaIDEQ(lemmaID),
-			entlexemeform.FormTypeEQ(string(formType)),
+			entlemmaform.LemmaIDEQ(lemmaID),
+			entlemmaform.FormTypeEQ(string(formType)),
 		).
 		SetSyllables(syllables).
 		Save(ctx)
@@ -996,8 +996,8 @@ func (r *lemmaRepository) UpdateFormSyllables(ctx context.Context, lemmaID int64
 }
 
 func (r *lemmaRepository) countForms(ctx context.Context, langCodes []string) (int, error) {
-	query := r.client.LexemeForm.Query().
-		Where(entlexemeform.HasLemmaWith(entlemma.HasLexemesWith(func(s *sql.Selector) {
+	query := r.client.LemmaForm.Query().
+		Where(entlemmaform.HasLemmaWith(entlemma.HasLexemesWith(func(s *sql.Selector) {
 			if len(langCodes) == 0 {
 				return
 			}

@@ -210,7 +210,7 @@ pagination: {
 
 The `surface` field uses a sophisticated query that:
 1. Matches the word's lemma directly (case-insensitive)
-2. Joins with the `lexemes` and `lexeme_forms` tables to find words with matching inflected forms
+2. Joins with the `lexemes` and `lemma_forms` tables to find words with matching inflected forms
 3. Uses OR logic to return words that match ANY of the provided surface terms
 
 SQL logic (simplified):
@@ -220,7 +220,7 @@ WHERE
   LOWER(lemma) IN ('running', 'swimming') OR
   EXISTS (
     SELECT 1 FROM lexemes l
-    JOIN lexeme_forms f ON l.id = f.lexeme_id
+    JOIN lemma_forms f ON l.id = f.lexeme_id
     WHERE l.word_id = words.id
       AND LOWER(f.text) IN ('running', 'swimming')
   )

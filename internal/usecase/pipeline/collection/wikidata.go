@@ -66,13 +66,13 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 	formsByLexeme := make(map[string][]*entity.LemmaForm)
 
 	for _, lex := range lexemes {
-		entityLex, lexemeForms, err := convertProviderLexeme(lex, term, lang)
+		entityLex, lemmaForms, err := convertProviderLexeme(lex, term, lang)
 		if err != nil {
 			return nil, fmt.Errorf("wikidata lexeme %s %w", lex.LexemeID, err)
 		}
 
 		// Log form details
-		for _, f := range lexemeForms {
+		for _, f := range lemmaForms {
 			p.logger.Debug("wikidata form",
 				"surface", f.Surface,
 				"formType", f.FormType,
@@ -84,8 +84,8 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 		// Infer categories from senses
 		entityLex.Categories = inferCategoriesFromSenses(entityLex.Senses)
 
-		formsByLexeme[lex.LexemeID] = lexemeForms
-		allForms = append(allForms, lexemeForms...)
+		formsByLexeme[lex.LexemeID] = lemmaForms
+		allForms = append(allForms, lemmaForms...)
 		entityLexemes = append(entityLexemes, entityLex)
 	}
 

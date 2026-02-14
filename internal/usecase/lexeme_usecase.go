@@ -112,7 +112,7 @@ func normalizeLexemePayload(in *entity.Lexeme) (*entity.Lexeme, error) {
 	return &out, nil
 }
 
-// normalizeLexemeForms removed as Forms field no longer exists in entity.Lexeme
+// normalizeLemmaForms removed as Forms field no longer exists in entity.Lexeme
 
 func normalizeLexemeSenses(lexemeLID string, senses []entity.LexemeSense) []entity.LexemeSense {
 	if len(senses) == 0 {

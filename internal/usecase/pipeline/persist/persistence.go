@@ -305,7 +305,7 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 				return fmt.Errorf("create lexeme %s: %w", newLex.ExternalID, err)
 			}
 			existingByExtID[created.ExternalID] = created
-		p.logger.Debug("lexeme created", "lexeme_id", created.ID, "external_id", created.ExternalID)
+			p.logger.Debug("lexeme created", "lexeme_id", created.ID, "external_id", created.ExternalID)
 		case newLex.ExternalID == "":
 			// Lexemes without ExternalID (from contrib sources) can only enrich existing lexemes
 			// If no existing lexeme to enrich, skip this lexeme
@@ -401,9 +401,9 @@ func collectTargetTermsByLanguage(relations []*entity.SemanticRelation, sourceLe
 	return targetTermsByLang
 }
 
-func (p *Persistence) loadRelationTargetLookup(ctx context.Context, relations []*entity.SemanticRelation, sourceLexemeByExternalID map[string]*entity.Lexeme) map[entity.Language]map[string][]*repository.LexemeFormInfo {
+func (p *Persistence) loadRelationTargetLookup(ctx context.Context, relations []*entity.SemanticRelation, sourceLexemeByExternalID map[string]*entity.Lexeme) map[entity.Language]map[string][]*repository.LemmaFormInfo {
 	targetTermsByLang := collectTargetTermsByLanguage(relations, sourceLexemeByExternalID)
-	targetLookup := make(map[entity.Language]map[string][]*repository.LexemeFormInfo, len(targetTermsByLang))
+	targetLookup := make(map[entity.Language]map[string][]*repository.LemmaFormInfo, len(targetTermsByLang))
 	for lang, termSet := range targetTermsByLang {
 		terms := make([]string, 0, len(termSet))
 		for term := range termSet {
@@ -423,7 +423,7 @@ func (p *Persistence) resolveRelationTarget(
 	rel *entity.SemanticRelation,
 	srcLex *entity.Lexeme,
 	sourceLexemeByExternalID map[string]*entity.Lexeme,
-	targetLookup map[entity.Language]map[string][]*repository.LexemeFormInfo,
+	targetLookup map[entity.Language]map[string][]*repository.LemmaFormInfo,
 ) {
 	if rel.TargetLexemeID != nil {
 		if strings.TrimSpace(rel.TargetRef) == "" {
@@ -551,7 +551,7 @@ func deduplicateRelations(relations []*entity.SemanticRelation) []*entity.Semant
 	return out
 }
 
-func chooseTargetLexemeID(source *entity.Lexeme, candidates []*repository.LexemeFormInfo) *int64 {
+func chooseTargetLexemeID(source *entity.Lexeme, candidates []*repository.LemmaFormInfo) *int64 {
 	if source == nil || len(candidates) == 0 {
 		return nil
 	}

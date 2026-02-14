@@ -58,7 +58,7 @@ func toPBLemmaFromSnapshot(snapshot *entity.LemmaSnapshot) *dictv1.Lemma {
 		lexemes = append(lexemes, toPBLexeme(lexeme))
 	}
 	for _, form := range snapshot.Payload.Forms {
-		pbForm := toPBLexemeForm(form)
+		pbForm := toPBLemmaForm(form)
 		pbForm.Phonetics = toPBPhonetics(form.Phonetics)
 		forms = append(forms, pbForm)
 	}
@@ -171,7 +171,7 @@ func toPBLexemeSense(sense entity.LemmaSnapshotSense) *dictv1.LexemeSense {
 	}
 }
 
-func toPBLexemeForm(form entity.LemmaSnapshotForm) *dictv1.LemmaForm {
+func toPBLemmaForm(form entity.LemmaSnapshotForm) *dictv1.LemmaForm {
 	return &dictv1.LemmaForm{
 		Surface:   form.Surface,
 		FormType:  form.FormType,

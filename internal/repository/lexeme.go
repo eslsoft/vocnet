@@ -21,8 +21,8 @@ type ListLexemeQuery struct {
 
 //go:generate mockgen -source=lexeme.go -destination=../mocks/mock_lexeme_repository.go -package=mocks
 
-// LexemeFormInfo contains basic information about a lexeme form for determining storage strategy
-type LexemeFormInfo struct {
+// LemmaFormInfo contains basic information about a lexeme form for determining storage strategy
+type LemmaFormInfo struct {
 	LexemeID    int64
 	FormText    string // The form text (e.g., "apples", "went")
 	FormType    string // The form type (e.g., "LEMMA", "PLURAL", "PAST")
@@ -40,7 +40,7 @@ type LexemeRepository interface {
 	Lookup(ctx context.Context, surfaceForm string, language entity.Language) (*entity.Lexeme, error)
 	// BatchLookupFormInfo returns all possible form infos for each surface term.
 	// A surface term can map to multiple lexemes (e.g., "learning" can be both a verb form and a noun).
-	BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*LexemeFormInfo, error)
+	BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*LemmaFormInfo, error)
 	List(ctx context.Context, filter *ListLexemeQuery) ([]*entity.Lexeme, int64, error)
 	ListByLemmaID(ctx context.Context, lemmaID int64) ([]*entity.Lexeme, error)
 	ListByIDs(ctx context.Context, ids []int64) ([]*entity.Lexeme, error)

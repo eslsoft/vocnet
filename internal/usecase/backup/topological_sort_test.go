@@ -51,7 +51,7 @@ func TestTopologicalSort(t *testing.T) {
 	// Specific checks for known dependencies
 	lemmaPos, hasLemma := positions["lemmas"]
 	lexemesPos, hasLexemes := positions["lexemes"]
-	lexemeFormsPos, hasLexemeForms := positions["lexeme_forms"]
+	lemmaFormsPos, hasLemmaForms := positions["lemma_forms"]
 
 	// Lemma must come before lexemes (lexemes has FK to lemmas)
 	if hasLemma && hasLexemes {
@@ -60,14 +60,14 @@ func TestTopologicalSort(t *testing.T) {
 		}
 	}
 
-	// Lemma must come before lexeme_forms (lexeme_forms has FK to lemmas)
-	if hasLemma && hasLexemeForms {
-		if lemmaPos >= lexemeFormsPos {
-			t.Errorf("lemmas (pos %d) should come before lexeme_forms (pos %d)", lemmaPos, lexemeFormsPos)
+	// Lemma must come before lemma_forms (lemma_forms has FK to lemmas)
+	if hasLemma && hasLemmaForms {
+		if lemmaPos >= lemmaFormsPos {
+			t.Errorf("lemmas (pos %d) should come before lemma_forms (pos %d)", lemmaPos, lemmaFormsPos)
 		}
 	}
 
-	// Note: lexemes and lexeme_forms both only depend on lemmas, not on each other.
+	// Note: lexemes and lemma_forms both only depend on lemmas, not on each other.
 	// Their relative order is determined by alphabetical sorting and is not critical
 	// for backup/restore operations as long as FK constraints are respected.
 

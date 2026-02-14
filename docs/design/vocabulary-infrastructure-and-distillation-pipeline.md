@@ -24,7 +24,7 @@ VocNet 是一个**现代化的、深度结构化的词汇数据库**。它超越
 目前 VocNet 的核心数据模型包含：
 *   **Lemma (词原型)**：存储词典头词（Headword），如 `run`。
 *   **Lexeme (义项)**：存储特定的语义感官（Sense），一个 Lemma 对应多个 Lexeme。
-*   **LexemeForm (词形)**：存储形态变化，如 `ran`, `running`。
+*   **LemmaForm (词形)**：存储形态变化，如 `ran`, `running`。
 *   **初始化逻辑**：依赖 `dictinit` 脚本进行一次性、全量同步导入。
 
 ### 2.2 核心痛点
@@ -74,8 +74,8 @@ VocNet 是一个**现代化的、深度结构化的词汇数据库**。它超越
 *   **定位**：`Lexeme` (义项) 是关系边的真实起点和终点。
 *   **操作**：Phase 4 的核心任务是执行 **Sense Mapping**，将 Phase 3 获取的“词间关系”精确映射到具体的 `Lexeme` 实例上。
 
-### 5.3 LexemeForm：自动化的形态构建
-*   **操作**：Phase 2 采集的形态证据（Inflections）将自动更新 `LexemeForm` 表。
+### 5.3 LemmaForm：自动化的形态构建
+*   **操作**：Phase 2 采集的形态证据（Inflections）将自动更新 `LemmaForm` 表。
 *   **合成**：在 Phase 5 合成时，所有词义作为属性打入快照，提高检索覆盖率。
 
 ---

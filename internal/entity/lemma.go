@@ -19,7 +19,7 @@ type Lemma struct {
 	UpdatedAt time.Time
 }
 
-// LexemeForm captures a surfaced variant of a lexeme's lemma.
+// LemmaForm captures a surfaced variant of a lexeme's lemma.
 type LemmaForm struct {
 	ID          int64
 	LemmaID     int64

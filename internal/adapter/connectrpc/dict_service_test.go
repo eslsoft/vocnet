@@ -72,7 +72,7 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 	}
 
 	// Create Lemma Form for the lemma itself (only once per lemma)
-	lemmaFormCreate := client.LexemeForm.Create().
+	lemmaFormCreate := client.LemmaForm.Create().
 		SetLemma(lemmaRecord).
 		SetSurface(word.Term).
 		SetNormalized(strings.ToLower(word.Term)).
@@ -98,7 +98,7 @@ func createWordInDB(t *testing.T, client *ent.Client, word *dictv1.Word) int64 {
 		if ft == "" {
 			ft = entity.FormTypeUnspecified
 		}
-		_, err = client.LexemeForm.Create().
+		_, err = client.LemmaForm.Create().
 			SetLemma(lemmaRecord).
 			SetSurface(form.Term).
 			SetNormalized(strings.ToLower(form.Term)).

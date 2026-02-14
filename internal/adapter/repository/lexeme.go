@@ -9,8 +9,8 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
 	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
+	entlemmaform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemmaform"
 	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
-	entlexemeform "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexemeform"
 	entpredicate "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/predicate"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
@@ -162,7 +162,7 @@ func (r *lexemeRepository) Lookup(ctx context.Context, surfaceForm string, langu
 			entlexeme.LanguageCodeEQ(langCode),
 			entlexeme.HasLemmaWith(
 				entlemma.HasFormsWith(
-					entlexemeform.NormalizedEQ(wordLower),
+					entlemmaform.NormalizedEQ(wordLower),
 				),
 			),
 		).
@@ -195,9 +195,9 @@ func (r *lexemeRepository) Lookup(ctx context.Context, surfaceForm string, langu
 	return mapEntLexeme(recs[0]), nil
 }
 
-func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*repository.LexemeFormInfo, error) {
+func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms []string, language entity.Language) (map[string][]*repository.LemmaFormInfo, error) {
 	if len(surfaceForms) == 0 {
-		return make(map[string][]*repository.LexemeFormInfo), nil
+		return make(map[string][]*repository.LemmaFormInfo), nil
 	}
 
 	langCode := entity.NormalizeLanguage(language).Code()
@@ -215,12 +215,12 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 	}
 
 	if len(formTexts) == 0 {
-		return make(map[string][]*repository.LexemeFormInfo), nil
+		return make(map[string][]*repository.LemmaFormInfo), nil
 	}
 
 	// Batch query using normalized field (case-insensitive, indexed)
-	forms, err := r.client.LexemeForm.Query().
-		Where(entlexemeform.NormalizedIn(lowerFormTexts...)).
+	forms, err := r.client.LemmaForm.Query().
+		Where(entlemmaform.NormalizedIn(lowerFormTexts...)).
 		WithLemma(func(q *entdb.LemmaQuery) {
 			q.WithLexemes(func(lq *entdb.LexemeQuery) {
 				lq.Where(entlexeme.LanguageCodeEQ(langCode))
@@ -232,7 +232,7 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 	}
 
 	// Build result map - collecting ALL forms per surface term (case-insensitive)
-	result := make(map[string][]*repository.LexemeFormInfo)
+	result := make(map[string][]*repository.LemmaFormInfo)
 	for _, form := range forms {
 		lemma, err := form.Edges.LemmaOrErr()
 		if err != nil {
@@ -251,7 +251,7 @@ func (r *lexemeRepository) BatchLookupFormInfo(ctx context.Context, surfaceForms
 				continue
 			}
 
-			info := &repository.LexemeFormInfo{
+			info := &repository.LemmaFormInfo{
 				LexemeID:    lexeme.ID,
 				FormText:    form.Surface,
 				FormType:    form.FormType,

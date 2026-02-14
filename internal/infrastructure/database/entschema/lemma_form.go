@@ -14,12 +14,12 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// LexemeForm holds the schema definition for lexeme forms table.
-type LexemeForm struct {
+// LemmaForm holds the schema definition for lexeme forms table.
+type LemmaForm struct {
 	ent.Schema
 }
 
-func (LexemeForm) Fields() []ent.Field {
+func (LemmaForm) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.Int64("lemma_id").
@@ -60,9 +60,9 @@ func (LexemeForm) Fields() []ent.Field {
 	}
 }
 
-func (LexemeForm) Edges() []ent.Edge {
+func (LemmaForm) Edges() []ent.Edge {
 	return []ent.Edge{
-		// LexemeForm -> Lemma (多对一，Lemma删除时级联删除Form)
+		// LemmaForm -> Lemma (多对一，Lemma删除时级联删除Form)
 		edge.From("lemma", Lemma.Type).
 			Ref("forms").
 			Field("lemma_id").
@@ -72,7 +72,7 @@ func (LexemeForm) Edges() []ent.Edge {
 	}
 }
 
-func (LexemeForm) Indexes() []ent.Index {
+func (LemmaForm) Indexes() []ent.Index {
 	return []ent.Index{
 		// Query by lemma_id
 		index.Fields("lemma_id"),
@@ -85,8 +85,8 @@ func (LexemeForm) Indexes() []ent.Index {
 	}
 }
 
-func (LexemeForm) Annotations() []schema.Annotation {
+func (LemmaForm) Annotations() []schema.Annotation {
 	return []schema.Annotation{
-		entsql.Annotation{Table: "lexeme_forms"},
+		entsql.Annotation{Table: "lemma_forms"},
 	}
 }

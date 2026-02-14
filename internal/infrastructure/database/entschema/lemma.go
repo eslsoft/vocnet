@@ -62,8 +62,8 @@ func (Lemma) Edges() []ent.Edge {
 		edge.From("lexemes", Lexeme.Type).
 			Ref("lemma"),
 
-		// Lemma -> LexemeForm (一对多，Lemma删除时级联删除Form)
-		edge.To("forms", LexemeForm.Type).
+		// Lemma -> LemmaForm (一对多，Lemma删除时级联删除Form)
+		edge.To("forms", LemmaForm.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 
 		// Lemma -> RawEvidence (一对多)
