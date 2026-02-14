@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -108,7 +107,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	registry.Register(cefrj.NewSourceProvider(cefrjReader))
 
 	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc.) ---
-	loadTestContribSources(context.Background(), cfg, registry, logger)
+	loadTestContribSources(context.Background(), registry, logger)
 
 	// Build stages using the same structure as cmd/serve.go
 	scorer := NewRuleBasedScorer()
@@ -170,7 +169,7 @@ func newPipelineQualityHarnessForWordbook(t *testing.T, cfg *config.Config, logg
 	registry.Register(cefrj.NewSourceProvider(cefrjReader))
 
 	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc.) ---
-	loadTestContribSources(context.Background(), cfg, registry, logger)
+	loadTestContribSources(context.Background(), registry, logger)
 
 	// Build stages using the same structure as cmd/serve.go
 	scorer := NewRuleBasedScorer()
@@ -913,78 +912,58 @@ func minMax(values []float64) (min, max float64) {
 }
 
 // loadTestContribSources discovers and starts contrib source processes for testing.
-func loadTestContribSources(ctx context.Context, cfg *config.Config, registry *SourceRegistry, logger *slog.Logger) {
-	contribDir := strings.TrimSpace(cfg.Pipeline.ContribDir)
-	contribList := strings.TrimSpace(cfg.Pipeline.ContribList)
+// Scans the contrib/sources directory for executable files (auto-discovery).
+func loadTestContribSources(ctx context.Context, registry *SourceRegistry, logger *slog.Logger) {
+	contribDir := "contrib/sources"
 
-	// If not set in config, try environment variables directly for integration tests
-	if contribDir == "" {
-		contribDir = os.Getenv("PIPELINE_CONTRIB_DIR")
-	}
-	if contribList == "" {
-		contribList = os.Getenv("PIPELINE_CONTRIB_LIST")
+	// Resolve relative to repo root
+	repoRoot, err := findRepoRoot(nil)
+	if err == nil {
+		contribDir = filepath.Join(repoRoot, contribDir)
+		absDataDir := filepath.Join(repoRoot, "data")
+		os.Setenv("PIPELINE_DATA_DIR", absDataDir)
 	}
 
-	if contribDir == "" || contribList == "" {
-		logger.Warn("[quality] contrib sources disabled (PIPELINE_CONTRIB_DIR/LIST not set)")
+	entries, err := os.ReadDir(contribDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Warn("[quality] failed to read contrib sources directory", "dir", contribDir, "error", err)
+		}
 		return
 	}
 
-	// Resolve relative contrib dir
-	absDataDir := ""
-	repoRoot, err := findRepoRoot(nil)
-	if err == nil {
-		absDataDir = filepath.Join(repoRoot, "data")
-		if !filepath.IsAbs(contribDir) {
-			contribDir = filepath.Join(repoRoot, contribDir)
-		}
-	}
-
-	env := os.Environ()
-	if absDataDir != "" {
-		env = append(env, "PIPELINE_DATA_DIR="+absDataDir)
-	}
-
-	for _, name := range strings.Split(contribList, ",") {
-		name = strings.TrimSpace(name)
-		if name == "" {
+	for _, entry := range entries {
+		// Skip directories and hidden files
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 
-		// Look for executable in contrib dir
-		execPath := filepath.Join(contribDir, name)
-		if _, err := os.Stat(execPath); err != nil {
-			// Try common extensions
-			found := false
-			for _, ext := range []string{"", ".py", ".sh"} {
-				candidate := execPath + ext
-				if _, statErr := os.Stat(candidate); statErr == nil {
-					execPath = candidate
-					found = true
-					break
-				}
-			}
-			if !found {
-				logger.Warn("[quality] contrib source not found", "name", name, "path", execPath)
-				continue
-			}
+		// Skip Python source files (not executables)
+		if strings.HasSuffix(entry.Name(), ".py") {
+			continue
 		}
 
-		// Create process provider with custom environment
-		cmd := exec.CommandContext(ctx, execPath)
-		cmd.Env = env
+		execPath := filepath.Join(contribDir, entry.Name())
 
-		// Note: We need a way to pass Env to NewProcessSourceProvider or use a more direct approach.
-		// Since NewProcessSourceProvider doesn't support custom Env yet, I'll update it to inherit current env
-		// and I'll set the environment variable in the current process before calling it.
+		// Check if file is executable
+		info, err := entry.Info()
+		if err != nil {
+			logger.Warn("[quality] failed to get file info", "path", execPath, "error", err)
+			continue
+		}
 
-		os.Setenv("PIPELINE_DATA_DIR", absDataDir)
+		if info.Mode()&0111 == 0 {
+			logger.Debug("[quality] skipping non-executable file", "path", execPath)
+			continue
+		}
+
 		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
 		if err != nil {
-			logger.Warn("[quality] failed to start contrib source", "name", name, "error", err)
+			logger.Warn("[quality] failed to start contrib source", "path", execPath, "error", err)
 			continue
 		}
 
 		registry.Register(sp)
+		logger.Info("[quality] contrib source loaded", "name", sp.Manifest().Name, "path", execPath)
 	}
 }
