@@ -43,19 +43,20 @@ func NewReaderWithLogger(dataPath string, logger *slog.Logger) (*Reader, error) 
 		return nil, fmt.Errorf("wikidata index not found (run 'vocnet pipeline source download wikidata' first): %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	// Open in read-only immutable mode — tells SQLite the file will NEVER change,
+	// allowing it to skip all locking entirely. This dramatically improves
+	// concurrent read performance since there's no lock contention at all.
+	dsn := "file:" + dbPath + "?mode=ro&immutable=1"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open wikidata index: %w", err)
 	}
 
-	// Set read-only mode via PRAGMA
-	if _, err := db.Exec("PRAGMA query_only = ON"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("set read-only mode: %w", err)
-	}
-
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	// No connection limit: read-only SQLite supports unlimited concurrent readers.
+	// Each reader holds only a SHARED lock which never conflicts with other readers.
+	// This eliminates connection-pool contention as the bottleneck under high concurrency.
+	db.SetMaxOpenConns(0)
+	db.SetMaxIdleConns(10)
 
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
@@ -82,46 +83,40 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 	searchKey := normalizeSearchKey(term)
 	orthKey := orthographyKey(term)
 
+	// Use UNION instead of OR to allow SQLite to use indexes efficiently.
+	// Each sub-query can use its specific index, then results are merged.
 	query := `
-		SELECT l.id, l.lemma, l.language, l.pos, l.data,
-			CASE
-				WHEN l.lemma_lower = ? THEN 'exact_lemma'
-				WHEN f.representation_lower = ? THEN 'exact_form'
-				WHEN l.lemma_key = ? THEN 'normalized_lemma'
-				WHEN f.representation_key = ? THEN 'normalized_form'
-				WHEN l.lemma_orth_key = ? THEN 'orth_lemma'
-				WHEN f.representation_orth_key = ? THEN 'orth_form'
-				ELSE 'none'
-			END AS match_level,
-			CASE
-				WHEN l.lemma_lower = ? THEN 100
-				WHEN f.representation_lower = ? THEN 90
-				WHEN l.lemma_key = ? THEN 70
-				WHEN f.representation_key = ? THEN 60
-				WHEN l.lemma_orth_key = ? THEN 50
-				WHEN f.representation_orth_key = ? THEN 40
-				ELSE 0
-			END AS match_score
-		FROM lexemes l
-		LEFT JOIN forms f ON f.lexeme_id = l.id
-		WHERE l.language = ?
-		  AND (
-				l.lemma_lower = ?
-				OR l.lemma_key = ?
-				OR l.lemma_orth_key = ?
-				OR f.representation_lower = ?
-				OR f.representation_key = ?
-				OR f.representation_orth_key = ?
-		  )
+		SELECT id, lemma, language, pos, data, match_level, match_score FROM (
+			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'exact_lemma' as match_level, 100 as match_score
+			FROM lexemes l WHERE l.language = ? AND l.lemma_lower = ?
+			UNION ALL
+			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'normalized_lemma' as match_level, 70 as match_score
+			FROM lexemes l WHERE l.language = ? AND l.lemma_key = ?
+			UNION ALL
+			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'orth_lemma' as match_level, 50 as match_score
+			FROM lexemes l WHERE l.language = ? AND l.lemma_orth_key = ?
+			UNION ALL
+			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'exact_form' as match_level, 90 as match_score
+			FROM forms f JOIN lexemes l ON f.lexeme_id = l.id WHERE l.language = ? AND f.representation_lower = ?
+			UNION ALL
+			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'normalized_form' as match_level, 60 as match_score
+			FROM forms f JOIN lexemes l ON f.lexeme_id = l.id WHERE l.language = ? AND f.representation_key = ?
+			UNION ALL
+			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'orth_form' as match_level, 40 as match_score
+			FROM forms f JOIN lexemes l ON f.lexeme_id = l.id WHERE l.language = ? AND f.representation_orth_key = ?
+		)
+		ORDER BY match_score DESC
 		LIMIT 10
 	`
 	rows, err := r.db.QueryContext(
 		ctx,
 		query,
-		termLower, termLower, searchKey, searchKey, orthKey, orthKey,
-		termLower, termLower, searchKey, searchKey, orthKey, orthKey,
-		language,
-		termLower, searchKey, orthKey, termLower, searchKey, orthKey,
+		language, termLower,
+		language, searchKey,
+		language, orthKey,
+		language, termLower,
+		language, searchKey,
+		language, orthKey,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query wikidata index: %w", err)
@@ -271,45 +266,66 @@ func scanLexemeRows(rows *sql.Rows) ([]lexemeRow, []map[string]any, error) {
 }
 
 func (r *Reader) buildLexemesWithDetails(ctx context.Context, parsedRows []lexemeRow) []provider.WikidataLexeme {
+	if len(parsedRows) == 0 {
+		return nil
+	}
+
+	// Collect all lexeme IDs for batch query
+	lexemeIDs := make([]string, len(parsedRows))
+	for i, row := range parsedRows {
+		lexemeIDs[i] = row.id
+	}
+
+	// Batch fetch all senses and forms in 2 queries instead of 2*N queries
+	sensesMap := r.batchFetchSenses(ctx, lexemeIDs)
+	formsMap := r.batchFetchForms(ctx, lexemeIDs)
+
+	// Build lexemes using pre-fetched data
 	lexemes := make([]provider.WikidataLexeme, 0, len(parsedRows))
 	for _, row := range parsedRows {
 		wl := provider.WikidataLexeme{
 			LexemeID: row.id,
 			Language: row.lang,
 			POS:      row.pos,
-		}
-		senses, err := r.fetchSenses(ctx, row.id)
-		if err == nil {
-			wl.Senses = senses
-		}
-		forms, err := r.fetchForms(ctx, row.id)
-		if err == nil {
-			wl.Forms = forms
+			Senses:   sensesMap[row.id],
+			Forms:    formsMap[row.id],
 		}
 		lexemes = append(lexemes, wl)
 	}
 	return lexemes
 }
 
-// fetchSenses fetches senses for a lexeme.
-func (r *Reader) fetchSenses(ctx context.Context, lexemeID string) ([]provider.WikidataSense, error) {
-	query := `
-		SELECT id, gloss_en, gloss_zh
-		FROM senses
-		WHERE lexeme_id = ?
-	`
+// batchFetchSenses fetches senses for multiple lexemes in a single query.
+func (r *Reader) batchFetchSenses(ctx context.Context, lexemeIDs []string) map[string][]provider.WikidataSense {
+	if len(lexemeIDs) == 0 {
+		return nil
+	}
 
-	rows, err := r.db.QueryContext(ctx, query, lexemeID)
+	// Build placeholder string: ?,?,?...
+	placeholders := make([]string, len(lexemeIDs))
+	args := make([]any, len(lexemeIDs))
+	for i, id := range lexemeIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT lexeme_id, id, gloss_en, gloss_zh
+		FROM senses
+		WHERE lexeme_id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	defer func() { _ = rows.Close() }()
 
-	var senses []provider.WikidataSense
+	result := make(map[string][]provider.WikidataSense)
 	for rows.Next() {
-		var id string
+		var lexemeID, id string
 		var glossEn, glossZh sql.NullString
-		if err := rows.Scan(&id, &glossEn, &glossZh); err != nil {
+		if err := rows.Scan(&lexemeID, &id, &glossEn, &glossZh); err != nil {
 			continue
 		}
 
@@ -321,34 +337,46 @@ func (r *Reader) fetchSenses(ctx context.Context, lexemeID string) ([]provider.W
 			glosses["zh"] = glossZh.String
 		}
 
-		senses = append(senses, provider.WikidataSense{
+		result[lexemeID] = append(result[lexemeID], provider.WikidataSense{
 			SenseID: id,
 			Glosses: glosses,
 		})
 	}
 
-	return senses, nil
+	return result
 }
 
-// fetchForms fetches forms for a lexeme.
-func (r *Reader) fetchForms(ctx context.Context, lexemeID string) ([]provider.WikidataForm, error) {
-	query := `
-		SELECT id, representation, features, ipa
-		FROM forms
-		WHERE lexeme_id = ?
-	`
+// batchFetchForms fetches forms for multiple lexemes in a single query.
+func (r *Reader) batchFetchForms(ctx context.Context, lexemeIDs []string) map[string][]provider.WikidataForm {
+	if len(lexemeIDs) == 0 {
+		return nil
+	}
 
-	rows, err := r.db.QueryContext(ctx, query, lexemeID)
+	// Build placeholder string: ?,?,?...
+	placeholders := make([]string, len(lexemeIDs))
+	args := make([]any, len(lexemeIDs))
+	for i, id := range lexemeIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT lexeme_id, id, representation, features, ipa
+		FROM forms
+		WHERE lexeme_id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	defer func() { _ = rows.Close() }()
 
-	var forms []provider.WikidataForm
+	result := make(map[string][]provider.WikidataForm)
 	for rows.Next() {
-		var id, repr string
+		var lexemeID, id, repr string
 		var features, ipa sql.NullString
-		if err := rows.Scan(&id, &repr, &features, &ipa); err != nil {
+		if err := rows.Scan(&lexemeID, &id, &repr, &features, &ipa); err != nil {
 			continue
 		}
 
@@ -372,10 +400,10 @@ func (r *Reader) fetchForms(ctx context.Context, lexemeID string) ([]provider.Wi
 			}
 		}
 
-		forms = append(forms, form)
+		result[lexemeID] = append(result[lexemeID], form)
 	}
 
-	return forms, nil
+	return result
 }
 
 // FetchLexemesByForm searches for lexemes by an inflected form.
