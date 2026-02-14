@@ -38,6 +38,7 @@ var submitCmd = &cobra.Command{
   - Single word: pipeline submit <term>
   - File: pipeline submit --file words.txt
   - Built-in wordbook: pipeline submit --wordbook CEFR-A1
+  - All wordbooks: pipeline submit --all
 
 File formats:
   .txt  — one word per line (blank lines and # comments ignored)
@@ -48,6 +49,7 @@ File formats:
 		file, _ := cmd.Flags().GetString("file")
 		wb, _ := cmd.Flags().GetString("wordbook")
 		name, _ := cmd.Flags().GetString("name")
+		all, _ := cmd.Flags().GetBool("all")
 
 		deps, err := newPipelineDeps()
 		if err != nil {
@@ -61,6 +63,11 @@ File formats:
 		var job *entity.PipelineJob
 
 		switch {
+		case all:
+			jobs, err = submitAllWordbooks(ctx, deps.svc, language, tier)
+			if err != nil {
+				return err
+			}
 		case file != "":
 			terms, err := pipeline.ParseTermFile(file)
 			if err != nil {
@@ -89,7 +96,7 @@ File formats:
 			}
 			jobs = []*entity.PipelineJob{job}
 		default:
-			return fmt.Errorf("provide a term, --file, or --wordbook")
+			return fmt.Errorf("provide a term, --file, --wordbook, or --all")
 		}
 
 		if len(jobs) == 1 {
@@ -489,6 +496,24 @@ func formatDuration(seconds float64) string {
 	return fmt.Sprintf("%dh%dm", hours, mins)
 }
 
+// submitAllWordbooks submits jobs for all built-in wordbooks.
+func submitAllWordbooks(ctx context.Context, svc *pipeline.PipelineService, language string, tier int32) ([]*entity.PipelineJob, error) {
+	builtins := wordbook.GetBuiltinWordbooks()
+	var allJobs []*entity.PipelineJob
+
+	fmt.Printf("Submitting %d wordbooks...\n", len(builtins))
+	for _, wb := range builtins {
+		jobs, err := svc.SubmitTerms(ctx, wb.Name, wb.Terms, language, tier)
+		if err != nil {
+			return nil, fmt.Errorf("submit wordbook %s: %w", wb.Name, err)
+		}
+		allJobs = append(allJobs, jobs...)
+		fmt.Printf("  ✓ %s: %d terms\n", wb.Name, len(wb.Terms))
+	}
+
+	return allJobs, nil
+}
+
 // resolveWordbook finds a builtin wordbook by name or ID and returns its terms.
 func resolveWordbook(nameOrID string) ([]string, string, error) {
 	builtins := wordbook.GetBuiltinWordbooks()
@@ -528,6 +553,7 @@ func init() {
 	submitCmd.Flags().String("file", "", "Path to term file (txt/json)")
 	submitCmd.Flags().String("wordbook", "", "Built-in wordbook name or ID")
 	submitCmd.Flags().String("name", "", "Custom job name")
+	submitCmd.Flags().Bool("all", false, "Submit all built-in wordbooks")
 
 	pipelineCmd.AddCommand(jobsCmd)
 	jobsCmd.Flags().String("status", "", "Filter by status (PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED)")
