@@ -34,7 +34,11 @@ var pipelineCmd = &cobra.Command{
 // Source management commands
 var sourceCmd = &cobra.Command{
 	Use:   "source",
-	Short: "Manage offline data sources (ConceptNet, ECDICT, WordNet, Moby, Wikidata, CEFRJ)",
+	Short: "Manage offline data sources (Moby, Wikidata, CEFRJ)",
+	Long: `Manage offline data sources that require manual download.
+
+Note: ConceptNet, ECDICT, and WordNet are contrib sources that auto-download
+on first use and do not need manual management.`,
 }
 
 var sourceListCmd = &cobra.Command{
@@ -58,6 +62,9 @@ var sourceListCmd = &cobra.Command{
 		}
 
 		fmt.Println("Pipeline Data Sources:")
+
+		// Add note about contrib sources
+		fmt.Println("\nManaged sources (require manual download):")
 		table := tablewriter.NewTable(os.Stdout)
 		table.Header("STATUS", "SOURCE", "PATH", "INFO")
 		for _, status := range statuses {
@@ -92,7 +99,8 @@ var sourceListCmd = &cobra.Command{
 			return fmt.Errorf("missing data sources")
 		}
 
-		fmt.Println("\nAll data sources are available.")
+		fmt.Println("\nAll managed data sources are available.")
+		fmt.Println("\nNote: Contrib sources (ecdict, conceptnet, wordnet) auto-download on first use.")
 		return nil
 	},
 }
@@ -100,16 +108,18 @@ var sourceListCmd = &cobra.Command{
 var sourceDownloadCmd = &cobra.Command{
 	Use:   "download [source...]",
 	Short: "Download missing data sources",
-	Long: `Download data sources required by the pipeline.
-If no source is specified, downloads all missing sources.
+	Long: `Download data sources that require manual download.
+If no source is specified, downloads all missing managed sources.
 
-Available sources: conceptnet, ecdict, wordnet, moby, wikidata, cefrj
+Available managed sources: moby, wikidata, cefrj
+
+Note: ConceptNet, ECDICT, and WordNet are contrib sources that auto-download
+on first use and do not need manual download commands.
 
 Examples:
-  vocnet pipeline source download            # Download all missing sources
-  vocnet pipeline source download conceptnet # Download only ConceptNet
-  vocnet pipeline source download ecdict wordnet # Download ECDICT and WordNet
-  vocnet pipeline source download wikidata # Download only Wikidata`,
+  vocnet pipeline source download            # Download all missing managed sources
+  vocnet pipeline source download moby       # Download only Moby
+  vocnet pipeline source download wikidata   # Download only Wikidata`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
