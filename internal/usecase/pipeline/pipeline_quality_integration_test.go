@@ -119,8 +119,7 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	stageRepo := repo.NewPipelineStageRepository(entClient)
 	jobRepo := repo.NewPipelineJobRepository(entClient)
 
-	aggregator := NewDataAggregator()
-	persistence := NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
+	persistence := NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, logger)
 	validator := NewValidator(lemmaRepo, lexemeRepo, logger)
 
 	t.Logf("[quality] initializing source registry...")
@@ -191,8 +190,7 @@ func newPipelineQualityHarnessForWordbook(t *testing.T, cfg *config.Config, logg
 	cefrjReader, err := cefrj.NewReader(cefrj.DataDir(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
 
-	aggregator := NewDataAggregator()
-	persistence := NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
+	persistence := NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, logger)
 	validator := NewValidator(lemmaRepo, lexemeRepo, logger)
 
 	// Use SourceRegistry for built-in sources

@@ -22,6 +22,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
 )
 
@@ -214,14 +215,14 @@ var jobCmd = &cobra.Command{
 			table := tablewriter.NewTable(os.Stdout)
 			table.Header("PHASE", "NAME", "STATUS", "DURATION")
 			for _, stage := range detail.Stages {
-				phase := entity.PipelinePhase(stage.Phase)
+				phase := engine.PhaseFromNumber(stage.Phase)
 				dur := "-"
 				if stage.StartedAt != nil && stage.CompletedAt != nil {
 					dur = stage.CompletedAt.Sub(*stage.StartedAt).Truncate(100 * time.Millisecond).String()
 				}
 				_ = table.Append([]string{
 					strconv.Itoa(int(stage.Phase)),
-					phase.Name(),
+					string(phase),
 					string(stage.Status),
 					dur,
 				})

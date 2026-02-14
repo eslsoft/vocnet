@@ -7,7 +7,7 @@ type RawEvidence struct {
 	ID            int64
 	LemmaID       int64
 	Provider      string // "wikidata", "wordnet", "ecdict", "conceptnet", "llm", "manual"
-	Phase         int32  // 1-5
+	Phase         string // "collection", "evaluation", "integration", "snapshot"
 	Content       map[string]any
 	SchemaVersion string
 	FetchedAt     time.Time

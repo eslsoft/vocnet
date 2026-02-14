@@ -33,12 +33,11 @@ func toPBPipelineStage(stage *entity.PipelineStage) *pipelinev1.PipelineStage {
 	if stage == nil {
 		return nil
 	}
-	phase := entity.PipelinePhase(stage.Phase)
 	return &pipelinev1.PipelineStage{
 		Id:           stage.ID,
 		JobId:        stage.JobID,
 		LemmaId:      stage.LemmaID,
-		Phase:        toPBPipelinePhase(phase),
+		Phase:        toPBPipelinePhase(stage.Phase),
 		Status:       toPBStatusFromStage(stage.Status),
 		Attempts:     stage.Attempts,
 		ErrorMessage: stage.ErrorMessage,
@@ -255,18 +254,16 @@ func toEntityJobStatus(s pipelinev1.PipelineStatus) (entity.JobStatus, bool) {
 	}
 }
 
-func toPBPipelinePhase(p entity.PipelinePhase) pipelinev1.PipelinePhase {
-	switch p {
-	case entity.PhaseDiscovery:
-		return pipelinev1.PipelinePhase_PIPELINE_PHASE_DISCOVERY
-	case entity.PhaseLexical:
-		return pipelinev1.PipelinePhase_PIPELINE_PHASE_LEXICAL
-	case entity.PhaseRelational:
-		return pipelinev1.PipelinePhase_PIPELINE_PHASE_RELATIONAL
-	case entity.PhaseIntellectual:
-		return pipelinev1.PipelinePhase_PIPELINE_PHASE_INTELLECTUAL
-	case entity.PhaseSynthesis:
-		return pipelinev1.PipelinePhase_PIPELINE_PHASE_SYNTHESIS
+func toPBPipelinePhase(stageNumber int32) pipelinev1.PipelinePhase {
+	switch stageNumber {
+	case 1, 2: // Collection (including LLM enrichment)
+		return pipelinev1.PipelinePhase_PIPELINE_PHASE_COLLECTION
+	case 3:
+		return pipelinev1.PipelinePhase_PIPELINE_PHASE_EVALUATION
+	case 4:
+		return pipelinev1.PipelinePhase_PIPELINE_PHASE_INTEGRATION
+	case 5:
+		return pipelinev1.PipelinePhase_PIPELINE_PHASE_SNAPSHOT
 	default:
 		return pipelinev1.PipelinePhase_PIPELINE_PHASE_UNSPECIFIED
 	}

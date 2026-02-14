@@ -122,7 +122,7 @@ type ResultFrequency struct {
 // ResultEvidence carries provenance data from the contrib source.
 type ResultEvidence struct {
 	Provider      string         `json:"provider"`
-	Phase         int32          `json:"phase"`
+	Phase         string         `json:"phase"`
 	Content       map[string]any `json:"content,omitempty"`
 	SchemaVersion string         `json:"schema_version"`
 }

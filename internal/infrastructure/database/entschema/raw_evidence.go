@@ -24,8 +24,9 @@ func (RawEvidence) Fields() []ent.Field {
 		field.String("provider").
 			NotEmpty().
 			Comment("Data source: wikidata, wordnet, ecdict, conceptnet, llm, manual"),
-		field.Int32("phase").
-			Comment("Pipeline phase 1-5"),
+		field.String("phase").
+			NotEmpty().
+			Comment("Pipeline phase: collection, evaluation, integration, snapshot"),
 		field.JSON("content", map[string]any{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("Raw response envelope (complete JSON)"),

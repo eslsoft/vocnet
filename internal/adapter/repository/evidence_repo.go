@@ -46,7 +46,7 @@ func (r *evidenceRepository) FindByLemma(ctx context.Context, lemmaID int64) ([]
 	return mapEntEvidences(rows), nil
 }
 
-func (r *evidenceRepository) FindByLemmaAndPhase(ctx context.Context, lemmaID int64, phase int32) ([]*entity.RawEvidence, error) {
+func (r *evidenceRepository) FindByLemmaAndPhase(ctx context.Context, lemmaID int64, phase string) ([]*entity.RawEvidence, error) {
 	rows, err := r.client.RawEvidence.Query().
 		Where(
 			entrawevidence.LemmaIDEQ(lemmaID),

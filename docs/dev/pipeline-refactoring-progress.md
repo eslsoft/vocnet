@@ -65,25 +65,9 @@ type Stage struct {
 }
 ```
 
-### 2. 部分数据契约系统 ✅
+### 2. 部分数据契约系统 (Removed)
 
-文件：`internal/usecase/pipeline/contract.go`
-
-**契约验证器**：
-- `ContractValidator`: 验证数据源返回的部分数据
-- `ValidateLexeme()`: 验证词条碎片
-- `ValidateForm()`: 验证词形碎片
-- `ValidateRelation()`: 验证关系碎片
-
-**关键验证规则**：
-- Lexeme: PartOfSpeech不能是Unspecified
-- Form.Phonetic: IPA必须符合格式，Dialect必须是ISO 639格式（en-US而非US）
-- Relation: Strength必须在[0, 1]范围，TargetRef必须是合法URI
-
-**错误处理**：
-- 契约违规返回`ContractViolationError`
-- 包含详细的违规字段、规则、实际值
-- 便于数据源调试和修复
+Previously in `internal/usecase/pipeline/contract.go`. The `ContractValidator` was designed but never integrated into production code. Removed during refactoring.
 
 ### 3. 修复编译错误 ✅
 
@@ -187,16 +171,8 @@ func (gp *GenericSourceProcessor) Process(ctx context.Context, pctx *PipelineCon
         return nil, err
     }
 
-    // 契约验证
-    validator := NewContractValidator()
-    if err := validator.ValidateSourceResult(result, gp.source.Manifest().Name); err != nil {
-        gp.logger.Error("contract violation, rejecting source data",
-            "provider", gp.source.Manifest().Name,
-            "error", err)
-        return &ProcessResult{
-            Status: ProcessStatusRejected,
-        }, nil
-    }
+    // Note: ContractValidator was removed (never integrated into production).
+    // Data quality is now handled by the DataEvaluator scoring system.
 
     // 返回碎片
     return convertToProcessResult(result), nil

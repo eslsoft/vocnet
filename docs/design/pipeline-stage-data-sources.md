@@ -45,16 +45,9 @@ Stage wiring source: `cmd/serve.go` (`buildNewPipelineStages`)
 3. Stages are manually constructed with explicit phase and processors
 4. Collection phase runs concurrently with all data sources
 
-### Partial Data Contract System
+### Data Quality System
 
-**Key Principle**: Data sources provide partial data, but what they provide must be standardized.
-
-Contract validator (`internal/usecase/pipeline/contract.go`) enforces:
-- **Lexeme**: PartOfSpeech cannot be Unspecified; Senses must be non-empty
-- **Form**: Phonetics.IPA must be valid format; Dialect must be ISO 639 (e.g., `en-US` not `US`)
-- **Relation**: Strength must be in [0, 1]; TargetRef must be valid URI
-
-Non-compliant data is immediately rejected with `ContractViolationError`.
+**Key Principle**: Data sources provide partial data. Quality is ensured through the field-level scoring and evaluation system (`DataEvaluator` + `RuleBasedScorer`) rather than upfront contract validation.
 
 ## Phase 1: Collection
 

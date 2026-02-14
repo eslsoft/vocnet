@@ -10,5 +10,5 @@ import (
 type EvidenceRepository interface {
 	Create(ctx context.Context, evidence *entity.RawEvidence) (*entity.RawEvidence, error)
 	FindByLemma(ctx context.Context, lemmaID int64) ([]*entity.RawEvidence, error)
-	FindByLemmaAndPhase(ctx context.Context, lemmaID int64, phase int32) ([]*entity.RawEvidence, error)
+	FindByLemmaAndPhase(ctx context.Context, lemmaID int64, phase string) ([]*entity.RawEvidence, error)
 }

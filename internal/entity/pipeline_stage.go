@@ -16,35 +16,6 @@ const (
 	StageStatusSkipped   StageStatus = "SKIPPED"
 )
 
-// PipelinePhase enumerates the five pipeline stages.
-type PipelinePhase int32
-
-const (
-	PhaseDiscovery    PipelinePhase = 1
-	PhaseLexical      PipelinePhase = 2
-	PhaseRelational   PipelinePhase = 3
-	PhaseIntellectual PipelinePhase = 4
-	PhaseSynthesis    PipelinePhase = 5
-)
-
-// PhaseName returns a human-readable name for the phase.
-func (p PipelinePhase) Name() string {
-	switch p {
-	case PhaseDiscovery:
-		return "discovery"
-	case PhaseLexical:
-		return "lexical"
-	case PhaseRelational:
-		return "relational"
-	case PhaseIntellectual:
-		return "intellectual"
-	case PhaseSynthesis:
-		return "synthesis"
-	default:
-		return "unknown"
-	}
-}
-
 // PipelineStage tracks the execution state of a single pipeline phase for a job.
 type PipelineStage struct {
 	ID           int64

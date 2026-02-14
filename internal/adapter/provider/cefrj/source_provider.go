@@ -40,7 +40,7 @@ func (p *SourceProvider) Lookup(ctx context.Context, query repository.SourceQuer
 
 	evidence := &entity.RawEvidence{
 		Provider:      "cefrj",
-		Phase:         int32(entity.PhaseLexical),
+		Phase:         "collection",
 		Content:       buildEvidence(entry),
 		SchemaVersion: "cefrj-1.5+c1c2-1.0",
 		FetchedAt:     time.Now(),

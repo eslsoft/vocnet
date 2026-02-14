@@ -47,6 +47,13 @@ import (
 	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
 	"github.com/eslsoft/vocnet/internal/infrastructure/server"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/collection"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/engine"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/evaluation"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/integration"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/persist"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
+	"github.com/eslsoft/vocnet/internal/usecase/pipeline/snapshot"
 )
 
 // serveCmd represents the serve command
@@ -119,7 +126,7 @@ func init() {
 }
 
 // buildPipelineWorkerPool constructs the Pipeline and WorkerPool from config and ent client.
-func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, error) {
+func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*engine.WorkerPool, error) {
 	// Repositories
 	lemmaRepo := repository.NewLemmaRepository(entClient)
 	lexemeRepo := repository.NewLexemeRepository(entClient)
@@ -182,16 +189,15 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	}
 
 	// Build pipeline stages using new Phase system
-	aggregator := pipeline.NewDataAggregator()
-	persistence := pipeline.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
-	validator := pipeline.NewValidator(lemmaRepo, lexemeRepo, logger)
-	scorer := pipeline.NewRuleBasedScorer()
-	evaluator := pipeline.NewDataEvaluator(scorer, logger)
+	persistence := persist.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, logger)
+	validator := engine.NewValidator(lemmaRepo, lexemeRepo, logger)
+	scorer := scoring.NewRuleBasedScorer()
+	evaluator := scoring.NewDataEvaluator(scorer, logger)
 
 	// Build stages with new architecture (LLM enrichment is optional)
 	stages := buildNewPipelineStages(registry, wikidataProvider, llmProvider, scorer, logger)
 
-	p := pipeline.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
+	p := engine.NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 
 	// Configure worker pool
 	workerCount := cfg.Pipeline.WorkerCount
@@ -199,7 +205,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 		workerCount = 1
 	}
 
-	return pipeline.NewWorkerPool(jobRepo, p, logger, pipeline.WorkerPoolConfig{
+	return engine.NewWorkerPool(jobRepo, p, logger, engine.WorkerPoolConfig{
 		WorkerCount: workerCount,
 	}), nil
 }
@@ -209,67 +215,65 @@ func buildNewPipelineStages(
 	registry *pipeline.SourceRegistry,
 	wikidataProvider provider.WikidataProvider,
 	llmProvider llm.Provider,
-	scorer *pipeline.RuleBasedScorer,
+	scorer *scoring.RuleBasedScorer,
 	logger *slog.Logger,
-) []*pipeline.Stage {
+) []*engine.Stage {
 	// Phase 1: Collection (Concurrent data acquisition from all sources)
-	collectionProcessors := []pipeline.Processor{
+	collectionProcessors := []engine.Processor{
 		// Wikidata remains specialized due to complex discovery logic
-		pipeline.NewWikidataProcessor(wikidataProvider, logger),
-		pipeline.NewCategoryInferProcessor(),
-		// Wikidata relations
-		pipeline.NewWikidataRelationProcessor(wikidataProvider),
+		// (includes lexeme fetching, forms extraction, relation building, and category inference)
+		collection.NewWikidataProcessor(wikidataProvider, logger),
 	}
 
 	// Add all registered source providers to collection
 	for _, src := range registry.Sources() {
 		collectionProcessors = append(collectionProcessors,
-			pipeline.NewGenericSourceProcessor(src, logger))
+			collection.NewGenericSourceProcessor(src, logger))
 	}
 
-	collection := pipeline.NewConcurrentStage(
-		pipeline.PhaseCollection,
+	collectionStage := engine.NewConcurrentStage(
+		engine.PhaseCollection,
 		1,
 		collectionProcessors...,
 	)
 
 	// Phase 1.5: LLM Enrichment (Fill gaps with LLM-generated data)
 	// Optional: only runs if LLM provider is configured
-	var llmEnrichment *pipeline.Stage
+	var llmEnrichment *engine.Stage
 	if llmProvider != nil {
-		llmEnrichment = pipeline.NewStage(
-			pipeline.PhaseCollection, // Still part of collection phase logically
+		llmEnrichment = engine.NewStage(
+			engine.PhaseCollection, // Still part of collection phase logically
 			2,
-			pipeline.NewLLMEnrichmentProcessor(llmProvider, logger),
+			collection.NewLLMEnrichmentProcessor(llmProvider, logger),
 		)
 	}
 
 	// Phase 2: Evaluation (Quality scoring of fragments)
-	evaluation := pipeline.NewStage(
-		pipeline.PhaseEvaluation,
+	evaluationStage := engine.NewStage(
+		engine.PhaseEvaluation,
 		3,
-		pipeline.NewFragmentEvaluator(scorer, logger),
+		evaluation.NewFragmentEvaluator(scorer, logger),
 	)
 
 	// Phase 3: Integration (Smart merging based on scores)
-	integration := pipeline.NewStage(
-		pipeline.PhaseIntegration,
+	integrationStage := engine.NewStage(
+		engine.PhaseIntegration,
 		4,
-		pipeline.NewIntegrationProcessor(logger),
+		integration.NewIntegrationProcessor(logger),
 	)
 
 	// Phase 4: Snapshot (Final snapshot generation)
-	snapshot := pipeline.NewStage(
-		pipeline.PhaseSnapshot,
+	snapshotStage := engine.NewStage(
+		engine.PhaseSnapshot,
 		5,
-		pipeline.NewLemmaSnapshotProcessor(),
+		snapshot.NewLemmaSnapshotProcessor(),
 	)
 
-	stages := []*pipeline.Stage{collection}
+	stages := []*engine.Stage{collectionStage}
 	if llmEnrichment != nil {
 		stages = append(stages, llmEnrichment)
 	}
-	stages = append(stages, evaluation, integration, snapshot)
+	stages = append(stages, evaluationStage, integrationStage, snapshotStage)
 
 	return stages
 }
