@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 )
@@ -75,17 +77,25 @@ type PipelineContext struct {
 	// Key: field key (e.g., "lexeme:en:verb", "form:run:phonetics")
 	// Value: list of competing fragments from different providers
 	EvaluatedFragments map[string][]*FieldFragment
+
+	// mu protects concurrent access during parallel processor execution
+	mu sync.Mutex
 }
 
 // Accumulate merges a ProcessResult into the pipeline context.
 // If an evaluator is configured, it uses scoring to make adoption decisions.
+// Uses the result's Provider field if available.
 func (pc *PipelineContext) Accumulate(r *ProcessResult) {
-	pc.AccumulateWithProvider(r, "")
+	provider := ""
+	if r != nil {
+		provider = r.Provider
+	}
+	pc.AccumulateWithProvider(r, provider)
 }
 
 // AccumulateWithProvider merges a ProcessResult with provider metadata.
 // The provider string is required for evaluator-based adoption decisions.
-// If evaluator is not configured, this will panic - evaluator is now mandatory.
+// This method is safe for concurrent use.
 func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider string) {
 	if r == nil {
 		return
@@ -95,14 +105,17 @@ func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider str
 		panic("PipelineContext.Evaluator is nil - evaluator must be configured")
 	}
 
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+
 	// Evidence: always accumulate
 	if r.Evidence != nil {
 		pc.Evidence = append(pc.Evidence, r.Evidence...)
 	}
 
-	// Relations: always accumulate (deduplication happens at persistence)
+	// Relations: accumulate with scoring-based deduplication
 	if r.Relations != nil {
-		pc.Relations = append(pc.Relations, r.Relations...)
+		pc.Relations = mergeRelationsWithScoring(pc.Relations, r.Relations, pc.Evaluator.scorer)
 	}
 
 	// Lexemes: evaluate and merge with quality scoring
@@ -133,6 +146,58 @@ func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider str
 	if r.LemmaSnapshot != nil {
 		pc.LemmaSnapshot = r.LemmaSnapshot
 	}
+}
+
+// mergeRelationsWithScoring deduplicates relations by key, keeping the higher-scored one.
+func mergeRelationsWithScoring(existing, incoming []*entity.SemanticRelation, scorer FieldScorer) []*entity.SemanticRelation {
+	if len(incoming) == 0 {
+		return existing
+	}
+
+	// Build index of existing relations by dedup key
+	type indexEntry struct {
+		idx   int
+		score float64
+	}
+	index := make(map[string]indexEntry, len(existing))
+	for i, rel := range existing {
+		key := relationDeduplicationKey(rel)
+		if key == "" {
+			continue
+		}
+		index[key] = indexEntry{idx: i, score: scorer.ScoreRelation(rel).Score}
+	}
+
+	for _, rel := range incoming {
+		key := relationDeduplicationKey(rel)
+		if key == "" {
+			existing = append(existing, rel)
+			continue
+		}
+		newScore := scorer.ScoreRelation(rel).Score
+		if entry, ok := index[key]; ok {
+			// Duplicate: keep higher score, break ties by provider trust
+			if newScore > entry.score ||
+				(newScore == entry.score && sourceProviderTrustRank(rel.Provider) > sourceProviderTrustRank(existing[entry.idx].Provider)) {
+				existing[entry.idx] = rel
+				index[key] = indexEntry{idx: entry.idx, score: newScore}
+			}
+		} else {
+			idx := len(existing)
+			existing = append(existing, rel)
+			index[key] = indexEntry{idx: idx, score: newScore}
+		}
+	}
+	return existing
+}
+
+// relationDeduplicationKey creates a key for relation deduplication.
+func relationDeduplicationKey(rel *entity.SemanticRelation) string {
+	if rel == nil {
+		return ""
+	}
+	// Use source external ID + target term + relation type as the key
+	return rel.SourceExternalID + "|" + strings.ToLower(strings.TrimSpace(rel.TargetTerm)) + "|" + rel.RelationType
 }
 
 func mergeFormsByLexeme(existing, incoming map[string][]*entity.LemmaForm) map[string][]*entity.LemmaForm {

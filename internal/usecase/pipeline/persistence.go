@@ -345,16 +345,30 @@ func collectExternalIDsForRelations(relations []*entity.SemanticRelation) map[st
 
 func (p *Persistence) loadRelationLexemeIndex(ctx context.Context, relations []*entity.SemanticRelation) map[string]*entity.Lexeme {
 	extIDs := collectExternalIDsForRelations(relations)
-	sourceLexemeByExternalID := make(map[string]*entity.Lexeme, len(extIDs))
-	for extID := range extIDs {
-		lex, err := p.lexemeRepo.GetByExternalID(ctx, extID)
-		if err != nil {
-			p.logger.Warn("could not resolve lexeme ExternalID", "external_id", extID, "error", err)
-			continue
-		}
-		sourceLexemeByExternalID[extID] = lex
+	if len(extIDs) == 0 {
+		return map[string]*entity.Lexeme{}
 	}
-	return sourceLexemeByExternalID
+
+	// Batch lookup all external IDs in a single query
+	ids := make([]string, 0, len(extIDs))
+	for id := range extIDs {
+		ids = append(ids, id)
+	}
+	result, err := p.lexemeRepo.BatchGetByExternalIDs(ctx, ids)
+	if err != nil {
+		p.logger.Warn("batch resolve lexeme ExternalIDs failed, falling back to individual lookups",
+			"count", len(ids), "error", err)
+		// Fallback to individual lookups
+		result = make(map[string]*entity.Lexeme, len(ids))
+		for _, id := range ids {
+			lex, err := p.lexemeRepo.GetByExternalID(ctx, id)
+			if err != nil {
+				continue
+			}
+			result[id] = lex
+		}
+	}
+	return result
 }
 
 func collectTargetTermsByLanguage(relations []*entity.SemanticRelation, sourceLexemeByExternalID map[string]*entity.Lexeme) map[entity.Language]map[string]struct{} {
@@ -532,7 +546,10 @@ func deduplicateRelations(relations []*entity.SemanticRelation) []*entity.Semant
 }
 
 func providerTrustRank(provider string) int {
+	// Must match sourceProviderTrustRank in field_scorer.go
 	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "wikidata":
+		return 5
 	case "wordnet":
 		return 4
 	case "llm":

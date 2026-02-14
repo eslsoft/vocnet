@@ -163,7 +163,7 @@ func addWikidataRelation(
 		RelationType:     entity.RelationAssociation,
 		Provider:         "wikidata",
 		Strength:         0.9,
-		SenseMapped:      true,
+		SenseMapped:      false, // association by lexeme neighborhood, not actual sense mapping
 	})
 }
 

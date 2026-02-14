@@ -129,6 +129,13 @@ func (p *ProcessSourceProvider) call(ctx context.Context, method string, params 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// Apply a default timeout if context has no deadline
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
+
 	id := p.nextID
 	p.nextID++
 
@@ -148,10 +155,26 @@ func (p *ProcessSourceProvider) call(ctx context.Context, method string, params 
 		return fmt.Errorf("write request: %w", err)
 	}
 
-	// Read response line
-	line, err := p.stdout.ReadBytes('\n')
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+	// Read response with context deadline protection
+	type readResult struct {
+		line []byte
+		err  error
+	}
+	ch := make(chan readResult, 1)
+	go func() {
+		line, err := p.stdout.ReadBytes('\n')
+		ch <- readResult{line, err}
+	}()
+
+	var line []byte
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("contrib call %s timed out: %w", method, ctx.Err())
+	case rr := <-ch:
+		if rr.err != nil {
+			return fmt.Errorf("read response: %w", rr.err)
+		}
+		line = rr.line
 	}
 
 	var resp Response
@@ -163,13 +186,8 @@ func (p *ProcessSourceProvider) call(ctx context.Context, method string, params 
 		return resp.Error
 	}
 
-	if result != nil && resp.Result != nil {
-		// Re-marshal and unmarshal to convert the result to the target type
-		resultData, err := json.Marshal(resp.Result)
-		if err != nil {
-			return fmt.Errorf("marshal result: %w", err)
-		}
-		if err := json.Unmarshal(resultData, result); err != nil {
+	if result != nil && len(resp.Result) > 0 {
+		if err := json.Unmarshal(resp.Result, result); err != nil {
 			return fmt.Errorf("unmarshal result into %T: %w", result, err)
 		}
 	}
@@ -200,10 +218,11 @@ func convertLookupResult(lr *LookupResult, providerName string) *repository.Sour
 				Gloss:    s.Gloss,
 			})
 		}
+		pos, _ := entity.ParsePartOfSpeech(lex.PartOfSpeech)
 		sr.Lexemes = append(sr.Lexemes, &entity.Lexeme{
 			ExternalID:   lex.ExternalID,
 			Language:     entity.ParseLanguage(lex.Language),
-			PartOfSpeech: entity.PartOfSpeech(lex.PartOfSpeech),
+			PartOfSpeech: pos,
 			EntryType:    entity.LexemeEntryType(lex.EntryType),
 			SenseGloss:   lex.SenseGloss,
 			Senses:       senses,

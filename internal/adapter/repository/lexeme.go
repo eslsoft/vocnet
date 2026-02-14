@@ -347,6 +347,37 @@ func (r *lexemeRepository) ListByIDs(ctx context.Context, ids []int64) ([]*entit
 	return out, nil
 }
 
+func (r *lexemeRepository) BatchGetByExternalIDs(ctx context.Context, externalIDs []string) (map[string]*entity.Lexeme, error) {
+	if len(externalIDs) == 0 {
+		return map[string]*entity.Lexeme{}, nil
+	}
+	// Filter empty IDs
+	filtered := make([]string, 0, len(externalIDs))
+	for _, id := range externalIDs {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			filtered = append(filtered, trimmed)
+		}
+	}
+	if len(filtered) == 0 {
+		return map[string]*entity.Lexeme{}, nil
+	}
+	rows, err := r.client.Lexeme.Query().
+		Where(entlexeme.ExternalIDIn(filtered...)).
+		WithLemma(func(lq *entdb.LemmaQuery) {
+			lq.WithForms()
+		}).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("batch get lexemes by external ids: %w", err)
+	}
+	result := make(map[string]*entity.Lexeme, len(rows))
+	for _, row := range rows {
+		lex := mapEntLexeme(row)
+		result[lex.ExternalID] = lex
+	}
+	return result, nil
+}
+
 func (r *lexemeRepository) Delete(ctx context.Context, lexemeID int64) error {
 	if lexemeID == 0 {
 		return entity.ErrInvalidInput

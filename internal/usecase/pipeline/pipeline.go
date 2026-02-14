@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -158,46 +159,95 @@ func (p *Pipeline) executeStage(ctx context.Context, jobID int64, pctx *Pipeline
 	mergedResult := &ProcessResult{}
 	executedCount := 0
 
-	for _, proc := range stage.Processors {
-		procStart := time.Now()
-		result, err := proc.Process(ctx, pctx)
-		if err != nil {
-			// Processor skipped (not configured) → log and continue
-			var skipErr *ErrProcessorSkipped
-			if errors.As(err, &skipErr) {
-				logger.Warn("processor skipped", "processor", proc.Name(), "reason", skipErr.Reason)
+	if stage.Concurrent {
+		// Run processors concurrently for collection-type stages
+		type procResult struct {
+			proc   Processor
+			result *ProcessResult
+			err    error
+			dur    time.Duration
+		}
+		results := make([]procResult, len(stage.Processors))
+		var wg sync.WaitGroup
+		for i, proc := range stage.Processors {
+			wg.Add(1)
+			go func(idx int, pr Processor) {
+				defer wg.Done()
+				procStart := time.Now()
+				res, err := pr.Process(ctx, pctx)
+				results[idx] = procResult{proc: pr, result: res, err: err, dur: time.Since(procStart)}
+			}(i, proc)
+		}
+		wg.Wait()
+
+		// Process results sequentially to maintain deterministic accumulation
+		for _, pr := range results {
+			if pr.err != nil {
+				var skipErr *ErrProcessorSkipped
+				if errors.As(pr.err, &skipErr) {
+					logger.Warn("processor skipped", "processor", pr.proc.Name(), "reason", skipErr.Reason)
+					continue
+				}
+				errMsg := fmt.Sprintf("processor %s: %s", pr.proc.Name(), pr.err)
+				_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
+				return fmt.Errorf("processor %s: %w", pr.proc.Name(), pr.err)
+			}
+			if pr.result == nil || pr.result.Status == ProcessStatusNoData {
+				logger.Debug("processor completed", "processor", pr.proc.Name(), "status", "no_data", "duration", pr.dur.String())
+				continue
+			}
+			executedCount++
+			logger.Debug("processor completed", "processor", pr.proc.Name(), "status", "executed", "duration", pr.dur.String())
+			if pr.result.Provider != "" {
+				pctx.AccumulateWithProvider(pr.result, pr.result.Provider)
+			} else {
+				pctx.Accumulate(pr.result)
+			}
+			mergeProcessResults(mergedResult, pr.result)
+		}
+		// Validate POS after all concurrent processors are merged
+		if err := validateContextPOS(pctx); err != nil {
+			errMsg := fmt.Sprintf("concurrent stage: %s", err)
+			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
+			return fmt.Errorf("concurrent stage: %w", err)
+		}
+	} else {
+		// Sequential execution for stages that depend on prior processor output
+		for _, proc := range stage.Processors {
+			procStart := time.Now()
+			result, err := proc.Process(ctx, pctx)
+			if err != nil {
+				var skipErr *ErrProcessorSkipped
+				if errors.As(err, &skipErr) {
+					logger.Warn("processor skipped", "processor", proc.Name(), "reason", skipErr.Reason)
+					continue
+				}
+				errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
+				_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
+				return fmt.Errorf("processor %s: %w", proc.Name(), err)
+			}
+
+			if result == nil || result.Status == ProcessStatusNoData {
+				logger.Debug("processor completed", "processor", proc.Name(), "status", "no_data", "duration", time.Since(procStart).String())
 				continue
 			}
 
-			// Real error → fail the stage
-			errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
-			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
-			return fmt.Errorf("processor %s: %w", proc.Name(), err)
-		}
+			executedCount++
+			logger.Debug("processor completed", "processor", proc.Name(), "status", "executed", "duration", time.Since(procStart).String())
 
-		if result == nil || result.Status == ProcessStatusNoData {
-			logger.Debug("processor completed", "processor", proc.Name(), "status", "no_data", "duration", time.Since(procStart).String())
-			continue
-		}
+			if result.Provider != "" {
+				pctx.AccumulateWithProvider(result, result.Provider)
+			} else {
+				pctx.Accumulate(result)
+			}
+			if err := validateContextPOS(pctx); err != nil {
+				errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
+				_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
+				return fmt.Errorf("processor %s: %w", proc.Name(), err)
+			}
 
-		executedCount++
-		logger.Debug("processor completed", "processor", proc.Name(), "status", "executed", "duration", time.Since(procStart).String())
-
-		// Merge processor result into context so next processor can see it
-		// Use AccumulateWithProvider if result has provider metadata
-		if result.Provider != "" {
-			pctx.AccumulateWithProvider(result, result.Provider)
-		} else {
-			pctx.Accumulate(result)
+			mergeProcessResults(mergedResult, result)
 		}
-		if err := validateContextPOS(pctx); err != nil {
-			errMsg := fmt.Sprintf("processor %s: %s", proc.Name(), err)
-			_ = p.updateStageStatus(ctx, jobID, phaseNum, entity.StageStatusFailed, errMsg)
-			return fmt.Errorf("processor %s: %w", proc.Name(), err)
-		}
-
-		// Also merge into stage-level result for persistence
-		mergeProcessResults(mergedResult, result)
 	}
 
 	// All processors skipped → mark stage as skipped

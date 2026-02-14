@@ -331,12 +331,35 @@ func (e *DataEvaluator) inferLexemeProvider(lex *entity.Lexeme) string {
 	if strings.HasPrefix(lex.ExternalID, "L") {
 		return "wikidata"
 	}
-	// Future: could use other heuristics or store provider in entity
+	if strings.HasPrefix(lex.ExternalID, "wn:") || strings.HasPrefix(lex.ExternalID, "synset:") {
+		return "wordnet"
+	}
+	// ECDICT lexemes have Chinese senses and no ExternalID
+	if lex.ExternalID == "" && len(lex.Senses) > 0 {
+		for _, s := range lex.Senses {
+			if s.Language == entity.LanguageChinese {
+				return "ecdict"
+			}
+		}
+	}
 	return ""
 }
 
 // inferFormProvider attempts to infer the provider from form metadata.
-func (e *DataEvaluator) inferFormProvider(_ *entity.LemmaForm) string {
-	// Future: could use heuristics or store provider in entity
+// Forms with syllables likely come from Moby; forms with IPA likely from Wikidata or ECDICT.
+func (e *DataEvaluator) inferFormProvider(f *entity.LemmaForm) string {
+	if f == nil {
+		return ""
+	}
+	// If form has syllables but no phonetics, likely from Moby
+	if len(f.Syllables) > 0 && len(f.Phonetics) == 0 {
+		return "moby"
+	}
+	// If form has IPA with en-GB dialect, likely from ECDICT
+	for _, ph := range f.Phonetics {
+		if ph.Dialect == "en-GB" {
+			return "ecdict"
+		}
+	}
 	return ""
 }

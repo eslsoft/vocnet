@@ -1,6 +1,10 @@
 package contrib
 
-import "github.com/eslsoft/vocnet/internal/repository"
+import (
+	"encoding/json"
+
+	"github.com/eslsoft/vocnet/internal/repository"
+)
 
 // JSON-RPC 2.0 protocol types for external data source communication.
 
@@ -14,10 +18,10 @@ type Request struct {
 
 // Response is a JSON-RPC 2.0 response.
 type Response struct {
-	JSONRPC string    `json:"jsonrpc"`
-	ID      int       `json:"id"`
-	Result  any       `json:"result,omitempty"`
-	Error   *RPCError `json:"error,omitempty"`
+	JSONRPC string           `json:"jsonrpc"`
+	ID      int              `json:"id"`
+	Result  json.RawMessage  `json:"result,omitempty"`
+	Error   *RPCError        `json:"error,omitempty"`
 }
 
 // RPCError is a JSON-RPC 2.0 error object.

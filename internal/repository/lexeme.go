@@ -44,5 +44,8 @@ type LexemeRepository interface {
 	List(ctx context.Context, filter *ListLexemeQuery) ([]*entity.Lexeme, int64, error)
 	ListByLemmaID(ctx context.Context, lemmaID int64) ([]*entity.Lexeme, error)
 	ListByIDs(ctx context.Context, ids []int64) ([]*entity.Lexeme, error)
+	// BatchGetByExternalIDs returns lexemes for multiple external IDs in a single query.
+	// Returns a map from ExternalID to Lexeme. Missing IDs are not included.
+	BatchGetByExternalIDs(ctx context.Context, externalIDs []string) (map[string]*entity.Lexeme, error)
 	Delete(ctx context.Context, lexemeID int64) error
 }

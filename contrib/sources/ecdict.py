@@ -33,6 +33,16 @@ POS_MAP = {
     "num": "numeral",
     "art": "determiner",
     "det": "determiner",
+    "abbr": "noun",         # abbreviations treated as nouns
+    "aux": "auxiliary",
+    "modal": "auxiliary",
+    "pl": "noun",           # plural nouns
+    "vbl": "verb",          # verbal
+    "va": "verb",           # adjective-verb
+    "comb": "adjective",    # combining form
+    "npl": "noun",          # plural noun
+    "suf": "suffix",
+    "pref": "prefix",
 }
 
 # Domain category tags from ECDICT
