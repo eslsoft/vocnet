@@ -39,12 +39,18 @@ import (
 
 func TestPipelineDataQualityGates(t *testing.T) {
 	ctx := context.Background()
+	t.Logf("[quality] starting pipeline data quality gates test")
+
 	cfg := mustLoadPipelineQualityConfig(t)
+	t.Logf("[quality] configuration loaded: data_dir=%s", cfg.Pipeline.DataDir)
+
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
+	t.Logf("[quality] ensuring pipeline sources are available...")
 	requirePipelineSources(t, cfg, logger)
 
 	t.Run("raw_without_llm", func(t *testing.T) {
+		t.Logf("[quality] starting raw quality test without LLM")
 		runRawQualityStages(t, ctx, cfg, logger, nil)
 	})
 
@@ -64,6 +70,12 @@ type qualityHarness struct {
 func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider) *qualityHarness {
 	t.Helper()
 
+	t.Logf("[quality] creating pipeline harness...")
+	startTime := time.Now()
+
+	t.Logf("[quality] initializing data readers...")
+	readerStartTime := time.Now()
+
 	wikidataReader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = wikidataReader.Close() })
@@ -74,6 +86,12 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 
 	cefrjReader, err := cefrj.NewReader(cefrj.DataDir(cfg.Pipeline.DataDir))
 	require.NoError(t, err)
+
+	readerElapsed := time.Since(readerStartTime)
+	t.Logf("[quality] data readers initialized (took %v)", readerElapsed)
+
+	t.Logf("[quality] setting up test database...")
+	dbStartTime := time.Now()
 
 	dbPath := resolvePipelineQualityDBPath(t)
 	require.NoError(t, resetSQLiteDBFiles(dbPath))
@@ -89,6 +107,10 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	require.NoError(t, entClient.Schema.Create(context.Background()))
 	t.Cleanup(func() { _ = entClient.Close() })
 
+	dbElapsed := time.Since(dbStartTime)
+	t.Logf("[quality] database setup complete (took %v)", dbElapsed)
+
+	t.Logf("[quality] creating repositories...")
 	lemmaRepo := repo.NewLemmaRepository(entClient)
 	lexemeRepo := repo.NewLexemeRepository(entClient)
 	evidenceRepo := repo.NewEvidenceRepository(entClient)
@@ -101,6 +123,9 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	persistence := NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, aggregator, logger)
 	validator := NewValidator(lemmaRepo, lexemeRepo, logger)
 
+	t.Logf("[quality] initializing source registry...")
+	registryStartTime := time.Now()
+
 	// Use SourceRegistry for built-in sources
 	registry := NewSourceRegistry(logger)
 	registry.Register(moby.NewSourceProvider(mobyReader))
@@ -109,12 +134,19 @@ func newPipelineQualityHarness(t *testing.T, cfg *config.Config, logger *slog.Lo
 	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc.) ---
 	loadTestContribSources(context.Background(), registry, logger)
 
+	registryElapsed := time.Since(registryStartTime)
+	t.Logf("[quality] source registry ready (took %v)", registryElapsed)
+
 	// Build stages using the same structure as cmd/serve.go
 	scorer := NewRuleBasedScorer()
 	stages := buildQualityTestStages(registry, wikidataReader, llmProvider, scorer, logger)
 
 	evaluator := NewDataEvaluator(scorer, logger)
 	p := NewPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
+
+	totalElapsed := time.Since(startTime)
+	t.Logf("[quality] pipeline harness created successfully (total time: %v)", totalElapsed)
+
 	return &qualityHarness{pipeline: p, jobRepo: jobRepo}
 }
 
@@ -390,12 +422,18 @@ var qualityGateTermPattern = regexp.MustCompile(`^[A-Za-z]+$`)
 func runBuiltinWordbookStage(t *testing.T, ctx context.Context, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider, llmBoost float64) {
 	t.Helper()
 
+	t.Logf("[quality] starting builtin wordbook quality tests")
 	startTime := time.Now()
+
 	books := selectBuiltinWordbooksForQualityGate(t)
 	wordsPerBook := envInt("PIPELINE_IT_WORDS_PER_BOOK", 0) // 0 = test all words
 
+	t.Logf("[quality] testing %d wordbooks with %d words per book (0=all)", len(books), wordsPerBook)
+
 	report := runWordbooksInParallel(t, ctx, cfg, logger, llmProvider, books, wordsPerBook, llmBoost)
 	report.ExecutionTime = time.Since(startTime).String()
+
+	t.Logf("[quality] wordbook testing completed in %v", time.Since(startTime))
 
 	// Save reports
 	if err := saveQualityReports(t, report); err != nil {
@@ -499,15 +537,23 @@ func builtinWordbookTerms(name string) ([]string, bool) {
 func requirePipelineSources(t *testing.T, cfg *config.Config, logger *slog.Logger) {
 	t.Helper()
 
+	t.Logf("[quality] checking pipeline sources under %s", cfg.Pipeline.DataDir)
+	startTime := time.Now()
+
 	downloader := datasource.NewDownloader(cfg.Pipeline.CacheDir, logger)
 	mgr := datasource.NewManager(logger)
 	mgr.Register(wikidata.NewSource(cfg.Pipeline.DataDir, downloader, logger))
 	mgr.Register(moby.NewSource(cfg.Pipeline.DataDir, downloader, logger))
 	mgr.Register(cefrj.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+
+	t.Logf("[quality] registered 3 data sources, checking availability...")
 	err := mgr.EnsureAvailable(context.Background(), "wikidata", "moby", "cefrj")
 	if err != nil {
 		t.Skipf("pipeline quality integration requires local data sources under %s: %v", cfg.Pipeline.DataDir, err)
 	}
+
+	elapsed := time.Since(startTime)
+	t.Logf("[quality] pipeline sources ready (took %v)", elapsed)
 }
 
 func mustLoadPipelineQualityConfig(t *testing.T) *config.Config {
@@ -668,6 +714,9 @@ func resetSQLiteDBFiles(dbPath string) error {
 func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider, books []builtinBookRequirement, wordsPerBook int, llmBoost float64) *QualityReport {
 	t.Helper()
 
+	t.Logf("[quality] starting parallel wordbook testing: %d books", len(books))
+	startTime := time.Now()
+
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	bookReports := make([]WordbookQualityReport, len(books))
@@ -677,9 +726,16 @@ func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Confi
 		go func(idx int, bookReq builtinBookRequirement) {
 			defer wg.Done()
 
+			bookStartTime := time.Now()
+			t.Logf("[quality] [%s] starting wordbook test", bookReq.name)
+
 			// Create a dedicated harness for this wordbook to avoid database conflicts
 			harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, llmProvider, bookReq.name)
 			bookReport := runWordbookQualityTest(t, ctx, harness, bookReq, wordsPerBook, llmBoost)
+
+			bookElapsed := time.Since(bookStartTime)
+			t.Logf("[quality] [%s] completed in %v (status: %s, avg: %.2f)",
+				bookReq.name, bookElapsed, bookReport.Status, bookReport.AverageScore)
 
 			mu.Lock()
 			bookReports[idx] = bookReport
@@ -687,7 +743,11 @@ func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Confi
 		}(i, req)
 	}
 
+	t.Logf("[quality] waiting for all %d wordbooks to complete...", len(books))
 	wg.Wait()
+
+	elapsed := time.Since(startTime)
+	t.Logf("[quality] all wordbooks completed in %v", elapsed)
 
 	// Aggregate results
 	report := &QualityReport{
@@ -715,12 +775,16 @@ func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Confi
 		report.AverageScore = sumScores / float64(totalWords)
 	}
 
+	t.Logf("[quality] aggregated results: %d total words, %.2f average score", totalWords, report.AverageScore)
+
 	return report
 }
 
 // runWordbookQualityTest runs quality test for a single wordbook
 func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness, req builtinBookRequirement, wordsPerBook int, llmBoost float64) WordbookQualityReport {
 	t.Helper()
+
+	t.Logf("[quality] [%s] loading wordbook terms...", req.name)
 
 	bookTerms, ok := builtinWordbookTerms(req.name)
 	if !ok {
@@ -747,6 +811,8 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	}
 
 	terms := dedupeTerms(filteredTerms[:limit])
+	t.Logf("[quality] [%s] testing %d terms (filtered from %d total)", req.name, len(terms), len(bookTerms))
+
 	scores := make([]float64, 0, len(terms))
 	failedTerms := make([]FailedTerm, 0)
 	executionErrors := make([]string, 0)
@@ -764,7 +830,11 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	// Test words serially within the wordbook
 	// SQLite cannot reliably handle concurrent writes even with WAL mode and semaphores
 	// Wordbook-level parallelism (different databases) still provides good performance
-	for _, term := range terms {
+
+	progressInterval := max(1, len(terms)/10) // Log every 10% progress
+	testStartTime := time.Now()
+
+	for i, term := range terms {
 		score, err := h.runWord(ctx, term)
 		if err != nil {
 			// If abandoned due to missing Wikidata (our source of truth), treat as 0 score
@@ -796,8 +866,18 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 				Reason:         "below minimum requirement",
 			})
 		}
+
+		// Progress logging
+		if (i+1)%progressInterval == 0 || i == len(terms)-1 {
+			progress := float64(i+1) / float64(len(terms)) * 100
+			elapsed := time.Since(testStartTime)
+			eta := time.Duration(float64(elapsed) * (float64(len(terms)) - float64(i+1)) / float64(i+1))
+			t.Logf("[quality] [%s] progress %.1f%% (%d/%d) - elapsed: %v, eta: %v",
+				req.name, progress, i+1, len(terms), elapsed, eta)
+		}
 	}
 
+	testElapsed := time.Since(testStartTime)
 	avgScore := average(scores)
 	minScore, maxScore := minMax(scores)
 	passedWords := len(scores) - len(failedTerms)
@@ -810,8 +890,8 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 		status = "failed"
 	}
 
-	t.Logf("[quality][wordbook:%s] tested=%d avg=%.2f min=%.2f max=%.2f status=%s",
-		req.name, len(terms), avgScore, minScore, maxScore, status)
+	t.Logf("[quality] [%s] completed: %d words in %v, avg=%.2f min=%.2f max=%.2f status=%s",
+		req.name, len(terms), testElapsed, avgScore, minScore, maxScore, status)
 
 	return WordbookQualityReport{
 		Name:              req.name,
@@ -914,10 +994,18 @@ func minMax(values []float64) (min, max float64) {
 	return min, max
 }
 
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // loadTestContribSources discovers and starts contrib source processes for testing.
 // Scans the contrib/sources directory for executable files (auto-discovery).
 func loadTestContribSources(ctx context.Context, registry *SourceRegistry, logger *slog.Logger) {
 	contribDir := "contrib/sources"
+	startTime := time.Now()
 
 	// Resolve relative to repo root
 	repoRoot, err := findRepoRoot(nil)
@@ -927,14 +1015,18 @@ func loadTestContribSources(ctx context.Context, registry *SourceRegistry, logge
 		os.Setenv("PIPELINE_DATA_DIR", absDataDir)
 	}
 
+	logger.Info("[quality] discovering contrib sources", "dir", contribDir)
+
 	entries, err := os.ReadDir(contribDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			logger.Warn("[quality] failed to read contrib sources directory", "dir", contribDir, "error", err)
 		}
+		logger.Info("[quality] no contrib sources found")
 		return
 	}
 
+	loadedCount := 0
 	for _, entry := range entries {
 		// Skip directories and hidden files
 		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
@@ -960,6 +1052,9 @@ func loadTestContribSources(ctx context.Context, registry *SourceRegistry, logge
 			continue
 		}
 
+		logger.Info("[quality] starting contrib source", "name", entry.Name())
+		sourceStartTime := time.Now()
+
 		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
 		if err != nil {
 			logger.Warn("[quality] failed to start contrib source", "path", execPath, "error", err)
@@ -967,6 +1062,16 @@ func loadTestContribSources(ctx context.Context, registry *SourceRegistry, logge
 		}
 
 		registry.Register(sp)
-		logger.Info("[quality] contrib source loaded", "name", sp.Manifest().Name, "path", execPath)
+		loadedCount++
+		sourceElapsed := time.Since(sourceStartTime)
+		logger.Info("[quality] contrib source loaded",
+			"name", sp.Manifest().Name,
+			"path", execPath,
+			"took", sourceElapsed)
 	}
+
+	totalElapsed := time.Since(startTime)
+	logger.Info("[quality] contrib sources initialization complete",
+		"loaded", loadedCount,
+		"total_time", totalElapsed)
 }

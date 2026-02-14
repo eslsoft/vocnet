@@ -29,8 +29,9 @@ jobs:
           path: |
             ~/.cache/vocnet
             data/datasources
-          key: pipeline-datasources-${{ hashFiles('**/go.sum') }}
+          key: pipeline-datasources-v2-${{ hashFiles('internal/infrastructure/datasource/**', 'contrib/sources/**', 'hack/dictinit/**') }}
           restore-keys: |
+            pipeline-datasources-v2-
             pipeline-datasources-
 
       - name: Install tools
