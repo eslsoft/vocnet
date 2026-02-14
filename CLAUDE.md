@@ -434,11 +434,22 @@ The evaluator is a required constructor parameter.
 
 - **ConceptNet**: Downloaded from `https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz` (~350MB compressed, ~1.5GB uncompressed). A SQLite index is built automatically on first use.
 - **ECDICT**: Downloaded from `https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip`
-- **WordNet**: Downloaded from `https://wordnetcode.princeton.edu/wn3.1.dict.tar.gz`
+- **WordNet**: Uses NLTK library with automatic data management - no manual download required. Requires `uv` package manager to be installed.
 - **Moby**: Downloaded from `https://raw.githubusercontent.com/words/moby/master/words.txt` (Moby Hyphenation data for syllable parsing)
 - **Wikidata**: Downloaded from `https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.bz2` (~420MB compressed, ~4GB uncompressed). Contains lexeme data (senses, forms, IPA). A SQLite index is built automatically on first use.
 
 Downloads are cached in `~/.cache/vocnet/` (or `$PIPELINE_CACHE_DIR`) to avoid re-downloading.
+
+**WordNet via NLTK**: The WordNet source now uses the Python NLTK library instead of raw WordNet data files. This provides:
+- Automatic data management (NLTK downloads WordNet data as needed)
+- No manual download/extraction steps
+- More reliable and well-maintained data access
+- Rich semantic relations (hypernyms, hyponyms, antonyms, etc.)
+
+Requirements for WordNet:
+- `uv` package manager must be installed and available in PATH
+- Python 3 environment (handled automatically by uv)
+- NLTK library (installed automatically via uv dependencies)
 
 ### Auto-Download
 

@@ -1,0 +1,3 @@
+#!/bin/bash
+# Wrapper script to run wordnet.py with NLTK via uv
+exec uv run --with nltk python "$(dirname "$0")/wordnet.py" "$@"

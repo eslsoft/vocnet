@@ -40,4 +40,8 @@ type SemanticRelation struct {
 	SenseMapped      bool
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+
+	// Transient fields for pipeline matching (not persisted to DB)
+	SourcePOS   string `json:"-"`
+	SourceGloss string `json:"-"`
 }

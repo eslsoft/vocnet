@@ -5,32 +5,22 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
-const (
-	wordNetURL      = "https://wordnetcode.princeton.edu/wn3.1.dict.tar.gz"
-	wordNetFilename = "wn3.1.dict.tar.gz"
-)
-
-// WordNetSource implements DataSource for WordNet data
+// WordNetSource implements DataSource for NLTK-based WordNet via contrib source
+// This no longer requires manual data downloads as NLTK handles WordNet data automatically
 type WordNetSource struct {
-	path       string
-	logger     *slog.Logger
-	downloader *Downloader
+	path   string
+	logger *slog.Logger
 }
 
-// WordNetDataDir returns the WordNet data directory under fixed datasource layout.
-func WordNetDataDir(dataDir string) string {
-	return filepath.Join(dataDir, "datasources", "wordnet")
-}
-
-// NewWordNetSource creates a new WordNet data source
+// NewWordNetSource creates a new WordNet data source that uses NLTK
 func NewWordNetSource(dataDir string, downloader *Downloader, logger *slog.Logger) *WordNetSource {
 	return &WordNetSource{
-		path:       WordNetDataDir(dataDir),
-		logger:     logger,
-		downloader: downloader,
+		path:   filepath.Join("contrib", "sources", "wordnet"),
+		logger: logger,
 	}
 }
 
@@ -43,75 +33,38 @@ func (s *WordNetSource) Path() string {
 }
 
 func (s *WordNetSource) DownloadURL() string {
-	return wordNetURL
+	return "" // No download needed - NLTK handles WordNet data
 }
 
 func (s *WordNetSource) Exists() bool {
-	st, err := os.Stat(s.path)
-	if err != nil {
+	// Check if uv and the wordnet contrib script exist
+	if _, err := exec.LookPath("uv"); err != nil {
+		s.logger.Debug("uv not found in PATH", "error", err)
 		return false
 	}
 
-	// WordNet is a directory, check if it contains expected files
-	if !st.IsDir() {
+	// Check if the contrib script exists
+	if _, err := os.Stat(s.path); err != nil {
+		s.logger.Debug("wordnet contrib script not found", "path", s.path, "error", err)
 		return false
-	}
-
-	// Check for essential WordNet files
-	essentialFiles := []string{"data.noun", "data.verb", "data.adj", "data.adv"}
-	for _, file := range essentialFiles {
-		filePath := filepath.Join(s.path, "dict", file)
-		if _, err := os.Stat(filePath); err != nil {
-			return false
-		}
 	}
 
 	return true
 }
 
 func (s *WordNetSource) Download(ctx context.Context) error {
-	// Create destination directory
-	if err := os.MkdirAll(s.path, 0755); err != nil {
-		return fmt.Errorf("create dest dir: %w", err)
-	}
-
-	artifactPath, err := s.downloader.Fetch(ctx, DownloadRequest{
-		Source: s.Name(),
-		URL:    wordNetURL,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Extract tar.gz
-	if err := extractTarGz(artifactPath, s.path, s.logger); err != nil {
-		return fmt.Errorf("extract: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("WordNet no longer requires manual download - it uses NLTK which auto-downloads data. Please ensure 'uv' is installed and available in PATH")
 }
 
 func (s *WordNetSource) Verify() error {
-	st, err := os.Stat(s.path)
-	if err != nil {
-		return fmt.Errorf("stat path: %w", err)
+	if !s.Exists() {
+		return fmt.Errorf("WordNet contrib source not available - ensure 'uv' is installed and wordnet contrib script exists at %s", s.path)
 	}
 
-	if !st.IsDir() {
-		return fmt.Errorf("expected directory, got file")
-	}
-
-	// Check for essential WordNet files
-	essentialFiles := []string{"data.noun", "data.verb", "data.adj", "data.adv"}
-	for _, file := range essentialFiles {
-		filePath := filepath.Join(s.path, "dict", file)
-		st, err := os.Stat(filePath)
-		if err != nil {
-			return fmt.Errorf("missing file %s: %w", file, err)
-		}
-		if st.Size() == 0 {
-			return fmt.Errorf("file %s is empty", file)
-		}
+	// Quick test that contrib script is executable and has basic dependencies
+	cmd := exec.Command("bash", "-c", "echo '{\"jsonrpc\": \"2.0\", \"method\": \"initialize\", \"id\": 1}' | timeout 10s "+s.path)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to verify WordNet contrib source: %w (ensure uv and nltk are available)", err)
 	}
 
 	return nil

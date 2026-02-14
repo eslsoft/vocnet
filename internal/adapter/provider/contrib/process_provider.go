@@ -231,6 +231,8 @@ func convertLookupResult(lr *LookupResult, providerName string) *repository.Sour
 			Provider:         provider,
 			Strength:         r.Strength,
 			SenseMapped:      r.SenseMapped,
+			SourcePOS:        r.SourcePOS,
+			SourceGloss:      r.SourceGloss,
 		})
 	}
 

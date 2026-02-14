@@ -69,6 +69,9 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 
 	// Save relations (resolve ExternalID → DB SourceLexemeID first)
 	if len(result.Relations) > 0 {
+		// First, map unmapped contrib relations to available lexemes
+		p.mapUnmappedContribRelations(result.Relations, result.Lexemes)
+
 		if err := p.resolveRelationIDs(ctx, result.Relations); err != nil {
 			return fmt.Errorf("resolve relation IDs: %w", err)
 		}
@@ -620,4 +623,41 @@ func relationUniqueKey(rel *entity.SemanticRelation) (string, bool) {
 		return "", false
 	}
 	return fmt.Sprintf("%d|%d|%s", rel.SourceLexemeID, *rel.TargetLexemeID, rel.RelationType), true
+}
+
+// mapUnmappedContribRelations maps relations without SourceExternalID to available lexemes
+// using POS and gloss similarity matching (same logic as GenericSourceProcessor).
+func (p *Persistence) mapUnmappedContribRelations(relations []*entity.SemanticRelation, availableLexemes []*entity.Lexeme) {
+	if len(relations) == 0 || len(availableLexemes) == 0 {
+		return
+	}
+
+	// Build POS index
+	lexemesByPOS := make(map[entity.PartOfSpeech][]*entity.Lexeme)
+	for _, lex := range availableLexemes {
+		lexemesByPOS[lex.PartOfSpeech] = append(lexemesByPOS[lex.PartOfSpeech], lex)
+	}
+
+	mapped := 0
+	skipped := 0
+	for _, rel := range relations {
+		if rel.SourceExternalID != "" {
+			continue
+		}
+
+		target := matchRelationToLexeme(rel, availableLexemes, lexemesByPOS)
+		if target == nil {
+			skipped++
+			continue
+		}
+
+		rel.SourceExternalID = target.ExternalID
+		mapped++
+	}
+
+	if mapped > 0 || skipped > 0 {
+		p.logger.Info("mapped unmapped contrib relations",
+			"mapped", mapped,
+			"skipped", skipped)
+	}
 }

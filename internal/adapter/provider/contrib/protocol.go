@@ -99,6 +99,8 @@ type ResultRelation struct {
 	Provider         string  `json:"provider"`
 	Strength         float64 `json:"strength"`
 	SenseMapped      bool    `json:"sense_mapped,omitempty"`
+	SourcePOS        string  `json:"source_pos,omitempty"`
+	SourceGloss      string  `json:"source_gloss,omitempty"`
 }
 
 // ResultLemmaUpdate carries lemma-level metadata updates.
