@@ -1,153 +1,99 @@
 {
-  "timestamp": "2026-02-14T08:38:48.822807-05:00",
+  "timestamp": "2026-02-15T02:09:29.013371978Z",
   "total_books": 6,
   "total_words": 7004,
-  "total_passed": 6701,
-  "total_failed": 303,
-  "average_score": 54.26779134548718,
+  "total_passed": 6791,
+  "total_failed": 213,
+  "average_score": 59.01792519981729,
   "book_reports": [
     {
       "name": "CEFR-A1",
       "total_words": 931,
       "tested_words": 917,
-      "passed_words": 896,
-      "failed_words": 21,
-      "average_score": 56.96852083442237,
-      "min_score": 20.229999999999997,
-      "max_score": 80.10873786407767,
+      "passed_words": 905,
+      "failed_words": 12,
+      "average_score": 62.15261176658106,
+      "min_score": 24.849999999999998,
+      "max_score": 88.25285714285712,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
         "0-20": 0,
-        "20-40": 24,
-        "40-60": 568,
-        "60-80": 324,
-        "80-100": 1
+        "20-40": 16,
+        "40-60": 364,
+        "60-80": 502,
+        "80-100": 35
       },
       "failed_terms": [
         {
           "term": "angrily",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "anyone",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "anything",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "during",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "hey",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "quite",
-          "score": 24.849999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "really",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "something",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "sometimes",
-          "score": 24.849999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "soon",
-          "score": 23.275,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "than",
-          "score": 24.849999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "that",
-          "score": 20.72,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "the",
-          "score": 25.9,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "their",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "these",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "they",
-          "score": 24.22,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "what",
-          "score": 20.229999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "where",
-          "score": 21.875,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "which",
           "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
+          "term": "they",
+          "score": 28,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "your",
-          "score": 23.799999999999997,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "yourself",
-          "score": 23.799999999999997,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         }
@@ -158,96 +104,66 @@
       "name": "CEFR-A2",
       "total_words": 1014,
       "tested_words": 963,
-      "passed_words": 926,
-      "failed_words": 37,
-      "average_score": 56.408657003488536,
+      "passed_words": 933,
+      "failed_words": 30,
+      "average_score": 61.94165978963479,
       "min_score": 0,
-      "max_score": 75.96077235772358,
+      "max_score": 85.8868,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
         "0-20": 4,
-        "20-40": 30,
-        "40-60": 606,
-        "60-80": 323,
-        "80-100": 0
+        "20-40": 24,
+        "40-60": 363,
+        "60-80": 553,
+        "80-100": 19
       },
       "failed_terms": [
         {
-          "term": "ah",
-          "score": 22.599999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "along",
-          "score": 24.849999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "anybody",
-          "score": 24.849999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "anymore",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "anyway",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "anywhere",
-          "score": 24.849999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "app",
-          "score": 21.7,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "differently",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "easily",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "electrical",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "electronic",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "exactly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "finally",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -255,7 +171,7 @@
           "term": "granddad",
           "score": 0,
           "min_requirement": 35,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: granddad (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: granddad (non-standard vocabulary rejected)"
         },
         {
           "term": "granddad",
@@ -265,25 +181,37 @@
         },
         {
           "term": "herself",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "himself",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "immediately",
           "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
+          "term": "himself",
+          "score": 24.849999999999998,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "immediately",
+          "score": 28,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "itself",
-          "score": 23.799999999999997,
+          "score": 24.849999999999998,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "jewellery",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "abandoned: word not found in Wikidata: jewellery (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "jewellery",
+          "score": 0,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -291,7 +219,7 @@
           "term": "kilogram",
           "score": 0,
           "min_requirement": 35,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: kilogram (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: kilogram (non-standard vocabulary rejected)"
         },
         {
           "term": "kilogram",
@@ -301,61 +229,31 @@
         },
         {
           "term": "mostly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "myself",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "omelet",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: omelet (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "omelet",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "ourselves",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "pajamas",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: pajamas (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "pajamas",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "secondly",
           "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
-          "term": "shall",
-          "score": 22.599999999999998,
+          "term": "ourselves",
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
-          "term": "since",
-          "score": 22.28333333333333,
+          "term": "secondly",
+          "score": 28,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "shall",
+          "score": 22.75,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -367,31 +265,37 @@
         },
         {
           "term": "suddenly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
           "term": "themselves",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "towards",
-          "score": 23.799999999999997,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "whose",
           "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
+          "term": "traveller",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "abandoned: word not found in Wikidata: traveller (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "traveller",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "whose",
+          "score": 24.15,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "yours",
-          "score": 23.799999999999997,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         }
@@ -402,24 +306,24 @@
       "name": "CEFR-B1",
       "total_words": 1056,
       "tested_words": 993,
-      "passed_words": 957,
-      "failed_words": 36,
-      "average_score": 54.98527014962936,
+      "passed_words": 965,
+      "failed_words": 28,
+      "average_score": 59.97378781569802,
       "min_score": 0,
-      "max_score": 74.6,
+      "max_score": 84.47454128440367,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 2,
-        "20-40": 32,
-        "40-60": 746,
-        "60-80": 213,
-        "80-100": 0
+        "0-20": 1,
+        "20-40": 26,
+        "40-60": 476,
+        "60-80": 483,
+        "80-100": 7
       },
       "failed_terms": [
         {
           "term": "absolutely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -437,13 +341,13 @@
         },
         {
           "term": "bravely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "curiously",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -455,109 +359,103 @@
         },
         {
           "term": "environmental",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "excitedly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "heavily",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "highly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "internationally",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "lightly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "originally",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "ours",
-          "score": 23.799999999999997,
+          "score": 24.849999999999998,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "particularly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "personally",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "previously",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "safely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "secretly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "seriously",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "simply",
-          "score": 24.849999999999998,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "slightly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "someplace",
-          "score": 24.849999999999998,
+          "score": 24.15,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "surely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -569,36 +467,6 @@
         },
         {
           "term": "theirs",
-          "score": 23.799999999999997,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "therefore",
-          "score": 24.849999999999998,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "throughout",
-          "score": 24.849999999999998,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "traveler",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: traveler (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "traveler",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "unless",
           "score": 24.849999999999998,
           "min_requirement": 30,
           "reason": "below minimum requirement"
@@ -613,23 +481,11 @@
           "term": "webcam",
           "score": 0,
           "min_requirement": 30,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: webcam (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: webcam (non-standard vocabulary rejected)"
         },
         {
           "term": "webcam",
           "score": 0,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "whenever",
-          "score": 24.849999999999998,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "whether",
-          "score": 24.849999999999998,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         }
@@ -640,30 +496,30 @@
       "name": "CEFR-B2",
       "total_words": 1863,
       "tested_words": 1803,
-      "passed_words": 1694,
-      "failed_words": 109,
-      "average_score": 53.40668598298469,
+      "passed_words": 1692,
+      "failed_words": 111,
+      "average_score": 58.00888033461873,
       "min_score": 0,
-      "max_score": 75.45634236453202,
+      "max_score": 84.2859756097561,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 6,
-        "20-40": 99,
-        "40-60": 1411,
-        "60-80": 287,
-        "80-100": 0
+        "0-20": 9,
+        "20-40": 97,
+        "40-60": 962,
+        "60-80": 728,
+        "80-100": 7
       },
       "failed_terms": [
         {
           "term": "admittedly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "afterwards",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -675,7 +531,7 @@
         },
         {
           "term": "alternatively",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -683,7 +539,7 @@
           "term": "aluminum",
           "score": 0,
           "min_requirement": 30,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: aluminum (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: aluminum (non-standard vocabulary rejected)"
         },
         {
           "term": "aluminum",
@@ -693,67 +549,61 @@
         },
         {
           "term": "anxiously",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "automatically",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "basically",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "beside",
-          "score": 24.849999999999998,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "besides",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "boldly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "briefly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "brightly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "brilliantly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "calmly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "centigrade",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -765,19 +615,19 @@
         },
         {
           "term": "considerably",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "constantly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "continuously",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -795,13 +645,25 @@
         },
         {
           "term": "deeply",
-          "score": 24.849999999999998,
+          "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "defence",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: defence (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "defence",
+          "score": 0,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "desperately",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -809,7 +671,7 @@
           "term": "disc",
           "score": 0,
           "min_requirement": 30,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: disc (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: disc (non-standard vocabulary rejected)"
         },
         {
           "term": "disc",
@@ -837,7 +699,19 @@
         },
         {
           "term": "elsewhere",
-          "score": 24.849999999999998,
+          "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "enquiry",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: enquiry (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "enquiry",
+          "score": 0,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -849,13 +723,13 @@
         },
         {
           "term": "essentially",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "evidently",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -867,13 +741,13 @@
         },
         {
           "term": "extraordinarily",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "fantastically",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -885,7 +759,7 @@
         },
         {
           "term": "firmly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -897,13 +771,13 @@
         },
         {
           "term": "formerly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "freely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -911,7 +785,7 @@
           "term": "fulfil",
           "score": 0,
           "min_requirement": 30,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: fulfil (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: fulfil (non-standard vocabulary rejected)"
         },
         {
           "term": "fulfil",
@@ -921,19 +795,13 @@
         },
         {
           "term": "fundamentally",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "furiously",
           "score": 21.7,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "furthermore",
-          "score": 22.959999999999997,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -957,43 +825,43 @@
         },
         {
           "term": "gradually",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "greatly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "illegally",
-          "score": 17.625,
+          "score": 16.875,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "increasingly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "independently",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "inevitably",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "initially",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1005,7 +873,7 @@
         },
         {
           "term": "instantly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1017,43 +885,37 @@
         },
         {
           "term": "largely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "lastly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "lately",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "likewise",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "mentally",
-          "score": 24.849999999999998,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "moreover",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "negatively",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1065,37 +927,49 @@
         },
         {
           "term": "newly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "nicely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "occasionally",
-          "score": 24.849999999999998,
+          "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "offence",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: offence (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "offence",
+          "score": 0,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "openly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "orchestral",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "passionately",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1113,7 +987,7 @@
         },
         {
           "term": "potentially",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1125,115 +999,115 @@
         },
         {
           "term": "practically",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "preferably",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "promptly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "proudly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "psychologically",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "relatively",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "scientifically",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "separately",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "severely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "sharply",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "shortly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "silently",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "smoothly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "somehow",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "strangely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "strictly",
-          "score": 23.275,
+          "score": 23.799999999999997,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "terribly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "thoroughly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "tightly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1245,19 +1119,13 @@
         },
         {
           "term": "truly",
-          "score": 23.275,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "via",
-          "score": 22.959999999999997,
+          "score": 23.799999999999997,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "virtually",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1269,19 +1137,19 @@
         },
         {
           "term": "warmly",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "whereas",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
         {
           "term": "whichever",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1289,7 +1157,7 @@
           "term": "whiskey",
           "score": 0,
           "min_requirement": 30,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: whiskey (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: whiskey (non-standard vocabulary rejected)"
         },
         {
           "term": "whiskey",
@@ -1299,7 +1167,7 @@
         },
         {
           "term": "widely",
-          "score": 24.849999999999998,
+          "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1316,48 +1184,24 @@
       "name": "CEFR-C1",
       "total_words": 1762,
       "tested_words": 1717,
-      "passed_words": 1646,
-      "failed_words": 71,
-      "average_score": 53.067174497594046,
+      "passed_words": 1699,
+      "failed_words": 18,
+      "average_score": 57.55439505937361,
       "min_score": 0,
-      "max_score": 74.02024647887323,
+      "max_score": 81.76840277777777,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
-        "0-20": 9,
-        "20-40": 57,
-        "40-60": 1487,
-        "60-80": 164,
-        "80-100": 0
+        "0-20": 7,
+        "20-40": 55,
+        "40-60": 1080,
+        "60-80": 572,
+        "80-100": 3
       },
       "failed_terms": [
         {
-          "term": "aboard",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "accordingly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "albeit",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "allegedly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "antisocial",
-          "score": 17.625,
+          "score": 16.875,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1365,7 +1209,7 @@
           "term": "archaeologist",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: archaeologist (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: archaeologist (non-standard vocabulary rejected)"
         },
         {
           "term": "archaeologist",
@@ -1374,116 +1218,14 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "arguably",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "broadband",
-          "score": 23.799999999999997,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "cancellation",
+          "term": "enrol",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: cancellation (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: enrol (non-standard vocabulary rejected)"
         },
         {
-          "term": "cancellation",
+          "term": "enrol",
           "score": 0,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "catalogue",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: catalogue (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "catalogue",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "congressional",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "continually",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "councillor",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: councillor (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "councillor",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "drastically",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "ecological",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "exclusively",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "frankly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "handheld",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "historically",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "immensely",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "incidentally",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "individually",
-          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1495,55 +1237,13 @@
         },
         {
           "term": "internally",
-          "score": 18.75,
+          "score": 18,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
         {
           "term": "ironically",
           "score": 21.7,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "jointly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "magnificently",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "merely",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "neatly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "notably",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "nutritional",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "overly",
-          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1560,146 +1260,26 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "presently",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "presumably",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "psychiatric",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "racially",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "radically",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "randomly",
           "score": 21.7,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
         {
-          "term": "readily",
-          "score": 24.849999999999998,
+          "term": "sceptical",
+          "score": 0,
           "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "reluctantly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "repeatedly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "reportedly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "respectively",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
+          "reason": "abandoned: word not found in Wikidata: sceptical (non-standard vocabulary rejected)"
         },
         {
           "term": "sceptical",
           "score": 0,
-          "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: sceptical (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "sceptical",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "seemingly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "solely",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "statistical",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "substantially",
-          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
         {
           "term": "suburban",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "supposedly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "technically",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "technologically",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "thankfully",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "thereafter",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "thereby",
-          "score": 24.849999999999998,
+          "score": 24.15,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1707,7 +1287,7 @@
           "term": "unaffordable",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: unaffordable (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: unaffordable (non-standard vocabulary rejected)"
         },
         {
           "term": "unaffordable",
@@ -1717,43 +1297,13 @@
         },
         {
           "term": "underpaid",
-          "score": 20.9375,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "universally",
-          "score": 24.849999999999998,
+          "score": 22.375,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
         {
           "term": "unjustified",
-          "score": 18.75,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "utterly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "vocational",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "whereby",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "whilst",
-          "score": 24.849999999999998,
+          "score": 18,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         }
@@ -1764,38 +1314,26 @@
       "name": "CEFR-C2",
       "total_words": 639,
       "tested_words": 611,
-      "passed_words": 582,
-      "failed_words": 29,
-      "average_score": 51.5891548052293,
+      "passed_words": 597,
+      "failed_words": 14,
+      "average_score": 55.24207180179529,
       "min_score": 0,
-      "max_score": 70.01363636363637,
+      "max_score": 77.72311827956989,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
         "0-20": 2,
         "20-40": 25,
-        "40-60": 551,
-        "60-80": 33,
+        "40-60": 453,
+        "60-80": 131,
         "80-100": 0
       },
       "failed_terms": [
         {
-          "term": "abruptly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "continental",
-          "score": 23.799999999999997,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "counselor",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: counselor (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: counselor (non-standard vocabulary rejected)"
         },
         {
           "term": "counselor",
@@ -1807,17 +1345,11 @@
           "term": "decaffeinated",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: execute stage 1 (collection): processor wikidata: word not found in Wikidata: decaffeinated (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: decaffeinated (non-standard vocabulary rejected)"
         },
         {
           "term": "decaffeinated",
           "score": 0,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "harshly",
-          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1840,44 +1372,8 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "intensely",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "invariably",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "medically",
           "score": 21.7,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "oddly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "overboard",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "profoundly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "sparsely",
-          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1888,38 +1384,14 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "strategically",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "superficially",
           "score": 21.7,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
         {
-          "term": "swiftly",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "tragically",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "unanimously",
           "score": 21.7,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "unavoidably",
-          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1931,19 +1403,7 @@
         },
         {
           "term": "unsustainable",
-          "score": 23.275,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "vaguely",
-          "score": 24.849999999999998,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "vitally",
-          "score": 24.849999999999998,
+          "score": 23.799999999999997,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1957,5 +1417,5 @@
       "status": "passed"
     }
   ],
-  "execution_time": "16m57.974750167s"
+  "execution_time": "3m58.928764858s"
 }
