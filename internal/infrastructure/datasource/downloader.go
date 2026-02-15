@@ -47,7 +47,7 @@ func (d *Downloader) Fetch(ctx context.Context, req DownloadRequest) (string, er
 	}
 
 	if fromCache {
-		d.logger.Info("using local artifact", "source", req.Source, "path", artifactPath)
+		d.logger.Debug("using local artifact", "source", req.Source, "path", artifactPath)
 		return artifactPath, nil
 	}
 
@@ -186,7 +186,7 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 	// Log progress every 10MB
 	if *pw.written-*pw.lastLog >= progressUpdateBytes {
 		percent := float64(*pw.written) / float64(pw.total) * 100
-		pw.logger.Info("download progress",
+		pw.logger.Debug("download progress",
 			"downloaded_mb", *pw.written/(1024*1024),
 			"total_mb", pw.total/(1024*1024),
 			"percent", fmt.Sprintf("%.1f%%", percent))

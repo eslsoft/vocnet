@@ -80,11 +80,6 @@ func NewVocnetPipeline(
 }
 
 func (p *VocnetPipeline) Run(ctx context.Context, jobID int64, term string, language string, tier int32, opts *RunOptions) (*ProcessWordResult, error) {
-	runLogger := p.logger
-	if opts != nil && opts.Logger != nil {
-		runLogger = opts.Logger
-	}
-
 	if language == "" {
 		language = "en"
 	}
@@ -103,8 +98,6 @@ func (p *VocnetPipeline) Run(ctx context.Context, jobID int64, term string, lang
 
 	pctx.JobID = jobID
 	pctx.Evaluator = p.evaluator
-
-	runLogger.Debug("processing word", "term", term, "lemma_id", pctx.Lemma.ID)
 
 	for _, stage := range p.stages {
 		_, err := p.stageRepo.CreateOrUpdate(ctx, &entity.PipelineStage{

@@ -81,19 +81,14 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 		for _, rel := range relations {
 			if rel.SourceLexemeID == 0 {
 				skippedCount++
-				p.logger.Debug("skipping relation with unresolved source lexeme",
-					"source_external_id", rel.SourceExternalID,
-					"target_term", rel.TargetTerm,
-					"relation_type", rel.RelationType,
-					"provider", rel.Provider)
 				continue
 			}
 			validRelations = append(validRelations, rel)
 		}
 		if skippedCount > 0 {
 			p.logger.Debug("skipped relations with unresolved source lexemes",
-				"skipped_count", skippedCount,
-				"total_count", len(relations))
+				"skipped", skippedCount,
+				"total", len(relations))
 		}
 
 		relations, err := p.filterExistingUniqueRelations(ctx, validRelations)
@@ -245,7 +240,6 @@ func (p *Persistence) updateLexeme(ctx context.Context, existing, newLex *entity
 	if _, err := p.lexemeRepo.Update(ctx, enriched); err != nil {
 		return nil, fmt.Errorf("update lexeme %s: %w", newLex.ExternalID, err)
 	}
-	p.logger.Debug("lexeme updated", "lexeme_id", enriched.ID, "external_id", enriched.ExternalID)
 	return enriched, nil
 }
 
@@ -305,12 +299,9 @@ func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, le
 				return fmt.Errorf("create lexeme %s: %w", newLex.ExternalID, err)
 			}
 			existingByExtID[created.ExternalID] = created
-			p.logger.Debug("lexeme created", "lexeme_id", created.ID, "external_id", created.ExternalID)
 		case newLex.ExternalID == "":
 			// Lexemes without ExternalID (from contrib sources) can only enrich existing lexemes
 			// If no existing lexeme to enrich, skip this lexeme
-			p.logger.Debug("skipping lexeme without ExternalID - no existing lexeme to enrich",
-				"provider", "contrib", "pos", newLex.PartOfSpeech)
 		}
 	}
 
@@ -643,8 +634,6 @@ func (p *Persistence) mapUnmappedContribRelations(relations []*entity.SemanticRe
 		lexemesByPOS[lex.PartOfSpeech] = append(lexemesByPOS[lex.PartOfSpeech], lex)
 	}
 
-	mapped := 0
-	skipped := 0
 	for _, rel := range relations {
 		if rel.SourceExternalID != "" {
 			continue
@@ -652,18 +641,10 @@ func (p *Persistence) mapUnmappedContribRelations(relations []*entity.SemanticRe
 
 		target := matchRelationToLexeme(rel, availableLexemes, lexemesByPOS)
 		if target == nil {
-			skipped++
 			continue
 		}
 
 		rel.SourceExternalID = target.ExternalID
-		mapped++
-	}
-
-	if mapped > 0 || skipped > 0 {
-		p.logger.Debug("mapped unmapped contrib relations",
-			"mapped", mapped,
-			"skipped", skipped)
 	}
 }
 

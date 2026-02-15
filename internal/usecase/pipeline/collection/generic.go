@@ -17,7 +17,6 @@ import (
 // SourceResult back into a ProcessResult for the pipeline.
 type GenericSourceProcessor struct {
 	source   repository.SourceProvider
-	logger   *slog.Logger
 	provider string // cached provider name from manifest
 }
 
@@ -29,7 +28,6 @@ func NewGenericSourceProcessor(source repository.SourceProvider, logger *slog.Lo
 	}
 	return &GenericSourceProcessor{
 		source:   source,
-		logger:   logger,
 		provider: providerName,
 	}
 }
@@ -74,17 +72,7 @@ func (p *GenericSourceProcessor) Process(ctx context.Context, pctx *pipeline.Pip
 
 	// For contrib sources that return relations but no lexemes,
 	// try to map relations to existing lexemes in the pipeline context
-	p.logger.Debug("checking relation mapping conditions",
-		"provider", p.provider,
-		"relations_count", len(pr.Relations),
-		"processor_lexemes_count", len(pr.Lexemes),
-		"context_lexemes_count", len(pctx.Lexemes))
-
 	if len(pr.Relations) > 0 && len(pr.Lexemes) == 0 && len(pctx.Lexemes) > 0 {
-		p.logger.Debug("mapping contrib relations to context lexemes",
-			"provider", p.provider,
-			"relations_count", len(pr.Relations),
-			"context_lexemes_count", len(pctx.Lexemes))
 		p.mapRelationsToContextLexemes(pr.Relations, pctx.Lexemes)
 	}
 
@@ -150,8 +138,6 @@ func (p *GenericSourceProcessor) mapRelationsToContextLexemes(relations []*entit
 		lexemesByPOS[lex.PartOfSpeech] = append(lexemesByPOS[lex.PartOfSpeech], lex)
 	}
 
-	mapped := 0
-	skipped := 0
 	for _, rel := range relations {
 		if rel.SourceExternalID != "" {
 			continue
@@ -159,19 +145,10 @@ func (p *GenericSourceProcessor) mapRelationsToContextLexemes(relations []*entit
 
 		target := matchRelationToLexeme(rel, contextLexemes, lexemesByPOS)
 		if target == nil {
-			skipped++
 			continue
 		}
 
 		rel.SourceExternalID = target.ExternalID
-		mapped++
-	}
-
-	if mapped > 0 {
-		p.logger.Debug("mapped contrib relations to context lexemes",
-			"provider", p.provider,
-			"mapped", mapped,
-			"skipped", skipped)
 	}
 }
 

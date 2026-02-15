@@ -35,11 +35,10 @@ func (p *LLMEnrichmentProcessor) Process(ctx context.Context, pctx *pipeline.Pip
 	// Analyze what's missing or incomplete
 	gaps := p.analyzeDataGaps(pctx)
 	if gaps.isEmpty() {
-		p.logger.Info("llm_enrichment: no gaps detected, skipping")
 		return &scoring.ProcessResult{Status: scoring.ProcessStatusNoData}, nil
 	}
 
-	p.logger.Info("llm_enrichment: detected gaps",
+	p.logger.Debug("llm_enrichment: detected gaps",
 		"incomplete_lexemes", len(gaps.IncompleteLexemes),
 		"needs_sense_mapping", len(gaps.UnmappedRelations),
 		"needs_relation_scoring", len(gaps.UnscoredRelations),
@@ -71,7 +70,7 @@ Always respond with valid JSON only.`,
 	// Convert LLM response to Evidence for later evaluation
 	evidence := p.convertToEvidence(&result, resp, pctx.Term)
 
-	p.logger.Info("llm_enrichment: completed",
+	p.logger.Debug("llm_enrichment: completed",
 		"enriched_lexemes", len(result.Lexemes),
 		"mapped_relations", len(result.MappedRelations),
 		"scored_relations", len(result.ScoredRelations),

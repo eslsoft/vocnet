@@ -77,11 +77,10 @@ func NewProcessSourceProviderWithCmd(ctx context.Context, cmd *exec.Cmd, logger 
 	}
 	p.manifest = manifest
 
-	logger.Info("contrib source initialized",
+	logger.Debug("contrib source initialized",
 		"name", manifest.Name,
 		"version", manifest.Version,
 		"capabilities", manifest.Capabilities,
-		"languages", manifest.Languages,
 	)
 
 	return p, nil

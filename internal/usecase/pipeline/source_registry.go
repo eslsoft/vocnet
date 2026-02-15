@@ -21,11 +21,9 @@ func NewSourceRegistry(logger *slog.Logger) *SourceRegistry {
 func (r *SourceRegistry) Register(source repository.SourceProvider) {
 	r.sources = append(r.sources, source)
 	m := source.Manifest()
-	r.logger.Info("registered source provider",
+	r.logger.Debug("registered source provider",
 		"name", m.Name,
 		"kind", m.Kind,
-		"capabilities", m.Capabilities,
-		"languages", m.Languages,
 	)
 }
 

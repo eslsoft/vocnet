@@ -44,7 +44,7 @@ func (m *Manager) EnsureAvailable(ctx context.Context, required ...string) error
 		}
 	}
 
-	m.logger.Info("checking data source availability", "sources", required)
+	m.logger.Debug("checking data source availability", "sources", required)
 
 	for _, name := range required {
 		source, ok := m.sources[name]
@@ -52,18 +52,12 @@ func (m *Manager) EnsureAvailable(ctx context.Context, required ...string) error
 			return fmt.Errorf("unknown data source: %s", name)
 		}
 
-		m.logger.Debug("checking data source", "name", name, "path", source.Path())
-
 		if source.Exists() {
-			m.logger.Debug("data source exists, verifying integrity", "name", name)
 			if err := source.Verify(); err == nil {
-				m.logger.Debug("data source verified", "name", name)
 				continue
 			} else {
 				m.logger.Warn("data source verification failed, will re-download", "name", name, "error", err)
 			}
-		} else {
-			m.logger.Debug("data source missing", "name", name)
 		}
 
 		m.logger.Info("downloading missing data source", "name", name)
@@ -73,6 +67,6 @@ func (m *Manager) EnsureAvailable(ctx context.Context, required ...string) error
 		m.logger.Info("download completed", "name", name)
 	}
 
-	m.logger.Info("all data sources available", "count", len(required))
+	m.logger.Debug("all data sources available", "count", len(required))
 	return nil
 }

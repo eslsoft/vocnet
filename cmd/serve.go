@@ -182,9 +182,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	if cfg.LLM.APIKey != "" {
 		cacheRepo := repository.NewDistillCacheRepository(entClient)
 		llmProvider = llm.NewOpenAIProvider(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.Model, cacheRepo)
-		logger.Info("llm provider initialized", "base_url", cfg.LLM.BaseURL, "model", cfg.LLM.Model)
-	} else {
-		logger.Info("llm provider not configured (LLM_API_KEY not set), enrichment will be skipped")
+		logger.Debug("llm provider initialized", "base_url", cfg.LLM.BaseURL, "model", cfg.LLM.Model)
 	}
 
 	// Build pipeline stages using new Phase system
@@ -315,7 +313,7 @@ func loadContribSources(ctx context.Context, registry *pipeline.SourceRegistry, 
 			continue
 		}
 
-		logger.Info("loading contrib source", "path", execPath)
+		logger.Debug("loading contrib source", "path", execPath)
 		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
 		if err != nil {
 			logger.Warn("failed to start contrib source", "path", execPath, "error", err)
@@ -323,6 +321,5 @@ func loadContribSources(ctx context.Context, registry *pipeline.SourceRegistry, 
 		}
 
 		registry.Register(sp)
-		logger.Info("contrib source loaded", "name", sp.Manifest().Name, "path", execPath)
 	}
 }

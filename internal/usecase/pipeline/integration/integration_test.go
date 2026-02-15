@@ -12,7 +12,7 @@ import (
 )
 
 func TestIntegrationProcessor_PreservesFormType(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	ip := NewIntegrationProcessor(logger)
 
 	// Create existing forms with various FormTypes
@@ -113,7 +113,7 @@ func TestIntegrationProcessor_PreservesFormType(t *testing.T) {
 }
 
 func TestIntegrationProcessor_NoEmptyFormType(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	ip := NewIntegrationProcessor(logger)
 
 	// Create a context with evaluated fragments but no existing forms

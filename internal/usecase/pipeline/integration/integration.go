@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sort"
 	"time"
@@ -52,12 +51,6 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.Pipe
 	integratedForms := ip.integrateForms(pctx.EvaluatedFragments, pctx.Forms, provenance)
 	integratedLemmaData := ip.integrateLemmaMetadata(pctx.EvaluatedFragments, provenance)
 	integratedRelations := ip.integrateRelations(pctx.EvaluatedFragments, provenance)
-
-	ip.logger.Debug("integration completed",
-		"lexemes", len(integratedLexemes),
-		"forms", len(integratedForms),
-		"relations", len(integratedRelations),
-		"provenance_entries", len(provenance))
 
 	// Clear old context data and replace with integrated results
 	pctx.Lexemes = integratedLexemes
@@ -126,14 +119,6 @@ func (ip *IntegrationProcessor) integrateLexemes(
 			Score:        winner.Score,
 			Timestamp:    time.Now(),
 			Alternatives: len(candidates) - 1,
-		}
-
-		if len(candidates) > 1 {
-			ip.logger.Debug("lexeme integrated",
-				"key", key,
-				"winner", winner.Provider,
-				"score", fmt.Sprintf("%.1f", winner.Score.Score),
-				"rejected", len(candidates)-1)
 		}
 	}
 

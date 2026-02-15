@@ -187,7 +187,7 @@ func (p *WorkerPool[J]) signalWake() {
 }
 
 func (p *WorkerPool[J]) logProgress() {
-	p.logger.Info("worker pool progress",
+	p.logger.Debug("worker pool progress",
 		"in_flight", p.inFlight.Load(),
 	)
 }

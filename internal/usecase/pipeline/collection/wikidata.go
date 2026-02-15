@@ -21,12 +21,11 @@ type wikidataFormLookup interface {
 // WikidataProcessor fetches lexemes, forms, and relations from Wikidata.
 type WikidataProcessor struct {
 	wikidata provider.WikidataProvider
-	logger   *slog.Logger
 }
 
 // NewWikidataProcessor creates a new WikidataProcessor.
 func NewWikidataProcessor(wikidata provider.WikidataProvider, logger *slog.Logger) *WikidataProcessor {
-	return &WikidataProcessor{wikidata: wikidata, logger: logger}
+	return &WikidataProcessor{wikidata: wikidata}
 }
 
 func (p *WikidataProcessor) Name() string { return "wikidata" }
@@ -71,16 +70,6 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 			return nil, fmt.Errorf("wikidata lexeme %s %w", lex.LexemeID, err)
 		}
 
-		// Log form details
-		for _, f := range lemmaForms {
-			p.logger.Debug("wikidata form",
-				"surface", f.Surface,
-				"formType", f.FormType,
-				"phonetics", len(f.Phonetics),
-				"irregular", f.IsIrregular,
-				"lexeme", lex.LexemeID)
-		}
-
 		// Infer categories from senses
 		entityLex.Categories = inferCategoriesFromSenses(entityLex.Senses)
 
@@ -94,12 +83,6 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 
 	// Phase 2: Build relations
 	relations := p.buildRelations(ctx, pctx, entityLexemes)
-
-	p.logger.Debug("wikidata processor completed",
-		"term", term,
-		"lexemes", len(entityLexemes),
-		"forms", len(allForms),
-		"relations", len(relations))
 
 	return &scoring.ProcessResult{
 		Status:        scoring.ProcessStatusExecuted,

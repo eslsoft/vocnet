@@ -13,14 +13,12 @@ import (
 // FragmentEvaluator evaluates the quality of data fragments from sources.
 type FragmentEvaluator struct {
 	scorer *scoring.RuleBasedScorer
-	logger *slog.Logger
 }
 
 // NewFragmentEvaluator creates a new FragmentEvaluator.
 func NewFragmentEvaluator(scorer *scoring.RuleBasedScorer, logger *slog.Logger) *FragmentEvaluator {
 	return &FragmentEvaluator{
 		scorer: scorer,
-		logger: logger,
 	}
 }
 
@@ -59,10 +57,6 @@ func (fe *FragmentEvaluator) Process(ctx context.Context, pctx *pipeline.Pipelin
 			allFragments[fieldKey] = append(allFragments[fieldKey], fragment)
 		}
 	}
-
-	fe.logger.Debug("fragment evaluation completed",
-		"providers", len(allProviders),
-		"unique_fields", len(allFragments))
 
 	// Store evaluated fragments in context for integration phase
 	if pctx.EvaluatedFragments == nil {
