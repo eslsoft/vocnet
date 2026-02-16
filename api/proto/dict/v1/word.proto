@@ -24,6 +24,8 @@ message Word {
   repeated RelatedForm related_forms = 10;
 
   repeated string syllables = 11; // Syllabification (e.g. ["a", "bil", "i", "ty"])
+  repeated Relation relations = 12; // Word-level semantic relations (synonyms, antonyms, etc.)
+  string level = 13; // CEFR level (e.g., "A1", "B2", "C1")
 
   bool irregular = 31; // Whether this is an irregular form (e.g., "went", "children")
   int32 completeness = 32; // Data completeness 0-100, calculated from core fields
@@ -51,7 +53,6 @@ message Meaning {
   string pos = 2; // Part of speech, e.g. n., v., adj.
   repeated Definition definitions = 3; // Definition text in different languages
   repeated Sentence examples = 4; // Example sentences
-  repeated Relation relations = 5; // Relationships to other words
 }
 
 // Definition text in a specific language
@@ -64,7 +65,8 @@ message Definition {
 message Relation {
   RelationType type = 1;
   string target_word = 2; // The related word (surface form or lemma)
-  optional string note = 3; // Optional note about the relationship
+  double strength = 3; // Relationship strength (0.0-1.0)
+  string provider = 4; // Data source (e.g., "wikidata", "wordnet", "conceptnet")
 }
 
 enum RelationType {

@@ -123,15 +123,19 @@ func (r *lemmaSnapshotRepository) GetByLemma(ctx context.Context, lemmaID int64)
 
 func (r *lemmaSnapshotRepository) GetByTerm(ctx context.Context, term string, language string) (*entity.LemmaSnapshot, error) {
 	normalized := strings.ToLower(strings.TrimSpace(term))
-	row, err := r.client.LemmaSnapshot.Query().
+	q := r.client.LemmaSnapshot.Query().
 		Where(
-			entlemmasnapshot.LanguageEQ(language),
 			entlemmasnapshot.IsLatestEQ(true),
 			func(s *sql.Selector) {
 				column := s.C(entlemmasnapshot.FieldLookupTerms)
 				s.Where(sqljson.ValueContains(column, normalized))
 			},
-		).
+		)
+	// Only filter by language if specified
+	if language != "" {
+		q = q.Where(entlemmasnapshot.LanguageEQ(language))
+	}
+	row, err := q.
 		WithLemma().
 		Order(entlemmasnapshot.ByVersion(sql.OrderDesc())).
 		First(ctx)
@@ -195,7 +199,16 @@ func (r *lemmaSnapshotRepository) ListLatest(ctx context.Context, query *reposit
 
 	trimmedKeyword := strings.TrimSpace(query.Keyword)
 	if trimmedKeyword != "" {
-		q = q.Where(entlemmasnapshot.SurfaceContainsFold(trimmedKeyword))
+		// Search in both surface (lemma) and lookup_terms (all forms)
+		q = q.Where(func(s *sql.Selector) {
+			normalizedKeyword := strings.ToLower(trimmedKeyword)
+			surfaceCol := s.C(entlemmasnapshot.FieldSurface)
+			lookupCol := s.C(entlemmasnapshot.FieldLookupTerms)
+			s.Where(sql.Or(
+				sql.ContainsFold(surfaceCol, trimmedKeyword),
+				sqljson.ValueContains(lookupCol, normalizedKeyword),
+			))
+		})
 	}
 	if query.MinQScore != nil {
 		q = q.Where(entlemmasnapshot.QualityOverallGTE(*query.MinQScore))
@@ -249,7 +262,7 @@ func containsAnyJSONField(column, jsonPath string, values []string) func(*sql.Se
 			if trimmed == "" {
 				continue
 			}
-			preds = append(preds, sqljson.ValueContains(s.C(column), []string{trimmed}, sqljson.Path(jsonPath)))
+			preds = append(preds, sqljson.ValueContains(s.C(column), trimmed, sqljson.Path(jsonPath)))
 		}
 		if len(preds) > 0 {
 			s.Where(sql.Or(preds...))
@@ -265,7 +278,7 @@ func containsAnyPOS(column string, posValues []string) func(*sql.Selector) {
 			if trimmed == "" {
 				continue
 			}
-			preds = append(preds, sqljson.ValueContains(s.C(column), []map[string]string{{"pos": trimmed}}, sqljson.Path("lexemes")))
+			preds = append(preds, sqljson.ValueContains(s.C(column), map[string]string{"pos": trimmed}, sqljson.Path("lexemes")))
 		}
 		if len(preds) > 0 {
 			s.Where(sql.Or(preds...))

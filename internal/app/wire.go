@@ -37,7 +37,7 @@ var repositorySet = wire.NewSet(
 
 var usecaseSet = wire.NewSet(
 	usecase.NewLexemeUsecase,
-	usecase.NewWordUsecase,
+	usecase.NewSnapshotWordUsecase,
 	pipeline.NewPipelineService,
 	pipeline.NewLemmaQueryService,
 )

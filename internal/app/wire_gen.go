@@ -35,11 +35,10 @@ func Initialize() (*Container, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	lemmaRepository := repository.NewLemmaRepository(client)
-	lexemeRepository := repository.NewLexemeRepository(client)
-	wordUsecase := usecase.NewWordUsecase(lemmaRepository, lexemeRepository)
-	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
 	lemmaSnapshotRepository := repository.NewLemmaSnapshotRepository(client)
+	wordUsecase := usecase.NewSnapshotWordUsecase(lemmaSnapshotRepository)
+	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
+	lemmaRepository := repository.NewLemmaRepository(client)
 	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository, lemmaSnapshotRepository)
 	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
 	pipelineJobRepository := repository.NewPipelineJobRepository(client)
@@ -71,7 +70,7 @@ var databaseSet = wire.NewSet(database.NewEntClient)
 
 var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLemmaRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewLemmaSnapshotRepository, repository.NewPipelineJobRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewWordUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewSnapshotWordUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
 
 var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewPipelineServiceServer, connectrpc.NewLemmaServiceServer, wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(dictv1connect.LemmaServiceHandler), new(*connectrpc.LemmaServiceServer)), wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*connectrpc.PipelineServiceServer)))
 

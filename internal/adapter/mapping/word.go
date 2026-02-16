@@ -75,6 +75,8 @@ func buildLemmaView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dic
 		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
 		Syllables:    entry.Lemma.Syllables,
 		Categories:   categories,
+		Relations:    nil, // Relations are populated from snapshot layer
+		Level:        entry.Lemma.Level,
 		Irregular:    false,
 		Completeness: completeness,
 	}
@@ -139,6 +141,8 @@ func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dict
 		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
 		Syllables:    syllables,
 		Categories:   categories,
+		Relations:    nil, // Relations are populated from snapshot layer
+		Level:        entry.Lemma.Level,
 		Irregular:    isIrregular,
 		Completeness: completeness,
 	}
@@ -178,8 +182,8 @@ func buildRelatedForms(allForms []*entity.LemmaForm, excludeForm *entity.LemmaFo
 			continue
 		}
 
-		// Exclude the form being displayed
-		if excludeForm != nil && form.ID == excludeForm.ID {
+		// Exclude the form being displayed (compare by surface + formType instead of ID)
+		if excludeForm != nil && form.Surface == excludeForm.Surface && form.FormType == excludeForm.FormType {
 			continue
 		}
 
