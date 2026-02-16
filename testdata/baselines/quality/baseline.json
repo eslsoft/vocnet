@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-02-15T02:09:29.013371978Z",
+  "timestamp": "2026-02-16T04:23:19.015359116Z",
   "total_books": 6,
   "total_words": 7004,
-  "total_passed": 6791,
-  "total_failed": 213,
-  "average_score": 59.01792519981729,
+  "total_passed": 6797,
+  "total_failed": 207,
+  "average_score": 59.03836718720711,
   "book_reports": [
     {
       "name": "CEFR-A1",
@@ -12,7 +12,7 @@
       "tested_words": 917,
       "passed_words": 905,
       "failed_words": 12,
-      "average_score": 62.15261176658106,
+      "average_score": 62.15452879143307,
       "min_score": 24.849999999999998,
       "max_score": 88.25285714285712,
       "min_requirement": 35,
@@ -20,8 +20,8 @@
       "score_distribution": {
         "0-20": 0,
         "20-40": 16,
-        "40-60": 364,
-        "60-80": 502,
+        "40-60": 363,
+        "60-80": 503,
         "80-100": 35
       },
       "failed_terms": [
@@ -104,18 +104,18 @@
       "name": "CEFR-A2",
       "total_words": 1014,
       "tested_words": 963,
-      "passed_words": 933,
-      "failed_words": 30,
-      "average_score": 61.94165978963479,
+      "passed_words": 935,
+      "failed_words": 28,
+      "average_score": 62.00363337096764,
       "min_score": 0,
       "max_score": 85.8868,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
-        "0-20": 4,
+        "0-20": 3,
         "20-40": 24,
         "40-60": 363,
-        "60-80": 553,
+        "60-80": 554,
         "80-100": 19
       },
       "failed_terms": [
@@ -216,18 +216,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "kilogram",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: kilogram (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "kilogram",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "mostly",
           "score": 28,
           "min_requirement": 35,
@@ -242,6 +230,18 @@
         {
           "term": "ourselves",
           "score": 24.849999999999998,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "pajamas",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "abandoned: word not found in Wikidata: pajamas (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "pajamas",
+          "score": 0,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -276,18 +276,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "traveller",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: traveller (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "traveller",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "whose",
           "score": 24.15,
           "min_requirement": 35,
@@ -306,18 +294,18 @@
       "name": "CEFR-B1",
       "total_words": 1056,
       "tested_words": 993,
-      "passed_words": 965,
-      "failed_words": 28,
-      "average_score": 59.97378781569802,
+      "passed_words": 963,
+      "failed_words": 30,
+      "average_score": 59.905599894186835,
       "min_score": 0,
       "max_score": 84.47454128440367,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 1,
+        "0-20": 2,
         "20-40": 26,
         "40-60": 476,
-        "60-80": 483,
+        "60-80": 482,
         "80-100": 7
       },
       "failed_terms": [
@@ -472,6 +460,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "traveler",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: traveler (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "traveler",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "urgently",
           "score": 21.7,
           "min_requirement": 30,
@@ -496,18 +496,18 @@
       "name": "CEFR-B2",
       "total_words": 1863,
       "tested_words": 1803,
-      "passed_words": 1692,
-      "failed_words": 111,
-      "average_score": 58.00888033461873,
+      "passed_words": 1698,
+      "failed_words": 105,
+      "average_score": 58.11422513032958,
       "min_score": 0,
       "max_score": 84.2859756097561,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 9,
+        "0-20": 6,
         "20-40": 97,
-        "40-60": 962,
-        "60-80": 728,
+        "40-60": 964,
+        "60-80": 729,
         "80-100": 7
       },
       "failed_terms": [
@@ -650,18 +650,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "defence",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: defence (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "defence",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "desperately",
           "score": 28,
           "min_requirement": 30,
@@ -778,18 +766,6 @@
         {
           "term": "freely",
           "score": 28,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "fulfil",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: fulfil (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "fulfil",
-          "score": 0,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1154,18 +1130,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "whiskey",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: whiskey (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "whiskey",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "widely",
           "score": 28,
           "min_requirement": 30,
@@ -1186,16 +1150,16 @@
       "tested_words": 1717,
       "passed_words": 1699,
       "failed_words": 18,
-      "average_score": 57.55439505937361,
+      "average_score": 57.52918606022358,
       "min_score": 0,
       "max_score": 81.76840277777777,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
         "0-20": 7,
-        "20-40": 55,
-        "40-60": 1080,
-        "60-80": 572,
+        "20-40": 56,
+        "40-60": 1082,
+        "60-80": 569,
         "80-100": 3
       },
       "failed_terms": [
@@ -1206,25 +1170,25 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "archaeologist",
+          "term": "catalogue",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: archaeologist (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: catalogue (non-standard vocabulary rejected)"
         },
         {
-          "term": "archaeologist",
+          "term": "catalogue",
           "score": 0,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
         {
-          "term": "enrol",
+          "term": "councillor",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: enrol (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: councillor (non-standard vocabulary rejected)"
         },
         {
-          "term": "enrol",
+          "term": "councillor",
           "score": 0,
           "min_requirement": 25,
           "reason": "below minimum requirement"
@@ -1316,7 +1280,7 @@
       "tested_words": 611,
       "passed_words": 597,
       "failed_words": 14,
-      "average_score": 55.24207180179529,
+      "average_score": 55.24664626988041,
       "min_score": 0,
       "max_score": 77.72311827956989,
       "min_requirement": 25,
@@ -1417,5 +1381,5 @@
       "status": "passed"
     }
   ],
-  "execution_time": "3m58.928764858s"
+  "execution_time": "1m27.213654055s"
 }
