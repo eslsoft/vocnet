@@ -140,7 +140,7 @@ make migrate
 # Run ConnectRPC server (supports both gRPC and HTTP protocols on :8080)
 make run
 # or with custom DB
-DATABASE_URL=postgres://user:pass@localhost:5432/vocnet make run
+DATABASE_URL=postgres://user:pass@localhost:5432/vocnet?search_path=vocnet make run
 
 # Start full dev environment (DB + server)
 make dev
@@ -253,7 +253,7 @@ DATABASE_URL=file:./data/vocnet.db go run . serve
 
 # PostgreSQL
 make db-up  # Start container
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/vocnet go run . serve
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/vocnet?search_path=vocnet go run . serve
 
 # Stop database
 make db-down

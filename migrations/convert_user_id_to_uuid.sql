@@ -10,7 +10,7 @@
 -- 直接删除列并重新创建（会丢失数据）
 -- ALTER TABLE wordbook DROP COLUMN user_id;
 -- ALTER TABLE wordbook ADD COLUMN user_id uuid NOT NULL;
--- 
+--
 -- ALTER TABLE learned_word DROP COLUMN user_id;
 -- ALTER TABLE learned_word ADD COLUMN user_id uuid NOT NULL;
 
@@ -62,11 +62,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS learned_word_user_id_term_language_key ON lear
 CREATE INDEX IF NOT EXISTS learned_word_user_id_review_next_review_at_idx ON learned_word(user_id, review_next_review_at);
 
 -- 验证转换结果
-SELECT 
-    table_name, 
-    column_name, 
-    data_type 
-FROM information_schema.columns 
-WHERE column_name = 'user_id' 
-AND table_schema = 'public'
+SELECT
+    table_name,
+    column_name,
+    data_type
+FROM information_schema.columns
+WHERE column_name = 'user_id'
+AND table_schema = 'vocnet'
 ORDER BY table_name;

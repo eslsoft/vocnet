@@ -89,7 +89,7 @@ GRPC_PORT=9090
 HTTP_PORT=8080
 DB_DSN=file:./data/vocnet.db
 # 示例：使用 PostgreSQL
-# DB_DSN=postgres://postgres:postgres@localhost:5432/vocnet?sslmode=disable
+# DB_DSN=postgres://postgres:postgres@localhost:5432/vocnet?sslmode=disable&search_path=vocnet
 LOG_LEVEL=info
 LOG_FORMAT=json
 ```
