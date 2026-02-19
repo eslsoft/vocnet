@@ -313,7 +313,7 @@ func loadContribSources(ctx context.Context, registry *pipeline.SourceRegistry, 
 			continue
 		}
 
-		logger.Debug("loading contrib source", "path", execPath)
+		logger.Info("loading contrib source", "path", execPath)
 		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
 		if err != nil {
 			logger.Warn("failed to start contrib source", "path", execPath, "error", err)

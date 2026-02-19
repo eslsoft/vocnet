@@ -127,7 +127,7 @@ func (p *ProcessSourceProvider) Close() error {
 func (p *ProcessSourceProvider) initialize(ctx context.Context) (repository.SourceManifest, error) {
 	// Use a longer timeout for initialize, as it may need to download data
 	// (e.g., NLTK WordNet data, ConceptNet index building)
-	initCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	var initResult InitializeResult
