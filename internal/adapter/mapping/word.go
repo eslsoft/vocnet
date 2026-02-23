@@ -75,7 +75,7 @@ func buildLemmaView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dic
 		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
 		Syllables:    entry.Lemma.Syllables,
 		Categories:   categories,
-		Relations:    nil, // Relations are populated from snapshot layer
+		Relations:    buildSnapshotRelations(entry.Relations),
 		Level:        entry.Lemma.Level,
 		Irregular:    false,
 		Completeness: completeness,
@@ -141,7 +141,7 @@ func buildFormView(entry *entity.WordEntry, queriedForm *entity.LemmaForm) *dict
 		RelatedForms: buildRelatedForms(entry.Lemma.Forms, queriedForm),
 		Syllables:    syllables,
 		Categories:   categories,
-		Relations:    nil, // Relations are populated from snapshot layer
+		Relations:    buildSnapshotRelations(entry.Relations),
 		Level:        entry.Lemma.Level,
 		Irregular:    isIrregular,
 		Completeness: completeness,

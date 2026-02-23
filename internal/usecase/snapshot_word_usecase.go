@@ -272,6 +272,7 @@ func snapshotToWordEntry(snapshot *entity.LemmaSnapshot, queriedTerm string) *en
 		QueriedTerm: queriedTerm,
 		Lemma:       lemma,
 		Lexemies:    lexemes,
+		Relations:   snapshot.Payload.Relations,
 	}
 }
 
