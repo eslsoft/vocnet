@@ -33,13 +33,23 @@ enum Language {
   LANGUAGE_KOREAN = 7; // ko
 }
 
-// Source types for sentences and content
+// Source types for learned word contexts
 enum SourceType {
   SOURCE_TYPE_UNSPECIFIED = 0;
-  SOURCE_TYPE_BOOK = 1; // 书籍
-  SOURCE_TYPE_WEB = 2; // 网页
-  SOURCE_TYPE_AUDIO = 3; // 音频
-  SOURCE_TYPE_VIDEO = 4; // 视频
-  SOURCE_TYPE_MANUAL = 5; // 手动输入
-  SOURCE_TYPE_OTHER = 10; // 其他
+
+  // Reading
+  SOURCE_TYPE_NOVEL = 1; // 小说
+  SOURCE_TYPE_EBOOK = 2; // 电子书（非虚构）
+  SOURCE_TYPE_ARTICLE = 3; // 文章（新闻、杂志）
+  SOURCE_TYPE_BLOG = 4; // 博客
+  SOURCE_TYPE_TEXTBOOK = 5; // 教材
+
+  // Audio
+  SOURCE_TYPE_AUDIOBOOK = 10; // 有声书
+  SOURCE_TYPE_PODCAST = 11; // 播客
+  SOURCE_TYPE_SONG = 12; // 歌曲
+
+  // Video
+  SOURCE_TYPE_MOVIE = 20; // 电影
+  SOURCE_TYPE_TV_SERIES = 21; // 剧集
 }
