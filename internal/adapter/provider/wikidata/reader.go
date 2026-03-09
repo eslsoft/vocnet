@@ -406,6 +406,35 @@ func (r *Reader) batchFetchForms(ctx context.Context, lexemeIDs []string) map[st
 	return result
 }
 
+// ListAllLemmas returns all unique lemmas for a given language from the index.
+// It streams results through a callback to avoid loading everything into memory.
+// If the callback returns a non-nil error, iteration stops.
+func (r *Reader) ListAllLemmas(ctx context.Context, language string, fn func(lemma string) error) (int, error) {
+	if language == "" {
+		language = "en"
+	}
+
+	query := `SELECT DISTINCT lemma FROM lexemes WHERE language = ? ORDER BY lemma_lower`
+	rows, err := r.db.QueryContext(ctx, query, language)
+	if err != nil {
+		return 0, fmt.Errorf("query all lemmas: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	count := 0
+	for rows.Next() {
+		var lemma string
+		if err := rows.Scan(&lemma); err != nil {
+			return count, fmt.Errorf("scan lemma: %w", err)
+		}
+		if err := fn(lemma); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, rows.Err()
+}
+
 // FetchLexemesByForm searches for lexemes by an inflected form.
 func (r *Reader) FetchLexemesByForm(ctx context.Context, form string, language string) ([]provider.WikidataLexeme, error) {
 	if language == "" {

@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 
+	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
@@ -39,6 +40,7 @@ var submitCmd = &cobra.Command{
   - File: pipeline submit --file words.txt
   - Built-in wordbook: pipeline submit --wordbook CEFR-A1
   - All wordbooks: pipeline submit --all
+  - All Wikidata lemmas: pipeline submit --wikidata
 
 File formats:
   .txt  — one word per line (blank lines and # comments ignored)
@@ -50,6 +52,7 @@ File formats:
 		wb, _ := cmd.Flags().GetString("wordbook")
 		name, _ := cmd.Flags().GetString("name")
 		all, _ := cmd.Flags().GetBool("all")
+		fromWikidata, _ := cmd.Flags().GetBool("wikidata")
 
 		deps, err := newPipelineDeps()
 		if err != nil {
@@ -63,6 +66,11 @@ File formats:
 		var job *entity.PipelineJob
 
 		switch {
+		case fromWikidata:
+			jobs, err = submitFromWikidata(ctx, deps.svc, language, tier, name)
+			if err != nil {
+				return err
+			}
 		case all:
 			jobs, err = submitAllWordbooks(ctx, deps.svc, language, tier)
 			if err != nil {
@@ -514,6 +522,64 @@ func submitAllWordbooks(ctx context.Context, svc *pipeline.PipelineService, lang
 	return allJobs, nil
 }
 
+// submitFromWikidata extracts all unique lemmas from the Wikidata index and submits them as pipeline jobs.
+func submitFromWikidata(ctx context.Context, svc *pipeline.PipelineService, language string, tier int32, name string) ([]*entity.PipelineJob, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	dataPath := wikidata.DataPath(cfg.Pipeline.DataDir)
+	reader, err := wikidata.NewReader(dataPath)
+	if err != nil {
+		return nil, fmt.Errorf("open wikidata index: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	// Collect all lemmas from the index
+	fmt.Printf("Scanning Wikidata index for %s lemmas...\n", language)
+	var terms []string
+	total, err := reader.ListAllLemmas(ctx, language, func(lemma string) error {
+		terms = append(terms, lemma)
+		if len(terms)%10000 == 0 {
+			fmt.Printf("  ...scanned %d lemmas\n", len(terms))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list wikidata lemmas: %w", err)
+	}
+	fmt.Printf("Found %d unique lemmas.\n", total)
+
+	if total == 0 {
+		return nil, fmt.Errorf("no lemmas found for language %q in Wikidata index", language)
+	}
+
+	// Submit in batches to show progress
+	jobName := name
+	if jobName == "" {
+		jobName = fmt.Sprintf("wikidata-%s", language)
+	}
+
+	batchSize := 5000
+	var allJobs []*entity.PipelineJob
+	for i := 0; i < len(terms); i += batchSize {
+		end := i + batchSize
+		if end > len(terms) {
+			end = len(terms)
+		}
+		batch := terms[i:end]
+		jobs, err := svc.SubmitTerms(ctx, jobName, batch, language, tier)
+		if err != nil {
+			return nil, fmt.Errorf("submit batch %d-%d: %w", i, end, err)
+		}
+		allJobs = append(allJobs, jobs...)
+		fmt.Printf("  Submitted %d/%d terms\n", end, total)
+	}
+
+	return allJobs, nil
+}
+
 // resolveWordbook finds a builtin wordbook by name or ID and returns its terms.
 func resolveWordbook(nameOrID string) ([]string, string, error) {
 	builtins := wordbook.GetBuiltinWordbooks()
@@ -554,6 +620,7 @@ func init() {
 	submitCmd.Flags().String("wordbook", "", "Built-in wordbook name or ID")
 	submitCmd.Flags().String("name", "", "Custom job name")
 	submitCmd.Flags().Bool("all", false, "Submit all built-in wordbooks")
+	submitCmd.Flags().Bool("wikidata", false, "Submit all lemmas from Wikidata index")
 
 	pipelineCmd.AddCommand(jobsCmd)
 	jobsCmd.Flags().String("status", "", "Filter by status (PENDING, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED)")
