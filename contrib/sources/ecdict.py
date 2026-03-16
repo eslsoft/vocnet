@@ -138,6 +138,18 @@ def parse_exchange_forms(exchange):
     if not exchange:
         return []
 
+    # Pre-collect 3rd person surfaces to deduplicate with s:
+    # When a verb has both s:goes and 3:goes, the s: PLURAL is wrong;
+    # the correct form type is THIRD_PERSON_SINGULAR from 3:.
+    third_person_surfaces = set()
+    for part in exchange.split("/"):
+        part = part.strip()
+        if ":" not in part:
+            continue
+        key, surface = part.split(":", 1)
+        if key == "3":
+            third_person_surfaces.add(surface.strip())
+
     forms = []
     seen = set()
     for part in exchange.split("/"):
@@ -147,6 +159,10 @@ def parse_exchange_forms(exchange):
         key, surface = part.split(":", 1)
         surface = surface.strip()
         if not surface:
+            continue
+
+        # Skip s: when 3: has same surface (verb 3rd person, not plural)
+        if key == "s" and surface in third_person_surfaces:
             continue
 
         form_type = EXCHANGE_FORM_MAP.get(key)

@@ -325,7 +325,7 @@ func convertResultForm(f ResultForm) *entity.LemmaForm {
 	}
 	return &entity.LemmaForm{
 		Surface:     f.Surface,
-		FormType:    entity.FormType(f.FormType),
+		FormType:    entity.FormType(strings.ToUpper(f.FormType)),
 		IsIrregular: f.IsIrregular,
 		Phonetics:   phonetics,
 		Syllables:   f.Syllables,
