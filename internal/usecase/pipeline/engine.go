@@ -350,10 +350,23 @@ func (p *VocnetPipeline) correctLemmaSurface(ctx context.Context, pctx *Pipeline
 	if best == "" || strings.EqualFold(best, pctx.Lemma.Surface) {
 		return
 	}
+	oldSurface := pctx.Lemma.Surface
 	pctx.Lemma.Surface = best
 	pctx.Lemma.Normalized = strings.ToLower(best)
 	if _, err := p.lemmaRepo.Update(ctx, pctx.Lemma); err != nil {
-		p.logger.Warn("failed to correct lemma surface", "from", pctx.Lemma.Surface, "to", best, "error", err)
+		// UNIQUE constraint: a lemma with the correct surface already exists.
+		// Switch to that lemma instead of staying on the wrong one.
+		pctx.Lemma.Surface = oldSurface
+		pctx.Lemma.Normalized = strings.ToLower(oldSurface)
+		existing, lookupErr := p.lemmaRepo.LookupByForm(ctx, best, pctx.Language)
+		if lookupErr == nil && existing != nil {
+			pctx.Lemma = existing
+			pctx.Forms = existing.Forms
+			lexemes, _ := p.lexemeRepo.ListByLemmaID(ctx, existing.ID)
+			pctx.Lexemes = lexemes
+		} else {
+			p.logger.Warn("failed to correct lemma surface", "from", oldSurface, "to", best, "error", err)
+		}
 	}
 }
 
