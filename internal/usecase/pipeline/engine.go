@@ -311,20 +311,32 @@ func (v *Validator) EnsureLemma(ctx context.Context, term string, language entit
 }
 
 // createLemmaFromCollectedData creates the lemma record using the true base form
-// discovered by data sources. It finds the LEMMA-type form surface from collected
-// forms. Returns error if no LEMMA form was found — data sources must provide it.
+// discovered by data sources. It picks the shortest LEMMA-type form surface —
+// the shortest form is most likely the canonical base form
+// (e.g., "child" over "child's", "work" over "working").
 func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx *PipelineContext) error {
+	var best string
 	for _, f := range pctx.Forms {
-		if f != nil && f.FormType == entity.FormTypeLemma && f.Surface != "" {
-			lemma, err := p.lemmaRepo.CreateMinimal(ctx, f.Surface, pctx.Language)
-			if err != nil {
-				return fmt.Errorf("create lemma %q: %w", f.Surface, err)
-			}
-			pctx.Lemma = lemma
-			return nil
+		if f == nil || f.FormType != entity.FormTypeLemma || f.Surface == "" {
+			continue
+		}
+		if best == "" || len(f.Surface) < len(best) {
+			best = f.Surface
 		}
 	}
-	return fmt.Errorf("no LEMMA form found for term %q: data sources did not provide a base form", pctx.Term)
+	if best == "" {
+		return fmt.Errorf("no LEMMA form found for term %q: data sources did not provide a base form", pctx.Term)
+	}
+	return p.createLemma(ctx, pctx, best)
+}
+
+func (p *VocnetPipeline) createLemma(ctx context.Context, pctx *PipelineContext, surface string) error {
+	lemma, err := p.lemmaRepo.CreateMinimal(ctx, surface, pctx.Language)
+	if err != nil {
+		return fmt.Errorf("create lemma %q: %w", surface, err)
+	}
+	pctx.Lemma = lemma
+	return nil
 }
 
 // --- Helpers ---

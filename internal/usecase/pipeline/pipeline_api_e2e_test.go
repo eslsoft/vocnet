@@ -47,7 +47,7 @@ func TestPipelineToAPI_IrregularAndLemma(t *testing.T) {
 	harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, nil, "api-e2e-test", registry, wikidataReader)
 
 	// Run base lemmas through the pipeline first (so inflected forms resolve correctly)
-	baseWords := []string{"define", "cover", "limit", "count", "perform", "load", "start", "run", "child"}
+	baseWords := []string{"define", "cover", "limit", "count", "perform", "load", "start", "run", "child", "work", "good"}
 	for _, word := range baseWords {
 		_, err := harness.runWord(ctx, word)
 		if err != nil {
@@ -75,6 +75,8 @@ func TestPipelineToAPI_IrregularAndLemma(t *testing.T) {
 		{query: "loading", wantIrregular: false, wantLemma: "load"},
 		{query: "starting", wantIrregular: false, wantLemma: "start"},
 		{query: "running", wantIrregular: false, wantLemma: "run"},
+		{query: "working", wantIrregular: false, wantLemma: "work"},
+		{query: "goods", wantIrregular: false, wantLemma: "good"},
 
 		// Irregular forms — MUST be irregular, MUST have correct lemma
 		{query: "ran", wantIrregular: true, wantLemma: "run"},
@@ -84,6 +86,8 @@ func TestPipelineToAPI_IrregularAndLemma(t *testing.T) {
 		{query: "define", wantIrregular: false, wantLemma: ""},
 		{query: "run", wantIrregular: false, wantLemma: ""},
 		{query: "start", wantIrregular: false, wantLemma: ""},
+		{query: "work", wantIrregular: false, wantLemma: ""},
+		{query: "good", wantIrregular: false, wantLemma: ""},
 	}
 
 	for _, tt := range tests {
@@ -120,6 +124,66 @@ func TestPipelineToAPI_IrregularAndLemma(t *testing.T) {
 				assert.Nil(t, word.Lemma,
 					"LookupWord(%q): Lemma should be nil for lemma view", tt.query)
 			}
+		})
+	}
+}
+
+// TestPipelineToAPI_InflectedFormWithoutBaseLemma tests the critical scenario:
+// submitting an inflected form (e.g., "goods", "working") when the base lemma
+// ("good", "work") has NOT been processed yet. The pipeline must discover the
+// true base form from data sources and create the lemma correctly.
+func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
+	ctx := context.Background()
+
+	cfg := mustLoadPipelineQualityConfig(t)
+	logger := testLogger(t)
+
+	requirePipelineSources(t, cfg, logger)
+
+	wikidataReader, registry := buildTestSourceRegistry(t, cfg, logger)
+
+	// Fresh DB — no base lemmas pre-loaded
+	harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, nil, "inflected-only-test", registry, wikidataReader)
+
+	// Submit inflected forms directly, WITHOUT processing base lemmas first
+	inflected := []string{"goods", "working"}
+	for _, word := range inflected {
+		_, err := harness.runWord(ctx, word)
+		if err != nil {
+			t.Fatalf("failed to process %q: %v", word, err)
+		}
+	}
+
+	snapshotRepo := repo.NewLemmaSnapshotRepository(harness.entClient)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
+	svc := apiconnectrpc.NewDictServiceServer(wordUC)
+
+	tests := []struct {
+		query     string
+		wantLemma string
+	}{
+		{query: "goods", wantLemma: "good"},
+		{query: "working", wantLemma: "work"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+				Msg: &dictv1.LookupWordRequest{Word: tt.query},
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "not_found") {
+					t.Skipf("word %q not found in pipeline data", tt.query)
+				}
+				require.NoError(t, err)
+			}
+			require.NotNil(t, resp.Msg)
+
+			// Must have lemma pointing to the base form, not nil
+			require.NotNil(t, resp.Msg.Lemma,
+				"LookupWord(%q): Lemma must not be nil — system should NOT treat %q as a lemma", tt.query, tt.query)
+			assert.Equal(t, tt.wantLemma, resp.Msg.GetLemma(),
+				"LookupWord(%q): wrong lemma", tt.query)
 		})
 	}
 }

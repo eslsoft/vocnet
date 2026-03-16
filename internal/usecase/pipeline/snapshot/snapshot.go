@@ -160,7 +160,12 @@ func collectSnapshotForms(pctx *pipeline.PipelineContext) []entity.LemmaSnapshot
 	for _, forms := range pctx.FormsByLexeme {
 		merged = append(merged, forms...)
 	}
-	return toLemmaSnapshotForms(merged)
+
+	lemmaSurface := ""
+	if pctx.Lemma != nil {
+		lemmaSurface = strings.ToLower(strings.TrimSpace(pctx.Lemma.Surface))
+	}
+	return toLemmaSnapshotForms(merged, lemmaSurface)
 }
 
 func collectSnapshotCategories(lexemes []*entity.Lexeme) []string {
@@ -188,7 +193,25 @@ func collectSnapshotCategories(lexemes []*entity.Lexeme) []string {
 	return out
 }
 
-func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm {
+// toLemmaSnapshotForms deduplicates forms and resolves conflicts where a surface
+// has both LEMMA and non-LEMMA form types. If the surface is not the actual lemma,
+// the LEMMA entry is dropped in favor of the more specific form type.
+// Example: "working" may be both LEMMA (noun) and PRESENT_PARTICIPLE (of "work");
+// when lemma is "work", the LEMMA entry for "working" is spurious.
+func toLemmaSnapshotForms(forms []*entity.LemmaForm, lemmaSurface string) []entity.LemmaSnapshotForm {
+	// First pass: collect all surface:formType pairs and track which surfaces
+	// have a non-LEMMA form type.
+	hasNonLemmaType := make(map[string]bool)
+	for _, f := range forms {
+		if f == nil {
+			continue
+		}
+		surface := strings.ToLower(strings.TrimSpace(f.Surface))
+		if surface != "" && f.FormType != entity.FormTypeLemma {
+			hasNonLemmaType[surface] = true
+		}
+	}
+
 	out := make([]entity.LemmaSnapshotForm, 0, len(forms))
 	seen := make(map[string]struct{}, len(forms))
 	for _, f := range forms {
@@ -199,6 +222,13 @@ func toLemmaSnapshotForms(forms []*entity.LemmaForm) []entity.LemmaSnapshotForm 
 		if surface == "" {
 			continue
 		}
+		surfaceLower := strings.ToLower(surface)
+
+		// Drop spurious LEMMA form: surface is not the lemma and has a real form type
+		if f.FormType == entity.FormTypeLemma && surfaceLower != lemmaSurface && hasNonLemmaType[surfaceLower] {
+			continue
+		}
+
 		key := surface + ":" + string(f.FormType)
 		if _, ok := seen[key]; ok {
 			continue
