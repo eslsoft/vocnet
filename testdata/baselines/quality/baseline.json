@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-03-16T19:56:57.83255717Z",
+  "timestamp": "2026-03-16T22:03:15.738565377Z",
   "total_books": 6,
   "total_words": 7004,
-  "total_passed": 6789,
-  "total_failed": 215,
-  "average_score": 58.95650987885546,
+  "total_passed": 6783,
+  "total_failed": 221,
+  "average_score": 58.930775281061415,
   "book_reports": [
     {
       "name": "CEFR-A1",
@@ -12,7 +12,7 @@
       "tested_words": 917,
       "passed_words": 905,
       "failed_words": 12,
-      "average_score": 62.11192786230119,
+      "average_score": 62.094482009278025,
       "min_score": 24.849999999999998,
       "max_score": 88.25285714285712,
       "min_requirement": 35,
@@ -81,7 +81,7 @@
         },
         {
           "term": "they",
-          "score": 25.479999999999997,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -104,19 +104,19 @@
       "name": "CEFR-A2",
       "total_words": 1014,
       "tested_words": 963,
-      "passed_words": 935,
-      "failed_words": 28,
-      "average_score": 61.97208449435099,
+      "passed_words": 933,
+      "failed_words": 30,
+      "average_score": 61.927967266589,
       "min_score": 0,
       "max_score": 85.8868,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
-        "0-20": 3,
+        "0-20": 4,
         "20-40": 24,
-        "40-60": 363,
+        "40-60": 361,
         "60-80": 554,
-        "80-100": 19
+        "80-100": 20
       },
       "failed_terms": [
         {
@@ -168,6 +168,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "granddad",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "abandoned: word not found in Wikidata: granddad (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "granddad",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "herself",
           "score": 24.849999999999998,
           "min_requirement": 35,
@@ -192,18 +204,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "jewellery",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: jewellery (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "jewellery",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "kilogram",
           "score": 0,
           "min_requirement": 35,
@@ -224,6 +224,18 @@
         {
           "term": "myself",
           "score": 24.849999999999998,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "omelet",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "abandoned: word not found in Wikidata: omelet (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "omelet",
+          "score": 0,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -296,7 +308,7 @@
       "tested_words": 993,
       "passed_words": 963,
       "failed_words": 30,
-      "average_score": 59.88899160706229,
+      "average_score": 59.88914472433775,
       "min_score": 0,
       "max_score": 84.47454128440367,
       "min_requirement": 30,
@@ -496,18 +508,18 @@
       "name": "CEFR-B2",
       "total_words": 1863,
       "tested_words": 1803,
-      "passed_words": 1696,
-      "failed_words": 107,
-      "average_score": 58.01699611814282,
+      "passed_words": 1692,
+      "failed_words": 111,
+      "average_score": 57.94568725214593,
       "min_score": 0,
       "max_score": 84.2859756097561,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 7,
+        "0-20": 9,
         "20-40": 97,
-        "40-60": 967,
-        "60-80": 725,
+        "40-60": 966,
+        "60-80": 724,
         "80-100": 7
       },
       "failed_terms": [
@@ -668,6 +680,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "disc",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: disc (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "disc",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "eagerly",
           "score": 21.7,
           "min_requirement": 30,
@@ -766,6 +790,18 @@
         {
           "term": "freely",
           "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "fulfil",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: fulfil (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "fulfil",
+          "score": 0,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1160,17 +1196,17 @@
       "name": "CEFR-C1",
       "total_words": 1762,
       "tested_words": 1717,
-      "passed_words": 1693,
-      "failed_words": 24,
-      "average_score": 57.394773695976795,
+      "passed_words": 1691,
+      "failed_words": 26,
+      "average_score": 57.364727103082195,
       "min_score": 0,
       "max_score": 81.76840277777777,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
-        "0-20": 9,
+        "0-20": 10,
         "20-40": 55,
-        "40-60": 1085,
+        "40-60": 1084,
         "60-80": 565,
         "80-100": 3
       },
@@ -1213,6 +1249,18 @@
         },
         {
           "term": "councillor",
+          "score": 0,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "counsellor",
+          "score": 0,
+          "min_requirement": 25,
+          "reason": "abandoned: word not found in Wikidata: counsellor (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "counsellor",
           "score": 0,
           "min_requirement": 25,
           "reason": "below minimum requirement"
@@ -1326,33 +1374,21 @@
       "name": "CEFR-C2",
       "total_words": 639,
       "tested_words": 611,
-      "passed_words": 597,
-      "failed_words": 14,
-      "average_score": 55.113585713415596,
+      "passed_words": 599,
+      "failed_words": 12,
+      "average_score": 55.20891378959473,
       "min_score": 0,
       "max_score": 77.72311827956989,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
-        "0-20": 2,
+        "0-20": 1,
         "20-40": 25,
         "40-60": 457,
-        "60-80": 127,
+        "60-80": 128,
         "80-100": 0
       },
       "failed_terms": [
-        {
-          "term": "counselor",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: counselor (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "counselor",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "below minimum requirement"
-        },
         {
           "term": "decaffeinated",
           "score": 0,
@@ -1429,5 +1465,5 @@
       "status": "passed"
     }
   ],
-  "execution_time": "1m27.286515076s"
+  "execution_time": "1m26.075805236s"
 }
