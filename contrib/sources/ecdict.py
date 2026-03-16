@@ -117,6 +117,53 @@ def extract_domain_categories(tags):
     return categories
 
 
+# ECDICT exchange field key -> vocnet form_type mapping
+EXCHANGE_FORM_MAP = {
+    "p": "PAST",
+    "d": "PAST_PARTICIPLE",
+    "i": "PRESENT_PARTICIPLE",
+    "3": "THIRD_PERSON_SINGULAR",
+    "s": "PLURAL",
+    "r": "COMPARATIVE",
+    "t": "SUPERLATIVE",
+}
+
+
+def parse_exchange_forms(exchange):
+    """Parse ECDICT exchange field into vocnet forms.
+
+    Format: "p:ran/d:run/i:running/3:runs/s:ran"
+    Returns: list of {"surface": ..., "form_type": ...}
+    """
+    if not exchange:
+        return []
+
+    forms = []
+    seen = set()
+    for part in exchange.split("/"):
+        part = part.strip()
+        if ":" not in part:
+            continue
+        key, surface = part.split(":", 1)
+        surface = surface.strip()
+        if not surface:
+            continue
+
+        form_type = EXCHANGE_FORM_MAP.get(key)
+        if not form_type:
+            continue
+
+        # Deduplicate by (surface, form_type)
+        dedup_key = (surface, form_type)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
+        forms.append({"surface": surface, "form_type": form_type})
+
+    return forms
+
+
 def calculate_completeness(entry):
     """Calculate a completeness score for the ECDICT entry."""
     score = 0
@@ -230,6 +277,9 @@ class ECDICTSource:
                     "phonetics": [{"ipa": entry["phonetic"], "dialect": "en-GB"}],
                 }
             )
+
+        # Parse exchange field for inflected forms
+        forms.extend(parse_exchange_forms(entry["exchange"]))
 
         # Lemma update with frequencies
         lemma_update = None
