@@ -19,14 +19,10 @@ func IsIrregularForm(lemma, form string, formType entity.FormType) bool {
 
 	// If they're the same, it depends on the form type
 	if lemma == form {
-		// For some forms, same as lemma can be regular (e.g., "sheep" plural)
-		// But we'll consider it regular unless it's a zero-marked inflection
-		// that should have a suffix
 		switch formType {
 		case entity.FormTypePlural:
-			// "sheep" → "sheep" is irregular, but we can't detect without more context
-			// We'll be conservative and call it regular
-			return false
+			// Zero plural (sheep→sheep, fish→fish, deer→deer) is irregular
+			return true
 		case entity.FormTypePast, entity.FormTypePastParticiple:
 			// "cut" → "cut" is irregular (should be "cutted")
 			return true
@@ -98,21 +94,7 @@ func isRegularPlural(singular, plural string) bool {
 		}
 	}
 
-	// Rule 5: -f or -fe → -ves (leaf → leaves, knife → knives)
-	if strings.HasSuffix(singular, "f") {
-		stem := singular[:len(singular)-1]
-		if plural == stem+"ves" {
-			return true
-		}
-	}
-	if strings.HasSuffix(singular, "fe") {
-		stem := singular[:len(singular)-2]
-		if plural == stem+"ves" {
-			return true
-		}
-	}
-
-	// Rule 6: -o → +es for some words, but many are +s (potato → potatoes, photo → photos)
+	// Rule 5: -o → +es for some words, but many are +s (potato → potatoes, photo → photos)
 	// This is ambiguous, so we'll accept both
 	if strings.HasSuffix(singular, "o") {
 		if plural == singular+"es" || plural == singular+"s" {
