@@ -8,7 +8,6 @@ import (
 	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
-	"github.com/eslsoft/vocnet/internal/util"
 )
 
 // wikidataPOSQIDMap maps Wikidata POS QIDs to canonical POS.
@@ -256,13 +255,11 @@ func convertProviderLexeme(lex provider.WikidataLexeme, term string, lang entity
 		}
 
 		formType := mapGrammaticalFeaturesToFormType(form.Features)
-		isIrregular := util.IsIrregularForm(term, form.Representation, formType)
 
 		forms = append(forms, &entity.LemmaForm{
-			Surface:     form.Representation,
-			FormType:    formType,
-			IsIrregular: isIrregular,
-			Phonetics:   phonetics,
+			Surface:   form.Representation,
+			FormType:  formType,
+			Phonetics: phonetics,
 		})
 	}
 

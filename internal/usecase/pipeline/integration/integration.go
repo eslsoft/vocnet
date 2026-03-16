@@ -9,6 +9,7 @@ import (
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
+	"github.com/eslsoft/vocnet/internal/util"
 )
 
 // DataProvenance records the source and quality of an integrated field.
@@ -48,7 +49,7 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.Pipe
 
 	// Integrate each field type
 	integratedLexemes := ip.integrateLexemes(pctx.EvaluatedFragments, provenance)
-	integratedForms := ip.integrateForms(pctx.EvaluatedFragments, pctx.Forms, provenance)
+	integratedForms := ip.integrateForms(pctx.Term, pctx.EvaluatedFragments, pctx.Forms, provenance)
 	integratedLemmaData := ip.integrateLemmaMetadata(pctx.EvaluatedFragments, provenance)
 	integratedRelations := ip.integrateRelations(pctx.EvaluatedFragments, provenance)
 
@@ -129,6 +130,7 @@ func (ip *IntegrationProcessor) integrateLexemes(
 // It uses existingForms as the base to preserve FormType and other fields,
 // then applies fragment updates for phonetics, syllables, etc.
 func (ip *IntegrationProcessor) integrateForms(
+	lemmaSurface string,
 	fragments map[string][]*scoring.FieldFragment,
 	existingForms []*entity.LemmaForm,
 	provenance map[string]*DataProvenance,
@@ -166,6 +168,10 @@ func (ip *IntegrationProcessor) integrateForms(
 
 	result := make([]*entity.LemmaForm, 0, len(formBySurface))
 	for _, form := range formBySurface {
+		// Uniformly detect irregular based on lemma surface + form + formType
+		if lemmaSurface != "" && form.FormType != entity.FormTypeLemma {
+			form.IsIrregular = util.IsIrregularForm(lemmaSurface, form.Surface, form.FormType)
+		}
 		result = append(result, form)
 	}
 

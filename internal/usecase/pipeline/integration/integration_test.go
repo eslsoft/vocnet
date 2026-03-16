@@ -55,7 +55,7 @@ func TestIntegrationProcessor_PreservesFormType(t *testing.T) {
 	provenance := make(map[string]*DataProvenance)
 
 	// Call integrateForms
-	result := ip.integrateForms(fragments, existingForms, provenance)
+	result := ip.integrateForms("run", fragments, existingForms, provenance)
 
 	// Build lookup map for results
 	resultByForm := make(map[string]*entity.LemmaForm)
@@ -95,8 +95,25 @@ func TestIntegrationProcessor_PreservesFormType(t *testing.T) {
 
 	if form, ok := resultByForm["ran"]; !ok {
 		t.Error("expected 'ran' form in result (from existingForms)")
-	} else if form.FormType != entity.FormTypePast {
-		t.Errorf("expected 'ran' FormType to be PAST, got %q", form.FormType)
+	} else {
+		if form.FormType != entity.FormTypePast {
+			t.Errorf("expected 'ran' FormType to be PAST, got %q", form.FormType)
+		}
+		if !form.IsIrregular {
+			t.Error("expected 'ran' to be marked as irregular")
+		}
+	}
+
+	// Test: regular forms should NOT be marked irregular
+	if form, ok := resultByForm["running"]; ok {
+		if form.IsIrregular {
+			t.Error("expected 'running' to NOT be marked as irregular")
+		}
+	}
+	if form, ok := resultByForm["runs"]; ok {
+		if form.IsIrregular {
+			t.Error("expected 'runs' to NOT be marked as irregular")
+		}
 	}
 
 	// Test 3: New forms (not in existingForms) should get default LEMMA FormType
