@@ -99,19 +99,6 @@ func (p *VocnetPipeline) Run(ctx context.Context, jobID int64, term string, lang
 	pctx.JobID = jobID
 	pctx.Evaluator = p.evaluator
 
-	for _, stage := range p.stages {
-		_, err := p.stageRepo.CreateOrUpdate(ctx, &entity.PipelineStage{
-			JobID:   jobID,
-			LemmaID: pctx.Lemma.ID,
-			Phase:   int32(stage.Number),
-			Status:  entity.StageStatusPending,
-			Tier:    tier,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("create stage for phase %d: %w", stage.Number, err)
-		}
-	}
-
 	if err := p.inner.Run(ctx, pctx); err != nil {
 		return nil, err
 	}
@@ -121,7 +108,10 @@ func (p *VocnetPipeline) Run(ctx context.Context, jobID int64, term string, lang
 		return nil, fmt.Errorf("list stages: %w", err)
 	}
 
-	lemmaSnapshot, _ := p.snapshotRepo.GetByLemma(ctx, pctx.Lemma.ID)
+	var lemmaSnapshot *entity.LemmaSnapshot
+	if pctx.Lemma != nil {
+		lemmaSnapshot, _ = p.snapshotRepo.GetByLemma(ctx, pctx.Lemma.ID)
+	}
 
 	return &ProcessWordResult{
 		Lemma:         pctx.Lemma,
@@ -134,26 +124,49 @@ func (p *VocnetPipeline) Run(ctx context.Context, jobID int64, term string, lang
 
 func (p *VocnetPipeline) OnStageStart(ctx context.Context, pctx *PipelineContext, stage *Stage) error {
 	phaseNum := int32(stage.Number)
-	if len(stage.Processors) == 0 {
-		return p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusSkipped, "")
+
+	// Create stage record only when lemma is resolved (FK constraint)
+	if pctx.Lemma != nil {
+		if _, err := p.stageRepo.CreateOrUpdate(ctx, &entity.PipelineStage{
+			JobID:   pctx.JobID,
+			LemmaID: pctx.Lemma.ID,
+			Phase:   phaseNum,
+			Status:  entity.StageStatusPending,
+			Tier:    pctx.Tier,
+		}); err != nil {
+			return fmt.Errorf("create stage for phase %d: %w", phaseNum, err)
+		}
 	}
-	return p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusRunning, "")
+
+	if len(stage.Processors) == 0 {
+		return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusSkipped, "")
+	}
+	return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusRunning, "")
 }
 
 func (p *VocnetPipeline) OnStageEnd(ctx context.Context, stage *Stage, pctx *PipelineContext, mergedResult *ProcessResult, err error) error {
 	phaseNum := int32(stage.Number)
 
 	if err != nil {
-		_ = p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusFailed, err.Error())
+		_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 		return nil
 	}
 
 	if mergedResult == nil {
-		return p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusSkipped, "")
+		return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusSkipped, "")
+	}
+
+	// Create lemma after collection phase if not yet resolved.
+	// Data sources (Wikidata) have now revealed the true base form.
+	if pctx.Lemma == nil {
+		if err := p.createLemmaFromCollectedData(ctx, pctx); err != nil {
+			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
+			return err
+		}
 	}
 
 	if err := p.persistence.SaveStageResult(ctx, pctx.Lemma, mergedResult); err != nil {
-		_ = p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusFailed, err.Error())
+		_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 		return err
 	}
 
@@ -161,19 +174,19 @@ func (p *VocnetPipeline) OnStageEnd(ctx context.Context, stage *Stage, pctx *Pip
 		updated := *mergedResult.LemmaUpdate
 		updated.ID = pctx.Lemma.ID
 		if _, err := p.lemmaRepo.Update(ctx, &updated); err != nil {
-			_ = p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusFailed, err.Error())
+			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 			return err
 		}
 	}
 
 	if mergedResult.LemmaSnapshot != nil {
 		if err := p.persistence.SaveLemmaSnapshot(ctx, pctx.JobID, pctx.Lemma, pctx.Forms, mergedResult.LemmaSnapshot); err != nil {
-			_ = p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusFailed, err.Error())
+			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 			return err
 		}
 	}
 
-	return p.updateStageStatus(ctx, pctx.JobID, phaseNum, entity.StageStatusCompleted, "")
+	return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusCompleted, "")
 }
 
 func (p *VocnetPipeline) OnProcessorStart(ctx context.Context, pctx *PipelineContext, stage *Stage, proc Processor) {
@@ -197,6 +210,26 @@ func (p *VocnetPipeline) updateStageStatus(ctx context.Context, jobID int64, pha
 		return err
 	}
 	return p.stageRepo.UpdateStatus(ctx, stage.ID, status, errorMsg)
+}
+
+// ensureAndUpdateStageStatus creates the stage record if it doesn't exist yet
+// (lemma was resolved after stage started), then updates its status.
+func (p *VocnetPipeline) ensureAndUpdateStageStatus(ctx context.Context, pctx *PipelineContext, phaseNum int32, status entity.StageStatus, errorMsg string) error {
+	if pctx.Lemma != nil {
+		// Ensure record exists (may have been skipped in OnStageStart when lemma was nil)
+		if _, err := p.stageRepo.CreateOrUpdate(ctx, &entity.PipelineStage{
+			JobID:   pctx.JobID,
+			LemmaID: pctx.Lemma.ID,
+			Phase:   phaseNum,
+			Status:  entity.StageStatusPending,
+			Tier:    pctx.Tier,
+		}); err != nil {
+			return fmt.Errorf("ensure stage for phase %d: %w", phaseNum, err)
+		}
+		return p.updateStageStatus(ctx, pctx.JobID, phaseNum, status, errorMsg)
+	}
+	// No lemma yet — stage record can't be created, skip silently
+	return nil
 }
 
 // --- WorkerPool ---
@@ -271,14 +304,27 @@ func (v *Validator) EnsureLemma(ctx context.Context, term string, language entit
 		lexemes, _ := v.lexemeRepo.ListByLemmaID(ctx, existing.ID)
 		pctx.Lexemes = lexemes
 		pctx.Forms = existing.Forms
-		return pctx, nil
 	}
-	lemma, err := v.lemmaRepo.CreateMinimal(ctx, term, language)
-	if err != nil {
-		return nil, err
-	}
-	pctx.Lemma = lemma
+	// If not found, pctx.Lemma stays nil.
+	// Lemma will be created after collection phase discovers the true base form.
 	return pctx, nil
+}
+
+// createLemmaFromCollectedData creates the lemma record using the true base form
+// discovered by data sources. It finds the LEMMA-type form surface from collected
+// forms. Returns error if no LEMMA form was found — data sources must provide it.
+func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx *PipelineContext) error {
+	for _, f := range pctx.Forms {
+		if f != nil && f.FormType == entity.FormTypeLemma && f.Surface != "" {
+			lemma, err := p.lemmaRepo.CreateMinimal(ctx, f.Surface, pctx.Language)
+			if err != nil {
+				return fmt.Errorf("create lemma %q: %w", f.Surface, err)
+			}
+			pctx.Lemma = lemma
+			return nil
+		}
+	}
+	return fmt.Errorf("no LEMMA form found for term %q: data sources did not provide a base form", pctx.Term)
 }
 
 // --- Helpers ---
