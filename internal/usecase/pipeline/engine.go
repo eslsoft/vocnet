@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -156,13 +157,18 @@ func (p *VocnetPipeline) OnStageEnd(ctx context.Context, stage *Stage, pctx *Pip
 		return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusSkipped, "")
 	}
 
-	// Create lemma after collection phase if not yet resolved.
-	// Data sources (Wikidata) have now revealed the true base form.
+	// After collection: resolve or correct lemma based on collected data.
 	if pctx.Lemma == nil {
+		// New word: create lemma with the true base form from data sources.
 		if err := p.createLemmaFromCollectedData(ctx, pctx); err != nil {
 			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 			return err
 		}
+	} else {
+		// Existing lemma: correct surface if data sources reveal a better base form.
+		// Fixes stale data where old code created lemmas with wrong surfaces
+		// (e.g., "better" instead of "good").
+		p.correctLemmaSurface(ctx, pctx)
 	}
 
 	if err := p.persistence.SaveStageResult(ctx, pctx.Lemma, mergedResult); err != nil {
@@ -311,12 +317,21 @@ func (v *Validator) EnsureLemma(ctx context.Context, term string, language entit
 }
 
 // createLemmaFromCollectedData creates the lemma record using the true base form
-// discovered by data sources. It picks the shortest LEMMA-type form surface —
-// the shortest form is most likely the canonical base form
-// (e.g., "child" over "child's", "work" over "working").
+// discovered by data sources. Returns error if no LEMMA form was found.
 func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx *PipelineContext) error {
+	best := shortestLemmaFormSurface(pctx.Forms)
+	if best == "" {
+		return fmt.Errorf("no LEMMA form found for term %q: data sources did not provide a base form", pctx.Term)
+	}
+	return p.createLemma(ctx, pctx, best)
+}
+
+// shortestLemmaFormSurface returns the shortest LEMMA-type form surface.
+// The shortest form is most likely the canonical base form
+// (e.g., "child" over "child's", "work" over "working").
+func shortestLemmaFormSurface(forms []*entity.LemmaForm) string {
 	var best string
-	for _, f := range pctx.Forms {
+	for _, f := range forms {
 		if f == nil || f.FormType != entity.FormTypeLemma || f.Surface == "" {
 			continue
 		}
@@ -324,10 +339,22 @@ func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx 
 			best = f.Surface
 		}
 	}
-	if best == "" {
-		return fmt.Errorf("no LEMMA form found for term %q: data sources did not provide a base form", pctx.Term)
+	return best
+}
+
+// correctLemmaSurface checks if the existing lemma surface should be updated
+// based on the shortest LEMMA form from collected data. This fixes stale records
+// where old code wrote wrong surfaces (e.g., lemma "better" should be "good").
+func (p *VocnetPipeline) correctLemmaSurface(ctx context.Context, pctx *PipelineContext) {
+	best := shortestLemmaFormSurface(pctx.Forms)
+	if best == "" || strings.EqualFold(best, pctx.Lemma.Surface) {
+		return
 	}
-	return p.createLemma(ctx, pctx, best)
+	pctx.Lemma.Surface = best
+	pctx.Lemma.Normalized = strings.ToLower(best)
+	if _, err := p.lemmaRepo.Update(ctx, pctx.Lemma); err != nil {
+		p.logger.Warn("failed to correct lemma surface", "from", pctx.Lemma.Surface, "to", best, "error", err)
+	}
 }
 
 func (p *VocnetPipeline) createLemma(ctx context.Context, pctx *PipelineContext, surface string) error {
