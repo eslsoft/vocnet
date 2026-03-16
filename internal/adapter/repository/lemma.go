@@ -1005,6 +1005,24 @@ func (r *lemmaRepository) UpdateFormSyllables(ctx context.Context, lemmaID int64
 	return translateDBError(err, "lexeme_form")
 }
 
+// UpdateFormIrregular updates the is_irregular flag for a specific form of a lemma.
+func (r *lemmaRepository) UpdateFormIrregular(ctx context.Context, lemmaID int64, surface string, formType entity.FormType, isIrregular bool) error {
+	if lemmaID == 0 {
+		return fmt.Errorf("lemma_id required")
+	}
+
+	_, err := r.client.LemmaForm.Update().
+		Where(
+			entlemmaform.LemmaIDEQ(lemmaID),
+			entlemmaform.SurfaceEQ(surface),
+			entlemmaform.FormTypeEQ(string(formType)),
+		).
+		SetIsIrregular(isIrregular).
+		Save(ctx)
+
+	return translateDBError(err, "lexeme_form")
+}
+
 // DeleteFormsByKeys deletes lemma_form rows matching each (surface, formType) pair for a given lemma.
 func (r *lemmaRepository) DeleteFormsByKeys(ctx context.Context, lemmaID int64, surfaces []string, formTypes []entity.FormType) error {
 	if lemmaID == 0 {

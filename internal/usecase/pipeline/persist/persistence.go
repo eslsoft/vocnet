@@ -181,6 +181,12 @@ func formKey(f *entity.LemmaForm) string {
 
 // mergeExistingForm updates phonetics and syllables of an existing form.
 func (p *Persistence) mergeExistingForm(ctx context.Context, lemmaID int64, existing, newForm *entity.LemmaForm) {
+	if existing.IsIrregular != newForm.IsIrregular {
+		if err := p.lemmaRepo.UpdateFormIrregular(ctx, lemmaID, existing.Surface, existing.FormType, newForm.IsIrregular); err != nil {
+			p.logger.Warn("failed to update form irregular flag",
+				"surface", newForm.Surface, "error", err)
+		}
+	}
 	if len(newForm.Phonetics) > 0 {
 		merged := scoring.MergePhonetics(existing.Phonetics, newForm.Phonetics)
 		if len(merged) > len(existing.Phonetics) {

@@ -37,6 +37,9 @@ type LemmaRepository interface {
 	// UpdateFormSyllables updates syllables for a specific form type of a lemma
 	UpdateFormSyllables(ctx context.Context, lemmaID int64, formType entity.FormType, syllables []string) error
 
+	// UpdateFormIrregular updates the is_irregular flag for a specific form of a lemma
+	UpdateFormIrregular(ctx context.Context, lemmaID int64, surface string, formType entity.FormType, isIrregular bool) error
+
 	// DeleteFormsByKeys deletes lemma_form rows matching each (surface, formType) pair for a given lemma.
 	// surfaces and formTypes are parallel slices of equal length.
 	DeleteFormsByKeys(ctx context.Context, lemmaID int64, surfaces []string, formTypes []entity.FormType) error
