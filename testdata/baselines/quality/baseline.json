@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-03-16T13:34:17.369046095Z",
+  "timestamp": "2026-03-16T14:59:00.670577579Z",
   "total_books": 6,
   "total_words": 7004,
-  "total_passed": 6787,
-  "total_failed": 217,
-  "average_score": 58.99697078162549,
+  "total_passed": 6785,
+  "total_failed": 219,
+  "average_score": 58.926912905931026,
   "book_reports": [
     {
       "name": "CEFR-A1",
@@ -12,16 +12,16 @@
       "tested_words": 917,
       "passed_words": 905,
       "failed_words": 12,
-      "average_score": 62.15403113604809,
-      "min_score": 24.849999999999998,
+      "average_score": 62.094592528239566,
+      "min_score": 24.0625,
       "max_score": 88.25285714285712,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
         "0-20": 0,
         "20-40": 16,
-        "40-60": 363,
-        "60-80": 503,
+        "40-60": 366,
+        "60-80": 500,
         "80-100": 35
       },
       "failed_terms": [
@@ -39,7 +39,7 @@
         },
         {
           "term": "anything",
-          "score": 28,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -51,7 +51,7 @@
         },
         {
           "term": "hey",
-          "score": 28,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -63,7 +63,7 @@
         },
         {
           "term": "something",
-          "score": 28,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -81,7 +81,7 @@
         },
         {
           "term": "they",
-          "score": 28,
+          "score": 24.0625,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -106,7 +106,7 @@
       "tested_words": 963,
       "passed_words": 931,
       "failed_words": 32,
-      "average_score": 61.878950483439446,
+      "average_score": 61.85214201603818,
       "min_score": 0,
       "max_score": 85.8868,
       "min_requirement": 35,
@@ -121,7 +121,7 @@
       "failed_terms": [
         {
           "term": "anyway",
-          "score": 28,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -145,7 +145,7 @@
         },
         {
           "term": "electrical",
-          "score": 28,
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -252,20 +252,20 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "organization",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: organization (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "organization",
-          "score": 0,
+          "term": "ourselves",
+          "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
         {
-          "term": "ourselves",
-          "score": 24.849999999999998,
+          "term": "pajamas",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "abandoned: word not found in Wikidata: pajamas (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "pajamas",
+          "score": 0,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -320,7 +320,7 @@
       "tested_words": 993,
       "passed_words": 963,
       "failed_words": 30,
-      "average_score": 59.903565518380915,
+      "average_score": 59.87327850931745,
       "min_score": 0,
       "max_score": 84.47454128440367,
       "min_requirement": 30,
@@ -328,8 +328,8 @@
       "score_distribution": {
         "0-20": 2,
         "20-40": 26,
-        "40-60": 476,
-        "60-80": 482,
+        "40-60": 479,
+        "60-80": 479,
         "80-100": 7
       },
       "failed_terms": [
@@ -520,18 +520,18 @@
       "name": "CEFR-B2",
       "total_words": 1863,
       "tested_words": 1803,
-      "passed_words": 1696,
-      "failed_words": 107,
-      "average_score": 58.061482856984824,
+      "passed_words": 1694,
+      "failed_words": 109,
+      "average_score": 57.970381367884144,
       "min_score": 0,
       "max_score": 84.2859756097561,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 7,
+        "0-20": 8,
         "20-40": 97,
-        "40-60": 965,
-        "60-80": 727,
+        "40-60": 968,
+        "60-80": 723,
         "80-100": 7
       },
       "failed_terms": [
@@ -790,18 +790,6 @@
         {
           "term": "freely",
           "score": 28,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
-          "term": "fulfil",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: fulfil (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "fulfil",
-          "score": 0,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1082,6 +1070,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "skillful",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: skillful (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "skillful",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "smoothly",
           "score": 28,
           "min_requirement": 30,
@@ -1166,6 +1166,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "whiskey",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "abandoned: word not found in Wikidata: whiskey (non-standard vocabulary rejected)"
+        },
+        {
+          "term": "whiskey",
+          "score": 0,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "widely",
           "score": 28,
           "min_requirement": 30,
@@ -1186,16 +1198,16 @@
       "tested_words": 1717,
       "passed_words": 1695,
       "failed_words": 22,
-      "average_score": 57.490409980193434,
+      "average_score": 57.40985430772059,
       "min_score": 0,
       "max_score": 81.76840277777777,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
-        "0-20": 9,
-        "20-40": 55,
-        "40-60": 1078,
-        "60-80": 572,
+        "0-20": 8,
+        "20-40": 56,
+        "40-60": 1088,
+        "60-80": 562,
         "80-100": 3
       },
       "failed_terms": [
@@ -1242,14 +1254,8 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "industrialization",
-          "score": 0,
-          "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: industrialization (non-standard vocabulary rejected)"
-        },
-        {
-          "term": "industrialization",
-          "score": 0,
+          "term": "handheld",
+          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1284,6 +1290,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "psychiatric",
+          "score": 24.849999999999998,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "randomly",
           "score": 21.7,
           "min_requirement": 25,
@@ -1303,7 +1315,7 @@
         },
         {
           "term": "suburban",
-          "score": 24.15,
+          "score": 24.849999999999998,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1340,7 +1352,7 @@
       "tested_words": 611,
       "passed_words": 597,
       "failed_words": 14,
-      "average_score": 55.23728216089801,
+      "average_score": 55.110083258423785,
       "min_score": 0,
       "max_score": 77.72311827956989,
       "min_requirement": 25,
@@ -1348,8 +1360,8 @@
       "score_distribution": {
         "0-20": 2,
         "20-40": 25,
-        "40-60": 453,
-        "60-80": 131,
+        "40-60": 457,
+        "60-80": 127,
         "80-100": 0
       },
       "failed_terms": [
@@ -1441,5 +1453,5 @@
       "status": "passed"
     }
   ],
-  "execution_time": "1m33.309372834s"
+  "execution_time": "1m31.466574671s"
 }
