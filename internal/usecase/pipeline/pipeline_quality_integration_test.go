@@ -215,6 +215,13 @@ func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, err
 	if result == nil || result.LemmaSnapshot == nil {
 		return 0, fmt.Errorf("snapshot missing")
 	}
+	if strings.TrimSpace(result.LemmaSnapshot.Surface) == "" {
+		return 0, fmt.Errorf("snapshot surface is empty for term %q", term)
+	}
+	// Non-lemma terms must resolve to a different lemma surface
+	if result.Lemma != nil && strings.TrimSpace(result.Lemma.Surface) == "" {
+		return 0, fmt.Errorf("lemma surface is empty for term %q", term)
+	}
 	return result.LemmaSnapshot.Quality.Overall, nil
 }
 

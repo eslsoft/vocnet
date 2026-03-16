@@ -145,8 +145,12 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 	// Fresh DB — no base lemmas pre-loaded
 	harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, nil, "inflected-only-test", registry, wikidataReader)
 
-	// Submit inflected forms directly, WITHOUT processing base lemmas first
-	inflected := []string{"goods", "working"}
+	// Submit inflected forms directly, WITHOUT processing base lemmas first.
+	// These are real production failures from stale data.
+	inflected := []string{
+		"goods", "working", "records", "ones", "adjusts", "eating",
+		"others", "begins", "cats", "behaviors", "writes", "motivates", "satisfying",
+	}
 	for _, word := range inflected {
 		_, err := harness.runWord(ctx, word)
 		if err != nil {
@@ -164,6 +168,17 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 	}{
 		{query: "goods", wantLemma: "good"},
 		{query: "working", wantLemma: "work"},
+		{query: "records", wantLemma: "record"},
+		{query: "ones", wantLemma: "one"},
+		{query: "adjusts", wantLemma: "adjust"},
+		{query: "eating", wantLemma: "eat"},
+		{query: "others", wantLemma: "other"},
+		{query: "begins", wantLemma: "begin"},
+		{query: "cats", wantLemma: "cat"},
+		{query: "behaviors", wantLemma: "behavior"},
+		{query: "writes", wantLemma: "write"},
+		{query: "motivates", wantLemma: "motivate"},
+		{query: "satisfying", wantLemma: "satisfy"},
 	}
 
 	for _, tt := range tests {
