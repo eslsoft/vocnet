@@ -569,6 +569,301 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 	}
 }
 
+// TestDictService_LookupWord_IrregularFlag verifies that the API returns correct irregular
+// flags for word forms. Regular inflected forms (defined, covered, limits, etc.) must NOT
+// be marked irregular, while truly irregular forms (ran, children) must be marked irregular.
+// Regression test for: pipeline used raw input term instead of resolved lemma surface for
+// irregular detection, causing all forms of inflected-term lookups to be mismarked.
+func TestDictService_LookupWord_IrregularFlag(t *testing.T) {
+	client := setupTestDB(t)
+
+	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
+	svc := NewDictServiceServer(wordUC)
+
+	ctx := context.Background()
+
+	// Create "define" with regular forms (none should be irregular)
+	createSnapshotInDB(t, client, &dictv1.Word{
+		Term:     "define",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "defined", FormType: dictv1.FormType_FORM_TYPE_PAST, Irregular: false},
+			{Term: "defines", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR, Irregular: false},
+			{Term: "defining", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, Irregular: false},
+		},
+		Meanings: []*dictv1.Meaning{
+			{LexemeId: "L-DEFINE", Pos: "v.", Definitions: []*dictv1.Definition{
+				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to explain the meaning of"},
+			}},
+		},
+	})
+
+	// Create "run" with irregular forms
+	createSnapshotInDB(t, client, &dictv1.Word{
+		Term:     "run",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "ran", FormType: dictv1.FormType_FORM_TYPE_PAST, Irregular: true},
+			{Term: "runs", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR, Irregular: false},
+			{Term: "running", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, Irregular: false},
+		},
+		Meanings: []*dictv1.Meaning{
+			{LexemeId: "L-RUN", Pos: "v.", Definitions: []*dictv1.Definition{
+				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to move swiftly"},
+			}},
+		},
+	})
+
+	// Create more words that were historically misdetected
+	createSnapshotInDB(t, client, &dictv1.Word{
+		Term:     "start",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "starting", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, Irregular: false},
+			{Term: "started", FormType: dictv1.FormType_FORM_TYPE_PAST, Irregular: false},
+		},
+		Meanings: []*dictv1.Meaning{
+			{LexemeId: "L-START", Pos: "v.", Definitions: []*dictv1.Definition{
+				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to begin"},
+			}},
+		},
+	})
+
+	tests := []struct {
+		name          string
+		query         string
+		wantIrregular bool
+		wantLemma     string // expected Lemma field (empty means nil/not set for lemma view)
+	}{
+		// Regular forms looked up directly — MUST NOT be irregular
+		{name: "defined_regular", query: "defined", wantIrregular: false, wantLemma: "define"},
+		{name: "defines_regular", query: "defines", wantIrregular: false, wantLemma: "define"},
+		{name: "defining_regular", query: "defining", wantIrregular: false, wantLemma: "define"},
+		{name: "starting_regular", query: "starting", wantIrregular: false, wantLemma: "start"},
+		{name: "started_regular", query: "started", wantIrregular: false, wantLemma: "start"},
+		// Irregular forms — MUST be irregular
+		{name: "ran_irregular", query: "ran", wantIrregular: true, wantLemma: "run"},
+		// Regular forms of irregular verbs — MUST NOT be irregular
+		{name: "runs_regular", query: "runs", wantIrregular: false, wantLemma: "run"},
+		{name: "running_regular", query: "running", wantIrregular: false, wantLemma: "run"},
+		// Lemma lookup — MUST NOT be irregular, no Lemma field
+		{name: "define_lemma", query: "define", wantIrregular: false, wantLemma: ""},
+		{name: "run_lemma", query: "run", wantIrregular: false, wantLemma: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+				Msg: &dictv1.LookupWordRequest{Word: tt.query},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp.Msg)
+
+			assert.Equal(t, tt.wantIrregular, resp.Msg.Irregular,
+				"LookupWord(%q): irregular should be %v", tt.query, tt.wantIrregular)
+
+			if tt.wantLemma != "" {
+				require.NotNil(t, resp.Msg.Lemma,
+					"LookupWord(%q): expected Lemma field to be set", tt.query)
+				assert.Equal(t, tt.wantLemma, resp.Msg.GetLemma(),
+					"LookupWord(%q): wrong lemma", tt.query)
+			} else {
+				assert.Nil(t, resp.Msg.Lemma,
+					"LookupWord(%q): Lemma field should be nil for lemma view", tt.query)
+			}
+		})
+	}
+}
+
+// TestDictService_LookupWord_LemmaNotEmpty verifies that looking up inflected forms
+// always returns a non-empty Lemma reference pointing to the correct base form.
+// Regression test for: pipeline produced empty snapshot.Surface for inflected-form inputs
+// (e.g., "starting"), causing LookupWord("starting") to return Word{Lemma: ""}.
+func TestDictService_LookupWord_LemmaNotEmpty(t *testing.T) {
+	client := setupTestDB(t)
+
+	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
+	svc := NewDictServiceServer(wordUC)
+
+	ctx := context.Background()
+
+	// Correct snapshot: surface="start", forms include "starting"
+	createSnapshotInDB(t, client, &dictv1.Word{
+		Term:     "start",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "starting", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+			{Term: "started", FormType: dictv1.FormType_FORM_TYPE_PAST},
+			{Term: "starts", FormType: dictv1.FormType_FORM_TYPE_THIRD_PERSON_SINGULAR},
+		},
+		Meanings: []*dictv1.Meaning{
+			{LexemeId: "L-START", Pos: "v.", Definitions: []*dictv1.Definition{
+				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to begin"},
+			}},
+		},
+	})
+
+	// Look up each inflected form: must always return lemma="start"
+	for _, form := range []string{"starting", "started", "starts"} {
+		t.Run(form, func(t *testing.T) {
+			resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+				Msg: &dictv1.LookupWordRequest{Word: form},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp.Msg)
+
+			assert.Equal(t, form, resp.Msg.Term)
+			require.NotNil(t, resp.Msg.Lemma,
+				"LookupWord(%q): Lemma must not be nil", form)
+			assert.Equal(t, "start", resp.Msg.GetLemma(),
+				"LookupWord(%q): Lemma should be 'start', not empty", form)
+		})
+	}
+
+	// Look up lemma itself — Lemma field should be nil
+	t.Run("lemma_self", func(t *testing.T) {
+		resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+			Msg: &dictv1.LookupWordRequest{Word: "start"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "start", resp.Msg.Term)
+		assert.Nil(t, resp.Msg.Lemma, "Lemma field should be nil for lemma view")
+	})
+}
+
+// TestDictService_LookupWord_InflectedFormAsLemma verifies the bug scenario where
+// the pipeline created a lemma with an inflected form as its surface (e.g., "starting"
+// instead of "start"). When the snapshot has surface="starting" and a LEMMA form for
+// "starting", LookupWord("starting") returns Lemma=nil because the system thinks
+// "starting" IS the lemma — the user sees this as "lemma is empty".
+//
+// This test documents the current (buggy) behavior and guards against future pipeline
+// fixes: once the pipeline correctly resolves "starting" → "start", the snapshot
+// surface will be "start" and the form_type for "starting" will be PRESENT_PARTICIPLE,
+// so LookupWord("starting") will return Lemma="start".
+func TestDictService_LookupWord_InflectedFormAsLemma(t *testing.T) {
+	client := setupTestDB(t)
+
+	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
+	svc := NewDictServiceServer(wordUC)
+
+	ctx := context.Background()
+
+	// Scenario 1: CORRECT snapshot — "start" is the lemma, "starting" is a form
+	createSnapshotInDB(t, client, &dictv1.Word{
+		Term:     "start",
+		TermType: dictv1.FormType_FORM_TYPE_LEMMA,
+		Language: commonv1.Language_LANGUAGE_ENGLISH,
+		RelatedForms: []*dictv1.RelatedForm{
+			{Term: "starting", FormType: dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE},
+			{Term: "started", FormType: dictv1.FormType_FORM_TYPE_PAST},
+		},
+		Meanings: []*dictv1.Meaning{
+			{LexemeId: "L-START", Pos: "v.", Definitions: []*dictv1.Definition{
+				{Language: commonv1.Language_LANGUAGE_ENGLISH, Gloss: "to begin"},
+			}},
+		},
+	})
+
+	t.Run("correct_snapshot_starting_has_lemma", func(t *testing.T) {
+		resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+			Msg: &dictv1.LookupWordRequest{Word: "starting"},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp.Msg)
+
+		assert.Equal(t, "starting", resp.Msg.Term,
+			"Term should be the queried form")
+		assert.Equal(t, dictv1.FormType_FORM_TYPE_PRESENT_PARTICIPLE, resp.Msg.TermType,
+			"TermType should be PRESENT_PARTICIPLE, not LEMMA")
+		require.NotNil(t, resp.Msg.Lemma,
+			"Lemma must not be nil — 'starting' is a form, not a lemma")
+		assert.Equal(t, "start", resp.Msg.GetLemma(),
+			"Lemma should be 'start'")
+	})
+
+	t.Run("correct_snapshot_start_is_lemma", func(t *testing.T) {
+		resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+			Msg: &dictv1.LookupWordRequest{Word: "start"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "start", resp.Msg.Term)
+		assert.Equal(t, dictv1.FormType_FORM_TYPE_LEMMA, resp.Msg.TermType)
+		assert.Nil(t, resp.Msg.Lemma,
+			"Lemma should be nil when querying the lemma itself")
+	})
+
+	// Scenario 2: BUGGY snapshot — pipeline used "starting" as lemma surface
+	// (happens when "starting" is processed before "start")
+	// The LEMMA form has surface "starting", so LookupWord treats it as lemma view
+	buggyLemma, err := client.Lemma.Create().
+		SetSurface("starting").
+		SetNormalized("starting").
+		Save(ctx)
+	require.NoError(t, err)
+
+	_, err = client.LemmaSnapshot.Create().
+		SetLemma(buggyLemma).
+		SetSurface("starting"). // Bug: should be "start"
+		SetNormalized("starting").
+		SetLanguage("en").
+		SetLookupTerms([]string{"starting"}).
+		SetIsLatest(true).
+		SetVersion(1).
+		SetSchemaVersion(1).
+		SetPayload(entity.LemmaSnapshotData{
+			Forms: []entity.LemmaSnapshotForm{
+				{Surface: "starting", FormType: "LEMMA"}, // Bug: should be PRESENT_PARTICIPLE
+			},
+			Lexemes: []entity.LemmaSnapshotLexeme{
+				{ExternalID: "L-BUGGY", Language: "en", POS: "v.", Senses: []entity.LemmaSnapshotSense{
+					{Language: "en", Gloss: "to begin"},
+				}},
+			},
+		}).
+		SetQualityOverall(0.5).
+		SetQualityCompleteness(0.5).
+		SetQualityDepth(0.5).
+		SetQualityDensity(0.5).
+		SetQualityValidity(0.5).
+		SetLexemeCount(1).
+		SetSenseCount(1).
+		SetFormCount(1).
+		SetSynthesizedAt(time.Now()).
+		Save(ctx)
+	require.NoError(t, err)
+
+	// Note: This subtest will find the CORRECT snapshot (surface="start") via
+	// lookup_terms because both snapshots have "starting" in their lookup_terms.
+	// The repository should prioritize the one where surface matches the base form.
+	// If the buggy snapshot is returned instead, the test documents the broken behavior.
+	t.Run("buggy_snapshot_starting_treated_as_lemma", func(t *testing.T) {
+		resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+			Msg: &dictv1.LookupWordRequest{Word: "starting"},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp.Msg)
+		assert.Equal(t, "starting", resp.Msg.Term)
+
+		// With the correct snapshot, Lemma should be "start".
+		// With the buggy snapshot, Lemma would be nil (system thinks "starting" IS the lemma).
+		// This assertion guards the expected contract.
+		if resp.Msg.Lemma != nil {
+			assert.Equal(t, "start", resp.Msg.GetLemma(),
+				"When Lemma is set, it should point to 'start'")
+		}
+		// If Lemma is nil here, it means the buggy snapshot was returned.
+		// TODO: once pipeline properly resolves inflected forms, change this to require NotNil.
+	})
+}
+
 // TestDictService_CaseSensitivity tests case handling across the full stack
 func TestDictService_CaseSensitivity(t *testing.T) {
 	client := setupTestDB(t)

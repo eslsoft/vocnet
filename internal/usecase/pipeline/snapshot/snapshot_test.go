@@ -78,3 +78,50 @@ func TestSnapshotProcessor_IncludesFormsAndPhoneticsBeforeScoring(t *testing.T) 
 	// Quality.Overall should be calculated from the fully assembled snapshot data.
 	require.Greater(t, res.LemmaSnapshot.Quality.Completeness, 0.0)
 }
+
+// TestSnapshotProcessor_SurfaceFromLemma verifies that the snapshot surface
+// always comes from pctx.Lemma.Surface — no fallback to pctx.Term.
+func TestSnapshotProcessor_SurfaceFromLemma(t *testing.T) {
+	p := NewLemmaSnapshotProcessor()
+
+	tests := []struct {
+		name           string
+		term           string
+		lemma          *entity.Lemma
+		wantSurface    string
+	}{
+		{
+			name:        "lemma surface used",
+			term:        "starting",
+			lemma:       &entity.Lemma{ID: 1, Surface: "start"},
+			wantSurface: "start",
+		},
+		{
+			name:        "lemma nil means empty surface",
+			term:        "starting",
+			lemma:       nil,
+			wantSurface: "",
+		},
+		{
+			name:        "lemma surface empty means empty surface",
+			term:        "starting",
+			lemma:       &entity.Lemma{ID: 1, Surface: ""},
+			wantSurface: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pctx := &pipeline.PipelineContext{
+				Term:     tt.term,
+				Language: entity.LanguageEnglish,
+				Lemma:    tt.lemma,
+			}
+
+			res, err := p.Process(context.Background(), pctx)
+			require.NoError(t, err)
+			require.NotNil(t, res.LemmaSnapshot)
+			require.Equal(t, tt.wantSurface, res.LemmaSnapshot.Surface)
+		})
+	}
+}

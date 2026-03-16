@@ -49,7 +49,12 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.Pipe
 
 	// Integrate each field type
 	integratedLexemes := ip.integrateLexemes(pctx.EvaluatedFragments, provenance)
-	integratedForms := ip.integrateForms(pctx.Term, pctx.EvaluatedFragments, pctx.Forms, provenance)
+	// Use resolved lemma surface (not pctx.Term which may be an inflected form)
+	lemmaSurface := pctx.Term
+	if pctx.Lemma != nil && pctx.Lemma.Surface != "" {
+		lemmaSurface = pctx.Lemma.Surface
+	}
+	integratedForms := ip.integrateForms(lemmaSurface, pctx.EvaluatedFragments, pctx.Forms, provenance)
 	integratedLemmaData := ip.integrateLemmaMetadata(pctx.EvaluatedFragments, provenance)
 	integratedRelations := ip.integrateRelations(pctx.EvaluatedFragments, provenance)
 

@@ -66,8 +66,10 @@ func TestPipelineDataQualityGates(t *testing.T) {
 }
 
 type qualityHarness struct {
-	pipeline *pipeline.VocnetPipeline
-	jobRepo  repository.PipelineJobRepository
+	pipeline    *pipeline.VocnetPipeline
+	jobRepo     repository.PipelineJobRepository
+	entClient   *entdb.Client
+	snapshotRepo repository.LemmaSnapshotRepository
 }
 
 // newPipelineQualityHarnessForWordbook creates a dedicated harness with isolated database for a wordbook
@@ -116,7 +118,7 @@ func newPipelineQualityHarnessForWordbook(
 
 	evaluator := scoring.NewDataEvaluator(scorer, logger)
 	p := pipeline.NewVocnetPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
-	return &qualityHarness{pipeline: p, jobRepo: jobRepo}
+	return &qualityHarness{pipeline: p, jobRepo: jobRepo, entClient: entClient, snapshotRepo: snapshotRepo}
 }
 
 // buildQualityTestStages constructs pipeline stages for quality testing

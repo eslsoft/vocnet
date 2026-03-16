@@ -78,6 +78,20 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 		entityLexemes = append(entityLexemes, entityLex)
 	}
 
+	// Correct lemma surface: if data sources reveal the true base form
+	// (e.g., submitted "starting" but LEMMA form is "start"), update immediately.
+	if pctx.Lemma != nil {
+		for _, f := range allForms {
+			if f.FormType == entity.FormTypeLemma && f.Surface != "" {
+				if !strings.EqualFold(f.Surface, pctx.Lemma.Surface) {
+					pctx.Lemma.Surface = f.Surface
+					pctx.Lemma.Normalized = strings.ToLower(f.Surface)
+				}
+				break
+			}
+		}
+	}
+
 	// Preserve the requested spelling variant at lemma level.
 	allForms = ensureSurfaceForm(allForms, term)
 
