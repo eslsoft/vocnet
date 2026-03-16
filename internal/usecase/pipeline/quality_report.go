@@ -77,16 +77,16 @@ func (r *QualityReport) GenerateMarkdown() string {
 	var sb strings.Builder
 
 	sb.WriteString("# Pipeline Quality Report\n\n")
-	sb.WriteString(fmt.Sprintf("**Generated:** %s\n\n", r.Timestamp.Format(time.RFC3339)))
-	sb.WriteString(fmt.Sprintf("**Execution Time:** %s\n\n", r.ExecutionTime))
+	fmt.Fprintf(&sb, "**Generated:** %s\n\n", r.Timestamp.Format(time.RFC3339))
+	fmt.Fprintf(&sb, "**Execution Time:** %s\n\n", r.ExecutionTime)
 
 	// Summary section
 	sb.WriteString("## Summary\n\n")
-	sb.WriteString(fmt.Sprintf("- **Total Wordbooks:** %d\n", r.TotalBooks))
-	sb.WriteString(fmt.Sprintf("- **Total Words Tested:** %d\n", r.TotalWords))
-	sb.WriteString(fmt.Sprintf("- **Passed:** %d\n", r.TotalPassed))
-	sb.WriteString(fmt.Sprintf("- **Failed:** %d\n", r.TotalFailed))
-	sb.WriteString(fmt.Sprintf("- **Average Score:** %.2f\n\n", r.AverageScore))
+	fmt.Fprintf(&sb, "- **Total Wordbooks:** %d\n", r.TotalBooks)
+	fmt.Fprintf(&sb, "- **Total Words Tested:** %d\n", r.TotalWords)
+	fmt.Fprintf(&sb, "- **Passed:** %d\n", r.TotalPassed)
+	fmt.Fprintf(&sb, "- **Failed:** %d\n", r.TotalFailed)
+	fmt.Fprintf(&sb, "- **Average Score:** %.2f\n\n", r.AverageScore)
 
 	// Wordbook details
 	sb.WriteString("## Wordbook Details\n\n")
@@ -102,9 +102,9 @@ func (r *QualityReport) GenerateMarkdown() string {
 			status = "⚠️"
 		}
 
-		sb.WriteString(fmt.Sprintf("| %s | %d | %.2f | %s | %.2f | %.2f |\n",
+		fmt.Fprintf(&sb, "| %s | %d | %.2f | %s | %.2f | %.2f |\n",
 			book.Name, book.TestedWords, book.AverageScore, status,
-			book.MinRequirement, book.TargetScore))
+			book.MinRequirement, book.TargetScore)
 	}
 
 	// Failed wordbooks section
@@ -118,15 +118,15 @@ func (r *QualityReport) GenerateMarkdown() string {
 	if len(failedBooks) > 0 {
 		sb.WriteString("\n## Failed Wordbooks\n\n")
 		for _, book := range failedBooks {
-			sb.WriteString(fmt.Sprintf("### %s\n\n", book.Name))
-			sb.WriteString(fmt.Sprintf("- **Status:** %s\n", book.Status))
-			sb.WriteString(fmt.Sprintf("- **Average Score:** %.2f (required: %.2f)\n", book.AverageScore, book.MinRequirement))
-			sb.WriteString(fmt.Sprintf("- **Failed Words:** %d/%d\n\n", book.FailedWords, book.TestedWords))
+			fmt.Fprintf(&sb, "### %s\n\n", book.Name)
+			fmt.Fprintf(&sb, "- **Status:** %s\n", book.Status)
+			fmt.Fprintf(&sb, "- **Average Score:** %.2f (required: %.2f)\n", book.AverageScore, book.MinRequirement)
+			fmt.Fprintf(&sb, "- **Failed Words:** %d/%d\n\n", book.FailedWords, book.TestedWords)
 
 			if len(book.ExecutionErrors) > 0 {
 				sb.WriteString("**Execution Errors:**\n")
 				for _, err := range book.ExecutionErrors {
-					sb.WriteString(fmt.Sprintf("- %s\n", err))
+					fmt.Fprintf(&sb, "- %s\n", err)
 				}
 				sb.WriteString("\n")
 			}
@@ -136,8 +136,8 @@ func (r *QualityReport) GenerateMarkdown() string {
 				sb.WriteString("| Term | Score | Required | Reason |\n")
 				sb.WriteString("|------|-------|----------|--------|\n")
 				for _, term := range book.FailedTerms {
-					sb.WriteString(fmt.Sprintf("| %s | %.2f | %.2f | %s |\n",
-						term.Term, term.Score, term.MinRequirement, term.Reason))
+					fmt.Fprintf(&sb, "| %s | %.2f | %.2f | %s |\n",
+						term.Term, term.Score, term.MinRequirement, term.Reason)
 				}
 				sb.WriteString("\n")
 			}
@@ -222,8 +222,8 @@ func (d *QualityDelta) GenerateMarkdown() string {
 	var sb strings.Builder
 
 	sb.WriteString("# Pipeline Quality Delta Report\n\n")
-	sb.WriteString(fmt.Sprintf("**Current:** %s\n", d.Timestamp.Format(time.RFC3339)))
-	sb.WriteString(fmt.Sprintf("**Baseline:** %s\n\n", d.BaselineTimestamp.Format(time.RFC3339)))
+	fmt.Fprintf(&sb, "**Current:** %s\n", d.Timestamp.Format(time.RFC3339))
+	fmt.Fprintf(&sb, "**Baseline:** %s\n\n", d.BaselineTimestamp.Format(time.RFC3339))
 
 	// Overall change
 	indicator := "⚪"
@@ -232,7 +232,7 @@ func (d *QualityDelta) GenerateMarkdown() string {
 	} else if d.OverallDelta < -0.5 {
 		indicator = "🔴"
 	}
-	sb.WriteString(fmt.Sprintf("## Overall Score Change: %s %.2f\n\n", indicator, d.OverallDelta))
+	fmt.Fprintf(&sb, "## Overall Score Change: %s %.2f\n\n", indicator, d.OverallDelta)
 
 	// Wordbook changes
 	sb.WriteString("## Wordbook Changes\n\n")
@@ -255,8 +255,8 @@ func (d *QualityDelta) GenerateMarkdown() string {
 			indicator = "🔴"
 		}
 
-		sb.WriteString(fmt.Sprintf("| %s | %.2f | %s | %s | %s |\n",
-			book.Name, book.CurrentScore, deltaStr, statusChange, indicator))
+		fmt.Fprintf(&sb, "| %s | %.2f | %s | %s | %s |\n",
+			book.Name, book.CurrentScore, deltaStr, statusChange, indicator)
 	}
 
 	// Significant changes
@@ -270,11 +270,11 @@ func (d *QualityDelta) GenerateMarkdown() string {
 	if len(significantChanges) > 0 {
 		sb.WriteString("\n## Significant Changes (±2.0 or status change)\n\n")
 		for _, book := range significantChanges {
-			sb.WriteString(fmt.Sprintf("### %s\n\n", book.Name))
-			sb.WriteString(fmt.Sprintf("- **Score:** %.2f → %.2f (%+.2f)\n", book.BaselineScore, book.CurrentScore, book.ScoreDelta))
-			sb.WriteString(fmt.Sprintf("- **Status:** %s → %s\n", book.BaselineStatus, book.CurrentStatus))
+			fmt.Fprintf(&sb, "### %s\n\n", book.Name)
+			fmt.Fprintf(&sb, "- **Score:** %.2f → %.2f (%+.2f)\n", book.BaselineScore, book.CurrentScore, book.ScoreDelta)
+			fmt.Fprintf(&sb, "- **Status:** %s → %s\n", book.BaselineStatus, book.CurrentStatus)
 			if book.PassedDelta != 0 || book.FailedDelta != 0 {
-				sb.WriteString(fmt.Sprintf("- **Passed/Failed:** %+d / %+d\n", book.PassedDelta, book.FailedDelta))
+				fmt.Fprintf(&sb, "- **Passed/Failed:** %+d / %+d\n", book.PassedDelta, book.FailedDelta)
 			}
 			sb.WriteString("\n")
 		}
