@@ -74,11 +74,16 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.Pipe
 		}
 	}
 
+	// Collect form keys that were actually produced by data sources (have fragments).
+	sourceFormKeys := collectSourceFormKeys(pctx.EvaluatedFragments, pctx.FormsByLexeme)
+
 	return &scoring.ProcessResult{
-		Status:    scoring.ProcessStatusExecuted,
-		Lexemes:   integratedLexemes,
-		Forms:     integratedForms,
-		Relations: integratedRelations,
+		Status:         scoring.ProcessStatusExecuted,
+		Lexemes:        integratedLexemes,
+		Forms:          integratedForms,
+		Relations:      integratedRelations,
+		SyncForms:      true,
+		SourceFormKeys: sourceFormKeys,
 	}, nil
 }
 
@@ -333,6 +338,36 @@ func (ip *IntegrationProcessor) integrateRelations(
 	}
 
 	return result
+}
+
+// collectSourceFormKeys builds a set of form keys (surface:formType) from data sources.
+// It combines forms that have evaluation fragments with forms from FormsByLexeme.
+func collectSourceFormKeys(fragments map[string][]*scoring.FieldFragment, formsByLexeme map[string][]*entity.LemmaForm) map[string]struct{} {
+	keys := make(map[string]struct{})
+
+	// Forms with evaluation fragments (phonetics, syllables, or type)
+	for _, candidates := range fragments {
+		if !isFormFragment(candidates) {
+			continue
+		}
+		// The winner's data has the form info; extract surface from key
+		for _, c := range candidates {
+			if form, ok := c.Data.(*entity.LemmaForm); ok && form != nil {
+				keys[form.Surface+":"+string(form.FormType)] = struct{}{}
+			}
+		}
+	}
+
+	// Forms from FormsByLexeme (Wikidata + contrib sources)
+	for _, forms := range formsByLexeme {
+		for _, f := range forms {
+			if f != nil {
+				keys[f.Surface+":"+string(f.FormType)] = struct{}{}
+			}
+		}
+	}
+
+	return keys
 }
 
 // extractSurfaceFromKey extracts the surface form from a field key.

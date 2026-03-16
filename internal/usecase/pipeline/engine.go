@@ -314,4 +314,8 @@ func mergeProcessResults(dst, src *ProcessResult) {
 	if src.LemmaSnapshot != nil {
 		dst.LemmaSnapshot = src.LemmaSnapshot
 	}
+	if src.SyncForms {
+		dst.SyncForms = true
+		dst.SourceFormKeys = src.SourceFormKeys
+	}
 }

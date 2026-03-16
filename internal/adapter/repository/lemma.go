@@ -1005,6 +1005,34 @@ func (r *lemmaRepository) UpdateFormSyllables(ctx context.Context, lemmaID int64
 	return translateDBError(err, "lexeme_form")
 }
 
+// DeleteFormsByKeys deletes lemma_form rows matching each (surface, formType) pair for a given lemma.
+func (r *lemmaRepository) DeleteFormsByKeys(ctx context.Context, lemmaID int64, surfaces []string, formTypes []entity.FormType) error {
+	if lemmaID == 0 {
+		return fmt.Errorf("lemma_id required")
+	}
+	if len(surfaces) != len(formTypes) {
+		return fmt.Errorf("surfaces and formTypes must have equal length")
+	}
+	if len(surfaces) == 0 {
+		return nil
+	}
+
+	for i := range surfaces {
+		_, err := r.client.LemmaForm.Delete().
+			Where(
+				entlemmaform.LemmaIDEQ(lemmaID),
+				entlemmaform.SurfaceEQ(surfaces[i]),
+				entlemmaform.FormTypeEQ(string(formTypes[i])),
+			).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("delete form %s/%s: %w", surfaces[i], formTypes[i], err)
+		}
+	}
+
+	return nil
+}
+
 func (r *lemmaRepository) countForms(ctx context.Context, langCodes []string) (int, error) {
 	query := r.client.LemmaForm.Query().
 		Where(entlemmaform.HasLemmaWith(entlemma.HasLexemesWith(func(s *sql.Selector) {
