@@ -205,7 +205,14 @@ func (p *Persistence) mergeExistingForm(ctx context.Context, lemmaID int64, exis
 }
 
 // saveForms persists or updates lemma forms from a stage result.
+// Forms are only written to DB during the authoritative Integration stage (SyncForms=true).
+// Earlier stages (Collection, Evaluation) accumulate forms in pctx memory — writing them
+// to DB prematurely would cause Integration to delete them as "stale", wasting IO.
 func (p *Persistence) saveForms(ctx context.Context, lemmaID int64, result *scoring.ProcessResult) error {
+	if !result.SyncForms {
+		return nil // Not the authoritative stage — forms will be written by Integration
+	}
+
 	allForms := collectUniqueForms(result)
 	if len(allForms) == 0 {
 		return nil
@@ -238,9 +245,7 @@ func (p *Persistence) saveForms(ctx context.Context, lemmaID int64, result *scor
 	}
 
 	// Delete stale forms: forms in DB but not produced by any data source.
-	// Only runs when the result is the final integrated form set (SyncForms=true)
-	// and sources actually produced forms (SourceFormKeys non-empty).
-	if result.SyncForms && len(result.SourceFormKeys) > 0 {
+	if len(result.SourceFormKeys) > 0 {
 		var staleSurfaces []string
 		var staleFormTypes []entity.FormType
 		for key, existing := range existingMap {
