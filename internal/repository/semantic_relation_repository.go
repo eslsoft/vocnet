@@ -11,4 +11,5 @@ type SemanticRelationRepository interface {
 	BatchCreate(ctx context.Context, relations []*entity.SemanticRelation) ([]*entity.SemanticRelation, error)
 	FindBySourceLexeme(ctx context.Context, sourceLexemeID int64) ([]*entity.SemanticRelation, error)
 	FindByTargetLexeme(ctx context.Context, targetLexemeID int64) ([]*entity.SemanticRelation, error)
+	DeleteByLemmaID(ctx context.Context, lemmaID int64) error
 }

@@ -110,7 +110,7 @@ func newPipelineQualityHarnessForWordbook(
 	jobRepo := repo.NewPipelineJobRepository(entClient)
 
 	persistence := persist.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, logger)
-	validator := pipeline.NewValidator(lemmaRepo, lexemeRepo, logger)
+	validator := pipeline.NewValidator(logger)
 
 	// Build stages using the shared registry and readers
 	scorer := scoring.NewRuleBasedScorer()

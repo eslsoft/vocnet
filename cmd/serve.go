@@ -187,7 +187,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 
 	// Build pipeline stages using new Phase system
 	persistence := persist.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, logger)
-	validator := pipeline.NewValidator(lemmaRepo, lexemeRepo, logger)
+	validator := pipeline.NewValidator(logger)
 	scorer := scoring.NewRuleBasedScorer()
 	evaluator := scoring.NewDataEvaluator(scorer, logger)
 

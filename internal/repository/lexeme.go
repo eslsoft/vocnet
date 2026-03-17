@@ -48,4 +48,5 @@ type LexemeRepository interface {
 	// Returns a map from ExternalID to Lexeme. Missing IDs are not included.
 	BatchGetByExternalIDs(ctx context.Context, externalIDs []string) (map[string]*entity.Lexeme, error)
 	Delete(ctx context.Context, lexemeID int64) error
+	DeleteByLemmaID(ctx context.Context, lemmaID int64) error
 }

@@ -385,6 +385,13 @@ func (r *lexemeRepository) Delete(ctx context.Context, lexemeID int64) error {
 	return r.client.Lexeme.DeleteOneID(lexemeID).Exec(context.Background())
 }
 
+func (r *lexemeRepository) DeleteByLemmaID(ctx context.Context, lemmaID int64) error {
+	_, err := r.client.Lexeme.Delete().
+		Where(entlexeme.LemmaIDEQ(lemmaID)).
+		Exec(ctx)
+	return err
+}
+
 func (r *lexemeRepository) fetchAggregate(ctx context.Context, predicate entpredicate.Lexeme) (*entity.Lexeme, error) {
 	rec, err := r.client.Lexeme.Query().
 		Where(predicate).

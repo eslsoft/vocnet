@@ -6,6 +6,7 @@ import (
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
+	entlexeme "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lexeme"
 	entsemrel "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/semanticrelation"
 	"github.com/eslsoft/vocnet/internal/repository"
 )
@@ -78,6 +79,20 @@ func (r *semanticRelationRepository) FindByTargetLexeme(ctx context.Context, tar
 		out = append(out, mapEntSemanticRelation(row))
 	}
 	return out, nil
+}
+
+func (r *semanticRelationRepository) DeleteByLemmaID(ctx context.Context, lemmaID int64) error {
+	// Find lexeme IDs for this lemma, then delete their relations.
+	lexemeIDs, err := r.client.Lexeme.Query().
+		Where(entlexeme.LemmaIDEQ(lemmaID)).
+		IDs(ctx)
+	if err != nil || len(lexemeIDs) == 0 {
+		return err
+	}
+	_, err = r.client.SemanticRelation.Delete().
+		Where(entsemrel.SourceLexemeIDIn(lexemeIDs...)).
+		Exec(ctx)
+	return err
 }
 
 func mapEntSemanticRelation(row *entdb.SemanticRelation) *entity.SemanticRelation {

@@ -1166,6 +1166,13 @@ func updateCompletenessBucket(buckets []entity.CompletenessBucket, value int32) 
 	}
 }
 
+func (r *lemmaRepository) DeleteAllForms(ctx context.Context, lemmaID int64) error {
+	_, err := r.client.LemmaForm.Delete().
+		Where(entlemmaform.LemmaIDEQ(lemmaID)).
+		Exec(ctx)
+	return err
+}
+
 func (r *lemmaRepository) DeleteByID(ctx context.Context, lemmaID int64) error {
 	if lemmaID == 0 {
 		return fmt.Errorf("lemma_id required")

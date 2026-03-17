@@ -182,31 +182,20 @@ func (p *VocnetPipeline) OnStageEnd(ctx context.Context, stage *Stage, pctx *Pip
 // Different terms (e.g., "abandoned", "abandon") that resolve to the same lemma
 // must not write concurrently — this method guarantees mutual exclusion.
 func (p *VocnetPipeline) writeStageResultWithLock(ctx context.Context, pctx *PipelineContext, phaseNum int32, mergedResult *ProcessResult) error {
-	// Determine the lock key. For existing lemmas, use the DB lemma's normalized
-	// surface — this is the same for ALL workers touching the same lemma regardless
-	// of which term they started from. For new lemmas (nil), use the best lemma form
-	// surface discovered during collection, or fall back to the term.
-	var lockKey string
-	if pctx.Lemma != nil {
-		lockKey = pctx.Lemma.Normalized
-	} else {
-		best := bestLemmaFormSurface(pctx)
-		if best != "" {
-			lockKey = strings.ToLower(best)
-		} else {
-			lockKey = strings.ToLower(strings.TrimSpace(pctx.Term))
-		}
+	// Lock key: use the best lemma surface from collected data, or the term itself.
+	best := bestLemmaFormSurface(pctx)
+	if best == "" {
+		best = strings.TrimSpace(pctx.Term)
 	}
+	lockKey := strings.ToLower(best)
 
 	mu := p.acquireLemmaLock(lockKey)
 	defer mu.Unlock()
 
-	// Resolve or create the lemma under the lock.
-	if pctx.Lemma == nil {
-		if err := p.createLemmaFromCollectedData(ctx, pctx); err != nil {
-			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
-			return err
-		}
+	// Resolve or create the lemma.
+	if err := p.createLemmaFromCollectedData(ctx, pctx); err != nil {
+		_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
+		return err
 	}
 
 	// Persist evidence (raw source data from Collection processors).
@@ -342,27 +331,18 @@ func NewWorkerPool(
 // --- Validator ---
 
 type Validator struct {
-	lemmaRepo  repository.LemmaRepository
-	lexemeRepo repository.LexemeRepository
-	logger     *slog.Logger
+	logger *slog.Logger
 }
 
-func NewValidator(lemmaRepo repository.LemmaRepository, lexemeRepo repository.LexemeRepository, logger *slog.Logger) *Validator {
-	return &Validator{lemmaRepo: lemmaRepo, lexemeRepo: lexemeRepo, logger: logger}
+func NewValidator(logger *slog.Logger) *Validator {
+	return &Validator{logger: logger}
 }
 
-func (v *Validator) EnsureLemma(ctx context.Context, term string, language entity.Language, tier int32) (*PipelineContext, error) {
-	pctx := &PipelineContext{Term: term, Language: language, Tier: tier}
-	existing, err := v.lemmaRepo.LookupByForm(ctx, term, language)
-	if err == nil {
-		pctx.Lemma = existing
-		lexemes, _ := v.lexemeRepo.ListByLemmaID(ctx, existing.ID)
-		pctx.Lexemes = lexemes
-		pctx.Forms = existing.Forms
-	}
-	// If not found, pctx.Lemma stays nil.
-	// Lemma will be created after collection phase discovers the true base form.
-	return pctx, nil
+// EnsureLemma creates a clean pipeline context for the given term.
+// No DB state is loaded — the pipeline runs as a pure transformation.
+// Lemma resolution happens at persistence time after data sources are consulted.
+func (v *Validator) EnsureLemma(_ context.Context, term string, language entity.Language, tier int32) (*PipelineContext, error) {
+	return &PipelineContext{Term: term, Language: language, Tier: tier}, nil
 }
 
 // createLemmaFromCollectedData creates the lemma record using the true base form

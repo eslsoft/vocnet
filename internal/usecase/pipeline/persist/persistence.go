@@ -51,55 +51,84 @@ func (p *Persistence) SaveEvidence(ctx context.Context, lemma *entity.Lemma, evi
 	return nil
 }
 
-// SaveIntegrationResult persists forms, lexemes, and relations.
-// Called by the engine after the Integration stage — the single authoritative
-// point where evaluated, scored data is written to the database.
+// SaveIntegrationResult replaces all forms, lexemes, and relations for a lemma.
+// Uses delete-then-create to ensure idempotent, order-independent results.
 func (p *Persistence) SaveIntegrationResult(ctx context.Context, lemma *entity.Lemma, result *scoring.ProcessResult) error {
 	if result == nil {
 		return nil
 	}
 
-	// Save forms (create new, merge existing, delete stale)
-	if err := p.saveForms(ctx, lemma.ID, result); err != nil {
-		return fmt.Errorf("save forms: %w", err)
+	// 1. Delete existing data (order: relations → lexemes → forms)
+	if err := p.relationRepo.DeleteByLemmaID(ctx, lemma.ID); err != nil {
+		return fmt.Errorf("delete relations: %w", err)
+	}
+	if err := p.lexemeRepo.DeleteByLemmaID(ctx, lemma.ID); err != nil {
+		return fmt.Errorf("delete lexemes: %w", err)
+	}
+	if err := p.lemmaRepo.DeleteAllForms(ctx, lemma.ID); err != nil {
+		return fmt.Errorf("delete forms: %w", err)
 	}
 
-	// Save or update lexemes
-	if err := p.saveOrUpdateLexemes(ctx, lemma.ID, result.Lexemes); err != nil {
-		return fmt.Errorf("save lexemes: %w", err)
+	// 2. Create forms
+	allForms := collectUniqueForms(result)
+	if len(allForms) > 0 {
+		formsToCreate := make([]entity.LemmaForm, 0, len(allForms))
+		for _, f := range allForms {
+			f.LemmaID = lemma.ID
+			formsToCreate = append(formsToCreate, *f)
+		}
+		if err := p.lemmaRepo.CreateForms(ctx, lemma.ID, formsToCreate); err != nil {
+			return fmt.Errorf("create forms: %w", err)
+		}
 	}
 
-	// Save relations (resolve ExternalID → DB SourceLexemeID first)
+	// 3. Create lexemes
+	for _, lex := range result.Lexemes {
+		lex.LemmaID = lemma.ID
+		if lex.ExternalID == "" {
+			continue
+		}
+		if _, err := p.lexemeRepo.Create(ctx, lex); err != nil {
+			return fmt.Errorf("create lexeme %s: %w", lex.ExternalID, err)
+		}
+	}
+
+	// 4. Create relations (resolve ExternalID → DB SourceLexemeID first)
 	if len(result.Relations) > 0 {
 		p.mapUnmappedContribRelations(result.Relations, result.Lexemes)
-
 		if err := p.resolveRelationIDs(ctx, result.Relations); err != nil {
 			return fmt.Errorf("resolve relation IDs: %w", err)
 		}
 		relations := deduplicateRelations(result.Relations)
 
-		// Filter out relations with unresolved SourceLexemeID
+		// Collect newly created lexeme IDs for FK validation.
+		createdLexemeIDs := make(map[int64]struct{})
+		if dbLexemes, err := p.lexemeRepo.ListByLemmaID(ctx, lemma.ID); err == nil {
+			for _, lex := range dbLexemes {
+				createdLexemeIDs[lex.ID] = struct{}{}
+			}
+		}
+
 		validRelations := make([]*entity.SemanticRelation, 0, len(relations))
-		skippedCount := 0
 		for _, rel := range relations {
 			if rel.SourceLexemeID == 0 {
-				skippedCount++
 				continue
+			}
+			// Ensure both source and target lexemes exist.
+			if _, ok := createdLexemeIDs[rel.SourceLexemeID]; !ok {
+				continue
+			}
+			if rel.TargetLexemeID != nil {
+				if _, ok := createdLexemeIDs[*rel.TargetLexemeID]; !ok {
+					rel.TargetLexemeID = nil // unresolved target
+				}
 			}
 			validRelations = append(validRelations, rel)
 		}
-		if skippedCount > 0 {
-			p.logger.Debug("skipped relations with unresolved source lexemes",
-				"skipped", skippedCount,
-				"total", len(relations))
-		}
-
-		relations, err := p.filterExistingUniqueRelations(ctx, validRelations)
-		if err != nil {
-			return fmt.Errorf("filter existing relations: %w", err)
-		}
-		if _, err := p.relationRepo.BatchCreate(ctx, relations); err != nil {
-			return fmt.Errorf("save relations: %w", err)
+		if len(validRelations) > 0 {
+			if _, err := p.relationRepo.BatchCreate(ctx, validRelations); err != nil {
+				return fmt.Errorf("save relations: %w", err)
+			}
 		}
 	}
 
@@ -182,140 +211,6 @@ func formKey(f *entity.LemmaForm) string {
 	return f.Surface + ":" + string(f.FormType)
 }
 
-// mergeExistingForm updates phonetics and syllables of an existing form.
-func (p *Persistence) mergeExistingForm(ctx context.Context, lemmaID int64, existing, newForm *entity.LemmaForm) {
-	if existing.IsIrregular != newForm.IsIrregular {
-		if err := p.lemmaRepo.UpdateFormIrregular(ctx, lemmaID, existing.Surface, existing.FormType, newForm.IsIrregular); err != nil {
-			p.logger.Warn("failed to update form irregular flag",
-				"surface", newForm.Surface, "error", err)
-		}
-	}
-	if len(newForm.Phonetics) > 0 {
-		merged := scoring.MergePhonetics(existing.Phonetics, newForm.Phonetics)
-		if len(merged) > len(existing.Phonetics) {
-			if err := p.lemmaRepo.UpdateFormPhonetics(ctx, lemmaID, newForm.FormType, merged); err != nil {
-				p.logger.Warn("failed to update form phonetics",
-					"surface", newForm.Surface, "error", err)
-			}
-		}
-	}
-	if len(newForm.Syllables) > 0 {
-		if err := p.lemmaRepo.UpdateFormSyllables(ctx, lemmaID, newForm.FormType, newForm.Syllables); err != nil {
-			p.logger.Warn("failed to update form syllables",
-				"surface", newForm.Surface, "error", err)
-		}
-	}
-}
-
-// saveForms persists or updates lemma forms from the Integration stage result.
-func (p *Persistence) saveForms(ctx context.Context, lemmaID int64, result *scoring.ProcessResult) error {
-	allForms := collectUniqueForms(result)
-	if len(allForms) == 0 {
-		return nil
-	}
-
-	existingLemma, err := p.lemmaRepo.GetByID(ctx, lemmaID)
-	if err != nil {
-		return fmt.Errorf("get lemma: %w", err)
-	}
-
-	existingMap := make(map[string]*entity.LemmaForm)
-	for _, f := range existingLemma.Forms {
-		existingMap[formKey(f)] = f
-	}
-
-	var formsToCreate []entity.LemmaForm
-	for _, newForm := range allForms {
-		newForm.LemmaID = lemmaID
-		if existing, ok := existingMap[formKey(newForm)]; ok {
-			p.mergeExistingForm(ctx, lemmaID, existing, newForm)
-		} else {
-			formsToCreate = append(formsToCreate, *newForm)
-		}
-	}
-
-	if len(formsToCreate) > 0 {
-		if err := p.lemmaRepo.CreateForms(ctx, lemmaID, formsToCreate); err != nil {
-			return fmt.Errorf("create forms: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// updateLexeme enriches and persists an existing lexeme, returning the enriched result.
-func (p *Persistence) updateLexeme(ctx context.Context, existing, newLex *entity.Lexeme) (*entity.Lexeme, error) {
-	enriched := scoring.EnrichLexeme(existing, newLex)
-	if _, err := p.lexemeRepo.Update(ctx, enriched); err != nil {
-		return nil, fmt.Errorf("update lexeme %s: %w", newLex.ExternalID, err)
-	}
-	return enriched, nil
-}
-
-// findExistingLexeme looks up a lexeme by ExternalID in the local cache, then in the DB.
-func (p *Persistence) findExistingLexeme(ctx context.Context, extID string, cache map[string]*entity.Lexeme) *entity.Lexeme {
-	if ex, ok := cache[extID]; ok {
-		return ex
-	}
-	if dbLex, err := p.lexemeRepo.GetByExternalID(ctx, extID); err == nil {
-		return dbLex
-	}
-	return nil
-}
-
-// saveOrUpdateLexemes creates new lexemes or updates existing ones.
-func (p *Persistence) saveOrUpdateLexemes(ctx context.Context, lemmaID int64, lexemes []*entity.Lexeme) error {
-	if len(lexemes) == 0 {
-		return nil
-	}
-
-	existing, err := p.lexemeRepo.ListByLemmaID(ctx, lemmaID)
-	if err != nil {
-		p.logger.Warn("failed to list existing lexemes", "lemma_id", lemmaID, "error", err)
-		existing = nil
-	}
-
-	existingByExtID := make(map[string]*entity.Lexeme)
-	for _, lex := range existing {
-		if lex.ExternalID != "" {
-			existingByExtID[lex.ExternalID] = lex
-		}
-	}
-
-	for _, newLex := range lexemes {
-		newLex.LemmaID = lemmaID
-
-		if newLex.ExternalID != "" {
-			if found := p.findExistingLexeme(ctx, newLex.ExternalID, existingByExtID); found != nil {
-				enriched, err := p.updateLexeme(ctx, found, newLex)
-				if err != nil {
-					return err
-				}
-				existingByExtID[newLex.ExternalID] = enriched
-				continue
-			}
-		}
-
-		switch {
-		case len(existing) > 0 && newLex.ExternalID == "":
-			if _, err := p.updateLexeme(ctx, existing[0], newLex); err != nil {
-				return err
-			}
-		case newLex.ID == 0 && newLex.ExternalID != "":
-			// Only create new lexemes if they have ExternalID (from Wikidata)
-			created, err := p.lexemeRepo.Create(ctx, newLex)
-			if err != nil {
-				return fmt.Errorf("create lexeme %s: %w", newLex.ExternalID, err)
-			}
-			existingByExtID[created.ExternalID] = created
-		case newLex.ExternalID == "":
-			// Lexemes without ExternalID (from contrib sources) can only enrich existing lexemes
-			// If no existing lexeme to enrich, skip this lexeme
-		}
-	}
-
-	return nil
-}
 
 // resolveRelationIDs resolves SourceExternalID → DB SourceLexemeID for all relations.
 func (p *Persistence) resolveRelationIDs(ctx context.Context, relations []*entity.SemanticRelation) error {
@@ -576,58 +471,6 @@ func chooseTargetLexemeID(source *entity.Lexeme, candidates []*repository.LemmaF
 	}
 
 	return nil
-}
-
-func (p *Persistence) filterExistingUniqueRelations(ctx context.Context, relations []*entity.SemanticRelation) ([]*entity.SemanticRelation, error) {
-	if len(relations) == 0 {
-		return relations, nil
-	}
-
-	sourceIDs := make(map[int64]struct{})
-	for _, rel := range relations {
-		if rel == nil || rel.SourceLexemeID == 0 || rel.TargetLexemeID == nil {
-			continue
-		}
-		sourceIDs[rel.SourceLexemeID] = struct{}{}
-	}
-	if len(sourceIDs) == 0 {
-		return relations, nil
-	}
-
-	existingKeys := make(map[string]struct{})
-	for sourceID := range sourceIDs {
-		existing, err := p.relationRepo.FindBySourceLexeme(ctx, sourceID)
-		if err != nil {
-			return nil, err
-		}
-		for _, rel := range existing {
-			key, ok := relationUniqueKey(rel)
-			if !ok {
-				continue
-			}
-			existingKeys[key] = struct{}{}
-		}
-	}
-
-	out := make([]*entity.SemanticRelation, 0, len(relations))
-	for _, rel := range relations {
-		key, ok := relationUniqueKey(rel)
-		if ok {
-			if _, exists := existingKeys[key]; exists {
-				continue
-			}
-			existingKeys[key] = struct{}{}
-		}
-		out = append(out, rel)
-	}
-	return out, nil
-}
-
-func relationUniqueKey(rel *entity.SemanticRelation) (string, bool) {
-	if rel == nil || rel.TargetLexemeID == nil || rel.SourceLexemeID == 0 {
-		return "", false
-	}
-	return fmt.Sprintf("%d|%d|%s", rel.SourceLexemeID, *rel.TargetLexemeID, rel.RelationType), true
 }
 
 // mapUnmappedContribRelations maps relations without SourceExternalID to available lexemes
