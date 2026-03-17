@@ -70,21 +70,42 @@ func (p *Persistence) SaveIntegrationResult(ctx context.Context, lemma *entity.L
 	}
 
 	// 2. Create forms
-	allForms := collectUniqueForms(result)
-	if len(allForms) > 0 {
-		formsToCreate := make([]entity.LemmaForm, 0, len(allForms))
-		for _, f := range allForms {
-			f.LemmaID = lemma.ID
-			formsToCreate = append(formsToCreate, *f)
-		}
-		if err := p.lemmaRepo.CreateForms(ctx, lemma.ID, formsToCreate); err != nil {
-			return fmt.Errorf("create forms: %w", err)
-		}
+	if err := p.createForms(ctx, lemma.ID, result); err != nil {
+		return err
 	}
 
 	// 3. Create lexemes
-	for _, lex := range result.Lexemes {
-		lex.LemmaID = lemma.ID
+	if err := p.createLexemes(ctx, lemma.ID, result.Lexemes); err != nil {
+		return err
+	}
+
+	// 4. Create relations
+	if err := p.createRelations(ctx, lemma.ID, result); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *Persistence) createForms(ctx context.Context, lemmaID int64, result *scoring.ProcessResult) error {
+	allForms := collectUniqueForms(result)
+	if len(allForms) == 0 {
+		return nil
+	}
+	formsToCreate := make([]entity.LemmaForm, 0, len(allForms))
+	for _, f := range allForms {
+		f.LemmaID = lemmaID
+		formsToCreate = append(formsToCreate, *f)
+	}
+	if err := p.lemmaRepo.CreateForms(ctx, lemmaID, formsToCreate); err != nil {
+		return fmt.Errorf("create forms: %w", err)
+	}
+	return nil
+}
+
+func (p *Persistence) createLexemes(ctx context.Context, lemmaID int64, lexemes []*entity.Lexeme) error {
+	for _, lex := range lexemes {
+		lex.LemmaID = lemmaID
 		if lex.ExternalID == "" {
 			continue
 		}
@@ -92,47 +113,58 @@ func (p *Persistence) SaveIntegrationResult(ctx context.Context, lemma *entity.L
 			return fmt.Errorf("create lexeme %s: %w", lex.ExternalID, err)
 		}
 	}
+	return nil
+}
 
-	// 4. Create relations (resolve ExternalID → DB SourceLexemeID first)
-	if len(result.Relations) > 0 {
-		p.mapUnmappedContribRelations(result.Relations, result.Lexemes)
-		if err := p.resolveRelationIDs(ctx, result.Relations); err != nil {
-			return fmt.Errorf("resolve relation IDs: %w", err)
-		}
-		relations := deduplicateRelations(result.Relations)
-
-		// Collect newly created lexeme IDs for FK validation.
-		createdLexemeIDs := make(map[int64]struct{})
-		if dbLexemes, err := p.lexemeRepo.ListByLemmaID(ctx, lemma.ID); err == nil {
-			for _, lex := range dbLexemes {
-				createdLexemeIDs[lex.ID] = struct{}{}
-			}
-		}
-
-		validRelations := make([]*entity.SemanticRelation, 0, len(relations))
-		for _, rel := range relations {
-			if rel.SourceLexemeID == 0 {
-				continue
-			}
-			// Ensure both source and target lexemes exist.
-			if _, ok := createdLexemeIDs[rel.SourceLexemeID]; !ok {
-				continue
-			}
-			if rel.TargetLexemeID != nil {
-				if _, ok := createdLexemeIDs[*rel.TargetLexemeID]; !ok {
-					rel.TargetLexemeID = nil // unresolved target
-				}
-			}
-			validRelations = append(validRelations, rel)
-		}
-		if len(validRelations) > 0 {
-			if _, err := p.relationRepo.BatchCreate(ctx, validRelations); err != nil {
-				return fmt.Errorf("save relations: %w", err)
-			}
-		}
+func (p *Persistence) createRelations(ctx context.Context, lemmaID int64, result *scoring.ProcessResult) error {
+	if len(result.Relations) == 0 {
+		return nil
 	}
 
+	p.mapUnmappedContribRelations(result.Relations, result.Lexemes)
+	if err := p.resolveRelationIDs(ctx, result.Relations); err != nil {
+		return fmt.Errorf("resolve relation IDs: %w", err)
+	}
+	relations := deduplicateRelations(result.Relations)
+
+	createdLexemeIDs := p.loadCreatedLexemeIDs(ctx, lemmaID)
+	validRelations := filterValidRelations(relations, createdLexemeIDs)
+	if len(validRelations) == 0 {
+		return nil
+	}
+	if _, err := p.relationRepo.BatchCreate(ctx, validRelations); err != nil {
+		return fmt.Errorf("save relations: %w", err)
+	}
 	return nil
+}
+
+func (p *Persistence) loadCreatedLexemeIDs(ctx context.Context, lemmaID int64) map[int64]struct{} {
+	ids := make(map[int64]struct{})
+	if dbLexemes, err := p.lexemeRepo.ListByLemmaID(ctx, lemmaID); err == nil {
+		for _, lex := range dbLexemes {
+			ids[lex.ID] = struct{}{}
+		}
+	}
+	return ids
+}
+
+func filterValidRelations(relations []*entity.SemanticRelation, validIDs map[int64]struct{}) []*entity.SemanticRelation {
+	out := make([]*entity.SemanticRelation, 0, len(relations))
+	for _, rel := range relations {
+		if rel.SourceLexemeID == 0 {
+			continue
+		}
+		if _, ok := validIDs[rel.SourceLexemeID]; !ok {
+			continue
+		}
+		if rel.TargetLexemeID != nil {
+			if _, ok := validIDs[*rel.TargetLexemeID]; !ok {
+				rel.TargetLexemeID = nil
+			}
+		}
+		out = append(out, rel)
+	}
+	return out
 }
 
 // SaveLemmaSnapshot persists a new snapshot version for a lemma.
