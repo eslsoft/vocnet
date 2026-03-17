@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-03-17T05:05:03.928628777Z",
+  "timestamp": "2026-03-17T05:23:05.964523935Z",
   "total_books": 6,
   "total_words": 7004,
-  "total_passed": 6802,
-  "total_failed": 202,
-  "average_score": 58.9333022320856,
+  "total_passed": 6803,
+  "total_failed": 201,
+  "average_score": 58.91254027163602,
   "book_reports": [
     {
       "name": "CEFR-A1",
@@ -12,7 +12,7 @@
       "tested_words": 917,
       "passed_words": 903,
       "failed_words": 14,
-      "average_score": 62.0699303715635,
+      "average_score": 62.03033961970518,
       "min_score": 24.849999999999998,
       "max_score": 88.25285714285712,
       "min_requirement": 35,
@@ -20,8 +20,8 @@
       "score_distribution": {
         "0-20": 0,
         "20-40": 17,
-        "40-60": 368,
-        "60-80": 498,
+        "40-60": 370,
+        "60-80": 496,
         "80-100": 34
       },
       "failed_terms": [
@@ -111,12 +111,8 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 97.38276990185388,
+      "lemma_accuracy": 98.25517993456924,
       "lemma_mismatches": [
-        {
-          "term": "boring",
-          "actual_lemma": "bore"
-        },
         {
           "term": "centre",
           "actual_lemma": "center"
@@ -124,18 +120,6 @@
         {
           "term": "could",
           "actual_lemma": "can"
-        },
-        {
-          "term": "dancing",
-          "actual_lemma": "dance"
-        },
-        {
-          "term": "exciting",
-          "actual_lemma": "excite"
-        },
-        {
-          "term": "favourite",
-          "actual_lemma": "favorite"
         },
         {
           "term": "fifty",
@@ -148,18 +132,6 @@
         {
           "term": "him",
           "actual_lemma": "he"
-        },
-        {
-          "term": "left",
-          "actual_lemma": "leave"
-        },
-        {
-          "term": "more",
-          "actual_lemma": "many"
-        },
-        {
-          "term": "neighbour",
-          "actual_lemma": "neighbor"
         },
         {
           "term": "one",
@@ -202,10 +174,6 @@
           "actual_lemma": "will"
         },
         {
-          "term": "writing",
-          "actual_lemma": "write"
-        },
-        {
           "term": "zero",
           "actual_lemma": "0"
         }
@@ -215,18 +183,18 @@
       "name": "CEFR-A2",
       "total_words": 1014,
       "tested_words": 963,
-      "passed_words": 936,
-      "failed_words": 27,
-      "average_score": 61.90085993631634,
+      "passed_words": 937,
+      "failed_words": 26,
+      "average_score": 61.93609097368853,
       "min_score": 0,
       "max_score": 85.8868,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
-        "0-20": 4,
+        "0-20": 3,
         "20-40": 25,
-        "40-60": 361,
-        "60-80": 554,
+        "40-60": 363,
+        "60-80": 553,
         "80-100": 19
       },
       "failed_terms": [
@@ -315,10 +283,10 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "kilogram",
+          "term": "jewellery",
           "score": 0,
           "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: kilogram (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: jewellery (non-standard vocabulary rejected)"
         },
         {
           "term": "mostly",
@@ -331,12 +299,6 @@
           "score": 24.849999999999998,
           "min_requirement": 35,
           "reason": "below minimum requirement"
-        },
-        {
-          "term": "omelet",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: omelet (non-standard vocabulary rejected)"
         },
         {
           "term": "ourselves",
@@ -394,67 +356,23 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 98.43587069864442,
+      "lemma_accuracy": 99.58333333333333,
       "lemma_mismatches": [
-        {
-          "term": "advertise",
-          "actual_lemma": "advertize"
-        },
-        {
-          "term": "advertising",
-          "actual_lemma": "advertize"
-        },
-        {
-          "term": "behaviour",
-          "actual_lemma": "behavior"
-        },
-        {
-          "term": "cycling",
-          "actual_lemma": "cycle"
-        },
-        {
-          "term": "gram",
-          "actual_lemma": "-gram"
-        },
         {
           "term": "including",
           "actual_lemma": "include"
-        },
-        {
-          "term": "jewellery",
-          "actual_lemma": "jewelry"
         },
         {
           "term": "kilometer",
           "actual_lemma": "kilometre"
         },
         {
-          "term": "media",
-          "actual_lemma": "medium"
-        },
-        {
           "term": "ourselves",
           "actual_lemma": "ourself"
         },
         {
-          "term": "skating",
-          "actual_lemma": "skate"
-        },
-        {
-          "term": "smoking",
-          "actual_lemma": "smoke"
-        },
-        {
-          "term": "surprising",
-          "actual_lemma": "surprise"
-        },
-        {
           "term": "themselves",
           "actual_lemma": "themself"
-        },
-        {
-          "term": "thought",
-          "actual_lemma": "think"
         }
       ]
     },
@@ -464,7 +382,7 @@
       "tested_words": 993,
       "passed_words": 965,
       "failed_words": 28,
-      "average_score": 59.88798368199611,
+      "average_score": 59.84132980458973,
       "min_score": 0,
       "max_score": 84.47454128440367,
       "min_requirement": 30,
@@ -472,8 +390,8 @@
       "score_distribution": {
         "0-20": 2,
         "20-40": 26,
-        "40-60": 479,
-        "60-80": 479,
+        "40-60": 481,
+        "60-80": 477,
         "80-100": 7
       },
       "failed_terms": [
@@ -647,7 +565,7 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 99.19273461150352,
+      "lemma_accuracy": 99.69727547931383,
       "lemma_mismatches": [
         {
           "term": "CV",
@@ -658,28 +576,8 @@
           "actual_lemma": "analyze"
         },
         {
-          "term": "breathing",
-          "actual_lemma": "breathe"
-        },
-        {
-          "term": "favor",
-          "actual_lemma": "favour"
-        },
-        {
-          "term": "freezing",
-          "actual_lemma": "freeze"
-        },
-        {
           "term": "groceries",
           "actual_lemma": "grocery"
-        },
-        {
-          "term": "neighborhood",
-          "actual_lemma": "neighbourhood"
-        },
-        {
-          "term": "recycling",
-          "actual_lemma": "recycle"
         }
       ]
     },
@@ -689,7 +587,7 @@
       "tested_words": 1803,
       "passed_words": 1698,
       "failed_words": 105,
-      "average_score": 57.92468324885422,
+      "average_score": 57.88739930290557,
       "min_score": 0,
       "max_score": 84.2859756097561,
       "min_requirement": 30,
@@ -697,8 +595,8 @@
       "score_distribution": {
         "0-20": 9,
         "20-40": 99,
-        "40-60": 965,
-        "60-80": 722,
+        "40-60": 967,
+        "60-80": 720,
         "80-100": 8
       },
       "failed_terms": [
@@ -1334,35 +1232,23 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 98.94209354120267,
+      "lemma_accuracy": 99.44320712694878,
       "lemma_mismatches": [
-        {
-          "term": "amusing",
-          "actual_lemma": "amuse"
-        },
         {
           "term": "colourful",
           "actual_lemma": "colorful"
         },
         {
-          "term": "convincing",
-          "actual_lemma": "convince"
+          "term": "criticize",
+          "actual_lemma": "criticise"
         },
         {
           "term": "facilities",
           "actual_lemma": "facility"
         },
         {
-          "term": "favorable",
-          "actual_lemma": "favourable"
-        },
-        {
           "term": "flavour",
           "actual_lemma": "flavor"
-        },
-        {
-          "term": "found",
-          "actual_lemma": "find"
         },
         {
           "term": "honour",
@@ -1373,16 +1259,12 @@
           "actual_lemma": "humor"
         },
         {
-          "term": "irritating",
-          "actual_lemma": "irritate"
-        },
-        {
           "term": "junior",
           "actual_lemma": "jr"
         },
         {
-          "term": "manufacturing",
-          "actual_lemma": "manufacture"
+          "term": "licence",
+          "actual_lemma": "license"
         },
         {
           "term": "panties",
@@ -1391,26 +1273,6 @@
         {
           "term": "senior",
           "actual_lemma": "I"
-        },
-        {
-          "term": "shot",
-          "actual_lemma": "shoot"
-        },
-        {
-          "term": "socialize",
-          "actual_lemma": "socialise"
-        },
-        {
-          "term": "starving",
-          "actual_lemma": "starve"
-        },
-        {
-          "term": "timing",
-          "actual_lemma": "time"
-        },
-        {
-          "term": "wound",
-          "actual_lemma": "wind"
         }
       ]
     },
@@ -1420,7 +1282,7 @@
       "tested_words": 1717,
       "passed_words": 1701,
       "failed_words": 16,
-      "average_score": 57.45320301748823,
+      "average_score": 57.4400496769441,
       "min_score": 0,
       "max_score": 81.76840277777777,
       "min_requirement": 25,
@@ -1428,8 +1290,8 @@
       "score_distribution": {
         "0-20": 7,
         "20-40": 56,
-        "40-60": 1084,
-        "60-80": 567,
+        "40-60": 1085,
+        "60-80": 566,
         "80-100": 3
       },
       "failed_terms": [
@@ -1440,10 +1302,10 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "catalogue",
+          "term": "councillor",
           "score": 0,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: catalogue (non-standard vocabulary rejected)"
+          "reason": "abandoned: word not found in Wikidata: councillor (non-standard vocabulary rejected)"
         },
         {
           "term": "enrol",
@@ -1531,51 +1393,27 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 99.35785172212492,
+      "lemma_accuracy": 99.70811441914769,
       "lemma_mismatches": [
         {
-          "term": "antisocial",
-          "actual_lemma": "anti-social"
-        },
-        {
-          "term": "councillor",
-          "actual_lemma": "councilor"
-        },
-        {
-          "term": "devastating",
-          "actual_lemma": "devastate"
+          "term": "archaeology",
+          "actual_lemma": "archeology"
         },
         {
           "term": "endeavour",
           "actual_lemma": "endeavor"
         },
         {
-          "term": "frustrating",
-          "actual_lemma": "frustrate"
-        },
-        {
-          "term": "guerrilla",
-          "actual_lemma": "guerilla"
-        },
-        {
-          "term": "labor",
-          "actual_lemma": "labour"
-        },
-        {
-          "term": "neighbouring",
-          "actual_lemma": "neighboring"
-        },
-        {
-          "term": "reassuring",
-          "actual_lemma": "reassure"
-        },
-        {
-          "term": "reorganize",
-          "actual_lemma": "reorganise"
+          "term": "organizational",
+          "actual_lemma": "organisational"
         },
         {
           "term": "underpaid",
           "actual_lemma": "underpay"
+        },
+        {
+          "term": "utilize",
+          "actual_lemma": "utilise"
         }
       ]
     },
@@ -1585,7 +1423,7 @@
       "tested_words": 611,
       "passed_words": 599,
       "failed_words": 12,
-      "average_score": 55.13268950768833,
+      "average_score": 55.1213883620255,
       "min_score": 0,
       "max_score": 77.72311827956989,
       "min_requirement": 25,
@@ -1593,8 +1431,8 @@
       "score_distribution": {
         "0-20": 2,
         "20-40": 25,
-        "40-60": 455,
-        "60-80": 129,
+        "40-60": 456,
+        "60-80": 128,
         "80-100": 0
       },
       "failed_terms": [
@@ -1672,30 +1510,8 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 99.17898193760263,
-      "lemma_mismatches": [
-        {
-          "term": "craving",
-          "actual_lemma": "crave"
-        },
-        {
-          "term": "dazzling",
-          "actual_lemma": "dazzle"
-        },
-        {
-          "term": "humiliating",
-          "actual_lemma": "humiliate"
-        },
-        {
-          "term": "loathing",
-          "actual_lemma": "loathe"
-        },
-        {
-          "term": "shortsighted",
-          "actual_lemma": "short-sighted"
-        }
-      ]
+      "lemma_accuracy": 100
     }
   ],
-  "execution_time": "1m48.080937638s"
+  "execution_time": "1m43.694822387s"
 }
