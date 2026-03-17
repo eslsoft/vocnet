@@ -154,8 +154,7 @@ func TestDictService_LookupWord_Basics(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()
@@ -192,8 +191,7 @@ func TestDictService_ListWords_Filtering(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()
@@ -382,8 +380,7 @@ func TestDictService_GetWordStats(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()
@@ -446,8 +443,7 @@ func TestDictService_ListWords_SurfaceFiltering(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()
@@ -582,8 +578,7 @@ func TestDictService_LookupWord_IrregularFlag(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()
@@ -692,8 +687,7 @@ func TestDictService_LookupWord_LemmaNotEmpty(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()
@@ -757,8 +751,7 @@ func TestDictService_LookupWord_InflectedFormAsLemma(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()
@@ -876,8 +869,7 @@ func TestDictService_CaseSensitivity(t *testing.T) {
 	client := setupTestDB(t)
 
 	snapshotRepo := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepo := repository.NewLemmaRepository(client)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := NewDictServiceServer(wordUC)
 
 	ctx := context.Background()

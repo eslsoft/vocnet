@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -23,12 +22,11 @@ type WordUsecase interface {
 
 type snapshotWordUsecase struct {
 	snapshots repository.LemmaSnapshotRepository
-	lemmas    repository.LemmaRepository
 }
 
 // NewSnapshotWordUsecase creates a WordUsecase that uses LemmaSnapshot as the data source.
-func NewSnapshotWordUsecase(snapshots repository.LemmaSnapshotRepository, lemmas repository.LemmaRepository) WordUsecase {
-	return &snapshotWordUsecase{snapshots: snapshots, lemmas: lemmas}
+func NewSnapshotWordUsecase(snapshots repository.LemmaSnapshotRepository) WordUsecase {
+	return &snapshotWordUsecase{snapshots: snapshots}
 }
 
 func (u *snapshotWordUsecase) GetLemma(ctx context.Context, lemmaID int64) (*entity.WordEntry, error) {
@@ -48,79 +46,16 @@ func (u *snapshotWordUsecase) Lookup(ctx context.Context, surface string, langua
 		return nil, entity.ErrInvalidLexemeText
 	}
 
-	// Primary path: find lemmas via forms table, pick the best match,
-	// then get its snapshot. This avoids ambiguity from shared lookup_terms.
-	if u.lemmas != nil {
-		lemmas, err := u.lemmas.ListByFormNormalized(ctx, surface, language)
-		if err == nil && len(lemmas) > 0 {
-			best := pickBestLemma(lemmas, surface)
-			snapshot, snapErr := u.snapshots.GetByLemma(ctx, best.ID)
-			if snapErr != nil {
-				return nil, fmt.Errorf("snapshot not found for lemma %q (id=%d): %w", best.Surface, best.ID, snapErr)
-			}
-			return snapshotToWordEntry(snapshot, surface), nil
-		}
+	snapshot, err := u.snapshots.GetByTerm(ctx, surface, string(language))
+	if err != nil {
+		return nil, err
 	}
-
-	// No forms match found — word not in database.
-	return nil, entity.ErrWordNotFound
+	return snapshotToWordEntry(snapshot, surface), nil
 }
 
 // pickBestLemma selects the best lemma for a given search surface.
 // Priority: prefix match (shortest base form) > exact match > most forms.
 // This ensures "living" → "live", "cheaply" → "cheap", "does" → "do".
-func pickBestLemma(lemmas []*entity.Lemma, surface string) *entity.Lemma {
-	normalized := strings.ToLower(surface)
-
-	// Filter out affix entries (e.g., "-ate", "-tion").
-	filtered := make([]*entity.Lemma, 0, len(lemmas))
-	for _, l := range lemmas {
-		if !strings.HasPrefix(l.Surface, "-") {
-			filtered = append(filtered, l)
-		}
-	}
-	if len(filtered) > 0 {
-		lemmas = filtered
-	}
-
-	// Priority 1: prefix match — base form that the search term is derived from.
-	// Prefer shorter prefix (more basic: "do" over "doe" for "does").
-	var bestPrefix *entity.Lemma
-	for _, l := range lemmas {
-		ls := strings.ToLower(l.Surface)
-		if len(ls) < len(normalized) && strings.HasPrefix(normalized, ls) {
-			if bestPrefix == nil || len(ls) < len(bestPrefix.Surface) {
-				bestPrefix = l
-			}
-		}
-	}
-	if bestPrefix != nil {
-		return bestPrefix
-	}
-
-	// Priority 2: exact match (word is its own lemma).
-	for _, l := range lemmas {
-		if strings.ToLower(l.Surface) == normalized {
-			return l
-		}
-	}
-	if bestPrefix != nil {
-		return bestPrefix
-	}
-
-	// Fallback: prefer lemma with more forms (richer = more likely the right base word).
-	// Tiebreaker: shorter surface.
-	best := lemmas[0]
-	for _, l := range lemmas[1:] {
-		if len(l.Forms) > len(best.Forms) {
-			best = l
-		} else if len(l.Forms) == len(best.Forms) && len(l.Surface) < len(best.Surface) {
-			best = l
-		}
-	}
-	return best
-}
-
 func (u *snapshotWordUsecase) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.WordEntry, int64, error) {
 	// Handle surface term lookup
 	if surfaceTerms := query.SurfaceTerms; len(surfaceTerms) > 0 {

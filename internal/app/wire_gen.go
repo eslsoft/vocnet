@@ -36,9 +36,9 @@ func Initialize() (*Container, func(), error) {
 		return nil, nil, err
 	}
 	lemmaSnapshotRepository := repository.NewLemmaSnapshotRepository(client)
-	lemmaRepository := repository.NewLemmaRepository(client)
-	wordUsecase := usecase.NewSnapshotWordUsecase(lemmaSnapshotRepository, lemmaRepository)
+	wordUsecase := usecase.NewSnapshotWordUsecase(lemmaSnapshotRepository)
 	dictServiceServer := connectrpc.NewDictServiceServer(wordUsecase)
+	lemmaRepository := repository.NewLemmaRepository(client)
 	lemmaQueryService := pipeline.NewLemmaQueryService(lemmaRepository, lemmaSnapshotRepository)
 	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
 	pipelineJobRepository := repository.NewPipelineJobRepository(client)

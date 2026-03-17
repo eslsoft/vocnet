@@ -29,17 +29,12 @@ func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
 	stageRepo repository.PipelineStageRepository,
 	logger *slog.Logger,
-	resolver ...LemmaResolver,
 ) *PipelineService {
-	svc := &PipelineService{
+	return &PipelineService{
 		jobRepo:   jobRepo,
 		stageRepo: stageRepo,
 		logger:    logger,
 	}
-	if len(resolver) > 0 {
-		svc.resolver = resolver[0]
-	}
-	return svc
 }
 
 // SetLemmaResolver sets the lemma resolver for term → lemma resolution at submission time.

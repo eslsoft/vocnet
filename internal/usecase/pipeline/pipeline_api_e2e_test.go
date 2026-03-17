@@ -57,8 +57,7 @@ func TestPipelineToAPI_IrregularAndLemma(t *testing.T) {
 
 	// Create DictService from the same database
 	snapshotRepo := repo.NewLemmaSnapshotRepository(harness.entClient)
-	lemmaRepo := repo.NewLemmaRepository(harness.entClient)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := apiconnectrpc.NewDictServiceServer(wordUC)
 
 	// Test cases: lookup various forms and verify API output
@@ -164,8 +163,7 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 	}
 
 	snapshotRepo := repo.NewLemmaSnapshotRepository(harness.entClient)
-	lemmaRepo := repo.NewLemmaRepository(harness.entClient)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := apiconnectrpc.NewDictServiceServer(wordUC)
 
 	tests := []struct {
@@ -239,8 +237,7 @@ func TestPipelineToAPI_IrregularFormLookup(t *testing.T) {
 	}
 
 	snapshotRepo := repo.NewLemmaSnapshotRepository(harness.entClient)
-	lemmaRepo := repo.NewLemmaRepository(harness.entClient)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := apiconnectrpc.NewDictServiceServer(wordUC)
 
 	tests := []struct {
@@ -337,8 +334,7 @@ func TestPipelineToAPI_StaleDataReprocessing(t *testing.T) {
 
 	// Step 4: Verify API returns correct results.
 	snapshotRepo := repo.NewLemmaSnapshotRepository(harness.entClient)
-	lemmaRepo := repo.NewLemmaRepository(harness.entClient)
-	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
 	svc := apiconnectrpc.NewDictServiceServer(wordUC)
 
 	tests := []struct {
