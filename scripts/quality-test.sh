@@ -94,7 +94,7 @@ run_test() {
 
     # Use stdbuf like original Makefile for better output buffering
     # Remove /... to avoid multi-package buffering in Go test
-    test_cmd="$test_cmd stdbuf -oL -eL go test -tags=integration -timeout=${timeout} ./internal/usecase/pipeline -run TestPipelineDataQualityGates"
+    test_cmd="$test_cmd stdbuf -oL -eL go test -tags=quality -timeout=${timeout} ./internal/usecase/pipeline -run TestPipelineDataQualityGates"
 
     # For "default" command, always use verbose to match original Makefile behavior
     if [ "$verbose" = true ] || [ "$words_per_book" -eq 0 ]; then
@@ -221,7 +221,7 @@ case "$COMMAND" in
     all)
         print_header "Running Quality Tests for ALL Wordbooks"
         PIPELINE_IT_ALL_WORDBOOKS=1 PIPELINE_IT_WORDS_PER_BOOK=0 \
-        go test -tags=integration -timeout=120m ./internal/usecase/pipeline \
+        go test -tags=quality -timeout=120m ./internal/usecase/pipeline \
             -run TestPipelineDataQualityGates $([ "$VERBOSE" = true ] && echo "-v")
         if [ $? -eq 0 ]; then
             print_success "All tests passed!"

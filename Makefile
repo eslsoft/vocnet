@@ -126,6 +126,10 @@ test-coverage: test ## Generate HTML test coverage report
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
+.PHONY: test-integration
+test-integration: ## Run integration tests (requires DB + data sources)
+	go test -v -race -tags=integration $(shell go list ./... | grep -v /hack)
+
 .PHONY: test-quality
 test-quality: ## Run pipeline quality integration tests (all words in default wordbooks)
 	@scripts/quality-test.sh default

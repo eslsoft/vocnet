@@ -1,0 +1,393 @@
+[
+  {
+    "_comment": "=== Regular verb forms ===",
+    "lemma": "walk",
+    "forms": [
+      {"surface": "walks", "irregular": false},
+      {"surface": "walked", "irregular": false},
+      {"surface": "walking", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "play",
+    "forms": [
+      {"surface": "plays", "irregular": false},
+      {"surface": "played", "irregular": false},
+      {"surface": "playing", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "talk",
+    "forms": [
+      {"surface": "talks", "irregular": false},
+      {"surface": "talked", "irregular": false},
+      {"surface": "talking", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "define",
+    "forms": [
+      {"surface": "defines", "irregular": false},
+      {"surface": "defined", "irregular": false},
+      {"surface": "defining", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "cover",
+    "forms": [
+      {"surface": "covers", "irregular": false},
+      {"surface": "covered", "irregular": false},
+      {"surface": "covering", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "start",
+    "forms": [
+      {"surface": "starts", "irregular": false},
+      {"surface": "started", "irregular": false},
+      {"surface": "starting", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "load",
+    "forms": [
+      {"surface": "loads", "irregular": false},
+      {"surface": "loaded", "irregular": false},
+      {"surface": "loading", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "perform",
+    "forms": [
+      {"surface": "performs", "irregular": false},
+      {"surface": "performed", "irregular": false},
+      {"surface": "performing", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "count",
+    "forms": [
+      {"surface": "counts", "irregular": false},
+      {"surface": "counted", "irregular": false},
+      {"surface": "counting", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "limit",
+    "forms": [
+      {"surface": "limits", "irregular": false},
+      {"surface": "limited", "irregular": false},
+      {"surface": "limiting", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "record",
+    "forms": [
+      {"surface": "records", "irregular": false},
+      {"surface": "recorded", "irregular": false},
+      {"surface": "recording", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "adjust",
+    "forms": [
+      {"surface": "adjusts", "irregular": false},
+      {"surface": "adjusted", "irregular": false},
+      {"surface": "adjusting", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "motivate",
+    "forms": [
+      {"surface": "motivates", "irregular": false},
+      {"surface": "motivated", "irregular": false},
+      {"surface": "motivating", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "satisfy",
+    "forms": [
+      {"surface": "satisfies", "irregular": false},
+      {"surface": "satisfied", "irregular": false},
+      {"surface": "satisfying", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "trade",
+    "forms": [
+      {"surface": "trades", "irregular": false},
+      {"surface": "traded", "irregular": false},
+      {"surface": "trading", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "quack",
+    "forms": [
+      {"surface": "quacks", "irregular": false},
+      {"surface": "quacked", "irregular": false},
+      {"surface": "quacking", "irregular": false}
+    ]
+  },
+  {
+    "_comment": "=== Regular noun plurals ===",
+    "lemma": "dog",
+    "forms": [
+      {"surface": "dogs", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "cat",
+    "forms": [
+      {"surface": "cats", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "book",
+    "forms": [
+      {"surface": "books", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "box",
+    "forms": [
+      {"surface": "boxes", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "church",
+    "forms": [
+      {"surface": "churches", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "baby",
+    "forms": [
+      {"surface": "babies", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "waterwheel",
+    "forms": [
+      {"surface": "waterwheels", "irregular": false}
+    ]
+  },
+  {
+    "_comment": "=== Regular adjective comparisons ===",
+    "lemma": "tall",
+    "forms": [
+      {"surface": "taller", "irregular": false},
+      {"surface": "tallest", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "happy",
+    "forms": [
+      {"surface": "happier", "irregular": false},
+      {"surface": "happiest", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "nice",
+    "forms": [
+      {"surface": "nicer", "irregular": false},
+      {"surface": "nicest", "irregular": false}
+    ]
+  },
+  {
+    "lemma": "hot",
+    "forms": [
+      {"surface": "hotter", "irregular": false},
+      {"surface": "hottest", "irregular": false}
+    ]
+  },
+  {
+    "_comment": "=== Irregular verbs — suppletive (no prefix relationship) ===",
+    "lemma": "go",
+    "forms": [
+      {"surface": "goes", "irregular": false},
+      {"surface": "going", "irregular": false},
+      {"surface": "went", "irregular": true},
+      {"surface": "gone", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "eat",
+    "forms": [
+      {"surface": "eats", "irregular": false},
+      {"surface": "eating", "irregular": false},
+      {"surface": "ate", "irregular": true},
+      {"surface": "eaten", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "take",
+    "forms": [
+      {"surface": "takes", "irregular": false},
+      {"surface": "taking", "irregular": false},
+      {"surface": "took", "irregular": true},
+      {"surface": "taken", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "drink",
+    "forms": [
+      {"surface": "drinks", "irregular": false},
+      {"surface": "drinking", "irregular": false},
+      {"surface": "drank", "irregular": true},
+      {"surface": "drunk", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "give",
+    "forms": [
+      {"surface": "gives", "irregular": false},
+      {"surface": "giving", "irregular": false},
+      {"surface": "gave", "irregular": true},
+      {"surface": "given", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "catch",
+    "forms": [
+      {"surface": "catches", "irregular": false},
+      {"surface": "catching", "irregular": false},
+      {"surface": "caught", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "buy",
+    "forms": [
+      {"surface": "buys", "irregular": false},
+      {"surface": "buying", "irregular": false},
+      {"surface": "bought", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "bring",
+    "forms": [
+      {"surface": "brings", "irregular": false},
+      {"surface": "bringing", "irregular": false},
+      {"surface": "brought", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "run",
+    "forms": [
+      {"surface": "runs", "irregular": false},
+      {"surface": "running", "irregular": false},
+      {"surface": "ran", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "write",
+    "forms": [
+      {"surface": "writes", "irregular": false},
+      {"surface": "writing", "irregular": false},
+      {"surface": "wrote", "irregular": true},
+      {"surface": "written", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "begin",
+    "forms": [
+      {"surface": "begins", "irregular": false},
+      {"surface": "beginning", "irregular": false},
+      {"surface": "began", "irregular": true},
+      {"surface": "begun", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "have",
+    "forms": [
+      {"surface": "has", "irregular": true},
+      {"surface": "having", "irregular": false},
+      {"surface": "had", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "be",
+    "forms": [
+      {"surface": "being", "irregular": false},
+      {"surface": "been", "irregular": true}
+    ]
+  },
+  {
+    "_comment": "=== Irregular nouns ===",
+    "lemma": "child",
+    "forms": [
+      {"surface": "children", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "woman",
+    "forms": [
+      {"surface": "women", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "mouse",
+    "forms": [
+      {"surface": "mice", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "goose",
+    "forms": [
+      {"surface": "geese", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "ox",
+    "forms": [
+      {"surface": "oxen", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "foot",
+    "forms": [
+      {"surface": "feet", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "tooth",
+    "forms": [
+      {"surface": "teeth", "irregular": true}
+    ]
+  },
+  {
+    "_comment": "=== Irregular noun — zero plural ===",
+    "lemma": "sheep",
+    "forms": [
+      {"surface": "sheep", "irregular": true}
+    ]
+  },
+  {
+    "_comment": "=== Irregular adjective comparisons ===",
+    "lemma": "good",
+    "forms": [
+      {"surface": "goods", "irregular": false},
+      {"surface": "better", "irregular": true},
+      {"surface": "best", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "bad",
+    "forms": [
+      {"surface": "worse", "irregular": true},
+      {"surface": "worst", "irregular": true}
+    ]
+  },
+  {
+    "_comment": "=== Irregular demonstratives ===",
+    "lemma": "that",
+    "forms": [
+      {"surface": "those", "irregular": true}
+    ]
+  },
+  {
+    "lemma": "this",
+    "forms": [
+      {"surface": "these", "irregular": true}
+    ]
+  }
+]

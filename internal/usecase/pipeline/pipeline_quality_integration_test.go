@@ -1,10 +1,9 @@
-//go:build integration
+//go:build quality
 
 package pipeline_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"math"
@@ -18,27 +17,12 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	"github.com/eslsoft/vocnet/internal/adapter/provider"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/cefrj"
-	"github.com/eslsoft/vocnet/internal/adapter/provider/contrib"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/llm"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/moby"
 	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
-	repo "github.com/eslsoft/vocnet/internal/adapter/repository"
-	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
-	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
-	"github.com/eslsoft/vocnet/internal/infrastructure/datasource"
-	"github.com/eslsoft/vocnet/internal/repository"
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/collection"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/evaluation"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/integration"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/persist"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/scoring"
-	"github.com/eslsoft/vocnet/internal/usecase/pipeline/snapshot"
 	"github.com/eslsoft/vocnet/pkg/wordbook"
 	"github.com/stretchr/testify/require"
 )
@@ -65,166 +49,6 @@ func TestPipelineDataQualityGates(t *testing.T) {
 	})
 }
 
-type qualityHarness struct {
-	pipeline     *pipeline.VocnetPipeline
-	svc          *pipeline.PipelineService
-	jobRepo      repository.PipelineJobRepository
-	entClient    *entdb.Client
-	snapshotRepo repository.LemmaSnapshotRepository
-}
-
-// newPipelineQualityHarnessForWordbook creates a dedicated harness with isolated database for a wordbook
-func newPipelineQualityHarnessForWordbook(
-	t *testing.T,
-	cfg *config.Config,
-	logger *slog.Logger,
-	llmProvider llm.Provider,
-	wordbookName string,
-	registry *pipeline.SourceRegistry,
-	wikidataReader *wikidata.Reader,
-) *qualityHarness {
-	t.Helper()
-
-	// Use a unique database file for this wordbook to avoid SQLite concurrency issues
-	dbPath := resolvePipelineQualityDBPathForWordbook(t, wordbookName)
-	require.NoError(t, resetSQLiteDBFiles(dbPath))
-
-	dsn := "file:" + dbPath + "?_fk=1&cache=shared&_busy_timeout=5000"
-	rawDB, err := sql.Open("sqlite", dsn)
-	require.NoError(t, err)
-	_, err = rawDB.Exec("PRAGMA foreign_keys = ON")
-	require.NoError(t, err)
-	_, err = rawDB.Exec("PRAGMA journal_mode = WAL") // Use WAL mode for better concurrency
-	require.NoError(t, err)
-	drv := entsql.OpenDB(dialect.SQLite, rawDB)
-	entClient := entdb.NewClient(entdb.Driver(drv))
-	require.NoError(t, entClient.Schema.Create(context.Background()))
-	t.Cleanup(func() { _ = entClient.Close() })
-
-	// Create repositories for this wordbook's database
-	lemmaRepo := repo.NewLemmaRepository(entClient)
-	lexemeRepo := repo.NewLexemeRepository(entClient)
-	evidenceRepo := repo.NewEvidenceRepository(entClient)
-	relationRepo := repo.NewSemanticRelationRepository(entClient)
-	snapshotRepo := repo.NewLemmaSnapshotRepository(entClient)
-	stageRepo := repo.NewPipelineStageRepository(entClient)
-	jobRepo := repo.NewPipelineJobRepository(entClient)
-
-	persistence := persist.NewPersistence(lemmaRepo, lexemeRepo, evidenceRepo, relationRepo, snapshotRepo, logger)
-	validator := pipeline.NewValidator(logger)
-
-	// Build stages using the shared registry and readers
-	scorer := scoring.NewRuleBasedScorer()
-	stages := buildQualityTestStages(registry, wikidataReader, llmProvider, scorer, logger)
-
-	evaluator := scoring.NewDataEvaluator(scorer, logger)
-	p := pipeline.NewVocnetPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
-
-	svc := pipeline.NewPipelineService(jobRepo, stageRepo, logger)
-	svc.SetLemmaResolver(wikidata.NewLemmaResolver(wikidataReader))
-
-	return &qualityHarness{pipeline: p, svc: svc, jobRepo: jobRepo, entClient: entClient, snapshotRepo: snapshotRepo}
-}
-
-// buildQualityTestStages constructs pipeline stages for quality testing
-func buildQualityTestStages(
-	registry *pipeline.SourceRegistry,
-	wikidataProvider provider.WikidataProvider,
-	llmProvider llm.Provider,
-	scorer *scoring.RuleBasedScorer,
-	logger *slog.Logger,
-) []*pipeline.Stage {
-	collectionProcessors := []pipeline.Processor{
-		collection.NewWikidataProcessor(wikidataProvider, logger),
-	}
-	for _, src := range registry.Sources() {
-		collectionProcessors = append(collectionProcessors,
-			collection.NewGenericSourceProcessor(src, logger))
-	}
-	collectionStage := pipeline.NewConcurrentStage(
-		string(pipeline.PhaseCollection),
-		1,
-		collectionProcessors...,
-	)
-
-	// Phase 1.5: LLM Enrichment
-	var llmEnrichment *pipeline.Stage
-	if llmProvider != nil {
-		llmEnrichment = pipeline.NewStage(
-			string(pipeline.PhaseCollection),
-			2,
-			collection.NewLLMEnrichmentProcessor(llmProvider, logger),
-		)
-	}
-
-	evaluationStage := pipeline.NewStage(
-		string(pipeline.PhaseEvaluation),
-		3,
-		evaluation.NewFragmentEvaluator(scorer, logger),
-	)
-
-	integrationStage := pipeline.NewStage(
-		string(pipeline.PhaseIntegration),
-		4,
-		integration.NewIntegrationProcessor(logger),
-	)
-
-	snapshotStage := pipeline.NewStage(
-		string(pipeline.PhaseSnapshot),
-		5,
-		snapshot.NewLemmaSnapshotProcessor(),
-	)
-
-	stages := []*pipeline.Stage{collectionStage}
-	if llmEnrichment != nil {
-		stages = append(stages, llmEnrichment)
-	}
-	stages = append(stages, evaluationStage, integrationStage, snapshotStage)
-
-	return stages
-}
-
-type runWordResult struct {
-	Score       float64
-	LemmaSurface string // resolved lemma surface
-}
-
-func (h *qualityHarness) runWord(ctx context.Context, term string) (*runWordResult, error) {
-	// Use PipelineService.SubmitJob — same path as production.
-	// This resolves the term to canonical lemma surface(s) and creates job(s).
-	jobs, err := h.svc.SubmitJob(ctx, term, "en", 2, "")
-	if err != nil {
-		return nil, fmt.Errorf("submit %q: %w", term, err)
-	}
-
-	// Run all resolved jobs (a term may resolve to multiple lemmas).
-	var lastResult *pipeline.ProcessWordResult
-	for _, job := range jobs {
-		if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusRunning, ""); err != nil {
-			return nil, fmt.Errorf("mark job running: %w", err)
-		}
-		result, err := h.pipeline.Run(ctx, job.ID, job.Term, "en", 2, nil)
-		if err != nil {
-			_ = h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
-			return nil, err
-		}
-		_ = h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
-		lastResult = result
-	}
-
-	if lastResult == nil || lastResult.LemmaSnapshot == nil {
-		return nil, fmt.Errorf("snapshot missing for term %q", term)
-	}
-	lemmaSurface := ""
-	if lastResult.Lemma != nil {
-		lemmaSurface = lastResult.Lemma.Surface
-	}
-	return &runWordResult{
-		Score:        lastResult.LemmaSnapshot.Quality.Overall,
-		LemmaSurface: lemmaSurface,
-	}, nil
-}
-
 type stageRequirement struct {
 	name            string
 	terms           []string
@@ -244,9 +68,6 @@ type stageReport struct {
 
 func runRawQualityStages(t *testing.T, ctx context.Context, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider) {
 	t.Helper()
-
-	// Skip the strict pre-defined stages for now, go directly to wordbook testing
-	// This allows the test to pass and generate baseline reports
 	runBuiltinWordbookStage(t, ctx, cfg, logger, llmProvider, 0)
 }
 
@@ -270,10 +91,8 @@ func runLLMCleanedQualityStages(t *testing.T, ctx context.Context, cfg *config.C
 		},
 	}
 
-	// Note: These stages would need a harness if enabled
 	_ = stages
 
-	// LLM 清洗后，词书阶段要求整体额外 +5 分。
 	runBuiltinWordbookStage(t, ctx, cfg, logger, llmProvider, 5)
 }
 
@@ -336,19 +155,17 @@ func runBuiltinWordbookStage(t *testing.T, ctx context.Context, cfg *config.Conf
 	startTime := time.Now()
 
 	books := selectBuiltinWordbooksForQualityGate(t)
-	wordsPerBook := envInt("PIPELINE_IT_WORDS_PER_BOOK", 0) // 0 = test all words
+	wordsPerBook := envInt("PIPELINE_IT_WORDS_PER_BOOK", 0)
 
 	t.Logf("[quality] testing %d wordbooks with %d words per book (0=all)", len(books), wordsPerBook)
 
 	report := runWordbooksInParallel(t, ctx, cfg, logger, llmProvider, books, wordsPerBook, llmBoost)
 	report.ExecutionTime = time.Since(startTime).String()
 
-	// Save reports
 	if err := saveQualityReports(t, report); err != nil {
 		t.Logf("failed to save quality reports: %v", err)
 	}
 
-	// Validate hard gates
 	failedBooks := make([]string, 0)
 	for _, bookReport := range report.BookReports {
 		if bookReport.Status == "failed" || bookReport.Status == "error" {
@@ -404,7 +221,6 @@ func selectBuiltinWordbooksForQualityGate(t *testing.T) []builtinBookRequirement
 		return out
 	}
 
-	// 默认测试所有 CEFR 词书（A1-C2 完整覆盖）
 	names := []string{"CEFR-A1", "CEFR-A2", "CEFR-B1", "CEFR-B2", "CEFR-C1", "CEFR-C2"}
 	out := make([]builtinBookRequirement, 0, len(names))
 	for _, name := range names {
@@ -417,17 +233,15 @@ func selectBuiltinWordbooksForQualityGate(t *testing.T) []builtinBookRequirement
 func classifyWordbookQualityThreshold(name string) (minAvg float64, targetAvg float64) {
 	n := strings.ToUpper(strings.TrimSpace(name))
 
-	// Adjusted thresholds based on current pipeline quality
-	// These are realistic baselines that can be improved over time
 	switch {
 	case strings.Contains(n, "CEFR-A1"), strings.Contains(n, "CEFR-A2"), strings.Contains(n, "OXFORD 3000"):
-		return 35, 50 // Beginner words should have better coverage
+		return 35, 50
 	case strings.Contains(n, "CEFR-B1"), strings.Contains(n, "CEFR-B2"), strings.Contains(n, "OXFORD 5000"),
 		strings.Contains(n, "CET4"), strings.Contains(n, "IELTS"), strings.Contains(n, "TOEFL"), strings.Contains(n, "SAT"):
-		return 30, 45 // Intermediate words
+		return 30, 45
 	case strings.Contains(n, "CEFR-C1"), strings.Contains(n, "CEFR-C2"), strings.Contains(n, "CET6"),
 		strings.Contains(n, "GRE"), strings.Contains(n, "GMAT"):
-		return 25, 40 // Advanced words may have less comprehensive data
+		return 25, 40
 	default:
 		return 30, 45
 	}
@@ -442,61 +256,6 @@ func builtinWordbookTerms(name string) ([]string, bool) {
 	return nil, false
 }
 
-func requirePipelineSources(t *testing.T, cfg *config.Config, logger *slog.Logger) {
-	t.Helper()
-
-	downloader := datasource.NewDownloader(cfg.Pipeline.CacheDir, logger)
-	mgr := datasource.NewManager(logger)
-	mgr.Register(wikidata.NewSource(cfg.Pipeline.DataDir, downloader, logger))
-	mgr.Register(moby.NewSource(cfg.Pipeline.DataDir, downloader, logger))
-	mgr.Register(cefrj.NewSource(cfg.Pipeline.DataDir, downloader, logger))
-
-	err := mgr.EnsureAvailable(context.Background(), "wikidata", "moby", "cefrj")
-	if err != nil {
-		t.Skipf("pipeline quality integration requires local data sources under %s: %v", cfg.Pipeline.DataDir, err)
-	}
-}
-
-func mustLoadPipelineQualityConfig(t *testing.T) *config.Config {
-	t.Helper()
-
-	cfg, err := config.Load()
-	require.NoError(t, err)
-
-	if !filepath.IsAbs(cfg.Pipeline.DataDir) {
-		repoRoot, findErr := findRepoRoot(t)
-		require.NoError(t, findErr)
-		cfg.Pipeline.DataDir = filepath.Join(repoRoot, cfg.Pipeline.DataDir)
-	}
-
-	if custom := strings.TrimSpace(os.Getenv("PIPELINE_IT_DATA_DIR")); custom != "" {
-		cfg.Pipeline.DataDir = custom
-	}
-	return cfg
-}
-
-func findRepoRoot(t *testing.T) (string, error) {
-	if t != nil {
-		t.Helper()
-	}
-
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("go.mod not found from cwd %s", dir)
-		}
-		dir = parent
-	}
-}
-
 func newOpenAIProviderFromEnv(t *testing.T, cfg *config.Config) llm.Provider {
 	t.Helper()
 
@@ -504,8 +263,6 @@ func newOpenAIProviderFromEnv(t *testing.T, cfg *config.Config) llm.Provider {
 		t.Skip("LLM_API_KEY 未设置")
 	}
 
-	// NOTE: 这里只返回最小可用 Provider 壳，等 llm_cleaned 阶段启用后再接入缓存仓库。
-	// 当前测试已 Skip，不会走到这里。
 	return &noopLLMProvider{}
 }
 
@@ -568,50 +325,6 @@ func envInt(key string, defaultValue int) int {
 	return v
 }
 
-var _ provider.WikidataProvider = (*wikidata.Reader)(nil)
-
-func resolvePipelineQualityDBPath(t *testing.T) string {
-	t.Helper()
-
-	if custom := strings.TrimSpace(os.Getenv("PIPELINE_IT_DB_PATH")); custom != "" {
-		if filepath.IsAbs(custom) {
-			return custom
-		}
-		repoRoot, err := findRepoRoot(t)
-		require.NoError(t, err)
-		return filepath.Join(repoRoot, custom)
-	}
-
-	repoRoot, err := findRepoRoot(t)
-	require.NoError(t, err)
-	return filepath.Join(repoRoot, "data", "integration", "pipeline-quality-integration.db")
-}
-
-func resolvePipelineQualityDBPathForWordbook(t *testing.T, wordbookName string) string {
-	t.Helper()
-
-	baseDir := filepath.Dir(resolvePipelineQualityDBPath(t))
-	// Sanitize wordbook name for filename
-	safeName := strings.ReplaceAll(strings.ToLower(wordbookName), " ", "-")
-	return filepath.Join(baseDir, fmt.Sprintf("pipeline-quality-%s.db", safeName))
-}
-
-func resetSQLiteDBFiles(dbPath string) error {
-	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create db dir: %w", err)
-	}
-
-	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
-		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove %s: %w", p, err)
-		}
-	}
-	return nil
-}
-
-// runWordbooksInParallel runs quality tests for all wordbooks in parallel
-// Each wordbook gets its own database to avoid SQLite concurrency issues
 func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Config, logger *slog.Logger, llmProvider llm.Provider, books []builtinBookRequirement, wordsPerBook int, llmBoost float64) *pipeline.QualityReport {
 	t.Helper()
 
@@ -631,7 +344,6 @@ func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Confi
 	registry.Register(moby.NewSourceProvider(mobyReader))
 	registry.Register(cefrj.NewSourceProvider(cefrjReader))
 
-	// --- Contrib sources (ECDICT, ConceptNet, WordNet, etc.) ---
 	loadTestContribSources(ctx, registry, logger)
 	t.Cleanup(func() { registry.CloseAll() })
 
@@ -647,7 +359,6 @@ func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Confi
 		go func(idx int, bookReq builtinBookRequirement) {
 			defer wg.Done()
 
-			// Create a dedicated harness for this wordbook to avoid database conflicts
 			harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, llmProvider, bookReq.name, registry, wikidataReader)
 			bookReport := runWordbookQualityTest(t, ctx, harness, bookReq, wordsPerBook, llmBoost)
 
@@ -661,7 +372,6 @@ func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Confi
 	wg.Wait()
 	t.Logf("[quality] all wordbooks completed in %v", time.Since(startTime))
 
-	// Aggregate results
 	report := &pipeline.QualityReport{
 		Timestamp:   time.Now(),
 		TotalBooks:  len(books),
@@ -692,7 +402,6 @@ func runWordbooksInParallel(t *testing.T, ctx context.Context, cfg *config.Confi
 	return report
 }
 
-// runWordbookQualityTest runs quality test for a single wordbook
 func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness, req builtinBookRequirement, wordsPerBook int, llmBoost float64) pipeline.WordbookQualityReport {
 	t.Helper()
 
@@ -734,7 +443,6 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 		"80-100": 0,
 	}
 
-	// Lemma accuracy tracking
 	lemmaChecked := 0
 	lemmaCorrect := 0
 	var lemmaMismatches []pipeline.LemmaMismatch
@@ -742,23 +450,16 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	minAverage := req.minAverageScore + llmBoost
 	targetAverage := req.targetAverage + llmBoost
 
-	// Test words serially within the wordbook
-	// SQLite cannot reliably handle concurrent writes even with WAL mode and semaphores
-	// Wordbook-level parallelism (different databases) still provides good performance
-
-	progressInterval := max(1, len(terms)/10) // Log every 10% progress
+	progressInterval := max(1, len(terms)/10)
 	testStartTime := time.Now()
 
 	for i, term := range terms {
-		// Fast test (small word list): log every word
-		// Full test: log only at percentage intervals to keep output clean
 		if wordsPerBook > 0 {
 			fmt.Fprintf(os.Stderr, "[quality] [%s] testing %d/%d: %s\n", req.name, i+1, len(terms), term)
 		}
 
 		wordResult, err := h.runWord(ctx, term)
 		if err != nil {
-			// If abandoned due to missing Wikidata (our source of truth), treat as 0 score
 			if strings.Contains(err.Error(), "Wikidata") {
 				failedTerms = append(failedTerms, pipeline.FailedTerm{
 					Term:           term,
@@ -777,11 +478,9 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 		score := wordResult.Score
 		scores = append(scores, score)
 
-		// Update distribution
 		bucket := getScoreBucket(score)
 		scoreDistribution[bucket]++
 
-		// Track failed terms
 		if score < minAverage {
 			failedTerms = append(failedTerms, pipeline.FailedTerm{
 				Term:           term,
@@ -791,31 +490,24 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 			})
 		}
 
-		// Lemma accuracy: the resolved lemma must be a prefix of the term.
-		// Wordbook terms are base forms, so lemma should equal term (lemmaSurface == "").
-		// If lemma differs, it must at least be a prefix (e.g., term "limits" → lemma "limit").
 		lemmaChecked++
 		termLower := strings.ToLower(term)
 		if wordResult.LemmaSurface == "" || strings.EqualFold(wordResult.LemmaSurface, term) {
-			// Term is the lemma itself — correct
 			lemmaCorrect++
 		} else if strings.HasPrefix(termLower, strings.ToLower(wordResult.LemmaSurface)) {
-			// Lemma is a prefix of term — correct (e.g., "limit" → "limits")
 			lemmaCorrect++
 		} else {
 			lemmaMismatches = append(lemmaMismatches, pipeline.LemmaMismatch{
-				Term:         term,
-				ActualLemma:  wordResult.LemmaSurface,
+				Term:        term,
+				ActualLemma: wordResult.LemmaSurface,
 			})
 		}
 
-		// Progress logging: print every 10% for full tests, or every word for small lists
 		if (i+1)%progressInterval == 0 || i == len(terms)-1 {
 			progress := float64(i+1) / float64(len(terms)) * 100
 			elapsed := time.Since(testStartTime)
 			eta := time.Duration(float64(elapsed) * (float64(len(terms)) - float64(i+1)) / float64(i+1))
 
-			// Use stderr for real-time visibility
 			fmt.Fprintf(os.Stderr, "[quality] [%s] progress %.1f%% (%d/%d) - avg: %.2f, elapsed: %v, eta: %v\n",
 				req.name, progress, i+1, len(terms), average(scores), elapsed.Round(time.Second), eta.Round(time.Second))
 		}
@@ -874,7 +566,6 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	}
 }
 
-// saveQualityReports saves the quality report in multiple formats
 func saveQualityReports(t *testing.T, report *pipeline.QualityReport) error {
 	t.Helper()
 
@@ -888,20 +579,17 @@ func saveQualityReports(t *testing.T, report *pipeline.QualityReport) error {
 		return fmt.Errorf("create report dir: %w", err)
 	}
 
-	// Save JSON report
 	jsonPath := filepath.Join(reportDir, "latest.json")
 	if err := report.SaveAsJSON(jsonPath); err != nil {
 		return fmt.Errorf("save JSON report: %w", err)
 	}
 
-	// Save markdown report
 	mdPath := filepath.Join(reportDir, "latest.md")
 	markdown := report.GenerateMarkdown()
 	if err := os.WriteFile(mdPath, []byte(markdown), 0644); err != nil {
 		return fmt.Errorf("save markdown report: %w", err)
 	}
 
-	// Compare with baseline if it exists
 	baselineDir := filepath.Join(repoRoot, "testdata", "baselines", "quality")
 	baselinePath := filepath.Join(baselineDir, "baseline.json")
 	if _, err := os.Stat(baselinePath); err == nil {
@@ -958,70 +646,4 @@ func max(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// loadTestContribSources discovers and starts contrib source processes for testing.
-// Scans the contrib/sources directory for executable files (auto-discovery).
-func loadTestContribSources(ctx context.Context, registry *pipeline.SourceRegistry, logger *slog.Logger) {
-	contribDir := "contrib/sources"
-	startTime := time.Now()
-
-	// Resolve relative to repo root
-	repoRoot, err := findRepoRoot(nil)
-	if err == nil {
-		contribDir = filepath.Join(repoRoot, contribDir)
-		absDataDir := filepath.Join(repoRoot, "data")
-		os.Setenv("PIPELINE_DATA_DIR", absDataDir)
-	}
-
-	logger.Debug("discovering contrib sources", "dir", contribDir)
-
-	entries, err := os.ReadDir(contribDir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			logger.Warn("failed to read contrib sources directory", "dir", contribDir, "error", err)
-		}
-		return
-	}
-
-	loadedCount := 0
-	var loadedNames []string
-	for _, entry := range entries {
-		// Skip directories and hidden files
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-
-		// Skip Python source files (not executables)
-		if strings.HasSuffix(entry.Name(), ".py") {
-			continue
-		}
-
-		execPath := filepath.Join(contribDir, entry.Name())
-
-		// Check if file is executable
-		info, err := entry.Info()
-		if err != nil {
-			logger.Warn("failed to get file info", "path", execPath, "error", err)
-			continue
-		}
-
-		if info.Mode()&0111 == 0 {
-			continue
-		}
-
-		sp, err := contrib.NewProcessSourceProvider(ctx, execPath, nil, logger)
-		if err != nil {
-			logger.Warn("failed to start contrib source", "path", execPath, "error", err)
-			continue
-		}
-
-		registry.Register(sp)
-		loadedCount++
-		loadedNames = append(loadedNames, sp.Manifest().Name)
-	}
-
-	totalElapsed := time.Since(startTime)
-	fmt.Fprintf(os.Stderr, "[quality] contrib sources loaded: %d (%s) in %v\n",
-		loadedCount, strings.Join(loadedNames, ", "), totalElapsed)
 }
