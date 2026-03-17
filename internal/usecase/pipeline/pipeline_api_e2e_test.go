@@ -146,14 +146,16 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 	harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, nil, "inflected-only-test", registry, wikidataReader)
 
 	// Submit inflected forms directly, WITHOUT processing base lemmas first.
-	// These are real production failures from stale data.
-	// NOTE: Only includes forms with prefix relationship to their base lemma.
-	// Suppletive/irregular forms (went→go, mice→mouse) require the base lemma
-	// to be processed first, so they are tested separately.
+	// Only includes forms with prefix relationship to their base lemma.
+	// Suppletive/irregular forms (went→go, mice→mouse) are tested separately.
 	inflected := []string{
 		"goods", "working", "records", "ones", "adjusts", "eating",
 		"others", "begins", "cats", "behaviors", "writes", "motivates", "satisfying",
 		"bigger", "oxen",
+		// User-reported words
+		"trades", "quacked", "waterwheels",
+		// Regular -s, -ed, -ing forms
+		"plays", "played", "walks", "talked", "dogs",
 	}
 	for _, word := range inflected {
 		_, err := harness.runWord(ctx, word)
@@ -185,6 +187,14 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 		{query: "satisfying", wantLemma: "satisfy"},
 		{query: "bigger", wantLemma: "big"},
 		{query: "oxen", wantLemma: "ox"},
+		{query: "trades", wantLemma: "trade"},
+		{query: "quacked", wantLemma: "quack"},
+		{query: "waterwheels", wantLemma: "waterwheel"},
+		{query: "plays", wantLemma: "play"},
+		{query: "played", wantLemma: "play"},
+		{query: "walks", wantLemma: "walk"},
+		{query: "talked", wantLemma: "talk"},
+		{query: "dogs", wantLemma: "dog"},
 	}
 
 	for _, tt := range tests {
@@ -224,10 +234,11 @@ func TestPipelineToAPI_IrregularFormLookup(t *testing.T) {
 	// Process base lemmas first, then their irregular forms.
 	allWords := []string{
 		"do", "go", "eat", "take", "drink", "give", "come", "catch", "buy", "bring",
-		"that", "this", "mouse", "goose",
+		"that", "this", "mouse", "goose", "be", "have", "run", "child", "woman",
 		"does", "went", "ate", "took", "drank", "gave", "came",
 		"caught", "bought", "brought",
 		"those", "these", "mice", "geese",
+		"was", "were", "am", "been", "had", "ran", "children", "women",
 	}
 	for _, word := range allWords {
 		_, err := harness.runWord(ctx, word)
@@ -246,8 +257,7 @@ func TestPipelineToAPI_IrregularFormLookup(t *testing.T) {
 	}{
 		{query: "does", wantLemma: "do"},
 		{query: "went", wantLemma: "go"},
-		// TODO: "ate" fails because Wikidata suffix "-ate" interferes with form lookup.
-		// {query: "ate", wantLemma: "eat"},
+		{query: "ate", wantLemma: "eat"},
 		{query: "took", wantLemma: "take"},
 		{query: "drank", wantLemma: "drink"},
 		{query: "gave", wantLemma: "give"},
@@ -259,6 +269,14 @@ func TestPipelineToAPI_IrregularFormLookup(t *testing.T) {
 		{query: "these", wantLemma: "this"},
 		{query: "mice", wantLemma: "mouse"},
 		{query: "geese", wantLemma: "goose"},
+		// be/have suppletive forms
+		// NOTE: was/were/am skip due to Wikidata upstream data conflicts
+		// ("am" is also a form of lemma "I", "was" conflicts with other lemmas)
+		{query: "been", wantLemma: "be"},
+		{query: "had", wantLemma: "have"},
+		{query: "ran", wantLemma: "run"},
+		{query: "children", wantLemma: "child"},
+		{query: "women", wantLemma: "woman"},
 	}
 
 	for _, tt := range tests {
