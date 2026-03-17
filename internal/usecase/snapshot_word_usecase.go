@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -54,27 +55,24 @@ func (u *snapshotWordUsecase) Lookup(ctx context.Context, surface string, langua
 		if err == nil && len(lemmas) > 0 {
 			best := pickBestLemma(lemmas, surface)
 			snapshot, snapErr := u.snapshots.GetByLemma(ctx, best.ID)
-			if snapErr == nil {
-				return snapshotToWordEntry(snapshot, surface), nil
+			if snapErr != nil {
+				return nil, fmt.Errorf("snapshot not found for lemma %q (id=%d): %w", best.Surface, best.ID, snapErr)
 			}
+			return snapshotToWordEntry(snapshot, surface), nil
 		}
 	}
 
-	// Fallback: search by lookup_terms in snapshot.
-	snapshot, err := u.snapshots.GetByTerm(ctx, surface, string(language))
-	if err != nil {
-		return nil, err
-	}
-	return snapshotToWordEntry(snapshot, surface), nil
+	// No forms match found — word not in database.
+	return nil, entity.ErrWordNotFound
 }
 
 // pickBestLemma selects the best lemma for a given search surface.
-// Priority: exact surface match > prefix match (shortest) > most forms.
+// Priority: prefix match (shortest base form) > exact match > most forms.
+// This ensures "living" → "live", "cheaply" → "cheap", "does" → "do".
 func pickBestLemma(lemmas []*entity.Lemma, surface string) *entity.Lemma {
 	normalized := strings.ToLower(surface)
 
-	// Filter out affix entries (e.g., "-ate", "-tion") — they should never
-	// win over real word lemmas.
+	// Filter out affix entries (e.g., "-ate", "-tion").
 	filtered := make([]*entity.Lemma, 0, len(lemmas))
 	for _, l := range lemmas {
 		if !strings.HasPrefix(l.Surface, "-") {
@@ -85,22 +83,25 @@ func pickBestLemma(lemmas []*entity.Lemma, surface string) *entity.Lemma {
 		lemmas = filtered
 	}
 
-	// Exact match.
-	for _, l := range lemmas {
-		if strings.ToLower(l.Surface) == normalized {
-			return l
-		}
-	}
-
-	// Prefix match: lemma surface is a prefix of the search term.
-	// Prefer shorter prefix (more basic word form: "do" over "doe" for "does").
+	// Priority 1: prefix match — base form that the search term is derived from.
+	// Prefer shorter prefix (more basic: "do" over "doe" for "does").
 	var bestPrefix *entity.Lemma
 	for _, l := range lemmas {
 		ls := strings.ToLower(l.Surface)
-		if strings.HasPrefix(normalized, ls) {
+		if len(ls) < len(normalized) && strings.HasPrefix(normalized, ls) {
 			if bestPrefix == nil || len(ls) < len(bestPrefix.Surface) {
 				bestPrefix = l
 			}
+		}
+	}
+	if bestPrefix != nil {
+		return bestPrefix
+	}
+
+	// Priority 2: exact match (word is its own lemma).
+	for _, l := range lemmas {
+		if strings.ToLower(l.Surface) == normalized {
+			return l
 		}
 	}
 	if bestPrefix != nil {
