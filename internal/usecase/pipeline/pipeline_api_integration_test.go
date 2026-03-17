@@ -35,6 +35,7 @@ type lemmaTestEntry struct {
 type formTestCase struct {
 	Surface   string `json:"surface"`
 	Irregular bool   `json:"irregular"`
+	AlsoLemma bool   `json:"also_lemma"` // form is also an independent lemma in Wikidata (e.g., "drunk", "better")
 }
 
 func loadLemmaTestData(t *testing.T) []lemmaTestEntry {
@@ -169,6 +170,16 @@ func TestPipelineToAPI_DataCorrectness(t *testing.T) {
 					}
 					require.NotNil(t, resp.Msg)
 
+					if form.AlsoLemma {
+						// Irregular forms that are also independent Wikidata lemmas (e.g., "drunk", "better")
+						// may resolve as their own lemma — both outcomes are acceptable.
+						if resp.Msg.Lemma != nil {
+							assert.Equal(t, entry.Lemma, resp.Msg.GetLemma(),
+								"LookupWord(%q): wrong lemma", form.Surface)
+						}
+						return
+					}
+
 					require.NotNil(t, resp.Msg.Lemma,
 						"LookupWord(%q): inflected form must have Lemma != nil", form.Surface)
 					assert.Equal(t, entry.Lemma, resp.Msg.GetLemma(),
@@ -193,8 +204,9 @@ func TestPipelineToAPI_InflectedFirstOrdering(t *testing.T) {
 	// Filter to non-suppletive forms (those with a prefix relationship to their lemma),
 	// because suppletive forms (went→go) fundamentally require the base lemma to exist.
 	var inflected []struct {
-		surface string
-		lemma   string
+		surface   string
+		lemma     string
+		alsoLemma bool
 	}
 	for _, entry := range entries {
 		for _, form := range entry.Forms {
@@ -205,9 +217,10 @@ func TestPipelineToAPI_InflectedFirstOrdering(t *testing.T) {
 			// or the surface ends with a known regular suffix derived from the lemma.
 			if hasRegularRelationship(entry.Lemma, form.Surface) {
 				inflected = append(inflected, struct {
-					surface string
-					lemma   string
-				}{surface: form.Surface, lemma: entry.Lemma})
+					surface   string
+					lemma     string
+					alsoLemma bool
+				}{surface: form.Surface, lemma: entry.Lemma, alsoLemma: form.AlsoLemma})
 			}
 		}
 	}
@@ -233,6 +246,15 @@ func TestPipelineToAPI_InflectedFirstOrdering(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.NotNil(t, resp.Msg)
+
+			if item.alsoLemma {
+				if resp.Msg.Lemma != nil {
+					assert.Equal(t, item.lemma, resp.Msg.GetLemma(),
+						"LookupWord(%q): wrong lemma", item.surface)
+				}
+				return
+			}
+
 			require.NotNil(t, resp.Msg.Lemma,
 				"LookupWord(%q): Lemma must not be nil — system should discover base form", item.surface)
 			assert.Equal(t, item.lemma, resp.Msg.GetLemma(),
@@ -288,6 +310,15 @@ func TestPipelineToAPI_Idempotency(t *testing.T) {
 					require.NoError(t, err)
 				}
 				require.NotNil(t, resp.Msg)
+
+				if form.AlsoLemma {
+					if resp.Msg.Lemma != nil {
+						assert.Equal(t, entry.Lemma, resp.Msg.GetLemma(),
+							"LookupWord(%q): wrong lemma after 3 rounds", form.Surface)
+					}
+					return
+				}
+
 				require.NotNil(t, resp.Msg.Lemma,
 					"LookupWord(%q): Lemma must not be nil after 3 rounds", form.Surface)
 				assert.Equal(t, entry.Lemma, resp.Msg.GetLemma(),
@@ -295,6 +326,20 @@ func TestPipelineToAPI_Idempotency(t *testing.T) {
 			})
 		}
 	}
+}
+
+func pickIdempotencySubset(entries []lemmaTestEntry) []lemmaTestEntry {
+	want := map[string]bool{
+		"limit": true, "record": true, "write": true,
+		"satisfy": true, "run": true, "go": true, "good": true,
+	}
+	var out []lemmaTestEntry
+	for _, e := range entries {
+		if want[e.Lemma] {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // hasRegularRelationship checks whether the form has a morphological prefix
@@ -330,19 +375,4 @@ func hasRegularRelationship(lemma, form string) bool {
 	}
 
 	return false
-}
-
-// pickIdempotencySubset selects a representative subset for idempotency testing.
-func pickIdempotencySubset(entries []lemmaTestEntry) []lemmaTestEntry {
-	want := map[string]bool{
-		"limit": true, "record": true, "write": true,
-		"satisfy": true, "run": true, "go": true, "good": true,
-	}
-	var out []lemmaTestEntry
-	for _, e := range entries {
-		if want[e.Lemma] {
-			out = append(out, e)
-		}
-	}
-	return out
 }

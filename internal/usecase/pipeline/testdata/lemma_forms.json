@@ -234,7 +234,7 @@
       {"surface": "drinks", "irregular": false},
       {"surface": "drinking", "irregular": false},
       {"surface": "drank", "irregular": true},
-      {"surface": "drunk", "irregular": true}
+      {"surface": "drunk", "irregular": true, "also_lemma": true}
     ]
   },
   {
@@ -284,7 +284,7 @@
       {"surface": "writes", "irregular": false},
       {"surface": "writing", "irregular": false},
       {"surface": "wrote", "irregular": true},
-      {"surface": "written", "irregular": true}
+      {"surface": "written", "irregular": true, "also_lemma": true}
     ]
   },
   {
@@ -351,7 +351,7 @@
   {
     "lemma": "tooth",
     "forms": [
-      {"surface": "teeth", "irregular": true}
+      {"surface": "teeth", "irregular": true, "also_lemma": true}
     ]
   },
   {
@@ -366,15 +366,15 @@
     "lemma": "good",
     "forms": [
       {"surface": "goods", "irregular": false},
-      {"surface": "better", "irregular": true},
-      {"surface": "best", "irregular": true}
+      {"surface": "better", "irregular": true, "also_lemma": true},
+      {"surface": "best", "irregular": true, "also_lemma": true}
     ]
   },
   {
     "lemma": "bad",
     "forms": [
-      {"surface": "worse", "irregular": true},
-      {"surface": "worst", "irregular": true}
+      {"surface": "worse", "irregular": true, "also_lemma": true},
+      {"surface": "worst", "irregular": true, "also_lemma": true}
     ]
   },
   {

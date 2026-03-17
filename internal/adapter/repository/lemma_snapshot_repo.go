@@ -13,6 +13,7 @@ import (
 	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
 	entlemmasnapshot "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemmasnapshot"
 	"github.com/eslsoft/vocnet/internal/repository"
+	"github.com/eslsoft/vocnet/internal/util"
 )
 
 type lemmaSnapshotRepository struct {
@@ -154,39 +155,45 @@ func (r *lemmaSnapshotRepository) GetByTerm(ctx context.Context, term string, la
 }
 
 // preferSnapshot picks the better snapshot for a given query term.
-// Priority (same as lemma resolution):
-//  1. Longest prefix match strictly shorter than the query (base form)
-//  2. Exact surface match (word is its own lemma)
-//  3. Shortest surface
-//  4. Highest quality score
-//  5. Lower LemmaID (deterministic tiebreaker)
+// Priority:
+//  1. Snapshot that lists query as a non-LEMMA form in payload (base form's snapshot)
+//  2. Among non-exact: longest prefix strictly shorter than query
+//  3. Exact surface match
+//  4. Shortest surface
+//  5. Highest quality score
+//  6. Lower LemmaID (deterministic tiebreaker)
 func preferSnapshot(a, b *entdb.LemmaSnapshot, query string) *entdb.LemmaSnapshot {
-	return comparePair(a, b, query)
-}
-
-func comparePair(a, b *entdb.LemmaSnapshot, query string) *entdb.LemmaSnapshot {
 	aNorm := strings.ToLower(strings.TrimSpace(a.Normalized))
 	bNorm := strings.ToLower(strings.TrimSpace(b.Normalized))
 
-	// Priority 1: longest prefix strictly shorter than query (base form wins).
-	aIsBase := len(aNorm) < len(query) && strings.HasPrefix(query, aNorm)
-	bIsBase := len(bNorm) < len(query) && strings.HasPrefix(query, bNorm)
-	if aIsBase && bIsBase {
-		// Both are base forms — longer prefix is closer match.
-		if len(aNorm) != len(bNorm) {
-			if len(aNorm) > len(bNorm) {
-				return a
-			}
-			return b
-		}
-	} else if aIsBase != bIsBase {
+	// Priority 1: snapshot whose forms list the query as a regular inflection wins.
+	// This covers both prefix forms (walk→walking) and non-prefix forms (define→defining).
+	aIsBase := isRegularBaseOf(a.Payload.Forms, aNorm, query)
+	bIsBase := isRegularBaseOf(b.Payload.Forms, bNorm, query)
+	if aIsBase != bIsBase {
 		if aIsBase {
 			return a
 		}
 		return b
 	}
 
-	// Priority 2: exact match.
+	// Priority 2: among base candidates, longest prefix is closest match.
+	aIsPrefix := len(aNorm) < len(query) && strings.HasPrefix(query, aNorm)
+	bIsPrefix := len(bNorm) < len(query) && strings.HasPrefix(query, bNorm)
+	if aIsPrefix != bIsPrefix {
+		if aIsPrefix {
+			return a
+		}
+		return b
+	}
+	if aIsPrefix && bIsPrefix && len(aNorm) != len(bNorm) {
+		if len(aNorm) > len(bNorm) {
+			return a
+		}
+		return b
+	}
+
+	// Priority 3: exact surface match.
 	aExact := aNorm == query
 	bExact := bNorm == query
 	if aExact != bExact {
@@ -196,7 +203,7 @@ func comparePair(a, b *entdb.LemmaSnapshot, query string) *entdb.LemmaSnapshot {
 		return b
 	}
 
-	// Priority 3: shortest surface.
+	// Priority 4: shortest surface.
 	if len(aNorm) != len(bNorm) {
 		if len(aNorm) < len(bNorm) {
 			return a
@@ -204,7 +211,7 @@ func comparePair(a, b *entdb.LemmaSnapshot, query string) *entdb.LemmaSnapshot {
 		return b
 	}
 
-	// Priority 4: highest quality score.
+	// Priority 5: highest quality score.
 	if a.QualityOverall != b.QualityOverall {
 		if a.QualityOverall > b.QualityOverall {
 			return a
@@ -212,11 +219,45 @@ func comparePair(a, b *entdb.LemmaSnapshot, query string) *entdb.LemmaSnapshot {
 		return b
 	}
 
-	// Priority 5: lower LemmaID (deterministic tiebreaker).
+	// Priority 6: lower LemmaID (deterministic tiebreaker).
 	if a.LemmaID <= b.LemmaID {
 		return a
 	}
 	return b
+}
+
+// isRegularBaseOf checks if query appears as a regular inflection in the snapshot's forms.
+// Uses the same morphological rules as IsIrregularForm to stay consistent.
+func isRegularBaseOf(forms []entity.LemmaSnapshotForm, lemma, query string) bool {
+	for i := range forms {
+		f := &forms[i]
+		if strings.ToLower(f.Surface) != query {
+			continue
+		}
+		formType := entity.FormType(strings.ToUpper(f.FormType))
+		if !isKnownInflectionType(formType) {
+			continue
+		}
+		if !util.IsIrregularForm(lemma, query, formType) {
+			return true
+		}
+	}
+	return false
+}
+
+// isKnownInflectionType returns true for form types that IsIrregularForm can evaluate.
+func isKnownInflectionType(ft entity.FormType) bool {
+	switch ft {
+	case entity.FormTypePlural,
+		entity.FormTypePast,
+		entity.FormTypePastParticiple,
+		entity.FormTypePresentParticiple,
+		entity.FormTypeThirdPersonSingular,
+		entity.FormTypeComparative,
+		entity.FormTypeSuperlative:
+		return true
+	}
+	return false
 }
 
 func (r *lemmaSnapshotRepository) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []int64) (map[int64]*entity.LemmaSnapshot, error) {
