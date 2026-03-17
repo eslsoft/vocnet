@@ -71,10 +71,11 @@ var serveCmd = &cobra.Command{
 		defer cancel()
 
 		// Start pipeline worker pool
-		workerPool, err := buildPipelineWorkerPool(ctx, container.Config, container.EntClient, logger)
+		workerPool, lemmaResolver, err := buildPipelineWorkerPool(ctx, container.Config, container.EntClient, logger)
 		if err != nil {
 			logger.Warn("pipeline worker disabled", "error", err)
 		} else {
+			container.PipelineService.SetLemmaResolver(lemmaResolver)
 			go func() {
 				if err := workerPool.Start(ctx); err != nil {
 					logger.Error("pipeline worker error", "error", err)
@@ -125,7 +126,7 @@ func init() {
 }
 
 // buildPipelineWorkerPool constructs the Pipeline and WorkerPool from config and ent client.
-func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, error) {
+func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, pipeline.LemmaResolver, error) {
 	// Repositories
 	lemmaRepo := repository.NewLemmaRepository(entClient)
 	lexemeRepo := repository.NewLexemeRepository(entClient)
@@ -154,9 +155,10 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	var wikidataProvider provider.WikidataProvider
 	wikidataReader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
 	if err != nil {
-		return nil, fmt.Errorf("wikidata unavailable: %w", err)
+		return nil, nil, fmt.Errorf("wikidata unavailable: %w", err)
 	}
 	wikidataProvider = wikidataReader
+	lemmaResolver := wikidata.NewLemmaResolver(wikidataReader)
 
 	// Moby (built-in SourceProvider)
 	mobyReader, err := moby.NewReader(moby.DataPath(cfg.Pipeline.DataDir))
@@ -203,7 +205,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	}
 
 	metrics := pipeline.NewPrometheusMetrics()
-	return pipeline.NewWorkerPool(jobRepo, p, logger, workerCount, 5*time.Second, metrics), nil
+	return pipeline.NewWorkerPool(jobRepo, p, logger, workerCount, 5*time.Second, metrics), lemmaResolver, nil
 }
 
 // buildNewPipelineStages constructs the new phase-based pipeline architecture.
@@ -215,18 +217,16 @@ func buildNewPipelineStages(
 	logger *slog.Logger,
 ) []*pipeline.Stage {
 	// Phase 1: Collection (Concurrent data acquisition from all sources)
+	// Wikidata processor resolves the canonical lemma and updates pctx.Term.
+	// Other processors may read the original or resolved term — both are valid
+	// since the final lemma is determined by bestLemmaFormSurface at persistence time.
 	collectionProcessors := []pipeline.Processor{
-		// Wikidata remains specialized due to complex discovery logic
-		// (includes lexeme fetching, forms extraction, relation building, and category inference)
 		collection.NewWikidataProcessor(wikidataProvider, logger),
 	}
-
-	// Add all registered source providers to collection
 	for _, src := range registry.Sources() {
 		collectionProcessors = append(collectionProcessors,
 			collection.NewGenericSourceProcessor(src, logger))
 	}
-
 	collectionStage := pipeline.NewConcurrentStage(
 		string(pipeline.PhaseCollection),
 		1,

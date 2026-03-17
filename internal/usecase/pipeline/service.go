@@ -10,11 +10,18 @@ import (
 	"github.com/eslsoft/vocnet/internal/repository"
 )
 
+// LemmaResolver resolves a term to its Wikidata lemma surfaces.
+// For example, "working" → ["work", "working"], "ate" → ["eat"].
+type LemmaResolver interface {
+	ResolveLemmas(ctx context.Context, term string, language string) ([]string, error)
+}
+
 // PipelineService is the facade for submitting and querying pipeline jobs.
 type PipelineService struct {
-	jobRepo   repository.PipelineJobRepository
+	jobRepo  repository.PipelineJobRepository
 	stageRepo repository.PipelineStageRepository
-	logger    *slog.Logger
+	resolver LemmaResolver
+	logger   *slog.Logger
 }
 
 // NewPipelineService creates a new PipelineService.
@@ -22,21 +29,44 @@ func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
 	stageRepo repository.PipelineStageRepository,
 	logger *slog.Logger,
+	resolver ...LemmaResolver,
 ) *PipelineService {
-	return &PipelineService{
+	svc := &PipelineService{
 		jobRepo:   jobRepo,
 		stageRepo: stageRepo,
 		logger:    logger,
 	}
+	if len(resolver) > 0 {
+		svc.resolver = resolver[0]
+	}
+	return svc
 }
 
-// SubmitWord creates a single-word pipeline job.
+// SetLemmaResolver sets the lemma resolver for term → lemma resolution at submission time.
+func (s *PipelineService) SetLemmaResolver(r LemmaResolver) {
+	s.resolver = r
+}
+
+// resolveTermToLemmas converts a term to its Wikidata lemma surface(s).
+// If no resolver is configured, returns the term as-is.
+func (s *PipelineService) resolveTermToLemmas(ctx context.Context, term, language string) []string {
+	if s.resolver == nil {
+		return []string{term}
+	}
+	lemmas, err := s.resolver.ResolveLemmas(ctx, term, language)
+	if err != nil || len(lemmas) == 0 {
+		return []string{term}
+	}
+	return lemmas
+}
+
+// SubmitWord creates pipeline jobs for a term. If the term is an inflected form,
+// jobs are created for each resolved lemma (e.g., "working" → jobs for "work" and "working").
 func (s *PipelineService) SubmitWord(ctx context.Context, term, language string, tier int32) (*entity.PipelineJob, error) {
 	term = strings.TrimSpace(term)
 	if term == "" {
 		return nil, fmt.Errorf("term is required")
 	}
-
 	if language == "" {
 		language = "en"
 	}
@@ -44,19 +74,28 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 		tier = 2
 	}
 
-	job := &entity.PipelineJob{
-		Status:   entity.JobStatusPending,
-		Name:     fmt.Sprintf("word: %s", term),
-		Language: language,
-		Tier:     tier,
-		Term:     term,
+	lemmas := s.resolveTermToLemmas(ctx, term, language)
+	var firstJob *entity.PipelineJob
+	for _, lemma := range lemmas {
+		job := &entity.PipelineJob{
+			Status:   entity.JobStatusPending,
+			Name:     fmt.Sprintf("word: %s", lemma),
+			Language: language,
+			Tier:     tier,
+			Term:     lemma,
+		}
+		created, err := s.jobRepo.Create(ctx, job)
+		if err != nil {
+			return nil, err
+		}
+		if firstJob == nil {
+			firstJob = created
+		}
 	}
-
-	return s.jobRepo.Create(ctx, job)
+	return firstJob, nil
 }
 
-// SubmitJob creates a pipeline job for API calls.
-// If name is empty, a default name is generated from term.
+// SubmitJob creates pipeline jobs for API calls.
 func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, tier int32, name string) (*entity.PipelineJob, error) {
 	term = strings.TrimSpace(term)
 	if term == "" {
@@ -69,19 +108,29 @@ func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, 
 		tier = 2
 	}
 
-	jobName := strings.TrimSpace(name)
-	if jobName == "" {
-		jobName = fmt.Sprintf("word: %s", term)
+	lemmas := s.resolveTermToLemmas(ctx, term, language)
+	var firstJob *entity.PipelineJob
+	for _, lemma := range lemmas {
+		jobName := strings.TrimSpace(name)
+		if jobName == "" {
+			jobName = fmt.Sprintf("word: %s", lemma)
+		}
+		job := &entity.PipelineJob{
+			Status:   entity.JobStatusPending,
+			Name:     jobName,
+			Language: language,
+			Tier:     tier,
+			Term:     lemma,
+		}
+		created, err := s.jobRepo.Create(ctx, job)
+		if err != nil {
+			return nil, err
+		}
+		if firstJob == nil {
+			firstJob = created
+		}
 	}
-
-	job := &entity.PipelineJob{
-		Status:   entity.JobStatusPending,
-		Name:     jobName,
-		Language: language,
-		Tier:     tier,
-		Term:     term,
-	}
-	return s.jobRepo.Create(ctx, job)
+	return firstJob, nil
 }
 
 // SubmitTerms creates one job per term for bulk execution.

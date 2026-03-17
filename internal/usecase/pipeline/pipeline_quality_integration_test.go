@@ -129,50 +129,41 @@ func buildQualityTestStages(
 	scorer *scoring.RuleBasedScorer,
 	logger *slog.Logger,
 ) []*pipeline.Stage {
-	// Phase 1: Collection (Concurrent data acquisition from all sources)
 	collectionProcessors := []pipeline.Processor{
-		// Wikidata remains specialized due to complex discovery logic
 		collection.NewWikidataProcessor(wikidataProvider, logger),
 	}
-
-	// Add all registered source providers to collection
 	for _, src := range registry.Sources() {
 		collectionProcessors = append(collectionProcessors,
 			collection.NewGenericSourceProcessor(src, logger))
 	}
-
 	collectionStage := pipeline.NewConcurrentStage(
 		string(pipeline.PhaseCollection),
 		1,
 		collectionProcessors...,
 	)
 
-	// Phase 1.5: LLM Enrichment (Fill gaps with LLM-generated data)
-	// Optional: only runs if LLM provider is configured
+	// Phase 1.5: LLM Enrichment
 	var llmEnrichment *pipeline.Stage
 	if llmProvider != nil {
 		llmEnrichment = pipeline.NewStage(
-			string(pipeline.PhaseCollection), // Still part of collection phase logically
+			string(pipeline.PhaseCollection),
 			2,
 			collection.NewLLMEnrichmentProcessor(llmProvider, logger),
 		)
 	}
 
-	// Phase 2: Evaluation (Quality scoring of fragments)
 	evaluationStage := pipeline.NewStage(
 		string(pipeline.PhaseEvaluation),
 		3,
 		evaluation.NewFragmentEvaluator(scorer, logger),
 	)
 
-	// Phase 3: Integration (Smart merging based on scores)
 	integrationStage := pipeline.NewStage(
 		string(pipeline.PhaseIntegration),
 		4,
 		integration.NewIntegrationProcessor(logger),
 	)
 
-	// Phase 4: Snapshot (Final snapshot generation)
 	snapshotStage := pipeline.NewStage(
 		string(pipeline.PhaseSnapshot),
 		5,
