@@ -64,6 +64,36 @@ func (r *pipelineJobRepository) Create(ctx context.Context, job *entity.Pipeline
 	return mapEntPipelineJob(row), nil
 }
 
+func (r *pipelineJobRepository) BatchCreate(ctx context.Context, jobs []*entity.PipelineJob) ([]*entity.PipelineJob, error) {
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+
+	builders := make([]*entdb.PipelineJobCreate, 0, len(jobs))
+	for _, job := range jobs {
+		if err := normalizePipelineJobForCreate(job); err != nil {
+			return nil, err
+		}
+		builders = append(builders, r.client.PipelineJob.Create().
+			SetStatus(string(job.Status)).
+			SetName(job.Name).
+			SetLanguage(job.Language).
+			SetTier(job.Tier).
+			SetTerm(job.Term))
+	}
+
+	rows, err := r.client.PipelineJob.CreateBulk(builders...).Save(ctx)
+	if err != nil {
+		return nil, translateDBError(err, "pipeline_job")
+	}
+
+	result := make([]*entity.PipelineJob, len(rows))
+	for i, row := range rows {
+		result[i] = mapEntPipelineJob(row)
+	}
+	return result, nil
+}
+
 func (r *pipelineJobRepository) GetByID(ctx context.Context, id int64) (*entity.PipelineJob, error) {
 	row, err := r.client.PipelineJob.Get(ctx, id)
 	if err != nil {

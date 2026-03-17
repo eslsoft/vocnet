@@ -67,7 +67,6 @@ func (r *lemmaRepository) LookupByForm(ctx context.Context, surface string, lang
 		All(ctx)
 
 	if err == nil && len(lexemeRows) > 0 {
-		// Prefer lemma whose surface matches the query term exactly
 		for _, row := range lexemeRows {
 			lemmaRow, err := row.Edges.LemmaOrErr()
 			if err != nil {
@@ -76,11 +75,6 @@ func (r *lemmaRepository) LookupByForm(ctx context.Context, surface string, lang
 			if strings.ToLower(lemmaRow.Surface) == normalized {
 				return mapEntLemma(lemmaRow), nil
 			}
-		}
-		// Fallback: return the first matching lemma
-		lemmaRow, err := lexemeRows[0].Edges.LemmaOrErr()
-		if err == nil {
-			return mapEntLemma(lemmaRow), nil
 		}
 	}
 

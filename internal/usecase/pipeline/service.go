@@ -99,26 +99,35 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 		tier = 2
 	}
 
-	jobs := make([]*entity.PipelineJob, 0, len(terms))
+	pending := make([]*entity.PipelineJob, 0, len(terms))
 	for _, term := range terms {
 		jobName := name
 		if jobName == "" {
 			jobName = fmt.Sprintf("word: %s", term)
 		}
-		job := &entity.PipelineJob{
+		pending = append(pending, &entity.PipelineJob{
 			Status:   entity.JobStatusPending,
 			Name:     jobName,
 			Language: language,
 			Tier:     tier,
 			Term:     term,
+		})
+	}
+
+	const batchSize = 1000
+	var allJobs []*entity.PipelineJob
+	for i := 0; i < len(pending); i += batchSize {
+		end := i + batchSize
+		if end > len(pending) {
+			end = len(pending)
 		}
-		created, err := s.jobRepo.Create(ctx, job)
+		created, err := s.jobRepo.BatchCreate(ctx, pending[i:end])
 		if err != nil {
 			return nil, err
 		}
-		jobs = append(jobs, created)
+		allJobs = append(allJobs, created...)
 	}
-	return jobs, nil
+	return allJobs, nil
 }
 
 // GetJob returns a pipeline job by ID.

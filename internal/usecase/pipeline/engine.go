@@ -207,8 +207,6 @@ func (p *VocnetPipeline) writeStageResultWithLock(ctx context.Context, pctx *Pip
 			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 			return err
 		}
-	} else {
-		p.correctLemmaSurface(ctx, pctx)
 	}
 
 	// Persist evidence (raw source data from Collection processors).
@@ -422,45 +420,6 @@ func bestLemmaFormSurface(pctx *PipelineContext) string {
 	return best
 }
 
-// correctLemmaSurface checks if the existing lemma surface should be updated
-// based on the best LEMMA form from collected data. This fixes stale records
-// where old code wrote wrong surfaces (e.g., lemma "better" should be "good").
-// When switching to an existing correct lemma, the old wrong lemma is deleted
-// (cascade removes its snapshots, forms, evidence, lexemes, etc.).
-func (p *VocnetPipeline) correctLemmaSurface(ctx context.Context, pctx *PipelineContext) {
-	best := bestLemmaFormSurface(pctx)
-	if best == "" || strings.EqualFold(best, pctx.Lemma.Surface) {
-		return
-	}
-	oldSurface := pctx.Lemma.Surface
-	oldLemmaID := pctx.Lemma.ID
-	pctx.Lemma.Surface = best
-	pctx.Lemma.Normalized = strings.ToLower(best)
-	if _, err := p.lemmaRepo.Update(ctx, pctx.Lemma); err != nil {
-		// UNIQUE constraint: a lemma with the correct surface already exists.
-		// Switch to that lemma and delete the old wrong one.
-		pctx.Lemma.Surface = oldSurface
-		pctx.Lemma.Normalized = strings.ToLower(oldSurface)
-		existing, lookupErr := p.lemmaRepo.LookupByForm(ctx, best, pctx.Language)
-		if lookupErr == nil && existing != nil {
-			// Delete the old wrong lemma (cascade deletes snapshots, forms, etc.)
-			if delErr := p.lemmaRepo.DeleteByID(ctx, oldLemmaID); delErr != nil {
-				p.logger.Warn("failed to delete old lemma after surface correction",
-					"old_lemma_id", oldLemmaID, "old_surface", oldSurface, "error", delErr)
-			} else {
-				p.logger.Info("deleted stale lemma after surface correction",
-					"old_lemma_id", oldLemmaID, "old_surface", oldSurface, "new_surface", best)
-			}
-			pctx.Lemma = existing
-			pctx.Forms = existing.Forms
-			lexemes, _ := p.lexemeRepo.ListByLemmaID(ctx, existing.ID)
-			pctx.Lexemes = lexemes
-		} else {
-			p.logger.Warn("failed to correct lemma surface", "from", oldSurface, "to", best, "error", err)
-		}
-	}
-}
-
 func (p *VocnetPipeline) createLemma(ctx context.Context, pctx *PipelineContext, surface string) error {
 	lemma, err := p.lemmaRepo.CreateMinimal(ctx, surface, pctx.Language)
 	if err != nil {
@@ -502,8 +461,5 @@ func mergeProcessResults(dst, src *ProcessResult) {
 	}
 	if src.LemmaSnapshot != nil {
 		dst.LemmaSnapshot = src.LemmaSnapshot
-	}
-	if len(src.SourceFormKeys) > 0 {
-		dst.SourceFormKeys = src.SourceFormKeys
 	}
 }

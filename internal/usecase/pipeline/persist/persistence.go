@@ -240,27 +240,6 @@ func (p *Persistence) saveForms(ctx context.Context, lemmaID int64, result *scor
 		}
 	}
 
-	// Delete stale forms: forms in DB but not produced by any data source.
-	if len(result.SourceFormKeys) > 0 {
-		var staleSurfaces []string
-		var staleFormTypes []entity.FormType
-		for key, existing := range existingMap {
-			if _, ok := result.SourceFormKeys[key]; !ok {
-				staleSurfaces = append(staleSurfaces, existing.Surface)
-				staleFormTypes = append(staleFormTypes, existing.FormType)
-			}
-		}
-
-		if len(staleSurfaces) > 0 {
-			p.logger.Info("removing stale forms",
-				"lemma_id", lemmaID,
-				"count", len(staleSurfaces))
-			if err := p.lemmaRepo.DeleteFormsByKeys(ctx, lemmaID, staleSurfaces, staleFormTypes); err != nil {
-				return fmt.Errorf("delete stale forms: %w", err)
-			}
-		}
-	}
-
 	return nil
 }
 

@@ -23,9 +23,8 @@ type ProcessResult struct {
 	Forms         []*entity.LemmaForm
 	FormsByLexeme map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
 	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma
-	LemmaSnapshot    *entity.LemmaSnapshot          // only set by LemmaSnapshotProcessor
-	Provider         string                         // source provider name (for evaluator)
-	SourceFormKeys   map[string]struct{}             // form keys (surface:formType) actually produced by data sources
+	LemmaSnapshot *entity.LemmaSnapshot // only set by LemmaSnapshotProcessor
+	Provider      string                // source provider name (for evaluator)
 }
 
 // --- Scorer interface and types ---

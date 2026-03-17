@@ -9,6 +9,7 @@ import (
 // PipelineJobRepository manages pipeline async jobs.
 type PipelineJobRepository interface {
 	Create(ctx context.Context, job *entity.PipelineJob) (*entity.PipelineJob, error)
+	BatchCreate(ctx context.Context, jobs []*entity.PipelineJob) ([]*entity.PipelineJob, error)
 	GetByID(ctx context.Context, id int64) (*entity.PipelineJob, error)
 	List(ctx context.Context, status *entity.JobStatus, limit int) ([]*entity.PipelineJob, error)
 	ListFiltered(ctx context.Context, query *ListPipelineJobsQuery) ([]*entity.PipelineJob, int64, error)
