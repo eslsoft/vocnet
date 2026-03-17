@@ -131,21 +131,53 @@ func (r *lemmaSnapshotRepository) GetByTerm(ctx context.Context, term string, la
 				s.Where(sqljson.ValueContains(column, normalized))
 			},
 		)
-	// Only filter by language if specified
 	if language != "" {
 		q = q.Where(entlemmasnapshot.LanguageEQ(language))
 	}
-	row, err := q.
+	rows, err := q.
 		WithLemma().
 		Order(entlemmasnapshot.ByVersion(sql.OrderDesc())).
-		First(ctx)
+		All(ctx)
 	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, entity.ErrWordNotFound
-		}
 		return nil, fmt.Errorf("get snapshot by term: %w", err)
 	}
-	return mapEntLemmaSnapshot(row), nil
+	if len(rows) == 0 {
+		return nil, entity.ErrWordNotFound
+	}
+	// When multiple snapshots match (shared form across different lemmas),
+	// prefer the one whose lemma surface best matches the search term.
+	best := rows[0]
+	for _, row := range rows[1:] {
+		if snapshotLemmaBetter(row, best, normalized) {
+			best = row
+		}
+	}
+	return mapEntLemmaSnapshot(best), nil
+}
+
+// snapshotLemmaBetter returns true if candidate's lemma is a better match
+// for the search term than current's lemma.
+func snapshotLemmaBetter(candidate, current *entdb.LemmaSnapshot, termNorm string) bool {
+	candLemma := ""
+	currLemma := ""
+	if l, err := candidate.Edges.LemmaOrErr(); err == nil {
+		candLemma = strings.ToLower(l.Surface)
+	}
+	if l, err := current.Edges.LemmaOrErr(); err == nil {
+		currLemma = strings.ToLower(l.Surface)
+	}
+	candExact := candLemma == termNorm
+	currExact := currLemma == termNorm
+	if candExact != currExact {
+		return candExact
+	}
+	candPrefix := strings.HasPrefix(termNorm, candLemma)
+	currPrefix := strings.HasPrefix(termNorm, currLemma)
+	if candPrefix != currPrefix {
+		return candPrefix
+	}
+	// Prefer shorter lemma (more basic word form).
+	return len(candLemma) < len(currLemma)
 }
 
 func (r *lemmaSnapshotRepository) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []int64) (map[int64]*entity.LemmaSnapshot, error) {

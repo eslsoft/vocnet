@@ -376,33 +376,38 @@ func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx 
 }
 
 // bestLemmaFormSurface selects the canonical lemma from FormTypeLemma candidates.
-// Priority: prefer candidates that are a prefix of the search term (e.g., "one" is a
-// prefix of "ones", but "1" is not). Among prefix matches, pick the longest (most specific).
-// If no prefix matches, fall back to shortest candidate.
+// Priority:
+//  1. Longest prefix match strictly shorter than the term (base form)
+//  2. Exact match with the search term (word is its own lemma)
+//  3. Shortest candidate (fallback, avoids picking abbreviations like "1" over "one")
 func bestLemmaFormSurface(pctx *PipelineContext) string {
-	var candidates []string
+	seen := make(map[string]string) // lowercase → original
 	for _, f := range pctx.Forms {
 		if f == nil || f.FormType != entity.FormTypeLemma || f.Surface == "" {
 			continue
 		}
-		candidates = append(candidates, f.Surface)
+		key := strings.ToLower(f.Surface)
+		if _, ok := seen[key]; !ok {
+			seen[key] = f.Surface
+		}
 	}
-	if len(candidates) == 0 {
+	if len(seen) == 0 {
 		return ""
 	}
-	if len(candidates) == 1 {
-		return candidates[0]
+	if len(seen) == 1 {
+		for _, orig := range seen {
+			return orig
+		}
 	}
 
 	termLower := strings.ToLower(pctx.Term)
 
-	// Pick the longest prefix match that is strictly shorter than the term.
-	// The lemma is the base form, so it must be shorter than the inflected form.
+	// Priority 1: longest prefix match strictly shorter than the term.
 	var bestPrefix string
-	for _, s := range candidates {
-		if len(s) < len(pctx.Term) && strings.HasPrefix(termLower, strings.ToLower(s)) {
-			if len(s) > len(bestPrefix) {
-				bestPrefix = s
+	for key, orig := range seen {
+		if len(key) < len(termLower) && strings.HasPrefix(termLower, key) {
+			if len(key) > len(bestPrefix) {
+				bestPrefix = orig
 			}
 		}
 	}
@@ -410,7 +415,16 @@ func bestLemmaFormSurface(pctx *PipelineContext) string {
 		return bestPrefix
 	}
 
-	// No prefix match — pick shortest.
+	// Priority 2: exact match with search term.
+	if orig, ok := seen[termLower]; ok {
+		return orig
+	}
+
+	// Priority 3: shortest candidate.
+	candidates := make([]string, 0, len(seen))
+	for _, orig := range seen {
+		candidates = append(candidates, orig)
+	}
 	best := candidates[0]
 	for _, s := range candidates[1:] {
 		if len(s) < len(best) {
