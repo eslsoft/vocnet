@@ -40,22 +40,26 @@ func NewPersistence(
 	}
 }
 
-// SaveStageResult persists the accumulated result of a pipeline stage.
-// Order: evidence → forms → lexemes (create or update) → relations.
-func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, result *scoring.ProcessResult) error {
-	if result == nil {
-		return nil
-	}
-
-	// Save evidence
-	for _, ev := range result.Evidence {
+// SaveEvidence persists raw source evidence. Called by the engine after Collection.
+func (p *Persistence) SaveEvidence(ctx context.Context, lemma *entity.Lemma, evidence []*entity.RawEvidence) error {
+	for _, ev := range evidence {
 		ev.LemmaID = lemma.ID
 		if _, err := p.evidenceRepo.Create(ctx, ev); err != nil {
 			return fmt.Errorf("save evidence: %w", err)
 		}
 	}
+	return nil
+}
 
-	// Save forms (create new, merge existing)
+// SaveIntegrationResult persists forms, lexemes, and relations.
+// Called by the engine after the Integration stage — the single authoritative
+// point where evaluated, scored data is written to the database.
+func (p *Persistence) SaveIntegrationResult(ctx context.Context, lemma *entity.Lemma, result *scoring.ProcessResult) error {
+	if result == nil {
+		return nil
+	}
+
+	// Save forms (create new, merge existing, delete stale)
 	if err := p.saveForms(ctx, lemma.ID, result); err != nil {
 		return fmt.Errorf("save forms: %w", err)
 	}
@@ -67,7 +71,6 @@ func (p *Persistence) SaveStageResult(ctx context.Context, lemma *entity.Lemma, 
 
 	// Save relations (resolve ExternalID → DB SourceLexemeID first)
 	if len(result.Relations) > 0 {
-		// First, map unmapped contrib relations to available lexemes
 		p.mapUnmappedContribRelations(result.Relations, result.Lexemes)
 
 		if err := p.resolveRelationIDs(ctx, result.Relations); err != nil {
@@ -204,15 +207,8 @@ func (p *Persistence) mergeExistingForm(ctx context.Context, lemmaID int64, exis
 	}
 }
 
-// saveForms persists or updates lemma forms from a stage result.
-// Forms are only written to DB during the authoritative Integration stage (SyncForms=true).
-// Earlier stages (Collection, Evaluation) accumulate forms in pctx memory — writing them
-// to DB prematurely would cause Integration to delete them as "stale", wasting IO.
+// saveForms persists or updates lemma forms from the Integration stage result.
 func (p *Persistence) saveForms(ctx context.Context, lemmaID int64, result *scoring.ProcessResult) error {
-	if !result.SyncForms {
-		return nil // Not the authoritative stage — forms will be written by Integration
-	}
-
 	allForms := collectUniqueForms(result)
 	if len(allForms) == 0 {
 		return nil

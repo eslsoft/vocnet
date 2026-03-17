@@ -211,10 +211,20 @@ func (p *VocnetPipeline) writeStageResultWithLock(ctx context.Context, pctx *Pip
 		p.correctLemmaSurface(ctx, pctx)
 	}
 
-	// All DB writes happen under the lemma lock.
-	if err := p.persistence.SaveStageResult(ctx, pctx.Lemma, mergedResult); err != nil {
-		_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
-		return err
+	// Persist evidence (raw source data from Collection processors).
+	if len(mergedResult.Evidence) > 0 {
+		if err := p.persistence.SaveEvidence(ctx, pctx.Lemma, mergedResult.Evidence); err != nil {
+			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
+			return err
+		}
+	}
+
+	// Persist forms, lexemes, and relations (only from Integration stage).
+	if len(mergedResult.Lexemes) > 0 || len(mergedResult.Forms) > 0 || len(mergedResult.FormsByLexeme) > 0 || len(mergedResult.Relations) > 0 {
+		if err := p.persistence.SaveIntegrationResult(ctx, pctx.Lemma, mergedResult); err != nil {
+			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
+			return err
+		}
 	}
 
 	if mergedResult.LemmaUpdate != nil {
@@ -493,8 +503,7 @@ func mergeProcessResults(dst, src *ProcessResult) {
 	if src.LemmaSnapshot != nil {
 		dst.LemmaSnapshot = src.LemmaSnapshot
 	}
-	if src.SyncForms {
-		dst.SyncForms = true
+	if len(src.SourceFormKeys) > 0 {
 		dst.SourceFormKeys = src.SourceFormKeys
 	}
 }

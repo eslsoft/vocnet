@@ -87,7 +87,6 @@ func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.Pipe
 		Lexemes:        integratedLexemes,
 		Forms:          integratedForms,
 		Relations:      integratedRelations,
-		SyncForms:      true,
 		SourceFormKeys: sourceFormKeys,
 	}, nil
 }

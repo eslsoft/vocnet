@@ -25,7 +25,6 @@ type ProcessResult struct {
 	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma
 	LemmaSnapshot    *entity.LemmaSnapshot          // only set by LemmaSnapshotProcessor
 	Provider         string                         // source provider name (for evaluator)
-	SyncForms        bool                           // when true, saveForms deletes stale DB forms not in this result
 	SourceFormKeys   map[string]struct{}             // form keys (surface:formType) actually produced by data sources
 }
 
