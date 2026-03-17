@@ -22,13 +22,12 @@ type WordUsecase interface {
 
 type snapshotWordUsecase struct {
 	snapshots repository.LemmaSnapshotRepository
+	lemmas    repository.LemmaRepository
 }
 
 // NewSnapshotWordUsecase creates a WordUsecase that uses LemmaSnapshot as the data source.
-func NewSnapshotWordUsecase(snapshots repository.LemmaSnapshotRepository) WordUsecase {
-	return &snapshotWordUsecase{
-		snapshots: snapshots,
-	}
+func NewSnapshotWordUsecase(snapshots repository.LemmaSnapshotRepository, lemmas repository.LemmaRepository) WordUsecase {
+	return &snapshotWordUsecase{snapshots: snapshots, lemmas: lemmas}
 }
 
 func (u *snapshotWordUsecase) GetLemma(ctx context.Context, lemmaID int64) (*entity.WordEntry, error) {
@@ -48,12 +47,65 @@ func (u *snapshotWordUsecase) Lookup(ctx context.Context, surface string, langua
 		return nil, entity.ErrInvalidLexemeText
 	}
 
+	// Primary path: find lemmas via forms table, pick the best match,
+	// then get its snapshot. This avoids ambiguity from shared lookup_terms.
+	if u.lemmas != nil {
+		lemmas, err := u.lemmas.ListByFormNormalized(ctx, surface, language)
+		if err == nil && len(lemmas) > 0 {
+			best := pickBestLemma(lemmas, surface)
+			snapshot, snapErr := u.snapshots.GetByLemma(ctx, best.ID)
+			if snapErr == nil {
+				return snapshotToWordEntry(snapshot, surface), nil
+			}
+		}
+	}
+
+	// Fallback: search by lookup_terms in snapshot.
 	snapshot, err := u.snapshots.GetByTerm(ctx, surface, string(language))
 	if err != nil {
 		return nil, err
 	}
-
 	return snapshotToWordEntry(snapshot, surface), nil
+}
+
+// pickBestLemma selects the best lemma for a given search surface.
+// Priority: exact surface match > prefix match (longest) > shortest surface.
+func pickBestLemma(lemmas []*entity.Lemma, surface string) *entity.Lemma {
+	normalized := strings.ToLower(surface)
+
+	// Exact match.
+	for _, l := range lemmas {
+		if strings.ToLower(l.Surface) == normalized {
+			return l
+		}
+	}
+
+	// Prefix match: lemma surface is a prefix of the search term.
+	// Prefer shorter prefix (more basic word form: "do" over "doe" for "does").
+	var bestPrefix *entity.Lemma
+	for _, l := range lemmas {
+		ls := strings.ToLower(l.Surface)
+		if strings.HasPrefix(normalized, ls) {
+			if bestPrefix == nil || len(ls) < len(bestPrefix.Surface) {
+				bestPrefix = l
+			}
+		}
+	}
+	if bestPrefix != nil {
+		return bestPrefix
+	}
+
+	// Fallback: prefer lemma with more forms (richer = more likely the right base word).
+	// Tiebreaker: shorter surface.
+	best := lemmas[0]
+	for _, l := range lemmas[1:] {
+		if len(l.Forms) > len(best.Forms) {
+			best = l
+		} else if len(l.Forms) == len(best.Forms) && len(l.Surface) < len(best.Surface) {
+			best = l
+		}
+	}
+	return best
 }
 
 func (u *snapshotWordUsecase) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.WordEntry, int64, error) {
