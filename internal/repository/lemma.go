@@ -40,6 +40,9 @@ type LemmaRepository interface {
 	// UpdateFormIrregular updates the is_irregular flag for a specific form of a lemma
 	UpdateFormIrregular(ctx context.Context, lemmaID int64, surface string, formType entity.FormType, isIrregular bool) error
 
+	// ListAllSurfaces returns all lemma surfaces (used for lookup_terms dedup).
+	ListAllSurfaces(ctx context.Context) ([]string, error)
+
 	// DeleteAllForms deletes all forms for a lemma (used by replace-on-write persistence).
 	DeleteAllForms(ctx context.Context, lemmaID int64) error
 

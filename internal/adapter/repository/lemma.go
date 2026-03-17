@@ -1166,6 +1166,18 @@ func updateCompletenessBucket(buckets []entity.CompletenessBucket, value int32) 
 	}
 }
 
+func (r *lemmaRepository) ListAllSurfaces(ctx context.Context) ([]string, error) {
+	rows, err := r.client.Lemma.Query().Select(entlemma.FieldSurface).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	surfaces := make([]string, len(rows))
+	for i, row := range rows {
+		surfaces[i] = row.Surface
+	}
+	return surfaces, nil
+}
+
 func (r *lemmaRepository) DeleteAllForms(ctx context.Context, lemmaID int64) error {
 	_, err := r.client.LemmaForm.Delete().
 		Where(entlemmaform.LemmaIDEQ(lemmaID)).

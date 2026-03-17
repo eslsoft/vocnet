@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	"github.com/eslsoft/vocnet/internal/repository"
@@ -19,6 +20,9 @@ type Persistence struct {
 	relationRepo repository.SemanticRelationRepository
 	snapshotRepo repository.LemmaSnapshotRepository
 	logger       *slog.Logger
+
+	lemmaSurfacesMu    sync.Mutex
+	lemmaSurfacesCache map[string]struct{}
 }
 
 // NewPersistence creates a new Persistence service.
@@ -147,7 +151,9 @@ func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma 
 		return fmt.Errorf("update lemma: %w", err)
 	}
 
-	terms := collectLemmaSnapshotLookupTerms(lemma, forms)
+	// Load all lemma surfaces for form ownership check.
+	allLemmaSurfaces := p.loadAllLemmaSurfaces(ctx)
+	terms := collectLemmaSnapshotLookupTerms(lemma, forms, allLemmaSurfaces)
 	snapshot.LemmaID = lemma.ID
 	snapshot.JobID = &jobID
 	snapshot.LookupTerms = terms
@@ -159,7 +165,21 @@ func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma 
 	return nil
 }
 
-func collectLemmaSnapshotLookupTerms(lemma *entity.Lemma, forms []*entity.LemmaForm) []string {
+// collectLemmaSnapshotLookupTerms builds the lookup_terms for a snapshot.
+// Includes forms that "belong" to this lemma for lookup purposes:
+//   - The lemma surface itself (always)
+//   - Forms with prefix relationship to the lemma (e.g., "others" for "other")
+//   - Forms without prefix relationship IF they don't conflict with another lemma
+//     (e.g., "went" for "go" — "went" is not any lemma's surface, so no conflict)
+//
+// A form conflicts when another lemma's surface is a prefix of the form
+// (e.g., "others" for lemma "another" — "other" is a better prefix owner).
+func collectLemmaSnapshotLookupTerms(lemma *entity.Lemma, forms []*entity.LemmaForm, allLemmaSurfaces map[string]struct{}) []string {
+	if lemma == nil {
+		return nil
+	}
+
+	lemmaNorm := strings.ToLower(strings.TrimSpace(lemma.Surface))
 	seen := make(map[string]struct{})
 	terms := make([]string, 0, 1+len(forms))
 
@@ -175,16 +195,77 @@ func collectLemmaSnapshotLookupTerms(lemma *entity.Lemma, forms []*entity.LemmaF
 		terms = append(terms, v)
 	}
 
-	if lemma != nil {
-		appendTerm(lemma.Surface)
-	}
+	appendTerm(lemmaNorm)
+
 	for _, f := range forms {
 		if f == nil {
 			continue
 		}
-		appendTerm(f.Surface)
+		formNorm := strings.ToLower(strings.TrimSpace(f.Surface))
+		if formNorm == "" || formNorm == lemmaNorm {
+			continue
+		}
+
+		// Always include forms with prefix relationship.
+		if strings.HasPrefix(formNorm, lemmaNorm) || strings.HasPrefix(lemmaNorm, formNorm) {
+			appendTerm(formNorm)
+			continue
+		}
+
+		// No prefix relationship (suppletive form like "went" for "go").
+		// Include UNLESS another lemma's surface is a better prefix match for this form.
+		if !formOwnedByOtherLemma(formNorm, lemmaNorm, allLemmaSurfaces) {
+			appendTerm(formNorm)
+		}
 	}
 	return terms
+}
+
+// formOwnedByOtherLemma checks if any other lemma surface is a prefix of the form,
+// meaning that lemma has stronger ownership of this form.
+func formOwnedByOtherLemma(formNorm, currentLemmaNorm string, allLemmaSurfaces map[string]struct{}) bool {
+	if allLemmaSurfaces == nil {
+		return false
+	}
+	for surface := range allLemmaSurfaces {
+		if surface == currentLemmaNorm {
+			continue
+		}
+		if strings.HasPrefix(formNorm, surface) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Persistence) loadAllLemmaSurfaces(ctx context.Context) map[string]struct{} {
+	p.lemmaSurfacesMu.Lock()
+	defer p.lemmaSurfacesMu.Unlock()
+
+	if p.lemmaSurfacesCache != nil {
+		return p.lemmaSurfacesCache
+	}
+
+	surfaces, err := p.lemmaRepo.ListAllSurfaces(ctx)
+	if err != nil {
+		p.logger.Warn("failed to load lemma surfaces for lookup_terms dedup", "error", err)
+		return nil
+	}
+
+	cache := make(map[string]struct{}, len(surfaces))
+	for _, s := range surfaces {
+		cache[strings.ToLower(s)] = struct{}{}
+	}
+	p.lemmaSurfacesCache = cache
+	return cache
+}
+
+// InvalidateLemmaSurfacesCache clears the cached lemma surfaces.
+// Called when a new lemma is created.
+func (p *Persistence) InvalidateLemmaSurfacesCache() {
+	p.lemmaSurfacesMu.Lock()
+	defer p.lemmaSurfacesMu.Unlock()
+	p.lemmaSurfacesCache = nil
 }
 
 // collectUniqueForms deduplicates forms from the process result.

@@ -415,6 +415,7 @@ func bestLemmaFormSurface(pctx *PipelineContext) string {
 }
 
 func (p *VocnetPipeline) createLemma(ctx context.Context, pctx *PipelineContext, surface string) error {
+	p.persistence.InvalidateLemmaSurfacesCache()
 	lemma, err := p.lemmaRepo.CreateMinimal(ctx, surface, pctx.Language)
 	if err != nil {
 		return fmt.Errorf("create lemma %q: %w", surface, err)
