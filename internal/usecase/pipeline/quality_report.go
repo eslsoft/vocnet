@@ -23,20 +23,22 @@ type QualityReport struct {
 
 // WordbookQualityReport represents quality metrics for a single wordbook
 type WordbookQualityReport struct {
-	Name              string         `json:"name"`
-	TotalWords        int            `json:"total_words"`
-	TestedWords       int            `json:"tested_words"`
-	PassedWords       int            `json:"passed_words"`
-	FailedWords       int            `json:"failed_words"`
-	AverageScore      float64        `json:"average_score"`
-	MinScore          float64        `json:"min_score"`
-	MaxScore          float64        `json:"max_score"`
-	MinRequirement    float64        `json:"min_requirement"`
-	TargetScore       float64        `json:"target_score"`
-	ScoreDistribution map[string]int `json:"score_distribution"` // "0-20", "20-40", "40-60", "60-80", "80-100"
-	FailedTerms       []FailedTerm   `json:"failed_terms,omitempty"`
-	ExecutionErrors   []string       `json:"execution_errors,omitempty"`
-	Status            string         `json:"status"` // "passed", "failed", "error"
+	Name              string           `json:"name"`
+	TotalWords        int              `json:"total_words"`
+	TestedWords       int              `json:"tested_words"`
+	PassedWords       int              `json:"passed_words"`
+	FailedWords       int              `json:"failed_words"`
+	AverageScore      float64          `json:"average_score"`
+	MinScore          float64          `json:"min_score"`
+	MaxScore          float64          `json:"max_score"`
+	MinRequirement    float64          `json:"min_requirement"`
+	TargetScore       float64          `json:"target_score"`
+	ScoreDistribution map[string]int   `json:"score_distribution"` // "0-20", "20-40", "40-60", "60-80", "80-100"
+	FailedTerms       []FailedTerm     `json:"failed_terms,omitempty"`
+	ExecutionErrors   []string         `json:"execution_errors,omitempty"`
+	Status            string           `json:"status"` // "passed", "failed", "error"
+	LemmaAccuracy     float64          `json:"lemma_accuracy"`               // 0-100%
+	LemmaMismatches   []LemmaMismatch  `json:"lemma_mismatches,omitempty"`
 }
 
 // FailedTerm represents a word that didn't meet quality requirements
@@ -45,6 +47,12 @@ type FailedTerm struct {
 	Score          float64 `json:"score"`
 	MinRequirement float64 `json:"min_requirement"`
 	Reason         string  `json:"reason"`
+}
+
+// LemmaMismatch represents a word whose resolved lemma is not a prefix of the term
+type LemmaMismatch struct {
+	Term        string `json:"term"`
+	ActualLemma string `json:"actual_lemma"`
 }
 
 // SaveAsJSON saves the report to a JSON file

@@ -188,7 +188,12 @@ func buildQualityTestStages(
 	return stages
 }
 
-func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, error) {
+type runWordResult struct {
+	Score       float64
+	LemmaSurface string // resolved lemma surface
+}
+
+func (h *qualityHarness) runWord(ctx context.Context, term string) (*runWordResult, error) {
 	// Create a job for this term
 	job, err := h.jobRepo.Create(ctx, &entity.PipelineJob{
 		Status:   entity.JobStatusPending,
@@ -198,31 +203,37 @@ func (h *qualityHarness) runWord(ctx context.Context, term string) (float64, err
 		Term:     term,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("create job: %w", err)
+		return nil, fmt.Errorf("create job: %w", err)
 	}
 	if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusRunning, ""); err != nil {
-		return 0, fmt.Errorf("mark job running: %w", err)
+		return nil, fmt.Errorf("mark job running: %w", err)
 	}
 
 	result, err := h.pipeline.Run(ctx, job.ID, term, "en", 2, nil)
 	if err != nil {
 		_ = h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
-		return 0, err
+		return nil, err
 	}
 	if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, ""); err != nil {
-		return 0, fmt.Errorf("mark job completed: %w", err)
+		return nil, fmt.Errorf("mark job completed: %w", err)
 	}
 	if result == nil || result.LemmaSnapshot == nil {
-		return 0, fmt.Errorf("snapshot missing")
+		return nil, fmt.Errorf("snapshot missing")
 	}
 	if strings.TrimSpace(result.LemmaSnapshot.Surface) == "" {
-		return 0, fmt.Errorf("snapshot surface is empty for term %q", term)
+		return nil, fmt.Errorf("snapshot surface is empty for term %q", term)
 	}
-	// Non-lemma terms must resolve to a different lemma surface
 	if result.Lemma != nil && strings.TrimSpace(result.Lemma.Surface) == "" {
-		return 0, fmt.Errorf("lemma surface is empty for term %q", term)
+		return nil, fmt.Errorf("lemma surface is empty for term %q", term)
 	}
-	return result.LemmaSnapshot.Quality.Overall, nil
+	lemmaSurface := ""
+	if result.Lemma != nil {
+		lemmaSurface = result.Lemma.Surface
+	}
+	return &runWordResult{
+		Score:        result.LemmaSnapshot.Quality.Overall,
+		LemmaSurface: lemmaSurface,
+	}, nil
 }
 
 type stageRequirement struct {
@@ -285,17 +296,17 @@ func runStageAndCollect(t *testing.T, ctx context.Context, h *qualityHarness, st
 	report := stageReport{stageName: stage.name, count: len(terms)}
 
 	for _, term := range terms {
-		score, err := h.runWord(ctx, term)
+		wordResult, err := h.runWord(ctx, term)
 		if err != nil {
 			report.executionErrors = append(report.executionErrors, fmt.Sprintf("%s: %v", term, err))
 			continue
 		}
-		scores = append(scores, score)
+		scores = append(scores, wordResult.Score)
 
-		if score < stage.minScore {
-			report.hardFailures = append(report.hardFailures, fmt.Sprintf("%s=%.2f(<%.2f)", term, score, stage.minScore))
-		} else if score < stage.targetScore {
-			report.targetMisses = append(report.targetMisses, fmt.Sprintf("%s=%.2f(<%.2f)", term, score, stage.targetScore))
+		if wordResult.Score < stage.minScore {
+			report.hardFailures = append(report.hardFailures, fmt.Sprintf("%s=%.2f(<%.2f)", term, wordResult.Score, stage.minScore))
+		} else if wordResult.Score < stage.targetScore {
+			report.targetMisses = append(report.targetMisses, fmt.Sprintf("%s=%.2f(<%.2f)", term, wordResult.Score, stage.targetScore))
 		}
 	}
 
@@ -734,6 +745,11 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 		"80-100": 0,
 	}
 
+	// Lemma accuracy tracking
+	lemmaChecked := 0
+	lemmaCorrect := 0
+	var lemmaMismatches []pipeline.LemmaMismatch
+
 	minAverage := req.minAverageScore + llmBoost
 	targetAverage := req.targetAverage + llmBoost
 
@@ -751,22 +767,25 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 			fmt.Fprintf(os.Stderr, "[quality] [%s] testing %d/%d: %s\n", req.name, i+1, len(terms), term)
 		}
 
-		score, err := h.runWord(ctx, term)
+		wordResult, err := h.runWord(ctx, term)
 		if err != nil {
 			// If abandoned due to missing Wikidata (our source of truth), treat as 0 score
 			if strings.Contains(err.Error(), "Wikidata") {
-				score = 0
 				failedTerms = append(failedTerms, pipeline.FailedTerm{
 					Term:           term,
 					Score:          0,
 					MinRequirement: minAverage,
 					Reason:         "abandoned: " + err.Error(),
 				})
+				scores = append(scores, 0)
+				scoreDistribution[getScoreBucket(0)]++
 			} else {
 				executionErrors = append(executionErrors, fmt.Sprintf("%s: %v", term, err))
-				continue
 			}
+			continue
 		}
+
+		score := wordResult.Score
 		scores = append(scores, score)
 
 		// Update distribution
@@ -780,6 +799,24 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 				Score:          score,
 				MinRequirement: minAverage,
 				Reason:         "below minimum requirement",
+			})
+		}
+
+		// Lemma accuracy: the resolved lemma must be a prefix of the term.
+		// Wordbook terms are base forms, so lemma should equal term (lemmaSurface == "").
+		// If lemma differs, it must at least be a prefix (e.g., term "limits" → lemma "limit").
+		lemmaChecked++
+		termLower := strings.ToLower(term)
+		if wordResult.LemmaSurface == "" || strings.EqualFold(wordResult.LemmaSurface, term) {
+			// Term is the lemma itself — correct
+			lemmaCorrect++
+		} else if strings.HasPrefix(termLower, strings.ToLower(wordResult.LemmaSurface)) {
+			// Lemma is a prefix of term — correct (e.g., "limit" → "limits")
+			lemmaCorrect++
+		} else {
+			lemmaMismatches = append(lemmaMismatches, pipeline.LemmaMismatch{
+				Term:         term,
+				ActualLemma:  wordResult.LemmaSurface,
 			})
 		}
 
@@ -808,8 +845,19 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 		status = "failed"
 	}
 
-	fmt.Fprintf(os.Stderr, "[quality] [%s] done: %d words in %v, avg=%.2f status=%s\n",
-		req.name, len(terms), testElapsed.Round(time.Second), avgScore, status)
+	lemmaAccuracy := float64(0)
+	if lemmaChecked > 0 {
+		lemmaAccuracy = float64(lemmaCorrect) / float64(lemmaChecked) * 100
+	}
+
+	fmt.Fprintf(os.Stderr, "[quality] [%s] done: %d words in %v, avg=%.2f, lemma_accuracy=%.1f%% (%d/%d) status=%s\n",
+		req.name, len(terms), testElapsed.Round(time.Second), avgScore, lemmaAccuracy, lemmaCorrect, lemmaChecked, status)
+	if len(lemmaMismatches) > 0 {
+		fmt.Fprintf(os.Stderr, "[quality] [%s] lemma mismatches (%d):\n", req.name, len(lemmaMismatches))
+		for _, m := range lemmaMismatches {
+			fmt.Fprintf(os.Stderr, "  %s → %s\n", m.Term, m.ActualLemma)
+		}
+	}
 
 	return pipeline.WordbookQualityReport{
 		Name:              req.name,
@@ -826,6 +874,8 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 		FailedTerms:       failedTerms,
 		ExecutionErrors:   executionErrors,
 		Status:            status,
+		LemmaAccuracy:     lemmaAccuracy,
+		LemmaMismatches:   lemmaMismatches,
 	}
 }
 
