@@ -326,13 +326,11 @@ func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx 
 	return p.createLemma(ctx, pctx, best)
 }
 
-// bestLemmaFormSurface returns the best LEMMA-type form surface from collected data.
-// It excludes surfaces from abbreviation/numeral lexemes (e.g., "ltd" from an abbreviation
-// lexeme should not be preferred over "limit" from a verb lexeme).
-// Among remaining candidates, the shortest form is selected as the canonical base form
-// (e.g., "child" over "child's", "work" over "working").
+// bestLemmaFormSurface selects the canonical lemma from FormTypeLemma candidates.
+// Priority: prefer candidates that are a prefix of the search term (e.g., "one" is a
+// prefix of "ones", but "1" is not). Among prefix matches, pick the longest (most specific).
+// If no prefix matches, fall back to shortest candidate.
 func bestLemmaFormSurface(pctx *PipelineContext) string {
-	// Collect all LEMMA form surfaces.
 	var candidates []string
 	for _, f := range pctx.Forms {
 		if f == nil || f.FormType != entity.FormTypeLemma || f.Surface == "" {
@@ -347,71 +345,30 @@ func bestLemmaFormSurface(pctx *PipelineContext) string {
 		return candidates[0]
 	}
 
-	// Build exclusion set: LEMMA surfaces from abbreviation/numeral lexemes,
-	// plus surfaces that are clearly non-canonical (all digits, etc.).
-	excluded := collectExcludedLemmaSurfaces(pctx)
+	termLower := strings.ToLower(pctx.Term)
 
-	// Filter out excluded surfaces.
-	var filtered []string
+	// Pick the longest prefix match that is strictly shorter than the term.
+	// The lemma is the base form, so it must be shorter than the inflected form.
+	var bestPrefix string
 	for _, s := range candidates {
-		if excluded[strings.ToLower(s)] || isNonCanonicalSurface(s) {
-			continue
+		if len(s) < len(pctx.Term) && strings.HasPrefix(termLower, strings.ToLower(s)) {
+			if len(s) > len(bestPrefix) {
+				bestPrefix = s
+			}
 		}
-		filtered = append(filtered, s)
 	}
-	if len(filtered) == 0 {
-		filtered = candidates // fallback if everything was excluded
+	if bestPrefix != "" {
+		return bestPrefix
 	}
 
-	// Pick shortest.
-	best := filtered[0]
-	for _, s := range filtered[1:] {
+	// No prefix match — pick shortest.
+	best := candidates[0]
+	for _, s := range candidates[1:] {
 		if len(s) < len(best) {
 			best = s
 		}
 	}
 	return best
-}
-
-// isNonCanonicalSurface returns true for surfaces that should not be considered
-// as canonical lemma forms: all-digit strings (e.g., "1" for "one").
-func isNonCanonicalSurface(s string) bool {
-	if s == "" {
-		return true
-	}
-	allDigit := true
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			allDigit = false
-			break
-		}
-	}
-	return allDigit
-}
-
-// collectExcludedLemmaSurfaces returns normalized surfaces that should not be
-// considered as canonical lemma forms because they come from abbreviation or
-// numeral lexemes.
-func collectExcludedLemmaSurfaces(pctx *PipelineContext) map[string]bool {
-	excluded := make(map[string]bool)
-	for _, lex := range pctx.Lexemes {
-		if lex == nil {
-			continue
-		}
-		if lex.PartOfSpeech != entity.PartOfSpeechAbbreviation &&
-			lex.PartOfSpeech != entity.PartOfSpeechNumeral {
-			continue
-		}
-		// Exclude LEMMA forms belonging to this lexeme.
-		if forms, ok := pctx.FormsByLexeme[lex.ExternalID]; ok {
-			for _, f := range forms {
-				if f != nil && f.FormType == entity.FormTypeLemma {
-					excluded[strings.ToLower(f.Surface)] = true
-				}
-			}
-		}
-	}
-	return excluded
 }
 
 // correctLemmaSurface checks if the existing lemma surface should be updated

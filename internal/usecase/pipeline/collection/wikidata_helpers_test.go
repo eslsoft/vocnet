@@ -68,9 +68,9 @@ func TestMapGrammaticalFeaturesToFormType(t *testing.T) {
 		{"comparative", []string{"Q14169499"}, entity.FormTypeComparative},
 		{"superlative", []string{"Q1817208"}, entity.FormTypeSuperlative},
 		{"third person singular", []string{"Q51929049", "Q110786"}, entity.FormTypeThirdPersonSingular},
-		{"explicit lemma marker", []string{"Q3910936"}, entity.FormTypeLemma},
-		{"unknown features default to lemma", []string{"Q999999"}, entity.FormTypeLemma},
-		{"third person without singular", []string{"Q51929049"}, entity.FormTypeLemma},
+		{"explicit lemma marker", []string{"Q3910936"}, entity.FormTypeUnspecified},
+		{"unknown features", []string{"Q999999"}, entity.FormTypeUnspecified},
+		{"third person without singular", []string{"Q51929049"}, entity.FormTypeUnspecified},
 	}
 
 	for _, tt := range tests {

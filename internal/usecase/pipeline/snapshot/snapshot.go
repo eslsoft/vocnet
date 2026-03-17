@@ -193,22 +193,29 @@ func collectSnapshotCategories(lexemes []*entity.Lexeme) []string {
 	return out
 }
 
-// toLemmaSnapshotForms deduplicates forms and resolves conflicts where a surface
-// has both LEMMA and non-LEMMA form types. If the surface is not the actual lemma,
-// the LEMMA entry is dropped in favor of the more specific form type.
-// Example: "working" may be both LEMMA (noun) and PRESENT_PARTICIPLE (of "work");
-// when lemma is "work", the LEMMA entry for "working" is spurious.
+// toLemmaSnapshotForms deduplicates forms and resolves conflicts:
+//   - Spurious LEMMA: if a surface is not the actual lemma and has a specific form type,
+//     the LEMMA entry is dropped.
+//   - Redundant Unspecified: if a surface has any known form type, the Unspecified entry
+//     is dropped (Unspecified means "features not recognized", not useful in snapshot).
 func toLemmaSnapshotForms(forms []*entity.LemmaForm, lemmaSurface string) []entity.LemmaSnapshotForm {
-	// First pass: collect all surface:formType pairs and track which surfaces
-	// have a non-LEMMA form type.
-	hasNonLemmaType := make(map[string]bool)
+	// First pass: track which surfaces have specific (non-LEMMA, non-Unspecified) types,
+	// and which have any known (non-Unspecified) type.
+	hasSpecificType := make(map[string]bool)
+	hasKnownType := make(map[string]bool)
 	for _, f := range forms {
 		if f == nil {
 			continue
 		}
 		surface := strings.ToLower(strings.TrimSpace(f.Surface))
-		if surface != "" && f.FormType != entity.FormTypeLemma {
-			hasNonLemmaType[surface] = true
+		if surface == "" {
+			continue
+		}
+		if f.FormType != entity.FormTypeLemma && f.FormType != entity.FormTypeUnspecified {
+			hasSpecificType[surface] = true
+		}
+		if f.FormType != entity.FormTypeUnspecified {
+			hasKnownType[surface] = true
 		}
 	}
 
@@ -224,8 +231,13 @@ func toLemmaSnapshotForms(forms []*entity.LemmaForm, lemmaSurface string) []enti
 		}
 		surfaceLower := strings.ToLower(surface)
 
-		// Drop spurious LEMMA form: surface is not the lemma and has a real form type
-		if f.FormType == entity.FormTypeLemma && surfaceLower != lemmaSurface && hasNonLemmaType[surfaceLower] {
+		// Drop spurious LEMMA: surface is not the lemma and has a specific form type.
+		if f.FormType == entity.FormTypeLemma && surfaceLower != lemmaSurface && hasSpecificType[surfaceLower] {
+			continue
+		}
+
+		// Drop Unspecified: surface already has a known form type.
+		if f.FormType == entity.FormTypeUnspecified && hasKnownType[surfaceLower] {
 			continue
 		}
 

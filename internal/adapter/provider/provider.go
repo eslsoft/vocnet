@@ -7,6 +7,7 @@ import (
 // WikidataLexeme represents a Wikidata lexeme with its senses and forms.
 type WikidataLexeme struct {
 	LexemeID string // e.g. "L123456"
+	Lemma    string // headword / lemma representation (e.g. "limit", "run")
 	Language string
 	POS      string
 	Senses   []WikidataSense

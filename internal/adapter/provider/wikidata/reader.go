@@ -285,6 +285,7 @@ func (r *Reader) buildLexemesWithDetails(ctx context.Context, parsedRows []lexem
 	for _, row := range parsedRows {
 		wl := provider.WikidataLexeme{
 			LexemeID: row.id,
+			Lemma:    row.lemma,
 			Language: row.lang,
 			POS:      row.pos,
 			Senses:   sensesMap[row.id],

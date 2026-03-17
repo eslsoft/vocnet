@@ -127,7 +127,7 @@ func mapGrammaticalFeaturesToFormType(features []string) entity.FormType {
 		return entity.FormTypeThirdPersonSingular
 	}
 
-	return entity.FormTypeLemma
+	return entity.FormTypeUnspecified
 }
 
 // defaultDialect returns the default BCP 47 dialect tag for a language
@@ -194,26 +194,26 @@ func pickSenseGloss(senses []entity.LexemeSense) string {
 }
 
 // ensureSurfaceForm ensures the given surface form exists in forms list.
+// Does NOT assign FormTypeLemma — only the Wikidata lemma representation is authoritative.
 func ensureSurfaceForm(forms []*entity.LemmaForm, surface string) []*entity.LemmaForm {
 	surface = strings.TrimSpace(surface)
 	if surface == "" {
 		return forms
 	}
 
-	normalized := strings.ToLower(surface)
 	for _, f := range forms {
 		if f == nil {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(f.Surface), surface) && f.FormType == entity.FormTypeLemma {
+		if strings.EqualFold(strings.TrimSpace(f.Surface), surface) {
 			return forms
 		}
 	}
 
 	return append(forms, &entity.LemmaForm{
 		Surface:    surface,
-		Normalized: normalized,
-		FormType:   entity.FormTypeLemma,
+		Normalized: strings.ToLower(surface),
+		FormType:   entity.FormTypeUnspecified,
 	})
 }
 
@@ -235,7 +235,12 @@ func convertProviderLexeme(lex provider.WikidataLexeme, term string, lang entity
 		}
 	}
 
-	forms := make([]*entity.LemmaForm, 0, len(lex.Forms))
+	// Ensure the Wikidata lemma representation is always present as FormTypeLemma.
+	// This is the authoritative headword from Wikidata, not guessed from features.
+	lemmaRepr := strings.TrimSpace(lex.Lemma)
+
+	forms := make([]*entity.LemmaForm, 0, len(lex.Forms)+1)
+	hasLemmaReprForm := false
 	for _, form := range lex.Forms {
 		if form.Representation == "" {
 			continue
@@ -256,10 +261,24 @@ func convertProviderLexeme(lex provider.WikidataLexeme, term string, lang entity
 
 		formType := mapGrammaticalFeaturesToFormType(form.Features)
 
+		// If this form matches the Wikidata lemma representation, force FormTypeLemma.
+		if lemmaRepr != "" && strings.EqualFold(form.Representation, lemmaRepr) {
+			formType = entity.FormTypeLemma
+			hasLemmaReprForm = true
+		}
+
 		forms = append(forms, &entity.LemmaForm{
 			Surface:   form.Representation,
 			FormType:  formType,
 			Phonetics: phonetics,
+		})
+	}
+
+	// If the lemma representation wasn't found among forms, add it explicitly.
+	if lemmaRepr != "" && !hasLemmaReprForm {
+		forms = append(forms, &entity.LemmaForm{
+			Surface:  lemmaRepr,
+			FormType: entity.FormTypeLemma,
 		})
 	}
 
