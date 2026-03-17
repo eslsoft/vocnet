@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -25,6 +26,7 @@ type VocnetPipeline struct {
 	lexemeRepo   repository.LexemeRepository
 	evaluator    *scoring.DataEvaluator
 	logger       *slog.Logger
+	lemmaLocks   sync.Map // map[string]*sync.Mutex — per-lemma mutex keyed by normalized surface
 }
 
 type ProcessWordResult struct {
@@ -78,6 +80,15 @@ func NewVocnetPipeline(
 	)
 
 	return vp
+}
+
+// acquireLemmaLock returns a mutex for the given normalized lemma surface.
+// Multiple workers processing terms that map to the same lemma will serialize.
+func (p *VocnetPipeline) acquireLemmaLock(normalized string) *sync.Mutex {
+	actual, _ := p.lemmaLocks.LoadOrStore(normalized, &sync.Mutex{})
+	mu := actual.(*sync.Mutex)
+	mu.Lock()
+	return mu
 }
 
 func (p *VocnetPipeline) Run(ctx context.Context, jobID int64, term string, language string, tier int32, opts *RunOptions) (*ProcessWordResult, error) {
@@ -157,20 +168,50 @@ func (p *VocnetPipeline) OnStageEnd(ctx context.Context, stage *Stage, pctx *Pip
 		return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusSkipped, "")
 	}
 
-	// After collection: resolve or correct lemma based on collected data.
+	// Acquire per-lemma lock to serialize DB writes for the same lemma.
+	// Different terms (e.g., "abandoned", "abandon") may resolve to the same lemma
+	// and must not write concurrently.
+	if writeErr := p.writeStageResultWithLock(ctx, pctx, phaseNum, mergedResult); writeErr != nil {
+		return writeErr
+	}
+
+	return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusCompleted, "")
+}
+
+// writeStageResultWithLock serializes all DB writes for the same lemma.
+// Different terms (e.g., "abandoned", "abandon") that resolve to the same lemma
+// must not write concurrently — this method guarantees mutual exclusion.
+func (p *VocnetPipeline) writeStageResultWithLock(ctx context.Context, pctx *PipelineContext, phaseNum int32, mergedResult *ProcessResult) error {
+	// Determine the lock key. For existing lemmas, use the DB lemma's normalized
+	// surface — this is the same for ALL workers touching the same lemma regardless
+	// of which term they started from. For new lemmas (nil), use the best lemma form
+	// surface discovered during collection, or fall back to the term.
+	var lockKey string
+	if pctx.Lemma != nil {
+		lockKey = pctx.Lemma.Normalized
+	} else {
+		best := bestLemmaFormSurface(pctx)
+		if best != "" {
+			lockKey = strings.ToLower(best)
+		} else {
+			lockKey = strings.ToLower(strings.TrimSpace(pctx.Term))
+		}
+	}
+
+	mu := p.acquireLemmaLock(lockKey)
+	defer mu.Unlock()
+
+	// Resolve or create the lemma under the lock.
 	if pctx.Lemma == nil {
-		// New word: create lemma with the true base form from data sources.
 		if err := p.createLemmaFromCollectedData(ctx, pctx); err != nil {
 			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 			return err
 		}
 	} else {
-		// Existing lemma: correct surface if data sources reveal a better base form.
-		// Fixes stale data where old code created lemmas with wrong surfaces
-		// (e.g., "better" instead of "good").
 		p.correctLemmaSurface(ctx, pctx)
 	}
 
+	// All DB writes happen under the lemma lock.
 	if err := p.persistence.SaveStageResult(ctx, pctx.Lemma, mergedResult); err != nil {
 		_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 		return err
@@ -192,7 +233,7 @@ func (p *VocnetPipeline) OnStageEnd(ctx context.Context, stage *Stage, pctx *Pip
 		}
 	}
 
-	return p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusCompleted, "")
+	return nil
 }
 
 func (p *VocnetPipeline) OnProcessorStart(ctx context.Context, pctx *PipelineContext, stage *Stage, proc Processor) {

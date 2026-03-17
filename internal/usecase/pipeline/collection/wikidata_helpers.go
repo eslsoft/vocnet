@@ -67,6 +67,48 @@ var wikidataPOSQIDMap = map[string]entity.PartOfSpeech{
 	"q10319522":  entity.PartOfSpeechAdposition,
 	"q1167104":   entity.PartOfSpeechSCONJ,
 	"q29888377":  entity.PartOfSpeechNoun,
+
+	// Phrases, locutions, and multi-word expressions
+	"q184511":    entity.PartOfSpeechNoun,       // idiom
+	"q1527589":   entity.PartOfSpeechVerb,       // phrasal verb
+	"q10976085":  entity.PartOfSpeechVerb,       // verbal locution
+	"q3734650":   entity.PartOfSpeechAdverb,     // adverbial phrase
+	"q5978303":   entity.PartOfSpeechAdverb,     // adverbial locution
+	"q357760":    entity.PartOfSpeechAdjective,  // adjectival locution
+	"q12734432":  entity.PartOfSpeechAdjective,  // attributive locution
+	"q10319520":  entity.PartOfSpeechInterjection, // interjectional locution
+	"q20430476":  entity.PartOfSpeechPronoun,    // pronominal locution
+	"q6935164":   entity.PartOfSpeechNoun,       // multiword expression
+	"q1122269":   entity.PartOfSpeechNoun,       // collocation
+	"q65280376":  entity.PartOfSpeechNoun,       // everyday collocation
+	"q5456361":   entity.PartOfSpeechNoun,       // fixed expression
+	"q7188068":   entity.PartOfSpeechNoun,       // phrasal template
+
+	// Proverbs, sayings, slogans
+	"q35102":     entity.PartOfSpeechNoun,       // proverb
+	"q3026787":   entity.PartOfSpeechNoun,       // saying
+	"q30515":     entity.PartOfSpeechNoun,       // slogan
+	"q11073520":  entity.PartOfSpeechNoun,       // formulaic language
+
+	// Special noun subtypes
+	"q217438":    entity.PartOfSpeechNoun,       // demonym
+	"q81058955":  entity.PartOfSpeechNoun,       // national demonym
+	"q7884789":   entity.PartOfSpeechProperNoun, // toponym
+	"q1787727":   entity.PartOfSpeechNoun,       // agent noun
+
+	// Morphological and other
+	"q80071":     entity.PartOfSpeechSymbol,     // symbol
+	"q43249":     entity.PartOfSpeechAffix,      // morpheme
+	"q1153504":   entity.PartOfSpeechAffix,      // interfix
+	"q191494":    entity.PartOfSpeechOther,      // digraph
+	"q2034977":   entity.PartOfSpeechAdverb,     // prepositional adverb
+	"q5283216":   entity.PartOfSpeechPronoun,    // distributive pronoun
+	"q4335462":   entity.PartOfSpeechPronoun,    // definite pronoun
+	"q918270":    entity.PartOfSpeechAbbreviation, // initialism
+	"q130270424": entity.PartOfSpeechPronoun,     // interrogative expression
+	"q126473":    entity.PartOfSpeechOther,        // contraction
+	"q9788":      entity.PartOfSpeechOther,        // letter
+	"q111029":    entity.PartOfSpeechAffix,        // root (morphological)
 }
 
 // parseWikidataPOS parses Wikidata POS QID to canonical POS.
