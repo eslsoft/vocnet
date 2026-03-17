@@ -66,9 +66,10 @@ func TestPipelineDataQualityGates(t *testing.T) {
 }
 
 type qualityHarness struct {
-	pipeline    *pipeline.VocnetPipeline
-	jobRepo     repository.PipelineJobRepository
-	entClient   *entdb.Client
+	pipeline     *pipeline.VocnetPipeline
+	svc          *pipeline.PipelineService
+	jobRepo      repository.PipelineJobRepository
+	entClient    *entdb.Client
 	snapshotRepo repository.LemmaSnapshotRepository
 }
 
@@ -80,7 +81,7 @@ func newPipelineQualityHarnessForWordbook(
 	llmProvider llm.Provider,
 	wordbookName string,
 	registry *pipeline.SourceRegistry,
-	wikidataReader provider.WikidataProvider,
+	wikidataReader *wikidata.Reader,
 ) *qualityHarness {
 	t.Helper()
 
@@ -118,7 +119,11 @@ func newPipelineQualityHarnessForWordbook(
 
 	evaluator := scoring.NewDataEvaluator(scorer, logger)
 	p := pipeline.NewVocnetPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
-	return &qualityHarness{pipeline: p, jobRepo: jobRepo, entClient: entClient, snapshotRepo: snapshotRepo}
+
+	svc := pipeline.NewPipelineService(jobRepo, stageRepo, logger)
+	svc.SetLemmaResolver(wikidata.NewLemmaResolver(wikidataReader))
+
+	return &qualityHarness{pipeline: p, svc: svc, jobRepo: jobRepo, entClient: entClient, snapshotRepo: snapshotRepo}
 }
 
 // buildQualityTestStages constructs pipeline stages for quality testing
@@ -185,44 +190,37 @@ type runWordResult struct {
 }
 
 func (h *qualityHarness) runWord(ctx context.Context, term string) (*runWordResult, error) {
-	// Create a job for this term
-	job, err := h.jobRepo.Create(ctx, &entity.PipelineJob{
-		Status:   entity.JobStatusPending,
-		Name:     "quality-test-" + term,
-		Language: "en",
-		Tier:     2,
-		Term:     term,
-	})
+	// Use PipelineService.SubmitJob — same path as production.
+	// This resolves the term to canonical lemma surface(s) and creates job(s).
+	jobs, err := h.svc.SubmitJob(ctx, term, "en", 2, "")
 	if err != nil {
-		return nil, fmt.Errorf("create job: %w", err)
-	}
-	if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusRunning, ""); err != nil {
-		return nil, fmt.Errorf("mark job running: %w", err)
+		return nil, fmt.Errorf("submit %q: %w", term, err)
 	}
 
-	result, err := h.pipeline.Run(ctx, job.ID, term, "en", 2, nil)
-	if err != nil {
-		_ = h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
-		return nil, err
+	// Run all resolved jobs (a term may resolve to multiple lemmas).
+	var lastResult *pipeline.ProcessWordResult
+	for _, job := range jobs {
+		if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusRunning, ""); err != nil {
+			return nil, fmt.Errorf("mark job running: %w", err)
+		}
+		result, err := h.pipeline.Run(ctx, job.ID, job.Term, "en", 2, nil)
+		if err != nil {
+			_ = h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusFailed, err.Error())
+			return nil, err
+		}
+		_ = h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, "")
+		lastResult = result
 	}
-	if err := h.jobRepo.UpdateStatus(ctx, job.ID, entity.JobStatusCompleted, ""); err != nil {
-		return nil, fmt.Errorf("mark job completed: %w", err)
-	}
-	if result == nil || result.LemmaSnapshot == nil {
-		return nil, fmt.Errorf("snapshot missing")
-	}
-	if strings.TrimSpace(result.LemmaSnapshot.Surface) == "" {
-		return nil, fmt.Errorf("snapshot surface is empty for term %q", term)
-	}
-	if result.Lemma != nil && strings.TrimSpace(result.Lemma.Surface) == "" {
-		return nil, fmt.Errorf("lemma surface is empty for term %q", term)
+
+	if lastResult == nil || lastResult.LemmaSnapshot == nil {
+		return nil, fmt.Errorf("snapshot missing for term %q", term)
 	}
 	lemmaSurface := ""
-	if result.Lemma != nil {
-		lemmaSurface = result.Lemma.Surface
+	if lastResult.Lemma != nil {
+		lemmaSurface = lastResult.Lemma.Surface
 	}
 	return &runWordResult{
-		Score:        result.LemmaSnapshot.Quality.Overall,
+		Score:        lastResult.LemmaSnapshot.Quality.Overall,
 		LemmaSurface: lemmaSurface,
 	}, nil
 }

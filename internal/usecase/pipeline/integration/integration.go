@@ -225,7 +225,7 @@ func (ip *IntegrationProcessor) ensureForm(
 	} else {
 		newForm = &entity.LemmaForm{
 			Surface:  surface,
-			FormType: entity.FormTypeLemma,
+			FormType: entity.FormTypeUnspecified,
 		}
 	}
 	current[surface] = newForm

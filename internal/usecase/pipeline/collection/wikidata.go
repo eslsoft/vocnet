@@ -50,9 +50,9 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 		return nil, fmt.Errorf("word not found in Wikidata: %s (non-standard vocabulary rejected)", term)
 	}
 
-	// Filter to keep only lexemes from the best-matching headword group.
-	// Prevents mixing different words (e.g., "other" vs "another") that share a form.
-	lexemes = filterLexemesByLemmaGroup(lexemes, term)
+	// Keep only lexemes whose Wikidata lemma matches the term.
+	// Term is already resolved to canonical lemma surface at submission time.
+	lexemes = filterLexemesByLemma(lexemes, term)
 
 	// Create evidence
 	evidence := &entity.RawEvidence{

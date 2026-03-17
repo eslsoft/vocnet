@@ -45,6 +45,7 @@ func TestWikidataProcessor_SetsProvider(t *testing.T) {
 	providerLexemes := []provider.WikidataLexeme{
 		{
 			LexemeID: "L1",
+			Lemma:    "dog",
 			POS:      "Q1084",
 			Language: "en",
 			Senses: []provider.WikidataSense{

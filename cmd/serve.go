@@ -217,9 +217,7 @@ func buildNewPipelineStages(
 	logger *slog.Logger,
 ) []*pipeline.Stage {
 	// Phase 1: Collection (Concurrent data acquisition from all sources)
-	// Wikidata processor resolves the canonical lemma and updates pctx.Term.
-	// Other processors may read the original or resolved term — both are valid
-	// since the final lemma is determined by bestLemmaFormSurface at persistence time.
+	// Term is already resolved to canonical lemma surface at job submission time.
 	collectionProcessors := []pipeline.Processor{
 		collection.NewWikidataProcessor(wikidataProvider, logger),
 	}

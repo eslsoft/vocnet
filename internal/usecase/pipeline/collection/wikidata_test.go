@@ -34,6 +34,7 @@ func TestWikidataProcessor_Process_ExecutesWhenLexemesExist(t *testing.T) {
 			return []provider.WikidataLexeme{
 				{
 					LexemeID: "L123",
+					Lemma:    "mission",
 					Language: "en",
 					POS:      "verb",
 					Senses: []provider.WikidataSense{
@@ -120,6 +121,7 @@ func TestWikidataProcessor_Process_FailsOnUnknownWikidataPOSQID(t *testing.T) {
 			return []provider.WikidataLexeme{
 				{
 					LexemeID: "L1",
+					Lemma:    "edgecase",
 					Language: "en",
 					POS:      "Q999999999",
 				},
@@ -143,14 +145,14 @@ func TestWikidataProcessor_Process_BuildsRelations(t *testing.T) {
 	p := NewWikidataProcessor(&mockWikidataProvider{
 		fetchLexemesFn: func(ctx context.Context, term string, language string) ([]provider.WikidataLexeme, map[string]any, error) {
 			return []provider.WikidataLexeme{
-				{LexemeID: "L1", Language: "en", POS: "noun"},
-				{LexemeID: "L2", Language: "en", POS: "verb"},
+				{LexemeID: "L1", Lemma: "bank", Language: "en", POS: "noun"},
+				{LexemeID: "L2", Lemma: "bank", Language: "en", POS: "verb"},
 			}, map[string]any{"source": "test"}, nil
 		},
 		fetchLexemesByFormFn: func(ctx context.Context, form string, language string) ([]provider.WikidataLexeme, error) {
 			return []provider.WikidataLexeme{
-				{LexemeID: "L1", Language: "en"},
-				{LexemeID: "L2", Language: "en"},
+				{LexemeID: "L1", Lemma: "bank", Language: "en"},
+				{LexemeID: "L2", Lemma: "bank", Language: "en"},
 			}, nil
 		},
 	}, testLogger())

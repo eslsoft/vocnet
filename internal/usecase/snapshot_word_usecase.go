@@ -53,9 +53,6 @@ func (u *snapshotWordUsecase) Lookup(ctx context.Context, surface string, langua
 	return snapshotToWordEntry(snapshot, surface), nil
 }
 
-// pickBestLemma selects the best lemma for a given search surface.
-// Priority: prefix match (shortest base form) > exact match > most forms.
-// This ensures "living" → "live", "cheaply" → "cheap", "does" → "do".
 func (u *snapshotWordUsecase) List(ctx context.Context, query *repository.ListWordsQuery) ([]*entity.WordEntry, int64, error) {
 	// Handle surface term lookup
 	if surfaceTerms := query.SurfaceTerms; len(surfaceTerms) > 0 {

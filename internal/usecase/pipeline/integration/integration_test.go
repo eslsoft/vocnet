@@ -116,12 +116,13 @@ func TestIntegrationProcessor_PreservesFormType(t *testing.T) {
 		}
 	}
 
-	// Test 3: New forms (not in existingForms) should get default LEMMA FormType
+	// Test 3: New forms (not in existingForms) should get default Unspecified FormType
+	// Only Wikidata's lemma representation should be marked FormTypeLemma.
 	if form, ok := resultByForm["runner"]; !ok {
 		t.Error("expected 'runner' form in result (from fragment)")
 	} else {
-		if form.FormType != entity.FormTypeLemma {
-			t.Errorf("expected 'runner' FormType to default to LEMMA, got %q", form.FormType)
+		if form.FormType != entity.FormTypeUnspecified {
+			t.Errorf("expected 'runner' FormType to default to Unspecified, got %q", form.FormType)
 		}
 		if len(form.Phonetics) == 0 {
 			t.Error("expected 'runner' to have phonetics from fragment")
@@ -129,7 +130,7 @@ func TestIntegrationProcessor_PreservesFormType(t *testing.T) {
 	}
 }
 
-func TestIntegrationProcessor_NoEmptyFormType(t *testing.T) {
+func TestIntegrationProcessor_NewFormDefaultsToUnspecified(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	ip := NewIntegrationProcessor(logger)
 
@@ -156,17 +157,17 @@ func TestIntegrationProcessor_NoEmptyFormType(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check that all forms have non-empty FormType
+	// New forms without authoritative type data should default to Unspecified.
+	// Only Wikidata's lemma representation should be marked FormTypeLemma.
 	for _, form := range result.Forms {
-		if form.FormType == "" {
-			t.Errorf("form %q has empty FormType", form.Surface)
+		if form.FormType != entity.FormTypeUnspecified {
+			t.Errorf("form %q expected FormTypeUnspecified, got %q", form.Surface, form.FormType)
 		}
 	}
 
-	// Check pctx.Forms as well
 	for _, form := range pctx.Forms {
-		if form.FormType == "" {
-			t.Errorf("pctx form %q has empty FormType", form.Surface)
+		if form.FormType != entity.FormTypeUnspecified {
+			t.Errorf("pctx form %q expected FormTypeUnspecified, got %q", form.Surface, form.FormType)
 		}
 	}
 }

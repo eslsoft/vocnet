@@ -43,21 +43,26 @@ func (s *PipelineService) SetLemmaResolver(r LemmaResolver) {
 }
 
 // resolveTermToLemmas converts a term to its Wikidata lemma surface(s).
-// If no resolver is configured, returns the term as-is.
-func (s *PipelineService) resolveTermToLemmas(ctx context.Context, term, language string) []string {
+// A single term can map to multiple lemmas (e.g., "does" → ["doe", "do"]).
+// Returns error if resolver is not configured, fails, or finds no lemma.
+func (s *PipelineService) resolveTermToLemmas(ctx context.Context, term, language string) ([]string, error) {
 	if s.resolver == nil {
-		return []string{term}
+		return nil, fmt.Errorf("lemma resolver not configured")
 	}
 	lemmas, err := s.resolver.ResolveLemmas(ctx, term, language)
-	if err != nil || len(lemmas) == 0 {
-		return []string{term}
+	if err != nil {
+		return nil, fmt.Errorf("resolve lemmas for %q: %w", term, err)
 	}
-	return lemmas
+	if len(lemmas) == 0 {
+		return nil, fmt.Errorf("no lemma found for %q", term)
+	}
+	return lemmas, nil
 }
 
-// SubmitWord creates pipeline jobs for a term. If the term is an inflected form,
-// jobs are created for each resolved lemma (e.g., "working" → jobs for "work" and "working").
-func (s *PipelineService) SubmitWord(ctx context.Context, term, language string, tier int32) (*entity.PipelineJob, error) {
+// SubmitJob resolves a term to its lemma surface(s) and creates pipeline jobs.
+// A term may resolve to multiple lemmas (e.g., "does" → ["do", "doe"]),
+// each getting its own job.
+func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, tier int32, name string) ([]*entity.PipelineJob, error) {
 	term = strings.TrimSpace(term)
 	if term == "" {
 		return nil, fmt.Errorf("term is required")
@@ -69,42 +74,11 @@ func (s *PipelineService) SubmitWord(ctx context.Context, term, language string,
 		tier = 2
 	}
 
-	lemmas := s.resolveTermToLemmas(ctx, term, language)
-	var firstJob *entity.PipelineJob
-	for _, lemma := range lemmas {
-		job := &entity.PipelineJob{
-			Status:   entity.JobStatusPending,
-			Name:     fmt.Sprintf("word: %s", lemma),
-			Language: language,
-			Tier:     tier,
-			Term:     lemma,
-		}
-		created, err := s.jobRepo.Create(ctx, job)
-		if err != nil {
-			return nil, err
-		}
-		if firstJob == nil {
-			firstJob = created
-		}
+	lemmas, err := s.resolveTermToLemmas(ctx, term, language)
+	if err != nil {
+		return nil, fmt.Errorf("submit %q: %w", term, err)
 	}
-	return firstJob, nil
-}
-
-// SubmitJob creates pipeline jobs for API calls.
-func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, tier int32, name string) (*entity.PipelineJob, error) {
-	term = strings.TrimSpace(term)
-	if term == "" {
-		return nil, fmt.Errorf("term is required")
-	}
-	if language == "" {
-		language = "en"
-	}
-	if tier == 0 {
-		tier = 2
-	}
-
-	lemmas := s.resolveTermToLemmas(ctx, term, language)
-	var firstJob *entity.PipelineJob
+	var jobs []*entity.PipelineJob
 	for _, lemma := range lemmas {
 		jobName := strings.TrimSpace(name)
 		if jobName == "" {
@@ -121,16 +95,13 @@ func (s *PipelineService) SubmitJob(ctx context.Context, term, language string, 
 		if err != nil {
 			return nil, err
 		}
-		if firstJob == nil {
-			firstJob = created
-		}
+		jobs = append(jobs, created)
 	}
-	return firstJob, nil
+	return jobs, nil
 }
 
-// SubmitTerms creates one job per term for bulk execution.
+// SubmitTerms resolves each term to its lemma surface(s) and creates jobs in batch.
 func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []string, language string, tier int32) ([]*entity.PipelineJob, error) {
-	// Deduplicate and trim
 	terms = deduplicateTerms(terms)
 	if len(terms) == 0 {
 		return nil, fmt.Errorf("no valid terms provided")
@@ -143,18 +114,36 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 		tier = 2
 	}
 
-	pending := make([]*entity.PipelineJob, 0, len(terms))
+	// Resolve all terms to lemma surfaces, then deduplicate resolved results.
+	resolvedSet := make(map[string]struct{}, len(terms))
+	resolved := make([]string, 0, len(terms))
 	for _, term := range terms {
+		lemmas, err := s.resolveTermToLemmas(ctx, term, language)
+		if err != nil {
+			return nil, fmt.Errorf("resolve %q: %w", term, err)
+		}
+		for _, lemma := range lemmas {
+			key := strings.ToLower(lemma)
+			if _, ok := resolvedSet[key]; ok {
+				continue
+			}
+			resolvedSet[key] = struct{}{}
+			resolved = append(resolved, lemma)
+		}
+	}
+
+	pending := make([]*entity.PipelineJob, 0, len(resolved))
+	for _, lemma := range resolved {
 		jobName := name
 		if jobName == "" {
-			jobName = fmt.Sprintf("word: %s", term)
+			jobName = fmt.Sprintf("word: %s", lemma)
 		}
 		pending = append(pending, &entity.PipelineJob{
 			Status:   entity.JobStatusPending,
 			Name:     jobName,
 			Language: language,
 			Tier:     tier,
-			Term:     term,
+			Term:     lemma,
 		})
 	}
 

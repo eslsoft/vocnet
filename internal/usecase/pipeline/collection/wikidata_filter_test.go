@@ -8,92 +8,57 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFilterLexemesByLemmaGroup(t *testing.T) {
+func TestFilterLexemesByLemma(t *testing.T) {
 	tests := []struct {
 		name     string
 		term     string
 		lexemes  []provider.WikidataLexeme
-		wantIDs  []string // expected lexeme IDs in result
-		wantDrop []string // lexeme IDs that should NOT be in result
+		wantIDs  []string
+		wantDrop []string
 	}{
 		{
-			name: "others: filters out another group, keeps other group",
-			term: "others",
+			name: "exact match only: played keeps played, drops play",
+			term: "played",
 			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L4334", Lemma: "other", POS: "noun"},
-				{LexemeID: "L333990", Lemma: "other", POS: "pronoun"},
-				{LexemeID: "L1323945", Lemma: "other", POS: "verb"},
-				{LexemeID: "L1323942", Lemma: "another", POS: "Q956030"},
+				{LexemeID: "L100", Lemma: "played", POS: "adjective"},
+				{LexemeID: "L1292", Lemma: "play", POS: "verb"},
 			},
-			wantIDs:  []string{"L4334", "L333990", "L1323945"},
-			wantDrop: []string{"L1323942"},
+			wantIDs:  []string{"L100"},
+			wantDrop: []string{"L1292"},
 		},
 		{
-			name: "left: exact match kept, leave group filtered (no prefix)",
-			term: "left",
+			name: "exact match only: play keeps play, drops played",
+			term: "play",
 			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L100", Lemma: "leave", POS: "verb"},
-				{LexemeID: "L101", Lemma: "leave", POS: "noun"},
-				{LexemeID: "L200", Lemma: "left", POS: "adjective"},
+				{LexemeID: "L1292", Lemma: "play", POS: "verb"},
+				{LexemeID: "L1293", Lemma: "play", POS: "noun"},
+				{LexemeID: "L100", Lemma: "played", POS: "adjective"},
 			},
-			wantIDs:  []string{"L200"},
-			wantDrop: []string{"L100", "L101"},
+			wantIDs:  []string{"L1292", "L1293"},
+			wantDrop: []string{"L100"},
 		},
 		{
-			name: "saw: exact match kept, see group filtered (no prefix)",
-			term: "saw",
-			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L10", Lemma: "see", POS: "verb"},
-				{LexemeID: "L20", Lemma: "saw", POS: "noun"},
-				{LexemeID: "L21", Lemma: "saw", POS: "verb"},
-			},
-			wantIDs:  []string{"L20", "L21"},
-			wantDrop: []string{"L10"},
-		},
-		{
-			name: "working: keeps both groups (work is prefix of working)",
-			term: "working",
-			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L330604", Lemma: "working", POS: "noun"},
-				{LexemeID: "L342574", Lemma: "working", POS: "adjective"},
-				{LexemeID: "L1291", Lemma: "work", POS: "verb"},
-			},
-			wantIDs: []string{"L330604", "L342574", "L1291"},
-		},
-		{
-			name: "satisfying: keeps both groups (satisfy is prefix of satisfying)",
+			name: "satisfying keeps only satisfying lexemes",
 			term: "satisfying",
 			lexemes: []provider.WikidataLexeme{
 				{LexemeID: "L340134", Lemma: "satisfying", POS: "adjective"},
 				{LexemeID: "L6319", Lemma: "satisfy", POS: "verb"},
 			},
-			wantIDs: []string{"L340134", "L6319"},
+			wantIDs:  []string{"L340134"},
+			wantDrop: []string{"L6319"},
 		},
 		{
-			name: "single group: all lexemes kept",
-			term: "running",
+			name: "satisfy keeps only satisfy lexemes",
+			term: "satisfy",
 			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L1", Lemma: "run", POS: "verb"},
-				{LexemeID: "L2", Lemma: "run", POS: "noun"},
+				{LexemeID: "L340134", Lemma: "satisfying", POS: "adjective"},
+				{LexemeID: "L6319", Lemma: "satisfy", POS: "verb"},
 			},
-			wantIDs: []string{"L1", "L2"},
+			wantIDs:  []string{"L6319"},
+			wantDrop: []string{"L340134"},
 		},
 		{
-			name: "single lexeme: kept as-is",
-			term: "hello",
-			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L1", Lemma: "hello", POS: "noun"},
-			},
-			wantIDs: []string{"L1"},
-		},
-		{
-			name: "empty input returns empty",
-			term: "anything",
-			lexemes: []provider.WikidataLexeme{},
-			wantIDs: nil,
-		},
-		{
-			name: "case insensitive lemma match",
+			name: "case insensitive match",
 			term: "Bank",
 			lexemes: []provider.WikidataLexeme{
 				{LexemeID: "L1", Lemma: "bank", POS: "noun"},
@@ -104,54 +69,41 @@ func TestFilterLexemesByLemmaGroup(t *testing.T) {
 			wantDrop: []string{"L3"},
 		},
 		{
-			name: "no exact or prefix match: largest group wins",
-			term: "bats",
+			name: "multiple POS same lemma: all kept",
+			term: "run",
 			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L1", Lemma: "bat", POS: "noun"},
-				{LexemeID: "L2", Lemma: "bat", POS: "verb"},
-				{LexemeID: "L3", Lemma: "bate", POS: "verb"},
+				{LexemeID: "L1", Lemma: "run", POS: "verb"},
+				{LexemeID: "L2", Lemma: "run", POS: "noun"},
 			},
-			wantIDs:  []string{"L1", "L2"},
-			wantDrop: []string{"L3"},
+			wantIDs: []string{"L1", "L2"},
 		},
 		{
-			name: "no related groups, equal size: alphabetically first lemma wins",
-			term: "lies",
+			name: "single lexeme exact match",
+			term: "hello",
 			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L1", Lemma: "lie", POS: "verb"},
-				{LexemeID: "L2", Lemma: "lye", POS: "noun"},
+				{LexemeID: "L1", Lemma: "hello", POS: "noun"},
 			},
-			wantIDs:  []string{"L1"},
-			wantDrop: []string{"L2"},
+			wantIDs: []string{"L1"},
 		},
 		{
-			name: "exact match beats larger unrelated group",
-			term: "bear",
+			name: "no match returns empty",
+			term: "xyz",
 			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L1", Lemma: "bare", POS: "verb"},
-				{LexemeID: "L2", Lemma: "bare", POS: "adjective"},
-				{LexemeID: "L3", Lemma: "bare", POS: "noun"},
-				{LexemeID: "L4", Lemma: "bear", POS: "noun"},
+				{LexemeID: "L1", Lemma: "abc", POS: "noun"},
 			},
-			wantIDs:  []string{"L4"},
-			wantDrop: []string{"L1", "L2", "L3"},
+			wantIDs: nil,
 		},
 		{
-			name: "prefix keeps both: unrelated group still filtered",
-			term: "workings",
-			lexemes: []provider.WikidataLexeme{
-				{LexemeID: "L1", Lemma: "working", POS: "noun"},
-				{LexemeID: "L2", Lemma: "work", POS: "verb"},
-				{LexemeID: "L3", Lemma: "wok", POS: "noun"},
-			},
-			wantIDs:  []string{"L1", "L2"},
-			wantDrop: []string{"L3"},
+			name: "empty input returns empty",
+			term: "anything",
+			lexemes: []provider.WikidataLexeme{},
+			wantIDs: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := filterLexemesByLemmaGroup(tt.lexemes, tt.term)
+			result := filterLexemesByLemma(tt.lexemes, tt.term)
 
 			gotIDs := make([]string, len(result))
 			for i, lex := range result {

@@ -22,69 +22,18 @@ import (
 //
 // If no groups are related, fall back to largest group with alphabetical
 // tiebreaker to guarantee deterministic output.
-func filterLexemesByLemmaGroup(lexemes []provider.WikidataLexeme, term string) []provider.WikidataLexeme {
-	if len(lexemes) <= 1 {
-		return lexemes
-	}
-
+// filterLexemesByLemma keeps only lexemes whose Wikidata lemma matches the term.
+// Term is already resolved to a canonical lemma surface at job submission time,
+// so only exact matches are valid.
+func filterLexemesByLemma(lexemes []provider.WikidataLexeme, term string) []provider.WikidataLexeme {
 	termLower := strings.ToLower(strings.TrimSpace(term))
-
-	// Group by normalized lemma.
-	type lemmaGroup struct {
-		key     string // lowercase lemma
-		lexemes []provider.WikidataLexeme
-	}
-	groupMap := make(map[string]*lemmaGroup, len(lexemes))
+	result := make([]provider.WikidataLexeme, 0, len(lexemes))
 	for _, lex := range lexemes {
-		lemma := strings.TrimSpace(lex.Lemma)
-		// Skip affix entries (e.g., "-ate", "-tion") — they are not standalone words.
-		if strings.HasPrefix(lemma, "-") {
-			continue
-		}
-		key := strings.ToLower(lemma)
-		g, ok := groupMap[key]
-		if !ok {
-			g = &lemmaGroup{key: key}
-			groupMap[key] = g
-		}
-		g.lexemes = append(g.lexemes, lex)
-	}
-
-	// Single group — no filtering needed.
-	if len(groupMap) == 1 {
-		return lexemes
-	}
-
-	// Collect related groups: exact match or prefix of term.
-	var related []*lemmaGroup
-	for _, g := range groupMap {
-		if g.key == termLower || (len(g.key) < len(termLower) && strings.HasPrefix(termLower, g.key)) {
-			related = append(related, g)
+		if strings.ToLower(strings.TrimSpace(lex.Lemma)) == termLower {
+			result = append(result, lex)
 		}
 	}
-
-	// If related groups found, return all their lexemes.
-	if len(related) > 0 {
-		var result []provider.WikidataLexeme
-		for _, g := range related {
-			result = append(result, g.lexemes...)
-		}
-		return result
-	}
-
-	// Fallback: no related groups — pick largest, then alphabetical tiebreaker.
-	groups := make([]*lemmaGroup, 0, len(groupMap))
-	for _, g := range groupMap {
-		groups = append(groups, g)
-	}
-	sort.Slice(groups, func(i, j int) bool {
-		if len(groups[i].lexemes) != len(groups[j].lexemes) {
-			return len(groups[i].lexemes) > len(groups[j].lexemes)
-		}
-		return groups[i].key < groups[j].key
-	})
-
-	return groups[0].lexemes
+	return result
 }
 
 // wikidataPOSQIDMap maps Wikidata POS QIDs to canonical POS.

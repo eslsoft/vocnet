@@ -28,12 +28,12 @@ func (s *PipelineServiceServer) SubmitJob(ctx context.Context, req *connect.Requ
 		return nil, connect.NewError(connect.CodeInvalidArgument, entity.ErrInvalidInput)
 	}
 
-	job, err := s.pipelineUC.SubmitJob(ctx, req.Msg.GetTerm(), req.Msg.GetLanguage(), req.Msg.GetTier(), req.Msg.GetName())
+	jobs, err := s.pipelineUC.SubmitJob(ctx, req.Msg.GetTerm(), req.Msg.GetLanguage(), req.Msg.GetTier(), req.Msg.GetName())
 	if err != nil {
 		return nil, mapping.ToPbError(err)
 	}
 
-	return connect.NewResponse(&pipelinev1.SubmitJobResponse{Job: toPBPipelineJob(job)}), nil
+	return connect.NewResponse(&pipelinev1.SubmitJobResponse{Job: toPBPipelineJob(jobs[0])}), nil
 }
 
 func (s *PipelineServiceServer) ActionJob(ctx context.Context, req *connect.Request[pipelinev1.ActionJobRequest]) (*connect.Response[pipelinev1.ActionJobResponse], error) {

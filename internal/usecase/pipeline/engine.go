@@ -179,21 +179,16 @@ func (p *VocnetPipeline) OnStageEnd(ctx context.Context, stage *Stage, pctx *Pip
 }
 
 // writeStageResultWithLock serializes all DB writes for the same lemma.
-// Different terms (e.g., "abandoned", "abandon") that resolve to the same lemma
-// must not write concurrently — this method guarantees mutual exclusion.
+// Different terms that resolve to the same lemma must not write concurrently.
+// Term is already resolved to the canonical lemma surface at job submission time.
 func (p *VocnetPipeline) writeStageResultWithLock(ctx context.Context, pctx *PipelineContext, phaseNum int32, mergedResult *ProcessResult) error {
-	// Lock key: use the best lemma surface from collected data, or the term itself.
-	best := bestLemmaFormSurface(pctx)
-	if best == "" {
-		best = strings.TrimSpace(pctx.Term)
-	}
-	lockKey := strings.ToLower(best)
+	lockKey := strings.ToLower(strings.TrimSpace(pctx.Term))
 
 	mu := p.acquireLemmaLock(lockKey)
 	defer mu.Unlock()
 
-	// Resolve or create the lemma.
-	if err := p.createLemmaFromCollectedData(ctx, pctx); err != nil {
+	// Create or find the lemma using the pre-resolved term.
+	if err := p.createLemma(ctx, pctx, pctx.Term); err != nil {
 		_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 		return err
 	}
@@ -339,83 +334,12 @@ func NewValidator(logger *slog.Logger) *Validator {
 }
 
 // EnsureLemma creates a clean pipeline context for the given term.
-// No DB state is loaded — the pipeline runs as a pure transformation.
-// Lemma resolution happens at persistence time after data sources are consulted.
+// Term is already resolved to canonical lemma surface at job submission time.
 func (v *Validator) EnsureLemma(_ context.Context, term string, language entity.Language, tier int32) (*PipelineContext, error) {
 	return &PipelineContext{Term: term, Language: language, Tier: tier}, nil
 }
 
-// createLemmaFromCollectedData creates the lemma record using the true base form
-// discovered by data sources. Returns error if no LEMMA form was found.
-func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx *PipelineContext) error {
-	best := bestLemmaFormSurface(pctx)
-	if best == "" {
-		return fmt.Errorf("no LEMMA form found for term %q: data sources did not provide a base form", pctx.Term)
-	}
-	return p.createLemma(ctx, pctx, best)
-}
-
-// bestLemmaFormSurface selects the canonical lemma from FormTypeLemma candidates.
-// Priority:
-//  1. Longest prefix match strictly shorter than the term (base form)
-//  2. Exact match with the search term (word is its own lemma)
-//  3. Shortest candidate (fallback, avoids picking abbreviations like "1" over "one")
-func bestLemmaFormSurface(pctx *PipelineContext) string {
-	seen := make(map[string]string) // lowercase → original
-	for _, f := range pctx.Forms {
-		if f == nil || f.FormType != entity.FormTypeLemma || f.Surface == "" {
-			continue
-		}
-		key := strings.ToLower(f.Surface)
-		if _, ok := seen[key]; !ok {
-			seen[key] = f.Surface
-		}
-	}
-	if len(seen) == 0 {
-		return ""
-	}
-	if len(seen) == 1 {
-		for _, orig := range seen {
-			return orig
-		}
-	}
-
-	termLower := strings.ToLower(pctx.Term)
-
-	// Priority 1: longest prefix match strictly shorter than the term.
-	var bestPrefix string
-	for key, orig := range seen {
-		if len(key) < len(termLower) && strings.HasPrefix(termLower, key) {
-			if len(key) > len(bestPrefix) {
-				bestPrefix = orig
-			}
-		}
-	}
-	if bestPrefix != "" {
-		return bestPrefix
-	}
-
-	// Priority 2: exact match with search term.
-	if orig, ok := seen[termLower]; ok {
-		return orig
-	}
-
-	// Priority 3: shortest candidate.
-	candidates := make([]string, 0, len(seen))
-	for _, orig := range seen {
-		candidates = append(candidates, orig)
-	}
-	best := candidates[0]
-	for _, s := range candidates[1:] {
-		if len(s) < len(best) {
-			best = s
-		}
-	}
-	return best
-}
-
 func (p *VocnetPipeline) createLemma(ctx context.Context, pctx *PipelineContext, surface string) error {
-	p.persistence.InvalidateLemmaSurfacesCache()
 	lemma, err := p.lemmaRepo.CreateMinimal(ctx, surface, pctx.Language)
 	if err != nil {
 		return fmt.Errorf("create lemma %q: %w", surface, err)

@@ -134,17 +134,89 @@ func (r *lemmaSnapshotRepository) GetByTerm(ctx context.Context, term string, la
 	if language != "" {
 		q = q.Where(entlemmasnapshot.LanguageEQ(language))
 	}
-	row, err := q.
-		WithLemma().
-		Order(entlemmasnapshot.ByVersion(sql.OrderDesc())).
-		First(ctx)
+	rows, err := q.WithLemma().All(ctx)
 	if err != nil {
-		if entdb.IsNotFound(err) {
-			return nil, entity.ErrWordNotFound
-		}
 		return nil, fmt.Errorf("get snapshot by term: %w", err)
 	}
-	return mapEntLemmaSnapshot(row), nil
+	if len(rows) == 0 {
+		return nil, entity.ErrWordNotFound
+	}
+	if len(rows) == 1 {
+		return mapEntLemmaSnapshot(rows[0]), nil
+	}
+
+	// Multiple snapshots contain this term — pick the best match deterministically.
+	best := rows[0]
+	for _, row := range rows[1:] {
+		best = preferSnapshot(best, row, normalized)
+	}
+	return mapEntLemmaSnapshot(best), nil
+}
+
+// preferSnapshot picks the better snapshot for a given query term.
+// Priority (same as lemma resolution):
+//  1. Longest prefix match strictly shorter than the query (base form)
+//  2. Exact surface match (word is its own lemma)
+//  3. Shortest surface
+//  4. Highest quality score
+//  5. Lower LemmaID (deterministic tiebreaker)
+func preferSnapshot(a, b *entdb.LemmaSnapshot, query string) *entdb.LemmaSnapshot {
+	return comparePair(a, b, query)
+}
+
+func comparePair(a, b *entdb.LemmaSnapshot, query string) *entdb.LemmaSnapshot {
+	aNorm := strings.ToLower(strings.TrimSpace(a.Normalized))
+	bNorm := strings.ToLower(strings.TrimSpace(b.Normalized))
+
+	// Priority 1: longest prefix strictly shorter than query (base form wins).
+	aIsBase := len(aNorm) < len(query) && strings.HasPrefix(query, aNorm)
+	bIsBase := len(bNorm) < len(query) && strings.HasPrefix(query, bNorm)
+	if aIsBase && bIsBase {
+		// Both are base forms — longer prefix is closer match.
+		if len(aNorm) != len(bNorm) {
+			if len(aNorm) > len(bNorm) {
+				return a
+			}
+			return b
+		}
+	} else if aIsBase != bIsBase {
+		if aIsBase {
+			return a
+		}
+		return b
+	}
+
+	// Priority 2: exact match.
+	aExact := aNorm == query
+	bExact := bNorm == query
+	if aExact != bExact {
+		if aExact {
+			return a
+		}
+		return b
+	}
+
+	// Priority 3: shortest surface.
+	if len(aNorm) != len(bNorm) {
+		if len(aNorm) < len(bNorm) {
+			return a
+		}
+		return b
+	}
+
+	// Priority 4: highest quality score.
+	if a.QualityOverall != b.QualityOverall {
+		if a.QualityOverall > b.QualityOverall {
+			return a
+		}
+		return b
+	}
+
+	// Priority 5: lower LemmaID (deterministic tiebreaker).
+	if a.LemmaID <= b.LemmaID {
+		return a
+	}
+	return b
 }
 
 func (r *lemmaSnapshotRepository) ListLatestByLemmaIDs(ctx context.Context, lemmaIDs []int64) (map[int64]*entity.LemmaSnapshot, error) {

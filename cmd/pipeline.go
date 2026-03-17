@@ -63,7 +63,6 @@ File formats:
 		ctx := context.Background()
 
 		var jobs []*entity.PipelineJob
-		var job *entity.PipelineJob
 
 		switch {
 		case fromWikidata:
@@ -98,11 +97,10 @@ File formats:
 				return err
 			}
 		case len(args) > 0:
-			job, err = deps.svc.SubmitWord(ctx, args[0], language, tier)
+			jobs, err = deps.svc.SubmitJob(ctx, args[0], language, tier, "")
 			if err != nil {
 				return err
 			}
-			jobs = []*entity.PipelineJob{job}
 		default:
 			return fmt.Errorf("provide a term, --file, --wordbook, or --all")
 		}
