@@ -838,6 +838,8 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	passedWords := len(scores) - len(failedTerms)
 	failedWords := len(failedTerms)
 
+	const minLemmaAccuracy = 96.0
+
 	status := "passed"
 	if len(executionErrors) > 0 {
 		status = "error"
@@ -848,6 +850,10 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 	lemmaAccuracy := float64(0)
 	if lemmaChecked > 0 {
 		lemmaAccuracy = float64(lemmaCorrect) / float64(lemmaChecked) * 100
+	}
+
+	if lemmaAccuracy < minLemmaAccuracy && status == "passed" {
+		status = "failed"
 	}
 
 	fmt.Fprintf(os.Stderr, "[quality] [%s] done: %d words in %v, avg=%.2f, lemma_accuracy=%.1f%% (%d/%d) status=%s\n",
