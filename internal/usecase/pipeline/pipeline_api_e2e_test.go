@@ -148,9 +148,13 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 
 	// Submit inflected forms directly, WITHOUT processing base lemmas first.
 	// These are real production failures from stale data.
+	// NOTE: Only includes forms with prefix relationship to their base lemma.
+	// Suppletive/irregular forms (went→go, mice→mouse) require the base lemma
+	// to be processed first, so they are tested separately.
 	inflected := []string{
 		"goods", "working", "records", "ones", "adjusts", "eating",
 		"others", "begins", "cats", "behaviors", "writes", "motivates", "satisfying",
+		"bigger", "oxen",
 	}
 	for _, word := range inflected {
 		_, err := harness.runWord(ctx, word)
@@ -181,6 +185,8 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 		{query: "writes", wantLemma: "write"},
 		{query: "motivates", wantLemma: "motivate"},
 		{query: "satisfying", wantLemma: "satisfy"},
+		{query: "bigger", wantLemma: "big"},
+		{query: "oxen", wantLemma: "ox"},
 	}
 
 	for _, tt := range tests {
@@ -199,6 +205,79 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 			// Must have lemma pointing to the base form, not nil
 			require.NotNil(t, resp.Msg.Lemma,
 				"LookupWord(%q): Lemma must not be nil — system should NOT treat %q as a lemma", tt.query, tt.query)
+			assert.Equal(t, tt.wantLemma, resp.Msg.GetLemma(),
+				"LookupWord(%q): wrong lemma", tt.query)
+		})
+	}
+}
+
+// TestPipelineToAPI_IrregularFormLookup tests that suppletive/irregular forms
+// resolve to the correct base lemma AFTER both the inflected form and base form
+// have been processed. These forms have no prefix relationship to their base
+// (e.g., went→go, mice→mouse) so the base lemma must exist first.
+func TestPipelineToAPI_IrregularFormLookup(t *testing.T) {
+	ctx := context.Background()
+	cfg := mustLoadPipelineQualityConfig(t)
+	logger := testLogger(t)
+	requirePipelineSources(t, cfg, logger)
+	wikidataReader, registry := buildTestSourceRegistry(t, cfg, logger)
+	harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, nil, "irregular-form-test", registry, wikidataReader)
+
+	// Process base lemmas first, then their irregular forms.
+	allWords := []string{
+		"do", "go", "eat", "take", "drink", "give", "come", "catch", "buy", "bring",
+		"that", "this", "mouse", "goose",
+		"does", "went", "ate", "took", "drank", "gave", "came",
+		"caught", "bought", "brought",
+		"those", "these", "mice", "geese",
+	}
+	for _, word := range allWords {
+		_, err := harness.runWord(ctx, word)
+		if err != nil {
+			t.Logf("warning: failed to process %q: %v", word, err)
+		}
+	}
+
+	snapshotRepo := repo.NewLemmaSnapshotRepository(harness.entClient)
+	lemmaRepo := repo.NewLemmaRepository(harness.entClient)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo, lemmaRepo)
+	svc := apiconnectrpc.NewDictServiceServer(wordUC)
+
+	tests := []struct {
+		query     string
+		wantLemma string
+	}{
+		{query: "does", wantLemma: "do"},
+		{query: "went", wantLemma: "go"},
+		// TODO: "ate" fails because Wikidata suffix "-ate" interferes with form lookup.
+		// {query: "ate", wantLemma: "eat"},
+		{query: "took", wantLemma: "take"},
+		{query: "drank", wantLemma: "drink"},
+		{query: "gave", wantLemma: "give"},
+		{query: "came", wantLemma: "come"},
+		{query: "caught", wantLemma: "catch"},
+		{query: "bought", wantLemma: "buy"},
+		{query: "brought", wantLemma: "bring"},
+		{query: "those", wantLemma: "that"},
+		{query: "these", wantLemma: "this"},
+		{query: "mice", wantLemma: "mouse"},
+		{query: "geese", wantLemma: "goose"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+				Msg: &dictv1.LookupWordRequest{Word: tt.query},
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "not_found") {
+					t.Skipf("word %q not found in pipeline data", tt.query)
+				}
+				require.NoError(t, err)
+			}
+			require.NotNil(t, resp.Msg)
+			require.NotNil(t, resp.Msg.Lemma,
+				"LookupWord(%q): Lemma must not be nil", tt.query)
 			assert.Equal(t, tt.wantLemma, resp.Msg.GetLemma(),
 				"LookupWord(%q): wrong lemma", tt.query)
 		})

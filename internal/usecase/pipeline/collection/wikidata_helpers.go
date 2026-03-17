@@ -36,7 +36,12 @@ func filterLexemesByLemmaGroup(lexemes []provider.WikidataLexeme, term string) [
 	}
 	groupMap := make(map[string]*lemmaGroup, len(lexemes))
 	for _, lex := range lexemes {
-		key := strings.ToLower(strings.TrimSpace(lex.Lemma))
+		lemma := strings.TrimSpace(lex.Lemma)
+		// Skip affix entries (e.g., "-ate", "-tion") — they are not standalone words.
+		if strings.HasPrefix(lemma, "-") {
+			continue
+		}
+		key := strings.ToLower(lemma)
 		g, ok := groupMap[key]
 		if !ok {
 			g = &lemmaGroup{key: key}

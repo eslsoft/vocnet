@@ -69,9 +69,21 @@ func (u *snapshotWordUsecase) Lookup(ctx context.Context, surface string, langua
 }
 
 // pickBestLemma selects the best lemma for a given search surface.
-// Priority: exact surface match > prefix match (longest) > shortest surface.
+// Priority: exact surface match > prefix match (shortest) > most forms.
 func pickBestLemma(lemmas []*entity.Lemma, surface string) *entity.Lemma {
 	normalized := strings.ToLower(surface)
+
+	// Filter out affix entries (e.g., "-ate", "-tion") — they should never
+	// win over real word lemmas.
+	filtered := make([]*entity.Lemma, 0, len(lemmas))
+	for _, l := range lemmas {
+		if !strings.HasPrefix(l.Surface, "-") {
+			filtered = append(filtered, l)
+		}
+	}
+	if len(filtered) > 0 {
+		lemmas = filtered
+	}
 
 	// Exact match.
 	for _, l := range lemmas {
