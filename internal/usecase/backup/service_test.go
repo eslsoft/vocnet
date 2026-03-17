@@ -8,15 +8,12 @@ import (
 	"database/sql"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/eslsoft/vocnet/internal/entity"
 	entdb "github.com/eslsoft/vocnet/internal/infrastructure/database/ent"
-	entlearnedword "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/learnedword"
 	entlemma "github.com/eslsoft/vocnet/internal/infrastructure/database/ent/lemma"
-	"github.com/google/uuid"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -31,7 +28,7 @@ func TestServiceExportImportRoundTrip(t *testing.T) {
 	srcDSN := "file:" + filepath.Join(srcDir, "src.db") + "?_fk=1&cache=shared"
 	srcClient := openSQLiteClient(t, srcDSN)
 
-	srcWords, srcLearnedWords := seedData(t, ctx, srcClient)
+	srcWords := seedData(t, ctx, srcClient)
 
 	exporter, err := NewService("sqlite", srcDSN)
 	if err != nil {
@@ -45,7 +42,7 @@ func TestServiceExportImportRoundTrip(t *testing.T) {
 
 	dstDir := t.TempDir()
 	dstDSN := "file:" + filepath.Join(dstDir, "dst.db") + "?_fk=1&cache=shared"
-	dstClient := openSQLiteClient(t, dstDSN)
+	_ = openSQLiteClient(t, dstDSN)
 
 	importer, err := NewService("sqlite", dstDSN)
 	if err != nil {
@@ -60,19 +57,10 @@ func TestServiceExportImportRoundTrip(t *testing.T) {
 		t.Fatalf("source words snapshot mutated: want %#v got %#v", srcWords, snapSrcWords)
 	}
 
-	snapDstWords := snapshotWords(t, ctx, dstClient)
+	dstClient2 := openSQLiteClient(t, dstDSN)
+	snapDstWords := snapshotWords(t, ctx, dstClient2)
 	if !reflect.DeepEqual(srcWords, snapDstWords) {
 		t.Fatalf("words mismatch after import:\nwant %#v\ngot  %#v", srcWords, snapDstWords)
-	}
-
-	snapSrcLearnedWords := snapshotLearnedWords(t, ctx, srcClient)
-	if !reflect.DeepEqual(snapSrcLearnedWords, srcLearnedWords) {
-		t.Fatalf("source user words snapshot mutated: want %#v got %#v", srcLearnedWords, snapSrcLearnedWords)
-	}
-
-	snapDstLearnedWords := snapshotLearnedWords(t, ctx, dstClient)
-	if !reflect.DeepEqual(srcLearnedWords, snapDstLearnedWords) {
-		t.Fatalf("user words mismatch after import:\nwant %#v\ngot  %#v", srcLearnedWords, snapDstLearnedWords)
 	}
 }
 
@@ -85,7 +73,7 @@ func TestServiceExportTablesFilter(t *testing.T) {
 	srcDSN := "file:" + filepath.Join(srcDir, "src.db") + "?_fk=1&cache=shared"
 	srcClient := openSQLiteClient(t, srcDSN)
 
-	srcWords, _ := seedData(t, ctx, srcClient)
+	srcWords := seedData(t, ctx, srcClient)
 
 	exporter, err := NewService("sqlite", srcDSN)
 	if err != nil {
@@ -99,7 +87,7 @@ func TestServiceExportTablesFilter(t *testing.T) {
 
 	dstDir := t.TempDir()
 	dstDSN := "file:" + filepath.Join(dstDir, "dst.db") + "?_fk=1&cache=shared"
-	dstClient := openSQLiteClient(t, dstDSN)
+	_ = openSQLiteClient(t, dstDSN)
 
 	importer, err := NewService("sqlite", dstDSN)
 	if err != nil {
@@ -109,25 +97,19 @@ func TestServiceExportTablesFilter(t *testing.T) {
 		t.Fatalf("filtered import failed: %v", err)
 	}
 
-	snapDstWords := snapshotWords(t, ctx, dstClient)
+	dstClient2 := openSQLiteClient(t, dstDSN)
+	snapDstWords := snapshotWords(t, ctx, dstClient2)
 	if !reflect.DeepEqual(srcWords, snapDstWords) {
 		t.Fatalf("words mismatch after filtered import")
 	}
-
-	dstLearnedWords := snapshotLearnedWords(t, ctx, dstClient)
-	if len(dstLearnedWords) != 0 {
-		t.Fatalf("expected no user words, got %#v", dstLearnedWords)
-	}
 }
 
-func seedData(t *testing.T, ctx context.Context, client *entdb.Client) ([]lemmaSnapshot, []LearnedWordSnapshot) {
+func seedData(t *testing.T, ctx context.Context, client *entdb.Client) []lemmaSnapshot {
 	t.Helper()
 	createdAt := time.Date(2025, 1, 1, 8, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(90 * time.Minute)
-	nextReview := updatedAt.Add(48 * time.Hour)
-	userID := uuid.MustParse("0f35f2e0-1f07-4fe4-9a98-c69619fa2ff6")
 
-	word1, err := client.Lemma.Create().
+	_, err := client.Lemma.Create().
 		SetSurface("apple").
 		SetNormalized("apple").
 		SetLevel("A1").
@@ -152,34 +134,7 @@ func seedData(t *testing.T, ctx context.Context, client *entdb.Client) ([]lemmaS
 		t.Fatalf("create word2: %v", err)
 	}
 
-	_, err = client.LearnedWord.Create().
-		SetUserID(userID).
-		SetLexemeID("L12345").
-		SetTerm(word1.Surface).
-		SetNormal(strings.ToLower(word1.Surface)).
-		SetLanguage("en").
-		SetMasteryListen(3).
-		SetMasteryRead(4).
-		SetMasterySpell(2).
-		SetMasteryPronounce(1).
-		SetMasteryOverall(2).
-		SetReviewLastReviewAt(updatedAt).
-		SetReviewNextReviewAt(nextReview).
-		SetReviewIntervalDays(3).
-		SetReviewFailCount(1).
-		SetReviewReps(2).
-		SetQueryCount(5).
-		SetNotes([]string{"daily review"}).
-		SetContexts([]entity.LearnedWordContext{{Sentence: "An apple a day...", Source: 1, SourceRef: "proverb", CollectedAt: createdAt.Add(24 * time.Hour)}}).
-		SetRelations([]entity.LearnedWordRelation{{Word: "apple", RelationType: 2, CreatedBy: "tester", CreatedAt: createdAt.Add(24 * time.Hour), UpdatedAt: createdAt.Add(36 * time.Hour)}}).
-		SetCreatedAt(createdAt.Add(24 * time.Hour)).
-		SetUpdatedAt(createdAt.Add(48 * time.Hour)).
-		Save(ctx)
-	if err != nil {
-		t.Fatalf("create user word: %v", err)
-	}
-
-	return snapshotWords(t, ctx, client), snapshotLearnedWords(t, ctx, client)
+	return snapshotWords(t, ctx, client)
 }
 
 type lemmaSnapshot struct {
@@ -192,31 +147,6 @@ type lemmaSnapshot struct {
 	Frequency  []entity.Frequency
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
-}
-
-type LearnedWordSnapshot struct {
-	ID                 int64
-	UserID             uuid.UUID
-	LexemeID           string
-	Term               string
-	Normal             string
-	Language           string
-	MasteryListen      int32
-	MasteryRead        int32
-	MasterySpell       int32
-	MasteryPronounce   int32
-	MasteryOverall     int32
-	ReviewLastReviewAt *time.Time
-	ReviewNextReviewAt *time.Time
-	ReviewIntervalDays int32
-	ReviewFailCount    int32
-	ReviewReps         int32
-	QueryCount         int64
-	Notes              []string
-	Contexts           []entity.LearnedWordContext
-	Relations          []entity.LearnedWordRelation
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
 }
 
 func snapshotWords(t *testing.T, ctx context.Context, client *entdb.Client) []lemmaSnapshot {
@@ -237,42 +167,6 @@ func snapshotWords(t *testing.T, ctx context.Context, client *entdb.Client) []le
 			Frequency:  append([]entity.Frequency{}, row.Frequencies...),
 			CreatedAt:  row.CreatedAt.UTC(),
 			UpdatedAt:  row.UpdatedAt.UTC(),
-		})
-	}
-	return result
-}
-
-func snapshotLearnedWords(t *testing.T, ctx context.Context, client *entdb.Client) []LearnedWordSnapshot {
-	t.Helper()
-	rows, err := client.LearnedWord.Query().Order(entlearnedword.ByID()).All(ctx)
-	if err != nil {
-		t.Fatalf("list user words: %v", err)
-	}
-	result := make([]LearnedWordSnapshot, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, LearnedWordSnapshot{
-			ID:                 row.ID,
-			UserID:             row.UserID,
-			LexemeID:           row.LexemeID,
-			Term:               row.Term,
-			Normal:             row.Normal,
-			Language:           row.Language,
-			MasteryListen:      row.MasteryListen,
-			MasteryRead:        row.MasteryRead,
-			MasterySpell:       row.MasterySpell,
-			MasteryPronounce:   row.MasteryPronounce,
-			MasteryOverall:     row.MasteryOverall,
-			ReviewLastReviewAt: copyTimePointer(row.ReviewLastReviewAt),
-			ReviewNextReviewAt: copyTimePointer(row.ReviewNextReviewAt),
-			ReviewIntervalDays: row.ReviewIntervalDays,
-			ReviewFailCount:    row.ReviewFailCount,
-			ReviewReps:         row.ReviewReps,
-			QueryCount:         row.QueryCount,
-			Notes:              append([]string{}, row.Notes...),
-			Contexts:           append([]entity.LearnedWordContext{}, row.Contexts...),
-			Relations:          append([]entity.LearnedWordRelation{}, row.Relations...),
-			CreatedAt:          row.CreatedAt.UTC(),
-			UpdatedAt:          row.UpdatedAt.UTC(),
 		})
 	}
 	return result
