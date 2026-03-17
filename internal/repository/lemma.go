@@ -43,4 +43,7 @@ type LemmaRepository interface {
 	// DeleteFormsByKeys deletes lemma_form rows matching each (surface, formType) pair for a given lemma.
 	// surfaces and formTypes are parallel slices of equal length.
 	DeleteFormsByKeys(ctx context.Context, lemmaID int64, surfaces []string, formTypes []entity.FormType) error
+
+	// DeleteByID deletes a lemma and all its cascaded data (forms, snapshots, evidence, lexemes, etc.).
+	DeleteByID(ctx context.Context, lemmaID int64) error
 }

@@ -1171,3 +1171,10 @@ func updateCompletenessBucket(buckets []entity.CompletenessBucket, value int32) 
 		}
 	}
 }
+
+func (r *lemmaRepository) DeleteByID(ctx context.Context, lemmaID int64) error {
+	if lemmaID == 0 {
+		return fmt.Errorf("lemma_id required")
+	}
+	return r.client.Lemma.DeleteOneID(lemmaID).Exec(ctx)
+}

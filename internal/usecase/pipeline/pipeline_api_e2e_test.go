@@ -203,6 +203,96 @@ func TestPipelineToAPI_InflectedFormWithoutBaseLemma(t *testing.T) {
 	}
 }
 
+// TestPipelineToAPI_StaleDataReprocessing tests the critical production scenario:
+// wrong lemma data already exists in the DB, and the pipeline must fix it on reprocessing.
+// Previous tests only ran on fresh databases, so they never caught:
+// - shortestLemmaFormSurface picking abbreviations ("ltd") over real lemmas ("limit")
+// - Old orphaned snapshots shadowing correct ones after lemma switch
+func TestPipelineToAPI_StaleDataReprocessing(t *testing.T) {
+	ctx := context.Background()
+
+	cfg := mustLoadPipelineQualityConfig(t)
+	logger := testLogger(t)
+
+	requirePipelineSources(t, cfg, logger)
+
+	wikidataReader, registry := buildTestSourceRegistry(t, cfg, logger)
+
+	harness := newPipelineQualityHarnessForWordbook(t, cfg, logger, nil, "stale-data-test", registry, wikidataReader)
+
+	// Step 1: Pre-populate WRONG lemma data, simulating production state.
+	// Process inflected forms first (without base lemmas) so the pipeline creates
+	// lemmas with potentially wrong surfaces.
+	staleWords := []string{
+		"limits",     // might create lemma "ltd" (abbreviation shorter than "limit")
+		"records",    // might create lemma "recording"
+		"ones",       // might create lemma "1" (digit shorter than "one")
+		"begins",     // might create lemma "beginning"
+		"writes",     // might create lemma "writing"
+		"motivates",  // might create lemma "motivated"
+		"satisfying", // might create lemma "satisfied"
+	}
+	for _, word := range staleWords {
+		_, _ = harness.runWord(ctx, word) // ignore errors — some may fail
+	}
+
+	// Step 2: Now process the base lemmas (as if user/wordbook adds them later).
+	baseWords := []string{"limit", "record", "one", "begin", "write", "motivate", "satisfy"}
+	for _, word := range baseWords {
+		_, err := harness.runWord(ctx, word)
+		if err != nil {
+			t.Logf("[stale] warning: failed to process base %q: %v", word, err)
+		}
+	}
+
+	// Step 3: Reprocess the inflected forms — this is the real test.
+	// The pipeline must correct the stale data.
+	for _, word := range staleWords {
+		_, err := harness.runWord(ctx, word)
+		if err != nil {
+			t.Logf("[stale] warning: failed to reprocess %q: %v", word, err)
+		}
+	}
+
+	// Step 4: Verify API returns correct results.
+	snapshotRepo := repo.NewLemmaSnapshotRepository(harness.entClient)
+	wordUC := usecase.NewSnapshotWordUsecase(snapshotRepo)
+	svc := apiconnectrpc.NewDictServiceServer(wordUC)
+
+	tests := []struct {
+		query     string
+		wantLemma string
+	}{
+		{query: "limits", wantLemma: "limit"},
+		{query: "records", wantLemma: "record"},
+		{query: "ones", wantLemma: "one"},
+		{query: "begins", wantLemma: "begin"},
+		{query: "writes", wantLemma: "write"},
+		{query: "motivates", wantLemma: "motivate"},
+		{query: "satisfying", wantLemma: "satisfy"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			resp, err := svc.LookupWord(ctx, &connect.Request[dictv1.LookupWordRequest]{
+				Msg: &dictv1.LookupWordRequest{Word: tt.query},
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "not_found") {
+					t.Skipf("word %q not found in pipeline data", tt.query)
+				}
+				require.NoError(t, err)
+			}
+			require.NotNil(t, resp.Msg)
+
+			require.NotNil(t, resp.Msg.Lemma,
+				"LookupWord(%q): Lemma must not be nil after stale data reprocessing", tt.query)
+			assert.Equal(t, tt.wantLemma, resp.Msg.GetLemma(),
+				"LookupWord(%q): wrong lemma after stale data reprocessing", tt.query)
+		})
+	}
+}
+
 // testLogger creates a logger that writes to testing.T for proper output capture.
 func testLogger(t *testing.T) *slog.Logger {
 	t.Helper()

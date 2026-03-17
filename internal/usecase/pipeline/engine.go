@@ -319,47 +319,130 @@ func (v *Validator) EnsureLemma(ctx context.Context, term string, language entit
 // createLemmaFromCollectedData creates the lemma record using the true base form
 // discovered by data sources. Returns error if no LEMMA form was found.
 func (p *VocnetPipeline) createLemmaFromCollectedData(ctx context.Context, pctx *PipelineContext) error {
-	best := shortestLemmaFormSurface(pctx.Forms)
+	best := bestLemmaFormSurface(pctx)
 	if best == "" {
 		return fmt.Errorf("no LEMMA form found for term %q: data sources did not provide a base form", pctx.Term)
 	}
 	return p.createLemma(ctx, pctx, best)
 }
 
-// shortestLemmaFormSurface returns the shortest LEMMA-type form surface.
-// The shortest form is most likely the canonical base form
+// bestLemmaFormSurface returns the best LEMMA-type form surface from collected data.
+// It excludes surfaces from abbreviation/numeral lexemes (e.g., "ltd" from an abbreviation
+// lexeme should not be preferred over "limit" from a verb lexeme).
+// Among remaining candidates, the shortest form is selected as the canonical base form
 // (e.g., "child" over "child's", "work" over "working").
-func shortestLemmaFormSurface(forms []*entity.LemmaForm) string {
-	var best string
-	for _, f := range forms {
+func bestLemmaFormSurface(pctx *PipelineContext) string {
+	// Collect all LEMMA form surfaces.
+	var candidates []string
+	for _, f := range pctx.Forms {
 		if f == nil || f.FormType != entity.FormTypeLemma || f.Surface == "" {
 			continue
 		}
-		if best == "" || len(f.Surface) < len(best) {
-			best = f.Surface
+		candidates = append(candidates, f.Surface)
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	// Build exclusion set: LEMMA surfaces from abbreviation/numeral lexemes,
+	// plus surfaces that are clearly non-canonical (all digits, etc.).
+	excluded := collectExcludedLemmaSurfaces(pctx)
+
+	// Filter out excluded surfaces.
+	var filtered []string
+	for _, s := range candidates {
+		if excluded[strings.ToLower(s)] || isNonCanonicalSurface(s) {
+			continue
+		}
+		filtered = append(filtered, s)
+	}
+	if len(filtered) == 0 {
+		filtered = candidates // fallback if everything was excluded
+	}
+
+	// Pick shortest.
+	best := filtered[0]
+	for _, s := range filtered[1:] {
+		if len(s) < len(best) {
+			best = s
 		}
 	}
 	return best
 }
 
+// isNonCanonicalSurface returns true for surfaces that should not be considered
+// as canonical lemma forms: all-digit strings (e.g., "1" for "one").
+func isNonCanonicalSurface(s string) bool {
+	if s == "" {
+		return true
+	}
+	allDigit := true
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			allDigit = false
+			break
+		}
+	}
+	return allDigit
+}
+
+// collectExcludedLemmaSurfaces returns normalized surfaces that should not be
+// considered as canonical lemma forms because they come from abbreviation or
+// numeral lexemes.
+func collectExcludedLemmaSurfaces(pctx *PipelineContext) map[string]bool {
+	excluded := make(map[string]bool)
+	for _, lex := range pctx.Lexemes {
+		if lex == nil {
+			continue
+		}
+		if lex.PartOfSpeech != entity.PartOfSpeechAbbreviation &&
+			lex.PartOfSpeech != entity.PartOfSpeechNumeral {
+			continue
+		}
+		// Exclude LEMMA forms belonging to this lexeme.
+		if forms, ok := pctx.FormsByLexeme[lex.ExternalID]; ok {
+			for _, f := range forms {
+				if f != nil && f.FormType == entity.FormTypeLemma {
+					excluded[strings.ToLower(f.Surface)] = true
+				}
+			}
+		}
+	}
+	return excluded
+}
+
 // correctLemmaSurface checks if the existing lemma surface should be updated
-// based on the shortest LEMMA form from collected data. This fixes stale records
+// based on the best LEMMA form from collected data. This fixes stale records
 // where old code wrote wrong surfaces (e.g., lemma "better" should be "good").
+// When switching to an existing correct lemma, the old wrong lemma is deleted
+// (cascade removes its snapshots, forms, evidence, lexemes, etc.).
 func (p *VocnetPipeline) correctLemmaSurface(ctx context.Context, pctx *PipelineContext) {
-	best := shortestLemmaFormSurface(pctx.Forms)
+	best := bestLemmaFormSurface(pctx)
 	if best == "" || strings.EqualFold(best, pctx.Lemma.Surface) {
 		return
 	}
 	oldSurface := pctx.Lemma.Surface
+	oldLemmaID := pctx.Lemma.ID
 	pctx.Lemma.Surface = best
 	pctx.Lemma.Normalized = strings.ToLower(best)
 	if _, err := p.lemmaRepo.Update(ctx, pctx.Lemma); err != nil {
 		// UNIQUE constraint: a lemma with the correct surface already exists.
-		// Switch to that lemma instead of staying on the wrong one.
+		// Switch to that lemma and delete the old wrong one.
 		pctx.Lemma.Surface = oldSurface
 		pctx.Lemma.Normalized = strings.ToLower(oldSurface)
 		existing, lookupErr := p.lemmaRepo.LookupByForm(ctx, best, pctx.Language)
 		if lookupErr == nil && existing != nil {
+			// Delete the old wrong lemma (cascade deletes snapshots, forms, etc.)
+			if delErr := p.lemmaRepo.DeleteByID(ctx, oldLemmaID); delErr != nil {
+				p.logger.Warn("failed to delete old lemma after surface correction",
+					"old_lemma_id", oldLemmaID, "old_surface", oldSurface, "error", delErr)
+			} else {
+				p.logger.Info("deleted stale lemma after surface correction",
+					"old_lemma_id", oldLemmaID, "old_surface", oldSurface, "new_surface", best)
+			}
 			pctx.Lemma = existing
 			pctx.Forms = existing.Forms
 			lexemes, _ := p.lexemeRepo.ListByLemmaID(ctx, existing.ID)
