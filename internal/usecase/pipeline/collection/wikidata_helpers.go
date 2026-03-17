@@ -10,6 +10,78 @@ import (
 	"github.com/eslsoft/vocnet/internal/usecase/pipeline"
 )
 
+// filterLexemesByLemmaGroup groups lexemes by their Wikidata lemma and filters
+// out groups that are clearly unrelated to the search term. This prevents
+// mixing lexemes from different headwords (e.g., "other" vs "another") when
+// they share a common form, while preserving derivationally related groups
+// (e.g., "work" and "working").
+//
+// A group is "related" to the search term if:
+//   - Its lemma equals the term exactly (case-insensitive), OR
+//   - Its lemma is a prefix of the term (e.g., "work" → "working")
+//
+// If no groups are related, fall back to largest group with alphabetical
+// tiebreaker to guarantee deterministic output.
+func filterLexemesByLemmaGroup(lexemes []provider.WikidataLexeme, term string) []provider.WikidataLexeme {
+	if len(lexemes) <= 1 {
+		return lexemes
+	}
+
+	termLower := strings.ToLower(strings.TrimSpace(term))
+
+	// Group by normalized lemma.
+	type lemmaGroup struct {
+		key     string // lowercase lemma
+		lexemes []provider.WikidataLexeme
+	}
+	groupMap := make(map[string]*lemmaGroup, len(lexemes))
+	for _, lex := range lexemes {
+		key := strings.ToLower(strings.TrimSpace(lex.Lemma))
+		g, ok := groupMap[key]
+		if !ok {
+			g = &lemmaGroup{key: key}
+			groupMap[key] = g
+		}
+		g.lexemes = append(g.lexemes, lex)
+	}
+
+	// Single group — no filtering needed.
+	if len(groupMap) == 1 {
+		return lexemes
+	}
+
+	// Collect related groups: exact match or prefix of term.
+	var related []*lemmaGroup
+	for _, g := range groupMap {
+		if g.key == termLower || (len(g.key) < len(termLower) && strings.HasPrefix(termLower, g.key)) {
+			related = append(related, g)
+		}
+	}
+
+	// If related groups found, return all their lexemes.
+	if len(related) > 0 {
+		var result []provider.WikidataLexeme
+		for _, g := range related {
+			result = append(result, g.lexemes...)
+		}
+		return result
+	}
+
+	// Fallback: no related groups — pick largest, then alphabetical tiebreaker.
+	groups := make([]*lemmaGroup, 0, len(groupMap))
+	for _, g := range groupMap {
+		groups = append(groups, g)
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		if len(groups[i].lexemes) != len(groups[j].lexemes) {
+			return len(groups[i].lexemes) > len(groups[j].lexemes)
+		}
+		return groups[i].key < groups[j].key
+	})
+
+	return groups[0].lexemes
+}
+
 // wikidataPOSQIDMap maps Wikidata POS QIDs to canonical POS.
 var wikidataPOSQIDMap = map[string]entity.PartOfSpeech{
 	"q1084":      entity.PartOfSpeechNoun,
