@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Vocnet is an open-source vocabulary network management platform that serves as a centralized vocabulary data hub. It provides:
 
-- Multi-dimensional mastery tracking (listen, read, spell, pronounce) with 0-5 level granularity
-- FSRS (Free Spaced Repetition Scheduler) algorithm for intelligent review scheduling
+- Semantic distillation pipeline that aggregates data from multiple sources (Wikidata, ECDICT, WordNet, ConceptNet, Moby) into high-quality lemma snapshots
+- Quality-scored vocabulary data with multi-dimensional metrics (completeness, depth, density, validity)
 - ConnectRPC-based API with auto-generated SDKs for all platforms
 - Support for SQLite (default) and PostgreSQL databases
 
-The project targets both language learners (who use it to track and review vocabulary) and app developers (who integrate it as a vocabulary management backend).
+The project targets app developers who integrate it as a vocabulary data backend, providing enriched dictionary data (lemmas, lexemes, forms, relations, phonetics, categories).
 
 ## Architecture
 
@@ -24,14 +24,29 @@ internal/
 ├── entity/          # Core domain models (no external dependencies)
 ├── repository/      # Repository interfaces (defined by usecases)
 ├── usecase/         # Business logic (depends on entity + repository interfaces)
+│   └── pipeline/    # Semantic distillation pipeline engine
+│       ├── collection/   # Collection phase processors
+│       ├── evaluation/   # Evaluation phase (FragmentEvaluator)
+│       ├── integration/  # Integration phase (IntegrationProcessor)
+│       ├── scoring/      # Quality scoring (RuleBasedScorer, DataEvaluator)
+│       ├── snapshot/     # Snapshot phase + quality calculation
+│       └── persist/      # Stage-boundary persistence
 ├── adapter/         # Implementation of external interfaces
 │   ├── connectrpc/  # gRPC/ConnectRPC handlers (thin layer, validation only)
 │   ├── repository/  # Repository implementations using Ent ORM
-│   └── mapping/     # Entity ↔ Protobuf conversions
+│   ├── mapping/     # Entity ↔ Protobuf conversions
+│   └── provider/    # Data source providers
+│       ├── wikidata/  # Wikidata lexeme provider (built-in)
+│       ├── moby/      # Moby hyphenation provider (built-in)
+│       ├── cefrj/     # CEFR-J level provider (built-in)
+│       ├── llm/       # LLM enrichment provider (optional)
+│       └── contrib/   # External process providers via JSON-RPC (ECDICT, ConceptNet, WordNet)
 ├── infrastructure/  # External concerns (DB, auth, server)
 │   ├── database/    # Ent ORM schemas and client
 │   │   └── entschema/ # Ent schema definitions
 │   ├── auth/        # JWT validation and interceptors
+│   ├── config/      # Configuration loading
+│   ├── datasource/  # Data source download manager
 │   ├── usertime/    # User timezone handling
 │   └── server/      # Server setup
 └── app/             # Dependency injection (Wire)
@@ -45,56 +60,44 @@ internal/
 
 ### Key Domain Concepts
 
-#### LearnedWord
-The central entity representing a user's vocabulary entry (`internal/entity/learned_word.go`). Each word tracks:
-- **Term**: Lemma for regular words, or the original form for irregular words (stored with original case, e.g., "Hello", "iPhone", "Polish")
-- **Normal**: Auto-generated lowercase form of Term for case-insensitive querying (internal field, e.g., "hello", "iphone", "polish")
-- **Case Handling**:
-  - Storage: Term preserves original case; Normal is automatically set to lowercase in `Normalize()` method
-  - Uniqueness: Based on `(user_id, term, language)` - case-sensitive (user can store both "Polish" and "polish")
-  - Querying: Case-insensitive using `normal` field - "Hello" and "hello" both match stored "Hello"
-  - Priority: Exact case match prioritized over other matches with same normal form
-  - Display: Always shows original Term case to user
-- **MasteryBreakdown**: Four-dimensional mastery (Listen, Read, Spell, Pronounce) + calculated Overall score
-  - Scores are 0-5 integers stored as centpoints (0-500 range internally)
-  - Overall is calculated via weighted formula: `0.6 * receptive + 0.4 * productive`
-  - Receptive = (Read + Listen) / 2
-  - Productive = 0.3 * Spell + 0.7 * Pronounce
-- **ReviewTiming**: FSRS state (LastReviewAt, NextReviewAt, IntervalDays, FailCount, Reps)
-- **Relations**: Vocabulary network connections (synonyms, antonyms, derived words)
-- **Contexts**: Sentences where the user encountered the word
+#### Lemma
+The central entity (`internal/entity/lemma.go`): dictionary headword (e.g., "run"). Each lemma tracks:
+- **Surface**: The canonical form of the word
+- **Normalized**: Lowercase form for case-insensitive querying
+- **Variant**: Alternate spelling/variant info
+- **Level**: CEFR level (A1-C2)
+- **Frequencies**: Corpus frequency data
+- **Syllables**: Syllable breakdown
+- **Forms**: Inflected forms (`LemmaForm`) with phonetics and syllables
 
-#### FSRS Integration
-The project uses FSRS-4.5 for spaced repetition (`internal/usecase/spaced_repetition_fsrs.go`).
+#### Lexeme
+Semantic entry (`internal/entity/lexeme.go`): Wikidata lexeme with specific grammatical sense. Each lexeme has:
+- **PartOfSpeech**: Grammatical category
+- **EntryType**: WORD, PHRASE, or IDIOM
+- **Senses**: Language-specific glosses with examples
+- **Categories**: Domain categories
+- **Completeness**: Data completeness score (0-100)
 
-**Important Design Decision**: FSRS parameters (stability, difficulty, state) are NOT stored in the database. Instead, they are dynamically calculated from mastery data on each review. This:
-- Eliminates redundant storage
-- Derives FSRS state from the canonical mastery breakdown
-- Uses mastery level to infer FSRS state (New/Learning/Review/Relearning)
+#### LemmaSnapshot
+Final output of the pipeline (`internal/entity/lemma_snapshot.go`): a quality-scored, aggregated view of a lemma combining data from all sources. Includes:
+- **QualityScore**: Multi-dimensional (Overall, Completeness, Depth, Density, Validity)
+- Aggregated senses, forms, relations from best-scoring sources
 
-Review interval calculation happens in `CalculateNextReview()` which:
-1. Builds FSRS Card from mastery data
-2. Maps accuracy score (0-1) to FSRS rating (1-4)
-3. Calls FSRS algorithm
-4. Returns updated ReviewTiming
-
-#### Lemma vs Lexeme
-- **Lemma** (`internal/entity/lemma.go`): Dictionary headword (e.g., "run")
-- **Lexeme** (`internal/entity/lexeme.go`): Wikidata lexeme with specific grammatical sense
-- **LemmaForm**: Inflected forms (e.g., "runs", "running", "ran")
-
-Users primarily interact with lemmas. Lexemes provide linguistic enrichment (definitions, categories, forms).
+#### WordEntry
+Lookup carrier (`internal/entity/word_entry.go`): combines a Lemma with its Lexemes and Relations for API responses.
 
 ### Database Schema (Ent ORM)
 
 Schemas are defined in `internal/infrastructure/database/entschema/`:
-- `learned_word.go`: User vocabulary entries
 - `lemma.go`: Dictionary headwords
+- `lemma_form.go`: Inflected forms
+- `lemma_snapshot.go`: Final lemma snapshots with quality scores
 - `lexeme.go`: Wikidata lexemes
-- `lexeme_form.go`: Inflected forms
-- `review_plan.go`: User review sessions
-- `daily_stats.go`: Daily learning statistics
-- `wordbook.go`: Predefined word lists (CET4, IELTS, etc.)
+- `semantic_relation.go`: Semantic relations between lemmas
+- `pipeline_job.go`: Pipeline job tracking
+- `pipeline_stage.go`: Pipeline execution stage tracking
+- `raw_evidence.go`: Raw evidence from data sources before evaluation
+- `distill_cache.go`: Cache for LLM enrichment responses
 
 **After modifying schemas**, regenerate Ent client:
 ```bash
@@ -105,8 +108,7 @@ make ent-generate
 
 Proto definitions are in `api/proto/`:
 - `dict/`: Dictionary services (words, lemmas, lexemes)
-- `learning/`: Learning services (learned words, flashcards, reviews)
-- `wordbook/`: Wordbook services (preset word lists)
+- `pipeline/`: Pipeline services (job management, status)
 - `common/`: Shared types (enums, pagination)
 
 **Proto Organization Rules (Required):**
@@ -123,6 +125,12 @@ This regenerates:
 - Mocks
 - Wire dependency injection
 
+### ConnectRPC Services
+
+- `internal/adapter/connectrpc/dict_service.go`: Dictionary API (words, lemmas, lexemes)
+- `internal/adapter/connectrpc/lemma_service.go`: Lemma API
+- `internal/adapter/connectrpc/pipeline_service.go`: Pipeline API (job management, status)
+
 ## Common Commands
 
 ### Development
@@ -133,9 +141,6 @@ make setup
 
 # Start database (PostgreSQL in Docker)
 make db-up
-
-# Run database migrations
-make migrate
 
 # Run ConnectRPC server (supports both gRPC and HTTP protocols on :8080)
 make run
@@ -157,9 +162,6 @@ make test-coverage
 
 # Run tests for specific package
 go test -v ./internal/usecase/...
-
-# Run single test
-go test -v -run TestLearnedWordUsecase_UpdateMastery ./internal/usecase/
 
 # Run pipeline quality integration tests (all words in default wordbooks)
 make test-quality
@@ -304,11 +306,7 @@ The pipeline includes an optional LLM enrichment phase that intelligently fills 
 
 Load `.env` file automatically on startup.
 
-## Pipeline Data Management
-
-The semantic distillation pipeline requires five data sources: ConceptNet, ECDICT, WordNet, Moby, and Wikidata. The `pipeline` command provides tools to manage these data sources.
-
-All data sources use local SQLite databases for efficient querying. The project uses `modernc.org/sqlite` (CGO-free) as the SQLite driver.
+## Pipeline
 
 ### Pipeline Commands
 
@@ -322,161 +320,95 @@ go run . pipeline status <term> [--language en]
 # View word snapshot
 go run . pipeline snapshot <term> [--language en]
 
-# Check data source availability
+# Submit pipeline jobs (batch processing)
+go run . pipeline submit <term>              # Single word
+go run . pipeline submit --file words.txt    # From file (.txt or .json)
+go run . pipeline submit --wordbook CEFR-A1  # Specific wordbook
+go run . pipeline submit --all               # All wordbooks
+go run . pipeline submit --wikidata          # All Wikidata lemmas
+
+# Job management
+go run . pipeline jobs                        # List jobs
+go run . pipeline job <job-id>                # Job details
+go run . pipeline stats                       # Job statistics
+
+# Data source management
 go run . pipeline source list
-
-# Download all missing data sources
-go run . pipeline source download
-
-# Download specific data source
-go run . pipeline source download conceptnet
-go run . pipeline source download ecdict
-go run . pipeline source download wordnet
-go run . pipeline source download moby
-go run . pipeline source download wikidata
+go run . pipeline source download             # All sources
+go run . pipeline source download <name>      # Specific source (conceptnet, ecdict, wordnet, moby, wikidata)
 
 # Quick setup: download all data sources
 make pipeline-setup
 ```
 
-### Data Source Configuration
+### Pipeline Architecture
 
-Configure the pipeline data directory in `.env`:
+The pipeline runs in four phases: **Collection** → **Evaluation** → **Integration** → **Snapshot**.
 
-```bash
-# Pipeline system data directory
-# Data sources are fixed under: ${PIPELINE_DATA_DIR}/datasources/
-PIPELINE_DATA_DIR=./data
+**Async execution**: Jobs are processed by a configurable worker pool. Configuration:
+- `PIPELINE_WORKER_COUNT`: Number of concurrent workers (default: 10)
 
-# Auto-download missing sources (default: true)
-PIPELINE_AUTO_DOWNLOAD=true
+Key files:
+- Engine: `internal/usecase/pipeline/engine.go`
+- Service API: `internal/usecase/pipeline/service.go`
+- Metrics: `internal/usecase/pipeline/metrics.go` (Prometheus)
+- Stage wiring: `cmd/serve.go` (`buildNewPipelineStages`)
 
-# Cache directory for downloads (default: system cache dir)
-# PIPELINE_CACHE_DIR=~/.cache/vocnet
-
-# Contrib sources (external data sources via JSON-RPC over stdio)
-PIPELINE_CONTRIB_DIR=./contrib/sources
-PIPELINE_CONTRIB_LIST=ecdict,conceptnet,wordnet
-```
-
-Data sources are stored under subdirectories of `PIPELINE_DATA_DIR`:
-- `conceptnet/conceptnet-assertions-5.7.0.csv` (+ `.idx.db` SQLite index)
-- `ecdict/ecdict.db`
-- `wordnet/`
-- `moby/mhyph.txt`
-- `wikidata/lexemes.json` (+ `.idx.db` SQLite index)
-
-### Pipeline Source Architecture
+### Data Sources
 
 The pipeline uses a unified `SourceProvider` interface (`internal/repository/source_provider.go`). Sources are categorized as:
 
 - **Built-in** (compiled into binary): Wikidata, Moby, CEFR-J
 - **Contrib** (external processes via JSON-RPC over stdio): ECDICT, ConceptNet, WordNet (`contrib/sources/`)
-- **Specialized processors** (unique business logic, not SourceProvider-based): CategoryInfer, SenseMapping, Enrichment, Scoring, Snapshot
+- **Specialized processors** (not SourceProvider-based): CategoryInfer, SenseMapping, Enrichment, Scoring, Snapshot
 
 Key files:
 - Interface: `internal/repository/source_provider.go`
 - Generic processor: `internal/usecase/pipeline/collection/generic.go`
 - Source registry: `internal/usecase/pipeline/source_registry.go`
 - Contrib bridge: `internal/adapter/provider/contrib/process_provider.go`
-- Contrib protocol: `internal/adapter/provider/contrib/protocol.go`
-- Stage wiring: `cmd/serve.go` (`buildNewPipelineStages`)
+- Data source manager: `internal/infrastructure/datasource/manager.go`
 
-### Data Evaluation and Adoption System
+**Data source configuration** in `.env`:
+```bash
+PIPELINE_DATA_DIR=./data
+PIPELINE_AUTO_DOWNLOAD=true
+# PIPELINE_CACHE_DIR=~/.cache/vocnet
+PIPELINE_CONTRIB_DIR=./contrib/sources
+PIPELINE_CONTRIB_LIST=ecdict,conceptnet,wordnet
+```
 
-The pipeline includes a **mandatory** data evaluation system that determines which data from multiple sources should be adopted based on quality scoring.
+Data sources stored under `${PIPELINE_DATA_DIR}/datasources/`:
+- `conceptnet/conceptnet-assertions-5.7.0.csv` (+ `.idx.db` SQLite index)
+- `ecdict/ecdict.db`
+- `wordnet/` (via NLTK, requires `uv` package manager)
+- `moby/mhyph.txt`
+- `wikidata/lexemes.json` (+ `.idx.db` SQLite index)
+
+All data sources use local SQLite databases. The project uses `modernc.org/sqlite` (CGO-free).
+
+### Data Evaluation and Adoption
+
+The pipeline includes a **mandatory** data evaluation system for quality-based adoption.
 
 **Key Concepts:**
-- **Field-level scoring**: Each data field (lexemes, forms, lemma metadata, relations) is scored independently (0-100 scale)
-- **Adoption decisions**: Data is adopted if field is empty, or if new score > existing score
-- **Source trust hierarchy**: Used as tiebreaker when scores are equal (Wikidata > WordNet > LLM > ECDICT > ConceptNet)
-
-**Scoring Rules (RuleBasedScorer):**
-- Lexemes: scored on POS validity, senses, categories, ExternalID presence
-- Forms: scored on phonetics and syllables presence
-- Lemma Level: CEFR levels scored inversely (A1=100, A2=90, ..., C2=50)
-- Relations: scored on target resolution, sense-mapping, strength validity
+- **Field-level scoring**: Each field (lexemes, forms, lemma metadata, relations) scored independently (0-100)
+- **Adoption decisions**: Adopt if field is empty, or if new score > existing score
+- **Source trust hierarchy** (tiebreaker): Wikidata > WordNet > LLM > ECDICT > ConceptNet
 
 **Architecture:**
-- Scorer: `internal/usecase/pipeline/scoring/scorer.go` (RuleBasedScorer, FieldScore)
-- Merge logic: `internal/usecase/pipeline/scoring/merge.go` (DataEvaluator, MergeSenses)
-- Evaluator: `internal/usecase/pipeline/evaluation/evaluator.go` (FragmentEvaluator)
-- Integration: `internal/usecase/pipeline/integration/integration.go` (IntegrationProcessor)
-
-**Usage (required):**
-```go
-// Create evaluator
-scorer := pipeline.NewRuleBasedScorer()
-evaluator := pipeline.NewDataEvaluator(scorer, logger)
-
-// Pass to pipeline constructor
-pipeline := pipeline.NewPipeline(
-    stages,
-    validator,
-    persistence,
-    stageRepo,
-    snapshotRepo,
-    lemmaRepo,
-    lexemeRepo,
-    evaluator,  // Required parameter
-    logger,
-)
-```
-
-The evaluator is a required constructor parameter.
-
-**Documentation:**
-- Design: `docs/design/data-evaluation-adoption.md`
-- Usage guide: `docs/guides/data-evaluation-adoption-guide.md`
-- Tests: `internal/usecase/pipeline/scoring/scorer_test.go`, `internal/usecase/pipeline/evaluation/evaluator_test.go`
-
-### Data Source Details
-
-- **ConceptNet**: Downloaded from `https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz` (~350MB compressed, ~1.5GB uncompressed). A SQLite index is built automatically on first use.
-- **ECDICT**: Downloaded from `https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip`
-- **WordNet**: Uses NLTK library with automatic data management - no manual download required. Requires `uv` package manager to be installed.
-- **Moby**: Downloaded from `https://raw.githubusercontent.com/words/moby/master/words.txt` (Moby Hyphenation data for syllable parsing)
-- **Wikidata**: Downloaded from `https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.bz2` (~420MB compressed, ~4GB uncompressed). Contains lexeme data (senses, forms, IPA). A SQLite index is built automatically on first use.
-
-Downloads are cached in `~/.cache/vocnet/` (or `$PIPELINE_CACHE_DIR`) to avoid re-downloading.
-
-**WordNet via NLTK**: The WordNet source now uses the Python NLTK library instead of raw WordNet data files. This provides:
-- Automatic data management (NLTK downloads WordNet data as needed)
-- No manual download/extraction steps
-- More reliable and well-maintained data access
-- Rich semantic relations (hypernyms, hyponyms, antonyms, etc.)
-
-Requirements for WordNet:
-- `uv` package manager must be installed and available in PATH
-- Python 3 environment (handled automatically by uv)
-- NLTK library (installed automatically via uv dependencies)
-
-### Auto-Download
-
-Auto-download is enabled by default. To explicitly enable it:
-
-```bash
-# One-time for current command
-PIPELINE_AUTO_DOWNLOAD=true go run . pipeline process hello
-
-# Permanently in .env
-echo "PIPELINE_AUTO_DOWNLOAD=true" >> .env
-```
-
-When auto-download is disabled and data is missing, the pipeline will show helpful error messages with download instructions.
+- Scorer: `internal/usecase/pipeline/scoring/scorer.go`
+- Merge logic: `internal/usecase/pipeline/scoring/merge.go`
+- Evaluator: `internal/usecase/pipeline/evaluation/evaluator.go`
+- Integration: `internal/usecase/pipeline/integration/integration.go`
 
 ### Pipeline Stage Documentation Sync (Required)
 
-The stage-to-source extraction matrix is documented in:
-
-- `docs/design/pipeline-stage-data-sources.md`
-
-When modifying any pipeline behavior below, update that document in the same PR:
-
+The stage-to-source extraction matrix is documented in `docs/design/pipeline-stage-data-sources.md`. Update that document when modifying:
 - Stage order or processor composition in `cmd/serve.go`
 - Processor extraction logic in `internal/usecase/pipeline/`
 - Evidence payload/schema versions
-- Data source/provider mapping changes (Wikidata, ECDICT, WordNet, Moby, ConceptNet, LLM)
+- Data source/provider mapping changes
 
 ## Authentication
 
@@ -511,17 +443,7 @@ make generate
 The `pkg/filterexpr` package provides CEL-based filtering for list queries:
 - Supports field comparisons, logical operators (AND, OR, NOT)
 - Automatically binds CEL expressions to Ent predicates
-- Used in List* endpoints for flexible filtering
-
-Example:
-```
-filter: "mastery.overall >= 300 && tags.contains('important')"
-```
-
-### Testing Utilities
-
-- `internal/adapter/connectrpc/testutil.go`: Helpers for ConnectRPC handler testing
-- Shared test fixtures can be added to `*_test.go` files
+- Schema defined in `internal/adapter/connectrpc/schemas.go`
 
 ## Common Tasks
 
@@ -542,18 +464,6 @@ filter: "mastery.overall >= 300 && tags.contains('important')"
 5. Implement repository in `internal/adapter/repository/`
 6. Add usecase logic in `internal/usecase/`
 7. Add mapping to protobuf in `internal/adapter/mapping/`
-
-### Modifying Mastery Calculation
-
-The mastery calculation formula is in `internal/entity/learned_word.go`:
-- `CalculateOverall()`: Computes weighted overall score
-- `InitializeFromUserMasteryLevel()`: Maps user level (1-5) to four dimensions
-- `CalculateMasteryLevel()`: Converts overall score back to level
-
-**IMPORTANT**: When changing mastery logic, also update FSRS mapping in `internal/usecase/spaced_repetition_fsrs.go`:
-- `calculateStabilityFromMastery()`
-- `calculateDifficultyFromMastery()`
-- `masteryLevelToFSRSState()`
 
 ## License & Contribution
 
