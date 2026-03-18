@@ -311,15 +311,6 @@ Load `.env` file automatically on startup.
 ### Pipeline Commands
 
 ```bash
-# Process a single word through the pipeline
-go run . pipeline process <term> [--language en] [--tier 2]
-
-# Check pipeline status for a word
-go run . pipeline status <term> [--language en]
-
-# View word snapshot
-go run . pipeline snapshot <term> [--language en]
-
 # Submit pipeline jobs (batch processing)
 go run . pipeline submit <term>              # Single word
 go run . pipeline submit --file words.txt    # From file (.txt or .json)
@@ -331,14 +322,6 @@ go run . pipeline submit --wikidata          # All Wikidata lemmas
 go run . pipeline jobs                        # List jobs
 go run . pipeline job <job-id>                # Job details
 go run . pipeline stats                       # Job statistics
-
-# Data source management
-go run . pipeline source list
-go run . pipeline source download             # All sources
-go run . pipeline source download <name>      # Specific source (conceptnet, ecdict, wordnet, moby, wikidata)
-
-# Quick setup: download all data sources
-make pipeline-setup
 ```
 
 ### Pipeline Architecture
