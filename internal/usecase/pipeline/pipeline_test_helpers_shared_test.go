@@ -88,8 +88,7 @@ func newPipelineQualityHarnessForWordbook(
 	evaluator := scoring.NewDataEvaluator(scorer, logger)
 	p := pipeline.NewVocnetPipeline(stages, validator, persistence, stageRepo, snapshotRepo, lemmaRepo, lexemeRepo, evaluator, logger)
 
-	svc := pipeline.NewPipelineService(jobRepo, stageRepo, logger)
-	svc.SetLemmaResolver(wikidata.NewLemmaResolver(wikidataReader))
+	svc := pipeline.NewPipelineService(jobRepo, stageRepo, wikidata.NewLemmaResolver(wikidataReader), logger)
 
 	return &qualityHarness{pipeline: p, svc: svc, jobRepo: jobRepo, entClient: entClient, snapshotRepo: snapshotRepo}
 }

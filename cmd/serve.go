@@ -71,11 +71,10 @@ var serveCmd = &cobra.Command{
 		defer cancel()
 
 		// Start pipeline worker pool
-		workerPool, lemmaResolver, err := buildPipelineWorkerPool(ctx, container.Config, container.EntClient, logger)
+		workerPool, err := buildPipelineWorkerPool(ctx, container.Config, container.EntClient, logger)
 		if err != nil {
 			logger.Warn("pipeline worker disabled", "error", err)
 		} else {
-			container.PipelineService.SetLemmaResolver(lemmaResolver)
 			go func() {
 				if err := workerPool.Start(ctx); err != nil {
 					logger.Error("pipeline worker error", "error", err)
@@ -126,7 +125,7 @@ func init() {
 }
 
 // buildPipelineWorkerPool constructs the Pipeline and WorkerPool from config and ent client.
-func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, pipeline.LemmaResolver, error) {
+func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, error) {
 	// Repositories
 	lemmaRepo := repository.NewLemmaRepository(entClient)
 	lexemeRepo := repository.NewLexemeRepository(entClient)
@@ -155,10 +154,9 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	var wikidataProvider provider.WikidataProvider
 	wikidataReader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
 	if err != nil {
-		return nil, nil, fmt.Errorf("wikidata unavailable: %w", err)
+		return nil, fmt.Errorf("wikidata unavailable: %w", err)
 	}
 	wikidataProvider = wikidataReader
-	lemmaResolver := wikidata.NewLemmaResolver(wikidataReader)
 
 	// Moby (built-in SourceProvider)
 	mobyReader, err := moby.NewReader(moby.DataPath(cfg.Pipeline.DataDir))
@@ -205,7 +203,7 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	}
 
 	metrics := pipeline.NewPrometheusMetrics()
-	return pipeline.NewWorkerPool(jobRepo, p, logger, workerCount, 5*time.Second, metrics), lemmaResolver, nil
+	return pipeline.NewWorkerPool(jobRepo, p, logger, workerCount, 5*time.Second, metrics), nil
 }
 
 // buildNewPipelineStages constructs the new phase-based pipeline architecture.

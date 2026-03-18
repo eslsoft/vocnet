@@ -301,9 +301,16 @@ func newPipelineDeps() (*pipelineDeps, error) {
 		return nil, fmt.Errorf("create ent client: %w", err)
 	}
 
+	wikidataReader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("wikidata reader: %w", err)
+	}
+	resolver := wikidata.NewLemmaResolver(wikidataReader)
+
 	jobRepo := repository.NewPipelineJobRepository(entClient)
 	stageRepo := repository.NewPipelineStageRepository(entClient)
-	svc := pipeline.NewPipelineService(jobRepo, stageRepo, logger)
+	svc := pipeline.NewPipelineService(jobRepo, stageRepo, resolver, logger)
 
 	return &pipelineDeps{svc: svc, cleanup: cleanup}, nil
 }

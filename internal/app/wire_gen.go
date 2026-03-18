@@ -8,6 +8,7 @@ package app
 
 import (
 	"github.com/eslsoft/vocnet/internal/adapter/connectrpc"
+	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
@@ -17,6 +18,7 @@ import (
 	"github.com/eslsoft/vocnet/pkg/api/dict/v1/dictv1connect"
 	"github.com/eslsoft/vocnet/pkg/api/pipeline/v1/pipelinev1connect"
 	"github.com/google/wire"
+	"log/slog"
 )
 
 // Injectors from wire.go:
@@ -43,7 +45,12 @@ func Initialize() (*Container, func(), error) {
 	lemmaServiceServer := connectrpc.NewLemmaServiceServer(lemmaQueryService)
 	pipelineJobRepository := repository.NewPipelineJobRepository(client)
 	pipelineStageRepository := repository.NewPipelineStageRepository(client)
-	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineStageRepository, logger)
+	lemmaResolver, err := ProvideLemmaResolver(configConfig, logger)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	pipelineService := pipeline.NewPipelineService(pipelineJobRepository, pipelineStageRepository, lemmaResolver, logger)
 	pipelineServiceServer := connectrpc.NewPipelineServiceServer(pipelineService)
 	serverServer, err := server.NewServer(configConfig, logger, dictServiceServer, lemmaServiceServer, pipelineServiceServer)
 	if err != nil {
@@ -70,7 +77,16 @@ var databaseSet = wire.NewSet(database.NewEntClient)
 
 var repositorySet = wire.NewSet(repository.NewLexemeRepository, repository.NewLemmaRepository, repository.NewEvidenceRepository, repository.NewPipelineStageRepository, repository.NewSemanticRelationRepository, repository.NewLemmaSnapshotRepository, repository.NewPipelineJobRepository)
 
-var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewSnapshotWordUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService)
+var usecaseSet = wire.NewSet(usecase.NewLexemeUsecase, usecase.NewSnapshotWordUsecase, pipeline.NewPipelineService, pipeline.NewLemmaQueryService, ProvideLemmaResolver, wire.Bind(new(pipeline.LemmaResolver), new(*wikidata.LemmaResolver)))
+
+// ProvideLemmaResolver creates a LemmaResolver backed by the Wikidata index.
+func ProvideLemmaResolver(cfg *config.Config, logger *slog.Logger) (*wikidata.LemmaResolver, error) {
+	reader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
+	if err != nil {
+		return nil, err
+	}
+	return wikidata.NewLemmaResolver(reader), nil
+}
 
 var serviceSet = wire.NewSet(connectrpc.NewDictServiceServer, connectrpc.NewPipelineServiceServer, connectrpc.NewLemmaServiceServer, wire.Bind(new(dictv1connect.DictServiceHandler), new(*connectrpc.DictServiceServer)), wire.Bind(new(dictv1connect.LemmaServiceHandler), new(*connectrpc.LemmaServiceServer)), wire.Bind(new(pipelinev1connect.PipelineServiceHandler), new(*connectrpc.PipelineServiceServer)))
 

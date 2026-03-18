@@ -28,27 +28,21 @@ type PipelineService struct {
 func NewPipelineService(
 	jobRepo repository.PipelineJobRepository,
 	stageRepo repository.PipelineStageRepository,
+	resolver LemmaResolver,
 	logger *slog.Logger,
 ) *PipelineService {
 	return &PipelineService{
 		jobRepo:   jobRepo,
 		stageRepo: stageRepo,
+		resolver:  resolver,
 		logger:    logger,
 	}
-}
-
-// SetLemmaResolver sets the lemma resolver for term → lemma resolution at submission time.
-func (s *PipelineService) SetLemmaResolver(r LemmaResolver) {
-	s.resolver = r
 }
 
 // resolveTermToLemmas converts a term to its Wikidata lemma surface(s).
 // A single term can map to multiple lemmas (e.g., "does" → ["doe", "do"]).
 // Returns error if resolver is not configured, fails, or finds no lemma.
 func (s *PipelineService) resolveTermToLemmas(ctx context.Context, term, language string) ([]string, error) {
-	if s.resolver == nil {
-		return nil, fmt.Errorf("lemma resolver not configured")
-	}
 	lemmas, err := s.resolver.ResolveLemmas(ctx, term, language)
 	if err != nil {
 		return nil, fmt.Errorf("resolve lemmas for %q: %w", term, err)

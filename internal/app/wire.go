@@ -3,9 +3,12 @@
 package app
 
 import (
+	"log/slog"
+
 	"github.com/google/wire"
 
 	adaptergrpc "github.com/eslsoft/vocnet/internal/adapter/connectrpc"
+	"github.com/eslsoft/vocnet/internal/adapter/provider/wikidata"
 	"github.com/eslsoft/vocnet/internal/adapter/repository"
 	"github.com/eslsoft/vocnet/internal/infrastructure/config"
 	"github.com/eslsoft/vocnet/internal/infrastructure/database"
@@ -40,7 +43,18 @@ var usecaseSet = wire.NewSet(
 	usecase.NewSnapshotWordUsecase,
 	pipeline.NewPipelineService,
 	pipeline.NewLemmaQueryService,
+	ProvideLemmaResolver,
+	wire.Bind(new(pipeline.LemmaResolver), new(*wikidata.LemmaResolver)),
 )
+
+// ProvideLemmaResolver creates a LemmaResolver backed by the Wikidata index.
+func ProvideLemmaResolver(cfg *config.Config, logger *slog.Logger) (*wikidata.LemmaResolver, error) {
+	reader, err := wikidata.NewReaderWithLogger(wikidata.DataPath(cfg.Pipeline.DataDir), logger)
+	if err != nil {
+		return nil, err
+	}
+	return wikidata.NewLemmaResolver(reader), nil
+}
 
 var serviceSet = wire.NewSet(
 	adaptergrpc.NewDictServiceServer,
