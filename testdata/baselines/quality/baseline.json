@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-03-18T01:56:01.487391702Z",
+  "timestamp": "2026-03-18T02:39:39.32027294Z",
   "total_books": 6,
   "total_words": 7004,
-  "total_passed": 6779,
+  "total_passed": 6780,
   "total_failed": 220,
-  "average_score": 58.995466915065904,
+  "average_score": 58.99706444527007,
   "book_reports": [
     {
       "name": "CEFR-A1",
@@ -12,7 +12,7 @@
       "tested_words": 917,
       "passed_words": 897,
       "failed_words": 20,
-      "average_score": 61.849866515661944,
+      "average_score": 61.85314737220997,
       "min_score": 21.7,
       "max_score": 88.25285714285712,
       "min_requirement": 35,
@@ -279,9 +279,9 @@
       "name": "CEFR-A2",
       "total_words": 1014,
       "tested_words": 963,
-      "passed_words": 936,
+      "passed_words": 937,
       "failed_words": 26,
-      "average_score": 61.93989003978665,
+      "average_score": 61.9401419712095,
       "min_score": 0,
       "max_score": 85.8868,
       "min_requirement": 35,
@@ -289,7 +289,7 @@
       "score_distribution": {
         "0-20": 2,
         "20-40": 27,
-        "40-60": 366,
+        "40-60": 367,
         "60-80": 547,
         "80-100": 20
       },
@@ -451,11 +451,8 @@
           "reason": "below minimum requirement"
         }
       ],
-      "execution_errors": [
-        "pajamas: submit \"pajamas\": submit \"pajamas\": no lemma found for \"pajamas\""
-      ],
       "status": "passed",
-      "lemma_accuracy": 96.67359667359668,
+      "lemma_accuracy": 96.57320872274143,
       "lemma_mismatches": [
         {
           "term": "ID",
@@ -550,6 +547,10 @@
           "actual_lemma": "ourself"
         },
         {
+          "term": "pajamas",
+          "actual_lemma": "pyjama"
+        },
+        {
           "term": "skating",
           "actual_lemma": "skate"
         },
@@ -593,7 +594,7 @@
       "tested_words": 993,
       "passed_words": 959,
       "failed_words": 33,
-      "average_score": 59.813231152825615,
+      "average_score": 59.82426945927723,
       "min_score": 21.7,
       "max_score": 84.47454128440367,
       "min_requirement": 30,
@@ -601,8 +602,8 @@
       "score_distribution": {
         "0-20": 0,
         "20-40": 33,
-        "40-60": 485,
-        "60-80": 463,
+        "40-60": 484,
+        "60-80": 464,
         "80-100": 11
       },
       "failed_terms": [
@@ -939,7 +940,7 @@
       "tested_words": 1803,
       "passed_words": 1700,
       "failed_words": 103,
-      "average_score": 58.27922595868733,
+      "average_score": 58.276698227128826,
       "min_score": 0,
       "max_score": 84.2859756097561,
       "min_requirement": 30,
@@ -947,8 +948,8 @@
       "score_distribution": {
         "0-20": 2,
         "20-40": 103,
-        "40-60": 955,
-        "60-80": 731,
+        "40-60": 954,
+        "60-80": 732,
         "80-100": 12
       },
       "failed_terms": [
@@ -1774,7 +1775,7 @@
       "tested_words": 1717,
       "passed_words": 1691,
       "failed_words": 24,
-      "average_score": 57.43545794788577,
+      "average_score": 57.43620284584497,
       "min_score": 16.875,
       "max_score": 82.11124999999998,
       "min_requirement": 25,
@@ -1782,8 +1783,8 @@
       "score_distribution": {
         "0-20": 3,
         "20-40": 67,
-        "40-60": 1078,
-        "60-80": 562,
+        "40-60": 1077,
+        "60-80": 563,
         "80-100": 5
       },
       "failed_terms": [
@@ -1813,7 +1814,7 @@
         },
         {
           "term": "councillor",
-          "score": 24.849999999999998,
+          "score": 23.799999999999997,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -2075,7 +2076,7 @@
       "tested_words": 611,
       "passed_words": 596,
       "failed_words": 14,
-      "average_score": 55.239188764576255,
+      "average_score": 55.23960679736314,
       "min_score": 21.7,
       "max_score": 78.7953947368421,
       "min_requirement": 25,
@@ -2246,5 +2247,5 @@
       ]
     }
   ],
-  "execution_time": "11m24.582268835s"
+  "execution_time": "1m45.063175239s"
 }
