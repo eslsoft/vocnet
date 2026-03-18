@@ -168,7 +168,7 @@ func filterValidRelations(relations []*entity.SemanticRelation, validIDs map[int
 }
 
 // SaveLemmaSnapshot persists a new snapshot version for a lemma.
-func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma *entity.Lemma, forms []*entity.LemmaForm, snapshot *entity.LemmaSnapshot) error {
+func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma *entity.Lemma, forms []*entity.LemmaForm, variantSurfaces []string, snapshot *entity.LemmaSnapshot) error {
 	if lemma == nil {
 		return fmt.Errorf("lemma is required")
 	}
@@ -179,7 +179,8 @@ func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma 
 		return fmt.Errorf("update lemma: %w", err)
 	}
 
-	terms := collectLemmaSnapshotLookupTerms(lemma, forms)
+	snapshot.Variants = variantSurfaces
+	terms := collectLemmaSnapshotLookupTerms(lemma, forms, variantSurfaces)
 	snapshot.LemmaID = lemma.ID
 	snapshot.JobID = &jobID
 	snapshot.LookupTerms = terms
@@ -192,16 +193,16 @@ func (p *Persistence) SaveLemmaSnapshot(ctx context.Context, jobID int64, lemma 
 }
 
 // collectLemmaSnapshotLookupTerms builds the lookup_terms for a snapshot.
-// Includes the lemma surface and ALL form surfaces unconditionally.
+// Includes the lemma surface, variant surfaces, and ALL form surfaces unconditionally.
 // This is a pure function of the lemma's own data — no external state dependency.
 // Conflicts (multiple snapshots sharing a lookup term) are resolved at query time.
-func collectLemmaSnapshotLookupTerms(lemma *entity.Lemma, forms []*entity.LemmaForm) []string {
+func collectLemmaSnapshotLookupTerms(lemma *entity.Lemma, forms []*entity.LemmaForm, variantSurfaces []string) []string {
 	if lemma == nil {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, 1+len(forms))
-	terms := make([]string, 0, 1+len(forms))
+	seen := make(map[string]struct{}, 1+len(variantSurfaces)+len(forms))
+	terms := make([]string, 0, 1+len(variantSurfaces)+len(forms))
 
 	appendTerm := func(v string) {
 		v = strings.ToLower(strings.TrimSpace(v))
@@ -216,6 +217,9 @@ func collectLemmaSnapshotLookupTerms(lemma *entity.Lemma, forms []*entity.LemmaF
 	}
 
 	appendTerm(lemma.Surface)
+	for _, v := range variantSurfaces {
+		appendTerm(v)
+	}
 	for _, f := range forms {
 		if f != nil {
 			appendTerm(f.Surface)

@@ -88,13 +88,17 @@ func (p *WikidataProcessor) Process(ctx context.Context, pctx *pipeline.Pipeline
 	// Phase 2: Build relations
 	relations := p.buildRelations(ctx, pctx, entityLexemes)
 
+	// Collect variant surfaces from all lexemes
+	variantSurfaces := collectVariantSurfaces(lexemes)
+
 	return &scoring.ProcessResult{
-		Status:        scoring.ProcessStatusExecuted,
-		Evidence:      []*entity.RawEvidence{evidence},
-		Lexemes:       entityLexemes,
-		Forms:         allForms,
-		FormsByLexeme: formsByLexeme,
-		Relations:     relations,
+		Status:          scoring.ProcessStatusExecuted,
+		Evidence:        []*entity.RawEvidence{evidence},
+		Lexemes:         entityLexemes,
+		Forms:           allForms,
+		FormsByLexeme:   formsByLexeme,
+		VariantSurfaces: variantSurfaces,
+		Relations:       relations,
 	}, nil
 }
 

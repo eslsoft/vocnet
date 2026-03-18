@@ -66,10 +66,15 @@ func (r *lemmaSnapshotRepository) CreateOrUpdate(ctx context.Context, snapshot *
 		}
 	}
 
+	variants := snapshot.Variants
+	if variants == nil {
+		variants = []string{}
+	}
 	create := tx.LemmaSnapshot.Create().
 		SetLemmaID(snapshot.LemmaID).
 		SetSurface(snapshot.Surface).
 		SetNormalized(strings.ToLower(strings.TrimSpace(snapshot.Normalized))).
+		SetVariants(variants).
 		SetLookupTerms(snapshot.LookupTerms).
 		SetLanguage(snapshot.Language).
 		SetIsLatest(true).
@@ -474,6 +479,7 @@ func mapEntLemmaSnapshot(row *entdb.LemmaSnapshot) *entity.LemmaSnapshot {
 		Surface:       row.Surface,
 		Normalized:    row.Normalized,
 		Level:         level,
+		Variants:      row.Variants,
 		LookupTerms:   row.LookupTerms,
 		Language:      row.Language,
 		IsLatest:      row.IsLatest,

@@ -496,6 +496,8 @@ func runWordbookQualityTest(t *testing.T, ctx context.Context, h *qualityHarness
 			lemmaCorrect++
 		} else if strings.HasPrefix(termLower, strings.ToLower(wordResult.LemmaSurface)) {
 			lemmaCorrect++
+		} else if isVariantOf(termLower, wordResult.Variants) {
+			lemmaCorrect++
 		} else {
 			lemmaMismatches = append(lemmaMismatches, pipeline.LemmaMismatch{
 				Term:        term,
@@ -646,4 +648,13 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func isVariantOf(term string, variants []string) bool {
+	for _, v := range variants {
+		if strings.ToLower(v) == term {
+			return true
+		}
+	}
+	return false
 }

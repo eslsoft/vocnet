@@ -163,6 +163,11 @@ func mustLoadPipelineQualityConfig(t *testing.T) *config.Config {
 	}
 
 	if custom := strings.TrimSpace(os.Getenv("PIPELINE_IT_DATA_DIR")); custom != "" {
+		if !filepath.IsAbs(custom) {
+			repoRoot, findErr := findRepoRoot(t)
+			require.NoError(t, findErr)
+			custom = filepath.Join(repoRoot, custom)
+		}
 		cfg.Pipeline.DataDir = custom
 	}
 	return cfg
@@ -247,6 +252,7 @@ func resetSQLiteDBFiles(dbPath string) error {
 type runWordResult struct {
 	Score        float64
 	LemmaSurface string
+	Variants     []string
 }
 
 func (h *qualityHarness) runWord(ctx context.Context, term string) (*runWordResult, error) {
@@ -279,6 +285,7 @@ func (h *qualityHarness) runWord(ctx context.Context, term string) (*runWordResu
 	return &runWordResult{
 		Score:        lastResult.LemmaSnapshot.Quality.Overall,
 		LemmaSurface: lemmaSurface,
+		Variants:     lastResult.LemmaSnapshot.Variants,
 	}, nil
 }
 

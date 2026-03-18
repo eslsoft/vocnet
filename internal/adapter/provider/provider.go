@@ -10,6 +10,7 @@ type WikidataLexeme struct {
 	Lemma    string // headword / lemma representation (e.g. "limit", "run")
 	Language string
 	POS      string
+	Variants []string // spelling variants (e.g. en-us vs en-gb)
 	Senses   []WikidataSense
 	Forms    []WikidataForm
 }

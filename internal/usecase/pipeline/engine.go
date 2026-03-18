@@ -219,7 +219,7 @@ func (p *VocnetPipeline) writeStageResultWithLock(ctx context.Context, pctx *Pip
 	}
 
 	if mergedResult.LemmaSnapshot != nil {
-		if err := p.persistence.SaveLemmaSnapshot(ctx, pctx.JobID, pctx.Lemma, pctx.Forms, mergedResult.LemmaSnapshot); err != nil {
+		if err := p.persistence.SaveLemmaSnapshot(ctx, pctx.JobID, pctx.Lemma, pctx.Forms, pctx.VariantSurfaces, mergedResult.LemmaSnapshot); err != nil {
 			_ = p.ensureAndUpdateStageStatus(ctx, pctx, phaseNum, entity.StageStatusFailed, err.Error())
 			return err
 		}

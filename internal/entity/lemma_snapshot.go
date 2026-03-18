@@ -66,6 +66,7 @@ type LemmaSnapshot struct {
 	Surface       string
 	Normalized    string
 	Level         string
+	Variants      []string
 	LookupTerms   []string
 	Language      string
 	IsLatest      bool

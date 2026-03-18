@@ -675,6 +675,23 @@ func matchAnyPattern(gloss string, patterns []string) bool {
 	return false
 }
 
+// collectVariantSurfaces collects unique spelling variants from all lexemes.
+func collectVariantSurfaces(lexemes []provider.WikidataLexeme) []string {
+	seen := make(map[string]struct{})
+	var variants []string
+	for _, lex := range lexemes {
+		for _, v := range lex.Variants {
+			lower := strings.ToLower(v)
+			if _, ok := seen[lower]; ok {
+				continue
+			}
+			seen[lower] = struct{}{}
+			variants = append(variants, v)
+		}
+	}
+	return variants
+}
+
 // appendUnique appends items to a slice only if they don't already exist.
 func appendUnique(slice []string, items ...string) []string {
 	existing := make(map[string]bool)

@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/eslsoft/vocnet/internal/entity"
@@ -86,6 +87,9 @@ type PipelineContext struct {
 	Evidence      []*entity.RawEvidence
 	LemmaSnapshot *entity.LemmaSnapshot
 
+	// VariantSurfaces stores spelling variants collected from Wikidata
+	VariantSurfaces []string
+
 	// ProcessResults stores results from each processor for fragment evaluation
 	ProcessResults []*ProcessResult
 
@@ -126,6 +130,10 @@ func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider str
 	}
 	pc.ProcessResults = append(pc.ProcessResults, r)
 
+	if len(r.VariantSurfaces) > 0 {
+		pc.VariantSurfaces = mergeVariantSurfaces(pc.VariantSurfaces, r.VariantSurfaces)
+	}
+
 	if r.Evidence != nil {
 		pc.Evidence = append(pc.Evidence, r.Evidence...)
 	}
@@ -156,6 +164,21 @@ func (pc *PipelineContext) AccumulateWithProvider(r *ProcessResult, provider str
 func mergeRelationsWithScoring(existing, incoming []*entity.SemanticRelation, _ *scoring.DataEvaluator) []*entity.SemanticRelation {
 	// Simple merge for now
 	return append(existing, incoming...)
+}
+
+func mergeVariantSurfaces(existing, incoming []string) []string {
+	seen := make(map[string]struct{}, len(existing))
+	for _, v := range existing {
+		seen[strings.ToLower(v)] = struct{}{}
+	}
+	for _, v := range incoming {
+		lower := strings.ToLower(v)
+		if _, ok := seen[lower]; !ok {
+			seen[lower] = struct{}{}
+			existing = append(existing, v)
+		}
+	}
+	return existing
 }
 
 func mergeFormsByLexeme(existing, incoming map[string][]*entity.LemmaForm) map[string][]*entity.LemmaForm {

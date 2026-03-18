@@ -155,7 +155,7 @@ func (idx *WikidataIndexer) createTables(db *sql.DB) error {
 			lemma TEXT NOT NULL,
 			lemma_lower TEXT NOT NULL,
 			lemma_key TEXT NOT NULL,
-			lemma_orth_key TEXT NOT NULL,
+			lemma_variants TEXT NOT NULL DEFAULT '',
 			language TEXT NOT NULL,
 			pos TEXT NOT NULL,
 			data TEXT NOT NULL
@@ -167,7 +167,6 @@ func (idx *WikidataIndexer) createTables(db *sql.DB) error {
 			representation TEXT NOT NULL,
 			representation_lower TEXT NOT NULL,
 			representation_key TEXT NOT NULL,
-			representation_orth_key TEXT NOT NULL,
 			features TEXT,
 			ipa TEXT
 		);
@@ -194,12 +193,11 @@ func (idx *WikidataIndexer) createIndices(db *sql.DB) error {
 	indices := []string{
 		"CREATE INDEX idx_lexemes_lemma_lang ON lexemes(lemma_lower, language)",
 		"CREATE INDEX idx_lexemes_lemma_key_lang ON lexemes(lemma_key, language)",
-		"CREATE INDEX idx_lexemes_lemma_orth_key_lang ON lexemes(lemma_orth_key, language)",
+		"CREATE INDEX idx_lexemes_variants ON lexemes(lemma_variants)",
 		"CREATE INDEX idx_lexemes_language ON lexemes(language)",
 		"CREATE INDEX idx_forms_lexeme ON forms(lexeme_id)",
 		"CREATE INDEX idx_forms_repr ON forms(representation_lower)",
 		"CREATE INDEX idx_forms_repr_key ON forms(representation_key)",
-		"CREATE INDEX idx_forms_repr_orth_key ON forms(representation_orth_key)",
 		"CREATE INDEX idx_senses_lexeme ON senses(lexeme_id)",
 	}
 
@@ -277,12 +275,12 @@ func newWikidataInserter(db *sql.DB) (*wikidataInserter, error) {
 
 func (ins *wikidataInserter) prepareStatements() error {
 	var err error
-	ins.lexemeStmt, err = ins.tx.Prepare("INSERT INTO lexemes (id, lemma, lemma_lower, lemma_key, lemma_orth_key, language, pos, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+	ins.lexemeStmt, err = ins.tx.Prepare("INSERT INTO lexemes (id, lemma, lemma_lower, lemma_key, lemma_variants, language, pos, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return fmt.Errorf("prepare lexeme insert: %w", err)
 	}
 
-	ins.formStmt, err = ins.tx.Prepare("INSERT INTO forms (id, lexeme_id, representation, representation_lower, representation_key, representation_orth_key, features, ipa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+	ins.formStmt, err = ins.tx.Prepare("INSERT INTO forms (id, lexeme_id, representation, representation_lower, representation_key, features, ipa) VALUES (?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return fmt.Errorf("prepare form insert: %w", err)
 	}
@@ -424,17 +422,30 @@ func (idx *WikidataIndexer) parseLine(line string) (*wikidataLexemeJSON, bool) {
 }
 
 func (idx *WikidataIndexer) insertLexeme(ins *wikidataInserter, lexeme *wikidataLexemeJSON) (bool, error) {
-	// Get the first lemma (primary representation)
+	// Get the primary lemma: prefer the shortest language code (e.g., "en" over "en-us")
+	// to ensure British English is canonical (en < en-gb < en-us alphabetically and by length).
 	var lemma, lemmaLang string
-	for _, l := range lexeme.Lemmas {
-		lemma = l.Value
-		lemmaLang = l.Language
-		break
+	for lang, l := range lexeme.Lemmas {
+		if lemma == "" || len(lang) < len(lemmaLang) || (len(lang) == len(lemmaLang) && lang < lemmaLang) {
+			lemma = l.Value
+			lemmaLang = lang
+		}
 	}
 
 	if lemma == "" {
 		return false, nil
 	}
+
+	// Collect variant spellings (all lemma values except the primary)
+	var variants []string
+	primaryLower := strings.ToLower(lemma)
+	for _, l := range lexeme.Lemmas {
+		v := strings.TrimSpace(l.Value)
+		if strings.ToLower(v) != primaryLower {
+			variants = append(variants, v)
+		}
+	}
+	variantsStr := strings.Join(variants, ",")
 
 	// Map language QID to ISO code
 	langCode := mapWikidataLanguageQID(lexeme.Language)
@@ -453,7 +464,7 @@ func (idx *WikidataIndexer) insertLexeme(ins *wikidataInserter, lexeme *wikidata
 		lemma,
 		strings.ToLower(lemma),
 		normalizeSearchKey(lemma),
-		orthographyKey(lemma),
+		variantsStr,
 		langCode,
 		pos,
 		string(data),
@@ -487,7 +498,6 @@ func (idx *WikidataIndexer) insertForms(ins *wikidataInserter, lexeme *wikidataL
 			repr,
 			strings.ToLower(repr),
 			normalizeSearchKey(repr),
-			orthographyKey(repr),
 			string(features),
 			ipa,
 		)

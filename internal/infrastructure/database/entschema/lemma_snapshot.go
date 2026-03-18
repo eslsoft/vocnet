@@ -33,6 +33,10 @@ func (LemmaSnapshot) Fields() []ent.Field {
 		field.String("normalized").
 			NotEmpty().
 			Comment("Lowercased surface for case-insensitive lookup"),
+		field.JSON("variants", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Spelling variants of the lemma surface"),
 		field.JSON("lookup_terms", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).

@@ -81,7 +81,6 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 	}
 	termLower := strings.ToLower(strings.TrimSpace(term))
 	searchKey := normalizeSearchKey(term)
-	orthKey := orthographyKey(term)
 
 	// Use UNION instead of OR to allow SQLite to use indexes efficiently.
 	// Each sub-query can use its specific index, then results are merged.
@@ -93,17 +92,14 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'normalized_lemma' as match_level, 70 as match_score
 			FROM lexemes l WHERE l.language = ? AND l.lemma_key = ?
 			UNION ALL
-			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'orth_lemma' as match_level, 50 as match_score
-			FROM lexemes l WHERE l.language = ? AND l.lemma_orth_key = ?
+			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'variant_lemma' as match_level, 50 as match_score
+			FROM lexemes l WHERE l.language = ? AND (',' || l.lemma_variants || ',' LIKE '%,' || ? || ',%')
 			UNION ALL
 			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'exact_form' as match_level, 90 as match_score
 			FROM forms f JOIN lexemes l ON f.lexeme_id = l.id WHERE l.language = ? AND f.representation_lower = ?
 			UNION ALL
 			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'normalized_form' as match_level, 60 as match_score
 			FROM forms f JOIN lexemes l ON f.lexeme_id = l.id WHERE l.language = ? AND f.representation_key = ?
-			UNION ALL
-			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'orth_form' as match_level, 40 as match_score
-			FROM forms f JOIN lexemes l ON f.lexeme_id = l.id WHERE l.language = ? AND f.representation_orth_key = ?
 		)
 		ORDER BY match_score DESC
 		LIMIT 10
@@ -113,10 +109,9 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 		query,
 		language, termLower,
 		language, searchKey,
-		language, orthKey,
+		language, termLower,
 		language, termLower,
 		language, searchKey,
-		language, orthKey,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query wikidata index: %w", err)
@@ -195,7 +190,6 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 		"term":            term,
 		"language":        language,
 		"query_key":       searchKey,
-		"orth_key":        orthKey,
 		"match_level":     topLevel,
 		"match_score":     topScore,
 		"candidate_count": len(rankedRows),
@@ -288,6 +282,7 @@ func (r *Reader) buildLexemesWithDetails(ctx context.Context, parsedRows []lexem
 			Lemma:    row.lemma,
 			Language: row.lang,
 			POS:      row.pos,
+			Variants: extractVariantsFromData(row.data, row.lemma),
 			Senses:   sensesMap[row.id],
 			Forms:    formsMap[row.id],
 		}
@@ -463,19 +458,28 @@ func normalizeSearchKey(s string) string {
 	return replacer.Replace(s)
 }
 
-func orthographyKey(s string) string {
-	key := normalizeSearchKey(s)
-	if key == "" {
-		return key
+// extractVariantsFromData parses the stored JSON data to extract spelling variants.
+// Returns all lemma values from the "lemmas" map that differ from the primary lemma.
+func extractVariantsFromData(data string, primaryLemma string) []string {
+	var parsed struct {
+		Lemmas map[string]struct {
+			Value string `json:"value"`
+		} `json:"lemmas"`
 	}
-	key = strings.ReplaceAll(key, "our", "or")
-	key = strings.ReplaceAll(key, "ise", "ize")
-	key = strings.ReplaceAll(key, "yse", "yze")
-	if strings.HasSuffix(key, "re") && len(key) > 4 {
-		key = strings.TrimSuffix(key, "re") + "er"
+	if err := json.Unmarshal([]byte(data), &parsed); err != nil {
+		return nil
 	}
-	if strings.HasSuffix(key, "ice") && len(key) > 4 {
-		key = strings.TrimSuffix(key, "ice") + "ize"
+	primaryLower := strings.ToLower(strings.TrimSpace(primaryLemma))
+	seen := map[string]struct{}{primaryLower: {}}
+	var variants []string
+	for _, l := range parsed.Lemmas {
+		v := strings.TrimSpace(l.Value)
+		lower := strings.ToLower(v)
+		if _, ok := seen[lower]; ok {
+			continue
+		}
+		seen[lower] = struct{}{}
+		variants = append(variants, v)
 	}
-	return key
+	return variants
 }

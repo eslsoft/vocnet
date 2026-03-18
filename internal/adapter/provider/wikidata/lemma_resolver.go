@@ -28,7 +28,7 @@ func (r *LemmaResolver) ResolveLemmas(ctx context.Context, term string, language
 	var lemmas []string
 	for _, lex := range lexemes {
 		lemma := strings.TrimSpace(lex.Lemma)
-		if lemma == "" || strings.HasPrefix(lemma, "-") {
+		if lemma == "" || strings.HasPrefix(lemma, "-") || strings.HasSuffix(lemma, "-") {
 			continue
 		}
 		key := strings.ToLower(lemma)

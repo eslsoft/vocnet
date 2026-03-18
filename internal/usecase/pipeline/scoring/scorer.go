@@ -16,15 +16,16 @@ const (
 
 // ProcessResult contains the outputs of a single processor execution.
 type ProcessResult struct {
-	Status        ProcessStatus
-	Evidence      []*entity.RawEvidence
-	Lexemes       []*entity.Lexeme
-	Relations     []*entity.SemanticRelation
-	Forms         []*entity.LemmaForm
-	FormsByLexeme map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
-	LemmaUpdate   *entity.Lemma                  // non-nil → update lemma
-	LemmaSnapshot *entity.LemmaSnapshot // only set by LemmaSnapshotProcessor
-	Provider      string                // source provider name (for evaluator)
+	Status          ProcessStatus
+	Evidence        []*entity.RawEvidence
+	Lexemes         []*entity.Lexeme
+	Relations       []*entity.SemanticRelation
+	Forms           []*entity.LemmaForm
+	FormsByLexeme   map[string][]*entity.LemmaForm // forms grouped by Lexeme ExternalID
+	VariantSurfaces []string                       // spelling variants from Wikidata lemmas map
+	LemmaUpdate     *entity.Lemma                  // non-nil → update lemma
+	LemmaSnapshot   *entity.LemmaSnapshot          // only set by LemmaSnapshotProcessor
+	Provider        string                         // source provider name (for evaluator)
 }
 
 // --- Scorer interface and types ---
