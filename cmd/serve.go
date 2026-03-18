@@ -60,6 +60,12 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start ConnectRPC server (HTTP + gRPC)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Ensure data sources are downloaded before Wire initialization,
+		// because ProvideLemmaResolver needs the Wikidata data file.
+		if err := ensureDataSources(); err != nil {
+			return fmt.Errorf("ensure data sources: %w", err)
+		}
+
 		container, cleanup, err := app.Initialize()
 		if err != nil {
 			return fmt.Errorf("init container: %w", err)
@@ -124,6 +130,22 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 }
 
+// ensureDataSources loads config and downloads missing data sources
+// before Wire initialization, so that providers can open the data files.
+func ensureDataSources() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	logger := slog.Default()
+	downloader := datasource.NewDownloader(cfg.Pipeline.CacheDir, logger)
+	mgr := datasource.NewManager(logger)
+	mgr.Register(wikidata.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	mgr.Register(moby.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	mgr.Register(cefrj.NewSource(cfg.Pipeline.DataDir, downloader, logger))
+	return mgr.EnsureAvailable(context.Background(), "wikidata", "moby", "cefrj")
+}
+
 // buildPipelineWorkerPool constructs the Pipeline and WorkerPool from config and ent client.
 func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient *entdb.Client, logger *slog.Logger) (*pipeline.WorkerPool, error) {
 	// Repositories
@@ -134,16 +156,6 @@ func buildPipelineWorkerPool(ctx context.Context, cfg *config.Config, entClient 
 	relationRepo := repository.NewSemanticRelationRepository(entClient)
 	snapshotRepo := repository.NewLemmaSnapshotRepository(entClient)
 	jobRepo := repository.NewPipelineJobRepository(entClient)
-
-	// Ensure built-in data sources are available (always auto-downloads if missing)
-	downloader := datasource.NewDownloader(cfg.Pipeline.CacheDir, logger)
-	mgr := datasource.NewManager(logger)
-	mgr.Register(wikidata.NewSource(cfg.Pipeline.DataDir, downloader, logger))
-	mgr.Register(moby.NewSource(cfg.Pipeline.DataDir, downloader, logger))
-	mgr.Register(cefrj.NewSource(cfg.Pipeline.DataDir, downloader, logger))
-	if err := mgr.EnsureAvailable(context.Background(), "wikidata", "moby", "cefrj"); err != nil {
-		logger.Warn("some pipeline data sources unavailable", "error", err)
-	}
 
 	// SourceRegistry for unified source management
 	registry := pipeline.NewSourceRegistry(logger)
