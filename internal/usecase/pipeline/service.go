@@ -126,8 +126,26 @@ func (s *PipelineService) SubmitTerms(ctx context.Context, name string, terms []
 		}
 	}
 
-	pending := make([]*entity.PipelineJob, 0, len(resolved))
-	for _, lemma := range resolved {
+	return s.SubmitLemmas(ctx, name, resolved, language, tier)
+}
+
+// SubmitLemmas creates pipeline jobs directly from lemma surfaces (no resolution).
+// Use this when the inputs are already canonical lemma forms.
+func (s *PipelineService) SubmitLemmas(ctx context.Context, name string, lemmas []string, language string, tier int32) ([]*entity.PipelineJob, error) {
+	lemmas = deduplicateTerms(lemmas)
+	if len(lemmas) == 0 {
+		return nil, fmt.Errorf("no valid lemmas provided")
+	}
+
+	if language == "" {
+		language = "en"
+	}
+	if tier == 0 {
+		tier = 2
+	}
+
+	pending := make([]*entity.PipelineJob, 0, len(lemmas))
+	for _, lemma := range lemmas {
 		jobName := name
 		if jobName == "" {
 			jobName = fmt.Sprintf("word: %s", lemma)

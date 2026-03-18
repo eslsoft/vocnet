@@ -574,7 +574,7 @@ func submitFromWikidata(ctx context.Context, svc *pipeline.PipelineService, lang
 			end = len(terms)
 		}
 		batch := terms[i:end]
-		jobs, err := svc.SubmitTerms(ctx, jobName, batch, language, tier)
+		jobs, err := svc.SubmitLemmas(ctx, jobName, batch, language, tier)
 		if err != nil {
 			return nil, fmt.Errorf("submit batch %d-%d: %w", i, end, err)
 		}
