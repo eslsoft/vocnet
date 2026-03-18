@@ -1,26 +1,26 @@
 {
-  "timestamp": "2026-03-17T13:26:22.289844824Z",
+  "timestamp": "2026-03-18T01:56:01.487391702Z",
   "total_books": 6,
   "total_words": 7004,
-  "total_passed": 6806,
-  "total_failed": 198,
-  "average_score": 58.93062466520576,
+  "total_passed": 6779,
+  "total_failed": 220,
+  "average_score": 58.995466915065904,
   "book_reports": [
     {
       "name": "CEFR-A1",
       "total_words": 931,
       "tested_words": 917,
-      "passed_words": 903,
-      "failed_words": 14,
-      "average_score": 62.015753169195605,
-      "min_score": 23.799999999999997,
+      "passed_words": 897,
+      "failed_words": 20,
+      "average_score": 61.849866515661944,
+      "min_score": 21.7,
       "max_score": 88.25285714285712,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
         "0-20": 0,
-        "20-40": 18,
-        "40-60": 369,
+        "20-40": 26,
+        "40-60": 361,
         "60-80": 496,
         "80-100": 34
       },
@@ -44,6 +44,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "breakfast",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "course",
+          "score": 22.866666666666667,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "during",
           "score": 28,
           "min_requirement": 35,
@@ -56,6 +68,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "its",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "long",
+          "score": 22.224999999999998,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "our",
           "score": 24.849999999999998,
           "min_requirement": 35,
@@ -64,6 +88,12 @@
         {
           "term": "quite",
           "score": 28,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "should",
+          "score": 22.75,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -92,6 +122,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "them",
+          "score": 23.799999999999997,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "they",
           "score": 23.799999999999997,
           "min_requirement": 35,
@@ -111,11 +147,131 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 99.89094874591058,
+      "lemma_accuracy": 96.61941112322792,
       "lemma_mismatches": [
         {
-          "term": "theatre",
-          "actual_lemma": "theater"
+          "term": "OK",
+          "actual_lemma": "okay"
+        },
+        {
+          "term": "amazing",
+          "actual_lemma": "amaze"
+        },
+        {
+          "term": "bad",
+          "actual_lemma": "bid"
+        },
+        {
+          "term": "best",
+          "actual_lemma": "well"
+        },
+        {
+          "term": "better",
+          "actual_lemma": "well"
+        },
+        {
+          "term": "boring",
+          "actual_lemma": "bore"
+        },
+        {
+          "term": "born",
+          "actual_lemma": "bear"
+        },
+        {
+          "term": "breakfast",
+          "actual_lemma": "break fast"
+        },
+        {
+          "term": "cat",
+          "actual_lemma": "category"
+        },
+        {
+          "term": "could",
+          "actual_lemma": "can"
+        },
+        {
+          "term": "course",
+          "actual_lemma": "'course"
+        },
+        {
+          "term": "dancing",
+          "actual_lemma": "dance"
+        },
+        {
+          "term": "dining",
+          "actual_lemma": "dine"
+        },
+        {
+          "term": "exciting",
+          "actual_lemma": "excite"
+        },
+        {
+          "term": "her",
+          "actual_lemma": "she"
+        },
+        {
+          "term": "him",
+          "actual_lemma": "he"
+        },
+        {
+          "term": "its",
+          "actual_lemma": "it is"
+        },
+        {
+          "term": "left",
+          "actual_lemma": "leave"
+        },
+        {
+          "term": "long",
+          "actual_lemma": "'long"
+        },
+        {
+          "term": "married",
+          "actual_lemma": "marry"
+        },
+        {
+          "term": "me",
+          "actual_lemma": "I"
+        },
+        {
+          "term": "more",
+          "actual_lemma": "much"
+        },
+        {
+          "term": "most",
+          "actual_lemma": "much"
+        },
+        {
+          "term": "people",
+          "actual_lemma": "person"
+        },
+        {
+          "term": "should",
+          "actual_lemma": "shall"
+        },
+        {
+          "term": "them",
+          "actual_lemma": "they"
+        },
+        {
+          "term": "these",
+          "actual_lemma": "this"
+        },
+        {
+          "term": "those",
+          "actual_lemma": "that"
+        },
+        {
+          "term": "us",
+          "actual_lemma": "we"
+        },
+        {
+          "term": "would",
+          "actual_lemma": "will"
+        },
+        {
+          "term": "writing",
+          "actual_lemma": "write"
         }
       ]
     },
@@ -123,24 +279,24 @@
       "name": "CEFR-A2",
       "total_words": 1014,
       "tested_words": 963,
-      "passed_words": 938,
-      "failed_words": 25,
-      "average_score": 61.979930835978905,
+      "passed_words": 936,
+      "failed_words": 26,
+      "average_score": 61.93989003978665,
       "min_score": 0,
       "max_score": 85.8868,
       "min_requirement": 35,
       "target_score": 50,
       "score_distribution": {
         "0-20": 2,
-        "20-40": 25,
-        "40-60": 365,
-        "60-80": 552,
-        "80-100": 19
+        "20-40": 27,
+        "40-60": 366,
+        "60-80": 547,
+        "80-100": 20
       },
       "failed_terms": [
         {
           "term": "anymore",
-          "score": 28,
+          "score": 14,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -181,6 +337,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "everyday",
+          "score": 0,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "exactly",
           "score": 28,
           "min_requirement": 35,
@@ -191,12 +353,6 @@
           "score": 28,
           "min_requirement": 35,
           "reason": "below minimum requirement"
-        },
-        {
-          "term": "granddad",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: granddad (non-standard vocabulary rejected)"
         },
         {
           "term": "herself",
@@ -223,6 +379,18 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "kilogram",
+          "score": 24.849999999999998,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "makeup",
+          "score": 21.7,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "mostly",
           "score": 28,
           "min_requirement": 35,
@@ -241,14 +409,14 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "pajamas",
-          "score": 0,
-          "min_requirement": 35,
-          "reason": "abandoned: word not found in Wikidata: pajamas (non-standard vocabulary rejected)"
-        },
-        {
           "term": "secondly",
           "score": 28,
+          "min_requirement": 35,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "series",
+          "score": 21.7,
           "min_requirement": 35,
           "reason": "below minimum requirement"
         },
@@ -271,12 +439,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "themselves",
-          "score": 24.849999999999998,
-          "min_requirement": 35,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "whose",
           "score": 24.15,
           "min_requirement": 35,
@@ -289,12 +451,139 @@
           "reason": "below minimum requirement"
         }
       ],
+      "execution_errors": [
+        "pajamas: submit \"pajamas\": submit \"pajamas\": no lemma found for \"pajamas\""
+      ],
       "status": "passed",
-      "lemma_accuracy": 99.89594172736732,
+      "lemma_accuracy": 96.67359667359668,
       "lemma_mismatches": [
+        {
+          "term": "ID",
+          "actual_lemma": "I'd"
+        },
+        {
+          "term": "advertising",
+          "actual_lemma": "advertise"
+        },
+        {
+          "term": "anymore",
+          "actual_lemma": "any more"
+        },
+        {
+          "term": "bit",
+          "actual_lemma": "bite"
+        },
+        {
+          "term": "broken",
+          "actual_lemma": "break"
+        },
+        {
+          "term": "clothing",
+          "actual_lemma": "clothe"
+        },
+        {
+          "term": "cycling",
+          "actual_lemma": "cycle"
+        },
+        {
+          "term": "data",
+          "actual_lemma": "datum"
+        },
+        {
+          "term": "driving",
+          "actual_lemma": "drive"
+        },
+        {
+          "term": "everyday",
+          "actual_lemma": "every day"
+        },
+        {
+          "term": "fried",
+          "actual_lemma": "fry"
+        },
+        {
+          "term": "further",
+          "actual_lemma": "far"
+        },
+        {
+          "term": "ground",
+          "actual_lemma": "grind"
+        },
+        {
+          "term": "hiking",
+          "actual_lemma": "hike"
+        },
         {
           "term": "including",
           "actual_lemma": "include"
+        },
+        {
+          "term": "least",
+          "actual_lemma": "little"
+        },
+        {
+          "term": "less",
+          "actual_lemma": "little"
+        },
+        {
+          "term": "lost",
+          "actual_lemma": "lose"
+        },
+        {
+          "term": "makeup",
+          "actual_lemma": "make up"
+        },
+        {
+          "term": "media",
+          "actual_lemma": "medium"
+        },
+        {
+          "term": "might",
+          "actual_lemma": "may"
+        },
+        {
+          "term": "mine",
+          "actual_lemma": "me"
+        },
+        {
+          "term": "ourselves",
+          "actual_lemma": "ourself"
+        },
+        {
+          "term": "skating",
+          "actual_lemma": "skate"
+        },
+        {
+          "term": "smoking",
+          "actual_lemma": "smoke"
+        },
+        {
+          "term": "stove",
+          "actual_lemma": "stave"
+        },
+        {
+          "term": "surprising",
+          "actual_lemma": "surprise"
+        },
+        {
+          "term": "themselves",
+          "actual_lemma": "themself"
+        },
+        {
+          "term": "thought",
+          "actual_lemma": "think"
+        },
+        {
+          "term": "worried",
+          "actual_lemma": "worry"
+        },
+        {
+          "term": "worse",
+          "actual_lemma": "bad"
+        },
+        {
+          "term": "worst",
+          "actual_lemma": "bad"
         }
       ]
     },
@@ -302,24 +591,30 @@
       "name": "CEFR-B1",
       "total_words": 1056,
       "tested_words": 993,
-      "passed_words": 966,
-      "failed_words": 27,
-      "average_score": 59.91162031927176,
-      "min_score": 0,
+      "passed_words": 959,
+      "failed_words": 33,
+      "average_score": 59.813231152825615,
+      "min_score": 21.7,
       "max_score": 84.47454128440367,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 1,
-        "20-40": 26,
-        "40-60": 481,
-        "60-80": 478,
-        "80-100": 7
+        "0-20": 0,
+        "20-40": 33,
+        "40-60": 485,
+        "60-80": 463,
+        "80-100": 11
       },
       "failed_terms": [
         {
           "term": "absolutely",
           "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "ad",
+          "score": 24.849999999999998,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -338,6 +633,12 @@
         {
           "term": "bravely",
           "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "checkout",
+          "score": 21.7,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -390,6 +691,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "northwest",
+          "score": 24.849999999999998,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "originally",
           "score": 28,
           "min_requirement": 30,
@@ -420,6 +727,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "pullover",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "safely",
           "score": 28,
           "min_requirement": 30,
@@ -438,6 +751,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "shell",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "simply",
           "score": 28,
           "min_requirement": 30,
@@ -446,6 +765,12 @@
         {
           "term": "someplace",
           "score": 24.15,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "southwest",
+          "score": 24.849999999999998,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -462,6 +787,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "takeout",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "theirs",
           "score": 24.849999999999998,
           "min_requirement": 30,
@@ -472,24 +803,133 @@
           "score": 21.7,
           "min_requirement": 30,
           "reason": "below minimum requirement"
-        },
-        {
-          "term": "webcam",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: webcam (non-standard vocabulary rejected)"
         }
       ],
+      "execution_errors": [
+        "webcam: submit \"webcam\": submit \"webcam\": no lemma found for \"webcam\""
+      ],
       "status": "passed",
-      "lemma_accuracy": 99.79838709677419,
+      "lemma_accuracy": 96.9758064516129,
       "lemma_mismatches": [
         {
           "term": "CV",
           "actual_lemma": "cove"
         },
         {
+          "term": "ad",
+          "actual_lemma": "A.D."
+        },
+        {
+          "term": "ant",
+          "actual_lemma": "be"
+        },
+        {
+          "term": "breathing",
+          "actual_lemma": "breathe"
+        },
+        {
+          "term": "checkout",
+          "actual_lemma": "check out"
+        },
+        {
+          "term": "coloured",
+          "actual_lemma": "color"
+        },
+        {
+          "term": "diving",
+          "actual_lemma": "dive"
+        },
+        {
+          "term": "drunk",
+          "actual_lemma": "drink"
+        },
+        {
+          "term": "fascinating",
+          "actual_lemma": "fascinate"
+        },
+        {
+          "term": "freezing",
+          "actual_lemma": "freeze"
+        },
+        {
+          "term": "frozen",
+          "actual_lemma": "freeze"
+        },
+        {
+          "term": "fry",
+          "actual_lemma": "ferry"
+        },
+        {
+          "term": "furthest",
+          "actual_lemma": "far"
+        },
+        {
           "term": "groceries",
           "actual_lemma": "grocery"
+        },
+        {
+          "term": "handwriting",
+          "actual_lemma": "handwrite"
+        },
+        {
+          "term": "lay",
+          "actual_lemma": "lie"
+        },
+        {
+          "term": "living",
+          "actual_lemma": "live"
+        },
+        {
+          "term": "northwest",
+          "actual_lemma": "north-west"
+        },
+        {
+          "term": "pullover",
+          "actual_lemma": "pull over"
+        },
+        {
+          "term": "qualified",
+          "actual_lemma": "qualify"
+        },
+        {
+          "term": "racing",
+          "actual_lemma": "race"
+        },
+        {
+          "term": "recycling",
+          "actual_lemma": "recycle"
+        },
+        {
+          "term": "rent",
+          "actual_lemma": "rend"
+        },
+        {
+          "term": "shell",
+          "actual_lemma": "she is"
+        },
+        {
+          "term": "southwest",
+          "actual_lemma": "south-west"
+        },
+        {
+          "term": "spoken",
+          "actual_lemma": "speak"
+        },
+        {
+          "term": "takeout",
+          "actual_lemma": "take out"
+        },
+        {
+          "term": "terrified",
+          "actual_lemma": "terrify"
+        },
+        {
+          "term": "tiring",
+          "actual_lemma": "tire"
+        },
+        {
+          "term": "written",
+          "actual_lemma": "write"
         }
       ]
     },
@@ -499,17 +939,17 @@
       "tested_words": 1803,
       "passed_words": 1700,
       "failed_words": 103,
-      "average_score": 57.93591116112653,
+      "average_score": 58.27922595868733,
       "min_score": 0,
       "max_score": 84.2859756097561,
       "min_requirement": 30,
       "target_score": 45,
       "score_distribution": {
-        "0-20": 7,
-        "20-40": 98,
-        "40-60": 971,
-        "60-80": 719,
-        "80-100": 8
+        "0-20": 2,
+        "20-40": 103,
+        "40-60": 955,
+        "60-80": 731,
+        "80-100": 12
       },
       "failed_terms": [
         {
@@ -639,12 +1079,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "defence",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: defence (non-standard vocabulary rejected)"
-        },
-        {
           "term": "desperately",
           "score": 28,
           "min_requirement": 30,
@@ -673,12 +1107,6 @@
           "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
-        },
-        {
-          "term": "enquiry",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: enquiry (non-standard vocabulary rejected)"
         },
         {
           "term": "environmentally",
@@ -717,6 +1145,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "feedback",
+          "score": 22.75,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "financially",
           "score": 21.7,
           "min_requirement": 30,
@@ -745,12 +1179,6 @@
           "score": 28,
           "min_requirement": 30,
           "reason": "below minimum requirement"
-        },
-        {
-          "term": "fulfil",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: fulfil (non-standard vocabulary rejected)"
         },
         {
           "term": "fundamentally",
@@ -791,6 +1219,18 @@
         {
           "term": "greatly",
           "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "handout",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "hell",
+          "score": 21.7,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -903,12 +1343,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "offence",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: offence (non-standard vocabulary rejected)"
-        },
-        {
           "term": "openly",
           "score": 28,
           "min_requirement": 30,
@@ -981,8 +1415,20 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "recover",
+          "score": 22.959999999999997,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "relatively",
           "score": 28,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "resign",
+          "score": 21.7,
           "min_requirement": 30,
           "reason": "below minimum requirement"
         },
@@ -1035,6 +1481,12 @@
           "reason": "below minimum requirement"
         },
         {
+          "term": "stopover",
+          "score": 21.7,
+          "min_requirement": 30,
+          "reason": "below minimum requirement"
+        },
+        {
           "term": "strangely",
           "score": 28,
           "min_requirement": 30,
@@ -1077,12 +1529,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "via",
-          "score": 28,
-          "min_requirement": 30,
-          "reason": "below minimum requirement"
-        },
-        {
           "term": "virtually",
           "score": 28,
           "min_requirement": 30,
@@ -1113,12 +1559,6 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "whiskey",
-          "score": 0,
-          "min_requirement": 30,
-          "reason": "abandoned: word not found in Wikidata: whiskey (non-standard vocabulary rejected)"
-        },
-        {
           "term": "widely",
           "score": 28,
           "min_requirement": 30,
@@ -1132,11 +1572,199 @@
         }
       ],
       "status": "passed",
-      "lemma_accuracy": 99.94438264738599,
+      "lemma_accuracy": 97.33777038269551,
       "lemma_mismatches": [
+        {
+          "term": "amusing",
+          "actual_lemma": "amuse"
+        },
+        {
+          "term": "bacteria",
+          "actual_lemma": "bacterium"
+        },
+        {
+          "term": "barrier",
+          "actual_lemma": "barry"
+        },
+        {
+          "term": "bent",
+          "actual_lemma": "bend"
+        },
+        {
+          "term": "bound",
+          "actual_lemma": "bind"
+        },
+        {
+          "term": "caring",
+          "actual_lemma": "care"
+        },
+        {
+          "term": "challenging",
+          "actual_lemma": "challenge"
+        },
+        {
+          "term": "confusing",
+          "actual_lemma": "confuse"
+        },
+        {
+          "term": "convincing",
+          "actual_lemma": "convince"
+        },
+        {
+          "term": "dissatisfied",
+          "actual_lemma": "dissatisfy"
+        },
+        {
+          "term": "dive",
+          "actual_lemma": "diva"
+        },
         {
           "term": "facilities",
           "actual_lemma": "facility"
+        },
+        {
+          "term": "found",
+          "actual_lemma": "find"
+        },
+        {
+          "term": "gaming",
+          "actual_lemma": "game"
+        },
+        {
+          "term": "handout",
+          "actual_lemma": "hand out"
+        },
+        {
+          "term": "hell",
+          "actual_lemma": "he is"
+        },
+        {
+          "term": "hidden",
+          "actual_lemma": "hide"
+        },
+        {
+          "term": "housing",
+          "actual_lemma": "house"
+        },
+        {
+          "term": "id",
+          "actual_lemma": "I'd"
+        },
+        {
+          "term": "irritating",
+          "actual_lemma": "irritate"
+        },
+        {
+          "term": "making",
+          "actual_lemma": "make"
+        },
+        {
+          "term": "manufacturing",
+          "actual_lemma": "manufacture"
+        },
+        {
+          "term": "moving",
+          "actual_lemma": "move"
+        },
+        {
+          "term": "norm",
+          "actual_lemma": "normalize"
+        },
+        {
+          "term": "nursing",
+          "actual_lemma": "nurse"
+        },
+        {
+          "term": "opera",
+          "actual_lemma": "opus"
+        },
+        {
+          "term": "panties",
+          "actual_lemma": "panty"
+        },
+        {
+          "term": "petrified",
+          "actual_lemma": "petrify"
+        },
+        {
+          "term": "promising",
+          "actual_lemma": "promise"
+        },
+        {
+          "term": "rating",
+          "actual_lemma": "rate"
+        },
+        {
+          "term": "recover",
+          "actual_lemma": "re-cover"
+        },
+        {
+          "term": "recreation",
+          "actual_lemma": "re-creation"
+        },
+        {
+          "term": "resign",
+          "actual_lemma": "re-sign"
+        },
+        {
+          "term": "rib",
+          "actual_lemma": "ribose"
+        },
+        {
+          "term": "rose",
+          "actual_lemma": "rise"
+        },
+        {
+          "term": "satisfied",
+          "actual_lemma": "satisfy"
+        },
+        {
+          "term": "saving",
+          "actual_lemma": "save"
+        },
+        {
+          "term": "shot",
+          "actual_lemma": "shoot"
+        },
+        {
+          "term": "sparkling",
+          "actual_lemma": "sparkle"
+        },
+        {
+          "term": "starving",
+          "actual_lemma": "starve"
+        },
+        {
+          "term": "stopover",
+          "actual_lemma": "stop over"
+        },
+        {
+          "term": "stuck",
+          "actual_lemma": "stick"
+        },
+        {
+          "term": "swollen",
+          "actual_lemma": "swell"
+        },
+        {
+          "term": "timing",
+          "actual_lemma": "time"
+        },
+        {
+          "term": "trading",
+          "actual_lemma": "trade"
+        },
+        {
+          "term": "via",
+          "actual_lemma": "viaduct"
+        },
+        {
+          "term": "voting",
+          "actual_lemma": "vote"
+        },
+        {
+          "term": "wound",
+          "actual_lemma": "wind"
         }
       ]
     },
@@ -1144,19 +1772,19 @@
       "name": "CEFR-C1",
       "total_words": 1762,
       "tested_words": 1717,
-      "passed_words": 1700,
-      "failed_words": 17,
-      "average_score": 57.40163716607779,
-      "min_score": 0,
-      "max_score": 81.76840277777777,
+      "passed_words": 1691,
+      "failed_words": 24,
+      "average_score": 57.43545794788577,
+      "min_score": 16.875,
+      "max_score": 82.11124999999998,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
-        "0-20": 8,
-        "20-40": 56,
-        "40-60": 1084,
-        "60-80": 566,
-        "80-100": 3
+        "0-20": 3,
+        "20-40": 67,
+        "40-60": 1078,
+        "60-80": 562,
+        "80-100": 5
       },
       "failed_terms": [
         {
@@ -1166,22 +1794,40 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "archaeologist",
-          "score": 0,
+          "term": "backup",
+          "score": 21.7,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: archaeologist (non-standard vocabulary rejected)"
+          "reason": "below minimum requirement"
         },
         {
-          "term": "catalogue",
-          "score": 0,
+          "term": "breakdown",
+          "score": 21.7,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: catalogue (non-standard vocabulary rejected)"
+          "reason": "below minimum requirement"
         },
         {
-          "term": "enrol",
-          "score": 0,
+          "term": "breakthrough",
+          "score": 21.7,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: enrol (non-standard vocabulary rejected)"
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "councillor",
+          "score": 24.849999999999998,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "cutback",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "forthcoming",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
         },
         {
           "term": "handheld",
@@ -1203,6 +1849,12 @@
         },
         {
           "term": "ironically",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "layout",
           "score": 21.7,
           "min_requirement": 25,
           "reason": "below minimum requirement"
@@ -1232,10 +1884,10 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "sceptical",
-          "score": 0,
+          "term": "ray",
+          "score": 21.7,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: sceptical (non-standard vocabulary rejected)"
+          "reason": "below minimum requirement"
         },
         {
           "term": "suburban",
@@ -1244,14 +1896,20 @@
           "reason": "below minimum requirement"
         },
         {
-          "term": "unaffordable",
-          "score": 0,
+          "term": "takeover",
+          "score": 21.7,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: unaffordable (non-standard vocabulary rejected)"
+          "reason": "below minimum requirement"
         },
         {
-          "term": "underpaid",
-          "score": 22.375,
+          "term": "turnout",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "turnover",
+          "score": 21.7,
           "min_requirement": 25,
           "reason": "below minimum requirement"
         },
@@ -1260,14 +1918,154 @@
           "score": 18,
           "min_requirement": 25,
           "reason": "below minimum requirement"
+        },
+        {
+          "term": "unmarried",
+          "score": 22.959999999999997,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "workout",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
         }
       ],
+      "execution_errors": [
+        "sceptical: submit \"sceptical\": submit \"sceptical\": no lemma found for \"sceptical\"",
+        "unaffordable: submit \"unaffordable\": submit \"unaffordable\": no lemma found for \"unaffordable\""
+      ],
       "status": "passed",
-      "lemma_accuracy": 99.94158878504673,
+      "lemma_accuracy": 98.13411078717202,
       "lemma_mismatches": [
         {
-          "term": "honored",
-          "actual_lemma": "honour"
+          "term": "backup",
+          "actual_lemma": "back up"
+        },
+        {
+          "term": "breakdown",
+          "actual_lemma": "break down"
+        },
+        {
+          "term": "breakthrough",
+          "actual_lemma": "break through"
+        },
+        {
+          "term": "cutback",
+          "actual_lemma": "cut back"
+        },
+        {
+          "term": "damaging",
+          "actual_lemma": "damage"
+        },
+        {
+          "term": "devastating",
+          "actual_lemma": "devastate"
+        },
+        {
+          "term": "encouraging",
+          "actual_lemma": "encourage"
+        },
+        {
+          "term": "engaging",
+          "actual_lemma": "engage"
+        },
+        {
+          "term": "forthcoming",
+          "actual_lemma": "forthcome"
+        },
+        {
+          "term": "frustrating",
+          "actual_lemma": "frustrate"
+        },
+        {
+          "term": "fundraising",
+          "actual_lemma": "fundraise"
+        },
+        {
+          "term": "gambling",
+          "actual_lemma": "gamble"
+        },
+        {
+          "term": "handling",
+          "actual_lemma": "handle"
+        },
+        {
+          "term": "intriguing",
+          "actual_lemma": "intrigue"
+        },
+        {
+          "term": "justified",
+          "actual_lemma": "justify"
+        },
+        {
+          "term": "layout",
+          "actual_lemma": "lay out"
+        },
+        {
+          "term": "lesser",
+          "actual_lemma": "little"
+        },
+        {
+          "term": "mining",
+          "actual_lemma": "mine"
+        },
+        {
+          "term": "ray",
+          "actual_lemma": "rey"
+        },
+        {
+          "term": "reassuring",
+          "actual_lemma": "reassure"
+        },
+        {
+          "term": "recreate",
+          "actual_lemma": "re-create"
+        },
+        {
+          "term": "ruling",
+          "actual_lemma": "rule"
+        },
+        {
+          "term": "slang",
+          "actual_lemma": "sling"
+        },
+        {
+          "term": "striking",
+          "actual_lemma": "strike"
+        },
+        {
+          "term": "takeover",
+          "actual_lemma": "take over"
+        },
+        {
+          "term": "turnout",
+          "actual_lemma": "turn out"
+        },
+        {
+          "term": "turnover",
+          "actual_lemma": "turn over"
+        },
+        {
+          "term": "underlying",
+          "actual_lemma": "underlie"
+        },
+        {
+          "term": "underpaid",
+          "actual_lemma": "underpay"
+        },
+        {
+          "term": "unmarried",
+          "actual_lemma": "unmarry"
+        },
+        {
+          "term": "varied",
+          "actual_lemma": "vary"
+        },
+        {
+          "term": "workout",
+          "actual_lemma": "work out"
         }
       ]
     },
@@ -1275,32 +2073,38 @@
       "name": "CEFR-C2",
       "total_words": 639,
       "tested_words": 611,
-      "passed_words": 599,
-      "failed_words": 12,
-      "average_score": 55.132043026509955,
-      "min_score": 0,
-      "max_score": 77.72311827956989,
+      "passed_words": 596,
+      "failed_words": 14,
+      "average_score": 55.239188764576255,
+      "min_score": 21.7,
+      "max_score": 78.7953947368421,
       "min_requirement": 25,
       "target_score": 40,
       "score_distribution": {
-        "0-20": 2,
-        "20-40": 25,
-        "40-60": 456,
+        "0-20": 0,
+        "20-40": 29,
+        "40-60": 453,
         "60-80": 128,
         "80-100": 0
       },
       "failed_terms": [
         {
-          "term": "counselor",
-          "score": 0,
+          "term": "comeback",
+          "score": 21.7,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: counselor (non-standard vocabulary rejected)"
+          "reason": "below minimum requirement"
         },
         {
-          "term": "decaffeinated",
-          "score": 0,
+          "term": "crackdown",
+          "score": 22.959999999999997,
           "min_requirement": 25,
-          "reason": "abandoned: word not found in Wikidata: decaffeinated (non-standard vocabulary rejected)"
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "flashback",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
         },
         {
           "term": "hopelessly",
@@ -1322,6 +2126,12 @@
         },
         {
           "term": "medically",
+          "score": 21.7,
+          "min_requirement": 25,
+          "reason": "below minimum requirement"
+        },
+        {
+          "term": "shortsighted",
           "score": 21.7,
           "min_requirement": 25,
           "reason": "below minimum requirement"
@@ -1363,9 +2173,78 @@
           "reason": "below minimum requirement"
         }
       ],
+      "execution_errors": [
+        "decaffeinated: submit \"decaffeinated\": submit \"decaffeinated\": no lemma found for \"decaffeinated\""
+      ],
       "status": "passed",
-      "lemma_accuracy": 100
+      "lemma_accuracy": 97.37704918032787,
+      "lemma_mismatches": [
+        {
+          "term": "allied",
+          "actual_lemma": "ally"
+        },
+        {
+          "term": "comeback",
+          "actual_lemma": "come back"
+        },
+        {
+          "term": "crackdown",
+          "actual_lemma": "crack down"
+        },
+        {
+          "term": "craving",
+          "actual_lemma": "crave"
+        },
+        {
+          "term": "dazzling",
+          "actual_lemma": "dazzle"
+        },
+        {
+          "term": "dice",
+          "actual_lemma": "die"
+        },
+        {
+          "term": "dignified",
+          "actual_lemma": "dignify"
+        },
+        {
+          "term": "faraway",
+          "actual_lemma": "far away"
+        },
+        {
+          "term": "flashback",
+          "actual_lemma": "flash back"
+        },
+        {
+          "term": "horrified",
+          "actual_lemma": "horrify"
+        },
+        {
+          "term": "humiliating",
+          "actual_lemma": "humiliate"
+        },
+        {
+          "term": "loathing",
+          "actual_lemma": "loathe"
+        },
+        {
+          "term": "shortsighted",
+          "actual_lemma": "short-sighted"
+        },
+        {
+          "term": "soothing",
+          "actual_lemma": "soothe"
+        },
+        {
+          "term": "thriving",
+          "actual_lemma": "thrive"
+        },
+        {
+          "term": "undertaking",
+          "actual_lemma": "undertake"
+        }
+      ]
     }
   ],
-  "execution_time": "1m31.954889706s"
+  "execution_time": "11m24.582268835s"
 }
