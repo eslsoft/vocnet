@@ -93,7 +93,7 @@ func (r *Reader) FetchLexemes(ctx context.Context, term string, language string)
 			FROM lexemes l WHERE l.language = ? AND l.lemma_key = ?
 			UNION ALL
 			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'variant_lemma' as match_level, 50 as match_score
-			FROM lexemes l WHERE l.language = ? AND (',' || l.lemma_variants || ',' LIKE '%,' || ? || ',%')
+			FROM lemma_variant_lookup v JOIN lexemes l ON v.lexeme_id = l.id WHERE l.language = ? AND v.variant_lower = ?
 			UNION ALL
 			SELECT l.id, l.lemma, l.language, l.pos, l.data, 'exact_form' as match_level, 90 as match_score
 			FROM forms f JOIN lexemes l ON f.lexeme_id = l.id WHERE l.language = ? AND f.representation_lower = ?

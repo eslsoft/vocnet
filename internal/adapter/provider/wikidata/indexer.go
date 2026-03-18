@@ -161,6 +161,11 @@ func (idx *WikidataIndexer) createTables(db *sql.DB) error {
 			data TEXT NOT NULL
 		);
 
+		CREATE TABLE lemma_variant_lookup (
+			lexeme_id TEXT NOT NULL,
+			variant_lower TEXT NOT NULL
+		);
+
 		CREATE TABLE forms (
 			id TEXT PRIMARY KEY,
 			lexeme_id TEXT NOT NULL,
@@ -193,7 +198,7 @@ func (idx *WikidataIndexer) createIndices(db *sql.DB) error {
 	indices := []string{
 		"CREATE INDEX idx_lexemes_lemma_lang ON lexemes(lemma_lower, language)",
 		"CREATE INDEX idx_lexemes_lemma_key_lang ON lexemes(lemma_key, language)",
-		"CREATE INDEX idx_lexemes_variants ON lexemes(lemma_variants)",
+		"CREATE INDEX idx_variant_lookup ON lemma_variant_lookup(variant_lower, lexeme_id)",
 		"CREATE INDEX idx_lexemes_language ON lexemes(language)",
 		"CREATE INDEX idx_forms_lexeme ON forms(lexeme_id)",
 		"CREATE INDEX idx_forms_repr ON forms(representation_lower)",
@@ -253,10 +258,11 @@ type wikidataClaimJSON struct {
 
 // wikidataInserter holds prepared statements for batch inserts.
 type wikidataInserter struct {
-	tx         *sql.Tx
-	lexemeStmt *sql.Stmt
-	formStmt   *sql.Stmt
-	senseStmt  *sql.Stmt
+	tx          *sql.Tx
+	lexemeStmt  *sql.Stmt
+	variantStmt *sql.Stmt
+	formStmt    *sql.Stmt
+	senseStmt   *sql.Stmt
 }
 
 func newWikidataInserter(db *sql.DB) (*wikidataInserter, error) {
@@ -280,6 +286,11 @@ func (ins *wikidataInserter) prepareStatements() error {
 		return fmt.Errorf("prepare lexeme insert: %w", err)
 	}
 
+	ins.variantStmt, err = ins.tx.Prepare("INSERT INTO lemma_variant_lookup (lexeme_id, variant_lower) VALUES (?, ?)")
+	if err != nil {
+		return fmt.Errorf("prepare variant insert: %w", err)
+	}
+
 	ins.formStmt, err = ins.tx.Prepare("INSERT INTO forms (id, lexeme_id, representation, representation_lower, representation_key, features, ipa) VALUES (?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return fmt.Errorf("prepare form insert: %w", err)
@@ -295,6 +306,9 @@ func (ins *wikidataInserter) prepareStatements() error {
 func (ins *wikidataInserter) close() {
 	if ins.lexemeStmt != nil {
 		_ = ins.lexemeStmt.Close()
+	}
+	if ins.variantStmt != nil {
+		_ = ins.variantStmt.Close()
 	}
 	if ins.formStmt != nil {
 		_ = ins.formStmt.Close()
@@ -363,6 +377,10 @@ func (idx *WikidataIndexer) parseAndInsert(db *sql.DB, file *os.File) error {
 			continue
 		}
 		lexemeCount++
+
+		if err := idx.insertVariants(ins, lexeme); err != nil {
+			return err
+		}
 
 		if err := idx.insertForms(ins, lexeme); err != nil {
 			return err
@@ -476,6 +494,29 @@ func (idx *WikidataIndexer) insertLexeme(ins *wikidataInserter, lexeme *wikidata
 		return false, fmt.Errorf("insert lexeme %s: %w", lexeme.ID, err)
 	}
 	return true, nil
+}
+
+func (idx *WikidataIndexer) insertVariants(ins *wikidataInserter, lexeme *wikidataLexemeJSON) error {
+	// Get primary lemma (same logic as insertLexeme)
+	var primaryLemma, primaryLang string
+	for lang, l := range lexeme.Lemmas {
+		if primaryLemma == "" || len(lang) < len(primaryLang) || (len(lang) == len(primaryLang) && lang < primaryLang) {
+			primaryLemma = l.Value
+			primaryLang = lang
+		}
+	}
+	primaryLower := strings.ToLower(strings.TrimSpace(primaryLemma))
+
+	for _, l := range lexeme.Lemmas {
+		v := strings.ToLower(strings.TrimSpace(l.Value))
+		if v == "" || v == primaryLower {
+			continue
+		}
+		if _, err := ins.variantStmt.Exec(lexeme.ID, v); err != nil {
+			return fmt.Errorf("insert variant for %s: %w", lexeme.ID, err)
+		}
+	}
+	return nil
 }
 
 func (idx *WikidataIndexer) insertForms(ins *wikidataInserter, lexeme *wikidataLexemeJSON) error {

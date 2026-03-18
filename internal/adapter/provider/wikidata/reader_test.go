@@ -120,6 +120,10 @@ func createTestSchema(db *sql.DB) error {
 			pos text not null,
 			data text not null
 		);`,
+		`create table if not exists lemma_variant_lookup (
+			lexeme_id text not null,
+			variant_lower text not null
+		);`,
 		`create table if not exists senses (
 			id text primary key,
 			lexeme_id text not null,
@@ -175,6 +179,10 @@ func seedFallbackData(db *sql.DB) error {
 	// favorite -> lemma with variant "favourite"
 	if _, err := db.Exec(`INSERT INTO lexemes (id, lemma, lemma_lower, lemma_key, lemma_variants, language, pos, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"L5897", "favorite", "favorite", normalizeSearchKey("favorite"), "favourite", "en", "adjective", `{"id":"L5897"}`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`INSERT INTO lemma_variant_lookup (lexeme_id, variant_lower) VALUES (?, ?)`,
+		"L5897", "favourite"); err != nil {
 		return err
 	}
 
