@@ -40,7 +40,7 @@ func (ip *IntegrationProcessor) Name() string {
 // Process performs smart field-level merging based on quality scores.
 func (ip *IntegrationProcessor) Process(ctx context.Context, pctx *pipeline.PipelineContext) (*scoring.ProcessResult, error) {
 	if len(pctx.EvaluatedFragments) == 0 {
-		ip.logger.Warn("no evaluated fragments to integrate")
+		ip.logger.Warn("no evaluated fragments to integrate", "term", pctx.Term, "job_id", pctx.JobID)
 		return &scoring.ProcessResult{Status: scoring.ProcessStatusExecuted}, nil
 	}
 
