@@ -94,3 +94,42 @@ describe('labels', () => {
     ).toHaveLength(1)
   })
 })
+
+describe('grammar, word formation, and collocation formats', () => {
+  const submit = (kind: string, subject: string, payload: unknown) => issues({ kind, subject_id: subject, payload })
+  const morphology = (...parts: Array<[string, string]>) =>
+    submit('morphology', entry, { parts: parts.map(([form, role]) => ({ form, role })) })
+
+  it('requires a grammar property and each pattern once [spec: facts/usage-formats]', () => {
+    expect(submit('grammar', sense, { transitivity: 'both', patterns: ['ing_form'] })).toEqual([])
+    expect(submit('grammar', sense, {})).toEqual(['A grammar fact names at least one property.'])
+    expect(submit('grammar', sense, { patterns: ['ing_form', 'ing_form'] })).toEqual([
+      'Each grammar pattern is listed once.',
+    ])
+    expect(submit('grammar', sense, { patterns: ['gerund'] })).toHaveLength(1)
+  })
+
+  it('spells parts with their hyphens in written order [spec: facts/usage-formats]', () => {
+    expect(morphology(['un-', 'prefix'], ['happy', 'base'], ['-ness', 'suffix'])).toEqual([])
+    expect(morphology(['well', 'base'], ['being', 'base'])).toEqual([])
+    expect(morphology(['un', 'prefix'], ['happy', 'base'], ['ness', 'suffix'])).toEqual([
+      '"un" is not a prefix: a prefix is letters ending in a hyphen ("un-").',
+      '"ness" is not a suffix: a suffix is a hyphen followed by letters ("-ness").',
+    ])
+    expect(morphology(['happy', 'base'], ['un-', 'prefix'])).toEqual([
+      'Parts are in written order: prefixes, then the bases or roots, then suffixes.',
+    ])
+    expect(morphology(['re-', 'prefix'], ['-ly', 'suffix'])).toEqual([
+      'A word formation has at least one base or root part.',
+    ])
+    expect(morphology(['spect', 'root'])).toEqual(['A word of one part is a simple word: its part is a base.'])
+  })
+
+  it('needs a collocation of at least two words [spec: facts/usage-formats]', () => {
+    expect(submit('collocation', sense, { text: 'heavy rain', pattern: 'adjective_noun' })).toEqual([])
+    expect(submit('collocation', sense, { text: 'rain', pattern: 'adjective_noun' })).toEqual([
+      'A collocation has at least two words.',
+    ])
+    expect(submit('collocation', sense, { text: 'heavy rain', pattern: 'adjective' })).toHaveLength(1)
+  })
+})

@@ -30,7 +30,7 @@ Feature: Facts and review
   @facts/reviewer-routing @domain
   Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
-    Then entry, sense, form, relation, and topic go to Jev and then the LLM, and pronunciation, example, and translation go to the LLM
+    Then entry, sense, form, relation, topic, grammar, and morphology go to Jev and then the LLM, and pronunciation, example, translation, and collocation go to the LLM
 
   @facts/second-opinion @domain
   Scenario: Only a Jev pass settles a proposition
@@ -366,3 +366,69 @@ Feature: Facts and review
     Given an agent's fact
     When the agent tries to re-review it, retracts it, and reads stats
     Then re-review is forbidden, retraction succeeds, and stats count it
+
+  @facts/usage-formats @domain
+  Scenario: Grammar, word formation, and collocations are written in a fixed form
+    Given a grammar, morphology, or collocation fact to submit
+    When grammar names no property or a pattern twice, a part is spelt without its role's hyphen or out of written order, a word formation has no base or root or is one part that is not a base, or a collocation is one word
+    Then the submission is invalid and the message names each rule to fix
+
+  @facts/grammar-by-pos @domain
+  Scenario: Grammar fits the part of speech of its sense
+    Given a grammar fact about a sense
+    When it is submitted
+    Then a noun sense takes only and always its countability, a verb sense always its transitivity and optionally patterns, and an adjective sense its position or adjective patterns
+    And grammar of any other part of speech is refused by the kind's parts of speech, and a property or pattern that does not fit is an invalid reference that names what to remove
+
+  @facts/grammar-review @domain
+  Scenario: Grammar is reviewed one property at a time
+    Given a grammar fact about a glossed sense
+    When its review is planned
+    Then Jev is asked one yes/no question per property and pattern, about that sense only
+    And the LLM second opinion lists every claim, passes when each holds, and does not fail a pattern left out
+
+  @facts/morphology-parts @domain
+  Scenario: A word formation spells its single word
+    Given a morphology fact about an entry
+    When it is submitted
+    Then a multiword entry is an invalid reference
+    And parts whose letters do not spell the word, allowing two changed letters where each pair of parts joins, are an invalid reference
+
+  @facts/morphology-review @domain
+  Scenario: A word formation is judged as a learner's dictionary analyses the word
+    Given a morphology fact
+    When its review is planned
+    Then Jev is asked whether the word is formed from exactly these parts with these meanings, or for one base part whether it is a simple word
+    And the LLM rubric fails a wrong, missing, or extra part, a wrong meaning, folk etymology, and letters that only look like an affix
+
+  @facts/collocation-contains-word @domain
+  Scenario: A collocation contains its word
+    Given a collocation fact about a sense
+    When it is submitted
+    Then its text must contain the lemma or one of the entry's live forms as whole words, or it is an invalid reference
+
+  @facts/collocation-cap @usecase
+  Scenario: A sense holds at most five live collocations
+    Given a sense with five live collocations
+    When another collocation is submitted
+    Then it is a conflict, a resubmission of a live one returns it, and a correction that supersedes one takes its place
+
+  @facts/collocation-rubric @domain
+  Scenario: A collocation is a combination natives commonly use with this sense
+    Given a collocation fact about a glossed sense
+    When its review is planned
+    Then the LLM is asked whether natives commonly use it with this sense in the claimed pattern
+    And it fails free combinations, another sense, rare or unnatural wording, and the wrong pattern
+
+  @facts/usage-admission-api @api
+  Scenario: Submissions that do not fit their subject are refused on a real database
+    Given an adjective sense, a single-word entry, and a phrase entry
+    When an agent submits noun grammar or a verb pattern for the adjective, a word formation for the phrase or one that does not spell the word, or a collocation without the word
+    Then each is 422 invalid_reference with a message naming the rule, and a one-word collocation is 400 invalid_request
+
+  @facts/usage-corrections-api @api
+  Scenario: Grammar and collocations are corrected one correction at a time on a real database
+    Given a sense with a published grammar fact and five published collocations
+    When an agent submits a correction of the grammar and of one collocation, then a second correction of each
+    Then each first correction is accepted, the collocation's although the sense is at its limit, and each second one is 409 conflict naming the live correction
+    And once reviewed, each correction is published, its original superseded, and the sense still holds five live collocations

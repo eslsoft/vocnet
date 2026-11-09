@@ -41,6 +41,9 @@ export const zhCN: typeof enUS = {
     example: '例句',
     translation: '翻译',
     topic: '主题',
+    grammar: '语法',
+    morphology: '构词',
+    collocation: '搭配',
   },
   signal: {
     unreviewed: '未审阅',

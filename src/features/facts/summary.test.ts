@@ -21,6 +21,27 @@ describe('summarizeFact', () => {
     [{ kind: 'example', payload: { text: 'We sat on the bank.' } }, 'We sat on the bank.'],
     [{ kind: 'translation', payload: { language: 'zh-Hans', text: '河岸' } }, 'zh-Hans: 河岸'],
     [{ kind: 'topic', payload: { topic_id: 'hospital' } }, 'hospital'],
+    [{ kind: 'grammar', payload: { countability: 'countable' } }, 'countable'],
+    [
+      { kind: 'grammar', payload: { transitivity: 'both', patterns: ['to_infinitive', 'that_clause'] } },
+      'both, to_infinitive, that_clause',
+    ],
+    [
+      {
+        kind: 'morphology',
+        payload: {
+          parts: [
+            { form: 'spect', role: 'root', meaning: 'look' },
+            { form: '-ator', role: 'suffix' },
+          ],
+        },
+      },
+      'spect "look" + -ator',
+    ],
+    [
+      { kind: 'collocation', payload: { text: 'make a decision', pattern: 'verb_noun' } },
+      'make a decision (verb_noun)',
+    ],
   ])('summarizes a %o fact', (input, expected) => {
     expect(summarizeFact(fact(input as FactDto))).toBe(expected)
   })

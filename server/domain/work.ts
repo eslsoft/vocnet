@@ -4,9 +4,11 @@ import { type Fact, type FactOf, isKind } from './fact'
 import { isLive } from './fact-lifecycle'
 import type { SenseNode } from './nodes'
 import type { PrincipalRef } from './principal'
+import { isMultiword } from './term'
 
 /** What the work rules read about an entry: its senses, its facts in every status, and its open feedback. */
 export interface EntryFacts {
+  entry: { lemma: string }
   senses: readonly SenseNode[]
   /** Facts whose subject is the entry or one of its senses. */
   facts: Fact[]
@@ -35,7 +37,7 @@ export function completeDecision(lease: WorkLease, who: PrincipalRef, now: Date)
   return Date.parse(lease.expiresAt) <= now.getTime() ? 'expired' : 'allowed'
 }
 
-type EntryGap = Extract<Gap, { type: 'senses' | 'forms' | 'pronunciation' }>
+type EntryGap = Extract<Gap, { type: 'senses' | 'forms' | 'pronunciation' | 'morphology' }>
 type SenseGap = Exclude<Gap, EntryGap>
 type RelationGap = Extract<Gap, { type: 'relations' }>
 
@@ -43,11 +45,18 @@ const isChinese = (language: string) => language === 'zh' || language.startsWith
 
 // A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
 // (about the entry or its senses) plus relations pointing at its senses, so a kind check scopes to the entry.
-const entryGapRules: ReadonlyArray<{ gap: EntryGap; fills: (fact: Fact) => boolean }> = [
-  { gap: { type: 'senses' }, fills: (fact) => fact.kind === 'sense' },
-  { gap: { type: 'forms' }, fills: (fact) => fact.kind === 'form' },
-  { gap: { type: 'pronunciation' }, fills: (fact) => fact.kind === 'pronunciation' },
-]
+const entryGapRules: ReadonlyArray<{ gap: EntryGap; need: (lemma: string) => number; fills: (fact: Fact) => boolean }> =
+  [
+    { gap: { type: 'senses' }, need: () => 1, fills: (fact) => fact.kind === 'sense' },
+    { gap: { type: 'forms' }, need: () => 1, fills: (fact) => fact.kind === 'form' },
+    { gap: { type: 'pronunciation' }, need: () => 1, fills: (fact) => fact.kind === 'pronunciation' },
+    // Word formation analyses one word; a phrase's parts are its own entries.
+    {
+      gap: { type: 'morphology' },
+      need: (lemma) => (isMultiword(lemma) ? 0 : 1),
+      fills: (fact) => fact.kind === 'morphology',
+    },
+  ]
 
 const directions = ['outgoing', 'incoming'] as const
 
@@ -102,6 +111,38 @@ export const TOPICS_NEEDED: Readonly<Record<Pos, number>> = {
   auxiliary: 0,
 }
 
+/**
+ * How many grammar facts a sense needs. Countability is what a learner most needs of a noun, and
+ * transitivity of a verb; an adjective's position and patterns are worth recording where they
+ * restrict it, so it may have a grammar fact but has no gap.
+ */
+export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
+  noun: 1,
+  verb: 1,
+  adjective: 0,
+  adverb: 0,
+  pronoun: 0,
+  determiner: 0,
+  preposition: 0,
+  conjunction: 0,
+  interjection: 0,
+  auxiliary: 0,
+}
+
+/** How many collocations a sense needs: content words that combine with other words in set ways. */
+export const COLLOCATIONS_NEEDED: Readonly<Record<Pos, number>> = {
+  noun: 1,
+  verb: 1,
+  adjective: 1,
+  adverb: 0,
+  pronoun: 0,
+  determiner: 0,
+  preposition: 0,
+  conjunction: 0,
+  interjection: 0,
+  auxiliary: 0,
+}
+
 const senseGapRules: ReadonlyArray<{
   need: (sense: SenseNode) => number
   fills: (fact: Fact, senseId: SenseId) => boolean
@@ -133,6 +174,16 @@ const senseGapRules: ReadonlyArray<{
     fills: (fact, senseId) => fact.kind === 'topic' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'topics', sense_id: senseId }),
   },
+  {
+    need: (sense) => GRAMMAR_NEEDED[sense.pos],
+    fills: (fact, senseId) => fact.kind === 'grammar' && fact.subjectId === senseId,
+    gap: (senseId) => ({ type: 'grammar', sense_id: senseId }),
+  },
+  {
+    need: (sense) => COLLOCATIONS_NEEDED[sense.pos],
+    fills: (fact, senseId) => fact.kind === 'collocation' && fact.subjectId === senseId,
+    gap: (senseId) => ({ type: 'collocations', sense_id: senseId }),
+  },
 ]
 
 interface OpenGap {
@@ -142,11 +193,19 @@ interface OpenGap {
 }
 
 /** The open gaps, and how many slots the rules count for the entry: each entry rule and, per live sense, each need. */
-function openGaps(snapshot: Pick<EntryFacts, 'senses' | 'facts' | 'incoming'>): { open: OpenGap[]; slots: number } {
+function openGaps(snapshot: Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'incoming'>): {
+  open: OpenGap[]
+  slots: number
+} {
   const live = [...snapshot.facts, ...snapshot.incoming].filter((fact) => isLive(fact.status))
   const glossed = new Set(live.flatMap((fact) => (fact.kind === 'sense' ? [fact.subjectId] : [])))
   const liveSenses = snapshot.senses.filter((sense) => glossed.has(sense.id))
-  const entry = entryGapRules.filter((rule) => !live.some(rule.fills)).map((rule) => ({ gap: rule.gap, missing: 1 }))
+  const { lemma } = snapshot.entry
+  const entry = entryGapRules.flatMap((rule) => {
+    const missing = rule.need(lemma) - live.filter(rule.fills).length
+    return missing > 0 ? [{ gap: rule.gap, missing }] : []
+  })
+  const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(lemma), 0)
   const senses = liveSenses.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {
       const filling = live.filter((fact) => rule.fills(fact, sense.id))
@@ -158,11 +217,11 @@ function openGaps(snapshot: Pick<EntryFacts, 'senses' | 'facts' | 'incoming'>): 
     (sum, sense) => sum + senseGapRules.reduce((need, rule) => need + rule.need(sense), 0),
     0,
   )
-  return { open: [...entry, ...senses], slots: entryGapRules.length + senseSlots }
+  return { open: [...entry, ...senses], slots: entrySlots + senseSlots }
 }
 
 /** What the entry still lacks, judged from its live facts. A sense counts while its gloss fact is live. */
-export function entryGaps(snapshot: Pick<EntryFacts, 'senses' | 'facts' | 'incoming'>): Gap[] {
+export function entryGaps(snapshot: Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'incoming'>): Gap[] {
   return openGaps(snapshot).open.map(({ gap }) => gap)
 }
 

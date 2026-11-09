@@ -184,6 +184,70 @@ describe('submitFact', () => {
   })
 })
 
+describe('submitting grammar, word formation, and collocations', () => {
+  it('refuses grammar that does not fit the sense part of speech [spec: facts/grammar-by-pos]', async () => {
+    const { world, river } = await bankWorld()
+    await expect(
+      submitFact(world.deps, agentA, {
+        kind: 'grammar',
+        subject_id: river.id,
+        payload: { transitivity: 'transitive' },
+      }),
+    ).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: 'The grammar of a noun sense names only countability; remove transitivity.',
+    })
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'grammar',
+      subject_id: river.id,
+      payload: { countability: 'countable' },
+    })
+    expect(fact).toMatchObject({ kind: 'grammar', status: 'pending', contentKey: 'countability:countable' })
+  })
+
+  it('refuses a word formation of a phrase or one whose parts do not spell the word [spec: facts/morphology-parts]', async () => {
+    const { world, entry } = await bankWorld()
+    const phrase = await createEntry(world.deps, agentA, { lemma: 'river bank' })
+    const base = (form: string) => ({ parts: [{ form, role: 'base' as const }] })
+    await expect(
+      submitFact(world.deps, agentA, { kind: 'morphology', subject_id: phrase.entry.id, payload: base('riverbank') }),
+    ).rejects.toMatchObject({ code: 'invalid_reference' })
+    await expect(
+      submitFact(world.deps, agentA, { kind: 'morphology', subject_id: entry.id, payload: base('bunk') }),
+    ).rejects.toMatchObject({ code: 'invalid_reference' })
+    expect(
+      (await submitFact(world.deps, agentA, { kind: 'morphology', subject_id: entry.id, payload: base('bank') }))
+        .created,
+    ).toBe(true)
+  })
+
+  it('takes a collocation with a live form of the word and caps a sense at five [spec: facts/collocation-cap]', async () => {
+    const { world, entry, river } = await bankWorld()
+    const collocation = (text: string, supersedes_id?: FactId) => ({
+      kind: 'collocation' as const,
+      subject_id: river.id,
+      payload: { text, pattern: 'adjective_noun' as const },
+      ...(supersedes_id ? { supersedes_id } : {}),
+    })
+    await expect(submitFact(world.deps, agentA, collocation('steep banks'))).rejects.toMatchObject({
+      code: 'invalid_reference',
+    })
+    await submitFact(world.deps, agentA, {
+      kind: 'form',
+      subject_id: entry.id,
+      payload: { form: 'banks', type: 'plural' },
+    })
+    const texts = ['steep banks', 'muddy bank', 'grassy bank', 'opposite bank', 'far bank']
+    const facts = []
+    for (const text of texts) facts.push((await submitFact(world.deps, agentA, collocation(text))).fact)
+    await expect(submitFact(world.deps, agentA, collocation('low bank'))).rejects.toMatchObject({ code: 'conflict' })
+    expect((await submitFact(world.deps, agentA, collocation('muddy bank'))).created).toBe(false)
+    for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
+    const correction = await submitFact(world.deps, agentA, collocation('low bank', facts[0].id))
+    expect(correction).toMatchObject({ created: true, fact: { supersedesId: facts[0].id } })
+  })
+})
+
 describe('reading facts', () => {
   it('gets a fact by id and 404s an unknown one', async () => {
     const { world, riverGloss } = await bankWorld()

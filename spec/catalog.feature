@@ -20,6 +20,18 @@ Feature: Catalog
     When anyone requests "banks" or "Bank"
     Then the lookup is not found instead of returning "bank"
 
+  @catalog/usage-facts @domain
+  Scenario: Grammar, word formation, and collocations are part of the public entry
+    Given an entry with published, pending, and rejected grammar, morphology, and collocation facts
+    When the public view is built
+    Then the entry shows its published word formation, each sense its published grammar and collocations, each with its id, confidence, and verdict, and null or empty when none is published
+
+  @catalog/usage-facts-api @api
+  Scenario: Grammar, word formation, and collocations are reviewed and published through the queue
+    Given an agent submits grammar and a collocation about a verb sense and a word formation about its entry
+    When the queue consumer reviews them
+    Then Jev answers one question per grammar property, the LLM judges the collocation, and the public entry and sense show all three
+
   @catalog/visibility @domain
   Scenario: Only published facts are visible
     Given an entry with published, pending, and rejected facts

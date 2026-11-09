@@ -1,8 +1,10 @@
-import type { SenseId, TopicId } from '@shared/facts'
+import type { Pos, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
+  admissionOf,
   contentKeyOf,
   factKinds,
+  MAX_COLLOCATIONS,
   MAX_TOPICS_PER_SENSE,
   meaningKeyOf,
   orientOf,
@@ -61,6 +63,8 @@ describe('fact-kind registry', () => {
       'translation',
       'relation',
       'topic',
+      'grammar',
+      'collocation',
     ])
     expect(revalidatedBy('example', { text: 'We sat.' }, { text: 'We stood.' })).toBeUndefined()
   })
@@ -97,6 +101,9 @@ describe('fact-kind registry', () => {
       example: ['llm'],
       translation: ['llm'],
       topic: ['jev', 'llm'],
+      grammar: ['jev', 'llm'],
+      morphology: ['jev', 'llm'],
+      collocation: ['llm'],
     })
   })
 
@@ -114,6 +121,17 @@ describe('fact-kind registry', () => {
       planReview('example', { text: 'We sat on the bank.' }, { subject: bank, target: null, topic: null }),
       planReview('translation', { language: 'fr', text: 'rive' }, { subject: bank, target: null, topic: null }),
       planReview('topic', { topic_id: hospital }, { subject: bank, target: null, topic: hospitalView }),
+      planReview('grammar', { countability: 'countable' }, { subject: bank, target: null, topic: null }),
+      planReview(
+        'morphology',
+        { parts: [{ form: 'bank', role: 'base' }] },
+        { subject: bankEntry, target: null, topic: null },
+      ),
+      planReview(
+        'collocation',
+        { text: 'river bank', pattern: 'noun_noun' },
+        { subject: bank, target: null, topic: null },
+      ),
     ]
     expect(plans.map((plan) => requests(plan).map((request) => request.reviewer))).toEqual(
       Object.values(factKinds).map((spec) => spec.chain),
@@ -447,5 +465,168 @@ describe('fact-kind registry', () => {
       kind: 'unreviewable',
       reason: 'The referenced topic is not a leaf topic of the taxonomy.',
     })
+  })
+})
+
+describe('grammar facts', () => {
+  const run = { lemma: 'run', pos: 'verb' as const, gloss: 'To move fast on foot.', siblings: [] }
+  const asleep = { lemma: 'asleep', pos: 'adjective' as const, gloss: 'Sleeping.', siblings: [] }
+  const admit = (payload: Parameters<typeof admissionOf<'grammar'>>[1], pos: Pos) =>
+    admissionOf('grammar', payload, { lemma: 'bank', pos, forms: [] })
+
+  it('admits only the properties of the sense part of speech [spec: facts/grammar-by-pos]', () => {
+    expect(admit({ countability: 'both' }, 'noun')).toBeNull()
+    expect(admit({ transitivity: 'transitive', patterns: ['two_objects'] }, 'verb')).toBeNull()
+    expect(admit({ position: 'predicative_only', patterns: ['preposition'] }, 'adjective')).toBeNull()
+    expect(admit({ patterns: ['to_infinitive'] }, 'adjective')).toBeNull()
+    expect(admit({ countability: 'countable', transitivity: 'transitive' }, 'noun')).toBe(
+      'The grammar of a noun sense names only countability; remove transitivity.',
+    )
+    expect(admit({ patterns: ['ing_form'] }, 'verb')).toBe('The grammar of a verb sense names its transitivity.')
+    expect(admit({ patterns: ['ing_form'] }, 'noun')).toContain('remove patterns')
+    expect(admit({ patterns: ['two_objects', 'object_ing'] }, 'adjective')).toContain(
+      'two_objects, object_ing are not patterns of an adjective',
+    )
+    expect(factKinds.grammar.subjectPos).toEqual(['noun', 'verb', 'adjective'])
+  })
+
+  it('keys grammar by its properties in a stable order', () => {
+    expect(contentKeyOf('grammar', { transitivity: 'both', patterns: ['that_clause', 'ing_form'] })).toBe(
+      contentKeyOf('grammar', { patterns: ['ing_form', 'that_clause'], transitivity: 'both' }),
+    )
+    expect(contentKeyOf('grammar', { countability: 'countable' })).toBe('countability:countable')
+  })
+
+  it('asks Jev one question per property of the sense and gives the LLM every claim [spec: facts/grammar-review]', () => {
+    const plan = planReview(
+      'grammar',
+      { transitivity: 'intransitive', patterns: ['to_infinitive'] },
+      { subject: run, target: null, topic: null },
+    )
+    const [jev] = requests(plan)
+    expect(jev?.reviewer === 'jev' && Object.keys(jev.questions)).toEqual(['transitivity', 'pattern_to_infinitive'])
+    expect(jevQuestion(plan, 'transitivity')).toContain(
+      'verb "run" only in the sense "To move fast on foot.", not in any other sense. Is it intransitive',
+    )
+    expect(jevQuestion(plan, 'pattern_to_infinitive')).toContain('"decide to leave"')
+    const rubric = llmPrompt(plan)?.user
+    expect(rubric).toContain('- intransitive: it never takes a direct object')
+    expect(rubric).toContain('a pattern left out is not an error')
+    const adjective = planReview(
+      'grammar',
+      { patterns: ['to_infinitive'] },
+      { subject: asleep, target: null, topic: null },
+    )
+    expect(jevQuestion(adjective, 'pattern_to_infinitive')).toContain('"happy to help"')
+    const noun = planReview('grammar', { countability: 'uncountable' }, { subject: bank, target: null, topic: null })
+    expect(jevQuestion(noun, 'countability')).toContain('Is it uncountable')
+    expect(
+      planReview(
+        'grammar',
+        { countability: 'countable' },
+        { subject: { ...bank, gloss: null }, target: null, topic: null },
+      ),
+    ).toEqual({
+      kind: 'unreviewable',
+      reason: 'The referenced sense has no live gloss.',
+    })
+  })
+})
+
+describe('morphology facts', () => {
+  const parts = (...list: Array<[string, 'prefix' | 'root' | 'suffix' | 'base', string?]>) => ({
+    parts: list.map(([form, role, meaning]) => ({ form, role, ...(meaning ? { meaning } : {}) })),
+  })
+  const admit = (lemma: string, payload: ReturnType<typeof parts>) => admissionOf('morphology', payload, { lemma })
+
+  it('admits parts that spell the word, allowing spelling changes where they join [spec: facts/morphology-parts]', () => {
+    expect(admit('unhappiness', parts(['un-', 'prefix'], ['happy', 'base'], ['-ness', 'suffix']))).toBeNull()
+    expect(admit('spectator', parts(['spect', 'root', 'look'], ['-ator', 'suffix']))).toBeNull()
+    expect(admit('decision', parts(['decide', 'base'], ['-ion', 'suffix']))).toBeNull()
+    expect(admit('water', parts(['water', 'base']))).toBeNull()
+    expect(admit('Monday', parts(['monday', 'base']))).toBeNull()
+    // Spelling is all the write rule checks; review fails letters that only look like a suffix.
+    expect(admit('water', parts(['wat', 'base'], ['-er', 'suffix']))).toBeNull()
+    expect(admit('happy', parts(['hap', 'base']))).toBe(
+      'The parts hap do not spell "happy"; spelling changes only where parts join (happy + -ness gives happiness).',
+    )
+    expect(admit('kindness', parts(['un-', 'prefix'], ['kind', 'base'], ['-ly', 'suffix']))).toContain('do not spell')
+  })
+
+  it('describes single words only [spec: facts/morphology-parts]', () => {
+    expect(admit('post office', parts(['post', 'base'], ['office', 'base']))).toBe(
+      'A word formation describes a single word; "post office" is a phrase.',
+    )
+  })
+
+  it('asks whether the word is formed from exactly these parts, without folk etymology [spec: facts/morphology-review]', () => {
+    const spectator = { lemma: 'spectator', senses: [{ pos: 'noun' as const, gloss: 'A person who watches.' }] }
+    const plan = planReview('morphology', parts(['spect', 'root', 'look'], ['-ator', 'suffix']), {
+      subject: spectator,
+      target: null,
+      topic: null,
+    })
+    expect(jevQuestion(plan, 'formation')).toContain(
+      'formed from exactly these parts: "spect" (root meaning "look") + "-ator" (suffix)',
+    )
+    expect(jevQuestion(plan, 'formation')).toContain('folk etymology')
+    expect(llmPrompt(plan)?.user).toContain('the "er" of "water"')
+    expect(llmPrompt(plan)?.user).toContain('- (noun) "A person who watches."')
+    const simple = planReview('morphology', parts(['water', 'base']), {
+      subject: { lemma: 'water', senses: [] },
+      target: null,
+      topic: null,
+    })
+    expect(jevQuestion(simple, 'formation')).toContain('Is "water" a simple word')
+    expect(llmPrompt(simple)?.user).toContain('Claimed: a simple word')
+  })
+
+  it('keys a word formation by its parts, roles, and meanings', () => {
+    expect(contentKeyOf('morphology', parts(['Spect', 'root', 'Look'], ['-ator', 'suffix']))).toBe(
+      'root:spect|look+suffix:-ator',
+    )
+  })
+})
+
+describe('collocation facts', () => {
+  const admit = (text: string, forms: string[] = []) =>
+    admissionOf('collocation', { text, pattern: 'verb_noun' }, { lemma: 'make', pos: 'verb', forms })
+
+  it('admits a collocation that contains the word or one of its live forms [spec: facts/collocation-contains-word]', () => {
+    expect(admit('make a decision')).toBeNull()
+    expect(admit('Make progress!')).toBeNull()
+    expect(admit('made a mistake', ['made'])).toBeNull()
+    expect(admit('made a mistake')).toBe(
+      'A collocation contains the word: "made a mistake" has neither "make" nor one of its live forms.',
+    )
+    expect(admit('makeshift shelter')).toContain('has neither')
+    expect(
+      admissionOf(
+        'collocation',
+        { text: 'look after a child', pattern: 'phrase' },
+        { lemma: 'look after', pos: 'verb', forms: [] },
+      ),
+    ).toBeNull()
+  })
+
+  it('caps the live collocations of a sense', () => {
+    expect(factKinds.collocation.maxLive).toBe(MAX_COLLOCATIONS)
+    expect(MAX_COLLOCATIONS).toBe(5)
+  })
+
+  it('asks the LLM whether natives commonly use the combination with this sense [spec: facts/collocation-rubric]', () => {
+    const rubric = llmPrompt(
+      planReview(
+        'collocation',
+        { text: 'steep bank', pattern: 'adjective_noun' },
+        { subject: bank, target: null, topic: null },
+      ),
+    )?.user
+    expect(rubric).toContain('Is "steep bank" a collocation of "bank" (noun), meaning "land beside a river"')
+    expect(rubric).toContain('Claimed pattern: adjective_noun, an adjective with a noun')
+    expect(rubric).toContain('a free combination anyone composes')
+    expect(rubric).toContain('It uses the word in another sense')
+    expect(rubric).toContain('rare, unnatural')
+    expect(rubric).toContain('- (noun) "an institution that keeps money"')
   })
 })

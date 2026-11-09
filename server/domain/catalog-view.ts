@@ -121,6 +121,8 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntryFacts | 
         })),
         relations: relations(sense.id),
         topics: about('topic', sense.id).map((fact) => ({ ...factMeta(fact), topic_id: fact.payload.topic_id })),
+        grammar: publicOne(about('grammar', sense.id), (fact) => fact.payload),
+        collocations: about('collocation', sense.id).map((fact) => ({ ...factMeta(fact), ...fact.payload })),
       },
     ]
   })
@@ -131,8 +133,15 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntryFacts | 
     fact: factMeta(entryFact),
     forms: about('form', snapshot.entry.id).map(publicForm),
     pronunciations: about('pronunciation', snapshot.entry.id).map((fact) => ({ ...factMeta(fact), ...fact.payload })),
+    morphology: publicOne(about('morphology', snapshot.entry.id), (fact) => fact.payload),
     senses: publicSenses,
   }
+}
+
+/** The published fact of a `one` kind, if any, as its payload with its meta. */
+function publicOne<F extends Fact, T extends object>(published: F[], view: (fact: F) => T): (FactMeta & T) | null {
+  const [fact] = published
+  return fact ? { ...factMeta(fact), ...view(fact) } : null
 }
 
 function relation(
@@ -162,6 +171,11 @@ export function publicFactIds(view: PublicEntryFacts): Set<FactId> {
     ...sense.translations,
     ...sense.relations,
     ...sense.topics,
+    ...(sense.grammar ? [sense.grammar] : []),
+    ...sense.collocations,
   ])
-  return new Set([view.fact, ...view.forms, ...view.pronunciations, ...senseFacts].map((fact) => fact.id))
+  const morphology = view.morphology ? [view.morphology] : []
+  return new Set(
+    [view.fact, ...view.forms, ...view.pronunciations, ...morphology, ...senseFacts].map((fact) => fact.id),
+  )
 }

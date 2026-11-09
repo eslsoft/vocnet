@@ -63,6 +63,61 @@ export const strengthSchema = z.enum(['strong', 'weak']).meta({
   description: 'weak: the unstressed form of a function word, such as /tə/ for "to".',
 })
 
+export const countabilitySchema = z.enum(['countable', 'uncountable', 'both']).meta({
+  id: 'Countability',
+  description: 'Whether a noun sense takes a/an and a plural (countable), neither (uncountable), or both.',
+})
+
+export const transitivitySchema = z.enum(['transitive', 'intransitive', 'both']).meta({
+  id: 'Transitivity',
+  description: 'Whether a verb sense takes a direct object (transitive), never does (intransitive), or both.',
+})
+
+export const adjectivePositionSchema = z.enum(['attributive_only', 'predicative_only']).meta({
+  id: 'AdjectivePosition',
+  description:
+    'attributive_only: only before a noun ("the main reason"). predicative_only: only after a linking verb ("the baby is asleep"). Absent means both.',
+})
+
+export const grammarPatternSchema = z
+  .enum([
+    'to_infinitive',
+    'bare_infinitive',
+    'ing_form',
+    'that_clause',
+    'wh_clause',
+    'object_to_infinitive',
+    'object_bare_infinitive',
+    'object_ing',
+    'two_objects',
+    'object_complement',
+    'preposition',
+  ])
+  .meta({ id: 'GrammarPattern', description: 'A construction that commonly follows the word in this sense.' })
+export type GrammarPattern = z.infer<typeof grammarPatternSchema>
+
+export const morphemeRoleSchema = z.enum(['prefix', 'root', 'suffix', 'base']).meta({
+  id: 'MorphemeRole',
+  description:
+    'base: a word of its own the word is built on ("happy" in "unhappiness"). root: a bound stem, usually Latin or Greek ("spect"). prefix and suffix: affixes, written with their hyphen ("un-", "-ness").',
+})
+export type MorphemeRole = z.infer<typeof morphemeRoleSchema>
+
+export const collocationPatternSchema = z
+  .enum([
+    'verb_noun',
+    'adjective_noun',
+    'noun_noun',
+    'adverb_adjective',
+    'verb_adverb',
+    'verb_preposition',
+    'noun_preposition',
+    'adjective_preposition',
+    'phrase',
+  ])
+  .meta({ id: 'CollocationPattern', description: 'The word classes the collocation combines, in order.' })
+export type CollocationPattern = z.infer<typeof collocationPatternSchema>
+
 const text = (max: number) => z.string().trim().min(1).max(max)
 
 const GLOSS_START = /^[\p{Lu}\p{N}"'“‘(]/u
@@ -118,6 +173,66 @@ export const ipaSchema = z
   })
   .meta({ description: 'One broad IPA transcription without slashes, such as ˈwɔtər.' })
 
+export const grammarPayloadSchema = z.strictObject({
+  countability: countabilitySchema.optional().meta({ description: 'Noun senses only, and required for them.' }),
+  transitivity: transitivitySchema.optional().meta({ description: 'Verb senses only, and required for them.' }),
+  position: adjectivePositionSchema.optional().meta({ description: 'Adjective senses only.' }),
+  patterns: z
+    .array(grammarPatternSchema)
+    .min(1)
+    .max(6)
+    .optional()
+    .meta({ description: 'Verb and adjective senses only: the common patterns, not necessarily all of them.' }),
+})
+
+export const morphemeSchema = z
+  .strictObject({
+    form: text(30),
+    role: morphemeRoleSchema,
+    meaning: text(60)
+      .optional()
+      .meta({ description: 'A short meaning, mainly for a Latin or Greek root: "look" for spect.' }),
+  })
+  .meta({ id: 'Morpheme' })
+
+const morphologyPayloadSchema = z.strictObject({
+  parts: z.array(morphemeSchema).min(1).max(8).meta({
+    description:
+      'The parts in written order. A simple word is one base part; unhappiness is un- (prefix), happy (base), -ness (suffix).',
+  }),
+})
+
+const MORPHEME_FORMS: Record<MorphemeRole, RegExp> = {
+  prefix: /^\p{L}+-$/u,
+  suffix: /^-\p{L}+$/u,
+  root: /^\p{L}+$/u,
+  base: /^\p{L}+(?:[-']\p{L}+)*$/u,
+}
+const MORPHEME_SPELLING: Record<MorphemeRole, string> = {
+  prefix: 'a prefix is letters ending in a hyphen ("un-")',
+  suffix: 'a suffix is a hyphen followed by letters ("-ness")',
+  root: 'a root is letters only ("spect")',
+  base: 'a base is a word ("happy")',
+}
+const isStem = (role: MorphemeRole) => role === 'base' || role === 'root'
+
+/** Parts read prefixes, then at least one base or root, then suffixes. */
+function morphologyIssues(parts: ReadonlyArray<{ form: string; role: MorphemeRole }>): string[] {
+  const misspelt = parts.filter(({ form, role }) => !MORPHEME_FORMS[role].test(form))
+  const issues = misspelt.map(({ form, role }) => `"${form}" is not a ${role}: ${MORPHEME_SPELLING[role]}.`)
+  const roles = parts.map((part) => part.role)
+  const stems = roles.flatMap((role, at) => (isStem(role) ? [at] : []))
+  const [firstStem] = stems
+  const lastStem = stems.at(-1)
+  if (firstStem === undefined || lastStem === undefined) {
+    issues.push('A word formation has at least one base or root part.')
+  } else if (roles.some((role, at) => (role === 'prefix' && at > firstStem) || (role === 'suffix' && at < lastStem))) {
+    issues.push('Parts are in written order: prefixes, then the bases or roots, then suffixes.')
+  }
+  if (parts.length === 1 && roles[0] !== 'base') issues.push('A word of one part is a simple word: its part is a base.')
+  return issues
+}
+
 export const factPayloadSchemas = {
   entry: z.strictObject({}),
   sense: z.strictObject({ gloss: text(500), register: registerSchema.optional() }),
@@ -148,6 +263,12 @@ export const factPayloadSchemas = {
   topic: z.strictObject({
     topic_id: topicIdSchema.meta({ description: 'A leaf topic of the taxonomy (GET /v1/topics), never a category.' }),
   }),
+  grammar: grammarPayloadSchema,
+  morphology: morphologyPayloadSchema,
+  collocation: z.strictObject({
+    text: text(80).meta({ description: 'The combination with the word in it, such as "make a decision".' }),
+    pattern: collocationPatternSchema,
+  }),
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -157,10 +278,34 @@ const submitPayloadSchemas = {
   ...factPayloadSchemas,
   sense: factPayloadSchemas.sense.extend({ gloss: glossSchema }),
   pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }),
+  grammar: grammarPayloadSchema
+    .refine((grammar) => Object.keys(grammar).length > 0, 'A grammar fact names at least one property.')
+    .refine(
+      ({ patterns }) => !patterns || new Set(patterns).size === patterns.length,
+      'Each grammar pattern is listed once.',
+    ),
+  morphology: morphologyPayloadSchema.superRefine(({ parts }, ctx) => {
+    for (const message of morphologyIssues(parts)) ctx.addIssue({ code: 'custom', message })
+  }),
+  collocation: factPayloadSchemas.collocation.extend({
+    text: text(80).refine((value) => /\s/.test(value), 'A collocation has at least two words.'),
+  }),
 }
 
 export const factKindSchema = z
-  .enum(['entry', 'sense', 'form', 'relation', 'pronunciation', 'example', 'translation', 'topic'])
+  .enum([
+    'entry',
+    'sense',
+    'form',
+    'relation',
+    'pronunciation',
+    'example',
+    'translation',
+    'topic',
+    'grammar',
+    'morphology',
+    'collocation',
+  ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
 
@@ -213,6 +358,9 @@ export const submitFactInputSchema = z
     submitVariant('example'),
     submitVariant('translation'),
     submitVariant('topic'),
+    submitVariant('grammar'),
+    submitVariant('morphology'),
+    submitVariant('collocation'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -243,6 +391,9 @@ export const factSchema = z
     factVariant('example'),
     factVariant('translation'),
     factVariant('topic'),
+    factVariant('grammar'),
+    factVariant('morphology'),
+    factVariant('collocation'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

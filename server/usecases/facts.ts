@@ -1,5 +1,14 @@
-import type { Fact } from '@server/domain/fact'
-import { contentKeyOf, factKinds, orientOf, type SubjectType, targetOf, topicOf } from '@server/domain/fact-kinds'
+import { type Fact, isKind } from '@server/domain/fact'
+import {
+  type AdmissionViews,
+  admissionOf,
+  contentKeyOf,
+  factKinds,
+  orientOf,
+  type SubjectType,
+  targetOf,
+  topicOf,
+} from '@server/domain/fact-kinds'
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
 import { isLeaf } from '@server/domain/topics'
@@ -17,21 +26,32 @@ export interface Actor {
 
 type SubmitDeps = Pick<Deps, 'nodes' | 'facts' | 'topics' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
 
-interface SubjectNode {
+interface SubjectNode<S extends SubjectType> {
   entryId: EntryId
   /** The sense's part of speech; null for an entry. */
   pos: Pos | null
+  /** What the kind's write rule sees of the subject; loaded only for a kind that has one. */
+  admission(): Promise<AdmissionViews[S]>
 }
 
+const liveForms = async (deps: SubmitDeps, entryId: EntryId) =>
+  (await deps.facts.listLive('form', entryId)).filter(isKind('form')).map((fact) => fact.payload.form)
+
 /** The subject node, or null when it does not exist. */
-const subjectNode: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<SubjectNode | null> } = {
+const subjectNode: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<SubjectNode<S> | null> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
-    return entry && { entryId: entry.id, pos: null }
+    return entry && { entryId: entry.id, pos: null, admission: async () => ({ lemma: entry.lemma }) }
   },
   sense: async (deps, id) => {
     const sense = await deps.nodes.findSense(id as SenseId)
-    return sense && { entryId: sense.entryId, pos: sense.pos }
+    return (
+      sense && {
+        entryId: sense.entryId,
+        pos: sense.pos,
+        admission: async () => ({ lemma: sense.lemma, pos: sense.pos, forms: await liveForms(deps, sense.entryId) }),
+      }
+    )
   },
 }
 
@@ -97,6 +117,10 @@ export async function submitFact(
   const existing = await deps.facts.findLive(kind, subjectId, contentKey)
   if (existing) return { fact: existing, created: false }
 
+  if (spec.admit) {
+    const refusal = admissionOf(kind, payload, await subject.admission())
+    if (refusal) throw new InvalidReferenceError(refusal)
+  }
   const supersedesId = input.supersedes_id ?? null
   if (supersedesId) await assertSupersedable(deps, supersedesId, kind, subjectId)
 
