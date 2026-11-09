@@ -8,6 +8,7 @@ import { agentRoutes } from './http/manage/agents'
 import { manageCatalogRoutes } from './http/manage/catalog'
 import { manageFactRoutes } from './http/manage/facts'
 import { manageFeedbackRoutes } from './http/manage/feedback'
+import { manageWorkRoutes } from './http/manage/work'
 import { createRouter } from './http/router'
 
 // Routes are chained so their types flow into `AppType` for the SPA's RPC client.
@@ -19,6 +20,7 @@ const manageV1 = createRouter()
   .route('/', manageCatalogRoutes)
   .route('/', manageFactRoutes)
   .route('/', manageFeedbackRoutes)
+  .route('/', manageWorkRoutes)
   .route('/', agentRoutes)
 manageV1.openAPIRegistry.registerComponent('securitySchemes', 'bearer', {
   type: 'http',
@@ -36,7 +38,10 @@ const publicDocument = publicV1.getOpenAPI31Document({
 })
 const manageDocument = manageV1.getOpenAPI31Document({
   openapi: '3.1.0',
-  info: info('Vocnet management API', 'For agents and admins: submit facts, review state, and work through feedback.'),
+  info: info(
+    'Vocnet management API',
+    'For agents and admins: submit facts, review state, claim entries to work on, and work through feedback.',
+  ),
   servers: [{ url: '/manage/v1' }],
   security: [{ bearer: [] }],
 })

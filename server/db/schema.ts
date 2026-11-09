@@ -88,6 +88,27 @@ export const feedback = sqliteTable(
   (table) => [index('feedback_status_created_idx').on(table.status, table.createdAt, table.id)],
 )
 
+/** At most one row per entry: the agent working on it. A claim replaces a row only once it expired. */
+export const workLeases = sqliteTable('work_leases', {
+  id: text('id').primaryKey(),
+  entryId: text('entry_id')
+    .notNull()
+    .unique()
+    .references(() => entries.id),
+  holder: text('holder').notNull(),
+  expiresAt: text('expires_at').notNull(),
+})
+
+/** When work on an entry last completed; the worklist serves the least recently worked entry first. */
+export const entryWork = sqliteTable('entry_work', {
+  entryId: text('entry_id')
+    .primaryKey()
+    .references(() => entries.id),
+  lastWorkedAt: text('last_worked_at').notNull(),
+  lastWorkedBy: text('last_worked_by').notNull(),
+  lastNote: text('last_note'),
+})
+
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

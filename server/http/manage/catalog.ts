@@ -13,7 +13,7 @@ import {
 import { z } from 'zod'
 import { actorOf } from '../auth'
 import { createRouter, errorResponse, json, jsonBody } from '../router'
-import { entryDto, factDto, senseDto } from '../serialize'
+import { entryDto, factDto, managedEntryDto, senseDto } from '../serialize'
 
 const tags = ['Catalog']
 
@@ -85,11 +85,7 @@ export const manageCatalogRoutes = createRouter()
     return result.created ? c.json(body, 201) : c.json(body, 200)
   })
   .openapi(getEntry, async (c) => {
-    const view = await getManagedEntry(c.get('deps'), c.req.valid('param').lemma)
-    return c.json(
-      { entry: entryDto(view.entry), senses: view.senses.map(senseDto), facts: view.facts.map(factDto) },
-      200,
-    )
+    return c.json(managedEntryDto(await getManagedEntry(c.get('deps'), c.req.valid('param').lemma)), 200)
   })
   .openapi(getNode, async (c) => c.json(await locateNode(c.get('deps'), c.req.valid('param').id), 200))
   .openapi(stats, async (c) => c.json(await getStats(c.get('deps')), 200))
