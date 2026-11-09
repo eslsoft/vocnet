@@ -20,7 +20,7 @@ import {
   type SQLWrapper,
   sql,
 } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/sqlite-core'
+import { type AnySQLiteColumn, alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
 import { syncWorklistLive, touchWorkOf, touchWorkOfFact } from './work'
@@ -142,6 +142,10 @@ export function createFactRepo(db: Db): FactRepo {
       unsuperseded,
       originalPublished,
     }) {
+      // The review read the fact's revalidation mark; a newer mark means a newer review is due, so
+      // neither the correction nor the original it retires may move on this one.
+      const sameMark = (mark: AnySQLiteColumn) =>
+        revalidateSince === undefined ? undefined : revalidateSince === null ? isNull(mark) : eq(mark, revalidateSince)
       const update = db
         .update(facts)
         .set({
@@ -154,11 +158,7 @@ export function createFactRepo(db: Db): FactRepo {
           and(
             eq(facts.id, id),
             inArray(facts.status, [...from]),
-            revalidateSince === undefined
-              ? undefined
-              : revalidateSince === null
-                ? isNull(facts.revalidateSince)
-                : eq(facts.revalidateSince, revalidateSince),
+            sameMark(facts.revalidateSince),
             liveBelow === undefined
               ? undefined
               : sql`(${heldLive(db, facts.kind, facts.subjectId, liveBelow.excluding)}) < ${liveBelow.max}`,
@@ -187,7 +187,12 @@ export function createFactRepo(db: Db): FactRepo {
           .select({ one: sql`1` })
           .from(correction)
           .where(
-            and(eq(correction.id, id), inArray(correction.status, [...from]), eq(correction.supersedesId, supersede)),
+            and(
+              eq(correction.id, id),
+              inArray(correction.status, [...from]),
+              eq(correction.supersedesId, supersede),
+              sameMark(correction.revalidateSince),
+            ),
           ),
       )
       const retire = db

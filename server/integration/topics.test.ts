@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test'
 import { createDeps } from '@server/composition'
 import type { Actor } from '@server/usecases/facts'
 import { rereviewFact, submitFact } from '@server/usecases/facts'
+import { reviewFact } from '@server/usecases/review'
 import type { AgentId } from '@shared/agents'
 import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
 import { type FactId, factPageSchema, factWriteResultSchema, submitFactInputSchema } from '@shared/facts'
@@ -320,6 +321,55 @@ describe('topics', () => {
       message: 'Only a published fact can be superseded; it is pending.',
     })
     await deliverReviews([correction.id, original.id])
+    expect(await statusOf(correction.id)).toBe('rejected')
+    expect(await statusOf(original.id)).toBe('published')
+    expect(await publishedOf(care.id)).toHaveLength(3)
+  })
+
+  it("leaves the original published when a revalidation overtakes its correction's review [spec: topics/stale-correction-review-api]", async () => {
+    const { care, original, submit, token } = await fullSense()
+    const correction = factWriteResultSchema.parse((await submit(care.id, 'dentist', original.id)).body).fact
+    const gloss = await env.DB.prepare(
+      "select id from facts where kind = 'sense' and subject_id = ? and status = 'published'",
+    )
+      .bind(care.id)
+      .first<{ id: string }>()
+    if (!gloss) throw new Error('No published gloss.')
+    const glossFix = factWriteResultSchema.parse(
+      (
+        await call('/manage/v1/facts', {
+          method: 'POST',
+          token,
+          json: {
+            kind: 'sense',
+            subject_id: care.id,
+            supersedes_id: gloss.id,
+            payload: { gloss: 'Someone whose job is caring for ill or injured people.' },
+          },
+        })
+      ).body,
+    ).fact
+    const deps = createDeps(env)
+    let pending = true
+    const racing = {
+      ...deps,
+      topics: {
+        ...deps.topics,
+        async find(id: Parameters<typeof deps.topics.find>[0]) {
+          if (pending) {
+            pending = false
+            expect(await reviewFact(deps, glossFix.id, 't')).toBe('published')
+          }
+          return deps.topics.find(id)
+        },
+      },
+    }
+    expect(await reviewFact(racing, correction.id, 't')).toBe('skipped')
+    expect(await statusOf(original.id)).toBe('published')
+
+    vi.restoreAllMocks()
+    stubReviewers(0.1, 'fail')
+    await deliverReviews([correction.id])
     expect(await statusOf(correction.id)).toBe('rejected')
     expect(await statusOf(original.id)).toBe('published')
     expect(await publishedOf(care.id)).toHaveLength(3)

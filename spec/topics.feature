@@ -114,6 +114,13 @@ Feature: Topics
     Then one correction is accepted and the rest are 409 conflict naming the live correction
     And once the live correction publishes the sense holds one published topic, the original is superseded and cannot be corrected again
 
+  @topics/stale-correction-review-api @api
+  Scenario: A correction's review overtaken by a revalidation leaves its original in place
+    Given a sense with three published topic facts and a pending correction of one of them
+    When the sense's gloss changes meaning while the correction's review is running, and that review later rejects the correction
+    Then the overtaken review changes nothing, so the original stays published
+    And the sense still holds three published topics
+
   @topics/not-found @api
   Scenario: An unknown topic has no senses to list
     Given no topic with the requested id
