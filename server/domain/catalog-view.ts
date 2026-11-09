@@ -43,9 +43,11 @@ export function factMeta(fact: Fact): FactMeta {
 export function formMatch(entry: EntryNode, fact: FactOf<'form'>): FormMatch {
   return {
     entry: { id: entry.id, lemma: entry.lemma },
-    form: { ...factMeta(fact), form: fact.payload.form, type: fact.payload.type },
+    form: publicForm(fact),
   }
 }
+
+const publicForm = (fact: FactOf<'form'>) => ({ ...factMeta(fact), ...fact.payload })
 
 // Visibility is derived on read: a fact shows only when it and every node it
 // references are published. A node is published when its defining fact is.
@@ -89,6 +91,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntry | null 
         id: sense.id,
         pos: sense.pos,
         gloss: glossFact.payload.gloss,
+        register: glossFact.payload.register,
         fact: factMeta(glossFact),
         examples: about('example', sense.id).map((fact) => ({ ...factMeta(fact), text: fact.payload.text })),
         translations: about('translation', sense.id).map((fact) => ({
@@ -105,16 +108,8 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntry | null 
     id: snapshot.entry.id,
     lemma: snapshot.entry.lemma,
     fact: factMeta(entryFact),
-    forms: about('form', snapshot.entry.id).map((fact) => ({
-      ...factMeta(fact),
-      form: fact.payload.form,
-      type: fact.payload.type,
-    })),
-    pronunciations: about('pronunciation', snapshot.entry.id).map((fact) => ({
-      ...factMeta(fact),
-      ipa: fact.payload.ipa,
-      accent: fact.payload.accent,
-    })),
+    forms: about('form', snapshot.entry.id).map(publicForm),
+    pronunciations: about('pronunciation', snapshot.entry.id).map((fact) => ({ ...factMeta(fact), ...fact.payload })),
     senses: publicSenses,
   }
 }

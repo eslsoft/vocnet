@@ -32,7 +32,7 @@ async function seedBank() {
       await call('/manage/v1/senses', {
         method: 'POST',
         token,
-        json: { entry_id: entry.entry.id, pos: 'noun', gloss: 'land beside a river' },
+        json: { entry_id: entry.entry.id, pos: 'noun', gloss: 'Land beside a river.' },
       })
     ).body,
   )
@@ -41,7 +41,7 @@ async function seedBank() {
       await call('/manage/v1/senses', {
         method: 'POST',
         token,
-        json: { entry_id: shoreEntry.entry.id, pos: 'noun', gloss: 'land along water' },
+        json: { entry_id: shoreEntry.entry.id, pos: 'noun', gloss: 'Land along water.' },
       })
     ).body,
   )
@@ -71,18 +71,20 @@ describe('public catalog', () => {
     const { status, body } = await call('/v1/entries/bank')
     expect(status).toBe(200)
     const entry = publicEntrySchema.parse(body)
+    // A synonym is stored once, from the smaller sense id; both senses list it.
+    const riverIsSubject = river.sense.id < shore.sense.id
     expect(entry.forms).toEqual([
       expect.objectContaining({ form: 'banks', type: 'plural', verdict: 'pass', confidence: 0.93 }),
     ])
     expect(entry.senses).toEqual([
       expect.objectContaining({
         id: river.sense.id,
-        gloss: 'land beside a river',
+        gloss: 'Land beside a river.',
         examples: [expect.objectContaining({ text: 'We sat on the bank.', confidence: 0.88 })],
         relations: [
           expect.objectContaining({
             type: 'synonym',
-            direction: 'outgoing',
+            direction: riverIsSubject ? 'outgoing' : 'incoming',
             sense: expect.objectContaining({ id: shore.sense.id, lemma: 'shore' }),
           }),
         ],
@@ -91,7 +93,9 @@ describe('public catalog', () => {
     const sense = publicSenseWithEntrySchema.parse((await call(`/v1/senses/${river.sense.id}`)).body)
     expect(sense.entry.lemma).toBe('bank')
     const incoming = publicEntrySchema.parse((await call('/v1/entries/shore')).body)
-    expect(incoming.senses[0]?.relations).toEqual([expect.objectContaining({ direction: 'incoming' })])
+    expect(incoming.senses[0]?.relations).toEqual([
+      expect.objectContaining({ direction: riverIsSubject ? 'incoming' : 'outgoing' }),
+    ])
   })
 
   it('404s unknown and unpublished lemmas, forms, and senses with no fallback [spec: catalog/entry-not-found]', async () => {
@@ -142,7 +146,7 @@ describe('public catalog', () => {
   })
 
   it('lists entries in every status with their counts, page by page [spec: catalog/manage-entry-list]', async () => {
-    const { token, river } = await seedBank()
+    const { token, river, relation } = await seedBank()
     for (const lemma of ['band', 'bar', 'cat'])
       await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })
     stubReviewers()
@@ -179,7 +183,14 @@ describe('public catalog', () => {
       lemma: 'bank',
       entry_status: 'pending',
       sense_count: 1,
-      fact_counts: { pending: 4, published: 1, rejected: 0, superseded: 0, retracted: 1 },
+      // The synonym counts under whichever entry owns its subject sense.
+      fact_counts: {
+        pending: relation.fact.subject_id === river.sense.id ? 4 : 3,
+        published: 1,
+        rejected: 0,
+        superseded: 0,
+        retracted: 1,
+      },
       last_worked_at: expect.any(String),
     })
     const all = entrySummaryPageSchema.parse((await call('/manage/v1/entries', { token: await adminToken() })).body)

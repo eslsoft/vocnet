@@ -1,5 +1,5 @@
 import type { Fact } from '@server/domain/fact'
-import { contentKeyOf, factKinds, type SubjectType, targetOf } from '@server/domain/fact-kinds'
+import { contentKeyOf, factKinds, orientOf, type SubjectType, targetOf } from '@server/domain/fact-kinds'
 import { canApply, factTransitions } from '@server/domain/fact-lifecycle'
 import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
 import type { EntryId, FactId, FactKind, FactStatus, SenseId, SubmitFactInput } from '@shared/facts'
@@ -15,45 +15,57 @@ export interface Actor {
 
 type SubmitDeps = Pick<Deps, 'nodes' | 'facts' | 'reviewQueue' | 'clock' | 'ids'>
 
-const subjectExists: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<boolean> } = {
-  entry: async (deps, id) => (await deps.nodes.findEntry(id as EntryId)) !== null,
-  sense: async (deps, id) => (await deps.nodes.findSense(id as SenseId)) !== null,
+/** The entry a subject node belongs to, or null when the node does not exist. */
+const owningEntry: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<EntryId | null> } = {
+  entry: async (deps, id) => (await deps.nodes.findEntry(id as EntryId))?.id ?? null,
+  sense: async (deps, id) => (await deps.nodes.findSense(id as SenseId))?.entryId ?? null,
 }
 
 /**
  * Submits one fact for review. Idempotent by content key: resubmitting a live
- * fact returns it with created=false and enqueues nothing.
+ * fact returns it with created=false and enqueues nothing. A symmetric relation
+ * submitted from either end is the same fact.
  */
 export async function submitFact(
   deps: SubmitDeps,
   actor: Actor,
   input: SubmitFactInput,
 ): Promise<{ fact: Fact; created: boolean }> {
-  const spec = factKinds[input.kind]
-  if (!(await subjectExists[spec.subject](deps, input.subject_id))) {
-    throw new InvalidReferenceError(`A ${input.kind} fact is about a ${spec.subject}; ${input.subject_id} is not one.`)
+  const { kind } = input
+  const spec = factKinds[kind]
+  const oriented = orientOf(kind, input.subject_id, input.payload)
+  const subjectId = oriented.subjectId as EntryId | SenseId
+  const payload = oriented.payload
+  const entryId = await owningEntry[spec.subject](deps, subjectId)
+  if (!entryId) {
+    throw new InvalidReferenceError(`A ${kind} fact is about a ${spec.subject}; ${subjectId} is not one.`)
   }
-  const target = targetOf(input.kind, input.payload)
-  if (target && !(await deps.nodes.findSense(target))) {
-    throw new InvalidReferenceError(`Target sense ${target} does not exist.`)
+  const target = targetOf(kind, payload)
+  if (target) {
+    const targetSense = await deps.nodes.findSense(target)
+    if (!targetSense) throw new InvalidReferenceError(`Target sense ${target} does not exist.`)
+    if (targetSense.entryId === entryId) {
+      throw new InvalidReferenceError(
+        'A relation links senses of two different entries; both senses belong to one entry.',
+      )
+    }
   }
 
-  const subjectId = input.subject_id as EntryId | SenseId
-  const contentKey = contentKeyOf(input.kind, input.payload)
-  const existing = await deps.facts.findLive(input.kind, subjectId, contentKey)
+  const contentKey = contentKeyOf(kind, payload)
+  const existing = await deps.facts.findLive(kind, subjectId, contentKey)
   if (existing) return { fact: existing, created: false }
 
   const supersedesId = input.supersedes_id ?? null
-  if (supersedesId) await assertSupersedable(deps, supersedesId, input.kind, subjectId)
+  if (supersedesId) await assertSupersedable(deps, supersedesId, kind, subjectId)
 
   const now = deps.clock.now().toISOString()
   const draft = {
     id: deps.ids.fact(),
-    kind: input.kind,
+    kind,
     subjectId,
     objectId: target,
     contentKey,
-    payload: input.payload,
+    payload,
     status: 'pending',
     supersedesId,
     author: principalRef(actor.principal),
@@ -65,7 +77,7 @@ export async function submitFact(
   const fact = await deps.facts.insert(draft)
   if (!fact) {
     throw new ConflictError(
-      `This subject already has a live ${input.kind} fact; submit one correction that supersedes the published one.`,
+      `This subject already has a live ${kind} fact; submit one correction that supersedes the published one.`,
     )
   }
   const created = fact.id === draft.id

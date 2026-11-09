@@ -97,7 +97,7 @@ describe('worklist', () => {
     const sense = await call('/manage/v1/senses', {
       method: 'POST',
       token,
-      json: { entry_id: bay.entry.id, pos: 'noun', gloss: 'a broad inlet of the sea' },
+      json: { entry_id: bay.entry.id, pos: 'noun', gloss: 'A broad inlet of the sea.' },
     })
     expect(sense.status).toBe(201)
     expect((await complete(token, first.lease.id)).status).toBe(200)

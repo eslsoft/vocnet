@@ -46,9 +46,12 @@ const duplicateIds = scenarios.filter((scenario, index) => scenarios.findIndex((
 if (duplicateIds.length > 0) throw new Error(`Duplicate behavior ids: ${duplicateIds.map(({ id }) => id).join(', ')}`)
 
 const layerFiles = {
-  unit: (await sourceFiles(path.join(root, 'server'), (file) => file.endsWith('.test.ts'))).filter(
-    (file) => !file.includes(`${path.sep}integration${path.sep}`),
-  ),
+  unit: [
+    ...(await sourceFiles(path.join(root, 'server'), (file) => file.endsWith('.test.ts'))).filter(
+      (file) => !file.includes(`${path.sep}integration${path.sep}`),
+    ),
+    ...(await sourceFiles(path.join(root, 'shared'), (file) => file.endsWith('.test.ts'))),
+  ],
   component: await sourceFiles(path.join(root, 'src'), (file) => /\.test\.tsx?$/.test(file)),
   integration: await sourceFiles(path.join(root, 'server/integration'), (file) => file.endsWith('.test.ts')),
   e2e: await sourceFiles(path.join(root, 'e2e'), (file) => file.endsWith('.spec.ts')),

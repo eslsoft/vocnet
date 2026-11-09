@@ -60,7 +60,7 @@ export async function createSense(
   const entry = await deps.nodes.findEntry(input.entry_id)
   if (!entry) throw new InvalidReferenceError(`Entry ${input.entry_id} does not exist.`)
 
-  const payload = { gloss: input.gloss }
+  const payload = { gloss: input.gloss, register: input.register }
   const contentKey = contentKeyOf('sense', payload)
   const existing = await deps.nodes.findSenseByGloss(entry.id, input.pos, contentKey)
   if (existing) return { ...existing, created: false }

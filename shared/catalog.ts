@@ -7,9 +7,12 @@ import {
   factSchema,
   factStatusSchema,
   formTypeSchema,
+  glossSchema,
   posSchema,
+  registerSchema,
   relationTypeSchema,
   senseIdSchema,
+  strengthSchema,
   verdictSchema,
 } from './facts'
 
@@ -24,9 +27,17 @@ const factMeta = {
 export const factMetaSchema = z.object(factMeta).meta({ id: 'FactMeta' })
 export type FactMeta = z.infer<typeof factMetaSchema>
 
-export const publicFormSchema = z.object({ ...factMeta, form: z.string(), type: formTypeSchema }).meta({ id: 'Form' })
+export const publicFormSchema = z
+  .object({ ...factMeta, form: z.string(), type: formTypeSchema, pos: posSchema.optional() })
+  .meta({ id: 'Form' })
 export const publicPronunciationSchema = z
-  .object({ ...factMeta, ipa: z.string(), accent: accentSchema })
+  .object({
+    ...factMeta,
+    ipa: z.string(),
+    accent: accentSchema,
+    strength: strengthSchema.optional(),
+    pos: posSchema.optional(),
+  })
   .meta({ id: 'Pronunciation' })
 export const publicExampleSchema = z.object({ ...factMeta, text: z.string() }).meta({ id: 'Example' })
 export const publicTranslationSchema = z
@@ -54,6 +65,7 @@ export const publicSenseSchema = z
     id: senseIdSchema,
     pos: posSchema,
     gloss: z.string(),
+    register: registerSchema.optional(),
     fact: factMetaSchema,
     examples: z.array(publicExampleSchema),
     translations: z.array(publicTranslationSchema),
@@ -157,7 +169,7 @@ export const createEntryResultSchema = z
   .meta({ id: 'CreateEntryResult' })
 
 export const createSenseInputSchema = z
-  .object({ entry_id: entryIdSchema, pos: posSchema, gloss: z.string().trim().min(1).max(500) })
+  .object({ entry_id: entryIdSchema, pos: posSchema, gloss: glossSchema, register: registerSchema.optional() })
   .meta({ id: 'CreateSenseInput' })
 export type CreateSenseInput = z.infer<typeof createSenseInputSchema>
 export const createSenseResultSchema = z

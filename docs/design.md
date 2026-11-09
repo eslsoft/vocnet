@@ -73,15 +73,15 @@ Each kind declares its subject type, payload schema, content key, reviewer
 chain, and review prompts. Adding a kind is one registry entry plus a migration only if it
 needs a new column.
 
-| Kind            | Subject | Cardinality | Payload                                   | Reviewer chain |
-| --------------- | ------- | ----------- | ----------------------------------------- | -------------- |
-| `entry`         | entry   | one         | `{}` (the lemma is an established word)   | Jev, then LLM  |
-| `sense`         | sense   | one         | `{ gloss }`                               | Jev, then LLM  |
-| `form`          | entry   | many        | `{ form, type }` (plural, past, variant…) | Jev, then LLM  |
-| `relation`      | sense   | many        | `{ type, target_sense_id }`               | Jev, then LLM  |
-| `pronunciation` | entry   | many        | `{ ipa, accent }` (accent `us` or `uk`)   | LLM            |
-| `example`       | sense   | many        | `{ text }`                                | LLM            |
-| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)         | LLM            |
+| Kind            | Subject | Cardinality | Payload                                                  | Reviewer chain |
+| --------------- | ------- | ----------- | -------------------------------------------------------- | -------------- |
+| `entry`         | entry   | one         | `{}` (the lemma is an established word)                  | Jev, then LLM  |
+| `sense`         | sense   | one         | `{ gloss, register? }`                                   | Jev, then LLM  |
+| `form`          | entry   | many        | `{ form, type, pos? }` (plural, past, variant…)          | Jev, then LLM  |
+| `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM  |
+| `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
+| `example`       | sense   | many        | `{ text }`                                               | LLM            |
+| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)                        | LLM            |
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
 one gloss. Changing it means submitting a correction that supersedes the
@@ -105,9 +105,60 @@ questions started as the ones the producer qualified. Each now says that two
 senses of one word never stand in a relation, and the hypernym question also
 says that mutual substitutability is synonymy, that hypernymy holds only
 between nouns or between verbs, and that a generic head such as "cause" does
-not count. A relation is reviewed with the relation question only. Whether each sense is an established meaning is the
+not count. A relation links senses of two different entries; a relation inside
+one entry, or from a sense to itself, is `422 invalid_reference`. Synonyms and
+antonyms are symmetric, so each is stored once per pair of senses: submission
+orients it with the smaller sense id as `subject_id` and the larger as
+`target_sense_id`, and a submission from the other end returns the stored fact
+with `created: false`. Hypernyms and `part_of` keep the direction they were
+submitted in. Reads list a relation on both senses, `outgoing` on its subject
+and `incoming` on its object, and gaps count it for both. The migration
+`orient_symmetric_relations` flipped stored rows into this orientation and
+kept their reviews; a live mirrored pair kept both rows, and the one whose
+`subject_id` is larger is the duplicate to retract. A relation is reviewed with
+the relation question only. Whether each sense is an established meaning is the
 job of that sense's own `sense` fact, and the relation stays hidden until both
 are published.
+
+### Write rules
+
+Submissions (`POST /manage/v1/facts` and `POST /manage/v1/senses`) enforce
+these formats in `shared/facts.ts`. A violation is `400 invalid_request` whose
+message names each rule the payload breaks. Stored facts are read with the
+plain payload shape, so facts written before a rule still read.
+
+- **Gloss.** 6 to 300 characters after trimming. It starts with a capital
+  letter, a digit, a quote, or `(`, and ends with a period. It holds no
+  example: no `as in`, `e.g.`, `for example`, or `for instance`, and no quoted
+  sentence (a quoted span that ends in `.`, `!`, or `?`). Examples are
+  `example` facts. Quoted single words or set phrases, such as "usually
+  followed by 'for'", are usage notes and pass.
+- **IPA.** One broad transcription: no commas, semicolons, slashes, brackets,
+  parentheses, or `|`. Each symbol is from the broad English IPA set
+  (`aeiouæɑɒɐɔəɚɛɜɝɪʊʌɨɵʉ`, `bdfhjklmnprstvwzðθʃʒŋɡʔɾɫʍxç`, `ˈ ˌ ː ˑ .`,
+  space, and `ʰ ʷ ᵊ`, syllabic, non-syllabic, nasal, and tie marks). One
+  spelling per sound keeps transcriptions comparable: `r`, not `ɹ`; `ɡ`, not
+  `g`; `ˈ` and `ː`, not `'` and `:`; `tʃ` and `dʒ`, not ligatures. The message
+  names each symbol to replace.
+
+Labels are optional, and absent means unlabelled:
+
+| Kind            | Label       | Values                                                                 |
+| --------------- | ----------- | ---------------------------------------------------------------------- |
+| `sense`         | `register`  | `informal`, `slang`, `taboo`, `literary`, `formal`, `dated`, `offensive`, `technical` |
+| `form`          | `pos`       | The part of speech the form inflects: `would` is the `auxiliary` past of *will*, `willed` the `verb` past |
+| `pronunciation` | `strength`  | `strong` (absent means strong) or `weak`, the unstressed form of a function word such as /tə/ for *to* |
+| `pronunciation` | `pos`       | The part of speech a pronunciation belongs to, such as the noun *do* /doʊ/ |
+
+A weak form must carry `strength: weak`; the LLM reviewer is told which form
+it judges and rejects a weak form submitted as the strong one. A form's `pos`
+replaces the word class in its Jev question and in the LLM second opinion, so
+both judge the labelled claim, and a pronunciation's `pos` is named in its
+prompt. The public entry shows every label. A sense's `register`
+is part of its content key, so a correction that only adds a register is a new
+fact that supersedes the gloss. A form's or pronunciation's labels are not:
+the same form or transcription with another label returns the live fact, and
+relabelling one means retracting it and submitting the labelled fact.
 
 ### Fact lifecycle
 

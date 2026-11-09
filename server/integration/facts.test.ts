@@ -1,4 +1,5 @@
-import { createEntryResultSchema, publicEntrySchema, statsSchema } from '@shared/catalog'
+import { env } from 'cloudflare:test'
+import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema, statsSchema } from '@shared/catalog'
 import { factSchema, factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -122,6 +123,104 @@ describe('fact review flow', () => {
       json: { kind: 'form', subject_id: entry.id, payload: {} },
     })
     expect(invalid.status).toBe(400)
+  })
+
+  it('enforces write rules: one fact per symmetric pair, relations across entries, gloss and ipa format [spec: facts/write-rules-api]', async () => {
+    const token = await issueAgentKey()
+    const post = (path: string, json: unknown) => call(path, { method: 'POST', token, json })
+    const entryOf = async (lemma: string) =>
+      createEntryResultSchema.parse((await post('/manage/v1/entries', { lemma })).body).entry
+    const [east, west] = [await entryOf('east'), await entryOf('west')]
+    const senseOf = async (entryId: string, gloss: string) =>
+      createSenseResultSchema.parse((await post('/manage/v1/senses', { entry_id: entryId, pos: 'noun', gloss })).body)
+        .sense
+    const eastSense = await senseOf(east.id, 'The direction toward the sunrise.')
+    const westSense = await senseOf(west.id, 'The direction toward the sunset.')
+    const westward = await senseOf(west.id, 'The western part of a region.')
+
+    const antonym = (from: string, to: string) =>
+      post('/manage/v1/facts', {
+        kind: 'relation',
+        subject_id: from,
+        payload: { type: 'antonym', target_sense_id: to },
+      })
+    const first = await antonym(eastSense.id, westSense.id)
+    const mirrored = await antonym(westSense.id, eastSense.id)
+    expect([first.status, mirrored.status]).toEqual([201, 200])
+    const stored = factWriteResultSchema.parse(first.body).fact
+    expect(factWriteResultSchema.parse(mirrored.body).fact.id).toBe(stored.id)
+    expect(stored.subject_id < (stored.object_id ?? '')).toBe(true)
+
+    const sameEntry = await antonym(westSense.id, westward.id)
+    expect(sameEntry.status).toBe(422)
+    expect(apiErrorSchema.parse(sameEntry.body).error.code).toBe('invalid_reference')
+
+    const badGloss = await post('/manage/v1/senses', {
+      entry_id: east.id,
+      pos: 'noun',
+      gloss: 'toward the east, as in "go east"',
+    })
+    expect(badGloss.status).toBe(400)
+    expect(apiErrorSchema.parse(badGloss.body).error).toMatchObject({
+      code: 'invalid_request',
+      message: expect.stringMatching(/capital letter.*period.*no examples/),
+    })
+    const badIpa = await post('/manage/v1/facts', {
+      kind: 'pronunciation',
+      subject_id: east.id,
+      payload: { ipa: 'iːst, ɪst', accent: 'us' },
+    })
+    expect(badIpa.status).toBe(400)
+    expect(apiErrorSchema.parse(badIpa.body).error.message).toContain('exactly one transcription')
+  })
+
+  it('re-orients stored symmetric relations and leaves live duplicates to retract [spec: facts/orient-stored-relations]', async () => {
+    const token = await issueAgentKey()
+    const post = (path: string, json: unknown) => call(path, { method: 'POST', token, json })
+    const senses: string[] = []
+    for (const lemma of ['north', 'south', 'up', 'down']) {
+      const { entry } = createEntryResultSchema.parse((await post('/manage/v1/entries', { lemma })).body)
+      const created = await post('/manage/v1/senses', { entry_id: entry.id, pos: 'noun', gloss: `The ${lemma} side.` })
+      senses.push(createSenseResultSchema.parse(created.body).sense.id)
+    }
+    const [north, south, up, down] = senses.sort() as [string, string, string, string]
+    const insert = (id: string, type: string, subject: string, object: string, status: string) =>
+      env.DB.prepare(
+        `insert into facts (id, kind, subject_id, object_id, content_key, payload, status, exclusive, author, created_at, updated_at)
+         values (?, 'relation', ?, ?, ?, ?, ?, 0, 'agent:legacy', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+      )
+        .bind(id, subject, object, `${type}|${object}`, JSON.stringify({ type, target_sense_id: object }), status)
+        .run()
+    const ids = {
+      reversed: crypto.randomUUID(),
+      duplicate: crypto.randomUUID(),
+      twin: crypto.randomUUID(),
+      hypernym: crypto.randomUUID(),
+    }
+    await insert(ids.reversed, 'antonym', south, north, 'published')
+    await insert(ids.twin, 'synonym', up, down, 'published')
+    await insert(ids.duplicate, 'synonym', down, up, 'published')
+    await insert(ids.hypernym, 'hypernym', down, up, 'pending')
+
+    const migration = env.TEST_MIGRATIONS.find((candidate) => candidate.name.endsWith('orient_symmetric_relations.sql'))
+    if (!migration) throw new Error('The orient_symmetric_relations migration is missing.')
+    for (const query of migration.queries) await env.DB.prepare(query).run()
+
+    const read = async (id: string) => factSchema.parse((await call(`/manage/v1/facts/${id}`, { token })).body)
+    expect(await read(ids.reversed)).toMatchObject({
+      subject_id: north,
+      object_id: south,
+      payload: { type: 'antonym', target_sense_id: south },
+    })
+    expect(await read(ids.duplicate)).toMatchObject({ subject_id: down, object_id: up })
+    expect(await read(ids.hypernym)).toMatchObject({ subject_id: down, object_id: up })
+    const resubmitted = await post('/manage/v1/facts', {
+      kind: 'relation',
+      subject_id: south,
+      payload: { type: 'antonym', target_sense_id: north },
+    })
+    expect(resubmitted.status).toBe(200)
+    expect(factWriteResultSchema.parse(resubmitted.body).fact.id).toBe(ids.reversed)
   })
 
   it('lets an agent retract its own fact, reserves re-review for admins, and counts facts [spec: facts/manage-api]', async () => {

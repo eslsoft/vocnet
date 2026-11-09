@@ -1,6 +1,6 @@
 import { agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
-import type { EntryId, SenseId } from '@shared/facts'
+import type { EntryId, FactId, SenseId } from '@shared/facts'
 import type { WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import {
@@ -171,14 +171,19 @@ describe('management reads', () => {
     ])
   })
 
-  it('shows every fact in every status, without duplicating relations inside the entry', async () => {
+  it('shows every fact in every status, without duplicating a stored relation inside the entry', async () => {
     const world = fakeWorld()
     const { entry } = await createEntry(world.deps, agentA, { lemma: 'big' })
     const a = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'adjective', gloss: 'large' })
     const b = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'adjective', gloss: 'important' })
-    await submitFact(world.deps, agentA, {
+    // Submission now refuses relations inside one entry; facts stored before that rule still show once.
+    await world.deps.facts.insert({
+      ...a.fact,
+      id: crypto.randomUUID() as FactId,
       kind: 'relation',
-      subject_id: a.sense.id,
+      subjectId: a.sense.id,
+      objectId: b.sense.id,
+      contentKey: `synonym|${b.sense.id}`,
       payload: { type: 'synonym', target_sense_id: b.sense.id },
     })
     const view = await getManagedEntry(world.deps, 'big')

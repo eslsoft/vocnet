@@ -12,6 +12,12 @@ describe('summarizeFact', () => {
     [{ kind: 'form', payload: { form: 'banks', type: 'plural' } }, 'banks (plural)'],
     [{ kind: 'relation', payload: { type: 'synonym', target_sense_id: target } }, 'synonym → sense 7d3b2a10'],
     [{ kind: 'pronunciation', payload: { ipa: 'bæŋk', accent: 'us' } }, '/bæŋk/ (us)'],
+    [{ kind: 'sense', payload: { gloss: 'Semen.', register: 'taboo' } }, 'Semen. (taboo)'],
+    [{ kind: 'form', payload: { form: 'would', type: 'past', pos: 'auxiliary' } }, 'would (past, auxiliary)'],
+    [
+      { kind: 'pronunciation', payload: { ipa: 'tə', accent: 'us', strength: 'weak', pos: 'preposition' } },
+      '/tə/ (us, weak, preposition)',
+    ],
     [{ kind: 'example', payload: { text: 'We sat on the bank.' } }, 'We sat on the bank.'],
     [{ kind: 'translation', payload: { language: 'zh-Hans', text: '河岸' } }, 'zh-Hans: 河岸'],
   ])('summarizes a %o fact', (input, expected) => {

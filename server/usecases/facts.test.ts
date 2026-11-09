@@ -1,6 +1,6 @@
 import { admin, agentA, agentB } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
-import type { FactId } from '@shared/facts'
+import type { FactId, SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
 import { getFact, listFacts, rereviewFact, retractFact, submitFact } from './facts'
@@ -17,6 +17,18 @@ async function bankWorld() {
   })
   for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
   return { world, entry, river: river.sense, money: money.sense, riverGloss: river.fact }
+}
+
+async function withShore() {
+  const bank = await bankWorld()
+  const { entry } = await createEntry(bank.world.deps, agentA, { lemma: 'shore' })
+  const { sense: shore } = await createSense(bank.world.deps, agentA, {
+    entry_id: entry.id,
+    pos: 'noun',
+    gloss: 'land along water',
+  })
+  bank.world.queued.length = 0
+  return { ...bank, shore }
 }
 
 describe('submitFact', () => {
@@ -76,13 +88,59 @@ describe('submitFact', () => {
   })
 
   it('records the target sense as the object of a relation', async () => {
-    const { world, river, money } = await bankWorld()
+    const { world, river, shore } = await withShore()
     const { fact } = await submitFact(world.deps, agentA, {
       kind: 'relation',
-      subject_id: river.id,
-      payload: { type: 'antonym', target_sense_id: money.id },
+      subject_id: shore.id,
+      payload: { type: 'hypernym', target_sense_id: river.id },
     })
-    expect(fact.objectId).toBe(money.id)
+    expect(fact).toMatchObject({ subjectId: shore.id, objectId: river.id })
+  })
+
+  it('stores a symmetric relation once, whichever sense it is submitted from [spec: facts/symmetric-relation-once]', async () => {
+    const { world, river, shore } = await withShore()
+    const [low, high] = [river.id, shore.id].sort()
+    const submit = (type: 'synonym' | 'hypernym', from: string, to: string) =>
+      submitFact(world.deps, agentA, {
+        kind: 'relation',
+        subject_id: from,
+        payload: { type, target_sense_id: to as SenseId },
+      })
+    const first = await submit('synonym', high as string, low as string)
+    expect(first.fact).toMatchObject({ subjectId: low, objectId: high, payload: { target_sense_id: high } })
+    await expect(submit('synonym', low as string, high as string)).resolves.toEqual({
+      fact: first.fact,
+      created: false,
+    })
+    const directed = await submit('hypernym', high as string, low as string)
+    expect(directed).toMatchObject({ created: true, fact: { subjectId: high, objectId: low } })
+    expect(world.queued).toHaveLength(2)
+  })
+
+  it('rejects a relation between two senses of one entry [spec: facts/relation-across-entries]', async () => {
+    const { world, river, money } = await bankWorld()
+    for (const target of [money.id, river.id]) {
+      await expect(
+        submitFact(world.deps, agentA, {
+          kind: 'relation',
+          subject_id: river.id,
+          payload: { type: 'antonym', target_sense_id: target },
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('two different entries') })
+    }
+    expect(world.queued).toHaveLength(0)
+  })
+
+  it('lets a correction change only the register of a gloss', async () => {
+    const { world, river, riverGloss } = await bankWorld()
+    const { fact, created } = await submitFact(world.deps, agentA, {
+      kind: 'sense',
+      subject_id: river.id,
+      supersedes_id: riverGloss.id,
+      payload: { gloss: 'land beside a river', register: 'literary' },
+    })
+    expect(created).toBe(true)
+    expect(fact).toMatchObject({ supersedesId: riverGloss.id, payload: { register: 'literary' } })
   })
 
   it('accepts a correction only of a published fact of the same kind and subject [spec: facts/supersede-rules]', async () => {

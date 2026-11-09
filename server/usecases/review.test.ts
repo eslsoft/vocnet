@@ -141,8 +141,9 @@ describe('reviewFact', () => {
   })
 
   it('reviews a relation against both senses', async () => {
-    const { world, entry, sense } = await bankWorld()
-    const other = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: 'a riverside' })
+    const { world, sense } = await bankWorld()
+    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
+    const other = await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'noun', gloss: 'a riverside' })
     const { fact } = await submitFact(world.deps, agentA, {
       kind: 'relation',
       subject_id: sense.id,
@@ -243,7 +244,7 @@ async function correctedRiverBank() {
     await submit({ kind: 'example', subject_id: river.id, payload: { text: 'We sat on the bank.' } }),
     await submit({ kind: 'translation', subject_id: river.id, payload: { language: 'fr', text: 'rive' } }),
     await submit({ kind: 'relation', subject_id: river.id, payload: { type: 'synonym', target_sense_id: shore.id } }),
-    await submit({ kind: 'relation', subject_id: shore.id, payload: { type: 'synonym', target_sense_id: river.id } }),
+    await submit({ kind: 'relation', subject_id: shore.id, payload: { type: 'hypernym', target_sense_id: river.id } }),
   ]
   const unrelated = await submit({ kind: 'example', subject_id: shore.id, payload: { text: 'Waves hit the shore.' } })
   await drain(world)
