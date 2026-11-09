@@ -93,6 +93,12 @@ pending correction may sit beside the published original, and a second pending
 fact or a second holder is refused. A write that one of these indexes or the
 live-content index refuses answers `409 conflict`.
 
+Each inflecting form type belongs to one word class. Plurals are noun forms;
+past, past participle, present participle, and third-person singular are verb
+forms; comparative and superlative are adjective or adverb forms. The form
+question names that class, so Jev judges "breaded" against the verb "bread",
+not the dominant noun. A spelling variant is asked about the word as a whole.
+
 Relation types are `synonym`, `antonym`, `hypernym`, and `part_of`, with the
 same review questions the producer qualified. A relation is reviewed with the
 relation question only. Whether each sense is an established meaning is the
