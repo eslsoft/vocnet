@@ -9,6 +9,7 @@ export const apiErrorCodeSchema = z.enum([
   'invalid_reference',
   'not_found',
   'conflict',
+  'rate_limited',
   'internal_error',
 ])
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>

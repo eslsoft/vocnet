@@ -5,38 +5,87 @@ import type { FactId } from '@shared/facts'
 import type { FeedbackId } from '@shared/feedback'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
+import { submitFact } from './facts'
 import { claimFeedback, listFeedback, resolveFeedback, submitFeedback } from './feedback'
+import { reviewFact } from './review'
 
-async function reported() {
+const client = '203.0.113.7'
+
+async function publishedBank() {
   const world = fakeWorld()
   const { entry, fact } = await createEntry(world.deps, agentA, { lemma: 'bank' })
   const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: 'land' })
-  const item = await submitFeedback(world.deps, {
+  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId)
+  return { world, entry, sense, fact }
+}
+
+async function reported() {
+  const bank = await publishedBank()
+  const item = await submitFeedback(bank.world.deps, client, {
     target_type: 'sense',
-    target_id: sense.id,
+    target_id: bank.sense.id,
     message: 'Gloss is vague.',
   })
-  return { world, entry, sense, fact, item }
+  return { ...bank, item }
 }
 
 describe('submitFeedback', () => {
-  it('records open feedback against an existing entry, sense, or fact [spec: feedback/submit]', async () => {
+  it('records open feedback against a public entry, sense, or fact [spec: feedback/submit]', async () => {
     const { world, entry, fact, item } = await reported()
     expect(item).toMatchObject({ status: 'open', assignee: null, revision: 0 })
-    await submitFeedback(world.deps, { target_type: 'entry', target_id: entry.id, message: 'x' })
-    await submitFeedback(world.deps, { target_type: 'fact', target_id: fact.id, message: 'x' })
+    await submitFeedback(world.deps, client, { target_type: 'entry', target_id: entry.id, message: 'x' })
+    await submitFeedback(world.deps, client, { target_type: 'fact', target_id: fact.id, message: 'x' })
     expect((await listFeedback(world.deps, { status: 'open' }, { limit: 10 })).items).toHaveLength(3)
   })
 
-  it('rejects feedback about something that does not exist', async () => {
-    const { world } = await reported()
+  it('answers not found for a target that is missing or not publicly visible [spec: feedback/public-target]', async () => {
+    const { world, entry, sense } = await publishedBank()
+    const { sense: hiddenSense, fact: hiddenGloss } = await createSense(world.deps, agentA, {
+      entry_id: entry.id,
+      pos: 'verb',
+      gloss: 'tilt an aircraft',
+    })
+    const { fact: pendingExample } = await submitFact(world.deps, agentA, {
+      kind: 'example',
+      subject_id: sense.id,
+      payload: { text: 'We sat on the bank.' },
+    })
+    const { fact: exampleOfHidden } = await submitFact(world.deps, agentA, {
+      kind: 'example',
+      subject_id: hiddenSense.id,
+      payload: { text: 'The pilot banked left.' },
+    })
+    expect(await reviewFact(world.deps, exampleOfHidden.id)).toBe('published')
+    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    expect(await reviewFact(world.deps, hiddenGloss.id)).toBe('rejected')
+    const { entry: draft } = await createEntry(world.deps, agentA, { lemma: 'shore' })
+
+    const targets = [
+      { target_type: 'fact', target_id: '00000000-0000-4000-8000-0000000000ff' },
+      { target_type: 'sense', target_id: '00000000-0000-4000-8000-0000000000ff' },
+      { target_type: 'entry', target_id: draft.id },
+      { target_type: 'sense', target_id: hiddenSense.id },
+      { target_type: 'fact', target_id: hiddenGloss.id },
+      { target_type: 'fact', target_id: pendingExample.id },
+      { target_type: 'fact', target_id: exampleOfHidden.id },
+    ] as const
+    for (const target of targets) {
+      await expect(submitFeedback(world.deps, client, { ...target, message: 'x' })).rejects.toMatchObject({
+        code: 'not_found',
+      })
+    }
+    expect(world.feedback).toEqual([])
+  })
+
+  it('refuses a client that used up its allowance and still serves others', async () => {
+    const { world, entry } = await publishedBank()
+    world.limitedClients.add(client)
     await expect(
-      submitFeedback(world.deps, {
-        target_type: 'fact',
-        target_id: '00000000-0000-4000-8000-0000000000ff',
-        message: 'x',
-      }),
-    ).rejects.toMatchObject({ code: 'invalid_reference' })
+      submitFeedback(world.deps, client, { target_type: 'entry', target_id: entry.id, message: 'x' }),
+    ).rejects.toMatchObject({ code: 'rate_limited', status: 429 })
+    await expect(
+      submitFeedback(world.deps, '198.51.100.1', { target_type: 'entry', target_id: entry.id, message: 'x' }),
+    ).resolves.toMatchObject({ status: 'open' })
   })
 })
 

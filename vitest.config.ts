@@ -109,6 +109,7 @@ export default defineConfig({
               compatibilityFlags: ['nodejs_compat'],
               d1Databases: ['DB'],
               queueProducers: { REVIEW_QUEUE: 'vocnet-reviews' },
+              ratelimits: { FEEDBACK_RATE_LIMITER: { simple: { limit: 10, period: 60 } } },
               bindings: {
                 ADMIN_SUBJECTS: 'admin-1, admin-2',
                 MODEL_BASE_URL: 'https://models.test',

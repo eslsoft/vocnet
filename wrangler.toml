@@ -32,3 +32,12 @@ crons = ["*/10 * * * *"]
 
 [observability]
 enabled = true
+
+# Public feedback: 10 reports per client address per minute.
+[[ratelimits]]
+name = "FEEDBACK_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

@@ -58,8 +58,14 @@ const postFeedback = createRoute({
   path: '/feedback',
   tags: ['Feedback'],
   summary: 'Report a problem with an entry, a sense, or a fact',
+  description: 'The target must be publicly visible. Each client address may report 10 times a minute.',
   request: { body: jsonBody(submitFeedbackInputSchema) },
-  responses: { 201: json(feedbackReceiptSchema, 'Feedback recorded.'), 400: errorResponse, 422: errorResponse },
+  responses: {
+    201: json(feedbackReceiptSchema, 'Feedback recorded.'),
+    400: errorResponse,
+    404: errorResponse,
+    429: errorResponse,
+  },
 })
 
 export const publicRoutes = createRouter()
@@ -72,6 +78,8 @@ export const publicRoutes = createRouter()
   .openapi(getForm, async (c) => c.json({ items: await lookupForm(c.get('deps'), c.req.valid('param').form) }, 200))
   .openapi(getSense, async (c) => c.json(await getPublicSense(c.get('deps'), c.req.valid('param').id), 200))
   .openapi(postFeedback, async (c) => {
-    const item = await submitFeedback(c.get('deps'), c.req.valid('json'))
+    const client = c.req.header('cf-connecting-ip')
+    if (!client) throw new Error('CF-Connecting-IP is missing; the Worker must run behind Cloudflare.')
+    const item = await submitFeedback(c.get('deps'), client, c.req.valid('json'))
     return c.json({ id: item.id, status: item.status }, 201)
   })

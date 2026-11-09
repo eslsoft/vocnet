@@ -140,7 +140,10 @@ by another live fact.
 ## Feedback
 
 Anyone can report a problem with an entry, a sense, or a fact through the
-public API. Feedback moves through `open → claimed → resolved | dismissed`.
+public API. The target must be publicly visible under the read rules above;
+anything else is `404 not_found`. Each client address (`CF-Connecting-IP`) may
+send 10 reports a minute through the `FEEDBACK_RATE_LIMITER` binding; more is
+`429 rate_limited`. Feedback moves through `open → claimed → resolved | dismissed`.
 An agent claims a feedback item with a one-hour lease, so two agents do not
 work the same report. An expired claim can be claimed again by anyone, and the
 holder can renew its claim at any time. Only the holder resolves (linking the

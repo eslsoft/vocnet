@@ -1,3 +1,5 @@
+import { projectPublicEntry, projectPublicSense, publicFactIds } from '@server/domain/catalog-view'
+import { factKinds } from '@server/domain/fact-kinds'
 import { claim, claimDecision, close, closeDecision, type FeedbackRecord, isClosed } from '@server/domain/feedback'
 import { principalRef } from '@server/domain/principal'
 import type { EntryId, FactId, SenseId } from '@shared/facts'
@@ -9,25 +11,50 @@ import type {
   SubmitFeedbackInput,
 } from '@shared/feedback'
 import type { Deps } from './deps'
-import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
+import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError, RateLimitedError } from './errors'
 import type { Actor } from './facts'
 import type { PageRequest } from './ports'
 
 type LookupDeps = Pick<Deps, 'nodes' | 'facts'>
 
-const targetExists: { [T in FeedbackTargetType]: (deps: LookupDeps, id: string) => Promise<boolean> } = {
-  entry: async (deps, id) => (await deps.nodes.findEntry(id as EntryId)) !== null,
-  sense: async (deps, id) => (await deps.nodes.findSense(id as SenseId)) !== null,
-  fact: async (deps, id) => (await deps.facts.find(id as FactId)) !== null,
+async function publicEntryOf(deps: LookupDeps, id: EntryId) {
+  const entry = await deps.nodes.findEntry(id)
+  return entry && projectPublicEntry(await deps.nodes.loadEntrySnapshot(entry))
 }
 
-/** Anyone may report a problem with an entry, a sense, or a fact. */
+async function entryIdOf(deps: LookupDeps, subjectType: 'entry' | 'sense', subjectId: string): Promise<EntryId | null> {
+  if (subjectType === 'entry') return subjectId as EntryId
+  return (await deps.nodes.findSense(subjectId as SenseId))?.entryId ?? null
+}
+
+// Feedback follows the public read rules: only what the public API shows can be reported.
+const targetIsPublic: { [T in FeedbackTargetType]: (deps: LookupDeps, id: string) => Promise<boolean> } = {
+  entry: async (deps, id) => (await publicEntryOf(deps, id as EntryId)) !== null,
+  sense: async (deps, id) => {
+    const sense = await deps.nodes.findSense(id as SenseId)
+    const entry = sense && (await deps.nodes.findEntry(sense.entryId))
+    return entry !== null && projectPublicSense(await deps.nodes.loadEntrySnapshot(entry), id as SenseId) !== null
+  },
+  fact: async (deps, id) => {
+    const fact = await deps.facts.find(id as FactId)
+    if (fact?.status !== 'published') return false
+    const entryId = await entryIdOf(deps, factKinds[fact.kind].subject, fact.subjectId)
+    const view = entryId && (await publicEntryOf(deps, entryId))
+    return view !== null && publicFactIds(view).has(fact.id)
+  },
+}
+
+/** Anyone may report a problem with a public entry, sense, or fact, a few times a minute per client. */
 export async function submitFeedback(
-  deps: Pick<Deps, 'nodes' | 'facts' | 'feedback' | 'clock' | 'ids'>,
+  deps: Pick<Deps, 'nodes' | 'facts' | 'feedback' | 'feedbackLimiter' | 'clock' | 'ids'>,
+  client: string,
   input: SubmitFeedbackInput,
 ): Promise<FeedbackRecord> {
-  if (!(await targetExists[input.target_type](deps, input.target_id))) {
-    throw new InvalidReferenceError(`${input.target_type} ${input.target_id} does not exist.`)
+  if (!(await deps.feedbackLimiter.allow(client))) {
+    throw new RateLimitedError('Too much feedback from this address; try again in a minute.')
+  }
+  if (!(await targetIsPublic[input.target_type](deps, input.target_id))) {
+    throw new NotFoundError(`No public ${input.target_type} ${input.target_id}.`)
   }
   const now = deps.clock.now().toISOString()
   const item: FeedbackRecord = {

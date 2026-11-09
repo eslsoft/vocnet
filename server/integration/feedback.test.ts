@@ -1,18 +1,25 @@
 import { createEntryResultSchema } from '@shared/catalog'
 import { feedbackPageSchema, feedbackReceiptSchema, feedbackSchema } from '@shared/feedback'
 import { apiErrorSchema } from '@shared/types'
-import { describe, expect, it } from 'vitest'
-import { call, issueAgentKey } from './helpers'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
+
+const from = (ip: string) => ({ 'cf-connecting-ip': ip })
 
 describe('feedback', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('takes public reports and leases each one to a single agent [spec: feedback/lease-api]', async () => {
     const first = await issueAgentKey('first')
     const second = await issueAgentKey('second')
     const { entry, fact } = createEntryResultSchema.parse(
       (await call('/manage/v1/entries', { method: 'POST', token: first, json: { lemma: 'tide' } })).body,
     )
+    stubReviewers()
+    await deliverPendingReviews()
     const report = await call('/v1/feedback', {
       method: 'POST',
+      headers: from('203.0.113.1'),
       json: { target_type: 'entry', target_id: entry.id, message: 'Missing the verb sense.' },
     })
     expect(report.status).toBe(201)
@@ -47,11 +54,43 @@ describe('feedback', () => {
     })
   })
 
-  it('rejects reports about things that do not exist', async () => {
-    const { status } = await call('/v1/feedback', {
-      method: 'POST',
-      json: { target_type: 'sense', target_id: '00000000-0000-4000-8000-000000000000', message: 'x' },
-    })
-    expect(status).toBe(422)
+  it('answers 404 for a target the public API does not show', async () => {
+    const token = await issueAgentKey()
+    const { entry } = createEntryResultSchema.parse(
+      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'cove' } })).body,
+    )
+    for (const target of [
+      { target_type: 'sense', target_id: '00000000-0000-4000-8000-000000000000' },
+      { target_type: 'entry', target_id: entry.id },
+    ]) {
+      const { status, body } = await call('/v1/feedback', {
+        method: 'POST',
+        headers: from('203.0.113.2'),
+        json: { ...target, message: 'x' },
+      })
+      expect([status, apiErrorSchema.parse(body).error.code]).toEqual([404, 'not_found'])
+    }
+  })
+
+  it('limits each client address to 10 reports a minute [spec: feedback/rate-limit]', async () => {
+    const token = await issueAgentKey()
+    const { entry } = createEntryResultSchema.parse(
+      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'bay' } })).body,
+    )
+    stubReviewers()
+    await deliverPendingReviews()
+    const report = (ip: string) =>
+      call('/v1/feedback', {
+        method: 'POST',
+        headers: from(ip),
+        json: { target_type: 'entry', target_id: entry.id, message: 'x' },
+      })
+
+    const statuses = []
+    for (let attempt = 0; attempt < 10; attempt += 1) statuses.push((await report('198.51.100.9')).status)
+    expect(statuses).toEqual(Array(10).fill(201))
+    const limited = await report('198.51.100.9')
+    expect([limited.status, apiErrorSchema.parse(limited.body).error.code]).toEqual([429, 'rate_limited'])
+    expect((await report('198.51.100.10')).status).toBe(201)
   })
 })
