@@ -194,6 +194,16 @@ export function createNodeRepo(db: Db): NodeRepo {
       return { sense: toSense(stored.sense), fact: toFact(stored.fact) }
     },
 
+    async listLiveGlosses(entryId) {
+      const rows = await db
+        .select({ sense: senses, fact: facts })
+        .from(senses)
+        .innerJoin(facts, and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id), liveStatus))
+        .where(eq(senses.entryId, entryId))
+        .orderBy(asc(senses.createdAt), asc(senses.id), asc(facts.createdAt), asc(facts.id))
+      return rows.map((row) => ({ sense: toSense(row.sense), fact: toFact(row.fact) as FactOf<'sense'> }))
+    },
+
     async loadEntrySnapshot(entry) {
       const own = sensesOf(entry.id)
       const outgoingTargets = db

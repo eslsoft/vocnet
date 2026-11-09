@@ -27,7 +27,7 @@ describe('claimWork', () => {
     const { world, entries } = await worldWith(['bank', 'shore', 'tide', 'cove', 'reef'])
     const [, shore, tide] = entries
     await retractFact(world.deps, agentA, shore.fact.id)
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    world.failReviews()
     expect(await reviewFact(world.deps, tide.fact.id, 'trace')).toBe('rejected')
     const claimAt = async (minute: number) => {
       world.setNow(`2026-01-01T00:${String(minute).padStart(2, '0')}:00.000Z`)

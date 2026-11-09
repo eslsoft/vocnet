@@ -36,6 +36,8 @@ export interface FakeWorld {
   setNow(iso: string): void
   answerJev(answer: (questions: Record<string, string>) => JevAnswers | Promise<JevAnswers>): void
   answerLlm(answer: () => LlmJudgement | Promise<LlmJudgement>): void
+  /** Every reviewer of every chain fails what it is asked. */
+  failReviews(): void
 }
 
 export function fakeWorld(): FakeWorld {
@@ -78,6 +80,13 @@ export function fakeWorld(): FakeWorld {
     },
     answerLlm: (answer) => {
       llmAnswer = answer
+    },
+    failReviews: () => {
+      jevAnswer = (questions) => ({
+        model: 'jev-test',
+        answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.05])),
+      })
+      llmAnswer = () => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'Wrong.' })
     },
   }
 
@@ -129,6 +138,16 @@ export function fakeWorld(): FakeWorld {
       }
       return null
     },
+    listLiveGlosses: async (entryId) =>
+      world.senses
+        .filter((sense) => sense.entryId === entryId)
+        .flatMap((sense) =>
+          world.facts
+            .filter(
+              (fact): fact is FactOf<'sense'> => fact.kind === 'sense' && fact.subjectId === sense.id && live(fact),
+            )
+            .map((fact) => ({ sense, fact })),
+        ),
     insertSenseWithFact: async (sense, fact) => {
       const existing = world.senses.find(
         (candidate) =>
@@ -251,7 +270,7 @@ export function fakeWorld(): FakeWorld {
         } as Fact
         const dependsOnNode = (candidate: Fact) =>
           revalidate !== undefined &&
-          candidate.status === 'published' &&
+          live(candidate) &&
           revalidate.kinds.includes(candidate.kind) &&
           (candidate.subjectId === revalidate.nodeId || candidate.objectId === revalidate.nodeId)
         const retired = world.facts.map((candidate): Fact => {
@@ -270,7 +289,7 @@ export function fakeWorld(): FakeWorld {
       },
       listRevalidating: async (nodeId) =>
         world.facts
-          .filter((fact) => fact.status === 'published' && fact.revalidateSince !== null)
+          .filter((fact) => live(fact) && fact.revalidateSince !== null)
           .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId)
           .map((fact) => fact.id),
       listStuckBefore: async (cutoff, limit) =>

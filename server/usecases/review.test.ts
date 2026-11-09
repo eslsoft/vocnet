@@ -40,17 +40,65 @@ describe('reviewFact', () => {
     expect(world.jevCalls[0]?.state).toMatchObject({ fact: { id: entryFact.id, kind: 'entry' } })
   })
 
-  it('publishes an uncertain review with its low confidence', async () => {
+  it('settles on a Jev pass without asking the LLM [spec: facts/second-opinion-chain]', async () => {
     const { world, gloss } = await bankWorld()
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.55 } }))
     await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('published')
-    expect((await getFact(world.deps, gloss.id)).review).toMatchObject({ verdict: 'uncertain', confidence: 0.55 })
+    expect(world.llmCalls).toHaveLength(0)
+    expect((await getFact(world.deps, gloss.id)).review).toMatchObject({ reviewer: 'jev', verdict: 'pass' })
   })
 
-  it('rejects a failing review', async () => {
+  it('publishes on the LLM second opinion when Jev fails, recording both opinions [spec: facts/second-opinion-chain]', async () => {
+    const { world, entry, gloss } = await bankWorld()
+    await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: 'an institution that keeps money' })
+    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.2 } }))
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.85, reason: 'A recorded sense.' }))
+    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('published')
+    expect(world.llmCalls[0]?.user).toContain('established noun sense meaning "land beside a river"')
+    expect(world.llmCalls[0]?.user).toContain('- (noun) "an institution that keeps money"')
+    const review = (await getFact(world.deps, gloss.id)).review
+    expect(review).toMatchObject({
+      reviewer: 'jev+llm',
+      model: 'jev-test+llm-test',
+      verdict: 'pass',
+      confidence: 0.85,
+      reason: 'Jev lexical=0.2 | A recorded sense.',
+      context: { subject: { siblings: [{ pos: 'noun', gloss: 'an institution that keeps money' }] } },
+      detail: {
+        opinions: [
+          { reviewer: 'jev', verdict: 'fail', confidence: 0.2, detail: { answers: { lexical: 0.2 } } },
+          { reviewer: 'llm', verdict: 'pass', confidence: 0.85, detail: { prompt: world.llmCalls[0] } },
+        ],
+      },
+    })
+  })
+
+  it('rejects when the LLM confirms a Jev failure [spec: facts/second-opinion-chain]', async () => {
     const { world, gloss } = await bankWorld()
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.1 } }))
+    world.failReviews()
     await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('rejected')
+    expect((await getFact(world.deps, gloss.id)).review).toMatchObject({ reviewer: 'jev+llm', verdict: 'fail' })
+  })
+
+  it('publishes as uncertain when Jev and the LLM are both unsure [spec: facts/second-opinion-chain]', async () => {
+    const { world, gloss } = await bankWorld()
+    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.55 } }))
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'uncertain', confidence: 0.5, reason: 'Unsure.' }))
+    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('published')
+    expect((await getFact(world.deps, gloss.id)).review).toMatchObject({
+      reviewer: 'jev+llm',
+      verdict: 'uncertain',
+      confidence: 0.5,
+    })
+  })
+
+  it('leaves the fact pending when the second opinion cannot be reached [spec: facts/second-opinion-chain]', async () => {
+    const { world, gloss } = await bankWorld()
+    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.2 } }))
+    world.answerLlm(() => {
+      throw new ReviewerTransportError('Gateway down.')
+    })
+    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).rejects.toBeInstanceOf(ReviewerTransportError)
+    expect(await getFact(world.deps, gloss.id)).toMatchObject({ status: 'pending', review: null })
   })
 
   it('reviews judgment facts with the LLM against the current gloss', async () => {
@@ -79,15 +127,16 @@ describe('reviewFact', () => {
 
   it('rejects a meaning-dependent fact whose sense has no live gloss, without asking a reviewer', async () => {
     const { world, sense, gloss } = await bankWorld()
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.1 } }))
+    world.failReviews()
     await reviewFact(world.deps, gloss.id, 'trace-review')
+    const llmCalls = world.llmCalls.length
     const { fact } = await submitFact(world.deps, agentA, {
       kind: 'example',
       subject_id: sense.id,
       payload: { text: 'x' },
     })
     await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
-    expect(world.llmCalls).toHaveLength(0)
+    expect(world.llmCalls).toHaveLength(llmCalls)
     expect((await getFact(world.deps, fact.id)).review).toMatchObject({ model: 'none', verdict: 'fail' })
   })
 
@@ -153,14 +202,14 @@ describe('reviewFact', () => {
       supersedes_id: gloss.id,
       payload: { gloss: 'a kind of fish' },
     })
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    world.failReviews()
     await drain(world)
     expect((await getFact(world.deps, gloss.id)).status).toBe('published')
   })
 
   it('a re-reviewed rejected gloss cannot go live while another gloss holds the sense', async () => {
     const { world, sense, gloss } = await bankWorld()
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    world.failReviews()
     await drain(world)
     world.answerJev((questions) => ({
       model: 'jev-test',
@@ -288,6 +337,43 @@ describe('revalidation', () => {
       })
     }
     expect([world.llmCalls.length, world.jevCalls.length]).toEqual([llmCalls, jevCalls])
+  })
+
+  it('cannot publish a pending dependent against a gloss that a correction replaced mid-review [spec: facts/pending-dependent-current-gloss]', async () => {
+    const { world, sense, gloss } = await bankWorld()
+    await drain(world)
+    const { fact: example } = await submitFact(world.deps, agentA, {
+      kind: 'example',
+      subject_id: sense.id,
+      payload: { text: 'We sat on the bank.' },
+    })
+    const { fact: correction } = await submitFact(world.deps, agentA, {
+      kind: 'sense',
+      subject_id: sense.id,
+      supersedes_id: gloss.id,
+      payload: { gloss: 'the sloping land beside a river' },
+    })
+    world.queued.length = 0
+    world.answerLlm(async () => {
+      world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Fine.' }))
+      world.setNow('2026-01-01T00:05:00.000Z')
+      await reviewFact(world.deps, correction.id, 't')
+      return { model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Judged the old gloss.' }
+    })
+
+    await expect(reviewFact(world.deps, example.id, 't')).resolves.toBe('skipped')
+    expect(world.llmCalls[0]?.user).toContain('meaning "land beside a river"')
+    expect(await getFact(world.deps, example.id)).toMatchObject({
+      status: 'pending',
+      review: null,
+      revalidateSince: '2026-01-01T00:05:00.000Z',
+    })
+    expect(world.queued.map((job) => job.factId)).toEqual([example.id])
+
+    await drain(world)
+    const reviewed = await getFact(world.deps, example.id)
+    expect(reviewed).toMatchObject({ status: 'published', revalidateSince: null })
+    expect(reviewed.review?.context).toMatchObject({ subject: { gloss: 'the sloping land beside a river' } })
   })
 
   it('does not cascade when a gloss is retracted [spec: facts/retract-no-cascade]', async () => {

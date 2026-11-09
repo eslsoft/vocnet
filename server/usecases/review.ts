@@ -1,9 +1,10 @@
-import type { FactOf } from '@server/domain/fact'
+import { currentGloss, type FactOf } from '@server/domain/fact'
 import {
   factKinds,
   planReview,
   type ReviewContext,
   type ReviewRequest,
+  type SenseGloss,
   type SenseView,
   type SubjectTypeOf,
   type SubjectViews,
@@ -18,35 +19,32 @@ import {
   reviewEffects,
   reviewModeOf,
 } from '@server/domain/fact-lifecycle'
-import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, Verdict } from '@shared/facts'
+import type { SenseNode } from '@server/domain/nodes'
+import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/domain/review-chain'
+import type { EntryId, FactId, FactKind, ReviewerKind, SenseId } from '@shared/facts'
 import type { Deps } from './deps'
 
 type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'jev' | 'llm' | 'reviewQueue' | 'clock'>
 
-interface Judgement {
-  model: string
-  verdict: Verdict
-  confidence: number
-  reason: string
-  detail: Record<string, unknown>
-}
-
 const reviewers: {
-  [R in ReviewerKind]: (
-    deps: ReviewDeps,
-    request: ReviewRequest<R>,
-    state: Record<string, unknown>,
-  ) => Promise<Judgement>
+  [R in ReviewerKind]: (deps: ReviewDeps, request: ReviewRequest<R>, state: Record<string, unknown>) => Promise<Opinion>
 } = {
   jev: async (deps, { questions }, state) => {
     const { model, answers } = await deps.jev.ask(questions, state)
     const { verdict, confidence } = jevVerdict(answers)
     const scores = Object.entries(answers).map(([key, value]) => `${key}=${value}`)
-    return { model, verdict, confidence, reason: `Jev ${scores.join(', ')}`, detail: { answers, policy: JEV_POLICY } }
+    return {
+      reviewer: 'jev',
+      model,
+      verdict,
+      confidence,
+      reason: `Jev ${scores.join(', ')}`,
+      detail: { answers, policy: JEV_POLICY },
+    }
   },
   llm: async (deps, { prompt }) => {
     const judgement = await deps.llm.judge(prompt)
-    return { ...judgement, detail: { prompt } }
+    return { reviewer: 'llm', ...judgement, detail: { prompt } }
   },
 }
 
@@ -54,26 +52,65 @@ function runReviewer<R extends ReviewerKind>(
   deps: ReviewDeps,
   request: ReviewRequest<R>,
   state: Record<string, unknown>,
-): Promise<Judgement> {
+): Promise<Opinion> {
   return reviewers[request.reviewer](deps, request, state)
 }
 
-async function senseView(deps: ReviewDeps, id: SenseId): Promise<SenseView> {
+/** Asks each reviewer of the chain in turn until one settles the fact. */
+async function runChain(
+  deps: ReviewDeps,
+  requests: readonly ReviewRequest[],
+  state: Record<string, unknown>,
+): Promise<ChainVerdict> {
+  const opinions: Opinion[] = []
+  for (const request of requests) {
+    const opinion = await runReviewer(deps, request, state)
+    opinions.push(opinion)
+    if (settles(request.reviewer, opinion.verdict)) break
+  }
+  return chainVerdict(opinions as [Opinion, ...Opinion[]])
+}
+
+/** A sense with its current gloss and the current glosses of its entry's other senses. */
+async function senseContext(deps: ReviewDeps, id: SenseId): Promise<SubjectViews['sense']> {
   const sense = await deps.nodes.findSense(id)
   if (!sense) throw new Error(`Sense ${id} referenced by a fact does not exist.`)
-  const glosses = (await deps.facts.listLive('sense', id)) as FactOf<'sense'>[]
-  // The current gloss is the published one; until one publishes, the pending one under review.
-  const current = glosses.find((fact) => fact.status === 'published') ?? glosses[0]
-  return { lemma: sense.lemma, pos: sense.pos, gloss: current?.payload.gloss ?? null }
+  const senses = await entryGlosses(deps, sense.entryId)
+  return {
+    lemma: sense.lemma,
+    pos: sense.pos,
+    gloss: senses.find(({ senseId }) => senseId === id)?.gloss ?? null,
+    siblings: senses.filter(({ senseId }) => senseId !== id).map(({ pos, gloss }) => ({ pos, gloss })),
+  }
+}
+
+/** The current gloss of each glossed sense of an entry, in sense order. */
+async function entryGlosses(deps: ReviewDeps, entryId: EntryId): Promise<Array<SenseGloss & { senseId: SenseId }>> {
+  const bySense = new Map<SenseId, { sense: SenseNode; glosses: [FactOf<'sense'>, ...FactOf<'sense'>[]] }>()
+  for (const { sense, fact } of await deps.nodes.listLiveGlosses(entryId)) {
+    const group = bySense.get(sense.id)
+    bySense.set(sense.id, { sense, glosses: group ? [...group.glosses, fact] : [fact] })
+  }
+  return [...bySense.values()].map(({ sense, glosses }) => ({
+    senseId: sense.id,
+    pos: sense.pos,
+    gloss: currentGloss(glosses).payload.gloss,
+  }))
 }
 
 const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    return { lemma: entry.lemma }
+    const senses = await entryGlosses(deps, entry.id)
+    return { lemma: entry.lemma, senses: senses.map(({ pos, gloss }) => ({ pos, gloss })) }
   },
-  sense: (deps, id) => senseView(deps, id as SenseId),
+  sense: (deps, id) => senseContext(deps, id as SenseId),
+}
+
+async function targetView(deps: ReviewDeps, id: SenseId): Promise<SenseView> {
+  const { lemma, pos, gloss } = await senseContext(deps, id)
+  return { lemma, pos, gloss }
 }
 
 async function loadContext<K extends FactKind>(
@@ -85,28 +122,27 @@ async function loadContext<K extends FactKind>(
   const target = targetOf(fact.kind, fact.payload)
   return {
     subject: subject as SubjectViews[SubjectTypeOf[K]],
-    target: target ? await senseView(deps, target) : null,
+    target: target ? await targetView(deps, target) : null,
   }
 }
 
 async function judge<K extends FactKind>(
   deps: ReviewDeps,
   fact: FactOf<K>,
-): Promise<{ reviewer: ReviewerKind; finding: ReviewFinding; judgement: Judgement; context: ReviewContext }> {
+): Promise<{ finding: ReviewFinding; verdict: ChainVerdict; context: ReviewContext }> {
   const context = await loadContext(deps, fact)
   const plan = planReview(fact.kind, fact.payload, context)
-  const reviewer = factKinds[fact.kind].reviewer
   if (plan.kind === 'unreviewable') {
+    const [reviewer] = factKinds[fact.kind].chain
     return {
-      reviewer,
       context,
       finding: 'unreviewable',
-      judgement: { model: 'none', verdict: 'fail', confidence: 1, reason: plan.reason, detail: {} },
+      verdict: { reviewer, model: 'none', verdict: 'fail', confidence: 1, reason: plan.reason, detail: {} },
     }
   }
   const state = { fact: { id: fact.id, kind: fact.kind, payload: fact.payload }, context }
-  const judgement = await runReviewer(deps, plan.request, state)
-  return { reviewer, context, finding: judgement.verdict, judgement }
+  const verdict = await runChain(deps, plan.requests, state)
+  return { context, finding: verdict.verdict, verdict }
 }
 
 export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
@@ -114,16 +150,17 @@ export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
 /**
  * Reviews one pending fact, or revalidates one published fact whose gloss was corrected, and
  * records the decision. Idempotent: any other fact is skipped, and the status write is
- * conditional on the state the review read, so a duplicate delivery cannot change a decided
- * fact. When a correction publishes, the facts judged against the old version are marked and
- * enqueued for revalidation. Reviewer transport errors propagate so the queue retries.
+ * conditional on the status and revalidation mark the review read, so a duplicate delivery
+ * cannot change a decided fact and a review that read a superseded gloss cannot land. When a
+ * correction publishes, the live facts judged or about to be judged against the old version are
+ * marked and enqueued. Reviewer transport errors propagate so the queue retries.
  */
 export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string): Promise<ReviewOutcome> {
   const fact = await deps.facts.find(id)
   const mode = fact && reviewModeOf(fact)
   if (!fact || !mode) return 'skipped'
 
-  const { reviewer, finding, judgement, context } = await judge(deps, fact)
+  const { finding, verdict, context } = await judge(deps, fact)
   const event = decide(mode, finding)
   const { outcome, records } = reviewEffects[event]
   const at = deps.clock.now().toISOString()
@@ -135,21 +172,10 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     from,
     to,
     at,
-    review: records
-      ? {
-          reviewer,
-          model: judgement.model,
-          verdict: judgement.verdict,
-          confidence: judgement.confidence,
-          reason: judgement.reason,
-          context: { ...context },
-          detail: judgement.detail,
-          reviewed_at: at,
-        }
-      : undefined,
+    review: records ? { ...verdict, context: { ...context }, reviewed_at: at } : undefined,
     supersede,
     revalidate: dependents ? { nodeId: fact.subjectId, kinds: dependents } : undefined,
-    revalidateSince: fact.revalidateSince ?? undefined,
+    revalidateSince: fact.revalidateSince,
   })
   if (!applied) return 'skipped'
   if (dependents) {

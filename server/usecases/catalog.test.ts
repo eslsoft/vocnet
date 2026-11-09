@@ -78,7 +78,7 @@ describe('createSense', () => {
     const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
     const input = { entry_id: entry.id, pos: 'noun' as const, gloss: 'a kind of fish' }
     const created = await createSense(world.deps, agentA, input)
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    world.failReviews()
     await reviewAll(world)
 
     const again = await createSense(world.deps, agentA, input)

@@ -1,6 +1,7 @@
 Feature: Facts and review
   Every claim is one fact. Each fact is reviewed and published on its own, by Jev
-  when it is a checkable proposition and by a general LLM otherwise.
+  when it is a checkable proposition and by a general LLM otherwise. When Jev does
+  not pass a proposition, the LLM gives a second opinion that decides.
 
   @facts/review-flow @api
   Scenario: A submitted fact is reviewed through the queue and published
@@ -27,9 +28,55 @@ Feature: Facts and review
     Then the verdict is pass, fail, or uncertain, with the minimum answer as confidence
 
   @facts/reviewer-routing @domain
-  Scenario: Each kind has one reviewer
+  Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
-    Then entry, sense, form, and relation go to Jev and pronunciation, example, and translation go to the LLM
+    Then entry, sense, form, and relation go to Jev and then the LLM, and pronunciation, example, and translation go to the LLM
+
+  @facts/second-opinion @domain
+  Scenario: Only a Jev pass settles a proposition
+    Given a reviewer in a chain
+    When it answers pass, uncertain, or fail
+    Then Jev settles only a pass, and the LLM settles every verdict
+
+  @facts/second-opinion-chain @usecase
+  Scenario: The LLM second opinion decides what Jev does not pass
+    Given a pending proposition fact
+    When Jev passes it, or Jev fails or is unsure and the LLM passes, fails, or is unsure
+    Then a Jev pass publishes without asking the LLM, and otherwise the LLM verdict decides with its confidence
+    And the review names both reviewers and records both opinions
+    And an unreachable LLM leaves the fact pending for a retry
+
+  @facts/second-opinion-api @api
+  Scenario: The second opinion through the queue on a real database
+    Given Jev fails a submitted entry and the LLM passes it
+    When the queue consumer reviews it
+    Then the entry is published with reviewer jev+llm and both opinions
+
+  @facts/second-opinion-context @domain
+  Scenario: The second opinion sees the claim in context
+    Given an entry, sense, or form fact
+    When its second opinion is planned
+    Then the LLM prompt names the lemma, the part of speech, and the entry's other senses
+
+  @facts/second-opinion-relation-type @domain
+  Scenario: The second opinion fails a relation of the wrong type
+    Given a relation fact
+    When its second opinion is planned
+    Then the LLM is asked whether the claim holds and its type is the most accurate one
+    And the rubric says substitutable senses are synonyms, hypernyms are strict kind-of links between nouns or verbs with informative heads, and part_of is a real constituent
+
+  @facts/hypernym-question @domain
+  Scenario: Jev's hypernym question rules out synonymy and generic heads
+    Given a hypernym relation fact
+    When its Jev question is planned
+    Then the question says mutual substitutability is synonymy, hypernymy holds only between nouns or verbs, and a generic head does not count
+
+  @facts/translation-rubric @domain
+  Scenario: Translations are judged as a bilingual dictionary would
+    Given a translation fact
+    When its review is planned
+    Then the rubric accepts verb-like or descriptive renderings of function words and bracketed usage notes
+    And rejects a wrong meaning, a different sense, unnatural wording, or equivalents of unrelated senses
 
   @facts/form-word-class @domain
   Scenario: A form is judged in the word class it inflects
@@ -103,6 +150,19 @@ Feature: Facts and review
     Given a sense with published examples, translations, and relations in both directions
     When a correction of its gloss publishes
     Then each of those facts is marked and enqueued for revalidation, stays published and public meanwhile, and is reviewed against the new gloss
+
+  @facts/pending-dependent-current-gloss @usecase
+  Scenario: A pending dependent cannot publish against a replaced gloss
+    Given a pending example whose review read a gloss
+    When a correction of that gloss publishes before the example's review is written
+    Then the example's review is discarded, the example stays pending, marked, and enqueued
+    And its next review reads the corrected gloss
+
+  @facts/pending-dependent-api @api
+  Scenario: A pending dependent is re-reviewed against the corrected gloss on a real database
+    Given a pending example and a pending correction of its gloss
+    When the correction publishes while the example is under review
+    Then the example stays pending, and the next delivery publishes it judged against the corrected gloss
 
   @facts/revalidation-outcome @domain
   Scenario: Revalidation unpublishes only on failure

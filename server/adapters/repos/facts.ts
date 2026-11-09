@@ -1,7 +1,7 @@
 import { facts } from '@server/db/schema'
 import type { FactRepo } from '@server/usecases/ports'
 import { type FactId, factKindSchema, factStatusSchema } from '@shared/facts'
-import { and, asc, count, desc, eq, exists, inArray, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
@@ -60,7 +60,11 @@ export function createFactRepo(db: Db): FactRepo {
           and(
             eq(facts.id, id),
             inArray(facts.status, [...from]),
-            revalidateSince ? eq(facts.revalidateSince, revalidateSince) : undefined,
+            revalidateSince === undefined
+              ? undefined
+              : revalidateSince === null
+                ? isNull(facts.revalidateSince)
+                : eq(facts.revalidateSince, revalidateSince),
           ),
         )
         .returning({ id: facts.id })
@@ -73,7 +77,7 @@ export function createFactRepo(db: Db): FactRepo {
       }
 
       // One batch, correction last before the worklist sync: the original leaves `published` and
-      // its dependents are marked only while this correction is still pending, so a duplicate
+      // its live dependents are marked only while this correction is still pending, so a duplicate
       // delivery changes nothing and the correction never enters `published` beside the original.
       const correction = alias(facts, 'correction')
       const stillPending = exists(
@@ -95,7 +99,7 @@ export function createFactRepo(db: Db): FactRepo {
               .set({ revalidateSince: at })
               .where(
                 and(
-                  eq(facts.status, 'published'),
+                  liveStatus,
                   inArray(facts.kind, [...revalidate.kinds]),
                   or(eq(facts.subjectId, revalidate.nodeId), eq(facts.objectId, revalidate.nodeId)),
                   stillPending,
@@ -113,7 +117,7 @@ export function createFactRepo(db: Db): FactRepo {
         .from(facts)
         .where(
           and(
-            eq(facts.status, 'published'),
+            liveStatus,
             isNotNull(facts.revalidateSince),
             or(eq(facts.subjectId, nodeId), eq(facts.objectId, nodeId)),
           ),

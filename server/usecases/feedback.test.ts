@@ -56,7 +56,7 @@ describe('submitFeedback', () => {
       payload: { text: 'The pilot banked left.' },
     })
     expect(await reviewFact(world.deps, exampleOfHidden.id, 'trace-review')).toBe('published')
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    world.failReviews()
     expect(await reviewFact(world.deps, hiddenGloss.id, 'trace-review')).toBe('rejected')
     const { entry: draft } = await createEntry(world.deps, agentA, { lemma: 'shore' })
 
