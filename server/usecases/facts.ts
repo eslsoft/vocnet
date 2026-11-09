@@ -73,7 +73,7 @@ export async function submitFact(
 }
 
 async function assertSupersedable(
-  deps: SubmitDeps,
+  deps: Pick<Deps, 'facts'>,
   supersedesId: FactId,
   kind: FactKind,
   subjectId: EntryId | SenseId,
@@ -115,7 +115,8 @@ export async function retractFact(deps: Pick<Deps, 'facts' | 'clock'>, actor: Ac
 
 /**
  * Sends a decided fact back through review. Pending facts are simply re-enqueued. The reset
- * conflicts when it would make a second live fact with the same content or in an exclusive slot.
+ * conflicts when it would make a second live fact with the same content or in an exclusive slot,
+ * or when a rejected correction's original is no longer published to be superseded.
  */
 export async function rereviewFact(
   deps: Pick<Deps, 'facts' | 'reviewQueue' | 'clock'>,
@@ -125,6 +126,10 @@ export async function rereviewFact(
   const fact = await getFact(deps, id)
   if (fact.status !== 'pending') {
     if (!canApply('rereview', fact.status)) throw new ConflictError(`A ${fact.status} fact cannot be re-reviewed.`)
+    // A published correction already took its original's place; a rejected one must still find it published.
+    if (fact.status === 'rejected' && fact.supersedesId) {
+      await assertSupersedable(deps, fact.supersedesId, fact.kind, fact.subjectId)
+    }
     const { from, to } = factTransitions.rereview
     const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString() })
     if (!applied) throw new ConflictError('The fact changed while it was being reset.')

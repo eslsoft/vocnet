@@ -139,6 +139,12 @@ Feature: Facts and review
     When an admin re-reviews the gloss or the rejected example
     Then each answers 409 conflict and nothing changes
 
+  @facts/rereview-orphaned-correction @api
+  Scenario: A rejected correction cannot come back once its original is gone
+    Given a published gloss, a rejected correction of it, and a second correction that published
+    When an admin re-reviews the rejected correction
+    Then it answers 409 conflict, the correction stays rejected, and the live gloss can still be corrected
+
   @facts/manage-api @api
   Scenario: Fact management over HTTP
     Given an agent's fact

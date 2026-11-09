@@ -132,8 +132,12 @@ An author can retract its own pending or published fact; admins can retract
 any. An admin can re-review a published or rejected fact: it returns to
 `pending` and is enqueued, unless that would make a second live fact with the
 same content or in the same exclusive slot. Re-reviewing a published gloss
-while its correction is pending, or a rejected fact whose place another live
-fact took, answers `409 conflict`.
+while its correction is pending, a rejected fact whose place another live
+fact took, or a rejected correction whose original is no longer published
+(another correction superseded it, or it was retracted), answers
+`409 conflict`. The last check needs no lock: a rival correction is pending
+before it publishes, and while it is pending the one-pending index refuses the
+reset.
 
 ### Reviews
 

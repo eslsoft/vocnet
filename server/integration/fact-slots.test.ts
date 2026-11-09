@@ -130,6 +130,35 @@ describe('exclusive fact slots', () => {
     expect((await factOf(rejected.id)).status).toBe('rejected')
   })
 
+  it('refuses to re-review a rejected correction whose original another correction superseded [spec: facts/rereview-orphaned-correction]', async () => {
+    const { token, sense, gloss, correct } = await publishedRiverBank()
+    const rejected = factWriteResultSchema.parse((await correct('a kind of fish')).body).fact
+    stubReviewers(0.1)
+    await deliverPendingReviews()
+    vi.restoreAllMocks()
+    const winner = factWriteResultSchema.parse((await correct('sloping land beside a river')).body).fact
+    stubReviewers()
+    await deliverPendingReviews()
+    vi.restoreAllMocks()
+    expect((await factOf(gloss.id)).status).toBe('superseded')
+
+    const reset = await call(`/manage/v1/facts/${rejected.id}/rereview`, { method: 'POST', token: await adminToken() })
+    expect([reset.status, codeOf(reset.body)]).toEqual([409, 'conflict'])
+    expect((await factOf(rejected.id)).status).toBe('rejected')
+
+    const next = await call('/manage/v1/facts', {
+      method: 'POST',
+      token,
+      json: {
+        kind: 'sense',
+        subject_id: sense.id,
+        supersedes_id: winner.id,
+        payload: { gloss: 'the edge of a river' },
+      },
+    })
+    expect(next.status).toBe(201)
+  })
+
   it('creates one sense from two concurrent identical requests [spec: catalog/create-sense-race]', async () => {
     const token = await issueAgentKey()
     const { entry } = createEntryResultSchema.parse(
