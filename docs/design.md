@@ -207,13 +207,25 @@ lease keeps two agents off the same entry.
 `{ lease, entry, gaps }`: the lease (`id`, `entry_id`, `lemma`, `holder`,
 `expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
 returns, and the entry's gaps. It answers `204` when no entry is free. A free
-entry has a live `entry` fact and no unexpired lease. Among free entries the
-least recently claimed comes first: never-claimed entries, then by
-`claimed_at`, then by creation time and id. Every claim sets `claimed_at`, so
-an entry moves to the back whether or not its work completes. An agent that
-crashes on one entry does not get that entry again until every other entry
-had its turn. An entry with no gaps is still served in turn, so agents can
-enrich it.
+entry has a live `entry` fact and no unexpired lease. Free entries come in
+three ranks, and within a rank by `claimed_at`, then creation time and id:
+
+| Rank | Entries                  | Why                                                        |
+| ---- | ------------------------ | ---------------------------------------------------------- |
+| 0    | Claimed exactly once     | Their second pass: per-sense gaps appear once senses exist |
+| 1    | Never claimed            | Oldest first, since `claimed_at` is null                   |
+| 2    | Claimed two or more times | Normal rotation, least recently claimed first            |
+
+One claim is one pass, and a first pass mostly adds senses, so an entry's
+relations, examples, and translations show up as gaps only on its next claim.
+Rank 0 gives each entry that second pass right after the first, instead of
+after every other entry had a first pass. The rank comes from the claim count,
+not from open gaps, so an entry whose gaps no agent can fill (a function word
+with no relations) gets one second pass and then rotates like the rest. Every
+claim sets `claimed_at` and increments `claim_count`, so an entry moves to the
+back of its rank whether or not its work completes. An agent that crashes on
+one entry twice does not get that entry again until every other entry had its
+turn. An entry with no gaps is still served in turn, so agents can enrich it.
 
 `worklist` holds one row per entry, written in the same batch as the entry:
 
@@ -222,19 +234,23 @@ enrich it.
 | `entry_id`, `created_at`                          | The entry and its creation time                            |
 | `live`                                            | The entry fact is pending or published                     |
 | `claimed_at`                                      | When the entry was last claimed; null until the first claim |
+| `claim_count`                                     | How many times the entry was claimed                       |
+| `claim_rank`                                      | Generated from `claim_count`: 1 → 0, 0 → 1, more → 2       |
 | `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
 | `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
 
 Every fact insert or status change rewrites `live` for its subject in the same
 batch, so `live` always equals "the entry fact is live". The claim is one
-`UPDATE … WHERE entry_id = (SELECT … ORDER BY claimed_at, created_at, entry_id
-LIMIT 1) RETURNING` statement that picks the entry, writes the lease, and stamps
-`claimed_at`. The index `(live, claimed_at, created_at, entry_id)` gives that
-order without a sort. Held leases have the newest `claimed_at`, so they sit at
-the end of the index and the scan stops at the first row, whatever the table
-size. D1 runs statements one at a time, so two concurrent claims never get the
-same entry, and a claim takes over a lease only once it has expired. Work state
-lives in this table, not on the `entries` node, which keeps identity only.
+`UPDATE … WHERE entry_id = (SELECT … ORDER BY claim_rank, claimed_at,
+created_at, entry_id LIMIT 1) RETURNING` statement that picks the entry, writes
+the lease, stamps `claimed_at`, and increments `claim_count`. The index `(live,
+claim_rank, claimed_at, created_at, entry_id)` gives that order without a sort.
+Held leases have the newest `claimed_at` of their rank, so they sit at the end
+of it, and the scan passes at most one row per held lease before a free row,
+whatever the table size. D1 runs statements one at a time, so two concurrent
+claims never get the same entry, and a claim takes over a lease only once it
+has expired. Work state lives in this table, not on the `entries` node, which
+keeps identity only.
 
 Gaps are computed on read by a pure registry in `server/domain/work.ts` from
 the entry's live (pending or published) facts:

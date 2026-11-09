@@ -89,8 +89,10 @@ export const feedback = sqliteTable(
 )
 
 /**
- * One row per entry, created with it: the worklist serves the live entry claimed least recently.
- * `live` mirrors whether the entry fact is pending or published, so the claim order is one index.
+ * One row per entry, created with it. `live` mirrors whether the entry fact is pending or
+ * published, and `claim_rank` derives the claim tier from `claim_count`, so the claim order is one
+ * index: an entry's second pass (rank 0) comes before never-claimed entries (rank 1), which come
+ * before the rotation of everything else (rank 2).
  */
 export const worklist = sqliteTable(
   'worklist',
@@ -102,6 +104,10 @@ export const worklist = sqliteTable(
     live: integer('live', { mode: 'boolean' }).notNull(),
     /** Set by every claim, so an entry rotates to the back whether or not its work completes. */
     claimedAt: text('claimed_at'),
+    claimCount: integer('claim_count').notNull().default(0),
+    claimRank: integer('claim_rank').generatedAlwaysAs(sql`case claim_count when 1 then 0 when 0 then 1 else 2 end`, {
+      mode: 'virtual',
+    }),
     leaseId: text('lease_id').unique(),
     leaseHolder: text('lease_holder'),
     leaseExpiresAt: text('lease_expires_at'),
@@ -110,7 +116,7 @@ export const worklist = sqliteTable(
     lastNote: text('last_note'),
   },
   (table) => [
-    index('worklist_claim_order_idx').on(table.live, table.claimedAt, table.createdAt, table.entryId),
+    index('worklist_claim_order_idx').on(table.live, table.claimRank, table.claimedAt, table.createdAt, table.entryId),
     check(
       'worklist_lease_whole',
       sql`(${table.leaseId} is null) = (${table.leaseHolder} is null) and (${table.leaseId} is null) = (${table.leaseExpiresAt} is null)`,
