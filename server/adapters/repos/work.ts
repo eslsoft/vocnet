@@ -31,6 +31,7 @@ export function insertWorklistRow(db: Db, entryId: string) {
           live: sql`0`.as('live'),
           claimedAt: sql`null`.as('claimed_at'),
           claimCount: sql`0`.as('claim_count'),
+          seed: sql`0`.as('seed'),
           leaseId: sql`null`.as('lease_id'),
           leaseHolder: sql`null`.as('lease_holder'),
           leaseExpiresAt: sql`null`.as('lease_expires_at'),
@@ -97,6 +98,10 @@ export function createWorkRepo(db: Db): WorkRepo {
       const entry = await db.select().from(entries).where(eq(entries.id, row.entryId)).get()
       if (!entry) throw new Error(`Leased entry ${row.entryId} does not exist.`)
       return { lease: toLease(row as LeasedRow), entry: toEntry(entry) }
+    },
+
+    async markSeed(entryId) {
+      await db.update(worklist).set({ seed: true }).where(eq(worklist.entryId, entryId))
     },
 
     async findLease(id) {

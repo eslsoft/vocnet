@@ -208,13 +208,14 @@ lease keeps two agents off the same entry.
 `expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
 returns, and the entry's gaps. It answers `204` when no entry is free. A free
 entry has a live `entry` fact and no unexpired lease. Free entries come in
-three ranks, and within a rank by `claimed_at`, then creation time and id:
+four ranks, and within a rank by `claimed_at`, then creation time and id:
 
-| Rank | Entries                  | Why                                                        |
-| ---- | ------------------------ | ---------------------------------------------------------- |
-| 0    | Claimed exactly once     | Their second pass: per-sense gaps appear once senses exist |
-| 1    | Never claimed            | Oldest first, since `claimed_at` is null                   |
-| 2    | Claimed two or more times | Normal rotation, least recently claimed first            |
+| Rank | Entries                    | Why                                                        |
+| ---- | -------------------------- | ---------------------------------------------------------- |
+| 0    | Claimed exactly once       | Their second pass: per-sense gaps appear once senses exist |
+| 1    | Never claimed, seed        | The seed list finishes first, oldest first                 |
+| 2    | Never claimed, not seed    | Neighbors that relations created, oldest first             |
+| 3    | Claimed two or more times  | Normal rotation, least recently claimed first              |
 
 One claim is one pass, and a first pass mostly adds senses, so an entry's
 relations, examples, and translations show up as gaps only on its next claim.
@@ -227,6 +228,15 @@ back of its rank whether or not its work completes. An agent that crashes on
 one entry twice does not get that entry again until every other entry had its
 turn. An entry with no gaps is still served in turn, so agents can enrich it.
 
+A seed entry comes from a curated word list, such as the 850 Basic English
+words. `POST /manage/v1/entries` with `seed: true` marks the entry as a seed
+entry, whether the call creates it or it already exists. The mark only ever
+goes on: `seed: false` or no `seed` leaves it as it is, so a producer re-runs
+its seed list to mark entries that existed before. An agent that builds
+relations creates neighbor entries outside the list. Rank 2 holds them until
+every seed entry had its first pass, and each claimed entry still gets its
+second pass first.
+
 `worklist` holds one row per entry, written in the same batch as the entry:
 
 | Column                                            | Meaning                                                    |
@@ -235,7 +245,8 @@ turn. An entry with no gaps is still served in turn, so agents can enrich it.
 | `live`                                            | The entry fact is pending or published                     |
 | `claimed_at`                                      | When the entry was last claimed; null until the first claim |
 | `claim_count`                                     | How many times the entry was claimed                       |
-| `claim_rank`                                      | Generated from `claim_count`: 1 → 0, 0 → 1, more → 2       |
+| `seed`                                            | The entry was submitted as part of a seed list             |
+| `claim_rank`                                      | Generated: count 1 → 0, count 0 and seed → 1, count 0 → 2, more → 3 |
 | `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
 | `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
 

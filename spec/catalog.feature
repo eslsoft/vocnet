@@ -56,6 +56,12 @@ Feature: Catalog
     When it creates the same lemma again
     Then the existing entry and its live entry fact are returned and nothing new is enqueued
 
+  @catalog/create-entry-seed @usecase
+  Scenario: Creating an entry with seed marks it as a seed entry
+    Given entries created without seed
+    When an agent creates a new entry with seed true, creates an existing entry with seed true, and creates a seed entry again with seed false or without seed
+    Then both entries are seed entries and the repeated creates leave the mark as it was
+
   @catalog/create-sense @usecase
   Scenario: Creating a sense submits its gloss as a fact
     Given an entry

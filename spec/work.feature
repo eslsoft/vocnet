@@ -8,10 +8,16 @@ Feature: Worklist
     Then each missing senses, forms, or pronunciation is a gap, and each live sense without relations, examples, or a zh translation is a gap
 
   @work/claim-order @usecase
-  Scenario: An entry's second pass comes before never-claimed entries
-    Given entries claimed once, never claimed, claimed twice, and entries whose entry fact is rejected or retracted
+  Scenario: An entry's second pass comes before never-claimed entries, and seed entries before other new entries
+    Given entries claimed once, never-claimed seed entries, other never-claimed entries, entries claimed twice, and entries whose entry fact is rejected or retracted
     When an agent claims work
-    Then it gets an entry claimed once first, oldest claim first, then a never-claimed entry, oldest first, then the least recently claimed of the rest, and never a dead entry
+    Then it gets an entry claimed once first, oldest claim first, then a never-claimed seed entry, then another never-claimed entry, each oldest first, then the least recently claimed of the rest, and never a dead entry
+
+  @work/claim-seeds-first @api
+  Scenario: Seed entries are claimed before the entries outside the seed list
+    Given entries created without seed, one created with seed true, and one marked seed by a repeated create
+    When agents claim and complete work
+    Then each seed entry gets its first and second pass before any other never-claimed entry is claimed
 
   @work/claim-second-pass @api
   Scenario: An entry worked once is claimed again before never-claimed entries

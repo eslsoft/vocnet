@@ -1,6 +1,7 @@
 import { agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import type { EntryId, SenseId } from '@shared/facts'
+import type { WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import {
   createEntry,
@@ -16,6 +17,7 @@ import {
 } from './catalog'
 import { submitFact } from './facts'
 import { reviewFact } from './review'
+import { claimWork, completeWork } from './work'
 
 async function reviewAll(world: ReturnType<typeof fakeWorld>) {
   for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
@@ -33,6 +35,26 @@ describe('createEntry', () => {
     expect(again).toMatchObject({ created: false, entry: { id: first.entry.id }, fact: { id: first.fact.id } })
     expect(world.entries).toHaveLength(1)
     expect(world.queued).toHaveLength(1)
+  })
+
+  it('marks a new or existing entry as a seed entry and never unmarks it [spec: catalog/create-entry-seed]', async () => {
+    const world = fakeWorld()
+    for (const lemma of ['bank', 'cove']) await createEntry(world.deps, agentA, { lemma })
+    const tide = await createEntry(world.deps, agentA, { lemma: 'tide', seed: true })
+    expect(tide.created).toBe(true)
+    const cove = await createEntry(world.deps, agentA, { lemma: 'cove', seed: true })
+    expect(cove).toMatchObject({ created: false, fact: { kind: 'entry' } })
+    await createEntry(world.deps, agentA, { lemma: 'tide', seed: false })
+    await createEntry(world.deps, agentA, { lemma: 'tide' })
+
+    const lemmas = []
+    for (let minute = 1; minute <= 5; minute++) {
+      world.setNow(`2026-01-01T00:0${minute}:00.000Z`)
+      const claim = await claimWork(world.deps, agentA)
+      await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
+      lemmas.push(claim?.lease.lemma)
+    }
+    expect(lemmas).toEqual(['cove', 'cove', 'tide', 'tide', 'bank'])
   })
 })
 
