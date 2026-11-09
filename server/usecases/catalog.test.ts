@@ -210,6 +210,7 @@ describe('management reads', () => {
       payload: { type: 'synonym', target_sense_id: b.sense.id },
     })
     const view = await getManagedEntry(world.deps, 'big')
+    expect(view.seed).toBe(false)
     expect(view.senses).toHaveLength(2)
     expect(view.facts.map((fact) => fact.kind).sort()).toEqual(['entry', 'relation', 'sense', 'sense'])
     expect(view.facts.every((fact) => fact.status === 'pending')).toBe(true)

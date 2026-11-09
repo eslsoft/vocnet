@@ -119,6 +119,7 @@ export const senseNodeSchema = z
 export const managedEntrySchema = z
   .object({
     entry: entryNodeSchema,
+    seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
     senses: z.array(senseNodeSchema),
     facts: z
       .array(factSchema)

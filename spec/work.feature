@@ -5,7 +5,19 @@ Feature: Worklist
   Scenario: A claim names what the entry lacks
     Given an entry and its facts in every status
     When the gaps are computed from its pending and published facts
-    Then each missing senses, forms, or pronunciation is a gap, and each live sense without relations, examples, or a zh translation is a gap
+    Then each missing senses, forms, or pronunciation is a gap, and each live sense with fewer than two relations, or without examples or a zh translation, is a gap
+
+  @work/relations-gap @domain
+  Scenario: A relations gap stays open until the sense has two relations
+    Given a live sense with no, one, or two live relations, as subject or object
+    When the gaps are computed
+    Then the sense has a relations gap while it has fewer than two, and the gap counts them and names each type and direction it already has
+
+  @work/entry-seed @api
+  Scenario: The entry view says whether the entry is a seed entry
+    Given an entry created without seed and one created with seed true
+    When an agent reads either entry or claims it
+    Then the management view and the claim say seed false for the first and seed true for the second
 
   @work/claim-order @usecase
   Scenario: An entry's second pass comes before never-claimed entries, and seed entries before other new entries

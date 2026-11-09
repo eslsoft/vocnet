@@ -294,7 +294,9 @@ lease keeps two agents off the same entry.
 900) leases one entry to the caller and returns
 `{ lease, entry, gaps }`: the lease (`id`, `entry_id`, `lemma`, `holder`,
 `expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
-returns, and the entry's gaps. It answers `204` when no entry is free. A free
+returns, and the entry's gaps. The management view carries `seed`, so an agent
+reads the seed mark from the server instead of keeping its own copy of the
+list. It answers `204` when no entry is free. A free
 entry has a live `entry` fact and no unexpired lease. Free entries come in
 four ranks, and within a rank by `claimed_at`, then creation time and id:
 
@@ -352,18 +354,28 @@ has expired. Work state lives in this table, not on the `entries` node, which
 keeps identity only.
 
 Gaps are computed on read by a pure registry in `server/domain/work.ts` from
-the entry's live (pending or published) facts:
+the entry's live (pending or published) facts. Each rule names how many live
+facts close its gap:
 
 | Gap                                      | Open while                                              |
 | ---------------------------------------- | ------------------------------------------------------- |
 | `{ type: "senses" }`                     | No sense has a live gloss                               |
 | `{ type: "forms" }`                      | No live form                                            |
 | `{ type: "pronunciation" }`              | No live pronunciation                                   |
-| `{ type: "relations", sense_id }`        | The sense is in no live relation, as subject or object  |
+| `{ type: "relations", sense_id, count, have }` | The sense is in fewer than two live relations, as subject or object |
 | `{ type: "examples", sense_id }`         | The sense has no live example                           |
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` or `zh-*` translation |
 
 Per-sense gaps apply to each sense whose gloss is live.
+
+Relations are the core of the dictionary, and a sense with one neighbor is a
+leaf, so the relations gap stays open until the sense has two. `count` is the
+number of live relations the sense is in. `have` lists each relation type and
+direction it already has once, as `{ type, direction }` with the direction of
+the public `Relation` (`outgoing` when the sense is the subject). An agent
+looks for the types it does not have yet instead of finding the same kind of
+neighbor again. Two is the bar for the gap, not a quota: an agent submits a
+relation only where one holds, and a function word can keep its gap.
 
 `POST /manage/v1/work/{lease_id}/complete` (body `{ note? }`, up to 500
 characters) records `last_worked_at`, the holder, and the note, and clears the

@@ -65,13 +65,13 @@ describe('entryGaps', () => {
     ]
     expect(entryGaps({ senses: [glossed, rejected], facts, incoming: [] })).toEqual([
       { type: 'pronunciation' },
-      { type: 'relations', sense_id: glossed.id },
+      { type: 'relations', sense_id: glossed.id, count: 0, have: [] },
       { type: 'examples', sense_id: glossed.id },
       { type: 'translations', sense_id: glossed.id, language: 'zh' },
     ])
   })
 
-  it('closes sense gaps with live examples, zh translations, and relations in either direction', () => {
+  it('closes sense gaps with live examples, zh translations, and two relations in either direction', () => {
     const subject = sense()
     const object = sense()
     const elsewhere = id<SenseId>()
@@ -81,6 +81,8 @@ describe('entryGaps', () => {
       fact('form', entryId, { form: 'banks', type: 'plural' }),
       fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'us' }),
       fact('relation', subject.id, { type: 'synonym', target_sense_id: elsewhere }),
+      fact('relation', subject.id, { type: 'hypernym', target_sense_id: id<SenseId>() }, 'pending'),
+      fact('relation', object.id, { type: 'part_of', target_sense_id: id<SenseId>() }),
       fact('example', subject.id, { text: 'We sat on the bank.' }),
       fact('example', object.id, { text: 'Retracted.' }, 'retracted'),
       fact('translation', subject.id, { language: 'zh-Hans', text: '河岸' }),
@@ -90,6 +92,30 @@ describe('entryGaps', () => {
     expect(entryGaps({ senses: [subject, object], facts, incoming })).toEqual([
       { type: 'examples', sense_id: object.id },
     ])
+  })
+
+  it('keeps a relations gap open below two live relations and names the types and directions it has [spec: work/relations-gap]', () => {
+    const focus = sense()
+    const [kind, whole, part] = [id<SenseId>(), id<SenseId>(), id<SenseId>()]
+    const base: Fact[] = [
+      fact('sense', focus.id, { gloss: 'a branch of a tree' }),
+      fact('example', focus.id, { text: 'A bird sat on the bough.' }),
+      fact('translation', focus.id, { language: 'zh', text: '树枝' }),
+    ]
+    const relationGaps = (facts: Fact[], incoming: Fact[] = []) =>
+      entryGaps({ senses: [focus], facts: [...base, ...facts], incoming }).filter((gap) => gap.type === 'relations')
+
+    expect(relationGaps([])).toEqual([{ type: 'relations', sense_id: focus.id, count: 0, have: [] }])
+    const rejected = fact('relation', focus.id, { type: 'synonym', target_sense_id: kind }, 'rejected')
+    const partOf = fact('relation', focus.id, { type: 'part_of', target_sense_id: whole })
+    expect(relationGaps([rejected, partOf])).toEqual([
+      { type: 'relations', sense_id: focus.id, count: 1, have: [{ type: 'part_of', direction: 'outgoing' }] },
+    ])
+    const twig = [fact('relation', part, { type: 'part_of', target_sense_id: focus.id }, 'pending')]
+    expect(relationGaps([rejected], twig)).toEqual([
+      { type: 'relations', sense_id: focus.id, count: 1, have: [{ type: 'part_of', direction: 'incoming' }] },
+    ])
+    expect(relationGaps([partOf], twig)).toEqual([])
   })
 })
 
