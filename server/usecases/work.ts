@@ -1,7 +1,7 @@
 import { type ManagedEntryView, managedEntryView } from '@server/domain/catalog-view'
 import { principalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
-import { completeDecision, entryGaps, leaseExpiry, type WorkLease } from '@server/domain/work'
+import { completeDecision, entryGaps, leaseExpiry, revisitAfterPass, type WorkLease } from '@server/domain/work'
 import type { EntryId } from '@shared/facts'
 import { type CompleteWorkInput, DEFAULT_LEASE_SECONDS, type Gap, type WorkLeaseId } from '@shared/work'
 import type { Deps } from './deps'
@@ -31,9 +31,12 @@ export async function claimWork(
   return { lease: { ...lease, lemma: entry.lemma }, entry: managedEntryView(snapshot), gaps: entryGaps(snapshot) }
 }
 
-/** The holder records its work and gives the entry back. The lease is gone afterwards, so a repeat is not found. */
+/**
+ * The holder records its work and gives the entry back, marked for a revisit when the pass added
+ * facts and left gaps open. The lease is gone afterwards, so a repeat is not found.
+ */
 export async function completeWork(
-  deps: Pick<Deps, 'work' | 'clock'>,
+  deps: Pick<Deps, 'work' | 'nodes' | 'clock'>,
   actor: Actor,
   id: WorkLeaseId,
   input: CompleteWorkInput,
@@ -44,8 +47,11 @@ export async function completeWork(
   const decision = completeDecision(lease, principalRef(actor.principal), now)
   if (decision === 'not_holder') throw new ConflictError(`Work lease ${id} is held by ${lease.holder}.`)
   if (decision === 'expired') throw new ConflictError(`Work lease ${id} expired at ${lease.expiresAt}.`)
+  const entry = await deps.nodes.findEntry(lease.entryId)
+  if (!entry) throw new Error(`Leased entry ${lease.entryId} does not exist.`)
+  const revisit = revisitAfterPass(await deps.nodes.loadEntrySnapshot(entry), lease)
   const at = now.toISOString()
-  if (!(await deps.work.complete(lease, at, input.note ?? null))) {
+  if (!(await deps.work.complete(lease, at, { note: input.note ?? null, revisit }))) {
     throw new ConflictError(`Work lease ${id} changed concurrently; claim again.`)
   }
   return { entryId: lease.entryId, lastWorkedAt: at }

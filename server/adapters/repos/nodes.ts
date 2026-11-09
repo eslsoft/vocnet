@@ -22,7 +22,7 @@ import {
 } from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, liveStatus, page, toEntry, toFact, toSense } from './rows'
-import { insertWorklistRow } from './work'
+import { insertWorklistRow, revisitEntryOfSense } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
 const entryCursor = z.object({ lemma: z.string() })
@@ -182,6 +182,7 @@ export function createNodeRepo(db: Db): NodeRepo {
           .values({ ...sense, creationKey })
           .onConflictDoNothing(),
         db.insert(facts).select(db.select(values).from(senses).where(eq(senses.id, sense.id)) as never),
+        revisitEntryOfSense(db, sense),
       ])
       const stored = await db
         .select({ sense: senses, fact: facts })

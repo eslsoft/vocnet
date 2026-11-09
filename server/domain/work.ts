@@ -9,8 +9,22 @@ export interface WorkLease {
   id: WorkLeaseId
   entryId: EntryId
   holder: PrincipalRef
+  /** When this lease's claim was made, which starts the pass. */
+  claimedAt: string
+  /** Claims in a row that took the entry ahead of the rotation, this one included. */
+  revisitStreak: number
   expiresAt: string
 }
+
+/**
+ * How many claims in a row an entry can take ahead of the rotation. Only a claim from the rotation
+ * resets the streak, so an entry costs at most this many extra claims before every never-claimed
+ * entry outside the seed list is reached, whatever its passes or reviews do.
+ */
+export const MAX_REVISIT_STREAK = 3
+
+/** Whether anything may still mark the entry to revisit after this claim. */
+export const canRevisit = (revisitStreak: number) => revisitStreak < MAX_REVISIT_STREAK
 
 export function leaseExpiry(now: Date, leaseSeconds: number): string {
   return new Date(now.getTime() + leaseSeconds * 1000).toISOString()
@@ -93,4 +107,33 @@ export function entryGaps(snapshot: Pick<EntrySnapshot, 'senses' | 'facts' | 'in
     }),
   )
   return [...entry, ...senses]
+}
+
+const gapKey = (gap: Gap) => `${gap.type}:${'sense_id' in gap ? gap.sense_id : ''}`
+const gapFill = (gap: Gap) => (gap.type === 'relations' ? gap.count : 0)
+
+/**
+ * Whether a finished pass earns the entry a revisit ahead of the rotation: the streak allows it, gaps
+ * are still open, and the holder's facts since the claim closed a gap that was open without them or
+ * raised its count. Facts that fill no open gap, such as another example where one exists, and gaps
+ * the pass itself opened, such as a new sense's, are not progress: a pass that only adds those, or
+ * nothing, as on a function word whose relations gap no agent can fill, would do the same next time.
+ */
+export function revisitAfterPass(
+  snapshot: Pick<EntrySnapshot, 'senses' | 'facts' | 'incoming'>,
+  pass: Pick<WorkLease, 'holder' | 'claimedAt' | 'revisitStreak'>,
+): boolean {
+  if (!canRevisit(pass.revisitStreak)) return false
+  const after = new Map(entryGaps(snapshot).map((gap) => [gapKey(gap), gap]))
+  if (after.size === 0) return false
+  const before = (fact: Fact) => fact.author !== pass.holder || fact.createdAt < pass.claimedAt
+  const open = entryGaps({
+    senses: snapshot.senses,
+    facts: snapshot.facts.filter(before),
+    incoming: snapshot.incoming.filter(before),
+  })
+  return open.some((gap) => {
+    const now = after.get(gapKey(gap))
+    return now === undefined || gapFill(now) > gapFill(gap)
+  })
 }

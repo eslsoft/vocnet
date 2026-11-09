@@ -318,34 +318,92 @@ returns, and the entry's gaps. The management view carries `seed`, so an agent
 reads the seed mark from the server instead of keeping its own copy of the
 list. It answers `204` when no entry is free. A free
 entry has a live `entry` fact and no unexpired lease. Free entries come in
-four ranks, and within a rank by `claimed_at`, then creation time and id:
+six ranks, and within a rank by `claimed_at`, then creation time and id:
 
-| Rank | Entries                    | Why                                                        |
-| ---- | -------------------------- | ---------------------------------------------------------- |
-| 0    | Claimed exactly once       | Their second pass: per-sense gaps appear once senses exist |
-| 1    | Never claimed, seed        | The seed list finishes first, oldest first                 |
-| 2    | Never claimed, not seed    | Neighbors that relations created, oldest first             |
-| 3    | Claimed two or more times  | Normal rotation, least recently claimed first              |
+| Rank | Entries                              | Why                                                        |
+| ---- | ------------------------------------ | ---------------------------------------------------------- |
+| 0    | Claimed exactly once                 | Their second pass: per-sense gaps appear once senses exist |
+| 1    | Never claimed, seed                  | The seed list gets its first pass first, oldest first      |
+| 2    | Claimed more, seed, to revisit       | Seed entries with work left come before expansion          |
+| 3    | Never claimed, not seed              | Neighbors that relations created, oldest first             |
+| 4    | Claimed more, not seed, to revisit   | Other entries with work left                               |
+| 5    | Claimed more, not to revisit         | Normal rotation, least recently claimed first              |
 
 One claim is one pass, and a first pass mostly adds senses, so an entry's
 relations, examples, and translations show up as gaps only on its next claim.
 Rank 0 gives each entry that second pass right after the first, instead of
-after every other entry had a first pass. The rank comes from the claim count,
-not from open gaps, so an entry whose gaps no agent can fill (a function word
-with no relations) gets one second pass and then rotates like the rest. Every
-claim sets `claimed_at` and increments `claim_count`, so an entry moves to the
-back of its rank whether or not its work completes. An agent that crashes on
-one entry twice does not get that entry again until every other entry had its
-turn. An entry with no gaps is still served in turn, so agents can enrich it.
+after every other entry had a first pass. After that, an entry is *to revisit*
+while the work it still needs is likely to get done: seed entries with that
+work come before any expansion, and other entries with it before the rotation
+of finished ones. A finished entry rotating back costs a claim and adds
+nothing.
+
+`revisit` is decided when a pass completes, by `revisitAfterPass` in
+`server/domain/work.ts`: the pass made progress, gaps are still open, and the
+streak below allows it. Progress means the holder's facts since the claim (as
+subject, or a relation pointing at one of its senses) closed a gap that was
+open without them, or raised its count, as a relation does for a relations gap
+it does not close yet. Facts no open gap needed, such as another example where
+one exists, and the gaps the pass opened itself, such as a new sense's, are not
+progress. A pass without progress is not repeated ahead of the rotation,
+because the next one would do the same: a function word whose relations gap no
+agent can fill gets its passes in the rotation like the rest, and the
+never-claimed entries outside the seed list are not held back behind it.
+Every claim clears `revisit`, so a pass whose lease lapses leaves the entry in
+the rotation: an agent that crashes on one entry twice does not get that entry
+again until every other entry had its turn. Every claim sets `claimed_at` and
+increments `claim_count`, so an entry moves to the back of its rank whether or
+not its work completes. An entry with no gaps is still served in turn, so
+agents can enrich it.
+
+A finished entry can have new gaps later, and then it is marked to revisit
+again without waiting for a pass:
+
+- A fact is rejected or retracted: the batch that writes the status marks the
+  entries that own its subject and its object, so a rejected relation reopens
+  both ends. A rejection after a revalidation is the same write. The mark is
+  conditional on the fact now having that status and update time, so a
+  repeated delivery whose write matched nothing marks nothing.
+- A sense is created: the batch that inserts the sense marks its entry, since
+  the new gloss opens that sense's relations, examples, and translations gaps.
+  This covers neighbor senses that another entry's pass creates. A sense the
+  entry's own lease holder adds is part of its pass, which the completion
+  judges.
+
+A mark can land while the entry is leased, so the completion keeps it:
+`revisit` becomes the mark or the completion's decision, never false over a
+mark. Reviews that publish change nothing here: a pending fact already counted
+as filling its gap. A correction that publishes supersedes the original but
+keeps its slot filled, and the dependents it sends to revalidation mark their
+entries if they fail.
+
+**The revisit streak bounds all of this.** `revisit_streak` counts the claims
+in a row that took the entry to revisit (ranks 2 and 4); any other claim
+resets it to 0. Neither a mark nor a completion sets `revisit` once the streak
+has reached `MAX_REVISIT_STREAK` (3) in `server/domain/work.ts`. So between two
+claims from the rotation an entry takes at most three claims ahead of it,
+whatever its passes and reviews do. Two loops need this bound. A relation that
+review rejects is submitted again on the next pass: submissions dedupe only
+against live facts, so the pass counts as progress, and the rejection marks the
+entry again. And another agent can keep giving the entry senses. A gap that
+closes does not reset the streak, since the rejection loop closes its gap with
+each pending resubmission. An entry whose streak is used up waits in the
+rotation, and its next claim from there reports the reopened gaps. Rank 5 is
+claimed only when ranks 0 to 4 are empty, so until then each entry costs at
+most its two first passes plus three revisits before a never-claimed entry
+outside the seed list. The migration `worklist_revisit_backfill` marked every
+entry that had an open gap, computed in SQL by the same rules as `entryGaps`,
+since no pass had recorded its progress yet; the next completed pass of each
+decides.
 
 A seed entry comes from a curated word list, such as the 850 Basic English
 words. `POST /manage/v1/entries` with `seed: true` marks the entry as a seed
 entry, whether the call creates it or it already exists. The mark only ever
 goes on: `seed: false` or no `seed` leaves it as it is, so a producer re-runs
 its seed list to mark entries that existed before. An agent that builds
-relations creates neighbor entries outside the list. Rank 2 holds them until
-every seed entry had its first pass, and each claimed entry still gets its
-second pass first.
+relations creates neighbor entries outside the list. Rank 3 holds them until
+every seed entry had its first pass and no seed entry is left to revisit, and
+each claimed entry still gets its second pass first.
 
 `worklist` holds one row per entry, written in the same batch as the entry:
 
@@ -356,7 +414,9 @@ second pass first.
 | `claimed_at`                                      | When the entry was last claimed; null until the first claim |
 | `claim_count`                                     | How many times the entry was claimed                       |
 | `seed`                                            | The entry was submitted as part of a seed list             |
-| `claim_rank`                                      | Generated: count 1 → 0, count 0 and seed → 1, count 0 → 2, more → 3 |
+| `revisit`                                         | Serve the entry ahead of the rotation; cleared by every claim |
+| `revisit_streak`                                  | Claims in a row taken to revisit; any other claim resets it  |
+| `claim_rank`                                      | Generated: count 1 → 0; count 0: seed → 1, else 3; more and `revisit`: seed → 2, else 4; else 5 |
 | `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
 | `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
 
@@ -364,7 +424,8 @@ Every fact insert or status change rewrites `live` for its subject in the same
 batch, so `live` always equals "the entry fact is live". The claim is one
 `UPDATE … WHERE entry_id = (SELECT … ORDER BY claim_rank, claimed_at,
 created_at, entry_id LIMIT 1) RETURNING` statement that picks the entry, writes
-the lease, stamps `claimed_at`, and increments `claim_count`. The index `(live,
+the lease, stamps `claimed_at`, increments `claim_count`, counts
+`revisit_streak`, and clears `revisit`. The index `(live,
 claim_rank, claimed_at, created_at, entry_id)` gives that order without a sort.
 Held leases have the newest `claimed_at` of their rank, so they sit at the end
 of it, and the scan passes at most one row per held lease before a free row,
@@ -398,8 +459,9 @@ neighbor again. Two is the bar for the gap, not a quota: an agent submits a
 relation only where one holds, and a function word can keep its gap.
 
 `POST /manage/v1/work/{lease_id}/complete` (body `{ note? }`, up to 500
-characters) records `last_worked_at`, the holder, and the note, and clears the
-lease in one statement. Only the holder completes, and only before
+characters) records `last_worked_at`, the holder, the note, and `revisit` (kept
+if a mark landed during the lease), and
+clears the lease in one statement. Only the holder completes, and only before
 `expires_at`: another principal or an expired lease answers `409 conflict`. A
 lease that is gone answers `404 not_found`, so completing the same lease twice
 is a 404, and so is completing a lease after another agent reclaimed the

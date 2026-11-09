@@ -1,0 +1,3 @@
+ALTER TABLE `worklist` DROP COLUMN `claim_rank`;--> statement-breakpoint
+ALTER TABLE `worklist` ADD `claim_rank` integer GENERATED ALWAYS AS (case when claim_count = 1 then 0 when claim_count = 0 then 3 - 2 * seed when revisit then 4 - 2 * seed else 5 end) VIRTUAL;--> statement-breakpoint
+CREATE INDEX `worklist_claim_order_idx` ON `worklist` (`live`,`claim_rank`,`claimed_at`,`created_at`,`entry_id`);

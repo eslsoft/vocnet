@@ -20,10 +20,46 @@ Feature: Worklist
     Then the management view and the claim say seed false for the first and seed true for the second
 
   @work/claim-order @usecase
-  Scenario: An entry's second pass comes before never-claimed entries, and seed entries before other new entries
-    Given entries claimed once, never-claimed seed entries, other never-claimed entries, entries claimed twice, and entries whose entry fact is rejected or retracted
+  Scenario: An entry's second pass comes first, then seed entries with work left, then other entries with work left, then the rest
+    Given entries claimed once, never-claimed seed entries, other never-claimed entries, entries claimed twice with and without a revisit, and entries whose entry fact is rejected or retracted
     When an agent claims work
-    Then it gets an entry claimed once first, oldest claim first, then a never-claimed seed entry, then another never-claimed entry, each oldest first, then the least recently claimed of the rest, and never a dead entry
+    Then it gets an entry claimed once first, oldest claim first, then a never-claimed seed entry, then a seed entry to revisit, then another never-claimed entry, then another entry to revisit, then the least recently claimed of the rest, and never a dead entry
+
+  @work/revisit @domain
+  Scenario: A pass that made progress on its gaps and left some open earns a revisit, within the streak
+    Given an entry's facts after a pass, and how many claims in a row took it to revisit
+    When the pass is judged
+    Then the entry is revisited only if the streak is not used up, a gap is still open, and the holder's facts since the claim closed or raised the count of a gap that was open without them
+
+  @work/revisit-bound @usecase
+  Scenario: No loop keeps an entry ahead of never-claimed entries outside the seed list
+    Given a seed entry whose every pass adds an example where one exists, or a relation that review rejects, or during which another agent gives it a sense
+    When agents claim and complete work
+    Then the entry is claimed at most its two first passes plus the revisit streak before a never-claimed entry outside the seed list
+
+  @work/revisit-streak @api
+  Scenario: A relation that review keeps rejecting stops bringing its entry back after the streak
+    Given a seed entry whose every pass submits the same relation, rejected during the lease
+    When agents claim and complete work
+    Then the entry is claimed for its two first passes and the revisit streak, and then the never-claimed entry outside the seed list is claimed
+
+  @work/revisit-marks @api
+  Scenario: A mark set during a lease survives the completion, and a write that changed nothing marks nothing
+    Given another agent gives an entry a sense during a pass that adds nothing, and a rejection is written a second time for a fact already rejected
+    When the pass completes and the repeated write runs
+    Then the entry is still to revisit, and the repeated write marks neither end of the fact
+
+  @work/claim-revisit @api
+  Scenario: Seed entries a pass added to and left open come before never-claimed entries outside the seed list
+    Given seed and other entries, where some second passes add a sense and the others add nothing
+    When agents claim and complete work
+    Then a seed entry left open comes back before any never-claimed other entry, another entry left open comes back after them, and entries whose pass added nothing wait for the rotation
+
+  @work/claim-revisit-reopen @api
+  Scenario: A finished entry comes back ahead of the rotation when it can have new gaps
+    Given entries in the rotation, one with a fact retracted, two linked by a relation that review rejects, and one given a new sense by another agent
+    When agents claim work
+    Then each of those entries is claimed before the entry that nothing changed
 
   @work/claim-seeds-first @api
   Scenario: Seed entries are claimed before the entries outside the seed list
