@@ -259,7 +259,8 @@ review's job. Its content key is each part's role, form, and meaning in order.
 as *make a decision*. `pattern` is `verb_noun`, `adjective_noun`, `noun_noun`,
 `adverb_adjective`, `verb_adverb`, `verb_preposition`, `noun_preposition`,
 `adjective_preposition`, or `phrase`. Its text must contain the lemma, or the
-form of one of the entry's live `form` facts, as whole words; otherwise it is
+form of one of the entry's live `form` facts, as whole words, case-insensitively
+and with a typographic apostrophe (’) matching a straight one; otherwise it is
 `422 invalid_reference`, and the message tells the agent to use the word or one
 of its recorded forms. A sense holds at most five live collocations
 (`maxLive` in the registry): a sixth is `409 conflict`, a resubmission of a live
@@ -272,7 +273,10 @@ The payload rules against the subject are the registry's `admit` hook, which
 `subjectPos` cannot express because they read the payload: when a kind has one,
 the submission loads what the rule reads (the lemma, a sense's part of speech, and
 the entry's live forms) and runs it after the content-key dedupe, so
-resubmitting a live fact still returns it.
+resubmitting a live fact still returns it. Re-reviewing a rejected fact runs the
+same rule against the subject as it is then, because a live form the fact relied
+on may have been retracted or rejected since: a fact that no longer fits answers
+the same `422 invalid_reference` and stays rejected.
 
 The public entry (`GET /v1/entries/{lemma}`) shows its published word formation
 as `morphology`, and each public sense (also `GET /v1/senses/{id}`) its

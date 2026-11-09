@@ -328,6 +328,41 @@ describe('rereviewFact', () => {
     await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'conflict' })
   })
 
+  it('refuses to revive a fact that no longer fits its subject [spec: facts/rereview-admits]', async () => {
+    const { world, entry, river } = await bankWorld()
+    const { fact: form } = await submitFact(world.deps, agentA, {
+      kind: 'form',
+      subject_id: entry.id,
+      payload: { form: 'banks', type: 'plural' },
+    })
+    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'collocation',
+      subject_id: river.id,
+      payload: { text: 'steep banks', pattern: 'adjective_noun' },
+    })
+    await reviewFact(world.deps, fact.id, 'trace-review')
+    await retractFact(world.deps, agentA, form.id)
+    await expect(rereviewFact(world.deps, admin, fact.id)).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: 'A collocation contains the word: "steep banks" has neither "bank" nor one of its live forms.',
+    })
+    await expect(getFact(world.deps, fact.id)).resolves.toMatchObject({ status: 'rejected' })
+  })
+
+  it('fails loudly when a revived fact has lost its subject', async () => {
+    const { world, river } = await bankWorld()
+    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'collocation',
+      subject_id: river.id,
+      payload: { text: 'steep bank', pattern: 'adjective_noun' },
+    })
+    await reviewFact(world.deps, fact.id, 'trace-review')
+    world.deps.nodes.findSense = async () => null
+    await expect(rereviewFact(world.deps, admin, fact.id)).rejects.toThrow(`which does not exist`)
+  })
+
   it('lets a rejected fact go back to review when its slot is free', async () => {
     const { world, river } = await bankWorld()
     world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))

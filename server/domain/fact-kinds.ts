@@ -632,9 +632,11 @@ const collocationPatterns: Record<CollocationPattern, string> = {
   phrase: 'a fixed phrase built around the word ("in the long run")',
 }
 
+/** Lowercase words between single spaces; a typographic apostrophe is the straight one. */
 const wordsOf = (text: string) =>
   ` ${text
     .toLowerCase()
+    .replaceAll('\u2019', "'")
     .replace(/[^\p{L}\p{N}'-]+/gu, ' ')
     .trim()} `
 

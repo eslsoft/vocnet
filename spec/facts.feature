@@ -406,6 +406,13 @@ Feature: Facts and review
     Given a collocation fact about a sense
     When it is submitted
     Then its text must contain the lemma or one of the entry's live forms as whole words, or it is an invalid reference
+    And a typographic apostrophe matches a straight one
+
+  @facts/rereview-admits @usecase
+  Scenario: A revived fact must still fit its subject
+    Given a rejected fact whose subject has since changed so that the payload no longer fits it, such as a collocation whose form was retracted
+    When an admin re-reviews it
+    Then it answers 422 invalid reference with the same reason a submission gets, and the fact stays rejected
 
   @facts/collocation-cap @usecase
   Scenario: A sense holds at most five live collocations

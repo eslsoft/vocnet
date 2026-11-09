@@ -603,6 +603,20 @@ describe('collocation facts', () => {
     expect(
       admissionOf(
         'collocation',
+        { text: 'the decision’s impact', pattern: 'phrase' },
+        { lemma: "decision's", pos: 'noun', forms: [] },
+      ),
+    ).toBeNull()
+    expect(
+      admissionOf(
+        'collocation',
+        { text: "the decision's impact", pattern: 'phrase' },
+        { lemma: 'decision’s', pos: 'noun', forms: [] },
+      ),
+    ).toBeNull()
+    expect(
+      admissionOf(
+        'collocation',
         { text: 'look after a child', pattern: 'phrase' },
         { lemma: 'look after', pos: 'verb', forms: [] },
       ),
