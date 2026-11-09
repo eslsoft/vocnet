@@ -6,7 +6,7 @@ import type {
   PublicSense,
   PublicSenseWithEntry,
 } from '@shared/catalog'
-import type { EntryId, FactKind, SenseId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, SenseId } from '@shared/facts'
 import { type Fact, type FactOf, isKind } from './fact'
 import type { EntryNode, SenseWithLemma } from './nodes'
 
@@ -124,4 +124,15 @@ export function projectPublicSense(snapshot: EntrySnapshot, senseId: SenseId): P
   const entry = projectPublicEntry(snapshot)
   const sense = entry?.senses.find((candidate) => candidate.id === senseId)
   return entry && sense ? { ...sense, entry: { id: entry.id, lemma: entry.lemma } } : null
+}
+
+/** Every fact a public entry view shows, so "is this fact public" has one answer. */
+export function publicFactIds(view: PublicEntry): Set<FactId> {
+  const senseFacts = view.senses.flatMap((sense) => [
+    sense.fact,
+    ...sense.examples,
+    ...sense.translations,
+    ...sense.relations,
+  ])
+  return new Set([view.fact, ...view.forms, ...view.pronunciations, ...senseFacts].map((fact) => fact.id))
 }

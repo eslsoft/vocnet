@@ -9,6 +9,7 @@ import type {
   JevReviewer,
   LlmReviewer,
   NodeRepo,
+  RateLimiter,
   ReviewQueue,
 } from './ports'
 
@@ -21,6 +22,8 @@ export interface Deps {
   jev: JevReviewer
   llm: LlmReviewer
   reviewQueue: ReviewQueue
+  /** Caps public feedback per client address. */
+  feedbackLimiter: RateLimiter
   authVerifier: AuthVerifier
   agentKeys: AgentKeyCrypto
   /** OIDC subjects allowed to act as admins. */

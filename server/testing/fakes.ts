@@ -21,6 +21,8 @@ export interface FakeWorld {
   feedback: FeedbackRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
   queued: ReviewJob[]
+  /** Client keys the feedback limiter refuses. */
+  limitedClients: Set<string>
   jevCalls: Array<{ questions: Record<string, string>; state: Record<string, unknown> }>
   llmCalls: Array<{ system: string; user: string }>
   setNow(iso: string): void
@@ -53,6 +55,7 @@ export function fakeWorld(): FakeWorld {
     feedback: [],
     agents: [],
     queued: [],
+    limitedClients: new Set(),
     jevCalls: [],
     llmCalls: [],
     setNow: (iso) => {
@@ -243,6 +246,9 @@ export function fakeWorld(): FakeWorld {
       enqueue: async (jobs) => {
         world.queued.push(...jobs)
       },
+    },
+    feedbackLimiter: {
+      allow: async (key) => !world.limitedClients.has(key),
     },
     authVerifier: {
       verify: async (token) => ({ sub: token.replace(/^oidc:/, ''), email: null, name: null }),

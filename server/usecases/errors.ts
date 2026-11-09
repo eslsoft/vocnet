@@ -1,6 +1,6 @@
 import type { ApiErrorCode } from '@shared/types'
 
-type ExpectedStatus = 400 | 401 | 403 | 404 | 409 | 422
+type ExpectedStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429
 
 /** A failure the caller caused and can act on. Carries a stable code. */
 export class ExpectedError extends Error {
@@ -59,5 +59,11 @@ export class ConflictError extends ExpectedError {
 export class InvalidReferenceError extends ExpectedError {
   constructor(message: string) {
     super('invalid_reference', 422, message)
+  }
+}
+
+export class RateLimitedError extends ExpectedError {
+  constructor(message: string) {
+    super('rate_limited', 429, message)
   }
 }

@@ -1,5 +1,6 @@
 import { webCryptoAgentKeys } from '@server/adapters/agent-keys'
 import { createAuthVerifier } from '@server/adapters/auth/verifier'
+import { createRateLimiter } from '@server/adapters/rate-limiter'
 import { createAgentRepo } from '@server/adapters/repos/agents'
 import { createFactRepo } from '@server/adapters/repos/facts'
 import { createFeedbackRepo } from '@server/adapters/repos/feedback'
@@ -26,6 +27,7 @@ export function createDeps(env: Env): Deps {
     jev: createJevReviewer({ ...review.gateway, model: review.jevModel }),
     llm: createLlmReviewer({ ...review.gateway, model: review.llmModel }),
     reviewQueue: createReviewQueue(env.REVIEW_QUEUE),
+    feedbackLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),
     authVerifier: createAuthVerifier(getAuthConfig(env)),
     agentKeys: webCryptoAgentKeys,
     adminSubjects: getAdminSubjects(env),

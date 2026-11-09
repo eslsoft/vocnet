@@ -140,7 +140,10 @@ by another live fact.
 ## Feedback
 
 Anyone can report a problem with an entry, a sense, or a fact through the
-public API. Feedback moves through `open → claimed → resolved | dismissed`.
+public API. The target must be publicly visible under the read rules above;
+anything else is `404 not_found`. Each client address (`CF-Connecting-IP`) may
+send 10 reports a minute through the `FEEDBACK_RATE_LIMITER` binding; more is
+`429 rate_limited`. Feedback moves through `open → claimed → resolved | dismissed`.
 An agent claims a feedback item with a one-hour lease, so two agents do not
 work the same report. An expired claim can be claimed again by anyone, and the
 holder can renew its claim at any time. Only the holder resolves (linking the
@@ -158,7 +161,9 @@ compare-and-set on a revision counter.
 
 Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. Agent keys are random
 secrets (`vn_agent_…`) that an admin issues. The Worker stores only their
-SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403.
+SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403. A
+bearer that is not a structurally valid JWT gets 401 before the Worker contacts
+the issuer; an unreachable issuer is a 500, not a bad credential.
 
 ## Console
 
@@ -187,7 +192,8 @@ console reads its public OIDC settings from `GET /configz`.
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
 - D1 stores nodes, facts, feedback, and agents.
-- A Cloudflare Queue carries `{ factId }` review jobs. Its consumer reviews.
+- A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
+  reviews and logs the trace ID.
 - A cron trigger re-enqueues facts whose last status change is more than ten
   minutes old and that are still `pending`, so a lost enqueue cannot strand a
   fact. It keys on `updated_at`, not `created_at`, so a re-reviewed fact counts

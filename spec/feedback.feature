@@ -3,9 +3,21 @@ Feature: Feedback
 
   @feedback/submit @usecase
   Scenario: Report a problem with an entry, a sense, or a fact
-    Given an existing entry, sense, or fact
+    Given a publicly visible entry, sense, or fact
     When anyone submits feedback about it
-    Then the feedback is open; feedback about something missing is rejected
+    Then the feedback is open
+
+  @feedback/public-target @usecase
+  Scenario: Only what the public API shows can be reported
+    Given an entry, sense, or fact that is missing or not publicly visible
+    When anyone submits feedback about it
+    Then the API answers 404 not_found and records nothing
+
+  @feedback/rate-limit @api
+  Scenario: Each client address may report a few times a minute
+    Given a client that sent 10 reports within a minute
+    When it sends another
+    Then the API answers 429 rate_limited, while another address is still served
 
   @feedback/claim-lease @usecase
   Scenario: A claim is a one-hour lease

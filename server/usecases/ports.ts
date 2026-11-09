@@ -128,6 +128,11 @@ export interface ReviewQueue {
   enqueue(jobs: ReviewJob[]): Promise<void>
 }
 
+export interface RateLimiter {
+  /** False when this key has used up its allowance for the current period. */
+  allow(key: string): Promise<boolean>
+}
+
 export interface AuthUser {
   sub: string
   email: string | null

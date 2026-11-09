@@ -44,11 +44,28 @@ describe('OIDC verifier', () => {
     await expect(verifier.verify(expired)).rejects.toBeInstanceOf(InvalidCredentialError)
   })
 
-  it('does not disguise provider failures as invalid credentials', async () => {
+  it('rejects a token that is not a JWT before contacting an unreachable issuer [spec: access/malformed-token]', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 503 }))
     const verifier = createAuthVerifier({ issuer: 'https://unavailable.test', clientId: 'client' })
 
-    await expect(verifier.verify('token')).rejects.toThrow('OIDC discovery failed: 503')
+    const malformed = ['garbage', 'a.b.c', `${btoa('{"alg":"ES256"}')}.${btoa('[]')}.sig`, `x.${btoa('{}')}.sig`]
+    for (const token of malformed) {
+      await expect(verifier.verify(token)).rejects.toBeInstanceOf(InvalidCredentialError)
+    }
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  it('does not disguise provider failures as invalid credentials', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 503 }))
+    const verifier = createAuthVerifier({ issuer: 'https://unavailable.test', clientId: 'client' })
+    const { privateKey } = await generateKeyPair('ES256')
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: 'ES256', kid: 'test' })
+      .setSubject('user-1')
+      .sign(privateKey)
+
+    await expect(verifier.verify(token)).rejects.toThrow('OIDC discovery failed: 503')
     fetchSpy.mockRestore()
   })
 })
