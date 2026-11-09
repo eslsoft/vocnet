@@ -16,7 +16,10 @@ const toLease = (row: LeasedRow): WorkLease => ({
   expiresAt: row.leaseExpiresAt,
 })
 
-/** Creates the entry's worklist row once the entry row exists; a repeat is a no-op. */
+/**
+ * Creates the entry's worklist row once the entry row exists; a repeat is a no-op. The select goes
+ * in as SQL because drizzle's builder check demands the generated `claim_rank` among the fields.
+ */
 export function insertWorklistRow(db: Db, entryId: string) {
   return db
     .insert(worklist)
@@ -27,6 +30,7 @@ export function insertWorklistRow(db: Db, entryId: string) {
           createdAt: entries.createdAt,
           live: sql`0`.as('live'),
           claimedAt: sql`null`.as('claimed_at'),
+          claimCount: sql`0`.as('claim_count'),
           leaseId: sql`null`.as('lease_id'),
           leaseHolder: sql`null`.as('lease_holder'),
           leaseExpiresAt: sql`null`.as('lease_expires_at'),
@@ -35,7 +39,8 @@ export function insertWorklistRow(db: Db, entryId: string) {
           lastNote: sql`null`.as('last_note'),
         })
         .from(entries)
-        .where(eq(entries.id, entryId)),
+        .where(eq(entries.id, entryId))
+        .getSQL(),
     )
     .onConflictDoNothing()
 }
@@ -56,20 +61,27 @@ export function syncWorklistLive(db: Db, subjectIds: string[] | SQLWrapper) {
 }
 
 /**
- * Leases the first free live entry in claim order and stamps the claim time, in one statement.
- * D1 runs statements one at a time, so two concurrent claims never take the same entry. Every
- * claim moves its entry to the back of the index, so held leases never sit in front of free rows.
+ * Leases the first free live entry in claim order and stamps the claim time and count, in one
+ * statement. D1 runs statements one at a time, so two concurrent claims never take the same entry.
+ * Every claim moves its entry to the back of its rank, so the scan passes at most one row per held
+ * lease before a free row.
  */
 export function claimStatement(db: Db, lease: Omit<WorkLease, 'entryId'>, now: string) {
   const next = db
     .select({ entryId: worklist.entryId })
     .from(worklist)
     .where(and(eq(worklist.live, true), or(isNull(worklist.leaseExpiresAt), lte(worklist.leaseExpiresAt, now))))
-    .orderBy(asc(worklist.claimedAt), asc(worklist.createdAt), asc(worklist.entryId))
+    .orderBy(asc(worklist.claimRank), asc(worklist.claimedAt), asc(worklist.createdAt), asc(worklist.entryId))
     .limit(1)
   return db
     .update(worklist)
-    .set({ claimedAt: now, leaseId: lease.id, leaseHolder: lease.holder, leaseExpiresAt: lease.expiresAt })
+    .set({
+      claimedAt: now,
+      claimCount: sql`${worklist.claimCount} + 1`,
+      leaseId: lease.id,
+      leaseHolder: lease.holder,
+      leaseExpiresAt: lease.expiresAt,
+    })
     .where(eq(worklist.entryId, sql`(${next})`))
     .returning()
 }

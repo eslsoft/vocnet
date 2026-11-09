@@ -23,22 +23,35 @@ async function worldWith(lemmas: string[]) {
 const lemmaOf = (claim: Awaited<ReturnType<typeof claimWork>>) => claim?.lease.lemma
 
 describe('claimWork', () => {
-  it('serves never-claimed entries oldest first, then the least recently claimed, skipping dead entries [spec: work/claim-order]', async () => {
-    const { world, entries } = await worldWith(['bank', 'shore', 'tide', 'cove'])
+  it('serves second passes first, then never-claimed entries, then the rest, skipping dead entries [spec: work/claim-order]', async () => {
+    const { world, entries } = await worldWith(['bank', 'shore', 'tide', 'cove', 'reef'])
     const [, shore, tide] = entries
     await retractFact(world.deps, agentA, shore.fact.id)
     world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
     expect(await reviewFact(world.deps, tide.fact.id, 'trace')).toBe('rejected')
+    const claimAt = async (minute: number) => {
+      world.setNow(`2026-01-01T00:${String(minute).padStart(2, '0')}:00.000Z`)
+      return claimWork(world.deps, agentA)
+    }
+    const workAt = async (minute: number) => {
+      const claim = await claimAt(minute)
+      await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
+      return lemmaOf(claim)
+    }
 
-    const first = await claimWork(world.deps, agentA)
-    expect(lemmaOf(first)).toBe('bank')
-    await completeWork(world.deps, agentA, first?.lease.id as WorkLeaseId, {})
-    const second = await claimWork(world.deps, agentA)
-    expect(lemmaOf(second)).toBe('cove')
-    await completeWork(world.deps, agentA, second?.lease.id as WorkLeaseId, {})
-    expect(lemmaOf(await claimWork(world.deps, agentA))).toBe('bank')
-    expect(lemmaOf(await claimWork(world.deps, agentA))).toBe('cove')
-    expect(await claimWork(world.deps, agentA)).toBeNull()
+    const bank = await claimAt(1)
+    const cove = await claimAt(2)
+    expect([lemmaOf(bank), lemmaOf(cove)]).toEqual(['bank', 'cove'])
+    await completeWork(world.deps, agentA, cove?.lease.id as WorkLeaseId, {})
+    await completeWork(world.deps, agentA, bank?.lease.id as WorkLeaseId, {})
+
+    const order = []
+    for (const minute of [3, 4, 5, 6, 7, 8]) order.push(await workAt(minute))
+    expect(order).toEqual(['bank', 'cove', 'reef', 'reef', 'bank', 'cove'])
+    expect(lemmaOf(await claimAt(9))).toBe('reef')
+    expect(lemmaOf(await claimAt(9))).toBe('bank')
+    expect(lemmaOf(await claimAt(9))).toBe('cove')
+    expect(await claimAt(9)).toBeNull()
   })
 
   it('returns the lease, the management view, and the gaps', async () => {

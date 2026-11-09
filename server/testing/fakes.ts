@@ -25,7 +25,7 @@ export interface FakeWorld {
   feedback: FeedbackRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
   leases: WorkLease[]
-  claimed: Map<EntryId, string>
+  claimed: Map<EntryId, { at: string; count: number }>
   worked: Map<EntryId, { lastWorkedAt: string; lastWorkedBy: string; lastNote: string | null }>
   queued: ReviewJob[]
   /** Client keys the feedback limiter refuses. */
@@ -303,12 +303,16 @@ export function fakeWorld(): FakeWorld {
         const free = (entry: EntryNode) =>
           world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entry.id && live(fact)) &&
           !world.leases.some((held) => held.entryId === entry.id && held.expiresAt > now)
-        const order = (entry: EntryNode) => [world.claimed.get(entry.id) ?? '', entry.createdAt, entry.id]
+        const rank = (count = 0) => (count === 1 ? 0 : count === 0 ? 1 : 2)
+        const order = (entry: EntryNode) => {
+          const claim = world.claimed.get(entry.id)
+          return [rank(claim?.count), claim?.at ?? '', entry.createdAt, entry.id]
+        }
         const [next] = world.entries.filter(free).sort((a, b) => order(a).join('|').localeCompare(order(b).join('|')))
         if (!next) return null
         const claimed = { ...lease, entryId: next.id }
         world.leases.splice(0, world.leases.length, ...world.leases.filter((held) => held.entryId !== next.id), claimed)
-        world.claimed.set(next.id, now)
+        world.claimed.set(next.id, { at: now, count: (world.claimed.get(next.id)?.count ?? 0) + 1 })
         return { lease: claimed, entry: next }
       },
       findLease: async (id) => world.leases.find((lease) => lease.id === id) ?? null,

@@ -8,16 +8,22 @@ Feature: Worklist
     Then each missing senses, forms, or pronunciation is a gap, and each live sense without relations, examples, or a zh translation is a gap
 
   @work/claim-order @usecase
-  Scenario: The least recently claimed live entry is claimed first
-    Given entries never claimed, entries claimed earlier, and entries whose entry fact is rejected or retracted
+  Scenario: An entry's second pass comes before never-claimed entries
+    Given entries claimed once, never claimed, claimed twice, and entries whose entry fact is rejected or retracted
     When an agent claims work
-    Then it gets a never-claimed entry first, oldest first, then the least recently claimed, and never a dead entry
+    Then it gets an entry claimed once first, oldest claim first, then a never-claimed entry, oldest first, then the least recently claimed of the rest, and never a dead entry
+
+  @work/claim-second-pass @api
+  Scenario: An entry worked once is claimed again before never-claimed entries
+    Given an agent claimed and completed an entry once, and other entries were never claimed
+    When agents claim work
+    Then the next claim gets the entry worked once with its per-sense gaps, and once claimed twice it comes after every never-claimed entry
 
   @work/claim-rotation @api
-  Scenario: An entry whose lease lapses goes to the back
-    Given an agent claimed an entry and its lease expired without a complete
+  Scenario: An entry whose lease lapses twice goes to the back
+    Given an agent claimed an entry twice and both leases expired without a complete
     When agents claim work
-    Then every entry not yet claimed comes first, and the lapsed entry comes after them
+    Then every entry claimed fewer times comes first, and the lapsed entry comes after them
 
   @work/claim-live @api
   Scenario: Only an entry with a live entry fact is claimable

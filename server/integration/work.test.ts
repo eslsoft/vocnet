@@ -86,17 +86,50 @@ describe('worklist', () => {
     expect((await complete(second, taken.lease.id)).status).toBe(200)
   })
 
-  it('moves an entry whose lease lapsed without completion behind the entries not yet claimed [spec: work/claim-rotation]', async () => {
+  it('claims an entry worked once before never-claimed entries, and a second time after them [spec: work/claim-second-pass]', async () => {
+    const token = await issueAgentKey()
+    const bay = await createEntry(token, 'bay')
+    for (const lemma of ['cove', 'fjord']) await createEntry(token, lemma)
+    const first = workClaimSchema.parse((await claim(token)).body)
+    expect(first.lease.lemma).toBe('bay')
+    const sense = await call('/manage/v1/senses', {
+      method: 'POST',
+      token,
+      json: { entry_id: bay.entry.id, pos: 'noun', gloss: 'a broad inlet of the sea' },
+    })
+    expect(sense.status).toBe(201)
+    expect((await complete(token, first.lease.id)).status).toBe(200)
+
+    const second = workClaimSchema.parse((await claim(token)).body)
+    expect(second.lease.lemma).toBe('bay')
+    expect(second.gaps.map((gap) => gap.type)).toEqual([
+      'forms',
+      'pronunciation',
+      'relations',
+      'examples',
+      'translations',
+    ])
+    expect((await complete(token, second.lease.id)).status).toBe(200)
+
+    expect(await lemmaOf(token)).toBe('cove')
+    expect(await lemmaOf(token)).toBe('fjord')
+    expect(await lemmaOf(token)).toBe('bay')
+  })
+
+  it('moves an entry whose lease lapsed twice behind the entries claimed fewer times [spec: work/claim-rotation]', async () => {
     const token = await issueAgentKey()
     for (const lemma of ['bay', 'cove', 'fjord']) await createEntry(token, lemma)
+    expect(await lemmaOf(token)).toBe('bay')
+    await expireLeases()
     expect(await lemmaOf(token)).toBe('bay')
     await expireLeases()
 
     expect(await lemmaOf(token)).toBe('cove')
     expect(await lemmaOf(token)).toBe('fjord')
     await expireLeases()
-    expect(await lemmaOf(token)).toBe('bay')
     expect(await lemmaOf(token)).toBe('cove')
+    expect(await lemmaOf(token)).toBe('fjord')
+    expect(await lemmaOf(token)).toBe('bay')
   })
 
   it('hands each expired lease to exactly one of the claims racing for it [spec: work/claim-expired-race]', async () => {

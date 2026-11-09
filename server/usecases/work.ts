@@ -14,7 +14,7 @@ export interface WorkClaim {
   gaps: Gap[]
 }
 
-/** Leases the least recently claimed entry to the caller, with what the entry still lacks; null when none is free. */
+/** Leases the next entry in claim order to the caller, with what the entry still lacks; null when none is free. */
 export async function claimWork(
   deps: Pick<Deps, 'work' | 'nodes' | 'clock' | 'ids'>,
   actor: Actor,
