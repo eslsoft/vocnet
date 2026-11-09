@@ -1,3 +1,7 @@
+import { env } from 'cloudflare:test'
+import { entrySummaryStatements } from '@server/adapters/repos/nodes'
+import { encodeCursor } from '@server/adapters/repos/rows'
+import { createDb } from '@server/db/client'
 import {
   createEntryResultSchema,
   createSenseResultSchema,
@@ -189,6 +193,27 @@ describe('public catalog', () => {
     expect((await call('/manage/v1/entries/bank', { token })).status).toBe(200)
     const broken = await call('/manage/v1/entries?cursor=broken', { token })
     expect([broken.status, apiErrorSchema.parse(broken.body).error.code]).toEqual([400, 'invalid_cursor'])
+  })
+
+  it('reads only the page when it lists entries [spec: catalog/manage-entry-list-index]', async () => {
+    const cursor = encodeCursor({ lemma: 'ba' })
+    const plans = await Promise.all(
+      entrySummaryStatements(createDb(env), 'b', { limit: 50, cursor }).map(async (statement) => {
+        const { sql, params } = statement.toSQL()
+        const { results } = await env.DB.prepare(`explain query plan ${sql}`)
+          .bind(...params)
+          .all<{ detail: string }>()
+        return results.map((row) => row.detail)
+      }),
+    )
+    console.info(`entry list query plans:\n${plans.map((plan) => plan.join('\n')).join('\n\n')}`)
+    for (const plan of plans) {
+      expect(plan.filter((step) => step.startsWith('SCAN'))).toEqual([])
+      expect(plan.some((step) => step.includes('facts_live_content_idx'))).toBe(false)
+    }
+    const [, , , glossed] = plans
+    expect(glossed[0]).toBe('SEARCH senses USING INDEX senses_creation_idx (entry_id=?)')
+    expect(glossed).toContain('SEARCH facts USING INDEX facts_subject_idx (subject_id=? AND status=?)')
   })
 
   it('resolves an entry or sense id to its entry [spec: catalog/locate-node]', async () => {

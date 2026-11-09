@@ -80,6 +80,12 @@ Feature: Catalog
     When an agent pages through the entries by prefix
     Then each page lists entries in lemma order with the entry status, live sense count, fact counts by status, and last worked time
 
+  @catalog/manage-entry-list-index @api
+  Scenario: Listing entries reads only the page
+    Given the statements behind one page of entry summaries
+    When their query plans are read
+    Then each one searches an index from the page's entries and none reads every live fact of a kind
+
   @catalog/locate-node @api
   Scenario: Management resolves a node id to its entry
     Given an entry with a sense
