@@ -81,9 +81,14 @@ export type Verdict = z.infer<typeof verdictSchema>
 export const reviewerKindSchema = z.enum(['jev', 'llm']).meta({ id: 'ReviewerKind' })
 export type ReviewerKind = z.infer<typeof reviewerKindSchema>
 
+export const reviewerChainSchema = z
+  .enum(['jev', 'llm', 'jev+llm'])
+  .meta({ id: 'ReviewerChain', description: 'The reviewers consulted, in order.' })
+export type ReviewerChain = z.infer<typeof reviewerChainSchema>
+
 export const reviewSchema = z
   .object({
-    reviewer: reviewerKindSchema,
+    reviewer: reviewerChainSchema,
     model: z.string(),
     verdict: verdictSchema,
     confidence: z.number().min(0).max(1),

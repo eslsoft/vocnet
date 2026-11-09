@@ -62,7 +62,7 @@ describe('exclusive fact slots', () => {
     const { fact } = createEntryResultSchema.parse(
       (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'lake' } })).body,
     )
-    stubReviewers(0.1)
+    stubReviewers(0.1, 'fail')
     await deliverPendingReviews()
     expect((await factOf(fact.id)).status).toBe('rejected')
 
@@ -106,7 +106,7 @@ describe('exclusive fact slots', () => {
     const whilePending = await call(`/manage/v1/facts/${gloss.id}/rereview`, { method: 'POST', token: admin })
     expect([whilePending.status, codeOf(whilePending.body)]).toEqual([409, 'conflict'])
 
-    stubReviewers(0.1)
+    stubReviewers(0.1, 'fail')
     await deliverPendingReviews()
     vi.restoreAllMocks()
     expect((await factOf(correction.id)).status).toBe('rejected')
@@ -133,7 +133,7 @@ describe('exclusive fact slots', () => {
   it('refuses to re-review a rejected correction whose original another correction superseded [spec: facts/rereview-orphaned-correction]', async () => {
     const { token, sense, gloss, correct } = await publishedRiverBank()
     const rejected = factWriteResultSchema.parse((await correct('a kind of fish')).body).fact
-    stubReviewers(0.1)
+    stubReviewers(0.1, 'fail')
     await deliverPendingReviews()
     vi.restoreAllMocks()
     const winner = factWriteResultSchema.parse((await correct('sloping land beside a river')).body).fact

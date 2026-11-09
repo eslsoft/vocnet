@@ -32,6 +32,31 @@ describe('fact review flow', () => {
     expect(again.status).toBe(200)
   })
 
+  it('asks the LLM for a second opinion when Jev fails and publishes on its pass [spec: facts/second-opinion-api]', async () => {
+    const token = await issueAgentKey()
+    const { fact } = createEntryResultSchema.parse(
+      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'an' } })).body,
+    )
+    const gateway = stubReviewers(0.2, 'pass')
+    expect((await deliverPendingReviews()).explicitAcks).toEqual(['m0'])
+    expect(gateway.mock.calls.map(([input]) => new Request(input).url)).toEqual([
+      'https://models.test/v1/systemone',
+      'https://models.test/v1/chat/completions',
+    ])
+    const reviewed = factSchema.parse((await call(`/manage/v1/facts/${fact.id}`, { token })).body)
+    expect(reviewed).toMatchObject({
+      status: 'published',
+      review: { reviewer: 'jev+llm', model: 'jev-test+llm-test', verdict: 'pass', confidence: 0.88 },
+    })
+    expect(reviewed.review?.detail).toMatchObject({
+      opinions: [
+        { reviewer: 'jev', verdict: 'fail' },
+        { reviewer: 'llm', verdict: 'pass' },
+      ],
+    })
+    expect((await call('/v1/entries/an')).status).toBe(200)
+  })
+
   it('retries the message and keeps the fact pending when the gateway is down [spec: facts/transport-retry-api]', async () => {
     const token = await issueAgentKey()
     const { fact } = createEntryResultSchema.parse(

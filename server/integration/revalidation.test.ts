@@ -111,4 +111,53 @@ describe('revalidation', () => {
     expect(after.map((fact) => fact.review)).toEqual(reviewsBefore)
     expect(await marks(ids)).toEqual([null, null])
   })
+
+  it('re-reviews a pending dependent whose gloss a correction replaced mid-review [spec: facts/pending-dependent-api]', async () => {
+    const token = await issueAgentKey()
+    const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
+    const bank = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'bank' }))
+    const river = createSenseResultSchema.parse(
+      await post('/manage/v1/senses', { entry_id: bank.entry.id, pos: 'noun', gloss: 'land beside a river' }),
+    )
+    stubReviewers()
+    await deliverPendingReviews()
+    vi.restoreAllMocks()
+    const submit = async (json: unknown) => factWriteResultSchema.parse(await post('/manage/v1/facts', json)).fact
+    const example = await submit({ kind: 'example', subject_id: river.sense.id, payload: { text: 'We sat on it.' } })
+    const correction = await submit({
+      kind: 'sense',
+      subject_id: river.sense.id,
+      supersedes_id: river.fact.id,
+      payload: { gloss: 'the sloping land beside a river' },
+    })
+
+    const judgedGlosses: string[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const request = new Request(input, init)
+      const body = (await request.json()) as { questions?: Record<string, unknown>; messages?: { content: string }[] }
+      if (request.url.endsWith('/v1/systemone')) {
+        const answers = Object.fromEntries(
+          Object.keys(body.questions ?? {}).map((key) => [key, { type: 'noul', noul: 0.9 }]),
+        )
+        return Response.json({ model: 'jev-test', answers })
+      }
+      const prompt = body.messages?.at(-1)?.content ?? ''
+      judgedGlosses.push(prompt.includes('the sloping land') ? 'new' : 'old')
+      if (judgedGlosses.length === 1) await deliverReviews([correction.id])
+      const content = JSON.stringify({ verdict: 'pass', confidence: 0.9, reason: 'Judged.' })
+      return Response.json({ model: 'llm-test', choices: [{ message: { content } }] })
+    })
+
+    expect((await deliverReviews([example.id])).explicitAcks).toEqual(['m0'])
+    expect((await factOf(correction.id)).status).toBe('published')
+    expect(await factOf(example.id)).toMatchObject({ status: 'pending', review: null })
+    expect(await marks([example.id])).toEqual([expect.any(String)])
+
+    await deliverReviews([example.id])
+    expect(judgedGlosses).toEqual(['old', 'new'])
+    const reviewed = await factOf(example.id)
+    expect(reviewed.status).toBe('published')
+    expect(JSON.stringify(reviewed.review?.context)).toContain('the sloping land beside a river')
+    expect(await marks([example.id])).toEqual([null])
+  })
 })

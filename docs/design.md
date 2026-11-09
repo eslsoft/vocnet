@@ -15,7 +15,8 @@ own and publishes it on its own.
   publishes the fact with its confidence. Only a failing review rejects it.
   Corrections supersede published facts.
 - **Precise reviewer when one exists.** Facts that state a checkable
-  proposition go to Jev. Facts whose quality is a judgment go to a general LLM.
+  proposition go to Jev first. Facts whose quality is a judgment go to a
+  general LLM. A Jev pass is trusted; anything else gets an LLM second opinion.
 - **Visibility is derived on read.** The public API shows a fact only when it
   and every node it references are published.
 - **Every write converges.** Submissions are idempotent by content key, review
@@ -68,19 +69,19 @@ the entries that own a form, use the same index.
 ### Fact kinds
 
 The registry in `server/domain/fact-kinds.ts` is the single source of truth.
-Each kind declares its subject type, payload schema, content key, reviewer, and
-review prompt. Adding a kind is one registry entry plus a migration only if it
+Each kind declares its subject type, payload schema, content key, reviewer
+chain, and review prompts. Adding a kind is one registry entry plus a migration only if it
 needs a new column.
 
-| Kind            | Subject | Cardinality | Payload                                   | Reviewer |
-| --------------- | ------- | ----------- | ----------------------------------------- | -------- |
-| `entry`         | entry   | one         | `{}` (the lemma is an established word)   | Jev      |
-| `sense`         | sense   | one         | `{ gloss }`                               | Jev      |
-| `form`          | entry   | many        | `{ form, type }` (plural, past, variant…) | Jev      |
-| `relation`      | sense   | many        | `{ type, target_sense_id }`               | Jev      |
-| `pronunciation` | entry   | many        | `{ ipa, accent }` (accent `us` or `uk`)   | LLM      |
-| `example`       | sense   | many        | `{ text }`                                | LLM      |
-| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)         | LLM      |
+| Kind            | Subject | Cardinality | Payload                                   | Reviewer chain |
+| --------------- | ------- | ----------- | ----------------------------------------- | -------------- |
+| `entry`         | entry   | one         | `{}` (the lemma is an established word)   | Jev, then LLM  |
+| `sense`         | sense   | one         | `{ gloss }`                               | Jev, then LLM  |
+| `form`          | entry   | many        | `{ form, type }` (plural, past, variant…) | Jev, then LLM  |
+| `relation`      | sense   | many        | `{ type, target_sense_id }`               | Jev, then LLM  |
+| `pronunciation` | entry   | many        | `{ ipa, accent }` (accent `us` or `uk`)   | LLM            |
+| `example`       | sense   | many        | `{ text }`                                | LLM            |
+| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)         | LLM            |
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
 one gloss. Changing it means submitting a correction that supersedes the
@@ -99,9 +100,12 @@ forms; comparative and superlative are adjective or adverb forms. The form
 question names that class, so Jev judges "breaded" against the verb "bread",
 not the dominant noun. A spelling variant is asked about the word as a whole.
 
-Relation types are `synonym`, `antonym`, `hypernym`, and `part_of`, with the
-same review questions the producer qualified. A relation is reviewed with the
-relation question only. Whether each sense is an established meaning is the
+Relation types are `synonym`, `antonym`, `hypernym`, and `part_of`. The Jev
+questions started as the ones the producer qualified. Each now says that two
+senses of one word never stand in a relation, and the hypernym question also
+says that mutual substitutability is synonymy, that hypernymy holds only
+between nouns or between verbs, and that a generic head such as "cause" does
+not count. A relation is reviewed with the relation question only. Whether each sense is an established meaning is the
 job of that sense's own `sense` fact, and the relation stays hidden until both
 are published.
 
@@ -141,8 +145,8 @@ correction enters it. A rejected correction leaves the original published.
 A correction of a sense's gloss changes the meaning that the sense's examples,
 translations, and relations (as subject or object) were judged against. The
 registry lists these as the `sense` kind's `revalidates` kinds. In the same batch
-that publishes the correction, every published fact of those kinds about the
-sense gets `revalidate_since`, and then each is enqueued. Such a fact stays
+that publishes the correction, every live fact of those kinds about the
+sense gets `revalidate_since`, and then each is enqueued. A published one stays
 published and public while it waits. Its review is the *revalidation* event of
 the transition table: pass or uncertain keeps it published with the new review
 (`reconfirm`), and fail moves it to `rejected` (`invalidate`). If the gloss is
@@ -150,10 +154,13 @@ gone by the time the job runs (the correction was retracted while its
 dependents waited), no reviewer is asked: the fact stays published with its
 standing review and only loses the mark (`release`). The mode table maps this
 `unreviewable` finding to `reject` for a first review and to `release` for a
-revalidation. The write is
-conditional on the mark the review read, and every transition clears the mark,
-so a duplicate delivery or a review that a newer correction overtook changes
-nothing. Retracting a gloss does not cascade: the sense leaves the public view,
+revalidation. Every review write is
+conditional on the mark the review read, no mark included, and every
+transition clears the mark, so a duplicate delivery or a review that a newer
+correction overtook changes nothing. That also covers a pending dependent: if
+a correction publishes while its first review is judging the old gloss, the
+correction marks it, the stale write finds the mark and is discarded, and the
+enqueued job reviews it against the new gloss. Retracting a gloss does not cascade: the sense leaves the public view,
 and that already hides its facts.
 
 An author can retract its own pending or published fact; admins can retract
@@ -175,14 +182,33 @@ reset.
   Confidence is the minimum answer.
 - **LLM** gets a rubric prompt at the OpenAI-compatible chat completions
   endpoint and must return JSON `{ verdict, confidence, reason }`.
+- **Second opinion.** Each kind names its reviewer chain in the registry, and
+  `server/domain/review-chain.ts` says which verdicts settle a fact: Jev
+  settles only `pass`, and the LLM settles every verdict. When Jev fails or is
+  unsure about an entry, sense, form, or relation, the LLM judges the same
+  claim with a kind-specific rubric and decides: pass or uncertain publishes
+  with the LLM's verdict and confidence, fail rejects. The rubric gets the
+  lemma, the part of speech, and the entry's other senses; for a relation it
+  gets both senses and also fails a relation whose type is not the most
+  accurate one (a mutually substitutable pair is a synonym, not a hypernym).
+  Jev's fail band rejected correct facts and its uncertain band published
+  relations of the wrong type, which is why it no longer decides those bands
+  alone. The review's `reviewer` is `jev+llm`, `model` joins both models,
+  `reason` joins both reasons, and `detail.opinions` keeps both opinions.
+- **Translations** are judged as a bilingual learner's dictionary would. A
+  verb-like or descriptive rendering of a preposition, adverb, or particle,
+  and a bracketed usage note such as （表示…）, pass when they convey the sense.
+  A wrong meaning, a different sense, unnatural wording, or equivalents of
+  unrelated senses fail.
 - The review stores the context it judged (lemmas and glosses of referenced
-  senses) so a later reader knows what was approved.
+  senses, and the entry's other senses) so a later reader knows what was
+  approved.
 - A sense's current gloss is its published `sense` fact, or until one
   publishes, its pending one. That keeps examples, translations, and relations
   from waiting on the gloss. A meaning-dependent fact whose sense has no live
   gloss at all is rejected as unreviewable without calling a reviewer.
-- A transport failure is not a verdict. The fact stays `pending`, and the queue
-  retries it.
+- A transport failure of any reviewer in the chain is not a verdict. The fact
+  stays `pending`, and the queue retries the whole chain.
 
 ## Feedback
 

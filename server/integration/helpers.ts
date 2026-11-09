@@ -1,7 +1,7 @@
 import { createExecutionContext, createMessageBatch, env, getQueueResult } from 'cloudflare:test'
 import entry from '@server/worker'
 import { issuedAgentSchema } from '@shared/agents'
-import { factPageSchema } from '@shared/facts'
+import { factPageSchema, type Verdict } from '@shared/facts'
 import { importJWK, SignJWT } from 'jose'
 import { vi } from 'vitest'
 
@@ -39,8 +39,8 @@ export async function issueAgentKey(name = 'Test agent'): Promise<string> {
   return issuedAgentSchema.parse(body).key
 }
 
-/** Stubs the model gateway: Jev answers every question with `noul`; the LLM passes. */
-export function stubReviewers(noul = 0.93) {
+/** Stubs the model gateway: Jev answers every question with `noul`; the LLM answers `verdict`. */
+export function stubReviewers(noul = 0.93, verdict: Verdict = 'pass') {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const request = new Request(input, init)
     const body = (await request.json()) as { questions?: Record<string, unknown> }
@@ -49,7 +49,7 @@ export function stubReviewers(noul = 0.93) {
       return Response.json({ model: 'jev-test', answers })
     }
     if (request.url === 'https://models.test/v1/chat/completions') {
-      const content = JSON.stringify({ verdict: 'pass', confidence: 0.88, reason: 'Fine.' })
+      const content = JSON.stringify({ verdict, confidence: 0.88, reason: 'Fine.' })
       return Response.json({ model: 'llm-test', choices: [{ message: { content } }] })
     }
     throw new Error(`Unexpected fetch to ${request.url}`)

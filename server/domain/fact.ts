@@ -15,7 +15,7 @@ export interface FactOf<K extends FactKind> {
   supersedesId: FactId | null
   author: PrincipalRef
   review: Review | null
-  /** Set while a published fact awaits re-review against a corrected gloss. */
+  /** Set while a live fact awaits a review against a corrected gloss. */
   revalidateSince: string | null
   createdAt: string
   updatedAt: string
@@ -25,4 +25,9 @@ export type Fact = { [K in FactKind]: FactOf<K> }[FactKind]
 
 export function isKind<K extends FactKind>(kind: K) {
   return (fact: Fact): fact is Extract<Fact, { kind: K }> => fact.kind === kind
+}
+
+/** A sense's current gloss is its published one; until one publishes, the pending one under review. */
+export function currentGloss(glosses: readonly [FactOf<'sense'>, ...FactOf<'sense'>[]]): FactOf<'sense'> {
+  return glosses.find((fact) => fact.status === 'published') ?? glosses[0]
 }

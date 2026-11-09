@@ -221,7 +221,7 @@ describe('rereviewFact', () => {
   it('refuses a rejected correction whose original is no longer published', async () => {
     const { world, river, riverGloss } = await bankWorld()
     const correction = { kind: 'sense' as const, subject_id: river.id, supersedes_id: riverGloss.id }
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    world.failReviews()
     const { fact: rejected } = await submitFact(world.deps, agentA, { ...correction, payload: { gloss: 'a fish' } })
     await reviewFact(world.deps, rejected.id, 'trace-review')
     await retractFact(world.deps, agentA, riverGloss.id)

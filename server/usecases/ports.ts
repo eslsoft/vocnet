@@ -38,6 +38,8 @@ export interface NodeRepo {
    * sense of this POS created with the same gloss; returns the stored sense and its defining fact.
    */
   insertSenseWithFact(sense: SenseNode, fact: FactOf<'sense'>): Promise<{ sense: SenseNode; fact: Fact }>
+  /** The live `sense` facts of every sense of this entry, oldest sense and oldest fact first. */
+  listLiveGlosses(entryId: EntryId): Promise<Array<{ sense: SenseNode; fact: FactOf<'sense'> }>>
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
   /** Published entries whose lemma starts with prefix, in lemma order. */
   searchPublishedEntries(prefix: string, page: PageRequest): Promise<Page<EntryRef>>
@@ -55,10 +57,14 @@ export interface FactTransitionWrite {
   review?: Review
   /** Published fact to mark superseded in the same batch, if this write publishes a correction. */
   supersede?: FactId
-  /** With `supersede`: mark the published facts of these kinds about this node for revalidation. */
+  /**
+   * With `supersede`: mark the live facts of these kinds about this node, so each one's next
+   * review reads the new version. Pending ones are marked too, or a first review that read the
+   * old version could still publish.
+   */
   revalidate?: { nodeId: EntryId | SenseId; kinds: readonly FactKind[] }
-  /** A revalidation applies only while the fact still carries the mark its review read. */
-  revalidateSince?: string
+  /** A review applies only while the fact still carries the mark it read, none included. Omitted: no condition. */
+  revalidateSince?: string | null
 }
 
 export interface FactRepo {
@@ -75,7 +81,7 @@ export interface FactRepo {
    * was not in `from`. Throws ConflictError when the slot is taken.
    */
   transition(write: FactTransitionWrite): Promise<boolean>
-  /** Published facts about this node (as subject or object) awaiting revalidation. */
+  /** Live facts about this node (as subject or object) marked for a review against its new version. */
   listRevalidating(nodeId: EntryId | SenseId): Promise<FactId[]>
   /** Facts pending since before cutoff, or awaiting revalidation since before it. */
   listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
