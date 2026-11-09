@@ -14,7 +14,11 @@ export const router = createBrowserRouter([
     element: <Layout />,
     errorElement: <RouteError />,
     children: [
-      { index: true, lazy: async () => ({ Component: (await import('@/routes/home')).default }) },
+      { index: true, lazy: async () => ({ Component: (await import('@/routes/overview')).default }) },
+      { path: 'facts', lazy: async () => ({ Component: (await import('@/routes/facts')).default }) },
+      { path: 'entries/:lemma?', lazy: async () => ({ Component: (await import('@/routes/entries')).default }) },
+      { path: 'feedback', lazy: async () => ({ Component: (await import('@/routes/feedback')).default }) },
+      { path: 'agents', lazy: async () => ({ Component: (await import('@/routes/agents')).default }) },
       { path: 'about', lazy: async () => ({ Component: (await import('@/routes/about')).default }) },
       { path: '*', lazy: async () => ({ Component: (await import('@/routes/not-found')).default }) },
     ],

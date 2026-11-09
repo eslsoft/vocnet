@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.30.2",
   "scripts": {
     "dev": "vite dev",
+    "dev:oidc": "node scripts/dev-oidc.mjs",
     "build": "vite build",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply vocnet --local",

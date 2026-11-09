@@ -70,7 +70,7 @@ export async function handleScheduled(env: Env): Promise<void> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (isApiPath(new URL(request.url).pathname)) return worker.fetch(request, env, ctx)
-    return secureBrowserResponse(await env.ASSETS.fetch(request), env.OIDC_ISSUER)
+    return secureBrowserResponse(await env.ASSETS.fetch(request), env.OIDC_ISSUER, import.meta.env.DEV)
   },
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
     await handleReviewBatch(batch, env)

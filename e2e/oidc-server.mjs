@@ -10,7 +10,7 @@ function json(response, status, body, origin) {
   response.end(JSON.stringify(body))
 }
 
-export async function startOidcServer() {
+export async function startOidcServer({ port = 0, subject = 'e2e-user' } = {}) {
   const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true })
   const publicJwk = { ...(await exportJWK(publicKey)), kid: 'e2e', alg: 'ES256', use: 'sig' }
   const codes = new Map()
@@ -106,7 +106,7 @@ export async function startOidcServer() {
         .setProtectedHeader({ alg: 'ES256', kid: 'e2e' })
         .setIssuer(issuer)
         .setAudience(transaction.clientId)
-        .setSubject('e2e-user')
+        .setSubject(subject)
         .setIssuedAt(now)
         .setExpirationTime(now + 300)
         .sign(privateKey)
@@ -114,7 +114,7 @@ export async function startOidcServer() {
         .setProtectedHeader({ alg: 'ES256', kid: 'e2e' })
         .setIssuer(issuer)
         .setAudience(transaction.clientId)
-        .setSubject('e2e-user')
+        .setSubject(subject)
         .setIssuedAt(now)
         .setExpirationTime(now + 300)
         .sign(privateKey)
@@ -132,7 +132,7 @@ export async function startOidcServer() {
     json(response, 404, { error: 'not_found' }, origin)
   })
 
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('OIDC server did not bind a TCP port.')
   issuer = `http://127.0.0.1:${address.port}`
