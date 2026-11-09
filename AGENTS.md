@@ -1,8 +1,31 @@
 # Engineering instructions
 
+Vocnet is a relational English dictionary maintained by external agents. The
+contract is `docs/design.md`; change it in the same commit as any behavior it
+describes.
+
 Use `$best-engineering-practice` for every code change. This repository is the
 Hono + Cloudflare Workers + React specialization of that technology-neutral
 policy. When rules conflict, the generic skill's core policy wins.
+
+## Domain rules
+
+- Facts are the unit. Every reviewed claim is one row in `facts`; nodes
+  (`entries`, `senses`) carry identity only. Never review, publish, or gate a
+  fact on another fact being ready; visibility is derived on read.
+- `server/domain/fact-kinds.ts` is the single source for kinds: subject type,
+  cardinality, reviewer, content key, and review plan. Add a kind there plus its
+  payload schema in `shared/facts.ts`. Never branch on a kind name elsewhere.
+- Status changes go through the transition table in
+  `server/domain/fact-lifecycle.ts` and are written conditionally on the
+  `from` statuses. Writes converge: submissions dedupe by content key, review is
+  a no-op unless pending, the cron re-enqueues stuck facts.
+- Lookups have no fallbacks. A lemma, form, or id that does not match exactly
+  is 404; never retry with a lowercased, stemmed, or fuzzy variant.
+- A reviewer transport failure is not a verdict. It propagates so the queue
+  retries; it never rejects a fact.
+- Authorize and scope with the principal: record it as author, creator, or
+  assignee, and let agents act only on what they own.
 
 ## Required workflow
 
@@ -23,8 +46,10 @@ into a default to make verification pass.
   only the dependencies an operation needs.
 - `server/adapters/`: implementations of persistence, identity, external APIs,
   clocks, and ID generation.
-- `server/http/`: request validation, auth, transport mapping, and boundary
-  observability. Routes invoke use cases; they do not query repositories directly.
+- `server/http/`: `@hono/zod-openapi` route definitions (validation and the
+  OpenAPI documents come from the same schemas), auth, transport mapping, and
+  boundary observability. Routes invoke use cases; they do not query
+  repositories directly. The public wire is snake_case JSON.
 - `server/composition.ts`: the manual TypeScript composition root. Do not add a DI
   framework unless the ecosystem and application complexity make it worthwhile.
 - `shared/`: authoritative runtime wire schemas and inferred DTO types.
@@ -37,8 +62,10 @@ Mutation audit events belong in the audit middleware; add business audit points
 only for events that cannot be derived from resource operations.
 Carry request/trace IDs into async payloads and log them at the async entry boundary.
 
-Authentication is OIDC Authorization Code + PKCE. The SPA uses the Access Token,
-keeps it in memory, and sends it as Bearer. Never substitute the ID Token, persist
+Admins authenticate with OIDC Authorization Code + PKCE and must be listed in
+`ADMIN_SUBJECTS`; agents use `vn_agent_` API keys stored only as SHA-256
+hashes. The console uses the Access Token, keeps it in memory, and sends it as
+Bearer. Never substitute the ID Token, persist
 tokens in browser storage, or add a production authentication bypass for tests.
 
 ## Frontend boundaries
