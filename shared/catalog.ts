@@ -16,6 +16,7 @@ import {
   topicIdSchema,
   verdictSchema,
 } from './facts'
+import { lemmaReferenceSchema } from './reference'
 
 export const lemmaInputSchema = z.string().trim().min(1).max(100)
 
@@ -88,6 +89,7 @@ export const publicEntrySchema = z
     forms: z.array(publicFormSchema),
     pronunciations: z.array(publicPronunciationSchema),
     senses: z.array(publicSenseSchema),
+    ...lemmaReferenceSchema.shape,
   })
   .meta({ id: 'Entry' })
 export type PublicEntry = z.infer<typeof publicEntrySchema>
@@ -139,6 +141,10 @@ export const managedEntrySchema = z
       .meta({ description: 'Facts about the entry and its senses, plus relations pointing at its senses.' }),
   })
   .meta({ id: 'ManagedEntry' })
+
+export const managedEntryDetailSchema = managedEntrySchema
+  .extend(lemmaReferenceSchema.shape)
+  .meta({ id: 'ManagedEntryDetail' })
 
 const countSchema = z.number().int().nonnegative()
 

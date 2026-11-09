@@ -11,6 +11,7 @@ import type { AgentId } from '@shared/agents'
 import type { EntryRef, EntrySummary, Stats } from '@shared/catalog'
 import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, TopicId, Verdict } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
+import type { LemmaReference, ReferenceSource } from '@shared/reference'
 import type { WorkLeaseId } from '@shared/work'
 
 // Interfaces for everything beyond the process boundary. Implemented in adapters/.
@@ -53,6 +54,12 @@ export interface NodeRepo {
   listEntrySummaries(prefix: string, page: PageRequest): Promise<Page<EntrySummary>>
   /** Published form facts with one of these content keys, on published entries. */
   findPublishedForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
+}
+
+/** Imported reference data, read by exact lemma spelling. */
+export interface ReferenceRepo {
+  forLemma(lemma: Lemma): Promise<LemmaReference>
+  listSources(): Promise<ReferenceSource[]>
 }
 
 export interface FactTransitionWrite {

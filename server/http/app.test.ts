@@ -49,6 +49,7 @@ describe('http wiring', () => {
       '/feedback',
       '/forms/{form}',
       '/senses/{id}',
+      '/sources',
       '/topics',
       '/topics/{id}/senses',
     ])

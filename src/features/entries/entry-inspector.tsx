@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { FactDrawer, FactStatusBadge, FactTable, useFactSelection } from '@/features/facts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { ErrorNotice } from '@/shared/ui/error-notice'
+import { EntryReference } from './entry-reference'
 import { groupEntry } from './entry-view'
 import { useManagedEntry } from './hooks'
 
@@ -21,6 +22,7 @@ function EntryDetail({ lemma }: { lemma: string }) {
         <h2 className="font-heading font-semibold text-2xl">{entry.data.entry.lemma}</h2>
         {entryFact ? <FactStatusBadge status={entryFact.status} /> : null}
       </div>
+      <EntryReference cefr={entry.data.cefr} frequency={entry.data.frequency} />
       <Card>
         <CardHeader>
           <CardTitle>{t('entries.entryFacts')}</CardTitle>

@@ -110,6 +110,12 @@ export const zhCN: typeof enUS = {
     noSenses: '还没有义项。',
     incoming: '指向这里的关系',
     noGloss: '没有有效释义',
+    reference: '参考数据',
+    frequency: '词频',
+    frequencyValue: 'Zipf {{zipf}} · 排名 {{rank}}',
+    notListed: '未收录',
+    cefr: 'CEFR',
+    source: '来源：{{name}}',
   },
   feedback: {
     title: '反馈',

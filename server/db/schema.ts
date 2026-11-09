@@ -4,6 +4,7 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
@@ -189,6 +190,47 @@ export const agents = sqliteTable('agents', {
   createdAt: text('created_at').notNull(),
   revokedAt: text('revoked_at'),
 })
+
+// Reference data imported by scripts/reference/, keyed by spelling and independent of entries,
+// so an import never depends on which entries exist. CEFR is read by exact lemma, frequency by
+// the lemma's frequency key (domain/reference.ts).
+
+export const referenceSources = sqliteTable('reference_sources', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  version: text('version').notNull(),
+  license: text('license').notNull(),
+  licenseUrl: text('license_url').notNull(),
+  changes: text('changes').notNull(),
+  attribution: text('attribution').notNull(),
+  url: text('url').notNull(),
+  retrievedAt: text('retrieved_at').notNull(),
+})
+
+export const wordFrequency = sqliteTable('word_frequency', {
+  word: text('word').primaryKey(),
+  zipf: real('zipf').notNull(),
+  rank: integer('rank').notNull(),
+  sourceId: text('source_id')
+    .notNull()
+    .references(() => referenceSources.id),
+})
+
+export const lemmaCefr = sqliteTable(
+  'lemma_cefr',
+  {
+    lemma: text('lemma').notNull(),
+    pos: text('pos').notNull(),
+    level: text('level').notNull(),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => referenceSources.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.lemma, table.pos] }),
+    check('lemma_cefr_level', sql`${table.level} in ('A1', 'A2', 'B1', 'B2', 'C1', 'C2')`),
+  ],
+)
 
 export type FactRow = typeof facts.$inferSelect
 export type FeedbackRow = typeof feedback.$inferSelect

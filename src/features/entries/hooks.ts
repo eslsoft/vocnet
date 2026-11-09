@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { getManagedEntry, listEntries } from './api'
+import { getManagedEntry, listEntries, listReferenceSources } from './api'
 
 // Agents keep producing while the admin watches, so the list refreshes itself.
 const WATCH_INTERVAL_MS = 30_000
@@ -16,4 +16,13 @@ export function useEntryPages(prefix: string) {
 
 export function useManagedEntry(lemma: string) {
   return useQuery({ queryKey: ['entry', lemma], queryFn: () => getManagedEntry(lemma), retry: false })
+}
+
+// Sources change only when an admin reimports them.
+export function useReferenceSources() {
+  return useQuery({
+    queryKey: ['reference-sources'],
+    queryFn: listReferenceSources,
+    staleTime: Number.POSITIVE_INFINITY,
+  })
 }

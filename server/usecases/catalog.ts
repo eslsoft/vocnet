@@ -21,6 +21,7 @@ import type {
   Stats,
 } from '@shared/catalog'
 import { type EntryId, formTypeSchema, registerSchema, type SenseId } from '@shared/facts'
+import type { LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
@@ -103,16 +104,25 @@ export async function createSense(
   return { ...stored, created }
 }
 
-async function snapshotOf(deps: Pick<Deps, 'nodes'>, lemma: string): Promise<EntrySnapshot> {
+/** The entry with its imported reference data, which is keyed by the entry's exact lemma. */
+async function snapshotOf(
+  deps: Pick<Deps, 'nodes' | 'reference'>,
+  lemma: string,
+): Promise<{ snapshot: EntrySnapshot; reference: LemmaReference }> {
   const entry = await deps.nodes.findEntryByLemma(normalizeTerm(lemma))
   if (!entry) throw new NotFoundError(`No entry for ${JSON.stringify(lemma)}.`)
-  return deps.nodes.loadEntrySnapshot(entry)
+  const [snapshot, reference] = await Promise.all([
+    deps.nodes.loadEntrySnapshot(entry),
+    deps.reference.forLemma(entry.lemma),
+  ])
+  return { snapshot, reference }
 }
 
-export async function getPublicEntry(deps: Pick<Deps, 'nodes'>, lemma: string): Promise<PublicEntry> {
-  const view = projectPublicEntry(await snapshotOf(deps, lemma))
+export async function getPublicEntry(deps: Pick<Deps, 'nodes' | 'reference'>, lemma: string): Promise<PublicEntry> {
+  const { snapshot, reference } = await snapshotOf(deps, lemma)
+  const view = projectPublicEntry(snapshot)
   if (!view) throw new NotFoundError(`No entry for ${JSON.stringify(lemma)}.`)
-  return view
+  return { ...view, ...reference }
 }
 
 export async function getPublicSense(deps: Pick<Deps, 'nodes'>, id: SenseId): Promise<PublicSenseWithEntry> {
@@ -139,8 +149,12 @@ export function listEntrySummaries(deps: Pick<Deps, 'nodes'>, prefix: string, pa
   return deps.nodes.listEntrySummaries(normalizeTerm(prefix), page)
 }
 
-export async function getManagedEntry(deps: Pick<Deps, 'nodes'>, lemma: string): Promise<ManagedEntryView> {
-  return managedEntryView(await snapshotOf(deps, lemma))
+export async function getManagedEntry(
+  deps: Pick<Deps, 'nodes' | 'reference'>,
+  lemma: string,
+): Promise<ManagedEntryView & LemmaReference> {
+  const { snapshot, reference } = await snapshotOf(deps, lemma)
+  return { ...managedEntryView(snapshot), ...reference }
 }
 
 /** The entry that owns a node id: the entry itself, or a sense's entry. Ids are UUIDs, so at most one matches. */

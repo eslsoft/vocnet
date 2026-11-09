@@ -635,6 +635,97 @@ expired lease answers `409 conflict`. A lease that is gone answers
 completing a lease after another agent reclaimed the entry. The holder is the
 principal ref (`agent:<id>` or `admin:<sub>`).
 
+## Reference data
+
+Word frequency and CEFR level come from external datasets, not from agents.
+They are reference data with provenance: not facts, never reviewed, never part
+of completeness or quality. An admin imports them offline; the Worker only
+reads them.
+
+| Table               | Columns                                                    | Key            |
+| ------------------- | ---------------------------------------------------------- | -------------- |
+| `reference_sources` | `id`, `name`, `version`, `license`, `license_url`, `changes`, `attribution`, `url`, `retrieved_at` | `id` |
+| `word_frequency`    | `word`, `zipf`, `rank`, `source_id`                        | `word`         |
+| `lemma_cefr`        | `lemma`, `pos`, `level` (`A1`–`C2`), `source_id`           | `(lemma, pos)` |
+
+The tables are keyed by spelling and do not reference `entries`, so an import
+never depends on which entries exist. Each lemma has exactly one key per table,
+and nothing is retried under another spelling:
+
+- **CEFR** is read by the exact lemma, because case distinguishes the words the
+  profiles list (`May` the month, `may` the auxiliary).
+- **Frequency** is read by `frequencyKey(lemma)` in `server/domain/reference.ts`:
+  the lowercase spelling. wordfreq case-folds every form it counts, so its key
+  space is case-insensitive, and the value is the frequency of the
+  case-insensitive word form, shared by every capitalization (`May` and `may`
+  get the same frequency). JavaScript's `toLowerCase` stands in for Python's
+  `casefold`; they differ only outside English (`ß` folds to `ss`).
+- Multiword and hyphenated lemmas never have a frequency: wordfreq counts single
+  tokens and splits words on hyphens.
+
+`frequency` is null when wordfreq does not list the word form at all; there is
+no Zipf cut, so null never means "listed but rare".
+
+`GET /v1/entries/{lemma}` and `GET /manage/v1/entries/{lemma}` carry
+`frequency: { zipf, rank, source_id } | null` and `cefr: [{ pos, level,
+source_id }]`. `GET /v1/sources` and `GET /manage/v1/sources` list every source
+with its license, the license URL, the changes Vocnet made to its data, and the
+attribution to show with it. wordfreq and Octanove are CC BY-SA 4.0, so their
+data is shown with attribution, the license link, and a statement of the
+changes ("Filtered and ranked by Vocnet: …").
+
+Sources (`scripts/reference/sources.json` pins versions and checksums;
+`scripts/reference/requirements.txt` pins every Python package of the export
+with hashes):
+
+- **Frequency**: wordfreq 3.1.1 `large_en` (CC BY-SA 4.0, Robyn Speer; contains
+  SUBTLEX, OpenSubtitles, and Google Books Ngrams data). `zipf` is wordfreq's
+  Zipf value of the form; the list stops at 1.01. Every one-token form of
+  letters, combining marks, apostrophes, and periods is imported (313,560 of
+  321,180 forms); markup and handles such as `info@`, `cs:go`, and `size_t` are
+  not. `rank` is one plus the number of imported forms with a higher Zipf, so
+  ties share a rank.
+- **CEFR A1–B2**: CEFR-J Wordlist 1.6 (Yukio Tono, TUFS; commercial use with
+  citation). **CEFR C1–C2**: Octanove Vocabulary Profile C1/C2 1.0 (CC BY-SA
+  4.0).
+
+The import rules live in `server/domain/reference.ts`. CEFR-J parts of speech
+map one to one, except that modal auxiliaries and the be, do, and have verbs
+become `auxiliary`, and numbers and infinitive "to" are dropped. Octanove's
+`vern` is `verb`; its one unlabeled row is dropped. A headword listing variants
+with `/` gives one lemma per variant. CEFR-J wins over Octanove for the same
+lemma and part of speech, and a pair listed several times in one profile (once
+per sense) keeps its lowest level. An unknown label or level fails the import.
+
+An import replaces all reference data: the generated SQL deletes every
+reference row, removes sources it no longer carries, upserts its sources, and
+inserts its rows, so applying it twice changes nothing. It is applied with
+`wrangler d1 execute`, not as a migration, because the data is about 17 MB of
+SQL and changes on its own schedule. The generated files are not committed;
+the pinned manifest reproduces them.
+
+```sh
+python3.13 -m venv .reference/venv
+.reference/venv/bin/pip install --require-hashes -r scripts/reference/requirements.txt
+.reference/venv/bin/python -I scripts/reference/export.py .reference/downloads > .reference/raw.json
+node scripts/reference/build.mjs .reference/raw.json > .reference/reference.sql
+pnpm exec wrangler d1 execute vocnet --local --file .reference/reference.sql   # or --remote
+```
+
+Whether a remote `--file` import is applied atomically is unverified. After a
+remote import, compare `select count(*)` of `word_frequency`, `lemma_cefr`, and
+`reference_sources` with the counts `build.mjs` prints, and rerun the import if
+they differ.
+
+On a copy of the development database (5,882 entries) the local import of
+313,560 frequency and 9,975 CEFR rows takes about 6 seconds and adds about
+22 MB. 4,462 entries have a frequency (97.8% of the 4,564 single unhyphenated
+lemmas) and 2,785 have CEFR levels; all 850 seed entries have a frequency and
+829 have CEFR levels.
+
+The worklist does not order by frequency: the claim order is one index over
+worklist columns, and frequency lives in a table the import replaces.
+
 ## Access
 
 | Surface                   | Who                  | Credential                                   |
@@ -666,7 +757,8 @@ The console is how admins watch the dictionary. It reads and acts only through
   facts through an index, so a page reads the same rows however large the
   dictionary grows. A test pins those query plans.
 - **Entry inspector**: one lemma with every sense and every fact in every
-  status, so pending, rejected, and uncertain data is seen in context.
+  status, so pending, rejected, and uncertain data is seen in context, and its
+  reference data with the attribution of each source it came from.
 - **Feedback**: read-only. Claiming and resolving belong to agents.
 - **Agents**: issue a key (shown once) and revoke it.
 
@@ -683,7 +775,8 @@ console reads its public OIDC settings from `GET /configz`.
 ## Runtime
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
-- D1 stores nodes, facts, the topic taxonomy, feedback, agents, and work leases.
+- D1 stores nodes, facts, the topic taxonomy, feedback, agents, work leases, and
+  imported reference data.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   takes batches of up to 25, reviews them concurrently, and logs the trace ID.
 - A cron trigger runs every five minutes and re-enqueues facts whose last

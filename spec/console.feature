@@ -69,6 +69,13 @@ Feature: Console
     Then each sense shows its gloss and its facts with their statuses, and incoming relations are listed
     And an unknown lemma shows the server's not-found message
 
+  @console/entry-reference @web
+  Scenario: The entry inspector shows imported reference data with its attribution
+    Given an entry whose lemma has a frequency and CEFR levels from several sources
+    When the admin opens the entry
+    Then the inspector shows the Zipf value, rank, and each part of speech's level
+    And credits each source the data came from with its linked license and the changes Vocnet made, and says "Not listed" when a lemma has none
+
   @console/feedback @web
   Scenario: Browse feedback read-only with links to what it is about
     Given open and resolved feedback about a fact and an entry
