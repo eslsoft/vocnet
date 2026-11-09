@@ -5,7 +5,7 @@ Feature: Worklist
   Scenario: A claim names what the entry lacks
     Given an entry and its facts in every status
     When the gaps are computed from its pending and published facts
-    Then each missing senses, forms, or pronunciation is a gap, and each live sense with fewer relations than its part of speech needs, or without examples or a zh translation, is a gap
+    Then each missing senses, forms, or pronunciation is a gap, and each live sense with fewer relations than its part of speech needs, or without examples, a zh translation, or the topic its part of speech needs, is a gap
 
   @work/relations-gap @domain
   Scenario: A relations gap stays open until the sense has the relations it needs
@@ -18,6 +18,13 @@ Feature: Worklist
     Given a live sense of each part of speech
     When the gaps and completeness are computed
     Then nouns, verbs, and adjectives need two relations, adverbs one, and every other part of speech none, with no relations gap and no relation slots
+
+  @work/topics-gap @domain
+  Scenario: Nouns, verbs, and adjectives need a topic
+    Given a live sense of each part of speech
+    When the gaps are computed
+    Then a noun, verb, or adjective sense with no live topic fact has a topics gap, and every other part of speech has none
+    And a pending topic fact closes the gap while a rejected one does not
 
   @work/scores @domain
   Scenario: An entry's completeness and quality come from its live facts
@@ -78,6 +85,12 @@ Feature: Worklist
     Given entries of every part of speech with filled, missing, uncertain, reported, and pending facts
     When the backfill migration runs over the rescored worklist
     Then every entry's completeness, quality, and awaiting review are unchanged
+
+  @work/topics-rescore @api
+  Scenario: The release of topics gaps rescores every entry and lifts stalls it outdates
+    Given entries stalled on open work recorded before topics gaps existed
+    When the topics rescore migration runs
+    Then an entry with an open topics gap is no longer stalled and one without keeps its stall
 
   @work/claim-seeds-first @api
   Scenario: Seed entries are claimed before the entries outside the seed list

@@ -40,6 +40,7 @@ export const zhCN: typeof enUS = {
     pronunciation: '发音',
     example: '例句',
     translation: '翻译',
+    topic: '主题',
   },
   signal: {
     unreviewed: '未审阅',

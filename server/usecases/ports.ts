@@ -5,10 +5,11 @@ import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
+import type { TopicNode } from '@server/domain/topics'
 import type { LastClaim, WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
 import type { EntryRef, EntrySummary, Stats } from '@shared/catalog'
-import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, Verdict } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, TopicId, Verdict } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
 import type { WorkLeaseId } from '@shared/work'
 
@@ -70,20 +71,33 @@ export interface FactTransitionWrite {
   revalidate?: { nodeId: EntryId | SenseId; kinds: readonly FactKind[] }
   /** A review applies only while the fact still carries the mark it read, none included. Omitted: no condition. */
   revalidateSince?: string | null
+  /**
+   * The write applies only while the fact's subject holds fewer than `max` live facts of its kind,
+   * not counting `excluding` (the fact a correction supersedes), counted in the same statement.
+   */
+  liveBelow?: { max: number; excluding: FactId | null }
+  /** The write applies only while no live fact supersedes this one, checked in the same statement. */
+  unsuperseded?: boolean
+  /** The write applies only while this fact (the original a correction supersedes) is published, checked in the same statement. */
+  originalPublished?: FactId
 }
 
 export interface FactRepo {
   find(id: FactId): Promise<Fact | null>
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
-  listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
+  /** The live (pending or published) correction that supersedes this fact, if any. */
+  findLiveCorrection(id: FactId): Promise<Fact | null>
   /**
    * Inserts unless a live fact holds the same (kind, subject, content key) and returns the live
-   * fact either way; null when another live fact holds the kind's exclusive slot.
+   * fact either way; null when another live fact holds the kind's exclusive slot, the subject
+   * already holds the kind's `maxLive` live facts (not counting the fact this one supersedes), or
+   * this correction's original is not published or already has a live correction.
    */
   insert(fact: Fact): Promise<Fact | null>
   /**
    * Conditional status write that also clears the fact's revalidation mark; false when the fact
-   * was not in `from`. Throws ConflictError when the slot is taken.
+   * was not in `from`. Throws ConflictError when the slot is taken or the
+   * original already has another live correction.
    */
   transition(write: FactTransitionWrite): Promise<boolean>
   /** Live facts about this node (as subject or object) marked for a review against its new version. */
@@ -92,6 +106,25 @@ export interface FactRepo {
   listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
   list(filter: { status?: FactStatus; kind?: FactKind }, page: PageRequest): Promise<Page<Fact>>
   countByKindAndStatus(): Promise<Stats['facts']>
+}
+
+/** A published sense as a topic listing shows it. */
+export interface TaggedSense {
+  id: SenseId
+  lemma: Lemma
+  pos: Pos
+  gloss: string
+}
+
+export interface TopicRepo {
+  /** Every category and leaf topic. */
+  list(): Promise<TopicNode[]>
+  find(id: TopicId): Promise<TopicNode | null>
+  /**
+   * Senses a published topic fact tags with one of these leaves, each once, in lemma then sense
+   * order. Visibility is derived on read: the sense's gloss and its entry are published.
+   */
+  listTaggedSenses(leaves: readonly TopicId[], page: PageRequest): Promise<Page<TaggedSense>>
 }
 
 export interface FeedbackRepo {

@@ -1,4 +1,4 @@
-import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Pos, Review, SenseId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Pos, Review, SenseId, TopicId } from '@shared/facts'
 import type { WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import type { Fact, FactOf } from './fact'
@@ -13,6 +13,7 @@ import {
   isStalled,
   leaseExpiry,
   RELATIONS_NEEDED,
+  TOPICS_NEEDED,
   type WorkLease,
 } from './work'
 
@@ -78,6 +79,7 @@ describe('entryGaps', () => {
       { type: 'relations', sense_id: glossed.id, count: 0, have: [] },
       { type: 'examples', sense_id: glossed.id },
       { type: 'translations', sense_id: glossed.id, language: 'zh' },
+      { type: 'topics', sense_id: glossed.id },
     ])
   })
 
@@ -97,6 +99,8 @@ describe('entryGaps', () => {
       fact('example', object.id, { text: 'Retracted.' }, 'retracted'),
       fact('translation', subject.id, { language: 'zh-Hans', text: '河岸' }),
       fact('translation', object.id, { language: 'zh', text: '湖岸' }),
+      fact('topic', subject.id, { topic_id: 'water-bodies' as TopicId }, 'pending'),
+      fact('topic', object.id, { topic_id: 'landscape-landforms' as TopicId }),
     ]
     const incoming = [fact('relation', elsewhere, { type: 'hypernym', target_sense_id: object.id })]
     expect(entryGaps({ senses: [subject, object], facts, incoming })).toEqual([
@@ -172,14 +176,14 @@ describe('relations by part of speech', () => {
         const facts = [fact('sense', focus.id, { gloss: 'a meaning' })]
         const gap = entryGaps({ senses: [focus], facts, incoming: [] }).find((open) => open.type === 'relations')
         const { completeness } = assessEntry({ senses: [focus], facts, incoming: [], flagged: new Set() })
-        // forms, pronunciation, the relations the pos needs, an example, and a translation are missing.
+        // forms, pronunciation, the relations and topic the pos needs, an example, and a translation are missing.
         return [pos, { gap: gap !== undefined, completeness }]
       }),
     )
     expect(needs).toEqual({
-      noun: { gap: true, completeness: 1 - 6 / 7 },
-      verb: { gap: true, completeness: 1 - 6 / 7 },
-      adjective: { gap: true, completeness: 1 - 6 / 7 },
+      noun: { gap: true, completeness: 1 - 7 / 8 },
+      verb: { gap: true, completeness: 1 - 7 / 8 },
+      adjective: { gap: true, completeness: 1 - 7 / 8 },
       adverb: { gap: true, completeness: 1 - 5 / 6 },
       pronoun: { gap: false, completeness: 1 - 4 / 5 },
       determiner: { gap: false, completeness: 1 - 4 / 5 },
@@ -199,6 +203,40 @@ describe('relations by part of speech', () => {
   })
 })
 
+describe('topics by part of speech', () => {
+  it('opens a topics gap on noun, verb, and adjective senses until one live topic tags them [spec: work/topics-gap]', () => {
+    const hospital = { topic_id: 'hospital-doctor' as TopicId }
+    const gapsFor = (pos: Pos, topics: FactStatus[] = []) => {
+      const focus = sense(pos)
+      const facts: Fact[] = [
+        fact('sense', focus.id, { gloss: 'a meaning' }),
+        ...topics.map((status) => fact('topic', focus.id, hospital, status)),
+      ]
+      return { focus, gaps: entryGaps({ senses: [focus], facts, incoming: [] }) }
+    }
+    const open = Object.fromEntries(
+      Object.keys(TOPICS_NEEDED).map((pos) => [pos, gapsFor(pos as Pos).gaps.some((gap) => gap.type === 'topics')]),
+    )
+    expect(open).toEqual({
+      noun: true,
+      verb: true,
+      adjective: true,
+      adverb: false,
+      pronoun: false,
+      determiner: false,
+      preposition: false,
+      conjunction: false,
+      interjection: false,
+      auxiliary: false,
+    })
+    const noun = gapsFor('noun')
+    expect(noun.gaps).toContainEqual({ type: 'topics', sense_id: noun.focus.id })
+    expect(gapsFor('noun', ['pending']).gaps.map((gap) => gap.type)).not.toContain('topics')
+    const rejected = gapsFor('verb', ['rejected'])
+    expect(rejected.gaps).toContainEqual({ type: 'topics', sense_id: rejected.focus.id })
+  })
+})
+
 describe('assessEntry', () => {
   const focus = sense()
   const complete: Fact[] = [
@@ -209,6 +247,7 @@ describe('assessEntry', () => {
     fact('relation', focus.id, { type: 'synonym', target_sense_id: id<SenseId>() }),
     fact('example', focus.id, { text: 'We sat on the bank.' }),
     fact('translation', focus.id, { language: 'zh', text: '河岸' }),
+    fact('topic', focus.id, { topic_id: 'water-bodies' as TopicId }),
   ]
   const incoming = [fact('relation', id<SenseId>(), { type: 'hypernym', target_sense_id: focus.id })]
   const assess = (facts: Fact[], more: { incoming?: Fact[]; flagged?: FactId[] } = {}) =>
@@ -216,8 +255,8 @@ describe('assessEntry', () => {
 
   it('scores completeness as filled slots over the slots the gaps count [spec: work/scores]', () => {
     expect(assess(complete)).toMatchObject({ gaps: [], completeness: 1, quality: 1, weakFacts: [] })
-    // One of two relations and the translation missing: 2 of 7 slots.
-    expect(assess(complete.slice(0, 6), { incoming: [] }).completeness).toBe(1 - 2 / 7)
+    // One of two relations, the translation, and the topic missing: 3 of 8 slots.
+    expect(assess(complete.slice(0, 6), { incoming: [] }).completeness).toBe(1 - 3 / 8)
     // A bare entry counts only its three entry slots.
     expect(assess([complete[0]], { incoming: [] }).completeness).toBe(0)
     expect(assess([complete[0], complete[2]], { incoming: [] }).completeness).toBe(1 - 2 / 3)

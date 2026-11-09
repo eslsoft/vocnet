@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import {
+  type AnySQLiteColumn,
+  check,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core'
 
 export const entries = sqliteTable('entries', {
   id: text('id').primaryKey(),
@@ -61,6 +70,10 @@ export const facts = sqliteTable(
     uniqueIndex('facts_exclusive_pending_idx')
       .on(table.kind, table.subjectId)
       .where(sql`exclusive = 1 and status = 'pending'`),
+    // A fact has at most one live correction, so each live correction takes a distinct original's place.
+    uniqueIndex('facts_live_correction_idx')
+      .on(table.supersedesId)
+      .where(sql`supersedes_id is not null and status in ('pending', 'published')`),
     index('facts_subject_idx').on(table.subjectId, table.status),
     index('facts_object_idx').on(table.objectId),
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),
@@ -151,6 +164,23 @@ export const worklist = sqliteTable(
   ],
 )
 
+/**
+ * The two-level topic taxonomy: a category has no parent, a leaf topic has its category as parent.
+ * Admin-curated: rows change only by migration. Ids are stable; names are display labels.
+ */
+export const topics = sqliteTable(
+  'topics',
+  {
+    id: text('id').primaryKey(),
+    parentId: text('parent_id').references((): AnySQLiteColumn => topics.id),
+    nameEn: text('name_en').notNull(),
+    nameZh: text('name_zh').notNull(),
+    /** Display order among the topic's siblings. */
+    position: integer('position').notNull(),
+  },
+  (table) => [index('topics_parent_idx').on(table.parentId, table.position)],
+)
+
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -163,3 +193,4 @@ export const agents = sqliteTable('agents', {
 export type FactRow = typeof facts.$inferSelect
 export type FeedbackRow = typeof feedback.$inferSelect
 export type AgentRow = typeof agents.$inferSelect
+export type TopicRow = typeof topics.$inferSelect

@@ -49,6 +49,8 @@ describe('http wiring', () => {
       '/feedback',
       '/forms/{form}',
       '/senses/{id}',
+      '/topics',
+      '/topics/{id}/senses',
     ])
     const docs = await request('/docs')
     expect(docs.status).toBe(200)

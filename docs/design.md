@@ -86,6 +86,7 @@ needs a new column.
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
 | `example`       | sense   | many        | `{ text }`                                               | LLM            |
 | `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)                        | LLM            |
+| `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | Jev, then LLM  |
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
 one gloss. Changing it means submitting a correction that supersedes the
@@ -95,8 +96,9 @@ D1 enforces this with two partial unique indexes on `(kind, subject_id)` over
 `exclusive` rows. The *holder* index covers the published fact and any pending
 fact that corrects nothing; the *pending* index covers every pending fact. So a
 pending correction may sit beside the published original, and a second pending
-fact or a second holder is refused. A write that one of these indexes or the
-live-content index refuses answers `409 conflict`.
+fact or a second holder is refused. A write that one of these indexes, the
+live-content index, or the one-live-correction index refuses answers
+`409 conflict`.
 
 Each inflecting form type belongs to one word class. Plurals are noun forms;
 past, past participle, present participle, and third-person singular are verb
@@ -123,6 +125,69 @@ kept their reviews; a live mirrored pair kept both rows, and the one whose
 the relation question only. Whether each sense is an established meaning is the
 job of that sense's own `sense` fact, and the relation stays hidden until both
 are published.
+
+### Topics
+
+Learners find words by topic: the scene they need them in ("words I need at
+the hospital") or the subject area they belong to ("emotions"). The server keeps a two-level controlled taxonomy in the `topics`
+table (`id`, `parent_id`, `name_en`, `name_zh`, `position`): 16 categories
+(`parent_id` null), such as `body-health` "Body and health", over 147 leaf
+topics, such as `hospital-doctor` "At the doctor and hospital". Ids are stable;
+names are display labels; `position` orders siblings. The owner curates it, so
+it changes only by migration (`topics_seed` inserted the approved taxonomy);
+agents cannot create topics.
+
+A `topic` fact tags one sense with one leaf topic. Topics are tags, not
+relations between words: a relation to an "anchor word" would need an anchor
+that is itself ambiguous, a fuzzy "related to" type that review cannot judge,
+and would count toward the relations gap; a tag points into a fixed hierarchy
+the server owns. The registry gives the kind three more properties, each
+enforced by the submission use case and never by name:
+
+- `topic`: the payload's `topic_id` must name an existing **leaf** topic. An
+  unknown id or a category id is `422 invalid_reference`.
+- `subjectPos`: the sense must be a noun, verb, adjective, or adverb; a
+  function-word sense is `422 invalid_reference`. Function words belong to no
+  topic.
+- `maxLive`: a sense holds at most 3 live topic facts. The insert counts the
+  live ones in the same statement, so concurrent submissions cannot pass the
+  limit; a fourth is `409 conflict` with a message naming the limit, and so is
+  re-reviewing a rejected topic fact into a full sense. The re-review counts
+  in its own conditional write too, so it cannot race a submission past the
+  limit. The count leaves out the fact a correction supersedes, because the
+  correction takes its place: a weak topic on a full sense is fixed by a
+  correction. A fact has at most one live correction, and a correction goes
+  live only while its original is published (invariants I1 and I2 under the
+  fact lifecycle), so a correction and its original never both publish.
+
+The content key is the topic id, so resubmitting a tag returns the live fact.
+Jev is asked one question (`topic`):
+
+> Does a learner of English commonly meet or need "*lemma*" (*pos*), meaning
+> "*gloss*", when dealing with or talking about the topic "*topic name*" (in
+> the category "*category name*")? Judge this sense only, not other senses of
+> the word. A loose association, or a word that only turns up incidentally in
+> this topic as it does in many others, does not count.
+
+The LLM second opinion passes a sense a learner would commonly meet or need
+when dealing with or talking about the topic, whether the topic is a scene (at
+the hospital) or a subject area (emotions, colours and shapes). It fails a loose
+association, a topic that fits a different sense of the word, or a topic in
+which the word only turns up incidentally. It sees the
+entry's other senses. A topic fact is judged against the gloss, so a gloss
+correction that changes its meaning revalidates it like examples,
+translations, and relations.
+
+`GET /v1/topics` returns `{ categories: [{ id, name_en, name_zh, topics: [{ id,
+name_en, name_zh }] }] }` in display order. `GET /v1/topics/{id}/senses`
+returns a keyset page `{ items: [{ id, lemma, pos, gloss }], next_cursor }` of
+the senses that published topic facts tag with that leaf, or with any leaf of
+that category, each sense once, in lemma then sense-id order. A sense appears
+only while its topic fact, its gloss, and its entry are published. An unknown
+id is `404 not_found`, without a fuzzy fallback. The query starts from the topic
+facts through the live-content index, so only the tagged senses are sorted.
+The public entry lists each sense's `topics` as `{ id, confidence, verdict,
+topic_id }`, and topic facts appear wherever the management API lists facts.
 
 ### Write rules
 
@@ -228,13 +293,49 @@ and that already hides its facts.
 An author can retract its own pending or published fact; admins can retract
 any. An admin can re-review a published or rejected fact: it returns to
 `pending` and is enqueued, unless that would make a second live fact with the
-same content or in the same exclusive slot. Re-reviewing a published gloss
-while its correction is pending, a rejected fact whose place another live
-fact took, or a rejected correction whose original is no longer published
-(another correction superseded it, or it was retracted), answers
-`409 conflict`. The last check needs no lock: a rival correction is pending
-before it publishes, and while it is pending the one-pending index refuses the
-reset.
+same content or in the same exclusive slot. Re-reviewing a fact while a live
+(pending or published) correction supersedes it, a rejected fact whose place
+another live fact took, or a rejected correction whose original is no longer
+published (another correction superseded it, or it was retracted), answers
+`409 conflict`, and so does a rejected correction whose original already has
+another live correction. The reset applies only to the status it read, and
+every one of these rules is a condition of the reset `UPDATE` itself, so none
+can race another write.
+
+A correction publishes even when its original left `published` while it was
+pending (retracted, or rejected by a revalidation); it then stands on its own
+and retires nothing.
+
+Two invariants keep a correction in exactly its original's place. Each holds by
+construction in a single statement, never by a read before the write; D1
+runs statements one at a time, so no write can land between a check and the
+write it guards.
+
+- **I1. A live correction's original is published or has left live.** A
+  correction enters `pending` only by its insert or by the re-review reset of a
+  rejected correction. Both carry `EXISTS (original id = supersedes_id AND
+  status = 'published')` in the same statement. The original side is the
+  re-review reset, the only way a fact re-enters `pending`: it carries `NOT
+  EXISTS (a live fact whose supersedes_id is this one)`. An original that left
+  live (superseded, retracted, or rejected) never comes back while its
+  correction is live, so it is never `pending` beside one. A refused correction
+  write is `409 conflict` with "Only a published fact can be superseded".
+- **I2. A fact has at most one live correction.** The partial unique index
+  `facts_live_correction_idx` on `supersedes_id` over live rows refuses a
+  second one. A submission is `409 conflict` with "The fact this corrects
+  already has a live correction", and so is re-reviewing a rejected correction
+  beside a live one.
+
+With both, a kind's `maxLive` limit holds for published facts. The insert and
+the revival of a rejected fact count the live facts of the kind except the
+fact being corrected. Each live correction has its own original (I2), and that
+original is not counted only while it is published or out of live (I1). The
+correction publishes in the batch that retires its published original, and the
+original cannot become `pending` again, and so cannot publish, while its
+correction is live. A correction and its original are therefore never
+published together, and the published facts of a kind never exceed the limit.
+The use cases still read the original first and again after a refused write,
+but only to choose the message.
 
 ### Reviews
 
@@ -247,7 +348,7 @@ reset.
 - **Second opinion.** Each kind names its reviewer chain in the registry, and
   `server/domain/review-chain.ts` says which verdicts settle a fact: Jev
   settles only `pass`, and the LLM settles every verdict. When Jev fails or is
-  unsure about an entry, sense, form, or relation, the LLM judges the same
+  unsure about an entry, sense, form, relation, or topic, the LLM judges the same
   claim with a kind-specific rubric and decides: pass or uncertain publishes
   with the LLM's verdict and confidence, fail rejects. The rubric gets the
   lemma, the part of speech, and the entry's other senses; for a relation it
@@ -346,8 +447,8 @@ the claim.
 
 **Completeness** (0..1) is filled slots over the slots the gap rules count. The
 entry has three slots (senses, forms, pronunciation); each sense with a live
-gloss adds the relations its part of speech needs, one example, and one `zh`
-translation. A relations gap with `count` relations fills `count` of its
+gloss adds the relations and topics its part of speech needs, one example, and
+one `zh` translation. A relations gap with `count` relations fills `count` of its
 slots. Completeness derives from `entryGaps`, so the gap rules stay the one
 source: it is 1 exactly when there are no gaps.
 
@@ -431,6 +532,14 @@ is the one table of the relations a sense needs: noun, verb, and adjective 2;
 adverb 1; every other part of speech 0, which means no relations gap and no
 relation slots.
 
+`TOPICS_NEEDED` is the table of the topics a sense needs: noun, verb, and
+adjective 1; every other part of speech 0, which means no topics gap and no
+topic slot. Nouns, verbs, and adjectives name the things, actions, and
+qualities a scene is made of. An adverb may carry topics but needs none.
+General-vocabulary senses (*get*, *make*, *thing*, *important*) belong to no
+topic, so they are expected to stay untagged: their topics gap stays open and
+the entry stalls after one pass.
+
 ### The worklist table
 
 `worklist` holds one row per entry, written in the same batch as the entry:
@@ -480,6 +589,16 @@ computed every entry's completeness, quality, and `awaiting_review` in SQL by
 the same rules, aggregating per entry once over the indexed fact lookups; no
 entry starts stalled.
 
+Topics gaps opened on every live noun, verb, and adjective sense at once, so
+`worklist_topics_scores` recomputed every entry's completeness in SQL by the
+rules above, topics included, in one aggregating statement instead of marking
+every row stale for the cron to drain 100 at a time (a stale row is claimable,
+so finished entries would have been handed out meanwhile). The same statement
+lifts the stall of an entry with an open topics gap whose `claimed_work` names
+no topics gap: its open work changed, as `isStalled` would find on the next
+rescore. A test runs the backfills over rescored rows and expects the same
+scores.
+
 ### Gaps
 
 Gaps are computed on read by a pure registry in `server/domain/work.ts` from
@@ -494,6 +613,7 @@ facts close its gap:
 | `{ type: "relations", sense_id, count, have }` | The sense is in fewer live relations, as subject or object, than its part of speech needs |
 | `{ type: "examples", sense_id }`         | The sense has no live example                           |
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` or `zh-*` translation |
+| `{ type: "topics", sense_id }`           | The sense has fewer live topic facts than its part of speech needs (`TOPICS_NEEDED`) |
 
 Per-sense gaps apply to each sense whose gloss is live.
 
@@ -563,7 +683,7 @@ console reads its public OIDC settings from `GET /configz`.
 ## Runtime
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
-- D1 stores nodes, facts, feedback, agents, and work leases.
+- D1 stores nodes, facts, the topic taxonomy, feedback, agents, and work leases.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   takes batches of up to 25, reviews them concurrently, and logs the trace ID.
 - A cron trigger runs every five minutes and re-enqueues facts whose last

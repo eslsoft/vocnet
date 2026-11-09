@@ -4,24 +4,9 @@ import type { SenseWithLemma } from '@server/domain/nodes'
 import type { Lemma } from '@server/domain/term'
 import type { NodeRepo, PageRequest } from '@server/usecases/ports'
 import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  exists,
-  getTableColumns,
-  gt,
-  gte,
-  inArray,
-  lt,
-  or,
-  type SQL,
-  sql,
-} from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, gt, gte, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { type Db, decodeCursor, fromFact, liveStatus, page, toEntry, toFact, toSense } from './rows'
+import { type Db, decodeCursor, factSelectValues, liveStatus, page, toEntry, toFact, toSense } from './rows'
 import { insertWorklistRow, touchWorkOf } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
@@ -169,13 +154,7 @@ export function createNodeRepo(db: Db): NodeRepo {
     async insertSenseWithFact(sense, fact, creationKey) {
       // The creation index makes a concurrent duplicate a no-op, and the fact is inserted only
       // if its sense was, so the loser of a race leaves nothing behind and reads the winner.
-      const row = fromFact(fact)
-      const values = Object.fromEntries(
-        Object.entries(getTableColumns(facts)).map(([key, column]) => [
-          key,
-          sql`${column.mapToDriverValue(row[key as keyof typeof row])}`.as(column.name),
-        ]),
-      )
+      const values = factSelectValues(fact)
       await db.batch([
         db
           .insert(senses)

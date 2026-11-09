@@ -19,7 +19,7 @@ import {
   type SenseId,
 } from '@shared/facts'
 import { type FeedbackId, feedbackStatusSchema, feedbackTargetTypeSchema } from '@shared/feedback'
-import { sql } from 'drizzle-orm'
+import { getTableColumns, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 export type Db = ReturnType<typeof createDb>
@@ -79,19 +79,35 @@ export function fromFact(fact: Fact): FactRow {
   }
 }
 
-function isUniqueViolation(error: unknown, table: string): boolean {
+/** The fact's row as select columns, for an insert that writes it only when a condition holds. */
+export function factSelectValues(fact: Fact) {
+  const row = fromFact(fact)
+  return Object.fromEntries(
+    Object.entries(getTableColumns(facts)).map(([key, column]) => [
+      key,
+      sql`${column.mapToDriverValue(row[key as keyof typeof row])}`.as(column.name),
+    ]),
+  )
+}
+
+function isUniqueViolation(error: unknown, columns: string): boolean {
   for (let cause = error; cause instanceof Error; cause = cause.cause) {
-    if (cause.message.includes(`UNIQUE constraint failed: ${table}.`)) return true
+    if (cause.message.includes(`UNIQUE constraint failed: ${columns}`)) return true
   }
   return false
 }
 
-/** Runs a write whose unique indexes guard a domain invariant; a violation is a conflict, not a crash. */
-export async function guardUnique<T>(table: string, message: string, write: () => Promise<T>): Promise<T> {
+/**
+ * Runs a write whose unique indexes guard domain invariants; a violation is a conflict, not a crash.
+ * `messages` maps the leading constraint columns SQLite names (`table.column`) to the conflict's
+ * message; the first match wins.
+ */
+export async function guardUnique<T>(messages: Record<string, string>, write: () => Promise<T>): Promise<T> {
   try {
     return await write()
   } catch (error) {
-    if (isUniqueViolation(error, table)) throw new ConflictError(message)
+    const match = Object.entries(messages).find(([columns]) => isUniqueViolation(error, columns))
+    if (match) throw new ConflictError(match[1])
     throw error
   }
 }

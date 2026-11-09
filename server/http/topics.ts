@@ -1,0 +1,35 @@
+import { createRoute } from '@hono/zod-openapi'
+import { getTopicTree, listTopicSenses } from '@server/usecases/topics'
+import { topicIdSchema } from '@shared/facts'
+import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
+import { z } from 'zod'
+import { createRouter, errorResponse, json, pageQuery } from './router'
+
+const tags = ['Topics']
+
+const getTopics = createRoute({
+  method: 'get',
+  path: '/topics',
+  tags,
+  summary: 'List the topic taxonomy',
+  description: 'Every category with its leaf topics, in display order. Only leaf topics tag senses.',
+  responses: { 200: json(topicTreeSchema, 'The taxonomy.') },
+})
+
+const getTopicSenses = createRoute({
+  method: 'get',
+  path: '/topics/{id}/senses',
+  tags,
+  summary: 'List the published senses tagged with a topic',
+  description:
+    'A leaf topic lists the senses tagged with it; a category lists the senses tagged with any of its topics, each once. A sense appears when its topic fact, its gloss, and its entry are published. An unknown id is 404.',
+  request: { params: z.object({ id: topicIdSchema }), query: pageQuery },
+  responses: { 200: json(topicSensePageSchema, 'A page of senses.'), 400: errorResponse, 404: errorResponse },
+})
+
+export const topicRoutes = createRouter()
+  .openapi(getTopics, async (c) => c.json(await getTopicTree(c.get('deps')), 200))
+  .openapi(getTopicSenses, async (c) => {
+    const page = await listTopicSenses(c.get('deps'), c.req.valid('param').id, c.req.valid('query'))
+    return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
+  })

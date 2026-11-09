@@ -73,6 +73,15 @@ const settle = async () => {
   await deliverPendingReviews()
   reviewers.mockRestore()
 }
+/** Runs the worklist score backfills in migration order, as a deploy over existing rows does. */
+const runBackfills = async () => {
+  const backfills = env.TEST_MIGRATIONS.filter(
+    (migration) =>
+      migration.name.endsWith('worklist_scores_backfill.sql') || migration.name.endsWith('worklist_topics_scores.sql'),
+  )
+  expect(backfills).toHaveLength(2)
+  for (const query of backfills.flatMap((migration) => migration.queries)) await env.DB.prepare(query).run()
+}
 const expireLeases = () =>
   env.DB.prepare('update worklist set lease_expires_at = ? where lease_id is not null')
     .bind(new Date(Date.now() - 1000).toISOString())
@@ -358,6 +367,7 @@ describe('worklist', () => {
       subject_id: quick.sense.id,
       payload: { type: 'synonym', target_sense_id: sea.sense.id },
     })
+    await submitFact(token, { kind: 'topic', subject_id: sea.sense.id, payload: { topic_id: 'water-bodies' } })
     stubReviewers(0.6, 'uncertain')
     await deliverPendingReviews()
     const report = await call('/v1/feedback', {
@@ -369,17 +379,40 @@ describe('worklist', () => {
     await submitFact(token, { kind: 'example', subject_id: nook.sense.id, payload: { text: 'A boat in the cove.' } })
 
     const scores = () =>
-      env.DB.prepare('select entry_id, completeness, quality, awaiting_review from worklist order by entry_id').all()
+      env.DB.prepare(
+        'select entry_id, completeness, quality, awaiting_review, stalled from worklist order by entry_id',
+      ).all()
     const stored = (await scores()).results
     await env.DB.prepare(
       'update worklist set completeness = 0.5, quality = 0.5, awaiting_review = 1 - awaiting_review',
     ).run()
-    const backfill = env.TEST_MIGRATIONS.find((migration) => migration.name.endsWith('worklist_scores_backfill.sql'))
-    for (const query of backfill?.queries ?? []) await env.DB.prepare(query).run()
+    await runBackfills()
     expect((await scores()).results).toEqual(stored)
     expect(stored.map((row) => row.quality)).not.toEqual([1, 1, 1])
     expect(stored.find((row) => row.entry_id === cove.entry.id)?.awaiting_review).toBe(1)
     expect(stored.find((row) => row.entry_id === tide.entry.id)?.awaiting_review).toBe(0)
+  })
+
+  it('lifts the stall of an entry whose topics gap no claim recorded [spec: work/topics-rescore]', async () => {
+    const token = await issueAgentKey()
+    const by = await createEntry(token, 'by')
+    await fill(token, by.entry.id)
+    const cove = await createEntry(token, 'cove')
+    await postSense(token, cove.entry.id, 'A small sheltered bay.')
+    await settle()
+    // Both stalled on open work recorded before topics gaps existed.
+    await env.DB.prepare(
+      `update worklist set stalled = 1, claimed_work = '{"gaps":[],"weak":[]}', claimed_at = ?, last_worked_at = ?`,
+    )
+      .bind(new Date().toISOString(), new Date().toISOString())
+      .run()
+    await runBackfills()
+    const stalled = await env.DB.prepare('select entry_id, stalled from worklist').all<{
+      entry_id: string
+      stalled: number
+    }>()
+    const byEntry = Object.fromEntries(stalled.results.map((row) => [row.entry_id, row.stalled]))
+    expect(byEntry).toEqual({ [by.entry.id]: 1, [cove.entry.id]: 0 })
   })
 
   it('reads the claim order from an index, without sorting the worklist [spec: work/claim-index]', async () => {

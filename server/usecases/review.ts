@@ -10,6 +10,7 @@ import {
   type SubjectTypeOf,
   type SubjectViews,
   targetOf,
+  topicOf,
 } from '@server/domain/fact-kinds'
 import {
   decide,
@@ -22,11 +23,12 @@ import {
 } from '@server/domain/fact-lifecycle'
 import type { SenseNode } from '@server/domain/nodes'
 import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/domain/review-chain'
-import type { EntryId, FactId, FactKind, ReviewerKind, SenseId } from '@shared/facts'
+import type { TopicView } from '@server/domain/topics'
+import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, TopicId } from '@shared/facts'
 import type { Deps } from './deps'
 import { refreshWork } from './work-scores'
 
-type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'>
+type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'topics' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'>
 
 const reviewers: {
   [R in ReviewerKind]: (deps: ReviewDeps, request: ReviewRequest<R>, state: Record<string, unknown>) => Promise<Opinion>
@@ -115,6 +117,15 @@ async function targetView(deps: ReviewDeps, id: SenseId): Promise<SenseView> {
   return { lemma, pos, gloss }
 }
 
+/** A leaf topic with its category's name; null when the id names no leaf topic. */
+async function topicView(deps: ReviewDeps, id: TopicId): Promise<TopicView | null> {
+  const topic = await deps.topics.find(id)
+  if (!topic?.parentId) return null
+  const category = await deps.topics.find(topic.parentId)
+  if (!category) throw new Error(`Topic ${id} belongs to category ${topic.parentId}, which does not exist.`)
+  return { category: category.nameEn, topic: topic.nameEn }
+}
+
 async function loadContext<K extends FactKind>(
   deps: ReviewDeps,
   fact: FactOf<K>,
@@ -122,9 +133,11 @@ async function loadContext<K extends FactKind>(
   const subjectType: SubjectTypeOf[K] = factKinds[fact.kind].subject
   const subject = await subjectLoaders[subjectType](deps, fact.subjectId)
   const target = targetOf(fact.kind, fact.payload)
+  const topic = topicOf(fact.kind, fact.payload)
   return {
     subject: subject as SubjectViews[SubjectTypeOf[K]],
     target: target ? await targetView(deps, target) : null,
+    topic: topic ? await topicView(deps, topic) : null,
   }
 }
 

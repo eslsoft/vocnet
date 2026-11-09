@@ -30,7 +30,7 @@ Feature: Facts and review
   @facts/reviewer-routing @domain
   Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
-    Then entry, sense, form, and relation go to Jev and then the LLM, and pronunciation, example, and translation go to the LLM
+    Then entry, sense, form, relation, and topic go to Jev and then the LLM, and pronunciation, example, and translation go to the LLM
 
   @facts/second-opinion @domain
   Scenario: Only a Jev pass settles a proposition
@@ -190,6 +190,19 @@ Feature: Facts and review
     When the correction names a missing, different, or unpublished fact
     Then the submission is rejected
 
+  @facts/correction-needs-published @usecase
+  Scenario: A correction goes live only while its original is published
+    Given a published fact and a correction of it, submitted or rejected and re-reviewed
+    When an admin re-reviews the original after the correction's checks read it but before its write
+    Then the correction's write, which checks the original is published in the same statement, is refused as 409 conflict
+    And no correction is live while its original is pending
+
+  @facts/one-live-correction @usecase
+  Scenario: A fact has at most one live correction
+    Given a published fact with a live correction
+    When an agent submits another correction of it, or an admin re-reviews a rejected correction of it
+    Then it answers 409 conflict saying the fact already has a live correction
+
   @facts/single-gloss @usecase
   Scenario: A sense has one gloss
     Given a sense with a live gloss
@@ -323,6 +336,12 @@ Feature: Facts and review
     Given a published or rejected fact
     When an admin re-reviews it
     Then it is pending again and enqueued, unless another live fact took its place
+
+  @facts/rereview-under-correction @usecase
+  Scenario: A fact under correction is not revived
+    Given a fact that a pending or published correction supersedes
+    When an admin re-reviews the fact
+    Then it answers 409 conflict pointing at the correction, and the fact keeps its status
 
   @facts/rereview-api @api
   Scenario: A rejected fact goes back through review and publishes

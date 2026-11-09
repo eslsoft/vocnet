@@ -13,6 +13,7 @@ import {
   relationTypeSchema,
   senseIdSchema,
   strengthSchema,
+  topicIdSchema,
   verdictSchema,
 } from './facts'
 
@@ -44,6 +45,8 @@ export const publicTranslationSchema = z
   .object({ ...factMeta, language: z.string(), text: z.string() })
   .meta({ id: 'Translation' })
 
+export const publicTopicTagSchema = z.object({ ...factMeta, topic_id: topicIdSchema }).meta({ id: 'TopicTag' })
+
 export const senseRefSchema = z
   .object({ id: senseIdSchema, lemma: z.string(), pos: posSchema, gloss: z.string() })
   .meta({ id: 'SenseRef' })
@@ -70,6 +73,9 @@ export const publicSenseSchema = z
     examples: z.array(publicExampleSchema),
     translations: z.array(publicTranslationSchema),
     relations: z.array(publicRelationSchema),
+    topics: z
+      .array(publicTopicTagSchema)
+      .meta({ description: 'Leaf topics of GET /v1/topics this sense is tagged with.' }),
   })
   .meta({ id: 'Sense' })
 export type PublicSense = z.infer<typeof publicSenseSchema>
@@ -122,7 +128,7 @@ export const managedEntrySchema = z
     seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        'Share of the slots the gaps count (senses, forms, pronunciation, and per sense the relations its part of speech needs, an example, and a zh translation) that live facts fill; 1 means no gaps.',
+        'Share of the slots the gaps count (senses, forms, pronunciation, and per sense the relations and topic its part of speech needs, an example, and a zh translation) that live facts fill; 1 means no gaps.',
     }),
     quality: z.number().min(0).max(1).meta({
       description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',

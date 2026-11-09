@@ -27,7 +27,7 @@ import { type Actor, submitFact } from './facts'
 import type { PageRequest } from './ports'
 import { refreshWork } from './work-scores'
 
-type WriteDeps = Pick<Deps, 'nodes' | 'facts' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
+type WriteDeps = Pick<Deps, 'nodes' | 'facts' | 'topics' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
 
 /**
  * Ensures the entry node exists, is marked as a seed entry when asked, and its `entry` fact is
