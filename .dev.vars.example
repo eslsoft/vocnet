@@ -1,7 +1,16 @@
 # Copy to .dev.vars for local development. Also the source of var names for
-# `wrangler types` (pnpm cf-typegen) — keep keys here in sync with code that
+# `wrangler types` (pnpm cf-typegen); keep keys here in sync with code that
 # reads them via env.
 
 # OIDC: the API verifies bearer JWTs against this issuer's JWKS (audience = client id).
 OIDC_ISSUER=https://your-issuer.example.com
 OIDC_CLIENT_ID=your-client-id
+
+# Comma-separated OIDC subjects that may use the management API as admins.
+ADMIN_SUBJECTS=admin-subject-1,admin-subject-2
+
+# Reviewer gateway: Jev at {MODEL_BASE_URL}/v1/systemone, the general LLM at
+# {MODEL_BASE_URL}/v1/chat/completions (OpenAI-compatible).
+MODEL_BASE_URL=https://models.example.com
+MODEL_API_KEY=replace-me
+REVIEW_LLM_MODEL=gpt-5-mini

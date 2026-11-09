@@ -1,3 +1,4 @@
+import { principalRef } from '@server/domain/principal'
 import type { MiddlewareHandler } from 'hono'
 import type { AppEnv } from './context'
 
@@ -40,13 +41,14 @@ export const requestBoundary: MiddlewareHandler<AppEnv> = async (c, next) => {
 export const auditBoundary: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next()
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method) || c.res.status >= 400) return
+  const principal = c.get('principal')
 
   console.info(
     JSON.stringify({
       event: 'audit',
       requestId: c.get('requestId'),
       traceId: c.get('traceId'),
-      actorId: c.get('user')?.sub ?? null,
+      actorId: principal ? principalRef(principal) : null,
       action: c.req.method.toLowerCase(),
       resource: c.req.path,
       status: c.res.status,

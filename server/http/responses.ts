@@ -1,5 +1,5 @@
-import type { ApiErrorCode } from '@server/usecases/errors'
+import type { ApiErrorCode } from '@shared/types'
 
-export function errorPayload(code: ApiErrorCode | 'internal_error', message: string) {
+export function errorPayload(code: ApiErrorCode, message: string) {
   return { error: { code, message } }
 }

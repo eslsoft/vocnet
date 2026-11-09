@@ -8,11 +8,27 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = true
 
+[vars]
+JEV_MODEL = "jev-latest"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "vocnet"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
+
+[[queues.producers]]
+binding = "REVIEW_QUEUE"
+queue = "vocnet-reviews"
+
+[[queues.consumers]]
+queue = "vocnet-reviews"
+max_batch_size = 10
+max_retries = 5
+dead_letter_queue = "vocnet-reviews-dlq"
+
+[triggers]
+crons = ["*/10 * * * *"]
 
 [observability]
 enabled = true
