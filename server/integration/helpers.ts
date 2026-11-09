@@ -26,7 +26,7 @@ export async function call(path: string, init: RequestInit & { token?: string; j
     env,
     createExecutionContext(),
   )
-  return { status: response.status, body: (await response.json()) as unknown }
+  return { status: response.status, body: (response.status === 204 ? null : await response.json()) as unknown }
 }
 
 export async function issueAgentKey(name = 'Test agent'): Promise<string> {

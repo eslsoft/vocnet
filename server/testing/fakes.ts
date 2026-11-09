@@ -4,12 +4,14 @@ import { factKinds } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
 import { ConflictError } from '@server/usecases/errors'
 import type { AgentRecord, JevAnswers, LlmJudgement, NodeRepo, ReviewJob } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
 import type { EntryId, FactId, SenseId } from '@shared/facts'
 import type { FeedbackId } from '@shared/feedback'
+import type { WorkLeaseId } from '@shared/work'
 
 // In-memory stand-ins for every port, shared by the use-case tests. They model
 // the persistence guarantees the real repos give (live uniqueness, conditional
@@ -22,6 +24,8 @@ export interface FakeWorld {
   facts: Fact[]
   feedback: FeedbackRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
+  leases: WorkLease[]
+  worked: Map<EntryId, { lastWorkedAt: string; lastWorkedBy: string; lastNote: string | null }>
   queued: ReviewJob[]
   /** Client keys the feedback limiter refuses. */
   limitedClients: Set<string>
@@ -56,6 +60,8 @@ export function fakeWorld(): FakeWorld {
     facts: [],
     feedback: [],
     agents: [],
+    leases: [],
+    worked: new Map(),
     queued: [],
     limitedClients: new Set(),
     jevCalls: [],
@@ -290,6 +296,29 @@ export function fakeWorld(): FakeWorld {
         if (agent) agent.revokedAt = at
       },
     },
+    work: {
+      claimNext: async (lease, now) => {
+        const free = (entry: EntryNode) =>
+          world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entry.id && live(fact)) &&
+          !world.leases.some((held) => held.entryId === entry.id && held.expiresAt > now)
+        const order = (entry: EntryNode) => [world.worked.get(entry.id)?.lastWorkedAt ?? '', entry.createdAt, entry.id]
+        const [next] = world.entries.filter(free).sort((a, b) => order(a).join('|').localeCompare(order(b).join('|')))
+        if (!next) return null
+        const claimed = { ...lease, entryId: next.id }
+        world.leases.splice(0, world.leases.length, ...world.leases.filter((held) => held.entryId !== next.id), claimed)
+        return { lease: claimed, entry: next }
+      },
+      findLease: async (id) => world.leases.find((lease) => lease.id === id) ?? null,
+      complete: async (lease, at, note) => {
+        const index = world.leases.findIndex(
+          (held) => held.id === lease.id && held.holder === lease.holder && held.expiresAt > at,
+        )
+        if (index < 0) return false
+        world.leases.splice(index, 1)
+        world.worked.set(lease.entryId, { lastWorkedAt: at, lastWorkedBy: lease.holder, lastNote: note })
+        return true
+      },
+    },
     jev: {
       ask: async (questions, state) => {
         world.jevCalls.push({ questions, state })
@@ -325,6 +354,7 @@ export function fakeWorld(): FakeWorld {
       fact: () => nextId<FactId>(),
       feedback: () => nextId<FeedbackId>(),
       agent: () => nextId<AgentId>(),
+      lease: () => nextId<WorkLeaseId>(),
     },
   }
 

@@ -5,10 +5,12 @@ import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
+import type { WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
 import type { EntryRef, Stats } from '@shared/catalog'
 import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, Verdict } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
+import type { WorkLeaseId } from '@shared/work'
 
 // Interfaces for everything beyond the process boundary. Implemented in adapters/.
 
@@ -86,6 +88,17 @@ export interface FeedbackRepo {
   update(next: FeedbackRecord, expectedRevision: number): Promise<boolean>
   list(filter: { status?: FeedbackStatus }, page: PageRequest): Promise<Page<FeedbackRecord>>
   countOpen(): Promise<number>
+}
+
+export interface WorkRepo {
+  /**
+   * Atomically leases the least recently worked entry whose entry fact is live and that has no
+   * unexpired lease, replacing an expired one; null when no entry is claimable.
+   */
+  claimNext(lease: Omit<WorkLease, 'entryId'>, now: string): Promise<{ lease: WorkLease; entry: EntryNode } | null>
+  findLease(id: WorkLeaseId): Promise<WorkLease | null>
+  /** Records the work on the entry and deletes the lease while it is still unexpired; false otherwise. */
+  complete(lease: WorkLease, at: string, note: string | null): Promise<boolean>
 }
 
 export interface AgentRecord {
@@ -175,4 +188,5 @@ export interface IdGenerator {
   fact(): FactId
   feedback(): FeedbackId
   agent(): AgentId
+  lease(): WorkLeaseId
 }

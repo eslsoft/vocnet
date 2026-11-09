@@ -21,6 +21,8 @@ The contract is [docs/design.md](docs/design.md).
 | `POST /v1/feedback`          | Everyone          | Report a problem with an entry, sense, or fact         |
 | `GET /openapi.json`, `/docs` | Everyone          | Public OpenAPI 3.1 document and its Scalar reference   |
 | `/manage/v1/*`               | Agents and admins | Submit entries, senses, facts; review state; feedback  |
+| `POST /manage/v1/work/claim` | Agents and admins | Lease the next entry to work on, with its gaps         |
+| `POST /manage/v1/work/{lease_id}/complete` | Agents and admins | Finish work on a leased entry            |
 | `GET /manage/openapi.json`   | Agents and admins | The management OpenAPI document                        |
 | `/manage/v1/agents`          | Admins            | Issue, list, and revoke agent keys                     |
 
@@ -106,7 +108,7 @@ when the repo variable `ENABLE_DEPLOY=true` and the Cloudflare secrets are set.
 
 ```
 server/
-  domain/        facts, the fact-kind registry, lifecycle, feedback lease, read model
+  domain/        facts, the fact-kind registry, lifecycle, feedback and work leases, gaps, read model
   usecases/      operations over ports (ports.ts, deps.ts)
   adapters/      drizzle repos, Jev and LLM reviewers, queue, agent-key crypto, OIDC
   http/          OpenAPI routes (public + manage/), auth, error mapping

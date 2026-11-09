@@ -191,6 +191,54 @@ holder can renew its claim at any time. Only the holder resolves (linking the
 correcting fact IDs) or dismisses (with a note). Every feedback write is a
 compare-and-set on a revision counter.
 
+## Worklist
+
+Agents ask the server what to work on instead of keeping their own list, and a
+lease keeps two agents off the same entry.
+
+`POST /manage/v1/work/claim` (body `{ lease_seconds? }`, 60 to 3600, default
+900) leases one entry to the caller and returns
+`{ lease, entry, gaps }`: the lease (`id`, `entry_id`, `lemma`, `holder`,
+`expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
+returns, and the entry's gaps. It answers `204` when no entry is free. A free
+entry has a live `entry` fact and no unexpired lease. Among free entries the
+least recently worked comes first: never-worked entries, then by
+`last_worked_at`, then by creation time and id. An entry with no gaps is still
+served in turn, so agents can enrich it.
+
+| Table         | Columns                                                 | Rule                                     |
+| ------------- | ------------------------------------------------------- | ---------------------------------------- |
+| `work_leases` | `id`, `entry_id` (unique), `holder`, `expires_at`       | At most one lease row per entry          |
+| `entry_work`  | `entry_id`, `last_worked_at`, `last_worked_by`, `last_note` | When work on the entry last completed |
+
+The claim is one `INSERT … SELECT … ON CONFLICT (entry_id) DO UPDATE` statement
+that picks the entry and writes the lease. D1 runs statements one at a time, so
+two concurrent claims never get the same entry, and the update replaces a
+lease only once it has expired. Work state lives in these tables, not on the
+`entries` node, which keeps identity only.
+
+Gaps are computed on read by a pure registry in `server/domain/work.ts` from
+the entry's live (pending or published) facts:
+
+| Gap                                      | Open while                                              |
+| ---------------------------------------- | ------------------------------------------------------- |
+| `{ type: "senses" }`                     | No sense has a live gloss                               |
+| `{ type: "forms" }`                      | No live form                                            |
+| `{ type: "pronunciation" }`              | No live pronunciation                                   |
+| `{ type: "relations", sense_id }`        | The sense is in no live relation, as subject or object  |
+| `{ type: "examples", sense_id }`         | The sense has no live example                           |
+| `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` or `zh-*` translation |
+
+Per-sense gaps apply to each sense whose gloss is live.
+
+`POST /manage/v1/work/{lease_id}/complete` (body `{ note? }`, up to 500
+characters) records `last_worked_at`, the holder, and the note, and deletes the
+lease in one transaction. Only the holder completes, and only before
+`expires_at`: another principal or an expired lease answers `409 conflict`. A
+lease that is gone answers `404 not_found`, so completing the same lease twice
+is a 404, and so is completing a lease after another agent reclaimed the
+entry. The holder is the principal ref (`agent:<id>` or `admin:<sub>`).
+
 ## Access
 
 | Surface                   | Who                  | Credential                                   |
@@ -232,7 +280,7 @@ console reads its public OIDC settings from `GET /configz`.
 ## Runtime
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
-- D1 stores nodes, facts, feedback, and agents.
+- D1 stores nodes, facts, feedback, agents, and work leases.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   reviews and logs the trace ID.
 - A cron trigger re-enqueues facts whose last status change is more than ten

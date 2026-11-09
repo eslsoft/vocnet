@@ -11,6 +11,7 @@ import type {
   NodeRepo,
   RateLimiter,
   ReviewQueue,
+  WorkRepo,
 } from './ports'
 
 // The dependency bundle assembled in composition.ts. Use cases take a Pick of it.
@@ -19,6 +20,7 @@ export interface Deps {
   facts: FactRepo
   feedback: FeedbackRepo
   agents: AgentRepo
+  work: WorkRepo
   jev: JevReviewer
   llm: LlmReviewer
   reviewQueue: ReviewQueue
