@@ -1,7 +1,7 @@
 import { type ClientConfig, clientConfigSchema } from '@shared/types'
 import { decodeApiResponse, rpc } from '@/shared/api/client'
 
-// The SPA's runtime config comes from the backend (GET /api/configz), so there is
+// The SPA's runtime config comes from the backend (GET /configz), so there is
 // one set of env vars (on the worker) and the same bundle runs in every environment.
 let config: ClientConfig | null = null
 

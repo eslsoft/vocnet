@@ -32,7 +32,7 @@ export function Layout() {
         <div className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-3">
           <span className="font-heading font-semibold">{t('appName')}</span>
           <nav className="flex gap-1 text-sm text-muted-foreground">
-            <NavItem to="/">{t('navNotes')}</NavItem>
+            <NavItem to="/">{t('navHome')}</NavItem>
             <NavItem to="/about">{t('navAbout')}</NavItem>
           </nav>
           <div className="ml-auto flex items-center gap-1">

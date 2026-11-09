@@ -14,7 +14,7 @@ export const router = createBrowserRouter([
     element: <Layout />,
     errorElement: <RouteError />,
     children: [
-      { index: true, lazy: async () => ({ Component: (await import('@/routes/notes')).default }) },
+      { index: true, lazy: async () => ({ Component: (await import('@/routes/home')).default }) },
       { path: 'about', lazy: async () => ({ Component: (await import('@/routes/about')).default }) },
       { path: '*', lazy: async () => ({ Component: (await import('@/routes/not-found')).default }) },
     ],

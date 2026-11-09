@@ -19,9 +19,9 @@ describe('rpc client', () => {
     setAccessToken('tok')
     let sent: string | null = null
     server.use(
-      http.get('/api/configz', ({ request }) => {
+      http.get('/configz', ({ request }) => {
         sent = request.headers.get('authorization')
-        return HttpResponse.json({ oidc: { issuer: 'i', clientId: 'c' } })
+        return HttpResponse.json({ oidc: { issuer: 'i', client_id: 'c' } })
       }),
     )
 

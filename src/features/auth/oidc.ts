@@ -4,12 +4,12 @@ import { getConfig } from '@/shared/config'
 
 let manager: UserManager | null = null
 
-// Constructed lazily from the runtime config (GET /api/configz), so OIDC settings
+// Constructed lazily from the runtime config (GET /configz), so OIDC settings
 // live only on the backend. Redirect transaction state survives the callback in
 // sessionStorage; tokens stay in memory and disappear when the page is closed.
 function getManager(): UserManager {
   if (!manager) {
-    const { issuer, clientId } = getConfig().oidc
+    const { issuer, client_id: clientId } = getConfig().oidc
     manager = new UserManager({
       authority: issuer,
       client_id: clientId,

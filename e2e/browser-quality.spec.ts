@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 const budget = (
   JSON.parse(readFileSync('quality/performance-budgets.json', 'utf8')) as {
     routes: {
-      notes: {
+      home: {
         maxDomContentLoadedMs: number
         maxScriptTransferBytes: number
         maxRequests: number
@@ -13,7 +13,7 @@ const budget = (
       }
     }
   }
-).routes.notes
+).routes.home
 
 async function signIn(page: import('@playwright/test').Page) {
   await page.goto('/')
@@ -23,7 +23,7 @@ async function signIn(page: import('@playwright/test').Page) {
   await expect(page).toHaveURL(/\/$/)
 }
 
-test('critical UI is accessible and dialog focus is correct [spec: auth/login]', async ({ page }) => {
+test('critical UI is accessible and keyboard operable [spec: access/console-login]', async ({ page }) => {
   const loginResponse = await page.goto('/')
   expect(loginResponse?.headers()['content-security-policy']).toContain("script-src 'self'")
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
@@ -32,18 +32,11 @@ test('critical UI is accessible and dialog focus is correct [spec: auth/login]',
   await signIn.focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('heading', { name: 'Vocnet console' })).toBeVisible()
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
-
-  const create = page.getByRole('button', { name: 'Create note' })
-  await create.focus()
-  await page.keyboard.press('Enter')
-  await expect(page.getByRole('textbox')).toBeFocused()
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
-  await page.keyboard.press('Escape')
-  await expect(create).toBeFocused()
 })
 
-test('notes route stays inside its deterministic performance budget', async ({ page }) => {
+test('home route stays inside its deterministic performance budget', async ({ page }) => {
   await page.addInitScript(() => {
     ;(window as unknown as { __e2eCls: number }).__e2eCls = 0
     new PerformanceObserver((list) => {
@@ -82,15 +75,4 @@ test('critical page matches its reviewed visual baseline', async ({ page }) => {
     animations: 'disabled',
     maxDiffPixelRatio: 0.02,
   })
-})
-
-test('resource text cannot execute markup [spec: notes/create]', async ({ page }) => {
-  await signIn(page)
-  const payload = '<img src=x onerror="window.__e2eXss=1">'
-  await page.getByRole('button', { name: 'Create note' }).click()
-  await page.getByRole('textbox').fill(payload)
-  await page.getByRole('button', { name: 'Add' }).click()
-
-  await expect(page.getByText(payload)).toBeVisible()
-  expect(await page.evaluate(() => (window as unknown as { __e2eXss?: number }).__e2eXss)).toBeUndefined()
 })

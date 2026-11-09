@@ -16,7 +16,7 @@ vi.mock('oidc-client-ts', () => ({
   InMemoryWebStorage: class {},
 }))
 vi.mock('@/shared/config', () => ({
-  getConfig: () => ({ oidc: { issuer: 'https://issuer.test', clientId: 'c' } }),
+  getConfig: () => ({ oidc: { issuer: 'https://issuer.test', client_id: 'c' } }),
 }))
 
 import { completeLogin, isAuthenticated, login, logout } from './oidc'

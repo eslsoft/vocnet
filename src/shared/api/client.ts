@@ -75,4 +75,4 @@ const authFetch: typeof fetch = async (input, init) => {
   return fetch(input, { ...init, headers })
 }
 
-export const rpc = hc<AppType>('/', { fetch: authFetch }).api
+export const rpc = hc<AppType>('/', { fetch: authFetch })

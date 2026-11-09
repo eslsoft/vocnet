@@ -1,7 +1,7 @@
 {
   "version": 1,
   "routes": {
-    "notes": {
+    "home": {
       "owner": "web-platform",
       "maxDomContentLoadedMs": 3000,
       "maxScriptTransferBytes": 800000,
