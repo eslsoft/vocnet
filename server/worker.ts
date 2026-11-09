@@ -1,4 +1,4 @@
-import type { ExecutionContext, MessageBatch, ScheduledController } from '@cloudflare/workers-types'
+import type { ExecutionContext, Message, MessageBatch, ScheduledController } from '@cloudflare/workers-types'
 import type { Env } from '@server/env'
 import { Hono } from 'hono'
 import { secureHeaders } from 'hono/secure-headers'
@@ -35,29 +35,33 @@ export function isApiPath(pathname: string): boolean {
 
 const RETRY_DELAY_SECONDS = 60
 
+// Messages in a batch are independent and each review is idempotent, so they run
+// concurrently; a sequential loop made one slow model call hold up the whole batch.
 export async function handleReviewBatch(batch: MessageBatch<unknown>, env: Env): Promise<void> {
   const deps = createDeps(env)
-  for (const message of batch.messages) {
-    const parsed = reviewMessageSchema.safeParse(message.body)
-    if (!parsed.success) {
-      console.error(JSON.stringify({ event: 'review_job_invalid', messageId: message.id, issues: parsed.error.issues }))
-      message.ack()
-      continue
-    }
-    const job: ReviewMessage = parsed.data
-    const log = { event: 'review_job', factId: job.fact_id, traceId: job.trace_id, attempt: message.attempts }
-    try {
-      const outcome = await reviewFact(deps, job.fact_id, job.trace_id)
-      console.info(JSON.stringify({ ...log, outcome }))
-      message.ack()
-    } catch (error) {
-      const err = error as Error
-      const transport = error instanceof ReviewerTransportError
-      const entry = { ...log, outcome: 'retry', error: { name: err.name, message: err.message, stack: err.stack } }
-      if (transport) console.warn(JSON.stringify(entry))
-      else console.error(JSON.stringify(entry))
-      message.retry({ delaySeconds: RETRY_DELAY_SECONDS })
-    }
+  await Promise.all(batch.messages.map((message) => handleReviewMessage(deps, message)))
+}
+
+async function handleReviewMessage(deps: ReturnType<typeof createDeps>, message: Message<unknown>): Promise<void> {
+  const parsed = reviewMessageSchema.safeParse(message.body)
+  if (!parsed.success) {
+    console.error(JSON.stringify({ event: 'review_job_invalid', messageId: message.id, issues: parsed.error.issues }))
+    message.ack()
+    return
+  }
+  const job: ReviewMessage = parsed.data
+  const log = { event: 'review_job', factId: job.fact_id, traceId: job.trace_id, attempt: message.attempts }
+  try {
+    const outcome = await reviewFact(deps, job.fact_id, job.trace_id)
+    console.info(JSON.stringify({ ...log, outcome }))
+    message.ack()
+  } catch (error) {
+    const err = error as Error
+    const transport = error instanceof ReviewerTransportError
+    const entry = { ...log, outcome: 'retry', error: { name: err.name, message: err.message, stack: err.stack } }
+    if (transport) console.warn(JSON.stringify(entry))
+    else console.error(JSON.stringify(entry))
+    message.retry({ delaySeconds: RETRY_DELAY_SECONDS })
   }
 }
 
