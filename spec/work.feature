@@ -50,11 +50,17 @@ Feature: Worklist
     When admission is decided
     Then a live row is claimable when its scores are stale, or when it is not stalled, has no pending fact about it or relation into its senses, and has a gap or a weak fact
 
+  @work/claim-tiers @domain
+  Scenario: The claim tier puts gaps before weak facts, then learner priority, then never-claimed before claimed
+    Given entries of every CEFR level, with a frequency and no level, with neither, with a gap or only weak facts, claimed or not
+    When their claim tiers are computed
+    Then every entry with a gap comes before every entry whose only work is weak facts, each by A1, A2, B1, B2, C1, C2, then frequency without a level, then the rest, and within each band never-claimed before claimed
+
   @work/claim-order @usecase
-  Scenario: Seed entries come first, never-claimed by lowest completeness, claimed by least recently claimed
-    Given never-claimed seed entries, other never-claimed entries of different completeness, and an entry whose entry fact is retracted
-    When agents claim and complete work, some passes adding a sense or a form, and reviews land between passes
-    Then seed entries are claimed first and claimed ones by least recently claimed, then the other entries by lowest completeness, every pass that added nothing stalls its entry, and the dead entry is never claimed
+  Scenario: Learner priority orders the claims, never-claimed by highest frequency, claimed by least recently claimed
+    Given never-claimed A1 entries of different frequency, a B2 entry, an entry with a frequency and no level, one with neither, and an A1 entry whose entry fact is retracted
+    When agents claim and complete work, each first pass adding a sense, and reviews land between passes
+    Then the A1 entries are claimed first by highest frequency and claimed again by least recently claimed, then the B2 entry, the entry with only a frequency, and the entry with neither, every pass that added nothing stalls its entry, and the dead entry is never claimed
 
   @work/stall-loop @usecase
   Scenario: No loop hands out an entry whose passes make no lasting progress
@@ -82,7 +88,7 @@ Feature: Worklist
 
   @work/stall-api @api
   Scenario: A stalled entry waits until another principal changes its work
-    Given a seed entry whose pass links it to another entry, and review rejects the link after the lease ended
+    Given an A1 entry whose pass links it to another entry, and review rejects the link after the lease ended
     When agents claim and complete work
     Then neither entry is claimable while the link is pending, the entry is not claimed again, the worklist empties, and another principal's example makes it claimable
 
@@ -104,17 +110,30 @@ Feature: Worklist
     When the rescore migrations run
     Then an entry with an open grammar, collocations, or word formation gap is no longer stalled and one without keeps its stall
 
-  @work/claim-seeds-first @api
-  Scenario: Seed entries are claimed before the entries outside the seed list
-    Given entries created without seed, one created with seed true, and one marked seed by a repeated create
-    When agents claim and complete work
-    Then each seed entry is claimed before any other entry, and once each pass added nothing the worklist is empty
+  @work/claim-priority @api
+  Scenario: Entries are claimed in learner priority, re-ranked by every reference import
+    Given entries with CEFR levels, with a frequency and no level, and with neither, one created after the reference import
+    When agents claim work, and again after a reimport changes the levels and the leases lapse
+    Then A1 entries come first, then the higher levels in order, then frequency without a level, then the rest; within a level the more frequent first and an entry without a frequency last
+    And a capitalized lemma has the frequency of its lowercase word form, and the reimport's levels decide the next claim
+
+  @work/claim-gaps-first @api
+  Scenario: Completeness comes before quality
+    Given a complete A1 entry with a fact published on an uncertain verdict, and an entry with gaps and no reference data
+    When agents claim work
+    Then the entry with gaps is claimed first, and the complete entry only after it
+
+  @work/priority-backfill @api
+  Scenario: The backfill computes the learner priority that creation and the import store
+    Given reference data and entries created after it, a capitalized lemma, a lemma with a non-ASCII letter, and a phrase among them
+    When the learner priority backfill migration runs over scrambled rows
+    Then every row's frequency key, level rank, and frequency are unchanged
 
   @work/claim-rotation @api
   Scenario: An entry whose lease lapses goes back without stalling
-    Given the least complete entry is claimed and its lease keeps expiring without a complete
+    Given the least complete of three A1 entries is claimed and its lease keeps expiring without a complete
     When agents claim work
-    Then the never-claimed entries come first, and then the claimed entries least recently claimed first, so the lapsing entry never comes ahead of one claimed before it
+    Then the never-claimed entries of the band come first, and then the claimed entries least recently claimed first, so the lapsing entry never comes ahead of one claimed before it
 
   @work/entry-seed @api
   Scenario: The entry view says whether the entry is a seed entry

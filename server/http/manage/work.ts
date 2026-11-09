@@ -27,8 +27,10 @@ const claimRoute = createRoute({
   summary: 'Lease the next entry to work on',
   description:
     'Picks the next entry with work left (a gap or a weak fact) whose entry fact is live, that no unexpired ' +
-    'lease holds, and whose last completed pass made progress or that changed since; seed entries first, then ' +
-    'never-claimed ones, then the lowest completeness. Returns it with its gaps and weak facts. Two concurrent ' +
+    'lease holds, and whose last completed pass made progress or that changed since. Entries with a gap come ' +
+    'before entries with only weak facts; then CEFR level A1 to C2, then entries with a frequency but no level, ' +
+    'then the rest; within each, never-claimed entries by highest frequency before claimed ones by least ' +
+    'recently claimed. Returns it with its gaps and weak facts. Two concurrent ' +
     'claims never get the same entry. 204 means no entry has work left that a pass can do.',
   request: { body: optionalBody(claimWorkInputSchema) },
   responses: {

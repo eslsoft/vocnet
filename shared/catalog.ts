@@ -192,11 +192,33 @@ export const createEntryInputSchema = z
     lemma: lemmaInputSchema,
     seed: z.boolean().optional().meta({
       description:
-        'Marks the entry as part of a seed list, so the worklist serves it before never-claimed entries outside the list. Once set it stays set; false or absent changes nothing.',
+        'Marks the entry as part of a seed list, a curated word list rather than a neighbor an agent found. The mark is shown in the management view and does not change the claim order. Once set it stays set; false or absent changes nothing.',
     }),
   })
   .meta({ id: 'CreateEntryInput' })
 export type CreateEntryInput = z.infer<typeof createEntryInputSchema>
+/** At most this many entries per core import call, which keeps one request inside the Worker's D1 query budget. */
+export const CORE_IMPORT_MAX = 50
+
+export const coreImportInputSchema = z
+  .object({
+    limit: z.number().int().min(1).max(CORE_IMPORT_MAX).default(CORE_IMPORT_MAX).meta({
+      description: 'The most entries this call creates.',
+    }),
+  })
+  .meta({ id: 'CoreImportInput' })
+export type CoreImportInput = z.infer<typeof coreImportInputSchema>
+export const coreImportResultSchema = z
+  .object({
+    created: z.array(z.string()).meta({ description: 'The lemmas this call created entries for, in import order.' }),
+    skipped: z
+      .array(z.string())
+      .meta({ description: 'Headwords the import never makes entries: single letters other than "a" and "I".' }),
+    remaining: z.number().int().nonnegative().meta({ description: 'Headwords still without an entry; 0 when done.' }),
+  })
+  .meta({ id: 'CoreImportResult' })
+export type CoreImportResult = z.infer<typeof coreImportResultSchema>
+
 export const createEntryResultSchema = z
   .object({ entry: entryNodeSchema, fact: factSchema, created: z.boolean() })
   .meta({ id: 'CreateEntryResult' })

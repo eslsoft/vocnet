@@ -111,10 +111,13 @@ export const feedback = sqliteTable(
  * `assessEntry` and `isStalled` in server/domain/work.ts as of `scored_revision`; every write that can change the
  * entry's work bumps `revision` in its own batch, and the use case that made it rescores. A stale
  * row (`revision <> scored_revision`) stays claimable, so a lost rescore never hides work.
- * `claim_rank` is the claim tier of a claimable entry and null otherwise, so the claim order is one
- * index: seed entries never claimed (0) and claimed (1), then the rest never claimed (2) and
- * claimed (3). Never-claimed tiers go by lowest completeness (their `claimed_at` is null), claimed
- * tiers by least recently claimed.
+ * `level_rank` and `zipf` are the learner priority of the entry's lemma, read from the reference
+ * tables when the row is created and again by every reference import.
+ * `claim_rank` is `claimTier` in server/domain/work.ts for a claimable entry and null otherwise,
+ * so the claim order is one index: entries with a gap before entries with only weak facts, each by
+ * learner band (A1 to C2, then frequency without a level, then the rest), never-claimed before
+ * claimed within a band. Never-claimed rows go by highest `zipf` (their `claimed_at` is null), then
+ * lowest completeness; claimed rows by least recently claimed.
  */
 export const worklist = sqliteTable(
   'worklist',
@@ -128,6 +131,16 @@ export const worklist = sqliteTable(
     claimedAt: text('claimed_at'),
     /** Set when an entry is submitted as part of a seed list; never cleared. */
     seed: integer('seed', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * `frequencyKey` of the entry's lemma, so SQL reads its frequency under the key the domain
+     * defines. Every insert sets it; it is nullable only because SQLite cannot add a NOT NULL
+     * column without a default to a table with rows.
+     */
+    frequencyKey: text('frequency_key'),
+    /** `levelRank` of the lowest CEFR level of the entry's exact lemma; null when it has none. */
+    levelRank: integer('level_rank'),
+    /** The Zipf frequency of the entry's lemma; null when the frequency list has none. */
+    zipf: real('zipf'),
     completeness: real('completeness').notNull().default(0),
     quality: real('quality').notNull().default(1),
     /** The last completed pass left the open work as its claim found it, and nothing changed it since. */
@@ -139,7 +152,7 @@ export const worklist = sqliteTable(
     revision: integer('revision').notNull().default(0),
     scoredRevision: integer('scored_revision').notNull().default(0),
     claimRank: integer('claim_rank').generatedAlwaysAs(
-      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 - 2 * seed + (claimed_at is not null) end`,
+      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 * (8 * (completeness >= 1) + coalesce(level_rank - 1, 6 + (zipf is null))) + (claimed_at is not null) end`,
       { mode: 'virtual' },
     ),
     leaseId: text('lease_id').unique(),
@@ -153,6 +166,7 @@ export const worklist = sqliteTable(
     index('worklist_claim_order_idx').on(
       table.claimRank,
       table.claimedAt,
+      sql`${table.zipf} desc`,
       table.completeness,
       table.createdAt,
       table.entryId,

@@ -162,6 +162,27 @@
       "when": 1794259046044,
       "tag": "20261109211726_worklist_usage_scores",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1794264459503,
+      "tag": "20261109224739_worklist_learner_priority",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794264470136,
+      "tag": "20261109224750_worklist_learner_priority_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794264502570,
+      "tag": "20261109224822_worklist_learner_claim_rank",
+      "breakpoints": true
     }
   ]
 }

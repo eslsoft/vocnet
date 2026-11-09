@@ -74,6 +74,20 @@ Feature: Catalog
     When an agent creates a new entry with seed true, creates an existing entry with seed true, and creates a seed entry again with seed false or without seed
     Then both entries are seed entries and the repeated creates leave the mark as it was
 
+  @catalog/import-core @usecase
+  Scenario: The core import creates entries for the CEFR headwords that have none
+    Given CEFR headwords of several levels, one of them already an entry, and the single letters "a", "I", and "x"
+    When an admin runs the core import a few entries at a time until nothing remains, and once more
+    Then each headword without an entry becomes a seed entry the admin created, lowest level first, its entry fact pending and queued for review
+    And "x" is skipped and reported, the existing entry is left as it was, and the last run creates nothing
+
+  @catalog/import-core-api @api
+  Scenario: Only an admin runs the core import over HTTP
+    Given imported CEFR levels and an entry an agent created for one of the headwords
+    When an agent and then an admin call the core import, one entry per call
+    Then the agent gets 403, the admin's calls create the missing entries and report the skipped single letter and what remains
+    And the created entries are seed entries, and the worklist orders them with the agent's entry by level and frequency, not by the seed mark
+
   @catalog/create-sense @usecase
   Scenario: Creating a sense submits its gloss as a fact
     Given an entry

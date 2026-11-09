@@ -66,42 +66,33 @@ const drain = async (world: World) => {
 }
 
 describe('claimWork', () => {
-  it('serves seed entries, never-claimed by lowest completeness, claimed by least recently claimed, never a dead one [spec: work/claim-order]', async () => {
-    const { world, entries } = await worldWith(['bank', 'wave', 'cove', 'reef', 'tide'])
-    for (const lemma of ['cove', 'reef', 'tide']) {
-      const { fact } = await createEntry(world.deps, agentA, { lemma, seed: true })
-      if (lemma === 'tide') await retractFact(world.deps, agentA, fact.id)
-    }
-    await submitFact(world.deps, agentB, {
-      kind: 'form',
-      subject_id: entries[0].entry.id,
-      payload: { form: 'banks', type: 'plural' },
+  it('serves A1 to C2, then frequency without a level, then the rest; never-claimed by frequency, claimed by least recently claimed, never a dead one [spec: work/claim-order]', async () => {
+    const reference = (zipf: number | null, level?: 'A1' | 'B2') => ({
+      frequency: zipf === null ? null : { zipf, rank: 1, source_id: 'wordfreq' },
+      cefr: level ? [{ pos: 'noun' as const, level, source_id: 'cefrj' }] : [],
     })
-    await settle(world)
+    const { world } = await worldWith(['reef', 'wave', 'tide', 'cove', 'bank', 'sand'])
+    world.references.set('bank', reference(5, 'A1'))
+    world.references.set('cove', reference(3, 'A1'))
+    world.references.set('sand', reference(6, 'A1'))
+    world.references.set('tide', reference(4, 'B2'))
+    world.references.set('wave', reference(4.5))
+    const sand = world.facts.find((fact) => fact.kind === 'entry' && fact.subjectId === world.entries[5].id)
+    await retractFact(world.deps, agentA, sand?.id as FactId)
     const order: Array<string | null> = []
-    for (let minute = 1; minute < 10; minute++) {
-      world.setNow(`2026-01-01T00:0${minute}:00.000Z`)
-      // Cove's first pass gives it a sense, reef's a form; every other pass adds nothing and stalls its entry.
-      const seen: Array<string | null> = order.filter((lemma) => lemma === 'cove' || lemma === 'reef')
+    for (let minute = 10; minute < 21; minute++) {
+      world.setNow(`2026-01-01T00:${minute}:00.000Z`)
+      // Each entry's first pass gives it a sense, which leaves gaps; its second adds nothing and stalls it.
+      const seen = [...order]
       order.push(
         await pass(world, async (entryId, lemma) => {
-          if (seen.includes(lemma)) return
-          if (lemma === 'cove')
-            await createSense(world.deps, agentA, { entry_id: entryId, pos: 'noun', gloss: 'A bay.' })
-          if (lemma === 'reef') {
-            await submitFact(world.deps, agentA, {
-              kind: 'form',
-              subject_id: entryId,
-              payload: { form: 'reefs', type: 'plural' },
-            })
-          }
+          if (!seen.includes(lemma))
+            await createSense(world.deps, agentA, { entry_id: entryId, pos: 'noun', gloss: `A ${lemma}.` })
         }),
       )
       await settle(world)
     }
-    // Reef's form leaves 2 of 3 slots open, cove's sense 6 of 7, yet cove was claimed first and comes
-    // back first. Bank's form puts it behind wave, which was created later.
-    expect(order).toEqual(['cove', 'reef', 'cove', 'reef', 'wave', 'bank', null, null, null])
+    expect(order).toEqual(['bank', 'cove', 'bank', 'cove', 'tide', 'tide', 'wave', 'wave', 'reef', 'reef', null])
   })
 
   it('hands out nothing once every entry is complete and good [spec: work/claim-empty]', async () => {
@@ -122,7 +113,7 @@ describe('claimWork', () => {
         gloss: 'A small bay.',
       })
       await submitFact(world.deps, agentB, { kind: 'example', subject_id: nook.sense.id, payload: { text: 'A cove.' } })
-      await createEntry(world.deps, agentA, { lemma: 'cove', seed: true })
+      world.references.set('cove', { frequency: { zipf: 3, rank: 1, source_id: 'wordfreq' }, cefr: [] })
       await settle(world)
       return { world, bay: bay.sense.id, nook: nook.sense.id }
     }

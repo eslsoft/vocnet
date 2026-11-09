@@ -117,7 +117,7 @@ export function createNodeRepo(db: Db): NodeRepo {
     },
 
     async insertEntry(entry) {
-      await db.batch([db.insert(entries).values(entry).onConflictDoNothing(), insertWorklistRow(db, entry.id)])
+      await db.batch([db.insert(entries).values(entry).onConflictDoNothing(), insertWorklistRow(db, entry)])
       const row = await db.select().from(entries).where(eq(entries.lemma, entry.lemma)).get()
       if (!row) throw new Error(`Entry ${entry.lemma} vanished after insert.`)
       return toEntry(row)

@@ -1,8 +1,9 @@
-import { lemmaCefr, referenceSources, wordFrequency } from '@server/db/schema'
+import { entries, lemmaCefr, referenceSources, wordFrequency } from '@server/db/schema'
 import { frequencyKey } from '@server/domain/reference'
+import type { Lemma } from '@server/domain/term'
 import type { ReferenceRepo } from '@server/usecases/ports'
 import { cefrSchema, frequencySchema, referenceSourceSchema } from '@shared/reference'
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, min, notExists, sql } from 'drizzle-orm'
 import type { Db } from './rows'
 
 export function createReferenceRepo(db: Db): ReferenceRepo {
@@ -27,6 +28,17 @@ export function createReferenceRepo(db: Db): ReferenceRepo {
       return rows.map(({ licenseUrl, retrievedAt, ...row }) =>
         referenceSourceSchema.parse({ ...row, license_url: licenseUrl, retrieved_at: retrievedAt }),
       )
+    },
+
+    async listCefrLemmasWithoutEntry() {
+      const entry = db.select({ one: sql`1` }).from(entries).where(eq(entries.lemma, lemmaCefr.lemma))
+      const rows = await db
+        .select({ lemma: lemmaCefr.lemma })
+        .from(lemmaCefr)
+        .where(notExists(entry))
+        .groupBy(lemmaCefr.lemma)
+        .orderBy(min(lemmaCefr.level), asc(lemmaCefr.lemma))
+      return rows.map((row) => row.lemma as Lemma)
     },
   }
 }

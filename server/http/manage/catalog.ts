@@ -4,11 +4,14 @@ import {
   createSense,
   getManagedEntry,
   getStats,
+  importCoreEntries,
   listEntrySummaries,
   locateNode,
 } from '@server/usecases/catalog'
 import { listReferenceSources } from '@server/usecases/reference'
 import {
+  coreImportInputSchema,
+  coreImportResultSchema,
   createEntryInputSchema,
   createEntryResultSchema,
   createSenseInputSchema,
@@ -21,7 +24,7 @@ import {
 } from '@shared/catalog'
 import { referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
-import { actorOf } from '../auth'
+import { actorOf, requireAdmin } from '../auth'
 import { createRouter, errorResponse, json, jsonBody, pageQuery } from '../router'
 import { entryDto, factDto, managedEntryDto, senseDto } from '../serialize'
 
@@ -38,6 +41,24 @@ const postEntry = createRoute({
     200: json(createEntryResultSchema, 'The existing entry.'),
     201: json(createEntryResultSchema, 'The created entry.'),
     400: errorResponse,
+  },
+})
+
+const importCore = createRoute({
+  method: 'post',
+  path: '/entries/core',
+  tags,
+  middleware: requireAdmin,
+  summary: 'Create entries for the CEFR headwords that have none (admins)',
+  description:
+    'Creates up to `limit` seed entries for headwords of the imported CEFR profiles that no entry has, lowest ' +
+    'level first, each with its entry fact submitted for review. Single letters other than "a" and "I" are ' +
+    'skipped. Repeat until `remaining` is 0; a repeat after that creates nothing.',
+  request: { body: jsonBody(coreImportInputSchema) },
+  responses: {
+    200: json(coreImportResultSchema, 'What this call created and what is left.'),
+    400: errorResponse,
+    403: errorResponse,
   },
 })
 
@@ -108,6 +129,9 @@ export const manageCatalogRoutes = createRouter()
     const body = { entry: entryDto(result.entry), fact: factDto(result.fact), created: result.created }
     return result.created ? c.json(body, 201) : c.json(body, 200)
   })
+  .openapi(importCore, async (c) =>
+    c.json(await importCoreEntries(c.get('deps'), actorOf(c), c.req.valid('json').limit), 200),
+  )
   .openapi(postSense, async (c) => {
     const result = await createSense(c.get('deps'), actorOf(c), c.req.valid('json'))
     const body = { sense: senseDto(result.sense), fact: factDto(result.fact), created: result.created }
