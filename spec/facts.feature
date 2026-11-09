@@ -23,7 +23,7 @@ Feature: Facts and review
   @facts/jev-policy @domain
   Scenario: Jev probabilities map to a verdict
     Given Jev answers for every question
-    When all are at least 0.8, any is at most 0.2, or neither
+    When all are at least 0.8, any is below 0.5, or neither
     Then the verdict is pass, fail, or uncertain, with the minimum answer as confidence
 
   @facts/reviewer-routing @domain

@@ -33,11 +33,12 @@ describe('Jev verdict policy', () => {
     expect(jevVerdict({ a: 0.8, b: 0.97 })).toEqual({ verdict: 'pass', confidence: 0.8 })
   })
 
-  it('fails when any answer is at most 0.2 [spec: facts/jev-policy]', () => {
-    expect(jevVerdict({ a: 0.99, b: 0.2 })).toEqual({ verdict: 'fail', confidence: 0.2 })
+  it('fails when any answer is below 0.5 [spec: facts/jev-policy]', () => {
+    expect(jevVerdict({ a: 0.99, b: 0.44 })).toEqual({ verdict: 'fail', confidence: 0.44 })
   })
 
-  it('is uncertain in between [spec: facts/jev-policy]', () => {
+  it('is uncertain from 0.5 up to 0.8 [spec: facts/jev-policy]', () => {
     expect(jevVerdict({ a: 0.99, b: 0.5 })).toEqual({ verdict: 'uncertain', confidence: 0.5 })
+    expect(jevVerdict({ a: 0.79 })).toEqual({ verdict: 'uncertain', confidence: 0.79 })
   })
 })
