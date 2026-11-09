@@ -110,6 +110,13 @@ Feature: Facts and review
     Then the Jev question names the word class that form type belongs to, such as verb for tenses, noun for plurals, and adjective or adverb for comparison
     And a spelling variant is asked about the word as a whole
 
+  @facts/entry-no-letters @domain
+  Scenario: A letter of the alphabet is not an entry
+    Given an entry fact whose lemma is a single letter
+    When its review is planned
+    Then a single letter other than the words "a" and "I" is rejected as unreviewable without asking a reviewer
+    And "a", "I", and abbreviations of two or more letters are reviewed as established words
+
   @facts/unreviewable @domain
   Scenario: A meaning-dependent fact cannot be judged without a gloss
     Given an example, translation, or relation whose sense has no live gloss

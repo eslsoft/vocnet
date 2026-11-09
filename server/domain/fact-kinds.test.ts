@@ -378,12 +378,27 @@ describe('fact-kind registry', () => {
     })
   })
 
+  it('rejects a single letter other than "a" and "I" without asking a reviewer [spec: facts/entry-no-letters]', () => {
+    const plan = (lemma: string) =>
+      planReview('entry', {}, { subject: { lemma, senses: [] }, target: null, topic: null })
+    for (const letter of ['F', 'b', 'A', 'i', 'x', 'é', 'Ω']) {
+      expect(plan(letter)).toEqual({
+        kind: 'unreviewable',
+        reason: `"${letter}" is a letter of the alphabet; the only one-letter entries are the words "a" and "I".`,
+      })
+    }
+    for (const word of ['a', 'I', 'TV', 'UK', 'ok']) {
+      expect(jevQuestion(plan(word), 'lemma')).toContain(`Is "${word}" an established English word`)
+    }
+  })
+
   it('admits a multiword entry only as a lexical unit and keeps single words as before [spec: facts/entry-lexical-unit]', () => {
     const plan = (lemma: string) =>
       planReview('entry', {}, { subject: { lemma, senses: [] }, target: null, topic: null })
     const word = plan('bread')
     expect(jevQuestion(word, 'lemma')).toContain('Is "bread" an established English word')
-    expect(llmPrompt(word)?.user).toContain('function words, letters of the alphabet, and established abbreviations')
+    expect(llmPrompt(word)?.user).toContain('function words and established abbreviations')
+    expect(llmPrompt(word)?.user).not.toContain('letters of the alphabet')
     expect(llmPrompt(word)?.user).not.toContain('category label')
 
     const phrase = plan('time unit')
