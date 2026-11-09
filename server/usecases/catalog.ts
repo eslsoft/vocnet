@@ -73,6 +73,7 @@ export async function createSense(
     supersedesId: null,
     author,
     review: null,
+    revalidateSince: null,
     createdAt: now,
     updatedAt: now,
   }

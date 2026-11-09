@@ -51,6 +51,10 @@ export interface FactTransitionWrite {
   review?: Review
   /** Published fact to mark superseded in the same batch, if this write publishes a correction. */
   supersede?: FactId
+  /** With `supersede`: mark the published facts of these kinds about this node for revalidation. */
+  revalidate?: { nodeId: EntryId | SenseId; kinds: readonly FactKind[] }
+  /** A revalidation applies only while the fact still carries the mark its review read. */
+  revalidateSince?: string
 }
 
 export interface FactRepo {
@@ -62,9 +66,15 @@ export interface FactRepo {
    * fact either way; null when another live fact holds the kind's exclusive slot.
    */
   insert(fact: Fact): Promise<Fact | null>
-  /** Conditional status write; false when the fact was not in `from`. Throws ConflictError when the slot is taken. */
+  /**
+   * Conditional status write that also clears the fact's revalidation mark; false when the fact
+   * was not in `from`. Throws ConflictError when the slot is taken.
+   */
   transition(write: FactTransitionWrite): Promise<boolean>
-  listPendingUpdatedBefore(cutoff: string, limit: number): Promise<FactId[]>
+  /** Published facts about this node (as subject or object) awaiting revalidation. */
+  listRevalidating(nodeId: EntryId | SenseId): Promise<FactId[]>
+  /** Facts pending since before cutoff, or awaiting revalidation since before it. */
+  listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
   list(filter: { status?: FactStatus; kind?: FactKind }, page: PageRequest): Promise<Page<Fact>>
   countByKindAndStatus(): Promise<Stats['facts']>
 }

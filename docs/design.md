@@ -58,6 +58,7 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | `supersedes_id` | Fact this one corrects, if any                                 |
 | `author`        | Agent or admin principal that submitted it                     |
 | `review`        | Reviewer, verdict, confidence, reason, raw detail, reviewed at |
+| `revalidate_since` | When the fact was marked for re-review against a new gloss  |
 
 A partial unique index on `(kind, content_key, subject_id)` over `pending` and
 `published` rows (the *live* facts) makes resubmission return the existing
@@ -104,21 +105,24 @@ are published.
            submit
              │
              ▼
-         ┌────────┐  review fail   ┌──────────┐
-         │pending │───────────────▶│ rejected │
-         └────────┘                └──────────┘
-             │ review pass/uncertain       (retract also applies to pending;
-             │                              admin re-review returns published
-             │                              or rejected facts to pending)
-             ▼
-        ┌──────────┐ correction published ┌────────────┐
-        │published │─────────────────────▶│ superseded │
-        └──────────┘                      └────────────┘
-             │ retract
-             ▼
+         ┌────────┐  review fail              ┌──────────┐
+         │pending │──────────────────────────▶│ rejected │
+         └────────┘                           └──────────┘
+             │ review pass/uncertain                ▲
+             ▼                                      │ revalidation fail
+        ┌──────────┐────────────────────────────────┘
+        │published │◀─┐ revalidation pass/uncertain
+        └──────────┘──┘
+           │    │ correction published    ┌────────────┐
+           │    └────────────────────────▶│ superseded │
+           │ retract                      └────────────┘
+           ▼
         ┌──────────┐
         │retracted │
         └──────────┘
+
+(Retract also applies to pending facts. Admin re-review returns published or
+rejected facts to pending.)
 ```
 
 The transition table lives in the domain. Review writes are conditional on
@@ -127,6 +131,24 @@ A correction (`supersedes_id`) is reviewed like any fact. When it publishes,
 the superseded fact changes status in the same D1 batch: the original leaves
 `published` first, and only while the correction is still pending, then the
 correction enters it. A rejected correction leaves the original published.
+
+A correction of a sense's gloss changes the meaning that the sense's examples,
+translations, and relations (as subject or object) were judged against. The
+registry lists these as the `sense` kind's `revalidates` kinds. In the same batch
+that publishes the correction, every published fact of those kinds about the
+sense gets `revalidate_since`, and then each is enqueued. Such a fact stays
+published and public while it waits. Its review is the *revalidation* event of
+the transition table: pass or uncertain keeps it published with the new review
+(`reconfirm`), and fail moves it to `rejected` (`invalidate`). If the gloss is
+gone by the time the job runs (the correction was retracted while its
+dependents waited), no reviewer is asked: the fact stays published with its
+standing review and only loses the mark (`release`). The mode table maps this
+`unreviewable` finding to `reject` for a first review and to `release` for a
+revalidation. The write is
+conditional on the mark the review read, and every transition clears the mark,
+so a duplicate delivery or a review that a newer correction overtook changes
+nothing. Retracting a gloss does not cascade: the sense leaves the public view,
+and that already hides its facts.
 
 An author can retract its own pending or published fact; admins can retract
 any. An admin can re-review a published or rejected fact: it returns to
@@ -214,8 +236,9 @@ console reads its public OIDC settings from `GET /configz`.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   reviews and logs the trace ID.
 - A cron trigger re-enqueues facts whose last status change is more than ten
-  minutes old and that are still `pending`, so a lost enqueue cannot strand a
-  fact. It keys on `updated_at`, not `created_at`, so a re-reviewed fact counts
+  minutes old and that are still `pending`, and published facts whose
+  `revalidate_since` is more than ten minutes old, so a lost enqueue cannot
+  strand a fact. It keys on `updated_at`, not `created_at`, so a re-reviewed fact counts
   from its reset.
 - A reviewer transport failure (network, 429, 5xx) retries the message with a
   delay; after five attempts it lands in the `vocnet-reviews-dlq` dead letter

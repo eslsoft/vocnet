@@ -198,15 +198,28 @@ export function fakeWorld(): FakeWorld {
         world.facts.push(fact)
         return fact
       },
-      transition: async ({ id, from, to, at, review, supersede }) => {
+      transition: async ({ id, from, to, at, review, supersede, revalidate, revalidateSince }) => {
         const fact = world.facts.find((candidate) => candidate.id === id)
         if (!fact || !from.includes(fact.status)) return false
-        const next = { ...fact, status: to, updatedAt: at, review: review ?? fact.review } as Fact
-        const retired = world.facts.map((candidate) =>
-          candidate.id === supersede && candidate.status === 'published'
-            ? { ...candidate, status: 'superseded' as const, updatedAt: at }
-            : candidate,
-        )
+        if (revalidateSince !== undefined && fact.revalidateSince !== revalidateSince) return false
+        const next = {
+          ...fact,
+          status: to,
+          updatedAt: at,
+          review: review ?? fact.review,
+          revalidateSince: null,
+        } as Fact
+        const dependsOnNode = (candidate: Fact) =>
+          revalidate !== undefined &&
+          candidate.status === 'published' &&
+          revalidate.kinds.includes(candidate.kind) &&
+          (candidate.subjectId === revalidate.nodeId || candidate.objectId === revalidate.nodeId)
+        const retired = world.facts.map((candidate): Fact => {
+          if (candidate.id === supersede && candidate.status === 'published') {
+            return { ...candidate, status: 'superseded', updatedAt: at, revalidateSince: null }
+          }
+          return dependsOnNode(candidate) ? { ...candidate, revalidateSince: at } : candidate
+        })
         if (violatesIndexes(retired, next)) throw new ConflictError('Another live fact already holds this slot.')
         world.facts.splice(
           0,
@@ -215,9 +228,18 @@ export function fakeWorld(): FakeWorld {
         )
         return true
       },
-      listPendingUpdatedBefore: async (cutoff, limit) =>
+      listRevalidating: async (nodeId) =>
         world.facts
-          .filter((fact) => fact.status === 'pending' && fact.updatedAt < cutoff)
+          .filter((fact) => fact.status === 'published' && fact.revalidateSince !== null)
+          .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId)
+          .map((fact) => fact.id),
+      listStuckBefore: async (cutoff, limit) =>
+        world.facts
+          .filter(
+            (fact) =>
+              (fact.status === 'pending' && fact.updatedAt < cutoff) ||
+              (fact.status === 'published' && fact.revalidateSince !== null && fact.revalidateSince < cutoff),
+          )
           .slice(0, limit)
           .map((fact) => fact.id),
       list: async ({ status, kind }, page) =>

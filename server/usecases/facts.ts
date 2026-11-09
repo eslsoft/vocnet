@@ -58,6 +58,7 @@ export async function submitFact(
     supersedesId,
     author: principalRef(actor.principal),
     review: null,
+    revalidateSince: null,
     createdAt: now,
     updatedAt: now,
   } as Fact

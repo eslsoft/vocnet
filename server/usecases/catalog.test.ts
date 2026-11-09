@@ -17,7 +17,7 @@ import { submitFact } from './facts'
 import { reviewFact } from './review'
 
 async function reviewAll(world: ReturnType<typeof fakeWorld>) {
-  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId)
+  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
 }
 
 describe('createEntry', () => {

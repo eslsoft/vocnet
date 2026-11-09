@@ -15,7 +15,7 @@ async function publishedBank() {
   const world = fakeWorld()
   const { entry, fact } = await createEntry(world.deps, agentA, { lemma: 'bank' })
   const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: 'land' })
-  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId)
+  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
   return { world, entry, sense, fact }
 }
 
@@ -55,9 +55,9 @@ describe('submitFeedback', () => {
       subject_id: hiddenSense.id,
       payload: { text: 'The pilot banked left.' },
     })
-    expect(await reviewFact(world.deps, exampleOfHidden.id)).toBe('published')
+    expect(await reviewFact(world.deps, exampleOfHidden.id, 'trace-review')).toBe('published')
     world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
-    expect(await reviewFact(world.deps, hiddenGloss.id)).toBe('rejected')
+    expect(await reviewFact(world.deps, hiddenGloss.id, 'trace-review')).toBe('rejected')
     const { entry: draft } = await createEntry(world.deps, agentA, { lemma: 'shore' })
 
     const targets = [

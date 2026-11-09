@@ -15,7 +15,7 @@ async function bankWorld() {
     pos: 'noun',
     gloss: 'a financial institution',
   })
-  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId)
+  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
   return { world, entry, river: river.sense, money: money.sense, riverGloss: river.fact }
 }
 
@@ -46,7 +46,7 @@ describe('submitFact', () => {
     world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'Wrong sense.' }))
     const input = { kind: 'example' as const, subject_id: river.id, payload: { text: 'I robbed a bank.' } }
     const first = await submitFact(world.deps, agentA, input)
-    await reviewFact(world.deps, first.fact.id)
+    await reviewFact(world.deps, first.fact.id, 'trace-review')
     expect((await submitFact(world.deps, agentA, input)).created).toBe(true)
   })
 
@@ -162,7 +162,7 @@ describe('retractFact', () => {
       subject_id: river.id,
       payload: { text: 'x' },
     })
-    await reviewFact(world.deps, fact.id)
+    await reviewFact(world.deps, fact.id, 'trace-review')
     await expect(retractFact(world.deps, agentA, fact.id)).rejects.toMatchObject({ code: 'conflict' })
   })
 
@@ -201,7 +201,7 @@ describe('rereviewFact', () => {
     world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
     const input = { kind: 'example' as const, subject_id: river.id, payload: { text: 'x' } }
     const { fact: rejected } = await submitFact(world.deps, agentA, input)
-    await reviewFact(world.deps, rejected.id)
+    await reviewFact(world.deps, rejected.id, 'trace-review')
     await submitFact(world.deps, agentA, input)
     await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'conflict' })
   })
@@ -214,7 +214,7 @@ describe('rereviewFact', () => {
       subject_id: river.id,
       payload: { text: 'x' },
     })
-    await reviewFact(world.deps, fact.id)
+    await reviewFact(world.deps, fact.id, 'trace-review')
     await expect(rereviewFact(world.deps, admin, fact.id)).resolves.toMatchObject({ status: 'pending' })
   })
 
@@ -223,7 +223,7 @@ describe('rereviewFact', () => {
     const correction = { kind: 'sense' as const, subject_id: river.id, supersedes_id: riverGloss.id }
     world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
     const { fact: rejected } = await submitFact(world.deps, agentA, { ...correction, payload: { gloss: 'a fish' } })
-    await reviewFact(world.deps, rejected.id)
+    await reviewFact(world.deps, rejected.id, 'trace-review')
     await retractFact(world.deps, agentA, riverGloss.id)
     await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'conflict' })
     expect((await getFact(world.deps, rejected.id)).status).toBe('rejected')
