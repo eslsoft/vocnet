@@ -109,10 +109,13 @@ export const worklist = sqliteTable(
     /** Set when an entry is submitted as part of a seed list; never cleared. */
     seed: integer('seed', { mode: 'boolean' }).notNull().default(false),
     /**
-     * Cleared by every claim. Set when a completed pass added a fact about the entry and left gaps
-     * open, or when a fact about it leaves live or it gains a sense, which can reopen a gap.
+     * Cleared by every claim. Set, while `revisit_streak` allows, when a completed pass made progress
+     * on gaps and left some open, or when a fact about the entry leaves live or another principal
+     * gives it a sense, which can reopen a gap.
      */
     revisit: integer('revisit', { mode: 'boolean' }).notNull().default(false),
+    /** Claims in a row taken to revisit; a claim from any other rank resets it. */
+    revisitStreak: integer('revisit_streak').notNull().default(0),
     claimRank: integer('claim_rank').generatedAlwaysAs(
       sql`case when claim_count = 1 then 0 when claim_count = 0 then 3 - 2 * seed when revisit then 4 - 2 * seed else 5 end`,
       { mode: 'virtual' },

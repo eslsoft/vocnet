@@ -26,10 +26,28 @@ Feature: Worklist
     Then it gets an entry claimed once first, oldest claim first, then a never-claimed seed entry, then a seed entry to revisit, then another never-claimed entry, then another entry to revisit, then the least recently claimed of the rest, and never a dead entry
 
   @work/revisit @domain
-  Scenario: A pass that added to an entry and left gaps open earns a revisit
-    Given an entry's facts after a pass
+  Scenario: A pass that made progress on its gaps and left some open earns a revisit, within the streak
+    Given an entry's facts after a pass, and how many claims in a row took it to revisit
     When the pass is judged
-    Then the entry is revisited only if the holder added a fact about it since the claim and a gap is still open
+    Then the entry is revisited only if the streak is not used up, a gap is still open, and the holder's facts since the claim closed or raised the count of a gap that was open without them
+
+  @work/revisit-bound @usecase
+  Scenario: No loop keeps an entry ahead of never-claimed entries outside the seed list
+    Given a seed entry whose every pass adds an example where one exists, or a relation that review rejects, or during which another agent gives it a sense
+    When agents claim and complete work
+    Then the entry is claimed at most its two first passes plus the revisit streak before a never-claimed entry outside the seed list
+
+  @work/revisit-streak @api
+  Scenario: A relation that review keeps rejecting stops bringing its entry back after the streak
+    Given a seed entry whose every pass submits the same relation, rejected during the lease
+    When agents claim and complete work
+    Then the entry is claimed for its two first passes and the revisit streak, and then the never-claimed entry outside the seed list is claimed
+
+  @work/revisit-marks @api
+  Scenario: A mark set during a lease survives the completion, and a write that changed nothing marks nothing
+    Given another agent gives an entry a sense during a pass that adds nothing, and a rejection is written a second time for a fact already rejected
+    When the pass completes and the repeated write runs
+    Then the entry is still to revisit, and the repeated write marks neither end of the fact
 
   @work/claim-revisit @api
   Scenario: Seed entries a pass added to and left open come before never-claimed entries outside the seed list

@@ -1,6 +1,6 @@
 {
-  "id": "c16b1f7c-5bc7-4035-a9be-77b03956598c",
-  "prevId": "f5abc6ee-f712-4800-bd76-b1b3464d3d09",
+  "id": "498ad731-fd04-4fc5-9cc8-1aa3abe3eaa8",
+  "prevId": "e7e342d8-bfbd-4511-b21a-8816f8e579c6",
   "version": "6",
   "dialect": "sqlite",
   "tables": {
@@ -528,6 +528,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "revisit_streak": {
+          "name": "revisit_streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "claim_rank": {
           "name": "claim_rank",

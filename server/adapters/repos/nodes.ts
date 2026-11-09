@@ -182,7 +182,7 @@ export function createNodeRepo(db: Db): NodeRepo {
           .values({ ...sense, creationKey })
           .onConflictDoNothing(),
         db.insert(facts).select(db.select(values).from(senses).where(eq(senses.id, sense.id)) as never),
-        revisitEntryOfSense(db, sense.id),
+        revisitEntryOfSense(db, sense),
       ])
       const stored = await db
         .select({ sense: senses, fact: facts })

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f5abc6ee-f712-4800-bd76-b1b3464d3d09",
-  "prevId": "5d44e11c-f708-4ef9-9c0a-a0c49dd8255f",
+  "id": "c2bb73a0-c0c3-4909-a124-bf3b6411d5b3",
+  "prevId": "fcda063e-33b6-4b4e-9fd1-bbdfd5ad6493",
   "tables": {
     "agents": {
       "name": "agents",
@@ -529,6 +529,14 @@
           "autoincrement": false,
           "default": false
         },
+        "revisit_streak": {
+          "name": "revisit_streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "claim_rank": {
           "name": "claim_rank",
           "type": "integer",
@@ -536,7 +544,7 @@
           "notNull": false,
           "autoincrement": false,
           "generated": {
-            "as": "(case when claim_count = 1 then 0 when claim_count = 0 then 3 - 2 * seed when revisit then 4 - 2 * seed else 5 end)",
+            "as": "(case claim_count when 1 then 0 when 0 then 2 - seed else 3 end)",
             "type": "virtual"
           }
         },
@@ -590,17 +598,6 @@
             "lease_id"
           ],
           "isUnique": true
-        },
-        "worklist_claim_order_idx": {
-          "name": "worklist_claim_order_idx",
-          "columns": [
-            "live",
-            "claim_rank",
-            "claimed_at",
-            "created_at",
-            "entry_id"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {

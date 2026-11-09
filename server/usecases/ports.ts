@@ -106,21 +106,22 @@ export interface FeedbackRepo {
 export interface WorkRepo {
   /**
    * Atomically leases the next entry whose entry fact is live and that has no unexpired lease,
-   * replacing an expired one, and clears its revisit mark; null when no entry is claimable. An
+   * replacing an expired one, clears its revisit mark, and counts its revisit streak (a claim to
+   * revisit adds one, any other claim resets it); null when no entry is claimable. An
    * entry claimed once comes first, oldest claim first; then never-claimed seed entries, oldest
    * first; then seed entries to revisit, oldest claim first; then other never-claimed entries,
    * oldest first; then other entries to revisit; then the rest, each oldest claim first.
    */
   claimNext(
-    lease: Omit<WorkLease, 'entryId' | 'claimedAt'>,
+    lease: Omit<WorkLease, 'entryId' | 'claimedAt' | 'revisitStreak'>,
     now: string,
   ): Promise<{ lease: WorkLease; entry: EntryNode } | null>
   /** Marks the entry as a seed entry; a repeat is a no-op. */
   markSeed(entryId: EntryId): Promise<void>
   findLease(id: WorkLeaseId): Promise<WorkLease | null>
   /**
-   * Records the work on the entry, whether to revisit it, and deletes the lease while it is still
-   * unexpired; false otherwise.
+   * Records the work on the entry and deletes the lease while it is still unexpired; false
+   * otherwise. `revisit` true marks the entry to revisit; false keeps a mark set during the lease.
    */
   complete(lease: WorkLease, at: string, work: { note: string | null; revisit: boolean }): Promise<boolean>
 }

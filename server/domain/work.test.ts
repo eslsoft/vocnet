@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { Fact, FactOf } from './fact'
 import type { SenseWithLemma } from './nodes'
 import type { Lemma } from './term'
-import { completeDecision, entryGaps, leaseExpiry, revisitAfterPass, type WorkLease } from './work'
+import { completeDecision, entryGaps, leaseExpiry, MAX_REVISIT_STREAK, revisitAfterPass, type WorkLease } from './work'
 
 let counter = 0
 const id = <T>() => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}` as T
@@ -125,6 +125,7 @@ describe('work lease', () => {
     entryId,
     holder: 'agent:a',
     claimedAt: at,
+    revisitStreak: 0,
     expiresAt: leaseExpiry(new Date(at), 900),
   }
 
@@ -141,28 +142,44 @@ describe('work lease', () => {
 
 describe('revisitAfterPass', () => {
   const claimedAt = '2026-01-01T01:00:00.000Z'
-  const pass = { holder: 'agent:a', claimedAt } as const
+  const pass = { holder: 'agent:a', claimedAt, revisitStreak: 1 } as const
   const during = <F extends Fact>(made: F, author = 'agent:a'): F => ({ ...made, author, createdAt: claimedAt }) as F
 
-  it('revisits an entry only when the pass added a fact about it and gaps are still open [spec: work/revisit]', () => {
+  it('revisits an entry only when the pass made progress on a gap open at the claim and gaps are still open [spec: work/revisit]', () => {
     const focus = sense()
-    const finished: Fact[] = [
+    const extra = sense()
+    // Everything but a second relation and a zh translation.
+    const open: Fact[] = [
       fact('sense', focus.id, { gloss: 'land beside a river' }),
       fact('form', entryId, { form: 'banks', type: 'plural' }),
       fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'us' }),
       fact('example', focus.id, { text: 'We sat on the bank.' }),
-      fact('translation', focus.id, { language: 'zh', text: '河岸' }),
       fact('relation', focus.id, { type: 'synonym', target_sense_id: id<SenseId>() }),
     ]
-    const snapshot = (facts: Fact[], incoming: Fact[] = []) => ({ senses: [focus], facts, incoming })
+    const snapshot = (facts: Fact[], incoming: Fact[] = []) => ({ senses: [focus, extra], facts, incoming })
+    const judge = (facts: Fact[], incoming: Fact[] = []) => revisitAfterPass(snapshot(facts, incoming), pass)
     const neighbor = fact('relation', id<SenseId>(), { type: 'hypernym', target_sense_id: focus.id })
+    const translation = fact('translation', focus.id, { language: 'zh', text: '河岸' })
 
-    expect(revisitAfterPass(snapshot(finished), pass)).toBe(false)
-    expect(
-      revisitAfterPass(snapshot([...finished, during(fact('example', focus.id, { text: 'A bank.' }))]), pass),
-    ).toBe(true)
-    expect(revisitAfterPass(snapshot(finished, [during(neighbor, 'agent:b')]), pass)).toBe(false)
-    expect(revisitAfterPass(snapshot(finished, [during(neighbor)]), pass)).toBe(false)
-    expect(revisitAfterPass(snapshot([...finished.slice(0, 5), during(finished[5])]), pass)).toBe(true)
+    expect(judge(open)).toBe(false)
+    // Another example where one exists fills no open gap.
+    expect(judge([...open, during(fact('example', focus.id, { text: 'A bank.' }))])).toBe(false)
+    // A new sense opens gaps of its own and closes none that was open.
+    expect(judge([...open, during(fact('sense', extra.id, { gloss: 'a place that keeps money' }))])).toBe(false)
+    expect(judge([...open, during(translation)])).toBe(true)
+    expect(judge(open, [during(neighbor, 'agent:b')])).toBe(false)
+    expect(judge(open, [during(neighbor)])).toBe(true)
+    // Raising a relations count without closing the gap is progress too.
+    expect(judge([...open.slice(0, 4), during(open[4]), translation])).toBe(true)
+    // Progress that closes the last gap leaves nothing to revisit for.
+    expect(judge([...open, translation], [during(neighbor)])).toBe(false)
+  })
+
+  it('never revisits once the streak is used up [spec: work/revisit]', () => {
+    const focus = sense()
+    const facts = [during(fact('sense', focus.id, { gloss: 'land beside a river' }))]
+    const snapshot = { senses: [focus], facts, incoming: [] }
+    expect(revisitAfterPass(snapshot, { ...pass, revisitStreak: MAX_REVISIT_STREAK - 1 })).toBe(true)
+    expect(revisitAfterPass(snapshot, { ...pass, revisitStreak: MAX_REVISIT_STREAK })).toBe(false)
   })
 })

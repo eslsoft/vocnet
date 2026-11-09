@@ -71,7 +71,7 @@ export function createFactRepo(db: Db): FactRepo {
         .returning({ id: facts.id })
       const syncLive = syncWorklistLive(db, db.select({ id: facts.subjectId }).from(facts).where(eq(facts.id, id)))
       // Leaving live can reopen a gap that a pass closed, on the subject's entry or the object's.
-      const sync = isLive(to) ? [syncLive] : [syncLive, revisitEntriesOfFact(db, id)]
+      const sync = isLive(to) ? [syncLive] : [syncLive, revisitEntriesOfFact(db, { id, to, at })]
       if (!supersede) {
         return guardUnique('facts', SLOT_TAKEN, async () => {
           const [updated] = await db.batch([update, ...sync])

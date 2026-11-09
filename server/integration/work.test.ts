@@ -1,7 +1,9 @@
 import { env } from 'cloudflare:test'
+import { createFactRepo } from '@server/adapters/repos/facts'
 import { claimStatement } from '@server/adapters/repos/work'
 import { createDb } from '@server/db/client'
 import type { PrincipalRef } from '@server/domain/principal'
+import { MAX_REVISIT_STREAK } from '@server/domain/work'
 import { createEntryResultSchema, createSenseResultSchema, managedEntrySchema } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
@@ -265,6 +267,76 @@ describe('worklist', () => {
     const next = []
     for (let step = 0; step < 5; step++) next.push(await pass(token))
     expect(next).toEqual(['bay', 'cove', 'fjord', 'gulf', 'atoll'])
+  })
+
+  it('drops an entry whose relation review keeps rejecting, after the revisit streak [spec: work/revisit-streak]', async () => {
+    const token = await issueAgentKey()
+    const other = await issueAgentKey('other')
+    const cove = await createEntry(token, 'cove')
+    const bay = await postSense(other, cove.entry.id, 'A small sheltered bay.')
+    expect((await postEntry(token, { lemma: 'the', seed: true })).status).toBe(201)
+    stubReviewers(0.05, 'fail')
+
+    const passes: string[] = []
+    for (let step = 0; step < 3 + MAX_REVISIT_STREAK; step++) {
+      // The first pass gives the entry a sense; every later one links it, and review rejects the link.
+      const lemma = await pass(token, async ({ lemma, entry_id }) => {
+        if (lemma !== 'the') return
+        if (!passes.includes('the')) return postSense(token, entry_id, 'The one already known.')
+        const view = managedEntrySchema.parse((await call('/manage/v1/entries/the', { token })).body)
+        const relation = await submitFact(token, {
+          kind: 'relation',
+          subject_id: view.senses[0].id,
+          payload: { type: 'hypernym', target_sense_id: bay.sense.id },
+        })
+        return deliverReviews([relation.id])
+      })
+      passes.push(lemma)
+    }
+    expect(passes).toEqual([...Array(2 + MAX_REVISIT_STREAK).fill('the'), 'cove'])
+  })
+
+  it('keeps a mark set during the lease, and marks nothing for a repeated review delivery [spec: work/revisit-marks]', async () => {
+    const token = await issueAgentKey()
+    const other = await issueAgentKey('other')
+    const created = []
+    for (const lemma of ['bay', 'cove', 'fjord']) created.push(await createEntry(token, lemma))
+    const [bay, cove] = created
+    const inlet = await postSense(token, bay.entry.id, 'A broad inlet of the sea.')
+    const nook = await postSense(token, cove.entry.id, 'A small sheltered bay.')
+    const relation = await submitFact(token, {
+      kind: 'relation',
+      subject_id: inlet.sense.id,
+      payload: { type: 'hypernym', target_sense_id: nook.sense.id },
+    })
+    const revisitOf = async (entryId: string) =>
+      (await env.DB.prepare('select revisit from worklist where entry_id = ?').bind(entryId).first('revisit')) === 1
+    const rotation = []
+    for (let step = 0; step < 6; step++) {
+      // Another agent gives fjord a sense while fjord's last pass, which adds nothing, holds the lease.
+      rotation.push(
+        await pass(token, ({ lemma, entry_id }) =>
+          lemma === 'fjord' && step === 5 ? postSense(other, entry_id, 'A long narrow inlet.') : Promise.resolve(),
+        ),
+      )
+    }
+    expect(rotation).toEqual(['bay', 'bay', 'cove', 'cove', 'fjord', 'fjord'])
+    expect(await revisitOf(created[2].entry.id)).toBe(true)
+
+    stubReviewers(0.05, 'fail')
+    await deliverReviews([relation.id])
+    expect(await revisitOf(bay.entry.id)).toBe(true)
+    expect(await revisitOf(cove.entry.id)).toBe(true)
+    const next = []
+    for (let step = 0; step < 3; step++) next.push(await pass(token))
+    expect(next).toEqual(['bay', 'cove', 'fjord'])
+
+    // A second delivery that read the fact as pending before the first landed writes nothing.
+    const facts = createFactRepo(createDb(env))
+    const replay = { id: relation.id, from: ['pending'] as const, to: 'rejected' as const }
+    expect(await facts.transition({ ...replay, at: new Date().toISOString() })).toBe(false)
+    expect(await revisitOf(bay.entry.id)).toBe(false)
+    expect(await revisitOf(cove.entry.id)).toBe(false)
   })
 
   it('reads the claim order from an index, without sorting the worklist [spec: work/claim-index]', async () => {
