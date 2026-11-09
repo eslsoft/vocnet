@@ -102,6 +102,13 @@ Feature: Facts and review
     Given a published fact under revalidation
     When its new review is pass, uncertain, or fail
     Then it stays published with the new review, or moves to rejected
+    And with no live gloss to judge against, it stays published with its standing review and loses only the mark
+
+  @facts/revalidate-gloss-retracted @api
+  Scenario: A retracted correction does not reject the facts waiting to revalidate against it
+    Given a published gloss correction whose dependents are marked for revalidation
+    When the correction is retracted before the queue delivers their jobs
+    Then the dependents stay published with their standing reviews, unmarked, and no reviewer is asked
 
   @facts/revalidate-api @api
   Scenario: Revalidation through the queue on a real database

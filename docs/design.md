@@ -139,7 +139,12 @@ that publishes the correction, every published fact of those kinds about the
 sense gets `revalidate_since`, and then each is enqueued. Such a fact stays
 published and public while it waits. Its review is the *revalidation* event of
 the transition table: pass or uncertain keeps it published with the new review
-(`reconfirm`), and fail moves it to `rejected` (`invalidate`). The write is
+(`reconfirm`), and fail moves it to `rejected` (`invalidate`). If the gloss is
+gone by the time the job runs (the correction was retracted while its
+dependents waited), no reviewer is asked: the fact stays published with its
+standing review and only loses the mark (`release`). The mode table maps this
+`unreviewable` finding to `reject` for a first review and to `release` for a
+revalidation. The write is
 conditional on the mark the review read, and every transition clears the mark,
 so a duplicate delivery or a review that a newer correction overtook changes
 nothing. Retracting a gloss does not cascade: the sense leaves the public view,

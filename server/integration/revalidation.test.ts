@@ -1,7 +1,13 @@
+import { env } from 'cloudflare:test'
 import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
 import { type FactDto, factSchema, factWriteResultSchema } from '@shared/facts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { adminToken, call, deliverPendingReviews, deliverReviews, issueAgentKey, stubReviewers } from './helpers'
+
+async function marks(ids: string[]) {
+  const read = env.DB.prepare('SELECT revalidate_since AS mark FROM facts WHERE id = ?')
+  return Promise.all(ids.map(async (id) => (await read.bind(id).first<{ mark: string | null }>())?.mark))
+}
 
 async function factOf(id: string): Promise<FactDto> {
   return factSchema.parse((await call(`/manage/v1/facts/${id}`, { token: await adminToken() })).body)
@@ -33,7 +39,7 @@ async function correctedRiverBank(newGloss: string) {
   const unrelated = await submit({ kind: 'example', subject_id: coast.sense.id, payload: { text: 'Waves hit it.' } })
   stubReviewers()
   await deliverPendingReviews()
-  await submit({
+  const correction = await submit({
     kind: 'sense',
     subject_id: river.sense.id,
     supersedes_id: river.fact.id,
@@ -41,7 +47,7 @@ async function correctedRiverBank(newGloss: string) {
   })
   await deliverPendingReviews()
   vi.restoreAllMocks()
-  return { example, incoming, unrelated }
+  return { token, correction, example, incoming, unrelated }
 }
 
 const llmVerdict = (verdict: 'pass' | 'fail') =>
@@ -87,5 +93,22 @@ describe('revalidation', () => {
     expect((await factOf(incoming.id)).status).toBe('published')
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
     expect(entry.senses[0]?.examples).toEqual([])
+  })
+
+  it('keeps dependents published and unmarked when the correction is retracted before they revalidate [spec: facts/revalidate-gloss-retracted]', async () => {
+    const { token, correction, example, incoming } = await correctedRiverBank('the sloping land beside a river')
+    const ids = [example.id, incoming.id]
+    expect(await marks(ids)).toEqual([expect.any(String), expect.any(String)])
+    const retract = await call(`/manage/v1/facts/${correction.id}/retract`, { method: 'POST', token })
+    expect(factSchema.parse(retract.body).status).toBe('retracted')
+    const reviewsBefore = (await Promise.all(ids.map(factOf))).map((fact) => fact.review)
+
+    const reviewer = llmVerdict('fail')
+    expect((await deliverReviews(ids)).explicitAcks).toEqual(['m0', 'm1'])
+    expect(reviewer).not.toHaveBeenCalled()
+    const after = await Promise.all(ids.map(factOf))
+    expect(after.map((fact) => fact.status)).toEqual(['published', 'published'])
+    expect(after.map((fact) => fact.review)).toEqual(reviewsBefore)
+    expect(await marks(ids)).toEqual([null, null])
   })
 })

@@ -272,6 +272,24 @@ describe('revalidation', () => {
     await expect(reviewFact(world.deps, id, 't')).resolves.toBe('skipped')
   })
 
+  it('releases dependents without a verdict when the correction is retracted before they revalidate', async () => {
+    const { world, correction, dependents } = await correctedRiverBank()
+    const before = await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))
+    await retractFact(world.deps, agentA, correction.id)
+    const llmCalls = world.llmCalls.length
+    const jevCalls = world.jevCalls.length
+    world.setNow('2026-01-01T00:06:00.000Z')
+    await drain(world)
+    for (const fact of before) {
+      expect(await getFact(world.deps, fact.id)).toMatchObject({
+        status: 'published',
+        revalidateSince: null,
+        review: fact.review,
+      })
+    }
+    expect([world.llmCalls.length, world.jevCalls.length]).toEqual([llmCalls, jevCalls])
+  })
+
   it('does not cascade when a gloss is retracted [spec: facts/retract-no-cascade]', async () => {
     const { world, river, dependents } = await correctedRiverBank()
     await drain(world)

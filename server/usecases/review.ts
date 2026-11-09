@@ -14,7 +14,8 @@ import {
   factTransitions,
   JEV_POLICY,
   jevVerdict,
-  type ReviewEvent,
+  type ReviewFinding,
+  reviewEffects,
   reviewModeOf,
 } from '@server/domain/fact-lifecycle'
 import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, Verdict } from '@shared/facts'
@@ -91,7 +92,7 @@ async function loadContext<K extends FactKind>(
 async function judge<K extends FactKind>(
   deps: ReviewDeps,
   fact: FactOf<K>,
-): Promise<{ reviewer: ReviewerKind; judgement: Judgement; context: ReviewContext }> {
+): Promise<{ reviewer: ReviewerKind; finding: ReviewFinding; judgement: Judgement; context: ReviewContext }> {
   const context = await loadContext(deps, fact)
   const plan = planReview(fact.kind, fact.payload, context)
   const reviewer = factKinds[fact.kind].reviewer
@@ -99,18 +100,13 @@ async function judge<K extends FactKind>(
     return {
       reviewer,
       context,
+      finding: 'unreviewable',
       judgement: { model: 'none', verdict: 'fail', confidence: 1, reason: plan.reason, detail: {} },
     }
   }
   const state = { fact: { id: fact.id, kind: fact.kind, payload: fact.payload }, context }
-  return { reviewer, context, judgement: await runReviewer(deps, plan.request, state) }
-}
-
-const outcomes: Record<ReviewEvent, 'published' | 'rejected'> = {
-  publish: 'published',
-  reject: 'rejected',
-  reconfirm: 'published',
-  invalidate: 'rejected',
+  const judgement = await runReviewer(deps, plan.request, state)
+  return { reviewer, context, finding: judgement.verdict, judgement }
 }
 
 export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
@@ -127,8 +123,9 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
   const mode = fact && reviewModeOf(fact)
   if (!fact || !mode) return 'skipped'
 
-  const { reviewer, judgement, context } = await judge(deps, fact)
-  const event = decide(mode, judgement.verdict)
+  const { reviewer, finding, judgement, context } = await judge(deps, fact)
+  const event = decide(mode, finding)
+  const { outcome, records } = reviewEffects[event]
   const at = deps.clock.now().toISOString()
   const { from, to } = factTransitions[event]
   const supersede = event === 'publish' ? (fact.supersedesId ?? undefined) : undefined
@@ -138,16 +135,18 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     from,
     to,
     at,
-    review: {
-      reviewer,
-      model: judgement.model,
-      verdict: judgement.verdict,
-      confidence: judgement.confidence,
-      reason: judgement.reason,
-      context: { ...context },
-      detail: judgement.detail,
-      reviewed_at: at,
-    },
+    review: records
+      ? {
+          reviewer,
+          model: judgement.model,
+          verdict: judgement.verdict,
+          confidence: judgement.confidence,
+          reason: judgement.reason,
+          context: { ...context },
+          detail: judgement.detail,
+          reviewed_at: at,
+        }
+      : undefined,
     supersede,
     revalidate: dependents ? { nodeId: fact.subjectId, kinds: dependents } : undefined,
     revalidateSince: fact.revalidateSince ?? undefined,
@@ -157,7 +156,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     const ids = await deps.facts.listRevalidating(fact.subjectId)
     if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
   }
-  return outcomes[event]
+  return outcome
 }
 
 export const RECONCILE_AFTER_MS = 10 * 60 * 1000

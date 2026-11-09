@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canApply, decide, isLive, jevVerdict, reviewModeOf } from './fact-lifecycle'
+import { canApply, decide, isLive, jevVerdict, reviewEffects, reviewModeOf } from './fact-lifecycle'
 
 describe('fact lifecycle', () => {
   it('publishes passing and uncertain reviews and rejects only failures [spec: facts/publish-with-flaws]', () => {
@@ -14,6 +14,10 @@ describe('fact lifecycle', () => {
       'reconfirm',
       'invalidate',
     ])
+    expect(decide('revalidation', 'unreviewable')).toBe('release')
+    expect(decide('review', 'unreviewable')).toBe('reject')
+    expect(reviewEffects.release).toEqual({ outcome: 'published', records: false })
+    expect(canApply('release', 'published')).toBe(true)
     expect(canApply('reconfirm', 'published')).toBe(true)
     expect(canApply('invalidate', 'published')).toBe(true)
     expect(canApply('invalidate', 'pending')).toBe(false)
