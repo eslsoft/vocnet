@@ -31,9 +31,13 @@ identity, never reviewed content.
 | Table     | Columns                                           | Identity rule                       |
 | --------- | ------------------------------------------------- | ----------------------------------- |
 | `entries` | `id`, `lemma` (normalized, unique), `created_by`  | One entry per lemma spelling        |
-| `senses`  | `id`, `entry_id`, `pos`, `created_by`             | POS is identity; gloss is a fact    |
+| `senses`  | `id`, `entry_id`, `pos`, `creation_key`, `created_by` | POS is identity; gloss is a fact |
 
-Correcting a sense's POS means a new sense, not an edit. A node is publicly
+Correcting a sense's POS means a new sense, not an edit. `creation_key` is the
+content key of the gloss the sense was created with. A unique index on
+`(entry_id, pos, creation_key)` makes concurrent identical creations converge on
+one sense: the losing request inserts nothing and returns the winner's sense and
+gloss fact. A node is publicly
 visible when its defining fact (`entry` for an entry, `sense` for a sense) is
 published.
 
@@ -50,6 +54,7 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | `content_key`   | Deterministic key of the identifying payload, for dedupe       |
 | `payload`       | Kind-specific JSON, validated by the registry schema           |
 | `status`        | `pending`, `published`, `rejected`, `superseded`, `retracted`  |
+| `exclusive`     | The kind's cardinality is *one*, copied from the registry      |
 | `supersedes_id` | Fact this one corrects, if any                                 |
 | `author`        | Agent or admin principal that submitted it                     |
 | `review`        | Reviewer, verdict, confidence, reason, raw detail, reviewed at |
@@ -79,6 +84,13 @@ needs a new column.
 A kind with cardinality *one* admits a single live fact per subject: a sense has
 one gloss. Changing it means submitting a correction that supersedes the
 published fact; a second gloss without `supersedes_id` is a conflict.
+
+D1 enforces this with two partial unique indexes on `(kind, subject_id)` over
+`exclusive` rows. The *holder* index covers the published fact and any pending
+fact that corrects nothing; the *pending* index covers every pending fact. So a
+pending correction may sit beside the published original, and a second pending
+fact or a second holder is refused. A write that one of these indexes or the
+live-content index refuses answers `409 conflict`.
 
 Relation types are `synonym`, `antonym`, `hypernym`, and `part_of`, with the
 same review questions the producer qualified. A relation is reviewed with the
@@ -112,13 +124,16 @@ are published.
 The transition table lives in the domain. Review writes are conditional on
 `status = 'pending'`, so a duplicate queue delivery cannot change a decided fact.
 A correction (`supersedes_id`) is reviewed like any fact. When it publishes,
-the superseded fact changes status in the same D1 batch. A rejected correction
-leaves the original published.
+the superseded fact changes status in the same D1 batch: the original leaves
+`published` first, and only while the correction is still pending, then the
+correction enters it. A rejected correction leaves the original published.
 
 An author can retract its own pending or published fact; admins can retract
 any. An admin can re-review a published or rejected fact: it returns to
-`pending` and is enqueued, unless a rejected fact's slot has since been taken
-by another live fact.
+`pending` and is enqueued, unless that would make a second live fact with the
+same content or in the same exclusive slot. Re-reviewing a published gloss
+while its correction is pending, or a rejected fact whose place another live
+fact took, answers `409 conflict`.
 
 ### Reviews
 

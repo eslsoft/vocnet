@@ -76,9 +76,10 @@ export async function createSense(
     createdAt: now,
     updatedAt: now,
   }
-  await deps.nodes.insertSenseWithFact(sense, fact)
-  await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
-  return { sense, fact, created: true }
+  const stored = await deps.nodes.insertSenseWithFact(sense, fact)
+  const created = stored.sense.id === sense.id
+  if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
+  return { ...stored, created }
 }
 
 async function snapshotOf(deps: Pick<Deps, 'nodes'>, lemma: string): Promise<EntrySnapshot> {

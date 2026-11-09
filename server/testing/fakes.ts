@@ -1,9 +1,11 @@
 import type { EntrySnapshot } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
+import { factKinds } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import type { Deps } from '@server/usecases/deps'
+import { ConflictError } from '@server/usecases/errors'
 import type { AgentRecord, JevAnswers, LlmJudgement, NodeRepo, ReviewJob } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
 import type { EntryId, FactId, SenseId } from '@shared/facts'
@@ -76,12 +78,27 @@ export function fakeWorld(): FakeWorld {
     world.facts.find(
       (fact) => fact.kind === kind && fact.subjectId === subjectId && fact.contentKey === contentKey && live(fact),
     ) ?? null
+  // The D1 partial unique indexes: live content, and an exclusive slot's holder and pending fact.
+  const holdsSlot = (fact: Fact) =>
+    fact.status === 'published' || (fact.status === 'pending' && fact.supersedesId === null)
+  const violatesIndexes = (facts: Fact[], candidate: Fact) =>
+    facts.some((other) => {
+      if (other.id === candidate.id || other.kind !== candidate.kind || other.subjectId !== candidate.subjectId) {
+        return false
+      }
+      if (live(other) && live(candidate) && other.contentKey === candidate.contentKey) return true
+      if (factKinds[candidate.kind].cardinality === 'many') return false
+      return (
+        (holdsSlot(other) && holdsSlot(candidate)) || (other.status === 'pending' && candidate.status === 'pending')
+      )
+    })
   const paged = <T>(items: T[], limit: number, cursor: string | undefined) => {
     const start = cursor ? Number(cursor) : 0
     const slice = items.slice(start, start + limit)
     return { items: slice, nextCursor: start + limit < items.length ? String(start + limit) : null }
   }
 
+  const creationKeys = new Map<string, string>()
   const nodes: NodeRepo = {
     findEntryByLemma: async (lemma) => world.entries.find((entry) => entry.lemma === lemma) ?? null,
     findEntry: async (id) => world.entries.find((entry) => entry.id === id) ?? null,
@@ -103,8 +120,23 @@ export function fakeWorld(): FakeWorld {
       return null
     },
     insertSenseWithFact: async (sense, fact) => {
+      const existing = world.senses.find(
+        (candidate) =>
+          candidate.entryId === sense.entryId &&
+          candidate.pos === sense.pos &&
+          creationKeys.get(candidate.id) === fact.contentKey,
+      )
+      if (existing) {
+        const defining = world.facts.find(
+          (candidate) => candidate.subjectId === existing.id && candidate.contentKey === fact.contentKey,
+        )
+        if (!defining) throw new Error(`Sense ${existing.id} has no defining fact.`)
+        return { sense: existing, fact: defining }
+      }
       world.senses.push(sense)
+      creationKeys.set(sense.id, fact.contentKey)
       world.facts.push(fact)
+      return { sense, fact }
     },
     loadEntrySnapshot: async (entry): Promise<EntrySnapshot> => {
       const own = world.senses.filter((sense) => sense.entryId === entry.id)
@@ -162,19 +194,25 @@ export function fakeWorld(): FakeWorld {
       insert: async (fact) => {
         const existing = findLive(fact.kind, fact.subjectId, fact.contentKey)
         if (existing) return existing
+        if (violatesIndexes(world.facts, fact)) return null
         world.facts.push(fact)
         return fact
       },
       transition: async ({ id, from, to, at, review, supersede }) => {
-        const index = world.facts.findIndex((fact) => fact.id === id)
-        const fact = world.facts[index]
+        const fact = world.facts.find((candidate) => candidate.id === id)
         if (!fact || !from.includes(fact.status)) return false
-        world.facts[index] = { ...fact, status: to, updatedAt: at, review: review ?? fact.review } as Fact
-        if (supersede) {
-          const old = world.facts.findIndex((candidate) => candidate.id === supersede)
-          const oldFact = world.facts[old]
-          if (oldFact?.status === 'published') world.facts[old] = { ...oldFact, status: 'superseded', updatedAt: at }
-        }
+        const next = { ...fact, status: to, updatedAt: at, review: review ?? fact.review } as Fact
+        const retired = world.facts.map((candidate) =>
+          candidate.id === supersede && candidate.status === 'published'
+            ? { ...candidate, status: 'superseded' as const, updatedAt: at }
+            : candidate,
+        )
+        if (violatesIndexes(retired, next)) throw new ConflictError('Another live fact already holds this slot.')
+        world.facts.splice(
+          0,
+          world.facts.length,
+          ...retired.map((candidate) => (candidate.id === id ? next : candidate)),
+        )
         return true
       },
       listPendingUpdatedBefore: async (cutoff, limit) =>

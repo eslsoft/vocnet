@@ -4,9 +4,9 @@ import type { SenseWithLemma } from '@server/domain/nodes'
 import type { Lemma } from '@server/domain/term'
 import type { NodeRepo } from '@server/usecases/ports'
 import type { EntryId } from '@shared/facts'
-import { and, asc, eq, exists, gt, gte, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
+import { and, asc, eq, exists, getTableColumns, gt, gte, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { type Db, decodeCursor, liveStatus, page, toEntry, toFact, toSense } from './rows'
+import { type Db, decodeCursor, fromFact, liveStatus, page, toEntry, toFact, toSense } from './rows'
 
 const PREFIX_END = '\u{10FFFF}'
 const entryCursor = z.object({ lemma: z.string() })
@@ -79,10 +79,36 @@ export function createNodeRepo(db: Db): NodeRepo {
     },
 
     async insertSenseWithFact(sense, fact) {
+      // The creation index makes a concurrent duplicate a no-op, and the fact is inserted only
+      // if its sense was, so the loser of a race leaves nothing behind and reads the winner.
+      const row = fromFact(fact)
+      const values = Object.fromEntries(
+        Object.entries(getTableColumns(facts)).map(([key, column]) => [
+          key,
+          sql`${column.mapToDriverValue(row[key as keyof typeof row])}`.as(column.name),
+        ]),
+      )
       await db.batch([
-        db.insert(senses).values(sense),
-        db.insert(facts).values({ ...fact, payload: JSON.stringify(fact.payload), review: null }),
+        db
+          .insert(senses)
+          .values({ ...sense, creationKey: fact.contentKey })
+          .onConflictDoNothing(),
+        db.insert(facts).select(db.select(values).from(senses).where(eq(senses.id, sense.id)) as never),
       ])
+      const stored = await db
+        .select({ sense: senses, fact: facts })
+        .from(senses)
+        .innerJoin(
+          facts,
+          and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id), eq(facts.contentKey, senses.creationKey)),
+        )
+        .where(
+          and(eq(senses.entryId, sense.entryId), eq(senses.pos, sense.pos), eq(senses.creationKey, fact.contentKey)),
+        )
+        .orderBy(asc(facts.createdAt), asc(facts.id))
+        .get()
+      if (!stored) throw new Error(`Sense ${sense.id} has no defining fact right after insert.`)
+      return { sense: toSense(stored.sense), fact: toFact(stored.fact) }
     },
 
     async loadEntrySnapshot(entry) {

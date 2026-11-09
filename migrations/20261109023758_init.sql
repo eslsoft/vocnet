@@ -24,6 +24,7 @@ CREATE TABLE `facts` (
 	`content_key` text NOT NULL,
 	`payload` text NOT NULL,
 	`status` text NOT NULL,
+	`exclusive` integer NOT NULL,
 	`supersedes_id` text,
 	`author` text NOT NULL,
 	`review` text,
@@ -32,6 +33,8 @@ CREATE TABLE `facts` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `facts_live_content_idx` ON `facts` (`kind`,`content_key`,`subject_id`) WHERE status in ('pending', 'published');--> statement-breakpoint
+CREATE UNIQUE INDEX `facts_exclusive_holder_idx` ON `facts` (`kind`,`subject_id`) WHERE exclusive = 1 and (status = 'published' or (status = 'pending' and supersedes_id is null));--> statement-breakpoint
+CREATE UNIQUE INDEX `facts_exclusive_pending_idx` ON `facts` (`kind`,`subject_id`) WHERE exclusive = 1 and status = 'pending';--> statement-breakpoint
 CREATE INDEX `facts_subject_idx` ON `facts` (`subject_id`,`status`);--> statement-breakpoint
 CREATE INDEX `facts_object_idx` ON `facts` (`object_id`);--> statement-breakpoint
 CREATE INDEX `facts_status_created_idx` ON `facts` (`status`,`created_at`,`id`);--> statement-breakpoint
@@ -56,9 +59,11 @@ CREATE TABLE `senses` (
 	`id` text PRIMARY KEY NOT NULL,
 	`entry_id` text NOT NULL,
 	`pos` text NOT NULL,
+	`creation_key` text NOT NULL,
 	`created_by` text NOT NULL,
 	`created_at` text NOT NULL,
 	FOREIGN KEY (`entry_id`) REFERENCES `entries`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `senses_entry_idx` ON `senses` (`entry_id`);
+CREATE INDEX `senses_entry_idx` ON `senses` (`entry_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `senses_creation_idx` ON `senses` (`entry_id`,`pos`,`creation_key`);

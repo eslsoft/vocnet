@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "48b2ea90-72db-4995-8af4-d134a62920fe",
+  "id": "fcc3822d-1a94-4395-b3e7-01b74c63bc43",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "agents": {
@@ -162,6 +162,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "exclusive": {
+          "name": "exclusive",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "supersedes_id": {
           "name": "supersedes_id",
           "type": "text",
@@ -208,6 +215,24 @@
           ],
           "isUnique": true,
           "where": "status in ('pending', 'published')"
+        },
+        "facts_exclusive_holder_idx": {
+          "name": "facts_exclusive_holder_idx",
+          "columns": [
+            "kind",
+            "subject_id"
+          ],
+          "isUnique": true,
+          "where": "exclusive = 1 and (status = 'published' or (status = 'pending' and supersedes_id is null))"
+        },
+        "facts_exclusive_pending_idx": {
+          "name": "facts_exclusive_pending_idx",
+          "columns": [
+            "kind",
+            "subject_id"
+          ],
+          "isUnique": true,
+          "where": "exclusive = 1 and status = 'pending'"
         },
         "facts_subject_idx": {
           "name": "facts_subject_idx",
@@ -375,6 +400,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "creation_key": {
+          "name": "creation_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -397,6 +429,15 @@
             "entry_id"
           ],
           "isUnique": false
+        },
+        "senses_creation_idx": {
+          "name": "senses_creation_idx",
+          "columns": [
+            "entry_id",
+            "pos",
+            "creation_key"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {

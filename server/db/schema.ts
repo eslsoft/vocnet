@@ -16,10 +16,15 @@ export const senses = sqliteTable(
       .notNull()
       .references(() => entries.id),
     pos: text('pos').notNull(),
+    /** Content key of the gloss the sense was created with, so a concurrent duplicate create finds it. */
+    creationKey: text('creation_key').notNull(),
     createdBy: text('created_by').notNull(),
     createdAt: text('created_at').notNull(),
   },
-  (table) => [index('senses_entry_idx').on(table.entryId)],
+  (table) => [
+    index('senses_entry_idx').on(table.entryId),
+    uniqueIndex('senses_creation_idx').on(table.entryId, table.pos, table.creationKey),
+  ],
 )
 
 export const facts = sqliteTable(
@@ -32,6 +37,8 @@ export const facts = sqliteTable(
     contentKey: text('content_key').notNull(),
     payload: text('payload').notNull(),
     status: text('status').notNull(),
+    /** The kind's cardinality is `one`, copied from the registry so the slot indexes can see it. */
+    exclusive: integer('exclusive', { mode: 'boolean' }).notNull(),
     supersedesId: text('supersedes_id'),
     author: text('author').notNull(),
     review: text('review'),
@@ -44,6 +51,14 @@ export const facts = sqliteTable(
     uniqueIndex('facts_live_content_idx')
       .on(table.kind, table.contentKey, table.subjectId)
       .where(sql`status in ('pending', 'published')`),
+    // An exclusive slot has one holder (the published fact, or a pending one that corrects
+    // nothing) and at most one pending fact, so a pending correction may sit beside its original.
+    uniqueIndex('facts_exclusive_holder_idx')
+      .on(table.kind, table.subjectId)
+      .where(sql`exclusive = 1 and (status = 'published' or (status = 'pending' and supersedes_id is null))`),
+    uniqueIndex('facts_exclusive_pending_idx')
+      .on(table.kind, table.subjectId)
+      .where(sql`exclusive = 1 and status = 'pending'`),
     index('facts_subject_idx').on(table.subjectId, table.status),
     index('facts_object_idx').on(table.objectId),
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),

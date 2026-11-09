@@ -62,6 +62,12 @@ Feature: Catalog
     When an agent creates a sense with a POS and gloss
     Then the sense and a pending sense fact exist, and repeating the call returns them
 
+  @catalog/create-sense-race @api
+  Scenario: Concurrent identical sense creations make one sense
+    Given an entry
+    When two identical create-sense requests arrive at the same time
+    Then both return the same sense and gloss fact, and the entry has one sense
+
   @catalog/manage-entry @api
   Scenario: Management sees every fact in every status
     Given an entry with pending facts
