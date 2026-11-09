@@ -160,6 +160,24 @@ Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. Agent keys are random
 secrets (`vn_agent_…`) that an admin issues. The Worker stores only their
 SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403.
 
+## Console
+
+The console is how admins watch the dictionary. It reads and acts only through
+`/manage/v1` with the admin's access token.
+
+- **Overview**: fact counts by kind and status, and open feedback.
+- **Facts**: a filterable, paged list with a drawer for one fact's payload,
+  author, review, and the fact it supersedes. Admins retract or re-review there.
+- **Entry inspector**: one lemma with every sense and every fact in every
+  status, so pending, rejected, and uncertain data is seen in context.
+- **Feedback**: read-only. Claiming and resolving belong to agents.
+- **Agents**: issue a key (shown once) and revoke it.
+
+A review that is `uncertain`, or a pass below 0.8 confidence, is flagged
+wherever a fact is listed: it is published with flaws, the state admins watch.
+Facts and feedback name nodes by id, so `GET /manage/v1/nodes/{id}` resolves an
+entry or sense id to its owning entry for linking.
+
 The public wire format is snake_case JSON. Errors are
 `{ "error": { "code", "message" } }` with stable codes; pages are
 `{ items, next_cursor }` over keyset cursors with a unique tiebreaker. The

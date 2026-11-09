@@ -32,8 +32,9 @@ are generated from the same zod route definitions that validate requests.
 
 - Hono on Cloudflare Workers with `@hono/zod-openapi`; D1 through drizzle
   (generated migrations); a Queue for reviews; a cron reconciler.
-- React 19 admin console shell (served as static assets), typed against the API
-  through the Hono RPC client.
+- React 19 admin console (served as static assets): overview counts, a fact
+  browser with review details, an entry inspector, read-only feedback, and agent
+  keys. Typed against the API through the Hono RPC client.
 - Biome, dependency-cruiser, TypeScript, Vitest (unit, jsdom, workerd with real
   D1), Playwright, Gherkin specs in `spec/`.
 
@@ -46,7 +47,17 @@ pnpm db:migrate:local            # apply migrations to the local D1
 pnpm dev                         # vite dev: console + Worker + local D1 + queue
 ```
 
-To call the management API locally without an IdP, insert an agent row whose
+To sign in to the console locally without a real IdP, run the dev-only OIDC
+provider (the one the E2E suite uses) in another terminal and point `.dev.vars`
+at the values it prints. It signs every login in as one fixed subject, so never
+point a deployed Worker at it:
+
+```bash
+pnpm dev:oidc   # OIDC_ISSUER=http://127.0.0.1:8788, OIDC_CLIENT_ID=vocnet-dev, ADMIN_SUBJECTS=dev-admin
+```
+
+Once signed in, the Agents page issues agent keys. To call the management API
+without the console at all, insert an agent row whose
 `key_hash` is the SHA-256 hex of a key you choose:
 
 ```bash

@@ -32,7 +32,7 @@ test('critical UI is accessible and keyboard operable [spec: access/console-logi
   await signIn.focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByRole('heading', { name: 'Vocnet console' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
 })
 
