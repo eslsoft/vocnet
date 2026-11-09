@@ -31,8 +31,11 @@ export interface NodeRepo {
   findSense(id: SenseId): Promise<SenseWithLemma | null>
   /** The sense of this entry and POS whose live `sense` fact has this content key. */
   findSenseByGloss(entryId: EntryId, pos: Pos, contentKey: string): Promise<{ sense: SenseNode; fact: Fact } | null>
-  /** Atomically creates a sense together with its defining fact. */
-  insertSenseWithFact(sense: SenseNode, fact: FactOf<'sense'>): Promise<void>
+  /**
+   * Atomically creates a sense together with its defining fact, unless the entry already has a
+   * sense of this POS created with the same gloss; returns the stored sense and its defining fact.
+   */
+  insertSenseWithFact(sense: SenseNode, fact: FactOf<'sense'>): Promise<{ sense: SenseNode; fact: Fact }>
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
   /** Published entries whose lemma starts with prefix, in lemma order. */
   searchPublishedEntries(prefix: string, page: PageRequest): Promise<Page<EntryRef>>
@@ -54,9 +57,12 @@ export interface FactRepo {
   find(id: FactId): Promise<Fact | null>
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
   listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
-  /** Inserts unless a live fact holds the same (kind, subject, content key); returns the live fact either way. */
-  insert(fact: Fact): Promise<Fact>
-  /** Conditional status write; false when the fact was not in `from`. */
+  /**
+   * Inserts unless a live fact holds the same (kind, subject, content key) and returns the live
+   * fact either way; null when another live fact holds the kind's exclusive slot.
+   */
+  insert(fact: Fact): Promise<Fact | null>
+  /** Conditional status write; false when the fact was not in `from`. Throws ConflictError when the slot is taken. */
   transition(write: FactTransitionWrite): Promise<boolean>
   listPendingUpdatedBefore(cutoff: string, limit: number): Promise<FactId[]>
   list(filter: { status?: FactStatus; kind?: FactKind }, page: PageRequest): Promise<Page<Fact>>

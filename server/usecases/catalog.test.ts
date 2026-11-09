@@ -50,6 +50,24 @@ describe('createSense', () => {
     expect(verb.created).toBe(true)
   })
 
+  it('returns the sense a gloss created even after that gloss was rejected, and enqueues nothing', async () => {
+    const world = fakeWorld()
+    const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
+    const input = { entry_id: entry.id, pos: 'noun' as const, gloss: 'a kind of fish' }
+    const created = await createSense(world.deps, agentA, input)
+    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    await reviewAll(world)
+
+    const again = await createSense(world.deps, agentA, input)
+    expect(again).toMatchObject({
+      created: false,
+      sense: { id: created.sense.id },
+      fact: { id: created.fact.id, status: 'rejected' },
+    })
+    expect(world.senses).toHaveLength(1)
+    expect(world.queued).toEqual([])
+  })
+
   it('rejects a sense for an unknown entry', async () => {
     const world = fakeWorld()
     await expect(

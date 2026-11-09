@@ -73,11 +73,23 @@ Feature: Facts and review
     When an agent submits another gloss without superseding it, or a second correction
     Then the submission conflicts
 
+  @facts/exclusive-slot-race @api
+  Scenario: Concurrent corrections cannot both go live
+    Given a sense with a published gloss
+    When two agents submit different corrections of it at the same time
+    Then one is pending and the other conflicts, so the sense holds one published and one pending gloss
+
   @facts/correction @usecase
   Scenario: A published correction supersedes the original in the same write
     Given a published gloss and a pending correction of it
     When the correction is published
     Then the original is superseded; a rejected correction leaves the original published
+
+  @facts/supersede-api @api
+  Scenario: A correction replaces the original atomically on a real database
+    Given a published gloss and a pending correction of it
+    When the review queue publishes the correction
+    Then the original is superseded and the public entry shows only the correction
 
   @facts/review-idempotent @usecase
   Scenario: Duplicate deliveries change nothing
@@ -114,6 +126,24 @@ Feature: Facts and review
     Given a published or rejected fact
     When an admin re-reviews it
     Then it is pending again and enqueued, unless another live fact took its place
+
+  @facts/rereview-api @api
+  Scenario: A rejected fact goes back through review and publishes
+    Given a fact the reviewer rejected
+    When an admin re-reviews it and the reviewer then passes it
+    Then it moves from rejected to pending to published and is publicly visible
+
+  @facts/rereview-conflict @api
+  Scenario: A re-review never makes a second live fact
+    Given a published gloss with a pending correction, and a rejected example whose text is live again
+    When an admin re-reviews the gloss or the rejected example
+    Then each answers 409 conflict and nothing changes
+
+  @facts/rereview-orphaned-correction @api
+  Scenario: A rejected correction cannot come back once its original is gone
+    Given a published gloss, a rejected correction of it, and a second correction that published
+    When an admin re-reviews the rejected correction
+    Then it answers 409 conflict, the correction stays rejected, and the live gloss can still be corrected
 
   @facts/manage-api @api
   Scenario: Fact management over HTTP

@@ -4,9 +4,10 @@ import { type FactId, factKindSchema, factStatusSchema } from '@shared/facts'
 import { and, asc, count, desc, eq, exists, inArray, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { type Db, decodeCursor, fromFact, liveStatus, page, toFact } from './rows'
+import { type Db, decodeCursor, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
+const SLOT_TAKEN = 'Another live fact already holds this slot.'
 
 export function createFactRepo(db: Db): FactRepo {
   const findLive: FactRepo['findLive'] = async (kind, subjectId, contentKey) => {
@@ -36,11 +37,10 @@ export function createFactRepo(db: Db): FactRepo {
     },
 
     async insert(fact) {
-      // The partial unique index turns a concurrent duplicate into a no-op; the live row wins.
+      // The partial unique indexes turn a concurrent duplicate or a taken exclusive slot into a
+      // no-op: a live fact with the same content wins, and otherwise the slot holder does.
       await db.insert(facts).values(fromFact(fact)).onConflictDoNothing()
-      const live = await findLive(fact.kind, fact.subjectId, fact.contentKey)
-      if (!live) throw new Error(`Fact ${fact.id} is not live right after insert.`)
-      return live
+      return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
 
     async transition({ id, from, to, at, review, supersede }) {
@@ -49,34 +49,33 @@ export function createFactRepo(db: Db): FactRepo {
         .set({ status: to, updatedAt: at, ...(review ? { review: JSON.stringify(review) } : {}) })
         .where(and(eq(facts.id, id), inArray(facts.status, [...from])))
         .returning({ id: facts.id })
-      if (!supersede) return (await update).length > 0
+      if (!supersede) return guardUnique('facts', SLOT_TAKEN, async () => (await update).length > 0)
 
-      // Same batch: the old fact is superseded only if this correction is now published.
+      // One batch, original first: it leaves `published` only while this correction is still
+      // pending, so the correction can enter `published` without two published facts at once.
       const correction = alias(facts, 'correction')
-      const [applied] = await db.batch([
-        update,
-        db
-          .update(facts)
-          .set({ status: 'superseded', updatedAt: at })
-          .where(
-            and(
-              eq(facts.id, supersede),
-              eq(facts.status, 'published'),
-              exists(
-                db
-                  .select({ one: sql`1` })
-                  .from(correction)
-                  .where(
-                    and(
-                      eq(correction.id, id),
-                      eq(correction.status, 'published'),
-                      eq(correction.supersedesId, supersede),
-                    ),
+      const retire = db
+        .update(facts)
+        .set({ status: 'superseded', updatedAt: at })
+        .where(
+          and(
+            eq(facts.id, supersede),
+            eq(facts.status, 'published'),
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(correction)
+                .where(
+                  and(
+                    eq(correction.id, id),
+                    inArray(correction.status, [...from]),
+                    eq(correction.supersedesId, supersede),
                   ),
-              ),
+                ),
             ),
           ),
-      ])
+        )
+      const [, applied] = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, update]))
       return applied.length > 0
     },
 

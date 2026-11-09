@@ -218,6 +218,17 @@ describe('rereviewFact', () => {
     await expect(rereviewFact(world.deps, admin, fact.id)).resolves.toMatchObject({ status: 'pending' })
   })
 
+  it('refuses a rejected correction whose original is no longer published', async () => {
+    const { world, river, riverGloss } = await bankWorld()
+    const correction = { kind: 'sense' as const, subject_id: river.id, supersedes_id: riverGloss.id }
+    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.05 } }))
+    const { fact: rejected } = await submitFact(world.deps, agentA, { ...correction, payload: { gloss: 'a fish' } })
+    await reviewFact(world.deps, rejected.id)
+    await retractFact(world.deps, agentA, riverGloss.id)
+    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'conflict' })
+    expect((await getFact(world.deps, rejected.id)).status).toBe('rejected')
+  })
+
   it('reports a concurrent change', async () => {
     const { world, riverGloss } = await bankWorld()
     world.deps.facts.transition = async () => false

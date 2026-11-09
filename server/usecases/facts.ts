@@ -1,6 +1,6 @@
 import type { Fact } from '@server/domain/fact'
 import { contentKeyOf, factKinds, type SubjectType, targetOf } from '@server/domain/fact-kinds'
-import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
+import { canApply, factTransitions } from '@server/domain/fact-lifecycle'
 import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
 import type { EntryId, FactId, FactKind, FactStatus, SenseId, SubmitFactInput } from '@shared/facts'
 import type { Deps } from './deps'
@@ -45,7 +45,6 @@ export async function submitFact(
 
   const supersedesId = input.supersedes_id ?? null
   if (supersedesId) await assertSupersedable(deps, supersedesId, input.kind, subjectId)
-  await assertCardinality(deps, input.kind, subjectId, supersedesId)
 
   const now = deps.clock.now().toISOString()
   const draft = {
@@ -63,13 +62,18 @@ export async function submitFact(
     updatedAt: now,
   } as Fact
   const fact = await deps.facts.insert(draft)
+  if (!fact) {
+    throw new ConflictError(
+      `This subject already has a live ${input.kind} fact; submit one correction that supersedes the published one.`,
+    )
+  }
   const created = fact.id === draft.id
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { fact, created }
 }
 
 async function assertSupersedable(
-  deps: SubmitDeps,
+  deps: Pick<Deps, 'facts'>,
   supersedesId: FactId,
   kind: FactKind,
   subjectId: EntryId | SenseId,
@@ -81,23 +85,6 @@ async function assertSupersedable(
   }
   if (old.status !== 'published')
     throw new ConflictError(`Only a published fact can be superseded; it is ${old.status}.`)
-}
-
-/** A single-valued kind admits one live fact per subject, plus one pending correction of it. */
-async function assertCardinality(
-  deps: SubmitDeps,
-  kind: FactKind,
-  subjectId: EntryId | SenseId,
-  supersedesId: FactId | null,
-): Promise<void> {
-  if (factKinds[kind].cardinality === 'many') return
-  const live = await deps.facts.listLive(kind, subjectId)
-  const blocking = live.filter((fact) => fact.id !== supersedesId)
-  if (blocking.length > 0) {
-    throw new ConflictError(
-      `This subject already has a live ${kind} fact (${blocking[0]?.id}); submit a correction that supersedes it.`,
-    )
-  }
 }
 
 export async function getFact(deps: Pick<Deps, 'facts'>, id: FactId): Promise<Fact> {
@@ -126,7 +113,11 @@ export async function retractFact(deps: Pick<Deps, 'facts' | 'clock'>, actor: Ac
   return getFact(deps, id)
 }
 
-/** Sends a decided fact back through review. Pending facts are simply re-enqueued. */
+/**
+ * Sends a decided fact back through review. Pending facts are simply re-enqueued. The reset
+ * conflicts when it would make a second live fact with the same content or in an exclusive slot,
+ * or when a rejected correction's original is no longer published to be superseded.
+ */
 export async function rereviewFact(
   deps: Pick<Deps, 'facts' | 'reviewQueue' | 'clock'>,
   actor: Actor,
@@ -135,19 +126,14 @@ export async function rereviewFact(
   const fact = await getFact(deps, id)
   if (fact.status !== 'pending') {
     if (!canApply('rereview', fact.status)) throw new ConflictError(`A ${fact.status} fact cannot be re-reviewed.`)
-    if (!isLive(fact.status)) await assertSlotFree(deps, fact)
+    // A published correction already took its original's place; a rejected one must still find it published.
+    if (fact.status === 'rejected' && fact.supersedesId) {
+      await assertSupersedable(deps, fact.supersedesId, fact.kind, fact.subjectId)
+    }
     const { from, to } = factTransitions.rereview
     const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString() })
     if (!applied) throw new ConflictError('The fact changed while it was being reset.')
   }
   await deps.reviewQueue.enqueue([{ factId: id, traceId: actor.traceId }])
   return getFact(deps, id)
-}
-
-/** A rejected fact may go live again only if nothing has taken its place meanwhile. */
-async function assertSlotFree(deps: Pick<Deps, 'facts'>, fact: Fact): Promise<void> {
-  const live = await deps.facts.listLive(fact.kind, fact.subjectId)
-  const single = factKinds[fact.kind].cardinality === 'one'
-  const taken = live.find((other) => single || other.contentKey === fact.contentKey)
-  if (taken) throw new ConflictError(`Live fact ${taken.id} already holds this slot.`)
 }

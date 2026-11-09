@@ -1,11 +1,12 @@
 import type { createDb } from '@server/db/client'
 import { type FactRow, type FeedbackRow, facts } from '@server/db/schema'
 import type { Fact } from '@server/domain/fact'
+import { factKinds } from '@server/domain/fact-kinds'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
-import { InvalidCursorError } from '@server/usecases/errors'
+import { ConflictError, InvalidCursorError } from '@server/usecases/errors'
 import {
   type EntryId,
   type FactId,
@@ -69,7 +70,29 @@ export function toFact(row: FactRow): Fact {
 }
 
 export function fromFact(fact: Fact): FactRow {
-  return { ...fact, payload: JSON.stringify(fact.payload), review: fact.review && JSON.stringify(fact.review) }
+  return {
+    ...fact,
+    exclusive: factKinds[fact.kind].cardinality === 'one',
+    payload: JSON.stringify(fact.payload),
+    review: fact.review && JSON.stringify(fact.review),
+  }
+}
+
+function isUniqueViolation(error: unknown, table: string): boolean {
+  for (let cause = error; cause instanceof Error; cause = cause.cause) {
+    if (cause.message.includes(`UNIQUE constraint failed: ${table}.`)) return true
+  }
+  return false
+}
+
+/** Runs a write whose unique indexes guard a domain invariant; a violation is a conflict, not a crash. */
+export async function guardUnique<T>(table: string, message: string, write: () => Promise<T>): Promise<T> {
+  try {
+    return await write()
+  } catch (error) {
+    if (isUniqueViolation(error, table)) throw new ConflictError(message)
+    throw error
+  }
 }
 
 export function toFeedback(row: FeedbackRow): FeedbackRecord {
