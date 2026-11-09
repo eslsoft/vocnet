@@ -5,12 +5,12 @@ import { server } from '@/test/msw'
 import { renderAt } from '@/test/render'
 import { EntryInspector } from './index'
 
-function Page({ lemma }: { lemma?: string }) {
+function Page({ lemma }: { lemma: string }) {
   return <EntryInspector lemma={lemma} />
 }
 
 const routes = [
-  { path: '/entries', element: <Page /> },
+  { path: '/entries', element: <p>entry list</p> },
   { path: '/entries/bank', element: <Page lemma="bank" /> },
   { path: '/entries/ghost', element: <Page lemma="ghost" /> },
   { path: '/entries/empty', element: <Page lemma="empty" /> },
@@ -61,11 +61,7 @@ function world() {
 describe('EntryInspector', () => {
   it('shows every sense with its facts in every status [spec: console/entry-inspector]', async () => {
     server.use(...world().handlers)
-    const view = renderAt('/entries', routes)
-    fireEvent.change(screen.getByLabelText('Lemma'), { target: { value: '  bank ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect' }))
-    expect(view.location()).toBe('/entries/bank')
-
+    const view = renderAt('/entries/bank', routes)
     expect(await screen.findByRole('heading', { name: 'bank' })).toBeInTheDocument()
     const entryFacts = screen.getByText('Entry facts').closest('[data-slot=card]') as HTMLElement
     expect(within(entryFacts).getByText('banks (plural)')).toBeInTheDocument()
@@ -93,15 +89,13 @@ describe('EntryInspector', () => {
     server.use(...world().handlers)
     renderAt('/entries/ghost', routes)
     expect(await screen.findByRole('alert')).toHaveTextContent('No entry for "ghost".')
-    expect(screen.getByLabelText('Lemma')).toHaveValue('ghost')
   })
 
-  it('says when an entry has no senses and ignores a blank search', async () => {
+  it('says when an entry has no senses and links back to the list', async () => {
     server.use(...world().handlers)
     const view = renderAt('/entries/empty', routes)
     expect(await screen.findByText('No senses yet.')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Lemma'), { target: { value: '   ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect' }))
-    expect(view.location()).toBe('/entries/empty')
+    fireEvent.click(screen.getByRole('link', { name: 'All entries' }))
+    expect(view.location()).toBe('/entries')
   })
 })

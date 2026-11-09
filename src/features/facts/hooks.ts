@@ -25,7 +25,9 @@ function useFactMutation(action: (id: FactId) => Promise<unknown>) {
   return useMutation({
     mutationFn: action,
     onSuccess: () =>
-      Promise.all(['facts', 'fact', 'entry', 'stats'].map((key) => queryClient.invalidateQueries({ queryKey: [key] }))),
+      Promise.all(
+        ['facts', 'fact', 'entry', 'entries', 'stats'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+      ),
   })
 }
 

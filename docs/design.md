@@ -281,6 +281,11 @@ The console is how admins watch the dictionary. It reads and acts only through
 - **Overview**: fact counts by kind and status, and open feedback.
 - **Facts**: a filterable, paged list with a drawer for one fact's payload,
   author, review, and the fact it supersedes. Admins retract or re-review there.
+- **Entries**: every entry in lemma order, filtered by lemma prefix, with its
+  entry status, live sense count, fact counts by status, and last completed
+  work, so admins watch agents fill the dictionary. It refreshes itself every 30
+  seconds. `GET /manage/v1/entries` serves it: a keyset page on the unique lemma
+  index whose counts are aggregated for that page only.
 - **Entry inspector**: one lemma with every sense and every fact in every
   status, so pending, rejected, and uncertain data is seen in context.
 - **Feedback**: read-only. Claiming and resolving belong to agents.
