@@ -4,6 +4,7 @@ import {
   entryPageSchema,
   formLookupSchema,
   managedEntrySchema,
+  nodeLocationSchema,
   publicEntrySchema,
   publicSenseWithEntrySchema,
 } from '@shared/catalog'
@@ -132,5 +133,17 @@ describe('public catalog', () => {
     const view = managedEntrySchema.parse((await call('/manage/v1/entries/bank', { token })).body)
     expect(view.facts.map((fact) => fact.status)).toEqual(view.facts.map(() => 'pending'))
     expect(view.facts.map((fact) => fact.kind).sort()).toEqual(['entry', 'example', 'form', 'relation', 'sense'])
+  })
+
+  it('resolves an entry or sense id to its entry [spec: catalog/locate-node]', async () => {
+    const { token } = await seedBank()
+    const view = managedEntrySchema.parse((await call('/manage/v1/entries/bank', { token })).body)
+    const owner = { id: view.entry.id, lemma: 'bank' }
+    const ofEntry = nodeLocationSchema.parse((await call(`/manage/v1/nodes/${view.entry.id}`, { token })).body)
+    const ofSense = nodeLocationSchema.parse((await call(`/manage/v1/nodes/${view.senses[0].id}`, { token })).body)
+    expect(ofEntry).toEqual({ node_type: 'entry', entry: owner })
+    expect(ofSense).toEqual({ node_type: 'sense', entry: owner })
+    const missing = await call(`/manage/v1/nodes/${crypto.randomUUID()}`, { token })
+    expect(missing.status).toBe(404)
   })
 })

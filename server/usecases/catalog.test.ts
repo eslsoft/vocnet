@@ -9,6 +9,7 @@ import {
   getPublicEntry,
   getPublicSense,
   getStats,
+  locateNode,
   lookupForm,
   searchEntries,
 } from './catalog'
@@ -134,6 +135,20 @@ describe('management reads', () => {
     expect(view.facts.map((fact) => fact.kind).sort()).toEqual(['entry', 'relation', 'sense', 'sense'])
     expect(view.facts.every((fact) => fact.status === 'pending')).toBe(true)
     await expect(getManagedEntry(world.deps, 'small')).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('locates the entry that owns an entry or sense id, and 404s any other id', async () => {
+    const world = fakeWorld()
+    const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
+    const { sense } = await createSense(world.deps, agentA, {
+      entry_id: entry.id,
+      pos: 'noun',
+      gloss: 'land beside a river',
+    })
+    const owner = { id: entry.id, lemma: 'bank' }
+    await expect(locateNode(world.deps, entry.id)).resolves.toEqual({ node_type: 'entry', entry: owner })
+    await expect(locateNode(world.deps, sense.id)).resolves.toEqual({ node_type: 'sense', entry: owner })
+    await expect(locateNode(world.deps, crypto.randomUUID())).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('counts facts by kind and status, and open feedback', async () => {

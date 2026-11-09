@@ -67,3 +67,9 @@ Feature: Catalog
     Given an entry with pending facts
     When an agent requests the entry through the management API
     Then every fact about the entry and its senses is returned with its status
+
+  @catalog/locate-node @api
+  Scenario: Management resolves a node id to its entry
+    Given an entry with a sense
+    When management asks for the node behind the entry id, the sense id, or an unknown id
+    Then it gets the owning entry's id and lemma for both, and 404 for the unknown id

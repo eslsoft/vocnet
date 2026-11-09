@@ -8,11 +8,12 @@ import type {
   CreateEntryInput,
   CreateSenseInput,
   FormMatch,
+  NodeLocation,
   PublicEntry,
   PublicSenseWithEntry,
   Stats,
 } from '@shared/catalog'
-import { formTypeSchema, type SenseId } from '@shared/facts'
+import { type EntryId, formTypeSchema, type SenseId } from '@shared/facts'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
@@ -120,6 +121,15 @@ export async function getManagedEntry(
   const snapshot = await snapshotOf(deps, lemma)
   const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, fact]))
   return { entry: snapshot.entry, senses: snapshot.senses, facts: [...facts.values()] }
+}
+
+/** The entry that owns a node id: the entry itself, or a sense's entry. Ids are UUIDs, so at most one matches. */
+export async function locateNode(deps: Pick<Deps, 'nodes'>, id: string): Promise<NodeLocation> {
+  const entry = await deps.nodes.findEntry(id as EntryId)
+  if (entry) return { node_type: 'entry', entry: { id: entry.id, lemma: entry.lemma } }
+  const sense = await deps.nodes.findSense(id as SenseId)
+  if (sense) return { node_type: 'sense', entry: { id: sense.entryId, lemma: sense.lemma } }
+  throw new NotFoundError(`No entry or sense has the id ${id}.`)
 }
 
 export async function getStats(deps: Pick<Deps, 'facts' | 'feedback'>): Promise<Stats> {

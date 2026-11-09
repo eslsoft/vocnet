@@ -114,6 +114,11 @@ export const managedEntrySchema = z
   })
   .meta({ id: 'ManagedEntry' })
 
+export const nodeLocationSchema = z
+  .object({ node_type: z.enum(['entry', 'sense']), entry: entryRefSchema })
+  .meta({ id: 'NodeLocation' })
+export type NodeLocation = z.infer<typeof nodeLocationSchema>
+
 export const createEntryInputSchema = z.object({ lemma: lemmaInputSchema }).meta({ id: 'CreateEntryInput' })
 export type CreateEntryInput = z.infer<typeof createEntryInputSchema>
 export const createEntryResultSchema = z

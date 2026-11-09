@@ -1,5 +1,5 @@
 import { createRoute } from '@hono/zod-openapi'
-import { createEntry, createSense, getManagedEntry, getStats } from '@server/usecases/catalog'
+import { createEntry, createSense, getManagedEntry, getStats, locateNode } from '@server/usecases/catalog'
 import {
   createEntryInputSchema,
   createEntryResultSchema,
@@ -7,6 +7,7 @@ import {
   createSenseResultSchema,
   lemmaInputSchema,
   managedEntrySchema,
+  nodeLocationSchema,
   statsSchema,
 } from '@shared/catalog'
 import { z } from 'zod'
@@ -54,6 +55,16 @@ const getEntry = createRoute({
   responses: { 200: json(managedEntrySchema, 'The entry.'), 404: errorResponse },
 })
 
+const getNode = createRoute({
+  method: 'get',
+  path: '/nodes/{id}',
+  tags,
+  summary: 'Find the entry that owns an entry or sense id',
+  description: 'Resolves a fact subject or feedback target to its entry, so a caller can open the entry by lemma.',
+  request: { params: z.object({ id: z.uuid() }) },
+  responses: { 200: json(nodeLocationSchema, 'The owning entry.'), 404: errorResponse },
+})
+
 const stats = createRoute({
   method: 'get',
   path: '/stats',
@@ -80,4 +91,5 @@ export const manageCatalogRoutes = createRouter()
       200,
     )
   })
+  .openapi(getNode, async (c) => c.json(await locateNode(c.get('deps'), c.req.valid('param').id), 200))
   .openapi(stats, async (c) => c.json(await getStats(c.get('deps')), 200))
