@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { ReviewRequest } from './fact-kinds'
 import { chainVerdict, type Opinion, settles } from './review-chain'
 
 const jev: Opinion = {
@@ -19,9 +20,25 @@ const llm: Opinion = {
 }
 
 describe('review chain', () => {
+  const jevAsk: ReviewRequest = { reviewer: 'jev', questions: { relation: 'Is it?' } }
+  const llmAsk: ReviewRequest = { reviewer: 'llm', prompt: { system: 'Judge.', user: 'Is it?' } }
+  const answered = (verdict: Opinion['verdict'], confidence = 0.3): Opinion => ({ ...jev, verdict, confidence })
+
   it('lets Jev settle only a pass and the LLM settle every verdict [spec: facts/second-opinion]', () => {
-    expect([settles('jev', 'pass'), settles('jev', 'uncertain'), settles('jev', 'fail')]).toEqual([true, false, false])
-    expect([settles('llm', 'pass'), settles('llm', 'uncertain'), settles('llm', 'fail')]).toEqual([true, true, true])
+    expect(
+      ['pass', 'uncertain', 'fail'].map((verdict) => settles(jevAsk, answered(verdict as Opinion['verdict']))),
+    ).toEqual([true, false, false])
+    expect(
+      ['pass', 'uncertain', 'fail'].map((verdict) => settles(llmAsk, answered(verdict as Opinion['verdict']))),
+    ).toEqual([true, true, true])
+    expect(settles(jevAsk, answered('fail', 0.01))).toBe(false)
+  })
+
+  it('lets a Jev fail under the request floor settle, and only under it [spec: facts/relation-jev-floor]', () => {
+    const floored: ReviewRequest = { ...jevAsk, settlesFailBelow: 0.15 }
+    expect(settles(floored, answered('fail', 0.09))).toBe(true)
+    expect(settles(floored, answered('fail', 0.15))).toBe(false)
+    expect(settles(floored, answered('fail', 0.3))).toBe(false)
   })
 
   it('keeps a lone opinion as the review', () => {

@@ -6,6 +6,7 @@ import {
   meaningKeyOf,
   orientOf,
   planReview,
+  RELATION_JEV_FLOOR,
   type ReviewPlan,
   type ReviewRequest,
   revalidatedBy,
@@ -150,8 +151,37 @@ describe('fact-kind registry', () => {
     expect(prompt?.user).toContain('the two are synonyms, not a hypernym pair')
     expect(prompt?.user).toContain('only between two nouns or two verbs')
     expect(prompt?.user).toContain('"cause", "do", "make", "activity", "thing"')
-    expect(prompt?.user).toContain('real constituent or component')
+    expect(prompt?.user).toContain('distinct component or region')
+    expect(prompt?.user).toContain('A material, substance, or ingredient the target is made from is not a part')
+    expect(prompt?.user).toContain('a generic part any object has')
+    expect(prompt?.user).toContain('do not fail a pair over a detail one gloss happens to mention and the other omits')
     expect(prompt?.user).toContain('another type fits better')
+  })
+
+  it('lets Jev settle a relation it scores below the floor, and only a relation [spec: facts/relation-jev-floor]', () => {
+    const [jev] = requests(
+      planReview('relation', { type: 'part_of', target_sense_id: target }, { subject: bank, target: shore }),
+    )
+    expect(jev).toMatchObject({ reviewer: 'jev', settlesFailBelow: RELATION_JEV_FLOOR })
+    expect(RELATION_JEV_FLOOR).toBeLessThan(0.21)
+    const [entryJev] = requests(planReview('entry', {}, { subject: bankEntry, target: null }))
+    expect(entryJev).not.toHaveProperty('settlesFailBelow')
+    expect(
+      jevQuestion(
+        planReview('relation', { type: 'part_of', target_sense_id: target }, { subject: bank, target: shore }),
+        'relation',
+      ),
+    ).toContain('the material or ingredient the whole is made from')
+  })
+
+  it('judges an example of an offensive sense as an illustration of that sense [spec: facts/example-offensive-sense]', () => {
+    const prompt = llmPrompt(planReview('example', { text: 'She called him a dog.' }, { subject: bank, target: null }))
+    expect(prompt?.user).toContain('an example that shows such a sense in ordinary use is correct')
+    expect(prompt?.user).toContain(
+      'Reject sentences that use another sense, are ungrammatical, or add offence the sense does not need',
+    )
+    expect(prompt?.system).toContain('fail: it is wrong or misleading.')
+    expect(prompt?.system).not.toContain('offensive')
   })
 
   it('accepts descriptive translations of function words but not wrong or mixed senses [spec: facts/translation-rubric]', () => {
@@ -163,7 +193,12 @@ describe('fact-kind registry', () => {
     )
     expect(prompt?.user).toContain('（表示…）')
     expect(prompt?.user).toContain('any listed equivalent is wrong for this sense')
-    expect(prompt?.user).toContain('For a noun or verb sense, an equivalent does not work as that part of speech.')
+    expect(prompt?.user).toContain('Chinese does not mark part of speech, so this is not a part-of-speech error.')
+    expect(prompt?.user).toContain('腹泻；拉肚子')
+    expect(prompt?.user).toContain(
+      'For a verb sense, an equivalent only names a thing or quality and cannot be used as a verb.',
+    )
+    expect(prompt?.user).not.toContain('For a noun or verb sense')
     expect(prompt?.user).toContain('phrase or phrasal verb that contains the word')
     expect(prompt?.user).toContain('a different sense of the word')
     expect(prompt?.user).toContain('unnatural or ungrammatical')

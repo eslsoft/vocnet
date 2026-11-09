@@ -253,6 +253,18 @@ reset.
   lemma, the part of speech, and the entry's other senses; for a relation it
   gets both senses and also fails a relation whose type is not the most
   accurate one (a mutually substitutable pair is a synonym, not a hypernym).
+  The relation rubric treats glosses as short paraphrases: it judges the
+  relation between the words in those senses and does not fail a pair over a
+  detail one gloss mentions and the other omits, such as a transitive use or
+  an extension in time. `part_of` needs a distinct component or region of
+  the whole; a material or ingredient it is made from, or a generic
+  part such as a back or side, is not one.
+- **Relation floor.** A relation request carries `settlesFailBelow` 0.15: a Jev
+  answer under it settles the fail without asking the LLM. In the audit, every
+  relation the LLM published over a Jev answer that low was wrong (shore
+  `part_of` key at 0.09, back `part_of` heart at 0.06), while the lowest correct
+  one it rescued scored 0.21. Other kinds have no floor: the LLM correctly
+  published the plural "stone" over a Jev answer of 0.07.
   Jev's fail band rejected correct facts and its uncertain band published
   relations of the wrong type, which is why it no longer decides those bands
   alone. The review's `reviewer` is `jev+llm`, `model` joins both models,
@@ -260,8 +272,16 @@ reset.
 - **Translations** are judged as a bilingual learner's dictionary would. A
   verb-like or descriptive rendering of a preposition, adverb, or particle,
   and a bracketed usage note such as （表示…）, pass when they convey the sense.
-  A wrong meaning, a different sense, unnatural wording, or equivalents of
-  unrelated senses fail.
+  Chinese does not mark part of speech, so a noun sense may be rendered by an
+  equivalent that also reads as a verb or adjective, or by a phrase naming the
+  same act, event, or state (腹泻；拉肚子 for "run" meaning diarrhoea). A wrong
+  meaning, a different sense, a noun-only equivalent of a verb sense,
+  unnatural wording, or equivalents of unrelated senses fail.
+- **Examples** of vulgar, offensive, or derogatory senses are judged as
+  illustrations of that sense: a sentence that shows the sense in ordinary use
+  passes, and one that adds offence the sense does not need, such as abuse of
+  a whole group, fails. The shared LLM instructions fail what is wrong or
+  misleading, not what is offensive.
 - The review stores the context it judged (lemmas and glosses of referenced
   senses, and the entry's other senses) so a later reader knows what was
   approved.
