@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const entries = sqliteTable('entries', {
   id: text('id').primaryKey(),
@@ -88,26 +88,35 @@ export const feedback = sqliteTable(
   (table) => [index('feedback_status_created_idx').on(table.status, table.createdAt, table.id)],
 )
 
-/** At most one row per entry: the agent working on it. A claim replaces a row only once it expired. */
-export const workLeases = sqliteTable('work_leases', {
-  id: text('id').primaryKey(),
-  entryId: text('entry_id')
-    .notNull()
-    .unique()
-    .references(() => entries.id),
-  holder: text('holder').notNull(),
-  expiresAt: text('expires_at').notNull(),
-})
-
-/** When work on an entry last completed; the worklist serves the least recently worked entry first. */
-export const entryWork = sqliteTable('entry_work', {
-  entryId: text('entry_id')
-    .primaryKey()
-    .references(() => entries.id),
-  lastWorkedAt: text('last_worked_at').notNull(),
-  lastWorkedBy: text('last_worked_by').notNull(),
-  lastNote: text('last_note'),
-})
+/**
+ * One row per entry, created with it: the worklist serves the live entry claimed least recently.
+ * `live` mirrors whether the entry fact is pending or published, so the claim order is one index.
+ */
+export const worklist = sqliteTable(
+  'worklist',
+  {
+    entryId: text('entry_id')
+      .primaryKey()
+      .references(() => entries.id),
+    createdAt: text('created_at').notNull(),
+    live: integer('live', { mode: 'boolean' }).notNull(),
+    /** Set by every claim, so an entry rotates to the back whether or not its work completes. */
+    claimedAt: text('claimed_at'),
+    leaseId: text('lease_id').unique(),
+    leaseHolder: text('lease_holder'),
+    leaseExpiresAt: text('lease_expires_at'),
+    lastWorkedAt: text('last_worked_at'),
+    lastWorkedBy: text('last_worked_by'),
+    lastNote: text('last_note'),
+  },
+  (table) => [
+    index('worklist_claim_order_idx').on(table.live, table.claimedAt, table.createdAt, table.entryId),
+    check(
+      'worklist_lease_whole',
+      sql`(${table.leaseId} is null) = (${table.leaseHolder} is null) and (${table.leaseId} is null) = (${table.leaseExpiresAt} is null)`,
+    ),
+  ],
+)
 
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),

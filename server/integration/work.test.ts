@@ -1,7 +1,10 @@
 import { env } from 'cloudflare:test'
+import { claimStatement } from '@server/adapters/repos/work'
+import { createDb } from '@server/db/client'
+import type { PrincipalRef } from '@server/domain/principal'
 import { createEntryResultSchema, managedEntrySchema } from '@shared/catalog'
 import { apiErrorSchema } from '@shared/types'
-import { workClaimSchema, workCompletionSchema } from '@shared/work'
+import { type WorkLeaseId, workClaimSchema, workCompletionSchema } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import { adminToken, call, issueAgentKey } from './helpers'
 
@@ -12,6 +15,14 @@ const claim = (token: string, json?: unknown) => call('/manage/v1/work/claim', {
 const complete = (token: string, leaseId: string, json?: unknown) =>
   call(`/manage/v1/work/${leaseId}/complete`, { method: 'POST', token, json })
 const codeOf = (body: unknown) => apiErrorSchema.parse(body).error.code
+const lemmaOf = async (token: string) => {
+  const result = await claim(token)
+  return result.status === 204 ? null : workClaimSchema.parse(result.body).lease.lemma
+}
+const expireLeases = () =>
+  env.DB.prepare('update worklist set lease_expires_at = ? where lease_id is not null')
+    .bind(new Date(Date.now() - 1000).toISOString())
+    .run()
 
 describe('worklist', () => {
   it('claims an entry with its gaps and completes it [spec: work/claim-api]', async () => {
@@ -65,9 +76,7 @@ describe('worklist', () => {
     const second = await issueAgentKey('second')
     const { entry } = await createEntry(first, 'tide')
     const lapsed = workClaimSchema.parse((await claim(first)).body)
-    await env.DB.prepare('update work_leases set expires_at = ?')
-      .bind(new Date(Date.now() - 1000).toISOString())
-      .run()
+    await expireLeases()
 
     const late = await complete(first, lapsed.lease.id)
     expect([late.status, codeOf(late.body)]).toEqual([409, 'conflict'])
@@ -75,5 +84,60 @@ describe('worklist', () => {
     expect(taken.lease).toMatchObject({ entry_id: entry.id })
     expect(taken.lease.id).not.toBe(lapsed.lease.id)
     expect((await complete(second, taken.lease.id)).status).toBe(200)
+  })
+
+  it('moves an entry whose lease lapsed without completion behind the entries not yet claimed [spec: work/claim-rotation]', async () => {
+    const token = await issueAgentKey()
+    for (const lemma of ['bay', 'cove', 'fjord']) await createEntry(token, lemma)
+    expect(await lemmaOf(token)).toBe('bay')
+    await expireLeases()
+
+    expect(await lemmaOf(token)).toBe('cove')
+    expect(await lemmaOf(token)).toBe('fjord')
+    await expireLeases()
+    expect(await lemmaOf(token)).toBe('bay')
+    expect(await lemmaOf(token)).toBe('cove')
+  })
+
+  it('hands each expired lease to exactly one of the claims racing for it [spec: work/claim-expired-race]', async () => {
+    const tokens = await Promise.all(['a', 'b', 'c', 'd', 'e', 'f'].map((name) => issueAgentKey(name)))
+    const lemmas = ['bay', 'cove', 'fjord']
+    for (const lemma of lemmas) await createEntry(tokens[0], lemma)
+    for (const token of tokens.slice(0, 3)) expect((await claim(token)).status).toBe(200)
+    expect((await claim(tokens[3])).status).toBe(204)
+    await expireLeases()
+
+    const results = await Promise.all(tokens.map((token) => claim(token)))
+    const won = results.filter((result) => result.status === 200).map((result) => workClaimSchema.parse(result.body))
+    expect(won.map((work) => work.lease.lemma).sort()).toEqual(lemmas)
+    expect(new Set(won.map((work) => work.lease.holder)).size).toBe(3)
+    expect(results.filter((result) => result.status === 204)).toHaveLength(3)
+  })
+
+  it('serves an entry only while its entry fact is live [spec: work/claim-live]', async () => {
+    const admin = await adminToken()
+    const { fact } = await createEntry(admin, 'tide')
+    const retracted = await call(`/manage/v1/facts/${fact.id}/retract`, { method: 'POST', token: admin })
+    expect(retracted.status).toBe(200)
+    expect(await lemmaOf(admin)).toBeNull()
+
+    await createEntry(admin, 'tide')
+    expect(await lemmaOf(admin)).toBe('tide')
+  })
+
+  it('reads the claim order from an index, without sorting the worklist [spec: work/claim-index]', async () => {
+    const lease = {
+      id: '00000000-0000-4000-8000-000000000001' as WorkLeaseId,
+      holder: 'agent:a' as PrincipalRef,
+      expiresAt: new Date().toISOString(),
+    }
+    const { sql, params } = claimStatement(createDb(env), lease, new Date().toISOString()).toSQL()
+    const { results } = await env.DB.prepare(`explain query plan ${sql}`)
+      .bind(...params)
+      .all<{ detail: string }>()
+    const plan = results.map((row) => row.detail)
+    console.info(`claim query plan:\n${plan.join('\n')}`)
+    expect(plan).toContain('SEARCH worklist USING INDEX worklist_claim_order_idx (live=?)')
+    expect(plan.some((step) => step.includes('TEMP B-TREE'))).toBe(false)
   })
 })

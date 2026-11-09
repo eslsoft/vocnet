@@ -23,7 +23,7 @@ async function worldWith(lemmas: string[]) {
 const lemmaOf = (claim: Awaited<ReturnType<typeof claimWork>>) => claim?.lease.lemma
 
 describe('claimWork', () => {
-  it('serves never-worked entries oldest first, then the least recently worked, skipping dead entries [spec: work/claim-order]', async () => {
+  it('serves never-claimed entries oldest first, then the least recently claimed, skipping dead entries [spec: work/claim-order]', async () => {
     const { world, entries } = await worldWith(['bank', 'shore', 'tide', 'cove'])
     const [, shore, tide] = entries
     await retractFact(world.deps, agentA, shore.fact.id)

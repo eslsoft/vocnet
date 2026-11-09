@@ -5,6 +5,7 @@ import { and, asc, count, desc, eq, exists, inArray, isNotNull, lt, or, sql } fr
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
+import { syncWorklistLive } from './work'
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const SLOT_TAKEN = 'Another live fact already holds this slot.'
@@ -39,7 +40,10 @@ export function createFactRepo(db: Db): FactRepo {
     async insert(fact) {
       // The partial unique indexes turn a concurrent duplicate or a taken exclusive slot into a
       // no-op: a live fact with the same content wins, and otherwise the slot holder does.
-      await db.insert(facts).values(fromFact(fact)).onConflictDoNothing()
+      await db.batch([
+        db.insert(facts).values(fromFact(fact)).onConflictDoNothing(),
+        syncWorklistLive(db, [fact.subjectId]),
+      ])
       return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
 
@@ -60,11 +64,17 @@ export function createFactRepo(db: Db): FactRepo {
           ),
         )
         .returning({ id: facts.id })
-      if (!supersede) return guardUnique('facts', SLOT_TAKEN, async () => (await update).length > 0)
+      const syncLive = syncWorklistLive(db, db.select({ id: facts.subjectId }).from(facts).where(eq(facts.id, id)))
+      if (!supersede) {
+        return guardUnique('facts', SLOT_TAKEN, async () => {
+          const [updated] = await db.batch([update, syncLive])
+          return updated.length > 0
+        })
+      }
 
-      // One batch, correction last: the original leaves `published` and its dependents are marked
-      // only while this correction is still pending, so a duplicate delivery changes nothing and
-      // the correction never enters `published` beside the original.
+      // One batch, correction last before the worklist sync: the original leaves `published` and
+      // its dependents are marked only while this correction is still pending, so a duplicate
+      // delivery changes nothing and the correction never enters `published` beside the original.
       const correction = alias(facts, 'correction')
       const stillPending = exists(
         db
@@ -93,8 +103,8 @@ export function createFactRepo(db: Db): FactRepo {
               ),
           ]
         : []
-      const results = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, ...mark, update]))
-      return (results.at(-1) as { id: string }[]).length > 0
+      const results = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, ...mark, update, syncLive]))
+      return (results.at(-2) as { id: string }[]).length > 0
     },
 
     async listRevalidating(nodeId) {

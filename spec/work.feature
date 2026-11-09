@@ -8,10 +8,28 @@ Feature: Worklist
     Then each missing senses, forms, or pronunciation is a gap, and each live sense without relations, examples, or a zh translation is a gap
 
   @work/claim-order @usecase
-  Scenario: The least recently worked live entry is claimed first
-    Given entries never worked, entries worked earlier, and entries whose entry fact is rejected or retracted
+  Scenario: The least recently claimed live entry is claimed first
+    Given entries never claimed, entries claimed earlier, and entries whose entry fact is rejected or retracted
     When an agent claims work
-    Then it gets a never-worked entry first, oldest first, then the least recently worked, and never a dead entry
+    Then it gets a never-claimed entry first, oldest first, then the least recently claimed, and never a dead entry
+
+  @work/claim-rotation @api
+  Scenario: An entry whose lease lapses goes to the back
+    Given an agent claimed an entry and its lease expired without a complete
+    When agents claim work
+    Then every entry not yet claimed comes first, and the lapsed entry comes after them
+
+  @work/claim-live @api
+  Scenario: Only an entry with a live entry fact is claimable
+    Given an entry whose entry fact is retracted
+    When an agent claims work, then the entry is submitted again and the agent claims again
+    Then the first claim gets no content and the second gets the entry
+
+  @work/claim-index @api
+  Scenario: A claim does not sort the worklist
+    Given the claim statement
+    When its query plan is read
+    Then it walks the claim-order index and builds no temporary sort
 
   @work/claim-lease @usecase
   Scenario: A claimed entry is leased to one agent
@@ -36,6 +54,12 @@ Feature: Worklist
     Given several live entries
     When agents claim work at the same moment
     Then each claim gets a different entry, and the claims beyond the entry count get no content
+
+  @work/claim-expired-race @api
+  Scenario: Concurrent claims split expired leases
+    Given every live entry has an expired lease
+    When more agents than entries claim work at the same moment
+    Then each expired entry goes to exactly one agent, and the other claims get no content
 
   @work/lease-expiry-api @api
   Scenario: An expired lease is claimable again and cannot be completed
