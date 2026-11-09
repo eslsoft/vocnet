@@ -13,7 +13,8 @@ Feature: Console
   Scenario: A signed-in user who is not an admin sees why nothing loads
     Given the management API answers 403
     When the user opens the overview
-    Then the server's message is shown
+    Then the server's message is shown at once
+    And the console does not retry the request
 
   @console/facts-browse @web
   Scenario: Browse facts by status and kind, page by page

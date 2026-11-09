@@ -42,9 +42,16 @@ describe('Overview', () => {
     expect(link).toHaveTextContent('1')
   })
 
-  it('shows why a non-admin sees nothing [spec: console/forbidden]', async () => {
-    server.use(http.get('/manage/v1/stats', () => apiError(403, 'forbidden', 'Only admins may use this token.')))
+  it('shows why a non-admin sees nothing, without retrying [spec: console/forbidden]', async () => {
+    let requests = 0
+    server.use(
+      http.get('/manage/v1/stats', () => {
+        requests += 1
+        return apiError(403, 'forbidden', 'Only admins may use this token.')
+      }),
+    )
     renderAt('/', routes)
     expect(await screen.findByRole('alert')).toHaveTextContent('Only admins may use this token.')
+    expect(requests).toBe(1)
   })
 })
