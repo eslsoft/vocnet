@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { managedEntrySchema } from './catalog'
-import { entryIdSchema, senseIdSchema } from './facts'
+import { entryIdSchema, relationTypeSchema, senseIdSchema } from './facts'
 
 export const workLeaseIdSchema = z.uuid().brand<'WorkLeaseId'>()
 export type WorkLeaseId = z.infer<typeof workLeaseIdSchema>
@@ -32,16 +32,34 @@ export const workLeaseSchema = z
 
 const senseGap = { sense_id: senseIdSchema }
 
+const relationHaveSchema = z
+  .object({
+    type: relationTypeSchema,
+    direction: z.enum(['outgoing', 'incoming']).meta({
+      description: 'outgoing: the sense is the subject (e.g. this IS-A target). incoming: the other sense is.',
+    }),
+  })
+  .meta({ id: 'RelationHave' })
+
 export const gapSchema = z
   .discriminatedUnion('type', [
     z.object({ type: z.literal('senses') }),
     z.object({ type: z.literal('forms') }),
     z.object({ type: z.literal('pronunciation') }),
-    z.object({ type: z.literal('relations'), ...senseGap }),
+    z.object({
+      type: z.literal('relations'),
+      ...senseGap,
+      count: z.number().int().nonnegative().meta({
+        description: 'Live relations the sense is in, as subject or object. The gap stays open below two.',
+      }),
+      have: z.array(relationHaveSchema).meta({
+        description: 'Each relation type and direction the sense already has, once, so an agent looks for the others.',
+      }),
+    }),
     z.object({ type: z.literal('examples'), ...senseGap }),
     z.object({ type: z.literal('translations'), ...senseGap, language: z.literal('zh') }),
   ])
-  .meta({ id: 'Gap', description: 'Something the entry has no live (pending or published) fact for yet.' })
+  .meta({ id: 'Gap', description: 'Something the entry has too few live (pending or published) facts for.' })
 export type Gap = z.infer<typeof gapSchema>
 
 export const workClaimSchema = z
