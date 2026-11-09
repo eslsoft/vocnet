@@ -4,6 +4,8 @@ import { factKinds } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import { levelRank } from '@server/domain/reference'
+import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
 import { claimTier, isClaimable, type WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
@@ -517,22 +519,32 @@ export function fakeWorld(): FakeWorld {
             stale: isStale(entry.id),
             ...workOf(entry.id),
           }) && !world.leases.some((held) => held.entryId === entry.id && held.expiresAt > now)
-        const order = (entry: EntryNode) =>
-          [
-            claimTier({ seed: world.seeds.has(entry.id), claimed: world.claimed.has(entry.id) }),
+        const order = (entry: EntryNode) => {
+          const reference = world.references.get(entry.lemma)
+          const levels = reference?.cefr.map((cefr) => levelRank(cefr.level)) ?? []
+          const priority = {
+            levelRank: levels.length > 0 ? Math.min(...levels) : null,
+            zipf: reference?.frequency?.zipf ?? null,
+          }
+          const { completeness } = workOf(entry.id)
+          return [
+            claimTier({ ...priority, completeness, claimed: world.claimed.has(entry.id) }),
             world.claimed.get(entry.id) ?? '',
-            workOf(entry.id).completeness,
+            -(priority.zipf ?? Number.NEGATIVE_INFINITY),
+            completeness,
             entry.createdAt,
             entry.id,
           ] as const
+        }
         const compare = (a: EntryNode, b: EntryNode) => {
           const [x, y] = [order(a), order(b)]
           return (
             x[0] - y[0] ||
             x[1].localeCompare(y[1]) ||
             x[2] - y[2] ||
-            x[3].localeCompare(y[3]) ||
-            x[4].localeCompare(y[4])
+            x[3] - y[3] ||
+            x[4].localeCompare(y[4]) ||
+            x[5].localeCompare(y[5])
           )
         }
         const [next] = world.entries.filter(claimable).sort(compare)
@@ -605,6 +617,16 @@ export function fakeWorld(): FakeWorld {
     reference: {
       forLemma: async (lemma) => world.references.get(lemma) ?? { frequency: null, cefr: [] },
       listSources: async () => world.referenceSources,
+      listCefrLemmasWithoutEntry: async () => {
+        const lowest = new Map<string, string>()
+        for (const [lemma, reference] of world.references) {
+          const levels = reference.cefr.map((cefr) => cefr.level).sort()
+          if (levels.length > 0 && !world.entries.some((entry) => entry.lemma === lemma)) lowest.set(lemma, levels[0])
+        }
+        return [...lowest]
+          .sort(([a, x], [b, y]) => x.localeCompare(y) || (a < b ? -1 : 1))
+          .map(([lemma]) => lemma as Lemma)
+      },
     },
     clock: { now: () => now },
     ids: {

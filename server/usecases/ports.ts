@@ -60,6 +60,8 @@ export interface NodeRepo {
 export interface ReferenceRepo {
   forLemma(lemma: Lemma): Promise<LemmaReference>
   listSources(): Promise<ReferenceSource[]>
+  /** Every lemma the CEFR profiles list that no entry has, lowest level first, then by lemma. */
+  listCefrLemmasWithoutEntry(): Promise<Lemma[]>
 }
 
 export interface FactTransitionWrite {
@@ -164,7 +166,8 @@ export interface WorkRepo {
   /**
    * Atomically leases the next claimable entry (see `isClaimable`) that has no unexpired lease,
    * replacing an expired one; null when none is. Order: `claimTier`, then least recently claimed
-   * (never-claimed tiers have no claim time), then lowest completeness, then oldest.
+   * (never-claimed entries have no claim time), then highest frequency with none last, then lowest
+   * completeness, then oldest.
    */
   claimNext(
     lease: Omit<WorkLease, 'entryId' | 'claimedAt'>,

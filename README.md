@@ -21,7 +21,8 @@ The contract is [docs/design.md](docs/design.md).
 | `POST /v1/feedback`          | Everyone          | Report a problem with an entry, sense, or fact         |
 | `GET /openapi.json`, `/docs` | Everyone          | Public OpenAPI 3.1 document and its Scalar reference   |
 | `/manage/v1/*`               | Agents and admins | Submit entries, senses, facts; review state; feedback  |
-| `POST /manage/v1/work/claim` | Agents and admins | Lease the next entry with work left, with its gaps and weak facts; seeds first; 204 when none |
+| `POST /manage/v1/work/claim` | Agents and admins | Lease the next entry with work left, with its gaps and weak facts; gaps before weak facts, then CEFR level and frequency; 204 when none |
+| `POST /manage/v1/entries/core` | Admins | Create entries for the imported CEFR headwords that have none, a batch per call |
 | `POST /manage/v1/work/{lease_id}/complete` | Agents and admins | Finish work on a leased entry            |
 | `GET /manage/openapi.json`   | Agents and admins | The management OpenAPI document                        |
 | `/manage/v1/agents`          | Admins            | Issue, list, and revoke agent keys                     |

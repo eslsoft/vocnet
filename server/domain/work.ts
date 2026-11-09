@@ -323,8 +323,28 @@ export const isClaimable = (row: Admission) =>
   row.live && (row.stale || (!row.stalled && !row.awaitingReview && hasWork(row)))
 
 /**
- * The claim tier: seed entries before the rest, and within each, never-claimed entries before
- * claimed ones. Never-claimed tiers go by lowest completeness; claimed tiers by least recently
- * claimed, so an entry whose lease keeps lapsing goes behind every other claimed entry.
+ * What learner priority reads about an entry, from the reference data of its lemma: its lowest
+ * CEFR level as `levelRank` (1 for A1 to 6 for C2; null without one) and its Zipf frequency.
  */
-export const claimTier = (row: { seed: boolean; claimed: boolean }) => (row.seed ? 0 : 2) + (row.claimed ? 1 : 0)
+export interface LearnerPriority {
+  levelRank: number | null
+  zipf: number | null
+}
+
+/** The learner band: CEFR A1 to C2 are 0 to 5, then entries with a frequency but no level (6), then the rest (7). */
+export function learnerBand({ levelRank, zipf }: LearnerPriority): number {
+  if (levelRank !== null) return levelRank - 1
+  return zipf === null ? 7 : 6
+}
+
+const BANDS = 8
+
+/**
+ * The claim tier, lowest first. Entries with a gap come before entries whose only work is weak
+ * facts, so completeness comes before quality; within each, by learner band; within a band,
+ * never-claimed entries before claimed ones. Never-claimed entries go by highest frequency, then
+ * lowest completeness; claimed entries by least recently claimed, so an entry whose lease keeps
+ * lapsing goes behind every other claimed entry of its band.
+ */
+export const claimTier = (row: LearnerPriority & { completeness: number; claimed: boolean }) =>
+  2 * ((row.completeness < 1 ? 0 : BANDS) + learnerBand(row)) + (row.claimed ? 1 : 0)

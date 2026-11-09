@@ -1,10 +1,27 @@
-import { entries, facts, senses, worklist } from '@server/db/schema'
+import { entries, facts, senses, wordFrequency, worklist } from '@server/db/schema'
 import type { PrincipalRef } from '@server/domain/principal'
+import { frequencyKey } from '@server/domain/reference'
 import type { WorkLease } from '@server/domain/work'
 import type { StaleWork, WorkRepo } from '@server/usecases/ports'
 import type { EntryId } from '@shared/facts'
 import type { WorkLeaseId } from '@shared/work'
-import { and, asc, eq, exists, gt, inArray, isNotNull, isNull, lte, ne, or, type SQLWrapper, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+  type SQLWrapper,
+  sql,
+} from 'drizzle-orm'
+import { levelRankSql } from '../reference-sql'
 import { type Db, liveStatus, toEntry } from './rows'
 
 type LeasedRow = typeof worklist.$inferSelect & {
@@ -23,10 +40,12 @@ const toLease = (row: LeasedRow): WorkLease => ({
 })
 
 /**
- * Creates the entry's worklist row once the entry row exists; a repeat is a no-op. The select goes
- * in as SQL because drizzle's builder check demands the generated `claim_rank` among the fields.
+ * Creates the entry's worklist row once the entry row exists, with the learner priority of its
+ * lemma as the reference tables give it now; a repeat is a no-op. The select goes in as SQL
+ * because drizzle's builder check demands the generated `claim_rank` among the fields.
  */
-export function insertWorklistRow(db: Db, entryId: string) {
+export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) {
+  const key = frequencyKey(entry.lemma)
   return db
     .insert(worklist)
     .select(
@@ -37,6 +56,11 @@ export function insertWorklistRow(db: Db, entryId: string) {
           live: sql`0`.as('live'),
           claimedAt: sql`null`.as('claimed_at'),
           seed: sql`0`.as('seed'),
+          frequencyKey: sql`${key}`.as('frequency_key'),
+          levelRank: sql.raw(levelRankSql('entries.lemma')).as('level_rank'),
+          zipf: sql`(${db.select({ zipf: wordFrequency.zipf }).from(wordFrequency).where(eq(wordFrequency.word, key))})`.as(
+            'zipf',
+          ),
           completeness: sql`0`.as('completeness'),
           quality: sql`1`.as('quality'),
           stalled: sql`0`.as('stalled'),
@@ -52,7 +76,7 @@ export function insertWorklistRow(db: Db, entryId: string) {
           lastNote: sql`null`.as('last_note'),
         })
         .from(entries)
-        .where(eq(entries.id, entryId))
+        .where(eq(entries.id, entry.id))
         .getSQL(),
     )
     .onConflictDoNothing()
@@ -118,6 +142,7 @@ export function claimStatement(db: Db, lease: Omit<WorkLease, 'entryId' | 'claim
     .orderBy(
       asc(worklist.claimRank),
       asc(worklist.claimedAt),
+      desc(worklist.zipf),
       asc(worklist.completeness),
       asc(worklist.createdAt),
       asc(worklist.entryId),

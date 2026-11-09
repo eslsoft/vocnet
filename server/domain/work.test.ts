@@ -13,6 +13,7 @@ import {
   GRAMMAR_NEEDED,
   isClaimable,
   isStalled,
+  learnerBand,
   leaseExpiry,
   RELATIONS_NEEDED,
   TOPICS_NEEDED,
@@ -378,13 +379,26 @@ describe('worklist admission', () => {
     expect(isClaimable({ ...row, live: false, stale: true })).toBe(false)
   })
 
-  it('serves seed entries first, never-claimed before claimed within each', () => {
-    const tiers = [
-      claimTier({ seed: true, claimed: false }),
-      claimTier({ seed: true, claimed: true }),
-      claimTier({ seed: false, claimed: false }),
-      claimTier({ seed: false, claimed: true }),
+  it('serves gaps before weak facts, then by learner band, never-claimed before claimed within a band [spec: work/claim-tiers]', () => {
+    const gap = { completeness: 0.5, claimed: false }
+    const bands = [
+      { levelRank: 1, zipf: 3 },
+      { levelRank: 2, zipf: null },
+      { levelRank: 3, zipf: 6 },
+      { levelRank: 4, zipf: 5 },
+      { levelRank: 5, zipf: 2 },
+      { levelRank: 6, zipf: 1 },
+      { levelRank: null, zipf: 7 },
+      { levelRank: null, zipf: null },
     ]
-    expect(tiers).toEqual([0, 1, 2, 3])
+    expect(bands.map(learnerBand)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    const tiers = bands.flatMap((band) => [
+      claimTier({ ...band, ...gap }),
+      claimTier({ ...band, ...gap, claimed: true }),
+    ])
+    expect(tiers).toEqual([...Array(16).keys()])
+    const qualityOnly = bands.map((band) => claimTier({ ...band, completeness: 1, claimed: false }))
+    expect(qualityOnly).toEqual([16, 18, 20, 22, 24, 26, 28, 30])
+    expect(Math.min(...qualityOnly)).toBeGreaterThan(Math.max(...tiers))
   })
 })

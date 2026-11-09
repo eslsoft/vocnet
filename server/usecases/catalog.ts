@@ -10,7 +10,8 @@ import type { Fact, FactOf } from '@server/domain/fact'
 import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
-import { normalizeTerm } from '@server/domain/term'
+import { isCoreHeadword } from '@server/domain/reference'
+import { type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
   CreateSenseInput,
@@ -51,6 +52,31 @@ export async function createEntry(
   if (input.seed) await deps.work.markSeed(entry.id)
   const { fact } = await submitFact(deps, actor, { kind: 'entry', subject_id: entry.id, payload: {} })
   return { entry, fact, created: entry.id === draft.id }
+}
+
+/**
+ * Creates entries for the next `limit` headwords of the CEFR profiles that no entry has yet,
+ * lowest level first, as seed entries the actor creates. Each goes through `createEntry`, so its
+ * entry fact is reviewed like any other. Single letters other than "a" and "I" are skipped and
+ * listed. Repeating it continues where the last call stopped and creates nothing once done.
+ */
+export async function importCoreEntries(
+  deps: WriteDeps & Pick<Deps, 'reference'>,
+  actor: Actor,
+  limit: number,
+): Promise<{ created: Lemma[]; skipped: Lemma[]; remaining: number }> {
+  const missing = await deps.reference.listCefrLemmasWithoutEntry()
+  const core = missing.filter(isCoreHeadword)
+  const next = core.slice(0, limit)
+  const created: Lemma[] = []
+  for (const lemma of next) {
+    if ((await createEntry(deps, actor, { lemma, seed: true })).created) created.push(lemma)
+  }
+  return {
+    created,
+    skipped: missing.filter((lemma) => !isCoreHeadword(lemma)),
+    remaining: core.length - next.length,
+  }
 }
 
 /**

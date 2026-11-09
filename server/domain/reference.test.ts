@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { cefrjPos, frequencyKey, headwords, isWordForm, mergeCefr, octanovePos, rankFrequencies } from './reference'
+import {
+  cefrjPos,
+  frequencyKey,
+  headwords,
+  isCoreHeadword,
+  isWordForm,
+  levelRank,
+  mergeCefr,
+  octanovePos,
+  rankFrequencies,
+} from './reference'
 
 const cefrj = (rows: Array<[string, string, string]>) => ({
   id: 'cefrj',
@@ -120,5 +130,22 @@ describe('rankFrequencies', () => {
     expect(['bank', 'a.m.', "o'clock", decomposedCafe].every(isWordForm)).toBe(true)
     const junk = ['ice cream', '3rd', '#', '', '.', "'", 'info@', 'cs:go', 'align:center', 'size_t', 'well-known']
     expect([...junk, `i${String.fromCodePoint(0xfe0f)}`].some(isWordForm)).toBe(false)
+  })
+
+  it('ranks levels in learning order [spec: work/claim-tiers]', () => {
+    expect((['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const).map(levelRank)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  it('makes no entry of a single letter but "a" and "I" [spec: catalog/import-core]', () => {
+    expect(['a', 'I', 'x', 'A', 'é', 'ad', "'s", 'according to'].map(isCoreHeadword)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+    ])
   })
 })

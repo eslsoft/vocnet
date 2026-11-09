@@ -1,7 +1,6 @@
-import { agentA } from '@server/testing/actors'
+import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import type { EntryId, FactId, SenseId } from '@shared/facts'
-import type { WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import {
   createEntry,
@@ -10,6 +9,7 @@ import {
   getPublicEntry,
   getPublicSense,
   getStats,
+  importCoreEntries,
   listEntrySummaries,
   locateNode,
   lookupForm,
@@ -17,7 +17,6 @@ import {
 } from './catalog'
 import { submitFact } from './facts'
 import { reviewFact } from './review'
-import { claimWork, completeWork } from './work'
 
 async function reviewAll(world: ReturnType<typeof fakeWorld>) {
   for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
@@ -37,6 +36,44 @@ describe('createEntry', () => {
     expect(world.queued).toHaveLength(1)
   })
 
+  it('creates seed entries for the CEFR headwords without one, lowest level first, skipping single letters but "a" and "I" [spec: catalog/import-core]', async () => {
+    const world = fakeWorld()
+    const level = (level: 'A1' | 'B1') => ({
+      frequency: null,
+      cefr: [{ pos: 'noun' as const, level, source_id: 'cefrj' }],
+    })
+    for (const lemma of ['bank', 'a', 'I', 'x', 'cove']) world.references.set(lemma, level('A1'))
+    world.references.set('according to', level('B1'))
+    world.references.set('tide', { frequency: { zipf: 4, rank: 1, source_id: 'wordfreq' }, cefr: [] })
+    await createEntry(world.deps, agentA, { lemma: 'cove' })
+
+    expect(await importCoreEntries(world.deps, admin, 3)).toEqual({
+      created: ['I', 'a', 'bank'],
+      skipped: ['x'],
+      remaining: 1,
+    })
+    expect(await importCoreEntries(world.deps, admin, 3)).toEqual({
+      created: ['according to'],
+      skipped: ['x'],
+      remaining: 0,
+    })
+    expect(await importCoreEntries(world.deps, admin, 3)).toEqual({ created: [], skipped: ['x'], remaining: 0 })
+
+    expect(world.entries.map((entry) => [entry.lemma, entry.createdBy])).toEqual([
+      ['cove', 'agent:agent-a'],
+      ['I', 'admin:admin-1'],
+      ['a', 'admin:admin-1'],
+      ['bank', 'admin:admin-1'],
+      ['according to', 'admin:admin-1'],
+    ])
+    const facts = world.facts.filter((fact) => fact.kind === 'entry' && fact.author === 'admin:admin-1')
+    expect(facts.map((fact) => fact.status)).toEqual(['pending', 'pending', 'pending', 'pending'])
+    expect(world.queued.map((job) => job.factId)).toEqual(world.facts.map((fact) => fact.id))
+    for (const lemma of ['I', 'a', 'bank', 'according to'])
+      expect((await getManagedEntry(world.deps, lemma)).seed).toBe(true)
+    expect((await getManagedEntry(world.deps, 'cove')).seed).toBe(false)
+  })
+
   it('marks a new or existing entry as a seed entry and never unmarks it [spec: catalog/create-entry-seed]', async () => {
     const world = fakeWorld()
     for (const lemma of ['bank', 'cove']) await createEntry(world.deps, agentA, { lemma })
@@ -46,16 +83,9 @@ describe('createEntry', () => {
     expect(cove).toMatchObject({ created: false, fact: { kind: 'entry' } })
     await createEntry(world.deps, agentA, { lemma: 'tide', seed: false })
     await createEntry(world.deps, agentA, { lemma: 'tide' })
-    for (const fact of [...world.facts]) await reviewFact(world.deps, fact.id, 'trace')
-
-    const lemmas = []
-    for (let minute = 1; minute <= 3; minute++) {
-      world.setNow(`2026-01-01T00:0${minute}:00.000Z`)
-      const claim = await claimWork(world.deps, agentA)
-      await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
-      lemmas.push(claim?.lease.lemma)
-    }
-    expect(lemmas).toEqual(['cove', 'tide', 'bank'])
+    const seeds = []
+    for (const lemma of ['bank', 'cove', 'tide']) seeds.push((await getManagedEntry(world.deps, lemma)).seed)
+    expect(seeds).toEqual([false, true, true])
   })
 })
 

@@ -573,30 +573,45 @@ lands would record open work the verdict then undoes (see Stall). The queue
 reviews within seconds and the cron re-enqueues stuck facts, so the entry comes
 back once the reviews settle (`isClaimable`).
 
-Claimable entries come in four tiers. Within a never-claimed tier they come by
-lowest completeness; within a claimed tier by least recently claimed; then by
-creation time and id:
+Claimable entries come in the order a learner needs them: the words a learner
+must master first, and completeness before quality (`claimTier`):
 
-| Tier | Entries              | Why                                                |
-| ---- | -------------------- | -------------------------------------------------- |
-| 0    | Seed, never claimed  | The seed list gets its first pass first            |
-| 1    | Seed, claimed        | Seed entries with work left come before expansion  |
-| 2    | Not seed, never claimed | Neighbors that relations created               |
-| 3    | Not seed, claimed    | Other entries with work left                       |
+1. **Gaps before weak facts.** An entry with a gap (completeness below 1) comes
+   before every entry whose only work is weak facts (completeness 1, quality
+   below 1), so the dictionary fills before it polishes.
+2. **Learner band.** Within each, entries come by the lowest CEFR level of their
+   exact lemma, A1, A2, B1, B2, C1, then C2; then entries with a frequency but no
+   level; then the rest, such as neighbors an agent created that neither list
+   knows.
+3. **Never-claimed before claimed.** Within a band, never-claimed entries come
+   first, by highest Zipf frequency (an entry without one last), then lowest
+   completeness; claimed entries follow by least recently claimed. Then by
+   creation time and id.
 
-A seed entry comes from a curated word list, such as the 850 Basic English
-words. `POST /manage/v1/entries` with `seed: true` marks the entry as a seed
-entry, whether the call creates it or it already exists. The mark only ever
-goes on: `seed: false` or no `seed` leaves it as it is, so a producer re-runs
-its seed list to mark entries that existed before. An agent that builds
-relations creates neighbor entries outside the list; they wait until no seed
-entry is claimable.
+| `claim_rank` | Entries                                                      |
+| ------------ | ------------------------------------------------------------ |
+| 0, 1         | A gap, A1: never claimed, claimed                            |
+| 2 … 11       | A gap, A2 to C2, two ranks per level                         |
+| 12, 13       | A gap, a frequency but no CEFR level                         |
+| 14, 15       | A gap, neither                                               |
+| 16 … 31      | Only weak facts, in the same bands                           |
 
-Every claim sets `claimed_at`, so an entry leaves its never-claimed tier and
-moves to the back of its claimed tier whether or not its work completes. A lease
-that lapses does not stall the entry: an agent that crashes on one entry gets it
-again only after every other entry in its tier claimed less recently, however
-incomplete the crashing entry is. Finished entries are not rotated: an entry
+A seed entry comes from a curated word list: the 850 Basic English words, and
+the CEFR headwords the core import creates (see Reference data). `POST
+/manage/v1/entries` with `seed: true` marks the entry as a seed entry, whether
+the call creates it or it already exists. The mark only ever goes on: `seed:
+false` or no `seed` leaves it as it is. The management view shows it, but it no
+longer orders the claim: a seed entry and an agent's neighbor with the same level
+and frequency are claimed alike. Of the 850 Basic English entries, 829 have a
+CEFR level and all have a frequency, so they sit in the bands they belong to.
+
+Every claim sets `claimed_at`, so an entry leaves the never-claimed part of its
+band and moves to the back of the claimed part whether or not its work
+completes. A lease that lapses does not stall the entry: an agent that crashes on
+one entry gets it again only after every other entry of its band claimed less
+recently, however incomplete or frequent the crashing entry is. The claimed part
+of a band still comes before the next band, so an A1 entry with work left is
+claimed again before any A2 entry. Finished entries are not rotated: an entry
 with no work left is never claimed.
 
 ### Stall
@@ -662,11 +677,13 @@ formation; a phrase none, since its words are their own entries.
 | `live`                                            | The entry fact is pending or published                     |
 | `claimed_at`                                      | When the entry was last claimed; null until the first claim |
 | `seed`                                            | The entry was submitted as part of a seed list             |
+| `frequency_key`                                   | `frequencyKey` of the lemma, written with the row          |
+| `level_rank`, `zipf`                              | The learner priority: 1 (A1) to 6 (C2) for the lowest CEFR level of the exact lemma, and the Zipf frequency of `frequency_key`; null when the reference data has none |
 | `completeness`, `quality`, `stalled`              | The scores and the stall, as of `scored_revision`          |
 | `awaiting_review`                                 | A fact about the entry or its senses, or a relation into one of its senses, is pending, as of `scored_revision` |
 | `claimed_work`                                    | The open work the last claim found                         |
 | `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work; the revision the scores describe |
-| `claim_rank`                                      | Generated: the tier of a claimable entry, else null; a stale row counts as claimable |
+| `claim_rank`                                      | Generated: `claimTier` of a claimable entry, else null; a stale row counts as claimable and its stored completeness picks gaps or weak facts |
 | `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
 | `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
 
@@ -685,12 +702,13 @@ behind it still drain. Every fact insert or status change also rewrites `live`
 for its subject.
 
 The claim is one `UPDATE … WHERE entry_id = (SELECT … WHERE claim_rank IS NOT
-NULL ORDER BY claim_rank, claimed_at, completeness, created_at, entry_id LIMIT
-1) RETURNING` statement that picks the entry, writes the lease, and stamps
-`claimed_at`; the claim then records `claimed_work`. Never-claimed rows have a
-null `claimed_at`, so their order falls to completeness. The index `(claim_rank,
-claimed_at, completeness, created_at, entry_id)` gives that order without a
-sort, and the scan passes at most one row per held lease before a free row. D1
+NULL ORDER BY claim_rank, claimed_at, zipf DESC, completeness, created_at,
+entry_id LIMIT 1) RETURNING` statement that picks the entry, writes the lease,
+and stamps `claimed_at`; the claim then records `claimed_work`. Never-claimed
+rows have a null `claimed_at`, so their order falls to frequency, where SQLite
+sorts null last in descending order, and then completeness. The index
+`(claim_rank, claimed_at, zipf DESC, completeness, created_at, entry_id)` gives
+that order without a sort, and the scan passes at most one row per held lease before a free row. D1
 runs statements one at a time, so two concurrent claims never get the same
 entry, and a claim takes over a lease only once it has expired. Work state
 lives in this table, not on the `entries` node, which keeps identity only.
@@ -713,6 +731,22 @@ word formation gaps opened: it recomputed every entry's completeness over every
 slot, those three included, and kept an entry stalled only when none of them is
 open, since no claim recorded before then named one. A test runs the backfills
 in order over rescored rows and expects the same scores.
+
+The learner priority is stored on the row so the claim stays one index scan.
+The row reads it from the reference tables when it is created, in the same batch
+as the entry, and every reference import ends by rereading it for every row
+(`rankWorklistSql` in `server/adapters/reference-sql.ts`), so a reimport
+re-ranks the worklist. CEFR is read by the exact lemma and frequency by
+`frequency_key`, the rules entry reads use. `frequency_key` is stored because
+SQLite's `lower()` folds only ASCII letters, while `frequencyKey` lowercases all
+of Unicode. The migrations `worklist_learner_priority` (columns),
+`worklist_learner_priority_backfill` (`frequency_key` as `lower(lemma)`, then
+the import's update), and `worklist_learner_claim_rank` (the new `claim_rank`
+and index) moved the existing rows over; the backfill's `lower()` matched
+`frequencyKey` for every lemma then, since none had a non-ASCII capital. A test
+scrambles the stored priority, runs the backfill, and expects the rows creation
+wrote. `frequency_key` is nullable only because SQLite cannot add a `NOT NULL`
+column without a default to a table with rows; every insert writes it.
 
 ### Gaps
 
@@ -841,8 +875,46 @@ On a copy of the development database (5,882 entries) the local import of
 lemmas) and 2,785 have CEFR levels; all 850 seed entries have a frequency and
 829 have CEFR levels.
 
-The worklist does not order by frequency: the claim order is one index over
-worklist columns, and frequency lives in a table the import replaces.
+The worklist orders by CEFR level and frequency (see Admission and order). An
+import ends by re-ranking every worklist row from the new tables, so the
+statement that replaces the reference data also moves the claim order.
+
+### Core entries
+
+A learner must master the CEFR headwords first, so each becomes an entry the
+agents fill. Agents do not invent seed words; the imported profiles are the
+authoritative list. `POST /manage/v1/entries/core` (admins only, body `{ limit
+}`, 1 to 50, default 50) creates entries for the next headwords of `lemma_cefr`
+that no entry has, lowest level first and then by lemma, and answers `{ created,
+skipped, remaining }`. Each goes through `createEntry` with `seed: true`, so the
+entry is created by the admin, its worklist row reads its learner priority, and
+its entry fact is pending and queued for review like any other: a multiword
+headword ("according to") goes through the multiword entry review. A single
+letter other than "a" and "I" names the letter, not a word, so it is skipped
+and listed in `skipped` (`isCoreHeadword`); the current profiles list no such
+headword. Fifty entries per call keep a request well inside the Worker's D1
+query budget. The operation is idempotent: a repeated or concurrent call finds
+the lemmas that have entries by then, and once `remaining` is 0 a call creates
+nothing.
+
+After a reference import, an admin runs it until nothing remains:
+
+```sh
+until [ "$(curl -sf -X POST "$BASE/manage/v1/entries/core" \
+  -H "authorization: Bearer $ADMIN_ACCESS_TOKEN" -H 'content-type: application/json' \
+  -d '{"limit":50}' | tee /dev/stderr | jq .remaining)" = 0 ]; do :; done
+```
+
+On a copy of the development database (6,014 entries, 850 of them seed
+entries), the three migrations ran in about a second: every row got its
+frequency key, 2,826 a CEFR level and 4,555 a frequency, and 829 of the 850
+seed entries a level. The core import then created 6,015 entries in 121 calls
+in 26 seconds against a local Worker (about 0.2 s per call of 50): 405 A1,
+663 A2, 1,399 B1, 1,917 B2, 803 C1, and 828 C2, 132 of them multiword, 5,738
+with a frequency; no headword was skipped. Each entry fact is queued for
+review, so the queue reviews about 6,000 entries before they become claimable.
+A repeated call created nothing. The worklist then held 12,029 rows: 7,841 with
+a CEFR level, 1,756 with only a frequency, and 1,432 with neither.
 
 ## Access
 

@@ -5,7 +5,7 @@ import type { Lemma } from '@server/domain/term'
 import { createEntryResultSchema, managedEntryDetailSchema, publicEntrySchema } from '@shared/catalog'
 import { type ReferenceSource, referenceSourceListSchema } from '@shared/reference'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { adminToken, call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
+import { adminToken, call, deliverPendingReviews, importReference, issueAgentKey, stubReviewers } from './helpers'
 
 const source = (id: string, name: string): ReferenceSource => ({
   id,
@@ -38,10 +38,6 @@ const fixture = {
     cefr('bank', 'verb', 'C1', 'profile-b'),
     cefr('Bank', 'noun', 'C2', 'profile-b'),
   ],
-}
-
-async function importReference(data: Parameters<typeof referenceImportSql>[0]) {
-  await env.DB.batch(referenceImportSql(data).map((statement) => env.DB.prepare(statement)))
 }
 
 async function publishEntries(...lemmas: string[]) {

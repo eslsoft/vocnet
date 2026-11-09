@@ -1,4 +1,7 @@
 import { createExecutionContext, createMessageBatch, env, getQueueResult } from 'cloudflare:test'
+import { type ReferenceImport, referenceImportSql } from '@server/adapters/reference-sql'
+import type { CefrRow } from '@server/domain/reference'
+import type { Lemma } from '@server/domain/term'
 import entry from '@server/worker'
 import { issuedAgentSchema } from '@shared/agents'
 import { factPageSchema, type Verdict } from '@shared/facts'
@@ -76,4 +79,38 @@ export async function deliverReviews(ids: string[]) {
 export async function deliverPendingReviews() {
   const { body } = await call('/manage/v1/facts?status=pending&limit=100', { token: await adminToken() })
   return deliverReviews(factPageSchema.parse(body).items.map((fact) => fact.id))
+}
+
+/** Applies one reference import as `wrangler d1 execute` applies the generated SQL. */
+export async function importReference(data: ReferenceImport) {
+  await env.DB.batch(referenceImportSql(data).map((statement) => env.DB.prepare(statement)))
+}
+
+const testSource = (id: string) => ({
+  id,
+  name: id,
+  version: '1.0',
+  license: 'CC BY-SA 4.0',
+  license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+  changes: 'Filtered by Vocnet.',
+  attribution: id,
+  url: `https://example.test/${id}`,
+  retrieved_at: '2026-11-09',
+})
+
+/** Imports frequencies by frequency key and CEFR levels by exact lemma, each lemma's level as a noun. */
+export function importLearnerData(data: { zipf?: Record<string, number>; levels?: Record<string, CefrRow['level']> }) {
+  return importReference({
+    sources: [testSource('freq'), testSource('cefr')],
+    frequency: {
+      sourceId: 'freq',
+      rows: Object.entries(data.zipf ?? {}).map(([word, zipf], index) => ({ word, zipf, rank: index + 1 })),
+    },
+    cefr: Object.entries(data.levels ?? {}).map(([lemma, level]) => ({
+      lemma: lemma as Lemma,
+      pos: 'noun' as const,
+      level,
+      sourceId: 'cefr',
+    })),
+  })
 }

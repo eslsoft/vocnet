@@ -1,0 +1,4 @@
+DROP INDEX `worklist_claim_order_idx`;--> statement-breakpoint
+ALTER TABLE `worklist` DROP COLUMN `claim_rank`;--> statement-breakpoint
+ALTER TABLE `worklist` ADD `claim_rank` integer GENERATED ALWAYS AS (case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 * (8 * (completeness >= 1) + coalesce(level_rank - 1, 6 + (zipf is null))) + (claimed_at is not null) end) VIRTUAL;--> statement-breakpoint
+CREATE INDEX `worklist_claim_order_idx` ON `worklist` (`claim_rank`,`claimed_at`,"zipf" desc,`completeness`,`created_at`,`entry_id`);

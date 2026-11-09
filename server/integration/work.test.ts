@@ -2,12 +2,25 @@ import { env } from 'cloudflare:test'
 import { claimStatement } from '@server/adapters/repos/work'
 import { createDb } from '@server/db/client'
 import type { PrincipalRef } from '@server/domain/principal'
-import { createEntryResultSchema, createSenseResultSchema, managedEntrySchema } from '@shared/catalog'
+import {
+  coreImportResultSchema,
+  createEntryResultSchema,
+  createSenseResultSchema,
+  managedEntrySchema,
+} from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { type WorkLeaseId, workClaimSchema, workCompletionSchema } from '@shared/work'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { adminToken, call, deliverPendingReviews, deliverReviews, issueAgentKey, stubReviewers } from './helpers'
+import {
+  adminToken,
+  call,
+  deliverPendingReviews,
+  deliverReviews,
+  importLearnerData,
+  issueAgentKey,
+  stubReviewers,
+} from './helpers'
 
 const postEntry = (token: string, json: { lemma: string; seed?: boolean }) =>
   call('/manage/v1/entries', { method: 'POST', token, json })
@@ -172,19 +185,117 @@ describe('worklist', () => {
     expect((await complete(second, taken.lease.id)).status).toBe(200)
   })
 
-  it('claims never-claimed seed entries before other never-claimed entries [spec: work/claim-seeds-first]', async () => {
+  it('claims A1 to C2, then frequency without a level, then the rest, by frequency within each [spec: work/claim-priority]', async () => {
     const token = await issueAgentKey()
-    for (const lemma of ['bay', 'cove']) await createEntry(token, lemma)
-    expect((await postEntry(token, { lemma: 'fjord', seed: true })).status).toBe(201)
-    const marked = await postEntry(token, { lemma: 'cove', seed: true })
-    expect(marked.status).toBe(200)
-    expect(createEntryResultSchema.parse(marked.body)).toMatchObject({ created: false, entry: { lemma: 'cove' } })
-    expect((await postEntry(token, { lemma: 'fjord', seed: false })).status).toBe(200)
+    for (const lemma of ['reef', 'wave', 'tide', 'cove', 'Bank', 'sea']) await createEntry(token, lemma)
+    const data = {
+      zipf: { bank: 5, cove: 3, tide: 4, wave: 4.5, shore: 6 },
+      levels: { Bank: 'A1', cove: 'A1', sea: 'A1', tide: 'B2', shore: 'B1' } as const,
+    }
+    // The import re-ranks the rows that exist; shore's row reads the reference tables when it is created.
+    await importLearnerData(data)
+    await createEntry(token, 'shore')
     await settle()
 
     const order = []
-    for (let step = 0; step < 4; step++) order.push(await lemmaOf(token))
-    expect(order).toEqual(['cove', 'fjord', 'bay', null])
+    for (let step = 0; step < 8; step++) order.push(await lemmaOf(token))
+    // Bank has the frequency of its word form, "bank"; sea has a level but no frequency.
+    expect(order).toEqual(['Bank', 'cove', 'sea', 'shore', 'tide', 'wave', 'reef', null])
+
+    // A reimport re-ranks: reef becomes the one A1 entry and comes back first once the leases lapse.
+    await importLearnerData({ zipf: data.zipf, levels: { reef: 'A1' } })
+    await expireLeases()
+    expect(await lemmaOf(token)).toBe('reef')
+  })
+
+  it('claims entries with a gap before entries whose only work is weak facts [spec: work/claim-gaps-first]', async () => {
+    const token = await issueAgentKey()
+    const by = await createEntry(token, 'by')
+    await createEntry(token, 'reef')
+    await importLearnerData({ zipf: { by: 7 }, levels: { by: 'A1' } })
+    const [, , , example] = await fill(token, by.entry)
+    await settle()
+    stubReviewers(0.6, 'uncertain')
+    const rereview = await call(`/manage/v1/facts/${example.id}/rereview`, {
+      method: 'POST',
+      token: await adminToken(),
+    })
+    expect(rereview.status).toBe(200)
+    await deliverReviews([example.id])
+    vi.restoreAllMocks()
+
+    // By is A1 and the most frequent word, reef has no reference data, yet reef's gaps come first.
+    const first = workClaimSchema.parse((await claim(token)).body)
+    expect(first.lease.lemma).toBe('reef')
+    const second = workClaimSchema.parse((await claim(token)).body)
+    expect([second.lease.lemma, second.gaps, second.weak_facts.length]).toEqual(['by', [], 1])
+  })
+
+  it('backfills the learner priority that creation and the import store [spec: work/priority-backfill]', async () => {
+    await importLearnerData({ zipf: { bank: 5, café: 2 }, levels: { Bank: 'B1', bank: 'A2', café: 'A1' } })
+    const token = await issueAgentKey()
+    for (const lemma of ['Bank', 'bank', 'café', 'according to', 'reef']) await createEntry(token, lemma)
+    const priority = async () =>
+      (
+        await env.DB.prepare(
+          'select lemma, frequency_key, level_rank, zipf from worklist join entries on entries.id = worklist.entry_id order by lemma',
+        ).all()
+      ).results
+    const stored = await priority()
+    expect(stored).toEqual([
+      { lemma: 'Bank', frequency_key: 'bank', level_rank: 3, zipf: 5 },
+      { lemma: 'according to', frequency_key: 'according to', level_rank: null, zipf: null },
+      { lemma: 'bank', frequency_key: 'bank', level_rank: 2, zipf: 5 },
+      { lemma: 'café', frequency_key: 'café', level_rank: 1, zipf: 2 },
+      { lemma: 'reef', frequency_key: 'reef', level_rank: null, zipf: null },
+    ])
+
+    await env.DB.prepare('update worklist set frequency_key = null, level_rank = 9, zipf = 0').run()
+    const [backfill] = env.TEST_MIGRATIONS.filter((migration) =>
+      migration.name.endsWith('_worklist_learner_priority_backfill.sql'),
+    )
+    for (const query of backfill.queries) await env.DB.prepare(query).run()
+    expect(await priority()).toEqual(stored)
+  })
+
+  it('creates seed entries for the CEFR headwords without one, for admins only [spec: catalog/import-core-api]', async () => {
+    await importLearnerData({
+      zipf: { bank: 5, the: 7 },
+      levels: { bank: 'A1', 'according to': 'B1', x: 'A1', the: 'A1' },
+    })
+    const agent = await issueAgentKey()
+    await createEntry(agent, 'the')
+    const admin = await adminToken()
+    const importCore = (token: string, json: unknown) =>
+      call('/manage/v1/entries/core', { method: 'POST', token, json })
+
+    const denied = await importCore(agent, {})
+    expect([denied.status, codeOf(denied.body)]).toEqual([403, 'forbidden'])
+    const results = []
+    for (let step = 0; step < 3; step++) {
+      const result = await importCore(admin, { limit: 1 })
+      expect(result.status).toBe(200)
+      results.push(coreImportResultSchema.parse(result.body))
+    }
+    expect(results).toEqual([
+      { created: ['bank'], skipped: ['x'], remaining: 1 },
+      { created: ['according to'], skipped: ['x'], remaining: 0 },
+      { created: [], skipped: ['x'], remaining: 0 },
+    ])
+    const view = async (lemma: string) =>
+      managedEntrySchema.parse((await call(`/manage/v1/entries/${encodeURIComponent(lemma)}`, { token: agent })).body)
+    expect([(await view('bank')).seed, (await view('according to')).seed, (await view('the')).seed]).toEqual([
+      true,
+      true,
+      false,
+    ])
+    expect((await call('/manage/v1/entries/x', { token: agent })).status).toBe(404)
+
+    // The agent's "the" is not a seed entry but is A1 and more frequent, so it comes first.
+    await settle()
+    const order = []
+    for (let step = 0; step < 4; step++) order.push(await lemmaOf(agent))
+    expect(order).toEqual(['the', 'bank', 'according to', null])
   })
 
   it('says in the entry view and the claim whether an entry is a seed entry [spec: work/entry-seed]', async () => {
@@ -202,13 +313,14 @@ describe('worklist', () => {
     ])
   })
 
-  it('moves an entry whose lease lapsed behind the entries claimed less recently, however incomplete [spec: work/claim-rotation]', async () => {
+  it('moves an entry whose lease lapsed behind the entries of its band claimed less recently, however incomplete [spec: work/claim-rotation]', async () => {
     const token = await issueAgentKey()
     await createEntry(token, 'bay')
     for (const lemma of ['cove', 'fjord']) {
       const { entry } = await createEntry(token, lemma)
       await submitFact(token, { kind: 'form', subject_id: entry.id, payload: { form: `${lemma}s`, type: 'plural' } })
     }
+    await importLearnerData({ levels: { bay: 'A1', cove: 'A1', fjord: 'A1' } })
     await settle()
     expect(await lemmaOf(token)).toBe('bay')
     await expireLeases()
@@ -282,7 +394,8 @@ describe('worklist', () => {
     const other = await issueAgentKey('other')
     const bay = await createEntry(token, 'bay')
     const inlet = await postSense(other, bay.entry.id, 'A broad inlet of the sea.')
-    expect((await postEntry(token, { lemma: 'cove', seed: true })).status).toBe(201)
+    await createEntry(token, 'cove')
+    await importLearnerData({ levels: { cove: 'A1' } })
     await settle()
     const cove = await lemmaOfWork(token, async (work) => {
       const nook = await postSense(token, work.entry_id, 'A small sheltered bay.')

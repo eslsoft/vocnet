@@ -67,6 +67,15 @@ export function headwords(cell: string): Lemma[] {
 const lower = (a: CefrLevel, b: CefrLevel) => (a < b ? a : b)
 
 /**
+ * A headword the core import makes an entry: any but a single letter, which names the letter
+ * rather than a word, except "a" and "I".
+ */
+export const isCoreHeadword = (lemma: string) => !/^\p{L}$/u.test(lemma) || lemma === 'a' || lemma === 'I'
+
+/** A level's place in learning order: 1 for A1 to 6 for C2. */
+export const levelRank = (level: CefrLevel) => cefrLevelSchema.options.indexOf(level) + 1
+
+/**
  * One level per (lemma, POS). A source that lists a pair several times (once per sense) gives
  * it its lowest level, and an earlier source in `sources` wins over a later one. A POS label
  * missing from the source's map fails, so a new label is mapped on purpose, never dropped.
