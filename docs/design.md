@@ -289,9 +289,10 @@ console reads its public OIDC settings from `GET /configz`.
 - D1 stores nodes, facts, feedback, agents, and work leases.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   reviews and logs the trace ID.
-- A cron trigger re-enqueues facts whose last status change is more than ten
-  minutes old and that are still `pending`, and published facts whose
-  `revalidate_since` is more than ten minutes old, so a lost enqueue cannot
+- A cron trigger runs every five minutes and re-enqueues facts whose last
+  status change is more than five minutes old and that are still `pending`, and
+  published facts whose
+  `revalidate_since` is more than five minutes old, so a lost enqueue cannot
   strand a fact. It keys on `updated_at`, not `created_at`, so a re-reviewed fact counts
   from its reset.
 - A reviewer transport failure (network, 429, 5xx) retries the message with a

@@ -159,7 +159,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
   return outcome
 }
 
-export const RECONCILE_AFTER_MS = 10 * 60 * 1000
+const RECONCILE_AFTER_MS = 5 * 60 * 1000
 const RECONCILE_BATCH = 500
 
 /**

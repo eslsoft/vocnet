@@ -149,13 +149,13 @@ Feature: Facts and review
 
   @facts/reconcile @usecase
   Scenario: Stuck facts are re-enqueued
-    Given facts pending for more than ten minutes
+    Given facts pending for more than five minutes
     When the reconciler runs
     Then their review jobs are enqueued again
 
   @facts/reconcile-revalidation @usecase
   Scenario: Stuck revalidations are re-enqueued
-    Given published facts marked for revalidation more than ten minutes ago
+    Given published facts marked for revalidation more than five minutes ago
     When the reconciler runs
     Then their review jobs are enqueued again
 
