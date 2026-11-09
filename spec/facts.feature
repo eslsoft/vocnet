@@ -31,6 +31,13 @@ Feature: Facts and review
     Given the fact-kind registry
     Then entry, sense, form, and relation go to Jev and pronunciation, example, and translation go to the LLM
 
+  @facts/form-word-class @domain
+  Scenario: A form is judged in the word class it inflects
+    Given a form fact such as the past tense "breaded" of "bread"
+    When its review is planned
+    Then the Jev question names the word class that form type belongs to, such as verb for tenses, noun for plurals, and adjective or adverb for comparison
+    And a spelling variant is asked about the word as a whole
+
   @facts/unreviewable @domain
   Scenario: A meaning-dependent fact cannot be judged without a gloss
     Given an example, translation, or relation whose sense has no live gloss

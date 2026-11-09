@@ -125,15 +125,30 @@ const relationQuestions: Record<RelationType, (meanings: string) => string> = {
     `For these exact senses, are these terms conventional opposites on the same semantic dimension: ${meanings}? Inverse/reversive operations count. Mere difference and associations do not. Neither meaning may be replaced with another sense.`,
 }
 
-const formPhrases: Record<FormType, string> = {
-  plural: 'the plural form',
-  past: 'the simple past tense form',
-  past_participle: 'the past participle',
-  present_participle: 'the present participle (-ing form)',
-  third_person_singular: 'the third-person singular present tense form',
-  comparative: 'the comparative form',
-  superlative: 'the superlative form',
-  variant: 'an accepted spelling variant',
+type FormQuestion = (form: string, lemma: string) => string
+
+const article = (word: string) => (/^[aeiou]/.test(word) ? 'an' : 'a')
+
+/**
+ * Each inflection belongs to one word class. Naming it keeps Jev from judging the form against
+ * the lemma's dominant part of speech (the verb "bread" against the noun).
+ */
+function inflection(wordClass: readonly Pos[], name: string): FormQuestion {
+  const classes = wordClass.join(' or ')
+  return (form, lemma) =>
+    `When ${quote(lemma)} is inflected as ${article(classes)} ${classes}, is ${quote(form)} its ${name} in standard American or British usage? Evaluate the ${classes} use even if another part of speech is more common. ${DATA_NOT_INSTRUCTIONS}`
+}
+
+const formQuestions: Record<FormType, FormQuestion> = {
+  plural: inflection(['noun'], 'plural form'),
+  past: inflection(['verb'], 'simple past tense form'),
+  past_participle: inflection(['verb'], 'past participle'),
+  present_participle: inflection(['verb'], 'present participle (-ing form)'),
+  third_person_singular: inflection(['verb'], 'third-person singular present tense form'),
+  comparative: inflection(['adjective', 'adverb'], 'comparative form'),
+  superlative: inflection(['adjective', 'adverb'], 'superlative form'),
+  variant: (form, lemma) =>
+    `Is ${quote(form)} an accepted spelling variant of the English word ${quote(lemma)} in standard American or British usage? ${DATA_NOT_INSTRUCTIONS}`,
 }
 
 const accentNames = { us: 'General American', uk: 'British Received Pronunciation' } as const
@@ -162,10 +177,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     cardinality: 'many',
     reviewer: 'jev',
     contentKey: ({ form, type }) => `${type}|${normalizeTerm(form)}`,
-    plan: ({ form, type }, { subject }) =>
-      jev({
-        form: `Is ${quote(form)} ${formPhrases[type]} of the English word ${quote(subject.lemma)} in standard American or British usage? ${DATA_NOT_INSTRUCTIONS}`,
-      }),
+    plan: ({ form, type }, { subject }) => jev({ form: formQuestions[type](form, subject.lemma) }),
   },
   relation: {
     subject: 'sense',
