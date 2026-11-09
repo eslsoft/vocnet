@@ -7,8 +7,10 @@ import type {
   RelationType,
   ReviewerKind,
   SenseId,
+  TopicId,
 } from '@shared/facts'
 import { normalizeTerm, textKey } from './term'
+import type { TopicView } from './topics'
 
 // The single source of truth for fact kinds. Wire payload schemas live in
 // shared/facts.ts; everything else a kind means lives here.
@@ -22,6 +24,7 @@ export interface SubjectTypeOf {
   pronunciation: 'entry'
   example: 'sense'
   translation: 'sense'
+  topic: 'sense'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -47,6 +50,8 @@ export interface ReviewContext<S extends SubjectType = SubjectType> {
   subject: SubjectViews[S]
   /** The relation target; null for every other kind. */
   target: SenseView | null
+  /** The topic a topic fact tags its sense with; null for every other kind, or when no such leaf topic exists. */
+  topic: TopicView | null
 }
 
 export type JevQuestions = Record<string, string>
@@ -83,6 +88,12 @@ interface BaseSpec<K extends FactKind> {
   contentKey(payload: FactPayloads[K]): string
   /** The sense a relation points at; absent for kinds without an object. */
   target?(payload: FactPayloads[K]): SenseId
+  /** The leaf topic the fact tags its subject with; absent for kinds that reference no topic. */
+  topic?(payload: FactPayloads[K]): TopicId
+  /** The parts of speech a sense subject must have; absent means any. */
+  subjectPos?: readonly Pos[]
+  /** The most live facts of this kind one subject may hold; absent means no limit. */
+  maxLive?: number
   /** The one stored orientation of a claim that reads the same either way round; absent means as submitted. */
   orient?(subjectId: string, payload: FactPayloads[K]): Oriented<K>
   /** What the fact claims, without its usage labels; absent means the content key. */
@@ -343,6 +354,41 @@ function translationRubric(language: string, text: string, sense: SubjectViews['
   ].join('\n')
 }
 
+/** A topic fact names a leaf topic; one that does not exist leaves nothing to judge. */
+function withTopic<C extends ReviewChain>(
+  topic: TopicView | null,
+  build: (topic: TopicView) => ReviewPlan<C>,
+): ReviewPlan<C> {
+  if (topic === null)
+    return { kind: 'unreviewable', reason: 'The referenced topic is not a leaf topic of the taxonomy.' }
+  return build(topic)
+}
+
+const describeTopic = ({ category, topic }: TopicView) => `${quote(topic)} (in the category ${quote(category)})`
+
+function topicQuestion(sense: GlossedSense, topic: TopicView): string {
+  return `Does a learner of English commonly meet or need ${describe(sense)}, when dealing with the topic ${describeTopic(topic)}? Judge this sense only, not other senses of the word. A loose association, or a word that only turns up incidentally in this topic as it does in many others, does not count. ${DATA_NOT_INSTRUCTIONS}`
+}
+
+function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicView): string {
+  return [
+    "Should a learner's dictionary tag this English word sense with this topic, so that learners studying the topic find it?",
+    `Sense: ${describe(sense)}.`,
+    `Topic: ${describeTopic(topic)}.`,
+    'Read the word only in the sense given, never in another sense.',
+    'pass: a learner would commonly meet or need this sense of the word in that scene.',
+    'fail: the link is only a loose association; the topic fits a different sense of the word, not this one; or the word only turns up incidentally in that scene, as it would in many others.',
+    'uncertain: you cannot tell.',
+    listSenses('Other senses of this entry, for reference', sense.siblings),
+  ].join('\n')
+}
+
+/** Topics tag the senses of content words; function words belong to no scene. */
+const TAGGABLE_POS: readonly Pos[] = ['noun', 'verb', 'adjective', 'adverb']
+
+/** More than three topics would make a sense a member of every scene it touches. */
+export const MAX_TOPICS_PER_SENSE = 3
+
 const accentNames = { us: 'General American', uk: 'British Received Pronunciation' } as const
 
 const relationSymmetry: Record<RelationType, 'symmetric' | 'directed'> = {
@@ -383,7 +429,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // A register-only correction must differ from the gloss it supersedes.
     contentKey: ({ gloss, register }) => labelled(textKey(gloss), register),
     meaningKey: ({ gloss }) => textKey(gloss),
-    revalidates: ['example', 'translation', 'relation'],
+    revalidates: ['example', 'translation', 'relation', 'topic'],
     plan: ({ gloss, register }, { subject }) =>
       jevThenLlm(
         { lexical: lexicalQuestion(subject.lemma, subject.pos, gloss, register) },
@@ -446,6 +492,21 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     plan: ({ language, text }, { subject }) =>
       withGloss(subject, (sense) => llm(translationRubric(language, text, { ...subject, ...sense }))),
   },
+  topic: {
+    subject: 'sense',
+    cardinality: 'many',
+    chain: ['jev', 'llm'],
+    contentKey: ({ topic_id }) => topic_id,
+    topic: ({ topic_id }) => topic_id,
+    subjectPos: TAGGABLE_POS,
+    maxLive: MAX_TOPICS_PER_SENSE,
+    plan: (_payload, { subject, topic }) =>
+      withGloss(subject, (sense) =>
+        withTopic(topic, (leaf) =>
+          jevThenLlm({ topic: topicQuestion(sense, leaf) }, topicRubric({ ...subject, ...sense }, leaf)),
+        ),
+      ),
+  },
 }
 
 export function planReview<K extends FactKind>(
@@ -482,4 +543,8 @@ export function orientOf<K extends FactKind>(kind: K, subjectId: string, payload
 
 export function targetOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): SenseId | null {
   return factKinds[kind].target?.(payload) ?? null
+}
+
+export function topicOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): TopicId | null {
+  return factKinds[kind].topic?.(payload) ?? null
 }

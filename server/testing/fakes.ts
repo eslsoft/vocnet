@@ -4,6 +4,7 @@ import { factKinds } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { TopicNode } from '@server/domain/topics'
 import { claimTier, isClaimable, type WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
 import { ConflictError } from '@server/usecases/errors'
@@ -17,7 +18,7 @@ import type {
   WorkScores,
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
-import type { EntryId, FactId, SenseId } from '@shared/facts'
+import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
 import type { FeedbackId } from '@shared/feedback'
 import type { WorkLeaseId } from '@shared/work'
 
@@ -30,6 +31,8 @@ export interface FakeWorld {
   entries: EntryNode[]
   senses: SenseNode[]
   facts: Fact[]
+  /** A slice of the seeded taxonomy: two categories and some of their leaf topics. */
+  topics: TopicNode[]
   feedback: FeedbackRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
   leases: WorkLease[]
@@ -52,6 +55,23 @@ export interface FakeWorld {
   /** Every reviewer passes what it is asked, as it does by default. */
   passReviews(): void
 }
+
+const topic = (id: string, parentId: string | null, nameEn: string, position: number): TopicNode => ({
+  id: id as TopicId,
+  parentId: parentId as TopicId | null,
+  nameEn,
+  nameZh: `${nameEn} (zh)`,
+  position,
+})
+
+export const fakeTopics: readonly TopicNode[] = [
+  topic('home', null, 'Home', 1),
+  topic('body-health', null, 'Body and health', 0),
+  topic('furniture', 'home', 'Furniture', 0),
+  topic('hospital-doctor', 'body-health', 'At the doctor and hospital', 1),
+  topic('body-parts', 'body-health', 'Parts of the body', 0),
+  topic('dentist', 'body-health', 'At the dentist', 2),
+]
 
 export function fakeWorld(): FakeWorld {
   let now = new Date('2026-01-01T00:00:00.000Z')
@@ -77,6 +97,7 @@ export function fakeWorld(): FakeWorld {
     entries: [],
     senses: [],
     facts: [],
+    topics: [...fakeTopics],
     feedback: [],
     agents: [],
     leases: [],
@@ -322,6 +343,11 @@ export function fakeWorld(): FakeWorld {
         const existing = findLive(fact.kind, fact.subjectId, fact.contentKey)
         if (existing) return existing
         if (violatesIndexes(world.facts, fact)) return null
+        const { maxLive } = factKinds[fact.kind]
+        const held = world.facts.filter(
+          (other) => other.kind === fact.kind && other.subjectId === fact.subjectId && live(other),
+        )
+        if (maxLive !== undefined && held.length >= maxLive) return null
         world.facts.push(fact)
         touch([fact.subjectId, fact.objectId])
         return fact
@@ -385,6 +411,29 @@ export function fakeWorld(): FakeWorld {
           counts.set(key, { ...row, count: row.count + 1 })
         }
         return [...counts.values()]
+      },
+    },
+    topics: {
+      list: async () => world.topics,
+      find: async (id) => world.topics.find((node) => node.id === id) ?? null,
+      listTaggedSenses: async (leaves, page) => {
+        const published = (kind: Fact['kind'], subjectId: string) =>
+          world.facts.find((fact) => fact.kind === kind && fact.subjectId === subjectId && fact.status === 'published')
+        const tagged = world.senses.flatMap((sense) => {
+          const entry = world.entries.find((candidate) => candidate.id === sense.entryId)
+          const gloss = published('sense', sense.id) as FactOf<'sense'> | undefined
+          const isTagged = world.facts.some(
+            (fact) =>
+              fact.kind === 'topic' &&
+              fact.subjectId === sense.id &&
+              fact.status === 'published' &&
+              leaves.includes(fact.payload.topic_id),
+          )
+          if (!entry || !gloss || !isTagged || !published('entry', entry.id)) return []
+          return [{ id: sense.id, lemma: entry.lemma, pos: sense.pos, gloss: gloss.payload.gloss }]
+        })
+        const ordered = tagged.sort((a, b) => a.lemma.localeCompare(b.lemma) || a.id.localeCompare(b.id))
+        return paged(ordered, page.limit, page.cursor)
       },
     },
     feedback: {

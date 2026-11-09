@@ -116,6 +116,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntry | null 
           text: fact.payload.text,
         })),
         relations: relations(sense.id),
+        topics: about('topic', sense.id).map((fact) => ({ ...factMeta(fact), topic_id: fact.payload.topic_id })),
       },
     ]
   })
@@ -156,6 +157,7 @@ export function publicFactIds(view: PublicEntry): Set<FactId> {
     ...sense.examples,
     ...sense.translations,
     ...sense.relations,
+    ...sense.topics,
   ])
   return new Set([view.fact, ...view.forms, ...view.pronunciations, ...senseFacts].map((fact) => fact.id))
 }

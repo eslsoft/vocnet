@@ -1,0 +1,84 @@
+Feature: Topics
+  Learners find words by the scene they need them in. A server-maintained, two-level taxonomy
+  groups leaf topics ("At the doctor and hospital") under categories ("Body and health"). Agents
+  tag senses with leaf topics through topic facts; topics are tags, never relations between words.
+
+  @topics/review-plan @domain
+  Scenario: A topic fact asks whether a learner meets this sense in that scene
+    Given a topic fact on a glossed sense and the leaf topic it names
+    When its review is planned
+    Then Jev is asked one question naming the lemma, part of speech, gloss, topic, and category
+    And the LLM rubric passes a sense a learner would commonly meet or need in that scene
+    And fails a loose association, a different sense of the word, or a scene where the word is only incidental
+    And a sense without a gloss or a topic that is not a leaf is unreviewable
+
+  @topics/tag @usecase
+  Scenario: An agent tags a content sense with a leaf topic
+    Given a noun sense and a leaf topic
+    When an agent submits a topic fact
+    Then the fact is pending with the topic id as its content key
+    And its review reads the topic and its category's English names and publishes on a pass
+
+  @topics/invalid-reference @usecase
+  Scenario: A topic fact names an existing leaf topic on a content sense
+    Given an unknown topic id, a category id, or a preposition sense
+    When an agent submits a topic fact with it
+    Then the submission is refused as an invalid reference with a message saying why, and nothing is queued
+
+  @topics/limit @usecase
+  Scenario: A sense holds at most three live topics
+    Given a sense with three live topic facts
+    When an agent submits a fourth, or an admin re-reviews a rejected one
+    Then it is refused as a conflict naming the limit of three
+    And once one is retracted a new topic fact is accepted
+
+  @topics/revalidate @usecase
+  Scenario: Topics are re-reviewed when the gloss changes meaning
+    Given a published topic fact on a sense
+    When a correction that changes the gloss's meaning publishes
+    Then the topic fact is re-reviewed against the new gloss
+
+  @topics/tree @usecase
+  Scenario: The taxonomy is served as categories with their leaf topics
+    Given the topic taxonomy
+    When it is listed
+    Then each category carries its leaf topics, both in display order, with English and Chinese names
+
+  @topics/senses @usecase
+  Scenario: A topic lists the published senses it tags, and a category rolls up its leaves
+    Given published topic facts on several senses
+    When the senses of a leaf topic or of a category are listed
+    Then a leaf lists the senses tagged with it and a category the senses tagged with any of its leaves, each once
+    And an unknown topic id is not found
+
+  @topics/tree-api @api
+  Scenario: The seeded taxonomy is public
+    Given a fresh database with every migration applied
+    When GET /v1/topics is called
+    Then it returns the 16 approved categories over 147 leaf topics with their English and Chinese names
+
+  @topics/publish-api @api
+  Scenario: A topic fact is reviewed, published, and listed on a real database
+    Given topic facts submitted on senses of two entries
+    When the queue reviews and publishes them
+    Then GET /v1/topics/{id}/senses lists each tagged sense with its lemma, part of speech, and gloss, in lemma order and paginated
+    And a category lists the senses of all its leaves
+    And the public entry shows the topic tags of each sense, and the management API lists the topic facts
+
+  @topics/visibility @api
+  Scenario: A tagged sense is listed only while everything it shows is published
+    Given a published topic fact whose sense gloss and entry are still pending
+    When the topic's senses are listed before and after the gloss and entry publish, and after the topic is retracted
+    Then the sense is listed only while its topic fact, gloss, and entry are all published
+
+  @topics/write-rules-api @api
+  Scenario: The write rules hold on a real database
+    Given a noun sense and a preposition sense
+    When topic facts with an unknown topic, a category, a preposition sense, or a fourth topic are submitted
+    Then the first three are 422 invalid_reference, the fourth is 409 naming the limit, and a malformed id is 400
+
+  @topics/not-found @api
+  Scenario: An unknown topic has no senses to list
+    Given no topic with the requested id
+    When GET /v1/topics/{id}/senses is called
+    Then the response is 404 not_found, with no fuzzy fallback

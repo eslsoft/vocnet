@@ -30,7 +30,7 @@ Feature: Facts and review
   @facts/reviewer-routing @domain
   Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
-    Then entry, sense, form, and relation go to Jev and then the LLM, and pronunciation, example, and translation go to the LLM
+    Then entry, sense, form, relation, and topic go to Jev and then the LLM, and pronunciation, example, and translation go to the LLM
 
   @facts/second-opinion @domain
   Scenario: Only a Jev pass settles a proposition

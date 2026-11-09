@@ -1,14 +1,34 @@
 import { facts } from '@server/db/schema'
+import type { Fact } from '@server/domain/fact'
+import { factKinds } from '@server/domain/fact-kinds'
 import type { FactRepo } from '@server/usecases/ports'
 import { type FactId, factKindSchema, factStatusSchema } from '@shared/facts'
 import { and, asc, count, desc, eq, exists, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { type Db, decodeCursor, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
+import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
 import { syncWorklistLive, touchWorkOf, touchWorkOfFact } from './work'
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const SLOT_TAKEN = 'Another live fact already holds this slot.'
+
+/**
+ * The insert of a new fact. A kind with `maxLive` inserts only while the subject holds fewer live
+ * facts of the kind, counted in the same statement so concurrent submissions cannot pass the limit.
+ */
+function insertFact(db: Db, fact: Fact) {
+  const { maxLive } = factKinds[fact.kind]
+  if (maxLive === undefined) return db.insert(facts).values(fromFact(fact)).onConflictDoNothing()
+  const held = db
+    .select({ count: count() })
+    .from(facts)
+    .where(and(eq(facts.subjectId, fact.subjectId), eq(facts.kind, fact.kind), liveStatus))
+  const values = db.select(factSelectValues(fact)).from(sql`(select 1)`).where(sql`(${held}) < ${maxLive}`)
+  return db
+    .insert(facts)
+    .select(values as never)
+    .onConflictDoNothing()
+}
 
 export function createFactRepo(db: Db): FactRepo {
   const findLive: FactRepo['findLive'] = async (kind, subjectId, contentKey) => {
@@ -41,7 +61,7 @@ export function createFactRepo(db: Db): FactRepo {
       // The partial unique indexes turn a concurrent duplicate or a taken exclusive slot into a
       // no-op: a live fact with the same content wins, and otherwise the slot holder does.
       await db.batch([
-        db.insert(facts).values(fromFact(fact)).onConflictDoNothing(),
+        insertFact(db, fact),
         syncWorklistLive(db, [fact.subjectId]),
         touchWorkOf(db, fact.objectId ? [fact.subjectId, fact.objectId] : [fact.subjectId]),
       ])

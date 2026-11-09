@@ -19,5 +19,7 @@ export function summarizeFact(fact: FactDto): string {
       return fact.payload.text
     case 'translation':
       return `${fact.payload.language}: ${fact.payload.text}`
+    case 'topic':
+      return fact.payload.topic_id
   }
 }

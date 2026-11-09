@@ -19,7 +19,7 @@ import {
   type SenseId,
 } from '@shared/facts'
 import { type FeedbackId, feedbackStatusSchema, feedbackTargetTypeSchema } from '@shared/feedback'
-import { sql } from 'drizzle-orm'
+import { getTableColumns, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 export type Db = ReturnType<typeof createDb>
@@ -77,6 +77,17 @@ export function fromFact(fact: Fact): FactRow {
     payload: JSON.stringify(fact.payload),
     review: fact.review && JSON.stringify(fact.review),
   }
+}
+
+/** The fact's row as select columns, for an insert that writes it only when a condition holds. */
+export function factSelectValues(fact: Fact) {
+  const row = fromFact(fact)
+  return Object.fromEntries(
+    Object.entries(getTableColumns(facts)).map(([key, column]) => [
+      key,
+      sql`${column.mapToDriverValue(row[key as keyof typeof row])}`.as(column.name),
+    ]),
+  )
 }
 
 function isUniqueViolation(error: unknown, table: string): boolean {

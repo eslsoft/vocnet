@@ -1,8 +1,9 @@
 import type { Fact } from '@server/domain/fact'
-import { contentKeyOf, factKinds, orientOf, type SubjectType, targetOf } from '@server/domain/fact-kinds'
-import { canApply, factTransitions } from '@server/domain/fact-lifecycle'
+import { contentKeyOf, factKinds, orientOf, type SubjectType, targetOf, topicOf } from '@server/domain/fact-kinds'
+import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
-import type { EntryId, FactId, FactKind, FactStatus, SenseId, SubmitFactInput } from '@shared/facts'
+import { isLeaf } from '@server/domain/topics'
+import type { EntryId, FactId, FactKind, FactStatus, Pos, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
 import type { Deps } from './deps'
 import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
 import type { PageRequest } from './ports'
@@ -14,12 +15,40 @@ export interface Actor {
   traceId: string
 }
 
-type SubmitDeps = Pick<Deps, 'nodes' | 'facts' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
+type SubmitDeps = Pick<Deps, 'nodes' | 'facts' | 'topics' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
 
-/** The entry a subject node belongs to, or null when the node does not exist. */
-const owningEntry: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<EntryId | null> } = {
-  entry: async (deps, id) => (await deps.nodes.findEntry(id as EntryId))?.id ?? null,
-  sense: async (deps, id) => (await deps.nodes.findSense(id as SenseId))?.entryId ?? null,
+interface SubjectNode {
+  entryId: EntryId
+  /** The sense's part of speech; null for an entry. */
+  pos: Pos | null
+}
+
+/** The subject node, or null when it does not exist. */
+const subjectNode: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<SubjectNode | null> } = {
+  entry: async (deps, id) => {
+    const entry = await deps.nodes.findEntry(id as EntryId)
+    return entry && { entryId: entry.id, pos: null }
+  },
+  sense: async (deps, id) => {
+    const sense = await deps.nodes.findSense(id as SenseId)
+    return sense && { entryId: sense.entryId, pos: sense.pos }
+  },
+}
+
+async function assertLeafTopic(deps: Pick<Deps, 'topics'>, id: TopicId): Promise<void> {
+  const topic = await deps.topics.find(id)
+  if (!topic) throw new InvalidReferenceError(`Topic ${id} does not exist; GET /v1/topics lists the taxonomy.`)
+  if (!isLeaf(topic)) {
+    throw new InvalidReferenceError(`${id} is a topic category; tag the sense with one of its leaf topics.`)
+  }
+}
+
+function slotTakenMessage(kind: FactKind): string {
+  const { maxLive, subject } = factKinds[kind]
+  if (maxLive !== undefined) {
+    return `A ${subject} holds at most ${maxLive} live ${kind} facts; retract one before adding another.`
+  }
+  return `This subject already has a live ${kind} fact; submit one correction that supersedes the published one.`
 }
 
 /**
@@ -37,10 +66,18 @@ export async function submitFact(
   const oriented = orientOf(kind, input.subject_id, input.payload)
   const subjectId = oriented.subjectId as EntryId | SenseId
   const payload = oriented.payload
-  const entryId = await owningEntry[spec.subject](deps, subjectId)
-  if (!entryId) {
+  const subject = await subjectNode[spec.subject](deps, subjectId)
+  if (!subject) {
     throw new InvalidReferenceError(`A ${kind} fact is about a ${spec.subject}; ${subjectId} is not one.`)
   }
+  const { entryId, pos } = subject
+  if (spec.subjectPos && !(pos && spec.subjectPos.includes(pos))) {
+    throw new InvalidReferenceError(
+      `A ${kind} fact is about a sense whose part of speech is ${spec.subjectPos.join(', ')}; this one is ${pos ?? 'an entry'}.`,
+    )
+  }
+  const topic = topicOf(kind, payload)
+  if (topic) await assertLeafTopic(deps, topic)
   const target = targetOf(kind, payload)
   if (target) {
     const targetSense = await deps.nodes.findSense(target)
@@ -76,11 +113,7 @@ export async function submitFact(
     updatedAt: now,
   } as Fact
   const fact = await deps.facts.insert(draft)
-  if (!fact) {
-    throw new ConflictError(
-      `This subject already has a live ${kind} fact; submit one correction that supersedes the published one.`,
-    )
-  }
+  if (!fact) throw new ConflictError(slotTakenMessage(kind))
   const created = fact.id === draft.id
   await refreshWork(deps, [subjectId, target])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
@@ -149,6 +182,15 @@ export async function rereviewFact(
     // A published correction already took its original's place; a rejected one must still find it published.
     if (fact.status === 'rejected' && fact.supersedesId) {
       await assertSupersedable(deps, fact.supersedesId, fact.kind, fact.subjectId)
+    }
+    // A rejected fact that comes back to life takes a place among the live ones.
+    const { maxLive } = factKinds[fact.kind]
+    if (
+      !isLive(fact.status) &&
+      maxLive !== undefined &&
+      (await deps.facts.listLive(fact.kind, fact.subjectId)).length >= maxLive
+    ) {
+      throw new ConflictError(slotTakenMessage(fact.kind))
     }
     const { from, to } = factTransitions.rereview
     const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString() })

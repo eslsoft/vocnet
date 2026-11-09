@@ -11,6 +11,7 @@ import type {
   NodeRepo,
   RateLimiter,
   ReviewQueue,
+  TopicRepo,
   WorkRepo,
 } from './ports'
 
@@ -18,6 +19,7 @@ import type {
 export interface Deps {
   nodes: NodeRepo
   facts: FactRepo
+  topics: TopicRepo
   feedback: FeedbackRepo
   agents: AgentRepo
   work: WorkRepo

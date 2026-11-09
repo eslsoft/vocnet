@@ -10,6 +10,13 @@ export const senseIdSchema = z.uuid().brand<'SenseId'>()
 export type SenseId = z.infer<typeof senseIdSchema>
 export const factIdSchema = z.uuid().brand<'FactId'>()
 export type FactId = z.infer<typeof factIdSchema>
+export const topicIdSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, 'A topic id is lowercase words joined by hyphens.')
+  .max(64)
+  .brand<'TopicId'>()
+  .meta({ description: 'A stable topic id from GET /v1/topics, such as hospital.' })
+export type TopicId = z.infer<typeof topicIdSchema>
 
 export const posSchema = z
   .enum([
@@ -138,6 +145,9 @@ export const factPayloadSchemas = {
       .meta({ description: 'BCP 47 language tag, e.g. zh-Hans or fr.' }),
     text: text(200),
   }),
+  topic: z.strictObject({
+    topic_id: topicIdSchema.meta({ description: 'A leaf topic of the taxonomy (GET /v1/topics), never a category.' }),
+  }),
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -150,7 +160,7 @@ const submitPayloadSchemas = {
 }
 
 export const factKindSchema = z
-  .enum(['entry', 'sense', 'form', 'relation', 'pronunciation', 'example', 'translation'])
+  .enum(['entry', 'sense', 'form', 'relation', 'pronunciation', 'example', 'translation', 'topic'])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
 
@@ -202,6 +212,7 @@ export const submitFactInputSchema = z
     submitVariant('pronunciation'),
     submitVariant('example'),
     submitVariant('translation'),
+    submitVariant('topic'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -231,6 +242,7 @@ export const factSchema = z
     factVariant('pronunciation'),
     factVariant('example'),
     factVariant('translation'),
+    factVariant('topic'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

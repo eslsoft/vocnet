@@ -37,6 +37,7 @@ export const enUS = {
     pronunciation: 'Pronunciation',
     example: 'Example',
     translation: 'Translation',
+    topic: 'Topic',
   },
   signal: {
     unreviewed: 'Not reviewed',

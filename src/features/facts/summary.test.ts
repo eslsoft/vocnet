@@ -20,6 +20,7 @@ describe('summarizeFact', () => {
     ],
     [{ kind: 'example', payload: { text: 'We sat on the bank.' } }, 'We sat on the bank.'],
     [{ kind: 'translation', payload: { language: 'zh-Hans', text: '河岸' } }, 'zh-Hans: 河岸'],
+    [{ kind: 'topic', payload: { topic_id: 'hospital' } }, 'hospital'],
   ])('summarizes a %o fact', (input, expected) => {
     expect(summarizeFact(fact(input as FactDto))).toBe(expected)
   })

@@ -5,10 +5,11 @@ import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
+import type { TopicNode } from '@server/domain/topics'
 import type { LastClaim, WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
 import type { EntryRef, EntrySummary, Stats } from '@shared/catalog'
-import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, Verdict } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, TopicId, Verdict } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
 import type { WorkLeaseId } from '@shared/work'
 
@@ -78,7 +79,8 @@ export interface FactRepo {
   listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
   /**
    * Inserts unless a live fact holds the same (kind, subject, content key) and returns the live
-   * fact either way; null when another live fact holds the kind's exclusive slot.
+   * fact either way; null when another live fact holds the kind's exclusive slot, or the subject
+   * already holds the kind's `maxLive` live facts.
    */
   insert(fact: Fact): Promise<Fact | null>
   /**
@@ -92,6 +94,25 @@ export interface FactRepo {
   listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
   list(filter: { status?: FactStatus; kind?: FactKind }, page: PageRequest): Promise<Page<Fact>>
   countByKindAndStatus(): Promise<Stats['facts']>
+}
+
+/** A published sense as a topic listing shows it. */
+export interface TaggedSense {
+  id: SenseId
+  lemma: Lemma
+  pos: Pos
+  gloss: string
+}
+
+export interface TopicRepo {
+  /** Every category and leaf topic. */
+  list(): Promise<TopicNode[]>
+  find(id: TopicId): Promise<TopicNode | null>
+  /**
+   * Senses a published topic fact tags with one of these leaves, each once, in lemma then sense
+   * order. Visibility is derived on read: the sense's gloss and its entry are published.
+   */
+  listTaggedSenses(leaves: readonly TopicId[], page: PageRequest): Promise<Page<TaggedSense>>
 }
 
 export interface FeedbackRepo {

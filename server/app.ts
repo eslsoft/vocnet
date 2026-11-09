@@ -10,11 +10,12 @@ import { manageFactRoutes } from './http/manage/facts'
 import { manageFeedbackRoutes } from './http/manage/feedback'
 import { manageWorkRoutes } from './http/manage/work'
 import { createRouter } from './http/router'
+import { topicRoutes } from './http/topics'
 
 // Routes are chained so their types flow into `AppType` for the SPA's RPC client.
 // Per-request deps are wired by the worker; see server/worker.ts.
 
-const publicV1 = publicRoutes
+const publicV1 = createRouter().route('/', publicRoutes).route('/', topicRoutes)
 
 const manageV1 = createRouter()
   .route('/', manageCatalogRoutes)

@@ -59,6 +59,10 @@ export const gapSchema = z
     }),
     z.object({ type: z.literal('examples'), ...senseGap }),
     z.object({ type: z.literal('translations'), ...senseGap, language: z.literal('zh') }),
+    z.object({ type: z.literal('topics'), ...senseGap }).meta({
+      description:
+        'The sense has no live topic fact. Nouns, verbs, and adjectives need one; other parts of speech have no topics gap.',
+    }),
   ])
   .meta({ id: 'Gap', description: 'Something the entry has too few live (pending or published) facts for.' })
 export type Gap = z.infer<typeof gapSchema>

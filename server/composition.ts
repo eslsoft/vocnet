@@ -5,6 +5,7 @@ import { createAgentRepo } from '@server/adapters/repos/agents'
 import { createFactRepo } from '@server/adapters/repos/facts'
 import { createFeedbackRepo } from '@server/adapters/repos/feedback'
 import { createNodeRepo } from '@server/adapters/repos/nodes'
+import { createTopicRepo } from '@server/adapters/repos/topics'
 import { createWorkRepo } from '@server/adapters/repos/work'
 import { createReviewQueue } from '@server/adapters/review-queue'
 import { createJevReviewer } from '@server/adapters/reviewers/jev'
@@ -23,6 +24,7 @@ export function createDeps(env: Env): Deps {
   return {
     nodes: createNodeRepo(db),
     facts: createFactRepo(db),
+    topics: createTopicRepo(db),
     feedback: createFeedbackRepo(db),
     agents: createAgentRepo(db),
     work: createWorkRepo(db),

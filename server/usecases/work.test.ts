@@ -285,6 +285,7 @@ describe('claimWork', () => {
       'relations',
       'examples',
       'translations',
+      'topics',
     ])
   })
 

@@ -84,6 +84,24 @@ export const RELATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   auxiliary: 0,
 }
 
+/**
+ * How many live topic facts a sense of each part of speech needs. Nouns, verbs, and adjectives name
+ * the things, actions, and qualities a scene is made of; adverbs may be tagged but need no topic,
+ * and function words belong to no scene. Zero means the sense has no topics gap.
+ */
+export const TOPICS_NEEDED: Readonly<Record<Pos, number>> = {
+  noun: 1,
+  verb: 1,
+  adjective: 1,
+  adverb: 0,
+  pronoun: 0,
+  determiner: 0,
+  preposition: 0,
+  conjunction: 0,
+  interjection: 0,
+  auxiliary: 0,
+}
+
 const senseGapRules: ReadonlyArray<{
   need: (sense: SenseNode) => number
   fills: (fact: Fact, senseId: SenseId) => boolean
@@ -109,6 +127,11 @@ const senseGapRules: ReadonlyArray<{
     fills: (fact, senseId) =>
       fact.kind === 'translation' && fact.subjectId === senseId && isChinese(fact.payload.language),
     gap: (senseId) => ({ type: 'translations', sense_id: senseId, language: 'zh' }),
+  },
+  {
+    need: (sense) => TOPICS_NEEDED[sense.pos],
+    fills: (fact, senseId) => fact.kind === 'topic' && fact.subjectId === senseId,
+    gap: (senseId) => ({ type: 'topics', sense_id: senseId }),
   },
 ]
 
