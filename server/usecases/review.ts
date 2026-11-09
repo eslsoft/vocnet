@@ -24,8 +24,9 @@ import type { SenseNode } from '@server/domain/nodes'
 import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/domain/review-chain'
 import type { EntryId, FactId, FactKind, ReviewerKind, SenseId } from '@shared/facts'
 import type { Deps } from './deps'
+import { refreshWork } from './work-scores'
 
-type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'jev' | 'llm' | 'reviewQueue' | 'clock'>
+type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'>
 
 const reviewers: {
   [R in ReviewerKind]: (deps: ReviewDeps, request: ReviewRequest<R>, state: Record<string, unknown>) => Promise<Opinion>
@@ -190,6 +191,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     revalidateSince: fact.revalidateSince,
   })
   if (!applied) return 'skipped'
+  await refreshWork(deps, [fact.subjectId, fact.objectId])
   if (dependents) {
     const ids = await deps.facts.listRevalidating(fact.subjectId)
     if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))

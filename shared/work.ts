@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { managedEntrySchema } from './catalog'
-import { entryIdSchema, relationTypeSchema, senseIdSchema } from './facts'
+import { entryIdSchema, factIdSchema, factKindSchema, relationTypeSchema, senseIdSchema } from './facts'
 
 export const workLeaseIdSchema = z.uuid().brand<'WorkLeaseId'>()
 export type WorkLeaseId = z.infer<typeof workLeaseIdSchema>
@@ -50,7 +50,8 @@ export const gapSchema = z
       type: z.literal('relations'),
       ...senseGap,
       count: z.number().int().nonnegative().meta({
-        description: 'Live relations the sense is in, as subject or object. The gap stays open below two.',
+        description:
+          'Live relations the sense is in, as subject or object. The gap stays open below what its part of speech needs: two for nouns, verbs, and adjectives, one for adverbs; other parts of speech have no relations gap.',
       }),
       have: z.array(relationHaveSchema).meta({
         description: 'Each relation type and direction the sense already has, once, so an agent looks for the others.',
@@ -62,8 +63,28 @@ export const gapSchema = z
   .meta({ id: 'Gap', description: 'Something the entry has too few live (pending or published) facts for.' })
 export type Gap = z.infer<typeof gapSchema>
 
+export const weakFactSchema = z
+  .object({
+    id: factIdSchema,
+    kind: factKindSchema,
+    reason: z.enum(['feedback', 'uncertain']).meta({
+      description:
+        'feedback: an open or claimed feedback item targets the fact. uncertain: the fact published on an uncertain review verdict.',
+    }),
+  })
+  .meta({
+    id: 'WeakFact',
+    description: 'A live fact of the entry worth replacing: submit a correction that supersedes it, or retract it.',
+  })
+export type WeakFact = z.infer<typeof weakFactSchema>
+
 export const workClaimSchema = z
-  .object({ lease: workLeaseSchema, entry: managedEntrySchema, gaps: z.array(gapSchema) })
+  .object({
+    lease: workLeaseSchema,
+    entry: managedEntrySchema,
+    gaps: z.array(gapSchema),
+    weak_facts: z.array(weakFactSchema),
+  })
   .meta({ id: 'WorkClaim' })
 
 export const completeWorkInputSchema = z

@@ -42,6 +42,8 @@ export const factDto = (fact: Fact): FactDto =>
 export const managedEntryDto = (view: ManagedEntryView) => ({
   entry: entryDto(view.entry),
   seed: view.seed,
+  completeness: view.completeness,
+  quality: view.quality,
   senses: view.senses.map(senseDto),
   facts: view.facts.map(factDto),
 })

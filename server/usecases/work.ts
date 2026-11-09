@@ -1,20 +1,22 @@
 import { type ManagedEntryView, managedEntryView } from '@server/domain/catalog-view'
 import { principalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
-import { completeDecision, entryGaps, leaseExpiry, revisitAfterPass, type WorkLease } from '@server/domain/work'
+import { assessEntry, completeDecision, leaseExpiry, type WorkLease } from '@server/domain/work'
 import type { EntryId } from '@shared/facts'
-import { type CompleteWorkInput, DEFAULT_LEASE_SECONDS, type Gap, type WorkLeaseId } from '@shared/work'
+import { type CompleteWorkInput, DEFAULT_LEASE_SECONDS, type Gap, type WeakFact, type WorkLeaseId } from '@shared/work'
 import type { Deps } from './deps'
 import { ConflictError, NotFoundError } from './errors'
 import type { Actor } from './facts'
+import { refreshWork } from './work-scores'
 
 export interface WorkClaim {
   lease: WorkLease & { lemma: Lemma }
   entry: ManagedEntryView
   gaps: Gap[]
+  weakFacts: WeakFact[]
 }
 
-/** Leases the next entry in claim order to the caller, with what the entry still lacks; null when none is free. */
+/** Leases the next entry with work left to the caller, with its gaps and weak facts; null when none is. */
 export async function claimWork(
   deps: Pick<Deps, 'work' | 'nodes' | 'clock' | 'ids'>,
   actor: Actor,
@@ -28,12 +30,19 @@ export async function claimWork(
   if (!claimed) return null
   const { lease, entry } = claimed
   const snapshot = await deps.nodes.loadEntrySnapshot(entry)
-  return { lease: { ...lease, lemma: entry.lemma }, entry: managedEntryView(snapshot), gaps: entryGaps(snapshot) }
+  const assessment = assessEntry(snapshot)
+  await deps.work.recordClaimedWork(lease, assessment.openWork)
+  return {
+    lease: { ...lease, lemma: entry.lemma },
+    entry: managedEntryView(snapshot),
+    gaps: assessment.gaps,
+    weakFacts: assessment.weakFacts,
+  }
 }
 
 /**
- * The holder records its work and gives the entry back, marked for a revisit when the pass added
- * facts and left gaps open. The lease is gone afterwards, so a repeat is not found.
+ * The holder records its work and gives the entry back; the rescore then judges whether the pass
+ * stalled the entry. The lease is gone afterwards, so a repeat is not found.
  */
 export async function completeWork(
   deps: Pick<Deps, 'work' | 'nodes' | 'clock'>,
@@ -47,12 +56,10 @@ export async function completeWork(
   const decision = completeDecision(lease, principalRef(actor.principal), now)
   if (decision === 'not_holder') throw new ConflictError(`Work lease ${id} is held by ${lease.holder}.`)
   if (decision === 'expired') throw new ConflictError(`Work lease ${id} expired at ${lease.expiresAt}.`)
-  const entry = await deps.nodes.findEntry(lease.entryId)
-  if (!entry) throw new Error(`Leased entry ${lease.entryId} does not exist.`)
-  const revisit = revisitAfterPass(await deps.nodes.loadEntrySnapshot(entry), lease)
   const at = now.toISOString()
-  if (!(await deps.work.complete(lease, at, { note: input.note ?? null, revisit }))) {
+  if (!(await deps.work.complete(lease, at, input.note ?? null))) {
     throw new ConflictError(`Work lease ${id} changed concurrently; claim again.`)
   }
+  await refreshWork(deps, [lease.entryId])
   return { entryId: lease.entryId, lastWorkedAt: at }
 }

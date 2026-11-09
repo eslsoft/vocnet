@@ -1,12 +1,11 @@
 import { facts } from '@server/db/schema'
-import { isLive } from '@server/domain/fact-lifecycle'
 import type { FactRepo } from '@server/usecases/ports'
 import { type FactId, factKindSchema, factStatusSchema } from '@shared/facts'
 import { and, asc, count, desc, eq, exists, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
-import { revisitEntriesOfFact, syncWorklistLive } from './work'
+import { syncWorklistLive, touchWorkOf, touchWorkOfFact } from './work'
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const SLOT_TAKEN = 'Another live fact already holds this slot.'
@@ -44,6 +43,7 @@ export function createFactRepo(db: Db): FactRepo {
       await db.batch([
         db.insert(facts).values(fromFact(fact)).onConflictDoNothing(),
         syncWorklistLive(db, [fact.subjectId]),
+        touchWorkOf(db, fact.objectId ? [fact.subjectId, fact.objectId] : [fact.subjectId]),
       ])
       return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
@@ -70,8 +70,9 @@ export function createFactRepo(db: Db): FactRepo {
         )
         .returning({ id: facts.id })
       const syncLive = syncWorklistLive(db, db.select({ id: facts.subjectId }).from(facts).where(eq(facts.id, id)))
-      // Leaving live can reopen a gap that a pass closed, on the subject's entry or the object's.
-      const sync = isLive(to) ? [syncLive] : [syncLive, revisitEntriesOfFact(db, { id, to, at })]
+      // Any status or review change can change the gaps or weak facts at either end; a correction
+      // has its original's subject, so the same rows cover the original it supersedes.
+      const sync = [syncLive, touchWorkOfFact(db, id)]
       if (!supersede) {
         return guardUnique('facts', SLOT_TAKEN, async () => {
           const [updated] = await db.batch([update, ...sync])
@@ -110,8 +111,8 @@ export function createFactRepo(db: Db): FactRepo {
               ),
           ]
         : []
-      const results = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, ...mark, update, syncLive]))
-      return (results.at(-2) as { id: string }[]).length > 0
+      const results = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, ...mark, update, ...sync]))
+      return (results.at(-1 - sync.length) as { id: string }[]).length > 0
     },
 
     async listRevalidating(nodeId) {

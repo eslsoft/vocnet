@@ -120,6 +120,13 @@ export const managedEntrySchema = z
   .object({
     entry: entryNodeSchema,
     seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
+    completeness: z.number().min(0).max(1).meta({
+      description:
+        'Share of the slots the gaps count (senses, forms, pronunciation, and per sense the relations its part of speech needs, an example, and a zh translation) that live facts fill; 1 means no gaps.',
+    }),
+    quality: z.number().min(0).max(1).meta({
+      description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',
+    }),
     senses: z.array(senseNodeSchema),
     facts: z
       .array(factSchema)

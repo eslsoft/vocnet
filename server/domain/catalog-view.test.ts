@@ -80,6 +80,7 @@ function bankWorld() {
   ]
   const snapshot: EntrySnapshot = {
     entry: bank,
+    flagged: new Set(),
     seed: false,
     senses: [bankSense],
     facts,
@@ -157,6 +158,7 @@ describe('public read model', () => {
     const relation = snapshot.facts.find((f) => f.kind === 'relation') as Fact
     const fromShore: EntrySnapshot = {
       entry: shore,
+      flagged: new Set(),
       seed: false,
       senses: [shoreSense],
       facts: [fact('entry', shore.id, {}), fact('sense', shoreSense.id, { gloss: 'land along water' })],

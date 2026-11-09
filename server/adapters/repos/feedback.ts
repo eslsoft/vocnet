@@ -3,13 +3,14 @@ import type { FeedbackRepo } from '@server/usecases/ports'
 import { and, count, desc, eq, inArray, lt, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFeedback, page, toFeedback } from './rows'
+import { touchWorkOfFact } from './work'
 
 const feedbackCursor = z.object({ created_at: z.string(), id: z.string() })
 
 export function createFeedbackRepo(db: Db): FeedbackRepo {
   return {
     async insert(item) {
-      await db.insert(feedback).values(fromFeedback(item))
+      await db.batch([db.insert(feedback).values(fromFeedback(item)), touchWorkOfFact(db, item.targetId)])
     },
 
     async find(id) {
@@ -18,11 +19,14 @@ export function createFeedbackRepo(db: Db): FeedbackRepo {
     },
 
     async update(next, expectedRevision) {
-      const rows = await db
-        .update(feedback)
-        .set(fromFeedback(next))
-        .where(and(eq(feedback.id, next.id), eq(feedback.revision, expectedRevision)))
-        .returning({ id: feedback.id })
+      const [rows] = await db.batch([
+        db
+          .update(feedback)
+          .set(fromFeedback(next))
+          .where(and(eq(feedback.id, next.id), eq(feedback.revision, expectedRevision)))
+          .returning({ id: feedback.id }),
+        touchWorkOfFact(db, next.targetId),
+      ])
       return rows.length > 0
     },
 

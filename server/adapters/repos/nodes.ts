@@ -1,9 +1,9 @@
-import { entries, facts, senses, worklist } from '@server/db/schema'
+import { entries, facts, feedback, senses, worklist } from '@server/db/schema'
 import type { FactOf } from '@server/domain/fact'
 import type { SenseWithLemma } from '@server/domain/nodes'
 import type { Lemma } from '@server/domain/term'
 import type { NodeRepo, PageRequest } from '@server/usecases/ports'
-import { type EntryId, type FactStatus, factStatusSchema } from '@shared/facts'
+import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
 import {
   and,
   asc,
@@ -22,7 +22,7 @@ import {
 } from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, liveStatus, page, toEntry, toFact, toSense } from './rows'
-import { insertWorklistRow, revisitEntryOfSense } from './work'
+import { insertWorklistRow, touchWorkOf } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
 const entryCursor = z.object({ lemma: z.string() })
@@ -182,7 +182,7 @@ export function createNodeRepo(db: Db): NodeRepo {
           .values({ ...sense, creationKey })
           .onConflictDoNothing(),
         db.insert(facts).select(db.select(values).from(senses).where(eq(senses.id, sense.id)) as never),
-        revisitEntryOfSense(db, sense),
+        touchWorkOf(db, [sense.entryId]),
       ])
       const stored = await db
         .select({ sense: senses, fact: facts })
@@ -220,7 +220,11 @@ export function createNodeRepo(db: Db): NodeRepo {
       const neighborSenseIds = db.select({ id: senses.id }).from(senses).where(neighborIds)
       const order = [asc(facts.createdAt), asc(facts.id)]
 
-      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts] = await db.batch([
+      const ownFactIds = db
+        .select({ id: facts.id })
+        .from(facts)
+        .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own)))
+      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts, flagged] = await db.batch([
         db.select({ seed: worklist.seed }).from(worklist).where(eq(worklist.entryId, entry.id)),
         db
           .select(senseColumns)
@@ -249,6 +253,16 @@ export function createNodeRepo(db: Db): NodeRepo {
             ),
           )
           .orderBy(...order),
+        db
+          .selectDistinct({ id: feedback.targetId })
+          .from(feedback)
+          .where(
+            and(
+              inArray(feedback.targetId, ownFactIds),
+              eq(feedback.targetType, 'fact'),
+              inArray(feedback.status, ['open', 'claimed']),
+            ),
+          ),
       ])
 
       if (!work[0]) throw new Error(`Entry ${entry.id} has no worklist row.`)
@@ -258,6 +272,7 @@ export function createNodeRepo(db: Db): NodeRepo {
         senses: ownSenses.map(toSenseWithLemma),
         facts: subjectFacts.map(toFact),
         incoming: incoming.map(toFact),
+        flagged: new Set(flagged.map((row) => row.id as FactId)),
         neighbors: { senses: neighborSenses.map(toSenseWithLemma), facts: neighborFacts.map(toFact) },
       }
     },

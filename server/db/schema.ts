@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const entries = sqliteTable('entries', {
   id: text('id').primaryKey(),
@@ -85,15 +85,21 @@ export const feedback = sqliteTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
-  (table) => [index('feedback_status_created_idx').on(table.status, table.createdAt, table.id)],
+  (table) => [
+    index('feedback_status_created_idx').on(table.status, table.createdAt, table.id),
+    index('feedback_target_idx').on(table.targetId, table.status),
+  ],
 )
 
 /**
  * One row per entry, created with it. `live` mirrors whether the entry fact is pending or
- * published, and `claim_rank` derives the claim tier from `claim_count`, `seed`, and `revisit`, so
- * the claim order is one index: an entry's second pass (rank 0), never-claimed seed entries (1),
- * seed entries to revisit (2), never-claimed other entries (3), other entries to revisit (4), and
- * the rotation of everything else (5).
+ * published. `completeness`, `quality`, and `stalled` are computed by `assessEntry` and
+ * `isStalled` in server/domain/work.ts as of `scored_revision`; every write that can change the
+ * entry's work bumps `revision` in its own batch, and the use case that made it rescores. A stale
+ * row (`revision <> scored_revision`) stays claimable, so a lost rescore never hides work.
+ * `claim_rank` is the claim tier of a claimable entry and null otherwise, so the claim order is one
+ * index: seed entries never claimed (0) and claimed (1), then the rest never claimed (2) and
+ * claimed (3), each by lowest completeness, then least recently claimed.
  */
 export const worklist = sqliteTable(
   'worklist',
@@ -103,21 +109,20 @@ export const worklist = sqliteTable(
       .references(() => entries.id),
     createdAt: text('created_at').notNull(),
     live: integer('live', { mode: 'boolean' }).notNull(),
-    /** Set by every claim, so an entry rotates to the back whether or not its work completes. */
+    /** Set by every claim, so an entry moves back in its tier whether or not its work completes. */
     claimedAt: text('claimed_at'),
-    claimCount: integer('claim_count').notNull().default(0),
     /** Set when an entry is submitted as part of a seed list; never cleared. */
     seed: integer('seed', { mode: 'boolean' }).notNull().default(false),
-    /**
-     * Cleared by every claim. Set, while `revisit_streak` allows, when a completed pass made progress
-     * on gaps and left some open, or when a fact about the entry leaves live or another principal
-     * gives it a sense, which can reopen a gap.
-     */
-    revisit: integer('revisit', { mode: 'boolean' }).notNull().default(false),
-    /** Claims in a row taken to revisit; a claim from any other rank resets it. */
-    revisitStreak: integer('revisit_streak').notNull().default(0),
+    completeness: real('completeness').notNull().default(0),
+    quality: real('quality').notNull().default(1),
+    /** The last completed pass left the open work as its claim found it, and nothing changed it since. */
+    stalled: integer('stalled', { mode: 'boolean' }).notNull().default(false),
+    /** `openWork` of the entry when it was last claimed. */
+    claimedWork: text('claimed_work'),
+    revision: integer('revision').notNull().default(0),
+    scoredRevision: integer('scored_revision').notNull().default(0),
     claimRank: integer('claim_rank').generatedAlwaysAs(
-      sql`case when claim_count = 1 then 0 when claim_count = 0 then 3 - 2 * seed when revisit then 4 - 2 * seed else 5 end`,
+      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or (completeness >= 1 and quality >= 1))) then null else 2 - 2 * seed + (claimed_at is not null) end`,
       { mode: 'virtual' },
     ),
     leaseId: text('lease_id').unique(),
@@ -128,7 +133,14 @@ export const worklist = sqliteTable(
     lastNote: text('last_note'),
   },
   (table) => [
-    index('worklist_claim_order_idx').on(table.live, table.claimRank, table.claimedAt, table.createdAt, table.entryId),
+    index('worklist_claim_order_idx').on(
+      table.claimRank,
+      table.completeness,
+      table.claimedAt,
+      table.createdAt,
+      table.entryId,
+    ),
+    index('worklist_stale_idx').on(table.entryId).where(sql`revision <> scored_revision`),
     check(
       'worklist_lease_whole',
       sql`(${table.leaseId} is null) = (${table.leaseHolder} is null) and (${table.leaseId} is null) = (${table.leaseExpiresAt} is null)`,

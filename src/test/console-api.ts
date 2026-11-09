@@ -182,6 +182,8 @@ export function consoleApi(
       return HttpResponse.json({
         entry: { id: entry.id, lemma: entry.lemma, created_by: 'agent:producer', created_at: at },
         seed: false,
+        completeness: 0,
+        quality: 1,
         senses: senses.map((sense) => ({ ...sense, created_by: 'agent:producer', created_at: at })),
         facts,
       })

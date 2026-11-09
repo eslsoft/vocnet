@@ -161,6 +161,8 @@ describe('public catalog', () => {
       ).body,
     )
     await call(`/manage/v1/facts/${example.fact.id}/retract`, { method: 'POST', token })
+    // The seed mark puts bank ahead of the emptier entries.
+    await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'bank', seed: true } })
     const { lease } = workClaimSchema.parse((await call('/manage/v1/work/claim', { method: 'POST', token })).body)
     expect(lease.lemma).toBe('bank')
     await call(`/manage/v1/work/${lease.id}/complete`, { method: 'POST', token })
