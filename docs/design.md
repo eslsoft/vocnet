@@ -54,8 +54,10 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | `author`        | Agent or admin principal that submitted it                     |
 | `review`        | Reviewer, verdict, confidence, reason, raw detail, reviewed at |
 
-A partial unique index on `(kind, subject_id, content_key)` over `pending` and
-`published` rows makes resubmission return the existing fact.
+A partial unique index on `(kind, content_key, subject_id)` over `pending` and
+`published` rows (the *live* facts) makes resubmission return the existing
+fact. `content_key` precedes `subject_id` so lookups by content, such as finding
+the entries that own a form, use the same index.
 
 ### Fact kinds
 
@@ -64,18 +66,25 @@ Each kind declares its subject type, payload schema, content key, reviewer, and
 review prompt. Adding a kind is one registry entry plus a migration only if it
 needs a new column.
 
-| Kind            | Subject | Payload                                    | Reviewer |
-| --------------- | ------- | ------------------------------------------ | -------- |
-| `entry`         | entry   | `{}` (the lemma is an established word)    | Jev      |
-| `sense`         | sense   | `{ gloss }`                                | Jev      |
-| `form`          | entry   | `{ form, type }` (plural, past, variant…)  | Jev      |
-| `relation`      | sense   | `{ type, target_sense_id }`                | Jev      |
-| `pronunciation` | entry   | `{ ipa, accent }`                          | LLM      |
-| `example`       | sense   | `{ text }`                                 | LLM      |
-| `translation`   | sense   | `{ language, text }`                       | LLM      |
+| Kind            | Subject | Cardinality | Payload                                   | Reviewer |
+| --------------- | ------- | ----------- | ----------------------------------------- | -------- |
+| `entry`         | entry   | one         | `{}` (the lemma is an established word)   | Jev      |
+| `sense`         | sense   | one         | `{ gloss }`                               | Jev      |
+| `form`          | entry   | many        | `{ form, type }` (plural, past, variant…) | Jev      |
+| `relation`      | sense   | many        | `{ type, target_sense_id }`               | Jev      |
+| `pronunciation` | entry   | many        | `{ ipa, accent }` (accent `us` or `uk`)   | LLM      |
+| `example`       | sense   | many        | `{ text }`                                | LLM      |
+| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)         | LLM      |
+
+A kind with cardinality *one* admits a single live fact per subject: a sense has
+one gloss. Changing it means submitting a correction that supersedes the
+published fact; a second gloss without `supersedes_id` is a conflict.
 
 Relation types are `synonym`, `antonym`, `hypernym`, and `part_of`, with the
-same review questions the producer qualified.
+same review questions the producer qualified. A relation is reviewed with the
+relation question only. Whether each sense is an established meaning is the
+job of that sense's own `sense` fact, and the relation stays hidden until both
+are published.
 
 ### Fact lifecycle
 
@@ -86,7 +95,9 @@ same review questions the producer qualified.
          ┌────────┐  review fail   ┌──────────┐
          │pending │───────────────▶│ rejected │
          └────────┘                └──────────┘
-             │ review pass/uncertain
+             │ review pass/uncertain       (retract also applies to pending;
+             │                              admin re-review returns published
+             │                              or rejected facts to pending)
              ▼
         ┌──────────┐ correction published ┌────────────┐
         │published │─────────────────────▶│ superseded │
@@ -104,6 +115,11 @@ A correction (`supersedes_id`) is reviewed like any fact. When it publishes,
 the superseded fact changes status in the same D1 batch. A rejected correction
 leaves the original published.
 
+An author can retract its own pending or published fact; admins can retract
+any. An admin can re-review a published or rejected fact: it returns to
+`pending` and is enqueued, unless a rejected fact's slot has since been taken
+by another live fact.
+
 ### Reviews
 
 - **Jev** gets typed `noul` questions at `POST {MODEL_BASE_URL}/v1/systemone`
@@ -114,6 +130,10 @@ leaves the original published.
   endpoint and must return JSON `{ verdict, confidence, reason }`.
 - The review stores the context it judged (lemmas and glosses of referenced
   senses) so a later reader knows what was approved.
+- A sense's current gloss is its published `sense` fact, or until one
+  publishes, its pending one. That keeps examples, translations, and relations
+  from waiting on the gloss. A meaning-dependent fact whose sense has no live
+  gloss at all is rejected as unreviewable without calling a reviewer.
 - A transport failure is not a verdict. The fact stays `pending`, and the queue
   retries it.
 
@@ -122,26 +142,38 @@ leaves the original published.
 Anyone can report a problem with an entry, a sense, or a fact through the
 public API. Feedback moves through `open → claimed → resolved | dismissed`.
 An agent claims a feedback item with a one-hour lease, so two agents do not
-work the same report. An expired claim can be claimed again. Resolving links
-the correcting fact IDs.
+work the same report. An expired claim can be claimed again by anyone, and the
+holder can renew its claim at any time. Only the holder resolves (linking the
+correcting fact IDs) or dismisses (with a note). Every feedback write is a
+compare-and-set on a revision counter.
 
 ## Access
 
 | Surface                   | Who                  | Credential                                   |
 | ------------------------- | -------------------- | -------------------------------------------- |
-| `/v1/*`, `/docs`          | Everyone             | None                                         |
-| `/manage/v1/*`            | Agents and admins    | Agent API key or admin OIDC access token     |
+| `/v1/*`, `/openapi.json`, `/docs` | Everyone     | None                                         |
+| `/manage/v1/*`, `/manage/openapi.json` | Agents and admins | Agent API key or admin OIDC access token |
 | `/manage/v1/agents`       | Admins only          | Admin OIDC access token                      |
 | Admin console (SPA)       | Admins               | OIDC Authorization Code + PKCE               |
 
 Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. Agent keys are random
-secrets that an admin issues in the console. The Worker stores only their
-SHA-256 hash.
+secrets (`vn_agent_…`) that an admin issues. The Worker stores only their
+SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403.
+
+The public wire format is snake_case JSON. Errors are
+`{ "error": { "code", "message" } }` with stable codes; pages are
+`{ items, next_cursor }` over keyset cursors with a unique tiebreaker. The
+console reads its public OIDC settings from `GET /configz`.
 
 ## Runtime
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
 - D1 stores nodes, facts, feedback, and agents.
 - A Cloudflare Queue carries `{ factId }` review jobs. Its consumer reviews.
-- A cron trigger re-enqueues facts that stayed `pending` longer than ten
-  minutes, so a lost enqueue cannot strand a fact.
+- A cron trigger re-enqueues facts whose last status change is more than ten
+  minutes old and that are still `pending`, so a lost enqueue cannot strand a
+  fact. It keys on `updated_at`, not `created_at`, so a re-reviewed fact counts
+  from its reset.
+- A reviewer transport failure (network, 429, 5xx) retries the message with a
+  delay; after five attempts it lands in the `vocnet-reviews-dlq` dead letter
+  queue, and the cron keeps re-enqueueing the fact until review succeeds.
