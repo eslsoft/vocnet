@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   accentSchema,
+  collocationPatternSchema,
   entryIdSchema,
   factIdSchema,
   factKindSchema,
@@ -8,6 +9,8 @@ import {
   factStatusSchema,
   formTypeSchema,
   glossSchema,
+  grammarPayloadSchema,
+  morphemeSchema,
   posSchema,
   registerSchema,
   relationTypeSchema,
@@ -47,6 +50,13 @@ export const publicTranslationSchema = z
   .meta({ id: 'Translation' })
 
 export const publicTopicTagSchema = z.object({ ...factMeta, topic_id: topicIdSchema }).meta({ id: 'TopicTag' })
+export const publicGrammarSchema = grammarPayloadSchema.extend(factMeta).meta({ id: 'Grammar' })
+export const publicMorphologySchema = z
+  .object({ ...factMeta, parts: z.array(morphemeSchema) })
+  .meta({ id: 'Morphology' })
+export const publicCollocationSchema = z
+  .object({ ...factMeta, text: z.string(), pattern: collocationPatternSchema })
+  .meta({ id: 'Collocation' })
 
 export const senseRefSchema = z
   .object({ id: senseIdSchema, lemma: z.string(), pos: posSchema, gloss: z.string() })
@@ -77,6 +87,8 @@ export const publicSenseSchema = z
     topics: z
       .array(publicTopicTagSchema)
       .meta({ description: 'Leaf topics of GET /v1/topics this sense is tagged with.' }),
+    grammar: publicGrammarSchema.nullable(),
+    collocations: z.array(publicCollocationSchema),
   })
   .meta({ id: 'Sense' })
 export type PublicSense = z.infer<typeof publicSenseSchema>
@@ -88,6 +100,7 @@ export const publicEntrySchema = z
     fact: factMetaSchema,
     forms: z.array(publicFormSchema),
     pronunciations: z.array(publicPronunciationSchema),
+    morphology: publicMorphologySchema.nullable(),
     senses: z.array(publicSenseSchema),
     ...lemmaReferenceSchema.shape,
   })

@@ -1,9 +1,29 @@
-import type { Fact } from '@server/domain/fact'
-import { contentKeyOf, factKinds, orientOf, type SubjectType, targetOf, topicOf } from '@server/domain/fact-kinds'
+import { type Fact, isKind } from '@server/domain/fact'
+import {
+  type AdmissionViews,
+  admissionOf,
+  contentKeyOf,
+  factKinds,
+  orientOf,
+  type SubjectType,
+  type SubjectTypeOf,
+  targetOf,
+  topicOf,
+} from '@server/domain/fact-kinds'
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
 import { isLeaf } from '@server/domain/topics'
-import type { EntryId, FactId, FactKind, FactStatus, Pos, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
+import type {
+  EntryId,
+  FactId,
+  FactKind,
+  FactPayloads,
+  FactStatus,
+  Pos,
+  SenseId,
+  SubmitFactInput,
+  TopicId,
+} from '@shared/facts'
 import type { Deps } from './deps'
 import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
 import type { PageRequest } from './ports'
@@ -17,21 +37,34 @@ export interface Actor {
 
 type SubmitDeps = Pick<Deps, 'nodes' | 'facts' | 'topics' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
 
-interface SubjectNode {
+interface SubjectNode<S extends SubjectType> {
   entryId: EntryId
   /** The sense's part of speech; null for an entry. */
   pos: Pos | null
+  /** What the kind's write rule sees of the subject; loaded only for a kind that has one. */
+  admission(): Promise<AdmissionViews[S]>
 }
 
+type SubjectDeps = Pick<Deps, 'nodes' | 'facts'>
+
+const liveForms = async (deps: SubjectDeps, entryId: EntryId) =>
+  (await deps.facts.listLive('form', entryId)).filter(isKind('form')).map((fact) => fact.payload.form)
+
 /** The subject node, or null when it does not exist. */
-const subjectNode: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<SubjectNode | null> } = {
+const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Promise<SubjectNode<S> | null> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
-    return entry && { entryId: entry.id, pos: null }
+    return entry && { entryId: entry.id, pos: null, admission: async () => ({ lemma: entry.lemma }) }
   },
   sense: async (deps, id) => {
     const sense = await deps.nodes.findSense(id as SenseId)
-    return sense && { entryId: sense.entryId, pos: sense.pos }
+    return (
+      sense && {
+        entryId: sense.entryId,
+        pos: sense.pos,
+        admission: async () => ({ lemma: sense.lemma, pos: sense.pos, forms: await liveForms(deps, sense.entryId) }),
+      }
+    )
   },
 }
 
@@ -97,6 +130,7 @@ export async function submitFact(
   const existing = await deps.facts.findLive(kind, subjectId, contentKey)
   if (existing) return { fact: existing, created: false }
 
+  if (spec.admit) await assertAdmitted(kind, payload, subject)
   const supersedesId = input.supersedes_id ?? null
   if (supersedesId) await assertSupersedable(deps, supersedesId, kind, subjectId)
 
@@ -126,6 +160,23 @@ export async function submitFact(
   await refreshWork(deps, [subjectId, target])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { fact, created }
+}
+
+/** Runs the kind's write rule against the subject as it is now; only for a kind that has one. */
+async function assertAdmitted<K extends FactKind>(
+  kind: K,
+  payload: FactPayloads[K],
+  subject: SubjectNode<SubjectTypeOf[K]>,
+): Promise<void> {
+  const refusal = admissionOf(kind, payload, await subject.admission())
+  if (refusal) throw new InvalidReferenceError(refusal)
+}
+
+/** The subject of a stored fact, which nodes never outlive. */
+async function existingSubject(deps: SubjectDeps, fact: Fact): Promise<SubjectNode<SubjectType>> {
+  const subject = await subjectNode[factKinds[fact.kind].subject](deps, fact.subjectId)
+  if (!subject) throw new Error(`Fact ${fact.id} is about ${fact.subjectId}, which does not exist.`)
+  return subject
 }
 
 async function assertSupersedable(
@@ -204,6 +255,8 @@ export async function rereviewFact(
     // takes its original's place, so its original must still be published. A published fact is
     // live already and keeps its place.
     const reviving = !isLive(fact.status)
+    if (reviving && factKinds[fact.kind].admit)
+      await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact))
     const { maxLive } = factKinds[fact.kind]
     const liveBelow = reviving && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
     const originalPublished = (reviving && fact.supersedesId) || undefined

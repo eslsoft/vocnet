@@ -21,5 +21,13 @@ export function summarizeFact(fact: FactDto): string {
       return `${fact.payload.language}: ${fact.payload.text}`
     case 'topic':
       return fact.payload.topic_id
+    case 'grammar': {
+      const { countability, transitivity, position, patterns } = fact.payload
+      return labels(countability, transitivity, position, ...(patterns ?? []))
+    }
+    case 'morphology':
+      return fact.payload.parts.map(({ form, meaning }) => (meaning ? `${form} "${meaning}"` : form)).join(' + ')
+    case 'collocation':
+      return `${fact.payload.text} (${fact.payload.pattern})`
   }
 }

@@ -46,6 +46,9 @@ export const gapSchema = z
     z.object({ type: z.literal('senses') }),
     z.object({ type: z.literal('forms') }),
     z.object({ type: z.literal('pronunciation') }),
+    z
+      .object({ type: z.literal('morphology') })
+      .meta({ description: 'A single-word entry has no live word formation.' }),
     z.object({
       type: z.literal('relations'),
       ...senseGap,
@@ -62,6 +65,12 @@ export const gapSchema = z
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
       description:
         'The sense has no live topic fact. Nouns, verbs, and adjectives need one; other parts of speech have no topics gap.',
+    }),
+    z.object({ type: z.literal('grammar'), ...senseGap }).meta({
+      description: 'A noun or verb sense has no live grammar fact (countability for a noun, transitivity for a verb).',
+    }),
+    z.object({ type: z.literal('collocations'), ...senseGap }).meta({
+      description: 'A noun, verb, or adjective sense has no live collocation.',
     }),
   ])
   .meta({ id: 'Gap', description: 'Something the entry has too few live (pending or published) facts for.' })

@@ -38,6 +38,9 @@ export const enUS = {
     example: 'Example',
     translation: 'Translation',
     topic: 'Topic',
+    grammar: 'Grammar',
+    morphology: 'Word formation',
+    collocation: 'Collocation',
   },
   signal: {
     unreviewed: 'Not reviewed',

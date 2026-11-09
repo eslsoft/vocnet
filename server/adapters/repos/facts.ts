@@ -108,6 +108,15 @@ export function createFactRepo(db: Db): FactRepo {
 
     findLive,
 
+    async listLive(kind, subjectId) {
+      const rows = await db
+        .select()
+        .from(facts)
+        .where(and(eq(facts.subjectId, subjectId), eq(facts.kind, kind), liveStatus))
+        .orderBy(asc(facts.createdAt), asc(facts.id))
+      return rows.map(toFact)
+    },
+
     async findLiveCorrection(id) {
       const row = await db
         .select()

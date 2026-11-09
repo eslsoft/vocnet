@@ -43,7 +43,9 @@ async function pass(world: World, during?: (entryId: EntryId, lemma: string) => 
 /** Gives the entry a preposition sense, which needs no relations, and every other slot. */
 async function fill(world: World, entryId: EntryId, author = agentA) {
   const { sense } = await createSense(world.deps, author, { entry_id: entryId, pos: 'preposition', gloss: 'Near to.' })
+  const entry = await world.deps.nodes.findEntry(entryId)
   const facts = [
+    { kind: 'morphology', subject_id: entryId, payload: { parts: [{ form: entry?.lemma, role: 'base' }] } },
     { kind: 'form', subject_id: entryId, payload: { form: 'bys', type: 'plural' } },
     { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'us' } },
     { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.' } },
@@ -209,7 +211,7 @@ describe('claimWork', () => {
     const claim = await claimWork(world.deps, agentA)
     expect(claim?.gaps).toEqual([])
     expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 6 })
+    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 7 })
     const { fact: correction } = await submitFact(world.deps, agentA, {
       kind: 'example',
       subject_id: sense as SenseId,
@@ -243,7 +245,7 @@ describe('claimWork', () => {
     await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
     await claimFeedback(world.deps, agentB, item.id)
     const claimed = world.work.get(entries[0].entry.id)
-    expect(claimed).toMatchObject({ quality: 1 - 1 / 6, scoredRevision: claimed?.revision })
+    expect(claimed).toMatchObject({ quality: 1 - 1 / 7, scoredRevision: claimed?.revision })
     await resolveFeedback(world.deps, agentB, item.id, { resolution: 'dismissed', note: 'It is.' })
     expect(world.work.get(entries[0].entry.id)).toMatchObject({ quality: 1 })
   })
@@ -282,10 +284,13 @@ describe('claimWork', () => {
     expect(claim?.gaps.map((gap) => gap.type)).toEqual([
       'forms',
       'pronunciation',
+      'morphology',
       'relations',
       'examples',
       'translations',
       'topics',
+      'grammar',
+      'collocations',
     ])
   })
 

@@ -1,7 +1,10 @@
 import type {
+  CollocationPattern,
   FactKind,
   FactPayloads,
   FormType,
+  GrammarPattern,
+  MorphemeRole,
   Pos,
   Register,
   RelationType,
@@ -9,7 +12,7 @@ import type {
   SenseId,
   TopicId,
 } from '@shared/facts'
-import { normalizeTerm, textKey } from './term'
+import { editDistance, isMultiword, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
 // The single source of truth for fact kinds. Wire payload schemas live in
@@ -25,6 +28,9 @@ export interface SubjectTypeOf {
   example: 'sense'
   translation: 'sense'
   topic: 'sense'
+  grammar: 'sense'
+  morphology: 'entry'
+  collocation: 'sense'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -44,6 +50,15 @@ export interface SenseGloss {
 export interface SubjectViews {
   entry: { lemma: string; senses: SenseGloss[] }
   sense: SenseView & { siblings: SenseGloss[] }
+}
+
+/**
+ * What a write rule sees of the subject when a fact is submitted: the lemma, and for a sense its
+ * part of speech and the entry's live forms.
+ */
+export interface AdmissionViews {
+  entry: { lemma: string }
+  sense: { lemma: string; pos: Pos; forms: readonly string[] }
 }
 
 export interface ReviewContext<S extends SubjectType = SubjectType> {
@@ -104,6 +119,11 @@ interface BaseSpec<K extends FactKind> {
    * correction that only relabels leaves them alone.
    */
   revalidates?: readonly FactKind[]
+  /**
+   * A write rule that needs the subject, checked when the fact is submitted: why the payload does
+   * not fit it, or null when it does.
+   */
+  admit?(payload: FactPayloads[K], subject: AdmissionViews[SubjectTypeOf[K]]): string | null
 }
 
 export interface Oriented<K extends FactKind> {
@@ -228,8 +248,6 @@ function relationRubric(type: RelationType, source: GlossedSense, target: Glosse
     'pass: the claim holds for these senses and no other type fits better. fail: the claim is false for these senses, or another type fits better. uncertain: you cannot tell.',
   ].join('\n')
 }
-
-const isMultiword = (lemma: string) => /\s/.test(lemma)
 
 /**
  * A multiword lemma is admitted only as a lexical unit. The test is a question about the phrase
@@ -408,6 +426,251 @@ function orientRelation(subjectId: string, payload: FactPayloads['relation']): O
 const labelled = (key: string, ...labels: Array<string | undefined>) =>
   [key, ...labels.filter((label) => label !== undefined)].join('|')
 
+type Grammar = FactPayloads['grammar']
+type GrammarField = keyof Grammar
+
+interface PatternSpec {
+  name: string
+  /** A verb that takes the pattern, as an illustration. */
+  verb: string
+  /** An adjective that takes it; absent when adjectives do not. */
+  adjective?: string
+}
+
+const grammarPatterns: Record<GrammarPattern, PatternSpec> = {
+  to_infinitive: { name: 'a to-infinitive', verb: 'decide to leave', adjective: 'happy to help' },
+  bare_infinitive: { name: 'an infinitive without "to"', verb: 'help carry' },
+  ing_form: { name: 'an -ing form', verb: 'enjoy swimming', adjective: 'busy working' },
+  that_clause: { name: 'a that-clause', verb: 'say that it is late', adjective: 'sure that it is true' },
+  wh_clause: {
+    name: 'a clause beginning with a wh-word, if, or whether',
+    verb: 'wonder why',
+    adjective: 'unsure whether to go',
+  },
+  object_to_infinitive: { name: 'an object and a to-infinitive', verb: 'want someone to stay' },
+  object_bare_infinitive: { name: 'an object and an infinitive without "to"', verb: 'make someone laugh' },
+  object_ing: { name: 'an object and an -ing form', verb: 'keep someone waiting' },
+  two_objects: { name: 'two objects', verb: 'give someone a book' },
+  object_complement: { name: 'an object and a complement that describes it', verb: 'call someone a hero' },
+  preposition: { name: 'a particular preposition', verb: 'rely on', adjective: 'afraid of' },
+}
+
+const allPatterns = Object.keys(grammarPatterns) as GrammarPattern[]
+
+type GrammarPos = 'noun' | 'verb' | 'adjective'
+
+/** The grammar each part of speech takes; only these parts of speech take a grammar fact. */
+const grammarRules: Record<
+  GrammarPos,
+  { fields: readonly GrammarField[]; requires?: GrammarField; patterns: readonly GrammarPattern[] }
+> = {
+  noun: { fields: ['countability'], requires: 'countability', patterns: [] },
+  verb: { fields: ['transitivity', 'patterns'], requires: 'transitivity', patterns: allPatterns },
+  adjective: {
+    fields: ['position', 'patterns'],
+    patterns: allPatterns.filter((pattern) => grammarPatterns[pattern].adjective),
+  },
+}
+
+const listed = (values: readonly string[]) => values.join(', ')
+
+const GRAMMAR_POS = Object.keys(grammarRules) as GrammarPos[]
+
+/** `subjectPos` admits only the parts of speech with a rule, so the sense's is one of them. */
+function admitGrammar(grammar: Grammar, { pos }: AdmissionViews['sense']): string | null {
+  const rule = grammarRules[pos as GrammarPos]
+  const foreign = (Object.keys(grammar) as GrammarField[]).filter((field) => !rule.fields.includes(field))
+  if (foreign.length > 0) {
+    return `The grammar of ${article(pos)} ${pos} sense names only ${rule.fields.join(' and ')}; remove ${listed(foreign)}.`
+  }
+  if (rule.requires && grammar[rule.requires] === undefined) {
+    return `The grammar of ${article(pos)} ${pos} sense names its ${rule.requires}.`
+  }
+  const unfit = (grammar.patterns ?? []).filter((pattern) => !rule.patterns.includes(pattern))
+  if (unfit.length > 0) {
+    return `${listed(unfit)} ${unfit.length === 1 ? 'is not a pattern' : 'are not patterns'} of ${article(pos)} ${pos}; its patterns are ${listed(rule.patterns)}.`
+  }
+  return null
+}
+
+/** One property per field, sorted patterns, so the same grammar in another order is the same fact. */
+function grammarKey({ countability, transitivity, position, patterns }: Grammar): string {
+  return [
+    countability && `countability:${countability}`,
+    transitivity && `transitivity:${transitivity}`,
+    position && `position:${position}`,
+    patterns && `patterns:${[...patterns].sort().join(',')}`,
+  ]
+    .filter((part) => part !== undefined)
+    .join('|')
+}
+
+const grammarClaims = {
+  countability: {
+    countable: 'countable: it takes "a" or "an" and has a plural',
+    uncountable: 'uncountable: it takes no "a" or "an" and has no plural',
+    both: 'both countable and uncountable: it is used with "a", "an", or a plural, and also without them',
+  },
+  transitivity: {
+    transitive: 'transitive only: it takes a direct object and is not used without one',
+    intransitive: 'intransitive: it never takes a direct object',
+    both: 'both transitive and intransitive: it is used with a direct object and also without one',
+  },
+  position: {
+    attributive_only:
+      'attributive only: used before a noun ("the main reason") but not after a linking verb such as "be"',
+    predicative_only:
+      'predicative only: used after a linking verb such as "be" ("the baby is asleep") but not before a noun',
+  },
+} as const
+
+function patternClaim(pattern: GrammarPattern, pos: Pos): string {
+  const { name, verb, adjective } = grammarPatterns[pattern]
+  return `commonly followed by ${name} (a pattern like "${pos === 'adjective' ? adjective : verb}")`
+}
+
+/** Each property the fact claims, keyed as its Jev question is. */
+function grammarClaimsOf(
+  { countability, transitivity, position, patterns }: Grammar,
+  pos: Pos,
+): Array<[key: string, claim: string]> {
+  const properties = [
+    ['countability', countability && grammarClaims.countability[countability]],
+    ['transitivity', transitivity && grammarClaims.transitivity[transitivity]],
+    ['position', position && grammarClaims.position[position]],
+  ] as const
+  return [
+    ...properties.flatMap(([key, claim]): Array<[string, string]> => (claim ? [[key, claim]] : [])),
+    ...(patterns ?? []).map((pattern): [string, string] => [`pattern_${pattern}`, patternClaim(pattern, pos)]),
+  ]
+}
+
+function grammarQuestions(grammar: Grammar, sense: GlossedSense): JevQuestions {
+  const scope = `Consider the English ${sense.pos} ${quote(sense.lemma)} only in the sense ${quote(sense.gloss)}, not in any other sense.`
+  return Object.fromEntries(
+    grammarClaimsOf(grammar, sense.pos).map(([key, claim]) => [
+      key,
+      `${scope} Is it ${claim}? ${DATA_NOT_INSTRUCTIONS}`,
+    ]),
+  )
+}
+
+function grammarRubric(grammar: Grammar, subject: SubjectViews['sense'], sense: GlossedSense): string {
+  return [
+    `Is this grammar of ${describe(sense)} correct, as a learner's dictionary such as the Oxford Advanced Learner's, Longman, or Cambridge would mark it?`,
+    'It claims the word in this sense is:',
+    ...grammarClaimsOf(grammar, sense.pos).map(([, claim]) => `- ${claim}`),
+    'Judge each claim for this sense only, never for another sense of the word.',
+    'pass: every claim holds for this sense. Patterns are the common ones a learner needs, not all of them: a pattern left out is not an error.',
+    'fail: any claim is wrong for this sense or holds only for another sense, or a pattern is rare or unnatural with this sense.',
+    listSenses('Other senses of this entry, for reference', subject.siblings),
+  ].join('\n')
+}
+
+type Morpheme = FactPayloads['morphology']['parts'][number]
+
+/** How many letters may change where two parts join: happy + -ness gives happiness, decide + -ion decision. */
+const JOIN_CHANGES = 2
+
+const letters = (form: string) => form.toLowerCase().replace(/[-']/g, '')
+
+function admitMorphology({ parts }: FactPayloads['morphology'], { lemma }: AdmissionViews['entry']): string | null {
+  if (isMultiword(lemma)) return `A word formation describes a single word; ${quote(lemma)} is a phrase.`
+  const joined = parts.map((part) => letters(part.form)).join('')
+  if (editDistance(joined, letters(lemma)) <= JOIN_CHANGES * (parts.length - 1)) return null
+  return `The parts ${parts.map((part) => part.form).join(' + ')} do not spell ${quote(lemma)}; spelling changes only where parts join (happy + -ness gives happiness).`
+}
+
+const morphemeRoles: Record<MorphemeRole, string> = {
+  prefix: 'prefix',
+  suffix: 'suffix',
+  root: 'root',
+  base: 'base word',
+}
+
+const describeParts = (parts: readonly Morpheme[]) =>
+  parts
+    .map(
+      ({ form, role, meaning }) =>
+        `${quote(form)} (${morphemeRoles[role]}${meaning ? ` meaning ${quote(meaning)}` : ''})`,
+    )
+    .join(' + ')
+
+const isSimpleWord = (parts: readonly Morpheme[]) => parts.length === 1
+
+function morphologyQuestion(lemma: string, parts: readonly Morpheme[]): string {
+  if (isSimpleWord(parts)) {
+    return `Is ${quote(lemma)} a simple word in present-day English: one that a learner's dictionary does not analyse into a prefix, a suffix, a root, or other words? ${DATA_NOT_INSTRUCTIONS}`
+  }
+  return `Is the English word ${quote(lemma)} formed from exactly these parts: ${describeParts(parts)}, as a learner's dictionary analyses its word formation? Every part and every stated meaning must be right, no part may be missing or extra, and letters that only look like an affix or a resemblance that is not the word's real formation (folk etymology) do not count. ${DATA_NOT_INSTRUCTIONS}`
+}
+
+function morphologyRubric(entry: SubjectViews['entry'], parts: readonly Morpheme[]): string {
+  return [
+    `Is this the word formation of the English word ${quote(entry.lemma)} that a learner's dictionary would give?`,
+    isSimpleWord(parts)
+      ? 'Claimed: a simple word, with no prefix, suffix, root, or other word to analyse it into.'
+      : `Claimed parts: ${describeParts(parts)}.`,
+    'pass: in present-day English the word is built from exactly these parts: its base word or Latin or Greek root, and its prefixes and suffixes, with every stated meaning right for that part. Spelling changes where parts join are normal (happy + -ness gives happiness). A simple word passes when it has no parts a learner could recognise.',
+    'fail: a part is wrong, missing, or extra; a stated meaning is wrong; the analysis is folk etymology or splits off letters that only look like an affix (the "er" of "water"); or the word does have parts and is claimed to be simple.',
+    listSenses("The word's senses", entry.senses),
+  ].join('\n')
+}
+
+/** A sense holds at most this many live collocations: the strongest few a learner needs. */
+export const MAX_COLLOCATIONS = 5
+
+const collocationPatterns: Record<CollocationPattern, string> = {
+  verb_noun: 'a verb with a noun as its object ("make a decision")',
+  adjective_noun: 'an adjective with a noun ("heavy rain")',
+  noun_noun: 'a noun with another noun ("traffic jam")',
+  adverb_adjective: 'an adverb with an adjective ("deeply grateful")',
+  verb_adverb: 'a verb with an adverb ("whisper softly")',
+  verb_preposition: 'a verb with a preposition ("depend on")',
+  noun_preposition: 'a noun with a preposition ("an increase in")',
+  adjective_preposition: 'an adjective with a preposition ("afraid of")',
+  phrase: 'a fixed phrase built around the word ("in the long run")',
+}
+
+/** Lowercase words between single spaces; a typographic apostrophe is the straight one. */
+const wordsOf = (text: string) =>
+  ` ${text
+    .toLowerCase()
+    .replaceAll('\u2019', "'")
+    .replace(/[^\p{L}\p{N}'-]+/gu, ' ')
+    .trim()} `
+
+function admitCollocation(
+  { text }: FactPayloads['collocation'],
+  { lemma, forms }: AdmissionViews['sense'],
+): string | null {
+  const words = wordsOf(text)
+  if ([lemma, ...forms].some((term) => words.includes(wordsOf(term)))) return null
+  return `A collocation contains the word: ${quote(text)} has neither ${quote(lemma)} nor one of its live forms.`
+}
+
+const COLLOCATION_FAILS = [
+  'It is a free combination anyone composes from the plain meanings of the words ("a nice decision", "see a car").',
+  'It uses the word in another sense, such as one of the other senses listed below.',
+  'It is rare, unnatural, or ungrammatical.',
+  'It does not have the claimed pattern.',
+]
+
+function collocationRubric(
+  text: string,
+  pattern: CollocationPattern,
+  sense: SubjectViews['sense'] & GlossedSense,
+): string {
+  return [
+    `Is ${quote(text)} a collocation of ${describe(sense)} that a learner's dictionary of collocations would list?`,
+    `Claimed pattern: ${pattern}, ${collocationPatterns[pattern]}.`,
+    'pass: native speakers commonly use this combination with the word in this sense, and it has the claimed pattern.',
+    'fail when any of these holds:',
+    ...COLLOCATION_FAILS.map((rule) => `- ${rule}`),
+    listSenses('Other senses of this entry, for reference', sense.siblings),
+  ].join('\n')
+}
+
 export const factKinds: { [K in FactKind]: KindSpec<K> } = {
   entry: {
     subject: 'entry',
@@ -429,7 +692,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // A register-only correction must differ from the gloss it supersedes.
     contentKey: ({ gloss, register }) => labelled(textKey(gloss), register),
     meaningKey: ({ gloss }) => textKey(gloss),
-    revalidates: ['example', 'translation', 'relation', 'topic'],
+    revalidates: ['example', 'translation', 'relation', 'topic', 'grammar', 'collocation'],
     plan: ({ gloss, register }, { subject }) =>
       jevThenLlm(
         { lexical: lexicalQuestion(subject.lemma, subject.pos, gloss, register) },
@@ -507,6 +770,40 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
         ),
       ),
   },
+  grammar: {
+    subject: 'sense',
+    cardinality: 'one',
+    chain: ['jev', 'llm'],
+    contentKey: grammarKey,
+    subjectPos: GRAMMAR_POS,
+    admit: admitGrammar,
+    plan: (payload, { subject }) =>
+      withGloss(subject, (sense) =>
+        jevThenLlm(grammarQuestions(payload, sense), grammarRubric(payload, subject, sense)),
+      ),
+  },
+  morphology: {
+    subject: 'entry',
+    cardinality: 'one',
+    chain: ['jev', 'llm'],
+    contentKey: ({ parts }) =>
+      parts
+        .map(({ form, role, meaning }) => labelled(`${role}:${textKey(form)}`, meaning && textKey(meaning)))
+        .join('+'),
+    admit: admitMorphology,
+    plan: ({ parts }, { subject }) =>
+      jevThenLlm({ formation: morphologyQuestion(subject.lemma, parts) }, morphologyRubric(subject, parts)),
+  },
+  collocation: {
+    subject: 'sense',
+    cardinality: 'many',
+    chain: ['llm'],
+    maxLive: MAX_COLLOCATIONS,
+    contentKey: ({ text, pattern }) => `${pattern}|${textKey(text)}`,
+    admit: admitCollocation,
+    plan: ({ text, pattern }, { subject }) =>
+      withGloss(subject, (sense) => llm(collocationRubric(text, pattern, { ...subject, ...sense }))),
+  },
 }
 
 export function planReview<K extends FactKind>(
@@ -515,6 +812,15 @@ export function planReview<K extends FactKind>(
   context: ReviewContext<SubjectTypeOf[K]>,
 ): ReviewPlan {
   return factKinds[kind].plan(payload, context)
+}
+
+/** Why the payload does not fit its subject, or null; kinds without a subject rule admit everything. */
+export function admissionOf<K extends FactKind>(
+  kind: K,
+  payload: FactPayloads[K],
+  subject: AdmissionViews[SubjectTypeOf[K]],
+): string | null {
+  return factKinds[kind].admit?.(payload, subject) ?? null
 }
 
 export function contentKeyOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): string {

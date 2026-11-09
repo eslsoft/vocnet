@@ -87,9 +87,12 @@ needs a new column.
 | `example`       | sense   | many        | `{ text }`                                               | LLM            |
 | `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)                        | LLM            |
 | `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | Jev, then LLM  |
+| `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns? }` | Jev, then LLM  |
+| `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | Jev, then LLM  |
+| `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM            |
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
-one gloss. Changing it means submitting a correction that supersedes the
+one gloss, one grammar, and an entry one word formation. Changing it means submitting a correction that supersedes the
 published fact; a second gloss without `supersedes_id` is a conflict.
 
 D1 enforces this with two partial unique indexes on `(kind, subject_id)` over
@@ -210,6 +213,76 @@ plain payload shape, so facts written before a rule still read.
   `g`; `ˈ` and `ː`, not `'` and `:`; `tʃ` and `dʒ`, not ligatures. The message
   names each symbol to replace.
 
+- **Grammar.** At least one property, each pattern once.
+- **Word formation.** Parts in written order: prefixes, then at least one base or
+  root, then suffixes. A prefix is letters ending in a hyphen (`un-`), a suffix a
+  hyphen followed by letters (`-ness`), a root letters only (`spect`), and a base a
+  word (`happy`, or one with an inner hyphen or apostrophe). One part is a simple
+  word, so its role is `base`.
+- **Collocation.** At least two words.
+
+#### Grammar, word formation, and collocations
+
+`grammar` is what a learner needs to use a sense in a sentence. Its properties
+depend on the sense's part of speech, which a submission is checked against:
+
+| Part of speech | Properties                                                         |
+| -------------- | ------------------------------------------------------------------ |
+| noun           | `countability` (required): `countable`, `uncountable`, or `both`   |
+| verb           | `transitivity` (required): `transitive`, `intransitive`, or `both`; `patterns` |
+| adjective      | `position`: `attributive_only` or `predicative_only` (absent means both); `patterns` |
+
+`patterns` lists the common constructions that follow the word, not all of
+them: `to_infinitive`, `bare_infinitive`, `ing_form`, `that_clause`,
+`wh_clause`, `object_to_infinitive`, `object_bare_infinitive`, `object_ing`,
+`two_objects`, `object_complement`, and `preposition` for verbs; adjectives take
+`to_infinitive`, `ing_form`, `that_clause`, `wh_clause`, and `preposition`.
+Grammar about any other part of speech is refused by the registry's
+`subjectPos`, as a topic on a function word is. A property the part of speech
+does not take, a missing required one, or a pattern it does not take is
+`422 invalid_reference` with a message naming what to change. Its content key is
+its properties in a fixed order with sorted patterns.
+
+`morphology` is an entry's word formation as a learner's dictionary gives it:
+a simple word is one `base` part (`water`), a derived word names its base and
+affixes (`unhappiness` = `un-` + `happy` + `-ness`), and a Latin or Greek root
+may carry a short meaning (`spectator` = `spect` "look" + `-ator`). Roles are
+`prefix`, `root`, `suffix`, and `base`. A phrase has no word formation: a
+morphology fact about a multiword entry is `422 invalid_reference`. The check
+of the parts is light: their letters, without hyphens and apostrophes and
+ignoring case, must spell the lemma within two changed letters for each place
+two parts join (`happy` + `-ness` gives *happiness*, `decide` + `-ion`
+*decision*); otherwise it is `422`. Whether the parts are the real formation is
+review's job. Its content key is each part's role, form, and meaning in order.
+
+`collocation` is a combination native speakers commonly use with a sense, such
+as *make a decision*. `pattern` is `verb_noun`, `adjective_noun`, `noun_noun`,
+`adverb_adjective`, `verb_adverb`, `verb_preposition`, `noun_preposition`,
+`adjective_preposition`, or `phrase`. Its text must contain the lemma, or the
+form of one of the entry's live `form` facts, as whole words, case-insensitively
+and with a typographic apostrophe (’) matching a straight one; otherwise it is
+`422 invalid_reference`, and the message tells the agent to use the word or one
+of its recorded forms. A sense holds at most five live collocations
+(`maxLive` in the registry): a sixth is `409 conflict`, a resubmission of a live
+one returns it, and a correction that supersedes one takes its place. The cap
+is enforced as the topics limit is: inside the insert and the re-review reset,
+so concurrent submissions cannot pass it. Its content key is the pattern and
+the case-folded text.
+
+The payload rules against the subject are the registry's `admit` hook, which
+`subjectPos` cannot express because they read the payload: when a kind has one,
+the submission loads what the rule reads (the lemma, a sense's part of speech, and
+the entry's live forms) and runs it after the content-key dedupe, so
+resubmitting a live fact still returns it. Re-reviewing a rejected fact runs the
+same rule against the subject as it is then, because a live form the fact relied
+on may have been retracted or rejected since: a fact that no longer fits answers
+the same `422 invalid_reference` and stays rejected.
+
+The public entry (`GET /v1/entries/{lemma}`) shows its published word formation
+as `morphology`, and each public sense (also `GET /v1/senses/{id}`) its
+published `grammar` and `collocations`, each with its id, confidence, and
+verdict. A kind of cardinality *one* reads `null` when nothing is published.
+
 Labels are optional, and absent means unlabelled:
 
 | Kind            | Label       | Values                                                                 |
@@ -266,7 +339,8 @@ the superseded fact changes status in the same D1 batch: the original leaves
 correction enters it. A rejected correction leaves the original published.
 
 A correction of a sense's gloss changes the meaning that the sense's examples,
-translations, and relations (as subject or object) were judged against. The
+translations, relations (as subject or object), grammar, and collocations were
+judged against. The
 registry lists these as the `sense` kind's `revalidates` kinds. Only a change of
 meaning revalidates them: the registry's `meaningKey` for a gloss is its text
 without the register, and a correction with the same meaning key as the gloss it
@@ -393,6 +467,29 @@ but only to choose the message.
   same act, event, or state (腹泻；拉肚子 for "run" meaning diarrhoea). A wrong
   meaning, a different sense, a noun-only equivalent of a verb sense,
   unnatural wording, or equivalents of unrelated senses fail.
+- **Grammar** asks Jev one yes/no question per property and per pattern, each
+  about the sense only ("Consider the English verb "run" only in the sense …,
+  not in any other sense. Is it intransitive: it never takes a direct object?").
+  The questions are keyed `countability`, `transitivity`, `position`, and
+  `pattern_<name>`, and each pattern names an illustration ("decide to leave"
+  for a verb, "happy to help" for an adjective). The LLM second opinion lists
+  every claim, as the Oxford Advanced Learner's, Longman, or Cambridge would
+  mark the sense: it passes when each claim holds for this sense, fails a claim
+  that is wrong or holds only for another sense, or a pattern that is rare or
+  unnatural with it, and does not fail a pattern left out.
+- **Word formation** asks Jev whether the word is formed from exactly these
+  parts with these meanings, as a learner's dictionary analyses it, with no
+  part missing or extra and no folk etymology; one base part asks whether the
+  word is a simple word. The LLM rubric allows spelling changes where parts
+  join and fails a wrong, missing, or extra part, a wrong meaning, folk
+  etymology, letters that only look like an affix (the "er" of "water"), and a
+  word claimed simple that has parts.
+- **Collocations** go to the LLM alone, like examples: is the text a
+  collocation of this sense that a learner's dictionary of collocations would
+  list, in the claimed pattern? It fails a free combination anyone composes
+  from the plain meanings ("a nice decision"), a combination that uses another
+  sense of the word (the entry's other senses are listed), rare, unnatural, or
+  ungrammatical wording, and the wrong pattern.
 - **Examples** of vulgar, offensive, or derogatory senses are judged as
   illustrations of that sense: a sentence that shows the sense in ordinary use
   passes, and one that adds offence the sense does not need, such as abuse of
@@ -446,9 +543,10 @@ Both scores are pure functions of the entry's facts in `server/domain/work.ts`
 the claim.
 
 **Completeness** (0..1) is filled slots over the slots the gap rules count. The
-entry has three slots (senses, forms, pronunciation); each sense with a live
-gloss adds the relations and topics its part of speech needs, one example, and
-one `zh` translation. A relations gap with `count` relations fills `count` of its
+entry has three slots (senses, forms, pronunciation), and a single-word entry a
+fourth (word formation); each sense with a live gloss adds the relations, topics,
+grammar, and collocations its part of speech needs, one example, and one
+`zh` translation. A relations gap with `count` relations fills `count` of its
 slots. Completeness derives from `entryGaps`, so the gap rules stay the one
 source: it is 1 exactly when there are no gaps.
 
@@ -540,6 +638,16 @@ General-vocabulary senses (*get*, *make*, *thing*, *important*) belong to no
 topic, so they are expected to stay untagged: their topics gap stays open and
 the entry stalls after one pass.
 
+### Grammar, collocations, and word formation
+
+`GRAMMAR_NEEDED` and `COLLOCATIONS_NEEDED` in `server/domain/work.ts` are the
+tables of what a sense needs, like `RELATIONS_NEEDED`. Noun and verb senses
+need one grammar fact: countability and transitivity are what a learner most
+needs of them. An adjective may have grammar, where its position or patterns
+restrict it, but has no grammar gap. Noun, verb, and adjective senses need one
+collocation; other parts of speech none. A single-word entry needs one word
+formation; a phrase none, since its words are their own entries.
+
 ### The worklist table
 
 `worklist` holds one row per entry, written in the same batch as the entry:
@@ -596,8 +704,11 @@ every row stale for the cron to drain 100 at a time (a stale row is claimable,
 so finished entries would have been handed out meanwhile). The same statement
 lifts the stall of an entry with an open topics gap whose `claimed_work` names
 no topics gap: its open work changed, as `isStalled` would find on the next
-rescore. A test runs the backfills over rescored rows and expects the same
-scores.
+rescore. `worklist_usage_scores` did the same when grammar, collocations, and
+word formation gaps opened: it recomputed every entry's completeness over every
+slot, those three included, and kept an entry stalled only when none of them is
+open, since no claim recorded before then named one. A test runs the backfills
+in order over rescored rows and expects the same scores.
 
 ### Gaps
 
@@ -614,6 +725,9 @@ facts close its gap:
 | `{ type: "examples", sense_id }`         | The sense has no live example                           |
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` or `zh-*` translation |
 | `{ type: "topics", sense_id }`           | The sense has fewer live topic facts than its part of speech needs (`TOPICS_NEEDED`) |
+| `{ type: "morphology" }`                 | A single-word entry has no live word formation          |
+| `{ type: "grammar", sense_id }`          | A noun or verb sense has no live grammar fact           |
+| `{ type: "collocations", sense_id }`     | A noun, verb, or adjective sense has no live collocation |
 
 Per-sense gaps apply to each sense whose gloss is live.
 

@@ -359,6 +359,8 @@ export function fakeWorld(): FakeWorld {
     facts: {
       find: async (id) => world.facts.find((fact) => fact.id === id) ?? null,
       findLive: async (kind, subjectId, contentKey) => findLive(kind, subjectId, contentKey),
+      listLive: async (kind, subjectId) =>
+        world.facts.filter((fact) => fact.kind === kind && fact.subjectId === subjectId && live(fact)),
       insert: async (fact) => {
         const existing = findLive(fact.kind, fact.subjectId, fact.contentKey)
         if (existing) return existing

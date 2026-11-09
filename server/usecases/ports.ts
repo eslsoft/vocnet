@@ -92,6 +92,8 @@ export interface FactTransitionWrite {
 export interface FactRepo {
   find(id: FactId): Promise<Fact | null>
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
+  /** The live facts of a kind about a subject, oldest first. */
+  listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
   /** The live (pending or published) correction that supersedes this fact, if any. */
   findLiveCorrection(id: FactId): Promise<Fact | null>
   /**

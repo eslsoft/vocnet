@@ -29,7 +29,7 @@ const postSense = async (token: string, entryId: string, gloss: string) =>
 const submitFact = async (token: string, json: unknown) =>
   factWriteResultSchema.parse((await call('/manage/v1/facts', { method: 'POST', token, json })).body).fact
 /** Gives the entry a preposition sense, which needs no relations, and every other slot; returns the facts. */
-const fill = async (token: string, entryId: string) => {
+const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: string }) => {
   const { sense } = createSenseResultSchema.parse(
     (
       await call('/manage/v1/senses', {
@@ -40,6 +40,11 @@ const fill = async (token: string, entryId: string) => {
     ).body,
   )
   const form = await submitFact(token, { kind: 'form', subject_id: entryId, payload: { form: 'bys', type: 'plural' } })
+  await submitFact(token, {
+    kind: 'morphology',
+    subject_id: entryId,
+    payload: { parts: [{ form: lemma, role: 'base' }] },
+  })
   const ipa = await submitFact(token, {
     kind: 'pronunciation',
     subject_id: entryId,
@@ -75,11 +80,11 @@ const settle = async () => {
 }
 /** Runs the worklist score backfills in migration order, as a deploy over existing rows does. */
 const runBackfills = async () => {
-  const backfills = env.TEST_MIGRATIONS.filter(
-    (migration) =>
-      migration.name.endsWith('worklist_scores_backfill.sql') || migration.name.endsWith('worklist_topics_scores.sql'),
+  // Every rescore migration in order: the scores backfill, then one per release that added gaps.
+  const backfills = env.TEST_MIGRATIONS.filter((migration) =>
+    /worklist_(scores_backfill|topics_scores|usage_scores)\.sql$/.test(migration.name),
   )
-  expect(backfills).toHaveLength(2)
+  expect(backfills).toHaveLength(3)
   for (const query of backfills.flatMap((migration) => migration.queries)) await env.DB.prepare(query).run()
 }
 const expireLeases = () =>
@@ -107,7 +112,12 @@ describe('worklist', () => {
     expect(Date.parse(work.lease.expires_at) - Date.now()).toBeGreaterThan(590_000)
     const view = managedEntrySchema.parse((await call('/manage/v1/entries/tide', { token: holder })).body)
     expect(work.entry).toEqual(view)
-    expect(work.gaps).toEqual([{ type: 'senses' }, { type: 'forms' }, { type: 'pronunciation' }])
+    expect(work.gaps).toEqual([
+      { type: 'senses' },
+      { type: 'forms' },
+      { type: 'pronunciation' },
+      { type: 'morphology' },
+    ])
     expect(work.weak_facts).toEqual([])
     expect(work.entry).toMatchObject({ completeness: 0, quality: 1 })
 
@@ -248,19 +258,19 @@ describe('worklist', () => {
     const by = await createEntry(token, 'by')
     const of = await createEntry(token, 'of')
     await settle()
-    const facts = await fill(token, by.entry.id)
+    const facts = await fill(token, by.entry)
     const scoresOf = async (lemma: string) =>
       managedEntrySchema.parse((await call(`/manage/v1/entries/${lemma}`, { token })).body)
     expect(await scoresOf('by')).toMatchObject({ completeness: 1, quality: 1 })
     expect(await lemmaOf(token)).toBe('of')
-    await fill(token, of.entry.id)
+    await fill(token, of.entry)
     expect(await lemmaOf(token)).toBeNull()
 
     // A rejection reopens the gap; the entry is claimable once its other facts are reviewed too.
     stubReviewers(0.05, 'fail')
     await deliverReviews([facts.at(-1)?.id as string])
     vi.restoreAllMocks()
-    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 1 / 5, quality: 1 })
+    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 1 / 6, quality: 1 })
     expect(await lemmaOf(token)).toBeNull()
     await settle()
     expect(await lemmaOf(token)).toBe('by')
@@ -312,7 +322,7 @@ describe('worklist', () => {
   it('names the weak facts in the claim, from uncertain reviews and open feedback [spec: work/weak-facts]', async () => {
     const token = await issueAgentKey()
     const by = await createEntry(token, 'by')
-    const [form, , , example] = await fill(token, by.entry.id)
+    const [form, , , example] = await fill(token, by.entry)
     stubReviewers()
     await deliverPendingReviews()
     expect(await lemmaOf(token)).toBeNull()
@@ -328,7 +338,7 @@ describe('worklist', () => {
     const first = workClaimSchema.parse((await claim(token)).body)
     expect(first.gaps).toEqual([])
     expect(first.weak_facts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 6 })
+    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 7 })
     expect((await complete(token, first.lease.id)).status).toBe(200)
     expect(await lemmaOf(token)).toBeNull()
 
@@ -348,7 +358,7 @@ describe('worklist', () => {
   it('backfills the same scores the rescore stores [spec: work/scores-backfill]', async () => {
     const token = await issueAgentKey()
     const by = await createEntry(token, 'by')
-    const [form] = await fill(token, by.entry.id)
+    const [form] = await fill(token, by.entry)
     stubReviewers()
     await deliverPendingReviews()
     vi.restoreAllMocks()
@@ -377,6 +387,19 @@ describe('worklist', () => {
     })
     expect(report.status).toBe(201)
     await submitFact(token, { kind: 'example', subject_id: nook.sense.id, payload: { text: 'A boat in the cove.' } })
+    await submitFact(token, { kind: 'grammar', subject_id: nook.sense.id, payload: { countability: 'countable' } })
+    await submitFact(token, {
+      kind: 'collocation',
+      subject_id: quick.sense.id,
+      payload: { text: 'a quick cove', pattern: 'adjective_noun' },
+    })
+    await submitFact(token, {
+      kind: 'morphology',
+      subject_id: cove.entry.id,
+      payload: { parts: [{ form: 'cove', role: 'base' }] },
+    })
+    const ferry = await createEntry(token, 'ferry boat')
+    await postSense(token, ferry.entry.id, 'A boat that carries people across water.')
 
     const scores = () =>
       env.DB.prepare(
@@ -388,7 +411,7 @@ describe('worklist', () => {
     ).run()
     await runBackfills()
     expect((await scores()).results).toEqual(stored)
-    expect(stored.map((row) => row.quality)).not.toEqual([1, 1, 1])
+    expect(stored.map((row) => row.quality)).not.toEqual([1, 1, 1, 1])
     expect(stored.find((row) => row.entry_id === cove.entry.id)?.awaiting_review).toBe(1)
     expect(stored.find((row) => row.entry_id === tide.entry.id)?.awaiting_review).toBe(0)
   })
@@ -396,7 +419,7 @@ describe('worklist', () => {
   it('lifts the stall of an entry whose topics gap no claim recorded [spec: work/topics-rescore]', async () => {
     const token = await issueAgentKey()
     const by = await createEntry(token, 'by')
-    await fill(token, by.entry.id)
+    await fill(token, by.entry)
     const cove = await createEntry(token, 'cove')
     await postSense(token, cove.entry.id, 'A small sheltered bay.')
     await settle()
@@ -413,6 +436,37 @@ describe('worklist', () => {
     }>()
     const byEntry = Object.fromEntries(stalled.results.map((row) => [row.entry_id, row.stalled]))
     expect(byEntry).toEqual({ [by.entry.id]: 1, [cove.entry.id]: 0 })
+  })
+
+  it('lifts the stall of an entry whose grammar, collocations, or word formation gap no claim recorded [spec: work/usage-rescore]', async () => {
+    const token = await issueAgentKey()
+    // by has its word formation and only a preposition sense, which needs no grammar or collocation.
+    const by = await createEntry(token, 'by')
+    await fill(token, by.entry)
+    // tide's noun sense has its topic, so only its grammar and collocations gaps are new.
+    const tide = await createEntry(token, 'tide')
+    const sea = await postSense(token, tide.entry.id, 'The rise and fall of the sea.')
+    await submitFact(token, { kind: 'topic', subject_id: sea.sense.id, payload: { topic_id: 'water-bodies' } })
+    // swiftly's adverb sense needs no topic, grammar, or collocation; only its word formation is new.
+    const swiftly = await createEntry(token, 'swiftly')
+    await call('/manage/v1/senses', {
+      method: 'POST',
+      token,
+      json: { entry_id: swiftly.entry.id, pos: 'adverb', gloss: 'In a fast way.' },
+    })
+    await settle()
+    await env.DB.prepare(
+      `update worklist set stalled = 1, claimed_work = '{"gaps":[],"weak":[]}', claimed_at = ?, last_worked_at = ?`,
+    )
+      .bind(new Date().toISOString(), new Date().toISOString())
+      .run()
+    await runBackfills()
+    const stalled = await env.DB.prepare('select entry_id, stalled from worklist').all<{
+      entry_id: string
+      stalled: number
+    }>()
+    const byEntry = Object.fromEntries(stalled.results.map((row) => [row.entry_id, row.stalled]))
+    expect(byEntry).toEqual({ [by.entry.id]: 1, [tide.entry.id]: 0, [swiftly.entry.id]: 0 })
   })
 
   it('reads the claim order from an index, without sorting the worklist [spec: work/claim-index]', async () => {

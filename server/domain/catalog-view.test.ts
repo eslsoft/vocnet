@@ -1,6 +1,13 @@
 import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { type EntrySnapshot, factMeta, formMatch, projectPublicEntry, projectPublicSense } from './catalog-view'
+import {
+  type EntrySnapshot,
+  factMeta,
+  formMatch,
+  projectPublicEntry,
+  projectPublicSense,
+  publicFactIds,
+} from './catalog-view'
 import type { Fact, FactOf } from './fact'
 import type { EntryNode, SenseWithLemma } from './nodes'
 import type { Lemma } from './term'
@@ -91,6 +98,35 @@ function bankWorld() {
 }
 
 describe('public read model', () => {
+  it('shows published grammar, word formation, and collocations [spec: catalog/usage-facts]', () => {
+    const { snapshot, bank, bankSense } = bankWorld()
+    const morphology = fact('morphology', bank.id, { parts: [{ form: 'bank', role: 'base' }] })
+    const grammar = fact('grammar', bankSense.id, { countability: 'countable' })
+    const collocation = fact('collocation', bankSense.id, { text: 'river bank', pattern: 'noun_noun' })
+    const usage: EntrySnapshot = {
+      ...snapshot,
+      facts: [
+        ...snapshot.facts,
+        morphology,
+        grammar,
+        fact('grammar', bankSense.id, { countability: 'both' }, 'pending'),
+        collocation,
+        fact('collocation', bankSense.id, { text: 'steep bank', pattern: 'adjective_noun' }, 'rejected'),
+      ],
+    }
+    const meta = { confidence: 0.6, verdict: 'uncertain' }
+    const view = projectPublicEntry(usage)
+    expect(view?.morphology).toEqual({ id: morphology.id, ...meta, parts: [{ form: 'bank', role: 'base' }] })
+    expect(view?.senses[0]?.grammar).toEqual({ id: grammar.id, ...meta, countability: 'countable' })
+    expect(view?.senses[0]?.collocations).toEqual([
+      { id: collocation.id, ...meta, text: 'river bank', pattern: 'noun_noun' },
+    ])
+    const ids = view ? publicFactIds(view) : new Set()
+    expect([morphology.id, grammar.id, collocation.id].every((factId) => ids.has(factId))).toBe(true)
+    const bare = projectPublicEntry(snapshot)
+    expect([bare?.morphology, bare?.senses[0]?.grammar, bare?.senses[0]?.collocations]).toEqual([null, null, []])
+  })
+
   it('shows only published facts, each with its id, confidence, and verdict [spec: catalog/visibility]', () => {
     const { snapshot, bankSense, shoreSense } = bankWorld()
     const view = projectPublicEntry(snapshot)
