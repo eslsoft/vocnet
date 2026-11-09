@@ -122,6 +122,10 @@ export function searchEntries(deps: Pick<Deps, 'nodes'>, prefix: string, page: P
   return deps.nodes.searchPublishedEntries(normalizeTerm(prefix), page)
 }
 
+export function listEntrySummaries(deps: Pick<Deps, 'nodes'>, prefix: string, page: PageRequest) {
+  return deps.nodes.listEntrySummaries(normalizeTerm(prefix), page)
+}
+
 export async function getManagedEntry(deps: Pick<Deps, 'nodes'>, lemma: string): Promise<ManagedEntryView> {
   return managedEntryView(await snapshotOf(deps, lemma))
 }

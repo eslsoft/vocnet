@@ -7,7 +7,7 @@ import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
 import type { WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
-import type { EntryRef, Stats } from '@shared/catalog'
+import type { EntryRef, EntrySummary, Stats } from '@shared/catalog'
 import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, Verdict } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
 import type { WorkLeaseId } from '@shared/work'
@@ -41,6 +41,8 @@ export interface NodeRepo {
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
   /** Published entries whose lemma starts with prefix, in lemma order. */
   searchPublishedEntries(prefix: string, page: PageRequest): Promise<Page<EntryRef>>
+  /** Every entry whose lemma starts with prefix, in any status, in lemma order. */
+  listEntrySummaries(prefix: string, page: PageRequest): Promise<Page<EntrySummary>>
   /** Published form facts with one of these content keys, on published entries. */
   findPublishedForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
 }

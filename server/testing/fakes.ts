@@ -182,6 +182,36 @@ export function fakeWorld(): FakeWorld {
         .map((entry) => ({ id: entry.id, lemma: entry.lemma }))
       return paged(published, page.limit, page.cursor)
     },
+    listEntrySummaries: async (prefix, page) => {
+      const summaries = world.entries
+        .filter((entry) => entry.lemma.startsWith(prefix))
+        .sort((a, b) => a.lemma.localeCompare(b.lemma))
+        .map((entry) => {
+          const own = new Set<string>(world.senses.filter((sense) => sense.entryId === entry.id).map(({ id }) => id))
+          const facts = world.facts.filter((fact) => fact.subjectId === entry.id || own.has(fact.subjectId))
+          const [entryFact] = facts
+            .filter((fact) => fact.kind === 'entry')
+            .sort((a, b) => Number(live(b)) - Number(live(a)) || b.updatedAt.localeCompare(a.updatedAt))
+          const glossed = new Set(facts.filter((fact) => fact.kind === 'sense' && live(fact)).map((f) => f.subjectId))
+          const statusCount = (status: Fact['status']) => facts.filter((fact) => fact.status === status).length
+          return {
+            id: entry.id,
+            lemma: entry.lemma,
+            entry_status: entryFact?.status ?? null,
+            sense_count: glossed.size,
+            fact_counts: {
+              pending: statusCount('pending'),
+              published: statusCount('published'),
+              rejected: statusCount('rejected'),
+              superseded: statusCount('superseded'),
+              retracted: statusCount('retracted'),
+            },
+            last_worked_at: world.worked.get(entry.id)?.lastWorkedAt ?? null,
+            created_at: entry.createdAt,
+          }
+        })
+      return paged(summaries, page.limit, page.cursor)
+    },
     findPublishedForms: async (contentKeys) =>
       world.facts
         .filter((fact): fact is FactOf<'form'> => fact.kind === 'form' && fact.status === 'published')
