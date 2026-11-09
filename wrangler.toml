@@ -23,7 +23,7 @@ queue = "vocnet-reviews"
 
 [[queues.consumers]]
 queue = "vocnet-reviews"
-max_batch_size = 10
+max_batch_size = 25
 max_retries = 5
 dead_letter_queue = "vocnet-reviews-dlq"
 
