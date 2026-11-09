@@ -103,6 +103,41 @@ describe('topic facts', () => {
     await expect(rereviewFact(world.deps, admin, published.id)).resolves.toMatchObject({ status: 'pending' })
   })
 
+  it('lets a correction take the place of its original on a full sense [spec: topics/correct-at-limit]', async () => {
+    const { world, nurse } = await hospitalWorld()
+    for (const topic of ['hospital-doctor', 'body-parts', 'dentist']) {
+      await submitFact(world.deps, agentA, tag(nurse.id, topic))
+    }
+    await settle(world)
+    const original = world.facts.find((fact) => fact.kind === 'topic' && fact.contentKey === 'dentist')
+    if (!original) throw new Error('No dentist topic fact.')
+    const correct = (topic: string) =>
+      submitFact(world.deps, agentA, { ...tag(nurse.id, topic), supersedes_id: original.id })
+    const limit = {
+      code: 'conflict',
+      message: 'A sense holds at most 3 live topic facts; retract one before adding another.',
+    }
+
+    const { fact: correction, created } = await correct('furniture')
+    expect(created).toBe(true)
+    await expect(correct('kitchen')).rejects.toMatchObject(limit)
+    await expect(submitFact(world.deps, agentA, tag(nurse.id, 'kitchen'))).rejects.toMatchObject(limit)
+
+    // A rejected correction comes back in its original's place, unless another correction holds it.
+    const reject = (id: string) => {
+      const index = world.facts.findIndex((fact) => fact.id === id)
+      world.facts.splice(index, 1, { ...world.facts[index], status: 'rejected' } as (typeof world.facts)[number])
+    }
+    reject(correction.id)
+    const second = await correct('kitchen')
+    await expect(rereviewFact(world.deps, admin, correction.id)).rejects.toMatchObject(limit)
+    reject(second.fact.id)
+    await expect(rereviewFact(world.deps, admin, correction.id)).resolves.toMatchObject({ status: 'pending' })
+    await settle(world)
+    expect(world.facts.find((fact) => fact.id === original.id)?.status).toBe('superseded')
+    expect(world.facts.filter((fact) => fact.kind === 'topic' && fact.status === 'published')).toHaveLength(3)
+  })
+
   it('re-reviews published topics when a correction changes the gloss [spec: topics/revalidate]', async () => {
     const { world, nurse } = await hospitalWorld()
     const { fact } = await submitFact(world.deps, agentA, tag(nurse.id, 'hospital-doctor'))
@@ -172,7 +207,10 @@ describe('topic listings', () => {
           id: 'home',
           name_en: 'Home',
           name_zh: 'Home (zh)',
-          topics: [{ id: 'furniture', name_en: 'Furniture', name_zh: 'Furniture (zh)' }],
+          topics: [
+            { id: 'furniture', name_en: 'Furniture', name_zh: 'Furniture (zh)' },
+            { id: 'kitchen', name_en: 'In the kitchen', name_zh: 'In the kitchen (zh)' },
+          ],
         },
       ],
     })

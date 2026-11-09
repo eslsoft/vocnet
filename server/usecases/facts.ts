@@ -183,18 +183,19 @@ export async function rereviewFact(
     if (fact.status === 'rejected' && fact.supersedesId) {
       await assertSupersedable(deps, fact.supersedesId, fact.kind, fact.subjectId)
     }
-    // A rejected fact that comes back to life takes a place among the live ones.
+    // A rejected fact that comes back to life takes a place among the live ones; a correction
+    // takes its original's place. The reset counts them in the same write, so a concurrent
+    // submission cannot pass the limit.
     const { maxLive } = factKinds[fact.kind]
-    if (
-      !isLive(fact.status) &&
-      maxLive !== undefined &&
-      (await deps.facts.listLive(fact.kind, fact.subjectId)).length >= maxLive
-    ) {
-      throw new ConflictError(slotTakenMessage(fact.kind))
-    }
+    const liveBelow =
+      !isLive(fact.status) && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
     const { from, to } = factTransitions.rereview
-    const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString() })
-    if (!applied) throw new ConflictError('The fact changed while it was being reset.')
+    const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString(), liveBelow })
+    if (!applied) {
+      const current = await getFact(deps, id)
+      if (liveBelow && current.status === fact.status) throw new ConflictError(slotTakenMessage(fact.kind))
+      throw new ConflictError('The fact changed while it was being reset.')
+    }
     await refreshWork(deps, [fact.subjectId, fact.objectId])
   }
   await deps.reviewQueue.enqueue([{ factId: id, traceId: actor.traceId }])

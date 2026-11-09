@@ -68,6 +68,7 @@ export const fakeTopics: readonly TopicNode[] = [
   topic('home', null, 'Home', 1),
   topic('body-health', null, 'Body and health', 0),
   topic('furniture', 'home', 'Furniture', 0),
+  topic('kitchen', 'home', 'In the kitchen', 1),
   topic('hospital-doctor', 'body-health', 'At the doctor and hospital', 1),
   topic('body-parts', 'body-health', 'Parts of the body', 0),
   topic('dentist', 'body-health', 'At the dentist', 2),
@@ -175,6 +176,11 @@ export function fakeWorld(): FakeWorld {
     world.facts.find(
       (fact) => fact.kind === kind && fact.subjectId === subjectId && fact.contentKey === contentKey && live(fact),
     ) ?? null
+  const heldLive = (fact: Fact, excluding: string | null) =>
+    world.facts.filter(
+      (other) =>
+        other.kind === fact.kind && other.subjectId === fact.subjectId && live(other) && other.id !== excluding,
+    ).length
   // The D1 partial unique indexes: live content, and an exclusive slot's holder and pending fact.
   const holdsSlot = (fact: Fact) =>
     fact.status === 'published' || (fact.status === 'pending' && fact.supersedesId === null)
@@ -337,25 +343,21 @@ export function fakeWorld(): FakeWorld {
     facts: {
       find: async (id) => world.facts.find((fact) => fact.id === id) ?? null,
       findLive: async (kind, subjectId, contentKey) => findLive(kind, subjectId, contentKey),
-      listLive: async (kind, subjectId) =>
-        world.facts.filter((fact) => fact.kind === kind && fact.subjectId === subjectId && live(fact)),
       insert: async (fact) => {
         const existing = findLive(fact.kind, fact.subjectId, fact.contentKey)
         if (existing) return existing
         if (violatesIndexes(world.facts, fact)) return null
         const { maxLive } = factKinds[fact.kind]
-        const held = world.facts.filter(
-          (other) => other.kind === fact.kind && other.subjectId === fact.subjectId && live(other),
-        )
-        if (maxLive !== undefined && held.length >= maxLive) return null
+        if (maxLive !== undefined && heldLive(fact, fact.supersedesId) >= maxLive) return null
         world.facts.push(fact)
         touch([fact.subjectId, fact.objectId])
         return fact
       },
-      transition: async ({ id, from, to, at, review, supersede, revalidate, revalidateSince }) => {
+      transition: async ({ id, from, to, at, review, supersede, revalidate, revalidateSince, liveBelow }) => {
         const fact = world.facts.find((candidate) => candidate.id === id)
         if (!fact || !from.includes(fact.status)) return false
         if (revalidateSince !== undefined && fact.revalidateSince !== revalidateSince) return false
+        if (liveBelow && heldLive(fact, liveBelow.excluding) >= liveBelow.max) return false
         const next = {
           ...fact,
           status: to,

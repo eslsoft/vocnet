@@ -2,8 +2,23 @@ import { facts } from '@server/db/schema'
 import type { Fact } from '@server/domain/fact'
 import { factKinds } from '@server/domain/fact-kinds'
 import type { FactRepo } from '@server/usecases/ports'
-import { type FactId, factKindSchema, factStatusSchema } from '@shared/facts'
-import { and, asc, count, desc, eq, exists, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
+import { type FactId, type FactKind, factKindSchema, factStatusSchema } from '@shared/facts'
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  type SQLWrapper,
+  sql,
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
@@ -13,16 +28,32 @@ const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const SLOT_TAKEN = 'Another live fact already holds this slot.'
 
 /**
+ * The number of live facts of a kind about a subject, not counting the fact a correction
+ * supersedes: the correction takes that fact's place rather than adding one.
+ */
+function heldLive(db: Db, kind: SQLWrapper | FactKind, subjectId: SQLWrapper | string, excluding: FactId | null) {
+  const held = alias(facts, 'held')
+  return db
+    .select({ count: count() })
+    .from(held)
+    .where(
+      and(
+        eq(held.subjectId, subjectId),
+        eq(held.kind, kind),
+        inArray(held.status, ['pending', 'published']),
+        excluding ? ne(held.id, excluding) : undefined,
+      ),
+    )
+}
+
+/**
  * The insert of a new fact. A kind with `maxLive` inserts only while the subject holds fewer live
  * facts of the kind, counted in the same statement so concurrent submissions cannot pass the limit.
  */
 function insertFact(db: Db, fact: Fact) {
   const { maxLive } = factKinds[fact.kind]
   if (maxLive === undefined) return db.insert(facts).values(fromFact(fact)).onConflictDoNothing()
-  const held = db
-    .select({ count: count() })
-    .from(facts)
-    .where(and(eq(facts.subjectId, fact.subjectId), eq(facts.kind, fact.kind), liveStatus))
+  const held = heldLive(db, fact.kind, fact.subjectId, fact.supersedesId)
   const values = db.select(factSelectValues(fact)).from(sql`(select 1)`).where(sql`(${held}) < ${maxLive}`)
   return db
     .insert(facts)
@@ -48,15 +79,6 @@ export function createFactRepo(db: Db): FactRepo {
 
     findLive,
 
-    async listLive(kind, subjectId) {
-      const rows = await db
-        .select()
-        .from(facts)
-        .where(and(eq(facts.subjectId, subjectId), eq(facts.kind, kind), liveStatus))
-        .orderBy(asc(facts.createdAt), asc(facts.id))
-      return rows.map(toFact)
-    },
-
     async insert(fact) {
       // The partial unique indexes turn a concurrent duplicate or a taken exclusive slot into a
       // no-op: a live fact with the same content wins, and otherwise the slot holder does.
@@ -68,7 +90,7 @@ export function createFactRepo(db: Db): FactRepo {
       return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
 
-    async transition({ id, from, to, at, review, supersede, revalidate, revalidateSince }) {
+    async transition({ id, from, to, at, review, supersede, revalidate, revalidateSince, liveBelow }) {
       const update = db
         .update(facts)
         .set({
@@ -86,6 +108,9 @@ export function createFactRepo(db: Db): FactRepo {
               : revalidateSince === null
                 ? isNull(facts.revalidateSince)
                 : eq(facts.revalidateSince, revalidateSince),
+            liveBelow === undefined
+              ? undefined
+              : sql`(${heldLive(db, facts.kind, facts.subjectId, liveBelow.excluding)}) < ${liveBelow.max}`,
           ),
         )
         .returning({ id: facts.id })

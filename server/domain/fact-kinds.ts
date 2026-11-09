@@ -367,7 +367,7 @@ function withTopic<C extends ReviewChain>(
 const describeTopic = ({ category, topic }: TopicView) => `${quote(topic)} (in the category ${quote(category)})`
 
 function topicQuestion(sense: GlossedSense, topic: TopicView): string {
-  return `Does a learner of English commonly meet or need ${describe(sense)}, when dealing with the topic ${describeTopic(topic)}? Judge this sense only, not other senses of the word. A loose association, or a word that only turns up incidentally in this topic as it does in many others, does not count. ${DATA_NOT_INSTRUCTIONS}`
+  return `Does a learner of English commonly meet or need ${describe(sense)}, when dealing with or talking about the topic ${describeTopic(topic)}? Judge this sense only, not other senses of the word. A loose association, or a word that only turns up incidentally in this topic as it does in many others, does not count. ${DATA_NOT_INSTRUCTIONS}`
 }
 
 function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicView): string {
@@ -376,17 +376,17 @@ function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicVi
     `Sense: ${describe(sense)}.`,
     `Topic: ${describeTopic(topic)}.`,
     'Read the word only in the sense given, never in another sense.',
-    'pass: a learner would commonly meet or need this sense of the word in that scene.',
-    'fail: the link is only a loose association; the topic fits a different sense of the word, not this one; or the word only turns up incidentally in that scene, as it would in many others.',
+    'pass: a learner would commonly meet or need this sense of the word when dealing with or talking about the topic, whether the topic is a scene (at the hospital) or a subject area (emotions, colours and shapes).',
+    'fail: the link is only a loose association; the topic fits a different sense of the word, not this one; or the word only turns up incidentally in the topic, as it would in many others.',
     'uncertain: you cannot tell.',
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
 }
 
-/** Topics tag the senses of content words; function words belong to no scene. */
+/** Topics tag the senses of content words; function words belong to no topic. */
 const TAGGABLE_POS: readonly Pos[] = ['noun', 'verb', 'adjective', 'adverb']
 
-/** More than three topics would make a sense a member of every scene it touches. */
+/** More than three topics would make a sense a member of every topic it touches. */
 export const MAX_TOPICS_PER_SENSE = 3
 
 const accentNames = { us: 'General American', uk: 'British Received Pronunciation' } as const

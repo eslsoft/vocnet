@@ -21,11 +21,16 @@ async function seedNurse() {
   const room = await sense(ward.entry.id, 'noun', 'A room in a hospital for patients.')
   const at = await entry('at')
   const place = await sense(at.entry.id, 'preposition', 'In or near a place.')
-  const submit = (subjectId: string, topicId: string) =>
+  const submit = (subjectId: string, topicId: string, supersedesId?: string) =>
     call('/manage/v1/facts', {
       method: 'POST',
       token,
-      json: { kind: 'topic', subject_id: subjectId, payload: { topic_id: topicId } },
+      json: {
+        kind: 'topic',
+        subject_id: subjectId,
+        payload: { topic_id: topicId },
+        ...(supersedesId ? { supersedes_id: supersedesId } : {}),
+      },
     })
   return { token, care, tend, room, place, submit }
 }
@@ -137,6 +142,49 @@ describe('topics', () => {
     )
     const live = await env.DB.prepare("select count(*) as n from facts where kind = 'topic'").first<{ n: number }>()
     expect(live?.n).toBe(3)
+  })
+
+  it('lets a correction replace a topic on a full sense, one correction at a time [spec: topics/correct-at-limit-api]', async () => {
+    const { care, submit } = await seedNurse()
+    const tags = []
+    for (const topic of ['hospital-doctor', 'illness-symptoms', 'medicine-pharmacy']) {
+      tags.push(factWriteResultSchema.parse((await submit(care.id, topic)).body).fact)
+    }
+    stubReviewers()
+    await deliverPendingReviews()
+    const original = tags[2]
+    if (!original) throw new Error('No third topic fact.')
+    const limit = 'A sense holds at most 3 live topic facts; retract one before adding another.'
+    const refused = async (response: Promise<{ status: number; body: unknown }>) => {
+      const { status, body } = await response
+      expect(status).toBe(409)
+      expect(codeOf(body).message).toBe(limit)
+    }
+    const setStatus = (id: string, status: string) =>
+      env.DB.prepare('update facts set status = ? where id = ?').bind(status, id).run()
+    const rereview = async (id: string) =>
+      call(`/manage/v1/facts/${id}/rereview`, { method: 'POST', token: await adminToken() })
+
+    const first = await submit(care.id, 'dentist', original.id)
+    expect(first.status).toBe(201)
+    const correction = factWriteResultSchema.parse(first.body).fact
+    await refused(submit(care.id, 'injury-first-aid', original.id))
+    await refused(submit(care.id, 'injury-first-aid'))
+
+    // The re-review counts the live topics in its own write, its original excluded.
+    await setStatus(correction.id, 'rejected')
+    const second = factWriteResultSchema.parse((await submit(care.id, 'injury-first-aid', original.id)).body).fact
+    await refused(rereview(correction.id))
+    await setStatus(second.id, 'rejected')
+    expect((await rereview(correction.id)).body).toMatchObject({ status: 'pending' })
+    await deliverPendingReviews()
+    const live = await env.DB.prepare(
+      "select id, status from facts where kind = 'topic' and status in ('pending', 'published') order by id",
+    ).all<{ id: string; status: string }>()
+    expect(live.results.map((row) => row.id).sort()).toEqual([tags[0]?.id, tags[1]?.id, correction.id].sort())
+    expect(live.results.every((row) => row.status === 'published')).toBe(true)
+    const superseded = await env.DB.prepare('select status from facts where id = ?').bind(original.id).first()
+    expect(superseded).toEqual({ status: 'superseded' })
   })
 
   it('404s an unknown topic id and 400s a malformed one [spec: topics/not-found]', async () => {

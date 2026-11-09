@@ -127,8 +127,8 @@ are published.
 
 ### Topics
 
-Learners find words by the scene they need them in ("words I need at the
-hospital"). The server keeps a two-level controlled taxonomy in the `topics`
+Learners find words by topic: the scene they need them in ("words I need at
+the hospital") or the subject area they belong to ("emotions"). The server keeps a two-level controlled taxonomy in the `topics`
 table (`id`, `parent_id`, `name_en`, `name_zh`, `position`): 16 categories
 (`parent_id` null), such as `body-health` "Body and health", over 147 leaf
 topics, such as `hospital-doctor` "At the doctor and hospital". Ids are stable;
@@ -147,24 +147,31 @@ enforced by the submission use case and never by name:
   unknown id or a category id is `422 invalid_reference`.
 - `subjectPos`: the sense must be a noun, verb, adjective, or adverb; a
   function-word sense is `422 invalid_reference`. Function words belong to no
-  scene.
+  topic.
 - `maxLive`: a sense holds at most 3 live topic facts. The insert counts the
   live ones in the same statement, so concurrent submissions cannot pass the
   limit; a fourth is `409 conflict` with a message naming the limit, and so is
-  re-reviewing a rejected topic fact into a full sense.
+  re-reviewing a rejected topic fact into a full sense. The re-review counts
+  in its own conditional write too, so it cannot race a submission past the
+  limit. The count leaves out the fact a correction supersedes, because the
+  correction takes its place: a weak topic on a full sense is fixed by a
+  correction, and a second correction of the same original is refused while
+  the first is live.
 
 The content key is the topic id, so resubmitting a tag returns the live fact.
 Jev is asked one question (`topic`):
 
 > Does a learner of English commonly meet or need "*lemma*" (*pos*), meaning
-> "*gloss*", when dealing with the topic "*topic name*" (in the category
-> "*category name*")? Judge this sense only, not other senses of the word. A
-> loose association, or a word that only turns up incidentally in this topic
-> as it does in many others, does not count.
+> "*gloss*", when dealing with or talking about the topic "*topic name*" (in
+> the category "*category name*")? Judge this sense only, not other senses of
+> the word. A loose association, or a word that only turns up incidentally in
+> this topic as it does in many others, does not count.
 
-The LLM second opinion passes a sense a learner would commonly meet or need in
-that scene, and fails a loose association, a topic that fits a different sense
-of the word, or a scene where the word only turns up incidentally. It sees the
+The LLM second opinion passes a sense a learner would commonly meet or need
+when dealing with or talking about the topic, whether the topic is a scene (at
+the hospital) or a subject area (emotions, colours and shapes). It fails a loose
+association, a topic that fits a different sense of the word, or a topic in
+which the word only turns up incidentally. It sees the
 entry's other senses. A topic fact is judged against the gloss, so a gloss
 correction that changes its meaning revalidates it like examples,
 translations, and relations.
@@ -491,6 +498,9 @@ relation slots.
 adjective 1; every other part of speech 0, which means no topics gap and no
 topic slot. Nouns, verbs, and adjectives name the things, actions, and
 qualities a scene is made of. An adverb may carry topics but needs none.
+General-vocabulary senses (*get*, *make*, *thing*, *important*) belong to no
+topic, so they are expected to stay untagged: their topics gap stays open and
+the entry stalls after one pass.
 
 ### The worklist table
 

@@ -71,16 +71,20 @@ export interface FactTransitionWrite {
   revalidate?: { nodeId: EntryId | SenseId; kinds: readonly FactKind[] }
   /** A review applies only while the fact still carries the mark it read, none included. Omitted: no condition. */
   revalidateSince?: string | null
+  /**
+   * The write applies only while the fact's subject holds fewer than `max` live facts of its kind,
+   * not counting `excluding` (the fact a correction supersedes), counted in the same statement.
+   */
+  liveBelow?: { max: number; excluding: FactId | null }
 }
 
 export interface FactRepo {
   find(id: FactId): Promise<Fact | null>
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
-  listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
   /**
    * Inserts unless a live fact holds the same (kind, subject, content key) and returns the live
    * fact either way; null when another live fact holds the kind's exclusive slot, or the subject
-   * already holds the kind's `maxLive` live facts.
+   * already holds the kind's `maxLive` live facts, not counting the fact this one supersedes.
    */
   insert(fact: Fact): Promise<Fact | null>
   /**

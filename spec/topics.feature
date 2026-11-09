@@ -1,5 +1,5 @@
 Feature: Topics
-  Learners find words by the scene they need them in. A server-maintained, two-level taxonomy
+  Learners find words by topic, a scene or a subject area. A server-maintained, two-level taxonomy
   groups leaf topics ("At the doctor and hospital") under categories ("Body and health"). Agents
   tag senses with leaf topics through topic facts; topics are tags, never relations between words.
 
@@ -8,8 +8,8 @@ Feature: Topics
     Given a topic fact on a glossed sense and the leaf topic it names
     When its review is planned
     Then Jev is asked one question naming the lemma, part of speech, gloss, topic, and category
-    And the LLM rubric passes a sense a learner would commonly meet or need in that scene
-    And fails a loose association, a different sense of the word, or a scene where the word is only incidental
+    And the LLM rubric passes a sense a learner would commonly meet or need with the topic, be it a scene or a subject area
+    And fails a loose association, a different sense of the word, or a topic where the word is only incidental
     And a sense without a gloss or a topic that is not a leaf is unreviewable
 
   @topics/tag @usecase
@@ -31,6 +31,14 @@ Feature: Topics
     When an agent submits a fourth, or an admin re-reviews a rejected one
     Then it is refused as a conflict naming the limit of three
     And once one is retracted a new topic fact is accepted
+
+  @topics/correct-at-limit @usecase
+  Scenario: A correction takes its original's place on a full sense
+    Given a sense with three live topic facts, one of them published
+    When an agent submits a correction that supersedes the published one, or an admin re-reviews a rejected correction of it
+    Then it is accepted, because the limit does not count the fact a correction supersedes
+    And a second correction of the same original is refused while the first is live
+    And a plain fourth topic fact is still refused as a conflict naming the limit of three
 
   @topics/revalidate @usecase
   Scenario: Topics are re-reviewed when the gloss changes meaning
@@ -76,6 +84,14 @@ Feature: Topics
     Given a noun sense and a preposition sense
     When topic facts with an unknown topic, a category, a preposition sense, or a fourth topic are submitted
     Then the first three are 422 invalid_reference, the fourth is 409 naming the limit, and a malformed id is 400
+
+  @topics/correct-at-limit-api @api
+  Scenario: A correction replaces a topic on a full sense on a real database
+    Given a sense with three published topic facts
+    When a correction supersedes one of them, a second correction of the same one and a fourth topic are submitted, and a rejected correction is re-reviewed
+    Then the first correction is accepted, the second and the fourth are 409 naming the limit
+    And the re-review is 409 while another correction holds the place and is accepted once it does not
+    And once the correction publishes the sense holds three published topics and the original is superseded
 
   @topics/not-found @api
   Scenario: An unknown topic has no senses to list
