@@ -44,6 +44,34 @@ describe('fact review flow', () => {
     expect(factSchema.parse((await call(`/manage/v1/facts/${fact.id}`, { token })).body).status).toBe('pending')
   })
 
+  it('reviews the facts of one batch concurrently [spec: facts/review-batch-concurrent]', async () => {
+    const token = await issueAgentKey()
+    const lemmas = ['brook', 'creek', 'delta', 'estuary', 'fjord']
+    for (const lemma of lemmas) await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })
+
+    let inFlight = 0
+    let peak = 0
+    let release: () => void = () => {}
+    const allStarted = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const { questions } = (await new Request(input, init).json()) as { questions: Record<string, unknown> }
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      if (inFlight === lemmas.length) release()
+      await allStarted
+      inFlight -= 1
+      const answers = Object.fromEntries(Object.keys(questions).map((key) => [key, { type: 'noul', noul: 0.93 }]))
+      return Response.json({ model: 'jev-test', answers })
+    })
+
+    const result = await deliverPendingReviews()
+    expect(peak).toBe(lemmas.length)
+    expect(result.explicitAcks).toHaveLength(lemmas.length)
+    for (const lemma of lemmas) expect((await call(`/v1/entries/${lemma}`)).status).toBe(200)
+  })
+
   it('dedupes resubmissions and reports invalid references [spec: facts/submit-api]', async () => {
     const token = await issueAgentKey()
     const { entry } = createEntryResultSchema.parse(

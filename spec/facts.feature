@@ -147,6 +147,12 @@ Feature: Facts and review
     When the queue consumer processes the job
     Then the message is retried and the fact stays pending
 
+  @facts/review-batch-concurrent @api
+  Scenario: The queue consumer reviews the facts of one batch concurrently
+    Given a batch of review jobs for independent facts
+    When the queue consumer processes the batch
+    Then their reviewer calls overlap and every fact is decided
+
   @facts/reconcile @usecase
   Scenario: Stuck facts are re-enqueued
     Given facts pending for more than five minutes
