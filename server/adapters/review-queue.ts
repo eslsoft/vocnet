@@ -1,8 +1,9 @@
 import type { ReviewJob, ReviewQueue } from '@server/usecases/ports'
+import { factIdSchema } from '@shared/facts'
 import { z } from 'zod'
 
 // Queue messages are snake_case JSON like every other wire format here.
-export const reviewMessageSchema = z.object({ fact_id: z.uuid(), trace_id: z.string().min(1) })
+export const reviewMessageSchema = z.object({ fact_id: factIdSchema, trace_id: z.string().min(1) })
 export type ReviewMessage = z.infer<typeof reviewMessageSchema>
 
 const SEND_BATCH_LIMIT = 100

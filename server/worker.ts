@@ -1,6 +1,5 @@
 import type { ExecutionContext, MessageBatch, ScheduledController } from '@cloudflare/workers-types'
 import type { Env } from '@server/env'
-import type { FactId } from '@shared/facts'
 import { Hono } from 'hono'
 import { secureHeaders } from 'hono/secure-headers'
 import { type ReviewMessage, reviewMessageSchema } from './adapters/review-queue'
@@ -48,7 +47,7 @@ export async function handleReviewBatch(batch: MessageBatch<unknown>, env: Env):
     const job: ReviewMessage = parsed.data
     const log = { event: 'review_job', factId: job.fact_id, traceId: job.trace_id, attempt: message.attempts }
     try {
-      const outcome = await reviewFact(deps, job.fact_id as FactId)
+      const outcome = await reviewFact(deps, job.fact_id)
       console.info(JSON.stringify({ ...log, outcome }))
       message.ack()
     } catch (error) {
