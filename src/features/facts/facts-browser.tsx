@@ -25,7 +25,7 @@ function useFilter(): [FactFilter, (name: keyof FactFilter, value: string) => vo
 }
 
 /** A clickable fact row; flagged reviews are tinted so published-with-flaws data stands out. */
-export function FactRow({ fact, onSelect }: { fact: FactDto; onSelect: (id: FactId) => void }) {
+function FactRow({ fact, onSelect }: { fact: FactDto; onSelect: (id: FactId) => void }) {
   const { t, i18n } = useTranslation()
   return (
     <TableRow className={cn('cursor-pointer', signalRowClass(fact))} onClick={() => onSelect(fact.id)}>
