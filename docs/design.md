@@ -124,7 +124,7 @@ by another live fact.
 
 - **Jev** gets typed `noul` questions at `POST {MODEL_BASE_URL}/v1/systemone`
   and returns a probability per question. Every answer at or above 0.8 is
-  `pass`, any answer at or below 0.2 is `fail`, anything else is `uncertain`.
+  `pass`, any answer below 0.5 is `fail`, anything else is `uncertain`.
   Confidence is the minimum answer.
 - **LLM** gets a rubric prompt at the OpenAI-compatible chat completions
   endpoint and must return JSON `{ verdict, confidence, reason }`.

@@ -31,13 +31,14 @@ export function decide(verdict: Verdict): 'publish' | 'reject' {
   return verdictEvents[verdict]
 }
 
-export const JEV_POLICY = { version: 'canonical-jev-1', pass: 0.8, fail: 0.2 } as const
+// Uncertain facts still publish, so the band starts where an answer is more likely true than false.
+export const JEV_POLICY = { version: 'canonical-jev-2', passAt: 0.8, failBelow: 0.5 } as const
 
-/** Every answer at or above pass is `pass`; any at or below fail is `fail`; confidence is the weakest answer. */
+/** Every answer at or above passAt is `pass`; any below failBelow is `fail`; confidence is the weakest answer. */
 export function jevVerdict(answers: Record<string, number>): { verdict: Verdict; confidence: number } {
   const values = Object.values(answers)
   const confidence = Math.min(...values)
-  if (values.some((value) => value <= JEV_POLICY.fail)) return { verdict: 'fail', confidence }
-  if (values.every((value) => value >= JEV_POLICY.pass)) return { verdict: 'pass', confidence }
+  if (values.some((value) => value < JEV_POLICY.failBelow)) return { verdict: 'fail', confidence }
+  if (values.every((value) => value >= JEV_POLICY.passAt)) return { verdict: 'pass', confidence }
   return { verdict: 'uncertain', confidence }
 }
