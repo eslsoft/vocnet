@@ -73,6 +73,29 @@ describe('createSense', () => {
     expect(verb.created).toBe(true)
   })
 
+  it('returns the existing sense for the same gloss with any register [spec: catalog/create-sense-register]', async () => {
+    const world = fakeWorld()
+    const { entry } = await createEntry(world.deps, agentA, { lemma: 'odd' })
+    const input = { entry_id: entry.id, pos: 'adjective' as const, gloss: 'Not divisible by two.' }
+    const created = await createSense(world.deps, agentA, input)
+    await reviewAll(world)
+
+    const formal = await createSense(world.deps, agentA, { ...input, register: 'formal' })
+    expect(formal).toMatchObject({ created: false, sense: { id: created.sense.id }, fact: { id: created.fact.id } })
+    expect(formal.fact.payload).toEqual({ gloss: 'Not divisible by two.' })
+
+    const labelled = await createSense(world.deps, agentA, {
+      ...input,
+      gloss: 'Divisible by three.',
+      register: 'technical',
+    })
+    expect(labelled.created).toBe(true)
+    const relabelled = await createSense(world.deps, agentA, { ...input, gloss: 'divisible by  three.' })
+    expect(relabelled).toMatchObject({ created: false, sense: { id: labelled.sense.id } })
+    expect(world.senses).toHaveLength(2)
+    expect(world.queued.map((job) => job.factId)).toEqual([labelled.fact.id])
+  })
+
   it('returns the sense a gloss created even after that gloss was rejected, and enqueues nothing', async () => {
     const world = fakeWorld()
     const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })

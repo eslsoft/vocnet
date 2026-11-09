@@ -260,6 +260,26 @@ async function correctedRiverBank() {
 }
 
 describe('revalidation', () => {
+  it('supersedes a gloss with a register-only correction without re-reviewing its dependents [spec: facts/relabel-no-revalidate]', async () => {
+    const { world, river, correction, dependents } = await correctedRiverBank()
+    await drain(world)
+    const before = await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))
+    const relabel = await submitFact(world.deps, agentA, {
+      kind: 'sense',
+      subject_id: river.id,
+      supersedes_id: correction.id,
+      payload: { gloss: 'the sloping land beside a river', register: 'literary' },
+    })
+    world.setNow('2026-01-01T00:09:00.000Z')
+    await drain(world)
+
+    expect((await getFact(world.deps, relabel.fact.id)).status).toBe('published')
+    expect((await getFact(world.deps, correction.id)).status).toBe('superseded')
+    expect(world.queued).toEqual([])
+    expect(await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))).toEqual(before)
+    expect((await getPublicEntry(world.deps, 'bank')).senses[0]).toMatchObject({ register: 'literary' })
+  })
+
   it('re-reviews published facts judged against a corrected gloss while they stay public [spec: facts/revalidate-dependents]', async () => {
     const { world, correction, dependents, unrelated } = await correctedRiverBank()
     expect((await getFact(world.deps, correction.id)).status).toBe('published')
@@ -375,6 +395,26 @@ describe('revalidation', () => {
     const reviewed = await getFact(world.deps, example.id)
     expect(reviewed).toMatchObject({ status: 'published', revalidateSince: null })
     expect(reviewed.review?.context).toMatchObject({ subject: { gloss: 'the sloping land beside a river' } })
+  })
+
+  it.each([
+    ['a new gloss text marks', { gloss: 'the sloping land beside a river' }, '2026-01-01T00:05:00.000Z'],
+    ['a register-only correction marks no', { gloss: 'land beside a river', register: 'literary' as const }, null],
+  ])('%s pending or published dependent [spec: facts/correction-marks-live-dependents]', async (_name, payload, mark) => {
+    const { world, sense, gloss } = await bankWorld()
+    const submit = async (input: Parameters<typeof submitFact>[2]) => (await submitFact(world.deps, agentA, input)).fact
+    const published = await submit({ kind: 'example', subject_id: sense.id, payload: { text: 'We sat on the bank.' } })
+    await drain(world)
+    const pending = await submit({ kind: 'example', subject_id: sense.id, payload: { text: 'It flooded.' } })
+    const correction = await submit({ kind: 'sense', subject_id: sense.id, supersedes_id: gloss.id, payload })
+    world.queued.length = 0
+    world.setNow('2026-01-01T00:05:00.000Z')
+
+    await expect(reviewFact(world.deps, correction.id, 't')).resolves.toBe('published')
+    expect(await getFact(world.deps, gloss.id)).toMatchObject({ status: 'superseded' })
+    expect(await getFact(world.deps, published.id)).toMatchObject({ status: 'published', revalidateSince: mark })
+    expect(await getFact(world.deps, pending.id)).toMatchObject({ status: 'pending', revalidateSince: mark })
+    expect(world.queued.map((job) => job.factId).sort()).toEqual(mark ? [published.id, pending.id].sort() : [])
   })
 
   it('does not cascade when a gloss is retracted [spec: facts/retract-no-cascade]', async () => {

@@ -182,4 +182,30 @@ describe('exclusive fact slots', () => {
     expect(managed.senses).toHaveLength(1)
     expect(managed.facts.filter((fact) => fact.kind === 'sense')).toHaveLength(1)
   })
+
+  it('returns the existing sense for its gloss with a register, alone or racing [spec: catalog/create-sense-register-api]', async () => {
+    const token = await issueAgentKey()
+    const { entry } = createEntryResultSchema.parse(
+      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'odd' } })).body,
+    )
+    const gloss = 'Not divisible by two without a remainder.'
+    const create = (register?: string) =>
+      call('/manage/v1/senses', {
+        method: 'POST',
+        token,
+        json: { entry_id: entry.id, pos: 'adjective', gloss, register },
+      })
+    const [plain, raced] = await Promise.all([create(), create('informal')])
+    stubReviewers()
+    await deliverPendingReviews()
+    const formal = await create('formal')
+
+    expect([plain, raced].map(({ status }) => status).sort()).toEqual([200, 201])
+    expect(formal.status).toBe(200)
+    const results = [plain, raced, formal].map(({ body }) => createSenseResultSchema.parse(body))
+    expect(new Set(results.map((result) => result.sense.id)).size).toBe(1)
+    expect(results.map((result) => result.created).filter(Boolean)).toHaveLength(1)
+    const entryView = publicEntrySchema.parse((await call('/v1/entries/odd')).body)
+    expect(entryView.senses.map((sense) => sense.gloss)).toEqual([gloss])
+  })
 })

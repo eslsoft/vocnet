@@ -34,11 +34,15 @@ identity, never reviewed content.
 | `entries` | `id`, `lemma` (normalized, unique), `created_by`  | One entry per lemma spelling        |
 | `senses`  | `id`, `entry_id`, `pos`, `creation_key`, `created_by` | POS is identity; gloss is a fact |
 
-Correcting a sense's POS means a new sense, not an edit. `creation_key` is the
-content key of the gloss the sense was created with. A unique index on
-`(entry_id, pos, creation_key)` makes concurrent identical creations converge on
-one sense: the losing request inserts nothing and returns the winner's sense and
-gloss fact. A node is publicly
+Correcting a sense's POS means a new sense, not an edit. A sense is identified
+by its gloss text alone, never by its `register` label. Creating a sense returns
+the existing one when a live gloss of that entry and POS has the same text with
+any register, or none, and the create's own register is then ignored. An agent
+labels an existing sense through a correction of its gloss. `creation_key` is the
+gloss's meaning key (its case-folded text, without the register) at creation. A
+unique index on `(entry_id, pos, creation_key)` makes concurrent creations of
+one gloss converge on one sense, whatever registers they carry: the losing
+request inserts nothing and returns the winner's sense and gloss fact. A node is publicly
 visible when its defining fact (`entry` for an entry, `sense` for a sense) is
 published.
 
@@ -153,10 +157,13 @@ Labels are optional, and absent means unlabelled:
 A weak form must carry `strength: weak`; the LLM reviewer is told which form
 it judges and rejects a weak form submitted as the strong one. A form's `pos`
 replaces the word class in its Jev question and in the LLM second opinion, so
-both judge the labelled claim, and a pronunciation's `pos` is named in its
-prompt. The public entry shows every label. A sense's `register`
-is part of its content key, so a correction that only adds a register is a new
-fact that supersedes the gloss. A form's or pronunciation's labels are not:
+both judge the labelled claim. A pronunciation's `pos` is named in its prompt,
+and a sense's `register` in its Jev question and its LLM second opinion ("used
+in a formal register"), so a wrong label fails review. The public entry shows
+every label. A sense's `register` is part of its content key, so a correction
+that only adds or changes a register is a new fact that supersedes the gloss. It
+is not part of the sense's identity or its meaning (see Nodes and revalidation).
+A form's or pronunciation's labels are not:
 the same form or transcription with another label returns the live fact, and
 relabelling one means retracting it and submitting the labelled fact.
 
@@ -195,9 +202,13 @@ correction enters it. A rejected correction leaves the original published.
 
 A correction of a sense's gloss changes the meaning that the sense's examples,
 translations, and relations (as subject or object) were judged against. The
-registry lists these as the `sense` kind's `revalidates` kinds. In the same batch
-that publishes the correction, every live fact of those kinds about the
-sense gets `revalidate_since`, and then each is enqueued. A published one stays
+registry lists these as the `sense` kind's `revalidates` kinds. Only a change of
+meaning revalidates them: the registry's `meaningKey` for a gloss is its text
+without the register, and a correction with the same meaning key as the gloss it
+supersedes (a relabel) publishes without touching its dependents, pending or
+published. In the same batch that publishes a correction that changes the
+meaning, every live fact of those kinds about the sense gets `revalidate_since`,
+and then each is enqueued. A published one stays
 published and public while it waits. Its review is the *revalidation* event of
 the transition table: pass or uncertain keeps it published with the new review
 (`reconfirm`), and fail moves it to `rejected` (`invalidate`). If the gloss is

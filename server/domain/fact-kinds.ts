@@ -1,4 +1,13 @@
-import type { FactKind, FactPayloads, FormType, Pos, RelationType, ReviewerKind, SenseId } from '@shared/facts'
+import type {
+  FactKind,
+  FactPayloads,
+  FormType,
+  Pos,
+  Register,
+  RelationType,
+  ReviewerKind,
+  SenseId,
+} from '@shared/facts'
 import { normalizeTerm, textKey } from './term'
 
 // The single source of truth for fact kinds. Wire payload schemas live in
@@ -75,9 +84,12 @@ interface BaseSpec<K extends FactKind> {
   target?(payload: FactPayloads[K]): SenseId
   /** The one stored orientation of a claim that reads the same either way round; absent means as submitted. */
   orient?(subjectId: string, payload: FactPayloads[K]): Oriented<K>
+  /** What the fact claims, without its usage labels; absent means the content key. */
+  meaningKey?(payload: FactPayloads[K]): string
   /**
-   * Kinds judged against this fact: when a correction of it publishes, their published facts
-   * about the same node (as subject or object) are re-reviewed in place.
+   * Kinds judged against this fact: when a correction that changes its meaning publishes, their
+   * published facts about the same node (as subject or object) are re-reviewed in place. A
+   * correction that only relabels leaves them alone.
    */
   revalidates?: readonly FactKind[]
 }
@@ -139,8 +151,9 @@ function listSenses(heading: string, senses: readonly SenseGloss[]): string {
 }
 
 // Jev question texts started as the producer's qualified questions.
-function lexicalQuestion(word: string, pos: Pos, gloss: string): string {
-  return `Does English have AT LEAST ONE established ${pos} sense of ${quote(word)} meaning ${quote(gloss)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning. ${DATA_NOT_INSTRUCTIONS}`
+function lexicalQuestion(word: string, pos: Pos, gloss: string, register?: Register): string {
+  const usage = register ? `, used in ${article(register)} ${register} register` : ''
+  return `Does English have AT LEAST ONE established ${pos} sense of ${quote(word)} meaning ${quote(gloss)}${usage}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ''} ${DATA_NOT_INSTRUCTIONS}`
 }
 
 const DIFFERENT_WORDS = 'Two senses of the same word never stand in this relation.'
@@ -192,11 +205,12 @@ function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
   ].join('\n')
 }
 
-function senseRubric(sense: SubjectViews['sense'], gloss: string): string {
+function senseRubric(sense: SubjectViews['sense'], gloss: string, register?: Register): string {
+  const usage = register ? `, used in ${article(register)} ${register} register` : ''
   return [
-    `Does the English word ${quote(sense.lemma)} have an established ${sense.pos} sense meaning ${quote(gloss)}?`,
+    `Does the English word ${quote(sense.lemma)} have an established ${sense.pos} sense meaning ${quote(gloss)}${usage}?`,
     'pass: a standard dictionary such as Oxford, Cambridge, Merriam-Webster, or Collins records this sense for this part of speech. Rare, informal, figurative, technical, and grammatical senses count, and so do glosses written as usage notes ("Used before … to …"). Minor paraphrase is fine.',
-    'fail: the word has no such meaning in this part of speech, the gloss describes a different word or a proper name, or it is a one-off or invented use.',
+    `fail: the word has no such meaning in this part of speech, the gloss describes a different word or a proper name, or it is a one-off or invented use${register ? ', or the sense is not used in this register' : ''}.`,
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
 }
@@ -310,9 +324,13 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     chain: ['jev', 'llm'],
     // A register-only correction must differ from the gloss it supersedes.
     contentKey: ({ gloss, register }) => labelled(textKey(gloss), register),
+    meaningKey: ({ gloss }) => textKey(gloss),
     revalidates: ['example', 'translation', 'relation'],
-    plan: ({ gloss }, { subject }) =>
-      jevThenLlm({ lexical: lexicalQuestion(subject.lemma, subject.pos, gloss) }, senseRubric(subject, gloss)),
+    plan: ({ gloss, register }, { subject }) =>
+      jevThenLlm(
+        { lexical: lexicalQuestion(subject.lemma, subject.pos, gloss, register) },
+        senseRubric(subject, gloss, register),
+      ),
   },
   form: {
     subject: 'entry',
@@ -381,6 +399,21 @@ export function planReview<K extends FactKind>(
 
 export function contentKeyOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): string {
   return factKinds[kind].contentKey(payload)
+}
+
+export function meaningKeyOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): string {
+  const spec = factKinds[kind]
+  return spec.meaningKey?.(payload) ?? spec.contentKey(payload)
+}
+
+/** The kinds to re-review when `correction` supersedes `original`: none unless its meaning changed. */
+export function revalidatedBy<K extends FactKind>(
+  kind: K,
+  original: FactPayloads[K],
+  correction: FactPayloads[K],
+): readonly FactKind[] | undefined {
+  if (meaningKeyOf(kind, original) === meaningKeyOf(kind, correction)) return undefined
+  return factKinds[kind].revalidates
 }
 
 /** The orientation a submitted claim is stored in. */

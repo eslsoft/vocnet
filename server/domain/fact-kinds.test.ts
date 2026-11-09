@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   contentKeyOf,
   factKinds,
+  meaningKeyOf,
   orientOf,
   planReview,
   type ReviewPlan,
   type ReviewRequest,
+  revalidatedBy,
   targetOf,
 } from './fact-kinds'
 
@@ -42,6 +44,18 @@ describe('fact-kind registry', () => {
     expect(contentKeyOf('sense', { gloss: 'Semen.', register: 'taboo' })).toBe('semen.|taboo')
     expect(contentKeyOf('form', { form: 'would', type: 'past', pos: 'auxiliary' })).toBe('past|would')
     expect(contentKeyOf('pronunciation', { ipa: 'tə', accent: 'us', strength: 'weak' })).toBe('us|tə')
+  })
+
+  it('re-reviews dependents only when a correction changes what the gloss means [spec: facts/relabel-no-revalidate]', () => {
+    const gloss = { gloss: 'Land beside a river.' }
+    expect(meaningKeyOf('sense', { ...gloss, register: 'literary' })).toBe(meaningKeyOf('sense', gloss))
+    expect(revalidatedBy('sense', gloss, { gloss: 'land beside  a river.', register: 'literary' })).toBeUndefined()
+    expect(revalidatedBy('sense', gloss, { gloss: 'The sloping land beside a river.' })).toEqual([
+      'example',
+      'translation',
+      'relation',
+    ])
+    expect(revalidatedBy('example', { text: 'We sat.' }, { text: 'We stood.' })).toBeUndefined()
   })
 
   it('orients a symmetric relation from the smaller sense id and keeps directed ones as submitted [spec: facts/symmetric-relation-once]', () => {
@@ -183,6 +197,20 @@ describe('fact-kind registry', () => {
     expect(llmPrompt(plan)?.user).toContain(
       'Is "would" the simple past tense form of the English word "will", used as an auxiliary,',
     )
+  })
+
+  it('asks Jev and the LLM whether a sense is used in its labelled register [spec: facts/write-labels]', () => {
+    const plan = (register?: 'formal') =>
+      planReview('sense', { gloss: 'Not divisible by two.', register }, { subject: bank, target: null })
+    const question = (register?: 'formal') => jevQuestion(plan(register), 'lexical') ?? ''
+    const rubric = (register?: 'formal') => llmPrompt(plan(register))?.user ?? ''
+    expect(question('formal')).toContain('meaning "Not divisible by two.", used in a formal register?')
+    expect(question('formal')).toContain('A register that does not fit how the sense is used is wrong.')
+    expect(question()).toContain('meaning "Not divisible by two."? ')
+    expect(question()).not.toContain('register')
+    expect(rubric('formal')).toContain('noun sense meaning "Not divisible by two.", used in a formal register?')
+    expect(rubric('formal')).toContain('or the sense is not used in this register.')
+    expect(rubric()).not.toContain('register')
   })
 
   it('tells the LLM whether a pronunciation is the weak or the strong form, and of which part of speech [spec: facts/write-labels]', () => {

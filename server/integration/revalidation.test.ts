@@ -14,7 +14,7 @@ async function factOf(id: string): Promise<FactDto> {
 }
 
 /** A river sense with an example and an incoming relation, all published, then its gloss corrected. */
-async function correctedRiverBank(newGloss: string) {
+async function correctedRiverBank(correctionPayload: { gloss: string; register?: string }) {
   const token = await issueAgentKey()
   const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
   const bank = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'bank' }))
@@ -43,11 +43,11 @@ async function correctedRiverBank(newGloss: string) {
     kind: 'sense',
     subject_id: river.sense.id,
     supersedes_id: river.fact.id,
-    payload: { gloss: newGloss },
+    payload: correctionPayload,
   })
   await deliverPendingReviews()
   vi.restoreAllMocks()
-  return { token, correction, example, incoming, unrelated }
+  return { token, river, correction, example, incoming, unrelated }
 }
 
 const llmVerdict = (verdict: 'pass' | 'fail') =>
@@ -66,7 +66,7 @@ describe('revalidation', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('re-reviews facts judged against a corrected gloss in place, keeping them public [spec: facts/revalidate-api]', async () => {
-    const { example, incoming, unrelated } = await correctedRiverBank('The sloping land beside a river.')
+    const { example, incoming, unrelated } = await correctedRiverBank({ gloss: 'The sloping land beside a river.' })
     const before = await factOf(unrelated.id)
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
     expect(entry.senses[0]?.examples.map((item) => item.id)).toEqual([example.id])
@@ -84,8 +84,20 @@ describe('revalidation', () => {
     expect(await factOf(unrelated.id)).toEqual(before)
   })
 
+  it('supersedes a gloss with a register-only correction and leaves its dependents alone [spec: facts/relabel-api]', async () => {
+    const { river, correction, example, incoming } = await correctedRiverBank({
+      gloss: 'Land beside a river.',
+      register: 'literary',
+    })
+    expect(await marks([example.id, incoming.id])).toEqual([null, null])
+    expect((await factOf(correction.id)).status).toBe('published')
+    expect((await factOf(river.fact.id)).status).toBe('superseded')
+    const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
+    expect(entry.senses[0]).toMatchObject({ register: 'literary', examples: [{ id: example.id }] })
+  })
+
   it('rejects a dependent whose revalidation fails and hides it', async () => {
-    const { example, incoming } = await correctedRiverBank('An institution that keeps money.')
+    const { example, incoming } = await correctedRiverBank({ gloss: 'An institution that keeps money.' })
     llmVerdict('fail')
     await deliverReviews([example.id, incoming.id])
 
@@ -96,7 +108,9 @@ describe('revalidation', () => {
   })
 
   it('keeps dependents published and unmarked when the correction is retracted before they revalidate [spec: facts/revalidate-gloss-retracted]', async () => {
-    const { token, correction, example, incoming } = await correctedRiverBank('The sloping land beside a river.')
+    const { token, correction, example, incoming } = await correctedRiverBank({
+      gloss: 'The sloping land beside a river.',
+    })
     const ids = [example.id, incoming.id]
     expect(await marks(ids)).toEqual([expect.any(String), expect.any(String)])
     const retract = await call(`/manage/v1/facts/${correction.id}/retract`, { method: 'POST', token })

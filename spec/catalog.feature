@@ -68,6 +68,18 @@ Feature: Catalog
     When an agent creates a sense with a POS and gloss
     Then the sense and a pending sense fact exist, and repeating the call returns them
 
+  @catalog/create-sense-register @usecase
+  Scenario: A register does not make a second sense
+    Given a sense with a gloss
+    When an agent creates a sense of the same entry and POS with that gloss and a register
+    Then it returns the existing sense unchanged, and a register goes on an existing sense through a correction
+
+  @catalog/create-sense-register-api @api
+  Scenario: Creating a known gloss with a register over HTTP
+    Given an entry
+    When an agent creates the same gloss with and without a register at once, then again with another register
+    Then every call returns one sense, and the public entry lists that gloss once
+
   @catalog/create-sense-race @api
   Scenario: Concurrent identical sense creations make one sense
     Given an entry

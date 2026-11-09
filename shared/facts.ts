@@ -49,6 +49,7 @@ export const accentSchema = z.enum(['us', 'uk']).meta({ id: 'Accent' })
 export const registerSchema = z
   .enum(['informal', 'slang', 'taboo', 'literary', 'formal', 'dated', 'offensive', 'technical'])
   .meta({ id: 'Register', description: 'Usage label of a sense outside neutral standard English.' })
+export type Register = z.infer<typeof registerSchema>
 
 export const strengthSchema = z.enum(['strong', 'weak']).meta({
   id: 'PronunciationStrength',

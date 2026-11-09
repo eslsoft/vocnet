@@ -208,6 +208,24 @@ Feature: Facts and review
     When the correction publishes while the example is under review
     Then the example stays pending, and the next delivery publishes it judged against the corrected gloss
 
+  @facts/relabel-no-revalidate @usecase
+  Scenario: A register-only correction does not re-review dependents
+    Given a sense with published examples, translations, and relations
+    When a correction that keeps the gloss text and changes only its register publishes
+    Then it supersedes the gloss, and nothing is marked or enqueued for revalidation
+
+  @facts/correction-marks-live-dependents @usecase
+  Scenario: Only a correction that changes the gloss marks pending and published dependents
+    Given a sense with a published example and a pending example
+    When a correction of the sense publishes
+    Then a new gloss text marks and enqueues both examples, and a register-only correction marks and enqueues neither
+
+  @facts/relabel-api @api
+  Scenario: A register-only correction on a real database
+    Given a published gloss with a published example and incoming relation
+    When the queue publishes a correction that only adds a register
+    Then the original is superseded, the public sense shows the register, and its dependents stay unmarked
+
   @facts/revalidation-outcome @domain
   Scenario: Revalidation unpublishes only on failure
     Given a published fact under revalidation

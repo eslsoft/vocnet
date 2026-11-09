@@ -7,7 +7,7 @@ import {
   projectPublicSense,
 } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
-import { contentKeyOf } from '@server/domain/fact-kinds'
+import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
 import { normalizeTerm } from '@server/domain/term'
@@ -20,7 +20,7 @@ import type {
   PublicSenseWithEntry,
   Stats,
 } from '@shared/catalog'
-import { type EntryId, formTypeSchema, type SenseId } from '@shared/facts'
+import { type EntryId, formTypeSchema, registerSchema, type SenseId } from '@shared/facts'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
@@ -51,7 +51,11 @@ export async function createEntry(
   return { entry, fact, created: entry.id === draft.id }
 }
 
-/** Creates a sense with its gloss fact atomically. Idempotent by (entry, POS, gloss). */
+/**
+ * Creates a sense with its gloss fact atomically. Idempotent by (entry, POS, gloss): the register
+ * is a label, not part of the sense's identity, so the same gloss with any register returns the
+ * existing sense unchanged. A register for an existing sense goes in a correction of its gloss.
+ */
 export async function createSense(
   deps: WriteDeps,
   actor: Actor,
@@ -61,8 +65,10 @@ export async function createSense(
   if (!entry) throw new InvalidReferenceError(`Entry ${input.entry_id} does not exist.`)
 
   const payload = { gloss: input.gloss, register: input.register }
-  const contentKey = contentKeyOf('sense', payload)
-  const existing = await deps.nodes.findSenseByGloss(entry.id, input.pos, contentKey)
+  const labellings = [undefined, ...registerSchema.options].map((register) =>
+    contentKeyOf('sense', { gloss: input.gloss, register }),
+  )
+  const existing = await deps.nodes.findSenseByGloss(entry.id, input.pos, labellings)
   if (existing) return { ...existing, created: false }
 
   const now = deps.clock.now().toISOString()
@@ -79,7 +85,7 @@ export async function createSense(
     kind: 'sense',
     subjectId: sense.id,
     objectId: null,
-    contentKey,
+    contentKey: contentKeyOf('sense', payload),
     payload,
     status: 'pending',
     supersedesId: null,
@@ -89,7 +95,7 @@ export async function createSense(
     createdAt: now,
     updatedAt: now,
   }
-  const stored = await deps.nodes.insertSenseWithFact(sense, fact)
+  const stored = await deps.nodes.insertSenseWithFact(sense, fact, meaningKeyOf('sense', payload))
   const created = stored.sense.id === sense.id
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { ...stored, created }

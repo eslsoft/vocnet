@@ -4,6 +4,7 @@ import {
   planReview,
   type ReviewContext,
   type ReviewRequest,
+  revalidatedBy,
   type SenseGloss,
   type SenseView,
   type SubjectTypeOf,
@@ -145,6 +146,17 @@ async function judge<K extends FactKind>(
   return { context, finding: verdict.verdict, verdict }
 }
 
+async function revalidatedByCorrection<K extends FactKind>(
+  deps: ReviewDeps,
+  correction: FactOf<K>,
+  originalId: FactId,
+): Promise<readonly FactKind[] | undefined> {
+  if (!factKinds[correction.kind].revalidates) return undefined
+  const original = (await deps.facts.find(originalId)) as FactOf<K> | null
+  if (!original) throw new Error(`Fact ${originalId} superseded by ${correction.id} does not exist.`)
+  return revalidatedBy(correction.kind, original.payload, correction.payload)
+}
+
 export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
 
 /**
@@ -166,7 +178,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
   const at = deps.clock.now().toISOString()
   const { from, to } = factTransitions[event]
   const supersede = event === 'publish' ? (fact.supersedesId ?? undefined) : undefined
-  const dependents = supersede && factKinds[fact.kind].revalidates
+  const dependents = supersede && (await revalidatedByCorrection(deps, fact, supersede))
   const applied = await deps.facts.transition({
     id,
     from,

@@ -131,10 +131,12 @@ export function fakeWorld(): FakeWorld {
       const sense = world.senses.find((candidate) => candidate.id === id)
       return sense ? withLemma(sense) : null
     },
-    findSenseByGloss: async (entryId, pos, contentKey) => {
+    findSenseByGloss: async (entryId, pos, contentKeys) => {
       for (const sense of world.senses.filter((s) => s.entryId === entryId && s.pos === pos)) {
-        const fact = findLive('sense', sense.id, contentKey)
-        if (fact) return { sense, fact }
+        for (const contentKey of contentKeys) {
+          const fact = findLive('sense', sense.id, contentKey)
+          if (fact) return { sense, fact }
+        }
       }
       return null
     },
@@ -148,22 +150,22 @@ export function fakeWorld(): FakeWorld {
             )
             .map((fact) => ({ sense, fact })),
         ),
-    insertSenseWithFact: async (sense, fact) => {
+    insertSenseWithFact: async (sense, fact, creationKey) => {
       const existing = world.senses.find(
         (candidate) =>
           candidate.entryId === sense.entryId &&
           candidate.pos === sense.pos &&
-          creationKeys.get(candidate.id) === fact.contentKey,
+          creationKeys.get(candidate.id) === creationKey,
       )
       if (existing) {
         const defining = world.facts.find(
-          (candidate) => candidate.subjectId === existing.id && candidate.contentKey === fact.contentKey,
+          (candidate) => candidate.kind === 'sense' && candidate.subjectId === existing.id,
         )
         if (!defining) throw new Error(`Sense ${existing.id} has no defining fact.`)
         return { sense: existing, fact: defining }
       }
       world.senses.push(sense)
-      creationKeys.set(sense.id, fact.contentKey)
+      creationKeys.set(sense.id, creationKey)
       world.facts.push(fact)
       return { sense, fact }
     },
