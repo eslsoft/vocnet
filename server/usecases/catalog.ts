@@ -28,9 +28,13 @@ import type { PageRequest } from './ports'
 
 type WriteDeps = Pick<Deps, 'nodes' | 'facts' | 'reviewQueue' | 'clock' | 'ids'>
 
-/** Ensures the entry node exists and its `entry` fact is live. Converges on retry. */
+/**
+ * Ensures the entry node exists, is marked as a seed entry when asked, and its `entry` fact is
+ * live. The mark comes before the fact, so a new seed entry is never claimable unmarked. Converges
+ * on retry.
+ */
 export async function createEntry(
-  deps: WriteDeps,
+  deps: WriteDeps & Pick<Deps, 'work'>,
   actor: Actor,
   input: CreateEntryInput,
 ): Promise<{ entry: EntryNode; fact: Fact; created: boolean }> {
@@ -42,6 +46,7 @@ export async function createEntry(
     createdAt: deps.clock.now().toISOString(),
   }
   const entry = (await deps.nodes.findEntryByLemma(lemma)) ?? (await deps.nodes.insertEntry(draft))
+  if (input.seed) await deps.work.markSeed(entry.id)
   const { fact } = await submitFact(deps, actor, { kind: 'entry', subject_id: entry.id, payload: {} })
   return { entry, fact, created: entry.id === draft.id }
 }

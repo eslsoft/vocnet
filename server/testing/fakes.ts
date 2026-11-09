@@ -26,6 +26,7 @@ export interface FakeWorld {
   agents: Array<AgentRecord & { keyHash: string }>
   leases: WorkLease[]
   claimed: Map<EntryId, { at: string; count: number }>
+  seeds: Set<EntryId>
   worked: Map<EntryId, { lastWorkedAt: string; lastWorkedBy: string; lastNote: string | null }>
   queued: ReviewJob[]
   /** Client keys the feedback limiter refuses. */
@@ -63,6 +64,7 @@ export function fakeWorld(): FakeWorld {
     agents: [],
     leases: [],
     claimed: new Map(),
+    seeds: new Set(),
     worked: new Map(),
     queued: [],
     limitedClients: new Set(),
@@ -333,10 +335,11 @@ export function fakeWorld(): FakeWorld {
         const free = (entry: EntryNode) =>
           world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entry.id && live(fact)) &&
           !world.leases.some((held) => held.entryId === entry.id && held.expiresAt > now)
-        const rank = (count = 0) => (count === 1 ? 0 : count === 0 ? 1 : 2)
+        const rank = (entry: EntryNode, count = 0) =>
+          count === 1 ? 0 : count === 0 ? (world.seeds.has(entry.id) ? 1 : 2) : 3
         const order = (entry: EntryNode) => {
           const claim = world.claimed.get(entry.id)
-          return [rank(claim?.count), claim?.at ?? '', entry.createdAt, entry.id]
+          return [rank(entry, claim?.count), claim?.at ?? '', entry.createdAt, entry.id]
         }
         const [next] = world.entries.filter(free).sort((a, b) => order(a).join('|').localeCompare(order(b).join('|')))
         if (!next) return null
@@ -344,6 +347,9 @@ export function fakeWorld(): FakeWorld {
         world.leases.splice(0, world.leases.length, ...world.leases.filter((held) => held.entryId !== next.id), claimed)
         world.claimed.set(next.id, { at: now, count: (world.claimed.get(next.id)?.count ?? 0) + 1 })
         return { lease: claimed, entry: next }
+      },
+      markSeed: async (entryId) => {
+        world.seeds.add(entryId)
       },
       findLease: async (id) => world.leases.find((lease) => lease.id === id) ?? null,
       complete: async (lease, at, note) => {

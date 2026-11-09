@@ -8,8 +8,10 @@ import { type WorkLeaseId, workClaimSchema, workCompletionSchema } from '@shared
 import { describe, expect, it } from 'vitest'
 import { adminToken, call, issueAgentKey } from './helpers'
 
+const postEntry = (token: string, json: { lemma: string; seed?: boolean }) =>
+  call('/manage/v1/entries', { method: 'POST', token, json })
 const createEntry = async (token: string, lemma: string) =>
-  createEntryResultSchema.parse((await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })).body)
+  createEntryResultSchema.parse((await postEntry(token, { lemma })).body)
 
 const claim = (token: string, json?: unknown) => call('/manage/v1/work/claim', { method: 'POST', token, json })
 const complete = (token: string, leaseId: string, json?: unknown) =>
@@ -114,6 +116,24 @@ describe('worklist', () => {
     expect(await lemmaOf(token)).toBe('cove')
     expect(await lemmaOf(token)).toBe('fjord')
     expect(await lemmaOf(token)).toBe('bay')
+  })
+
+  it('claims never-claimed seed entries before other never-claimed entries, each after its second pass [spec: work/claim-seeds-first]', async () => {
+    const token = await issueAgentKey()
+    for (const lemma of ['bay', 'cove']) await createEntry(token, lemma)
+    expect((await postEntry(token, { lemma: 'fjord', seed: true })).status).toBe(201)
+    const marked = await postEntry(token, { lemma: 'cove', seed: true })
+    expect(marked.status).toBe(200)
+    expect(createEntryResultSchema.parse(marked.body)).toMatchObject({ created: false, entry: { lemma: 'cove' } })
+    expect((await postEntry(token, { lemma: 'fjord', seed: false })).status).toBe(200)
+
+    const order = []
+    for (let pass = 0; pass < 5; pass++) {
+      const work = workClaimSchema.parse((await claim(token)).body)
+      expect((await complete(token, work.lease.id)).status).toBe(200)
+      order.push(work.lease.lemma)
+    }
+    expect(order).toEqual(['cove', 'cove', 'fjord', 'fjord', 'bay'])
   })
 
   it('moves an entry whose lease lapsed twice behind the entries claimed fewer times [spec: work/claim-rotation]', async () => {

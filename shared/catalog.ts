@@ -142,7 +142,15 @@ export const nodeLocationSchema = z
   .meta({ id: 'NodeLocation' })
 export type NodeLocation = z.infer<typeof nodeLocationSchema>
 
-export const createEntryInputSchema = z.object({ lemma: lemmaInputSchema }).meta({ id: 'CreateEntryInput' })
+export const createEntryInputSchema = z
+  .object({
+    lemma: lemmaInputSchema,
+    seed: z.boolean().optional().meta({
+      description:
+        'Marks the entry as part of a seed list, so the worklist serves it before never-claimed entries outside the list. Once set it stays set; false or absent changes nothing.',
+    }),
+  })
+  .meta({ id: 'CreateEntryInput' })
 export type CreateEntryInput = z.infer<typeof createEntryInputSchema>
 export const createEntryResultSchema = z
   .object({ entry: entryNodeSchema, fact: factSchema, created: z.boolean() })

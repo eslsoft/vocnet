@@ -54,6 +54,20 @@ describe('claimWork', () => {
     expect(await claimAt(9)).toBeNull()
   })
 
+  it('serves never-claimed seed entries before other never-claimed entries, each after its second pass [spec: work/claim-order]', async () => {
+    const { world } = await worldWith(['bank', 'cove', 'reef', 'tide'])
+    for (const lemma of ['reef', 'tide']) await createEntry(world.deps, agentA, { lemma, seed: true })
+
+    const order = []
+    for (let minute = 1; minute <= 9; minute++) {
+      world.setNow(`2026-01-01T00:0${minute}:00.000Z`)
+      const claim = await claimWork(world.deps, agentA)
+      await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
+      order.push(lemmaOf(claim))
+    }
+    expect(order).toEqual(['reef', 'reef', 'tide', 'tide', 'bank', 'bank', 'cove', 'cove', 'reef'])
+  })
+
   it('returns the lease, the management view, and the gaps', async () => {
     const { world, entries } = await worldWith(['bank'])
     const { sense } = await createSense(world.deps, agentA, {

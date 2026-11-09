@@ -96,9 +96,12 @@ export interface WorkRepo {
   /**
    * Atomically leases the next entry whose entry fact is live and that has no unexpired lease,
    * replacing an expired one; null when no entry is claimable. An entry claimed once comes first,
-   * oldest claim first; then never-claimed entries, oldest first; then the rest, oldest claim first.
+   * oldest claim first; then never-claimed seed entries, oldest first; then other never-claimed
+   * entries, oldest first; then the rest, oldest claim first.
    */
   claimNext(lease: Omit<WorkLease, 'entryId'>, now: string): Promise<{ lease: WorkLease; entry: EntryNode } | null>
+  /** Marks the entry as a seed entry; a repeat is a no-op. */
+  markSeed(entryId: EntryId): Promise<void>
   findLease(id: WorkLeaseId): Promise<WorkLease | null>
   /** Records the work on the entry and deletes the lease while it is still unexpired; false otherwise. */
   complete(lease: WorkLease, at: string, note: string | null): Promise<boolean>
