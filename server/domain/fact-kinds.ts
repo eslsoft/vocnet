@@ -234,12 +234,12 @@ function entryQuestion(lemma: string): string {
 
 const MULTIWORD_PASSES = [
   'Its meaning is not the sum of its parts: an idiom ("bear fruit", "throw shade") or a fixed compound naming one specific thing ("red blood cell", "stainless steel", "chest of drawers").',
-  'It is a phrasal verb or a fixed prepositional or grammatical phrase ("end up", "pick up", "at the expense of", "have to").',
-  'It is a fixed expression: swapping a word for a synonym loses the conventional meaning.',
+  'It is a phrasal verb or a fixed prepositional or grammatical phrase, even when its meaning is transparent ("end up", "sit down", "at the expense of", "in front of", "have to").',
+  'It is the conventional name of one thing, so swapping a word for a synonym loses it ("post office", "bus stop", "credit card", "swimming pool").',
 ]
 
 const MULTIWORD_FAILS = [
-  'A descriptive phrase whose meaning is fully predictable from its words ("wheat grain", "hair strand", "oven door", "coastal range").',
+  'A descriptive phrase that any speaker composes freely from its words ("wheat grain", "hair strand", "oven door", "coastal range").',
   'A category label coined to group things ("time unit", "writing implement", "plant part", "protective covering", "cleaning implement").',
   'A proper name, a misspelling, or an invented phrase.',
 ]
@@ -251,7 +251,7 @@ function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
         'Judge from the phrase itself: would a learner who knows each word still need it explained as a unit? Being listed in some word list or thesaurus is not enough.',
         'pass when at least one holds:',
         ...MULTIWORD_PASSES.map((rule) => `- ${rule}`),
-        'fail when its meaning is fully predictable from its words, including:',
+        'fail when none of the above holds, for example:',
         ...MULTIWORD_FAILS.map((rule) => `- ${rule}`),
       ]
     : [

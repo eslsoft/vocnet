@@ -265,11 +265,12 @@ reset.
   multiword lemma (one containing whitespace) gets its own Jev question and
   rubric and passes only as a lexical unit: its meaning is not the sum of its
   parts (an idiom such as "bear fruit", a compound naming one thing such as
-  "red blood cell"), it is a phrasal verb or fixed grammatical phrase ("end
-  up", "at the expense of"), or its words cannot be swapped for synonyms
-  without losing the conventional meaning. Descriptive phrases ("wheat
-  grain", "oven door") and coined category labels ("time unit", "plant
-  part") fail. The test is a question about the phrase itself: reviewers
+  "red blood cell"), it is a phrasal verb or fixed grammatical phrase even
+  when transparent ("end up", "sit down", "in front of"), or it is the
+  conventional name of one thing whose words cannot be swapped for synonyms
+  ("post office", "bus stop"). A phrase that meets none of these fails,
+  such as a descriptive phrase any speaker composes freely ("wheat grain",
+  "oven door") or a coined category label ("time unit", "plant part"). The test is a question about the phrase itself: reviewers
   cannot consult dictionaries, and no external word list is used, because
   lists such as WordNet include exactly those category labels.
 - **Relation floor.** A relation request carries `settlesFailBelow` 0.15: a Jev
