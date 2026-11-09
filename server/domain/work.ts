@@ -16,7 +16,11 @@ export interface EntryFacts {
   incoming: Fact[]
   /** Facts that an open or claimed feedback item targets. */
   flagged: ReadonlySet<FactId>
+  /** Senses at the other end of the entry's relations, with their `entry` and `sense` facts. */
+  neighbors: { senses: readonly SenseNode[]; facts: Fact[] }
 }
+
+type GapInput = Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'incoming' | 'neighbors'>
 
 export interface WorkLease {
   id: WorkLeaseId
@@ -143,14 +147,33 @@ export const COLLOCATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   auxiliary: 0,
 }
 
+/**
+ * The senses at the other end of the entry's relations that can show: their gloss and their
+ * entry's fact are live. A relation to any other sense is hidden from the public view, so it fills
+ * nothing.
+ */
+function visibleNeighbors({ senses, facts }: GapInput['neighbors']): ReadonlySet<string> {
+  const live = new Set(facts.filter((fact) => isLive(fact.status)).map((fact) => `${fact.kind}:${fact.subjectId}`))
+  return new Set(
+    senses.filter((sense) => live.has(`sense:${sense.id}`) && live.has(`entry:${sense.entryId}`)).map(({ id }) => id),
+  )
+}
+
+/** The relation links this sense to a sense that can show. */
+function linksVisible(fact: FactOf<'relation'>, senseId: SenseId, visible: ReadonlySet<string>): boolean {
+  if (fact.subjectId === senseId) return visible.has(fact.payload.target_sense_id)
+  return fact.objectId === senseId && visible.has(fact.subjectId)
+}
+
 const senseGapRules: ReadonlyArray<{
   need: (sense: SenseNode) => number
-  fills: (fact: Fact, senseId: SenseId) => boolean
+  /** `visible`: the neighbor senses a relation may link to and count. */
+  fills: (fact: Fact, senseId: SenseId, visible: ReadonlySet<string>) => boolean
   gap: (senseId: SenseId, filling: Fact[]) => SenseGap
 }> = [
   {
     need: (sense) => RELATIONS_NEEDED[sense.pos],
-    fills: (fact, senseId) => fact.kind === 'relation' && (fact.subjectId === senseId || fact.objectId === senseId),
+    fills: (fact, senseId, visible) => fact.kind === 'relation' && linksVisible(fact, senseId, visible),
     gap: (senseId, filling) => ({
       type: 'relations',
       sense_id: senseId,
@@ -193,13 +216,14 @@ interface OpenGap {
 }
 
 /** The open gaps, and how many slots the rules count for the entry: each entry rule and, per live sense, each need. */
-function openGaps(snapshot: Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'incoming'>): {
+function openGaps(snapshot: GapInput): {
   open: OpenGap[]
   slots: number
 } {
   const live = [...snapshot.facts, ...snapshot.incoming].filter((fact) => isLive(fact.status))
   const glossed = new Set(live.flatMap((fact) => (fact.kind === 'sense' ? [fact.subjectId] : [])))
   const liveSenses = snapshot.senses.filter((sense) => glossed.has(sense.id))
+  const visible = visibleNeighbors(snapshot.neighbors)
   const { lemma } = snapshot.entry
   const entry = entryGapRules.flatMap((rule) => {
     const missing = rule.need(lemma) - live.filter(rule.fills).length
@@ -208,7 +232,7 @@ function openGaps(snapshot: Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'inc
   const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(lemma), 0)
   const senses = liveSenses.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {
-      const filling = live.filter((fact) => rule.fills(fact, sense.id))
+      const filling = live.filter((fact) => rule.fills(fact, sense.id, visible))
       const missing = rule.need(sense) - filling.length
       return missing > 0 ? [{ gap: rule.gap(sense.id, filling), missing }] : []
     }),
@@ -220,8 +244,11 @@ function openGaps(snapshot: Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'inc
   return { open: [...entry, ...senses], slots: entrySlots + senseSlots }
 }
 
-/** What the entry still lacks, judged from its live facts. A sense counts while its gloss fact is live. */
-export function entryGaps(snapshot: Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'incoming'>): Gap[] {
+/**
+ * What the entry still lacks, judged from its live facts. A sense counts while its gloss fact is
+ * live, and a relation while the sense at its other end has a live gloss and a live entry fact.
+ */
+export function entryGaps(snapshot: GapInput): Gap[] {
   return openGaps(snapshot).open.map(({ gap }) => gap)
 }
 

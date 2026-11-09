@@ -166,6 +166,26 @@ export function fakeWorld(): FakeWorld {
     for (const sense of world.senses.filter((candidate) => nodeIds.includes(candidate.id))) owners.add(sense.entryId)
     for (const entryId of owners) workOf(entryId).revision += 1
   }
+  /** The entries whose relations link to a sense that is, or belongs to, one of these nodes. */
+  const linkedEntries = (nodeIds: Array<string | null>) => {
+    const nodeSenses = new Set<string>(
+      world.senses
+        .filter((sense) => nodeIds.includes(sense.id) || nodeIds.includes(sense.entryId))
+        .map((sense) => sense.id),
+    )
+    const ends = world.facts
+      .filter((fact) => fact.kind === 'relation')
+      .flatMap((fact) => [
+        ...(nodeSenses.has(fact.subjectId) ? [fact.objectId] : []),
+        ...(nodeSenses.has(fact.objectId ?? '') ? [fact.subjectId] : []),
+      ])
+    return new Set(world.senses.filter((sense) => ends.includes(sense.id)).map((sense) => sense.entryId))
+  }
+  /** Marks stale the entries linked to the node an entry or sense fact defines, as the real batches do. */
+  const touchLinked = (fact: Fact) => {
+    if (fact.kind !== 'entry' && fact.kind !== 'sense') return
+    for (const entryId of linkedEntries([fact.subjectId])) workOf(entryId).revision += 1
+  }
   const touchFact = (factId: string) => {
     const fact = world.facts.find((candidate) => candidate.id === factId)
     if (fact) touch([fact.subjectId, fact.objectId])
@@ -346,6 +366,15 @@ export function fakeWorld(): FakeWorld {
         })
       return paged(summaries, page.limit, page.cursor)
     },
+    findLiveForms: async (contentKeys) =>
+      world.facts
+        .filter((fact): fact is FactOf<'form'> => fact.kind === 'form' && live(fact))
+        .filter((fact) => contentKeys.includes(fact.contentKey))
+        .flatMap((fact) => {
+          const entry = world.entries.find((candidate) => candidate.id === fact.subjectId)
+          const entryLive = world.facts.some((f) => f.kind === 'entry' && f.subjectId === fact.subjectId && live(f))
+          return entry && entryLive ? [{ entry, fact }] : []
+        }),
     findPublishedForms: async (contentKeys) =>
       world.facts
         .filter((fact): fact is FactOf<'form'> => fact.kind === 'form' && fact.status === 'published')
@@ -372,6 +401,7 @@ export function fakeWorld(): FakeWorld {
         if (fact.supersedesId && !isPublished(fact.supersedesId)) return null
         world.facts.push(fact)
         touch([fact.subjectId, fact.objectId])
+        touchLinked(fact)
         return fact
       },
       findLiveCorrection: async (id) => world.facts.find((fact) => fact.supersedesId === id && live(fact)) ?? null,
@@ -422,6 +452,7 @@ export function fakeWorld(): FakeWorld {
           ...retired.map((candidate) => (candidate.id === id ? next : candidate)),
         )
         touch([next.subjectId, next.objectId])
+        if (from.some((status) => isLive(status) !== isLive(to))) touchLinked(next)
         return true
       },
       listRevalidating: async (nodeId) =>
@@ -576,6 +607,7 @@ export function fakeWorld(): FakeWorld {
         const owners = new Set<EntryId>([
           ...world.entries.filter((entry) => nodeIds.includes(entry.id)).map((entry) => entry.id),
           ...world.senses.filter((sense) => nodeIds.includes(sense.id)).map((sense) => sense.entryId),
+          ...linkedEntries(nodeIds),
         ])
         return [...owners].filter(isStale).map(staleOf)
       },

@@ -79,7 +79,7 @@ needs a new column.
 
 | Kind            | Subject | Cardinality | Payload                                                  | Reviewer chain |
 | --------------- | ------- | ----------- | -------------------------------------------------------- | -------------- |
-| `entry`         | entry   | one         | `{}` (the lemma is a word or a lexical unit)            | Jev, then LLM  |
+| `entry`         | entry   | one         | `{}` (the lemma is a word or a lexical unit)            | Jev, then LLM; LLM alone for a phrase or a recorded inflection |
 | `sense`         | sense   | one         | `{ gloss, register? }`                                   | Jev, then LLM  |
 | `form`          | entry   | many        | `{ form, type, pos? }` (plural, past, variant…)          | Jev, then LLM  |
 | `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM  |
@@ -421,7 +421,9 @@ but only to choose the message.
   endpoint and must return JSON `{ verdict, confidence, reason }`.
 - **Second opinion.** Each kind names its reviewer chain in the registry, and
   `server/domain/review-chain.ts` says which verdicts settle a fact: Jev
-  settles only `pass`, and the LLM settles every verdict. When Jev fails or is
+  settles only `pass`, and the LLM settles every verdict. A plan asks its
+  kind's whole chain, or the LLM alone for a subject Jev misjudges; the LLM
+  ends every chain, so a plan may skip the reviewers before it, never it. When Jev fails or is
   unsure about an entry, sense, form, relation, or topic, the LLM judges the same
   claim with a kind-specific rubric and decides: pass or uncertain publishes
   with the LLM's verdict and confidence, fail rejects. The rubric gets the
@@ -441,8 +443,8 @@ but only to choose the message.
   the words "a" and "I" is planned as `unreviewable`, so its first review
   rejects it without asking a reviewer. Abbreviations of two or more letters
   are reviewed as before. A
-  multiword lemma (one containing whitespace) gets its own Jev question and
-  rubric and passes only as a lexical unit: its meaning is not the sum of its
+  multiword lemma (one containing whitespace) goes to the LLM alone, with its
+  own rubric, and passes only as a lexical unit: its meaning is not the sum of its
   parts (an idiom such as "bear fruit", a compound naming one thing such as
   "red blood cell"), it is a phrasal verb or fixed grammatical phrase even
   when transparent ("end up", "sit down", "in front of"), or it is the
@@ -450,9 +452,25 @@ but only to choose the message.
   ("post office", "bus stop"). A phrase that meets none of these fails, such
   as a descriptive phrase built from the plain meanings of its words, even a
   common one ("wheat grain", "tooth root", "white rice"), or a coined
-  category label ("time unit", "plant part"). The test is a question about the phrase itself: reviewers
+  category label ("time unit", "plant part"). The test is about the phrase itself: reviewers
   cannot consult dictionaries, and no external word list is used, because
-  lists such as WordNet include exactly those category labels.
+  lists such as WordNet include exactly those category labels. Jev does not
+  judge phrases: over 1,061 multiword entries it settled 314 passes on its
+  own, among them descriptive phrases the rubric fails ("spatial
+  distribution", "mountain system", "scientific law").
+- **Recorded inflections.** Jev also passed bare inflections as words ("is"
+  at 0.99, "was", "has", "did"). When another entry whose entry fact is live
+  holds a live form of any type but `variant` spelled like the lemma, the
+  entry review carries those entries in its context (`inflectionOf`: each
+  entry's lemma and the form type) and goes to the LLM alone. The rubric names
+  them and passes the word only when it also has a meaning of its own as a
+  lemma ("saw" the tool besides the past of "see", "left" the side, "found" to
+  establish, "better" to improve); it fails a bare inflection. The entry's own
+  forms ("sheep" as the plural of "sheep") and spelling variants are no
+  evidence. No deterministic rule can reject instead: entries are reviewed
+  before any sense exists, so the data cannot tell "is" from "saw". The
+  evidence is read when the entry is reviewed; an entry published before
+  another entry recorded its spelling as a form is not reopened.
 - **Relation floor.** A relation request carries `settlesFailBelow` 0.15: a Jev
   answer under it settles the fail without asking the LLM. In the audit, every
   relation the LLM published over a Jev answer that low was wrong (shore
@@ -551,7 +569,13 @@ entry has three slots (senses, forms, pronunciation), and a single-word entry a
 fourth (word formation); each sense with a live gloss adds the relations, topics,
 grammar, and collocations its part of speech needs, one example, and one
 `zh` translation. A relations gap with `count` relations fills `count` of its
-slots. Completeness derives from `entryGaps`, so the gap rules stay the one
+slots. A relation counts, at either end, only while the sense at its other end
+has a live gloss and its entry a live entry fact: a relation to a sense of a
+rejected entry, or to a sense whose gloss was rejected or retracted, fills
+nothing, as the public view shows nothing of it. The entry snapshot already
+loads the senses at the other end of the entry's relations, incoming and
+outgoing, with their `entry` and `sense` facts in one batch, so the rule costs
+no extra query. Completeness derives from `entryGaps`, so the gap rules stay the one
 source: it is 1 exactly when there are no gaps.
 
 **Quality** (0..1) is one minus weak facts over live facts about the entry and
@@ -690,8 +714,12 @@ formation; a phrase none, since its words are their own entries.
 Every write that can change an entry's gaps or weak facts bumps `revision` of
 the entries at both ends in its own batch: a fact insert or status change
 (review, retraction, re-review, supersede), a sense insert, a feedback insert or
-status change on a fact, and a completion. The use case that made the write then
-rescores the stale rows it touched (`refreshWork`): it loads the entry, assesses
+status change on a fact, and a completion. A write that moves an `entry` or
+`sense` fact into or out of live (an insert, a rejection, a retraction, a
+supersede, a re-review of a rejected fact) also bumps the entries whose
+relations link to the senses that fact defines, since their relations gaps
+depend on it. The use case that made the write then rescores the stale rows it
+touched, linked entries included (`refreshWork`): it loads the entry, assesses
 it, and stores the scores and the stall conditional on `revision` being
 unchanged, so a concurrent write's rescore wins instead of being overwritten. A
 stale row stays claimable, so a request that crashed before its rescore never
@@ -729,8 +757,14 @@ no topics gap: its open work changed, as `isStalled` would find on the next
 rescore. `worklist_usage_scores` did the same when grammar, collocations, and
 word formation gaps opened: it recomputed every entry's completeness over every
 slot, those three included, and kept an entry stalled only when none of them is
-open, since no claim recorded before then named one. A test runs the backfills
-in order over rescored rows and expects the same scores.
+open, since no claim recorded before then named one. `worklist_relation_ends_scores`
+did the same when relations to senses that cannot show stopped counting: it
+recomputed every entry's completeness, counting a relation only when its other
+sense has a live gloss and a live entry fact, and lifted the stall of an entry
+with a sense whose relations gap is open and whose count changed, which is
+exactly when its open work changed (the new count is never above the old). A
+test runs the backfills in order over rescored rows and expects the same
+scores.
 
 The learner priority is stored on the row so the claim stays one index scan.
 The row reads it from the reference tables when it is created, in the same batch

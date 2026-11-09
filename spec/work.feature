@@ -13,6 +13,18 @@ Feature: Worklist
     When the gaps are computed
     Then the sense has a relations gap while it has fewer than two, and the gap counts them and names each type and direction it already has
 
+  @work/relations-visible-ends @domain
+  Scenario: A relation fills a gap only while its other end can show
+    Given a live sense whose live relations lead to senses with a live gloss and entry, a rejected gloss, or a rejected entry
+    When the gaps are computed from the entry and the senses at the other end of its relations
+    Then only the relations whose other sense has a live gloss and a live entry fact count toward the relations gap
+
+  @work/relations-visible-ends-api @api
+  Scenario: A relation's other end leaving live reopens the gap on a real database
+    Given an entry whose noun sense has two published relations, each to a sense of another entry
+    When one other entry fact is re-reviewed and rejected, and the other gloss is retracted
+    Then the entry's stored completeness drops by one relation slot each time, rescored in the same request
+
   @work/relations-by-pos @domain
   Scenario: The relations a sense needs depend on its part of speech
     Given a live sense of each part of speech
@@ -109,6 +121,12 @@ Feature: Worklist
     Given entries stalled on open work recorded before grammar, collocations, and word formation gaps existed
     When the rescore migrations run
     Then an entry with an open grammar, collocations, or word formation gap is no longer stalled and one without keeps its stall
+
+  @work/relation-ends-rescore @api
+  Scenario: The release of the relation end rule rescores every entry and lifts stalls it outdates
+    Given entries stalled on open work recorded while relations to senses that cannot show still counted
+    When the relation ends rescore migration runs
+    Then an entry whose open relations gap changed is no longer stalled and one without keeps its stall
 
   @work/claim-priority @api
   Scenario: Entries are claimed in learner priority, re-ranked by every reference import

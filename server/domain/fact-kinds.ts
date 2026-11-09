@@ -47,8 +47,15 @@ export interface SenseGloss {
   gloss: string
 }
 
+/** Another live entry that records this entry's lemma as one of its live inflections. */
+export interface InflectionOf {
+  lemma: string
+  type: FormType
+}
+
 export interface SubjectViews {
-  entry: { lemma: string; senses: SenseGloss[] }
+  /** `inflectionOf`: the other live entries whose live non-variant forms spell this lemma. */
+  entry: { lemma: string; senses: SenseGloss[]; inflectionOf: InflectionOf[] }
   sense: SenseView & { siblings: SenseGloss[] }
 }
 
@@ -89,7 +96,11 @@ export type ReviewRequest<R extends ReviewerKind = ReviewerKind> = {
 /** The reviewers a kind consults, in order. A later one is asked only when an earlier one does not settle. */
 export type ReviewChain = readonly ['jev', 'llm'] | readonly ['llm']
 
-type ChainRequests<C extends ReviewChain> = { [I in keyof C]: ReviewRequest<C[I]> }
+/**
+ * A plan asks its kind's whole chain, or the LLM alone for a subject Jev misjudges. The LLM ends
+ * every chain and settles every verdict, so a plan may skip the reviewers before it, never it.
+ */
+type ChainRequests<C extends ReviewChain> = { [I in keyof C]: ReviewRequest<C[I]> } | readonly [ReviewRequest<'llm'>]
 
 /** A fact whose context makes review meaningless is decided without asking a reviewer. */
 export type ReviewPlan<C extends ReviewChain = ReviewChain> =
@@ -249,15 +260,7 @@ function relationRubric(type: RelationType, source: GlossedSense, target: Glosse
   ].join('\n')
 }
 
-/**
- * A multiword lemma is admitted only as a lexical unit. The test is a question about the phrase
- * itself, because a reviewer cannot consult a dictionary and word lists such as WordNet admit
- * taxonomy labels ("time unit", "plant part") that a learner's dictionary must not.
- */
 function entryQuestion(lemma: string): string {
-  if (isMultiword(lemma)) {
-    return `Is the phrase ${quote(lemma)} a fixed lexical unit of English, such as an idiom, a phrasal verb or fixed grammatical phrase (even a transparent one), or a compound naming one kind of thing that speakers learn as a whole, rather than a descriptive phrase or a category label anyone could compose from those words? ${DATA_NOT_INSTRUCTIONS}`
-  }
   return `Is ${quote(lemma)} an established English word: a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, or invented word? ${DATA_NOT_INSTRUCTIONS}`
 }
 
@@ -273,17 +276,38 @@ const MULTIWORD_FAILS = [
   'A proper name, a misspelling, or an invented phrase.',
 ]
 
-function planEntry(lemma: string, senses: readonly SenseGloss[]): ReviewPlan<readonly ['jev', 'llm']> {
+/**
+ * Jev settles an entry only where its pass is reliable: a single word that no other entry records
+ * as an inflection. Over 1,061 multiword entries it passed 314 outright, descriptive phrases the
+ * rubric fails among them ("spatial distribution", "mountain system"), and it passed bare
+ * inflections ("is" at 0.99, "was", "has", "did") as words. The LLM alone judges those, a phrase
+ * from the phrase itself (no word list tells a lexical unit from a taxonomy label such as "time
+ * unit"), and a recorded inflection with the entries that record it, so a homograph with meanings
+ * of its own ("saw", "left") still passes.
+ */
+function planEntry(entry: SubjectViews['entry']): ReviewPlan<readonly ['jev', 'llm']> {
+  const { lemma } = entry
   if (isLetterOfTheAlphabet(lemma)) {
     return {
       kind: 'unreviewable',
       reason: `${quote(lemma)} is a letter of the alphabet; the only one-letter entries are the words "a" and "I".`,
     }
   }
-  return jevThenLlm({ lemma: entryQuestion(lemma) }, entryRubric(lemma, senses))
+  const rubric = entryRubric(entry)
+  if (isMultiword(lemma) || entry.inflectionOf.length > 0) return llm(rubric)
+  return jevThenLlm({ lemma: entryQuestion(lemma) }, rubric)
 }
 
-function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
+function inflectionEvidence(lemma: string, inflectionOf: readonly InflectionOf[]): string[] {
+  if (inflectionOf.length === 0) return []
+  return [
+    `This dictionary already records ${quote(lemma)} as an inflection of another entry:`,
+    ...inflectionOf.map(({ lemma: of, type }) => `- the ${formTypes[type].name} of ${quote(of)}`),
+    `pass only when ${quote(lemma)} also has a meaning of its own as a lemma, beyond being that form: "saw" is the past of "see" and also a cutting tool, "left" the past of "leave" and also the side, "found" the past of "find" and also a verb meaning to establish. fail when it is only that inflection ("is", "was", "has", "did").`,
+  ]
+}
+
+function entryRubric({ lemma, senses, inflectionOf }: SubjectViews['entry']): string {
   const criteria = isMultiword(lemma)
     ? [
         `Is the phrase ${quote(lemma)} a lexical unit of English that belongs in a learner's dictionary as its own entry?`,
@@ -298,7 +322,11 @@ function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
         'pass: a dictionary lemma or conventional vocabulary term, including function words and established abbreviations.',
         'fail: an ordinary inflection of another word, a proper name, a misspelling, or an invented word.',
       ]
-  return [...criteria, listSenses('Senses recorded for it so far', senses)].join('\n')
+  return [
+    ...criteria,
+    ...inflectionEvidence(lemma, inflectionOf),
+    listSenses('Senses recorded for it so far', senses),
+  ].join('\n')
 }
 
 function senseRubric(sense: SubjectViews['sense'], gloss: string, register?: Register): string {
@@ -329,6 +357,14 @@ const formTypes: Record<FormType, FormTypeSpec> = {
 }
 
 const article = (word: string) => (/^[aeiou]/.test(word) ? 'an' : 'a')
+
+/** The form types that inflect a word; a variant is another spelling of the same word, not an inflection. */
+const INFLECTION_TYPES = (Object.keys(formTypes) as FormType[]).filter((type) => formTypes[type].wordClass !== null)
+
+/** The content keys of the form facts that record `spelling` as an inflection of their entry. */
+export function inflectionKeysOf(spelling: string): string[] {
+  return INFLECTION_TYPES.map((type) => contentKeyOf('form', { form: spelling, type }))
+}
 
 /**
  * Each inflection belongs to one word class. Naming it keeps Jev from judging the form against
@@ -687,7 +723,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     cardinality: 'one',
     chain: ['jev', 'llm'],
     contentKey: () => 'entry',
-    plan: (_payload, { subject }) => planEntry(subject.lemma, subject.senses),
+    plan: (_payload, { subject }) => planEntry(subject),
   },
   sense: {
     subject: 'sense',

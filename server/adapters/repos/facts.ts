@@ -1,6 +1,7 @@
 import { facts } from '@server/db/schema'
 import type { Fact } from '@server/domain/fact'
 import { factKinds } from '@server/domain/fact-kinds'
+import { isLive } from '@server/domain/fact-lifecycle'
 import type { FactRepo } from '@server/usecases/ports'
 import { type FactId, type FactKind, factKindSchema, factStatusSchema } from '@shared/facts'
 import {
@@ -23,7 +24,7 @@ import {
 import { type AnySQLiteColumn, alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
-import { syncWorklistLive, touchWorkOf, touchWorkOfFact } from './work'
+import { syncWorklistLive, touchLinkedWorkOfFact, touchWorkOf, touchWorkOfFact } from './work'
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const UNIQUE_MESSAGES = {
@@ -134,6 +135,7 @@ export function createFactRepo(db: Db): FactRepo {
         insertFact(db, fact),
         syncWorklistLive(db, [fact.subjectId]),
         touchWorkOf(db, fact.objectId ? [fact.subjectId, fact.objectId] : [fact.subjectId]),
+        touchLinkedWorkOfFact(db, fact.id),
       ])
       return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
@@ -178,8 +180,10 @@ export function createFactRepo(db: Db): FactRepo {
         .returning({ id: facts.id })
       const syncLive = syncWorklistLive(db, db.select({ id: facts.subjectId }).from(facts).where(eq(facts.id, id)))
       // Any status or review change can change the gaps or weak facts at either end; a correction
-      // has its original's subject, so the same rows cover the original it supersedes.
-      const sync = [syncLive, touchWorkOfFact(db, id)]
+      // has its original's subject, so the same rows cover the original it supersedes. A move into
+      // or out of live also changes the gaps of the entries whose relations link to its node.
+      const changesLive = from.some((status) => isLive(status) !== isLive(to))
+      const sync = [syncLive, touchWorkOfFact(db, id), ...(changesLive ? [touchLinkedWorkOfFact(db, id)] : [])]
       if (!supersede) {
         return guardUnique(UNIQUE_MESSAGES, async () => {
           const [updated] = await db.batch([update, ...sync])

@@ -31,6 +31,7 @@ Feature: Facts and review
   Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
     Then entry, sense, form, relation, topic, grammar, and morphology go to Jev and then the LLM, and pronunciation, example, translation, and collocation go to the LLM
+    And a plan may skip straight to the LLM, which ends every chain, but never past it
 
   @facts/second-opinion @domain
   Scenario: Only a Jev pass settles a proposition
@@ -70,9 +71,31 @@ Feature: Facts and review
     Given an entry fact for a single word or for a multiword lemma
     When its review is planned
     Then a single word is asked whether it is an established word, as before
-    And a multiword lemma is asked whether it is a fixed lexical unit that speakers learn as a whole
+    And a multiword lemma is judged on whether it is a lexical unit of English that belongs in a learner's dictionary
     And its rubric passes idioms, phrasal verbs and fixed grammatical phrases even when transparent, and everyday names of one kind of thing
     And it fails only a phrase that meets none of those, such as a descriptive phrase or a coined category label, judged from the phrase itself without any external word list
+
+  @facts/entry-multiword-llm @domain
+  Scenario: The LLM alone judges a multiword entry
+    Given an entry fact for a multiword lemma
+    When its review is planned
+    Then only the LLM is asked, with the lexical-unit rubric, so a Jev pass cannot publish a descriptive phrase
+    And a single word that no other entry records as an inflection still goes to Jev and then the LLM
+
+  @facts/entry-inflection-evidence @usecase
+  Scenario: The LLM alone judges a word another entry records as an inflection
+    Given a live entry whose live form of any type but variant is spelled like a new entry's lemma
+    When the new entry fact is reviewed
+    Then only the LLM is asked, and its rubric names each entry that records the spelling and the form type
+    And it passes the word only when it also has a meaning of its own as a lemma, such as "saw" or "left", and fails a bare inflection such as "is"
+    And a form the entry records of itself, a variant, and a form of an entry whose entry fact is not live are no evidence
+
+  @facts/entry-llm-only-api @api
+  Scenario: Phrases and recorded inflections reach the LLM alone on a real database
+    Given a published form "is" of the entry "be"
+    When the entries "is", "mountain system", and "lake" are reviewed with a Jev that passes everything and an LLM that fails everything
+    Then "is" and "mountain system" are rejected by the LLM alone, and "is" records the evidence it was judged with
+    And "lake" is published on the Jev pass
 
   @facts/second-opinion-relation-type @domain
   Scenario: The second opinion fails a relation of the wrong type

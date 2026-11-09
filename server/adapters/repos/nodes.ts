@@ -306,6 +306,22 @@ export function createNodeRepo(db: Db): NodeRepo {
       )
     },
 
+    async findLiveForms(contentKeys) {
+      const liveEntry = exists(
+        db
+          .select({ one: sql`1` })
+          .from(facts)
+          .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entries.id), liveStatus)),
+      )
+      const rows = await db
+        .select({ entry: entries, fact: facts })
+        .from(facts)
+        .innerJoin(entries, eq(entries.id, facts.subjectId))
+        .where(and(eq(facts.kind, 'form'), inArray(facts.contentKey, contentKeys), liveStatus, liveEntry))
+        .orderBy(asc(entries.lemma), asc(facts.id))
+      return rows.map((row) => ({ entry: toEntry(row.entry), fact: toFact(row.fact) as FactOf<'form'> }))
+    },
+
     async findPublishedForms(contentKeys) {
       const rows = await db
         .select({ entry: entries, fact: facts })

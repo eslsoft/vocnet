@@ -114,6 +114,45 @@ describe('reviewFact', () => {
     expect(await getFact(world.deps, gloss.id)).toMatchObject({ status: 'pending', review: null })
   })
 
+  it('asks the LLM alone about a word another live entry records as an inflection, naming that entry [spec: facts/entry-inflection-evidence]', async () => {
+    const world = fakeWorld()
+    const entryFactOf = (entryId: string) => {
+      const fact = world.facts.find((candidate) => candidate.kind === 'entry' && candidate.subjectId === entryId)
+      if (!fact) throw new Error(`Entry ${entryId} has no entry fact.`)
+      return fact
+    }
+    const withForm = async (lemma: string, payload: { form: string; type: 'past' | 'plural' | 'variant' }) => {
+      const { entry } = await createEntry(world.deps, agentA, { lemma })
+      await submitFact(world.deps, agentA, { kind: 'form', subject_id: entry.id, payload })
+      return entry
+    }
+    await withForm('see', { form: 'saw', type: 'past' })
+    await withForm('sawe', { form: 'saw', type: 'variant' })
+    const rejected = await withForm('sa', { form: 'saw', type: 'plural' })
+    world.failReviews()
+    await reviewFact(world.deps, entryFactOf(rejected.id).id, 'trace-review')
+    world.passReviews()
+    const { fact } = await createEntry(world.deps, agentA, { lemma: 'saw' })
+    const jevCalls = world.jevCalls.length
+
+    await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('published')
+    expect(world.jevCalls).toHaveLength(jevCalls)
+    expect(world.llmCalls.at(-1)?.user).toContain(
+      'records "saw" as an inflection of another entry:\n- the simple past tense form of "see"\npass only',
+    )
+    expect((await getFact(world.deps, fact.id)).review).toMatchObject({
+      reviewer: 'llm',
+      context: { subject: { lemma: 'saw', inflectionOf: [{ lemma: 'see', type: 'past' }] } },
+    })
+
+    const sheep = await withForm('sheep', { form: 'sheep', type: 'plural' })
+    await reviewFact(world.deps, entryFactOf(sheep.id).id, 'trace-review')
+    expect((await getFact(world.deps, entryFactOf(sheep.id).id)).review).toMatchObject({
+      reviewer: 'jev',
+      context: { subject: { inflectionOf: [] } },
+    })
+  })
+
   it('reviews judgment facts with the LLM against the current gloss', async () => {
     const { world, sense } = await bankWorld()
     const { fact } = await submitFact(world.deps, agentA, {
