@@ -18,6 +18,12 @@ Feature: Access
     When it calls the management API
     Then the API responds 401
 
+  @access/malformed-token @usecase
+  Scenario: A token that is not a JWT is refused without contacting the issuer
+    Given the OIDC issuer is unreachable
+    When a caller presents a bearer token that is not a structurally valid JWT
+    Then the credential is invalid (401); a well-formed token still fails as a provider error (500)
+
   @access/manage-403 @api
   Scenario: Only admin subjects may use OIDC tokens on the management API
     Given a valid OIDC token whose subject is not in ADMIN_SUBJECTS

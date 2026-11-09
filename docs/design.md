@@ -158,7 +158,9 @@ compare-and-set on a revision counter.
 
 Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. Agent keys are random
 secrets (`vn_agent_…`) that an admin issues. The Worker stores only their
-SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403.
+SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403. A
+bearer that is not a structurally valid JWT gets 401 before the Worker contacts
+the issuer; an unreachable issuer is a 500, not a bad credential.
 
 ## Console
 
