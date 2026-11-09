@@ -65,6 +65,15 @@ Feature: Facts and review
     When its second opinion is planned
     Then the LLM prompt names the lemma, the part of speech, and the entry's other senses
 
+  @facts/entry-lexical-unit @domain
+  Scenario: A multiword entry is admitted only as a lexical unit
+    Given an entry fact for a single word or for a multiword lemma
+    When its review is planned
+    Then a single word is asked whether it is an established word, as before
+    And a multiword lemma is asked whether it is a fixed lexical unit whose meaning is not the sum of its words
+    And its rubric passes idioms, fixed compounds, phrasal verbs, fixed grammatical phrases, and expressions that resist synonym swaps
+    And it fails descriptive phrases and coined category labels, judged from the phrase itself without any external word list
+
   @facts/second-opinion-relation-type @domain
   Scenario: The second opinion fails a relation of the wrong type
     Given a relation fact

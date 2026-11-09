@@ -79,7 +79,7 @@ needs a new column.
 
 | Kind            | Subject | Cardinality | Payload                                                  | Reviewer chain |
 | --------------- | ------- | ----------- | -------------------------------------------------------- | -------------- |
-| `entry`         | entry   | one         | `{}` (the lemma is an established word)                  | Jev, then LLM  |
+| `entry`         | entry   | one         | `{}` (the lemma is a word or a lexical unit)            | Jev, then LLM  |
 | `sense`         | sense   | one         | `{ gloss, register? }`                                   | Jev, then LLM  |
 | `form`          | entry   | many        | `{ form, type, pos? }` (plural, past, variant…)          | Jev, then LLM  |
 | `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM  |
@@ -259,6 +259,19 @@ reset.
   an extension in time. `part_of` needs a distinct component or region of
   the whole; a material or ingredient it is made from, or a generic
   part such as a back or side, is not one.
+- **Entry admission.** A single-word lemma passes as an established word: a
+  dictionary lemma, function word, letter, or established abbreviation, not
+  an ordinary inflection, proper name, misspelling, or invented word. A
+  multiword lemma (one containing whitespace) gets its own Jev question and
+  rubric and passes only as a lexical unit: its meaning is not the sum of its
+  parts (an idiom such as "bear fruit", a compound naming one thing such as
+  "red blood cell"), it is a phrasal verb or fixed grammatical phrase ("end
+  up", "at the expense of"), or its words cannot be swapped for synonyms
+  without losing the conventional meaning. Descriptive phrases ("wheat
+  grain", "oven door") and coined category labels ("time unit", "plant
+  part") fail. The test is a question about the phrase itself: reviewers
+  cannot consult dictionaries, and no external word list is used, because
+  lists such as WordNet include exactly those category labels.
 - **Relation floor.** A relation request carries `settlesFailBelow` 0.15: a Jev
   answer under it settles the fail without asking the LLM. In the audit, every
   relation the LLM published over a Jev answer that low was wrong (shore

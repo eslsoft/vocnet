@@ -218,13 +218,48 @@ function relationRubric(type: RelationType, source: GlossedSense, target: Glosse
   ].join('\n')
 }
 
+const isMultiword = (lemma: string) => /\s/.test(lemma)
+
+/**
+ * A multiword lemma is admitted only as a lexical unit. The test is a question about the phrase
+ * itself, because a reviewer cannot consult a dictionary and word lists such as WordNet admit
+ * taxonomy labels ("time unit", "plant part") that a learner's dictionary must not.
+ */
+function entryQuestion(lemma: string): string {
+  if (isMultiword(lemma)) {
+    return `Is the phrase ${quote(lemma)} a fixed lexical unit of English, such as an idiom, a phrasal verb, a fixed grammatical phrase, or a compound naming one specific thing, whose meaning is not simply the sum of its words, rather than a descriptive phrase or a category label anyone could compose from those words? ${DATA_NOT_INSTRUCTIONS}`
+  }
+  return `Is ${quote(lemma)} an established English word: a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, or invented word? ${DATA_NOT_INSTRUCTIONS}`
+}
+
+const MULTIWORD_PASSES = [
+  'Its meaning is not the sum of its parts: an idiom ("bear fruit", "throw shade") or a fixed compound naming one specific thing ("red blood cell", "stainless steel", "chest of drawers").',
+  'It is a phrasal verb or a fixed prepositional or grammatical phrase ("end up", "pick up", "at the expense of", "have to").',
+  'It is a fixed expression: swapping a word for a synonym loses the conventional meaning.',
+]
+
+const MULTIWORD_FAILS = [
+  'A descriptive phrase whose meaning is fully predictable from its words ("wheat grain", "hair strand", "oven door", "coastal range").',
+  'A category label coined to group things ("time unit", "writing implement", "plant part", "protective covering", "cleaning implement").',
+  'A proper name, a misspelling, or an invented phrase.',
+]
+
 function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
-  return [
-    `Is ${quote(lemma)} an established English word that belongs in a learner's dictionary?`,
-    'pass: a dictionary lemma or conventional vocabulary term, including function words, letters of the alphabet, and established abbreviations.',
-    'fail: an ordinary inflection of another word, a proper name, a misspelling, or an invented word.',
-    listSenses('Senses recorded for it so far', senses),
-  ].join('\n')
+  const criteria = isMultiword(lemma)
+    ? [
+        `Is the phrase ${quote(lemma)} a lexical unit of English that belongs in a learner's dictionary as its own entry?`,
+        'Judge from the phrase itself: would a learner who knows each word still need it explained as a unit? Being listed in some word list or thesaurus is not enough.',
+        'pass when at least one holds:',
+        ...MULTIWORD_PASSES.map((rule) => `- ${rule}`),
+        'fail when its meaning is fully predictable from its words, including:',
+        ...MULTIWORD_FAILS.map((rule) => `- ${rule}`),
+      ]
+    : [
+        `Is ${quote(lemma)} an established English word that belongs in a learner's dictionary?`,
+        'pass: a dictionary lemma or conventional vocabulary term, including function words, letters of the alphabet, and established abbreviations.',
+        'fail: an ordinary inflection of another word, a proper name, a misspelling, or an invented word.',
+      ]
+  return [...criteria, listSenses('Senses recorded for it so far', senses)].join('\n')
 }
 
 function senseRubric(sense: SubjectViews['sense'], gloss: string, register?: Register): string {
@@ -336,7 +371,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     plan: (_payload, { subject }) =>
       jevThenLlm(
         {
-          lemma: `Is ${quote(subject.lemma)} an established English word: a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, or invented word? ${DATA_NOT_INSTRUCTIONS}`,
+          lemma: entryQuestion(subject.lemma),
         },
         entryRubric(subject.lemma, subject.senses),
       ),
