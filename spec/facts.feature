@@ -38,6 +38,13 @@ Feature: Facts and review
     When it answers pass, uncertain, or fail
     Then Jev settles only a pass, and the LLM settles every verdict
 
+  @facts/relation-jev-floor @domain
+  Scenario: A relation Jev all but rules out gets no second opinion
+    Given a relation fact
+    When Jev answers below the relation floor, far under its fail line
+    Then the fail settles the fact without asking the LLM
+    And a Jev fail above the floor still goes to the LLM
+
   @facts/second-opinion-chain @usecase
   Scenario: The LLM second opinion decides what Jev does not pass
     Given a pending proposition fact
@@ -63,7 +70,8 @@ Feature: Facts and review
     Given a relation fact
     When its second opinion is planned
     Then the LLM is asked whether the claim holds and its type is the most accurate one
-    And the rubric says substitutable senses are synonyms, hypernyms are strict kind-of links between nouns or verbs with informative heads, and part_of is a real constituent
+    And the rubric says substitutable senses are synonyms, hypernyms are strict kind-of links between nouns or verbs with informative heads, and part_of is a distinct component, not a material, ingredient, or generic part
+    And it judges the relation between the words, not a detail one gloss mentions and the other omits
 
   @facts/hypernym-question @domain
   Scenario: Jev's hypernym question rules out synonymy and generic heads
@@ -76,7 +84,15 @@ Feature: Facts and review
     Given a translation fact
     When its review is planned
     Then the rubric accepts verb-like or descriptive renderings of function words and bracketed usage notes
-    And rejects a wrong meaning, a different sense, unnatural wording, or equivalents of unrelated senses
+    And accepts, for a noun sense, an equivalent that also reads as a verb or adjective, since Chinese does not mark part of speech
+    And rejects a wrong meaning, a different sense, a noun-only equivalent of a verb sense, unnatural wording, or equivalents of unrelated senses
+
+  @facts/example-offensive-sense @domain
+  Scenario: An example of an offensive sense is judged as an illustration of that sense
+    Given an example of a vulgar, offensive, or derogatory sense
+    When its review is planned
+    Then the rubric accepts a sentence that shows the sense in ordinary use
+    And rejects one that uses another sense, is ungrammatical, or adds offence the sense does not need
 
   @facts/form-word-class @domain
   Scenario: A form is judged in the word class it inflects

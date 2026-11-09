@@ -67,7 +67,7 @@ async function runChain(
   for (const request of requests) {
     const opinion = await runReviewer(deps, request, state)
     opinions.push(opinion)
-    if (settles(request.reviewer, opinion.verdict)) break
+    if (settles(request, opinion)) break
   }
   return chainVerdict(opinions as [Opinion, ...Opinion[]])
 }

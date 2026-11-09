@@ -1,4 +1,5 @@
 import type { ReviewerChain, ReviewerKind, Verdict } from '@shared/facts'
+import type { ReviewRequest } from './fact-kinds'
 
 /** What one reviewer said about a fact. */
 export interface Opinion {
@@ -16,15 +17,17 @@ export type ChainVerdict = Omit<Opinion, 'reviewer'> & { reviewer: ReviewerChain
 /**
  * The verdicts with which a reviewer settles a fact when another reviewer follows it in the chain.
  * Jev's pass is reliable; its fail and uncertain bands misjudge often enough that the LLM decides
- * them. The last reviewer in a chain settles whatever it says.
+ * them, unless the request sets a floor its answer falls under. The last reviewer in a chain
+ * settles whatever it says.
  */
 const settlingVerdicts: Record<ReviewerKind, readonly Verdict[]> = {
   jev: ['pass'],
   llm: ['pass', 'uncertain', 'fail'],
 }
 
-export function settles(reviewer: ReviewerKind, verdict: Verdict): boolean {
-  return settlingVerdicts[reviewer].includes(verdict)
+export function settles(request: ReviewRequest, opinion: Opinion): boolean {
+  if (settlingVerdicts[request.reviewer].includes(opinion.verdict)) return true
+  return request.reviewer === 'jev' && opinion.confidence < (request.settlesFailBelow ?? 0)
 }
 
 /** The last opinion decides. A chain of one keeps its reviewer's raw detail; a longer one keeps every opinion. */
