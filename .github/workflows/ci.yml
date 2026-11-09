@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Architecture boundaries
+        run: pnpm lint:arch
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Migrations are generated from schema
+        run: |
+          pnpm db:generate
+          if [ -n "$(git status --porcelain migrations)" ]; then
+            echo "::error::schema.ts changed without a generated migration. Run 'pnpm db:generate' and commit."
+            git status --short migrations
+            exit 1
+          fi
+
+      - name: Test (unit + web + integration)
+        run: pnpm test
+
+      - name: Behavior coverage
+        run: pnpm test:behavior
+
+      - name: Coverage thresholds
+        run: pnpm test:coverage
+
+      - name: Build
+        run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps
+
+      - name: E2E (real stack)
+        run: pnpm e2e
+
+      - name: Upload E2E failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-evidence
+          path: artifacts/e2e

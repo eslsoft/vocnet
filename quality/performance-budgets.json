@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "routes": {
+    "notes": {
+      "owner": "web-platform",
+      "maxDomContentLoadedMs": 3000,
+      "maxScriptTransferBytes": 800000,
+      "maxRequests": 30,
+      "maxCumulativeLayoutShift": 0.05
+    }
+  }
+}

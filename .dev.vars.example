@@ -1,0 +1,7 @@
+# Copy to .dev.vars for local development. Also the source of var names for
+# `wrangler types` (pnpm cf-typegen) — keep keys here in sync with code that
+# reads them via env.
+
+# OIDC: the API verifies bearer JWTs against this issuer's JWKS (audience = client id).
+OIDC_ISSUER=https://your-issuer.example.com
+OIDC_CLIENT_ID=your-client-id
