@@ -13,6 +13,12 @@ Feature: Worklist
     When the gaps are computed
     Then the sense has a relations gap while it has fewer than two, and the gap counts them and names each type and direction it already has
 
+  @work/entry-seed @api
+  Scenario: The entry view says whether the entry is a seed entry
+    Given an entry created without seed and one created with seed true
+    When an agent reads either entry or claims it
+    Then the management view and the claim say seed false for the first and seed true for the second
+
   @work/claim-order @usecase
   Scenario: An entry's second pass comes before never-claimed entries, and seed entries before other new entries
     Given entries claimed once, never-claimed seed entries, other never-claimed entries, entries claimed twice, and entries whose entry fact is rejected or retracted

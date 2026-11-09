@@ -136,6 +136,20 @@ describe('worklist', () => {
     expect(order).toEqual(['cove', 'cove', 'fjord', 'fjord', 'bay'])
   })
 
+  it('says in the entry view and the claim whether an entry is a seed entry [spec: work/entry-seed]', async () => {
+    const token = await issueAgentKey()
+    await postEntry(token, { lemma: 'cove', seed: true })
+    await createEntry(token, 'bay')
+    const seedOf = async (lemma: string) =>
+      managedEntrySchema.parse((await call(`/manage/v1/entries/${lemma}`, { token })).body).seed
+    expect([await seedOf('cove'), await seedOf('bay')]).toEqual([true, false])
+    const claims = [workClaimSchema.parse((await claim(token)).body), workClaimSchema.parse((await claim(token)).body)]
+    expect(claims.map((work) => [work.lease.lemma, work.entry.seed])).toEqual([
+      ['cove', true],
+      ['bay', false],
+    ])
+  })
+
   it('moves an entry whose lease lapsed twice behind the entries claimed fewer times [spec: work/claim-rotation]', async () => {
     const token = await issueAgentKey()
     for (const lemma of ['bay', 'cove', 'fjord']) await createEntry(token, lemma)

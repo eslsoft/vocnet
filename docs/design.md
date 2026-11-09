@@ -294,7 +294,9 @@ lease keeps two agents off the same entry.
 900) leases one entry to the caller and returns
 `{ lease, entry, gaps }`: the lease (`id`, `entry_id`, `lemma`, `holder`,
 `expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
-returns, and the entry's gaps. It answers `204` when no entry is free. A free
+returns, and the entry's gaps. The management view carries `seed`, so an agent
+reads the seed mark from the server instead of keeping its own copy of the
+list. It answers `204` when no entry is free. A free
 entry has a live `entry` fact and no unexpired lease. Free entries come in
 four ranks, and within a rank by `claimed_at`, then creation time and id:
 

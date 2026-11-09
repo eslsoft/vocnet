@@ -13,6 +13,8 @@ import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
 /** Everything the read model needs about one entry, in every status. */
 export interface EntrySnapshot {
   entry: EntryNode
+  /** The entry was submitted as part of a seed list. */
+  seed: boolean
   senses: SenseWithLemma[]
   /** Facts whose subject is the entry or one of its senses. */
   facts: Fact[]
@@ -24,6 +26,7 @@ export interface EntrySnapshot {
 
 export interface ManagedEntryView {
   entry: EntryNode
+  seed: boolean
   senses: SenseNode[]
   facts: Fact[]
 }
@@ -31,7 +34,7 @@ export interface ManagedEntryView {
 /** The management view: the entry with every fact in every status, including relations pointing at it. */
 export function managedEntryView(snapshot: EntrySnapshot): ManagedEntryView {
   const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, fact]))
-  return { entry: snapshot.entry, senses: snapshot.senses, facts: [...facts.values()] }
+  return { entry: snapshot.entry, seed: snapshot.seed, senses: snapshot.senses, facts: [...facts.values()] }
 }
 
 /** Published facts always carry the review that published them. */

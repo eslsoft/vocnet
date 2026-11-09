@@ -182,6 +182,7 @@ export function fakeWorld(): FakeWorld {
       const neighborEntries = new Set<string>(neighbors.map((sense) => sense.entryId))
       return {
         entry,
+        seed: world.seeds.has(entry.id),
         senses: own.map(withLemma),
         facts,
         incoming,

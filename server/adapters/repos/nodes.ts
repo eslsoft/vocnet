@@ -219,7 +219,8 @@ export function createNodeRepo(db: Db): NodeRepo {
       const neighborSenseIds = db.select({ id: senses.id }).from(senses).where(neighborIds)
       const order = [asc(facts.createdAt), asc(facts.id)]
 
-      const [ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts] = await db.batch([
+      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts] = await db.batch([
+        db.select({ seed: worklist.seed }).from(worklist).where(eq(worklist.entryId, entry.id)),
         db
           .select(senseColumns)
           .from(senses)
@@ -249,8 +250,10 @@ export function createNodeRepo(db: Db): NodeRepo {
           .orderBy(...order),
       ])
 
+      if (!work[0]) throw new Error(`Entry ${entry.id} has no worklist row.`)
       return {
         entry,
+        seed: work[0].seed,
         senses: ownSenses.map(toSenseWithLemma),
         facts: subjectFacts.map(toFact),
         incoming: incoming.map(toFact),
