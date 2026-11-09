@@ -26,9 +26,10 @@ async function signIn(page: import('@playwright/test').Page) {
 test('critical UI is accessible and keyboard operable [spec: access/console-login]', async ({ page }) => {
   const loginResponse = await page.goto('/')
   expect(loginResponse?.headers()['content-security-policy']).toContain("script-src 'self';")
+  const signIn = page.getByRole('button', { name: 'Sign in' })
+  await expect(signIn).toBeVisible()
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
 
-  const signIn = page.getByRole('button', { name: 'Sign in' })
   await signIn.focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/$/)
