@@ -148,20 +148,25 @@ export function createNodeRepo(db: Db): NodeRepo {
       return row ? toSenseWithLemma(row) : null
     },
 
-    async findSenseByGloss(entryId, pos, contentKey) {
+    async findSenseByGloss(entryId, pos, contentKeys) {
       const row = await db
         .select({ sense: senses, fact: facts })
         .from(senses)
         .innerJoin(
           facts,
-          and(eq(facts.kind, 'sense'), eq(facts.contentKey, contentKey), eq(facts.subjectId, senses.id), liveStatus),
+          and(
+            eq(facts.kind, 'sense'),
+            inArray(facts.contentKey, contentKeys),
+            eq(facts.subjectId, senses.id),
+            liveStatus,
+          ),
         )
         .where(and(eq(senses.entryId, entryId), eq(senses.pos, pos)))
         .get()
       return row ? { sense: toSense(row.sense), fact: toFact(row.fact) } : null
     },
 
-    async insertSenseWithFact(sense, fact) {
+    async insertSenseWithFact(sense, fact, creationKey) {
       // The creation index makes a concurrent duplicate a no-op, and the fact is inserted only
       // if its sense was, so the loser of a race leaves nothing behind and reads the winner.
       const row = fromFact(fact)
@@ -174,20 +179,15 @@ export function createNodeRepo(db: Db): NodeRepo {
       await db.batch([
         db
           .insert(senses)
-          .values({ ...sense, creationKey: fact.contentKey })
+          .values({ ...sense, creationKey })
           .onConflictDoNothing(),
         db.insert(facts).select(db.select(values).from(senses).where(eq(senses.id, sense.id)) as never),
       ])
       const stored = await db
         .select({ sense: senses, fact: facts })
         .from(senses)
-        .innerJoin(
-          facts,
-          and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id), eq(facts.contentKey, senses.creationKey)),
-        )
-        .where(
-          and(eq(senses.entryId, sense.entryId), eq(senses.pos, sense.pos), eq(senses.creationKey, fact.contentKey)),
-        )
+        .innerJoin(facts, and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id)))
+        .where(and(eq(senses.entryId, sense.entryId), eq(senses.pos, sense.pos), eq(senses.creationKey, creationKey)))
         .orderBy(asc(facts.createdAt), asc(facts.id))
         .get()
       if (!stored) throw new Error(`Sense ${sense.id} has no defining fact right after insert.`)

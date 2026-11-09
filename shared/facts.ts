@@ -46,14 +46,90 @@ export type FormType = z.infer<typeof formTypeSchema>
 
 export const accentSchema = z.enum(['us', 'uk']).meta({ id: 'Accent' })
 
+export const registerSchema = z
+  .enum(['informal', 'slang', 'taboo', 'literary', 'formal', 'dated', 'offensive', 'technical'])
+  .meta({ id: 'Register', description: 'Usage label of a sense outside neutral standard English.' })
+export type Register = z.infer<typeof registerSchema>
+
+export const strengthSchema = z.enum(['strong', 'weak']).meta({
+  id: 'PronunciationStrength',
+  description: 'weak: the unstressed form of a function word, such as /tə/ for "to".',
+})
+
 const text = (max: number) => z.string().trim().min(1).max(max)
+
+const GLOSS_START = /^[\p{Lu}\p{N}"'“‘(]/u
+const GLOSS_EXAMPLE_MARKER = /\b(as in|e\.g\.|for example|for instance)(?=\W|$)/i
+const QUOTED_SENTENCE = /(^|[\s(])['‘"“][^'‘"“’”]*[.!?]['’"”](?=$|[\s.,;:)!?])/
+
+/** A gloss defines one sense in dictionary style; its examples are example facts. */
+export const glossSchema = z
+  .string()
+  .trim()
+  .min(6, 'A gloss is at least 6 characters.')
+  .max(300, 'A gloss is at most 300 characters.')
+  .refine((gloss) => GLOSS_START.test(gloss), 'A gloss starts with a capital letter, a digit, a quote, or "(".')
+  .refine((gloss) => gloss.endsWith('.'), 'A gloss ends with a period.')
+  .refine(
+    (gloss) => !GLOSS_EXAMPLE_MARKER.test(gloss) && !QUOTED_SENTENCE.test(gloss),
+    'A gloss has no examples ("as in", "e.g.", "for example", or a quoted sentence); submit each example as an example fact.',
+  )
+  .meta({ description: 'One sense in dictionary style: "To move quickly on foot." Examples go in example facts.' })
+
+const IPA_SEPARATOR = /[,;/|[\]()]/
+// Broad English IPA. One spelling per sound keeps transcriptions comparable: r (not ɹ), ɡ (not g), tʃ (not ʧ).
+const IPA_SYMBOLS = new Set([
+  ...'aeiouæɑɒɐɔəɚɛɜɝɪʊʌɨɵʉ',
+  ...'bdfhjklmnprstvwzðθʃʒŋɡʔɾɫʍxç',
+  ...'ˈˌːˑ. ',
+  ...'ʰʷᵊ\u0329\u032f\u0303\u0361',
+])
+const IPA_SPELLINGS: Record<string, string> = { ɹ: 'r', g: 'ɡ', ':': 'ː', "'": 'ˈ', ʧ: 'tʃ', ʤ: 'dʒ' }
+
+/** One broad IPA transcription, without delimiters. */
+export const ipaSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .refine(
+    (ipa) => !IPA_SEPARATOR.test(ipa),
+    'An ipa holds exactly one transcription without slashes, brackets, parentheses, commas, semicolons, or bars; submit each pronunciation as its own fact.',
+  )
+  .superRefine((ipa, ctx) => {
+    const foreign = [...new Set(ipa.normalize('NFC'))].filter(
+      (symbol) => !IPA_SYMBOLS.has(symbol) && !IPA_SEPARATOR.test(symbol),
+    )
+    if (foreign.length === 0) return
+    const advice = foreign.map((symbol) =>
+      IPA_SPELLINGS[symbol] ? `"${symbol}" (write ${IPA_SPELLINGS[symbol]})` : `"${symbol}"`,
+    )
+    ctx.addIssue({
+      code: 'custom',
+      message: `An ipa uses broad English IPA symbols only; replace ${advice.join(', ')}.`,
+    })
+  })
+  .meta({ description: 'One broad IPA transcription without slashes, such as ˈwɔtər.' })
 
 export const factPayloadSchemas = {
   entry: z.strictObject({}),
-  sense: z.strictObject({ gloss: text(500) }),
-  form: z.strictObject({ form: text(100), type: formTypeSchema }),
+  sense: z.strictObject({ gloss: text(500), register: registerSchema.optional() }),
+  form: z.strictObject({
+    form: text(100),
+    type: formTypeSchema,
+    pos: posSchema.optional().meta({
+      description: 'The part of speech the form inflects, such as auxiliary for "would" and verb for "willed".',
+    }),
+  }),
   relation: z.strictObject({ type: relationTypeSchema, target_sense_id: senseIdSchema }),
-  pronunciation: z.strictObject({ ipa: text(100), accent: accentSchema }),
+  pronunciation: z.strictObject({
+    ipa: text(100),
+    accent: accentSchema,
+    strength: strengthSchema.optional().meta({ description: 'Absent means the strong (citation) form.' }),
+    pos: posSchema
+      .optional()
+      .meta({ description: 'The part of speech this pronunciation belongs to, when it differs by POS.' }),
+  }),
   example: z.strictObject({ text: text(500) }),
   translation: z.strictObject({
     language: z
@@ -64,6 +140,14 @@ export const factPayloadSchemas = {
   }),
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
+
+// Stored facts predate some write rules, so reads parse the shape above and only submissions
+// enforce the format rules.
+const submitPayloadSchemas = {
+  ...factPayloadSchemas,
+  sense: factPayloadSchemas.sense.extend({ gloss: glossSchema }),
+  pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }),
+}
 
 export const factKindSchema = z
   .enum(['entry', 'sense', 'form', 'relation', 'pronunciation', 'example', 'translation'])
@@ -105,7 +189,7 @@ function submitVariant<K extends FactKind>(kind: K) {
     kind: z.literal(kind),
     subject_id: z.uuid().meta({ description: 'Entry or sense the fact is about; the kind decides which.' }),
     supersedes_id: factIdSchema.optional().meta({ description: 'Published fact this one corrects.' }),
-    payload: factPayloadSchemas[kind],
+    payload: submitPayloadSchemas[kind],
   })
 }
 

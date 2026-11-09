@@ -104,6 +104,22 @@ pnpm build && pnpm run deploy
 CI (`.github/workflows/ci.yml`) gates every push. CD (`deploy.yml`) ships `main`
 when the repo variable `ENABLE_DEPLOY=true` and the Cloudflare secrets are set.
 
+## Operations
+
+Submissions follow the write rules in [docs/design.md](docs/design.md#write-rules):
+dictionary-style glosses, one broad IPA transcription per pronunciation,
+symmetric relations stored once per pair of senses, and relations only across
+entries. Facts stored before those rules still read. To clean them up through
+the management API:
+
+- **Mirrored synonyms and antonyms.** After the `orient_symmetric_relations`
+  migration, a live `synonym` or `antonym` whose `subject_id` sorts after its
+  `object_id` duplicates the stored pair. Retract it with
+  `POST /manage/v1/facts/{id}/retract`.
+- **Relations inside one entry.** Retract them; submission refuses new ones.
+- **Malformed glosses and transcriptions.** Submit a correction whose
+  `supersedes_id` names the stored fact.
+
 ## Project structure
 
 ```

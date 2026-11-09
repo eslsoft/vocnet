@@ -1,6 +1,6 @@
 import { agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
-import type { EntryId, SenseId } from '@shared/facts'
+import type { EntryId, FactId, SenseId } from '@shared/facts'
 import type { WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import {
@@ -71,6 +71,29 @@ describe('createSense', () => {
     expect(again).toMatchObject({ created: false, sense: { id: created.sense.id } })
     const verb = await createSense(world.deps, agentA, { ...input, pos: 'verb' })
     expect(verb.created).toBe(true)
+  })
+
+  it('returns the existing sense for the same gloss with any register [spec: catalog/create-sense-register]', async () => {
+    const world = fakeWorld()
+    const { entry } = await createEntry(world.deps, agentA, { lemma: 'odd' })
+    const input = { entry_id: entry.id, pos: 'adjective' as const, gloss: 'Not divisible by two.' }
+    const created = await createSense(world.deps, agentA, input)
+    await reviewAll(world)
+
+    const formal = await createSense(world.deps, agentA, { ...input, register: 'formal' })
+    expect(formal).toMatchObject({ created: false, sense: { id: created.sense.id }, fact: { id: created.fact.id } })
+    expect(formal.fact.payload).toEqual({ gloss: 'Not divisible by two.' })
+
+    const labelled = await createSense(world.deps, agentA, {
+      ...input,
+      gloss: 'Divisible by three.',
+      register: 'technical',
+    })
+    expect(labelled.created).toBe(true)
+    const relabelled = await createSense(world.deps, agentA, { ...input, gloss: 'divisible by  three.' })
+    expect(relabelled).toMatchObject({ created: false, sense: { id: labelled.sense.id } })
+    expect(world.senses).toHaveLength(2)
+    expect(world.queued.map((job) => job.factId)).toEqual([labelled.fact.id])
   })
 
   it('returns the sense a gloss created even after that gloss was rejected, and enqueues nothing', async () => {
@@ -171,14 +194,19 @@ describe('management reads', () => {
     ])
   })
 
-  it('shows every fact in every status, without duplicating relations inside the entry', async () => {
+  it('shows every fact in every status, without duplicating a stored relation inside the entry', async () => {
     const world = fakeWorld()
     const { entry } = await createEntry(world.deps, agentA, { lemma: 'big' })
     const a = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'adjective', gloss: 'large' })
     const b = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'adjective', gloss: 'important' })
-    await submitFact(world.deps, agentA, {
+    // Submission now refuses relations inside one entry; facts stored before that rule still show once.
+    await world.deps.facts.insert({
+      ...a.fact,
+      id: crypto.randomUUID() as FactId,
       kind: 'relation',
-      subject_id: a.sense.id,
+      subjectId: a.sense.id,
+      objectId: b.sense.id,
+      contentKey: `synonym|${b.sense.id}`,
       payload: { type: 'synonym', target_sense_id: b.sense.id },
     })
     const view = await getManagedEntry(world.deps, 'big')

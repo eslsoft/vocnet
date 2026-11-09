@@ -110,6 +110,23 @@ describe('public read model', () => {
     ])
   })
 
+  it('shows the register, form POS, and pronunciation strength and POS a fact carries [spec: facts/write-labels]', () => {
+    const { snapshot, bank, bankSense } = bankWorld()
+    const labelled: EntrySnapshot = {
+      ...snapshot,
+      facts: [
+        fact('entry', bank.id, {}),
+        fact('sense', bankSense.id, { gloss: 'To rely on.', register: 'informal' }),
+        fact('form', bank.id, { form: 'banked', type: 'past', pos: 'verb' }),
+        fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'us', strength: 'strong', pos: 'verb' }),
+      ],
+    }
+    const view = projectPublicEntry(labelled)
+    expect(view?.senses[0]).toMatchObject({ gloss: 'To rely on.', register: 'informal' })
+    expect(view?.forms).toEqual([expect.objectContaining({ form: 'banked', type: 'past', pos: 'verb' })])
+    expect(view?.pronunciations).toEqual([expect.objectContaining({ ipa: 'bæŋk', strength: 'strong', pos: 'verb' })])
+  })
+
   it('hides an entry whose entry fact is not published', () => {
     const { snapshot } = bankWorld()
     const hidden = {

@@ -19,7 +19,7 @@ async function publishedRiverBank() {
       await call('/manage/v1/senses', {
         method: 'POST',
         token,
-        json: { entry_id: entry.id, pos: 'noun', gloss: 'land beside a river' },
+        json: { entry_id: entry.id, pos: 'noun', gloss: 'Land beside a river.' },
       })
     ).body,
   )
@@ -46,7 +46,7 @@ describe('exclusive fact slots', () => {
 
   it('publishes a correction and supersedes the original in one write [spec: facts/supersede-api]', async () => {
     const { gloss, correct } = await publishedRiverBank()
-    const correction = factWriteResultSchema.parse((await correct('sloping land beside a river')).body).fact
+    const correction = factWriteResultSchema.parse((await correct('Sloping land beside a river.')).body).fact
 
     stubReviewers()
     await deliverPendingReviews()
@@ -54,7 +54,7 @@ describe('exclusive fact slots', () => {
     expect((await factOf(correction.id)).status).toBe('published')
     expect((await factOf(gloss.id)).status).toBe('superseded')
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
-    expect(entry.senses.map((sense) => sense.gloss)).toEqual(['sloping land beside a river'])
+    expect(entry.senses.map((sense) => sense.gloss)).toEqual(['Sloping land beside a river.'])
   })
 
   it('sends a rejected fact back through review until it publishes [spec: facts/rereview-api]', async () => {
@@ -78,7 +78,7 @@ describe('exclusive fact slots', () => {
 
   it('admits one of two concurrent corrections [spec: facts/exclusive-slot-race]', async () => {
     const { entry, correct } = await publishedRiverBank()
-    const results = await Promise.all([correct('sloping land beside a river'), correct('the edge of a river')])
+    const results = await Promise.all([correct('Sloping land beside a river.'), correct('The edge of a river.')])
     expect(results.map(({ status }) => status).sort()).toEqual([201, 409])
     expect(codeOf(results.find(({ status }) => status === 409)?.body)).toBe('conflict')
 
@@ -94,7 +94,7 @@ describe('exclusive fact slots', () => {
     const admin = await adminToken()
     const results = await Promise.all([
       call(`/manage/v1/facts/${gloss.id}/rereview`, { method: 'POST', token: admin }),
-      correct('sloping land beside a river'),
+      correct('Sloping land beside a river.'),
     ])
     expect(results.filter(({ status }) => status === 409)).toHaveLength(1)
   })
@@ -102,7 +102,7 @@ describe('exclusive fact slots', () => {
   it('refuses a re-review that would put a second live fact in the slot [spec: facts/rereview-conflict]', async () => {
     const { token, sense, gloss, correct } = await publishedRiverBank()
     const admin = await adminToken()
-    const correction = factWriteResultSchema.parse((await correct('sloping land beside a river')).body).fact
+    const correction = factWriteResultSchema.parse((await correct('Sloping land beside a river.')).body).fact
     const whilePending = await call(`/manage/v1/facts/${gloss.id}/rereview`, { method: 'POST', token: admin })
     expect([whilePending.status, codeOf(whilePending.body)]).toEqual([409, 'conflict'])
 
@@ -132,11 +132,11 @@ describe('exclusive fact slots', () => {
 
   it('refuses to re-review a rejected correction whose original another correction superseded [spec: facts/rereview-orphaned-correction]', async () => {
     const { token, sense, gloss, correct } = await publishedRiverBank()
-    const rejected = factWriteResultSchema.parse((await correct('a kind of fish')).body).fact
+    const rejected = factWriteResultSchema.parse((await correct('A kind of fish.')).body).fact
     stubReviewers(0.1, 'fail')
     await deliverPendingReviews()
     vi.restoreAllMocks()
-    const winner = factWriteResultSchema.parse((await correct('sloping land beside a river')).body).fact
+    const winner = factWriteResultSchema.parse((await correct('Sloping land beside a river.')).body).fact
     stubReviewers()
     await deliverPendingReviews()
     vi.restoreAllMocks()
@@ -153,7 +153,7 @@ describe('exclusive fact slots', () => {
         kind: 'sense',
         subject_id: sense.id,
         supersedes_id: winner.id,
-        payload: { gloss: 'the edge of a river' },
+        payload: { gloss: 'The edge of a river.' },
       },
     })
     expect(next.status).toBe(201)
@@ -168,7 +168,7 @@ describe('exclusive fact slots', () => {
       call('/manage/v1/senses', {
         method: 'POST',
         token,
-        json: { entry_id: entry.id, pos: 'noun', gloss: 'land beside a river' },
+        json: { entry_id: entry.id, pos: 'noun', gloss: 'Land beside a river.' },
       })
     const results = await Promise.all([create(), create()])
     expect(results.map(({ status }) => status).sort()).toEqual([200, 201])
@@ -181,5 +181,31 @@ describe('exclusive fact slots', () => {
     )
     expect(managed.senses).toHaveLength(1)
     expect(managed.facts.filter((fact) => fact.kind === 'sense')).toHaveLength(1)
+  })
+
+  it('returns the existing sense for its gloss with a register, alone or racing [spec: catalog/create-sense-register-api]', async () => {
+    const token = await issueAgentKey()
+    const { entry } = createEntryResultSchema.parse(
+      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'odd' } })).body,
+    )
+    const gloss = 'Not divisible by two without a remainder.'
+    const create = (register?: string) =>
+      call('/manage/v1/senses', {
+        method: 'POST',
+        token,
+        json: { entry_id: entry.id, pos: 'adjective', gloss, register },
+      })
+    const [plain, raced] = await Promise.all([create(), create('informal')])
+    stubReviewers()
+    await deliverPendingReviews()
+    const formal = await create('formal')
+
+    expect([plain, raced].map(({ status }) => status).sort()).toEqual([200, 201])
+    expect(formal.status).toBe(200)
+    const results = [plain, raced, formal].map(({ body }) => createSenseResultSchema.parse(body))
+    expect(new Set(results.map((result) => result.sense.id)).size).toBe(1)
+    expect(results.map((result) => result.created).filter(Boolean)).toHaveLength(1)
+    const entryView = publicEntrySchema.parse((await call('/v1/entries/odd')).body)
+    expect(entryView.senses.map((sense) => sense.gloss)).toEqual([gloss])
   })
 })

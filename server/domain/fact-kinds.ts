@@ -1,4 +1,13 @@
-import type { FactKind, FactPayloads, FormType, Pos, RelationType, ReviewerKind, SenseId } from '@shared/facts'
+import type {
+  FactKind,
+  FactPayloads,
+  FormType,
+  Pos,
+  Register,
+  RelationType,
+  ReviewerKind,
+  SenseId,
+} from '@shared/facts'
 import { normalizeTerm, textKey } from './term'
 
 // The single source of truth for fact kinds. Wire payload schemas live in
@@ -73,11 +82,21 @@ interface BaseSpec<K extends FactKind> {
   contentKey(payload: FactPayloads[K]): string
   /** The sense a relation points at; absent for kinds without an object. */
   target?(payload: FactPayloads[K]): SenseId
+  /** The one stored orientation of a claim that reads the same either way round; absent means as submitted. */
+  orient?(subjectId: string, payload: FactPayloads[K]): Oriented<K>
+  /** What the fact claims, without its usage labels; absent means the content key. */
+  meaningKey?(payload: FactPayloads[K]): string
   /**
-   * Kinds judged against this fact: when a correction of it publishes, their published facts
-   * about the same node (as subject or object) are re-reviewed in place.
+   * Kinds judged against this fact: when a correction that changes its meaning publishes, their
+   * published facts about the same node (as subject or object) are re-reviewed in place. A
+   * correction that only relabels leaves them alone.
    */
   revalidates?: readonly FactKind[]
+}
+
+export interface Oriented<K extends FactKind> {
+  subjectId: string
+  payload: FactPayloads[K]
 }
 
 /** `chain` and the requests `plan` builds are tied, so a kind cannot name one chain and ask another. */
@@ -132,8 +151,9 @@ function listSenses(heading: string, senses: readonly SenseGloss[]): string {
 }
 
 // Jev question texts started as the producer's qualified questions.
-function lexicalQuestion(word: string, pos: Pos, gloss: string): string {
-  return `Does English have AT LEAST ONE established ${pos} sense of ${quote(word)} meaning ${quote(gloss)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning. ${DATA_NOT_INSTRUCTIONS}`
+function lexicalQuestion(word: string, pos: Pos, gloss: string, register?: Register): string {
+  const usage = register ? `, used in ${article(register)} ${register} register` : ''
+  return `Does English have AT LEAST ONE established ${pos} sense of ${quote(word)} meaning ${quote(gloss)}${usage}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ''} ${DATA_NOT_INSTRUCTIONS}`
 }
 
 const DIFFERENT_WORDS = 'Two senses of the same word never stand in this relation.'
@@ -185,11 +205,12 @@ function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
   ].join('\n')
 }
 
-function senseRubric(sense: SubjectViews['sense'], gloss: string): string {
+function senseRubric(sense: SubjectViews['sense'], gloss: string, register?: Register): string {
+  const usage = register ? `, used in ${article(register)} ${register} register` : ''
   return [
-    `Does the English word ${quote(sense.lemma)} have an established ${sense.pos} sense meaning ${quote(gloss)}?`,
+    `Does the English word ${quote(sense.lemma)} have an established ${sense.pos} sense meaning ${quote(gloss)}${usage}?`,
     'pass: a standard dictionary such as Oxford, Cambridge, Merriam-Webster, or Collins records this sense for this part of speech. Rare, informal, figurative, technical, and grammatical senses count, and so do glosses written as usage notes ("Used before … to …"). Minor paraphrase is fine.',
-    'fail: the word has no such meaning in this part of speech, the gloss describes a different word or a proper name, or it is a one-off or invented use.',
+    `fail: the word has no such meaning in this part of speech, the gloss describes a different word or a proper name, or it is a one-off or invented use${register ? ', or the sense is not used in this register' : ''}.`,
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
 }
@@ -217,18 +238,18 @@ const article = (word: string) => (/^[aeiou]/.test(word) ? 'an' : 'a')
  * Each inflection belongs to one word class. Naming it keeps Jev from judging the form against
  * the lemma's dominant part of speech (the verb "bread" against the noun).
  */
-function formQuestion(type: FormType, form: string, lemma: string): string {
+function formQuestion(type: FormType, form: string, lemma: string, pos?: Pos): string {
   const { wordClass, name } = formTypes[type]
   if (!wordClass) {
     return `Is ${quote(form)} an accepted spelling variant of the English word ${quote(lemma)} in standard American or British usage? ${DATA_NOT_INSTRUCTIONS}`
   }
-  const classes = wordClass.join(' or ')
+  const classes = pos ?? wordClass.join(' or ')
   return `When ${quote(lemma)} is inflected as ${article(classes)} ${classes}, is ${quote(form)} its ${name} in standard American or British usage? Evaluate the ${classes} use even if another part of speech is more common. ${DATA_NOT_INSTRUCTIONS}`
 }
 
-function formRubric(type: FormType, form: string, entry: SubjectViews['entry']): string {
+function formRubric(type: FormType, form: string, entry: SubjectViews['entry'], pos?: Pos): string {
   const { wordClass, name } = formTypes[type]
-  const classes = wordClass?.join(' or ')
+  const classes = pos ?? wordClass?.join(' or ')
   const scope = classes ? `, used as ${article(classes)} ${classes}` : ''
   return [
     `Is ${quote(form)} the ${name} of the English word ${quote(entry.lemma)}${scope}, in standard American or British usage?`,
@@ -266,6 +287,23 @@ function translationRubric(language: string, text: string, sense: SubjectViews['
 
 const accentNames = { us: 'General American', uk: 'British Received Pronunciation' } as const
 
+const relationSymmetry: Record<RelationType, 'symmetric' | 'directed'> = {
+  synonym: 'symmetric',
+  antonym: 'symmetric',
+  hypernym: 'directed',
+  part_of: 'directed',
+}
+
+/** A symmetric relation is stored once per pair of senses: the smaller sense id is the subject. */
+function orientRelation(subjectId: string, payload: FactPayloads['relation']): Oriented<'relation'> {
+  const { type, target_sense_id: target } = payload
+  if (relationSymmetry[type] === 'directed' || subjectId < target) return { subjectId, payload }
+  return { subjectId: target, payload: { type, target_sense_id: subjectId as SenseId } }
+}
+
+const labelled = (key: string, ...labels: Array<string | undefined>) =>
+  [key, ...labels.filter((label) => label !== undefined)].join('|')
+
 export const factKinds: { [K in FactKind]: KindSpec<K> } = {
   entry: {
     subject: 'entry',
@@ -284,18 +322,23 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     subject: 'sense',
     cardinality: 'one',
     chain: ['jev', 'llm'],
-    contentKey: ({ gloss }) => textKey(gloss),
+    // A register-only correction must differ from the gloss it supersedes.
+    contentKey: ({ gloss, register }) => labelled(textKey(gloss), register),
+    meaningKey: ({ gloss }) => textKey(gloss),
     revalidates: ['example', 'translation', 'relation'],
-    plan: ({ gloss }, { subject }) =>
-      jevThenLlm({ lexical: lexicalQuestion(subject.lemma, subject.pos, gloss) }, senseRubric(subject, gloss)),
+    plan: ({ gloss, register }, { subject }) =>
+      jevThenLlm(
+        { lexical: lexicalQuestion(subject.lemma, subject.pos, gloss, register) },
+        senseRubric(subject, gloss, register),
+      ),
   },
   form: {
     subject: 'entry',
     cardinality: 'many',
     chain: ['jev', 'llm'],
     contentKey: ({ form, type }) => `${type}|${normalizeTerm(form)}`,
-    plan: ({ form, type }, { subject }) =>
-      jevThenLlm({ form: formQuestion(type, form, subject.lemma) }, formRubric(type, form, subject)),
+    plan: ({ form, type, pos }, { subject }) =>
+      jevThenLlm({ form: formQuestion(type, form, subject.lemma, pos) }, formRubric(type, form, subject, pos)),
   },
   relation: {
     subject: 'sense',
@@ -303,6 +346,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     chain: ['jev', 'llm'],
     contentKey: ({ type, target_sense_id }) => `${type}|${target_sense_id}`,
     target: ({ target_sense_id }) => target_sense_id,
+    orient: orientRelation,
     plan: ({ type }, { subject, target }) =>
       withGloss(subject, (source) =>
         withGloss(target, (other) =>
@@ -318,9 +362,9 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     cardinality: 'many',
     chain: ['llm'],
     contentKey: ({ ipa, accent }) => `${accent}|${ipa.normalize('NFC').trim()}`,
-    plan: ({ ipa, accent }, { subject }) =>
+    plan: ({ ipa, accent, strength, pos }, { subject }) =>
       llm(
-        `Is /${ipa}/ a correct broad IPA transcription of the ${accentNames[accent]} pronunciation of the English word ${quote(subject.lemma)}? Reject wrong phonemes, wrong stress, or a transcription of the other accent.`,
+        `Is /${ipa}/ a correct broad IPA transcription of the ${accentNames[accent]} ${strength === 'weak' ? 'weak (unstressed) form' : 'strong (citation) pronunciation'} of the English word ${quote(subject.lemma)}${pos ? ` as ${article(pos)} ${pos}` : ''}? Reject wrong phonemes, wrong stress, ${strength === 'weak' ? 'a strong form' : 'a weak form'}, or a transcription of the other accent.`,
       ),
   },
   example: {
@@ -355,6 +399,26 @@ export function planReview<K extends FactKind>(
 
 export function contentKeyOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): string {
   return factKinds[kind].contentKey(payload)
+}
+
+export function meaningKeyOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): string {
+  const spec = factKinds[kind]
+  return spec.meaningKey?.(payload) ?? spec.contentKey(payload)
+}
+
+/** The kinds to re-review when `correction` supersedes `original`: none unless its meaning changed. */
+export function revalidatedBy<K extends FactKind>(
+  kind: K,
+  original: FactPayloads[K],
+  correction: FactPayloads[K],
+): readonly FactKind[] | undefined {
+  if (meaningKeyOf(kind, original) === meaningKeyOf(kind, correction)) return undefined
+  return factKinds[kind].revalidates
+}
+
+/** The orientation a submitted claim is stored in. */
+export function orientOf<K extends FactKind>(kind: K, subjectId: string, payload: FactPayloads[K]): Oriented<K> {
+  return factKinds[kind].orient?.(subjectId, payload) ?? { subjectId, payload }
 }
 
 export function targetOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): SenseId | null {

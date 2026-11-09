@@ -34,11 +34,15 @@ identity, never reviewed content.
 | `entries` | `id`, `lemma` (normalized, unique), `created_by`  | One entry per lemma spelling        |
 | `senses`  | `id`, `entry_id`, `pos`, `creation_key`, `created_by` | POS is identity; gloss is a fact |
 
-Correcting a sense's POS means a new sense, not an edit. `creation_key` is the
-content key of the gloss the sense was created with. A unique index on
-`(entry_id, pos, creation_key)` makes concurrent identical creations converge on
-one sense: the losing request inserts nothing and returns the winner's sense and
-gloss fact. A node is publicly
+Correcting a sense's POS means a new sense, not an edit. A sense is identified
+by its gloss text alone, never by its `register` label. Creating a sense returns
+the existing one when a live gloss of that entry and POS has the same text with
+any register, or none, and the create's own register is then ignored. An agent
+labels an existing sense through a correction of its gloss. `creation_key` is the
+gloss's meaning key (its case-folded text, without the register) at creation. A
+unique index on `(entry_id, pos, creation_key)` makes concurrent creations of
+one gloss converge on one sense, whatever registers they carry: the losing
+request inserts nothing and returns the winner's sense and gloss fact. A node is publicly
 visible when its defining fact (`entry` for an entry, `sense` for a sense) is
 published.
 
@@ -73,15 +77,15 @@ Each kind declares its subject type, payload schema, content key, reviewer
 chain, and review prompts. Adding a kind is one registry entry plus a migration only if it
 needs a new column.
 
-| Kind            | Subject | Cardinality | Payload                                   | Reviewer chain |
-| --------------- | ------- | ----------- | ----------------------------------------- | -------------- |
-| `entry`         | entry   | one         | `{}` (the lemma is an established word)   | Jev, then LLM  |
-| `sense`         | sense   | one         | `{ gloss }`                               | Jev, then LLM  |
-| `form`          | entry   | many        | `{ form, type }` (plural, past, variant…) | Jev, then LLM  |
-| `relation`      | sense   | many        | `{ type, target_sense_id }`               | Jev, then LLM  |
-| `pronunciation` | entry   | many        | `{ ipa, accent }` (accent `us` or `uk`)   | LLM            |
-| `example`       | sense   | many        | `{ text }`                                | LLM            |
-| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)         | LLM            |
+| Kind            | Subject | Cardinality | Payload                                                  | Reviewer chain |
+| --------------- | ------- | ----------- | -------------------------------------------------------- | -------------- |
+| `entry`         | entry   | one         | `{}` (the lemma is an established word)                  | Jev, then LLM  |
+| `sense`         | sense   | one         | `{ gloss, register? }`                                   | Jev, then LLM  |
+| `form`          | entry   | many        | `{ form, type, pos? }` (plural, past, variant…)          | Jev, then LLM  |
+| `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM  |
+| `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
+| `example`       | sense   | many        | `{ text }`                                               | LLM            |
+| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)                        | LLM            |
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
 one gloss. Changing it means submitting a correction that supersedes the
@@ -105,9 +109,63 @@ questions started as the ones the producer qualified. Each now says that two
 senses of one word never stand in a relation, and the hypernym question also
 says that mutual substitutability is synonymy, that hypernymy holds only
 between nouns or between verbs, and that a generic head such as "cause" does
-not count. A relation is reviewed with the relation question only. Whether each sense is an established meaning is the
+not count. A relation links senses of two different entries; a relation inside
+one entry, or from a sense to itself, is `422 invalid_reference`. Synonyms and
+antonyms are symmetric, so each is stored once per pair of senses: submission
+orients it with the smaller sense id as `subject_id` and the larger as
+`target_sense_id`, and a submission from the other end returns the stored fact
+with `created: false`. Hypernyms and `part_of` keep the direction they were
+submitted in. Reads list a relation on both senses, `outgoing` on its subject
+and `incoming` on its object, and gaps count it for both. The migration
+`orient_symmetric_relations` flipped stored rows into this orientation and
+kept their reviews; a live mirrored pair kept both rows, and the one whose
+`subject_id` is larger is the duplicate to retract. A relation is reviewed with
+the relation question only. Whether each sense is an established meaning is the
 job of that sense's own `sense` fact, and the relation stays hidden until both
 are published.
+
+### Write rules
+
+Submissions (`POST /manage/v1/facts` and `POST /manage/v1/senses`) enforce
+these formats in `shared/facts.ts`. A violation is `400 invalid_request` whose
+message names each rule the payload breaks. Stored facts are read with the
+plain payload shape, so facts written before a rule still read.
+
+- **Gloss.** 6 to 300 characters after trimming. It starts with a capital
+  letter, a digit, a quote, or `(`, and ends with a period. It holds no
+  example: no `as in`, `e.g.`, `for example`, or `for instance`, and no quoted
+  sentence (a quoted span that ends in `.`, `!`, or `?`). Examples are
+  `example` facts. Quoted single words or set phrases, such as "usually
+  followed by 'for'", are usage notes and pass.
+- **IPA.** One broad transcription: no commas, semicolons, slashes, brackets,
+  parentheses, or `|`. Each symbol is from the broad English IPA set
+  (`aeiouæɑɒɐɔəɚɛɜɝɪʊʌɨɵʉ`, `bdfhjklmnprstvwzðθʃʒŋɡʔɾɫʍxç`, `ˈ ˌ ː ˑ .`,
+  space, and `ʰ ʷ ᵊ`, syllabic, non-syllabic, nasal, and tie marks). One
+  spelling per sound keeps transcriptions comparable: `r`, not `ɹ`; `ɡ`, not
+  `g`; `ˈ` and `ː`, not `'` and `:`; `tʃ` and `dʒ`, not ligatures. The message
+  names each symbol to replace.
+
+Labels are optional, and absent means unlabelled:
+
+| Kind            | Label       | Values                                                                 |
+| --------------- | ----------- | ---------------------------------------------------------------------- |
+| `sense`         | `register`  | `informal`, `slang`, `taboo`, `literary`, `formal`, `dated`, `offensive`, `technical` |
+| `form`          | `pos`       | The part of speech the form inflects: `would` is the `auxiliary` past of *will*, `willed` the `verb` past |
+| `pronunciation` | `strength`  | `strong` (absent means strong) or `weak`, the unstressed form of a function word such as /tə/ for *to* |
+| `pronunciation` | `pos`       | The part of speech a pronunciation belongs to, such as the noun *do* /doʊ/ |
+
+A weak form must carry `strength: weak`; the LLM reviewer is told which form
+it judges and rejects a weak form submitted as the strong one. A form's `pos`
+replaces the word class in its Jev question and in the LLM second opinion, so
+both judge the labelled claim. A pronunciation's `pos` is named in its prompt,
+and a sense's `register` in its Jev question and its LLM second opinion ("used
+in a formal register"), so a wrong label fails review. The public entry shows
+every label. A sense's `register` is part of its content key, so a correction
+that only adds or changes a register is a new fact that supersedes the gloss. It
+is not part of the sense's identity or its meaning (see Nodes and revalidation).
+A form's or pronunciation's labels are not:
+the same form or transcription with another label returns the live fact, and
+relabelling one means retracting it and submitting the labelled fact.
 
 ### Fact lifecycle
 
@@ -144,9 +202,13 @@ correction enters it. A rejected correction leaves the original published.
 
 A correction of a sense's gloss changes the meaning that the sense's examples,
 translations, and relations (as subject or object) were judged against. The
-registry lists these as the `sense` kind's `revalidates` kinds. In the same batch
-that publishes the correction, every live fact of those kinds about the
-sense gets `revalidate_since`, and then each is enqueued. A published one stays
+registry lists these as the `sense` kind's `revalidates` kinds. Only a change of
+meaning revalidates them: the registry's `meaningKey` for a gloss is its text
+without the register, and a correction with the same meaning key as the gloss it
+supersedes (a relabel) publishes without touching its dependents, pending or
+published. In the same batch that publishes a correction that changes the
+meaning, every live fact of those kinds about the sense gets `revalidate_since`,
+and then each is enqueued. A published one stays
 published and public while it waits. Its review is the *revalidation* event of
 the transition table: pass or uncertain keeps it published with the new review
 (`reconfirm`), and fail moves it to `rejected` (`invalidate`). If the gloss is

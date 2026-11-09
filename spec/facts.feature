@@ -109,6 +109,50 @@ Feature: Facts and review
     When it submits a fact twice, a fact about the wrong node type, and an invalid payload
     Then the API answers 201, 200, 422 invalid_reference, and 400 invalid_request
 
+  @facts/symmetric-relation-once @usecase
+  Scenario: A symmetric relation is one fact per pair of senses
+    Given two senses of different entries
+    When an agent submits a synonym or antonym from one sense and then from the other
+    Then both submissions return the same fact, stored with the smaller sense id as its subject
+    And a hypernym or part_of relation keeps the direction it was submitted in
+
+  @facts/relation-across-entries @usecase
+  Scenario: A relation links senses of two different entries
+    Given two senses of one entry
+    When an agent submits a relation between them, or from a sense to itself
+    Then the submission is rejected as an invalid reference
+
+  @facts/gloss-format @domain
+  Scenario: A gloss is written in dictionary style
+    Given a sense gloss to submit
+    When it starts in lowercase, has no final period, is too short or too long, or embeds an example
+    Then the submission is invalid and the message names each rule to fix
+    And glosses stored before the rule still read
+
+  @facts/ipa-format @domain
+  Scenario: A pronunciation holds one broad IPA transcription
+    Given a pronunciation to submit
+    When its ipa packs two transcriptions, carries slashes or brackets, or uses a symbol outside broad English IPA
+    Then the submission is invalid and the message names the symbols to replace, such as ɹ with r
+
+  @facts/write-labels @domain
+  Scenario: Facts carry optional usage labels
+    Given a sense register, a form part of speech, or a pronunciation strength and part of speech
+    When the fact is reviewed and published
+    Then the reviewer is asked about the labelled form, and the public entry shows each label
+
+  @facts/write-rules-api @api
+  Scenario: Write rules over HTTP
+    Given an agent key and senses of different entries
+    When it submits a mirrored antonym, a relation inside one entry, a malformed gloss, and two packed transcriptions
+    Then the API answers 200 with the first fact, 422 invalid_reference, and 400 invalid_request with the rules to fix
+
+  @facts/orient-stored-relations @api
+  Scenario: Stored symmetric relations take the stored orientation
+    Given synonyms and antonyms stored before orientation, including a live mirrored pair
+    When the orientation migration runs
+    Then each keeps its review with the smaller sense id as subject, and a live duplicate stays for an agent to retract
+
   @facts/subject-validation @usecase
   Scenario: A fact must be about the right kind of node
     Given a kind whose subject is a sense
@@ -163,6 +207,24 @@ Feature: Facts and review
     Given a pending example and a pending correction of its gloss
     When the correction publishes while the example is under review
     Then the example stays pending, and the next delivery publishes it judged against the corrected gloss
+
+  @facts/relabel-no-revalidate @usecase
+  Scenario: A register-only correction does not re-review dependents
+    Given a sense with published examples, translations, and relations
+    When a correction that keeps the gloss text and changes only its register publishes
+    Then it supersedes the gloss, and nothing is marked or enqueued for revalidation
+
+  @facts/correction-marks-live-dependents @usecase
+  Scenario: Only a correction that changes the gloss marks pending and published dependents
+    Given a sense with a published example and a pending example
+    When a correction of the sense publishes
+    Then a new gloss text marks and enqueues both examples, and a register-only correction marks and enqueues neither
+
+  @facts/relabel-api @api
+  Scenario: A register-only correction on a real database
+    Given a published gloss with a published example and incoming relation
+    When the queue publishes a correction that only adds a register
+    Then the original is superseded, the public sense shows the register, and its dependents stay unmarked
 
   @facts/revalidation-outcome @domain
   Scenario: Revalidation unpublishes only on failure

@@ -31,13 +31,18 @@ export interface NodeRepo {
   /** Inserts unless the lemma exists; returns the stored entry either way. */
   insertEntry(entry: EntryNode): Promise<EntryNode>
   findSense(id: SenseId): Promise<SenseWithLemma | null>
-  /** The sense of this entry and POS whose live `sense` fact has this content key. */
-  findSenseByGloss(entryId: EntryId, pos: Pos, contentKey: string): Promise<{ sense: SenseNode; fact: Fact } | null>
+  /** The sense of this entry and POS whose live `sense` fact has one of these content keys. */
+  findSenseByGloss(entryId: EntryId, pos: Pos, contentKeys: string[]): Promise<{ sense: SenseNode; fact: Fact } | null>
   /**
    * Atomically creates a sense together with its defining fact, unless the entry already has a
-   * sense of this POS created with the same gloss; returns the stored sense and its defining fact.
+   * sense of this POS with the same creation key; returns the stored sense and its defining fact,
+   * the sense's first `sense` fact.
    */
-  insertSenseWithFact(sense: SenseNode, fact: FactOf<'sense'>): Promise<{ sense: SenseNode; fact: Fact }>
+  insertSenseWithFact(
+    sense: SenseNode,
+    fact: FactOf<'sense'>,
+    creationKey: string,
+  ): Promise<{ sense: SenseNode; fact: Fact }>
   /** The live `sense` facts of every sense of this entry, oldest sense and oldest fact first. */
   listLiveGlosses(entryId: EntryId): Promise<Array<{ sense: SenseNode; fact: FactOf<'sense'> }>>
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>

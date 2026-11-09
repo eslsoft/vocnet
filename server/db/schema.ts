@@ -16,7 +16,7 @@ export const senses = sqliteTable(
       .notNull()
       .references(() => entries.id),
     pos: text('pos').notNull(),
-    /** Content key of the gloss the sense was created with, so a concurrent duplicate create finds it. */
+    /** Meaning key of the gloss the sense was created with, without labels, so a concurrent duplicate create finds it. */
     creationKey: text('creation_key').notNull(),
     createdBy: text('created_by').notNull(),
     createdAt: text('created_at').notNull(),

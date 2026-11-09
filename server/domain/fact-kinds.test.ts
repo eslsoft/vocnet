@@ -1,6 +1,16 @@
 import type { SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { contentKeyOf, factKinds, planReview, type ReviewPlan, type ReviewRequest, targetOf } from './fact-kinds'
+import {
+  contentKeyOf,
+  factKinds,
+  meaningKeyOf,
+  orientOf,
+  planReview,
+  type ReviewPlan,
+  type ReviewRequest,
+  revalidatedBy,
+  targetOf,
+} from './fact-kinds'
 
 const target = '00000000-0000-4000-8000-000000000009' as SenseId
 const money = { pos: 'noun' as const, gloss: 'an institution that keeps money' }
@@ -28,6 +38,40 @@ describe('fact-kind registry', () => {
     expect(contentKeyOf('pronunciation', { ipa: 'bæŋk', accent: 'us' })).toBe('us|bæŋk')
     expect(contentKeyOf('example', { text: 'We sat on the Bank.' })).toBe('we sat on the bank.')
     expect(contentKeyOf('translation', { language: 'zh-Hans', text: '河岸' })).toBe('zh-Hans|河岸')
+  })
+
+  it('keys a gloss by its register too, so a register-only correction is a new fact', () => {
+    expect(contentKeyOf('sense', { gloss: 'Semen.', register: 'taboo' })).toBe('semen.|taboo')
+    expect(contentKeyOf('form', { form: 'would', type: 'past', pos: 'auxiliary' })).toBe('past|would')
+    expect(contentKeyOf('pronunciation', { ipa: 'tə', accent: 'us', strength: 'weak' })).toBe('us|tə')
+  })
+
+  it('re-reviews dependents only when a correction changes what the gloss means [spec: facts/relabel-no-revalidate]', () => {
+    const gloss = { gloss: 'Land beside a river.' }
+    expect(meaningKeyOf('sense', { ...gloss, register: 'literary' })).toBe(meaningKeyOf('sense', gloss))
+    expect(revalidatedBy('sense', gloss, { gloss: 'land beside  a river.', register: 'literary' })).toBeUndefined()
+    expect(revalidatedBy('sense', gloss, { gloss: 'The sloping land beside a river.' })).toEqual([
+      'example',
+      'translation',
+      'relation',
+    ])
+    expect(revalidatedBy('example', { text: 'We sat.' }, { text: 'We stood.' })).toBeUndefined()
+  })
+
+  it('orients a symmetric relation from the smaller sense id and keeps directed ones as submitted [spec: facts/symmetric-relation-once]', () => {
+    const low = '00000000-0000-4000-8000-000000000001'
+    const synonym = { type: 'synonym', target_sense_id: low as SenseId } as const
+    expect(orientOf('relation', target, synonym)).toEqual({
+      subjectId: low,
+      payload: { type: 'synonym', target_sense_id: target },
+    })
+    expect(orientOf('relation', low, { type: 'antonym', target_sense_id: target })).toEqual({
+      subjectId: low,
+      payload: { type: 'antonym', target_sense_id: target },
+    })
+    const hypernym = { type: 'hypernym', target_sense_id: low as SenseId } as const
+    expect(orientOf('relation', target, hypernym)).toEqual({ subjectId: target, payload: hypernym })
+    expect(orientOf('example', target, { text: 'x' })).toEqual({ subjectId: target, payload: { text: 'x' } })
   })
 
   it('names the relation target as the object and no other kind has one', () => {
@@ -141,6 +185,44 @@ describe('fact-kind registry', () => {
     expect(jevQuestion(plan, 'form')).toBe(
       `When "bread" is inflected as ${asClass}, is "${form}" its ${name} in standard American or British usage? Evaluate the ${wordClass} use even if another part of speech is more common. ${tail}`,
     )
+  })
+
+  it('asks Jev and the LLM about the labelled part of speech when a form names one [spec: facts/write-labels]', () => {
+    const plan = planReview(
+      'form',
+      { form: 'would', type: 'past', pos: 'auxiliary' },
+      { subject: { lemma: 'will', senses: [] }, target: null },
+    )
+    expect(jevQuestion(plan, 'form')).toContain('When "will" is inflected as an auxiliary, is "would"')
+    expect(llmPrompt(plan)?.user).toContain(
+      'Is "would" the simple past tense form of the English word "will", used as an auxiliary,',
+    )
+  })
+
+  it('asks Jev and the LLM whether a sense is used in its labelled register [spec: facts/write-labels]', () => {
+    const plan = (register?: 'formal') =>
+      planReview('sense', { gloss: 'Not divisible by two.', register }, { subject: bank, target: null })
+    const question = (register?: 'formal') => jevQuestion(plan(register), 'lexical') ?? ''
+    const rubric = (register?: 'formal') => llmPrompt(plan(register))?.user ?? ''
+    expect(question('formal')).toContain('meaning "Not divisible by two.", used in a formal register?')
+    expect(question('formal')).toContain('A register that does not fit how the sense is used is wrong.')
+    expect(question()).toContain('meaning "Not divisible by two."? ')
+    expect(question()).not.toContain('register')
+    expect(rubric('formal')).toContain('noun sense meaning "Not divisible by two.", used in a formal register?')
+    expect(rubric('formal')).toContain('or the sense is not used in this register.')
+    expect(rubric()).not.toContain('register')
+  })
+
+  it('tells the LLM whether a pronunciation is the weak or the strong form, and of which part of speech [spec: facts/write-labels]', () => {
+    const prompt = (payload: Parameters<typeof planReview<'pronunciation'>>[1]) => {
+      const plan = planReview('pronunciation', payload, { subject: { lemma: 'to', senses: [] }, target: null })
+      return llmPrompt(plan)?.user ?? ''
+    }
+    expect(prompt({ ipa: 'tə', accent: 'us', strength: 'weak' })).toContain(
+      'weak (unstressed) form of the English word "to"?',
+    )
+    expect(prompt({ ipa: 'tuː', accent: 'us' })).toContain('strong (citation) pronunciation of the English word "to"?')
+    expect(prompt({ ipa: 'duː', accent: 'us', pos: 'verb' })).toContain('"to" as a verb?')
   })
 
   it('asks about a spelling variant without a word class, since it spans all of them [spec: facts/form-word-class]', () => {

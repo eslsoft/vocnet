@@ -14,16 +14,16 @@ async function factOf(id: string): Promise<FactDto> {
 }
 
 /** A river sense with an example and an incoming relation, all published, then its gloss corrected. */
-async function correctedRiverBank(newGloss: string) {
+async function correctedRiverBank(correctionPayload: { gloss: string; register?: string }) {
   const token = await issueAgentKey()
   const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
   const bank = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'bank' }))
   const shore = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'shore' }))
   const river = createSenseResultSchema.parse(
-    await post('/manage/v1/senses', { entry_id: bank.entry.id, pos: 'noun', gloss: 'land beside a river' }),
+    await post('/manage/v1/senses', { entry_id: bank.entry.id, pos: 'noun', gloss: 'Land beside a river.' }),
   )
   const coast = createSenseResultSchema.parse(
-    await post('/manage/v1/senses', { entry_id: shore.entry.id, pos: 'noun', gloss: 'land along water' }),
+    await post('/manage/v1/senses', { entry_id: shore.entry.id, pos: 'noun', gloss: 'Land along water.' }),
   )
   const submit = async (json: unknown) => factWriteResultSchema.parse(await post('/manage/v1/facts', json)).fact
   const example = await submit({
@@ -43,11 +43,11 @@ async function correctedRiverBank(newGloss: string) {
     kind: 'sense',
     subject_id: river.sense.id,
     supersedes_id: river.fact.id,
-    payload: { gloss: newGloss },
+    payload: correctionPayload,
   })
   await deliverPendingReviews()
   vi.restoreAllMocks()
-  return { token, correction, example, incoming, unrelated }
+  return { token, river, correction, example, incoming, unrelated }
 }
 
 const llmVerdict = (verdict: 'pass' | 'fail') =>
@@ -66,7 +66,7 @@ describe('revalidation', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('re-reviews facts judged against a corrected gloss in place, keeping them public [spec: facts/revalidate-api]', async () => {
-    const { example, incoming, unrelated } = await correctedRiverBank('the sloping land beside a river')
+    const { example, incoming, unrelated } = await correctedRiverBank({ gloss: 'The sloping land beside a river.' })
     const before = await factOf(unrelated.id)
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
     expect(entry.senses[0]?.examples.map((item) => item.id)).toEqual([example.id])
@@ -79,13 +79,25 @@ describe('revalidation', () => {
     for (const id of [example.id, incoming.id]) {
       const fact = await factOf(id)
       expect(fact.status).toBe('published')
-      expect(JSON.stringify(fact.review?.context)).toContain('the sloping land beside a river')
+      expect(JSON.stringify(fact.review?.context)).toContain('The sloping land beside a river.')
     }
     expect(await factOf(unrelated.id)).toEqual(before)
   })
 
+  it('supersedes a gloss with a register-only correction and leaves its dependents alone [spec: facts/relabel-api]', async () => {
+    const { river, correction, example, incoming } = await correctedRiverBank({
+      gloss: 'Land beside a river.',
+      register: 'literary',
+    })
+    expect(await marks([example.id, incoming.id])).toEqual([null, null])
+    expect((await factOf(correction.id)).status).toBe('published')
+    expect((await factOf(river.fact.id)).status).toBe('superseded')
+    const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
+    expect(entry.senses[0]).toMatchObject({ register: 'literary', examples: [{ id: example.id }] })
+  })
+
   it('rejects a dependent whose revalidation fails and hides it', async () => {
-    const { example, incoming } = await correctedRiverBank('an institution that keeps money')
+    const { example, incoming } = await correctedRiverBank({ gloss: 'An institution that keeps money.' })
     llmVerdict('fail')
     await deliverReviews([example.id, incoming.id])
 
@@ -96,7 +108,9 @@ describe('revalidation', () => {
   })
 
   it('keeps dependents published and unmarked when the correction is retracted before they revalidate [spec: facts/revalidate-gloss-retracted]', async () => {
-    const { token, correction, example, incoming } = await correctedRiverBank('the sloping land beside a river')
+    const { token, correction, example, incoming } = await correctedRiverBank({
+      gloss: 'The sloping land beside a river.',
+    })
     const ids = [example.id, incoming.id]
     expect(await marks(ids)).toEqual([expect.any(String), expect.any(String)])
     const retract = await call(`/manage/v1/facts/${correction.id}/retract`, { method: 'POST', token })
@@ -117,7 +131,7 @@ describe('revalidation', () => {
     const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
     const bank = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'bank' }))
     const river = createSenseResultSchema.parse(
-      await post('/manage/v1/senses', { entry_id: bank.entry.id, pos: 'noun', gloss: 'land beside a river' }),
+      await post('/manage/v1/senses', { entry_id: bank.entry.id, pos: 'noun', gloss: 'Land beside a river.' }),
     )
     stubReviewers()
     await deliverPendingReviews()
@@ -128,7 +142,7 @@ describe('revalidation', () => {
       kind: 'sense',
       subject_id: river.sense.id,
       supersedes_id: river.fact.id,
-      payload: { gloss: 'the sloping land beside a river' },
+      payload: { gloss: 'The sloping land beside a river.' },
     })
 
     const judgedGlosses: string[] = []
@@ -142,7 +156,7 @@ describe('revalidation', () => {
         return Response.json({ model: 'jev-test', answers })
       }
       const prompt = body.messages?.at(-1)?.content ?? ''
-      judgedGlosses.push(prompt.includes('the sloping land') ? 'new' : 'old')
+      judgedGlosses.push(prompt.includes('The sloping land') ? 'new' : 'old')
       if (judgedGlosses.length === 1) await deliverReviews([correction.id])
       const content = JSON.stringify({ verdict: 'pass', confidence: 0.9, reason: 'Judged.' })
       return Response.json({ model: 'llm-test', choices: [{ message: { content } }] })
@@ -157,7 +171,7 @@ describe('revalidation', () => {
     expect(judgedGlosses).toEqual(['old', 'new'])
     const reviewed = await factOf(example.id)
     expect(reviewed.status).toBe('published')
-    expect(JSON.stringify(reviewed.review?.context)).toContain('the sloping land beside a river')
+    expect(JSON.stringify(reviewed.review?.context)).toContain('The sloping land beside a river.')
     expect(await marks([example.id])).toEqual([null])
   })
 })
