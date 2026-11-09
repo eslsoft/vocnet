@@ -74,6 +74,18 @@ Feature: Catalog
     When an agent requests the entry through the management API
     Then every fact about the entry and its senses is returned with its status
 
+  @catalog/manage-entry-list @api
+  Scenario: Management lists entries in every status with their progress
+    Given entries with pending, published, and retracted facts, one of them worked by an agent
+    When an agent pages through the entries by prefix
+    Then each page lists entries in lemma order with the entry status, live sense count, fact counts by status, and last worked time
+
+  @catalog/manage-entry-list-index @api
+  Scenario: Listing entries reads only the page
+    Given the statements behind one page of entry summaries
+    When their query plans are read
+    Then each one searches an index from the page's entries and none reads every live fact of a kind
+
   @catalog/locate-node @api
   Scenario: Management resolves a node id to its entry
     Given an entry with a sense

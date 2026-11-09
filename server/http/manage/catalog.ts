@@ -1,10 +1,18 @@
 import { createRoute } from '@hono/zod-openapi'
-import { createEntry, createSense, getManagedEntry, getStats, locateNode } from '@server/usecases/catalog'
+import {
+  createEntry,
+  createSense,
+  getManagedEntry,
+  getStats,
+  listEntrySummaries,
+  locateNode,
+} from '@server/usecases/catalog'
 import {
   createEntryInputSchema,
   createEntryResultSchema,
   createSenseInputSchema,
   createSenseResultSchema,
+  entrySummaryPageSchema,
   lemmaInputSchema,
   managedEntrySchema,
   nodeLocationSchema,
@@ -12,7 +20,7 @@ import {
 } from '@shared/catalog'
 import { z } from 'zod'
 import { actorOf } from '../auth'
-import { createRouter, errorResponse, json, jsonBody } from '../router'
+import { createRouter, errorResponse, json, jsonBody, pageQuery } from '../router'
 import { entryDto, factDto, managedEntryDto, senseDto } from '../serialize'
 
 const tags = ['Catalog']
@@ -44,6 +52,17 @@ const postSense = createRoute({
     400: errorResponse,
     422: errorResponse,
   },
+})
+
+const listEntries = createRoute({
+  method: 'get',
+  path: '/entries',
+  tags,
+  summary: 'List entries in every status, in lemma order',
+  description:
+    'Each entry comes with its entry status, live sense count, fact counts by status, and last completed work.',
+  request: { query: pageQuery.extend({ prefix: lemmaInputSchema.optional() }) },
+  responses: { 200: json(entrySummaryPageSchema, 'A page of entry summaries.'), 400: errorResponse },
 })
 
 const getEntry = createRoute({
@@ -83,6 +102,11 @@ export const manageCatalogRoutes = createRouter()
     const result = await createSense(c.get('deps'), actorOf(c), c.req.valid('json'))
     const body = { sense: senseDto(result.sense), fact: factDto(result.fact), created: result.created }
     return result.created ? c.json(body, 201) : c.json(body, 200)
+  })
+  .openapi(listEntries, async (c) => {
+    const { prefix, limit, cursor } = c.req.valid('query')
+    const page = await listEntrySummaries(c.get('deps'), prefix ?? '', { limit, cursor })
+    return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
   })
   .openapi(getEntry, async (c) => {
     return c.json(managedEntryDto(await getManagedEntry(c.get('deps'), c.req.valid('param').lemma)), 200)

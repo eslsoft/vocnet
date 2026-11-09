@@ -1,38 +1,11 @@
-import { useId, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { Link } from 'react-router'
 import { FactDrawer, FactStatusBadge, FactTable, useFactSelection } from '@/features/facts'
-import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { ErrorNotice } from '@/shared/ui/error-notice'
-import { Input } from '@/shared/ui/input'
 import { groupEntry } from './entry-view'
 import { useManagedEntry } from './hooks'
-
-function LemmaSearch({ lemma }: { lemma?: string }) {
-  const { t } = useTranslation()
-  const navigate = useNavigate()
-  const [value, setValue] = useState(lemma ?? '')
-  const inputId = useId()
-  return (
-    <form
-      className="flex max-w-md items-end gap-2"
-      onSubmit={(event) => {
-        event.preventDefault()
-        const trimmed = value.trim()
-        if (trimmed) navigate(`/entries/${encodeURIComponent(trimmed)}`)
-      }}
-    >
-      <div className="flex flex-1 flex-col gap-1">
-        <label htmlFor={inputId} className="text-muted-foreground text-xs">
-          {t('entries.lemma')}
-        </label>
-        <Input id={inputId} value={value} onChange={(event) => setValue(event.target.value)} />
-      </div>
-      <Button type="submit">{t('entries.search')}</Button>
-    </form>
-  )
-}
 
 function EntryDetail({ lemma }: { lemma: string }) {
   const { t } = useTranslation()
@@ -81,12 +54,16 @@ function EntryDetail({ lemma }: { lemma: string }) {
   )
 }
 
-/** Search by lemma, then show the entry's senses with every fact in every status. */
-export function EntryInspector({ lemma }: { lemma?: string }) {
+/** One entry's senses with every fact in every status. */
+export function EntryInspector({ lemma }: { lemma: string }) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-6">
-      <LemmaSearch key={lemma} lemma={lemma} />
-      {lemma ? <EntryDetail lemma={lemma} /> : null}
+      <Link className="flex items-center gap-1 self-start text-muted-foreground text-sm hover:underline" to="/entries">
+        <ArrowLeft aria-hidden className="size-4" />
+        {t('entries.backToList')}
+      </Link>
+      <EntryDetail lemma={lemma} />
     </div>
   )
 }

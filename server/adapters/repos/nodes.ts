@@ -1,10 +1,25 @@
-import { entries, facts, senses } from '@server/db/schema'
+import { entries, facts, senses, worklist } from '@server/db/schema'
 import type { FactOf } from '@server/domain/fact'
 import type { SenseWithLemma } from '@server/domain/nodes'
 import type { Lemma } from '@server/domain/term'
-import type { NodeRepo } from '@server/usecases/ports'
-import type { EntryId } from '@shared/facts'
-import { and, asc, eq, exists, getTableColumns, gt, gte, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
+import type { NodeRepo, PageRequest } from '@server/usecases/ports'
+import { type EntryId, type FactStatus, factStatusSchema } from '@shared/facts'
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  getTableColumns,
+  gt,
+  gte,
+  inArray,
+  lt,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, liveStatus, page, toEntry, toFact, toSense } from './rows'
 import { insertWorklistRow } from './work'
@@ -26,6 +41,14 @@ const toSenseWithLemma = (row: Parameters<typeof toSense>[0] & { lemma: string }
   lemma: row.lemma as Lemma,
 })
 
+/** Lemma range scan on the unique lemma index. */
+function lemmaStartsWith(prefix: string) {
+  return prefix ? and(gte(entries.lemma, prefix), lt(entries.lemma, `${prefix}${PREFIX_END}`)) : undefined
+}
+
+const noFacts = (): Record<FactStatus, number> =>
+  Object.fromEntries(factStatusSchema.options.map((status) => [status, 0])) as Record<FactStatus, number>
+
 function publishedEntry(entryId: SQL | typeof entries.id, db: Db) {
   return exists(
     db
@@ -33,6 +56,65 @@ function publishedEntry(entryId: SQL | typeof entries.id, db: Db) {
       .from(facts)
       .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entryId), eq(facts.status, 'published'))),
   )
+}
+
+/**
+ * The statements behind one page of entry summaries. Each one reads only the page's entries and
+ * their senses and facts through an index, so a page costs the same however large the dictionary
+ * grows. The glossed-sense count is an EXISTS on facts_subject_idx: joined to facts with
+ * kind = 'sense', SQLite starts from facts_live_content_idx and reads every live sense fact.
+ */
+export function entrySummaryStatements(db: Db, prefix: string, { limit, cursor }: PageRequest) {
+  const after = cursor ? decodeCursor(cursor, entryCursor) : undefined
+  const inPage = and(lemmaStartsWith(prefix), after ? gt(entries.lemma, after.lemma) : undefined)
+  const pageIds = db
+    .select({ id: entries.id })
+    .from(entries)
+    .where(inPage)
+    .orderBy(asc(entries.lemma))
+    .limit(limit + 1)
+  const entryStatus = db
+    .select({ status: facts.status })
+    .from(facts)
+    .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entries.id)))
+    .orderBy(desc(liveStatus), desc(facts.updatedAt), desc(facts.id))
+    .limit(1)
+  const liveGloss = db
+    .select({ one: sql`1` })
+    .from(facts)
+    .where(and(eq(facts.subjectId, senses.id), eq(facts.kind, 'sense'), liveStatus))
+
+  return [
+    db
+      .select({
+        id: entries.id,
+        lemma: entries.lemma,
+        createdAt: entries.createdAt,
+        lastWorkedAt: worklist.lastWorkedAt,
+        entryStatus: sql<string | null>`(${entryStatus})`,
+      })
+      .from(entries)
+      .leftJoin(worklist, eq(worklist.entryId, entries.id))
+      .where(inPage)
+      .orderBy(asc(entries.lemma))
+      .limit(limit + 1),
+    db
+      .select({ entryId: facts.subjectId, status: facts.status, count: count() })
+      .from(facts)
+      .where(inArray(facts.subjectId, pageIds))
+      .groupBy(facts.subjectId, facts.status),
+    db
+      .select({ entryId: senses.entryId, status: facts.status, count: count() })
+      .from(senses)
+      .innerJoin(facts, eq(facts.subjectId, senses.id))
+      .where(inArray(senses.entryId, pageIds))
+      .groupBy(senses.entryId, facts.status),
+    db
+      .select({ entryId: senses.entryId, count: count() })
+      .from(senses)
+      .where(and(inArray(senses.entryId, pageIds), exists(liveGloss)))
+      .groupBy(senses.entryId),
+  ] as const
 }
 
 export function createNodeRepo(db: Db): NodeRepo {
@@ -173,7 +255,7 @@ export function createNodeRepo(db: Db): NodeRepo {
         .from(entries)
         .where(
           and(
-            prefix ? and(gte(entries.lemma, prefix), lt(entries.lemma, `${prefix}${PREFIX_END}`)) : undefined,
+            lemmaStartsWith(prefix),
             after ? gt(entries.lemma, after.lemma) : undefined,
             publishedEntry(entries.id, db),
           ),
@@ -185,6 +267,33 @@ export function createNodeRepo(db: Db): NodeRepo {
         rows,
         limit,
         (row) => ({ id: row.id as EntryId, lemma: row.lemma }),
+        (row) => ({ lemma: row.lemma }),
+      )
+    },
+
+    async listEntrySummaries(prefix, request) {
+      const [rows, entryFacts, senseFacts, glossed] = await db.batch(entrySummaryStatements(db, prefix, request))
+
+      const factCounts = new Map<string, Record<FactStatus, number>>()
+      for (const row of [...entryFacts, ...senseFacts]) {
+        const counts = factCounts.get(row.entryId) ?? noFacts()
+        counts[factStatusSchema.parse(row.status)] += row.count
+        factCounts.set(row.entryId, counts)
+      }
+      const senseCounts = new Map(glossed.map((row) => [row.entryId, row.count]))
+      // lemma is unique, so it is its own keyset tiebreaker.
+      return page(
+        rows,
+        request.limit,
+        (row) => ({
+          id: row.id as EntryId,
+          lemma: row.lemma,
+          entry_status: row.entryStatus === null ? null : factStatusSchema.parse(row.entryStatus),
+          sense_count: senseCounts.get(row.id) ?? 0,
+          fact_counts: factCounts.get(row.id) ?? noFacts(),
+          last_worked_at: row.lastWorkedAt,
+          created_at: row.createdAt,
+        }),
         (row) => ({ lemma: row.lemma }),
       )
     },

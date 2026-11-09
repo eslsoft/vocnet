@@ -12,6 +12,7 @@ const id = () => crypto.randomUUID()
 export interface EntryRecord {
   id: string
   lemma: string
+  last_worked_at?: string
 }
 export interface SenseRecord {
   id: string
@@ -141,6 +142,35 @@ export function consoleApi(
       if (!found) return apiError(404, 'not_found', 'Fact not found.')
       return replaceFact({ ...found, status: 'pending', review: null })
     }),
+    http.get('/manage/v1/entries', ({ request }) => {
+      const url = new URL(request.url)
+      const prefix = url.searchParams.get('prefix') ?? ''
+      const summaries = state.entries
+        .filter((entry) => entry.lemma.startsWith(prefix))
+        .sort((a, b) => a.lemma.localeCompare(b.lemma))
+        .map((entry) => {
+          const own = new Set([entry.id, ...state.senses.filter((s) => s.entry_id === entry.id).map((s) => s.id)])
+          const facts = state.facts.filter((candidate) => own.has(candidate.subject_id))
+          const isLive = (candidate: FactDto) => candidate.status === 'pending' || candidate.status === 'published'
+          const count = (status: FactDto['status']) => facts.filter((candidate) => candidate.status === status).length
+          return {
+            id: entry.id,
+            lemma: entry.lemma,
+            entry_status: facts.find((candidate) => candidate.kind === 'entry')?.status ?? null,
+            sense_count: facts.filter((candidate) => candidate.kind === 'sense' && isLive(candidate)).length,
+            fact_counts: {
+              pending: count('pending'),
+              published: count('published'),
+              rejected: count('rejected'),
+              superseded: count('superseded'),
+              retracted: count('retracted'),
+            },
+            last_worked_at: entry.last_worked_at ?? null,
+            created_at: at,
+          }
+        })
+      return HttpResponse.json(page(summaries, url))
+    }),
     http.get('/manage/v1/entries/:lemma', ({ params }) => {
       const entry = state.entries.find((candidate) => candidate.lemma === params.lemma)
       if (!entry) return apiError(404, 'not_found', `No entry for "${params.lemma}".`)
@@ -150,7 +180,7 @@ export function consoleApi(
         (candidate) => nodeIds.has(candidate.subject_id) || nodeIds.has(candidate.object_id ?? ''),
       )
       return HttpResponse.json({
-        entry: { ...entry, created_by: 'agent:producer', created_at: at },
+        entry: { id: entry.id, lemma: entry.lemma, created_by: 'agent:producer', created_at: at },
         senses: senses.map((sense) => ({ ...sense, created_by: 'agent:producer', created_at: at })),
         facts,
       })

@@ -114,6 +114,29 @@ export const managedEntrySchema = z
   })
   .meta({ id: 'ManagedEntry' })
 
+const countSchema = z.number().int().nonnegative()
+
+export const entrySummarySchema = z
+  .object({
+    id: entryIdSchema,
+    lemma: z.string(),
+    entry_status: factStatusSchema
+      .nullable()
+      .meta({ description: 'Status of the live entry fact, else of the most recent one; null when none exists.' }),
+    sense_count: countSchema.meta({ description: 'Senses whose gloss is live (pending or published).' }),
+    fact_counts: z
+      .record(factStatusSchema, countSchema)
+      .meta({ description: 'Facts about the entry and its senses, by status.' }),
+    last_worked_at: z.iso.datetime().nullable().meta({ description: 'When an agent last completed work on it.' }),
+    created_at: z.iso.datetime(),
+  })
+  .meta({ id: 'EntrySummary' })
+export type EntrySummary = z.infer<typeof entrySummarySchema>
+
+export const entrySummaryPageSchema = z
+  .object({ items: z.array(entrySummarySchema), next_cursor: z.string().nullable() })
+  .meta({ id: 'EntrySummaryPage' })
+
 export const nodeLocationSchema = z
   .object({ node_type: z.enum(['entry', 'sense']), entry: entryRefSchema })
   .meta({ id: 'NodeLocation' })

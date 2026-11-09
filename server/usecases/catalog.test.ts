@@ -9,6 +9,7 @@ import {
   getPublicEntry,
   getPublicSense,
   getStats,
+  listEntrySummaries,
   locateNode,
   lookupForm,
   searchEntries,
@@ -138,6 +139,16 @@ describe('public reads', () => {
 })
 
 describe('management reads', () => {
+  it('lists entries in every status by normalized prefix', async () => {
+    const world = fakeWorld()
+    for (const lemma of ['bank', 'banner', 'cat']) await createEntry(world.deps, agentA, { lemma })
+    const page = await listEntrySummaries(world.deps, ' ba', { limit: 10 })
+    expect(page.items.map(({ lemma, entry_status }) => ({ lemma, entry_status }))).toEqual([
+      { lemma: 'bank', entry_status: 'pending' },
+      { lemma: 'banner', entry_status: 'pending' },
+    ])
+  })
+
   it('shows every fact in every status, without duplicating relations inside the entry', async () => {
     const world = fakeWorld()
     const { entry } = await createEntry(world.deps, agentA, { lemma: 'big' })
