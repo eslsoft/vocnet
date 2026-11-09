@@ -9,6 +9,7 @@ import type {
 import type { EntryId, FactId, FactKind, SenseId } from '@shared/facts'
 import { type Fact, type FactOf, isKind } from './fact'
 import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
+import { assessEntry } from './work'
 
 /** Everything the read model needs about one entry, in every status. */
 export interface EntrySnapshot {
@@ -20,6 +21,8 @@ export interface EntrySnapshot {
   facts: Fact[]
   /** Relation facts whose object is one of the entry's senses. */
   incoming: Fact[]
+  /** Facts about the entry or its senses that an open or claimed feedback item targets. */
+  flagged: ReadonlySet<FactId>
   /** Senses at the other end of the entry's relations, with their `entry` and `sense` facts. */
   neighbors: { senses: SenseWithLemma[]; facts: Fact[] }
 }
@@ -27,6 +30,8 @@ export interface EntrySnapshot {
 export interface ManagedEntryView {
   entry: EntryNode
   seed: boolean
+  completeness: number
+  quality: number
   senses: SenseNode[]
   facts: Fact[]
 }
@@ -34,7 +39,15 @@ export interface ManagedEntryView {
 /** The management view: the entry with every fact in every status, including relations pointing at it. */
 export function managedEntryView(snapshot: EntrySnapshot): ManagedEntryView {
   const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, fact]))
-  return { entry: snapshot.entry, seed: snapshot.seed, senses: snapshot.senses, facts: [...facts.values()] }
+  const { completeness, quality } = assessEntry(snapshot)
+  return {
+    entry: snapshot.entry,
+    seed: snapshot.seed,
+    completeness,
+    quality,
+    senses: snapshot.senses,
+    facts: [...facts.values()],
+  }
 }
 
 /** Published facts always carry the review that published them. */

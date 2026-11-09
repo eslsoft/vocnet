@@ -308,102 +308,115 @@ compare-and-set on a revision counter.
 ## Worklist
 
 Agents ask the server what to work on instead of keeping their own list, and a
-lease keeps two agents off the same entry.
+lease keeps two agents off the same entry. Each entry carries a completeness
+and a quality score, and the two scores decide what the worklist hands out:
+once every entry is complete and good enough, stalled, or awaiting review, the
+claim answers `204` and producers stop. An entry awaiting review comes back
+once its reviews settle, within seconds, so a producer that stops on `204` may
+leave such entries for its next run.
 
 `POST /manage/v1/work/claim` (body `{ lease_seconds? }`, 60 to 3600, default
 900) leases one entry to the caller and returns
-`{ lease, entry, gaps }`: the lease (`id`, `entry_id`, `lemma`, `holder`,
-`expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
-returns, and the entry's gaps. The management view carries `seed`, so an agent
-reads the seed mark from the server instead of keeping its own copy of the
-list. It answers `204` when no entry is free. A free
-entry has a live `entry` fact and no unexpired lease. Free entries come in
-six ranks, and within a rank by `claimed_at`, then creation time and id:
+`{ lease, entry, gaps, weak_facts }`: the lease (`id`, `entry_id`, `lemma`,
+`holder`, `expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
+returns, the entry's gaps, and its weak facts. The management view carries
+`seed`, `completeness`, and `quality`, so an agent reads them from the server
+instead of keeping its own copy. It answers `204` when no entry is claimable.
 
-| Rank | Entries                              | Why                                                        |
-| ---- | ------------------------------------ | ---------------------------------------------------------- |
-| 0    | Claimed exactly once                 | Their second pass: per-sense gaps appear once senses exist |
-| 1    | Never claimed, seed                  | The seed list gets its first pass first, oldest first      |
-| 2    | Claimed more, seed, to revisit       | Seed entries with work left come before expansion          |
-| 3    | Never claimed, not seed              | Neighbors that relations created, oldest first             |
-| 4    | Claimed more, not seed, to revisit   | Other entries with work left                               |
-| 5    | Claimed more, not to revisit         | Normal rotation, least recently claimed first              |
+### Scores
 
-One claim is one pass, and a first pass mostly adds senses, so an entry's
-relations, examples, and translations show up as gaps only on its next claim.
-Rank 0 gives each entry that second pass right after the first, instead of
-after every other entry had a first pass. After that, an entry is *to revisit*
-while the work it still needs is likely to get done: seed entries with that
-work come before any expansion, and other entries with it before the rotation
-of finished ones. A finished entry rotating back costs a claim and adds
-nothing.
+Both scores are pure functions of the entry's facts in `server/domain/work.ts`
+(`assessEntry`), computed on read for the views and stored on the worklist for
+the claim.
 
-`revisit` is decided when a pass completes, by `revisitAfterPass` in
-`server/domain/work.ts`: the pass made progress, gaps are still open, and the
-streak below allows it. Progress means the holder's facts since the claim (as
-subject, or a relation pointing at one of its senses) closed a gap that was
-open without them, or raised its count, as a relation does for a relations gap
-it does not close yet. Facts no open gap needed, such as another example where
-one exists, and the gaps the pass opened itself, such as a new sense's, are not
-progress. A pass without progress is not repeated ahead of the rotation,
-because the next one would do the same: a function word whose relations gap no
-agent can fill gets its passes in the rotation like the rest, and the
-never-claimed entries outside the seed list are not held back behind it.
-Every claim clears `revisit`, so a pass whose lease lapses leaves the entry in
-the rotation: an agent that crashes on one entry twice does not get that entry
-again until every other entry had its turn. Every claim sets `claimed_at` and
-increments `claim_count`, so an entry moves to the back of its rank whether or
-not its work completes. An entry with no gaps is still served in turn, so
-agents can enrich it.
+**Completeness** (0..1) is filled slots over the slots the gap rules count. The
+entry has three slots (senses, forms, pronunciation); each sense with a live
+gloss adds the relations its part of speech needs, one example, and one `zh`
+translation. A relations gap with `count` relations fills `count` of its
+slots. Completeness derives from `entryGaps`, so the gap rules stay the one
+source: it is 1 exactly when there are no gaps.
 
-A finished entry can have new gaps later, and then it is marked to revisit
-again without waiting for a pass:
+**Quality** (0..1) is one minus weak facts over live facts about the entry and
+its senses. A live fact is weak when an `open` or `claimed` feedback item
+targets it, or when it is published on an `uncertain` review verdict. The claim
+lists each as `{ id, kind, reason }` with reason `feedback` or `uncertain`, so a
+producer submits a correction that supersedes it or retracts it. Feedback on an
+entry or sense, not a fact, makes nothing weak: it is worked through the
+feedback API. Quality is 1 exactly when no fact is weak.
 
-- A fact is rejected or retracted: the batch that writes the status marks the
-  entries that own its subject and its object, so a rejected relation reopens
-  both ends. A rejection after a revalidation is the same write. The mark is
-  conditional on the fact now having that status and update time, so a
-  repeated delivery whose write matched nothing marks nothing.
-- A sense is created: the batch that inserts the sense marks its entry, since
-  the new gloss opens that sense's relations, examples, and translations gaps.
-  This covers neighbor senses that another entry's pass creates. A sense the
-  entry's own lease holder adds is part of its pass, which the completion
-  judges.
+### Admission and order
 
-A mark can land while the entry is leased, so the completion keeps it:
-`revisit` becomes the mark or the completion's decision, never false over a
-mark. Reviews that publish change nothing here: a pending fact already counted
-as filling its gap. A correction that publishes supersedes the original but
-keeps its slot filled, and the dependents it sends to revalidation mark their
-entries if they fail.
+An entry is claimable while its entry fact is live, no unexpired lease holds
+it, it is not stalled, it is not **awaiting review**, and it has work left
+(completeness or quality below 1). An entry awaits review while any fact about
+it or its senses, or any relation into one of its senses, is `pending`. Such a
+review can still change the entry's open work, so a pass claimed before it
+lands would record open work the verdict then undoes (see Stall). The queue
+reviews within seconds and the cron re-enqueues stuck facts, so the entry comes
+back once the reviews settle (`isClaimable`).
 
-**The revisit streak bounds all of this.** `revisit_streak` counts the claims
-in a row that took the entry to revisit (ranks 2 and 4); any other claim
-resets it to 0. Neither a mark nor a completion sets `revisit` once the streak
-has reached `MAX_REVISIT_STREAK` (3) in `server/domain/work.ts`. So between two
-claims from the rotation an entry takes at most three claims ahead of it,
-whatever its passes and reviews do. Two loops need this bound. A relation that
-review rejects is submitted again on the next pass: submissions dedupe only
-against live facts, so the pass counts as progress, and the rejection marks the
-entry again. And another agent can keep giving the entry senses. A gap that
-closes does not reset the streak, since the rejection loop closes its gap with
-each pending resubmission. An entry whose streak is used up waits in the
-rotation, and its next claim from there reports the reopened gaps. Rank 5 is
-claimed only when ranks 0 to 4 are empty, so until then each entry costs at
-most its two first passes plus three revisits before a never-claimed entry
-outside the seed list. The migration `worklist_revisit_backfill` marked every
-entry that had an open gap, computed in SQL by the same rules as `entryGaps`,
-since no pass had recorded its progress yet; the next completed pass of each
-decides.
+Claimable entries come in four tiers. Within a never-claimed tier they come by
+lowest completeness; within a claimed tier by least recently claimed; then by
+creation time and id:
+
+| Tier | Entries              | Why                                                |
+| ---- | -------------------- | -------------------------------------------------- |
+| 0    | Seed, never claimed  | The seed list gets its first pass first            |
+| 1    | Seed, claimed        | Seed entries with work left come before expansion  |
+| 2    | Not seed, never claimed | Neighbors that relations created               |
+| 3    | Not seed, claimed    | Other entries with work left                       |
 
 A seed entry comes from a curated word list, such as the 850 Basic English
 words. `POST /manage/v1/entries` with `seed: true` marks the entry as a seed
 entry, whether the call creates it or it already exists. The mark only ever
 goes on: `seed: false` or no `seed` leaves it as it is, so a producer re-runs
 its seed list to mark entries that existed before. An agent that builds
-relations creates neighbor entries outside the list. Rank 3 holds them until
-every seed entry had its first pass and no seed entry is left to revisit, and
-each claimed entry still gets its second pass first.
+relations creates neighbor entries outside the list; they wait until no seed
+entry is claimable.
+
+Every claim sets `claimed_at`, so an entry leaves its never-claimed tier and
+moves to the back of its claimed tier whether or not its work completes. A lease
+that lapses does not stall the entry: an agent that crashes on one entry gets it
+again only after every other entry in its tier claimed less recently, however
+incomplete the crashing entry is. Finished entries are not rotated: an entry
+with no work left is never claimed.
+
+### Stall
+
+One claim is one pass. When the claim is made, the worklist records the entry's
+*open work* (`claimed_work`): its gaps, and each weak fact by kind, subject, and
+reason. The entry is **stalled** while the last claim's pass completed and the
+open work is still what the claim found (`isStalled`). That covers every pass
+that made no lasting progress, which the next pass would repeat:
+
+- a pass that added nothing, or only facts no gap needed, such as a second
+  example where one exists;
+- a pass whose facts review then rejects: the rejection puts the open work back
+  to the claim's, so a relation that keeps failing review is tried once. The
+  entry awaits review from the pass's end until the verdict, so no other pass
+  records the pending fact's open work in between and turns the rejection into
+  a change;
+- a pass that superseded a weak fact with a correction that is weak again,
+  since the weak slot keeps its key.
+
+The open work changes, and the stall lifts, when another principal fills or
+opens a gap, a fact leaves live, a weak fact is replaced, a new sense opens
+gaps, or feedback opens on a fact. A pass that adds a sense makes progress: its
+gaps are new work for the next pass. A word whose relations no agent can find
+stalls after one pass and comes back only when something about it changes.
+
+### Relations by part of speech
+
+The relation types (`synonym`, `antonym`, `hypernym`, `part_of`) fit content
+words. On seed entries claimed at least three times, the share of senses with
+two published relations was noun 90%, adjective 75%, verb 72%, adverb 35%,
+determiner 28%, preposition 23%, conjunction 20%, interjection 19%,
+auxiliary 13%, and pronoun 11%. `RELATIONS_NEEDED` in `server/domain/work.ts`
+is the one table of the relations a sense needs: noun, verb, and adjective 2;
+adverb 1; every other part of speech 0, which means no relations gap and no
+relation slots.
+
+### The worklist table
 
 `worklist` holds one row per entry, written in the same batch as the entry:
 
@@ -412,27 +425,47 @@ each claimed entry still gets its second pass first.
 | `entry_id`, `created_at`                          | The entry and its creation time                            |
 | `live`                                            | The entry fact is pending or published                     |
 | `claimed_at`                                      | When the entry was last claimed; null until the first claim |
-| `claim_count`                                     | How many times the entry was claimed                       |
 | `seed`                                            | The entry was submitted as part of a seed list             |
-| `revisit`                                         | Serve the entry ahead of the rotation; cleared by every claim |
-| `revisit_streak`                                  | Claims in a row taken to revisit; any other claim resets it  |
-| `claim_rank`                                      | Generated: count 1 → 0; count 0: seed → 1, else 3; more and `revisit`: seed → 2, else 4; else 5 |
+| `completeness`, `quality`, `stalled`              | The scores and the stall, as of `scored_revision`          |
+| `awaiting_review`                                 | A fact about the entry or its senses, or a relation into one of its senses, is pending, as of `scored_revision` |
+| `claimed_work`                                    | The open work the last claim found                         |
+| `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work; the revision the scores describe |
+| `claim_rank`                                      | Generated: the tier of a claimable entry, else null; a stale row counts as claimable |
 | `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
 | `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
 
-Every fact insert or status change rewrites `live` for its subject in the same
-batch, so `live` always equals "the entry fact is live". The claim is one
-`UPDATE … WHERE entry_id = (SELECT … ORDER BY claim_rank, claimed_at,
-created_at, entry_id LIMIT 1) RETURNING` statement that picks the entry, writes
-the lease, stamps `claimed_at`, increments `claim_count`, counts
-`revisit_streak`, and clears `revisit`. The index `(live,
-claim_rank, claimed_at, created_at, entry_id)` gives that order without a sort.
-Held leases have the newest `claimed_at` of their rank, so they sit at the end
-of it, and the scan passes at most one row per held lease before a free row,
-whatever the table size. D1 runs statements one at a time, so two concurrent
-claims never get the same entry, and a claim takes over a lease only once it
-has expired. Work state lives in this table, not on the `entries` node, which
-keeps identity only.
+Every write that can change an entry's gaps or weak facts bumps `revision` of
+the entries at both ends in its own batch: a fact insert or status change
+(review, retraction, re-review, supersede), a sense insert, a feedback insert or
+status change on a fact, and a completion. The use case that made the write then
+rescores the stale rows it touched (`refreshWork`): it loads the entry, assesses
+it, and stores the scores and the stall conditional on `revision` being
+unchanged, so a concurrent write's rescore wins instead of being overwritten. A
+stale row stays claimable, so a request that crashed before its rescore never
+hides work; the cron rescores up to 100 stale rows every run
+(`refreshStaleWork`). It tries every row of the batch before it throws the
+failures together, so a row that keeps failing holds one slot and the rows
+behind it still drain. Every fact insert or status change also rewrites `live`
+for its subject.
+
+The claim is one `UPDATE … WHERE entry_id = (SELECT … WHERE claim_rank IS NOT
+NULL ORDER BY claim_rank, claimed_at, completeness, created_at, entry_id LIMIT
+1) RETURNING` statement that picks the entry, writes the lease, and stamps
+`claimed_at`; the claim then records `claimed_work`. Never-claimed rows have a
+null `claimed_at`, so their order falls to completeness. The index `(claim_rank,
+claimed_at, completeness, created_at, entry_id)` gives that order without a
+sort, and the scan passes at most one row per held lease before a free row. D1
+runs statements one at a time, so two concurrent claims never get the same
+entry, and a claim takes over a lease only once it has expired. Work state
+lives in this table, not on the `entries` node, which keeps identity only.
+
+The migration `worklist_drop_revisit` removed the revisit marks, streak, and
+claim count that ordered the earlier rotation, and `worklist_scores_backfill`
+computed every entry's completeness, quality, and `awaiting_review` in SQL by
+the same rules, aggregating per entry once over the indexed fact lookups; no
+entry starts stalled.
+
+### Gaps
 
 Gaps are computed on read by a pure registry in `server/domain/work.ts` from
 the entry's live (pending or published) facts. Each rule names how many live
@@ -443,29 +476,29 @@ facts close its gap:
 | `{ type: "senses" }`                     | No sense has a live gloss                               |
 | `{ type: "forms" }`                      | No live form                                            |
 | `{ type: "pronunciation" }`              | No live pronunciation                                   |
-| `{ type: "relations", sense_id, count, have }` | The sense is in fewer than two live relations, as subject or object |
+| `{ type: "relations", sense_id, count, have }` | The sense is in fewer live relations, as subject or object, than its part of speech needs |
 | `{ type: "examples", sense_id }`         | The sense has no live example                           |
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` or `zh-*` translation |
 
 Per-sense gaps apply to each sense whose gloss is live.
 
-Relations are the core of the dictionary, and a sense with one neighbor is a
-leaf, so the relations gap stays open until the sense has two. `count` is the
-number of live relations the sense is in. `have` lists each relation type and
-direction it already has once, as `{ type, direction }` with the direction of
-the public `Relation` (`outgoing` when the sense is the subject). An agent
-looks for the types it does not have yet instead of finding the same kind of
-neighbor again. Two is the bar for the gap, not a quota: an agent submits a
-relation only where one holds, and a function word can keep its gap.
+Relations are the core of the dictionary, and a content-word sense with one
+neighbor is a leaf, so its relations gap stays open until it has two. `count`
+is the number of live relations the sense is in. `have` lists each relation
+type and direction it already has once, as `{ type, direction }` with the
+direction of the public `Relation` (`outgoing` when the sense is the subject).
+An agent looks for the types it does not have yet instead of finding the same
+kind of neighbor again. The need is the bar for the gap, not a quota: an agent
+submits a relation only where one holds.
 
 `POST /manage/v1/work/{lease_id}/complete` (body `{ note? }`, up to 500
-characters) records `last_worked_at`, the holder, the note, and `revisit` (kept
-if a mark landed during the lease), and
-clears the lease in one statement. Only the holder completes, and only before
-`expires_at`: another principal or an expired lease answers `409 conflict`. A
-lease that is gone answers `404 not_found`, so completing the same lease twice
-is a 404, and so is completing a lease after another agent reclaimed the
-entry. The holder is the principal ref (`agent:<id>` or `admin:<sub>`).
+characters) records `last_worked_at`, the holder, and the note, clears the lease,
+and marks the row stale in one statement; the rescore then decides the stall.
+Only the holder completes, and only before `expires_at`: another principal or an
+expired lease answers `409 conflict`. A lease that is gone answers
+`404 not_found`, so completing the same lease twice is a 404, and so is
+completing a lease after another agent reclaimed the entry. The holder is the
+principal ref (`agent:<id>` or `admin:<sub>`).
 
 ## Access
 

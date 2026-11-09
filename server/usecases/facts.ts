@@ -6,6 +6,7 @@ import type { EntryId, FactId, FactKind, FactStatus, SenseId, SubmitFactInput } 
 import type { Deps } from './deps'
 import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
 import type { PageRequest } from './ports'
+import { refreshWork } from './work-scores'
 
 /** Who is acting, and the trace their work carries into async jobs. */
 export interface Actor {
@@ -13,7 +14,7 @@ export interface Actor {
   traceId: string
 }
 
-type SubmitDeps = Pick<Deps, 'nodes' | 'facts' | 'reviewQueue' | 'clock' | 'ids'>
+type SubmitDeps = Pick<Deps, 'nodes' | 'facts' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
 
 /** The entry a subject node belongs to, or null when the node does not exist. */
 const owningEntry: { [S in SubjectType]: (deps: SubmitDeps, id: string) => Promise<EntryId | null> } = {
@@ -81,6 +82,7 @@ export async function submitFact(
     )
   }
   const created = fact.id === draft.id
+  await refreshWork(deps, [subjectId, target])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { fact, created }
 }
@@ -115,7 +117,11 @@ export function listFacts(
 }
 
 /** Withdraws a pending or published fact. Agents retract only their own facts. */
-export async function retractFact(deps: Pick<Deps, 'facts' | 'clock'>, actor: Actor, id: FactId): Promise<Fact> {
+export async function retractFact(
+  deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'clock'>,
+  actor: Actor,
+  id: FactId,
+): Promise<Fact> {
   const fact = await getFact(deps, id)
   if (!mayActOn(actor.principal, fact.author)) throw new ForbiddenError('Agents may retract only their own facts.')
   if (fact.status === 'retracted') return fact
@@ -123,6 +129,7 @@ export async function retractFact(deps: Pick<Deps, 'facts' | 'clock'>, actor: Ac
   const { from, to } = factTransitions.retract
   const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString() })
   if (!applied) throw new ConflictError('The fact changed while it was being retracted.')
+  await refreshWork(deps, [fact.subjectId, fact.objectId])
   return getFact(deps, id)
 }
 
@@ -132,7 +139,7 @@ export async function retractFact(deps: Pick<Deps, 'facts' | 'clock'>, actor: Ac
  * or when a rejected correction's original is no longer published to be superseded.
  */
 export async function rereviewFact(
-  deps: Pick<Deps, 'facts' | 'reviewQueue' | 'clock'>,
+  deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'reviewQueue' | 'clock'>,
   actor: Actor,
   id: FactId,
 ): Promise<Fact> {
@@ -146,6 +153,7 @@ export async function rereviewFact(
     const { from, to } = factTransitions.rereview
     const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString() })
     if (!applied) throw new ConflictError('The fact changed while it was being reset.')
+    await refreshWork(deps, [fact.subjectId, fact.objectId])
   }
   await deps.reviewQueue.enqueue([{ factId: id, traceId: actor.traceId }])
   return getFact(deps, id)

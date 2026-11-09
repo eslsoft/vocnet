@@ -12,8 +12,9 @@ import type {
 } from '@shared/feedback'
 import type { Deps } from './deps'
 import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError, RateLimitedError } from './errors'
-import type { Actor } from './facts'
+import { type Actor, getFact } from './facts'
 import type { PageRequest } from './ports'
+import { refreshWork } from './work-scores'
 
 type LookupDeps = Pick<Deps, 'nodes' | 'facts'>
 
@@ -46,7 +47,7 @@ const targetIsPublic: { [T in FeedbackTargetType]: (deps: LookupDeps, id: string
 
 /** Anyone may report a problem with a public entry, sense, or fact, a few times a minute per client. */
 export async function submitFeedback(
-  deps: Pick<Deps, 'nodes' | 'facts' | 'feedback' | 'feedbackLimiter' | 'clock' | 'ids'>,
+  deps: Pick<Deps, 'nodes' | 'facts' | 'work' | 'feedback' | 'feedbackLimiter' | 'clock' | 'ids'>,
   client: string,
   input: SubmitFeedbackInput,
 ): Promise<FeedbackRecord> {
@@ -72,6 +73,7 @@ export async function submitFeedback(
     updatedAt: now,
   }
   await deps.feedback.insert(item)
+  await refreshFlagged(deps, item)
   return item
 }
 
@@ -94,7 +96,7 @@ async function write(deps: Pick<Deps, 'feedback'>, next: FeedbackRecord, previou
 
 /** Takes a one-hour lease so two agents do not work the same report. */
 export async function claimFeedback(
-  deps: Pick<Deps, 'feedback' | 'clock'>,
+  deps: Pick<Deps, 'feedback' | 'facts' | 'nodes' | 'work' | 'clock'>,
   actor: Actor,
   id: FeedbackId,
 ): Promise<FeedbackRecord> {
@@ -105,12 +107,21 @@ export async function claimFeedback(
   if (decision === 'closed') throw new ConflictError(`Feedback is already ${item.status}.`)
   if (decision === 'held')
     throw new ConflictError(`Feedback is claimed by ${item.assignee} until ${item.claimExpiresAt}.`)
-  return write(deps, claim(item, who, now), item)
+  const claimed = await write(deps, claim(item, who, now), item)
+  await refreshFlagged(deps, claimed)
+  return claimed
+}
+
+/** Open feedback on a fact makes the fact weak, so its entries' scores follow the feedback's status. */
+async function refreshFlagged(deps: Pick<Deps, 'facts' | 'nodes' | 'work'>, item: FeedbackRecord) {
+  if (item.targetType !== 'fact') return
+  const fact = await getFact(deps, item.targetId as FactId)
+  await refreshWork(deps, [fact.subjectId, fact.objectId])
 }
 
 /** Closes a claimed item, linking the correcting facts. Repeating the close is a no-op. */
 export async function resolveFeedback(
-  deps: Pick<Deps, 'feedback' | 'facts' | 'clock'>,
+  deps: Pick<Deps, 'feedback' | 'facts' | 'nodes' | 'work' | 'clock'>,
   actor: Actor,
   id: FeedbackId,
   input: ResolveFeedbackInput,
@@ -127,5 +138,7 @@ export async function resolveFeedback(
     if (!(await deps.facts.find(factId))) throw new InvalidReferenceError(`Fact ${factId} does not exist.`)
   }
   const outcome = { status: input.resolution, note: input.note ?? null, factIds }
-  return write(deps, close(item, outcome, deps.clock.now()), item)
+  const closed = await write(deps, close(item, outcome, deps.clock.now()), item)
+  await refreshFlagged(deps, closed)
+  return closed
 }

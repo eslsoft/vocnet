@@ -11,6 +11,7 @@ import { onError } from './http/errors'
 import { auditBoundary, requestBoundary } from './http/observability'
 import { ReviewerTransportError } from './usecases/ports'
 import { reconcileReviews, reviewFact } from './usecases/review'
+import { refreshStaleWork } from './usecases/work-scores'
 
 // Composition root: wire per-request deps, then delegate to the app. Kept out of
 // app.ts so the exported AppType (consumed by the SPA's RPC client) carries no
@@ -67,8 +68,11 @@ async function handleReviewMessage(deps: ReturnType<typeof createDeps>, message:
 
 export async function handleScheduled(env: Env): Promise<void> {
   const traceId = crypto.randomUUID()
-  const count = await reconcileReviews(createDeps(env), traceId)
+  const deps = createDeps(env)
+  const count = await reconcileReviews(deps, traceId)
   console.info(JSON.stringify({ event: 'reconcile_reviews', traceId, reenqueued: count }))
+  const rescored = await refreshStaleWork(deps)
+  console.info(JSON.stringify({ event: 'refresh_stale_work', traceId, rescored }))
 }
 
 export default {

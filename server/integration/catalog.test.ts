@@ -15,7 +15,6 @@ import {
 } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
-import { workClaimSchema } from '@shared/work'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { adminToken, call, deliverPendingReviews, deliverReviews, issueAgentKey, stubReviewers } from './helpers'
 
@@ -146,7 +145,7 @@ describe('public catalog', () => {
   })
 
   it('lists entries in every status with their counts, page by page [spec: catalog/manage-entry-list]', async () => {
-    const { token, river, relation } = await seedBank()
+    const { token, entry, river, relation } = await seedBank()
     for (const lemma of ['band', 'bar', 'cat'])
       await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })
     stubReviewers()
@@ -161,9 +160,10 @@ describe('public catalog', () => {
       ).body,
     )
     await call(`/manage/v1/facts/${example.fact.id}/retract`, { method: 'POST', token })
-    const { lease } = workClaimSchema.parse((await call('/manage/v1/work/claim', { method: 'POST', token })).body)
-    expect(lease.lemma).toBe('bank')
-    await call(`/manage/v1/work/${lease.id}/complete`, { method: 'POST', token })
+    // Bank's facts await review, so no claim takes it; stamp the completed pass the list reports.
+    await env.DB.prepare('update worklist set last_worked_at = ? where entry_id = ?')
+      .bind(new Date().toISOString(), entry.entry.id)
+      .run()
 
     expect((await call('/manage/v1/entries')).status).toBe(401)
     const pages = []

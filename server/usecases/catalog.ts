@@ -25,8 +25,9 @@ import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
 import type { PageRequest } from './ports'
+import { refreshWork } from './work-scores'
 
-type WriteDeps = Pick<Deps, 'nodes' | 'facts' | 'reviewQueue' | 'clock' | 'ids'>
+type WriteDeps = Pick<Deps, 'nodes' | 'facts' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
 
 /**
  * Ensures the entry node exists, is marked as a seed entry when asked, and its `entry` fact is
@@ -34,7 +35,7 @@ type WriteDeps = Pick<Deps, 'nodes' | 'facts' | 'reviewQueue' | 'clock' | 'ids'>
  * on retry.
  */
 export async function createEntry(
-  deps: WriteDeps & Pick<Deps, 'work'>,
+  deps: WriteDeps,
   actor: Actor,
   input: CreateEntryInput,
 ): Promise<{ entry: EntryNode; fact: Fact; created: boolean }> {
@@ -97,6 +98,7 @@ export async function createSense(
   }
   const stored = await deps.nodes.insertSenseWithFact(sense, fact, meaningKeyOf('sense', payload))
   const created = stored.sense.id === sense.id
+  await refreshWork(deps, [entry.id])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { ...stored, created }
 }

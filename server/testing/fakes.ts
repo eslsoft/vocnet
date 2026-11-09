@@ -4,10 +4,18 @@ import { factKinds } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
-import { canRevisit, type WorkLease } from '@server/domain/work'
+import { claimTier, isClaimable, type WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
 import { ConflictError } from '@server/usecases/errors'
-import type { AgentRecord, JevAnswers, LlmJudgement, NodeRepo, ReviewJob } from '@server/usecases/ports'
+import type {
+  AgentRecord,
+  JevAnswers,
+  LlmJudgement,
+  NodeRepo,
+  ReviewJob,
+  StaleWork,
+  WorkScores,
+} from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
 import type { EntryId, FactId, SenseId } from '@shared/facts'
 import type { FeedbackId } from '@shared/feedback'
@@ -25,10 +33,11 @@ export interface FakeWorld {
   feedback: FeedbackRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
   leases: WorkLease[]
-  claimed: Map<EntryId, { at: string; count: number }>
+  /** When each entry was last claimed. */
+  claimed: Map<EntryId, string>
   seeds: Set<EntryId>
-  revisits: Set<EntryId>
-  revisitStreaks: Map<EntryId, number>
+  /** Each entry's worklist scores, as the worklist table stores them. */
+  work: Map<EntryId, WorkScores & { claimedWork: string | null; revision: number; scoredRevision: number }>
   worked: Map<EntryId, { lastWorkedAt: string; lastWorkedBy: string; lastNote: string | null }>
   queued: ReviewJob[]
   /** Client keys the feedback limiter refuses. */
@@ -40,6 +49,8 @@ export interface FakeWorld {
   answerLlm(answer: () => LlmJudgement | Promise<LlmJudgement>): void
   /** Every reviewer of every chain fails what it is asked. */
   failReviews(): void
+  /** Every reviewer passes what it is asked, as it does by default. */
+  passReviews(): void
 }
 
 export function fakeWorld(): FakeWorld {
@@ -49,16 +60,18 @@ export function fakeWorld(): FakeWorld {
     counter += 1
     return `00000000-0000-4000-8000-${String(counter).padStart(12, '0')}` as T
   }
-  let jevAnswer: (questions: Record<string, string>) => JevAnswers | Promise<JevAnswers> = (questions) => ({
+  const passingJev = (questions: Record<string, string>): JevAnswers => ({
     model: 'jev-test',
     answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.95])),
   })
-  let llmAnswer: () => LlmJudgement | Promise<LlmJudgement> = () => ({
+  const passingLlm = (): LlmJudgement => ({
     model: 'llm-test',
     verdict: 'pass',
     confidence: 0.9,
     reason: 'Looks right.',
   })
+  let jevAnswer: (questions: Record<string, string>) => JevAnswers | Promise<JevAnswers> = passingJev
+  let llmAnswer: () => LlmJudgement | Promise<LlmJudgement> = passingLlm
 
   const world: Omit<FakeWorld, 'deps'> = {
     entries: [],
@@ -69,8 +82,7 @@ export function fakeWorld(): FakeWorld {
     leases: [],
     claimed: new Map(),
     seeds: new Set(),
-    revisits: new Set(),
-    revisitStreaks: new Map(),
+    work: new Map(),
     worked: new Map(),
     queued: [],
     limitedClients: new Set(),
@@ -92,14 +104,52 @@ export function fakeWorld(): FakeWorld {
       })
       llmAnswer = () => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'Wrong.' })
     },
+    passReviews: () => {
+      jevAnswer = passingJev
+      llmAnswer = passingLlm
+    },
   }
 
   const lemmaOf = (entryId: EntryId) => world.entries.find((entry) => entry.id === entryId)?.lemma
   const withLemma = (sense: SenseNode) => ({ ...sense, lemma: lemmaOf(sense.entryId) ?? ('' as never) })
   const live = (fact: Fact) => isLive(fact.status)
-  const markRevisit = (entryId: EntryId) => {
-    if (canRevisit(world.revisitStreaks.get(entryId) ?? 0)) world.revisits.add(entryId)
+  const workOf = (entryId: EntryId) => {
+    const row = world.work.get(entryId) ?? {
+      completeness: 0,
+      quality: 1,
+      stalled: false,
+      awaitingReview: false,
+      claimedWork: null,
+      revision: 0,
+      scoredRevision: 0,
+    }
+    world.work.set(entryId, row)
+    return row
   }
+  /** Marks stale the entries that are, or own as a sense, these nodes, as the real batches do. */
+  const touch = (nodeIds: Array<string | null>) => {
+    const owners = new Set<EntryId>()
+    for (const entry of world.entries.filter((candidate) => nodeIds.includes(candidate.id))) owners.add(entry.id)
+    for (const sense of world.senses.filter((candidate) => nodeIds.includes(candidate.id))) owners.add(sense.entryId)
+    for (const entryId of owners) workOf(entryId).revision += 1
+  }
+  const touchFact = (factId: string) => {
+    const fact = world.facts.find((candidate) => candidate.id === factId)
+    if (fact) touch([fact.subjectId, fact.objectId])
+  }
+  const staleOf = (entryId: EntryId): StaleWork => {
+    const claimedAt = world.claimed.get(entryId)
+    const workedAt = world.worked.get(entryId)?.lastWorkedAt
+    return {
+      entryId,
+      revision: workOf(entryId).revision,
+      lastClaim: {
+        openWork: workOf(entryId).claimedWork,
+        completed: claimedAt !== undefined && workedAt !== undefined && workedAt >= claimedAt,
+      },
+    }
+  }
+  const isStale = (entryId: EntryId) => workOf(entryId).revision !== workOf(entryId).scoredRevision
   const findLive = (kind: string, subjectId: string, contentKey: string) =>
     world.facts.find(
       (fact) => fact.kind === kind && fact.subjectId === subjectId && fact.contentKey === contentKey && live(fact),
@@ -132,6 +182,7 @@ export function fakeWorld(): FakeWorld {
       const existing = world.entries.find((candidate) => candidate.lemma === entry.lemma)
       if (existing) return existing
       world.entries.push(entry)
+      workOf(entry.id)
       return entry
     },
     findSense: async (id) => {
@@ -174,8 +225,7 @@ export function fakeWorld(): FakeWorld {
       world.senses.push(sense)
       creationKeys.set(sense.id, creationKey)
       world.facts.push(fact)
-      const holder = world.leases.find((held) => held.entryId === sense.entryId)?.holder
-      if (holder !== sense.createdBy) markRevisit(sense.entryId)
+      touch([sense.entryId])
       return { sense, fact }
     },
     loadEntrySnapshot: async (entry): Promise<EntrySnapshot> => {
@@ -195,6 +245,12 @@ export function fakeWorld(): FakeWorld {
         senses: own.map(withLemma),
         facts,
         incoming,
+        flagged: new Set(
+          world.feedback
+            .filter((item) => item.targetType === 'fact' && (item.status === 'open' || item.status === 'claimed'))
+            .map((item) => item.targetId as FactId)
+            .filter((targetId) => facts.some((fact) => fact.id === targetId)),
+        ),
         neighbors: {
           senses: neighbors.map(withLemma),
           facts: world.facts.filter(
@@ -267,6 +323,7 @@ export function fakeWorld(): FakeWorld {
         if (existing) return existing
         if (violatesIndexes(world.facts, fact)) return null
         world.facts.push(fact)
+        touch([fact.subjectId, fact.objectId])
         return fact
       },
       transition: async ({ id, from, to, at, review, supersede, revalidate, revalidateSince }) => {
@@ -297,15 +354,7 @@ export function fakeWorld(): FakeWorld {
           world.facts.length,
           ...retired.map((candidate) => (candidate.id === id ? next : candidate)),
         )
-        if (!live(next)) {
-          const touched = [next.subjectId, next.objectId]
-          for (const entry of world.entries.filter((candidate) => touched.includes(candidate.id))) {
-            markRevisit(entry.id)
-          }
-          for (const sense of world.senses.filter((candidate) => touched.includes(candidate.id))) {
-            markRevisit(sense.entryId)
-          }
-        }
+        touch([next.subjectId, next.objectId])
         return true
       },
       listRevalidating: async (nodeId) =>
@@ -341,12 +390,14 @@ export function fakeWorld(): FakeWorld {
     feedback: {
       insert: async (item) => {
         world.feedback.push(item)
+        touchFact(item.targetId)
       },
       find: async (id) => world.feedback.find((item) => item.id === id) ?? null,
       update: async (next, expectedRevision) => {
         const index = world.feedback.findIndex((item) => item.id === next.id)
         if (world.feedback[index]?.revision !== expectedRevision) return false
         world.feedback[index] = next
+        touchFact(next.targetId)
         return true
       },
       list: async ({ status }, page) =>
@@ -372,43 +423,67 @@ export function fakeWorld(): FakeWorld {
     },
     work: {
       claimNext: async (lease, now) => {
-        const free = (entry: EntryNode) =>
-          world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entry.id && live(fact)) &&
-          !world.leases.some((held) => held.entryId === entry.id && held.expiresAt > now)
-        const rank = (entry: EntryNode, count = 0) => {
-          const seed = world.seeds.has(entry.id) ? 0 : 2
-          if (count === 1) return 0
-          if (count === 0) return 1 + seed
-          return world.revisits.has(entry.id) ? 2 + seed : 5
+        const claimable = (entry: EntryNode) =>
+          isClaimable({
+            live: world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entry.id && live(fact)),
+            stale: isStale(entry.id),
+            ...workOf(entry.id),
+          }) && !world.leases.some((held) => held.entryId === entry.id && held.expiresAt > now)
+        const order = (entry: EntryNode) =>
+          [
+            claimTier({ seed: world.seeds.has(entry.id), claimed: world.claimed.has(entry.id) }),
+            world.claimed.get(entry.id) ?? '',
+            workOf(entry.id).completeness,
+            entry.createdAt,
+            entry.id,
+          ] as const
+        const compare = (a: EntryNode, b: EntryNode) => {
+          const [x, y] = [order(a), order(b)]
+          return (
+            x[0] - y[0] ||
+            x[1].localeCompare(y[1]) ||
+            x[2] - y[2] ||
+            x[3].localeCompare(y[3]) ||
+            x[4].localeCompare(y[4])
+          )
         }
-        const order = (entry: EntryNode) => {
-          const claim = world.claimed.get(entry.id)
-          return [rank(entry, claim?.count), claim?.at ?? '', entry.createdAt, entry.id]
-        }
-        const [next] = world.entries.filter(free).sort((a, b) => order(a).join('|').localeCompare(order(b).join('|')))
+        const [next] = world.entries.filter(claimable).sort(compare)
         if (!next) return null
-        const count = world.claimed.get(next.id)?.count ?? 0
-        const streak = world.revisits.has(next.id) && count > 1 ? (world.revisitStreaks.get(next.id) ?? 0) + 1 : 0
-        world.revisitStreaks.set(next.id, streak)
-        const claimed = { ...lease, entryId: next.id, claimedAt: now, revisitStreak: streak }
+        const claimed = { ...lease, entryId: next.id, claimedAt: now }
         world.leases.splice(0, world.leases.length, ...world.leases.filter((held) => held.entryId !== next.id), claimed)
-        world.claimed.set(next.id, { at: now, count: count + 1 })
-        world.revisits.delete(next.id)
+        world.claimed.set(next.id, now)
         return { lease: claimed, entry: next }
+      },
+      recordClaimedWork: async (lease, openWork) => {
+        if (!world.leases.some((held) => held.id === lease.id)) throw new Error(`Lease ${lease.id} vanished.`)
+        workOf(lease.entryId).claimedWork = openWork
       },
       markSeed: async (entryId) => {
         world.seeds.add(entryId)
       },
       findLease: async (id) => world.leases.find((lease) => lease.id === id) ?? null,
-      complete: async (lease, at, { note, revisit }) => {
+      complete: async (lease, at, note) => {
         const index = world.leases.findIndex(
           (held) => held.id === lease.id && held.holder === lease.holder && held.expiresAt > at,
         )
         if (index < 0) return false
         world.leases.splice(index, 1)
         world.worked.set(lease.entryId, { lastWorkedAt: at, lastWorkedBy: lease.holder, lastNote: note })
-        if (revisit) world.revisits.add(lease.entryId)
+        workOf(lease.entryId).revision += 1
         return true
+      },
+      listStale: async (nodeIds) => {
+        const owners = new Set<EntryId>([
+          ...world.entries.filter((entry) => nodeIds.includes(entry.id)).map((entry) => entry.id),
+          ...world.senses.filter((sense) => nodeIds.includes(sense.id)).map((sense) => sense.entryId),
+        ])
+        return [...owners].filter(isStale).map(staleOf)
+      },
+      listAnyStale: async (limit) => [...world.work.keys()].filter(isStale).slice(0, limit).map(staleOf),
+      saveScores: async (stale, scores) => {
+        const row = workOf(stale.entryId)
+        if (row.revision !== stale.revision) return
+        Object.assign(row, scores, { scoredRevision: stale.revision })
       },
     },
     jev: {

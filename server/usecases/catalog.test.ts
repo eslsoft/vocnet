@@ -46,15 +46,16 @@ describe('createEntry', () => {
     expect(cove).toMatchObject({ created: false, fact: { kind: 'entry' } })
     await createEntry(world.deps, agentA, { lemma: 'tide', seed: false })
     await createEntry(world.deps, agentA, { lemma: 'tide' })
+    for (const fact of [...world.facts]) await reviewFact(world.deps, fact.id, 'trace')
 
     const lemmas = []
-    for (let minute = 1; minute <= 5; minute++) {
+    for (let minute = 1; minute <= 3; minute++) {
       world.setNow(`2026-01-01T00:0${minute}:00.000Z`)
       const claim = await claimWork(world.deps, agentA)
       await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
       lemmas.push(claim?.lease.lemma)
     }
-    expect(lemmas).toEqual(['cove', 'cove', 'tide', 'tide', 'bank'])
+    expect(lemmas).toEqual(['cove', 'tide', 'bank'])
   })
 })
 

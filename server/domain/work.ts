@@ -1,9 +1,20 @@
-import { type EntryId, relationTypeSchema, type SenseId } from '@shared/facts'
-import type { Gap, WorkLeaseId } from '@shared/work'
-import type { EntrySnapshot } from './catalog-view'
+import { type EntryId, type FactId, type Pos, relationTypeSchema, type SenseId } from '@shared/facts'
+import type { Gap, WeakFact, WorkLeaseId } from '@shared/work'
 import { type Fact, type FactOf, isKind } from './fact'
 import { isLive } from './fact-lifecycle'
+import type { SenseNode } from './nodes'
 import type { PrincipalRef } from './principal'
+
+/** What the work rules read about an entry: its senses, its facts in every status, and its open feedback. */
+export interface EntryFacts {
+  senses: readonly SenseNode[]
+  /** Facts whose subject is the entry or one of its senses. */
+  facts: Fact[]
+  /** Relation facts whose object is one of the entry's senses. */
+  incoming: Fact[]
+  /** Facts that an open or claimed feedback item targets. */
+  flagged: ReadonlySet<FactId>
+}
 
 export interface WorkLease {
   id: WorkLeaseId
@@ -11,20 +22,8 @@ export interface WorkLease {
   holder: PrincipalRef
   /** When this lease's claim was made, which starts the pass. */
   claimedAt: string
-  /** Claims in a row that took the entry ahead of the rotation, this one included. */
-  revisitStreak: number
   expiresAt: string
 }
-
-/**
- * How many claims in a row an entry can take ahead of the rotation. Only a claim from the rotation
- * resets the streak, so an entry costs at most this many extra claims before every never-claimed
- * entry outside the seed list is reached, whatever its passes or reviews do.
- */
-export const MAX_REVISIT_STREAK = 3
-
-/** Whether anything may still mark the entry to revisit after this claim. */
-export const canRevisit = (revisitStreak: number) => revisitStreak < MAX_REVISIT_STREAK
 
 export function leaseExpiry(now: Date, leaseSeconds: number): string {
   return new Date(now.getTime() + leaseSeconds * 1000).toISOString()
@@ -65,14 +64,33 @@ function relationsHave(relations: FactOf<'relation'>[], senseId: SenseId): Relat
   )
 }
 
+/**
+ * How many live relations a sense of each part of speech needs. The relation types (synonym,
+ * antonym, hypernym, part_of) fit content words: on saturated seed entries, the share of senses
+ * with two published relations was noun 90%, adjective 75%, verb 72%, adverb 35%, and 11-28% for
+ * function words. A sense with one neighbor is still a leaf of the network; two make it a junction.
+ * Zero means the sense has no relations gap and its relations count no slot.
+ */
+export const RELATIONS_NEEDED: Readonly<Record<Pos, number>> = {
+  noun: 2,
+  verb: 2,
+  adjective: 2,
+  adverb: 1,
+  pronoun: 0,
+  determiner: 0,
+  preposition: 0,
+  conjunction: 0,
+  interjection: 0,
+  auxiliary: 0,
+}
+
 const senseGapRules: ReadonlyArray<{
-  need: number
+  need: (sense: SenseNode) => number
   fills: (fact: Fact, senseId: SenseId) => boolean
   gap: (senseId: SenseId, filling: Fact[]) => SenseGap
 }> = [
   {
-    // A sense with one neighbor is still a leaf of the network; two make it a junction.
-    need: 2,
+    need: (sense) => RELATIONS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'relation' && (fact.subjectId === senseId || fact.objectId === senseId),
     gap: (senseId, filling) => ({
       type: 'relations',
@@ -82,58 +100,149 @@ const senseGapRules: ReadonlyArray<{
     }),
   },
   {
-    need: 1,
+    need: () => 1,
     fills: (fact, senseId) => fact.kind === 'example' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'examples', sense_id: senseId }),
   },
   {
-    need: 1,
+    need: () => 1,
     fills: (fact, senseId) =>
       fact.kind === 'translation' && fact.subjectId === senseId && isChinese(fact.payload.language),
     gap: (senseId) => ({ type: 'translations', sense_id: senseId, language: 'zh' }),
   },
 ]
 
-/** What the entry still lacks, judged from its live facts. A sense counts while its gloss fact is live. */
-export function entryGaps(snapshot: Pick<EntrySnapshot, 'senses' | 'facts' | 'incoming'>): Gap[] {
+interface OpenGap {
+  gap: Gap
+  /** How many more live facts the gap needs to close. */
+  missing: number
+}
+
+/** The open gaps, and how many slots the rules count for the entry: each entry rule and, per live sense, each need. */
+function openGaps(snapshot: Pick<EntryFacts, 'senses' | 'facts' | 'incoming'>): { open: OpenGap[]; slots: number } {
   const live = [...snapshot.facts, ...snapshot.incoming].filter((fact) => isLive(fact.status))
   const glossed = new Set(live.flatMap((fact) => (fact.kind === 'sense' ? [fact.subjectId] : [])))
-  const liveSenses = snapshot.senses.map((sense) => sense.id).filter((id) => glossed.has(id))
-  const entry = entryGapRules.filter((rule) => !live.some(rule.fills)).map((rule) => rule.gap)
-  const senses = liveSenses.flatMap((senseId) =>
+  const liveSenses = snapshot.senses.filter((sense) => glossed.has(sense.id))
+  const entry = entryGapRules.filter((rule) => !live.some(rule.fills)).map((rule) => ({ gap: rule.gap, missing: 1 }))
+  const senses = liveSenses.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {
-      const filling = live.filter((fact) => rule.fills(fact, senseId))
-      return filling.length < rule.need ? [rule.gap(senseId, filling)] : []
+      const filling = live.filter((fact) => rule.fills(fact, sense.id))
+      const missing = rule.need(sense) - filling.length
+      return missing > 0 ? [{ gap: rule.gap(sense.id, filling), missing }] : []
     }),
   )
-  return [...entry, ...senses]
+  const senseSlots = liveSenses.reduce(
+    (sum, sense) => sum + senseGapRules.reduce((need, rule) => need + rule.need(sense), 0),
+    0,
+  )
+  return { open: [...entry, ...senses], slots: entryGapRules.length + senseSlots }
 }
 
-const gapKey = (gap: Gap) => `${gap.type}:${'sense_id' in gap ? gap.sense_id : ''}`
-const gapFill = (gap: Gap) => (gap.type === 'relations' ? gap.count : 0)
+/** What the entry still lacks, judged from its live facts. A sense counts while its gloss fact is live. */
+export function entryGaps(snapshot: Pick<EntryFacts, 'senses' | 'facts' | 'incoming'>): Gap[] {
+  return openGaps(snapshot).open.map(({ gap }) => gap)
+}
 
 /**
- * Whether a finished pass earns the entry a revisit ahead of the rotation: the streak allows it, gaps
- * are still open, and the holder's facts since the claim closed a gap that was open without them or
- * raised its count. Facts that fill no open gap, such as another example where one exists, and gaps
- * the pass itself opened, such as a new sense's, are not progress: a pass that only adds those, or
- * nothing, as on a function word whose relations gap no agent can fill, would do the same next time.
+ * The entry's live facts worth replacing: one that open feedback targets, or one published on an
+ * uncertain verdict. Relations count on the entry their subject belongs to.
  */
-export function revisitAfterPass(
-  snapshot: Pick<EntrySnapshot, 'senses' | 'facts' | 'incoming'>,
-  pass: Pick<WorkLease, 'holder' | 'claimedAt' | 'revisitStreak'>,
-): boolean {
-  if (!canRevisit(pass.revisitStreak)) return false
-  const after = new Map(entryGaps(snapshot).map((gap) => [gapKey(gap), gap]))
-  if (after.size === 0) return false
-  const before = (fact: Fact) => fact.author !== pass.holder || fact.createdAt < pass.claimedAt
-  const open = entryGaps({
-    senses: snapshot.senses,
-    facts: snapshot.facts.filter(before),
-    incoming: snapshot.incoming.filter(before),
-  })
-  return open.some((gap) => {
-    const now = after.get(gapKey(gap))
-    return now === undefined || gapFill(now) > gapFill(gap)
-  })
+export function weakFacts(snapshot: Pick<EntryFacts, 'facts' | 'flagged'>): WeakFact[] {
+  return snapshot.facts
+    .filter((fact) => isLive(fact.status))
+    .flatMap((fact): WeakFact[] => {
+      if (snapshot.flagged.has(fact.id)) return [{ id: fact.id, kind: fact.kind, reason: 'feedback' }]
+      if (fact.status === 'published' && fact.review?.verdict === 'uncertain') {
+        return [{ id: fact.id, kind: fact.kind, reason: 'uncertain' }]
+      }
+      return []
+    })
 }
+
+export interface EntryAssessment {
+  gaps: Gap[]
+  weakFacts: WeakFact[]
+  /** Filled slots over the slots the gap rules count, 0..1; 1 exactly when there are no gaps. */
+  completeness: number
+  /** One minus weak facts over live facts about the entry, 0..1; 1 exactly when no fact is weak. */
+  quality: number
+  /**
+   * Identifies the open work: the gaps, and each weak fact by kind, subject, and reason. A weak
+   * fact replaced by a correction that is weak again keeps its key, so trading one for the other
+   * is not a change.
+   */
+  openWork: string
+  /**
+   * A fact about the entry or its senses, or a relation into one of its senses, is pending. Its
+   * review can still change the open work, so a pass now would race the verdict.
+   */
+  awaitingReview: boolean
+}
+
+/** Scores the entry from its live facts. Completeness derives from `entryGaps`, so the gap rules stay the one source. */
+export function assessEntry(snapshot: EntryFacts): EntryAssessment {
+  const { open, slots } = openGaps(snapshot)
+  const missing = open.reduce((sum, { missing }) => sum + missing, 0)
+  const weak = weakFacts(snapshot)
+  const live = snapshot.facts.filter((fact) => isLive(fact.status)).length
+  const subjects = new Map(snapshot.facts.map((fact) => [fact.id, fact.subjectId]))
+  const weakSlots = weak.map((fact) => `${fact.kind}:${subjects.get(fact.id)}:${fact.reason}`).sort()
+  const gaps = open.map(({ gap }) => gap)
+  return {
+    gaps,
+    weakFacts: weak,
+    completeness: 1 - missing / slots,
+    quality: live === 0 ? 1 : 1 - weak.length / live,
+    openWork: JSON.stringify({ gaps, weak: weakSlots }),
+    awaitingReview: [...snapshot.facts, ...snapshot.incoming].some((fact) => fact.status === 'pending'),
+  }
+}
+
+/** Whether the entry has work left: a gap or a weak fact. */
+export const hasWork = (scores: { completeness: number; quality: number }) =>
+  scores.completeness < 1 || scores.quality < 1
+
+/** The worklist's last claim of an entry, as the stall rule reads it. */
+export interface LastClaim {
+  /** The open work when the entry was last claimed; null before its first claim. */
+  openWork: string | null
+  /** The holder completed that claim's pass. */
+  completed: boolean
+}
+
+/**
+ * A completed pass that left the open work as the claim found it made no progress, and another
+ * pass would do the same: nothing it added stayed, or it added only what no gap needed. Such an
+ * entry stays stalled while its open work is unchanged, so a review that rejects the pass's facts
+ * stalls it as well. A new sense, another principal's fact, a fact leaving live, or feedback on a
+ * fact changes the open work and lifts the stall. A lease that lapsed is not a completed pass.
+ */
+export const isStalled = (last: LastClaim, assessment: Pick<EntryAssessment, 'openWork'>) =>
+  last.completed && last.openWork === assessment.openWork
+
+/** The worklist state that admits an entry to a claim. */
+export interface Admission {
+  live: boolean
+  /** A write changed the entry's facts since the stored scores were computed. */
+  stale: boolean
+  stalled: boolean
+  awaitingReview: boolean
+  completeness: number
+  quality: number
+}
+
+/**
+ * An entry is claimable while live with work left, not stalled, and not awaiting review. Waiting
+ * for reviews to settle keeps a pass from recording open work that a verdict then undoes, which
+ * would lift the stall the verdict should keep. Stale scores admit it, since the write that made
+ * them stale may have opened work.
+ */
+export const isClaimable = (row: Admission) =>
+  row.live && (row.stale || (!row.stalled && !row.awaitingReview && hasWork(row)))
+
+/**
+ * The claim tier: seed entries before the rest, and within each, never-claimed entries before
+ * claimed ones. Never-claimed tiers go by lowest completeness; claimed tiers by least recently
+ * claimed, so an entry whose lease keeps lapsing goes behind every other claimed entry.
+ */
+export const claimTier = (row: { seed: boolean; claimed: boolean }) => (row.seed ? 0 : 2) + (row.claimed ? 1 : 0)

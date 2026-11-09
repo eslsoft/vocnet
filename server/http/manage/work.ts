@@ -26,11 +26,13 @@ const claimRoute = createRoute({
   tags,
   summary: 'Lease the next entry to work on',
   description:
-    'Picks the least recently claimed entry whose entry fact is live and that no unexpired lease holds, and ' +
-    'returns it with the gaps its live facts leave. Two concurrent claims never get the same entry.',
+    'Picks the next entry with work left (a gap or a weak fact) whose entry fact is live, that no unexpired ' +
+    'lease holds, and whose last completed pass made progress or that changed since; seed entries first, then ' +
+    'never-claimed ones, then the lowest completeness. Returns it with its gaps and weak facts. Two concurrent ' +
+    'claims never get the same entry. 204 means no entry has work left that a pass can do.',
   request: { body: optionalBody(claimWorkInputSchema) },
   responses: {
-    200: json(workClaimSchema, 'The lease, the entry, and its gaps.'),
+    200: json(workClaimSchema, 'The lease, the entry, its gaps, and its weak facts.'),
     204: { description: 'No entry is free to claim.' },
     400: errorResponse,
   },
@@ -69,6 +71,7 @@ export const manageWorkRoutes = createRouter()
         },
         entry: managedEntryDto(claim.entry),
         gaps: claim.gaps,
+        weak_facts: claim.weakFacts,
       },
       200,
     )
