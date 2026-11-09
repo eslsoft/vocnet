@@ -353,11 +353,26 @@ export function fakeWorld(): FakeWorld {
         touch([fact.subjectId, fact.objectId])
         return fact
       },
-      transition: async ({ id, from, to, at, review, supersede, revalidate, revalidateSince, liveBelow }) => {
+      findLiveCorrection: async (id) => world.facts.find((fact) => fact.supersedesId === id && live(fact)) ?? null,
+      transition: async ({
+        id,
+        from,
+        to,
+        at,
+        review,
+        supersede,
+        revalidate,
+        revalidateSince,
+        liveBelow,
+        unsuperseded,
+      }) => {
         const fact = world.facts.find((candidate) => candidate.id === id)
         if (!fact || !from.includes(fact.status)) return false
         if (revalidateSince !== undefined && fact.revalidateSince !== revalidateSince) return false
         if (liveBelow && heldLive(fact, liveBelow.excluding) >= liveBelow.max) return false
+        if (unsuperseded && world.facts.some((candidate) => candidate.supersedesId === id && live(candidate))) {
+          return false
+        }
         const next = {
           ...fact,
           status: to,

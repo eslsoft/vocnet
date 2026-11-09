@@ -76,11 +76,15 @@ export interface FactTransitionWrite {
    * not counting `excluding` (the fact a correction supersedes), counted in the same statement.
    */
   liveBelow?: { max: number; excluding: FactId | null }
+  /** The write applies only while no live fact supersedes this one, checked in the same statement. */
+  unsuperseded?: boolean
 }
 
 export interface FactRepo {
   find(id: FactId): Promise<Fact | null>
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
+  /** The live (pending or published) correction that supersedes this fact, if any. */
+  findLiveCorrection(id: FactId): Promise<Fact | null>
   /**
    * Inserts unless a live fact holds the same (kind, subject, content key) and returns the live
    * fact either way; null when another live fact holds the kind's exclusive slot, or the subject

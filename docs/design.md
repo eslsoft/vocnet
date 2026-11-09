@@ -291,13 +291,23 @@ and that already hides its facts.
 An author can retract its own pending or published fact; admins can retract
 any. An admin can re-review a published or rejected fact: it returns to
 `pending` and is enqueued, unless that would make a second live fact with the
-same content or in the same exclusive slot. Re-reviewing a published gloss
-while its correction is pending, a rejected fact whose place another live
-fact took, or a rejected correction whose original is no longer published
-(another correction superseded it, or it was retracted), answers
-`409 conflict`. The last check needs no lock: a rival correction is pending
-before it publishes, and while it is pending the one-pending index refuses the
-reset.
+same content or in the same exclusive slot. Re-reviewing a fact while a live
+(pending or published) correction supersedes it, a rejected fact whose place
+another live fact took, or a rejected correction whose original is no longer
+published (another correction superseded it, or it was retracted), answers
+`409 conflict`. The first holds for every kind, not only exclusive slots: a
+correction of a topic is counted in its original's place, so reviving the
+original beside it would let a sense publish a fourth topic. The reset writes
+it as a condition (no live fact supersedes this one) in the same `UPDATE`, so
+it cannot race a correction. The last check needs no lock: a rival correction
+is pending before it publishes, and while it is pending the one-pending index
+refuses the reset.
+
+A correction publishes even when its original left `published` while it was
+pending (retracted, or rejected by a revalidation); it then stands on its own
+and retires nothing. That never adds a live fact beyond a kind's limit: the
+original is no longer live, and the re-review guard above keeps it from
+coming back while the correction is live, so no second mechanism is needed.
 
 ### Reviews
 

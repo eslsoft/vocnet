@@ -187,6 +187,42 @@ describe('topics', () => {
     expect(superseded).toEqual({ status: 'superseded' })
   })
 
+  it('refuses to re-review a topic while its correction is live [spec: topics/rereview-under-correction-api]', async () => {
+    const { care, submit } = await seedNurse()
+    const tags = []
+    for (const topic of ['hospital-doctor', 'illness-symptoms', 'medicine-pharmacy']) {
+      tags.push(factWriteResultSchema.parse((await submit(care.id, topic)).body).fact)
+    }
+    stubReviewers()
+    await deliverPendingReviews()
+    const original = tags[0]
+    if (!original) throw new Error('No first topic fact.')
+    const correction = factWriteResultSchema.parse((await submit(care.id, 'dentist', original.id)).body).fact
+
+    const rereview = await call(`/manage/v1/facts/${original.id}/rereview`, {
+      method: 'POST',
+      token: await adminToken(),
+    })
+    expect(rereview.status).toBe(409)
+    expect(codeOf(rereview.body)).toEqual({
+      code: 'conflict',
+      message: 'A live correction supersedes this fact; review that correction instead.',
+    })
+    const statusOf = async (id: string) =>
+      (await env.DB.prepare('select status from facts where id = ?').bind(id).first<{ status: string }>())?.status
+    expect(await statusOf(original.id)).toBe('published')
+    await deliverReviews([correction.id, original.id])
+
+    expect(await statusOf(original.id)).toBe('superseded')
+    expect(await statusOf(correction.id)).toBe('published')
+    const published = await env.DB.prepare(
+      "select count(*) as n from facts where kind = 'topic' and subject_id = ? and status = 'published'",
+    )
+      .bind(care.id)
+      .first<{ n: number }>()
+    expect(published?.n).toBe(3)
+  })
+
   it('404s an unknown topic id and 400s a malformed one [spec: topics/not-found]', async () => {
     const missing = await call('/v1/topics/no-such-topic/senses')
     expect(missing.status).toBe(404)

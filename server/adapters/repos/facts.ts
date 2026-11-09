@@ -15,6 +15,7 @@ import {
   isNull,
   lt,
   ne,
+  notExists,
   or,
   type SQLWrapper,
   sql,
@@ -61,6 +62,15 @@ function insertFact(db: Db, fact: Fact) {
     .onConflictDoNothing()
 }
 
+/** A live fact that supersedes the given one. */
+function liveCorrectionOf(db: Db, id: SQLWrapper) {
+  const correction = alias(facts, 'live_correction')
+  return db
+    .select({ one: sql`1` })
+    .from(correction)
+    .where(and(eq(correction.supersedesId, id), inArray(correction.status, ['pending', 'published'])))
+}
+
 export function createFactRepo(db: Db): FactRepo {
   const findLive: FactRepo['findLive'] = async (kind, subjectId, contentKey) => {
     const row = await db
@@ -79,6 +89,15 @@ export function createFactRepo(db: Db): FactRepo {
 
     findLive,
 
+    async findLiveCorrection(id) {
+      const row = await db
+        .select()
+        .from(facts)
+        .where(and(eq(facts.supersedesId, id), liveStatus))
+        .get()
+      return row ? toFact(row) : null
+    },
+
     async insert(fact) {
       // The partial unique indexes turn a concurrent duplicate or a taken exclusive slot into a
       // no-op: a live fact with the same content wins, and otherwise the slot holder does.
@@ -90,7 +109,7 @@ export function createFactRepo(db: Db): FactRepo {
       return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
 
-    async transition({ id, from, to, at, review, supersede, revalidate, revalidateSince, liveBelow }) {
+    async transition({ id, from, to, at, review, supersede, revalidate, revalidateSince, liveBelow, unsuperseded }) {
       const update = db
         .update(facts)
         .set({
@@ -111,6 +130,7 @@ export function createFactRepo(db: Db): FactRepo {
             liveBelow === undefined
               ? undefined
               : sql`(${heldLive(db, facts.kind, facts.subjectId, liveBelow.excluding)}) < ${liveBelow.max}`,
+            unsuperseded ? notExists(liveCorrectionOf(db, facts.id)) : undefined,
           ),
         )
         .returning({ id: facts.id })

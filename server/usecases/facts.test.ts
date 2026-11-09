@@ -276,6 +276,26 @@ describe('rereviewFact', () => {
     await expect(rereviewFact(world.deps, admin, fact.id)).resolves.toMatchObject({ status: 'pending' })
   })
 
+  it('refuses to revive a fact while a live correction supersedes it [spec: facts/rereview-under-correction]', async () => {
+    const { world, river, riverGloss } = await bankWorld()
+    const underCorrection = { code: 'conflict', message: expect.stringContaining('review that correction instead') }
+    const { fact: correction } = await submitFact(world.deps, agentA, {
+      kind: 'sense',
+      subject_id: river.id,
+      supersedes_id: riverGloss.id,
+      payload: { gloss: 'sloping land beside a river' },
+    })
+    await expect(rereviewFact(world.deps, admin, riverGloss.id)).rejects.toMatchObject(underCorrection)
+    expect((await getFact(world.deps, riverGloss.id)).status).toBe('published')
+
+    // A rejected original whose correction published stays down, whatever room its kind has.
+    const index = world.facts.findIndex((fact) => fact.id === riverGloss.id)
+    world.facts[index] = { ...riverGloss, status: 'rejected' }
+    world.facts[world.facts.findIndex((fact) => fact.id === correction.id)] = { ...correction, status: 'published' }
+    await expect(rereviewFact(world.deps, admin, riverGloss.id)).rejects.toMatchObject(underCorrection)
+    expect((await getFact(world.deps, riverGloss.id)).status).toBe('rejected')
+  })
+
   it('refuses a rejected correction whose original is no longer published', async () => {
     const { world, river, riverGloss } = await bankWorld()
     const correction = { kind: 'sense' as const, subject_id: river.id, supersedes_id: riverGloss.id }

@@ -43,6 +43,8 @@ async function assertLeafTopic(deps: Pick<Deps, 'topics'>, id: TopicId): Promise
   }
 }
 
+const UNDER_CORRECTION = 'A live correction supersedes this fact; review that correction instead.'
+
 function slotTakenMessage(kind: FactKind): string {
   const { maxLive, subject } = factKinds[kind]
   if (maxLive !== undefined) {
@@ -169,7 +171,8 @@ export async function retractFact(
 /**
  * Sends a decided fact back through review. Pending facts are simply re-enqueued. The reset
  * conflicts when it would make a second live fact with the same content or in an exclusive slot,
- * or when a rejected correction's original is no longer published to be superseded.
+ * when a live correction supersedes the fact, or when a rejected correction's original is no
+ * longer published to be superseded.
  */
 export async function rereviewFact(
   deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'reviewQueue' | 'clock'>,
@@ -190,10 +193,22 @@ export async function rereviewFact(
     const liveBelow =
       !isLive(fact.status) && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
     const { from, to } = factTransitions.rereview
-    const applied = await deps.facts.transition({ id, from, to, at: deps.clock.now().toISOString(), liveBelow })
+    // While a correction of this fact is live, the correction is what review decides; reviving the
+    // original beside it would let both publish. The reset checks that in the same write.
+    const applied = await deps.facts.transition({
+      id,
+      from,
+      to,
+      at: deps.clock.now().toISOString(),
+      liveBelow,
+      unsuperseded: true,
+    })
     if (!applied) {
       const current = await getFact(deps, id)
-      if (liveBelow && current.status === fact.status) throw new ConflictError(slotTakenMessage(fact.kind))
+      if (current.status === fact.status) {
+        if (await deps.facts.findLiveCorrection(id)) throw new ConflictError(UNDER_CORRECTION)
+        if (liveBelow) throw new ConflictError(slotTakenMessage(fact.kind))
+      }
       throw new ConflictError('The fact changed while it was being reset.')
     }
     await refreshWork(deps, [fact.subjectId, fact.objectId])

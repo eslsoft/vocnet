@@ -324,6 +324,12 @@ Feature: Facts and review
     When an admin re-reviews it
     Then it is pending again and enqueued, unless another live fact took its place
 
+  @facts/rereview-under-correction @usecase
+  Scenario: A fact under correction is not revived
+    Given a fact that a pending or published correction supersedes
+    When an admin re-reviews the fact
+    Then it answers 409 conflict pointing at the correction, and the fact keeps its status
+
   @facts/rereview-api @api
   Scenario: A rejected fact goes back through review and publishes
     Given a fact the reviewer rejected

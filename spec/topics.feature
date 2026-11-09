@@ -93,6 +93,13 @@ Feature: Topics
     And the re-review is 409 while another correction holds the place and is accepted once it does not
     And once the correction publishes the sense holds three published topics and the original is superseded
 
+  @topics/rereview-under-correction-api @api
+  Scenario: Re-reviewing a topic under correction cannot push a sense past three topics
+    Given a sense with three published topic facts and a pending correction of one of them
+    When an admin re-reviews the original and both are then reviewed
+    Then the re-review is 409 conflict pointing at the correction and the original stays published
+    And the correction publishes, the original is superseded, and the sense holds three published topics
+
   @topics/not-found @api
   Scenario: An unknown topic has no senses to list
     Given no topic with the requested id
