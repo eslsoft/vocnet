@@ -117,10 +117,14 @@ describe('topic facts', () => {
       code: 'conflict',
       message: 'A sense holds at most 3 live topic facts; retract one before adding another.',
     }
+    const corrected = {
+      code: 'conflict',
+      message: 'The fact this corrects already has a live correction; retract that one or wait for its review.',
+    }
 
     const { fact: correction, created } = await correct('furniture')
     expect(created).toBe(true)
-    await expect(correct('kitchen')).rejects.toMatchObject(limit)
+    await expect(correct('kitchen')).rejects.toMatchObject(corrected)
     await expect(submitFact(world.deps, agentA, tag(nurse.id, 'kitchen'))).rejects.toMatchObject(limit)
 
     // A rejected correction comes back in its original's place, unless another correction holds it.
@@ -130,7 +134,7 @@ describe('topic facts', () => {
     }
     reject(correction.id)
     const second = await correct('kitchen')
-    await expect(rereviewFact(world.deps, admin, correction.id)).rejects.toMatchObject(limit)
+    await expect(rereviewFact(world.deps, admin, correction.id)).rejects.toMatchObject(corrected)
     reject(second.fact.id)
     await expect(rereviewFact(world.deps, admin, correction.id)).resolves.toMatchObject({ status: 'pending' })
     await settle(world)

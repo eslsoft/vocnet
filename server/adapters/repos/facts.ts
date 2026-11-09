@@ -26,7 +26,11 @@ import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveSta
 import { syncWorklistLive, touchWorkOf, touchWorkOfFact } from './work'
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
-const SLOT_TAKEN = 'Another live fact already holds this slot.'
+const UNIQUE_MESSAGES = {
+  'facts.supersedes_id':
+    'The fact this corrects already has a live correction; retract that one or wait for its review.',
+  'facts.': 'Another live fact already holds this slot.',
+}
 
 /**
  * The number of live facts of a kind about a subject, not counting the fact a correction
@@ -47,15 +51,30 @@ function heldLive(db: Db, kind: SQLWrapper | FactKind, subjectId: SQLWrapper | s
     )
 }
 
+/** The given fact, while it is published. */
+function publishedFact(db: Db, id: FactId) {
+  const original = alias(facts, 'original')
+  return db
+    .select({ one: sql`1` })
+    .from(original)
+    .where(and(eq(original.id, id), eq(original.status, 'published')))
+}
+
 /**
  * The insert of a new fact. A kind with `maxLive` inserts only while the subject holds fewer live
- * facts of the kind, counted in the same statement so concurrent submissions cannot pass the limit.
+ * facts of the kind, and a correction only while its original is published, both checked in the
+ * same statement so no concurrent write can slip between the check and the insert.
  */
 function insertFact(db: Db, fact: Fact) {
   const { maxLive } = factKinds[fact.kind]
-  if (maxLive === undefined) return db.insert(facts).values(fromFact(fact)).onConflictDoNothing()
-  const held = heldLive(db, fact.kind, fact.subjectId, fact.supersedesId)
-  const values = db.select(factSelectValues(fact)).from(sql`(select 1)`).where(sql`(${held}) < ${maxLive}`)
+  const condition = and(
+    maxLive === undefined
+      ? undefined
+      : sql`(${heldLive(db, fact.kind, fact.subjectId, fact.supersedesId)}) < ${maxLive}`,
+    fact.supersedesId ? exists(publishedFact(db, fact.supersedesId)) : undefined,
+  )
+  if (!condition) return db.insert(facts).values(fromFact(fact)).onConflictDoNothing()
+  const values = db.select(factSelectValues(fact)).from(sql`(select 1)`).where(condition)
   return db
     .insert(facts)
     .select(values as never)
@@ -99,8 +118,9 @@ export function createFactRepo(db: Db): FactRepo {
     },
 
     async insert(fact) {
-      // The partial unique indexes turn a concurrent duplicate or a taken exclusive slot into a
-      // no-op: a live fact with the same content wins, and otherwise the slot holder does.
+      // The partial unique indexes turn a concurrent duplicate, a taken exclusive slot, or a second
+      // live correction of one original into a no-op: a live fact with the same content wins, and
+      // otherwise the holder does.
       await db.batch([
         insertFact(db, fact),
         syncWorklistLive(db, [fact.subjectId]),
@@ -109,7 +129,19 @@ export function createFactRepo(db: Db): FactRepo {
       return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
 
-    async transition({ id, from, to, at, review, supersede, revalidate, revalidateSince, liveBelow, unsuperseded }) {
+    async transition({
+      id,
+      from,
+      to,
+      at,
+      review,
+      supersede,
+      revalidate,
+      revalidateSince,
+      liveBelow,
+      unsuperseded,
+      originalPublished,
+    }) {
       const update = db
         .update(facts)
         .set({
@@ -131,6 +163,7 @@ export function createFactRepo(db: Db): FactRepo {
               ? undefined
               : sql`(${heldLive(db, facts.kind, facts.subjectId, liveBelow.excluding)}) < ${liveBelow.max}`,
             unsuperseded ? notExists(liveCorrectionOf(db, facts.id)) : undefined,
+            originalPublished ? exists(publishedFact(db, originalPublished)) : undefined,
           ),
         )
         .returning({ id: facts.id })
@@ -139,7 +172,7 @@ export function createFactRepo(db: Db): FactRepo {
       // has its original's subject, so the same rows cover the original it supersedes.
       const sync = [syncLive, touchWorkOfFact(db, id)]
       if (!supersede) {
-        return guardUnique('facts', SLOT_TAKEN, async () => {
+        return guardUnique(UNIQUE_MESSAGES, async () => {
           const [updated] = await db.batch([update, ...sync])
           return updated.length > 0
         })
@@ -176,7 +209,7 @@ export function createFactRepo(db: Db): FactRepo {
               ),
           ]
         : []
-      const results = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, ...mark, update, ...sync]))
+      const results = await guardUnique(UNIQUE_MESSAGES, () => db.batch([retire, ...mark, update, ...sync]))
       return (results.at(-1 - sync.length) as { id: string }[]).length > 0
     },
 

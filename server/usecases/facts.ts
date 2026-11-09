@@ -44,6 +44,8 @@ async function assertLeafTopic(deps: Pick<Deps, 'topics'>, id: TopicId): Promise
 }
 
 const UNDER_CORRECTION = 'A live correction supersedes this fact; review that correction instead.'
+const ALREADY_CORRECTED =
+  'The fact this corrects already has a live correction; retract that one or wait for its review.'
 
 function slotTakenMessage(kind: FactKind): string {
   const { maxLive, subject } = factKinds[kind]
@@ -115,7 +117,11 @@ export async function submitFact(
     updatedAt: now,
   } as Fact
   const fact = await deps.facts.insert(draft)
-  if (!fact) throw new ConflictError(slotTakenMessage(kind))
+  if (!fact) {
+    // The insert checked every rule in its own statement; this read only explains the refusal.
+    if (supersedesId) await assertCorrectable(deps, supersedesId, kind, subjectId)
+    throw new ConflictError(slotTakenMessage(kind))
+  }
   const created = fact.id === draft.id
   await refreshWork(deps, [subjectId, target])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
@@ -135,6 +141,17 @@ async function assertSupersedable(
   }
   if (old.status !== 'published')
     throw new ConflictError(`Only a published fact can be superseded; it is ${old.status}.`)
+}
+
+/** Throws why a correction of this fact cannot go live now: the fact is not published, or already corrected. */
+async function assertCorrectable(
+  deps: Pick<Deps, 'facts'>,
+  supersedesId: FactId,
+  kind: FactKind,
+  subjectId: EntryId | SenseId,
+): Promise<void> {
+  await assertSupersedable(deps, supersedesId, kind, subjectId)
+  if (await deps.facts.findLiveCorrection(supersedesId)) throw new ConflictError(ALREADY_CORRECTED)
 }
 
 export async function getFact(deps: Pick<Deps, 'facts'>, id: FactId): Promise<Fact> {
@@ -172,7 +189,8 @@ export async function retractFact(
  * Sends a decided fact back through review. Pending facts are simply re-enqueued. The reset
  * conflicts when it would make a second live fact with the same content or in an exclusive slot,
  * when a live correction supersedes the fact, or when a rejected correction's original is no
- * longer published to be superseded.
+ * longer published or already has another live correction. Every rule is a condition of the reset
+ * write itself, which applies only to the status it read, so no concurrent write can slip past one.
  */
 export async function rereviewFact(
   deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'reviewQueue' | 'clock'>,
@@ -182,31 +200,30 @@ export async function rereviewFact(
   const fact = await getFact(deps, id)
   if (fact.status !== 'pending') {
     if (!canApply('rereview', fact.status)) throw new ConflictError(`A ${fact.status} fact cannot be re-reviewed.`)
-    // A published correction already took its original's place; a rejected one must still find it published.
-    if (fact.status === 'rejected' && fact.supersedesId) {
-      await assertSupersedable(deps, fact.supersedesId, fact.kind, fact.subjectId)
-    }
     // A rejected fact that comes back to life takes a place among the live ones; a correction
-    // takes its original's place. The reset counts them in the same write, so a concurrent
-    // submission cannot pass the limit.
+    // takes its original's place, so its original must still be published. A published fact is
+    // live already and keeps its place.
+    const reviving = !isLive(fact.status)
     const { maxLive } = factKinds[fact.kind]
-    const liveBelow =
-      !isLive(fact.status) && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
-    const { from, to } = factTransitions.rereview
+    const liveBelow = reviving && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
+    const originalPublished = (reviving && fact.supersedesId) || undefined
+    const { to } = factTransitions.rereview
     // While a correction of this fact is live, the correction is what review decides; reviving the
-    // original beside it would let both publish. The reset checks that in the same write.
+    // original beside it would let both publish.
     const applied = await deps.facts.transition({
       id,
-      from,
+      from: [fact.status],
       to,
       at: deps.clock.now().toISOString(),
       liveBelow,
       unsuperseded: true,
+      originalPublished,
     })
     if (!applied) {
       const current = await getFact(deps, id)
       if (current.status === fact.status) {
         if (await deps.facts.findLiveCorrection(id)) throw new ConflictError(UNDER_CORRECTION)
+        if (originalPublished) await assertCorrectable(deps, originalPublished, fact.kind, fact.subjectId)
         if (liveBelow) throw new ConflictError(slotTakenMessage(fact.kind))
       }
       throw new ConflictError('The fact changed while it was being reset.')

@@ -1,6 +1,10 @@
 import { env } from 'cloudflare:test'
+import { createDeps } from '@server/composition'
+import type { Actor } from '@server/usecases/facts'
+import { rereviewFact, submitFact } from '@server/usecases/facts'
+import type { AgentId } from '@shared/agents'
 import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
-import { factPageSchema, factWriteResultSchema } from '@shared/facts'
+import { type FactId, factPageSchema, factWriteResultSchema, submitFactInputSchema } from '@shared/facts'
 import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -36,6 +40,65 @@ async function seedNurse() {
 }
 
 const codeOf = (body: unknown) => apiErrorSchema.parse(body).error
+const ALREADY_CORRECTED =
+  'The fact this corrects already has a live correction; retract that one or wait for its review.'
+
+/** A sense with three published topic facts, the most a sense holds. */
+async function fullSense() {
+  const seeded = await seedNurse()
+  const tags = []
+  for (const topic of ['hospital-doctor', 'illness-symptoms', 'medicine-pharmacy']) {
+    tags.push(factWriteResultSchema.parse((await seeded.submit(seeded.care.id, topic)).body).fact)
+  }
+  stubReviewers()
+  await deliverPendingReviews()
+  const [original] = tags
+  if (!original) throw new Error('No first topic fact.')
+  return { ...seeded, tags, original }
+}
+
+const topicRows = async (senseId: string) =>
+  (
+    await env.DB.prepare(
+      "select id, status, supersedes_id from facts where kind = 'topic' and subject_id = ? order by created_at, id",
+    )
+      .bind(senseId)
+      .all<{ id: string; status: string; supersedes_id: string | null }>()
+  ).results
+const publishedOf = async (senseId: string) =>
+  (await topicRows(senseId)).filter((row) => row.status === 'published').map((row) => row.id)
+const statusOf = async (id: string) =>
+  (await env.DB.prepare('select status from facts where id = ?').bind(id).first<{ status: string }>())?.status
+
+const adminActor: Actor = { principal: { kind: 'admin', sub: 'admin-1' }, traceId: 't' }
+async function agentActor(): Promise<Actor> {
+  const agent = await env.DB.prepare('select id, name from agents limit 1').first<{ id: string; name: string }>()
+  if (!agent) throw new Error('No agent.')
+  return { principal: { kind: 'agent', agentId: agent.id as AgentId, name: agent.name }, traceId: 't' }
+}
+
+/**
+ * Real use-case dependencies whose fact reads run `interleave` once, right after the first read of
+ * `id`: a concurrent write lands between that read and the write that follows it.
+ */
+function interleavedAfterRead(id: string, interleave: () => Promise<unknown>) {
+  const deps = createDeps(env)
+  let pending = true
+  return {
+    ...deps,
+    facts: {
+      ...deps.facts,
+      async find(read: FactId) {
+        const found = await deps.facts.find(read)
+        if (read === id && pending) {
+          pending = false
+          await interleave()
+        }
+        return found
+      },
+    },
+  }
+}
 const senses = async (topicId: string, query = '') => {
   const { status, body } = await call(`/v1/topics/${topicId}/senses${query}`)
   expect(status).toBe(200)
@@ -155,10 +218,10 @@ describe('topics', () => {
     const original = tags[2]
     if (!original) throw new Error('No third topic fact.')
     const limit = 'A sense holds at most 3 live topic facts; retract one before adding another.'
-    const refused = async (response: Promise<{ status: number; body: unknown }>) => {
+    const refused = async (response: Promise<{ status: number; body: unknown }>, message = limit) => {
       const { status, body } = await response
       expect(status).toBe(409)
-      expect(codeOf(body).message).toBe(limit)
+      expect(codeOf(body).message).toBe(message)
     }
     const setStatus = (id: string, status: string) =>
       env.DB.prepare('update facts set status = ? where id = ?').bind(status, id).run()
@@ -168,13 +231,13 @@ describe('topics', () => {
     const first = await submit(care.id, 'dentist', original.id)
     expect(first.status).toBe(201)
     const correction = factWriteResultSchema.parse(first.body).fact
-    await refused(submit(care.id, 'injury-first-aid', original.id))
+    await refused(submit(care.id, 'injury-first-aid', original.id), ALREADY_CORRECTED)
     await refused(submit(care.id, 'injury-first-aid'))
 
-    // The re-review counts the live topics in its own write, its original excluded.
+    // The re-review takes its original's place only while no other correction holds it.
     await setStatus(correction.id, 'rejected')
     const second = factWriteResultSchema.parse((await submit(care.id, 'injury-first-aid', original.id)).body).fact
-    await refused(rereview(correction.id))
+    await refused(rereview(correction.id), ALREADY_CORRECTED)
     await setStatus(second.id, 'rejected')
     expect((await rereview(correction.id)).body).toMatchObject({ status: 'pending' })
     await deliverPendingReviews()
@@ -208,8 +271,6 @@ describe('topics', () => {
       code: 'conflict',
       message: 'A live correction supersedes this fact; review that correction instead.',
     })
-    const statusOf = async (id: string) =>
-      (await env.DB.prepare('select status from facts where id = ?').bind(id).first<{ status: string }>())?.status
     expect(await statusOf(original.id)).toBe('published')
     await deliverReviews([correction.id, original.id])
 
@@ -221,6 +282,78 @@ describe('topics', () => {
       .bind(care.id)
       .first<{ n: number }>()
     expect(published?.n).toBe(3)
+  })
+
+  it('refuses a correction whose original an admin re-reviews between its check and its insert [spec: topics/correction-race-api]', async () => {
+    const { care, original } = await fullSense()
+    const racing = interleavedAfterRead(original.id, () => rereviewFact(createDeps(env), adminActor, original.id))
+    const input = submitFactInputSchema.parse({
+      kind: 'topic',
+      subject_id: care.id,
+      payload: { topic_id: 'dentist' },
+      supersedes_id: original.id,
+    })
+    await expect(submitFact(racing, await agentActor(), input)).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'Only a published fact can be superseded; it is pending.',
+    })
+
+    await deliverPendingReviews()
+    const rows = await topicRows(care.id)
+    expect(rows).toHaveLength(3)
+    expect(rows.every((row) => row.status === 'published' && row.supersedes_id === null)).toBe(true)
+  })
+
+  it('refuses to revive a rejected correction whose original an admin re-reviews meanwhile [spec: topics/correction-race-api]', async () => {
+    const { care, original, submit } = await fullSense()
+    const correction = factWriteResultSchema.parse((await submit(care.id, 'dentist', original.id)).body).fact
+    vi.restoreAllMocks()
+    stubReviewers(0.1, 'fail')
+    await deliverReviews([correction.id])
+    vi.restoreAllMocks()
+    stubReviewers()
+    expect(await statusOf(correction.id)).toBe('rejected')
+
+    const racing = interleavedAfterRead(correction.id, () => rereviewFact(createDeps(env), adminActor, original.id))
+    await expect(rereviewFact(racing, adminActor, correction.id)).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'Only a published fact can be superseded; it is pending.',
+    })
+    await deliverReviews([correction.id, original.id])
+    expect(await statusOf(correction.id)).toBe('rejected')
+    expect(await statusOf(original.id)).toBe('published')
+    expect(await publishedOf(care.id)).toHaveLength(3)
+  })
+
+  it('holds one live correction per original, at the limit or below it [spec: topics/one-live-correction-api]', async () => {
+    const { care, submit } = await seedNurse()
+    const original = factWriteResultSchema.parse((await submit(care.id, 'hospital-doctor')).body).fact
+    stubReviewers()
+    await deliverPendingReviews()
+
+    // Concurrent corrections of one original: the unique index admits one.
+    const racing = await Promise.all(
+      ['dentist', 'family', 'injury-first-aid', 'illness-symptoms'].map((topic) => submit(care.id, topic, original.id)),
+    )
+    expect(racing.map((response) => response.status).sort()).toEqual([201, 409, 409, 409])
+    for (const response of racing.filter((candidate) => candidate.status === 409)) {
+      expect(codeOf(response.body)).toEqual({ code: 'conflict', message: ALREADY_CORRECTED })
+    }
+    const winner = factWriteResultSchema.parse(racing.find((response) => response.status === 201)?.body).fact
+
+    // A rejected correction cannot come back beside the live one, even with room below the limit.
+    await env.DB.prepare("update facts set status = 'rejected' where id = ?").bind(winner.id).run()
+    const second = factWriteResultSchema.parse((await submit(care.id, 'dentist', original.id)).body).fact
+    const revived = await call(`/manage/v1/facts/${winner.id}/rereview`, { method: 'POST', token: await adminToken() })
+    expect(revived.status).toBe(409)
+    expect(codeOf(revived.body)).toEqual({ code: 'conflict', message: ALREADY_CORRECTED })
+
+    await deliverPendingReviews()
+    expect(await publishedOf(care.id)).toEqual([second.id])
+    expect(await statusOf(original.id)).toBe('superseded')
+    const late = await submit(care.id, 'family', original.id)
+    expect(late.status).toBe(409)
+    expect(codeOf(late.body).message).toBe('Only a published fact can be superseded; it is superseded.')
   })
 
   it('404s an unknown topic id and 400s a malformed one [spec: topics/not-found]', async () => {

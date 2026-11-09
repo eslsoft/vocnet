@@ -78,6 +78,8 @@ export interface FactTransitionWrite {
   liveBelow?: { max: number; excluding: FactId | null }
   /** The write applies only while no live fact supersedes this one, checked in the same statement. */
   unsuperseded?: boolean
+  /** The write applies only while this fact (the original a correction supersedes) is published, checked in the same statement. */
+  originalPublished?: FactId
 }
 
 export interface FactRepo {
@@ -87,13 +89,15 @@ export interface FactRepo {
   findLiveCorrection(id: FactId): Promise<Fact | null>
   /**
    * Inserts unless a live fact holds the same (kind, subject, content key) and returns the live
-   * fact either way; null when another live fact holds the kind's exclusive slot, or the subject
-   * already holds the kind's `maxLive` live facts, not counting the fact this one supersedes.
+   * fact either way; null when another live fact holds the kind's exclusive slot, the subject
+   * already holds the kind's `maxLive` live facts (not counting the fact this one supersedes), or
+   * this correction's original is not published or already has a live correction.
    */
   insert(fact: Fact): Promise<Fact | null>
   /**
    * Conditional status write that also clears the fact's revalidation mark; false when the fact
-   * was not in `from`. Throws ConflictError when the slot is taken.
+   * was not in `from`. Throws ConflictError when the slot is taken or the
+   * original already has another live correction.
    */
   transition(write: FactTransitionWrite): Promise<boolean>
   /** Live facts about this node (as subject or object) marked for a review against its new version. */

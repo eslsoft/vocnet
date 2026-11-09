@@ -96,8 +96,9 @@ D1 enforces this with two partial unique indexes on `(kind, subject_id)` over
 `exclusive` rows. The *holder* index covers the published fact and any pending
 fact that corrects nothing; the *pending* index covers every pending fact. So a
 pending correction may sit beside the published original, and a second pending
-fact or a second holder is refused. A write that one of these indexes or the
-live-content index refuses answers `409 conflict`.
+fact or a second holder is refused. A write that one of these indexes, the
+live-content index, or the one-live-correction index refuses answers
+`409 conflict`.
 
 Each inflecting form type belongs to one word class. Plurals are noun forms;
 past, past participle, present participle, and third-person singular are verb
@@ -155,8 +156,9 @@ enforced by the submission use case and never by name:
   in its own conditional write too, so it cannot race a submission past the
   limit. The count leaves out the fact a correction supersedes, because the
   correction takes its place: a weak topic on a full sense is fixed by a
-  correction, and a second correction of the same original is refused while
-  the first is live.
+  correction. A fact has at most one live correction, and a correction goes
+  live only while its original is published (invariants I1 and I2 under the
+  fact lifecycle), so a correction and its original never both publish.
 
 The content key is the topic id, so resubmitting a tag returns the live fact.
 Jev is asked one question (`topic`):
@@ -295,19 +297,45 @@ same content or in the same exclusive slot. Re-reviewing a fact while a live
 (pending or published) correction supersedes it, a rejected fact whose place
 another live fact took, or a rejected correction whose original is no longer
 published (another correction superseded it, or it was retracted), answers
-`409 conflict`. The first holds for every kind, not only exclusive slots: a
-correction of a topic is counted in its original's place, so reviving the
-original beside it would let a sense publish a fourth topic. The reset writes
-it as a condition (no live fact supersedes this one) in the same `UPDATE`, so
-it cannot race a correction. The last check needs no lock: a rival correction
-is pending before it publishes, and while it is pending the one-pending index
-refuses the reset.
+`409 conflict`, and so does a rejected correction whose original already has
+another live correction. The reset applies only to the status it read, and
+every one of these rules is a condition of the reset `UPDATE` itself, so none
+can race another write.
 
 A correction publishes even when its original left `published` while it was
 pending (retracted, or rejected by a revalidation); it then stands on its own
-and retires nothing. That never adds a live fact beyond a kind's limit: the
-original is no longer live, and the re-review guard above keeps it from
-coming back while the correction is live, so no second mechanism is needed.
+and retires nothing.
+
+Two invariants keep a correction in exactly its original's place. Each holds by
+construction in a single statement, never by a read before the write; D1
+runs statements one at a time, so no write can land between a check and the
+write it guards.
+
+- **I1. A live correction's original is published or has left live.** A
+  correction enters `pending` only by its insert or by the re-review reset of a
+  rejected correction. Both carry `EXISTS (original id = supersedes_id AND
+  status = 'published')` in the same statement. The original side is the
+  re-review reset, the only way a fact re-enters `pending`: it carries `NOT
+  EXISTS (a live fact whose supersedes_id is this one)`. An original that left
+  live (superseded, retracted, or rejected) never comes back while its
+  correction is live, so it is never `pending` beside one. A refused correction
+  write is `409 conflict` with "Only a published fact can be superseded".
+- **I2. A fact has at most one live correction.** The partial unique index
+  `facts_live_correction_idx` on `supersedes_id` over live rows refuses a
+  second one. A submission is `409 conflict` with "The fact this corrects
+  already has a live correction", and so is re-reviewing a rejected correction
+  beside a live one.
+
+With both, a kind's `maxLive` limit holds for published facts. The insert and
+the revival of a rejected fact count the live facts of the kind except the
+fact being corrected. Each live correction has its own original (I2), and that
+original is not counted only while it is published or out of live (I1). The
+correction publishes in the batch that retires its published original, and the
+original cannot become `pending` again, and so cannot publish, while its
+correction is live. A correction and its original are therefore never
+published together, and the published facts of a kind never exceed the limit.
+The use cases still read the original first and again after a refused write,
+but only to choose the message.
 
 ### Reviews
 

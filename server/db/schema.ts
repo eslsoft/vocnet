@@ -70,6 +70,10 @@ export const facts = sqliteTable(
     uniqueIndex('facts_exclusive_pending_idx')
       .on(table.kind, table.subjectId)
       .where(sql`exclusive = 1 and status = 'pending'`),
+    // A fact has at most one live correction, so each live correction takes a distinct original's place.
+    uniqueIndex('facts_live_correction_idx')
+      .on(table.supersedesId)
+      .where(sql`supersedes_id is not null and status in ('pending', 'published')`),
     index('facts_subject_idx').on(table.subjectId, table.status),
     index('facts_object_idx').on(table.objectId),
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),

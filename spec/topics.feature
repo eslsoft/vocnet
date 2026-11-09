@@ -37,7 +37,7 @@ Feature: Topics
     Given a sense with three live topic facts, one of them published
     When an agent submits a correction that supersedes the published one, or an admin re-reviews a rejected correction of it
     Then it is accepted, because the limit does not count the fact a correction supersedes
-    And a second correction of the same original is refused while the first is live
+    And a second correction of the same original is refused while the first is live, naming the live correction
     And a plain fourth topic fact is still refused as a conflict naming the limit of three
 
   @topics/revalidate @usecase
@@ -89,7 +89,7 @@ Feature: Topics
   Scenario: A correction replaces a topic on a full sense on a real database
     Given a sense with three published topic facts
     When a correction supersedes one of them, a second correction of the same one and a fourth topic are submitted, and a rejected correction is re-reviewed
-    Then the first correction is accepted, the second and the fourth are 409 naming the limit
+    Then the first correction is accepted, the second is 409 naming the live correction, and the fourth is 409 naming the limit
     And the re-review is 409 while another correction holds the place and is accepted once it does not
     And once the correction publishes the sense holds three published topics and the original is superseded
 
@@ -99,6 +99,20 @@ Feature: Topics
     When an admin re-reviews the original and both are then reviewed
     Then the re-review is 409 conflict pointing at the correction and the original stays published
     And the correction publishes, the original is superseded, and the sense holds three published topics
+
+  @topics/correction-race-api @api
+  Scenario: A correction racing a re-review of its original cannot push a sense past three topics
+    Given a sense with three published topic facts
+    When an admin re-reviews one of them right after a correction's submission or a rejected correction's re-review read it published
+    Then the correction is 409 conflict because its original is not published, and nothing of it is live
+    And once the original is reviewed again the sense holds exactly three published topics
+
+  @topics/one-live-correction-api @api
+  Scenario: One original has one live correction, below the limit too, on a real database
+    Given a sense with one published topic fact
+    When four corrections of it are submitted at once, and a rejected one is re-reviewed beside a live one
+    Then one correction is accepted and the rest are 409 conflict naming the live correction
+    And once the live correction publishes the sense holds one published topic, the original is superseded and cannot be corrected again
 
   @topics/not-found @api
   Scenario: An unknown topic has no senses to list

@@ -90,19 +90,24 @@ export function factSelectValues(fact: Fact) {
   )
 }
 
-function isUniqueViolation(error: unknown, table: string): boolean {
+function isUniqueViolation(error: unknown, columns: string): boolean {
   for (let cause = error; cause instanceof Error; cause = cause.cause) {
-    if (cause.message.includes(`UNIQUE constraint failed: ${table}.`)) return true
+    if (cause.message.includes(`UNIQUE constraint failed: ${columns}`)) return true
   }
   return false
 }
 
-/** Runs a write whose unique indexes guard a domain invariant; a violation is a conflict, not a crash. */
-export async function guardUnique<T>(table: string, message: string, write: () => Promise<T>): Promise<T> {
+/**
+ * Runs a write whose unique indexes guard domain invariants; a violation is a conflict, not a crash.
+ * `messages` maps the leading constraint columns SQLite names (`table.column`) to the conflict's
+ * message; the first match wins.
+ */
+export async function guardUnique<T>(messages: Record<string, string>, write: () => Promise<T>): Promise<T> {
   try {
     return await write()
   } catch (error) {
-    if (isUniqueViolation(error, table)) throw new ConflictError(message)
+    const match = Object.entries(messages).find(([columns]) => isUniqueViolation(error, columns))
+    if (match) throw new ConflictError(match[1])
     throw error
   }
 }

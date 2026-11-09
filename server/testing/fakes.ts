@@ -56,6 +56,9 @@ export interface FakeWorld {
   passReviews(): void
 }
 
+const ALREADY_CORRECTED =
+  'The fact this corrects already has a live correction; retract that one or wait for its review.'
+
 const topic = (id: string, parentId: string | null, nameEn: string, position: number): TopicNode => ({
   id: id as TopicId,
   parentId: parentId as TopicId | null,
@@ -181,20 +184,27 @@ export function fakeWorld(): FakeWorld {
       (other) =>
         other.kind === fact.kind && other.subjectId === fact.subjectId && live(other) && other.id !== excluding,
     ).length
-  // The D1 partial unique indexes: live content, and an exclusive slot's holder and pending fact.
+  // The D1 partial unique indexes: live content, an exclusive slot's holder and pending fact, and
+  // one live correction per original. Returns the conflict message the repo maps a violation to.
   const holdsSlot = (fact: Fact) =>
     fact.status === 'published' || (fact.status === 'pending' && fact.supersedesId === null)
-  const violatesIndexes = (facts: Fact[], candidate: Fact) =>
-    facts.some((other) => {
-      if (other.id === candidate.id || other.kind !== candidate.kind || other.subjectId !== candidate.subjectId) {
-        return false
-      }
+  const violatedIndex = (facts: Fact[], candidate: Fact): string | null => {
+    const others = facts.filter(
+      (other) => other.id !== candidate.id && other.kind === candidate.kind && other.subjectId === candidate.subjectId,
+    )
+    const correctsSame = (other: Fact) =>
+      candidate.supersedesId !== null && other.supersedesId === candidate.supersedesId && live(other) && live(candidate)
+    if (others.some(correctsSame)) return ALREADY_CORRECTED
+    const takesSlot = (other: Fact) => {
       if (live(other) && live(candidate) && other.contentKey === candidate.contentKey) return true
       if (factKinds[candidate.kind].cardinality === 'many') return false
       return (
         (holdsSlot(other) && holdsSlot(candidate)) || (other.status === 'pending' && candidate.status === 'pending')
       )
-    })
+    }
+    return others.some(takesSlot) ? 'Another live fact already holds this slot.' : null
+  }
+  const isPublished = (id: string) => world.facts.some((fact) => fact.id === id && fact.status === 'published')
   const paged = <T>(items: T[], limit: number, cursor: string | undefined) => {
     const start = cursor ? Number(cursor) : 0
     const slice = items.slice(start, start + limit)
@@ -346,9 +356,10 @@ export function fakeWorld(): FakeWorld {
       insert: async (fact) => {
         const existing = findLive(fact.kind, fact.subjectId, fact.contentKey)
         if (existing) return existing
-        if (violatesIndexes(world.facts, fact)) return null
+        if (violatedIndex(world.facts, fact)) return null
         const { maxLive } = factKinds[fact.kind]
         if (maxLive !== undefined && heldLive(fact, fact.supersedesId) >= maxLive) return null
+        if (fact.supersedesId && !isPublished(fact.supersedesId)) return null
         world.facts.push(fact)
         touch([fact.subjectId, fact.objectId])
         return fact
@@ -365,6 +376,7 @@ export function fakeWorld(): FakeWorld {
         revalidateSince,
         liveBelow,
         unsuperseded,
+        originalPublished,
       }) => {
         const fact = world.facts.find((candidate) => candidate.id === id)
         if (!fact || !from.includes(fact.status)) return false
@@ -373,6 +385,7 @@ export function fakeWorld(): FakeWorld {
         if (unsuperseded && world.facts.some((candidate) => candidate.supersedesId === id && live(candidate))) {
           return false
         }
+        if (originalPublished && !isPublished(originalPublished)) return false
         const next = {
           ...fact,
           status: to,
@@ -391,7 +404,8 @@ export function fakeWorld(): FakeWorld {
           }
           return dependsOnNode(candidate) ? { ...candidate, revalidateSince: at } : candidate
         })
-        if (violatesIndexes(retired, next)) throw new ConflictError('Another live fact already holds this slot.')
+        const violation = violatedIndex(retired, next)
+        if (violation) throw new ConflictError(violation)
         world.facts.splice(
           0,
           world.facts.length,

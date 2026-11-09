@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `facts_live_correction_idx` ON `facts` (`supersedes_id`) WHERE supersedes_id is not null and status in ('pending', 'published');

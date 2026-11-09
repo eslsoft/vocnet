@@ -313,3 +313,73 @@ describe('rereviewFact', () => {
     await expect(rereviewFact(world.deps, admin, riverGloss.id)).rejects.toMatchObject({ code: 'conflict' })
   })
 })
+
+describe('a correction goes live only in place of a published original', () => {
+  /** Runs `interleave` once, right after the first read of `id`, as a write racing that read. */
+  const interleaveAfterRead = (world: ReturnType<typeof fakeWorld>, id: FactId, interleave: () => Promise<unknown>) => {
+    const { find } = world.deps.facts
+    let pending = true
+    world.deps.facts.find = async (read) => {
+      const found = await find(read)
+      if (read === id && pending) {
+        pending = false
+        await interleave()
+      }
+      return found
+    }
+  }
+  const notPublished = { code: 'conflict', message: 'Only a published fact can be superseded; it is pending.' }
+
+  it('refuses a correction whose original leaves published after its check [spec: facts/correction-needs-published]', async () => {
+    const { world, river, riverGloss } = await bankWorld()
+    interleaveAfterRead(world, riverGloss.id, () => rereviewFact(world.deps, admin, riverGloss.id))
+    await expect(
+      submitFact(world.deps, agentA, {
+        kind: 'sense',
+        subject_id: river.id,
+        supersedes_id: riverGloss.id,
+        payload: { gloss: 'sloping land beside a river' },
+      }),
+    ).rejects.toMatchObject(notPublished)
+    expect(world.facts.filter((fact) => fact.supersedesId === riverGloss.id)).toEqual([])
+  })
+
+  it('refuses to revive a rejected correction whose original leaves published meanwhile [spec: facts/correction-needs-published]', async () => {
+    const { world, river, riverGloss } = await bankWorld()
+    world.failReviews()
+    const { fact: rejected } = await submitFact(world.deps, agentA, {
+      kind: 'sense',
+      subject_id: river.id,
+      supersedes_id: riverGloss.id,
+      payload: { gloss: 'a fish' },
+    })
+    await reviewFact(world.deps, rejected.id, 'trace-review')
+    interleaveAfterRead(world, rejected.id, () => rereviewFact(world.deps, admin, riverGloss.id))
+    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject(notPublished)
+    expect((await getFact(world.deps, rejected.id)).status).toBe('rejected')
+  })
+
+  it('refuses a second live correction of one original [spec: facts/one-live-correction]', async () => {
+    const { world, river } = await bankWorld()
+    const corrected = { code: 'conflict', message: expect.stringContaining('already has a live correction') }
+    const correct = (text: string) =>
+      submitFact(world.deps, agentA, {
+        kind: 'example',
+        subject_id: river.id,
+        supersedes_id: example.id,
+        payload: { text },
+      })
+    const { fact: example } = await submitFact(world.deps, agentA, {
+      kind: 'example',
+      subject_id: river.id,
+      payload: { text: 'We sat on the bank.' },
+    })
+    await reviewFact(world.deps, example.id, 'trace-review')
+    world.failReviews()
+    const { fact: first } = await correct('We sat on the river bank.')
+    await reviewFact(world.deps, first.id, 'trace-review')
+    await correct('We sat on the grassy bank.')
+    await expect(correct('We sat on the steep bank.')).rejects.toMatchObject(corrected)
+    await expect(rereviewFact(world.deps, admin, first.id)).rejects.toMatchObject(corrected)
+  })
+})
