@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { Fact, FactOf } from './fact'
 import type { SenseWithLemma } from './nodes'
 import type { Lemma } from './term'
-import { completeDecision, entryGaps, leaseExpiry, type WorkLease } from './work'
+import { completeDecision, entryGaps, leaseExpiry, revisitAfterPass, type WorkLease } from './work'
 
 let counter = 0
 const id = <T>() => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}` as T
@@ -124,6 +124,7 @@ describe('work lease', () => {
     id: id<WorkLeaseId>(),
     entryId,
     holder: 'agent:a',
+    claimedAt: at,
     expiresAt: leaseExpiry(new Date(at), 900),
   }
 
@@ -135,5 +136,33 @@ describe('work lease', () => {
     expect(completeDecision(lease, 'agent:a', new Date('2026-01-01T00:14:59.999Z'))).toBe('allowed')
     expect(completeDecision(lease, 'agent:b', new Date(at))).toBe('not_holder')
     expect(completeDecision(lease, 'agent:a', new Date(lease.expiresAt))).toBe('expired')
+  })
+})
+
+describe('revisitAfterPass', () => {
+  const claimedAt = '2026-01-01T01:00:00.000Z'
+  const pass = { holder: 'agent:a', claimedAt } as const
+  const during = <F extends Fact>(made: F, author = 'agent:a'): F => ({ ...made, author, createdAt: claimedAt }) as F
+
+  it('revisits an entry only when the pass added a fact about it and gaps are still open [spec: work/revisit]', () => {
+    const focus = sense()
+    const finished: Fact[] = [
+      fact('sense', focus.id, { gloss: 'land beside a river' }),
+      fact('form', entryId, { form: 'banks', type: 'plural' }),
+      fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'us' }),
+      fact('example', focus.id, { text: 'We sat on the bank.' }),
+      fact('translation', focus.id, { language: 'zh', text: '河岸' }),
+      fact('relation', focus.id, { type: 'synonym', target_sense_id: id<SenseId>() }),
+    ]
+    const snapshot = (facts: Fact[], incoming: Fact[] = []) => ({ senses: [focus], facts, incoming })
+    const neighbor = fact('relation', id<SenseId>(), { type: 'hypernym', target_sense_id: focus.id })
+
+    expect(revisitAfterPass(snapshot(finished), pass)).toBe(false)
+    expect(
+      revisitAfterPass(snapshot([...finished, during(fact('example', focus.id, { text: 'A bank.' }))]), pass),
+    ).toBe(true)
+    expect(revisitAfterPass(snapshot(finished, [during(neighbor, 'agent:b')]), pass)).toBe(false)
+    expect(revisitAfterPass(snapshot(finished, [during(neighbor)]), pass)).toBe(false)
+    expect(revisitAfterPass(snapshot([...finished.slice(0, 5), during(finished[5])]), pass)).toBe(true)
   })
 })

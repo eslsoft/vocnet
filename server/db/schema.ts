@@ -90,9 +90,10 @@ export const feedback = sqliteTable(
 
 /**
  * One row per entry, created with it. `live` mirrors whether the entry fact is pending or
- * published, and `claim_rank` derives the claim tier from `claim_count` and `seed`, so the claim
- * order is one index: an entry's second pass (rank 0) comes before never-claimed seed entries
- * (rank 1), then never-claimed other entries (rank 2), then the rotation of everything else (rank 3).
+ * published, and `claim_rank` derives the claim tier from `claim_count`, `seed`, and `revisit`, so
+ * the claim order is one index: an entry's second pass (rank 0), never-claimed seed entries (1),
+ * seed entries to revisit (2), never-claimed other entries (3), other entries to revisit (4), and
+ * the rotation of everything else (5).
  */
 export const worklist = sqliteTable(
   'worklist',
@@ -107,8 +108,13 @@ export const worklist = sqliteTable(
     claimCount: integer('claim_count').notNull().default(0),
     /** Set when an entry is submitted as part of a seed list; never cleared. */
     seed: integer('seed', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * Cleared by every claim. Set when a completed pass added a fact about the entry and left gaps
+     * open, or when a fact about it leaves live or it gains a sense, which can reopen a gap.
+     */
+    revisit: integer('revisit', { mode: 'boolean' }).notNull().default(false),
     claimRank: integer('claim_rank').generatedAlwaysAs(
-      sql`case claim_count when 1 then 0 when 0 then 2 - seed else 3 end`,
+      sql`case when claim_count = 1 then 0 when claim_count = 0 then 3 - 2 * seed when revisit then 4 - 2 * seed else 5 end`,
       { mode: 'virtual' },
     ),
     leaseId: text('lease_id').unique(),

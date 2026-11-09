@@ -20,10 +20,28 @@ Feature: Worklist
     Then the management view and the claim say seed false for the first and seed true for the second
 
   @work/claim-order @usecase
-  Scenario: An entry's second pass comes before never-claimed entries, and seed entries before other new entries
-    Given entries claimed once, never-claimed seed entries, other never-claimed entries, entries claimed twice, and entries whose entry fact is rejected or retracted
+  Scenario: An entry's second pass comes first, then seed entries with work left, then other entries with work left, then the rest
+    Given entries claimed once, never-claimed seed entries, other never-claimed entries, entries claimed twice with and without a revisit, and entries whose entry fact is rejected or retracted
     When an agent claims work
-    Then it gets an entry claimed once first, oldest claim first, then a never-claimed seed entry, then another never-claimed entry, each oldest first, then the least recently claimed of the rest, and never a dead entry
+    Then it gets an entry claimed once first, oldest claim first, then a never-claimed seed entry, then a seed entry to revisit, then another never-claimed entry, then another entry to revisit, then the least recently claimed of the rest, and never a dead entry
+
+  @work/revisit @domain
+  Scenario: A pass that added to an entry and left gaps open earns a revisit
+    Given an entry's facts after a pass
+    When the pass is judged
+    Then the entry is revisited only if the holder added a fact about it since the claim and a gap is still open
+
+  @work/claim-revisit @api
+  Scenario: Seed entries a pass added to and left open come before never-claimed entries outside the seed list
+    Given seed and other entries, where some second passes add a sense and the others add nothing
+    When agents claim and complete work
+    Then a seed entry left open comes back before any never-claimed other entry, another entry left open comes back after them, and entries whose pass added nothing wait for the rotation
+
+  @work/claim-revisit-reopen @api
+  Scenario: A finished entry comes back ahead of the rotation when it can have new gaps
+    Given entries in the rotation, one with a fact retracted, two linked by a relation that review rejects, and one given a new sense by another agent
+    When agents claim work
+    Then each of those entries is claimed before the entry that nothing changed
 
   @work/claim-seeds-first @api
   Scenario: Seed entries are claimed before the entries outside the seed list

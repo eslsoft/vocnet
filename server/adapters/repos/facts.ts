@@ -1,11 +1,12 @@
 import { facts } from '@server/db/schema'
+import { isLive } from '@server/domain/fact-lifecycle'
 import type { FactRepo } from '@server/usecases/ports'
 import { type FactId, factKindSchema, factStatusSchema } from '@shared/facts'
 import { and, asc, count, desc, eq, exists, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
-import { syncWorklistLive } from './work'
+import { revisitEntriesOfFact, syncWorklistLive } from './work'
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const SLOT_TAKEN = 'Another live fact already holds this slot.'
@@ -69,9 +70,11 @@ export function createFactRepo(db: Db): FactRepo {
         )
         .returning({ id: facts.id })
       const syncLive = syncWorklistLive(db, db.select({ id: facts.subjectId }).from(facts).where(eq(facts.id, id)))
+      // Leaving live can reopen a gap that a pass closed, on the subject's entry or the object's.
+      const sync = isLive(to) ? [syncLive] : [syncLive, revisitEntriesOfFact(db, id)]
       if (!supersede) {
         return guardUnique('facts', SLOT_TAKEN, async () => {
-          const [updated] = await db.batch([update, syncLive])
+          const [updated] = await db.batch([update, ...sync])
           return updated.length > 0
         })
       }

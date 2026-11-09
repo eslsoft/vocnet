@@ -1,5 +1,6 @@
 import { admin, agentA, agentB } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
+import type { EntryId } from '@shared/facts'
 import type { WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
@@ -68,6 +69,34 @@ describe('claimWork', () => {
     expect(order).toEqual(['reef', 'reef', 'tide', 'tide', 'bank', 'bank', 'cove', 'cove', 'reef'])
   })
 
+  it('revisits entries a pass added to and left open, seeds first, before the rotation [spec: work/claim-order]', async () => {
+    const { world } = await worldWith(['bank', 'cove', 'reef', 'tide', 'wave'])
+    for (const lemma of ['cove', 'reef']) await createEntry(world.deps, agentA, { lemma, seed: true })
+    const glosses: Record<string, string> = { cove: 'A small sheltered bay.', bank: 'Land beside a river.' }
+
+    const order = []
+    for (let minute = 10; minute < 24; minute++) {
+      world.setNow(`2026-01-01T00:${minute}:00.000Z`)
+      const claim = await claimWork(world.deps, agentA)
+      const lemma = lemmaOf(claim) as string
+      // Each entry gets a sense on its second pass only, so that pass leaves per-sense gaps open.
+      if (glosses[lemma] && order.filter((seen) => seen === lemma).length === 1) {
+        await createSense(world.deps, agentA, {
+          entry_id: claim?.lease.entryId as EntryId,
+          pos: 'noun',
+          gloss: glosses[lemma],
+        })
+      }
+      await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
+      order.push(lemma)
+    }
+    expect(order).toEqual([
+      ...['cove', 'cove', 'reef', 'reef', 'cove'],
+      ...['bank', 'bank', 'tide', 'tide', 'wave', 'wave', 'bank'],
+      ...['reef', 'cove'],
+    ])
+  })
+
   it('returns the lease, the management view, and the gaps', async () => {
     const { world, entries } = await worldWith(['bank'])
     const { sense } = await createSense(world.deps, agentA, {
@@ -81,6 +110,7 @@ describe('claimWork', () => {
       entryId: entries[0].entry.id,
       lemma: 'bank',
       holder: 'agent:agent-a',
+      claimedAt: start,
       expiresAt: '2026-01-01T00:01:00.000Z',
     })
     expect(claim?.entry.senses.map((s) => s.id)).toEqual([sense.id])
@@ -143,5 +173,14 @@ describe('completeWork', () => {
     world.deps.work.complete = async () => false
     await expect(completeWork(world.deps, agentA, id, {})).rejects.toMatchObject({ code: 'conflict' })
     expect(world.worked.size).toBe(0)
+  })
+
+  it('fails loudly when the leased entry is gone', async () => {
+    const { world } = await worldWith(['bank'])
+    const claim = await claimWork(world.deps, agentA)
+    world.entries.splice(0)
+    await expect(completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})).rejects.toThrow(
+      /Leased entry .* does not exist/,
+    )
   })
 })

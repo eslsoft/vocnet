@@ -9,6 +9,8 @@ export interface WorkLease {
   id: WorkLeaseId
   entryId: EntryId
   holder: PrincipalRef
+  /** When this lease's claim was made, which starts the pass. */
+  claimedAt: string
   expiresAt: string
 }
 
@@ -93,4 +95,19 @@ export function entryGaps(snapshot: Pick<EntrySnapshot, 'senses' | 'facts' | 'in
     }),
   )
   return [...entry, ...senses]
+}
+
+/**
+ * Whether a finished pass earns the entry a revisit ahead of the rotation: the holder added a fact
+ * about the entry during the pass and gaps are still open. A pass that added nothing would add
+ * nothing next time either, such as on a function word whose relations gap no agent can fill.
+ */
+export function revisitAfterPass(
+  snapshot: Pick<EntrySnapshot, 'senses' | 'facts' | 'incoming'>,
+  pass: Pick<WorkLease, 'holder' | 'claimedAt'>,
+): boolean {
+  const added = [...snapshot.facts, ...snapshot.incoming].some(
+    (fact) => fact.author === pass.holder && fact.createdAt >= pass.claimedAt,
+  )
+  return added && entryGaps(snapshot).length > 0
 }
