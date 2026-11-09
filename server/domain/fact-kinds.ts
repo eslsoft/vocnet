@@ -62,6 +62,11 @@ interface BaseSpec<K extends FactKind> {
   contentKey(payload: FactPayloads[K]): string
   /** The sense a relation points at; absent for kinds without an object. */
   target?(payload: FactPayloads[K]): SenseId
+  /**
+   * Kinds judged against this fact: when a correction of it publishes, their published facts
+   * about the same node (as subject or object) are re-reviewed in place.
+   */
+  revalidates?: readonly FactKind[]
 }
 
 /** `reviewer` and the request `plan` builds are tied, so a kind cannot name one reviewer and ask another. */
@@ -149,6 +154,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     cardinality: 'one',
     reviewer: 'jev',
     contentKey: ({ gloss }) => textKey(gloss),
+    revalidates: ['example', 'translation', 'relation'],
     plan: ({ gloss }, { subject }) => jev({ lexical: lexicalQuestion(subject.lemma, subject.pos, gloss) }),
   },
   form: {

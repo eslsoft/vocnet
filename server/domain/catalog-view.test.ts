@@ -52,6 +52,7 @@ function fact<K extends FactKind>(
             reviewed_at: at,
           }
         : null,
+    revalidateSince: null,
     createdAt: at,
     updatedAt: at,
   }

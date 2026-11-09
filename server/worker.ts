@@ -10,7 +10,7 @@ import type { AppVariables } from './http/context'
 import { onError } from './http/errors'
 import { auditBoundary, requestBoundary } from './http/observability'
 import { ReviewerTransportError } from './usecases/ports'
-import { reconcilePending, reviewFact } from './usecases/review'
+import { reconcileReviews, reviewFact } from './usecases/review'
 
 // Composition root: wire per-request deps, then delegate to the app. Kept out of
 // app.ts so the exported AppType (consumed by the SPA's RPC client) carries no
@@ -47,7 +47,7 @@ export async function handleReviewBatch(batch: MessageBatch<unknown>, env: Env):
     const job: ReviewMessage = parsed.data
     const log = { event: 'review_job', factId: job.fact_id, traceId: job.trace_id, attempt: message.attempts }
     try {
-      const outcome = await reviewFact(deps, job.fact_id)
+      const outcome = await reviewFact(deps, job.fact_id, job.trace_id)
       console.info(JSON.stringify({ ...log, outcome }))
       message.ack()
     } catch (error) {
@@ -63,8 +63,8 @@ export async function handleReviewBatch(batch: MessageBatch<unknown>, env: Env):
 
 export async function handleScheduled(env: Env): Promise<void> {
   const traceId = crypto.randomUUID()
-  const count = await reconcilePending(createDeps(env), traceId)
-  console.info(JSON.stringify({ event: 'reconcile_pending', traceId, reenqueued: count }))
+  const count = await reconcileReviews(createDeps(env), traceId)
+  console.info(JSON.stringify({ event: 'reconcile_reviews', traceId, reenqueued: count }))
 }
 
 export default {

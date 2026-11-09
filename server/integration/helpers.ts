@@ -56,10 +56,8 @@ export function stubReviewers(noul = 0.93) {
   })
 }
 
-/** Delivers review jobs for every pending fact through the Worker's real queue handler. */
-export async function deliverPendingReviews() {
-  const { body } = await call('/manage/v1/facts?status=pending&limit=100', { token: await adminToken() })
-  const ids = factPageSchema.parse(body).items.map((fact) => fact.id)
+/** Delivers one review job per fact id through the Worker's real queue handler. */
+export async function deliverReviews(ids: string[]) {
   const batch = createMessageBatch(
     'vocnet-reviews',
     ids.map((id, index) => ({
@@ -72,4 +70,10 @@ export async function deliverPendingReviews() {
   const ctx = createExecutionContext()
   await entry.queue(batch, env)
   return getQueueResult(batch, ctx)
+}
+
+/** Delivers review jobs for every pending fact through the Worker's real queue handler. */
+export async function deliverPendingReviews() {
+  const { body } = await call('/manage/v1/facts?status=pending&limit=100', { token: await adminToken() })
+  return deliverReviews(factPageSchema.parse(body).items.map((fact) => fact.id))
 }

@@ -9,11 +9,18 @@ import {
   type SubjectViews,
   targetOf,
 } from '@server/domain/fact-kinds'
-import { decide, factTransitions, JEV_POLICY, jevVerdict } from '@server/domain/fact-lifecycle'
+import {
+  decide,
+  factTransitions,
+  JEV_POLICY,
+  jevVerdict,
+  type ReviewEvent,
+  reviewModeOf,
+} from '@server/domain/fact-lifecycle'
 import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, Verdict } from '@shared/facts'
 import type { Deps } from './deps'
 
-type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'jev' | 'llm' | 'clock'>
+type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'jev' | 'llm' | 'reviewQueue' | 'clock'>
 
 interface Judgement {
   model: string
@@ -99,24 +106,33 @@ async function judge<K extends FactKind>(
   return { reviewer, context, judgement: await runReviewer(deps, plan.request, state) }
 }
 
-const outcomes = { publish: 'published', reject: 'rejected' } as const
+const outcomes: Record<ReviewEvent, 'published' | 'rejected'> = {
+  publish: 'published',
+  reject: 'rejected',
+  reconfirm: 'published',
+  invalidate: 'rejected',
+}
 
-export type ReviewOutcome = (typeof outcomes)[keyof typeof outcomes] | 'skipped'
+export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
 
 /**
- * Reviews one pending fact and records the decision. Idempotent: a fact that is
- * not pending is skipped, and the status write is conditional on pending, so a
- * duplicate delivery cannot change a decided fact. Reviewer transport errors
- * propagate so the queue retries.
+ * Reviews one pending fact, or revalidates one published fact whose gloss was corrected, and
+ * records the decision. Idempotent: any other fact is skipped, and the status write is
+ * conditional on the state the review read, so a duplicate delivery cannot change a decided
+ * fact. When a correction publishes, the facts judged against the old version are marked and
+ * enqueued for revalidation. Reviewer transport errors propagate so the queue retries.
  */
-export async function reviewFact(deps: ReviewDeps, id: FactId): Promise<ReviewOutcome> {
+export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string): Promise<ReviewOutcome> {
   const fact = await deps.facts.find(id)
-  if (fact?.status !== 'pending') return 'skipped'
+  const mode = fact && reviewModeOf(fact)
+  if (!fact || !mode) return 'skipped'
 
   const { reviewer, judgement, context } = await judge(deps, fact)
-  const event = decide(judgement.verdict)
+  const event = decide(mode, judgement.verdict)
   const at = deps.clock.now().toISOString()
   const { from, to } = factTransitions[event]
+  const supersede = event === 'publish' ? (fact.supersedesId ?? undefined) : undefined
+  const dependents = supersede && factKinds[fact.kind].revalidates
   const applied = await deps.facts.transition({
     id,
     from,
@@ -132,21 +148,31 @@ export async function reviewFact(deps: ReviewDeps, id: FactId): Promise<ReviewOu
       detail: judgement.detail,
       reviewed_at: at,
     },
-    supersede: event === 'publish' && fact.supersedesId ? fact.supersedesId : undefined,
+    supersede,
+    revalidate: dependents ? { nodeId: fact.subjectId, kinds: dependents } : undefined,
+    revalidateSince: fact.revalidateSince ?? undefined,
   })
-  return applied ? outcomes[event] : 'skipped'
+  if (!applied) return 'skipped'
+  if (dependents) {
+    const ids = await deps.facts.listRevalidating(fact.subjectId)
+    if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
+  }
+  return outcomes[event]
 }
 
 export const RECONCILE_AFTER_MS = 10 * 60 * 1000
 const RECONCILE_BATCH = 500
 
-/** Re-enqueues facts that stayed pending too long, so a lost enqueue cannot strand a fact. */
-export async function reconcilePending(
+/**
+ * Re-enqueues facts pending, or awaiting revalidation, for too long, so a lost enqueue cannot
+ * strand a fact.
+ */
+export async function reconcileReviews(
   deps: Pick<Deps, 'facts' | 'reviewQueue' | 'clock'>,
   traceId: string,
 ): Promise<number> {
   const cutoff = new Date(deps.clock.now().getTime() - RECONCILE_AFTER_MS).toISOString()
-  const ids = await deps.facts.listPendingUpdatedBefore(cutoff, RECONCILE_BATCH)
+  const ids = await deps.facts.listStuckBefore(cutoff, RECONCILE_BATCH)
   if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
   return ids.length
 }

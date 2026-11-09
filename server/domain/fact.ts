@@ -15,6 +15,8 @@ export interface FactOf<K extends FactKind> {
   supersedesId: FactId | null
   author: PrincipalRef
   review: Review | null
+  /** Set while a published fact awaits re-review against a corrected gloss. */
+  revalidateSince: string | null
   createdAt: string
   updatedAt: string
 }

@@ -1,7 +1,7 @@
 import { facts } from '@server/db/schema'
 import type { FactRepo } from '@server/usecases/ports'
 import { type FactId, factKindSchema, factStatusSchema } from '@shared/facts'
-import { and, asc, count, desc, eq, exists, inArray, lt, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, inArray, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
@@ -43,47 +43,84 @@ export function createFactRepo(db: Db): FactRepo {
       return findLive(fact.kind, fact.subjectId, fact.contentKey)
     },
 
-    async transition({ id, from, to, at, review, supersede }) {
+    async transition({ id, from, to, at, review, supersede, revalidate, revalidateSince }) {
       const update = db
         .update(facts)
-        .set({ status: to, updatedAt: at, ...(review ? { review: JSON.stringify(review) } : {}) })
-        .where(and(eq(facts.id, id), inArray(facts.status, [...from])))
+        .set({
+          status: to,
+          updatedAt: at,
+          revalidateSince: null,
+          ...(review ? { review: JSON.stringify(review) } : {}),
+        })
+        .where(
+          and(
+            eq(facts.id, id),
+            inArray(facts.status, [...from]),
+            revalidateSince ? eq(facts.revalidateSince, revalidateSince) : undefined,
+          ),
+        )
         .returning({ id: facts.id })
       if (!supersede) return guardUnique('facts', SLOT_TAKEN, async () => (await update).length > 0)
 
-      // One batch, original first: it leaves `published` only while this correction is still
-      // pending, so the correction can enter `published` without two published facts at once.
+      // One batch, correction last: the original leaves `published` and its dependents are marked
+      // only while this correction is still pending, so a duplicate delivery changes nothing and
+      // the correction never enters `published` beside the original.
       const correction = alias(facts, 'correction')
+      const stillPending = exists(
+        db
+          .select({ one: sql`1` })
+          .from(correction)
+          .where(
+            and(eq(correction.id, id), inArray(correction.status, [...from]), eq(correction.supersedesId, supersede)),
+          ),
+      )
       const retire = db
         .update(facts)
-        .set({ status: 'superseded', updatedAt: at })
-        .where(
-          and(
-            eq(facts.id, supersede),
-            eq(facts.status, 'published'),
-            exists(
-              db
-                .select({ one: sql`1` })
-                .from(correction)
-                .where(
-                  and(
-                    eq(correction.id, id),
-                    inArray(correction.status, [...from]),
-                    eq(correction.supersedesId, supersede),
-                  ),
+        .set({ status: 'superseded', updatedAt: at, revalidateSince: null })
+        .where(and(eq(facts.id, supersede), eq(facts.status, 'published'), stillPending))
+      const mark = revalidate
+        ? [
+            db
+              .update(facts)
+              .set({ revalidateSince: at })
+              .where(
+                and(
+                  eq(facts.status, 'published'),
+                  inArray(facts.kind, [...revalidate.kinds]),
+                  or(eq(facts.subjectId, revalidate.nodeId), eq(facts.objectId, revalidate.nodeId)),
+                  stillPending,
                 ),
-            ),
-          ),
-        )
-      const [, applied] = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, update]))
-      return applied.length > 0
+              ),
+          ]
+        : []
+      const results = await guardUnique('facts', SLOT_TAKEN, () => db.batch([retire, ...mark, update]))
+      return (results.at(-1) as { id: string }[]).length > 0
     },
 
-    async listPendingUpdatedBefore(cutoff, limit) {
+    async listRevalidating(nodeId) {
       const rows = await db
         .select({ id: facts.id })
         .from(facts)
-        .where(and(eq(facts.status, 'pending'), lt(facts.updatedAt, cutoff)))
+        .where(
+          and(
+            eq(facts.status, 'published'),
+            isNotNull(facts.revalidateSince),
+            or(eq(facts.subjectId, nodeId), eq(facts.objectId, nodeId)),
+          ),
+        )
+      return rows.map((row) => row.id as FactId)
+    },
+
+    async listStuckBefore(cutoff, limit) {
+      const rows = await db
+        .select({ id: facts.id })
+        .from(facts)
+        .where(
+          or(
+            and(eq(facts.status, 'pending'), lt(facts.updatedAt, cutoff)),
+            and(eq(facts.status, 'published'), lt(facts.revalidateSince, cutoff)),
+          ),
+        )
         .orderBy(asc(facts.updatedAt))
         .limit(limit)
       return rows.map((row) => row.id as FactId)

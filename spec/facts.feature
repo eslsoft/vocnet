@@ -91,6 +91,30 @@ Feature: Facts and review
     When the review queue publishes the correction
     Then the original is superseded and the public entry shows only the correction
 
+  @facts/revalidate-dependents @usecase
+  Scenario: Facts judged against a corrected gloss are re-reviewed in place
+    Given a sense with published examples, translations, and relations in both directions
+    When a correction of its gloss publishes
+    Then each of those facts is marked and enqueued for revalidation, stays published and public meanwhile, and is reviewed against the new gloss
+
+  @facts/revalidation-outcome @domain
+  Scenario: Revalidation unpublishes only on failure
+    Given a published fact under revalidation
+    When its new review is pass, uncertain, or fail
+    Then it stays published with the new review, or moves to rejected
+
+  @facts/revalidate-api @api
+  Scenario: Revalidation through the queue on a real database
+    Given a corrected gloss whose example and incoming relation were published
+    When the queue delivers their revalidation jobs
+    Then they stay published with reviews of the new gloss, and a fact about another sense is untouched
+
+  @facts/retract-no-cascade @usecase
+  Scenario: Retracting a gloss does not cascade
+    Given a sense whose published gloss has dependent facts
+    When the gloss is retracted
+    Then nothing is marked or enqueued, and the sense and its facts drop out of the public view
+
   @facts/review-idempotent @usecase
   Scenario: Duplicate deliveries change nothing
     Given a fact that is already decided
@@ -112,6 +136,12 @@ Feature: Facts and review
   @facts/reconcile @usecase
   Scenario: Stuck facts are re-enqueued
     Given facts pending for more than ten minutes
+    When the reconciler runs
+    Then their review jobs are enqueued again
+
+  @facts/reconcile-revalidation @usecase
+  Scenario: Stuck revalidations are re-enqueued
+    Given published facts marked for revalidation more than ten minutes ago
     When the reconciler runs
     Then their review jobs are enqueued again
 

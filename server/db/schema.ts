@@ -42,6 +42,8 @@ export const facts = sqliteTable(
     supersedesId: text('supersedes_id'),
     author: text('author').notNull(),
     review: text('review'),
+    /** When a correction of the gloss this fact was judged against published; null when settled. */
+    revalidateSince: text('revalidate_since'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
@@ -63,6 +65,7 @@ export const facts = sqliteTable(
     index('facts_object_idx').on(table.objectId),
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),
     index('facts_status_updated_idx').on(table.status, table.updatedAt),
+    index('facts_revalidate_idx').on(table.revalidateSince).where(sql`revalidate_since is not null`),
   ],
 )
 

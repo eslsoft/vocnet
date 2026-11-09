@@ -64,6 +64,7 @@ export function toFact(row: FactRow): Fact {
     supersedesId: row.supersedesId as FactId | null,
     author: row.author as PrincipalRef,
     review: row.review === null ? null : reviewSchema.parse(JSON.parse(row.review)),
+    revalidateSince: row.revalidateSince,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   } as Fact
