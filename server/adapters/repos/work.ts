@@ -40,6 +40,7 @@ export function insertWorklistRow(db: Db, entryId: string) {
           completeness: sql`0`.as('completeness'),
           quality: sql`1`.as('quality'),
           stalled: sql`0`.as('stalled'),
+          awaitingReview: sql`0`.as('awaiting_review'),
           claimedWork: sql`null`.as('claimed_work'),
           revision: sql`0`.as('revision'),
           scoredRevision: sql`0`.as('scored_revision'),
@@ -116,8 +117,8 @@ export function claimStatement(db: Db, lease: Omit<WorkLease, 'entryId' | 'claim
     .where(and(isNotNull(worklist.claimRank), or(isNull(worklist.leaseExpiresAt), lte(worklist.leaseExpiresAt, now))))
     .orderBy(
       asc(worklist.claimRank),
-      asc(worklist.completeness),
       asc(worklist.claimedAt),
+      asc(worklist.completeness),
       asc(worklist.createdAt),
       asc(worklist.entryId),
     )

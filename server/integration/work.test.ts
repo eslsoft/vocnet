@@ -67,6 +67,12 @@ const pass = async (token: string, during?: (lease: { lemma: string; entry_id: s
   expect((await complete(token, work.lease.id)).status).toBe(200)
   return work.lease.lemma
 }
+/** Lets every pending review land with passing reviewers, as the queue does within seconds. */
+const settle = async () => {
+  const reviewers = stubReviewers()
+  await deliverPendingReviews()
+  reviewers.mockRestore()
+}
 const expireLeases = () =>
   env.DB.prepare('update worklist set lease_expires_at = ? where lease_id is not null')
     .bind(new Date(Date.now() - 1000).toISOString())
@@ -82,6 +88,8 @@ describe('worklist', () => {
     const other = await issueAgentKey('other')
     const { entry } = await createEntry(holder, 'tide')
     expect((await call('/manage/v1/work/claim', { method: 'POST' })).status).toBe(401)
+    expect((await claim(holder)).status).toBe(204)
+    await settle()
 
     const claimed = await claim(holder, { lease_seconds: 600 })
     expect(claimed.status).toBe(200)
@@ -105,6 +113,8 @@ describe('worklist', () => {
     const again = await complete(holder, work.lease.id)
     expect([again.status, codeOf(again.body)]).toEqual([404, 'not_found'])
 
+    expect((await claim(holder)).status).toBe(204)
+    await settle()
     const byAdmin = workClaimSchema.parse((await claim(await adminToken())).body)
     expect(byAdmin.lease).toMatchObject({ entry_id: entry.id, holder: 'admin:admin-1' })
   })
@@ -119,6 +129,7 @@ describe('worklist', () => {
     const tokens = await Promise.all(['a', 'b', 'c', 'd', 'e'].map((name) => issueAgentKey(name)))
     const lemmas = ['bay', 'cove', 'fjord']
     for (const lemma of lemmas) await createEntry(tokens[0], lemma)
+    await settle()
 
     const results = await Promise.all(tokens.map((token) => claim(token)))
     const won = results.filter((result) => result.status === 200).map((result) => workClaimSchema.parse(result.body))
@@ -130,6 +141,7 @@ describe('worklist', () => {
     const first = await issueAgentKey('first')
     const second = await issueAgentKey('second')
     const { entry } = await createEntry(first, 'tide')
+    await settle()
     const lapsed = workClaimSchema.parse((await claim(first)).body)
     await expireLeases()
 
@@ -149,6 +161,7 @@ describe('worklist', () => {
     expect(marked.status).toBe(200)
     expect(createEntryResultSchema.parse(marked.body)).toMatchObject({ created: false, entry: { lemma: 'cove' } })
     expect((await postEntry(token, { lemma: 'fjord', seed: false })).status).toBe(200)
+    await settle()
 
     const order = []
     for (let step = 0; step < 4; step++) order.push(await lemmaOf(token))
@@ -162,6 +175,7 @@ describe('worklist', () => {
     const seedOf = async (lemma: string) =>
       managedEntrySchema.parse((await call(`/manage/v1/entries/${lemma}`, { token })).body).seed
     expect([await seedOf('cove'), await seedOf('bay')]).toEqual([true, false])
+    await settle()
     const claims = [workClaimSchema.parse((await claim(token)).body), workClaimSchema.parse((await claim(token)).body)]
     expect(claims.map((work) => [work.lease.lemma, work.entry.seed])).toEqual([
       ['cove', true],
@@ -169,9 +183,14 @@ describe('worklist', () => {
     ])
   })
 
-  it('moves an entry whose lease lapsed behind never-claimed entries, without stalling it [spec: work/claim-rotation]', async () => {
+  it('moves an entry whose lease lapsed behind the entries claimed less recently, however incomplete [spec: work/claim-rotation]', async () => {
     const token = await issueAgentKey()
-    for (const lemma of ['bay', 'cove', 'fjord']) await createEntry(token, lemma)
+    await createEntry(token, 'bay')
+    for (const lemma of ['cove', 'fjord']) {
+      const { entry } = await createEntry(token, lemma)
+      await submitFact(token, { kind: 'form', subject_id: entry.id, payload: { form: `${lemma}s`, type: 'plural' } })
+    }
+    await settle()
     expect(await lemmaOf(token)).toBe('bay')
     await expireLeases()
 
@@ -179,14 +198,18 @@ describe('worklist', () => {
     expect(await lemmaOf(token)).toBe('fjord')
     await expireLeases()
     expect(await lemmaOf(token)).toBe('bay')
+    // Bay, the least complete, lapses again; it waits behind cove and fjord.
+    await expireLeases()
     expect(await lemmaOf(token)).toBe('cove')
     expect(await lemmaOf(token)).toBe('fjord')
+    expect(await lemmaOf(token)).toBe('bay')
   })
 
   it('hands each expired lease to exactly one of the claims racing for it [spec: work/claim-expired-race]', async () => {
     const tokens = await Promise.all(['a', 'b', 'c', 'd', 'e', 'f'].map((name) => issueAgentKey(name)))
     const lemmas = ['bay', 'cove', 'fjord']
     for (const lemma of lemmas) await createEntry(tokens[0], lemma)
+    await settle()
     for (const token of tokens.slice(0, 3)) expect((await claim(token)).status).toBe(200)
     expect((await claim(tokens[3])).status).toBe(204)
     await expireLeases()
@@ -206,6 +229,8 @@ describe('worklist', () => {
     expect(await lemmaOf(admin)).toBeNull()
 
     await createEntry(admin, 'tide')
+    expect(await lemmaOf(admin)).toBeNull()
+    await settle()
     expect(await lemmaOf(admin)).toBe('tide')
   })
 
@@ -213,6 +238,7 @@ describe('worklist', () => {
     const token = await issueAgentKey()
     const by = await createEntry(token, 'by')
     const of = await createEntry(token, 'of')
+    await settle()
     const facts = await fill(token, by.entry.id)
     const scoresOf = async (lemma: string) =>
       managedEntrySchema.parse((await call(`/manage/v1/entries/${lemma}`, { token })).body)
@@ -221,15 +247,15 @@ describe('worklist', () => {
     await fill(token, of.entry.id)
     expect(await lemmaOf(token)).toBeNull()
 
-    // Publishing changes nothing; a rejection reopens the gap and the entry.
-    stubReviewers()
-    await deliverReviews(facts.slice(0, -1).map((fact) => fact.id))
-    expect(await lemmaOf(token)).toBeNull()
-    vi.restoreAllMocks()
+    // A rejection reopens the gap; the entry is claimable once its other facts are reviewed too.
     stubReviewers(0.05, 'fail')
     await deliverReviews([facts.at(-1)?.id as string])
+    vi.restoreAllMocks()
     expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 1 / 5, quality: 1 })
+    expect(await lemmaOf(token)).toBeNull()
+    await settle()
     expect(await lemmaOf(token)).toBe('by')
+    expect(await lemmaOf(token)).toBeNull()
   })
 
   it('stalls an entry whose pass made no lasting progress until another principal changes its work [spec: work/stall-api]', async () => {
@@ -238,23 +264,28 @@ describe('worklist', () => {
     const bay = await createEntry(token, 'bay')
     const inlet = await postSense(other, bay.entry.id, 'A broad inlet of the sea.')
     expect((await postEntry(token, { lemma: 'cove', seed: true })).status).toBe(201)
+    await settle()
     const cove = await lemmaOfWork(token, async (work) => {
       const nook = await postSense(token, work.entry_id, 'A small sheltered bay.')
       return nook
     })
     expect(cove.lemma).toBe('cove')
-    stubReviewers(0.05, 'fail')
+    await settle()
 
-    // The second pass links cove to bay, and review rejects the link: the open work is back to the claim's.
-    const linked = await lemmaOfWork(token, async () => {
-      const relation = await submitFact(token, {
+    // The second pass links cove to bay and ends with the link pending: neither end is claimable.
+    const linked = await lemmaOfWork(token, () =>
+      submitFact(token, {
         kind: 'relation',
         subject_id: cove.result.sense.id,
         payload: { type: 'hypernym', target_sense_id: inlet.sense.id },
-      })
-      await deliverReviews([relation.id])
-    })
+      }),
+    )
     expect(linked.lemma).toBe('cove')
+    expect(await lemmaOf(token)).toBeNull()
+    // Review rejects the link after the lease ended: the open work is back to the claim's.
+    stubReviewers(0.05, 'fail')
+    await deliverReviews([linked.result.id])
+    vi.restoreAllMocks()
     expect(await pass(token)).toBe('bay')
     expect(await lemmaOf(token)).toBeNull()
     const stalled = await env.DB.prepare('select stalled from worklist where entry_id = ?').bind(cove.entryId).first()
@@ -265,6 +296,7 @@ describe('worklist', () => {
       subject_id: cove.result.sense.id,
       payload: { text: 'The boat rested in the cove.' },
     })
+    await settle()
     expect(await lemmaOf(token)).toBe('cove')
   })
 
@@ -334,15 +366,20 @@ describe('worklist', () => {
       json: { target_type: 'fact', target_id: form.id, message: 'Not a plural.' },
     })
     expect(report.status).toBe(201)
+    await submitFact(token, { kind: 'example', subject_id: nook.sense.id, payload: { text: 'A boat in the cove.' } })
 
-    const scores = () => env.DB.prepare('select entry_id, completeness, quality from worklist order by entry_id').all()
+    const scores = () =>
+      env.DB.prepare('select entry_id, completeness, quality, awaiting_review from worklist order by entry_id').all()
     const stored = (await scores()).results
-    await env.DB.prepare('update worklist set completeness = 0.5, quality = 0.5').run()
+    await env.DB.prepare(
+      'update worklist set completeness = 0.5, quality = 0.5, awaiting_review = 1 - awaiting_review',
+    ).run()
     const backfill = env.TEST_MIGRATIONS.find((migration) => migration.name.endsWith('worklist_scores_backfill.sql'))
     for (const query of backfill?.queries ?? []) await env.DB.prepare(query).run()
     expect((await scores()).results).toEqual(stored)
     expect(stored.map((row) => row.quality)).not.toEqual([1, 1, 1])
-    expect(nook.sense.entry_id).toBe(cove.entry.id)
+    expect(stored.find((row) => row.entry_id === cove.entry.id)?.awaiting_review).toBe(1)
+    expect(stored.find((row) => row.entry_id === tide.entry.id)?.awaiting_review).toBe(0)
   })
 
   it('reads the claim order from an index, without sorting the worklist [spec: work/claim-index]', async () => {

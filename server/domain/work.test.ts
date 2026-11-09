@@ -246,6 +246,15 @@ describe('assessEntry', () => {
     expect(assess(complete).openWork).not.toBe(before.openWork)
     expect(assess(complete.slice(0, 6)).openWork).not.toBe(assess(complete).openWork)
   })
+
+  it('awaits review while a fact about the entry or a relation into its senses is pending [spec: work/admission]', () => {
+    const pending = (candidate: Fact) => ({ ...candidate, status: 'pending' }) as Fact
+    const rejected = { ...complete[5], status: 'rejected' } as Fact
+    expect(assess([...complete, rejected]).awaitingReview).toBe(false)
+    expect(assess([...complete.slice(0, 6), pending(complete[6])]).awaitingReview).toBe(true)
+    expect(assess([pending(complete[0])], { incoming: [] }).awaitingReview).toBe(true)
+    expect(assess(complete, { incoming: incoming.map(pending) }).awaitingReview).toBe(true)
+  })
 })
 
 describe('worklist admission', () => {
@@ -257,9 +266,11 @@ describe('worklist admission', () => {
     expect(isStalled({ openWork: null, completed: true }, work)).toBe(false)
   })
 
-  it('admits a live entry with work left that is not stalled, or whose scores are stale [spec: work/admission]', () => {
-    const row = { live: true, stale: false, stalled: false, completeness: 0.5, quality: 1 }
+  it('admits a live entry with work left that is neither stalled nor awaiting review, or whose scores are stale [spec: work/admission]', () => {
+    const row = { live: true, stale: false, stalled: false, awaitingReview: false, completeness: 0.5, quality: 1 }
     expect(isClaimable(row)).toBe(true)
+    expect(isClaimable({ ...row, awaitingReview: true })).toBe(false)
+    expect(isClaimable({ ...row, awaitingReview: true, stale: true })).toBe(true)
     expect(isClaimable({ ...row, completeness: 1 })).toBe(false)
     expect(isClaimable({ ...row, completeness: 1, quality: 0.9 })).toBe(true)
     expect(isClaimable({ ...row, stalled: true })).toBe(false)

@@ -96,7 +96,7 @@ async function write(deps: Pick<Deps, 'feedback'>, next: FeedbackRecord, previou
 
 /** Takes a one-hour lease so two agents do not work the same report. */
 export async function claimFeedback(
-  deps: Pick<Deps, 'feedback' | 'clock'>,
+  deps: Pick<Deps, 'feedback' | 'facts' | 'nodes' | 'work' | 'clock'>,
   actor: Actor,
   id: FeedbackId,
 ): Promise<FeedbackRecord> {
@@ -107,7 +107,9 @@ export async function claimFeedback(
   if (decision === 'closed') throw new ConflictError(`Feedback is already ${item.status}.`)
   if (decision === 'held')
     throw new ConflictError(`Feedback is claimed by ${item.assignee} until ${item.claimExpiresAt}.`)
-  return write(deps, claim(item, who, now), item)
+  const claimed = await write(deps, claim(item, who, now), item)
+  await refreshFlagged(deps, claimed)
+  return claimed
 }
 
 /** Open feedback on a fact makes the fact weak, so its entries' scores follow the feedback's status. */

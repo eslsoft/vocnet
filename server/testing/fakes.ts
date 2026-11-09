@@ -49,6 +49,8 @@ export interface FakeWorld {
   answerLlm(answer: () => LlmJudgement | Promise<LlmJudgement>): void
   /** Every reviewer of every chain fails what it is asked. */
   failReviews(): void
+  /** Every reviewer passes what it is asked, as it does by default. */
+  passReviews(): void
 }
 
 export function fakeWorld(): FakeWorld {
@@ -58,16 +60,18 @@ export function fakeWorld(): FakeWorld {
     counter += 1
     return `00000000-0000-4000-8000-${String(counter).padStart(12, '0')}` as T
   }
-  let jevAnswer: (questions: Record<string, string>) => JevAnswers | Promise<JevAnswers> = (questions) => ({
+  const passingJev = (questions: Record<string, string>): JevAnswers => ({
     model: 'jev-test',
     answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.95])),
   })
-  let llmAnswer: () => LlmJudgement | Promise<LlmJudgement> = () => ({
+  const passingLlm = (): LlmJudgement => ({
     model: 'llm-test',
     verdict: 'pass',
     confidence: 0.9,
     reason: 'Looks right.',
   })
+  let jevAnswer: (questions: Record<string, string>) => JevAnswers | Promise<JevAnswers> = passingJev
+  let llmAnswer: () => LlmJudgement | Promise<LlmJudgement> = passingLlm
 
   const world: Omit<FakeWorld, 'deps'> = {
     entries: [],
@@ -100,6 +104,10 @@ export function fakeWorld(): FakeWorld {
       })
       llmAnswer = () => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'Wrong.' })
     },
+    passReviews: () => {
+      jevAnswer = passingJev
+      llmAnswer = passingLlm
+    },
   }
 
   const lemmaOf = (entryId: EntryId) => world.entries.find((entry) => entry.id === entryId)?.lemma
@@ -110,6 +118,7 @@ export function fakeWorld(): FakeWorld {
       completeness: 0,
       quality: 1,
       stalled: false,
+      awaitingReview: false,
       claimedWork: null,
       revision: 0,
       scoredRevision: 0,
@@ -423,8 +432,8 @@ export function fakeWorld(): FakeWorld {
         const order = (entry: EntryNode) =>
           [
             claimTier({ seed: world.seeds.has(entry.id), claimed: world.claimed.has(entry.id) }),
-            workOf(entry.id).completeness,
             world.claimed.get(entry.id) ?? '',
+            workOf(entry.id).completeness,
             entry.createdAt,
             entry.id,
           ] as const
@@ -432,8 +441,8 @@ export function fakeWorld(): FakeWorld {
           const [x, y] = [order(a), order(b)]
           return (
             x[0] - y[0] ||
-            x[1] - y[1] ||
-            x[2].localeCompare(y[2]) ||
+            x[1].localeCompare(y[1]) ||
+            x[2] - y[2] ||
             x[3].localeCompare(y[3]) ||
             x[4].localeCompare(y[4])
           )

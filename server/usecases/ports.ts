@@ -115,13 +115,14 @@ export interface WorkScores {
   completeness: number
   quality: number
   stalled: boolean
+  awaitingReview: boolean
 }
 
 export interface WorkRepo {
   /**
    * Atomically leases the next claimable entry (see `isClaimable`) that has no unexpired lease,
-   * replacing an expired one; null when none is. Order: `claimTier`, then lowest completeness, then
-   * least recently claimed, then oldest.
+   * replacing an expired one; null when none is. Order: `claimTier`, then least recently claimed
+   * (never-claimed tiers have no claim time), then lowest completeness, then oldest.
    */
   claimNext(
     lease: Omit<WorkLease, 'entryId' | 'claimedAt'>,

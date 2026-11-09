@@ -1,8 +1,8 @@
 {
+  "id": "f1865cec-6fb2-410a-bb60-a2b045ca94e3",
+  "prevId": "e95375c9-4739-4135-8160-734bb1a43c81",
   "version": "6",
   "dialect": "sqlite",
-  "id": "1f05f1dc-b053-4839-860f-a7faed75fd79",
-  "prevId": "ddf9de98-076d-4701-b50f-e58646fd3f9d",
   "tables": {
     "agents": {
       "name": "agents",
@@ -220,8 +220,8 @@
             "content_key",
             "subject_id"
           ],
-          "isUnique": true,
-          "where": "status in ('pending', 'published')"
+          "where": "status in ('pending', 'published')",
+          "isUnique": true
         },
         "facts_exclusive_holder_idx": {
           "name": "facts_exclusive_holder_idx",
@@ -229,8 +229,8 @@
             "kind",
             "subject_id"
           ],
-          "isUnique": true,
-          "where": "exclusive = 1 and (status = 'published' or (status = 'pending' and supersedes_id is null))"
+          "where": "exclusive = 1 and (status = 'published' or (status = 'pending' and supersedes_id is null))",
+          "isUnique": true
         },
         "facts_exclusive_pending_idx": {
           "name": "facts_exclusive_pending_idx",
@@ -238,8 +238,8 @@
             "kind",
             "subject_id"
           ],
-          "isUnique": true,
-          "where": "exclusive = 1 and status = 'pending'"
+          "where": "exclusive = 1 and status = 'pending'",
+          "isUnique": true
         },
         "facts_subject_idx": {
           "name": "facts_subject_idx",
@@ -278,8 +278,8 @@
           "columns": [
             "revalidate_since"
           ],
-          "isUnique": false,
-          "where": "revalidate_since is not null"
+          "where": "revalidate_since is not null",
+          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -467,15 +467,15 @@
         "senses_entry_id_entries_id_fk": {
           "name": "senses_entry_id_entries_id_fk",
           "tableFrom": "senses",
-          "tableTo": "entries",
           "columnsFrom": [
             "entry_id"
           ],
+          "tableTo": "entries",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -545,6 +545,14 @@
           "autoincrement": false,
           "default": false
         },
+        "awaiting_review": {
+          "name": "awaiting_review",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "claimed_work": {
           "name": "claimed_work",
           "type": "text",
@@ -575,8 +583,8 @@
           "notNull": false,
           "autoincrement": false,
           "generated": {
-            "as": "(case when live = 0 or (revision = scored_revision and (stalled = 1 or (completeness >= 1 and quality >= 1))) then null else 2 - 2 * seed + (claimed_at is not null) end)",
-            "type": "virtual"
+            "type": "virtual",
+            "as": "(case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 - 2 * seed + (claimed_at is not null) end)"
           }
         },
         "lease_id": {
@@ -634,8 +642,8 @@
           "name": "worklist_claim_order_idx",
           "columns": [
             "claim_rank",
-            "completeness",
             "claimed_at",
+            "completeness",
             "created_at",
             "entry_id"
           ],
@@ -646,23 +654,23 @@
           "columns": [
             "entry_id"
           ],
-          "isUnique": false,
-          "where": "revision <> scored_revision"
+          "where": "revision <> scored_revision",
+          "isUnique": false
         }
       },
       "foreignKeys": {
         "worklist_entry_id_entries_id_fk": {
           "name": "worklist_entry_id_entries_id_fk",
           "tableFrom": "worklist",
-          "tableTo": "entries",
           "columnsFrom": [
             "entry_id"
           ],
+          "tableTo": "entries",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -678,9 +686,9 @@
   "views": {},
   "enums": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
+    "tables": {}
   },
   "internal": {
     "indexes": {}

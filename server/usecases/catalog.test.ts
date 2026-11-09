@@ -46,6 +46,7 @@ describe('createEntry', () => {
     expect(cove).toMatchObject({ created: false, fact: { kind: 'entry' } })
     await createEntry(world.deps, agentA, { lemma: 'tide', seed: false })
     await createEntry(world.deps, agentA, { lemma: 'tide' })
+    for (const fact of [...world.facts]) await reviewFact(world.deps, fact.id, 'trace')
 
     const lemmas = []
     for (let minute = 1; minute <= 3; minute++) {

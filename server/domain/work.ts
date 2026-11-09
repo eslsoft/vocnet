@@ -172,6 +172,11 @@ export interface EntryAssessment {
    * is not a change.
    */
   openWork: string
+  /**
+   * A fact about the entry or its senses, or a relation into one of its senses, is pending. Its
+   * review can still change the open work, so a pass now would race the verdict.
+   */
+  awaitingReview: boolean
 }
 
 /** Scores the entry from its live facts. Completeness derives from `entryGaps`, so the gap rules stay the one source. */
@@ -189,6 +194,7 @@ export function assessEntry(snapshot: EntryFacts): EntryAssessment {
     completeness: 1 - missing / slots,
     quality: live === 0 ? 1 : 1 - weak.length / live,
     openWork: JSON.stringify({ gaps, weak: weakSlots }),
+    awaitingReview: [...snapshot.facts, ...snapshot.incoming].some((fact) => fact.status === 'pending'),
   }
 }
 
@@ -220,18 +226,23 @@ export interface Admission {
   /** A write changed the entry's facts since the stored scores were computed. */
   stale: boolean
   stalled: boolean
+  awaitingReview: boolean
   completeness: number
   quality: number
 }
 
 /**
- * An entry is claimable while live with work left and not stalled. Stale scores admit it, since
- * the write that made them stale may have opened work.
+ * An entry is claimable while live with work left, not stalled, and not awaiting review. Waiting
+ * for reviews to settle keeps a pass from recording open work that a verdict then undoes, which
+ * would lift the stall the verdict should keep. Stale scores admit it, since the write that made
+ * them stale may have opened work.
  */
-export const isClaimable = (row: Admission) => row.live && (row.stale || (!row.stalled && hasWork(row)))
+export const isClaimable = (row: Admission) =>
+  row.live && (row.stale || (!row.stalled && !row.awaitingReview && hasWork(row)))
 
 /**
  * The claim tier: seed entries before the rest, and within each, never-claimed entries before
- * claimed ones. Within a tier the lowest completeness comes first, then the least recently claimed.
+ * claimed ones. Never-claimed tiers go by lowest completeness; claimed tiers by least recently
+ * claimed, so an entry whose lease keeps lapsing goes behind every other claimed entry.
  */
 export const claimTier = (row: { seed: boolean; claimed: boolean }) => (row.seed ? 0 : 2) + (row.claimed ? 1 : 0)

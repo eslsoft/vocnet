@@ -93,13 +93,14 @@ export const feedback = sqliteTable(
 
 /**
  * One row per entry, created with it. `live` mirrors whether the entry fact is pending or
- * published. `completeness`, `quality`, and `stalled` are computed by `assessEntry` and
- * `isStalled` in server/domain/work.ts as of `scored_revision`; every write that can change the
+ * published. `completeness`, `quality`, `awaiting_review`, and `stalled` are computed by
+ * `assessEntry` and `isStalled` in server/domain/work.ts as of `scored_revision`; every write that can change the
  * entry's work bumps `revision` in its own batch, and the use case that made it rescores. A stale
  * row (`revision <> scored_revision`) stays claimable, so a lost rescore never hides work.
  * `claim_rank` is the claim tier of a claimable entry and null otherwise, so the claim order is one
  * index: seed entries never claimed (0) and claimed (1), then the rest never claimed (2) and
- * claimed (3), each by lowest completeness, then least recently claimed.
+ * claimed (3). Never-claimed tiers go by lowest completeness (their `claimed_at` is null), claimed
+ * tiers by least recently claimed.
  */
 export const worklist = sqliteTable(
   'worklist',
@@ -117,12 +118,14 @@ export const worklist = sqliteTable(
     quality: real('quality').notNull().default(1),
     /** The last completed pass left the open work as its claim found it, and nothing changed it since. */
     stalled: integer('stalled', { mode: 'boolean' }).notNull().default(false),
+    /** A fact about the entry or its senses, or a relation into one of its senses, is pending. */
+    awaitingReview: integer('awaiting_review', { mode: 'boolean' }).notNull().default(false),
     /** `openWork` of the entry when it was last claimed. */
     claimedWork: text('claimed_work'),
     revision: integer('revision').notNull().default(0),
     scoredRevision: integer('scored_revision').notNull().default(0),
     claimRank: integer('claim_rank').generatedAlwaysAs(
-      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or (completeness >= 1 and quality >= 1))) then null else 2 - 2 * seed + (claimed_at is not null) end`,
+      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 - 2 * seed + (claimed_at is not null) end`,
       { mode: 'virtual' },
     ),
     leaseId: text('lease_id').unique(),
@@ -135,8 +138,8 @@ export const worklist = sqliteTable(
   (table) => [
     index('worklist_claim_order_idx').on(
       table.claimRank,
-      table.completeness,
       table.claimedAt,
+      table.completeness,
       table.createdAt,
       table.entryId,
     ),

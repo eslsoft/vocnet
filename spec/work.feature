@@ -32,22 +32,28 @@ Feature: Worklist
     Then the entry is stalled only if the pass completed and the open work is unchanged
 
   @work/admission @domain
-  Scenario: Only a live entry with work left that is not stalled is claimable
-    Given worklist rows that are live or dead, stalled or not, stale or scored, with and without work left
+  Scenario: Only a live entry with work left that is neither stalled nor awaiting review is claimable
+    Given worklist rows that are live or dead, stalled or not, awaiting review or not, stale or scored, with and without work left
     When admission is decided
-    Then a live row is claimable when its scores are stale, or when it is not stalled and has a gap or a weak fact
+    Then a live row is claimable when its scores are stale, or when it is not stalled, has no pending fact about it or relation into its senses, and has a gap or a weak fact
 
   @work/claim-order @usecase
-  Scenario: Seed entries come first, never-claimed before claimed, then the lowest completeness
-    Given never-claimed seed entries, other never-claimed entries, and an entry whose entry fact is retracted
-    When agents claim and complete work, some passes adding a sense or a form
-    Then seed entries are claimed first and claimed ones by lowest completeness, then the other entries, every pass that added nothing stalls its entry, and the dead entry is never claimed
+  Scenario: Seed entries come first, never-claimed by lowest completeness, claimed by least recently claimed
+    Given never-claimed seed entries, other never-claimed entries of different completeness, and an entry whose entry fact is retracted
+    When agents claim and complete work, some passes adding a sense or a form, and reviews land between passes
+    Then seed entries are claimed first and claimed ones by least recently claimed, then the other entries by lowest completeness, every pass that added nothing stalls its entry, and the dead entry is never claimed
 
   @work/stall-loop @usecase
   Scenario: No loop hands out an entry whose passes make no lasting progress
     Given an entry whose pass submits a relation review rejects, or only adds a second example
     When agents claim and complete work
     Then the entry is stalled after that pass, and claimable again only after another principal's fact or a fact leaving live changes its open work
+
+  @work/awaiting-review @usecase
+  Scenario: An entry waits while its facts are under review, so a rejection after its lease stalls it
+    Given an entry whose pass submits a relation and completes before the review lands
+    When agents keep claiming work, and then review rejects the relation
+    Then neither end of the relation is claimed while it is pending, and after the rejection the entry is stalled and claimed no more
 
   @work/weak-facts @api
   Scenario: A claim names the entry's weak facts
@@ -63,15 +69,15 @@ Feature: Worklist
 
   @work/stall-api @api
   Scenario: A stalled entry waits until another principal changes its work
-    Given a seed entry whose pass links it to another entry, and review rejects the link
+    Given a seed entry whose pass links it to another entry, and review rejects the link after the lease ended
     When agents claim and complete work
-    Then the entry is not claimed again, the worklist empties, and another principal's example makes it claimable
+    Then neither entry is claimable while the link is pending, the entry is not claimed again, the worklist empties, and another principal's example makes it claimable
 
   @work/scores-backfill @api
   Scenario: The backfill computes the scores the rescore stores
-    Given entries of every part of speech with filled, missing, uncertain, and reported facts
+    Given entries of every part of speech with filled, missing, uncertain, reported, and pending facts
     When the backfill migration runs over the rescored worklist
-    Then every entry's completeness and quality are unchanged
+    Then every entry's completeness, quality, and awaiting review are unchanged
 
   @work/claim-seeds-first @api
   Scenario: Seed entries are claimed before the entries outside the seed list
@@ -81,9 +87,9 @@ Feature: Worklist
 
   @work/claim-rotation @api
   Scenario: An entry whose lease lapses goes back without stalling
-    Given an agent claimed an entry and the lease expired without a complete
+    Given the least complete entry is claimed and its lease keeps expiring without a complete
     When agents claim work
-    Then the never-claimed entries come first, and then the lapsed entry, least recently claimed first
+    Then the never-claimed entries come first, and then the claimed entries least recently claimed first, so the lapsing entry never comes ahead of one claimed before it
 
   @work/entry-seed @api
   Scenario: The entry view says whether the entry is a seed entry

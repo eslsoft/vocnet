@@ -310,8 +310,10 @@ compare-and-set on a revision counter.
 Agents ask the server what to work on instead of keeping their own list, and a
 lease keeps two agents off the same entry. Each entry carries a completeness
 and a quality score, and the two scores decide what the worklist hands out:
-once every entry is complete and good enough, or stalled, the claim answers
-`204` and producers stop.
+once every entry is complete and good enough, stalled, or awaiting review, the
+claim answers `204` and producers stop. An entry awaiting review comes back
+once its reviews settle, within seconds, so a producer that stops on `204` may
+leave such entries for its next run.
 
 `POST /manage/v1/work/claim` (body `{ lease_seconds? }`, 60 to 3600, default
 900) leases one entry to the caller and returns
@@ -345,9 +347,17 @@ feedback API. Quality is 1 exactly when no fact is weak.
 ### Admission and order
 
 An entry is claimable while its entry fact is live, no unexpired lease holds
-it, it is not stalled, and it has work left (completeness or quality below 1).
-Claimable entries come in four tiers, and within a tier by lowest completeness,
-then least recently claimed, then creation time and id:
+it, it is not stalled, it is not **awaiting review**, and it has work left
+(completeness or quality below 1). An entry awaits review while any fact about
+it or its senses, or any relation into one of its senses, is `pending`. Such a
+review can still change the entry's open work, so a pass claimed before it
+lands would record open work the verdict then undoes (see Stall). The queue
+reviews within seconds and the cron re-enqueues stuck facts, so the entry comes
+back once the reviews settle (`isClaimable`).
+
+Claimable entries come in four tiers. Within a never-claimed tier they come by
+lowest completeness; within a claimed tier by least recently claimed; then by
+creation time and id:
 
 | Tier | Entries              | Why                                                |
 | ---- | -------------------- | -------------------------------------------------- |
@@ -364,11 +374,12 @@ its seed list to mark entries that existed before. An agent that builds
 relations creates neighbor entries outside the list; they wait until no seed
 entry is claimable.
 
-Every claim sets `claimed_at`, so an entry moves back in its tier whether or not
-its work completes. A lease that lapses does not stall the entry: an agent that
-crashes on one entry gets it again only after the entries claimed less
-recently. Finished entries are not rotated: an entry with no work left is never
-claimed.
+Every claim sets `claimed_at`, so an entry leaves its never-claimed tier and
+moves to the back of its claimed tier whether or not its work completes. A lease
+that lapses does not stall the entry: an agent that crashes on one entry gets it
+again only after every other entry in its tier claimed less recently, however
+incomplete the crashing entry is. Finished entries are not rotated: an entry
+with no work left is never claimed.
 
 ### Stall
 
@@ -381,7 +392,10 @@ that made no lasting progress, which the next pass would repeat:
 - a pass that added nothing, or only facts no gap needed, such as a second
   example where one exists;
 - a pass whose facts review then rejects: the rejection puts the open work back
-  to the claim's, so a relation that keeps failing review is tried once;
+  to the claim's, so a relation that keeps failing review is tried once. The
+  entry awaits review from the pass's end until the verdict, so no other pass
+  records the pending fact's open work in between and turns the rejection into
+  a change;
 - a pass that superseded a weak fact with a correction that is weak again,
   since the weak slot keeps its key.
 
@@ -413,6 +427,7 @@ relation slots.
 | `claimed_at`                                      | When the entry was last claimed; null until the first claim |
 | `seed`                                            | The entry was submitted as part of a seed list             |
 | `completeness`, `quality`, `stalled`              | The scores and the stall, as of `scored_revision`          |
+| `awaiting_review`                                 | A fact about the entry or its senses, or a relation into one of its senses, is pending, as of `scored_revision` |
 | `claimed_work`                                    | The open work the last claim found                         |
 | `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work; the revision the scores describe |
 | `claim_rank`                                      | Generated: the tier of a claimable entry, else null; a stale row counts as claimable |
@@ -428,14 +443,17 @@ it, and stores the scores and the stall conditional on `revision` being
 unchanged, so a concurrent write's rescore wins instead of being overwritten. A
 stale row stays claimable, so a request that crashed before its rescore never
 hides work; the cron rescores up to 100 stale rows every run
-(`refreshStaleWork`). Every fact insert or status change also rewrites `live`
+(`refreshStaleWork`). It tries every row of the batch before it throws the
+failures together, so a row that keeps failing holds one slot and the rows
+behind it still drain. Every fact insert or status change also rewrites `live`
 for its subject.
 
 The claim is one `UPDATE … WHERE entry_id = (SELECT … WHERE claim_rank IS NOT
-NULL ORDER BY claim_rank, completeness, claimed_at, created_at, entry_id LIMIT
+NULL ORDER BY claim_rank, claimed_at, completeness, created_at, entry_id LIMIT
 1) RETURNING` statement that picks the entry, writes the lease, and stamps
-`claimed_at`; the claim then records `claimed_work`. The index `(claim_rank,
-completeness, claimed_at, created_at, entry_id)` gives that order without a
+`claimed_at`; the claim then records `claimed_work`. Never-claimed rows have a
+null `claimed_at`, so their order falls to completeness. The index `(claim_rank,
+claimed_at, completeness, created_at, entry_id)` gives that order without a
 sort, and the scan passes at most one row per held lease before a free row. D1
 runs statements one at a time, so two concurrent claims never get the same
 entry, and a claim takes over a lease only once it has expired. Work state
@@ -443,7 +461,8 @@ lives in this table, not on the `entries` node, which keeps identity only.
 
 The migration `worklist_drop_revisit` removed the revisit marks, streak, and
 claim count that ordered the earlier rotation, and `worklist_scores_backfill`
-computed every entry's completeness and quality in SQL by the same rules; no
+computed every entry's completeness, quality, and `awaiting_review` in SQL by
+the same rules, aggregating per entry once over the indexed fact lookups; no
 entry starts stalled.
 
 ### Gaps
