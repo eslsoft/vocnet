@@ -843,7 +843,15 @@ with hashes):
 
 The import rules live in `server/domain/reference.ts`. CEFR-J parts of speech
 map one to one, except that modal auxiliaries and the be, do, and have verbs
-become `auxiliary`, and numbers and infinitive "to" are dropped. Octanove's
+become `auxiliary`, and numbers and infinitive "to" are dropped. CEFR-J lists
+every form of be, do, and have as a row of its own ("'m", "'re", "'s", "am",
+"is", "are", "was", "were", "been", "being", "does", "did", "doing", "done",
+"has", "had", "having"); entries are lemmas and an inflection is a `form` fact
+on its lemma's entry, so under these three labels only "be", "do", and "have"
+are kept and the other rows are dropped. `build.mjs` counts and lists the
+dropped forms. Modal auxiliaries ("can", "would", "have to", "used to") are
+lemmas and are kept, as is the same spelling under another part of speech
+("being", noun). Octanove's
 `vern` is `verb`; its one unlabeled row is dropped. A headword listing variants
 with `/` gives one lemma per variant. CEFR-J wins over Octanove for the same
 lemma and part of speech, and a pair listed several times in one profile (once
@@ -891,8 +899,8 @@ entry is created by the admin, its worklist row reads its learner priority, and
 its entry fact is pending and queued for review like any other: a multiword
 headword ("according to") goes through the multiword entry review. A single
 letter other than "a" and "I" names the letter, not a word, so it is skipped
-and listed in `skipped` (`isCoreHeadword`); the current profiles list no such
-headword. Fifty entries per call keep a request well inside the Worker's D1
+and listed in `skipped` (`isLetterOfTheAlphabet`, the rule the entry review
+applies); the current profiles list no such headword. Fifty entries per call keep a request well inside the Worker's D1
 query budget. The operation is idempotent: a repeated or concurrent call finds
 the lemmas that have entries by then, and once `remaining` is 0 a call creates
 nothing.

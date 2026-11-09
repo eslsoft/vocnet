@@ -10,8 +10,7 @@ import type { Fact, FactOf } from '@server/domain/fact'
 import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
-import { isCoreHeadword } from '@server/domain/reference'
-import { type Lemma, normalizeTerm } from '@server/domain/term'
+import { isLetterOfTheAlphabet, type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
   CreateSenseInput,
@@ -66,7 +65,7 @@ export async function importCoreEntries(
   limit: number,
 ): Promise<{ created: Lemma[]; skipped: Lemma[]; remaining: number }> {
   const missing = await deps.reference.listCefrLemmasWithoutEntry()
-  const core = missing.filter(isCoreHeadword)
+  const core = missing.filter((lemma) => !isLetterOfTheAlphabet(lemma))
   const next = core.slice(0, limit)
   const created: Lemma[] = []
   for (const lemma of next) {
@@ -74,7 +73,7 @@ export async function importCoreEntries(
   }
   return {
     created,
-    skipped: missing.filter((lemma) => !isCoreHeadword(lemma)),
+    skipped: missing.filter(isLetterOfTheAlphabet),
     remaining: core.length - next.length,
   }
 }

@@ -8,6 +8,12 @@ export function normalizeTerm(raw: string): Lemma {
 /** A lemma of more than one word: a phrase, admitted only as a lexical unit. */
 export const isMultiword = (lemma: string) => /\s/.test(lemma)
 
+/** The only one-letter words; any other single letter is a letter of the alphabet, not a word. */
+const ONE_LETTER_WORDS: ReadonlySet<string> = new Set(['a', 'I'])
+
+/** A single letter that names the letter rather than a word: any but "a" and "I". */
+export const isLetterOfTheAlphabet = (lemma: string) => /^\p{L}$/u.test(lemma) && !ONE_LETTER_WORDS.has(lemma)
+
 /** Dedupe key for free text: the canonical term, case-folded. */
 export function textKey(raw: string): string {
   return normalizeTerm(raw).toLowerCase()
