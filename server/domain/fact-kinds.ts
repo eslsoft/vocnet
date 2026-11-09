@@ -12,7 +12,7 @@ import type {
   SenseId,
   TopicId,
 } from '@shared/facts'
-import { editDistance, isMultiword, normalizeTerm, textKey } from './term'
+import { editDistance, isLetterOfTheAlphabet, isMultiword, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
 // The single source of truth for fact kinds. Wire payload schemas live in
@@ -272,11 +272,6 @@ const MULTIWORD_FAILS = [
   'A category label coined to group things ("time unit", "writing implement", "plant part", "protective covering", "cleaning implement", "security device").',
   'A proper name, a misspelling, or an invented phrase.',
 ]
-
-/** The only one-letter words; any other single letter is a letter of the alphabet, not a word. */
-const ONE_LETTER_WORDS: ReadonlySet<string> = new Set(['a', 'I'])
-
-const isLetterOfTheAlphabet = (lemma: string) => /^\p{L}$/u.test(lemma) && !ONE_LETTER_WORDS.has(lemma)
 
 function planEntry(lemma: string, senses: readonly SenseGloss[]): ReviewPlan<readonly ['jev', 'llm']> {
   if (isLetterOfTheAlphabet(lemma)) {

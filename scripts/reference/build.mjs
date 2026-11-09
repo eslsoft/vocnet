@@ -34,7 +34,7 @@ const raw = JSON.parse(await readFile(process.argv[2], 'utf8'))
 
 // Listed in precedence order: CEFR-J before Octanove.
 const posMaps = { 'cefrj-xlsx': cefrjPos, 'olp-csv': octanovePos }
-const cefr = mergeCefr(
+const { rows: cefr, inflections } = mergeCefr(
   manifest.cefr.map((source) => ({
     id: source.id,
     pos: posMaps[source.format],
@@ -62,4 +62,7 @@ const statements = referenceImportSql({
 process.stdout.write(`${statements.join('\n')}\n`)
 process.stderr.write(
   `${frequency.length} word_frequency rows, ${cefr.length} lemma_cefr rows, ${1 + manifest.cefr.length} reference_sources rows\n`,
+)
+process.stderr.write(
+  `${inflections.length} inflected forms dropped: ${inflections.map((row) => `${row.form} (${row.label}, ${row.sourceId})`).join(', ')}\n`,
 )

@@ -12,6 +12,13 @@ Feature: Reference data
     And numbers, infinitive "to", and unlabeled rows are dropped, slash variants become separate lemmas
     And an unknown label or level fails the import
 
+  @reference/cefr-inflected-forms @domain
+  Scenario: Only the base lemma of a verb paradigm becomes a CEFR row
+    Given CEFR-J rows labelled be-verb, do-verb, and have-verb for "be", "do", "have" and their inflected forms such as "is", "'s", "done", and "had"
+    When the import merges them
+    Then only "be", "do", and "have" are kept, as auxiliary
+    And the inflected forms are dropped and reported, while modal auxiliaries and the same spellings under another part of speech are kept
+
   @reference/cefr-precedence @domain
   Scenario: One CEFR level per lemma and part of speech
     Given a lemma and part of speech listed several times in one profile and again in another

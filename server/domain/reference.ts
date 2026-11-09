@@ -26,8 +26,28 @@ export interface FrequencyRow {
   rank: number
 }
 
-/** How a profile's POS labels map onto ours: a POS, or null for labels with no lexical entry. */
-export type PosMap = Readonly<Record<string, Pos | null>>
+/**
+ * A label that lists one verb's whole paradigm. Only the base form is a lemma; the other forms
+ * ("is", "was", "did", "has") are inflections, which belong on the lemma's entry as forms.
+ */
+export interface ParadigmPos {
+  pos: Pos
+  lemma: string
+}
+
+/**
+ * How a profile's POS labels map onto ours: a POS, a verb paradigm of which only the base form
+ * is kept, or null for labels with no lexical entry.
+ */
+export type PosMap = Readonly<Record<string, Pos | ParadigmPos | null>>
+
+/** A profile row dropped because its headword is an inflected form of a paradigm's lemma. */
+export interface InflectedRow {
+  sourceId: string
+  form: Lemma
+  label: string
+  level: CefrLevel
+}
 
 const lexicalPos = {
   noun: 'noun',
@@ -41,13 +61,16 @@ const lexicalPos = {
   interjection: 'interjection',
 } as const satisfies PosMap
 
-/** CEFR-J lists auxiliaries by verb, and numbers and infinitive "to" as their own classes. */
+/**
+ * CEFR-J lists auxiliaries by verb, with every form of be, do, and have ("am", "was", "'s",
+ * "done") as a row of its own, and numbers and infinitive "to" as their own classes.
+ */
 export const cefrjPos: PosMap = {
   ...lexicalPos,
   'modal auxiliary': 'auxiliary',
-  'be-verb': 'auxiliary',
-  'do-verb': 'auxiliary',
-  'have-verb': 'auxiliary',
+  'be-verb': { pos: 'auxiliary', lemma: 'be' },
+  'do-verb': { pos: 'auxiliary', lemma: 'do' },
+  'have-verb': { pos: 'auxiliary', lemma: 'have' },
   number: null,
   'infinitive-to': null,
 }
@@ -66,12 +89,6 @@ export function headwords(cell: string): Lemma[] {
 // CEFR levels sort as strings: A1 < A2 < B1 < B2 < C1 < C2.
 const lower = (a: CefrLevel, b: CefrLevel) => (a < b ? a : b)
 
-/**
- * A headword the core import makes an entry: any but a single letter, which names the letter
- * rather than a word, except "a" and "I".
- */
-export const isCoreHeadword = (lemma: string) => !/^\p{L}$/u.test(lemma) || lemma === 'a' || lemma === 'I'
-
 /** A level's place in learning order: 1 for A1 to 6 for C2. */
 export const levelRank = (level: CefrLevel) => cefrLevelSchema.options.indexOf(level) + 1
 
@@ -79,18 +96,28 @@ export const levelRank = (level: CefrLevel) => cefrLevelSchema.options.indexOf(l
  * One level per (lemma, POS). A source that lists a pair several times (once per sense) gives
  * it its lowest level, and an earlier source in `sources` wins over a later one. A POS label
  * missing from the source's map fails, so a new label is mapped on purpose, never dropped.
+ * Inflected forms listed under a paradigm label are dropped and returned in `inflections`.
  */
-export function mergeCefr(sources: ReadonlyArray<{ id: string; pos: PosMap; rows: CefrSourceRow[] }>): CefrRow[] {
+export function mergeCefr(sources: ReadonlyArray<{ id: string; pos: PosMap; rows: CefrSourceRow[] }>): {
+  rows: CefrRow[]
+  inflections: InflectedRow[]
+} {
   const merged = new Map<string, CefrRow>()
+  const inflections: InflectedRow[] = []
   for (const source of sources) {
     const own = new Map<string, CefrRow>()
     for (const row of source.rows) {
       const label = row.pos.trim()
       if (!Object.hasOwn(source.pos, label)) throw new Error(`${source.id}: unknown POS ${JSON.stringify(row.pos)}.`)
-      const pos = source.pos[label]
-      if (!pos) continue
+      const mapped = source.pos[label]
+      if (!mapped) continue
       const level = cefrLevelSchema.parse(row.level.trim())
+      const pos = typeof mapped === 'string' ? mapped : mapped.pos
       for (const lemma of headwords(row.headword)) {
+        if (typeof mapped !== 'string' && lemma !== mapped.lemma) {
+          inflections.push({ sourceId: source.id, form: lemma, label, level })
+          continue
+        }
         const key = `${lemma}\u0000${pos}`
         const seen = own.get(key)
         own.set(key, { lemma, pos, level: seen ? lower(seen.level, level) : level, sourceId: source.id })
@@ -100,7 +127,7 @@ export function mergeCefr(sources: ReadonlyArray<{ id: string; pos: PosMap; rows
       if (!merged.has(key)) merged.set(key, row)
     }
   }
-  return [...merged.values()]
+  return { rows: [...merged.values()], inflections }
 }
 
 /**
