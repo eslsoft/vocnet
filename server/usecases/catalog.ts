@@ -1,4 +1,11 @@
-import { type EntrySnapshot, formMatch, projectPublicEntry, projectPublicSense } from '@server/domain/catalog-view'
+import {
+  type EntrySnapshot,
+  formMatch,
+  type ManagedEntryView,
+  managedEntryView,
+  projectPublicEntry,
+  projectPublicSense,
+} from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
 import { contentKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
@@ -115,14 +122,8 @@ export function searchEntries(deps: Pick<Deps, 'nodes'>, prefix: string, page: P
   return deps.nodes.searchPublishedEntries(normalizeTerm(prefix), page)
 }
 
-/** The management view: the entry with every fact in every status. */
-export async function getManagedEntry(
-  deps: Pick<Deps, 'nodes'>,
-  lemma: string,
-): Promise<{ entry: EntryNode; senses: SenseNode[]; facts: Fact[] }> {
-  const snapshot = await snapshotOf(deps, lemma)
-  const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, fact]))
-  return { entry: snapshot.entry, senses: snapshot.senses, facts: [...facts.values()] }
+export async function getManagedEntry(deps: Pick<Deps, 'nodes'>, lemma: string): Promise<ManagedEntryView> {
+  return managedEntryView(await snapshotOf(deps, lemma))
 }
 
 /** The entry that owns a node id: the entry itself, or a sense's entry. Ids are UUIDs, so at most one matches. */

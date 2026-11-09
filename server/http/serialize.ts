@@ -1,3 +1,4 @@
+import type { ManagedEntryView } from '@server/domain/catalog-view'
 import type { Fact } from '@server/domain/fact'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
@@ -37,6 +38,12 @@ export const factDto = (fact: Fact): FactDto =>
     created_at: fact.createdAt,
     updated_at: fact.updatedAt,
   }) as FactDto
+
+export const managedEntryDto = (view: ManagedEntryView) => ({
+  entry: entryDto(view.entry),
+  senses: view.senses.map(senseDto),
+  facts: view.facts.map(factDto),
+})
 
 export const feedbackDto = (item: FeedbackRecord): FeedbackDto => ({
   id: item.id,
