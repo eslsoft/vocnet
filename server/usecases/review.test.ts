@@ -40,6 +40,19 @@ describe('reviewFact', () => {
     expect(world.jevCalls[0]?.state).toMatchObject({ fact: { id: entryFact.id, kind: 'entry' } })
   })
 
+  it('rejects a letter of the alphabet without asking a reviewer [spec: facts/entry-no-letters]', async () => {
+    const world = fakeWorld()
+    const { fact } = await createEntry(world.deps, agentA, { lemma: 'F' })
+    await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
+    expect(world.jevCalls).toHaveLength(0)
+    expect(world.llmCalls).toHaveLength(0)
+    expect((await getFact(world.deps, fact.id)).review).toMatchObject({
+      model: 'none',
+      verdict: 'fail',
+      reason: '"F" is a letter of the alphabet; the only one-letter entries are the words "a" and "I".',
+    })
+  })
+
   it('settles on a Jev pass without asking the LLM [spec: facts/second-opinion-chain]', async () => {
     const { world, gloss } = await bankWorld()
     await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('published')

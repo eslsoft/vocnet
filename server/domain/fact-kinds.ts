@@ -273,6 +273,21 @@ const MULTIWORD_FAILS = [
   'A proper name, a misspelling, or an invented phrase.',
 ]
 
+/** The only one-letter words; any other single letter is a letter of the alphabet, not a word. */
+const ONE_LETTER_WORDS: ReadonlySet<string> = new Set(['a', 'I'])
+
+const isLetterOfTheAlphabet = (lemma: string) => /^\p{L}$/u.test(lemma) && !ONE_LETTER_WORDS.has(lemma)
+
+function planEntry(lemma: string, senses: readonly SenseGloss[]): ReviewPlan<readonly ['jev', 'llm']> {
+  if (isLetterOfTheAlphabet(lemma)) {
+    return {
+      kind: 'unreviewable',
+      reason: `${quote(lemma)} is a letter of the alphabet; the only one-letter entries are the words "a" and "I".`,
+    }
+  }
+  return jevThenLlm({ lemma: entryQuestion(lemma) }, entryRubric(lemma, senses))
+}
+
 function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
   const criteria = isMultiword(lemma)
     ? [
@@ -285,7 +300,7 @@ function entryRubric(lemma: string, senses: readonly SenseGloss[]): string {
       ]
     : [
         `Is ${quote(lemma)} an established English word that belongs in a learner's dictionary?`,
-        'pass: a dictionary lemma or conventional vocabulary term, including function words, letters of the alphabet, and established abbreviations.',
+        'pass: a dictionary lemma or conventional vocabulary term, including function words and established abbreviations.',
         'fail: an ordinary inflection of another word, a proper name, a misspelling, or an invented word.',
       ]
   return [...criteria, listSenses('Senses recorded for it so far', senses)].join('\n')
@@ -677,13 +692,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     cardinality: 'one',
     chain: ['jev', 'llm'],
     contentKey: () => 'entry',
-    plan: (_payload, { subject }) =>
-      jevThenLlm(
-        {
-          lemma: entryQuestion(subject.lemma),
-        },
-        entryRubric(subject.lemma, subject.senses),
-      ),
+    plan: (_payload, { subject }) => planEntry(subject.lemma, subject.senses),
   },
   sense: {
     subject: 'sense',

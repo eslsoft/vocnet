@@ -435,8 +435,12 @@ but only to choose the message.
   the whole; a material or ingredient it is made from, or a generic
   part such as a back or side, is not one.
 - **Entry admission.** A single-word lemma passes as an established word: a
-  dictionary lemma, function word, letter, or established abbreviation, not
-  an ordinary inflection, proper name, misspelling, or invented word. A
+  dictionary lemma, function word, or established abbreviation, not an
+  ordinary inflection, proper name, misspelling, or invented word. A letter of
+  the alphabet is not a word: a lemma of exactly one Unicode letter other than
+  the words "a" and "I" is planned as `unreviewable`, so its first review
+  rejects it without asking a reviewer. Abbreviations of two or more letters
+  are reviewed as before. A
   multiword lemma (one containing whitespace) gets its own Jev question and
   rubric and passes only as a lexical unit: its meaning is not the sum of its
   parts (an idiom such as "bear fruit", a compound naming one thing such as
