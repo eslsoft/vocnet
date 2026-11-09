@@ -192,7 +192,8 @@ console reads its public OIDC settings from `GET /configz`.
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
 - D1 stores nodes, facts, feedback, and agents.
-- A Cloudflare Queue carries `{ factId }` review jobs. Its consumer reviews.
+- A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
+  reviews and logs the trace ID.
 - A cron trigger re-enqueues facts whose last status change is more than ten
   minutes old and that are still `pending`, so a lost enqueue cannot strand a
   fact. It keys on `updated_at`, not `created_at`, so a re-reviewed fact counts
