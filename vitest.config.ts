@@ -37,6 +37,10 @@ export default defineConfig({
         // business logic
         'server/domain/**',
         'server/usecases/**',
+        // adapters proven over stubbed fetch / fake bindings
+        'server/adapters/reviewers/**',
+        'server/adapters/review-queue.ts',
+        'server/adapters/agent-keys.ts',
         // pure contract + helpers
         'shared/**',
         // frontend logic (covered by the `web` project)
@@ -104,7 +108,13 @@ export default defineConfig({
               compatibilityDate: '2026-06-03',
               compatibilityFlags: ['nodejs_compat'],
               d1Databases: ['DB'],
+              queueProducers: { REVIEW_QUEUE: 'vocnet-reviews' },
               bindings: {
+                ADMIN_SUBJECTS: 'admin-1, admin-2',
+                MODEL_BASE_URL: 'https://models.test',
+                MODEL_API_KEY: 'test-model-key',
+                JEV_MODEL: 'jev-latest',
+                REVIEW_LLM_MODEL: 'llm-test',
                 TEST_MIGRATIONS: await readD1Migrations(path.join(__dirname, 'migrations')),
                 ...(await testAuthBindings()),
               },

@@ -1,9 +1,30 @@
-import type { AuthVerifier, Clock, IdGenerator, NotesRepo } from './ports'
+import type {
+  AgentKeyCrypto,
+  AgentRepo,
+  AuthVerifier,
+  Clock,
+  FactRepo,
+  FeedbackRepo,
+  IdGenerator,
+  JevReviewer,
+  LlmReviewer,
+  NodeRepo,
+  ReviewQueue,
+} from './ports'
 
-// The dependency bundle injected into usecases/middleware; assembled in composition.ts.
+// The dependency bundle assembled in composition.ts. Use cases take a Pick of it.
 export interface Deps {
-  notesRepo: NotesRepo
+  nodes: NodeRepo
+  facts: FactRepo
+  feedback: FeedbackRepo
+  agents: AgentRepo
+  jev: JevReviewer
+  llm: LlmReviewer
+  reviewQueue: ReviewQueue
   authVerifier: AuthVerifier
+  agentKeys: AgentKeyCrypto
+  /** OIDC subjects allowed to act as admins. */
+  adminSubjects: ReadonlySet<string>
   clock: Clock
-  idGenerator: IdGenerator
+  ids: IdGenerator
 }

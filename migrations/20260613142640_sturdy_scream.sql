@@ -1,1 +1,0 @@
-ALTER TABLE `notes` ADD `owner_id` text NOT NULL;
