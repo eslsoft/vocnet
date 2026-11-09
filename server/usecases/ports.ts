@@ -92,7 +92,7 @@ export interface FeedbackRepo {
 
 export interface WorkRepo {
   /**
-   * Atomically leases the least recently worked entry whose entry fact is live and that has no
+   * Atomically leases the least recently claimed entry whose entry fact is live and that has no
    * unexpired lease, replacing an expired one; null when no entry is claimable.
    */
   claimNext(lease: Omit<WorkLease, 'entryId'>, now: string): Promise<{ lease: WorkLease; entry: EntryNode } | null>

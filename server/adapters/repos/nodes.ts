@@ -7,6 +7,7 @@ import type { EntryId } from '@shared/facts'
 import { and, asc, eq, exists, getTableColumns, gt, gte, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, fromFact, liveStatus, page, toEntry, toFact, toSense } from './rows'
+import { insertWorklistRow } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
 const entryCursor = z.object({ lemma: z.string() })
@@ -49,7 +50,7 @@ export function createNodeRepo(db: Db): NodeRepo {
     },
 
     async insertEntry(entry) {
-      await db.insert(entries).values(entry).onConflictDoNothing()
+      await db.batch([db.insert(entries).values(entry).onConflictDoNothing(), insertWorklistRow(db, entry.id)])
       const row = await db.select().from(entries).where(eq(entries.lemma, entry.lemma)).get()
       if (!row) throw new Error(`Entry ${entry.lemma} vanished after insert.`)
       return toEntry(row)

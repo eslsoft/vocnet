@@ -202,20 +202,33 @@ lease keeps two agents off the same entry.
 `expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
 returns, and the entry's gaps. It answers `204` when no entry is free. A free
 entry has a live `entry` fact and no unexpired lease. Among free entries the
-least recently worked comes first: never-worked entries, then by
-`last_worked_at`, then by creation time and id. An entry with no gaps is still
-served in turn, so agents can enrich it.
+least recently claimed comes first: never-claimed entries, then by
+`claimed_at`, then by creation time and id. Every claim sets `claimed_at`, so
+an entry moves to the back whether or not its work completes. An agent that
+crashes on one entry does not get that entry again until every other entry
+had its turn. An entry with no gaps is still served in turn, so agents can
+enrich it.
 
-| Table         | Columns                                                 | Rule                                     |
-| ------------- | ------------------------------------------------------- | ---------------------------------------- |
-| `work_leases` | `id`, `entry_id` (unique), `holder`, `expires_at`       | At most one lease row per entry          |
-| `entry_work`  | `entry_id`, `last_worked_at`, `last_worked_by`, `last_note` | When work on the entry last completed |
+`worklist` holds one row per entry, written in the same batch as the entry:
 
-The claim is one `INSERT … SELECT … ON CONFLICT (entry_id) DO UPDATE` statement
-that picks the entry and writes the lease. D1 runs statements one at a time, so
-two concurrent claims never get the same entry, and the update replaces a
-lease only once it has expired. Work state lives in these tables, not on the
-`entries` node, which keeps identity only.
+| Column                                            | Meaning                                                    |
+| ------------------------------------------------- | ---------------------------------------------------------- |
+| `entry_id`, `created_at`                          | The entry and its creation time                            |
+| `live`                                            | The entry fact is pending or published                     |
+| `claimed_at`                                      | When the entry was last claimed; null until the first claim |
+| `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
+| `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
+
+Every fact insert or status change rewrites `live` for its subject in the same
+batch, so `live` always equals "the entry fact is live". The claim is one
+`UPDATE … WHERE entry_id = (SELECT … ORDER BY claimed_at, created_at, entry_id
+LIMIT 1) RETURNING` statement that picks the entry, writes the lease, and stamps
+`claimed_at`. The index `(live, claimed_at, created_at, entry_id)` gives that
+order without a sort. Held leases have the newest `claimed_at`, so they sit at
+the end of the index and the scan stops at the first row, whatever the table
+size. D1 runs statements one at a time, so two concurrent claims never get the
+same entry, and a claim takes over a lease only once it has expired. Work state
+lives in this table, not on the `entries` node, which keeps identity only.
 
 Gaps are computed on read by a pure registry in `server/domain/work.ts` from
 the entry's live (pending or published) facts:
@@ -232,8 +245,8 @@ the entry's live (pending or published) facts:
 Per-sense gaps apply to each sense whose gloss is live.
 
 `POST /manage/v1/work/{lease_id}/complete` (body `{ note? }`, up to 500
-characters) records `last_worked_at`, the holder, and the note, and deletes the
-lease in one transaction. Only the holder completes, and only before
+characters) records `last_worked_at`, the holder, and the note, and clears the
+lease in one statement. Only the holder completes, and only before
 `expires_at`: another principal or an expired lease answers `409 conflict`. A
 lease that is gone answers `404 not_found`, so completing the same lease twice
 is a 404, and so is completing a lease after another agent reclaimed the

@@ -26,7 +26,7 @@ const claimRoute = createRoute({
   tags,
   summary: 'Lease the next entry to work on',
   description:
-    'Picks the least recently worked entry whose entry fact is live and that no unexpired lease holds, and ' +
+    'Picks the least recently claimed entry whose entry fact is live and that no unexpired lease holds, and ' +
     'returns it with the gaps its live facts leave. Two concurrent claims never get the same entry.',
   request: { body: optionalBody(claimWorkInputSchema) },
   responses: {
