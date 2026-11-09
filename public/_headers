@@ -1,0 +1,9 @@
+# Security headers for the SPA, applied by Cloudflare static assets.
+# https://developers.cloudflare.com/workers/static-assets/headers/
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  # Add a Content-Security-Policy once you know your asset/connect origins, e.g.:
+  # Content-Security-Policy: default-src 'self'; connect-src 'self' https://your-issuer.example.com

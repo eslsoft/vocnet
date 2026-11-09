@@ -1,75 +1,13 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-
-# Environment files
-.env
-.env.local
-.env.development
-.env.production
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Logs
-logs/
-*.log
-reports
-
-# Generated files
-api/gen/
-api/openapi/
-internal/infrastructure/database/ent/
-internal/mocks/
-
-# Buf build cache (optional - you may want to cache this)
-.buf/
-
-# Build artifacts
-bin/
-dist/
-data/
-coverage.out
-coverage.html
-
-# Docker
-.dockerignore
-docker-compose.override.yml
-
-# backup
-*.jsonl
-*.jsonl.gz
-
-
-# python
-__pycache__/
-
-.claude/settings.local.json
+node_modules
+dist
+.wrangler
+.dev.vars
+server/worker-configuration.d.ts
+*.local
+coverage
+.playwright-cli
+test-results
+playwright-report
+blob-report
+playwright/.cache
+artifacts/

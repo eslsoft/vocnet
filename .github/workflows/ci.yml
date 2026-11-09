@@ -2,107 +2,76 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main, master, develop ]
 
 jobs:
-  setup:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
         with:
-          go-version: '1.25.x'
-          cache: true
+          node-version: 24
+          cache: pnpm
 
-      - name: Install protoc
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Architecture boundaries
+        run: pnpm lint:arch
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Migrations are generated from schema
         run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          pnpm db:generate
+          if [ -n "$(git status --porcelain migrations)" ]; then
+            echo "::error::schema.ts changed without a generated migration. Run 'pnpm db:generate' and commit."
+            git status --short migrations
+            exit 1
+          fi
 
-      - name: Install tools
-        run: make install-tools
+      - name: Test (unit + web + integration)
+        run: pnpm test
 
-      - name: Download modules
-        run: go mod download
+      - name: Behavior coverage
+        run: pnpm test:behavior
 
-      - name: Generate code
-        run: make generate
+      - name: Coverage thresholds
+        run: pnpm test:coverage
 
-      - name: Upload generated code artifact
+      - name: Build
+        run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps
+
+      - name: E2E (real stack)
+        run: pnpm e2e
+
+      - name: Upload E2E failure evidence
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: generated-code
-          path: |
-            api/gen/
-            api/openapi/
-            internal/infrastructure/database/ent/
-            internal/app/wire_gen.go
-            internal/mocks/
-
-  test:
-    runs-on: ubuntu-latest
-    needs: setup
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25.x'
-        cache: true
-    - name: Download generated code
-      uses: actions/download-artifact@v4
-      with:
-        name: generated-code
-        path: .
-    - name: Run tests
-      run: make test
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.out
-
-  lint:
-    runs-on: ubuntu-latest
-    needs: setup
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25.x'
-        cache: true
-    - name: Download generated code
-      uses: actions/download-artifact@v4
-      with:
-        name: generated-code
-        path: .
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v8
-      with:
-        version: latest
-
-  build:
-    runs-on: ubuntu-latest
-    needs: [test, lint]
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25.x'
-        cache: true
-    - name: Download generated code
-      uses: actions/download-artifact@v4
-      with:
-        name: generated-code
-        path: .
-    - name: Build
-      run: go build -o bin/vocnet main.go
+          name: e2e-failure-evidence
+          path: artifacts/e2e

@@ -1,143 +1,114 @@
-<div align="center">
+# vocnet
 
-<h1>Vocnet</h1>
+Vocnet is a relational English dictionary that agents outside the system
+maintain continuously. The data is the product. Every item (a lemma, a gloss, a
+form, a relation between two senses, a pronunciation, an example, a
+translation) is one **fact**. Each fact is reviewed on its own, by Jev when it
+states a checkable proposition and by a general LLM otherwise, and published on
+its own with its confidence. Facts can be published with flaws and corrected
+later.
 
-<p><strong>开源的词汇网络管理平台</strong></p>
-<p><em>以用户为中心的全生命周期的词汇数据中心</em></p>
+The contract is [docs/design.md](docs/design.md).
 
-<p>
-<a href="https://github.com/eslsoft/vocnet/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="license"/></a>
-<a href="https://github.com/eslsoft/vocnet/issues"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="prs"/></a>
-<a href="https://github.com/eslsoft/vocnet/issues"><img src="https://img.shields.io/badge/roadmap-active-success" alt="roadmap"/></a>
-<a href="#"><img src="https://img.shields.io/badge/status-alpha-orange" alt="status"/></a>
-</p>
+## Surfaces
 
-<p>
-<sub>ConnectRPC · 全平台 SDK · FSRS Algorithm · SQLite / PostgreSQL
-</p>
+| Path                         | Who               | What                                                   |
+| ---------------------------- | ----------------- | ------------------------------------------------------ |
+| `GET /v1/entries`            | Everyone          | Published entries by prefix, paged with `next_cursor`  |
+| `GET /v1/entries/{lemma}`    | Everyone          | One entry with its published facts                     |
+| `GET /v1/forms/{form}`       | Everyone          | Entries that own an exact published form (no fallback) |
+| `GET /v1/senses/{id}`        | Everyone          | One sense with its entry                               |
+| `POST /v1/feedback`          | Everyone          | Report a problem with an entry, sense, or fact         |
+| `GET /openapi.json`, `/docs` | Everyone          | Public OpenAPI 3.1 document and its Scalar reference   |
+| `/manage/v1/*`               | Agents and admins | Submit entries, senses, facts; review state; feedback  |
+| `GET /manage/openapi.json`   | Agents and admins | The management OpenAPI document                        |
+| `/manage/v1/agents`          | Admins            | Issue, list, and revoke agent keys                     |
 
-</div>
+Agents authenticate with `Authorization: Bearer vn_agent_…`. Admins use an OIDC
+access token whose subject is listed in `ADMIN_SUBJECTS`. The OpenAPI documents
+are generated from the same zod route definitions that validate requests.
 
----
+## Stack
 
-## 💡 为什么选择 vocnet
+- Hono on Cloudflare Workers with `@hono/zod-openapi`; D1 through drizzle
+  (generated migrations); a Queue for reviews; a cron reconciler.
+- React 19 admin console shell (served as static assets), typed against the API
+  through the Hono RPC client.
+- Biome, dependency-cruiser, TypeScript, Vitest (unit, jsdom, workerd with real
+  D1), Playwright, Gherkin specs in `spec/`.
 
-市面上有太多的英语学习 APP，我们在学习英语的过程中往往会使用到 N 个 APP，但是每个 APP 都是数据孤岛，各自并不知道你的真实水平，各平台只能估算你的词汇量。因为对词汇的掌握情况不清晰，导致系统会安排很多不合适的学习内容，浪费时间和精力。
+## Develop
 
-Vocnet 致力于打造一个开放的词汇网络管理平台，帮助用户集中管理自己的词汇数据，并通过科学的记忆算法（FSRS）帮助用户高效复习单词。开发者可以通过 Vocnet 的开放 API 快速集成词汇管理功能，无需重复造轮子。
+```bash
+pnpm install
+cp .dev.vars.example .dev.vars   # fill in the values below
+pnpm db:migrate:local            # apply migrations to the local D1
+pnpm dev                         # vite dev: console + Worker + local D1 + queue
+```
 
----
+To call the management API locally without an IdP, insert an agent row whose
+`key_hash` is the SHA-256 hex of a key you choose:
 
-## 📚 核心功能
+```bash
+KEY=vn_agent_localdevkey0001
+HASH=$(printf %s "$KEY" | shasum -a 256 | cut -d' ' -f1)
+pnpm exec wrangler d1 execute vocnet --local --command \
+  "INSERT INTO agents (id,name,key_hash,created_by,created_at) VALUES ('11111111-1111-4111-8111-111111111111','local','$HASH','admin:local','2026-01-01T00:00:00.000Z')"
+curl -H "Authorization: Bearer $KEY" localhost:5173/manage/v1/stats
+```
 
-| 功能              | 说明                           |
-| ----------------- | ------------------------------ |
-| 🗂️ **词汇管理**   | 收藏、分类、标签、词本         |
-| 📊 **掌握度跟踪** | 听说读写分项管理（0-5 级）     |
-| 🧠 **FSRS 复习**  | 科学的间隔重复算法             |
-| 🎴 **Flashcards** | 智能生成复习卡片               |
-| 🔗 **词汇网络**   | 同义词、派生词、助记联想       |
-| 🌐 **开放 API**   | ConnectRPC，自动生成全平台 SDK |
-| 📱 **跨设备同步** | Web / 移动端（计划中）         |
+## Configuration
 
----
+One env set, on the Worker. `wrangler.toml` holds bindings and `JEV_MODEL`
+(default `jev-latest`); `.dev.vars.example` names the rest:
 
-## 🎯 两种使用方式
+| Name               | Meaning                                                                 |
+| ------------------ | ----------------------------------------------------------------------- |
+| `OIDC_ISSUER`      | OIDC issuer; the Worker verifies admin JWTs against its JWKS            |
+| `OIDC_CLIENT_ID`   | Expected audience, also given to the console by `GET /configz`          |
+| `ADMIN_SUBJECTS`   | Comma-separated OIDC subjects allowed on the management API             |
+| `MODEL_BASE_URL`   | Gateway for Jev (`/v1/systemone`) and the LLM (`/v1/chat/completions`)  |
+| `MODEL_API_KEY`    | Bearer key for that gateway (a secret)                                  |
+| `JEV_MODEL`        | Jev model name                                                          |
+| `REVIEW_LLM_MODEL` | Chat model that reviews pronunciations, examples, and translations      |
 
-### 语言学习者
+Bindings: `DB` (D1 `vocnet`), `REVIEW_QUEUE` (queue `vocnet-reviews`, dead
+letters to `vocnet-reviews-dlq`), `ASSETS`, and a `*/10 * * * *` cron.
 
-使用 vocnet 学习和复习单词，享受科学的记忆管理系统。
+## Deploy
 
-📖 [技术文档](docs/README.md) | [掌握度系统](docs/design/mastery-breakdown-and-stages.md)
+Create the resources once, then put the D1 id in `wrangler.toml`:
 
-### 语言 APP 开发者
+```bash
+wrangler d1 create vocnet
+wrangler queues create vocnet-reviews
+wrangler queues create vocnet-reviews-dlq
+wrangler secret put MODEL_API_KEY
+pnpm db:migrate:remote
+pnpm build && pnpm run deploy
+```
 
-接入 vocnet SDK，为你的应用快速集成词汇管理功能。
+CI (`.github/workflows/ci.yml`) gates every push. CD (`deploy.yml`) ships `main`
+when the repo variable `ENABLE_DEPLOY=true` and the Cloudflare secrets are set.
 
-🛠️ [技术架构](docs/README.md) | [API文档](CLAUDE.md#api-connectrpc)
+## Project structure
 
-**示例场景**：
+```
+server/
+  domain/        facts, the fact-kind registry, lifecycle, feedback lease, read model
+  usecases/      operations over ports (ports.ts, deps.ts)
+  adapters/      drizzle repos, Jev and LLM reviewers, queue, agent-key crypto, OIDC
+  http/          OpenAPI routes (public + manage/), auth, error mapping
+  composition.ts createDeps(env): the only place adapters are constructed
+  worker.ts      fetch, queue, and scheduled entries
+shared/          wire schemas and DTOs (snake_case), imported by both halves
+src/             the admin console shell
+spec/            one .feature per capability; tests carry [spec: id]
+```
 
-- 开发英文阅读 APP → 文中单词高亮，点击生词存到 vocnet
-- 开发视频学习工具 → 字幕生词高亮，点击存到 vocnet
-- 开发浏览器扩展 → 网页生词高亮，网页划词存到 vocnet
+## Verification
 
-**价值**：无需自己实现词汇存储、掌握度管理、FSRS 算法，专注于差异化体验。
-
----
-
-## 🛠️ 技术栈
-
-- **后端**：Go 1.23+ · Clean Architecture
-- **API**：ConnectRPC (自动生成全平台 SDK)
-- **数据库**：SQLite (默认) / PostgreSQL
-- **ORM**：Ent
-- **算法**：FSRS (Free Spaced Repetition Scheduler)
-- **认证**：JWT · OAuth2 (计划)
-
----
-
-## 📊 项目状态
-
-当前版本：**v0.x (Alpha)**
-
-- ✅ **Phase 1**：核心词汇管理
-- ✅ **Phase 2**：FSRS 复习系统
-- 🔜 **Phase 3**：OAuth2 生态 · Web 控制台
-
-查看 [完整技术文档](docs/README.md)
-
----
-
-## 🤝 参与贡献
-
-欢迎所有形式的贡献：
-
-- 🐛 [报告 Bug](https://github.com/eslsoft/vocnet/issues/new?template=bug_report.md)
-- 💡 [提出功能建议](https://github.com/eslsoft/vocnet/issues/new?template=feature_request.md)
-- 🔧 [贡献代码](CONTRIBUTING.md)
-- 📖 [改进文档](CONTRIBUTING.md)
-
-详见 [贡献指南](CONTRIBUTING.md)
-
----
-
-## 📜 许可证
-
-本项目基于 [AGPL-3.0 License](LICENSE) 开源。
-
-- 你可以自由自托管、修改和内部使用 vocnet；
-- 如果你基于 vocnet 提供网络服务（SaaS），需要按 AGPL-3.0 开源你对 vocnet 的修改；
-- 官方认证服务将以单独的商业条款提供，并不在本仓库开源范围内。
-
----
-
-## 🔗 链接
-
-- **官网**：https://vocnet.apps.tftt.cc （计划中）
-- **技术文档**：[docs/README.md](docs/README.md)
-- **开发指南**：[CLAUDE.md](CLAUDE.md)
-- **Discussions**：[GitHub Discussions](https://github.com/eslsoft/vocnet/discussions)（计划）
-
----
-
-## 🙋 FAQ
-
-常见问题请查看 [技术文档](docs/README.md)
-
-**快速链接**：
-
-- [vocnet 是什么？](#-为什么选择-vocnet)
-- [技术架构？](docs/README.md)
-- [如何开发？](CLAUDE.md)
-- [如何自建？](CLAUDE.md#configuration)
-
----
-
-<div align="center">
-
-**一起把"词汇网络管理"做成开放的基础设施** 🚀
-
-[⭐ Star](https://github.com/eslsoft/vocnet) · [📖 技术文档](docs/README.md) · [💬 讨论](https://github.com/eslsoft/vocnet/discussions)
-
-</div>
+`pnpm verify` runs lint, architecture rules, types, the behavior inventory,
+unit + web + workerd integration tests, per-file coverage (95% for domain and
+use cases, 90% elsewhere), and the production build. `pnpm e2e` runs the
+hermetic browser suite. Commits follow Conventional Commits.
