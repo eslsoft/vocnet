@@ -28,7 +28,7 @@ max_retries = 5
 dead_letter_queue = "vocnet-reviews-dlq"
 
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/5 * * * *"]
 
 [observability]
 enabled = true

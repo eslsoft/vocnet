@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { createEntry, createSense, getPublicEntry } from './catalog'
 import { getFact, rereviewFact, retractFact, submitFact } from './facts'
 import { ReviewerTransportError } from './ports'
-import { RECONCILE_AFTER_MS, reconcileReviews, reviewFact } from './review'
+import { reconcileReviews, reviewFact } from './review'
 
 async function drain(world: ReturnType<typeof fakeWorld>) {
   for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
@@ -303,14 +303,16 @@ describe('revalidation', () => {
   })
 })
 
+const FIVE_MINUTES_MS = 5 * 60 * 1000
+
 describe('reconcileReviews', () => {
-  it('re-enqueues facts pending longer than ten minutes [spec: facts/reconcile]', async () => {
+  it('re-enqueues facts pending longer than five minutes [spec: facts/reconcile]', async () => {
     const { world, entryFact, gloss } = await bankWorld()
     world.queued.length = 0
     await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(0)
     expect(world.queued).toEqual([])
 
-    world.setNow(new Date(Date.parse(entryFact.createdAt) + RECONCILE_AFTER_MS + 1).toISOString())
+    world.setNow(new Date(Date.parse(entryFact.createdAt) + FIVE_MINUTES_MS + 1).toISOString())
     await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(2)
     expect(world.queued).toEqual([
       { factId: entryFact.id, traceId: 'cron' },
@@ -318,12 +320,12 @@ describe('reconcileReviews', () => {
     ])
   })
 
-  it('re-enqueues facts awaiting revalidation for longer than ten minutes [spec: facts/reconcile-revalidation]', async () => {
+  it('re-enqueues facts awaiting revalidation for longer than five minutes [spec: facts/reconcile-revalidation]', async () => {
     const { world, dependents } = await correctedRiverBank()
     world.queued.length = 0
-    world.setNow(new Date(Date.parse('2026-01-01T00:05:00.000Z') + RECONCILE_AFTER_MS - 1).toISOString())
+    world.setNow(new Date(Date.parse('2026-01-01T00:05:00.000Z') + FIVE_MINUTES_MS - 1).toISOString())
     await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(0)
-    world.setNow(new Date(Date.parse('2026-01-01T00:05:00.000Z') + RECONCILE_AFTER_MS + 1).toISOString())
+    world.setNow(new Date(Date.parse('2026-01-01T00:05:00.000Z') + FIVE_MINUTES_MS + 1).toISOString())
     await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(dependents.length)
   })
 })

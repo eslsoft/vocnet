@@ -86,7 +86,7 @@ One env set, on the Worker. `wrangler.toml` holds bindings and `JEV_MODEL`
 | `REVIEW_LLM_MODEL` | Chat model that reviews pronunciations, examples, and translations      |
 
 Bindings: `DB` (D1 `vocnet`), `REVIEW_QUEUE` (queue `vocnet-reviews`, dead
-letters to `vocnet-reviews-dlq`), `ASSETS`, and a `*/10 * * * *` cron.
+letters to `vocnet-reviews-dlq`), `ASSETS`, and a `*/5 * * * *` cron.
 
 ## Deploy
 
