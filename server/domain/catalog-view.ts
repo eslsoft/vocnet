@@ -7,9 +7,13 @@ import type {
   PublicSenseWithEntry,
 } from '@shared/catalog'
 import type { EntryId, FactId, FactKind, SenseId } from '@shared/facts'
+import type { LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
 import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
 import { assessEntry } from './work'
+
+/** The public entry as its facts make it, before the imported reference data joins it. */
+export type PublicEntryFacts = Omit<PublicEntry, keyof LemmaReference>
 
 /** Everything the read model needs about one entry, in every status. */
 export interface EntrySnapshot {
@@ -67,7 +71,7 @@ const publicForm = (fact: FactOf<'form'>) => ({ ...factMeta(fact), ...fact.paylo
 
 // Visibility is derived on read: a fact shows only when it and every node it
 // references are published. A node is published when its defining fact is.
-export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntry | null {
+export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntryFacts | null {
   const byId = new Map([...snapshot.facts, ...snapshot.incoming, ...snapshot.neighbors.facts].map((f) => [f.id, f]))
   const published = [...byId.values()].filter((fact) => fact.status === 'published')
   const about = <K extends FactKind>(kind: K, subjectId: EntryId | SenseId) =>
@@ -151,7 +155,7 @@ export function projectPublicSense(snapshot: EntrySnapshot, senseId: SenseId): P
 }
 
 /** Every fact a public entry view shows, so "is this fact public" has one answer. */
-export function publicFactIds(view: PublicEntry): Set<FactId> {
+export function publicFactIds(view: PublicEntryFacts): Set<FactId> {
   const senseFacts = view.senses.flatMap((sense) => [
     sense.fact,
     ...sense.examples,

@@ -55,7 +55,30 @@ function world() {
       object_id: river.id as never,
     }),
   ]
-  return consoleApi({ entries: [bank, shore, empty], senses: [river, money, lean, coast], facts })
+  return consoleApi({ entries: [bank, shore, empty], senses: [river, money, lean, coast], facts, ...reference })
+}
+
+const reference = {
+  references: {
+    bank: {
+      frequency: { zipf: 5.16, rank: 1834, source_id: 'wordfreq' },
+      cefr: [
+        { pos: 'noun' as const, level: 'A1' as const, source_id: 'cefrj' },
+        { pos: 'verb' as const, level: 'C1' as const, source_id: 'octanove' },
+      ],
+    },
+  },
+  referenceSources: ['wordfreq', 'cefrj', 'octanove', 'unused'].map((sourceId) => ({
+    id: sourceId,
+    name: `${sourceId} list`,
+    version: '1.0',
+    license: 'CC BY-SA 4.0',
+    license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+    changes: `Filtered by Vocnet from ${sourceId}.`,
+    attribution: `Credit ${sourceId}.`,
+    url: 'https://example.test/',
+    retrieved_at: '2026-11-09',
+  })),
 }
 
 describe('EntryInspector', () => {
@@ -83,6 +106,32 @@ describe('EntryInspector', () => {
     fireEvent.click(within(money).getByRole('button', { name: 'fr: rive' }))
     expect(await within(screen.getByRole('dialog')).findByText('Fail')).toBeInTheDocument()
     expect(view.location()).toMatch(/^\/entries\/bank\?fact=/)
+  })
+
+  it('shows the reference data with the attribution of each source it came from [spec: console/entry-reference]', async () => {
+    server.use(...world().handlers)
+    renderAt('/entries/bank', routes)
+    const card = (await screen.findByText('Reference data')).closest('[data-slot=card]') as HTMLElement
+    expect(within(card).getByText('Zipf 5.16 · rank 1,834')).toBeInTheDocument()
+    expect(within(card).getByText('noun A1')).toBeInTheDocument()
+    expect(within(card).getByText('verb C1')).toBeInTheDocument()
+    expect(await within(card).findByText(/Credit wordfreq\./)).toBeInTheDocument()
+    expect(within(card).getByText(/Credit octanove\./)).toHaveTextContent('Filtered by Vocnet from octanove.')
+    expect(within(card).getAllByRole('link', { name: 'CC BY-SA 4.0' })[0]).toHaveAttribute(
+      'href',
+      'https://creativecommons.org/licenses/by-sa/4.0/',
+    )
+    expect(within(card).queryByText(/Credit unused\./)).not.toBeInTheDocument()
+  })
+
+  it('says when a lemma has no reference data and reports a failed source list', async () => {
+    server.use(
+      ...consoleApi({ entries: [{ id: crypto.randomUUID(), lemma: 'empty' }], referenceSources: null }).handlers,
+    )
+    renderAt('/entries/empty', routes)
+    const card = (await screen.findByText('Reference data')).closest('[data-slot=card]') as HTMLElement
+    expect(within(card).getAllByText('Not listed')).toHaveLength(2)
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Sources are unavailable.')
   })
 
   it('shows the server message for an unknown lemma', async () => {

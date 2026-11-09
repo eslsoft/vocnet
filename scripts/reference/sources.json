@@ -1,0 +1,44 @@
+{
+  "frequency": {
+    "id": "wordfreq-3.1-large-en",
+    "name": "wordfreq",
+    "version": "3.1.1 (large_en)",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "changes": "Filtered and ranked by Vocnet: only one-token word forms of letters, combining marks, apostrophes, and periods are kept, and each is ranked by its Zipf value.",
+    "attribution": "Word frequencies from wordfreq by Robyn Speer (https://doi.org/10.5281/zenodo.7199437), CC BY-SA 4.0. wordfreq contains data from SUBTLEX-US and SUBTLEX-UK by Marc Brysbaert et al., freely available at http://crr.ugent.be/programs-data/subtitle-frequencies; from OPUS OpenSubtitles 2018, originating from OpenSubtitles (http://www.opensubtitles.org/); from Google Books Ngrams (http://books.google.com/ngrams); and from the Leeds Internet Corpus, Wikipedia, and ParaCrawl.",
+    "url": "https://github.com/rspeer/wordfreq",
+    "retrieved_at": "2026-11-09",
+    "package": "wordfreq==3.1.1"
+  },
+  "cefr": [
+    {
+      "id": "cefrj-1.6",
+      "name": "CEFR-J Wordlist",
+      "version": "1.6",
+      "license": "Free for research and commercial use with citation; copyright Tono Laboratory, TUFS",
+      "license_url": "https://cefr-j.org/download.html",
+      "changes": "Filtered by Vocnet: parts of speech mapped onto Vocnet's, numbers and infinitive \"to\" dropped, spelling variants split, and the lowest level kept per lemma and part of speech.",
+      "attribution": "The CEFR-J Wordlist Version 1.6. Compiled by Yukio Tono, Tokyo University of Foreign Studies. Retrieved from https://cefr-j.org/download.html on 2026-11-09.",
+      "url": "https://cefr-j.org/download.html",
+      "retrieved_at": "2026-11-09",
+      "download": "https://cefr-j.org/data/CEFRJ_wordlist_ver1.6.zip",
+      "sha256": "c837d2c00ab8954ed8db48e79afd8ef37099570295fec36950dbf9322303a37a",
+      "format": "cefrj-xlsx"
+    },
+    {
+      "id": "octanove-c1c2-1.0",
+      "name": "Octanove Vocabulary Profile C1/C2",
+      "version": "1.0",
+      "license": "CC BY-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "changes": "Filtered by Vocnet: parts of speech mapped onto Vocnet's (\"vern\" read as verb), the unlabeled row dropped, the lowest level kept per lemma and part of speech, and CEFR-J levels taking precedence.",
+      "attribution": "Octanove Vocabulary Profile C1/C2 (ver 1.0), created by Octanove Labs (http://www.octanove.com/), from Open Language Profiles (https://github.com/openlanguageprofiles/olp-en-cefrj), CC BY-SA 4.0.",
+      "url": "https://github.com/openlanguageprofiles/olp-en-cefrj",
+      "retrieved_at": "2026-11-09",
+      "download": "https://raw.githubusercontent.com/openlanguageprofiles/olp-en-cefrj/d4e45b75b38f27b30dfc5c44d8c571aec7e7092f/octanove-vocabulary-profile-c1c2-1.0.csv",
+      "sha256": "18c33a407f2f89f7b8de9671c6d45fe3ea0bce45e7d2d7dcaab48d73e0f7b380",
+      "format": "olp-csv"
+    }
+  ]
+}

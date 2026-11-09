@@ -1,6 +1,7 @@
 import { createRoute } from '@hono/zod-openapi'
 import { getPublicEntry, getPublicSense, lookupForm, searchEntries } from '@server/usecases/catalog'
 import { submitFeedback } from '@server/usecases/feedback'
+import { listReferenceSources } from '@server/usecases/reference'
 import {
   entryPageSchema,
   formLookupSchema,
@@ -10,6 +11,7 @@ import {
 } from '@shared/catalog'
 import { senseIdSchema } from '@shared/facts'
 import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/feedback'
+import { referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
 import { createRouter, errorResponse, json, jsonBody, pageQuery } from './router'
 
@@ -53,6 +55,16 @@ const getSense = createRoute({
   responses: { 200: json(publicSenseWithEntrySchema, 'The sense.'), 400: errorResponse, 404: errorResponse },
 })
 
+const listSources = createRoute({
+  method: 'get',
+  path: '/sources',
+  tags,
+  summary: 'List the external datasets behind frequency and CEFR data',
+  description:
+    'Each source with its version, license, the changes Vocnet made to its data, and the attribution to show with it. Entries name their source by id.',
+  responses: { 200: json(referenceSourceListSchema, 'Every reference source.') },
+})
+
 const postFeedback = createRoute({
   method: 'post',
   path: '/feedback',
@@ -77,6 +89,7 @@ export const publicRoutes = createRouter()
   .openapi(getEntry, async (c) => c.json(await getPublicEntry(c.get('deps'), c.req.valid('param').lemma), 200))
   .openapi(getForm, async (c) => c.json({ items: await lookupForm(c.get('deps'), c.req.valid('param').form) }, 200))
   .openapi(getSense, async (c) => c.json(await getPublicSense(c.get('deps'), c.req.valid('param').id), 200))
+  .openapi(listSources, async (c) => c.json({ items: await listReferenceSources(c.get('deps')) }, 200))
   .openapi(postFeedback, async (c) => {
     const client = c.req.header('cf-connecting-ip')
     if (!client) throw new Error('CF-Connecting-IP is missing; the Worker must run behind Cloudflare.')

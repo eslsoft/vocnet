@@ -20,6 +20,7 @@ import type {
 import type { AgentId } from '@shared/agents'
 import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
 import type { FeedbackId } from '@shared/feedback'
+import type { LemmaReference, ReferenceSource } from '@shared/reference'
 import type { WorkLeaseId } from '@shared/work'
 
 // In-memory stand-ins for every port, shared by the use-case tests. They model
@@ -43,6 +44,9 @@ export interface FakeWorld {
   work: Map<EntryId, WorkScores & { claimedWork: string | null; revision: number; scoredRevision: number }>
   worked: Map<EntryId, { lastWorkedAt: string; lastWorkedBy: string; lastNote: string | null }>
   queued: ReviewJob[]
+  /** Imported reference data by exact lemma; a lemma absent here has none. */
+  references: Map<string, LemmaReference>
+  referenceSources: ReferenceSource[]
   /** Client keys the feedback limiter refuses. */
   limitedClients: Set<string>
   jevCalls: Array<{ questions: Record<string, string>; state: Record<string, unknown> }>
@@ -103,6 +107,8 @@ export function fakeWorld(): FakeWorld {
     facts: [],
     topics: [...fakeTopics],
     feedback: [],
+    references: new Map(),
+    referenceSources: [],
     agents: [],
     leases: [],
     claimed: new Map(),
@@ -594,6 +600,10 @@ export function fakeWorld(): FakeWorld {
       hash: async (key) => `hash(${key})`,
     },
     adminSubjects: new Set(['admin-1']),
+    reference: {
+      forLemma: async (lemma) => world.references.get(lemma) ?? { frequency: null, cefr: [] },
+      listSources: async () => world.referenceSources,
+    },
     clock: { now: () => now },
     ids: {
       entry: () => nextId<EntryId>(),

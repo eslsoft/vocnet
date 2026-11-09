@@ -1,6 +1,7 @@
 import type { AgentDto } from '@shared/agents'
 import type { FactDto, Review } from '@shared/facts'
 import type { FeedbackDto } from '@shared/feedback'
+import type { LemmaReference, ReferenceSource } from '@shared/reference'
 import { HttpResponse, http } from 'msw'
 
 // An in-memory management API at the network edge, so mutate → invalidate → refetch
@@ -90,6 +91,9 @@ export function consoleApi(
     facts?: FactDto[]
     feedback?: FeedbackDto[]
     agents?: AgentDto[]
+    references?: Record<string, LemmaReference>
+    /** null makes the sources endpoint fail. */
+    referenceSources?: ReferenceSource[] | null
   } = {},
 ) {
   const state = {
@@ -98,6 +102,8 @@ export function consoleApi(
     facts: seed.facts ?? [],
     feedback: seed.feedback ?? [],
     agents: seed.agents ?? [],
+    references: seed.references ?? {},
+    referenceSources: seed.referenceSources === undefined ? [] : seed.referenceSources,
     issuedKeys: [] as string[],
   }
   const findFact = (factId: string) => state.facts.find((candidate) => candidate.id === factId)
@@ -186,7 +192,12 @@ export function consoleApi(
         quality: 1,
         senses: senses.map((sense) => ({ ...sense, created_by: 'agent:producer', created_at: at })),
         facts,
+        ...(state.references[entry.lemma] ?? { frequency: null, cefr: [] }),
       })
+    }),
+    http.get('/manage/v1/sources', () => {
+      if (state.referenceSources === null) return apiError(403, 'forbidden', 'Sources are unavailable.')
+      return HttpResponse.json({ items: state.referenceSources })
     }),
     http.get('/manage/v1/nodes/:id', ({ params }) => {
       const entry = state.entries.find((candidate) => candidate.id === params.id)

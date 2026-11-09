@@ -7,6 +7,7 @@ import {
   listEntrySummaries,
   locateNode,
 } from '@server/usecases/catalog'
+import { listReferenceSources } from '@server/usecases/reference'
 import {
   createEntryInputSchema,
   createEntryResultSchema,
@@ -14,10 +15,11 @@ import {
   createSenseResultSchema,
   entrySummaryPageSchema,
   lemmaInputSchema,
-  managedEntrySchema,
+  managedEntryDetailSchema,
   nodeLocationSchema,
   statsSchema,
 } from '@shared/catalog'
+import { referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
 import { actorOf } from '../auth'
 import { createRouter, errorResponse, json, jsonBody, pageQuery } from '../router'
@@ -71,7 +73,7 @@ const getEntry = createRoute({
   tags,
   summary: 'Get an entry with every fact in every status',
   request: { params: z.object({ lemma: lemmaInputSchema }) },
-  responses: { 200: json(managedEntrySchema, 'The entry.'), 404: errorResponse },
+  responses: { 200: json(managedEntryDetailSchema, 'The entry with its reference data.'), 404: errorResponse },
 })
 
 const getNode = createRoute({
@@ -92,6 +94,14 @@ const stats = createRoute({
   responses: { 200: json(statsSchema, 'Current counts.') },
 })
 
+const sources = createRoute({
+  method: 'get',
+  path: '/sources',
+  tags,
+  summary: 'List the external datasets behind frequency and CEFR data',
+  responses: { 200: json(referenceSourceListSchema, 'Every reference source.') },
+})
+
 export const manageCatalogRoutes = createRouter()
   .openapi(postEntry, async (c) => {
     const result = await createEntry(c.get('deps'), actorOf(c), c.req.valid('json'))
@@ -109,7 +119,9 @@ export const manageCatalogRoutes = createRouter()
     return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
   })
   .openapi(getEntry, async (c) => {
-    return c.json(managedEntryDto(await getManagedEntry(c.get('deps'), c.req.valid('param').lemma)), 200)
+    const { frequency, cefr, ...view } = await getManagedEntry(c.get('deps'), c.req.valid('param').lemma)
+    return c.json({ ...managedEntryDto(view), frequency, cefr }, 200)
   })
   .openapi(getNode, async (c) => c.json(await locateNode(c.get('deps'), c.req.valid('param').id), 200))
   .openapi(stats, async (c) => c.json(await getStats(c.get('deps')), 200))
+  .openapi(sources, async (c) => c.json({ items: await listReferenceSources(c.get('deps')) }, 200))

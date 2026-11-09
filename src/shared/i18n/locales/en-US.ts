@@ -107,6 +107,12 @@ export const enUS = {
     noSenses: 'No senses yet.',
     incoming: 'Relations pointing here',
     noGloss: 'No live gloss',
+    reference: 'Reference data',
+    frequency: 'Frequency',
+    frequencyValue: 'Zipf {{zipf}} · rank {{rank}}',
+    notListed: 'Not listed',
+    cefr: 'CEFR',
+    source: 'Source: {{name}}',
   },
   feedback: {
     title: 'Feedback',

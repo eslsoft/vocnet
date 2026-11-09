@@ -1,4 +1,5 @@
-import { entrySummaryPageSchema, managedEntrySchema } from '@shared/catalog'
+import { entrySummaryPageSchema, managedEntryDetailSchema } from '@shared/catalog'
+import { referenceSourceListSchema } from '@shared/reference'
 import { decodeApiResponse, rpc } from '@/shared/api/client'
 
 const entries = rpc.manage.v1.entries
@@ -9,5 +10,9 @@ export async function listEntries(prefix: string, cursor: string | undefined) {
 }
 
 export async function getManagedEntry(lemma: string) {
-  return decodeApiResponse(await entries[':lemma'].$get({ param: { lemma } }), managedEntrySchema)
+  return decodeApiResponse(await entries[':lemma'].$get({ param: { lemma } }), managedEntryDetailSchema)
+}
+
+export async function listReferenceSources() {
+  return decodeApiResponse(await rpc.manage.v1.sources.$get(), referenceSourceListSchema)
 }

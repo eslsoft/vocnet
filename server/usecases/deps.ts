@@ -10,6 +10,7 @@ import type {
   LlmReviewer,
   NodeRepo,
   RateLimiter,
+  ReferenceRepo,
   ReviewQueue,
   TopicRepo,
   WorkRepo,
@@ -23,6 +24,7 @@ export interface Deps {
   feedback: FeedbackRepo
   agents: AgentRepo
   work: WorkRepo
+  reference: ReferenceRepo
   jev: JevReviewer
   llm: LlmReviewer
   reviewQueue: ReviewQueue
