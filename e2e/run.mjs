@@ -59,6 +59,16 @@ run_worker_first = true
 [vars]
 OIDC_ISSUER = ${quoted(oidc.issuer)}
 OIDC_CLIENT_ID = "e2e-client"
+ADMIN_SUBJECTS = "e2e-admin"
+# No journey reaches a reviewer; an unroutable gateway makes any accidental call fail loudly.
+MODEL_BASE_URL = "http://127.0.0.1:9"
+MODEL_API_KEY = "e2e"
+JEV_MODEL = "jev-latest"
+REVIEW_LLM_MODEL = "e2e-llm"
+
+[[queues.producers]]
+binding = "REVIEW_QUEUE"
+queue = "vocnet-e2e-reviews"
 
 [[d1_databases]]
 binding = "DB"
