@@ -77,8 +77,10 @@ describe('EntryList', () => {
     fireEvent.change(input, { target: { value: ' bank ' } })
     expect(view.location()).toBe('/entries?prefix=ban')
     await waitFor(() => expect(view.location()).toBe('/entries?prefix=bank'))
-    await waitFor(() => expect(screen.queryByRole('link', { name: 'band' })).not.toBeInTheDocument())
-    expect(screen.getByRole('link', { name: 'bank' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: 'band' })).not.toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'bank' })).toBeInTheDocument()
+    })
 
     fireEvent.change(input, { target: { value: 'zebra' } })
     expect(await screen.findByText('No entries match this prefix.')).toBeInTheDocument()
