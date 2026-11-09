@@ -227,7 +227,7 @@ const isMultiword = (lemma: string) => /\s/.test(lemma)
  */
 function entryQuestion(lemma: string): string {
   if (isMultiword(lemma)) {
-    return `Is the phrase ${quote(lemma)} a fixed lexical unit of English, such as an idiom, a phrasal verb, a fixed grammatical phrase, or a compound naming one specific thing, whose meaning is not simply the sum of its words, rather than a descriptive phrase or a category label anyone could compose from those words? ${DATA_NOT_INSTRUCTIONS}`
+    return `Is the phrase ${quote(lemma)} a fixed lexical unit of English, such as an idiom, a phrasal verb or fixed grammatical phrase (even a transparent one), or a compound naming one kind of thing that speakers learn as a whole, rather than a descriptive phrase or a category label anyone could compose from those words? ${DATA_NOT_INSTRUCTIONS}`
   }
   return `Is ${quote(lemma)} an established English word: a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, or invented word? ${DATA_NOT_INSTRUCTIONS}`
 }
@@ -235,12 +235,12 @@ function entryQuestion(lemma: string): string {
 const MULTIWORD_PASSES = [
   'Its meaning is not the sum of its parts: an idiom ("bear fruit", "throw shade") or a fixed compound naming one specific thing ("red blood cell", "stainless steel", "chest of drawers").',
   'It is a phrasal verb or a fixed prepositional or grammatical phrase, even when its meaning is transparent ("end up", "sit down", "at the expense of", "in front of", "have to").',
-  'It is the conventional name of one thing, so swapping a word for a synonym loses it ("post office", "bus stop", "credit card", "swimming pool").',
+  'It is the everyday name of one kind of thing or place that speakers learn as a whole rather than build ("post office", "bus stop", "credit card", "swimming pool"). Being a common or technically correct name for a part, variety, or record of something is not enough.',
 ]
 
 const MULTIWORD_FAILS = [
-  'A descriptive phrase that any speaker composes freely from its words ("wheat grain", "hair strand", "oven door", "coastal range").',
-  'A category label coined to group things ("time unit", "writing implement", "plant part", "protective covering", "cleaning implement").',
+  'A descriptive phrase built from the plain meanings of its words, even a common or technical one: a part or piece of something, a variety picked out by an ordinary adjective, or an X of Y ("wheat grain", "hair strand", "oven door", "tooth root", "valley floor", "white rice", "camera angle", "browsing history").',
+  'A category label coined to group things ("time unit", "writing implement", "plant part", "protective covering", "cleaning implement", "security device").',
   'A proper name, a misspelling, or an invented phrase.',
 ]
 

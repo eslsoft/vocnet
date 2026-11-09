@@ -70,9 +70,9 @@ Feature: Facts and review
     Given an entry fact for a single word or for a multiword lemma
     When its review is planned
     Then a single word is asked whether it is an established word, as before
-    And a multiword lemma is asked whether it is a fixed lexical unit whose meaning is not the sum of its words
-    And its rubric passes idioms, fixed compounds, phrasal verbs, fixed grammatical phrases, and expressions that resist synonym swaps
-    And it fails descriptive phrases and coined category labels, judged from the phrase itself without any external word list
+    And a multiword lemma is asked whether it is a fixed lexical unit that speakers learn as a whole
+    And its rubric passes idioms, phrasal verbs and fixed grammatical phrases even when transparent, and everyday names of one kind of thing
+    And it fails only a phrase that meets none of those, such as a descriptive phrase or a coined category label, judged from the phrase itself without any external word list
 
   @facts/second-opinion-relation-type @domain
   Scenario: The second opinion fails a relation of the wrong type

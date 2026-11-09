@@ -267,10 +267,11 @@ reset.
   parts (an idiom such as "bear fruit", a compound naming one thing such as
   "red blood cell"), it is a phrasal verb or fixed grammatical phrase even
   when transparent ("end up", "sit down", "in front of"), or it is the
-  conventional name of one thing whose words cannot be swapped for synonyms
-  ("post office", "bus stop"). A phrase that meets none of these fails,
-  such as a descriptive phrase any speaker composes freely ("wheat grain",
-  "oven door") or a coined category label ("time unit", "plant part"). The test is a question about the phrase itself: reviewers
+  everyday name of one kind of thing or place that speakers learn as a whole
+  ("post office", "bus stop"). A phrase that meets none of these fails, such
+  as a descriptive phrase built from the plain meanings of its words, even a
+  common one ("wheat grain", "tooth root", "white rice"), or a coined
+  category label ("time unit", "plant part"). The test is a question about the phrase itself: reviewers
   cannot consult dictionaries, and no external word list is used, because
   lists such as WordNet include exactly those category labels.
 - **Relation floor.** A relation request carries `settlesFailBelow` 0.15: a Jev
