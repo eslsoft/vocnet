@@ -91,13 +91,37 @@ const settle = async () => {
   await deliverPendingReviews()
   reviewers.mockRestore()
 }
+/**
+ * Links `from` to a sense of a rejected entry and `to` from a sense whose gloss is retracted, so
+ * neither relation can show or fill a gap.
+ */
+const linkToHiddenSenses = async (token: string, from: string, to: string) => {
+  const eff = await createEntry(token, 'eff')
+  const letter = await postSense(token, eff.entry.id, 'The letter F.')
+  const inlet = await createEntry(token, 'inlet')
+  const arm = await postSense(token, inlet.entry.id, 'A narrow arm of the sea.')
+  await submitFact(token, {
+    kind: 'relation',
+    subject_id: from,
+    payload: { type: 'synonym', target_sense_id: letter.sense.id },
+  })
+  await submitFact(token, {
+    kind: 'relation',
+    subject_id: arm.sense.id,
+    payload: { type: 'hypernym', target_sense_id: to },
+  })
+  stubReviewers(0.05, 'fail')
+  await deliverReviews([eff.fact.id])
+  vi.restoreAllMocks()
+  expect((await call(`/manage/v1/facts/${arm.fact.id}/retract`, { method: 'POST', token })).status).toBe(200)
+}
 /** Runs the worklist score backfills in migration order, as a deploy over existing rows does. */
 const runBackfills = async () => {
   // Every rescore migration in order: the scores backfill, then one per release that added gaps.
   const backfills = env.TEST_MIGRATIONS.filter((migration) =>
-    /worklist_(scores_backfill|topics_scores|usage_scores)\.sql$/.test(migration.name),
+    /worklist_(scores_backfill|topics_scores|usage_scores|relation_ends_scores)\.sql$/.test(migration.name),
   )
-  expect(backfills).toHaveLength(3)
+  expect(backfills).toHaveLength(4)
   for (const query of backfills.flatMap((migration) => migration.queries)) await env.DB.prepare(query).run()
 }
 const expireLeases = () =>
@@ -389,6 +413,48 @@ describe('worklist', () => {
     expect(await lemmaOf(token)).toBeNull()
   })
 
+  it('reopens the relations gap of an entry whose relation leads to a sense that can no longer show [spec: work/relations-visible-ends-api]', async () => {
+    const token = await issueAgentKey()
+    const cove = await createEntry(token, 'cove')
+    const nook = await postSense(token, cove.entry.id, 'A small sheltered bay.')
+    const ends = await Promise.all(
+      ['bay', 'inlet'].map(async (lemma) => {
+        const { entry, fact } = await createEntry(token, lemma)
+        const { sense, fact: gloss } = await postSense(token, entry.id, `A ${lemma} of the sea.`)
+        await submitFact(token, {
+          kind: 'relation',
+          subject_id: nook.sense.id,
+          payload: { type: 'hypernym', target_sense_id: sense.id },
+        })
+        return { entryFact: fact, gloss }
+      }),
+    )
+    await settle()
+    const stored = () =>
+      env.DB.prepare('select completeness, revision = scored_revision as fresh from worklist where entry_id = ?')
+        .bind(cove.entry.id)
+        .first<{ completeness: number; fresh: number }>()
+    // Eleven slots: senses, forms, pronunciation, word formation, and the noun sense's two
+    // relations, example, translation, topic, grammar, and collocation. Both relations count.
+    expect(await stored()).toEqual({ completeness: 1 - 8 / 11, fresh: 1 })
+
+    // The inlet entry is re-reviewed and rejected; the bay gloss is retracted by its author.
+    const [bay, inlet] = ends
+    expect(
+      (await call(`/manage/v1/facts/${inlet.entryFact.id}/rereview`, { method: 'POST', token: await adminToken() }))
+        .status,
+    ).toBe(200)
+    stubReviewers(0.05, 'fail')
+    await deliverReviews([inlet.entryFact.id])
+    vi.restoreAllMocks()
+    expect(await stored()).toEqual({ completeness: 1 - 9 / 11, fresh: 1 })
+
+    expect((await call(`/manage/v1/facts/${bay.gloss.id}/retract`, { method: 'POST', token })).status).toBe(200)
+    expect(await stored()).toEqual({ completeness: 1 - 10 / 11, fresh: 1 })
+    const view = managedEntrySchema.parse((await call('/manage/v1/entries/cove', { token })).body)
+    expect(view.completeness).toBe(1 - 10 / 11)
+  })
+
   it('stalls an entry whose pass made no lasting progress until another principal changes its work [spec: work/stall-api]', async () => {
     const token = await issueAgentKey()
     const other = await issueAgentKey('other')
@@ -513,6 +579,7 @@ describe('worklist', () => {
     })
     const ferry = await createEntry(token, 'ferry boat')
     await postSense(token, ferry.entry.id, 'A boat that carries people across water.')
+    await linkToHiddenSenses(token, quick.sense.id, nook.sense.id)
 
     const scores = () =>
       env.DB.prepare(
@@ -527,6 +594,30 @@ describe('worklist', () => {
     expect(stored.map((row) => row.quality)).not.toEqual([1, 1, 1, 1])
     expect(stored.find((row) => row.entry_id === cove.entry.id)?.awaiting_review).toBe(1)
     expect(stored.find((row) => row.entry_id === tide.entry.id)?.awaiting_review).toBe(0)
+  })
+
+  it('lifts the stall of an entry whose relations gap counted relations to senses that cannot show [spec: work/relation-ends-rescore]', async () => {
+    const token = await issueAgentKey()
+    const cove = await createEntry(token, 'cove')
+    const nook = await postSense(token, cove.entry.id, 'A small sheltered bay.')
+    const tide = await createEntry(token, 'tide')
+    const sea = await postSense(token, tide.entry.id, 'The rise and fall of the sea.')
+    const by = await createEntry(token, 'by')
+    await fill(token, by.entry)
+    await settle()
+    await linkToHiddenSenses(token, sea.sense.id, nook.sense.id)
+    // Every row stalled on open work recorded when both hidden relations still counted.
+    await env.DB.prepare('update worklist set stalled = 1').run()
+    const [rescore] = env.TEST_MIGRATIONS.filter((migration) =>
+      migration.name.endsWith('_worklist_relation_ends_scores.sql'),
+    )
+    for (const query of rescore.queries) await env.DB.prepare(query).run()
+    const rows = await env.DB.prepare('select entry_id, stalled from worklist').all<{
+      entry_id: string
+      stalled: number
+    }>()
+    const stalled = Object.fromEntries(rows.results.map((row) => [row.entry_id, row.stalled]))
+    expect(stalled).toMatchObject({ [cove.entry.id]: 0, [tide.entry.id]: 0, [by.entry.id]: 1 })
   })
 
   it('lifts the stall of an entry whose topics gap no claim recorded [spec: work/topics-rescore]', async () => {

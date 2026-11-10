@@ -58,6 +58,37 @@ describe('fact review flow', () => {
     expect((await call('/v1/entries/an')).status).toBe(200)
   })
 
+  it('leaves a phrase and a recorded inflection to the LLM alone, whatever Jev would say [spec: facts/entry-llm-only-api]', async () => {
+    const token = await issueAgentKey()
+    const createEntry = async (lemma: string) =>
+      createEntryResultSchema.parse((await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })).body)
+    const be = await createEntry('be')
+    await call('/manage/v1/facts', {
+      method: 'POST',
+      token,
+      json: { kind: 'form', subject_id: be.entry.id, payload: { form: 'is', type: 'third_person_singular' } },
+    })
+    stubReviewers()
+    await deliverPendingReviews()
+    vi.restoreAllMocks()
+
+    const entries = await Promise.all(['is', 'mountain system', 'lake'].map(createEntry))
+    const gateway = stubReviewers(0.99, 'fail')
+    await deliverPendingReviews()
+    const urls = gateway.mock.calls.map(([input]) => new Request(input).url)
+    expect(urls.filter((url) => url.endsWith('/v1/systemone'))).toHaveLength(1)
+    const [is, phrase, lake] = await Promise.all(
+      entries.map(async ({ fact }) => factSchema.parse((await call(`/manage/v1/facts/${fact.id}`, { token })).body)),
+    )
+    expect(is).toMatchObject({ status: 'rejected', review: { reviewer: 'llm', verdict: 'fail' } })
+    expect(is.review?.context).toMatchObject({
+      subject: { lemma: 'is', inflectionOf: [{ lemma: 'be', type: 'third_person_singular' }] },
+    })
+    expect(JSON.stringify(is.review?.detail)).toContain('the third-person singular present tense form of \\"be\\"')
+    expect(phrase).toMatchObject({ status: 'rejected', review: { reviewer: 'llm', verdict: 'fail' } })
+    expect(lake).toMatchObject({ status: 'published', review: { reviewer: 'jev', verdict: 'pass' } })
+  })
+
   it('retries the message and keeps the fact pending when the gateway is down [spec: facts/transport-retry-api]', async () => {
     const token = await issueAgentKey()
     const { fact } = createEntryResultSchema.parse(

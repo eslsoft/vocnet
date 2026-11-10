@@ -130,6 +130,46 @@ export function touchWorkOfFact(db: Db, factId: string) {
 }
 
 /**
+ * The entries with a sense that a relation links to a sense that is, or belongs to, one of these
+ * nodes. A relation fills a gap only while the sense at its other end has a live gloss and a live
+ * entry fact, so those facts entering or leaving live change the linked entries' gaps.
+ */
+function linkedEntriesOf(db: Db, nodeIds: string[] | SQLWrapper) {
+  const nodeSenses = db
+    .select({ id: senses.id })
+    .from(senses)
+    .where(or(inArray(senses.id, nodeIds), inArray(senses.entryId, nodeIds)))
+  const sources = db
+    .select({ id: facts.subjectId })
+    .from(facts)
+    .where(and(eq(facts.kind, 'relation'), inArray(facts.objectId, nodeSenses)))
+  const targets = db
+    .select({ id: facts.objectId })
+    .from(facts)
+    .where(and(eq(facts.kind, 'relation'), inArray(facts.subjectId, nodeSenses)))
+  return db
+    .select({ id: senses.entryId })
+    .from(senses)
+    .where(or(inArray(senses.id, sources), inArray(senses.id, targets)))
+}
+
+/**
+ * Marks stale the entries linked by a relation to the entry or sense this fact defines; a fact of
+ * any other kind, or one that does not exist, marks nothing. Batch it with every write that moves
+ * an `entry` or `sense` fact into or out of live.
+ */
+export function touchLinkedWorkOfFact(db: Db, factId: string) {
+  const defined = db
+    .select({ id: facts.subjectId })
+    .from(facts)
+    .where(and(eq(facts.id, factId), inArray(facts.kind, ['entry', 'sense'])))
+  return db
+    .update(worklist)
+    .set(bumpRevision)
+    .where(inArray(worklist.entryId, linkedEntriesOf(db, defined)))
+}
+
+/**
  * Leases the first free claimable entry in claim order and stamps the claim time, in one
  * statement. D1 runs statements one at a time, so two concurrent claims never take the same entry.
  * The scan passes at most one row per held lease before a free row.
@@ -226,7 +266,16 @@ export function createWorkRepo(db: Db): WorkRepo {
       const rows = await db
         .select(staleColumns)
         .from(worklist)
-        .where(and(isStale, or(inArray(worklist.entryId, nodeIds), inArray(worklist.entryId, owners))))
+        .where(
+          and(
+            isStale,
+            or(
+              inArray(worklist.entryId, nodeIds),
+              inArray(worklist.entryId, owners),
+              inArray(worklist.entryId, linkedEntriesOf(db, nodeIds)),
+            ),
+          ),
+        )
       return rows.map(toStale)
     },
 

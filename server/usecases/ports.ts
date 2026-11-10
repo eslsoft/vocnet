@@ -52,6 +52,8 @@ export interface NodeRepo {
   searchPublishedEntries(prefix: string, page: PageRequest): Promise<Page<EntryRef>>
   /** Every entry whose lemma starts with prefix, in any status, in lemma order. */
   listEntrySummaries(prefix: string, page: PageRequest): Promise<Page<EntrySummary>>
+  /** Live form facts with one of these content keys, on entries whose entry fact is live. */
+  findLiveForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
   /** Published form facts with one of these content keys, on published entries. */
   findPublishedForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
 }
@@ -180,7 +182,10 @@ export interface WorkRepo {
   findLease(id: WorkLeaseId): Promise<WorkLease | null>
   /** Records the work on the entry, deletes the lease while it is still unexpired, and marks the row stale; false otherwise. */
   complete(lease: WorkLease, at: string, note: string | null): Promise<boolean>
-  /** Stale rows of the entries that are, or own as a sense, these nodes. */
+  /**
+   * Stale rows of the entries that are, or own as a sense, these nodes, and of the entries whose
+   * relations link to a sense that is or belongs to one of them.
+   */
   listStale(nodeIds: string[]): Promise<StaleWork[]>
   /** Up to `limit` stale rows of any entry. */
   listAnyStale(limit: number): Promise<StaleWork[]>

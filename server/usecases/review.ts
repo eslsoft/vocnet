@@ -1,6 +1,8 @@
 import { currentGloss, type FactOf } from '@server/domain/fact'
 import {
   factKinds,
+  type InflectionOf,
+  inflectionKeysOf,
   planReview,
   type ReviewContext,
   type ReviewRequest,
@@ -21,7 +23,7 @@ import {
   reviewEffects,
   reviewModeOf,
 } from '@server/domain/fact-lifecycle'
-import type { SenseNode } from '@server/domain/nodes'
+import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/domain/review-chain'
 import type { TopicView } from '@server/domain/topics'
 import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, TopicId } from '@shared/facts'
@@ -102,12 +104,20 @@ async function entryGlosses(deps: ReviewDeps, entryId: EntryId): Promise<Array<S
   }))
 }
 
+/** The other live entries whose live inflections spell this entry's lemma. */
+async function inflectionOf(deps: ReviewDeps, entry: EntryNode): Promise<InflectionOf[]> {
+  const forms = await deps.nodes.findLiveForms(inflectionKeysOf(entry.lemma))
+  return forms
+    .filter((form) => form.entry.id !== entry.id)
+    .map((form) => ({ lemma: form.entry.lemma, type: form.fact.payload.type }))
+}
+
 const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    const senses = await entryGlosses(deps, entry.id)
-    return { lemma: entry.lemma, senses: senses.map(({ pos, gloss }) => ({ pos, gloss })) }
+    const [senses, inflections] = await Promise.all([entryGlosses(deps, entry.id), inflectionOf(deps, entry)])
+    return { lemma: entry.lemma, senses: senses.map(({ pos, gloss }) => ({ pos, gloss })), inflectionOf: inflections }
   },
   sense: (deps, id) => senseContext(deps, id as SenseId),
 }
