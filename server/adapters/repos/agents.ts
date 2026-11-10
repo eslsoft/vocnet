@@ -8,6 +8,7 @@ import type { Db } from './rows'
 const toAgent = (row: AgentRow): AgentRecord => ({
   id: row.id as AgentId,
   name: row.name,
+  curator: row.curator,
   createdBy: row.createdBy as PrincipalRef,
   createdAt: row.createdAt,
   revokedAt: row.revokedAt,

@@ -1,4 +1,5 @@
 import type { EntrySnapshot, StoredSenseSummary } from '@server/domain/catalog-view'
+import { isCurated } from '@server/domain/curation'
 import { type Fact, type FactOf, isKind } from '@server/domain/fact'
 import { factKinds, type Link, meaningKeyOf } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
@@ -186,6 +187,12 @@ export function fakeWorld(): FakeWorld {
     const reference = world.references.get(entry.lemma)
     const levels = reference?.cefr.map((cefr) => levelRank(cefr.level)) ?? []
     return { levelRank: levels.length > 0 ? Math.min(...levels) : null, zipf: reference?.frequency?.zipf ?? null }
+  }
+  /** The worklist level rank of the entry a fact's subject is or belongs to. */
+  const levelOfSubject = (subjectId: string) => {
+    const entryId = world.senses.find((sense) => sense.id === subjectId)?.entryId ?? subjectId
+    const entry = world.entries.find((candidate) => candidate.id === entryId)
+    return entry ? priorityOf(entry).levelRank : null
   }
   const liveEntry = (entryId: string) =>
     world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entryId && live(fact))
@@ -574,6 +581,7 @@ export function fakeWorld(): FakeWorld {
         const dependsOnNode = (candidate: Fact) =>
           revalidate !== undefined &&
           live(candidate) &&
+          !isCurated(candidate) &&
           revalidate.kinds.includes(candidate.kind) &&
           (candidate.subjectId === revalidate.nodeId || candidate.objectId === revalidate.nodeId)
         const rereviewed = (candidate: Fact) =>
@@ -633,9 +641,24 @@ export function fakeWorld(): FakeWorld {
         ]
           .slice(0, limit)
           .map((fact) => fact.id),
-      list: async ({ status, kind }, page) =>
+      findCuratedRejection: async (kind, subjectId, contentKey) =>
+        world.facts.find(
+          (fact) =>
+            fact.kind === kind &&
+            fact.subjectId === subjectId &&
+            fact.contentKey === contentKey &&
+            fact.status === 'rejected' &&
+            isCurated(fact),
+        ) ?? null,
+      list: async ({ status, kind, weak, level }, page) =>
         paged(
-          world.facts.filter((fact) => (!status || fact.status === status) && (!kind || fact.kind === kind)),
+          world.facts.filter(
+            (fact) =>
+              (!status || fact.status === status) &&
+              (!kind || fact.kind === kind) &&
+              (!weak || (fact.status === 'published' && ['uncertain', 'fail'].includes(fact.review?.verdict ?? ''))) &&
+              (!level || levelOfSubject(fact.subjectId) === levelRank(level)),
+          ),
           page.limit,
           page.cursor,
         ),

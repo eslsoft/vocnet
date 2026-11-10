@@ -1,4 +1,4 @@
-import { isAgentKey, type Principal } from '@server/domain/principal'
+import { isAgentKey, mayCurate, type Principal } from '@server/domain/principal'
 import type { Deps } from './deps'
 import { ForbiddenError, InvalidCredentialError } from './errors'
 
@@ -14,7 +14,7 @@ export async function authenticateStaff(
   if (isAgentKey(token)) {
     const agent = await deps.agents.findByKeyHash(await deps.agentKeys.hash(token))
     if (!agent || agent.revokedAt) throw new InvalidCredentialError('Unknown or revoked agent key.')
-    return { kind: 'agent', agentId: agent.id, name: agent.name }
+    return { kind: 'agent', agentId: agent.id, name: agent.name, curator: agent.curator }
   }
   const user = await deps.authVerifier.verify(token)
   if (!deps.adminSubjects.has(user.sub)) throw new ForbiddenError('The management API is for admins and agents.')
@@ -23,4 +23,8 @@ export async function authenticateStaff(
 
 export function requireAdminPrincipal(principal: Principal): void {
   if (principal.kind !== 'admin') throw new ForbiddenError('Only admins may do this.')
+}
+
+export function requireCurator(principal: Principal): void {
+  if (!mayCurate(principal)) throw new ForbiddenError('Only curators (admins and curator agents) may curate facts.')
 }

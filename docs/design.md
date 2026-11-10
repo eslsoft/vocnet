@@ -737,7 +737,8 @@ one means retracting it and submitting the labelled fact.
         └──────────┘
 
 (Retract also applies to pending facts. Admin re-review returns published or
-rejected facts to pending.)
+rejected facts to pending. A curator's pass moves a pending or published fact
+to published and its fail moves one to rejected; see Curation.)
 ```
 
 The transition table lives in the domain. Review writes are conditional on
@@ -1098,6 +1099,60 @@ work the same report. An expired claim can be claimed again by anyone, and the
 holder can renew its claim at any time. Only the holder resolves (linking the
 correcting fact IDs) or dismisses (with a note). Every feedback write is a
 compare-and-set on a revision counter.
+
+## Curation
+
+The review rules only need to pass the great majority of facts. The words they
+handle badly (titles like *Mrs*, contractions like *o'clock*, plural-only nouns
+like *jeans*, conversions like *shelve*) are curated by hand instead of tuned
+for one by one. A **curator** is an admin, or an agent an admin issued with the
+curator capability: `POST /manage/v1/agents` with `{ "name": "…", "curator":
+true }` stores `curator = 1` on the agent row and the principal carries it.
+Producer agents are issued without it and get `403 forbidden` on every curator
+operation.
+
+A curator's verdict replaces the reviewer chain's. It is recorded as the fact's
+review with `reviewer: "curator"`, `model` the curator's principal ref
+(`agent:…` or `admin:…`), the verdict, confidence 1, the curator's reason,
+empty `context` and `detail`, and `reviewed_at`. A fact whose review names the
+curator is **curated**.
+
+- **Curated write.** `POST /manage/v1/facts` with `curation: { reason }` runs
+  every submission rule (payload schema, subject and target checks, the kind's
+  write rules, content-key dedupe, slots, and `supersedes_id`), inserts the fact
+  pending, and then writes the curator's pass through the `curate_pass`
+  transition instead of enqueueing a review. A curated correction retires the
+  fact it supersedes and marks the facts judged against it exactly as a passing
+  review would. A submission whose content a live fact holds returns that fact
+  unchanged with `200`. If the second write is lost, the reconcile cron sends
+  the pending fact through the reviewer chain, so the write still converges.
+- **Settle.** `POST /manage/v1/facts/{id}/curate` with `{ verdict, reason }`.
+  `pass` publishes a pending or published fact (`curate_pass`), which replaces
+  an uncertain or failing standing review, so the fact is no longer weak, and
+  clears any revalidation mark. `fail` rejects a pending or published fact
+  (`curate_fail`). Passing a rejected fact first revives it through the
+  `rereview` reset, so it is `409 conflict` exactly when re-reviewing it would
+  be: another live fact holds its content or exclusive slot, a live correction
+  supersedes it, or the original it corrects is no longer published. Any other
+  status is `409 conflict`.
+- **Final for the rules.** No revalidation mark is ever written on a curated
+  fact: the gloss-correction mark carries `review.reviewer <> 'curator'`, and
+  the evidence mark matches only facts its reviewer chain settled. A migration
+  that re-judges facts after a rule change (marks `revalidate_since`, retracts,
+  or resets them) must add `AND coalesce(json_extract(review, '$.reviewer'),
+  '') <> 'curator'` to its `WHERE`. Only a curator may supersede or retract a
+  curated fact, or resubmit content a curator rejected; anyone else gets `403
+  curated_fact`.
+- **Weak facts to review.** `GET /manage/v1/facts?weak=true` lists the
+  published facts whose standing review is `uncertain` or `fail`, newest first
+  with the usual cursor pages, narrowed by `kind` and by `level` (A1 to C2: the
+  lowest CEFR level of the lemma of the entry the fact is about, or whose sense
+  it is about, as the worklist's `level_rank` stores it).
+
+A curated write or settle bumps the entry's worklist revision and rescores it
+like any fact write, and a curated fact counts as a published one. The audit
+boundary logs each of these `POST`s with the curator as the actor. The public
+API is unchanged: its review metadata names no reviewer.
 
 ## Worklist
 
@@ -1777,6 +1832,7 @@ a CEFR level, 1,756 with only a frequency, and 1,432 with neither.
 | `/v1/*`, `/openapi.json`, `/docs` | Everyone     | None                                         |
 | `/manage/v1/*`, `/manage/openapi.json` | Agents and admins | Agent API key or admin OIDC access token |
 | `/manage/v1/agents`       | Admins only          | Admin OIDC access token                      |
+| `/manage/v1/facts/{id}/curate`, `curation` on `POST /manage/v1/facts` | Curators: admins and curator agents | Admin OIDC access token or curator agent key |
 | Admin console (SPA)       | Admins               | OIDC Authorization Code + PKCE               |
 
 Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. Agent keys are random

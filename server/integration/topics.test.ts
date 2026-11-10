@@ -75,7 +75,7 @@ const adminActor: Actor = { principal: { kind: 'admin', sub: 'admin-1' }, traceI
 async function agentActor(): Promise<Actor> {
   const agent = await env.DB.prepare('select id, name from agents limit 1').first<{ id: string; name: string }>()
   if (!agent) throw new Error('No agent.')
-  return { principal: { kind: 'agent', agentId: agent.id as AgentId, name: agent.name }, traceId: 't' }
+  return { principal: { kind: 'agent', agentId: agent.id as AgentId, name: agent.name, curator: false }, traceId: 't' }
 }
 
 /**

@@ -55,6 +55,13 @@ export class ConflictError extends ExpectedError {
   }
 }
 
+/** The fact was settled by a curator; only a curator may supersede, retract, or resubmit it. */
+export class CuratedFactError extends ExpectedError {
+  constructor(message: string) {
+    super('curated_fact', 403, message)
+  }
+}
+
 /** The request body names something that does not exist or cannot be used that way. */
 export class InvalidReferenceError extends ExpectedError {
   constructor(message: string) {

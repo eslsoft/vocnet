@@ -642,9 +642,17 @@ export const reviewerChainSchema = z
   .meta({ id: 'ReviewerChain', description: 'The reviewers consulted, in order.' })
 export type ReviewerChain = z.infer<typeof reviewerChainSchema>
 
+export const CURATOR = 'curator'
+
+export const reviewedBySchema = z.enum([...reviewerChainSchema.options, CURATOR]).meta({
+  id: 'ReviewedBy',
+  description: 'The reviewer chain consulted, in order, or curator: a trusted principal settled the fact by hand.',
+})
+export type ReviewedBy = z.infer<typeof reviewedBySchema>
+
 export const reviewSchema = z
   .object({
-    reviewer: reviewerChainSchema,
+    reviewer: reviewedBySchema,
     model: z.string(),
     verdict: verdictSchema,
     confidence: z.number().min(0).max(1),
@@ -656,6 +664,24 @@ export const reviewSchema = z
   .meta({ id: 'Review' })
 export type Review = z.infer<typeof reviewSchema>
 
+const curationReasonSchema = z.string().trim().min(1).max(1000)
+
+export const curationSchema = z
+  .object({ reason: curationReasonSchema.meta({ description: 'Why the curator vouches for the fact.' }) })
+  .meta({
+    id: 'Curation',
+    description:
+      'Curators only: publish the fact at once with a curator review instead of sending it to the reviewer chain.',
+  })
+
+export const curateFactInputSchema = z
+  .object({
+    verdict: z.enum(['pass', 'fail']).meta({ description: 'pass publishes the fact; fail rejects it.' }),
+    reason: curationReasonSchema,
+  })
+  .meta({ id: 'CurateFactInput' })
+export type CurateFactInput = z.infer<typeof curateFactInputSchema>
+
 function submitVariant<K extends FactKind>(kind: K) {
   return z.object({
     kind: z.literal(kind),
@@ -664,6 +690,7 @@ function submitVariant<K extends FactKind>(kind: K) {
     }),
     supersedes_id: factIdSchema.optional().meta({ description: 'Published fact this one corrects.' }),
     payload: submitPayloadSchemas[kind],
+    curation: curationSchema.optional(),
   })
 }
 

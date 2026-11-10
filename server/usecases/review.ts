@@ -22,6 +22,7 @@ import {
 } from '@server/domain/fact-kinds'
 import {
   decide,
+  type FactEvent,
   factTransitions,
   JEV_POLICY,
   jevVerdict,
@@ -32,7 +33,7 @@ import {
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/domain/review-chain'
 import type { TopicView } from '@server/domain/topics'
-import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactStatus, Review, ReviewerKind, SenseId, TopicId } from '@shared/facts'
 import type { Deps } from './deps'
 import { refreshEntries } from './refresh'
 
@@ -240,7 +241,7 @@ async function judge<K extends FactKind>(
 }
 
 async function revalidatedByCorrection<K extends FactKind>(
-  deps: ReviewDeps,
+  deps: Pick<Deps, 'facts'>,
   correction: FactOf<K>,
   originalId: FactId,
 ): Promise<readonly FactKind[] | undefined> {
@@ -251,7 +252,11 @@ async function revalidatedByCorrection<K extends FactKind>(
 }
 
 /** Enqueues the facts a publish marked for a review in place: the live marked facts of the other entry. */
-async function enqueueRereviews(deps: ReviewDeps, { lemma }: Rereview, traceId: string): Promise<void> {
+async function enqueueRereviews(
+  deps: Pick<Deps, 'nodes' | 'facts' | 'reviewQueue'>,
+  { lemma }: Rereview,
+  traceId: string,
+): Promise<void> {
   const entry = await deps.nodes.findEntryByLemma(lemma)
   if (!entry) return
   const ids = await deps.facts.listRevalidating(entry.id)
@@ -279,29 +284,72 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
   const event = decide(mode, finding, factKinds[fact.kind].revalidationFailure)
   const { outcome, records } = reviewEffects[event]
   const at = deps.clock.now().toISOString()
-  const { from, to } = factTransitions[event]
-  const supersede = event === 'publish' ? (fact.supersedesId ?? undefined) : undefined
+  const applied = await recordDecision(
+    deps,
+    fact,
+    {
+      event,
+      from: factTransitions[event].from,
+      at,
+      review: records ? { ...verdict, context: { ...context }, reviewed_at: at } : undefined,
+      revalidateSince: fact.revalidateSince,
+    },
+    traceId,
+  )
+  return applied ? outcome : 'skipped'
+}
+
+export type DecisionDeps = Pick<
+  Deps,
+  'nodes' | 'facts' | 'topics' | 'reference' | 'publicViews' | 'work' | 'reviewQueue' | 'clock'
+>
+
+export interface Decision {
+  event: FactEvent
+  /** The statuses the write applies to; within the event's `from`. */
+  from: readonly FactStatus[]
+  at: string
+  review?: Review
+  /** The revalidation mark the decision read, as `FactTransitionWrite.revalidateSince`. */
+  revalidateSince?: string | null
+}
+
+/**
+ * Writes a decision on a fact, a reviewer's or a curator's. A pending fact that publishes retires
+ * the original it corrects in the same batch and marks the live facts judged against the old
+ * version; a fact that publishes evidence another entry's review lacked marks the facts it names.
+ * The marked facts are enqueued. False when the fact left `from` or changed its mark first.
+ */
+export async function recordDecision(
+  deps: DecisionDeps,
+  fact: Fact,
+  { event, from, at, review, revalidateSince }: Decision,
+  traceId: string,
+): Promise<boolean> {
+  const { to } = factTransitions[event]
+  const publishes = fact.status === 'pending' && to === 'published'
+  const supersede = publishes ? (fact.supersedesId ?? undefined) : undefined
   const dependents = supersede && (await revalidatedByCorrection(deps, fact, supersede))
-  const rereview = event === 'publish' ? rereviewOf(fact.kind, fact.payload) : null
+  const rereview = publishes ? rereviewOf(fact.kind, fact.payload) : null
   const applied = await deps.facts.transition({
-    id,
+    id: fact.id,
     from,
     to,
     at,
-    review: records ? { ...verdict, context: { ...context }, reviewed_at: at } : undefined,
+    review,
     supersede,
     revalidate: dependents ? { nodeId: fact.subjectId, kinds: dependents } : undefined,
-    revalidateSince: fact.revalidateSince,
+    revalidateSince,
     rereview: rereview ?? undefined,
   })
-  if (!applied) return 'skipped'
+  if (!applied) return false
   await refreshEntries(deps, [fact.subjectId, fact.objectId])
   if (dependents) {
     const ids = await deps.facts.listRevalidating(fact.subjectId)
     if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
   }
   if (rereview) await enqueueRereviews(deps, rereview, traceId)
-  return outcome
+  return true
 }
 
 const RECONCILE_AFTER_MS = 5 * 60 * 1000

@@ -1,9 +1,9 @@
 import type { AgentId } from '@shared/agents'
 import { describe, expect, it } from 'vitest'
-import { isAgentKey, mayActOn, principalRef } from './principal'
+import { isAgentKey, mayActOn, mayCurate, principalRef } from './principal'
 import { normalizeTerm, textKey } from './term'
 
-const agent = { kind: 'agent' as const, agentId: 'a1' as AgentId, name: 'bot' }
+const agent = { kind: 'agent' as const, agentId: 'a1' as AgentId, name: 'bot', curator: false }
 
 describe('principals', () => {
   it('records admins and agents as distinct refs', () => {
@@ -15,6 +15,12 @@ describe('principals', () => {
     expect(mayActOn({ kind: 'admin', sub: 's1' }, 'agent:other')).toBe(true)
     expect(mayActOn(agent, 'agent:a1')).toBe(true)
     expect(mayActOn(agent, 'agent:other')).toBe(false)
+  })
+
+  it('lets admins and curator agents curate, never a producer agent [spec: curation/curator-capability]', () => {
+    expect(mayCurate({ kind: 'admin', sub: 's1' })).toBe(true)
+    expect(mayCurate({ ...agent, curator: true })).toBe(true)
+    expect(mayCurate(agent)).toBe(false)
   })
 
   it('recognizes agent keys by prefix', () => {

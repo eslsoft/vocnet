@@ -70,7 +70,7 @@ export function feedbackItem(
 }
 
 export function agent(input: Partial<AgentDto> & Pick<AgentDto, 'name'>): AgentDto {
-  return { id: id(), created_by: 'admin:root', created_at: at, revoked_at: null, ...input } as AgentDto
+  return { id: id(), curator: false, created_by: 'admin:root', created_at: at, revoked_at: null, ...input } as AgentDto
 }
 
 export function apiError(status: number, code: string, message: string) {

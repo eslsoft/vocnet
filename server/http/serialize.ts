@@ -65,6 +65,7 @@ export const feedbackDto = (item: FeedbackRecord): FeedbackDto => ({
 export const agentDto = (agent: AgentRecord): AgentDto => ({
   id: agent.id,
   name: agent.name,
+  curator: agent.curator,
   created_by: agent.createdBy,
   created_at: agent.createdAt,
   revoked_at: agent.revokedAt,

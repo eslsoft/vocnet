@@ -339,6 +339,8 @@ export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   keyHash: text('key_hash').notNull().unique(),
+  /** Granted only by an admin at issue: the agent may settle facts and publish its own without review. */
+  curator: integer('curator', { mode: 'boolean' }).notNull().default(false),
   createdBy: text('created_by').notNull(),
   createdAt: text('created_at').notNull(),
   revokedAt: text('revoked_at'),

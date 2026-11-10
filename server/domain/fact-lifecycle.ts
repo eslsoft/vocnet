@@ -10,6 +10,8 @@ export type FactEvent =
   | 'supersede'
   | 'retract'
   | 'rereview'
+  | 'curate_pass'
+  | 'curate_fail'
 
 /** The fact state machine. Every status write is conditional on `from`. */
 export const factTransitions: Record<FactEvent, { from: readonly FactStatus[]; to: FactStatus }> = {
@@ -24,6 +26,10 @@ export const factTransitions: Record<FactEvent, { from: readonly FactStatus[]; t
   supersede: { from: ['published'], to: 'superseded' },
   retract: { from: ['pending', 'published'], to: 'retracted' },
   rereview: { from: ['published', 'rejected'], to: 'pending' },
+  // A curator's verdict replaces the reviewer chain's. A rejected fact a curator passes is first
+  // revived through `rereview`, whose write carries the live-slot rules, and then passed.
+  curate_pass: { from: ['pending', 'published'], to: 'published' },
+  curate_fail: { from: ['pending', 'published'], to: 'rejected' },
 }
 
 export function canApply(event: FactEvent, status: FactStatus): boolean {

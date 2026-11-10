@@ -17,3 +17,8 @@ Feature: Agents
     Given an agent key
     When it lists agents
     Then the API responds 403, and an admin can revoke the key so it stops working
+
+  @agents/issue-curator @usecase
+  Scenario: Issue a curator key
+    When an admin issues a key with the curator capability
+    Then the agent is a curator, its key authenticates as a curator principal, and keys issued without it are not

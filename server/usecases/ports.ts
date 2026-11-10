@@ -87,6 +87,15 @@ export interface ReferenceRepo {
   listCefrLemmasWithoutEntry(): Promise<Lemma[]>
 }
 
+export interface FactFilter {
+  status?: FactStatus
+  kind?: FactKind
+  /** Only weak facts: published on an uncertain review, or kept published by a failed one. */
+  weak?: boolean
+  /** Only facts about an entry, or a sense of an entry, whose lowest CEFR level is this. */
+  level?: CefrLevel
+}
+
 export interface FactTransitionWrite {
   id: FactId
   from: readonly FactStatus[]
@@ -98,7 +107,7 @@ export interface FactTransitionWrite {
   /**
    * With `supersede`: mark the live facts of these kinds about this node, so each one's next
    * review reads the new version. Pending ones are marked too, or a first review that read the
-   * old version could still publish.
+   * old version could still publish. Curated facts are never marked.
    */
   revalidate?: { nodeId: EntryId | SenseId; kinds: readonly FactKind[] }
   /** A review applies only while the fact still carries the mark it read, none included. Omitted: no condition. */
@@ -114,7 +123,7 @@ export interface FactTransitionWrite {
   originalPublished?: FactId
   /**
    * When the write applies, mark these facts of the other entry for a review in place, in the same
-   * batch; facts already marked keep their mark.
+   * batch; facts already marked keep their mark, and curated facts are never marked.
    */
   rereview?: Rereview
 }
@@ -161,7 +170,9 @@ export interface FactRepo {
   listRevalidating(nodeId: EntryId | SenseId): Promise<FactId[]>
   /** Facts pending since before cutoff, then facts awaiting revalidation since before it, pending first. */
   listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
-  list(filter: { status?: FactStatus; kind?: FactKind }, page: PageRequest): Promise<Page<Fact>>
+  /** A rejected fact of this kind about this subject with this content that a curator rejected. */
+  findCuratedRejection(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
+  list(filter: FactFilter, page: PageRequest): Promise<Page<Fact>>
   countByKindAndStatus(): Promise<Stats['facts']>
 }
 
@@ -324,6 +335,7 @@ export interface WorkRepo {
 export interface AgentRecord {
   id: AgentId
   name: string
+  curator: boolean
   createdBy: PrincipalRef
   createdAt: string
   revokedAt: string | null

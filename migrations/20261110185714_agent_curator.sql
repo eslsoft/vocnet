@@ -1,0 +1,1 @@
+ALTER TABLE `agents` ADD `curator` integer DEFAULT false NOT NULL;

@@ -15,6 +15,7 @@ export async function issueAgent(
   const agent: AgentRecord = {
     id: deps.ids.agent(),
     name: input.name,
+    curator: input.curator,
     createdBy: principalRef(actor.principal),
     createdAt: deps.clock.now().toISOString(),
     revokedAt: null,

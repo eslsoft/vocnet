@@ -1,3 +1,4 @@
+import { curatorReview, isCurated } from '@server/domain/curation'
 import { currentGloss, type Fact, isKind } from '@server/domain/fact'
 import {
   type AdmissionViews,
@@ -18,25 +19,17 @@ import {
   topicOf,
 } from '@server/domain/fact-kinds'
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
-import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
+import { mayActOn, mayCurate, type Principal, principalRef } from '@server/domain/principal'
 import { currentSenseList } from '@server/domain/sense-list'
 import type { Lemma } from '@server/domain/term'
 import { isLeaf } from '@server/domain/topics'
-import type {
-  EntryId,
-  FactId,
-  FactKind,
-  FactPayloads,
-  FactStatus,
-  Pos,
-  SenseId,
-  SubmitFactInput,
-  TopicId,
-} from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactPayloads, Pos, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
+import { requireCurator } from './access'
 import type { Deps } from './deps'
-import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
-import type { PageRequest } from './ports'
+import { ConflictError, CuratedFactError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
+import type { FactFilter, PageRequest } from './ports'
 import { refreshEntries } from './refresh'
+import { recordDecision } from './review'
 
 /** Who is acting, and the trace their work carries into async jobs. */
 export interface Actor {
@@ -114,14 +107,17 @@ function slotTakenMessage(kind: FactKind, subject: SubjectType): string {
 /**
  * Submits one fact for review. Idempotent by content key: resubmitting a live
  * fact returns it with created=false and enqueues nothing. A symmetric relation
- * submitted from either end is the same fact.
+ * submitted from either end is the same fact. A curator's curated submission passes
+ * every rule a submission does and then publishes at once with the curator's review,
+ * enqueueing nothing; only a curator resubmits content a curator rejected.
  */
 export async function submitFact(
   deps: SubmitDeps,
   actor: Actor,
   input: SubmitFactInput,
 ): Promise<{ fact: Fact; created: boolean }> {
-  const { kind } = input
+  const { kind, curation } = input
+  if (curation) requireCurator(actor.principal)
   const spec = factKinds[kind]
   const oriented = orientOf(kind, input.subject_id, input.payload)
   const subjectId = oriented.subjectId as EntryId | SenseId
@@ -151,6 +147,9 @@ export async function submitFact(
   const contentKey = contentKeyOf(kind, payload)
   const existing = await deps.facts.findLive(kind, subjectId, contentKey)
   if (existing) return { fact: existing, created: false }
+  if (!mayCurate(actor.principal) && (await deps.facts.findCuratedRejection(kind, subjectId, contentKey))) {
+    throw new CuratedFactError('A curator rejected this fact; only a curator may submit it again.')
+  }
 
   if (spec.admit) await assertAdmitted(kind, payload, subject)
   await assertReferencesLive(deps, referencesOf(kind, payload))
@@ -166,7 +165,12 @@ export async function submitFact(
     await assertLinkAdmitted(deps, kind, link)
   }
   const supersedesId = input.supersedes_id ?? null
-  if (supersedesId) await assertSupersedable(deps, supersedesId, kind, subjectId)
+  if (supersedesId) {
+    const original = await assertSupersedable(deps, supersedesId, kind, subjectId)
+    if (isCurated(original) && !mayCurate(actor.principal)) {
+      throw new CuratedFactError('A curator settled the fact this corrects; only a curator may supersede it.')
+    }
+  }
 
   const now = deps.clock.now().toISOString()
   const draft = {
@@ -191,9 +195,24 @@ export async function submitFact(
     throw new ConflictError(slotTakenMessage(kind, subjectType))
   }
   const created = fact.id === draft.id
+  if (created && curation) return { fact: await publishCurated(deps, actor, fact, curation.reason), created }
   await refreshEntries(deps, [subjectId, target])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { fact, created }
+}
+
+/** Publishes a curator's new pending fact with the curator's review, as a passing review would. */
+async function publishCurated(deps: SubmitDeps, actor: Actor, fact: Fact, reason: string): Promise<Fact> {
+  const at = deps.clock.now().toISOString()
+  const review = curatorReview(actor.principal, 'pass', reason, at)
+  const applied = await recordDecision(
+    deps,
+    fact,
+    { event: 'curate_pass', from: ['pending'], at, review },
+    actor.traceId,
+  )
+  if (!applied) throw new ConflictError('The fact changed while it was being published.')
+  return getFact(deps, fact.id)
 }
 
 /** Runs the kind's write rule against the subject as it is now; only for a kind that has one. */
@@ -294,12 +313,13 @@ async function existingSubject(deps: SubjectDeps, fact: Fact): Promise<SubjectNo
   return subject
 }
 
+/** The fact a correction supersedes, once it is a published fact of the correction's kind and subject. */
 async function assertSupersedable(
   deps: Pick<Deps, 'facts'>,
   supersedesId: FactId,
   kind: FactKind,
   subjectId: EntryId | SenseId,
-): Promise<void> {
+): Promise<Fact> {
   const old = await deps.facts.find(supersedesId)
   if (!old) throw new InvalidReferenceError(`Superseded fact ${supersedesId} does not exist.`)
   if (old.kind !== kind || old.subjectId !== subjectId) {
@@ -307,6 +327,7 @@ async function assertSupersedable(
   }
   if (old.status !== 'published')
     throw new ConflictError(`Only a published fact can be superseded; it is ${old.status}.`)
+  return old
 }
 
 /** Throws why a correction of this fact cannot go live now: the fact is not published, or already corrected. */
@@ -326,15 +347,11 @@ export async function getFact(deps: Pick<Deps, 'facts'>, id: FactId): Promise<Fa
   return fact
 }
 
-export function listFacts(
-  deps: Pick<Deps, 'facts'>,
-  filter: { status?: FactStatus; kind?: FactKind },
-  page: PageRequest,
-) {
+export function listFacts(deps: Pick<Deps, 'facts'>, filter: FactFilter, page: PageRequest) {
   return deps.facts.list(filter, page)
 }
 
-/** Withdraws a pending or published fact. Agents retract only their own facts. */
+/** Withdraws a pending or published fact. Agents retract only their own facts, and only curators curated ones. */
 export async function retractFact(
   deps: Pick<Deps, 'facts' | 'nodes' | 'topics' | 'work' | 'reference' | 'publicViews' | 'clock'>,
   actor: Actor,
@@ -342,6 +359,9 @@ export async function retractFact(
 ): Promise<Fact> {
   const fact = await getFact(deps, id)
   if (!mayActOn(actor.principal, fact.author)) throw new ForbiddenError('Agents may retract only their own facts.')
+  if (isCurated(fact) && !mayCurate(actor.principal)) {
+    throw new CuratedFactError('A curator settled this fact; only a curator may retract it.')
+  }
   if (fact.status === 'retracted') return fact
   if (!canApply('retract', fact.status)) throw new ConflictError(`A ${fact.status} fact cannot be retracted.`)
   const { from, to } = factTransitions.retract
@@ -366,46 +386,57 @@ export async function rereviewFact(
   id: FactId,
 ): Promise<Fact> {
   const fact = await getFact(deps, id)
-  if (fact.status !== 'pending') {
-    if (!canApply('rereview', fact.status)) throw new ConflictError(`A ${fact.status} fact cannot be re-reviewed.`)
-    // A rejected fact that comes back to life takes a place among the live ones; a correction
-    // takes its original's place, so its original must still be published. A published fact is
-    // live already and keeps its place.
-    const reviving = !isLive(fact.status)
-    if (reviving && factKinds[fact.kind].admit)
-      await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact))
-    if (reviving) await assertReferencesLive(deps, referencesOf(fact.kind, fact.payload))
-    if (reviving && fact.objectId) {
-      const link = await storedLink(deps, fact, fact.objectId)
-      await assertEndsAdmitted(deps, fact.kind, link)
-      await assertLinkAdmitted(deps, fact.kind, link)
-    }
-    const { maxLive } = factKinds[fact.kind]
-    const liveBelow = reviving && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
-    const originalPublished = (reviving && fact.supersedesId) || undefined
-    const { to } = factTransitions.rereview
-    // While a correction of this fact is live, the correction is what review decides; reviving the
-    // original beside it would let both publish.
-    const applied = await deps.facts.transition({
-      id,
-      from: [fact.status],
-      to,
-      at: deps.clock.now().toISOString(),
-      liveBelow,
-      unsuperseded: true,
-      originalPublished,
-    })
-    if (!applied) {
-      const current = await getFact(deps, id)
-      if (current.status === fact.status) {
-        if (await deps.facts.findLiveCorrection(id)) throw new ConflictError(UNDER_CORRECTION)
-        if (originalPublished) await assertCorrectable(deps, originalPublished, fact.kind, fact.subjectId)
-        if (liveBelow) throw new ConflictError(slotTakenMessage(fact.kind, subjectTypeOf(fact.kind, fact.payload)))
-      }
-      throw new ConflictError('The fact changed while it was being reset.')
-    }
-    await refreshEntries(deps, [fact.subjectId, fact.objectId])
-  }
+  if (fact.status !== 'pending') await resetToPending(deps, fact)
   await deps.reviewQueue.enqueue([{ factId: id, traceId: actor.traceId }])
+  return getFact(deps, id)
+}
+
+/**
+ * Returns a published or rejected fact to `pending` through the `rereview` transition, enqueueing
+ * nothing; the caller decides who reviews it. Returns the pending fact.
+ */
+export async function resetToPending(
+  deps: Pick<Deps, 'facts' | 'nodes' | 'topics' | 'work' | 'reference' | 'publicViews' | 'clock'>,
+  fact: Fact,
+): Promise<Fact> {
+  const { id } = fact
+  if (!canApply('rereview', fact.status)) throw new ConflictError(`A ${fact.status} fact cannot be re-reviewed.`)
+  // A rejected fact that comes back to life takes a place among the live ones; a correction
+  // takes its original's place, so its original must still be published. A published fact is
+  // live already and keeps its place.
+  const reviving = !isLive(fact.status)
+  if (reviving && factKinds[fact.kind].admit)
+    await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact))
+  if (reviving) await assertReferencesLive(deps, referencesOf(fact.kind, fact.payload))
+  if (reviving && fact.objectId) {
+    const link = await storedLink(deps, fact, fact.objectId)
+    await assertEndsAdmitted(deps, fact.kind, link)
+    await assertLinkAdmitted(deps, fact.kind, link)
+  }
+  const { maxLive } = factKinds[fact.kind]
+  const liveBelow = reviving && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
+  const originalPublished = (reviving && fact.supersedesId) || undefined
+  const { to } = factTransitions.rereview
+  // While a correction of this fact is live, the correction is what review decides; reviving the
+  // original beside it would let both publish.
+  const applied = await deps.facts.transition({
+    id,
+    from: [fact.status],
+    to,
+    at: deps.clock.now().toISOString(),
+    liveBelow,
+    unsuperseded: true,
+    originalPublished,
+  })
+  if (!applied) {
+    const current = await getFact(deps, id)
+    if (current.status === fact.status) {
+      if (await deps.facts.findLiveCorrection(id)) throw new ConflictError(UNDER_CORRECTION)
+      if (originalPublished) await assertCorrectable(deps, originalPublished, fact.kind, fact.subjectId)
+      if (liveBelow) throw new ConflictError(slotTakenMessage(fact.kind, subjectTypeOf(fact.kind, fact.payload)))
+    }
+    throw new ConflictError('The fact changed while it was being reset.')
+  }
+  await refreshEntries(deps, [fact.subjectId, fact.objectId])
   return getFact(deps, id)
 }

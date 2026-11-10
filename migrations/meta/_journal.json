@@ -344,6 +344,13 @@
       "when": 1794332790159,
       "tag": "20261110174630_polish_claim_tier",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1794337034859,
+      "tag": "20261110185714_agent_curator",
+      "breakpoints": true
     }
   ]
 }

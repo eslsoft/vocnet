@@ -1,8 +1,10 @@
-import { entries, facts, senses } from '@server/db/schema'
+import { entries, facts, senses, worklist } from '@server/db/schema'
 import type { Fact, FactOf } from '@server/domain/fact'
 import { factKinds, type Link, type Rereview } from '@server/domain/fact-kinds'
+import { levelRank } from '@server/domain/reference'
 import type { FactRepo } from '@server/usecases/ports'
 import {
+  CURATOR,
   type EntryId,
   type FactId,
   type FactKind,
@@ -11,6 +13,7 @@ import {
   factStatusSchema,
   type SenseId,
 } from '@shared/facts'
+import type { CefrLevel } from '@shared/reference'
 import {
   and,
   asc,
@@ -49,6 +52,30 @@ function liveAgain(db: Db) {
       ),
     )
 }
+
+/**
+ * The fact was not settled by a curator. Every statement that marks facts for revalidation carries
+ * it, the migrations that re-judge facts after a rule change included: a curator's verdict is final.
+ */
+const notCurated = sql`coalesce(json_extract(${facts.review}, '$.reviewer'), '') <> ${CURATOR}`
+
+/** The facts about an entry, or a sense of an entry, whose lowest CEFR level is this. */
+function aboutLevel(db: Db, level: CefrLevel) {
+  const sense = alias(senses, 'level_sense')
+  const entryOfSubject = sql`coalesce((${db.select({ entryId: sense.entryId }).from(sense).where(eq(sense.id, facts.subjectId))}), ${facts.subjectId})`
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(worklist)
+      .where(and(eq(worklist.entryId, entryOfSubject), eq(worklist.levelRank, levelRank(level)))),
+  )
+}
+
+/** Published facts whose standing review is uncertain or failed: the weak facts the reviews leave. */
+const weakReview = and(
+  eq(facts.status, 'published'),
+  sql`json_extract(${facts.review}, '$.verdict') in ('uncertain', 'fail')`,
+)
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const UNIQUE_MESSAGES = {
@@ -141,6 +168,7 @@ function markRereview(db: Db, rereview: Rereview, written: { id: FactId; to: Fac
         eq(facts.kind, rereview.kind),
         eq(facts.status, 'published'),
         isNull(facts.revalidateSince),
+        // Only facts this reviewer chain settled; a curated fact never matches.
         sql`json_extract(${facts.review}, '$.reviewer') = ${rereview.settledBy}`,
       ),
     )
@@ -316,6 +344,7 @@ export function createFactRepo(db: Db): FactRepo {
                   liveStatus,
                   inArray(facts.kind, [...revalidate.kinds]),
                   or(eq(facts.subjectId, revalidate.nodeId), eq(facts.objectId, revalidate.nodeId)),
+                  notCurated,
                   stillPending,
                 ),
               ),
@@ -398,7 +427,24 @@ export function createFactRepo(db: Db): FactRepo {
       return [...pending, ...revalidating].map((row) => row.id as FactId)
     },
 
-    async list({ status, kind }, { limit, cursor }) {
+    async findCuratedRejection(kind, subjectId, contentKey) {
+      const row = await db
+        .select()
+        .from(facts)
+        .where(
+          and(
+            eq(facts.kind, kind),
+            eq(facts.contentKey, contentKey),
+            eq(facts.subjectId, subjectId),
+            eq(facts.status, 'rejected'),
+            sql`json_extract(${facts.review}, '$.reviewer') = ${CURATOR}`,
+          ),
+        )
+        .get()
+      return row ? toFact(row) : null
+    },
+
+    async list({ status, kind, weak, level }, { limit, cursor }) {
       const after = cursor ? decodeCursor(cursor, factCursor) : undefined
       const rows = await db
         .select()
@@ -407,6 +453,8 @@ export function createFactRepo(db: Db): FactRepo {
           and(
             status ? eq(facts.status, status) : undefined,
             kind ? eq(facts.kind, kind) : undefined,
+            weak ? weakReview : undefined,
+            level ? aboutLevel(db, level) : undefined,
             after
               ? or(
                   lt(facts.createdAt, after.created_at),

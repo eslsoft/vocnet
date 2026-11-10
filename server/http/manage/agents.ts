@@ -24,6 +24,7 @@ const issueRoute = createRoute({
   tags,
   middleware,
   summary: 'Issue an agent API key (admins)',
+  description: 'curator: true grants the curator capability; producer agents are issued without it.',
   request: { body: jsonBody(issueAgentInputSchema) },
   responses: {
     201: json(issuedAgentSchema, 'The agent and its key, shown once.'),
