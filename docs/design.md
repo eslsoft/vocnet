@@ -1263,8 +1263,8 @@ entry document; every list returns summaries.
   speech, else the meaning of the first part of speech the entry has in its
   type's carrier order, never by display order: a plural goes to a noun, else
   a pronoun, else a determiner (`mines` under the noun "mine" though the
-  pronoun is shown first; `these` under the determiner "this", which has no
-  noun or pronoun meaning); a past, participle, or third-person form to a verb,
+  pronoun is shown first; `these` under the pronoun "this", which has no noun
+  meaning, though its determiner is shown first); a past, participle, or third-person form to a verb,
   else an auxiliary (`would` under the auxiliary "will" only while "will" has
   no verb meaning); a comparative or superlative to an adjective, else an
   adverb, else a determiner (`more` under the determiner "many"). Known gap:

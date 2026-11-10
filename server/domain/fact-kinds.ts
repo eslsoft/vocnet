@@ -408,7 +408,7 @@ interface FormTypeSpec {
   /**
    * The parts of speech whose meaning can show an unlabelled form of this type, most preferred
    * first: the word class, then the closed classes that inflect the same way (these/those as
-   * determiner plurals, would/might as auxiliary pasts, more/most as determiner comparatives).
+   * pronoun or determiner plurals, would/might as auxiliary pasts, more/most as determiner comparatives).
    * Empty for a variant.
    */
   carriers: readonly Pos[]
