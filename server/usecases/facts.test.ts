@@ -112,9 +112,50 @@ describe('submitFact', () => {
       fact: first.fact,
       created: false,
     })
-    const directed = await submit('hypernym', high as string, low as string)
-    expect(directed).toMatchObject({ created: true, fact: { subjectId: high, objectId: low } })
-    expect(world.queued).toHaveLength(2)
+    expect(world.queued).toHaveLength(1)
+    const fresh = await withShore()
+    const directed = await submitFact(fresh.world.deps, agentA, {
+      kind: 'relation',
+      subject_id: fresh.shore.id,
+      payload: { type: 'hypernym', target_sense_id: fresh.river.id },
+    })
+    expect(directed).toMatchObject({ created: true, fact: { subjectId: fresh.shore.id, objectId: fresh.river.id } })
+  })
+
+  it('refuses a second relation type from one sense to the same entry, from either end [spec: facts/relation-one-type-per-entry]', async () => {
+    const { world, river, money, shore } = await withShore()
+    const relate = (type: 'synonym' | 'hypernym' | 'antonym', from: SenseId, to: SenseId) =>
+      submitFact(world.deps, agentA, { kind: 'relation', subject_id: from, payload: { type, target_sense_id: to } })
+    const synonym = await relate('synonym', river.id, shore.id)
+    await expect(relate('hypernym', shore.id, money.id)).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining(`live synonym relation (${synonym.fact.id})`),
+    })
+    await expect(relate('antonym', river.id, shore.id)).rejects.toMatchObject({ code: 'invalid_reference' })
+    await expect(relate('synonym', river.id, shore.id)).resolves.toMatchObject({ created: false })
+    await expect(relate('hypernym', money.id, shore.id)).resolves.toMatchObject({ created: true })
+    await retractFact(world.deps, agentA, synonym.fact.id)
+    await expect(relate('hypernym', shore.id, river.id)).rejects.toMatchObject({
+      message: expect.stringContaining('two entries cannot each be a kind of the other'),
+    })
+  })
+
+  it('applies the relation write rules when a rejected relation comes back to life [spec: facts/relation-one-type-per-entry]', async () => {
+    const { world, river, shore } = await withShore()
+    world.failReviews()
+    const { fact: rejected } = await submitFact(world.deps, agentA, {
+      kind: 'relation',
+      subject_id: river.id,
+      payload: { type: 'antonym', target_sense_id: shore.id },
+    })
+    await reviewFact(world.deps, rejected.id, 'trace-review')
+    expect((await getFact(world.deps, rejected.id)).status).toBe('rejected')
+    await submitFact(world.deps, agentA, {
+      kind: 'relation',
+      subject_id: river.id,
+      payload: { type: 'synonym', target_sense_id: shore.id },
+    })
+    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'invalid_reference' })
   })
 
   it('rejects a relation between two senses of one entry [spec: facts/relation-across-entries]', async () => {

@@ -132,6 +132,55 @@ the relation question only. Whether each sense is an established meaning is the
 job of that sense's own `sense` fact, and the relation stays hidden until both
 are published.
 
+#### Relations
+
+An audit of 100 random published relations (seeded sample of 13,182) found
+strict precision 84%: 90.7% for relations Jev passed alone and 64% for those
+the LLM published over an unsure Jev. Over the whole store, the LLM had
+published 323 relations over a Jev answer under 0.5 (142 hypernym, 89 synonym,
+79 `part_of`, 13 antonym); about half of those synonyms and almost none of the
+others held. Structural checks found 38 (sense, entry) slots holding two
+relation types (78 relations), 14 entry pairs each a hypernym of the other (28
+relations), and 40 `part_of` relations from a body part to a person-type noun
+(head `part_of` princess, hand `part_of` worker). The rules that follow:
+
+- **Floor.** `RELATION_JEV_FLOORS` in the registry is 0.5 for every type,
+  Jev's fail line: a Jev fail settles a relation, and the LLM decides only
+  Jev's uncertain band (see Reviews).
+- **Rubric.** The LLM rubric fails a body part, organ, or limb as part of a
+  person-type noun (a role, kinship term, occupation, title, or nickname: a
+  head is part of a person, not of a princess); applies a substitution test to
+  hypernyms (a source gloss "A <target> …", or a target that alone paraphrases
+  the source, is a synonym), requires the reviewer to name the feature that
+  sets the source apart within the target's class, and fails a near-generic
+  head (`GENERIC_HYPERNYM_HEADS`: the most frequent hypernym targets such as
+  "person", "group", "move", "change", "meet", and "thing", "do", "make",
+  "be", "have"); fails co-hyponyms of one set (titles, colours, days, numbers)
+  as antonyms; and fails a light verb ("make", "do", "take", "give", "have",
+  "get") as a synonym of a full verb. It lists the target entry's other senses
+  and fails a relation when one of them is the better match for the source.
+- **Write rules.** Checked at submission, and when a rejected relation is
+  re-reviewed back to life, against the live relations between the two
+  entries (`admitLink` in the registry; a read before the write, as `admit`
+  is). A source sense relates to a target entry by one type only, a symmetric
+  type occupying the slot from both of its ends: "This sense already has a live
+  <type> relation (<id>) to a sense of the target's entry; a sense relates to
+  another entry by one type only. Retract that fact first if <type> is the
+  better type." A hypernym may not close an entry-level 2-cycle: "A live
+  hypernym relation (<id>) already makes a sense of the target's entry a kind
+  of this entry; two entries cannot each be a kind of the other." Both are
+  `422 invalid_reference`. No fact waits on another: the rule reads only which
+  facts are live.
+- **Re-judging.** The migration `relations_strict_revalidate` marked for
+  revalidation every published relation the old rules let through weakly:
+  `part_of` to a person-type noun (the target sense has a published hypernym
+  chain up to the noun "person" but is not that noun, or its gloss is "A/An
+  <head> …" or "A/An <word> <head> …" with a person head), every LLM pass over a
+  Jev answer under the floor, and every relation in a structural conflict the
+  write rules now refuse. On a copy of the development database it marked 447
+  (196 hypernym, 117 `part_of`, 115 synonym, 19 antonym); the reconcile cron
+  re-enqueues 500 a run, and each stays public until its new verdict.
+
 ### Topics
 
 Learners find words by topic: the scene they need them in ("words I need at
@@ -539,8 +588,10 @@ but only to choose the message.
   claim with a kind-specific rubric and decides: pass or uncertain publishes
   with the LLM's verdict and confidence, fail rejects. The rubric gets the
   lemma, the part of speech, and the entry's other senses; for a relation it
-  gets both senses and also fails a relation whose type is not the most
-  accurate one (a mutually substitutable pair is a synonym, not a hypernym).
+  gets both senses and the target entry's other senses, and also fails a
+  relation whose type is not the most accurate one (a mutually substitutable
+  pair is a synonym, not a hypernym) or whose target has a better-matching
+  sense (see Relations).
   The relation rubric treats glosses as short paraphrases: it judges the
   relation between the words in those senses and does not fail a pair over a
   detail one gloss mentions and the other omits, such as a transitive use or
@@ -609,12 +660,14 @@ but only to choose the message.
   delivery of the form's review publishes nothing and marks nothing; an entry
   the LLM judged is not reopened; at most one entry fact is marked per form,
   the one of the exact lemma.
-- **Relation floor.** A relation request carries `settlesFailBelow` 0.15: a Jev
-  answer under it settles the fail without asking the LLM. In the audit, every
-  relation the LLM published over a Jev answer that low was wrong (shore
-  `part_of` key at 0.09, back `part_of` heart at 0.06), while the lowest correct
-  one it rescued scored 0.21. Other kinds have no floor: the LLM correctly
-  published the plural "stone" over a Jev answer of 0.07.
+- **Relation floor.** A relation request carries `settlesFailBelow` from
+  `RELATION_JEV_FLOORS`, 0.5 for every type: a Jev answer under it settles the
+  fail without asking the LLM. It started at 0.15, when every relation the LLM
+  had published under that line was wrong (shore `part_of` key at 0.09); the
+  relation audit (see Relations) found the LLM's passes under 0.5 mostly wrong
+  for every type, about half right even for synonyms, so the floor now meets
+  Jev's fail line. Other kinds have no floor: the LLM correctly published the
+  plural "stone" over a Jev answer of 0.07.
   Jev's fail band rejected correct facts and its uncertain band published
   relations of the wrong type, which is why it no longer decides those bands
   alone. The review's `reviewer` is `jev+llm`, `model` joins both models,

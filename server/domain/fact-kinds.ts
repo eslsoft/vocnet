@@ -1,6 +1,8 @@
 import type {
   CollocationPattern,
   DependentPreposition,
+  EntryId,
+  FactId,
   FactKind,
   FactPayloads,
   FormType,
@@ -95,8 +97,8 @@ export interface AdmissionViews {
 
 export interface ReviewContext<S extends SubjectType = SubjectType> {
   subject: SubjectViews[S]
-  /** The relation target; null for every other kind. */
-  target: SenseView | null
+  /** The relation target with the other senses of its entry; null for every other kind. */
+  target: SubjectViews['sense'] | null
   /** The topic a topic fact tags its sense with; null for every other kind, or when no such leaf topic exists. */
   topic: TopicView | null
 }
@@ -165,6 +167,26 @@ interface BaseSpec<K extends FactKind> {
    * review lacked it as evidence; null when there are none.
    */
   rereviews?(payload: FactPayloads[K]): Rereview | null
+  /**
+   * A write rule over the live facts of this kind that link the same two entries, checked when the
+   * fact is submitted: why the link may not join them, or null when it may. Only for kinds with a
+   * target.
+   */
+  admitLink?(link: Link<K>, live: readonly Link<K>[]): string | null
+}
+
+/** A sense with the entry it belongs to. */
+export interface SenseEnd {
+  sense: SenseId
+  entry: EntryId
+}
+
+/** A fact that links two senses, as a write rule over links sees it. */
+export interface Link<K extends FactKind> {
+  id: FactId
+  payload: FactPayloads[K]
+  subject: SenseEnd
+  target: SenseEnd
 }
 
 /** The kinds whose subject is an entry. */
@@ -228,18 +250,26 @@ function jevThenLlm(
 }
 
 /**
- * Every relation the LLM published over a Jev answer this low was wrong (shore part_of key at 0.09,
- * back part_of heart at 0.06), while the lowest correct one it rescued scored 0.21. Below this line
- * Jev's fail stands.
+ * Below its type's floor a Jev fail stands, with no second opinion. An audit of 100 published
+ * relations found the LLM-over-unsure-Jev path 64% precise against 90.7% for Jev alone, and of the
+ * 323 relations the LLM published over a Jev answer under 0.5 (142 hypernym, 89 synonym, 79
+ * part_of, 13 antonym) about half of the synonyms and almost none of the others held: head part_of
+ * princess, trick hypernym performance, mother antonym father, outsole synonym sole. At 0.5 the
+ * floor meets Jev's fail line, so the LLM decides only Jev's uncertain band, for every type.
  */
-export const RELATION_JEV_FLOOR = 0.15
+export const RELATION_JEV_FLOORS: Record<RelationType, number> = {
+  hypernym: 0.5,
+  part_of: 0.5,
+  synonym: 0.5,
+  antonym: 0.5,
+}
 
 type GlossedSense = SenseView & { gloss: string }
 
 /** Kinds that describe a meaning cannot be judged against a sense that has no gloss. */
-function withGloss<C extends ReviewChain>(
-  sense: SenseView | null,
-  build: (sense: GlossedSense) => ReviewPlan<C>,
+function withGloss<C extends ReviewChain, S extends SenseView>(
+  sense: S | null,
+  build: (sense: S & { gloss: string }) => ReviewPlan<C>,
 ): ReviewPlan<C> {
   if (sense?.gloss == null) return { kind: 'unreviewable', reason: 'The referenced sense has no live gloss.' }
   return build({ ...sense, gloss: sense.gloss })
@@ -278,18 +308,53 @@ const relationClaims: Record<RelationType, string> = {
   antonym: 'the source and the target are opposites',
 }
 
+/** Heads so general that naming them as a hypernym tells a learner nothing; the most frequent targets of published hypernyms. */
+export const GENERIC_HYPERNYM_HEADS = [
+  'thing',
+  'object',
+  'something',
+  'activity',
+  'act',
+  'person',
+  'group',
+  'quantity',
+  'area',
+  'part',
+  'move',
+  'change',
+  'affect',
+  'cause',
+  'meet',
+  'take',
+  'get',
+  'give',
+  'do',
+  'make',
+  'be',
+  'have',
+] as const
+
+/** Verbs that carry little meaning of their own and take it from their object ("make a decision", "take a walk"). */
+const LIGHT_VERBS = ['make', 'do', 'take', 'give', 'have', 'get'] as const
+
+const quoted = (words: readonly string[]) => words.map(quote).join(', ')
+
 const RELATION_TYPE_RULES = [
-  'synonym: the two senses denote the same meaning, so a dictionary could list either word as a synonym of the other. Differences of register, connotation, word order, articles, or collocation are allowed. Co-hyponyms, a narrower or broader term, meanings that only partly overlap, a pair that needs a different construction to say the same thing, and mere association are not synonyms.',
-  'hypernym: a strict kind-of link. Every instance of the source is an instance of the target, and the target also covers other kinds. If the target word on its own is a fair definition of the source sense, the two are synonyms, not a hypernym pair. It holds only between two nouns or two verbs. A head as generic as "cause", "do", "make", "activity", "thing", or "object" tells a learner nothing; fail it.',
-  'antonym: conventional opposites on one semantic dimension. Mere difference is not enough.',
-  'part_of: the source is a distinct component or region of the target. A material, substance, or ingredient the target is made from is not a part, and neither is something located in, used by, or associated with it, or a generic part any object has, such as a back, side, or top.',
+  `synonym: the two senses denote the same meaning, so a dictionary could list either word as a synonym of the other. Differences of register, connotation, word order, articles, or collocation are allowed. Co-hyponyms, a narrower or broader term, meanings that only partly overlap, a pair that needs a different construction to say the same thing, and mere association are not synonyms. A light verb (${quoted(LIGHT_VERBS)}) takes its meaning from its object, so it is never a synonym of a full verb ("make" is not a synonym of "perform").`,
+  `hypernym: a strict kind-of link. Every instance of the source is an instance of the target, and the target also covers other kinds. Substitution test: if the source gloss is "A …" or "An …" followed by the target word, or the target word on its own paraphrases the source sense, the two are synonyms, not a hypernym pair ("number" meaning "a quantity of people or things" is not a kind of "quantity"). Pass only when you can name the concrete feature that sets the source apart from the other kinds of the target, and name it in the reason. It holds only between two nouns or two verbs. A head as generic as ${quoted(GENERIC_HYPERNYM_HEADS)} tells a learner nothing: fail it, because a more specific head exists ("parry" is a kind of "block", not of "meet").`,
+  'antonym: conventional opposites on one semantic dimension. Mere difference is not enough. Co-hyponyms of one set, such as titles ("Mrs." and "Miss"), colours, days, months, or numbers, are not antonyms.',
+  'part_of: the source is a distinct component or region of the target. A material, substance, or ingredient the target is made from is not a part, and neither is something located in, used by, or associated with it, or a generic part any object has, such as a back, side, or top. A body part, organ, or limb is never part of a person-type noun (a role, kinship term, occupation, title, or nickname): a head is part of a person, not of a princess, and a hand is not part of a worker.',
   'The source and the target must be different words.',
 ]
 
 const GLOSSES_ARE_PARAPHRASES =
   'Glosses are short paraphrases. Judge the relation between the words in these senses, and do not fail a pair over a detail one gloss happens to mention and the other omits, such as a transitive use or an extension in time.'
 
-function relationRubric(type: RelationType, source: GlossedSense, target: GlossedSense): string {
+function relationRubric(
+  type: RelationType,
+  source: GlossedSense,
+  target: GlossedSense & Pick<SubjectViews['sense'], 'siblings'>,
+): string {
   return [
     'Is this relation between two English word senses correct, and is its type the most accurate one?',
     `Source: ${describe(source)}.`,
@@ -299,7 +364,8 @@ function relationRubric(type: RelationType, source: GlossedSense, target: Glosse
     GLOSSES_ARE_PARAPHRASES,
     'The types mean:',
     ...RELATION_TYPE_RULES.map((rule) => `- ${rule}`),
-    'pass: the claim holds for these senses and no other type fits better. fail: the claim is false for these senses, or another type fits better. uncertain: you cannot tell.',
+    listSenses(`Other senses of the target ${quote(target.lemma)}`, target.siblings),
+    'pass: the claim holds for these senses and no other type fits better. fail: the claim is false for these senses, another type fits better, or another sense of the target listed above is the better match for the source. uncertain: you cannot tell.',
   ].join('\n')
 }
 
@@ -595,6 +661,43 @@ function orientRelation(subjectId: string, payload: FactPayloads['relation']): O
   const { type, target_sense_id: target } = payload
   if (relationSymmetry[type] === 'directed' || subjectId < target) return { subjectId, payload }
   return { subjectId: target, payload: { type, target_sense_id: subjectId as SenseId } }
+}
+
+/**
+ * The (sense, entry) slots a relation occupies: its source toward the target's entry, and for a
+ * symmetric type also its target toward the source's entry, since it reads the same from both ends.
+ */
+function relationSlots({ payload: { type }, subject, target }: Link<'relation'>): SenseEnd[] {
+  const forward = { sense: subject.sense, entry: target.entry }
+  if (relationSymmetry[type] === 'directed') return [forward]
+  return [forward, { sense: target.sense, entry: subject.entry }]
+}
+
+const sameSlot = (a: SenseEnd, b: SenseEnd) => a.sense === b.sense && a.entry === b.entry
+
+/**
+ * One sense relates to another entry by one type only: a word is not both a synonym and a kind of
+ * the same word. Two entries are never each a kind of the other, in any of their senses.
+ */
+function admitRelationLink(link: Link<'relation'>, live: readonly Link<'relation'>[]): string | null {
+  const slots = relationSlots(link)
+  const { type } = link.payload
+  const rival = live.find(
+    (other) =>
+      other.payload.type !== type && relationSlots(other).some((slot) => slots.some((own) => sameSlot(own, slot))),
+  )
+  if (rival) {
+    return `This sense already has a live ${rival.payload.type} relation (${rival.id}) to a sense of the target's entry; a sense relates to another entry by one type only. Retract that fact first if ${type} is the better type.`
+  }
+  if (type !== 'hypernym') return null
+  const reverse = live.find(
+    (other) =>
+      other.payload.type === 'hypernym' &&
+      other.subject.entry === link.target.entry &&
+      other.target.entry === link.subject.entry,
+  )
+  if (!reverse) return null
+  return `A live hypernym relation (${reverse.id}) already makes a sense of the target's entry a kind of this entry; two entries cannot each be a kind of the other.`
 }
 
 const labelled = (key: string, ...labels: Array<string | undefined>) =>
@@ -1006,13 +1109,14 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     contentKey: ({ type, target_sense_id }) => `${type}|${target_sense_id}`,
     target: ({ target_sense_id }) => target_sense_id,
     orient: orientRelation,
+    admitLink: admitRelationLink,
     plan: ({ type }, { subject, target }) =>
       withGloss(subject, (source) =>
         withGloss(target, (other) =>
           jevThenLlm(
             { relation: relationQuestions[type](`${describe(source)}, and ${describe(other)}`) },
             relationRubric(type, source, other),
-            RELATION_JEV_FLOOR,
+            RELATION_JEV_FLOORS[type],
           ),
         ),
       ),
@@ -1117,6 +1221,11 @@ export function admissionOf<K extends FactKind>(
   subject: AdmissionViews[SubjectTypeOf[K]],
 ): string | null {
   return factKinds[kind].admit?.(payload, subject) ?? null
+}
+
+/** Why the link may not join its two entries, given the live links of its kind between them; null for kinds without a link rule. */
+export function linkAdmissionOf<K extends FactKind>(kind: K, link: Link<K>, live: readonly Link<K>[]): string | null {
+  return factKinds[kind].admitLink?.(link, live) ?? null
 }
 
 export function contentKeyOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): string {

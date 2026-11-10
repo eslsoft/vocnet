@@ -40,11 +40,11 @@ Feature: Facts and review
     Then Jev settles only a pass, and the LLM settles every verdict
 
   @facts/relation-jev-floor @domain
-  Scenario: A relation Jev all but rules out gets no second opinion
-    Given a relation fact
-    When Jev answers below the relation floor, far under its fail line
+  Scenario: The LLM never overrules a Jev fail on a relation
+    Given a relation fact of any type
+    When Jev answers below the relation floor of 0.5, its fail line
     Then the fail settles the fact without asking the LLM
-    And a Jev fail above the floor still goes to the LLM
+    And only Jev's uncertain band goes to the LLM, while other kinds keep no floor
 
   @facts/second-opinion-chain @usecase
   Scenario: The LLM second opinion decides what Jev does not pass
@@ -132,6 +132,46 @@ Feature: Facts and review
     Then the LLM is asked whether the claim holds and its type is the most accurate one
     And the rubric says substitutable senses are synonyms, hypernyms are strict kind-of links between nouns or verbs with informative heads, and part_of is a distinct component, not a material, ingredient, or generic part
     And it judges the relation between the words, not a detail one gloss mentions and the other omits
+
+  @facts/relation-rubric-audit @domain
+  Scenario: The relation rubric names the failures an audit found
+    Given a relation fact
+    When its second opinion is planned
+    Then the rubric fails a body part as part of a person-type noun, a hypernym the substitution test shows is a synonym, a hypernym without a named distinguishing feature, and a near-generic head
+    And it fails co-hyponyms of one set as antonyms, and a light verb as a synonym of a full verb
+
+  @facts/relation-target-senses @usecase
+  Scenario: The relation reviewer sees the target's other senses
+    Given a relation to a sense of an entry with several senses
+    When the LLM reviews it
+    Then the rubric lists the target entry's other senses
+    And fails the relation when another sense of the target is the better match
+
+  @facts/relation-one-type-per-entry @domain
+  Scenario: A sense relates to another entry by one type only
+    Given a live relation from a sense to a sense of another entry
+    When a relation of another type is submitted between that sense and any sense of that entry, from either end of a symmetric type
+    Then it is refused with the live relation it conflicts with
+    And a relation of the same type, or from another sense, is admitted, and a rejected relation revived beside a rival is refused too
+
+  @facts/relation-no-hypernym-cycle @domain
+  Scenario: Two entries are never each a kind of the other
+    Given a live hypernym from a sense of one entry to a sense of another
+    When a hypernym is submitted the other way between any of their senses
+    Then it is refused
+
+  @facts/relation-write-rules-api @api
+  Scenario: The relation write rules answer 422
+    Given a published synonym between two entries
+    When an agent submits a hypernym between the same sense and the other entry, or a hypernym that closes a 2-cycle
+    Then the API answers 422 invalid_reference naming the rule and the live relation
+
+  @facts/relations-strict-revalidate @api
+  Scenario: Relations published under the lenient rules are judged again
+    Given published relations: part_of to person-type nouns, LLM passes over a Jev answer under the floor, and structural conflicts
+    When the relations_strict_revalidate migration runs
+    Then each of them is marked for revalidation and stays public
+    And a relation Jev passed with no conflict, and a body part as part of "person" itself, are left alone
 
   @facts/hypernym-question @domain
   Scenario: Jev's hypernym question rules out synonymy and generic heads

@@ -5,12 +5,14 @@ import {
   contentKeyOf,
   factKinds,
   inflectionKeysOf,
+  type Link,
+  linkAdmissionOf,
   MAX_COLLOCATIONS,
   MAX_TOPICS_PER_SENSE,
   meaningKeyOf,
   orientOf,
   planReview,
-  RELATION_JEV_FLOOR,
+  RELATION_JEV_FLOORS,
   type ReviewPlan,
   type ReviewRequest,
   rereviewOf,
@@ -24,7 +26,12 @@ const hospital = 'hospital-doctor' as TopicId
 const hospitalView = { category: 'Body and health', topic: 'At the doctor and hospital' }
 const money = { pos: 'noun' as const, gloss: 'an institution that keeps money' }
 const bank = { lemma: 'bank', pos: 'noun' as const, gloss: 'land beside a river', siblings: [money] }
-const shore = { lemma: 'shore', pos: 'noun' as const, gloss: 'the land along the edge of water', siblings: [] }
+const shore = {
+  lemma: 'shore',
+  pos: 'noun' as const,
+  gloss: 'the land along the edge of water',
+  siblings: [{ pos: 'verb' as const, gloss: 'to support with props' }],
+}
 const bankEntry = { lemma: 'bank', senses: [{ ...money, id: target }], inflectionOf: [], cefr: [], caseVariants: [] }
 const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [], cefr: [], caseVariants: [] }
 
@@ -37,6 +44,49 @@ const llmPrompt = (plan: ReviewPlan) => {
   const last = requests(plan).at(-1)
   return last?.reviewer === 'llm' ? last.prompt : undefined
 }
+
+const sense = (n: number) => `00000000-0000-4000-8000-00000000010${n}` as SenseId
+const link = (
+  id: string,
+  type: 'synonym' | 'antonym' | 'hypernym' | 'part_of',
+  from: [number, string],
+  to: [number, string],
+): Link<'relation'> => ({
+  id: id as Link<'relation'>['id'],
+  payload: { type, target_sense_id: sense(to[0]) },
+  subject: { sense: sense(from[0]), entry: from[1] as Link<'relation'>['subject']['entry'] },
+  target: { sense: sense(to[0]), entry: to[1] as Link<'relation'>['target']['entry'] },
+})
+
+describe('relation link rules', () => {
+  it('lets a sense relate to another entry by one type only, counting symmetric types from both ends [spec: facts/relation-one-type-per-entry]', () => {
+    const synonym = link('f1', 'synonym', [1, 'number'], [2, 'quantity'])
+    const hypernym = link('new', 'hypernym', [1, 'number'], [3, 'quantity'])
+    expect(linkAdmissionOf('relation', hypernym, [synonym])).toContain(
+      'This sense already has a live synonym relation (f1) to a sense of the target',
+    )
+    const mirrored = link('new', 'hypernym', [2, 'quantity'], [1, 'number'])
+    expect(linkAdmissionOf('relation', mirrored, [synonym])).toContain('one type only')
+    const sameType = link('new', 'synonym', [1, 'number'], [3, 'quantity'])
+    expect(linkAdmissionOf('relation', sameType, [synonym])).toBeNull()
+    const otherSense = link('new', 'hypernym', [4, 'number'], [3, 'quantity'])
+    expect(linkAdmissionOf('relation', otherSense, [synonym])).toBeNull()
+    const partOf = link('f2', 'part_of', [5, 'head'], [6, 'body'])
+    const reversedAntonym = link('new', 'antonym', [6, 'body'], [5, 'head'])
+    expect(linkAdmissionOf('relation', reversedAntonym, [partOf])).toContain('live part_of relation (f2)')
+  })
+
+  it('refuses a hypernym that would make two entries each a kind of the other [spec: facts/relation-no-hypernym-cycle]', () => {
+    const up = link('f1', 'hypernym', [1, 'shock'], [2, 'surprise'])
+    const down = link('new', 'hypernym', [3, 'surprise'], [4, 'shock'])
+    expect(linkAdmissionOf('relation', down, [up])).toContain(
+      'A live hypernym relation (f1) already makes a sense of the target',
+    )
+    const partOf = link('new', 'part_of', [3, 'surprise'], [4, 'shock'])
+    expect(linkAdmissionOf('relation', partOf, [up])).toBeNull()
+    expect(linkAdmissionOf('example', link('x', 'synonym', [1, 'a'], [2, 'b']) as never, [])).toBeNull()
+  })
+})
 
 describe('fact-kind registry', () => {
   it('derives dedupe keys from the identifying payload only', () => {
@@ -194,12 +244,30 @@ describe('fact-kind registry', () => {
     expect(prompt?.user).toContain('Target: "shore" (noun), meaning "the land along the edge of water".')
     expect(prompt?.user).toContain('the two are synonyms, not a hypernym pair')
     expect(prompt?.user).toContain('only between two nouns or two verbs')
-    expect(prompt?.user).toContain('"cause", "do", "make", "activity", "thing"')
+    expect(prompt?.user).toContain('"person", "group"')
+    expect(prompt?.user).toContain('"be", "have"')
     expect(prompt?.user).toContain('distinct component or region')
     expect(prompt?.user).toContain('A material, substance, or ingredient the target is made from is not a part')
     expect(prompt?.user).toContain('a generic part any object has')
     expect(prompt?.user).toContain('do not fail a pair over a detail one gloss happens to mention and the other omits')
     expect(prompt?.user).toContain('another type fits better')
+    expect(prompt?.user).toContain('Other senses of the target "shore":\n- (verb) "to support with props"')
+    expect(prompt?.user).toContain('another sense of the target listed above is the better match')
+  })
+
+  it('names the audit failures in the relation rubric [spec: facts/relation-rubric-audit]', () => {
+    const prompt = llmPrompt(
+      planReview(
+        'relation',
+        { type: 'part_of', target_sense_id: target },
+        { subject: bank, target: shore, topic: null },
+      ),
+    )?.user
+    expect(prompt).toContain('a head is part of a person, not of a princess')
+    expect(prompt).toContain('Substitution test')
+    expect(prompt).toContain('name the concrete feature that sets the source apart')
+    expect(prompt).toContain('Co-hyponyms of one set, such as titles ("Mrs." and "Miss")')
+    expect(prompt).toContain('never a synonym of a full verb ("make" is not a synonym of "perform")')
   })
 
   it('lets Jev settle a relation it scores below the floor, and only a relation [spec: facts/relation-jev-floor]', () => {
@@ -210,8 +278,8 @@ describe('fact-kind registry', () => {
         { subject: bank, target: shore, topic: null },
       ),
     )
-    expect(jev).toMatchObject({ reviewer: 'jev', settlesFailBelow: RELATION_JEV_FLOOR })
-    expect(RELATION_JEV_FLOOR).toBeLessThan(0.21)
+    expect(jev).toMatchObject({ reviewer: 'jev', settlesFailBelow: 0.5 })
+    expect(Object.values(RELATION_JEV_FLOORS)).toEqual([0.5, 0.5, 0.5, 0.5])
     const [entryJev] = requests(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }))
     expect(entryJev).not.toHaveProperty('settlesFailBelow')
     expect(

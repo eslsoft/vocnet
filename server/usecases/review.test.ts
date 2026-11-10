@@ -264,6 +264,22 @@ describe('reviewFact', () => {
     expect(world.jevCalls[0]?.questions.relation).toContain('"a riverside"')
   })
 
+  it("shows the second opinion the target entry's other senses [spec: facts/relation-target-senses]", async () => {
+    const { world, sense } = await bankWorld()
+    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
+    const other = await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'noun', gloss: 'a riverside' })
+    await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'verb', gloss: 'to prop up' })
+    for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
+    world.answerJev(() => ({ model: 'jev-test', answers: { relation: 0.6 } }))
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'relation',
+      subject_id: sense.id,
+      payload: { type: 'synonym', target_sense_id: other.sense.id },
+    })
+    await reviewFact(world.deps, fact.id, 'trace-review')
+    expect(world.llmCalls.at(-1)?.user).toContain('Other senses of the target "shore":\n- (verb) "to prop up"')
+  })
+
   it('skips facts that are not pending, so duplicate deliveries change nothing [spec: facts/review-idempotent]', async () => {
     const { world, entryFact } = await bankWorld()
     await reviewFact(world.deps, entryFact.id, 'trace-review')
@@ -350,12 +366,17 @@ async function correctedRiverBank() {
     pos: 'noun',
     gloss: 'land along water',
   })
+  const { sense: prop } = await createSense(world.deps, agentA, {
+    entry_id: shoreEntry.id,
+    pos: 'noun',
+    gloss: 'a prop set against something',
+  })
   const submit = async (input: Parameters<typeof submitFact>[2]) => (await submitFact(world.deps, agentA, input)).fact
   const dependents = [
     await submit({ kind: 'example', subject_id: river.id, payload: { text: 'We sat on the bank.' } }),
     await submit({ kind: 'translation', subject_id: river.id, payload: { language: 'zh', text: '河岸' } }),
     await submit({ kind: 'relation', subject_id: river.id, payload: { type: 'synonym', target_sense_id: shore.id } }),
-    await submit({ kind: 'relation', subject_id: shore.id, payload: { type: 'hypernym', target_sense_id: river.id } }),
+    await submit({ kind: 'relation', subject_id: prop.id, payload: { type: 'hypernym', target_sense_id: river.id } }),
   ]
   const unrelated = await submit({ kind: 'example', subject_id: shore.id, payload: { text: 'Waves hit the shore.' } })
   await drain(world)

@@ -10,7 +10,6 @@ import {
   rereviewOf,
   revalidatedBy,
   type SenseGloss,
-  type SenseView,
   type SubjectTypeOf,
   type SubjectViews,
   targetOf,
@@ -138,11 +137,6 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
   sense: (deps, id) => senseContext(deps, id as SenseId),
 }
 
-async function targetView(deps: ReviewDeps, id: SenseId): Promise<SenseView> {
-  const { lemma, pos, gloss } = await senseContext(deps, id)
-  return { lemma, pos, gloss }
-}
-
 /** A leaf topic with its category's name; null when the id names no leaf topic. */
 async function topicView(deps: ReviewDeps, id: TopicId): Promise<TopicView | null> {
   const topic = await deps.topics.find(id)
@@ -162,7 +156,7 @@ async function loadContext<K extends FactKind>(
   const topic = topicOf(fact.kind, fact.payload)
   return {
     subject: subject as SubjectViews[SubjectTypeOf[K]],
-    target: target ? await targetView(deps, target) : null,
+    target: target ? await senseContext(deps, target) : null,
     topic: topic ? await topicView(deps, topic) : null,
   }
 }

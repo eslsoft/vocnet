@@ -1,6 +1,6 @@
 import type { EntrySnapshot, StoredSenseSummary, StoredSummary } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
-import type { CefrListing, JevQuestions, LlmPrompt, Rereview } from '@server/domain/fact-kinds'
+import type { CefrListing, JevQuestions, Link, LlmPrompt, Rereview } from '@server/domain/fact-kinds'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
@@ -118,6 +118,8 @@ export interface FactRepo {
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
   /** The live facts of a kind about a subject, oldest first. */
   listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
+  /** The live facts of a linking kind whose subject and target senses belong one to each of the two entries. */
+  listLiveLinks<K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]): Promise<Link<K>[]>
   /** The live (pending or published) correction that supersedes this fact, if any. */
   findLiveCorrection(id: FactId): Promise<Fact | null>
   /**

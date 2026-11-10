@@ -1,6 +1,6 @@
 import type { EntrySnapshot, StoredSenseSummary } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
-import { factKinds } from '@server/domain/fact-kinds'
+import { factKinds, type Link } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
@@ -23,7 +23,7 @@ import type {
   WorkScores,
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
-import type { EntryId, FactId, Pos, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, Pos, SenseId, TopicId } from '@shared/facts'
 import type { FeedbackId } from '@shared/feedback'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
 import type { WorkLeaseId } from '@shared/work'
@@ -423,6 +423,24 @@ export function fakeWorld(): FakeWorld {
         touch([fact.subjectId, fact.objectId])
         touchLinked(fact)
         return fact
+      },
+      listLiveLinks: async <K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]) => {
+        const entryOf = (id: string | null) => world.senses.find((sense) => sense.id === id)?.entryId
+        return world.facts.flatMap((fact): Link<K>[] => {
+          const subject = entryOf(fact.subjectId)
+          const target = entryOf(fact.objectId)
+          if (fact.kind !== kind || !live(fact) || !subject || !target || subject === target) return []
+          if (!between.includes(subject) || !between.includes(target)) return []
+          const { id, payload, subjectId, objectId } = fact as FactOf<K>
+          return [
+            {
+              id,
+              payload,
+              subject: { sense: subjectId as SenseId, entry: subject },
+              target: { sense: objectId as SenseId, entry: target },
+            },
+          ]
+        })
       },
       findLiveCorrection: async (id) => world.facts.find((fact) => fact.supersedesId === id && live(fact)) ?? null,
       transition: async ({

@@ -4,6 +4,8 @@ import {
   admissionOf,
   contentKeyOf,
   factKinds,
+  type Link,
+  linkAdmissionOf,
   orientOf,
   type SubjectType,
   type SubjectTypeOf,
@@ -130,14 +132,12 @@ export async function submitFact(
   const topic = topicOf(kind, payload)
   if (topic) await assertLeafTopic(deps, topic)
   const target = targetOf(kind, payload)
-  if (target) {
-    const targetSense = await deps.nodes.findSense(target)
-    if (!targetSense) throw new InvalidReferenceError(`Target sense ${target} does not exist.`)
-    if (targetSense.entryId === entryId) {
-      throw new InvalidReferenceError(
-        'A relation links senses of two different entries; both senses belong to one entry.',
-      )
-    }
+  const targetSense = target && (await deps.nodes.findSense(target))
+  if (target && !targetSense) throw new InvalidReferenceError(`Target sense ${target} does not exist.`)
+  if (targetSense && targetSense.entryId === entryId) {
+    throw new InvalidReferenceError(
+      'A relation links senses of two different entries; both senses belong to one entry.',
+    )
   }
 
   const contentKey = contentKeyOf(kind, payload)
@@ -145,12 +145,21 @@ export async function submitFact(
   if (existing) return { fact: existing, created: false }
 
   if (spec.admit) await assertAdmitted(kind, payload, subject)
+  const factId = deps.ids.fact()
+  if (targetSense) {
+    await assertLinkAdmitted(deps, kind, {
+      id: factId,
+      payload,
+      subject: { sense: subjectId as SenseId, entry: entryId },
+      target: { sense: targetSense.id, entry: targetSense.entryId },
+    })
+  }
   const supersedesId = input.supersedes_id ?? null
   if (supersedesId) await assertSupersedable(deps, supersedesId, kind, subjectId)
 
   const now = deps.clock.now().toISOString()
   const draft = {
-    id: deps.ids.fact(),
+    id: factId,
     kind,
     subjectId,
     objectId: target,
@@ -184,6 +193,40 @@ async function assertAdmitted<K extends FactKind>(
 ): Promise<void> {
   const refusal = admissionOf(kind, payload, await subject.admission())
   if (refusal) throw new InvalidReferenceError(refusal)
+}
+
+/**
+ * Runs the kind's link rule against the live links between the two entries as they are now; a
+ * read before the write, as `admit` is, so two concurrent submissions can both pass it.
+ */
+async function assertLinkAdmitted<K extends FactKind>(
+  deps: Pick<Deps, 'facts'>,
+  kind: K,
+  link: Link<K>,
+): Promise<void> {
+  if (!factKinds[kind].admitLink) return
+  const live = await deps.facts.listLiveLinks(kind, [link.subject.entry, link.target.entry])
+  const refusal = linkAdmissionOf(
+    kind,
+    link,
+    live.filter(({ id }) => id !== link.id),
+  )
+  if (refusal) throw new InvalidReferenceError(refusal)
+}
+
+/** A stored fact that links two senses, with the entries they belong to; nodes never outlive their facts. */
+async function storedLink(deps: Pick<Deps, 'nodes'>, fact: Fact, targetId: SenseId): Promise<Link<FactKind>> {
+  const [subject, target] = await Promise.all([
+    deps.nodes.findSense(fact.subjectId as SenseId),
+    deps.nodes.findSense(targetId),
+  ])
+  if (!subject || !target) throw new Error(`Fact ${fact.id} links a sense that does not exist.`)
+  return {
+    id: fact.id,
+    payload: fact.payload,
+    subject: { sense: subject.id, entry: subject.entryId },
+    target: { sense: target.id, entry: target.entryId },
+  }
 }
 
 /** The subject of a stored fact, which nodes never outlive. */
@@ -273,6 +316,8 @@ export async function rereviewFact(
     const reviving = !isLive(fact.status)
     if (reviving && factKinds[fact.kind].admit)
       await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact))
+    if (reviving && fact.objectId)
+      await assertLinkAdmitted(deps, fact.kind, await storedLink(deps, fact, fact.objectId))
     const { maxLive } = factKinds[fact.kind]
     const liveBelow = reviving && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
     const originalPublished = (reviving && fact.supersedesId) || undefined

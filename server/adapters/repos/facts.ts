@@ -1,8 +1,16 @@
-import { entries, facts } from '@server/db/schema'
-import type { Fact } from '@server/domain/fact'
-import { factKinds, type Rereview } from '@server/domain/fact-kinds'
+import { entries, facts, senses } from '@server/db/schema'
+import type { Fact, FactOf } from '@server/domain/fact'
+import { factKinds, type Link, type Rereview } from '@server/domain/fact-kinds'
 import type { FactRepo } from '@server/usecases/ports'
-import { type FactId, type FactKind, type FactStatus, factKindSchema, factStatusSchema } from '@shared/facts'
+import {
+  type EntryId,
+  type FactId,
+  type FactKind,
+  type FactStatus,
+  factKindSchema,
+  factStatusSchema,
+  type SenseId,
+} from '@shared/facts'
 import {
   and,
   asc,
@@ -147,6 +155,34 @@ export function createFactRepo(db: Db): FactRepo {
         .where(and(eq(facts.subjectId, subjectId), eq(facts.kind, kind), liveStatus))
         .orderBy(asc(facts.createdAt), asc(facts.id))
       return rows.map(toFact)
+    },
+
+    async listLiveLinks<K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]): Promise<Link<K>[]> {
+      const subjectSense = alias(senses, 'subject_sense')
+      const targetSense = alias(senses, 'target_sense')
+      const rows = await db
+        .select({ fact: facts, subjectEntry: subjectSense.entryId, targetEntry: targetSense.entryId })
+        .from(facts)
+        .innerJoin(subjectSense, eq(subjectSense.id, facts.subjectId))
+        .innerJoin(targetSense, eq(targetSense.id, facts.objectId))
+        .where(
+          and(
+            eq(facts.kind, kind),
+            liveStatus,
+            inArray(subjectSense.entryId, [...between]),
+            inArray(targetSense.entryId, [...between]),
+            ne(subjectSense.entryId, targetSense.entryId),
+          ),
+        )
+      return rows.map(({ fact, subjectEntry, targetEntry }) => {
+        const { id, payload, subjectId, objectId } = toFact(fact) as FactOf<K>
+        return {
+          id,
+          payload,
+          subject: { sense: subjectId as SenseId, entry: subjectEntry as EntryId },
+          target: { sense: objectId as SenseId, entry: targetEntry as EntryId },
+        }
+      })
     },
 
     async findLiveCorrection(id) {
