@@ -605,7 +605,8 @@ describe('revalidation', () => {
     world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'Other sense.' }))
     await drain(world)
     const statuses = await Promise.all(dependents.map(async (fact) => (await getFact(world.deps, fact.id)).status))
-    expect(statuses).toEqual(['rejected', 'rejected', 'published', 'published'])
+    // Jev passes the synonym; a hypernym's pass is the rubric's, which fails it.
+    expect(statuses).toEqual(['rejected', 'rejected', 'published', 'rejected'])
     const visible = (await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]
     expect([visible?.examples.length, visible?.translations]).toEqual([0, {}])
   })

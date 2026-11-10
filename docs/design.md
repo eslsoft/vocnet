@@ -16,7 +16,8 @@ own and publishes it on its own.
   Corrections supersede published facts.
 - **Precise reviewer when one exists.** Facts that state a checkable
   proposition go to Jev first. Facts whose quality is a judgment go to a
-  general LLM. A Jev pass is trusted; anything else gets an LLM second opinion.
+  general LLM. A Jev pass is trusted unless the claim carries rules only the
+  rubric holds; anything else gets an LLM second opinion.
 - **Visibility is derived on read.** The public API shows a fact only when it
   and every node it references are published. The rule is one projection of
   the facts; the public view stores its result per entry so a read does not
@@ -319,6 +320,18 @@ follow:
 - **Floor.** `RELATION_JEV_FLOORS` in the registry is 0.5 for every type Jev
   judges, Jev's fail line: a Jev fail settles a relation, and the LLM decides only
   Jev's uncertain band (see Reviews). An antonym goes to the LLM alone.
+- **Gate.** Jev answers only whether the claim holds ("is the first a kind of
+  the second"). The layer rules of a hypernym and the most-general-whole rule of
+  a `part_of` live in the rubric alone, and after `work_items_relation_layers`
+  a confident Jev pass kept dog hypernym canine, cat feline, horse equid, and
+  head `part_of` animal. So `RELATION_JEV_SETTLES_PASS` is false for hypernym
+  and `part_of`: their Jev request carries `settlesPass: false`, Jev is a gate
+  whose fail under the floor still stands, and the LLM decides every other
+  answer, so a pass needs both. Sending these types to the LLM alone, as
+  antonyms are, would drop the gate the audit found most precise (90.7% for
+  Jev alone against 64% for the LLM over an unsure Jev): the LLM alone let
+  through head `part_of` princess. A synonym has no rule beyond Jev's question,
+  so its Jev pass still settles.
 - **Rubric.** The LLM rubric fails a body part, organ, or limb as part of a
   person-type noun (a role, kinship term, occupation, title, or nickname: a
   head is part of a person, not of a princess); applies a substitution test to
@@ -882,7 +895,9 @@ but only to choose the message.
   endpoint and must return JSON `{ verdict, confidence, reason }`.
 - **Second opinion.** Each kind names its reviewer chain in the registry, and
   `server/domain/review-chain.ts` says which verdicts settle a fact: Jev
-  settles only `pass`, and the LLM settles every verdict. A plan asks its
+  settles only `pass`, and not even that when its request carries
+  `settlesPass: false` (hypernym and `part_of`, see Relations), and the LLM
+  settles every verdict. A plan asks its
   kind's whole chain, or the LLM alone for a subject Jev misjudges; the LLM
   ends every chain, so a plan may skip the reviewers before it, never it. When Jev fails or is
   unsure about an entry, sense, form, or relation, the LLM judges the same
@@ -1706,6 +1721,34 @@ meaning 23,613 (10,576 `translations`, 8,933 `category`, 4,104 `parts`), usage
 with a CEFR level (2,169 a CEFR noun), are all stage 1, so their categories
 follow their senses. `public_hypernyms` holds 8,059 everyday rows, and 224 of
 the 6,198 topic rows are on rare senses.
+
+That revalidation let a confident Jev pass keep everyday hypernyms to technical
+taxa and parts of narrower wholes, since Jev settled a pass without the rubric.
+Once Jev only gates hypernym and `part_of` (see Relations), the migration
+`relation_layer_review` brings the published ones to the rubric:
+
+1. A published everyday hypernym that no curator settled, whose target entry is
+   one of a short list of common technical taxa (arthropod, bovine, canine,
+   equid, feline, invertebrate, passerine, primate, rodent, ruminant,
+   ungulate), gets a pending correction by `admin:migration` with the same
+   target in the `biology` domain (content key `hypernym|<target>|biology`),
+   unless it already has a live correction or that biology fact is live. The
+   biology rubric reviews it, and once it publishes it supersedes the everyday
+   fact, so dog keeps canine in the biology layer instead of losing it to a
+   failed everyday revalidation. "mammal" is not on the list: it is a category
+   learners use, and the everyday rubric decides whether a single animal's
+   everyday category is it.
+2. Every other published hypernym and `part_of` that no curator settled and
+   that has no live correction is marked for review in place; one that fails
+   is rejected.
+3. Every worklist row is bumped.
+
+On a copy of the development database (15,831 entries) it ran in 2.3 s and
+created 15 biology corrections (dog canine and cat feline twice each, horse
+equid twice, goat and sheep ruminant, monkey and man primate, rat and mouse
+rodent, worm and sponge invertebrate, insect arthropod), marked 9,367 facts
+(8,293 hypernym, 1,074 `part_of`), left 5 curated facts alone, and made all
+15,831 rows stale.
 
 The learner priority is stored on the row, and copied onto its items as their
 rank and `zipf_order`, so a claim stays one index scan.

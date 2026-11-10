@@ -41,6 +41,13 @@ describe('review chain', () => {
     expect(settles(floored, answered('fail', 0.3))).toBe(false)
   })
 
+  it('leaves a gated Jev pass to the LLM while its fail under the floor still settles [spec: facts/relation-jev-gate]', () => {
+    const gate: ReviewRequest = { ...jevAsk, settlesFailBelow: 0.5, settlesPass: false }
+    expect(settles(gate, answered('pass', 0.97))).toBe(false)
+    expect(settles(gate, answered('uncertain', 0.6))).toBe(false)
+    expect(settles(gate, answered('fail', 0.2))).toBe(true)
+  })
+
   it('keeps a lone opinion as the review', () => {
     expect(chainVerdict([jev])).toEqual(jev)
   })

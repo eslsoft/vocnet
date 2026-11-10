@@ -46,6 +46,13 @@ Feature: Facts and review
     Then the fail settles the fact without asking the LLM
     And only Jev's uncertain band goes to the LLM, while other kinds keep no floor
 
+  @facts/relation-jev-gate @domain
+  Scenario: Jev only gates a hypernym or part_of
+    Given a hypernym of either layer, a part_of, and a synonym
+    When their reviews are planned and Jev answers
+    Then a Jev pass of the hypernym or part_of goes on to the LLM, whose rubric holds the layer and whole rules, while its fail under the floor still settles
+    And a Jev pass still settles the synonym
+
   @facts/second-opinion-chain @usecase
   Scenario: The LLM second opinion decides what Jev does not pass
     Given a pending proposition fact

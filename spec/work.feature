@@ -236,6 +236,12 @@ Feature: Work items
     When the work_items_relation_layers migration runs
     Then the closure is a synonyms closure with the registry's key, marked for review in place with the hypernym, the curated fact is left alone, and every row is stale
 
+  @work/layer-review-migration @api
+  Scenario: The layer review release judges every published hypernym and part_of by the rubric
+    Given published everyday hypernyms to a technical taxon and to a category word, a part_of, a curated hypernym, and scored rows
+    When the relation_layer_review migration runs
+    Then the hypernym to the technical taxon gets a pending biology correction that supersedes it, the other hypernym and the part_of are marked for review in place, the curated fact is left alone, and every row is stale
+
   @work/rescore @usecase
   Scenario: Stale worklist rows drain a batch at a time
     Given stale worklist rows

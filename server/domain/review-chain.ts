@@ -15,19 +15,16 @@ export interface Opinion {
 export type ChainVerdict = Omit<Opinion, 'reviewer'> & { reviewer: ReviewerChain }
 
 /**
- * The verdicts with which a reviewer settles a fact when another reviewer follows it in the chain.
- * Jev's pass is reliable; its fail and uncertain bands misjudge often enough that the LLM decides
- * them, unless the request sets a floor its answer falls under. The last reviewer in a chain
- * settles whatever it says.
+ * Whether a reviewer's opinion settles the fact when another reviewer follows it in the chain.
+ * Jev's pass is reliable unless the request keeps the pass for the LLM, whose rubric holds rules
+ * Jev's question does not; its fail and uncertain bands misjudge often enough that the LLM decides
+ * them, unless the request sets a floor its answer falls under. The last reviewer in a chain, the
+ * LLM, settles whatever it says.
  */
-const settlingVerdicts: Record<ReviewerKind, readonly Verdict[]> = {
-  jev: ['pass'],
-  llm: ['pass', 'uncertain', 'fail'],
-}
-
 export function settles(request: ReviewRequest, opinion: Opinion): boolean {
-  if (settlingVerdicts[request.reviewer].includes(opinion.verdict)) return true
-  return request.reviewer === 'jev' && opinion.confidence < (request.settlesFailBelow ?? 0)
+  if (request.reviewer === 'llm') return true
+  if (opinion.verdict === 'pass') return request.settlesPass ?? true
+  return opinion.confidence < (request.settlesFailBelow ?? 0)
 }
 
 /** The last opinion decides. A chain of one keeps its reviewer's raw detail; a longer one keeps every opinion. */

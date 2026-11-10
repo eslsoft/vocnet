@@ -144,8 +144,11 @@ export interface LlmPrompt {
 }
 
 interface ReviewerRequests {
-  /** `settlesFailBelow`: a Jev answer under this settles the fact as failed, with no second opinion. */
-  jev: { questions: JevQuestions; settlesFailBelow?: number }
+  /**
+   * `settlesFailBelow`: a Jev answer under this settles the fact as failed, with no second opinion.
+   * `settlesPass` false: Jev only gates the claim, and the LLM decides every answer it does not fail.
+   */
+  jev: { questions: JevQuestions; settlesFailBelow?: number; settlesPass?: false }
   llm: { prompt: LlmPrompt }
 }
 
@@ -299,16 +302,17 @@ function llm(user: string): ReviewPlan<readonly ['llm']> {
   return { kind: 'review', requests: [llmRequest(user)] }
 }
 
-/** Jev judges first; when it does not pass the fact, the LLM gives a second opinion on the same claim. */
+/** Jev judges first; when it does not settle the fact, the LLM gives a second opinion on the same claim. */
 function jevThenLlm(
   questions: JevQuestions,
   rubric: string,
-  settlesFailBelow?: number,
+  { settlesFailBelow, settlesPass = true }: { settlesFailBelow?: number; settlesPass?: boolean } = {},
 ): ReviewPlan<readonly ['jev', 'llm']> {
   const jev: ReviewRequest<'jev'> = {
     reviewer: 'jev',
     questions,
     ...(settlesFailBelow === undefined ? {} : { settlesFailBelow }),
+    ...(settlesPass ? {} : { settlesPass: false }),
   }
   return { kind: 'review', requests: [jev, llmRequest(rubric)] }
 }
@@ -326,6 +330,20 @@ export const RELATION_JEV_FLOORS: Record<Exclude<RelationType, 'antonym'>, numbe
   hypernym: 0.5,
   part_of: 0.5,
   synonym: 0.5,
+}
+
+/**
+ * Whether a Jev pass settles a relation of the type. Jev answers only whether the claim holds; the
+ * layer rules of a hypernym (no technical taxon in the everyday layer, only a real term of a
+ * domain's taxonomy) and the most-general-whole rule of a part_of live in the rubric alone, so a
+ * confident Jev passed dog hypernym canine and head part_of animal. Jev stays a gate for those
+ * types, its fail under the floor standing as the audit found it should, and the LLM decides every
+ * other answer, so a pass needs both. A synonym has no rule beyond Jev's question.
+ */
+export const RELATION_JEV_SETTLES_PASS: Record<Exclude<RelationType, 'antonym'>, boolean> = {
+  hypernym: false,
+  part_of: false,
+  synonym: true,
 }
 
 type GlossedSense = SenseView & { gloss: string }
@@ -1676,7 +1694,10 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
                   ),
                 },
                 relationRubric(payload, source, other),
-                RELATION_JEV_FLOORS[payload.type],
+                {
+                  settlesFailBelow: RELATION_JEV_FLOORS[payload.type],
+                  settlesPass: RELATION_JEV_SETTLES_PASS[payload.type],
+                },
               ),
         ),
       ),

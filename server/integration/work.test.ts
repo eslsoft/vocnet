@@ -537,4 +537,55 @@ describe('work items', () => {
     ).first()
     expect(fresh).toEqual({ n: 3, fresh: 0 })
   })
+
+  it('moves everyday hypernyms to a technical taxon into biology and marks the other hypernyms and parts [spec: work/layer-review-migration]', async () => {
+    const token = await issueAgentKey()
+    const sense = async (lemma: string, gloss: string) =>
+      (await postSense(token, (await createEntry(token, lemma)).entry.id, gloss)).sense.id
+    const [dog, canine, animal, head] = [
+      await sense('dog', 'An animal kept as a pet.'),
+      await sense('canine', 'An animal of the dog family.'),
+      await sense('animal', 'A living creature.'),
+      await sense('head', 'The top part of the body.'),
+    ]
+    const relation = (subject: string, type: string, target: string) =>
+      submitFact(token, { kind: 'relation', subject_id: subject, payload: { type, target_sense_id: target } })
+    const taxon = await relation(dog, 'hypernym', canine)
+    const category = await relation(dog, 'hypernym', animal)
+    const part = await relation(head, 'part_of', animal)
+    const curated = await relation(canine, 'hypernym', animal)
+    await settle()
+    await env.DB.prepare(`update facts set review = json_set(review, '$.reviewer', 'curator') where id = ?`)
+      .bind(curated.id)
+      .run()
+    await env.DB.prepare('update worklist set scored_revision = revision').run()
+    const migration = env.TEST_MIGRATIONS.find((candidate) => candidate.name.endsWith('_relation_layer_review.sql'))
+    if (!migration) throw new Error('The relation_layer_review migration is missing.')
+    for (const query of migration.queries) await env.DB.prepare(query).run()
+    const marked = (id: string) =>
+      env.DB.prepare('select status, revalidate_since is not null as marked from facts where id = ?').bind(id).first()
+    expect(await marked(taxon.id)).toEqual({ status: 'published', marked: 0 })
+    expect(await marked(category.id)).toEqual({ status: 'published', marked: 1 })
+    expect(await marked(part.id)).toEqual({ status: 'published', marked: 1 })
+    expect(await marked(curated.id)).toEqual({ status: 'published', marked: 0 })
+    const corrections = await env.DB.prepare(
+      'select subject_id, object_id, content_key, payload, status, author from facts where supersedes_id is not null',
+    ).all()
+    expect(corrections.results).toEqual([
+      {
+        subject_id: dog,
+        object_id: canine,
+        content_key: `hypernym|${canine}|biology`,
+        payload: JSON.stringify({ type: 'hypernym', target_sense_id: canine, domain: 'biology' }),
+        status: 'pending',
+        author: 'admin:migration',
+      },
+    ])
+    const supersedes = await env.DB.prepare('select supersedes_id from facts where supersedes_id is not null').first()
+    expect(supersedes).toEqual({ supersedes_id: taxon.id })
+    const fresh = await env.DB.prepare(
+      'select count(*) as n, sum(revision = scored_revision) as fresh from worklist',
+    ).first()
+    expect(fresh).toEqual({ n: 4, fresh: 0 })
+  })
 })

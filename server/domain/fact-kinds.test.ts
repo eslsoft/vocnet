@@ -19,6 +19,7 @@ import {
   orientOf,
   planReview,
   RELATION_JEV_FLOORS,
+  RELATION_JEV_SETTLES_PASS,
   type ReviewPlan,
   type ReviewRequest,
   referencesOf,
@@ -172,6 +173,20 @@ describe('relation layers', () => {
     expect(partOf).toContain('A part attaches to the most general common whole it is a part of')
     expect(partOf).toContain('a wing is part of a bird, not of a turkey')
     expect(partOf).not.toContain('This hypernym is in the everyday layer')
+  })
+
+  it('keeps the pass of a hypernym or part_of for the rubric, and of a synonym for Jev [spec: facts/relation-jev-gate]', () => {
+    const jevOf = (payload: FactPayloads['relation']) =>
+      requests(planReview('relation', payload, { subject: source, target, topic: null, attempts: [] }))[0]
+    for (const payload of [
+      { type: 'hypernym', target_sense_id: animal },
+      { type: 'hypernym', target_sense_id: animal, domain: 'biology' },
+      { type: 'part_of', target_sense_id: animal },
+    ] as const) {
+      expect(jevOf(payload)).toMatchObject({ reviewer: 'jev', settlesFailBelow: 0.5, settlesPass: false })
+    }
+    expect(jevOf({ type: 'synonym', target_sense_id: animal })).not.toHaveProperty('settlesPass')
+    expect(RELATION_JEV_SETTLES_PASS).toEqual({ hypernym: false, part_of: false, synonym: true })
   })
 })
 
