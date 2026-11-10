@@ -1,5 +1,6 @@
 import type {
   CollocationPattern,
+  DependentPreposition,
   FactKind,
   FactPayloads,
   FormType,
@@ -590,7 +591,6 @@ const grammarPatterns: Record<GrammarPattern, PatternSpec> = {
   object_ing: { name: 'an object and an -ing form', verb: 'keep someone waiting' },
   two_objects: { name: 'two objects', verb: 'give someone a book' },
   object_complement: { name: 'an object and a complement that describes it', verb: 'call someone a hero' },
-  preposition: { name: 'a particular preposition', verb: 'rely on', adjective: 'afraid of' },
 }
 
 const allPatterns = Object.keys(grammarPatterns) as GrammarPattern[]
@@ -603,14 +603,16 @@ const grammarRules: Record<
   { fields: readonly GrammarField[]; requires?: GrammarField; patterns: readonly GrammarPattern[] }
 > = {
   noun: { fields: ['countability'], requires: 'countability', patterns: [] },
-  verb: { fields: ['transitivity', 'patterns'], requires: 'transitivity', patterns: allPatterns },
+  verb: { fields: ['transitivity', 'patterns', 'prepositions'], requires: 'transitivity', patterns: allPatterns },
   adjective: {
-    fields: ['position', 'patterns'],
+    fields: ['position', 'patterns', 'prepositions'],
     patterns: allPatterns.filter((pattern) => grammarPatterns[pattern].adjective),
   },
 }
 
 const listed = (values: readonly string[]) => values.join(', ')
+const inWords = (values: readonly string[]) =>
+  values.length <= 2 ? values.join(' and ') : `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`
 
 const GRAMMAR_POS = Object.keys(grammarRules) as GrammarPos[]
 
@@ -619,7 +621,7 @@ function admitGrammar(grammar: Grammar, { pos }: AdmissionViews['sense']): strin
   const rule = grammarRules[pos as GrammarPos]
   const foreign = (Object.keys(grammar) as GrammarField[]).filter((field) => !rule.fields.includes(field))
   if (foreign.length > 0) {
-    return `The grammar of ${article(pos)} ${pos} sense names only ${rule.fields.join(' and ')}; remove ${listed(foreign)}.`
+    return `The grammar of ${article(pos)} ${pos} sense names only ${inWords(rule.fields)}; remove ${listed(foreign)}.`
   }
   if (rule.requires && grammar[rule.requires] === undefined) {
     return `The grammar of ${article(pos)} ${pos} sense names its ${rule.requires}.`
@@ -631,13 +633,14 @@ function admitGrammar(grammar: Grammar, { pos }: AdmissionViews['sense']): strin
   return null
 }
 
-/** One property per field, sorted patterns, so the same grammar in another order is the same fact. */
-function grammarKey({ countability, transitivity, position, patterns }: Grammar): string {
+/** One property per field, sorted lists, so the same grammar in another order is the same fact. */
+function grammarKey({ countability, transitivity, position, patterns, prepositions }: Grammar): string {
   return [
     countability && `countability:${countability}`,
     transitivity && `transitivity:${transitivity}`,
     position && `position:${position}`,
     patterns && `patterns:${[...patterns].sort().join(',')}`,
+    prepositions && `prepositions:${[...prepositions].sort().join(',')}`,
   ]
     .filter((part) => part !== undefined)
     .join('|')
@@ -667,9 +670,14 @@ function patternClaim(pattern: GrammarPattern, pos: Pos): string {
   return `commonly followed by ${name} (a pattern like "${pos === 'adjective' ? adjective : verb}")`
 }
 
+const prepositionClaim = (preposition: DependentPreposition): [string, string] => [
+  `preposition_${preposition.replaceAll(' ', '_')}`,
+  `commonly followed by the preposition ${quote(preposition)}`,
+]
+
 /** Each property the fact claims, keyed as its Jev question is. */
 function grammarClaimsOf(
-  { countability, transitivity, position, patterns }: Grammar,
+  { countability, transitivity, position, patterns, prepositions }: Grammar,
   pos: Pos,
 ): Array<[key: string, claim: string]> {
   const properties = [
@@ -680,6 +688,7 @@ function grammarClaimsOf(
   return [
     ...properties.flatMap(([key, claim]): Array<[string, string]> => (claim ? [[key, claim]] : [])),
     ...(patterns ?? []).map((pattern): [string, string] => [`pattern_${pattern}`, patternClaim(pattern, pos)]),
+    ...(prepositions ?? []).map(prepositionClaim),
   ]
 }
 
@@ -699,8 +708,9 @@ function grammarRubric(grammar: Grammar, subject: SubjectViews['sense'], sense: 
     'It claims the word in this sense is:',
     ...grammarClaimsOf(grammar, sense.pos).map(([, claim]) => `- ${claim}`),
     'Judge each claim for this sense only, never for another sense of the word.',
-    'pass: every claim holds for this sense. Patterns are the common ones a learner needs, not all of them: a pattern left out is not an error.',
-    'fail: any claim is wrong for this sense or holds only for another sense, or a pattern is rare or unnatural with this sense.',
+    'A named preposition claims that learners use that preposition after the word in this sense, as a learner\'s dictionary writes it ("rely on/upon sb/sth", "good at sth").',
+    'pass: every claim holds for this sense. Patterns and prepositions are the common ones a learner needs, not all of them: a pattern or preposition left out is not an error.',
+    'fail: any claim is wrong for this sense or holds only for another sense, a pattern is rare or unnatural with this sense, or a named preposition is not the one learners use with this sense or is rare with it.',
     listSenses('Other senses of this entry, for reference', subject.siblings),
   ].join('\n')
 }

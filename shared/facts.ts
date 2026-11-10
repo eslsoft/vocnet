@@ -91,10 +91,65 @@ export const grammarPatternSchema = z
     'object_ing',
     'two_objects',
     'object_complement',
-    'preposition',
   ])
   .meta({ id: 'GrammarPattern', description: 'A construction that commonly follows the word in this sense.' })
 export type GrammarPattern = z.infer<typeof grammarPatternSchema>
+
+// The prepositions and adverb particles a verb or adjective sense depends on, as learner's
+// dictionaries write them ("rely on/upon sb/sth"). Time and place adjuncts such as during, since,
+// and until are never selected by a word, so they are not listed.
+export const dependentPrepositionSchema = z
+  .enum([
+    'about',
+    'above',
+    'across',
+    'after',
+    'against',
+    'along',
+    'among',
+    'around',
+    'as',
+    'at',
+    'before',
+    'behind',
+    'below',
+    'beside',
+    'between',
+    'beyond',
+    'by',
+    'down',
+    'for',
+    'from',
+    'in',
+    'into',
+    'like',
+    'near',
+    'of',
+    'off',
+    'on',
+    'onto',
+    'out',
+    'out of',
+    'over',
+    'past',
+    'round',
+    'through',
+    'to',
+    'toward',
+    'towards',
+    'under',
+    'up',
+    'upon',
+    'with',
+    'within',
+    'without',
+  ])
+  .meta({
+    id: 'DependentPreposition',
+    description:
+      'A preposition or adverb particle that commonly follows the word in this sense, such as on in "rely on".',
+  })
+export type DependentPreposition = z.infer<typeof dependentPrepositionSchema>
 
 export const morphemeRoleSchema = z.enum(['prefix', 'root', 'suffix', 'base']).meta({
   id: 'MorphemeRole',
@@ -183,6 +238,10 @@ export const grammarPayloadSchema = z.strictObject({
     .max(6)
     .optional()
     .meta({ description: 'Verb and adjective senses only: the common patterns, not necessarily all of them.' }),
+  prepositions: z.array(dependentPrepositionSchema).min(1).max(4).optional().meta({
+    description:
+      'Verb and adjective senses only: the prepositions learners use after the word in this sense, such as ["on", "upon"] for rely; not necessarily all of them.',
+  }),
 })
 
 export const morphemeSchema = z
@@ -297,6 +356,10 @@ const submitPayloadSchemas = {
     .refine(
       ({ patterns }) => !patterns || new Set(patterns).size === patterns.length,
       'Each grammar pattern is listed once.',
+    )
+    .refine(
+      ({ prepositions }) => !prepositions || new Set(prepositions).size === prepositions.length,
+      'Each grammar preposition is listed once.',
     ),
   morphology: morphologyPayloadSchema.superRefine(({ parts }, ctx) => {
     for (const message of morphologyIssues(parts)) ctx.addIssue({ code: 'custom', message })

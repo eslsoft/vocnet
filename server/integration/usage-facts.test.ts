@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:test'
 import {
   createEntryResultSchema,
   createSenseResultSchema,
@@ -33,7 +34,7 @@ describe('grammar, word formation, and collocations', () => {
       {
         kind: 'grammar',
         subject_id: sense.id,
-        payload: { transitivity: 'both', patterns: ['to_infinitive', 'that_clause'] },
+        payload: { transitivity: 'both', patterns: ['to_infinitive', 'that_clause'], prepositions: ['on'] },
       },
       { kind: 'morphology', subject_id: entry.id, payload: { parts: [{ form: 'decide', role: 'base' }] } },
       { kind: 'collocation', subject_id: sense.id, payload: { text: 'decide against', pattern: 'verb_preposition' } },
@@ -52,6 +53,7 @@ describe('grammar, word formation, and collocations', () => {
       'transitivity',
       'pattern_to_infinitive',
       'pattern_that_clause',
+      'preposition_on',
     ])
     const collocation = factSchema.parse((await call(`/manage/v1/facts/${ids[2]}`, { token })).body)
     expect(collocation).toMatchObject({ status: 'published', review: { reviewer: 'llm' } })
@@ -66,6 +68,7 @@ describe('grammar, word formation, and collocations', () => {
       ...meta,
       transitivity: 'both',
       patterns: ['to_infinitive', 'that_clause'],
+      prepositions: ['on'],
     })
     expect(published?.collocations).toEqual([
       { id: ids[2], confidence: 0.88, verdict: 'pass', text: 'decide against', pattern: 'verb_preposition' },
@@ -85,7 +88,7 @@ describe('grammar, word formation, and collocations', () => {
     ).toEqual([
       422,
       'invalid_reference',
-      'The grammar of an adjective sense names only position and patterns; remove countability.',
+      'The grammar of an adjective sense names only position, patterns, and prepositions; remove countability.',
     ])
     expect(
       refusal(await submit(token, { kind: 'grammar', subject_id: sense.id, payload: { patterns: ['two_objects'] } })),
@@ -191,5 +194,106 @@ describe('grammar, word formation, and collocations', () => {
     expect(view.collocations.map((fact) => fact.id).sort()).toEqual(
       [collocationFix.id, ...collocations.slice(1).map((fact) => fact.id)].sort(),
     )
+  })
+
+  it('retracts live grammar with the bare preposition pattern and drops it from history [spec: facts/grammar-prepositions-migration]', async () => {
+    const token = await issueAgentKey()
+    const rely = await createEntry(token, 'rely')
+    const relySense = (await createSense(token, rely.entry.id, 'verb', 'To trust someone to help you.')).sense
+    const depend = await createEntry(token, 'depend')
+    const dependSense = (await createSense(token, depend.entry.id, 'verb', 'To be decided by something else.')).sense
+    const fond = await createEntry(token, 'fond')
+    const fondSense = (await createSense(token, fond.entry.id, 'adjective', 'Having a liking for someone.')).sense
+    const review = {
+      reviewer: 'jev',
+      model: 'jev-test',
+      verdict: 'pass',
+      confidence: 0.9,
+      reason: 'Jev pattern_preposition=0.9',
+      context: {},
+      detail: { answers: { pattern_preposition: 0.9 } },
+      reviewed_at: '2026-01-01T00:00:00.000Z',
+    }
+    const stored = async (subject: string, status: string, key: string, payload: object) => {
+      const id = crypto.randomUUID()
+      await env.DB.prepare(
+        `insert into facts (id, kind, subject_id, content_key, payload, status, exclusive, author, review, created_at, updated_at)
+         values (?, 'grammar', ?, ?, ?, ?, 1, 'agent:producer', ?, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+      )
+        .bind(id, subject, key, JSON.stringify(payload), status, JSON.stringify(review))
+        .run()
+      return id
+    }
+    const ids = {
+      published: await stored(relySense.id, 'published', 'transitivity:intransitive|patterns:preposition', {
+        transitivity: 'intransitive',
+        patterns: ['preposition'],
+      }),
+      pending: await stored(
+        dependSense.id,
+        'pending',
+        'transitivity:intransitive|patterns:preposition,that_clause,to_infinitive',
+        { transitivity: 'intransitive', patterns: ['preposition', 'that_clause', 'to_infinitive'] },
+      ),
+      rejected: await stored(relySense.id, 'rejected', 'transitivity:transitive|patterns:ing_form,preposition', {
+        transitivity: 'transitive',
+        patterns: ['ing_form', 'preposition'],
+      }),
+      bare: await stored(fondSense.id, 'rejected', 'patterns:preposition', { patterns: ['preposition'] }),
+    }
+    const revisions = async () =>
+      (
+        await env.DB.prepare(
+          'select entry_id, revision <> scored_revision as stale from worklist where entry_id in (?, ?, ?)',
+        )
+          .bind(rely.entry.id, depend.entry.id, fond.entry.id)
+          .all<{ entry_id: string; stale: number }>()
+      ).results
+    expect((await revisions()).every((row) => row.stale === 0)).toBe(true)
+
+    const migration = env.TEST_MIGRATIONS.find((candidate) => candidate.name.endsWith('_grammar_prepositions.sql'))
+    if (!migration) throw new Error('The grammar_prepositions migration is missing.')
+    for (const query of migration.queries) await env.DB.prepare(query).run()
+
+    const read = async (id: string) => factSchema.parse((await call(`/manage/v1/facts/${id}`, { token })).body)
+    const keyOf = async (id: string) =>
+      (await env.DB.prepare('select content_key from facts where id = ?').bind(id).first<{ content_key: string }>())
+        ?.content_key
+    const published = await read(ids.published)
+    expect(published).toMatchObject({ status: 'retracted', payload: { transitivity: 'intransitive' }, review })
+    expect(published.updated_at > '2026-01-01T00:00:00.000Z').toBe(true)
+    expect(await read(ids.pending)).toMatchObject({
+      status: 'retracted',
+      payload: { transitivity: 'intransitive', patterns: ['that_clause', 'to_infinitive'] },
+    })
+    expect(await read(ids.rejected)).toMatchObject({
+      status: 'rejected',
+      payload: { transitivity: 'transitive', patterns: ['ing_form'] },
+      review,
+      updated_at: '2026-01-01T00:00:00.000Z',
+    })
+    expect(await read(ids.bare)).toMatchObject({ status: 'rejected', payload: {} })
+    expect(await Promise.all(Object.values(ids).map(keyOf))).toEqual([
+      'transitivity:intransitive',
+      'transitivity:intransitive|patterns:that_clause,to_infinitive',
+      'transitivity:transitive|patterns:ing_form',
+      '',
+    ])
+    expect(Object.fromEntries((await revisions()).map((row) => [row.entry_id, row.stale]))).toEqual({
+      [rely.entry.id]: 1,
+      [depend.entry.id]: 1,
+      [fond.entry.id]: 0,
+    })
+
+    const named = await submit(token, {
+      kind: 'grammar',
+      subject_id: relySense.id,
+      payload: { transitivity: 'intransitive', prepositions: ['on', 'upon'] },
+    })
+    expect(named.status).toBe(201)
+    expect(factWriteResultSchema.parse(named.body).fact.payload).toEqual({
+      transitivity: 'intransitive',
+      prepositions: ['on', 'upon'],
+    })
   })
 })

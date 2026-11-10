@@ -107,6 +107,14 @@ describe('grammar, word formation, and collocation formats', () => {
       'Each grammar pattern is listed once.',
     ])
     expect(submit('grammar', sense, { patterns: ['gerund'] })).toHaveLength(1)
+    expect(submit('grammar', sense, { transitivity: 'intransitive', prepositions: ['on', 'upon'] })).toEqual([])
+    expect(submit('grammar', sense, { transitivity: 'intransitive', prepositions: ['on', 'on'] })).toEqual([
+      'Each grammar preposition is listed once.',
+    ])
+    expect(submit('grammar', sense, { prepositions: [] })).toHaveLength(1)
+    expect(submit('grammar', sense, { prepositions: ['about', 'at', 'for', 'of', 'on'] })).toHaveLength(1)
+    expect(submit('grammar', sense, { prepositions: ['during'] })).toHaveLength(1)
+    expect(submit('grammar', sense, { patterns: ['preposition'] })).toHaveLength(1)
   })
 
   it('spells parts with their hyphens in written order [spec: facts/usage-formats]', () => {

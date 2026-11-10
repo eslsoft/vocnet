@@ -428,22 +428,29 @@ Feature: Facts and review
   @facts/usage-formats @domain
   Scenario: Grammar, word formation, and collocations are written in a fixed form
     Given a grammar, morphology, or collocation fact to submit
-    When grammar names no property or a pattern twice, a part is spelt without its role's hyphen or out of written order, a word formation has no base or root or is one part that is not a base, or a collocation is one word
+    When grammar names no property, a pattern or a preposition twice, no preposition or more than four, or a preposition outside the closed list, a part is spelt without its role's hyphen or out of written order, a word formation has no base or root or is one part that is not a base, or a collocation is one word
     Then the submission is invalid and the message names each rule to fix
 
   @facts/grammar-by-pos @domain
   Scenario: Grammar fits the part of speech of its sense
     Given a grammar fact about a sense
     When it is submitted
-    Then a noun sense takes only and always its countability, a verb sense always its transitivity and optionally patterns, and an adjective sense its position or adjective patterns
+    Then a noun sense takes only and always its countability, a verb sense always its transitivity and optionally patterns and prepositions, and an adjective sense its position, adjective patterns, or prepositions
     And grammar of any other part of speech is refused by the kind's parts of speech, and a property or pattern that does not fit is an invalid reference that names what to remove
 
   @facts/grammar-review @domain
   Scenario: Grammar is reviewed one property at a time
     Given a grammar fact about a glossed sense
     When its review is planned
-    Then Jev is asked one yes/no question per property and pattern, about that sense only
-    And the LLM second opinion lists every claim, passes when each holds, and does not fail a pattern left out
+    Then Jev is asked one yes/no question per property, pattern, and named preposition, about that sense only
+    And the LLM second opinion lists every claim, passes when each holds, does not fail a pattern or preposition left out, and fails a named preposition that is wrong or rare with the sense
+
+  @facts/grammar-prepositions-migration @api
+  Scenario: Stored grammar with the bare preposition pattern is retracted so it is resubmitted with named prepositions
+    Given published, pending, and rejected grammar facts stored with the bare preposition pattern
+    When the grammar prepositions migration runs
+    Then the live ones are retracted and the rejected ones stay rejected, each without the pattern, keeping its review, and keyed as its payload now keys
+    And the entries of the retracted facts are marked stale for the rescore, and the sense takes grammar that names its prepositions
 
   @facts/morphology-parts @domain
   Scenario: A word formation spells its single word
