@@ -1,6 +1,15 @@
 import { z } from 'zod'
 import { managedEntrySchema } from './catalog'
-import { entryIdSchema, factIdSchema, factKindSchema, relationTypeSchema, senseIdSchema } from './facts'
+import {
+  accentSchema,
+  entryIdSchema,
+  factIdSchema,
+  factKindSchema,
+  formTypeSchema,
+  posSchema,
+  relationTypeSchema,
+  senseIdSchema,
+} from './facts'
 
 export const workLeaseIdSchema = z.uuid().brand<'WorkLeaseId'>()
 export type WorkLeaseId = z.infer<typeof workLeaseIdSchema>
@@ -32,6 +41,11 @@ export const workLeaseSchema = z
 
 const senseGap = { sense_id: senseIdSchema }
 
+const CLOSABLE =
+  "When a learner's dictionary genuinely has nothing for this slot, submit a gap_closure fact naming this gap with the reason instead; review fails a closure of a slot that plainly applies."
+
+const formSlotSchema = z.object({ type: formTypeSchema, pos: posSchema }).meta({ id: 'FormSlot' })
+
 const relationHaveSchema = z
   .object({
     type: relationTypeSchema,
@@ -56,8 +70,26 @@ export const gapSchema = z
         description:
           "The entry has senses but no live sense_list naming exactly them: none was submitted, it was rejected, or it is stale because a sense was added or a listed sense's gloss is no longer live. Complete the common senses, then submit a list (superseding a published one).",
       }),
-    z.object({ type: z.literal('forms') }),
-    z.object({ type: z.literal('pronunciation') }),
+    z
+      .object({
+        type: z.literal('forms'),
+        missing: z.array(formSlotSchema).meta({
+          description:
+            'Each inflection the paradigm needs and no live form fills, by type and the part of speech it inflects.',
+        }),
+      })
+      .meta({
+        description: `The paradigm of a single word lacks inflections: a verb needs its third_person_singular, past, past_participle, and present_participle; a noun with a countable sense its plural; an adjective that compares with -er and -est (one syllable, two ending in y, or one already recorded) its comparative and superlative, and so does an adverb with one recorded. A form fills a slot when it is labelled with that part of speech, or unlabelled and shown under it. Periphrastic comparisons (more beautiful) are never forms. ${CLOSABLE}`,
+      }),
+    z
+      .object({
+        type: z.literal('pronunciation'),
+        accents: z.array(accentSchema).meta({ description: 'The accents with no live strong pronunciation.' }),
+      })
+      .meta({ description: 'The entry needs a strong (citation) pronunciation in both us and uk.' }),
+    z.object({ type: z.literal('phrases') }).meta({
+      description: `An A1 or A2 single-word verb has no live multiword entry containing it as a word, such as a phrasal verb ("give up") or an idiom ("give way"). Create the phrase as its own entry (POST /manage/v1/entries) with its entry fact, a sense with its gloss, and the facts a phrase needs; the head's gap closes once the phrase entry is live. ${CLOSABLE}`,
+    }),
     z
       .object({ type: z.literal('morphology') })
       .meta({ description: 'A single-word entry has no live word formation.' }),
@@ -73,32 +105,43 @@ export const gapSchema = z
         description:
           'An irregular inflection (one no regular spelling rule gives, such as "went") has no live pronunciation: submit a correction of the form that adds ipa and accent.',
       }),
-    z.object({
-      type: z.literal('relations'),
-      ...senseGap,
-      count: z.number().int().nonnegative().meta({
-        description:
-          'Live relations the sense is in, as subject or object. The gap stays open below what its part of speech needs: two for nouns, verbs, and adjectives, one for adverbs; other parts of speech have no relations gap.',
-      }),
-      have: z.array(relationHaveSchema).meta({
-        description: 'Each relation type and direction the sense already has, once, so an agent looks for the others.',
-      }),
-    }),
-    z.object({ type: z.literal('examples'), ...senseGap }),
+    z
+      .object({
+        type: z.literal('relations'),
+        ...senseGap,
+        count: z.number().int().nonnegative().meta({
+          description:
+            'Live relations the sense is in, as subject or object. The gap stays open below what its part of speech needs: two for nouns, verbs, and adjectives, one for adverbs; other parts of speech have no relations gap.',
+        }),
+        have: z.array(relationHaveSchema).meta({
+          description:
+            'Each relation type and direction the sense already has, once, so an agent looks for the others.',
+        }),
+      })
+      .meta({ description: CLOSABLE }),
+    z
+      .object({
+        type: z.literal('examples'),
+        ...senseGap,
+        count: z.number().int().nonnegative().meta({ description: 'Live examples of the sense.' }),
+        need: z.number().int().positive().meta({
+          description: 'Examples the sense needs: two for an entry at CEFR A1 or A2, else one.',
+        }),
+      })
+      .meta({ description: 'The sense has fewer live examples than it needs.' }),
     z.object({ type: z.literal('translations'), ...senseGap, language: z.literal('zh') }),
     z.object({ type: z.literal('example_translations'), ...senseGap, language: z.literal('zh') }).meta({
       description:
         'No live example of the sense has a translation in the language: submit one with translations, or a correction of an example that adds it.',
     }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
-      description:
-        'The sense has no live topic fact. Nouns, verbs, and adjectives need one; other parts of speech have no topics gap.',
+      description: `The sense has no live topic fact. Nouns and verbs need one; other parts of speech have no topics gap. ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('grammar'), ...senseGap }).meta({
-      description: 'A noun or verb sense has no live grammar fact (countability for a noun, transitivity for a verb).',
+      description: `A noun, verb, or adjective sense has no live grammar fact: countability for a noun, transitivity for a verb, and position, patterns, or prepositions for an adjective. ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('collocations'), ...senseGap }).meta({
-      description: 'A noun, verb, or adjective sense has no live collocation.',
+      description: `A noun, verb, or adjective sense, or a manner or degree adverb sense (an -ly adverb, or one that compares), has no live collocation. ${CLOSABLE}`,
     }),
   ])
   .meta({ id: 'Gap', description: 'Something the entry has too few live (pending or published) facts for.' })
@@ -136,3 +179,26 @@ export type CompleteWorkInput = z.infer<typeof completeWorkInputSchema>
 export const workCompletionSchema = z
   .object({ entry_id: entryIdSchema, last_worked_at: z.iso.datetime() })
   .meta({ id: 'WorkCompletion' })
+
+/**
+ * At most this many rows per rescore call. A rescore costs three D1 calls (the entry, its snapshot
+ * batch, the conditional save), so one request stays inside the Worker's per-invocation budget.
+ */
+export const WORK_RESCORE_MAX = 200
+
+export const workRescoreInputSchema = z
+  .object({
+    limit: z.number().int().min(1).max(WORK_RESCORE_MAX).default(100).meta({
+      description: 'The most stale worklist rows this call rescores.',
+    }),
+  })
+  .meta({ id: 'WorkRescoreInput' })
+export type WorkRescoreInput = z.infer<typeof workRescoreInputSchema>
+
+export const workRescoreResultSchema = z
+  .object({
+    rescored: z.number().int().nonnegative().meta({ description: 'Rows this call rescored.' }),
+    remaining: z.number().int().nonnegative().meta({ description: 'Rows still stale; 0 when done.' }),
+  })
+  .meta({ id: 'WorkRescoreResult' })
+export type WorkRescoreResult = z.infer<typeof workRescoreResultSchema>

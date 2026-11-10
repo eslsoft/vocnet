@@ -58,6 +58,13 @@ export const registerSchema = z
   .meta({ id: 'Register', description: 'Usage label of a sense outside neutral standard English.' })
 export type Register = z.infer<typeof registerSchema>
 
+export const regionSchema = z.enum(['british', 'american']).meta({
+  id: 'Region',
+  description:
+    'The variety of English a sense is used in, when only one uses it: british for a BrE-only sense ("lorry", "queue up"), american for an AmE-only one ("truck", "sidewalk"). Absent means both.',
+})
+export type Region = z.infer<typeof regionSchema>
+
 export const strengthSchema = z.enum(['strong', 'weak']).meta({
   id: 'PronunciationStrength',
   description: 'weak: the unstressed form of a function word, such as /tə/ for "to".',
@@ -73,10 +80,22 @@ export const transitivitySchema = z.enum(['transitive', 'intransitive', 'both'])
   description: 'Whether a verb sense takes a direct object (transitive), never does (intransitive), or both.',
 })
 
-export const adjectivePositionSchema = z.enum(['attributive_only', 'predicative_only']).meta({
+export const adjectivePositionSchema = z.enum(['attributive_only', 'predicative_only', 'both']).meta({
   id: 'AdjectivePosition',
   description:
-    'attributive_only: only before a noun ("the main reason"). predicative_only: only after a linking verb ("the baby is asleep"). Absent means both.',
+    'attributive_only: only before a noun ("the main reason"). predicative_only: only after a linking verb ("the baby is asleep"). both: before a noun and after a linking verb ("a big house", "the house is big"). Absent means not stated.',
+})
+
+export const nounNumberSchema = z.enum(['singular_only', 'plural_only']).meta({
+  id: 'NounNumber',
+  description:
+    'singular_only: used only in the singular ("a while", "the sun"). plural_only: used only in the plural, with a plural verb ("trousers", "scissors").',
+})
+
+export const nounArticleSchema = z.enum(['with_the', 'zero_article']).meta({
+  id: 'NounArticle',
+  description:
+    'with_the: usually used with "the" in this sense ("the internet", "the environment"). zero_article: used without an article in this sense ("in hospital", "go to school", "by car").',
 })
 
 export const grammarPatternSchema = z
@@ -91,6 +110,7 @@ export const grammarPatternSchema = z
     'object_ing',
     'two_objects',
     'object_complement',
+    'of_ing',
   ])
   .meta({ id: 'GrammarPattern', description: 'A construction that commonly follows the word in this sense.' })
 export type GrammarPattern = z.infer<typeof grammarPatternSchema>
@@ -194,14 +214,31 @@ export const glossSchema = z
   .meta({ description: 'One sense in dictionary style: "To move quickly on foot." Examples go in example facts.' })
 
 const IPA_SEPARATOR = /[,;/|[\]()]/
-// Broad English IPA. One spelling per sound keeps transcriptions comparable: r (not ɹ), ɡ (not g), tʃ (not ʧ).
+// Broad English IPA in the house style of the Oxford learner's dictionaries. One spelling per sound
+// keeps transcriptions comparable: r (not ɹ), ɡ (not g), tʃ (not ʧ), ər and ɜːr (not the r-coloured
+// ɚ and ɝ), and no syllable dots.
 const IPA_SYMBOLS = new Set([
-  ...'aeiouæɑɒɐɔəɚɛɜɝɪʊʌɨɵʉ',
+  ...'aeiouæɑɒɐɔəɛɜɪʊʌɨɵʉ',
   ...'bdfhjklmnprstvwzðθʃʒŋɡʔɾɫʍxç',
-  ...'ˈˌːˑ. ',
+  ...'ˈˌːˑ ',
   ...'ʰʷᵊ\u0329\u032f\u0303\u0361',
 ])
-const IPA_SPELLINGS: Record<string, string> = { ɹ: 'r', g: 'ɡ', ':': 'ː', "'": 'ˈ', ʧ: 'tʃ', ʤ: 'dʒ' }
+const IPA_SPELLINGS: Record<string, string> = {
+  ɹ: 'r',
+  g: 'ɡ',
+  ':': 'ː',
+  "'": 'ˈ',
+  ʧ: 'tʃ',
+  ʤ: 'dʒ',
+  ɚ: 'ər in American, ə in British',
+  ɝ: 'ɜːr in American, ɜː in British',
+  '.': 'nothing: no syllable dots',
+}
+
+/** The house spelling of an American transcription: the DRESS vowel is e, as in /bed/ and /ker/. */
+export const US_IPA_ISSUE =
+  'An American ipa writes the vowel of "bed" as e, not ɛ ("bed" is bed, "care" is ker), as learner\'s dictionaries do.'
+const usIpaFits = ({ ipa, accent }: { ipa?: string; accent?: string }) => accent !== 'us' || !ipa?.includes('ɛ')
 
 /** One broad IPA transcription, without delimiters. */
 export const ipaSchema = z
@@ -226,10 +263,22 @@ export const ipaSchema = z
       message: `An ipa uses broad English IPA symbols only; replace ${advice.join(', ')}.`,
     })
   })
-  .meta({ description: 'One broad IPA transcription without slashes, such as ˈwɔtər.' })
+  .meta({ description: 'One broad IPA transcription without slashes or syllable dots, such as ˈwɔtər.' })
+
+// A zh text uses fullwidth punctuation, as Chinese is written; ASCII marks are typing slips.
+const ASCII_PUNCTUATION = /[;,()]/
+const ZH_PUNCTUATION_ISSUE = 'A zh text uses fullwidth punctuation: write ； ， （ ） in place of ASCII ; , ( ).'
+const ALTERNATIVES = '；'
+
+/** The alternatives of a zh translation, as its fullwidth semicolons separate them. */
+const alternativesOf = (text: string) => text.split(ALTERNATIVES).map((alternative) => alternative.trim())
+
+const zhText = (max: number) => text(max).refine((value) => !ASCII_PUNCTUATION.test(value), ZH_PUNCTUATION_ISSUE)
 
 export const grammarPayloadSchema = z.strictObject({
   countability: countabilitySchema.optional().meta({ description: 'Noun senses only, and required for them.' }),
+  number: nounNumberSchema.optional().meta({ description: 'Noun senses only.' }),
+  article: nounArticleSchema.optional().meta({ description: 'Noun senses only.' }),
   transitivity: transitivitySchema.optional().meta({ description: 'Verb senses only, and required for them.' }),
   position: adjectivePositionSchema.optional().meta({ description: 'Adjective senses only.' }),
   patterns: z
@@ -237,10 +286,10 @@ export const grammarPayloadSchema = z.strictObject({
     .min(1)
     .max(6)
     .optional()
-    .meta({ description: 'Verb and adjective senses only: the common patterns, not necessarily all of them.' }),
+    .meta({ description: 'The common patterns of the sense, not necessarily all of them.' }),
   prepositions: z.array(dependentPrepositionSchema).min(1).max(4).optional().meta({
     description:
-      'Verb and adjective senses only: the prepositions learners use after the word in this sense, such as ["on", "upon"] for rely; not necessarily all of them.',
+      'The prepositions learners use after the word in this sense, such as ["on", "upon"] for rely or ["in"] for the noun interest; not necessarily all of them.',
   }),
 })
 
@@ -266,13 +315,14 @@ const MORPHEME_FORMS: Record<MorphemeRole, RegExp> = {
   prefix: /^\p{L}+-$/u,
   suffix: /^-\p{L}+$/u,
   root: /^\p{L}+$/u,
-  base: /^\p{L}+(?:[-']\p{L}+)*$/u,
+  // A base is a word, abbreviations and contractions included: "o'clock", "Mrs", "a.m.".
+  base: /^\p{L}+(?:[-'’.]\p{L}+)*\.?$/u,
 }
 const MORPHEME_SPELLING: Record<MorphemeRole, string> = {
   prefix: 'a prefix is letters ending in a hyphen ("un-")',
   suffix: 'a suffix is a hyphen followed by letters ("-ness")',
   root: 'a root is letters only ("spect")',
-  base: 'a base is a word ("happy")',
+  base: 'a base is a word ("happy"), an abbreviation, or a contraction ("o\'clock", "a.m.")',
 }
 const isStem = (role: MorphemeRole) => role === 'base' || role === 'root'
 
@@ -329,6 +379,28 @@ const formPayloadSchema = z.strictObject({
   accent: accentSchema.optional().meta({ description: 'The accent of `ipa`; given with it, never alone.' }),
 })
 
+/**
+ * The gaps a gap closure may close: slots a word can genuinely lack (a month name has no common
+ * collocations, an uncountable noun no plural), each about the entry or a sense as its gap is.
+ * Senses, translations, pronunciations, examples, and syllables apply to every word, so they are
+ * never closed.
+ */
+export const closableGapSchema = z
+  .enum(['forms', 'phrases', 'relations', 'topics', 'grammar', 'collocations'])
+  .meta({ id: 'ClosableGap', description: 'A gap type a gap_closure fact may close.' })
+export type ClosableGap = z.infer<typeof closableGapSchema>
+
+const gapClosurePayloadSchema = z.strictObject({
+  gap: closableGapSchema.meta({
+    description:
+      'The gap this closes: forms or phrases on the entry; relations, topics, grammar, or collocations on a sense.',
+  }),
+  reason: text(300).meta({
+    description:
+      'Why a learner\'s dictionary has nothing for this slot: "A month name has no common collocations beyond the dates it names."',
+  }),
+})
+
 const examplePayloadSchema = z.strictObject({
   text: text(500),
   translations: z
@@ -346,7 +418,11 @@ const syllablesPayloadSchema = z.strictObject({
 
 export const factPayloadSchemas = {
   entry: z.strictObject({}),
-  sense: z.strictObject({ gloss: text(500), register: registerSchema.optional() }),
+  sense: z.strictObject({
+    gloss: text(500),
+    register: registerSchema.optional(),
+    region: regionSchema.optional(),
+  }),
   form: formPayloadSchema,
   relation: z.strictObject({ type: relationTypeSchema, target_sense_id: senseIdSchema }),
   pronunciation: z.strictObject({
@@ -376,6 +452,7 @@ export const factPayloadSchemas = {
   }),
   sense_list: senseListPayloadSchema,
   syllables: syllablesPayloadSchema,
+  gap_closure: gapClosurePayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -384,16 +461,17 @@ export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas
 const submitPayloadSchemas = {
   ...factPayloadSchemas,
   sense: factPayloadSchemas.sense.extend({ gloss: glossSchema }),
-  pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }),
+  pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }).refine(usIpaFits, US_IPA_ISSUE),
   form: formPayloadSchema
     .extend({ ipa: ipaSchema.optional() })
     .refine(
       ({ ipa, accent }) => (ipa === undefined) === (accent === undefined),
       'A form gives ipa and accent together.',
-    ),
+    )
+    .refine(usIpaFits, US_IPA_ISSUE),
   example: examplePayloadSchema.extend({
     translations: z
-      .strictObject(Object.fromEntries(SERVED_LANGUAGES.map((language) => [language, text(500).optional()])), {
+      .strictObject({ zh: zhText(500).optional() } satisfies Record<(typeof SERVED_LANGUAGES)[number], z.ZodType>, {
         error: (issue) =>
           issue.code === 'unrecognized_keys'
             ? `An example is translated into served languages only: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`
@@ -406,6 +484,12 @@ const submitPayloadSchemas = {
     language: servedLanguageSchema.meta({
       description: `A served language: ${SERVED_LANGUAGES.join(', ')}. zh is Simplified Chinese.`,
     }),
+    text: zhText(200)
+      .refine(
+        (value) => new Set(alternativesOf(value)).size === alternativesOf(value).length,
+        'A translation lists each alternative once: "建造；建造" repeats one.',
+      )
+      .meta({ description: 'Alternatives are separated by fullwidth semicolons: "银行；河岸".' }),
   }),
   grammar: grammarPayloadSchema
     .refine((grammar) => Object.keys(grammar).length > 0, 'A grammar fact names at least one property.')
@@ -450,6 +534,7 @@ export const factKindSchema = z
     'collocation',
     'sense_list',
     'syllables',
+    'gap_closure',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -487,7 +572,9 @@ export type Review = z.infer<typeof reviewSchema>
 function submitVariant<K extends FactKind>(kind: K) {
   return z.object({
     kind: z.literal(kind),
-    subject_id: z.uuid().meta({ description: 'Entry or sense the fact is about; the kind decides which.' }),
+    subject_id: z.uuid().meta({
+      description: 'Entry or sense the fact is about; the kind decides which, and for a gap_closure its gap.',
+    }),
     supersedes_id: factIdSchema.optional().meta({ description: 'Published fact this one corrects.' }),
     payload: submitPayloadSchemas[kind],
   })
@@ -508,6 +595,7 @@ export const submitFactInputSchema = z
     submitVariant('collocation'),
     submitVariant('sense_list'),
     submitVariant('syllables'),
+    submitVariant('gap_closure'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -543,6 +631,7 @@ export const factSchema = z
     factVariant('collocation'),
     factVariant('sense_list'),
     factVariant('syllables'),
+    factVariant('gap_closure'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

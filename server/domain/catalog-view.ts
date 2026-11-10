@@ -1,4 +1,5 @@
 import type {
+  GapClosureReview,
   InflectionType,
   Meaning,
   PublicPronunciation,
@@ -22,6 +23,10 @@ export interface EntrySnapshot {
   entry: EntryNode
   /** The entry was submitted as part of a seed list. */
   seed: boolean
+  /** The entry's learner level: 1 for A1 to 6 for C2 (`levelRank`); null without a CEFR level. */
+  levelRank: number | null
+  /** The lemmas of the other live multiword entries that have this lemma as one of their words. */
+  phrases: string[]
   senses: SenseWithLemma[]
   /** Facts whose subject is the entry or one of its senses. */
   facts: Fact[]
@@ -112,7 +117,12 @@ export interface StoredEntry {
   morphology: { parts: Morpheme[]; review: ReviewMeta } | null
   meanings: StoredMeaning[]
   summary: StoredSummary
-  review: { entry: ReviewMeta; sense_list: ReviewMeta | null; syllables: ReviewMeta | null }
+  review: {
+    entry: ReviewMeta
+    sense_list: ReviewMeta | null
+    syllables: ReviewMeta | null
+    closures: GapClosureReview[]
+  }
   /**
    * Every published form, independent of display: a lookup never depends on presentation. Reads
    * do not show it; the view indexes it (server/domain/public-view.ts).
@@ -221,6 +231,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       id: sense.id,
       gloss: glossFact.payload.gloss,
       labels: glossFact.payload.register ? [glossFact.payload.register] : [],
+      region: glossFact.payload.region ?? null,
       rare,
       translations,
       grammar: grammar
@@ -302,6 +313,20 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     forms.push({ form, type, pos: meaning?.pos ?? pos ?? null })
   }
 
+  // A sense's closure shows with its sense; the entry's own with the entry.
+  const shown = new Set(ordered.flatMap((meaning) => meaning.senses.map((sense) => sense.id)))
+  const closures = published
+    .filter(isKind('gap_closure'))
+    .filter((fact) => fact.subjectId === snapshot.entry.id || shown.has(fact.subjectId as SenseId))
+    .map(
+      (fact): GapClosureReview => ({
+        gap: fact.payload.gap,
+        sense_id: fact.subjectId === snapshot.entry.id ? null : (fact.subjectId as SenseId),
+        reason: fact.payload.reason,
+        ...reviewOf(fact),
+      }),
+    )
+
   const [morphology] = about('morphology', snapshot.entry.id)
   const [syllables] = about('syllables', snapshot.entry.id)
   const first = ordered[0]?.senses[0]
@@ -328,6 +353,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       entry: reviewOf(entryFact),
       sense_list: senseList ? reviewOf(senseList) : null,
       syllables: syllables ? reviewOf(syllables) : null,
+      closures,
     },
     forms,
   }

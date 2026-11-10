@@ -295,6 +295,13 @@
       "when": 1794288598617,
       "tag": "20261110052958_public_view_v4_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1794291483561,
+      "tag": "20261110061803_completeness_rules",
+      "breakpoints": true
     }
   ]
 }

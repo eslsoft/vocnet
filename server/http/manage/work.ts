@@ -1,15 +1,18 @@
 import { createRoute } from '@hono/zod-openapi'
 import { claimWork, completeWork } from '@server/usecases/work'
+import { rescoreStaleWork } from '@server/usecases/work-scores'
 import {
   claimWorkInputSchema,
   completeWorkInputSchema,
   workClaimSchema,
   workCompletionSchema,
   workLeaseIdSchema,
+  workRescoreInputSchema,
+  workRescoreResultSchema,
 } from '@shared/work'
 import { z } from 'zod'
-import { actorOf } from '../auth'
-import { createRouter, errorResponse, json } from '../router'
+import { actorOf, requireAdmin } from '../auth'
+import { createRouter, errorResponse, json, jsonBody } from '../router'
 import { managedEntryDto } from '../serialize'
 
 const tags = ['Work']
@@ -57,7 +60,26 @@ const completeRoute = createRoute({
   },
 })
 
+const rescoreRoute = createRoute({
+  method: 'post',
+  path: '/work/rescore',
+  tags,
+  middleware: requireAdmin,
+  summary: 'Rescore stale worklist rows (admins)',
+  description:
+    'Rescores up to `limit` worklist rows whose stored scores are older than their facts or the gap rules, as the ' +
+    'cron does 100 at a time. A release that changes the gap rules marks every row stale; repeat until ' +
+    '`remaining` is 0 to drain it.',
+  request: { body: jsonBody(workRescoreInputSchema) },
+  responses: {
+    200: json(workRescoreResultSchema, 'What this call rescored and what is left.'),
+    400: errorResponse,
+    403: errorResponse,
+  },
+})
+
 export const manageWorkRoutes = createRouter()
+  .openapi(rescoreRoute, async (c) => c.json(await rescoreStaleWork(c.get('deps'), c.req.valid('json').limit), 200))
   .openapi(claimRoute, async (c) => {
     const claim = await claimWork(c.get('deps'), actorOf(c), c.req.valid('json').lease_seconds)
     if (!claim) return c.body(null, 204)

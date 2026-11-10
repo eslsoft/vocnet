@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import {
   admissionOf,
   contentKeyOf,
+  endsAdmissionOf,
   factKinds,
   inflectionKeysOf,
   isIrregularForm,
+  isPeriphrastic,
   type Link,
   linkAdmissionOf,
   MAX_COLLOCATIONS,
@@ -18,6 +20,7 @@ import {
   type ReviewRequest,
   rereviewOf,
   revalidatedBy,
+  subjectTypeOf,
   targetOf,
   topicOf,
 } from './fact-kinds'
@@ -127,6 +130,7 @@ describe('fact-kind registry', () => {
       'topic',
       'grammar',
       'collocation',
+      'gap_closure',
     ])
     expect(revalidatedBy('example', { text: 'We sat.' }, { text: 'We stood.' })).toBeUndefined()
   })
@@ -164,10 +168,11 @@ describe('fact-kind registry', () => {
       translation: ['llm'],
       topic: ['llm'],
       grammar: ['jev', 'llm'],
-      morphology: ['jev', 'llm'],
+      morphology: ['llm'],
       collocation: ['llm'],
       sense_list: ['llm'],
       syllables: ['llm'],
+      gap_closure: ['llm'],
     })
   })
 
@@ -198,6 +203,11 @@ describe('fact-kind registry', () => {
       ),
       planReview('sense_list', { common: [target], extra: [] }, { subject: bankEntry, target: null, topic: null }),
       planReview('syllables', { syllables: ['bank'] }, { subject: bankEntry, target: null, topic: null }),
+      planReview(
+        'gap_closure',
+        { gap: 'collocations', reason: 'No common collocations.' },
+        { subject: bank, target: null, topic: null },
+      ),
     ]
     expect(plans.map((plan) => requests(plan).map((request) => request.reviewer))).toEqual(
       Object.values(factKinds).map((spec) => spec.chain),
@@ -289,7 +299,7 @@ describe('fact-kind registry', () => {
       ),
     )
     expect(jev).toMatchObject({ reviewer: 'jev', settlesFailBelow: 0.5 })
-    expect(Object.values(RELATION_JEV_FLOORS)).toEqual([0.5, 0.5, 0.5, 0.5])
+    expect(Object.values(RELATION_JEV_FLOORS)).toEqual([0.5, 0.5, 0.5])
     const [entryJev] = requests(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }))
     expect(entryJev).not.toHaveProperty('settlesFailBelow')
     expect(
@@ -432,7 +442,6 @@ describe('fact-kind registry', () => {
 
   it.each([
     ['synonym', 'denote the same thing'],
-    ['antonym', 'conventional opposites'],
     ['hypernym', 'strict kind of the second'],
     ['part_of', 'normal constituent'],
   ] as const)('asks the qualified %s question about both glossed senses', (type, phrase) => {
@@ -749,18 +758,27 @@ describe('grammar facts', () => {
     expect(admit({ transitivity: 'transitive', patterns: ['two_objects'] }, 'verb')).toBeNull()
     expect(admit({ position: 'predicative_only', prepositions: ['of'] }, 'adjective')).toBeNull()
     expect(admit({ transitivity: 'intransitive', prepositions: ['on', 'upon'] }, 'verb')).toBeNull()
-    expect(admit({ countability: 'countable', prepositions: ['in'] }, 'noun')).toBe(
-      'The grammar of a noun sense names only countability; remove prepositions.',
+    expect(admit({ countability: 'countable', prepositions: ['in'], patterns: ['to_infinitive'] }, 'noun')).toBeNull()
+    expect(admit({ countability: 'uncountable', article: 'zero_article' }, 'noun')).toBeNull()
+    expect(admit({ countability: 'countable', number: 'plural_only', patterns: ['of_ing'] }, 'noun')).toBeNull()
+    expect(admit({ position: 'both' }, 'adjective')).toBeNull()
+    expect(admit({ patterns: ['of_ing'] }, 'adjective')).toBeNull()
+    expect(admit({ transitivity: 'transitive', patterns: ['of_ing'] }, 'verb')).toContain(
+      'of_ing is not a pattern of a verb',
     )
+    expect(admit({ countability: 'countable', patterns: ['ing_form'] }, 'noun')).toContain(
+      'ing_form is not a pattern of a noun; its patterns are to_infinitive, that_clause, of_ing.',
+    )
+    expect(admit({ position: 'both', number: 'singular_only' }, 'adjective')).toContain('remove number')
     expect(admit({ countability: 'countable' }, 'adjective')).toBe(
       'The grammar of an adjective sense names only position, patterns, and prepositions; remove countability.',
     )
     expect(admit({ patterns: ['to_infinitive'] }, 'adjective')).toBeNull()
     expect(admit({ countability: 'countable', transitivity: 'transitive' }, 'noun')).toBe(
-      'The grammar of a noun sense names only countability; remove transitivity.',
+      'The grammar of a noun sense names only countability, number, article, patterns, and prepositions; remove transitivity.',
     )
     expect(admit({ patterns: ['ing_form'] }, 'verb')).toBe('The grammar of a verb sense names its transitivity.')
-    expect(admit({ patterns: ['ing_form'] }, 'noun')).toContain('remove patterns')
+    expect(admit({ patterns: ['to_infinitive'] }, 'noun')).toBe('The grammar of a noun sense names its countability.')
     expect(admit({ patterns: ['two_objects', 'object_ing'] }, 'adjective')).toContain(
       'two_objects, object_ing are not patterns of an adjective',
     )
@@ -861,7 +879,7 @@ describe('morphology facts', () => {
     )
   })
 
-  it('asks whether the word is formed from exactly these parts, without folk etymology [spec: facts/morphology-review]', () => {
+  it('asks the LLM alone whether the word is a present-day formation of exactly these parts [spec: facts/morphology-review]', () => {
     const spectator = {
       lemma: 'spectator',
       senses: [{ id: target, pos: 'noun' as const, gloss: 'A person who watches.' }],
@@ -875,18 +893,21 @@ describe('morphology facts', () => {
       target: null,
       topic: null,
     })
-    expect(jevQuestion(plan, 'formation')).toContain(
-      'formed from exactly these parts: "spect" (root meaning "look") + "-ator" (suffix)',
-    )
-    expect(jevQuestion(plan, 'formation')).toContain('folk etymology')
+    expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
+    expect(llmPrompt(plan)?.user).toContain('Claimed parts: "spect" (root meaning "look") + "-ator" (suffix)')
+    expect(llmPrompt(plan)?.user).toContain('folk etymology')
     expect(llmPrompt(plan)?.user).toContain('the "er" of "water"')
+    expect(llmPrompt(plan)?.user).toContain('synchronic English formation')
+    expect(llmPrompt(plan)?.user).toContain('"factory" is one base, not fact + -ory')
+    expect(llmPrompt(plan)?.user).toContain(
+      'An abbreviation or contraction ("Mrs", "o\'clock", "a.m.") is one base too.',
+    )
     expect(llmPrompt(plan)?.user).toContain('- (noun) "A person who watches."')
     const simple = planReview('morphology', parts(['water', 'base']), {
       subject: { lemma: 'water', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
       target: null,
       topic: null,
     })
-    expect(jevQuestion(simple, 'formation')).toContain('Is "water" a simple word')
     expect(llmPrompt(simple)?.user).toContain('Claimed: a simple word')
   })
 
@@ -1051,10 +1072,13 @@ describe('sense list facts', () => {
       ].join('\n'),
     )
     expect(rubric).toContain("Oxford Advanced Learner's, Longman, or Cambridge")
-    expect(rubric).toContain('A missing common sense fails.')
+    expect(rubric).toContain('among its main senses of this word for A1 to B1 learners')
+    expect(rubric).toContain('a sense only an advanced or specialist dictionary lists does not')
     expect(rubric).toContain('duplicates, or one meaning split too finely')
-    expect(rubric).toContain('from the most to the least common')
-    expect(rubric).toContain('genuinely rare, archaic, technical, or specialist')
+    expect(rubric).toContain('a plausible order from more to less common use')
+    expect(rubric).toContain('never whether exact frequency can be verified')
+    expect(rubric).toContain('specialist, technical, archaic, and rare senses belong in extra')
+    expect(rubric).toContain('Never answer uncertain because the exact frequency order cannot be verified')
     expect(rubric).toContain('missing from both lists is never a failure')
     expect(rubric).toContain('each missing common sense with its part of speech')
     const bare = llmPrompt(
@@ -1167,5 +1191,165 @@ describe('new data fields', () => {
     expect(prompt).toContain('fail when a translation is unfaithful')
     const plain = llmPrompt(planReview('example', { text: 'x' }, { subject: bank, target: null, topic: null }))?.user
     expect(plain).not.toContain('translations of the sentence')
+  })
+})
+
+describe('completeness write rules and rubrics', () => {
+  const entry = (lemma: string) => ({ lemma, senses: [] as SenseId[] })
+
+  it('never records a periphrastic comparison as a form [spec: facts/periphrastic-forms]', () => {
+    expect(isPeriphrastic('comparative', 'more beautiful')).toBe(true)
+    expect(isPeriphrastic('superlative', 'Most  beautiful')).toBe(true)
+    expect(isPeriphrastic('comparative', 'most beautiful')).toBe(false)
+    expect(isPeriphrastic('comparative', 'moreish')).toBe(false)
+    expect(isIrregularForm('beautiful', 'comparative', 'more beautiful')).toBe(false)
+    expect(isIrregularForm('good', 'comparative', 'better')).toBe(true)
+    expect(admissionOf('form', { form: 'more beautiful', type: 'comparative' }, entry('beautiful'))).toBe(
+      '"more beautiful" is a periphrastic comparative form, made with more or most; it is not an inflection, so it is never a form. Record only an inflected comparative form ("bigger", "biggest", "better"); a word compared only with more and most has no comparative form.',
+    )
+    expect(admissionOf('form', { form: 'bigger', type: 'comparative' }, entry('big'))).toBeNull()
+  })
+
+  it('judges an antonym by the LLM alone, which fails a converse role pair [spec: facts/antonym-llm]', () => {
+    const plan = planReview(
+      'relation',
+      { type: 'antonym', target_sense_id: target },
+      { subject: bank, target: shore, topic: null },
+    )
+    expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
+    expect(llmPrompt(plan)?.user).toContain(
+      'A converse role pair, where each role implies the other (teacher and student, interviewer and interviewee, buyer and seller, parent and child), is not an antonym.',
+    )
+    expect(llmPrompt(plan)?.user).toContain('fail when the target word in this sense is archaic or old-fashioned')
+  })
+
+  it('links only common, current senses [spec: facts/relation-ends]', () => {
+    const end = (sense: SenseId, rare = false, register: 'dated' | 'formal' | null = null) => ({
+      sense,
+      rare,
+      register,
+    })
+    const [a, b] = [sense(1), sense(2)]
+    const ends = (subject: ReturnType<typeof end>, other: ReturnType<typeof end>) => ({ subject, target: other })
+    const hypernym = { type: 'hypernym', target_sense_id: b } as const
+    const synonym = { type: 'synonym', target_sense_id: b } as const
+    expect(endsAdmissionOf('relation', hypernym, ends(end(a), end(b, false, 'formal')))).toBeNull()
+    expect(endsAdmissionOf('relation', hypernym, ends(end(a), end(b, true)))).toBe(
+      `Sense ${b} is in the extra senses of its entry's sense list (rare, archaic, technical, or specialist); a relation links only common senses. Relate a common sense of the word instead.`,
+    )
+    expect(endsAdmissionOf('relation', hypernym, ends(end(a), end(b, false, 'dated')))).toBe(
+      `Sense ${b} is labelled dated; a relation links only current senses. Relate a current sense of the word instead.`,
+    )
+    // A directed relation is checked at its target, a symmetric one at both ends.
+    expect(endsAdmissionOf('relation', hypernym, ends(end(a, true), end(b)))).toBeNull()
+    expect(endsAdmissionOf('relation', synonym, ends(end(a, false, 'dated'), end(b)))).toContain(
+      `Sense ${a} is labelled dated`,
+    )
+    expect(endsAdmissionOf('example', { text: 'x' }, ends(end(a, true), end(b, true)))).toBeNull()
+  })
+
+  it('states a sense region and judges it, with dated as the old-fashioned label [spec: facts/sense-region]', () => {
+    expect(contentKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.|british')
+    expect(meaningKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.')
+    const lorry = { lemma: 'lorry', pos: 'noun' as const, gloss: null, siblings: [] }
+    const unlabelled = planReview('sense', { gloss: 'A large vehicle.' }, { subject: lorry, target: null, topic: null })
+    expect(jevQuestion(unlabelled, 'lexical')).toContain(
+      'If the sense is used only in British English or only in American English, the answer is no, since no region is stated.',
+    )
+    expect(llmPrompt(unlabelled)?.user).toContain('fail such a sense without one')
+    expect(llmPrompt(unlabelled)?.user).toContain('dated is the label they write as old-fashioned')
+    const british = planReview(
+      'sense',
+      { gloss: 'A large vehicle.', register: 'informal', region: 'british' },
+      { subject: lorry, target: null, topic: null },
+    )
+    expect(jevQuestion(british, 'lexical')).toContain(
+      'meaning "A large vehicle.", used in an informal register, in British English only?',
+    )
+    expect(jevQuestion(british, 'lexical')).toContain('A region that does not fit where the sense is used is wrong.')
+    expect(llmPrompt(british)?.user).toContain('used in an informal register, in British English only?')
+  })
+
+  it('closes a gap on the node its gap is about, judged by the LLM [spec: facts/gap-closure-review]', () => {
+    expect(subjectTypeOf('gap_closure', { gap: 'forms', reason: 'r' })).toBe('entry')
+    expect(subjectTypeOf('gap_closure', { gap: 'phrases', reason: 'r' })).toBe('entry')
+    for (const gap of ['relations', 'topics', 'grammar', 'collocations'] as const) {
+      expect(subjectTypeOf('gap_closure', { gap, reason: 'r' })).toBe('sense')
+    }
+    expect(subjectTypeOf('example', { text: 'x' })).toBe('sense')
+    expect(contentKeyOf('gap_closure', { gap: 'collocations', reason: ' No  Common collocations. ' })).toBe(
+      'collocations|no common collocations.',
+    )
+    const may = { lemma: 'May', pos: 'noun' as const, gloss: 'The fifth month of the year.', siblings: [] }
+    const onSense = llmPrompt(
+      planReview(
+        'gap_closure',
+        { gap: 'collocations', reason: 'A month name has no common collocations.' },
+        { subject: may, target: null, topic: null },
+      ),
+    )?.user
+    expect(onSense).toContain(
+      'Does a learner\'s dictionary genuinely have nothing for this slot of "May" (noun), meaning "The fifth month of the year."?',
+    )
+    expect(onSense).toContain('Slot: collocations: combinations native speakers commonly use')
+    expect(onSense).toContain('Claimed reason it is empty: "A month name has no common collocations.".')
+    expect(onSense).toContain("pass only if a learner's dictionary")
+    expect(onSense).toContain('fail when the slot plainly applies to this word')
+    expect(onSense).toContain('months, days, and numbers have no common collocations')
+    const onEntry = llmPrompt(
+      planReview(
+        'gap_closure',
+        { gap: 'forms', reason: 'Beware is used only in the base form.' },
+        { subject: { ...breadEntry, lemma: 'beware' }, target: null, topic: null },
+      ),
+    )?.user
+    expect(onEntry).toContain('this slot of the English word "beware"?')
+    expect(onEntry).toContain("The word's senses: none recorded yet.")
+    expect(
+      planReview(
+        'gap_closure',
+        { gap: 'topics', reason: 'General.' },
+        { subject: { ...may, gloss: null }, target: null, topic: null },
+      ),
+    ).toEqual({ kind: 'unreviewable', reason: 'The referenced sense has no live gloss.' })
+  })
+
+  it('claims a noun number and article and an adjective used in both positions [spec: facts/grammar-review]', () => {
+    const internet = { lemma: 'internet', pos: 'noun' as const, gloss: 'The global computer network.', siblings: [] }
+    const plan = planReview(
+      'grammar',
+      { countability: 'uncountable', article: 'with_the', number: 'singular_only', prepositions: ['on'] },
+      { subject: internet, target: null, topic: null },
+    )
+    const [jev] = requests(plan)
+    expect(jev?.reviewer === 'jev' && Object.keys(jev.questions)).toEqual([
+      'countability',
+      'number',
+      'article',
+      'preposition_on',
+    ])
+    expect(llmPrompt(plan)?.user).toContain('usually used with "the" in this sense ("the internet", "the environment")')
+    const big = { lemma: 'big', pos: 'adjective' as const, gloss: 'Large.', siblings: [] }
+    expect(
+      llmPrompt(planReview('grammar', { position: 'both' }, { subject: big, target: null, topic: null }))?.user,
+    ).toContain('used both before a noun ("a big house") and after a linking verb')
+    expect(
+      contentKeyOf('grammar', { countability: 'uncountable', article: 'zero_article', number: 'singular_only' }),
+    ).toBe('countability:uncountable|number:singular_only|article:zero_article')
+    expect(
+      llmPrompt(
+        planReview(
+          'grammar',
+          { countability: 'countable', patterns: ['of_ing'] },
+          { subject: internet, target: null, topic: null },
+        ),
+      )?.user,
+    ).toContain('commonly followed by "of" and an -ing form (a pattern like "the habit of smoking")')
+  })
+
+  it('allows an abbreviation or contraction as one base part [spec: facts/morphology-parts]', () => {
+    for (const lemma of ['a.m.', "o'clock", 'Mrs']) {
+      expect(admissionOf('morphology', { parts: [{ form: lemma, role: 'base' }] }, entry(lemma))).toBeNull()
+    }
   })
 })

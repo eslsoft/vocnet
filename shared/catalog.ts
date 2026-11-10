@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   accentSchema,
+  closableGapSchema,
   collocationPatternSchema,
   dependentPrepositionSchema,
   entryIdSchema,
@@ -14,6 +15,7 @@ import {
   grammarPayloadSchema,
   morphemeSchema,
   posSchema,
+  regionSchema,
   registerSchema,
   senseIdSchema,
   strengthSchema,
@@ -243,6 +245,9 @@ export const publicSenseSchema = z
     id: senseIdSchema,
     gloss: z.string(),
     labels: z.array(registerSchema).meta({ description: 'Usage labels; empty for neutral standard English.' }),
+    region: regionSchema
+      .nullable()
+      .meta({ description: 'british or american for a sense used in only that variety; null when both use it.' }),
     rare: z.boolean().meta({
       description:
         "true: a rare, archaic, technical, or specialist sense the entry's sense list puts after its common ones. Common senses come first, most common first; senses the list does not name yet come last with false.",
@@ -277,6 +282,20 @@ export const meaningSchema = z
   .meta({ id: 'Meaning', description: 'The senses of one part of speech.' })
 export type Meaning = z.infer<typeof meaningSchema>
 
+export const gapClosureReviewSchema = reviewMetaSchema
+  .extend({
+    gap: closableGapSchema,
+    sense_id: senseIdSchema
+      .nullable()
+      .meta({ description: 'The sense a sense gap is closed for; null for the entry.' }),
+    reason: z.string(),
+  })
+  .meta({
+    id: 'GapClosureReview',
+    description: 'A reviewed claim that a slot is genuinely empty for this word, such as collocations of a month name.',
+  })
+export type GapClosureReview = z.infer<typeof gapClosureReviewSchema>
+
 export const publicEntrySchema = z
   .object({
     lang: responseLangSchema,
@@ -304,11 +323,15 @@ export const publicEntrySchema = z
         entry: reviewMetaSchema,
         sense_list: reviewMetaSchema.nullable(),
         syllables: reviewMetaSchema.nullable(),
+        closures: z.array(gapClosureReviewSchema).meta({
+          description:
+            "The published gap closures of the entry and its shown senses: slots a learner's dictionary has nothing for.",
+        }),
       })
       .optional()
       .meta({
         description:
-          'The entry fact, the sense list that orders the senses, and the syllables; null when none is published.',
+          'The entry fact, the sense list that orders the senses, the syllables (null when none is published), and the gap closures.',
       }),
   })
   .meta({ id: 'Entry' })
@@ -405,7 +428,7 @@ export const managedEntrySchema = z
     seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        "Share of the slots the gaps count (the sense inventory, forms, pronunciation, word formation of a single word, and per sense outside the sense list's extra the relations, topic, grammar, and collocation its part of speech needs, an example, and a zh translation) that live facts fill; 1 means no gaps.",
+        "Share of the slots the gaps count (the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, and a pronunciation per irregular form, a phrase for an A1-A2 verb, and per sense outside the sense list's extra the relations, topic, grammar, and collocation its part of speech needs, its examples, a zh translation, and a translated example) that live facts fill or a live gap closure closes; 1 means no gaps. Computed from the facts on read, never stored.",
     }),
     quality: z.number().min(0).max(1).meta({
       description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',
@@ -486,7 +509,13 @@ export const createEntryResultSchema = z
   .meta({ id: 'CreateEntryResult' })
 
 export const createSenseInputSchema = z
-  .object({ entry_id: entryIdSchema, pos: posSchema, gloss: glossSchema, register: registerSchema.optional() })
+  .object({
+    entry_id: entryIdSchema,
+    pos: posSchema,
+    gloss: glossSchema,
+    register: registerSchema.optional(),
+    region: regionSchema.optional(),
+  })
   .meta({ id: 'CreateSenseInput' })
 export type CreateSenseInput = z.infer<typeof createSenseInputSchema>
 export const createSenseResultSchema = z

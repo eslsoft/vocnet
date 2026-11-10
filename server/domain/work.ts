@@ -1,7 +1,16 @@
-import { type EntryId, type FactId, type Pos, relationTypeSchema, type SenseId } from '@shared/facts'
+import {
+  accentSchema,
+  type ClosableGap,
+  type EntryId,
+  type FactId,
+  type FormType,
+  type Pos,
+  relationTypeSchema,
+  type SenseId,
+} from '@shared/facts'
 import type { Gap, WeakFact, WorkLeaseId } from '@shared/work'
 import { type Fact, type FactOf, isKind } from './fact'
-import { isIrregularForm } from './fact-kinds'
+import { formMeaning, isIrregularForm, isPeriphrastic } from './fact-kinds'
 import { isLive } from './fact-lifecycle'
 import type { SenseNode } from './nodes'
 import type { PrincipalRef } from './principal'
@@ -10,7 +19,11 @@ import { isMultiword } from './term'
 
 /** What the work rules read about an entry: its senses, its facts in every status, and its open feedback. */
 export interface EntryFacts {
-  entry: { lemma: string }
+  entry: { id: EntryId; lemma: string }
+  /** The entry's learner level: 1 for A1 to 6 for C2 (`levelRank`); null without a CEFR level. */
+  levelRank: number | null
+  /** The lemmas of the other live multiword entries that have this lemma as one of their words. */
+  phrases: readonly string[]
   senses: readonly SenseNode[]
   /** Facts whose subject is the entry or one of its senses. */
   facts: Fact[]
@@ -22,7 +35,7 @@ export interface EntryFacts {
   neighbors: { senses: readonly SenseNode[]; facts: Fact[] }
 }
 
-type GapInput = Pick<EntryFacts, 'entry' | 'senses' | 'facts' | 'incoming' | 'neighbors'>
+type GapInput = Pick<EntryFacts, 'entry' | 'levelRank' | 'phrases' | 'senses' | 'facts' | 'incoming' | 'neighbors'>
 
 export interface WorkLease {
   id: WorkLeaseId
@@ -45,22 +58,53 @@ export function completeDecision(lease: WorkLease, who: PrincipalRef, now: Date)
 
 type EntryGap = Extract<
   Gap,
-  { type: 'senses' | 'sense_list' | 'forms' | 'pronunciation' | 'morphology' | 'syllables' | 'form_pronunciations' }
+  {
+    type:
+      | 'senses'
+      | 'sense_list'
+      | 'forms'
+      | 'pronunciation'
+      | 'phrases'
+      | 'morphology'
+      | 'syllables'
+      | 'form_pronunciations'
+  }
 >
 type SenseGap = Exclude<Gap, EntryGap>
 type RelationGap = Extract<Gap, { type: 'relations' }>
 
-/** What the entry gap rules read: the entry's facts in every status, the live ones, and the senses whose gloss is live. */
+/** A live inflection with the part of speech it fills: its label, else the meaning the entry shows it under. */
+interface Inflection {
+  type: FormType
+  pos: Pos | undefined
+}
+
+/**
+ * What the gap rules read: the entry's facts in every status, the live ones, the senses whose
+ * gloss is live, the counted ones among them, and the entry's live inflections.
+ */
 interface EntryState {
+  lemma: string
+  /** The entry is at CEFR A1 or A2, where a learner needs more of each sense. */
+  core: boolean
+  phrases: readonly string[]
   facts: readonly Fact[]
   live: Fact[]
   senses: SenseNode[]
+  counted: SenseNode[]
+  inflections: Inflection[]
 }
 
 const counting =
   (kind: Fact['kind']) =>
   ({ live }: EntryState) =>
     live.filter((fact) => fact.kind === kind).length
+
+/** The live fact of a `one` kind that no live correction supersedes, so a pending correction stands for its original. */
+function currentOf<K extends Fact['kind']>(live: readonly Fact[], kind: K): FactOf<K> | null {
+  const facts = live.filter((fact): fact is FactOf<K> & Fact => fact.kind === kind)
+  return facts.find((fact) => !facts.some((other) => other.supersedesId === fact.id)) ?? null
+}
 
 /**
  * How many sense lists a producer may submit for the same senses. Each rejection changes the
@@ -89,6 +133,82 @@ function inventorySettled({ live, senses }: EntryState): number {
   return list !== null && ids.length > 0 && listsExactly(list.payload, ids) ? 1 : 0
 }
 
+/** The entry's live inflections, periphrastic comparisons left out, each with the part of speech it fills. */
+function inflectionsOf(live: readonly Fact[], counted: readonly SenseNode[]): Inflection[] {
+  return live
+    .filter(isKind('form'))
+    .filter(({ payload: { type, form } }) => type !== 'variant' && !isPeriphrastic(type, form))
+    .map(({ payload: { type, pos } }) => ({ type, pos: pos ?? formMeaning(type, undefined, counted)?.pos }))
+}
+
+export const VERB_PARADIGM: readonly FormType[] = [
+  'third_person_singular',
+  'past',
+  'past_participle',
+  'present_participle',
+]
+const COMPARISON: readonly FormType[] = ['comparative', 'superlative']
+
+/**
+ * A word compares with -er and -est in this part of speech: an inflected comparison of it is
+ * recorded, or it is an adjective of one syllable, or of two ending in y ("happy"), by its live
+ * syllables. Longer adjectives compare with more and most, which is no form.
+ */
+function compares(state: EntryState, pos: 'adjective' | 'adverb'): boolean {
+  if (state.inflections.some((form) => COMPARISON.includes(form.type) && form.pos === pos)) return true
+  if (pos !== 'adjective') return false
+  const syllables = currentOf(state.live, 'syllables')?.payload.syllables.length
+  return syllables === 1 || (syllables === 2 && state.lemma.endsWith('y'))
+}
+
+/** A counted noun sense whose live grammar makes it countable, so the noun has a plural. */
+const hasCountableNoun = ({ counted, live }: EntryState) =>
+  counted.some(
+    (sense) =>
+      sense.pos === 'noun' &&
+      live
+        .filter(isKind('grammar'))
+        .some((fact) => fact.subjectId === sense.id && ['countable', 'both'].includes(fact.payload.countability ?? '')),
+  )
+
+type FormSlot = { type: FormType; pos: Pos }
+
+/**
+ * The inflections a single word's paradigm needs, by the parts of speech of its counted senses: a
+ * verb's four forms, a countable noun's plural, and the comparative and superlative of an
+ * adjective or adverb that compares with -er and -est. A phrase inflects in its words' entries,
+ * and an invariable word (ago, ours) needs none.
+ */
+function formSlots(state: EntryState): FormSlot[] {
+  if (isMultiword(state.lemma)) return []
+  const poses = new Set(state.counted.map((sense) => sense.pos))
+  return [
+    ...(poses.has('verb') ? VERB_PARADIGM.map((type) => ({ type, pos: 'verb' as const })) : []),
+    ...(hasCountableNoun(state) ? [{ type: 'plural' as const, pos: 'noun' as const }] : []),
+    ...(['adjective', 'adverb'] as const)
+      .filter((pos) => poses.has(pos) && compares(state, pos))
+      .flatMap((pos) => COMPARISON.map((type) => ({ type, pos }))),
+  ]
+}
+
+const fills = (state: EntryState) => (slot: FormSlot) =>
+  state.inflections.some((form) => form.type === slot.type && form.pos === slot.pos)
+
+const ACCENTS = accentSchema.options
+
+/** The accents with a live strong (citation) pronunciation. */
+const pronouncedAccents = ({ live }: EntryState) =>
+  new Set(
+    live
+      .filter(isKind('pronunciation'))
+      .filter((fact) => fact.payload.strength !== 'weak')
+      .map((fact) => fact.payload.accent),
+  )
+
+/** An A1 or A2 single-word verb, which a learner meets in phrasal verbs and idioms. */
+const needsPhrases = ({ core, lemma, counted }: EntryState) =>
+  core && !isMultiword(lemma) && counted.some((sense) => sense.pos === 'verb')
+
 // A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
 // (about the entry or its senses) plus relations pointing at its senses, so a kind check scopes to the entry.
 /**
@@ -96,7 +216,7 @@ function inventorySettled({ live, senses }: EntryState): number {
  * with whether a live fact of it gives a pronunciation: a correction that adds one sits beside
  * its original while it is pending.
  */
-function irregularForms(lemma: string, { live }: EntryState): Map<string, { form: string; pronounced: boolean }> {
+function irregularForms({ lemma, live }: EntryState): Map<string, { form: string; pronounced: boolean }> {
   const forms = new Map<string, { form: string; pronounced: boolean }>()
   for (const fact of live.filter(isKind('form'))) {
     const { form, type, pos, ipa } = fact.payload
@@ -107,38 +227,61 @@ function irregularForms(lemma: string, { live }: EntryState): Map<string, { form
   return forms
 }
 
-const entryGapRules: ReadonlyArray<{
-  gap: (state: EntryState, lemma: string) => EntryGap
-  need: (lemma: string, state: EntryState) => number
-  filled: (state: EntryState, lemma: string) => number
-}> = [
+interface EntryRule {
+  gap: (state: EntryState) => EntryGap
+  need: (state: EntryState) => number
+  filled: (state: EntryState) => number
+  /** The gap a gap_closure fact on the entry closes, filling every slot of the rule; absent when none may. */
+  closable?: ClosableGap
+}
+
+const entryGapRules: readonly EntryRule[] = [
   {
     gap: inventoryGap,
     need: () => 1,
     filled: inventorySettled,
   },
-  { gap: () => ({ type: 'forms' }), need: () => 1, filled: counting('form') },
-  { gap: () => ({ type: 'pronunciation' }), need: () => 1, filled: counting('pronunciation') },
+  {
+    gap: (state) => ({ type: 'forms', missing: formSlots(state).filter((slot) => !fills(state)(slot)) }),
+    need: (state) => formSlots(state).length,
+    filled: (state) => formSlots(state).filter(fills(state)).length,
+    closable: 'forms',
+  },
+  // A learner's dictionary gives both the British and the American pronunciation.
+  {
+    gap: (state) => ({
+      type: 'pronunciation',
+      accents: ACCENTS.filter((accent) => !pronouncedAccents(state).has(accent)),
+    }),
+    need: () => ACCENTS.length,
+    filled: (state) => pronouncedAccents(state).size,
+  },
+  {
+    gap: () => ({ type: 'phrases' }),
+    need: (state) => (needsPhrases(state) ? 1 : 0),
+    filled: ({ phrases }) => Math.min(phrases.length, 1),
+    closable: 'phrases',
+  },
   // Word formation analyses one word; a phrase's parts are its own entries.
   {
     gap: () => ({ type: 'morphology' }),
-    need: (lemma) => (isMultiword(lemma) ? 0 : 1),
+    need: ({ lemma }) => (isMultiword(lemma) ? 0 : 1),
     filled: counting('morphology'),
   },
   // Syllables divide one written word; a phrase's words are their own entries.
   {
     gap: () => ({ type: 'syllables' }),
-    need: (lemma) => (isMultiword(lemma) ? 0 : 1),
+    need: ({ lemma }) => (isMultiword(lemma) ? 0 : 1),
     filled: counting('syllables'),
   },
   // A learner cannot work out how an irregular form sounds, so each needs a pronunciation.
   {
-    gap: (state, lemma) => ({
+    gap: (state) => ({
       type: 'form_pronunciations',
-      forms: [...irregularForms(lemma, state).values()].filter((form) => !form.pronounced).map(({ form }) => form),
+      forms: [...irregularForms(state).values()].filter((form) => !form.pronounced).map(({ form }) => form),
     }),
-    need: (lemma, state) => irregularForms(lemma, state).size,
-    filled: (state, lemma) => [...irregularForms(lemma, state).values()].filter((form) => form.pronounced).length,
+    need: (state) => irregularForms(state).size,
+    filled: (state) => [...irregularForms(state).values()].filter((form) => form.pronounced).length,
   },
 ]
 
@@ -178,11 +321,29 @@ export const RELATIONS_NEEDED: Readonly<Record<Pos, number>> = {
 }
 
 /**
- * How many live topic facts a sense of each part of speech needs. Nouns, verbs, and adjectives name
- * the things, actions, and qualities a scene is made of; adverbs may be tagged but need no topic,
- * and function words belong to no scene. Zero means the sense has no topics gap.
+ * How many live topic facts a sense of each part of speech needs. Nouns and verbs name the things
+ * and actions a scene is made of; adjectives and adverbs may be tagged but need no topic, since
+ * most are general (big, good), and function words belong to no scene. Zero means the sense has no
+ * topics gap.
  */
 export const TOPICS_NEEDED: Readonly<Record<Pos, number>> = {
+  noun: 1,
+  verb: 1,
+  adjective: 0,
+  adverb: 0,
+  pronoun: 0,
+  determiner: 0,
+  preposition: 0,
+  conjunction: 0,
+  interjection: 0,
+  auxiliary: 0,
+}
+
+/**
+ * How many grammar facts a sense needs. Countability is what a learner most needs of a noun,
+ * transitivity of a verb, and position, patterns, or prepositions of an adjective.
+ */
+export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
   noun: 1,
   verb: 1,
   adjective: 1,
@@ -196,24 +357,9 @@ export const TOPICS_NEEDED: Readonly<Record<Pos, number>> = {
 }
 
 /**
- * How many grammar facts a sense needs. Countability is what a learner most needs of a noun, and
- * transitivity of a verb; an adjective's position and patterns are worth recording where they
- * restrict it, so it may have a grammar fact but has no gap.
+ * How many collocations a sense needs: content words that combine with other words in set ways.
+ * An adverb needs one only when it is a manner or degree adverb (`isMannerAdverb`).
  */
-export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
-  noun: 1,
-  verb: 1,
-  adjective: 0,
-  adverb: 0,
-  pronoun: 0,
-  determiner: 0,
-  preposition: 0,
-  conjunction: 0,
-  interjection: 0,
-  auxiliary: 0,
-}
-
-/** How many collocations a sense needs: content words that combine with other words in set ways. */
 export const COLLOCATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   noun: 1,
   verb: 1,
@@ -245,12 +391,27 @@ function linksVisible(fact: FactOf<'relation'>, senseId: SenseId, visible: Reado
   return fact.objectId === senseId && visible.has(fact.subjectId)
 }
 
-const senseGapRules: ReadonlyArray<{
-  need: (sense: SenseNode) => number
+/**
+ * A manner or degree adverb, which combines in set ways ("work hard", "drive carefully"): a single
+ * word ending in -ly, or one that compares with -er and -est. Other adverbs (here, then, ago) have
+ * no collocations gap.
+ */
+const isMannerAdverb = (state: EntryState) =>
+  (!isMultiword(state.lemma) && state.lemma.endsWith('ly')) || compares(state, 'adverb')
+
+/** Examples a counted sense needs: two at CEFR A1 or A2, where a learner meets the word first, else one. */
+const examplesNeeded = ({ core }: EntryState) => (core ? 2 : 1)
+
+interface SenseRule {
+  need: (sense: SenseNode, state: EntryState) => number
   /** `visible`: the neighbor senses a relation may link to and count. */
   fills: (fact: Fact, senseId: SenseId, visible: ReadonlySet<string>) => boolean
-  gap: (senseId: SenseId, filling: Fact[]) => SenseGap
-}> = [
+  gap: (senseId: SenseId, filling: Fact[], state: EntryState) => SenseGap
+  /** The gap a gap_closure fact on the sense closes, filling every slot of the rule; absent when none may. */
+  closable?: ClosableGap
+}
+
+const senseGapRules: readonly SenseRule[] = [
   {
     need: (sense) => RELATIONS_NEEDED[sense.pos],
     fills: (fact, senseId, visible) => fact.kind === 'relation' && linksVisible(fact, senseId, visible),
@@ -260,11 +421,17 @@ const senseGapRules: ReadonlyArray<{
       count: filling.length,
       have: relationsHave(filling.filter(isKind('relation')), senseId),
     }),
+    closable: 'relations',
   },
   {
-    need: () => 1,
+    need: (_sense, state) => examplesNeeded(state),
     fills: (fact, senseId) => fact.kind === 'example' && fact.subjectId === senseId,
-    gap: (senseId) => ({ type: 'examples', sense_id: senseId }),
+    gap: (senseId, filling, state) => ({
+      type: 'examples',
+      sense_id: senseId,
+      count: filling.length,
+      need: examplesNeeded(state),
+    }),
   },
   {
     need: () => 1,
@@ -283,16 +450,19 @@ const senseGapRules: ReadonlyArray<{
     need: (sense) => TOPICS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'topic' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'topics', sense_id: senseId }),
+    closable: 'topics',
   },
   {
     need: (sense) => GRAMMAR_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'grammar' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'grammar', sense_id: senseId }),
+    closable: 'grammar',
   },
   {
-    need: (sense) => COLLOCATIONS_NEEDED[sense.pos],
+    need: (sense, state) => (sense.pos === 'adverb' && isMannerAdverb(state) ? 1 : COLLOCATIONS_NEEDED[sense.pos]),
     fills: (fact, senseId) => fact.kind === 'collocation' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'collocations', sense_id: senseId }),
+    closable: 'collocations',
   },
 ]
 
@@ -306,10 +476,15 @@ interface OpenGap {
  * The senses the per-sense rules count: those whose gloss is live, less the extra senses of the
  * entry's sense list. Rare senses never count toward completeness; before a list exists, all do.
  */
-function countedSenses({ live, senses }: EntryState): SenseNode[] {
+function countedSenses(live: readonly Fact[], senses: readonly SenseNode[]): SenseNode[] {
   const extra = new Set(currentSenseList(live)?.payload.extra)
   return senses.filter((sense) => !extra.has(sense.id))
 }
+
+/** A live gap_closure fact on the node closes the gap: its slots count as filled. */
+const closedBy = (live: readonly Fact[], gap: ClosableGap | undefined, subjectId: string) =>
+  gap !== undefined &&
+  live.filter(isKind('gap_closure')).some((fact) => fact.subjectId === subjectId && fact.payload.gap === gap)
 
 /** The open gaps, and how many slots the rules count for the entry: each entry rule and, per counted sense, each need. */
 function openGaps(snapshot: GapInput): {
@@ -319,30 +494,35 @@ function openGaps(snapshot: GapInput): {
   const live = [...snapshot.facts, ...snapshot.incoming].filter((fact) => isLive(fact.status))
   const glossed = new Set(live.flatMap((fact) => (fact.kind === 'sense' ? [fact.subjectId] : [])))
   const visible = visibleNeighbors(snapshot.neighbors)
-  const { lemma } = snapshot.entry
+  const senses = snapshot.senses.filter((sense) => glossed.has(sense.id))
+  const counted = countedSenses(live, senses)
   const state: EntryState = {
+    lemma: snapshot.entry.lemma,
+    core: snapshot.levelRank !== null && snapshot.levelRank <= 2,
+    phrases: snapshot.phrases,
     facts: snapshot.facts,
     live,
-    senses: snapshot.senses.filter((sense) => glossed.has(sense.id)),
+    senses,
+    counted,
+    inflections: inflectionsOf(live, counted),
   }
   const entry = entryGapRules.flatMap((rule) => {
-    const missing = rule.need(lemma, state) - rule.filled(state, lemma)
-    return missing > 0 ? [{ gap: rule.gap(state, lemma), missing }] : []
+    const missing = closedBy(live, rule.closable, snapshot.entry.id) ? 0 : rule.need(state) - rule.filled(state)
+    return missing > 0 ? [{ gap: rule.gap(state), missing }] : []
   })
-  const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(lemma, state), 0)
-  const counted = countedSenses(state)
-  const senses = counted.flatMap((sense) =>
+  const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(state), 0)
+  const perSense = counted.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {
       const filling = live.filter((fact) => rule.fills(fact, sense.id, visible))
-      const missing = rule.need(sense) - filling.length
-      return missing > 0 ? [{ gap: rule.gap(sense.id, filling), missing }] : []
+      const missing = closedBy(live, rule.closable, sense.id) ? 0 : rule.need(sense, state) - filling.length
+      return missing > 0 ? [{ gap: rule.gap(sense.id, filling, state), missing }] : []
     }),
   )
   const senseSlots = counted.reduce(
-    (sum, sense) => sum + senseGapRules.reduce((need, rule) => need + rule.need(sense), 0),
+    (sum, sense) => sum + senseGapRules.reduce((need, rule) => need + rule.need(sense, state), 0),
     0,
   )
-  return { open: [...entry, ...senses], slots: entrySlots + senseSlots }
+  return { open: [...entry, ...perSense], slots: entrySlots + senseSlots }
 }
 
 /**

@@ -90,6 +90,8 @@ function bankWorld() {
     entry: bank,
     flagged: new Set(),
     seed: false,
+    levelRank: null,
+    phrases: [],
     senses: [bankSense],
     facts,
     incoming: [],
@@ -364,6 +366,8 @@ describe('public read model', () => {
       entry: bank,
       flagged: new Set(),
       seed: false,
+      levelRank: null,
+      phrases: [],
       senses: [],
       facts: [fact('entry', bank.id, {})],
       incoming: [],
@@ -404,6 +408,8 @@ describe('public read model', () => {
       entry: shore,
       flagged: new Set(),
       seed: false,
+      levelRank: null,
+      phrases: [],
       senses: [shoreSense],
       facts: [fact('entry', shore.id, {}), fact('sense', shoreSense.id, { gloss: 'land along water' })],
       incoming: [relation],
@@ -452,6 +458,34 @@ describe('public read model', () => {
       text: 'We go home.',
       translations: { zh: '我们回家。' },
     })
+  })
+
+  it('shows a sense region and the published gap closures of the entry and its shown senses [spec: catalog/region-and-closures]', () => {
+    const may = entry('May')
+    const month = sense(may)
+    const hidden = sense(may)
+    const entryClosure = fact('gap_closure', may.id, {
+      gap: 'phrases',
+      reason: 'A month name builds no phrasal verbs.',
+    })
+    const senseClosure = fact('gap_closure', month.id, { gap: 'collocations', reason: 'No common collocations.' })
+    const facts = [
+      fact('entry', may.id, {}),
+      fact('sense', month.id, { gloss: 'The fifth month.', region: 'british' }),
+      fact('sense', hidden.id, { gloss: 'A pending sense.' }, 'pending'),
+      entryClosure,
+      senseClosure,
+      fact('gap_closure', hidden.id, { gap: 'topics', reason: 'Hidden.' }),
+      fact('gap_closure', month.id, { gap: 'topics', reason: 'Pending.' }, 'pending'),
+    ]
+    const view = project({ ...bankWorld().snapshot, entry: may, senses: [month, hidden], facts })
+    expect(firstSense(view)).toMatchObject({ region: 'british', labels: [] })
+    expect(view?.review.closures).toEqual([
+      { gap: 'phrases', sense_id: null, reason: 'A month name builds no phrasal verbs.', ...review(entryClosure) },
+      { gap: 'collocations', sense_id: month.id, reason: 'No common collocations.', ...review(senseClosure) },
+    ])
+    expect(publicFactIds(view as StoredEntry)).toContain(senseClosure.id)
+    expect(firstSense(project(bankWorld().snapshot))?.region).toBeNull()
   })
 
   it('indexes every published form for lookup, shown or not [spec: catalog/form-index]', () => {

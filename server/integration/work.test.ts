@@ -43,7 +43,7 @@ const postSense = async (token: string, entryId: string, gloss: string) =>
   )
 const submitFact = async (token: string, json: unknown) =>
   factWriteResultSchema.parse((await call('/manage/v1/facts', { method: 'POST', token, json })).body).fact
-/** Gives the entry a preposition sense, which needs no relations, its sense list, and every other slot; returns the facts. */
+/** Gives the entry a preposition sense, which needs no relations or forms, its sense list, and every other slot an A1 entry needs; returns the facts. */
 const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: string }) => {
   const { sense } = createSenseResultSchema.parse(
     (
@@ -70,6 +70,7 @@ const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: 
     subject_id: entryId,
     payload: { ipa: 'baɪ', accent: 'us' },
   })
+  await submitFact(token, { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'uk' } })
   const translation = await submitFact(token, {
     kind: 'translation',
     subject_id: sense.id,
@@ -80,6 +81,8 @@ const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: 
     subject_id: sense.id,
     payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } },
   })
+  // An A1 or A2 entry needs a second example of each sense.
+  await submitFact(token, { kind: 'example', subject_id: sense.id, payload: { text: 'The house by the river.' } })
   await submitFact(token, { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } })
   await submitFact(token, { kind: 'syllables', subject_id: entryId, payload: { syllables: [lemma] } })
   return [form, ipa, translation, example]
@@ -172,8 +175,7 @@ describe('worklist', () => {
     expect(work.entry).toEqual(view)
     expect(work.gaps).toEqual([
       { type: 'senses' },
-      { type: 'forms' },
-      { type: 'pronunciation' },
+      { type: 'pronunciation', accents: ['us', 'uk'] },
       { type: 'morphology' },
       { type: 'syllables' },
     ])
@@ -428,8 +430,8 @@ describe('worklist', () => {
     stubReviewers(0.05, 'fail')
     await deliverReviews([facts.at(-1)?.id as string])
     vi.restoreAllMocks()
-    // The rejected example also took the translated example with it: two of eight slots.
-    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 2 / 8, quality: 1 })
+    // The rejected example took the translated example with it; the other example still fills its slot: one of eight.
+    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 1 / 8, quality: 1 })
     expect(await lemmaOf(token)).toBeNull()
     await settle()
     expect(await lemmaOf(token)).toBe('by')
@@ -546,7 +548,7 @@ describe('worklist', () => {
     const first = workClaimSchema.parse((await claim(token)).body)
     expect(first.gaps).toEqual([])
     expect(first.weak_facts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 9 })
+    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 11 })
     expect((await complete(token, first.lease.id)).status).toBe(200)
     expect(await lemmaOf(token)).toBeNull()
 

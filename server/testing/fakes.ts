@@ -7,7 +7,7 @@ import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { type PublicViewRecord, STEM_ROLES } from '@server/domain/public-view'
 import { levelRank } from '@server/domain/reference'
 import { EXACT_LEMMA_TIER, fieldTier, LEMMA_PREFIX_TIER, SEARCH_TIERS } from '@server/domain/search'
-import type { Lemma } from '@server/domain/term'
+import { isMultiword, type Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
 import { claimTier, isClaimable, type WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
@@ -165,6 +165,22 @@ export function fakeWorld(): FakeWorld {
   const lemmaOf = (entryId: EntryId) => world.entries.find((entry) => entry.id === entryId)?.lemma
   const withLemma = (sense: SenseNode) => ({ ...sense, lemma: lemmaOf(sense.entryId) ?? ('' as never) })
   const live = (fact: Fact) => isLive(fact.status)
+  /** The learner priority of the entry's lemma, as the worklist row stores it. */
+  const priorityOf = (entry: EntryNode) => {
+    const reference = world.references.get(entry.lemma)
+    const levels = reference?.cefr.map((cefr) => levelRank(cefr.level)) ?? []
+    return { levelRank: levels.length > 0 ? Math.min(...levels) : null, zipf: reference?.frequency?.zipf ?? null }
+  }
+  const liveEntry = (entryId: string) =>
+    world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entryId && live(fact))
+  /** The live multiword entries with this lemma as one of their words. */
+  const phrasesOf = (lemma: string) =>
+    isMultiword(lemma)
+      ? []
+      : world.entries
+          .filter((other) => isMultiword(other.lemma) && other.lemma.split(' ').includes(lemma) && liveEntry(other.id))
+          .map((other) => other.lemma)
+          .sort()
   const workOf = (entryId: EntryId) => {
     const row = world.work.get(entryId) ?? {
       completeness: 0,
@@ -186,7 +202,7 @@ export function fakeWorld(): FakeWorld {
     for (const sense of world.senses.filter((candidate) => nodeIds.includes(candidate.id))) owners.add(sense.entryId)
     for (const entryId of owners) workOf(entryId).revision += 1
   }
-  /** The entries whose relations link to a sense that is, or belongs to, one of these nodes. */
+  /** The entries whose relations link to a sense that is, or belongs to, one of these nodes, and the words of a phrase among them. */
   const linkedEntries = (nodeIds: Array<string | null>) => {
     const nodeSenses = new Set<string>(
       world.senses
@@ -199,7 +215,13 @@ export function fakeWorld(): FakeWorld {
         ...(nodeSenses.has(fact.subjectId) ? [fact.objectId] : []),
         ...(nodeSenses.has(fact.objectId ?? '') ? [fact.subjectId] : []),
       ])
-    return new Set(world.senses.filter((sense) => ends.includes(sense.id)).map((sense) => sense.entryId))
+    const phraseWords = world.entries
+      .filter((entry) => nodeIds.includes(entry.id) && isMultiword(entry.lemma))
+      .flatMap((entry) => entry.lemma.split(' '))
+    return new Set([
+      ...world.senses.filter((sense) => ends.includes(sense.id)).map((sense) => sense.entryId),
+      ...world.entries.filter((entry) => phraseWords.includes(entry.lemma)).map((entry) => entry.id),
+    ])
   }
   /** Marks stale the entries linked to the node an entry or sense fact defines, as the real batches do. */
   const touchLinked = (fact: Fact) => {
@@ -339,6 +361,8 @@ export function fakeWorld(): FakeWorld {
       return {
         entry,
         seed: world.seeds.has(entry.id),
+        levelRank: priorityOf(entry).levelRank,
+        phrases: phrasesOf(entry.lemma),
         senses: own.map(withLemma),
         facts,
         incoming,
@@ -579,12 +603,7 @@ export function fakeWorld(): FakeWorld {
             ...workOf(entry.id),
           }) && !world.leases.some((held) => held.entryId === entry.id && held.expiresAt > now)
         const order = (entry: EntryNode) => {
-          const reference = world.references.get(entry.lemma)
-          const levels = reference?.cefr.map((cefr) => levelRank(cefr.level)) ?? []
-          const priority = {
-            levelRank: levels.length > 0 ? Math.min(...levels) : null,
-            zipf: reference?.frequency?.zipf ?? null,
-          }
+          const priority = priorityOf(entry)
           const { completeness } = workOf(entry.id)
           return [
             claimTier({ ...priority, completeness, claimed: world.claimed.has(entry.id) }),
@@ -640,6 +659,7 @@ export function fakeWorld(): FakeWorld {
         return [...owners].filter(isStale).map(staleOf)
       },
       listAnyStale: async (limit) => [...world.work.keys()].filter(isStale).slice(0, limit).map(staleOf),
+      countStale: async () => [...world.work.keys()].filter(isStale).length,
       saveScores: async (stale, scores) => {
         const row = workOf(stale.entryId)
         if (row.revision !== stale.revision) return

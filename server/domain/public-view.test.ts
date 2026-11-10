@@ -21,6 +21,7 @@ const storedSense = (id: string, topics: string[], translations: Record<string, 
   id: id as SenseId,
   gloss: `Gloss of ${id}.`,
   labels: [],
+  region: null,
   rare: false,
   translations,
   grammar: { countability: 'countable', patterns: [], prepositions: [], review: review(`g-${id}`) },
@@ -88,7 +89,7 @@ const bank: StoredEntry = {
     },
   ],
   summary,
-  review: { entry: review('e1'), sense_list: null, syllables: review('y1') },
+  review: { entry: review('e1'), sense_list: null, syllables: review('y1'), closures: [] },
   forms: [
     { form: 'banks', type: 'plural', pos: 'noun' },
     { form: 'banked', type: 'past', pos: 'verb' },
@@ -217,7 +218,7 @@ describe('public read variants', () => {
     expect(plain).not.toContain('fact_id')
 
     const reviewed = shapeEntry(bank, links, { lang: 'zh', review: true })
-    expect(reviewed.review).toEqual({ entry: review('e1'), sense_list: null, syllables: review('y1') })
+    expect(reviewed.review).toEqual({ entry: review('e1'), sense_list: null, syllables: review('y1'), closures: [] })
     expect(reviewed.pronunciations[0]?.review).toEqual(review('p1'))
     expect(reviewed.variants[0]?.review).toEqual(review('v1'))
     expect(reviewed.morphology?.review).toEqual(review('m1'))

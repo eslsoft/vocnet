@@ -29,15 +29,22 @@ export async function refreshWork(deps: ScoreDeps, nodeIds: Array<string | null>
 const STALE_BATCH = 100
 
 /**
- * Rescores rows a crashed request left stale, a batch at a time. Every row in the batch is tried
- * before the failures are thrown, so a row that keeps failing takes one slot of the batch and the
- * rows behind it still drain.
+ * Rescores up to `limit` stale rows of any entry. Every row is tried before the failures are
+ * thrown, so a row that keeps failing takes one slot and the rows behind it still drain.
  */
-export async function refreshStaleWork(deps: ScoreDeps): Promise<number> {
-  const stale = await deps.work.listAnyStale(STALE_BATCH)
+export async function rescoreStaleWork(
+  deps: ScoreDeps,
+  limit: number,
+): Promise<{ rescored: number; remaining: number }> {
+  const stale = await deps.work.listAnyStale(limit)
   const failures: unknown[] = []
   for (const row of stale) await rescore(deps, row).catch((error: unknown) => failures.push(error))
   if (failures.length > 0)
     throw new AggregateError(failures, `${failures.length} stale worklist rows failed to rescore.`)
-  return stale.length
+  return { rescored: stale.length, remaining: await deps.work.countStale() }
+}
+
+/** Rescores rows a crashed request or a migration left stale, a batch at a time. */
+export async function refreshStaleWork(deps: ScoreDeps): Promise<number> {
+  return (await rescoreStaleWork(deps, STALE_BATCH)).rescored
 }

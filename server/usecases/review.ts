@@ -12,6 +12,7 @@ import {
   type SenseGloss,
   type SubjectTypeOf,
   type SubjectViews,
+  subjectTypeOf,
   targetOf,
   topicOf,
   variantKeysOf,
@@ -159,7 +160,7 @@ async function loadContext<K extends FactKind>(
   deps: ReviewDeps,
   fact: FactOf<K>,
 ): Promise<ReviewContext<SubjectTypeOf[K]>> {
-  const subjectType: SubjectTypeOf[K] = factKinds[fact.kind].subject
+  const subjectType: SubjectTypeOf[K] = subjectTypeOf(fact.kind, fact.payload)
   const subject = await subjectLoaders[subjectType](deps, fact.subjectId)
   const target = targetOf(fact.kind, fact.payload)
   const topic = topicOf(fact.kind, fact.payload)

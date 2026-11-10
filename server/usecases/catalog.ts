@@ -31,7 +31,7 @@ import type {
   Stats,
   WordSummary,
 } from '@shared/catalog'
-import { type EntryId, type Pos, registerSchema, type SenseId, type TopicId } from '@shared/facts'
+import { type EntryId, type Pos, regionSchema, registerSchema, type SenseId, type TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
@@ -96,8 +96,9 @@ export async function importCoreEntries(
 
 /**
  * Creates a sense with its gloss fact atomically. Idempotent by (entry, POS, gloss): the register
- * is a label, not part of the sense's identity, so the same gloss with any register returns the
- * existing sense unchanged. A register for an existing sense goes in a correction of its gloss.
+ * and region are labels, not part of the sense's identity, so the same gloss with any labels
+ * returns the existing sense unchanged. A label for an existing sense goes in a correction of its
+ * gloss.
  */
 export async function createSense(
   deps: WriteDeps,
@@ -107,9 +108,11 @@ export async function createSense(
   const entry = await deps.nodes.findEntry(input.entry_id)
   if (!entry) throw new InvalidReferenceError(`Entry ${input.entry_id} does not exist.`)
 
-  const payload = { gloss: input.gloss, register: input.register }
-  const labellings = [undefined, ...registerSchema.options].map((register) =>
-    contentKeyOf('sense', { gloss: input.gloss, register }),
+  const payload = { gloss: input.gloss, register: input.register, region: input.region }
+  const labellings = [undefined, ...registerSchema.options].flatMap((register) =>
+    [undefined, ...regionSchema.options].map((region) =>
+      contentKeyOf('sense', { gloss: input.gloss, register, region }),
+    ),
   )
   const existing = await deps.nodes.findSenseByGloss(entry.id, input.pos, labellings)
   if (existing) return { ...existing, created: false }

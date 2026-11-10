@@ -8,6 +8,7 @@ import type { WorkLeaseId } from '@shared/work'
 import {
   and,
   asc,
+  count,
   desc,
   eq,
   exists,
@@ -21,6 +22,7 @@ import {
   type SQLWrapper,
   sql,
 } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core'
 import { levelRankSql } from '../reference-sql'
 import { type Db, liveStatus, toEntry } from './rows'
 
@@ -155,25 +157,48 @@ function linkedEntriesOf(db: Db, nodeIds: string[] | SQLWrapper) {
 }
 
 /**
- * Marks stale the entries linked by a relation to the entry or sense this fact defines; a fact of
- * any other kind, or one that does not exist, marks nothing. Batch it with every fact insert and
- * status change.
+ * The entries whose lemma is one of the words of a multiword entry among these nodes: a phrase
+ * entering or leaving live changes their phrases gap. The lemma, spaced on both sides, is in the
+ * spaced phrase.
+ */
+function phraseHeadsOf(db: Db, nodeIds: string[] | SQLWrapper) {
+  const phrase = alias(entries, 'phrase')
+  return db
+    .select({ id: entries.id })
+    .from(phrase)
+    .innerJoin(entries, sql`instr(' ' || ${phrase.lemma} || ' ', ' ' || ${entries.lemma} || ' ') > 0`)
+    .where(and(inArray(phrase.id, nodeIds), sql`instr(${phrase.lemma}, ' ') > 0`, ne(entries.id, phrase.id)))
+}
+
+/**
+ * Marks stale the entries linked to the entry or sense this fact defines: by a relation, or as a
+ * word of the phrase an entry fact defines. A fact of any other kind, or one that does not exist,
+ * marks nothing. Batch it with every fact insert and status change.
  */
 export function touchLinkedWorkOfFact(db: Db, factId: string) {
   const defined = db
     .select({ id: facts.subjectId })
     .from(facts)
     .where(and(eq(facts.id, factId), inArray(facts.kind, ['entry', 'sense'])))
+  const definedEntry = db
+    .select({ id: facts.subjectId })
+    .from(facts)
+    .where(and(eq(facts.id, factId), eq(facts.kind, 'entry')))
   return db
     .update(worklist)
     .set(bumpRevision)
-    .where(inArray(worklist.entryId, linkedEntriesOf(db, defined)))
+    .where(
+      or(
+        inArray(worklist.entryId, linkedEntriesOf(db, defined)),
+        inArray(worklist.entryId, phraseHeadsOf(db, definedEntry)),
+      ),
+    )
 }
 
 /**
- * The worklist rows of the entries that are, or own as a sense, these nodes, and of the entries
- * whose relations link to a sense that is or belongs to one of them: every row a write about the
- * nodes can make stale.
+ * The worklist rows of the entries that are, or own as a sense, these nodes, of the entries whose
+ * relations link to a sense that is or belongs to one of them, and of the words of a phrase among
+ * them: every row a write about the nodes can make stale.
  */
 export function relatedWorklistRows(db: Db, nodeIds: string[]) {
   const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
@@ -181,6 +206,7 @@ export function relatedWorklistRows(db: Db, nodeIds: string[]) {
     inArray(worklist.entryId, nodeIds),
     inArray(worklist.entryId, owners),
     inArray(worklist.entryId, linkedEntriesOf(db, nodeIds)),
+    inArray(worklist.entryId, phraseHeadsOf(db, nodeIds)),
   )
 }
 
@@ -292,6 +318,11 @@ export function createWorkRepo(db: Db): WorkRepo {
         .orderBy(asc(worklist.entryId))
         .limit(limit)
       return rows.map(toStale)
+    },
+
+    async countStale() {
+      const [row] = await db.select({ count: count() }).from(worklist).where(isStale)
+      return row?.count ?? 0
     },
 
     async saveScores(stale, scores) {

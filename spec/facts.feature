@@ -30,7 +30,7 @@ Feature: Facts and review
   @facts/reviewer-routing @domain
   Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
-    Then entry, sense, form, relation, grammar, and morphology go to Jev and then the LLM, and pronunciation, example, translation, topic, collocation, and sense list go to the LLM
+    Then entry, sense, form, relation, and grammar go to Jev and then the LLM, and pronunciation, example, translation, topic, morphology, collocation, sense list, syllables, and gap closure go to the LLM
     And a plan may skip straight to the LLM, which ends every chain, but never past it
 
   @facts/second-opinion @domain
@@ -281,8 +281,8 @@ Feature: Facts and review
   @facts/ipa-format @domain
   Scenario: A pronunciation holds one broad IPA transcription
     Given a pronunciation to submit
-    When its ipa packs two transcriptions, carries slashes or brackets, or uses a symbol outside broad English IPA
-    Then the submission is invalid and the message names the symbols to replace, such as ɹ with r
+    When its ipa packs two transcriptions, carries slashes, brackets, or syllable dots, uses a symbol outside broad English IPA or the r-coloured ɚ and ɝ, or an American ipa writes ɛ
+    Then the submission is invalid and the message names the symbols to replace, such as ɹ with r, ɚ with ər, and ɛ with e in American, in a pronunciation and a form ipa alike
 
   @facts/translation-language @domain
   Scenario: A translation is submitted in a served language
@@ -292,7 +292,7 @@ Feature: Facts and review
 
   @facts/write-labels @domain
   Scenario: Facts carry optional usage labels
-    Given a sense register, a form part of speech, or a pronunciation strength and part of speech
+    Given a sense register or region, a form part of speech, or a pronunciation strength and part of speech
     When the fact is reviewed and published
     Then the reviewer is asked about the labelled form, and the public entry shows each label
 
@@ -507,7 +507,7 @@ Feature: Facts and review
   Scenario: Grammar fits the part of speech of its sense
     Given a grammar fact about a sense
     When it is submitted
-    Then a noun sense takes only and always its countability, a verb sense always its transitivity and optionally patterns and prepositions, and an adjective sense its position, adjective patterns, or prepositions
+    Then a noun sense always takes its countability and optionally its number, article, noun patterns, and prepositions, a verb sense always its transitivity and optionally verb patterns and prepositions, and an adjective sense its position (attributive only, predicative only, or both), adjective patterns, or prepositions
     And grammar of any other part of speech is refused by the kind's parts of speech, and a property or pattern that does not fit is an invalid reference that names what to remove
 
   @facts/grammar-review @domain
@@ -530,13 +530,14 @@ Feature: Facts and review
     When it is submitted
     Then a multiword entry is an invalid reference
     And parts whose letters do not spell the word, allowing two changed letters where each pair of parts joins, are an invalid reference
+    And an abbreviation or contraction such as "a.m.", "o'clock", or "Mrs" is one base part
 
   @facts/morphology-review @domain
   Scenario: A word formation is judged as a learner's dictionary analyses the word
     Given a morphology fact
     When its review is planned
-    Then Jev is asked whether the word is formed from exactly these parts with these meanings, or for one base part whether it is a simple word
-    And the LLM rubric fails a wrong, missing, or extra part, a wrong meaning, folk etymology, and letters that only look like an affix
+    Then the LLM alone is asked whether the word is formed from exactly these parts with these meanings as a present-day English formation, an opaque word or loan being one base ("factory") and an abbreviation or contraction one base too
+    And the rubric fails a wrong, missing, or extra part, a wrong meaning, etymology or folk etymology, and letters that only look like an affix
 
   @facts/collocation-contains-word @domain
   Scenario: A collocation contains its word
@@ -591,7 +592,7 @@ Feature: Facts and review
     Given a sense list of an entry
     When its review is planned
     Then the LLM alone sees the lemma and every listed sense with its part of speech and gloss, numbered, common in order and then extra
-    And it passes only a list whose common senses cover every common sense a learner's dictionary lists, hold no duplicate or over-split meaning, run from most to least common, and whose extra senses are all rare, archaic, technical, or specialist, never failing a missing rare sense
+    And it passes only a list whose common senses cover every main sense a learner's dictionary lists for A1 to B1 learners, hold no duplicate or over-split meaning, run in a plausible order from more to less common, and whose extra senses are all rare, archaic, technical, or specialist, never failing a missing rare sense and never answering uncertain because exact frequency order cannot be verified
     And its reason names each missing, duplicated, misordered, or misplaced sense
     And a list naming a sense without a live gloss is unreviewable
 
@@ -636,3 +637,63 @@ Feature: Facts and review
     Given an example fact with a translation in a served language
     When it is submitted and reviewed
     Then the translation is part of its content key, and the LLM fails the example when the translation is unfaithful or unnatural
+
+  @facts/periphrastic-forms @domain
+  Scenario: A periphrastic comparison is never a form
+    Given a comparative spelled "more …" or a superlative spelled "most …"
+    When it is submitted, or its entry is shown
+    Then the submission is an invalid reference that names the inflected forms to record instead, and such a form is never irregular
+
+  @facts/antonym-llm @domain
+  Scenario: Antonyms are judged by the LLM alone
+    Given an antonym relation between two glossed senses
+    When its review is planned
+    Then the LLM alone is asked, and its rubric fails a converse role pair such as teacher and student, and a target that is archaic or old-fashioned in its sense
+
+  @facts/relation-ends @domain
+  Scenario: A relation links common, current senses
+    Given a relation whose target, or for a symmetric type either end, is in its entry's sense list extra or is labelled dated
+    When it is submitted, or a rejected one is re-reviewed back to life
+    Then it is an invalid reference that names the sense, and a directed relation from a rare sense is admitted
+
+  @facts/sense-region @domain
+  Scenario: A sense states its region, and review enforces it
+    Given a sense with or without a region of british or american
+    When it is keyed and its review is planned
+    Then the region is a label of the content key, Jev answers no for a one-region sense with no region, and the rubric fails a BrE-only or AmE-only sense without its region and an old-fashioned sense without the dated register
+
+  @facts/zh-translation-format @domain
+  Scenario: A zh text uses fullwidth punctuation and lists each alternative once
+    Given a zh translation or a zh example translation
+    When it carries ASCII ; , ( or ), or a translation repeats an alternative such as 建造；建造
+    Then the submission is invalid and the message names the fullwidth marks or the repeat
+
+  @facts/gap-closure-format @domain
+  Scenario: A gap closure names a closable gap and a reason
+    Given a gap closure to submit
+    When its gap is forms, phrases, relations, topics, grammar, or collocations and it gives a reason
+    Then it is accepted, and any other gap or an empty reason is invalid
+
+  @facts/gap-closure-subject @usecase
+  Scenario: A gap closure is about the node its gap is about
+    Given a forms or phrases closure, or a relations, topics, grammar, or collocations closure
+    When it is submitted on an entry or a sense
+    Then an entry gap closes on the entry and a sense gap on a sense, the other node is an invalid reference, and the closure is keyed by its gap and reason
+
+  @facts/gap-closure-review @domain
+  Scenario: A gap closure passes only when a learner's dictionary has nothing for the slot
+    Given a gap closure with its reason
+    When its review is planned
+    Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
+
+  @facts/gap-closure-api @api
+  Scenario: A reviewed closure closes its gap and shows in the review metadata
+    Given a sense with a collocations gap
+    When a closure on the entry is refused and one on the sense is reviewed and published
+    Then the gap is gone from the claim, completeness rises, and the public entry lists the closure under its review metadata only
+
+  @facts/completeness-write-rules-api @api
+  Scenario: The completeness write rules refuse what the rules would not count
+    Given an entry with an adjective sense
+    When a periphrastic comparative, a dotted or ɛ American pronunciation, an ASCII-punctuated zh translation, or a synonym to a dated sense is submitted
+    Then each is refused, 422 for the write rules and 400 for the formats, with a message that names the fix

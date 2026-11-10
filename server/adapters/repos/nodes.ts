@@ -1,7 +1,7 @@
 import { entries, facts, feedback, senses, worklist } from '@server/db/schema'
 import type { FactOf } from '@server/domain/fact'
 import type { SenseWithLemma } from '@server/domain/nodes'
-import type { Lemma } from '@server/domain/term'
+import { isMultiword, type Lemma } from '@server/domain/term'
 import type { NodeRepo, PageRequest } from '@server/usecases/ports'
 import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
 import { and, asc, count, desc, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
@@ -203,51 +203,67 @@ export function createNodeRepo(db: Db): NodeRepo {
         .select({ id: facts.id })
         .from(facts)
         .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own)))
-      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts, flagged] = await db.batch([
-        db.select({ seed: worklist.seed }).from(worklist).where(eq(worklist.entryId, entry.id)),
-        db
-          .select(senseColumns)
-          .from(senses)
-          .innerJoin(entries, eq(entries.id, senses.entryId))
-          .where(eq(senses.entryId, entry.id))
-          .orderBy(asc(senses.createdAt), asc(senses.id)),
-        db
-          .select()
-          .from(facts)
-          .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own)))
-          .orderBy(...order),
-        db
-          .select()
-          .from(facts)
-          .where(and(eq(facts.kind, 'relation'), inArray(facts.objectId, own)))
-          .orderBy(...order),
-        db.select(senseColumns).from(senses).innerJoin(entries, eq(entries.id, senses.entryId)).where(neighborIds),
-        db
-          .select()
-          .from(facts)
-          .where(
-            or(
-              and(eq(facts.kind, 'sense'), inArray(facts.subjectId, neighborSenseIds)),
-              and(eq(facts.kind, 'entry'), inArray(facts.subjectId, neighborEntries)),
+      // A phrase has this lemma as a word when the lemma, spaced on both sides, is in the spaced phrase.
+      const hasWord = isMultiword(entry.lemma)
+        ? sql`0`
+        : sql`instr(' ' || ${entries.lemma} || ' ', ${` ${entry.lemma} `}) > 0`
+      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts, flagged, phrases] = await db.batch(
+        [
+          db
+            .select({ seed: worklist.seed, levelRank: worklist.levelRank })
+            .from(worklist)
+            .where(eq(worklist.entryId, entry.id)),
+          db
+            .select(senseColumns)
+            .from(senses)
+            .innerJoin(entries, eq(entries.id, senses.entryId))
+            .where(eq(senses.entryId, entry.id))
+            .orderBy(asc(senses.createdAt), asc(senses.id)),
+          db
+            .select()
+            .from(facts)
+            .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own)))
+            .orderBy(...order),
+          db
+            .select()
+            .from(facts)
+            .where(and(eq(facts.kind, 'relation'), inArray(facts.objectId, own)))
+            .orderBy(...order),
+          db.select(senseColumns).from(senses).innerJoin(entries, eq(entries.id, senses.entryId)).where(neighborIds),
+          db
+            .select()
+            .from(facts)
+            .where(
+              or(
+                and(eq(facts.kind, 'sense'), inArray(facts.subjectId, neighborSenseIds)),
+                and(eq(facts.kind, 'entry'), inArray(facts.subjectId, neighborEntries)),
+              ),
+            )
+            .orderBy(...order),
+          db
+            .selectDistinct({ id: feedback.targetId })
+            .from(feedback)
+            .where(
+              and(
+                inArray(feedback.targetId, ownFactIds),
+                eq(feedback.targetType, 'fact'),
+                inArray(feedback.status, ['open', 'claimed']),
+              ),
             ),
-          )
-          .orderBy(...order),
-        db
-          .selectDistinct({ id: feedback.targetId })
-          .from(feedback)
-          .where(
-            and(
-              inArray(feedback.targetId, ownFactIds),
-              eq(feedback.targetType, 'fact'),
-              inArray(feedback.status, ['open', 'claimed']),
-            ),
-          ),
-      ])
+          db
+            .select({ lemma: entries.lemma })
+            .from(entries)
+            .where(and(hasWord, sql`instr(${entries.lemma}, ' ') > 0`, liveEntryOf(entries.id, db)))
+            .orderBy(asc(entries.lemma)),
+        ],
+      )
 
       if (!work[0]) throw new Error(`Entry ${entry.id} has no worklist row.`)
       return {
         entry,
         seed: work[0].seed,
+        levelRank: work[0].levelRank,
+        phrases: phrases.map((row) => row.lemma),
         senses: ownSenses.map(toSenseWithLemma),
         facts: subjectFacts.map(toFact),
         incoming: incoming.map(toFact),

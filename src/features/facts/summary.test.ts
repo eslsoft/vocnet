@@ -48,6 +48,15 @@ describe('summarizeFact', () => {
     ],
     [{ kind: 'sense_list', payload: { common: [target, target], extra: [target] } }, '2 common, 1 extra'],
     [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
+    [{ kind: 'sense', payload: { gloss: 'A lorry.', region: 'british' } }, 'A lorry. (british)'],
+    [
+      { kind: 'grammar', payload: { countability: 'uncountable', number: 'singular_only', article: 'with_the' } },
+      'uncountable, singular_only, with_the',
+    ],
+    [
+      { kind: 'gap_closure', payload: { gap: 'collocations', reason: 'A month name has no common collocations.' } },
+      'collocations: A month name has no common collocations.',
+    ],
     [{ kind: 'form', payload: { form: 'went', type: 'past', ipa: 'went', accent: 'uk' } }, 'went (past) /went/ (uk)'],
     [
       { kind: 'example', payload: { text: 'We sat on the bank.', translations: { zh: '我们坐在河岸上。' } } },

@@ -18,6 +18,7 @@ import {
   MAX_SENSE_LIST_ATTEMPTS,
   RELATIONS_NEEDED,
   TOPICS_NEEDED,
+  VERB_PARADIGM,
   type WorkLease,
 } from './work'
 
@@ -25,7 +26,9 @@ let counter = 0
 const id = <T>() => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}` as T
 const at = '2026-01-01T00:00:00.000Z'
 const entryId = id<EntryId>()
-const bank = { lemma: 'bank' }
+const bank = { id: entryId, lemma: 'bank' }
+/** An entry with no CEFR level and no phrases, so the A1-A2 rules stay out of the way. */
+const plain = { levelRank: null, phrases: [] }
 
 const sense = (pos: Pos = 'noun'): SenseWithLemma => ({
   id: id<SenseId>(),
@@ -73,11 +76,10 @@ function visibleSense(): SenseId {
 describe('entryGaps', () => {
   it('lists every gap of a bare entry [spec: work/gaps]', () => {
     expect(
-      entryGaps({ entry: bank, senses: [], facts: [fact('entry', entryId, {})], incoming: [], neighbors }),
+      entryGaps({ entry: bank, ...plain, senses: [], facts: [fact('entry', entryId, {})], incoming: [], neighbors }),
     ).toEqual([
       { type: 'senses' },
-      { type: 'forms' },
-      { type: 'pronunciation' },
+      { type: 'pronunciation', accents: ['us', 'uk'] },
       { type: 'morphology' },
       { type: 'syllables' },
     ])
@@ -85,11 +87,25 @@ describe('entryGaps', () => {
 
   it('asks for the word formation of a single word only [spec: work/usage-gaps]', () => {
     const facts = [fact('entry', entryId, {})]
-    const phrase = entryGaps({ entry: { lemma: 'post office' }, senses: [], facts, incoming: [], neighbors })
-    expect(phrase.map((gap) => gap.type)).toEqual(['senses', 'forms', 'pronunciation'])
+    const phrase = entryGaps({
+      entry: { id: entryId, lemma: 'post office' },
+      ...plain,
+      senses: [],
+      facts,
+      incoming: [],
+      neighbors,
+    })
+    expect(phrase.map((gap) => gap.type)).toEqual(['senses', 'pronunciation'])
     const morphology = fact('morphology', entryId, { parts: [{ form: 'bank', role: 'base' }] }, 'pending')
-    const word = entryGaps({ entry: bank, senses: [], facts: [...facts, morphology], incoming: [], neighbors })
-    expect(word.map((gap) => gap.type)).toEqual(['senses', 'forms', 'pronunciation', 'syllables'])
+    const word = entryGaps({
+      entry: bank,
+      ...plain,
+      senses: [],
+      facts: [...facts, morphology],
+      incoming: [],
+      neighbors,
+    })
+    expect(word.map((gap) => gap.type)).toEqual(['senses', 'pronunciation', 'syllables'])
   })
 
   it('opens per-sense gaps for each sense whose gloss is live, counting pending facts', () => {
@@ -103,13 +119,13 @@ describe('entryGaps', () => {
       fact('form', entryId, { form: 'banks', type: 'plural' }, 'pending'),
       fact('translation', glossed.id, { language: 'fr', text: 'rive' }),
     ]
-    expect(entryGaps({ entry: bank, senses: [glossed, rejected], facts, incoming: [], neighbors })).toEqual([
+    expect(entryGaps({ entry: bank, ...plain, senses: [glossed, rejected], facts, incoming: [], neighbors })).toEqual([
       { type: 'sense_list', rejected: 0 },
-      { type: 'pronunciation' },
+      { type: 'pronunciation', accents: ['us', 'uk'] },
       { type: 'morphology' },
       { type: 'syllables' },
       { type: 'relations', sense_id: glossed.id, count: 0, have: [] },
-      { type: 'examples', sense_id: glossed.id },
+      { type: 'examples', sense_id: glossed.id, count: 0, need: 1 },
       { type: 'translations', sense_id: glossed.id, language: 'zh' },
       { type: 'example_translations', sense_id: glossed.id, language: 'zh' },
       { type: 'topics', sense_id: glossed.id },
@@ -127,6 +143,7 @@ describe('entryGaps', () => {
       fact('sense', object.id, { gloss: 'the edge of a lake' }),
       fact('form', entryId, { form: 'banks', type: 'plural' }),
       fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'us' }),
+      fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'uk' }),
       fact('relation', subject.id, { type: 'synonym', target_sense_id: elsewhere }),
       fact('relation', subject.id, { type: 'hypernym', target_sense_id: visibleSense() }, 'pending'),
       fact('relation', object.id, { type: 'part_of', target_sense_id: visibleSense() }),
@@ -145,8 +162,8 @@ describe('entryGaps', () => {
       fact('sense_list', entryId, { common: [object.id, subject.id], extra: [] }, 'pending'),
     ]
     const incoming = [fact('relation', elsewhere, { type: 'hypernym', target_sense_id: object.id })]
-    expect(entryGaps({ entry: bank, senses: [subject, object], facts, incoming, neighbors })).toEqual([
-      { type: 'examples', sense_id: object.id },
+    expect(entryGaps({ entry: bank, ...plain, senses: [subject, object], facts, incoming, neighbors })).toEqual([
+      { type: 'examples', sense_id: object.id, count: 0, need: 1 },
       { type: 'example_translations', sense_id: object.id, language: 'zh' },
       { type: 'grammar', sense_id: object.id },
     ])
@@ -157,6 +174,7 @@ describe('entryGaps', () => {
     const translationGaps = (language: string) =>
       entryGaps({
         entry: bank,
+        ...plain,
         senses: [subject],
         facts: [
           fact('sense', subject.id, { gloss: 'land beside a river' }),
@@ -180,7 +198,7 @@ describe('entryGaps', () => {
       fact('translation', focus.id, { language: 'zh', text: '树枝' }),
     ]
     const relationGaps = (facts: Fact[], incoming: Fact[] = []) =>
-      entryGaps({ entry: bank, senses: [focus], facts: [...base, ...facts], incoming, neighbors }).filter(
+      entryGaps({ entry: bank, ...plain, senses: [focus], facts: [...base, ...facts], incoming, neighbors }).filter(
         (gap) => gap.type === 'relations',
       )
 
@@ -223,13 +241,20 @@ describe('entryGaps', () => {
       fact('relation', focus.id, { type: 'antonym', target_sense_id: pendingGloss.other.id }),
     ]
     const incoming = [fact('relation', unglossed.other.id, { type: 'part_of', target_sense_id: focus.id })]
-    const relations = entryGaps({ entry: bank, senses: [focus], facts, incoming, neighbors: ends }).filter(
+    const relations = entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming, neighbors: ends }).filter(
       (gap) => gap.type === 'relations',
     )
     expect(relations).toEqual([
       { type: 'relations', sense_id: focus.id, count: 1, have: [{ type: 'antonym', direction: 'outgoing' }] },
     ])
-    const unknown = entryGaps({ entry: bank, senses: [focus], facts, incoming, neighbors: { senses: [], facts: [] } })
+    const unknown = entryGaps({
+      entry: bank,
+      ...plain,
+      senses: [focus],
+      facts,
+      incoming,
+      neighbors: { senses: [], facts: [] },
+    })
     expect(unknown).toContainEqual({ type: 'relations', sense_id: focus.id, count: 0, have: [] })
   })
 })
@@ -242,14 +267,14 @@ describe('sense list gap', () => {
     fact('sense', rare.id, { gloss: 'a bank of oars' }),
   ]
   const inventory = (facts: Fact[], senses = [common, rare]) =>
-    entryGaps({ entry: bank, senses, facts: [...glosses, ...facts], incoming: [], neighbors }).filter(
+    entryGaps({ entry: bank, ...plain, senses, facts: [...glosses, ...facts], incoming: [], neighbors }).filter(
       (gap) => gap.type === 'senses' || gap.type === 'sense_list',
     )
   const list = (status: FactStatus = 'published', ids = { common: [common.id], extra: [rare.id] }) =>
     fact('sense_list', entryId, ids, status)
 
   it('asks for senses, then for a list naming exactly the live senses [spec: work/sense-list-gap]', () => {
-    expect(entryGaps({ entry: bank, senses: [], facts: [glosses[0]], incoming: [], neighbors })[0]).toEqual({
+    expect(entryGaps({ entry: bank, ...plain, senses: [], facts: [glosses[0]], incoming: [], neighbors })[0]).toEqual({
       type: 'senses',
     })
     expect(inventory([])).toEqual([{ type: 'sense_list', rejected: 0 }])
@@ -266,7 +291,7 @@ describe('sense list gap', () => {
     expect(inventory([list(), addedGloss], [common, rare, added])).toEqual([{ type: 'sense_list', rejected: 0 }])
     const withoutRare = [glosses[0], glosses[1], { ...glosses[2], status: 'rejected' } as Fact, list()]
     expect(
-      entryGaps({ entry: bank, senses: [common, rare], facts: withoutRare, incoming: [], neighbors }).map(
+      entryGaps({ entry: bank, ...plain, senses: [common, rare], facts: withoutRare, incoming: [], neighbors }).map(
         (gap) => gap.type,
       ),
     ).toContain('sense_list')
@@ -298,6 +323,7 @@ describe('sense list gap', () => {
     const assess = (facts: Fact[]) =>
       assessEntry({
         entry: bank,
+        ...plain,
         senses: [common, rare],
         facts: [...glosses, ...facts],
         incoming: [],
@@ -313,6 +339,7 @@ describe('sense list gap', () => {
     const perSense = (facts: Fact[]) =>
       entryGaps({
         entry: bank,
+        ...plain,
         senses: [common, rare],
         facts: [...glosses, ...facts],
         incoming: [],
@@ -324,6 +351,7 @@ describe('sense list gap', () => {
     const score = (facts: Fact[]) =>
       assessEntry({
         entry: bank,
+        ...plain,
         senses: [common, rare],
         facts: [...glosses, ...facts],
         incoming: [],
@@ -382,11 +410,12 @@ describe('relations by part of speech', () => {
           fact('sense', focus.id, { gloss: 'a meaning' }),
           fact('sense_list', entryId, { common: [focus.id], extra: [] }),
         ]
-        const gap = entryGaps({ entry: bank, senses: [focus], facts, incoming: [], neighbors }).find(
+        const gap = entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming: [], neighbors }).find(
           (open) => open.type === 'relations',
         )
         const { completeness } = assessEntry({
           entry: bank,
+          ...plain,
           senses: [focus],
           facts,
           incoming: [],
@@ -401,7 +430,8 @@ describe('relations by part of speech', () => {
     )
     expect(needs).toEqual({
       noun: { gap: true, completeness: 1 - 12 / 13 },
-      verb: { gap: true, completeness: 1 - 12 / 13 },
+      // A verb's paradigm adds four form slots.
+      verb: { gap: true, completeness: 1 - 16 / 17 },
       adjective: { gap: true, completeness: 1 - 11 / 12 },
       adverb: { gap: true, completeness: 1 - 8 / 9 },
       pronoun: { gap: false, completeness: 1 - 7 / 8 },
@@ -417,18 +447,22 @@ describe('relations by part of speech', () => {
       fact('relation', adverb.id, { type: 'synonym', target_sense_id: visibleSense() }),
     ]
     expect(
-      entryGaps({ entry: bank, senses: [adverb], facts: linked, incoming: [], neighbors }).map((gap) => gap.type),
+      entryGaps({ entry: bank, ...plain, senses: [adverb], facts: linked, incoming: [], neighbors }).map(
+        (gap) => gap.type,
+      ),
     ).not.toContain('relations')
   })
 })
 
 describe('grammar and collocations by part of speech', () => {
-  it('needs grammar for nouns and verbs and collocations for nouns, verbs, and adjectives [spec: work/usage-gaps]', () => {
+  it('needs grammar and collocations for nouns, verbs, and adjectives [spec: work/usage-gaps]', () => {
     const needs = Object.fromEntries(
       Object.keys(GRAMMAR_NEEDED).map((pos) => {
         const focus = sense(pos as Pos)
         const facts = [fact('sense', focus.id, { gloss: 'a meaning' })]
-        const types = entryGaps({ entry: bank, senses: [focus], facts, incoming: [], neighbors }).map((gap) => gap.type)
+        const types = entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming: [], neighbors }).map(
+          (gap) => gap.type,
+        )
         return [pos, { grammar: types.includes('grammar'), collocations: types.includes('collocations') }]
       }),
     )
@@ -437,7 +471,7 @@ describe('grammar and collocations by part of speech', () => {
       Object.fromEntries(
         Object.keys(GRAMMAR_NEEDED).map((pos) => [
           pos,
-          { grammar: pos === 'noun' || pos === 'verb', collocations: content.includes(pos) },
+          { grammar: content.includes(pos), collocations: content.includes(pos) },
         ]),
       ),
     )
@@ -446,7 +480,7 @@ describe('grammar and collocations by part of speech', () => {
 })
 
 describe('topics by part of speech', () => {
-  it('opens a topics gap on noun, verb, and adjective senses until one live topic tags them [spec: work/topics-gap]', () => {
+  it('opens a topics gap on noun and verb senses until one live topic tags them [spec: work/topics-gap]', () => {
     const hospital = { topic_id: 'hospital-doctor' as TopicId }
     const gapsFor = (pos: Pos, topics: FactStatus[] = []) => {
       const focus = sense(pos)
@@ -454,7 +488,7 @@ describe('topics by part of speech', () => {
         fact('sense', focus.id, { gloss: 'a meaning' }),
         ...topics.map((status) => fact('topic', focus.id, hospital, status)),
       ]
-      return { focus, gaps: entryGaps({ entry: bank, senses: [focus], facts, incoming: [], neighbors }) }
+      return { focus, gaps: entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming: [], neighbors }) }
     }
     const open = Object.fromEntries(
       Object.keys(TOPICS_NEEDED).map((pos) => [pos, gapsFor(pos as Pos).gaps.some((gap) => gap.type === 'topics')]),
@@ -462,7 +496,7 @@ describe('topics by part of speech', () => {
     expect(open).toEqual({
       noun: true,
       verb: true,
-      adjective: true,
+      adjective: false,
       adverb: false,
       pronoun: false,
       determiner: false,
@@ -481,7 +515,7 @@ describe('topics by part of speech', () => {
 
 describe('new usage gaps', () => {
   it('asks for syllables of a single word, a translated example per sense, and a pronunciation per irregular form [spec: work/field-gaps]', () => {
-    const go = { lemma: 'go' }
+    const go = { id: entryId, lemma: 'go' }
     const focus = sense('verb')
     const facts: Fact[] = [
       fact('entry', entryId, {}),
@@ -492,12 +526,13 @@ describe('new usage gaps', () => {
       fact('form', entryId, { form: 'went', type: 'past', ipa: 'went', accent: 'us' }, 'pending'),
       fact('example', focus.id, { text: 'We go home.' }),
     ]
-    const gaps = entryGaps({ entry: go, senses: [focus], facts, incoming: [], neighbors })
+    const gaps = entryGaps({ entry: go, ...plain, senses: [focus], facts, incoming: [], neighbors })
     expect(gaps).toContainEqual({ type: 'syllables' })
     expect(gaps).toContainEqual({ type: 'form_pronunciations', forms: ['gone'] })
     expect(gaps).toContainEqual({ type: 'example_translations', sense_id: focus.id, language: 'zh' })
     const phrase = entryGaps({
-      entry: { lemma: 'go out' },
+      entry: { id: entryId, lemma: 'go out' },
+      ...plain,
       senses: [],
       facts: facts.slice(0, 1),
       incoming: [],
@@ -523,11 +558,13 @@ describe('assessEntry', () => {
     fact('collocation', focus.id, { text: 'river bank', pattern: 'noun_noun' }),
     fact('sense_list', entryId, { common: [focus.id], extra: [] }),
     fact('syllables', entryId, { syllables: ['bank'] }),
+    fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'uk' }),
   ]
   const incoming = [fact('relation', visibleSense(), { type: 'hypernym', target_sense_id: focus.id })]
   const assess = (facts: Fact[], more: { incoming?: Fact[]; flagged?: FactId[] } = {}) =>
     assessEntry({
       entry: bank,
+      ...plain,
       senses: [focus],
       facts,
       incoming: more.incoming ?? incoming,
@@ -537,12 +574,12 @@ describe('assessEntry', () => {
 
   it('scores completeness as filled slots over the slots the gaps count [spec: work/scores]', () => {
     expect(assess(complete)).toMatchObject({ gaps: [], completeness: 1, quality: 1, weakFacts: [] })
-    // One of two relations and the translation missing: 2 of 13 slots.
+    // One of two relations and the translation missing: 2 of 14 slots.
     const noTranslation = complete.filter((candidate) => candidate.kind !== 'translation')
-    expect(assess(noTranslation, { incoming: [] }).completeness).toBe(1 - 2 / 13)
-    // A bare entry counts only its five entry slots.
+    expect(assess(noTranslation, { incoming: [] }).completeness).toBe(1 - 2 / 14)
+    // A bare entry counts only its five entry slots: the inventory, two accents, formation, syllables.
     expect(assess([complete[0]], { incoming: [] }).completeness).toBe(0)
-    expect(assess([complete[0], complete[2]], { incoming: [] }).completeness).toBe(1 - 4 / 5)
+    expect(assess([complete[0], complete[3]], { incoming: [] }).completeness).toBe(1 - 4 / 5)
   })
 
   it('scores quality from live facts that are uncertain or under open feedback [spec: work/scores]', () => {
@@ -625,5 +662,172 @@ describe('worklist admission', () => {
     const qualityOnly = bands.map((band) => claimTier({ ...band, completeness: 1, claimed: false }))
     expect(qualityOnly).toEqual([16, 18, 20, 22, 24, 26, 28, 30])
     expect(Math.min(...qualityOnly)).toBeGreaterThan(Math.max(...tiers))
+  })
+})
+
+describe('completeness rules for a learner dictionary', () => {
+  const gapsOf = (
+    lemma: string,
+    senses: SenseWithLemma[],
+    facts: Fact[],
+    more: { levelRank?: number | null; phrases?: string[] } = {},
+  ) =>
+    entryGaps({
+      entry: { id: entryId, lemma },
+      levelRank: more.levelRank ?? null,
+      phrases: more.phrases ?? [],
+      senses,
+      facts: [fact('entry', entryId, {}), ...facts],
+      incoming: [],
+      neighbors,
+    })
+  const formsGap = (gaps: ReturnType<typeof entryGaps>) => gaps.find((gap) => gap.type === 'forms')
+
+  it('asks for the inflections each part of speech takes, filled by label or by where the form shows [spec: work/form-paradigm]', () => {
+    const verb = sense('verb')
+    const noun = sense('noun')
+    const glosses = [fact('sense', verb.id, { gloss: 'to walk' }), fact('sense', noun.id, { gloss: 'a walk' })]
+    expect(formsGap(gapsOf('walk', [verb, noun], glosses))).toEqual({
+      type: 'forms',
+      missing: VERB_PARADIGM.map((type) => ({ type, pos: 'verb' })),
+    })
+    // A countable noun sense adds the plural; an unlabelled form fills the slot its type shows under.
+    const countable = fact('grammar', noun.id, { countability: 'both' })
+    const forms = [
+      fact('form', entryId, { form: 'walks', type: 'third_person_singular' }),
+      fact('form', entryId, { form: 'walked', type: 'past', pos: 'verb' }),
+      fact('form', entryId, { form: 'walked', type: 'past_participle' }, 'pending'),
+      fact('form', entryId, { form: 'walking', type: 'present_participle' }, 'rejected'),
+    ]
+    expect(formsGap(gapsOf('walk', [verb, noun], [...glosses, countable, ...forms]))).toEqual({
+      type: 'forms',
+      missing: [
+        { type: 'present_participle', pos: 'verb' },
+        { type: 'plural', pos: 'noun' },
+      ],
+    })
+    // A form labelled with another part of speech fills nothing here.
+    const plural = fact('form', entryId, { form: 'walks', type: 'plural', pos: 'pronoun' })
+    expect(formsGap(gapsOf('walk', [noun], [glosses[1], countable, plural]))?.missing).toEqual([
+      { type: 'plural', pos: 'noun' },
+    ])
+    // An uncountable noun and an invariable word need no form.
+    const advice = fact('grammar', noun.id, { countability: 'uncountable' })
+    expect(formsGap(gapsOf('advice', [noun], [glosses[1], advice]))).toBeUndefined()
+    const ago = sense('adverb')
+    expect(formsGap(gapsOf('ago', [ago], [fact('sense', ago.id, { gloss: 'Before now.' })]))).toBeUndefined()
+    expect(formsGap(gapsOf('walk out', [verb], [glosses[0]]))).toBeUndefined()
+  })
+
+  it('asks for comparisons only of a word that compares with -er and -est [spec: work/form-paradigm]', () => {
+    const adjective = sense('adjective')
+    const gloss = fact('sense', adjective.id, { gloss: 'Large in size.' })
+    const syllables = (...parts: string[]) => fact('syllables', entryId, { syllables: parts })
+    const comparison = [
+      { type: 'comparative', pos: 'adjective' },
+      { type: 'superlative', pos: 'adjective' },
+    ]
+    expect(formsGap(gapsOf('big', [adjective], [gloss, syllables('big')]))?.missing).toEqual(comparison)
+    expect(formsGap(gapsOf('happy', [adjective], [gloss, syllables('hap', 'py')]))?.missing).toEqual(comparison)
+    expect(formsGap(gapsOf('careful', [adjective], [gloss, syllables('care', 'ful')]))).toBeUndefined()
+    expect(formsGap(gapsOf('big', [adjective], [gloss]))).toBeUndefined()
+    // A periphrastic comparison is no inflection: it neither fills a slot nor shows the word compares.
+    const periphrastic = fact('form', entryId, { form: 'more careful', type: 'comparative' })
+    expect(formsGap(gapsOf('careful', [adjective], [gloss, syllables('care', 'ful'), periphrastic]))).toBeUndefined()
+    // A recorded inflected comparison asks for the rest of it, for an adverb too.
+    const adverb = sense('adverb')
+    const soon = [fact('sense', adverb.id, { gloss: 'In a short time.' })]
+    expect(formsGap(gapsOf('soon', [adverb], soon))).toBeUndefined()
+    const sooner = fact('form', entryId, { form: 'sooner', type: 'comparative' })
+    expect(formsGap(gapsOf('soon', [adverb], [...soon, sooner]))?.missing).toEqual([
+      { type: 'superlative', pos: 'adverb' },
+    ])
+  })
+
+  it('needs a strong pronunciation in both accents [spec: work/pronunciation-accents]', () => {
+    const pronounce = (accent: 'us' | 'uk', strength?: 'weak') =>
+      fact('pronunciation', entryId, { ipa: 'tuː', accent, ...(strength ? { strength } : {}) })
+    const accents = (facts: Fact[]) => gapsOf('to', [], facts).find((gap) => gap.type === 'pronunciation')
+    expect(accents([pronounce('us')])).toEqual({ type: 'pronunciation', accents: ['uk'] })
+    expect(accents([pronounce('us'), pronounce('uk', 'weak')])).toEqual({ type: 'pronunciation', accents: ['uk'] })
+    expect(accents([pronounce('us'), pronounce('uk')])).toBeUndefined()
+  })
+
+  it('needs a collocation of a manner or degree adverb only [spec: work/adverb-collocations]', () => {
+    const adverb = sense('adverb')
+    const gloss = fact('sense', adverb.id, { gloss: 'In a quick way.' })
+    const collocations = (lemma: string, facts: Fact[] = []) =>
+      gapsOf(lemma, [adverb], [gloss, ...facts]).some((gap) => gap.type === 'collocations')
+    expect(collocations('quickly')).toBe(true)
+    expect(collocations('here')).toBe(false)
+    expect(collocations('hard', [fact('form', entryId, { form: 'harder', type: 'comparative' })])).toBe(true)
+    expect(
+      collocations('quickly', [fact('collocation', adverb.id, { text: 'move quickly', pattern: 'verb_adverb' })]),
+    ).toBe(false)
+  })
+
+  it('needs two examples of each counted sense of an A1 or A2 entry [spec: work/core-examples]', () => {
+    const noun = sense('noun')
+    const facts = [
+      fact('sense', noun.id, { gloss: 'A place for money.' }),
+      fact('example', noun.id, { text: 'The bank is open.' }),
+    ]
+    const examples = (levelRank: number | null) =>
+      gapsOf('bank', [noun], facts, { levelRank }).find((gap) => gap.type === 'examples')
+    expect(examples(1)).toEqual({ type: 'examples', sense_id: noun.id, count: 1, need: 2 })
+    expect(examples(2)).toEqual({ type: 'examples', sense_id: noun.id, count: 1, need: 2 })
+    expect(examples(3)).toBeUndefined()
+    expect(examples(null)).toBeUndefined()
+  })
+
+  it('asks an A1 or A2 verb for a live phrase built on it [spec: work/phrases-gap]', () => {
+    const verb = sense('verb')
+    const noun = sense('noun')
+    const asVerb = [fact('sense', verb.id, { gloss: 'To hand over.' })]
+    const phrases = (lemma: string, levelRank: number | null, found: string[], senses = [verb], facts = asVerb) =>
+      gapsOf(lemma, senses, facts, { levelRank, phrases: found }).some((gap) => gap.type === 'phrases')
+    expect(phrases('give', 1, [])).toBe(true)
+    expect(phrases('give', 2, [])).toBe(true)
+    expect(phrases('give', 1, ['give up'])).toBe(false)
+    expect(phrases('give', 3, [])).toBe(false)
+    expect(phrases('give up', 1, [])).toBe(false)
+    expect(phrases('desk', 1, [], [noun], [fact('sense', noun.id, { gloss: 'A table.' })])).toBe(false)
+  })
+
+  it('closes exactly the gap a live closure names on its node, counting its slots as filled [spec: work/gap-closure]', () => {
+    const month = sense('noun')
+    const other = sense('noun')
+    const base: Fact[] = [
+      fact('sense', month.id, { gloss: 'The fifth month.' }),
+      fact('sense', other.id, { gloss: 'A girl’s name.' }),
+      fact('sense_list', entryId, { common: [month.id, other.id], extra: [] }),
+    ]
+    const closure = (subjectId: string, gap: 'collocations' | 'forms' | 'topics', status: FactStatus = 'published') =>
+      fact('gap_closure', subjectId, { gap, reason: 'A month name has no common collocations.' }, status)
+    const collocationGaps = (facts: Fact[]) =>
+      gapsOf('May', [month, other], [...base, ...facts]).flatMap((gap) =>
+        gap.type === 'collocations' ? [gap.sense_id] : [],
+      )
+    expect(collocationGaps([])).toEqual([month.id, other.id])
+    expect(collocationGaps([closure(month.id, 'collocations', 'pending')])).toEqual([other.id])
+    expect(collocationGaps([closure(month.id, 'collocations', 'rejected')])).toEqual([month.id, other.id])
+    expect(collocationGaps([closure(month.id, 'topics')])).toEqual([month.id, other.id])
+    // An entry gap closes on the entry.
+    const verb = sense('verb')
+    const verbGloss = fact('sense', verb.id, { gloss: 'To beware.' })
+    expect(formsGap(gapsOf('beware', [verb], [verbGloss, closure(entryId, 'forms')]))).toBeUndefined()
+    expect(formsGap(gapsOf('beware', [verb], [verbGloss, closure(verb.id, 'forms')]))).toBeDefined()
+    // A closed gap's slots count as filled.
+    const score = (facts: Fact[]) =>
+      assessEntry({
+        entry: { id: entryId, lemma: 'beware' },
+        ...plain,
+        senses: [verb],
+        facts: [fact('entry', entryId, {}), verbGloss, ...facts],
+        incoming: [],
+        flagged: new Set(),
+        neighbors,
+      }).completeness
+    expect(score([closure(entryId, 'forms')]) - score([])).toBeCloseTo(4 / 17)
   })
 })

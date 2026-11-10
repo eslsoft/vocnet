@@ -7,8 +7,10 @@ export function summarizeFact(fact: FactDto): string {
   switch (fact.kind) {
     case 'entry':
       return ''
-    case 'sense':
-      return fact.payload.register ? `${fact.payload.gloss} (${fact.payload.register})` : fact.payload.gloss
+    case 'sense': {
+      const { gloss, register, region } = fact.payload
+      return register || region ? `${gloss} (${labels(register, region)})` : gloss
+    }
     case 'form': {
       const { form, type, pos, ipa, accent } = fact.payload
       return `${form} (${labels(type, pos)})${ipa ? ` /${ipa}/ (${accent})` : ''}`
@@ -28,8 +30,8 @@ export function summarizeFact(fact: FactDto): string {
     case 'topic':
       return fact.payload.topic_id
     case 'grammar': {
-      const { countability, transitivity, position, patterns, prepositions } = fact.payload
-      return labels(countability, transitivity, position, ...(patterns ?? []), ...(prepositions ?? []))
+      const { countability, number, article, transitivity, position, patterns, prepositions } = fact.payload
+      return labels(countability, number, article, transitivity, position, ...(patterns ?? []), ...(prepositions ?? []))
     }
     case 'morphology':
       return fact.payload.parts.map(({ form, meaning }) => (meaning ? `${form} "${meaning}"` : form)).join(' + ')
@@ -39,5 +41,7 @@ export function summarizeFact(fact: FactDto): string {
       return `${fact.payload.common.length} common, ${fact.payload.extra.length} extra`
     case 'syllables':
       return fact.payload.syllables.join('·')
+    case 'gap_closure':
+      return `${fact.payload.gap}: ${fact.payload.reason}`
   }
 }

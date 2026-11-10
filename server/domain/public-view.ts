@@ -200,6 +200,7 @@ function shapeSense(sense: StoredSense, variant: ReadVariant): PublicSense {
     id: sense.id,
     gloss: sense.gloss,
     labels: sense.labels,
+    region: sense.region,
     rare: sense.rare,
     ...(translations === undefined ? {} : { translations }),
     grammar: sense.grammar && withReview(sense.grammar, variant),

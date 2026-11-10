@@ -238,7 +238,8 @@ describe('submitting grammar, word formation, and collocations', () => {
       }),
     ).rejects.toMatchObject({
       code: 'invalid_reference',
-      message: 'The grammar of a noun sense names only countability; remove transitivity.',
+      message:
+        'The grammar of a noun sense names only countability, number, article, patterns, and prepositions; remove transitivity.',
     })
     const { fact } = await submitFact(world.deps, agentA, {
       kind: 'grammar',
@@ -563,5 +564,75 @@ describe('a correction goes live only in place of a published original', () => {
     await correct('We sat on the grassy bank.')
     await expect(correct('We sat on the steep bank.')).rejects.toMatchObject(corrected)
     await expect(rereviewFact(world.deps, admin, first.id)).rejects.toMatchObject(corrected)
+  })
+})
+
+describe('completeness write rules', () => {
+  it('refuses a relation to a rare or dated sense, at submission and when a rejected one comes back [spec: facts/relation-ends]', async () => {
+    const { world, river, shore } = await withShore()
+    const { entry: shoreEntry } = await createEntry(world.deps, agentA, { lemma: 'shore' })
+    const { sense: dated } = await createSense(world.deps, agentA, {
+      entry_id: shoreEntry.id,
+      pos: 'noun',
+      gloss: 'a sewer',
+      register: 'dated',
+      region: 'british',
+    })
+    const hypernym = (target: SenseId) =>
+      submitFact(world.deps, agentA, {
+        kind: 'relation',
+        subject_id: river.id,
+        payload: { type: 'hypernym', target_sense_id: target },
+      })
+    await expect(hypernym(dated.id)).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: `Sense ${dated.id} is labelled dated; a relation links only current senses. Relate a current sense of the word instead.`,
+    })
+    const { fact: rejected } = await hypernym(shore.id)
+    world.failReviews()
+    await reviewFact(world.deps, rejected.id, 'trace')
+    world.passReviews()
+    await submitFact(world.deps, agentA, {
+      kind: 'sense_list',
+      subject_id: shoreEntry.id,
+      payload: { common: [dated.id], extra: [shore.id] },
+    })
+    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining(`Sense ${shore.id} is in the extra senses of its entry's sense list`),
+    })
+  })
+
+  it('takes a gap closure on the node its gap is about [spec: facts/gap-closure-subject]', async () => {
+    const { world, entry, river } = await bankWorld()
+    const closure = (subject: string, gap: 'forms' | 'collocations') =>
+      submitFact(world.deps, agentA, {
+        kind: 'gap_closure',
+        subject_id: subject,
+        payload: { gap, reason: 'Nothing a learner needs.' },
+      })
+    await expect(closure(entry.id, 'collocations')).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: `A gap_closure fact is about a sense; ${entry.id} is not one.`,
+    })
+    await expect(closure(river.id, 'forms')).rejects.toMatchObject({ code: 'invalid_reference' })
+    expect((await closure(river.id, 'collocations')).fact).toMatchObject({
+      kind: 'gap_closure',
+      subjectId: river.id,
+      contentKey: 'collocations|nothing a learner needs.',
+      status: 'pending',
+    })
+    expect((await closure(entry.id, 'forms')).fact).toMatchObject({ subjectId: entry.id })
+  })
+
+  it('refuses a periphrastic comparison as a form [spec: facts/periphrastic-forms]', async () => {
+    const { world, entry } = await bankWorld()
+    await expect(
+      submitFact(world.deps, agentA, {
+        kind: 'form',
+        subject_id: entry.id,
+        payload: { form: 'most banky', type: 'superlative' },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('periphrastic') })
   })
 })

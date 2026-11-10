@@ -1,5 +1,5 @@
 import { publicFactIds } from '@server/domain/catalog-view'
-import { factKinds } from '@server/domain/fact-kinds'
+import { subjectTypeOf } from '@server/domain/fact-kinds'
 import { claim, claimDecision, close, closeDecision, type FeedbackRecord, isClosed } from '@server/domain/feedback'
 import { principalRef } from '@server/domain/principal'
 import type { EntryId, FactId, SenseId } from '@shared/facts'
@@ -41,7 +41,7 @@ const targetIsPublic: { [T in FeedbackTargetType]: (deps: LookupDeps, id: string
   fact: async (deps, id) => {
     const fact = await deps.facts.find(id as FactId)
     if (fact?.status !== 'published') return false
-    const entryId = await entryIdOf(deps, factKinds[fact.kind].subject, fact.subjectId)
+    const entryId = await entryIdOf(deps, subjectTypeOf(fact.kind, fact.payload), fact.subjectId)
     const view = entryId && (await publicEntryOf(deps, entryId))
     return !!view && publicFactIds(view).has(fact.id)
   },

@@ -5,7 +5,7 @@ Feature: Worklist
   Scenario: A claim names what the entry lacks
     Given an entry and its facts in every status
     When the gaps are computed from its pending and published facts
-    Then senses while no sense is live, a sense list while the senses are not settled by one, and missing forms, pronunciation, or word formation of a single word are gaps, and each counted sense with fewer relations than its part of speech needs, or without examples, a zh translation, or the topic, grammar, and collocations its part of speech needs, is a gap
+    Then senses while no sense is live, a sense list while the senses are not settled by one, and missing paradigm forms, a pronunciation in either accent, or word formation of a single word are gaps, and each counted sense with fewer relations than its part of speech needs, or without the examples, a zh translation, or the topic, grammar, and collocations its part of speech needs, is a gap
 
   @work/sense-list-gap @domain
   Scenario: The sense inventory is settled by a list naming exactly the live senses
@@ -62,17 +62,17 @@ Feature: Worklist
     Then nouns, verbs, and adjectives need two relations, adverbs one, and every other part of speech none, with no relations gap and no relation slots
 
   @work/topics-gap @domain
-  Scenario: Nouns, verbs, and adjectives need a topic
+  Scenario: Nouns and verbs need a topic
     Given a live sense of each part of speech
     When the gaps are computed
-    Then a noun, verb, or adjective sense with no live topic fact has a topics gap, and every other part of speech has none
+    Then a noun or verb sense with no live topic fact has a topics gap, and every other part of speech, adjectives included, has none
     And a pending topic fact closes the gap while a rejected one does not
 
   @work/usage-gaps @domain
   Scenario: Grammar, collocations, and word formation are gaps where a learner needs them
     Given an entry with a live sense of each part of speech
     When the gaps are computed
-    Then noun and verb senses need one grammar fact, noun, verb, and adjective senses one collocation, and a single-word entry, not a phrase, one word formation
+    Then noun, verb, and adjective senses need one grammar fact and one collocation, and a single-word entry, not a phrase, one word formation
 
   @work/scores @domain
   Scenario: An entry's completeness and quality come from its live facts
@@ -242,3 +242,64 @@ Feature: Worklist
     Given an entry with senses and forms
     When its gaps are listed
     Then a single word lacks syllables, each irregular form without a live pronunciation is named, and each counted sense lacks a translated example until one of its live examples has a zh translation
+
+  @work/form-paradigm @domain
+  Scenario: The forms gap names the inflections the paradigm needs
+    Given a single word with verb, noun, adjective, or adverb senses and forms labelled, unlabelled, pending, or rejected
+    When the gaps are computed
+    Then a verb needs its four forms, a noun with a countable sense its plural, an adjective of one syllable or two ending in y, or one with a recorded inflected comparison, its comparative and superlative, and an adverb with a recorded inflected comparison the rest of it
+    And a form fills a slot by its label or, unlabelled, by the meaning it shows under, a periphrastic comparison fills nothing, and a phrase, an uncountable noun, and an invariable word need no form
+
+  @work/pronunciation-accents @domain
+  Scenario: An entry needs a pronunciation in both accents
+    Given an entry with strong and weak pronunciations
+    When the gaps are computed
+    Then the pronunciation gap names each accent of us and uk with no live strong pronunciation
+
+  @work/adverb-collocations @domain
+  Scenario: A manner or degree adverb needs a collocation
+    Given an adverb sense of a word ending in -ly, a word that compares with -er, or another adverb
+    When the gaps are computed
+    Then the first two need a collocation and the other has no collocations gap
+
+  @work/core-examples @domain
+  Scenario: A1 and A2 senses need two examples
+    Given a counted sense with one example of an entry at each CEFR level or none
+    When the gaps are computed
+    Then an A1 or A2 entry's sense has an examples gap asking for two and naming the one it has, and other entries need one
+
+  @work/phrases-gap @domain
+  Scenario: An A1 or A2 verb needs a phrase built on it
+    Given a single-word entry with a verb sense, its level, and the live multiword entries that contain it
+    When the gaps are computed
+    Then an A1 or A2 verb with no such phrase has a phrases gap, and a phrase, a noun, or a higher level has none
+
+  @work/phrases-api @api
+  Scenario: A live phrase entry closes its head's phrases gap at once
+    Given an A1 verb whose claim names a phrases gap
+    When a multiword entry with the verb as a word is created
+    Then the verb's worklist row is rescored in the same request with the gap closed
+
+  @work/gap-closure @domain
+  Scenario: A live gap closure closes exactly the gap it names
+    Given a gap closure on an entry or a sense, in each status
+    When the gaps and completeness are computed
+    Then a pending or published closure closes only its gap on its node, its slots count as filled, and a rejected one or one on another node closes nothing
+
+  @work/rescore @usecase
+  Scenario: Stale worklist rows drain a batch at a time
+    Given stale worklist rows
+    When the rescore runs with a limit
+    Then it rescores at most that many and reports how many stay stale
+
+  @work/rescore-api @api
+  Scenario: An admin drains stale scores after a gap rule change
+    Given every worklist row stale
+    When an agent and then an admin call the rescore with a limit
+    Then the agent gets 403, a limit out of range is 400, and the admin's calls rescore up to the limit until none is stale
+
+  @work/completeness-migration @api
+  Scenario: The completeness release brings stored facts to the new rules
+    Given orphaned facts of a retracted sense, periphrastic comparisons, dotted, r-coloured, and American ɛ transcriptions, ASCII-punctuated or repeated zh alternatives, and an uncertain sense list
+    When the completeness_rules migration runs
+    Then the orphans and periphrastic forms are retracted, each transcription and zh text is rewritten with the key the registry computes, a collision keeps the published or oldest fact and retracts the rest, the sense list is marked for review in place, and every worklist row is stale

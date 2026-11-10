@@ -56,7 +56,7 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | --------------- | -------------------------------------------------------------- |
 | `id`            | Stable fact ID                                                 |
 | `kind`          | Key into the fact-kind registry                                |
-| `subject_id`    | Entry or sense the fact is about (registry says which)         |
+| `subject_id`    | Entry or sense the fact is about (registry says which; a gap closure's gap decides) |
 | `object_id`     | Referenced sense for relations, else null                      |
 | `content_key`   | Deterministic key of the identifying payload, for dedupe       |
 | `payload`       | Kind-specific JSON, validated by the registry schema           |
@@ -82,18 +82,43 @@ needs a new column.
 | Kind            | Subject | Cardinality | Payload                                                  | Reviewer chain |
 | --------------- | ------- | ----------- | -------------------------------------------------------- | -------------- |
 | `entry`         | entry   | one         | `{}` (the lemma is a word or a lexical unit)            | Jev, then LLM; LLM alone for a phrase or a recorded inflection |
-| `sense`         | sense   | one         | `{ gloss, register? }`                                   | Jev, then LLM  |
+| `sense`         | sense   | one         | `{ gloss, register?, region? }` (region `british` or `american`) | Jev, then LLM  |
 | `form`          | entry   | many        | `{ form, type, pos?, ipa?, accent? }` (plural, past, variant…) | Jev, then LLM; LLM alone for a variant or a form with ipa |
-| `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM  |
+| `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM; LLM alone for an antonym |
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
 | `example`       | sense   | many        | `{ text, translations? }` (`{ zh: "…" }`)                | LLM            |
 | `translation`   | sense   | many        | `{ language, text }` (a served language: `zh`)           | LLM            |
 | `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | LLM            |
-| `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns?, prepositions? }` | Jev, then LLM  |
-| `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | Jev, then LLM  |
+| `grammar`       | sense   | one         | `{ countability?, number?, article?, transitivity?, position?, patterns?, prepositions? }` | Jev, then LLM  |
+| `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | LLM            |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM            |
 | `sense_list`    | entry   | one         | `{ common: [sense_id], extra: [sense_id] }`              | LLM            |
 | `syllables`     | entry   | one         | `{ syllables: [string] }` (`["a", "bil", "i", "ty"]`)     | LLM            |
+| `gap_closure`   | entry or sense, by its gap | many | `{ gap, reason }` (`gap` closable: see Gap closures) | LLM            |
+
+#### Gap closures
+
+The completeness rules ask for what a learner's dictionary *should* have, so
+some slots are genuinely empty for some words: a month name has no common
+collocations, *beware* has no inflections, a general word (*thing*) belongs to
+no topic. A `gap_closure` fact claims exactly that: `{ gap, reason }`, where
+`gap` is one of `closableGapSchema` (`forms` and `phrases` about the entry;
+`relations`, `topics`, `grammar`, and `collocations` about a sense), and its
+subject is the node that gap is about (`closableGaps` in the registry, read by
+`subjectTypeOf`; a closure on the other node is `422 invalid_reference`).
+Senses, the sense list, pronunciations, translations, examples, syllables, and
+word formation apply to every word and are never closed. The content key is
+`gap|textKey(reason)`, so a correction that rewords the reason supersedes the
+closure. The LLM alone reviews it: it sees the word (an entry gap, with its
+senses) or the sense (a sense gap, with its siblings), the slot, and the
+reason, and passes only when a learner's dictionary would genuinely have
+nothing for the slot; it fails a closure of a slot that plainly applies (a
+common verb's inflections, a word with ordinary synonyms) or a wrong or vague
+reason. A gloss correction that changes a sense's meaning re-reviews the
+sense's closures in place. A live closure closes exactly its gap on its node:
+the rule's slots count as filled (see Gaps). The public entry shows a
+published closure of the entry or of a shown sense only in its review metadata
+(`review.closures`: `{ gap, sense_id, reason, fact_id, confidence, verdict }`).
 
 #### Syllables, form pronunciations, and example translations
 
@@ -191,7 +216,7 @@ is `404`, while `GET /v1/forms/color` finds "colour" and search ranks an
 entry whose variant is the query as its exact lemma.
 
 Relation types are `synonym`, `antonym`, `hypernym`, and `part_of`. The Jev
-questions started as the ones the producer qualified. Each now says that two
+questions (for every type but `antonym`, which the LLM judges alone) started as the ones the producer qualified. Each now says that two
 senses of one word never stand in a relation, and the hypernym question also
 says that mutual substitutability is synonymy, that hypernymy holds only
 between nouns or between verbs, and that a generic head such as "cause" does
@@ -222,9 +247,9 @@ relation types (78 relations), 14 entry pairs each a hypernym of the other (28
 relations), and 40 `part_of` relations from a body part to a person-type noun
 (head `part_of` princess, hand `part_of` worker). The rules that follow:
 
-- **Floor.** `RELATION_JEV_FLOORS` in the registry is 0.5 for every type,
-  Jev's fail line: a Jev fail settles a relation, and the LLM decides only
-  Jev's uncertain band (see Reviews).
+- **Floor.** `RELATION_JEV_FLOORS` in the registry is 0.5 for every type Jev
+  judges, Jev's fail line: a Jev fail settles a relation, and the LLM decides only
+  Jev's uncertain band (see Reviews). An antonym goes to the LLM alone.
 - **Rubric.** The LLM rubric fails a body part, organ, or limb as part of a
   person-type noun (a role, kinship term, occupation, title, or nickname: a
   head is part of a person, not of a princess); applies a substitution test to
@@ -234,7 +259,8 @@ relations), and 40 `part_of` relations from a body part to a person-type noun
   head (`GENERIC_HYPERNYM_HEADS`: the most frequent hypernym targets such as
   "person", "group", "move", "change", "meet", and "thing", "do", "make",
   "be", "have"); fails co-hyponyms of one set (titles, colours, days, numbers)
-  as antonyms; and fails a light verb ("make", "do", "take", "give", "have",
+  and converse role pairs (teacher and student, buyer and seller) as antonyms;
+  fails a target that is archaic or old-fashioned in its sense; and fails a light verb ("make", "do", "take", "give", "have",
   "get") as a synonym of a full verb. It lists the target entry's other senses
   and fails a relation when one of them is the better match for the source.
 - **Write rules.** Checked at submission, and when a rejected relation is
@@ -346,30 +372,58 @@ plain payload shape, so facts written before a rule still read.
   followed by 'for'", are usage notes and pass.
 - **IPA.** One broad transcription: no commas, semicolons, slashes, brackets,
   parentheses, or `|`. Each symbol is from the broad English IPA set
-  (`aeiouæɑɒɐɔəɚɛɜɝɪʊʌɨɵʉ`, `bdfhjklmnprstvwzðθʃʒŋɡʔɾɫʍxç`, `ˈ ˌ ː ˑ .`,
-  space, and `ʰ ʷ ᵊ`, syllabic, non-syllabic, nasal, and tie marks). One
-  spelling per sound keeps transcriptions comparable: `r`, not `ɹ`; `ɡ`, not
-  `g`; `ˈ` and `ː`, not `'` and `:`; `tʃ` and `dʒ`, not ligatures. The message
-  names each symbol to replace.
+  (`aeiouæɑɒɐɔəɛɜɪʊʌɨɵʉ`, `bdfhjklmnprstvwzðθʃʒŋɡʔɾɫʍxç`, `ˈ ˌ ː ˑ`,
+  space, and `ʰ ʷ ᵊ`, syllabic, non-syllabic, nasal, and tie marks). The
+  house style is the Oxford learner's dictionaries': one spelling per sound
+  keeps transcriptions comparable: `r`, not `ɹ`; `ɡ`, not `g`; `ˈ` and `ː`, not
+  `'` and `:`; `tʃ` and `dʒ`, not ligatures; `ər` and `ɜːr`, not the
+  r-coloured `ɚ` and `ɝ` (`ə` and `ɜː` in British); and no syllable dots
+  (`.`). An American transcription (a pronunciation or form with `accent: us`)
+  writes the vowel of *bed* as `e`, not `ɛ` (*care* is `ker`). The message
+  names each symbol to replace: `An ipa uses broad English IPA symbols only;
+  replace "." (write nothing: no syllable dots), "ɚ" (write ər in American, ə
+  in British).`, and `An American ipa writes the vowel of "bed" as e, not ɛ
+  ("bed" is bed, "care" is ker), as learner's dictionaries do.`
 
 - **Translation.** `language` is a served language (`SERVED_LANGUAGES` in
   `shared/facts.ts`, now only `zh`, which is Simplified Chinese), so the
   worklist gap it fills and the language reads serve are the same tag; the
   submit schema is an enum of them, which the OpenAPI document lists, and the
-  message names the served languages.
+  message names the served languages. A zh text, a translation's or an
+  example's, uses fullwidth punctuation: `A zh text uses fullwidth punctuation:
+  write ； ， （ ） in place of ASCII ; , ( ).` A translation's alternatives are
+  separated by `；`, each once: `A translation lists each alternative once:
+  "建造；建造" repeats one.`
 - **Form.** A labelled inflection names a part of speech its type can be shown
   under (`carriers` in the registry: a plural a noun, pronoun, or determiner;
   a past, participle, or third-person form a verb or auxiliary; a comparative or
   superlative an adjective, adverb, or determiner); a labelled variant may name
-  any. Anything else is `422 invalid_reference`.
+  any. A periphrastic comparison (`isPeriphrastic`: a comparative spelled
+  `more …` or a superlative spelled `most …`) is not an inflection, so it is
+  never a form: `"more beautiful" is a periphrastic comparative form, made with
+  more or most; it is not an inflection, so it is never a form. Record only an
+  inflected comparative form ("bigger", "biggest", "better"); a word compared
+  only with more and most has no comparative form.` Anything else is
+  `422 invalid_reference`.
 - **Grammar.** At least one property, each pattern once, and one to four
   prepositions, each once.
 - **Word formation.** Parts in written order: prefixes, then at least one base or
   root, then suffixes. A prefix is letters ending in a hyphen (`un-`), a suffix a
   hyphen followed by letters (`-ness`), a root letters only (`spect`), and a base a
-  word (`happy`, or one with an inner hyphen or apostrophe). One part is a simple
-  word, so its role is `base`.
+  word (`happy`, or one with an inner hyphen, apostrophe, or period, and an
+  abbreviation's final period: `o'clock`, `a.m.`, `Mrs.`). One part is a simple
+  word, so its role is `base`; an abbreviation or contraction is one base.
 - **Collocation.** At least two words.
+- **Relation ends** (`admitEnds`, `422 invalid_reference`). A relation links
+  common, current senses: its target, and for a symmetric type (synonym,
+  antonym) either end, may not be in the extra senses of its entry's current
+  sense list (`Sense … is in the extra senses of its entry's sense list (rare,
+  archaic, technical, or specialist); a relation links only common senses.
+  Relate a common sense of the word instead.`) or have a current gloss labelled
+  `dated` (`Sense … is labelled dated; a relation links only current senses.
+  Relate a current sense of the word instead.`). The rule reads both ends'
+  glosses and sense lists before the write, at submission and when a rejected
+  relation is re-reviewed back to life.
 - **Sense list.** At least one common sense, and each sense named once, in
   `common` or in `extra`.
 
@@ -380,15 +434,21 @@ depend on the sense's part of speech, which a submission is checked against:
 
 | Part of speech | Properties                                                         |
 | -------------- | ------------------------------------------------------------------ |
-| noun           | `countability` (required): `countable`, `uncountable`, or `both`   |
+| noun           | `countability` (required): `countable`, `uncountable`, or `both`; `number`: `singular_only` ("a while", "the sun") or `plural_only` ("trousers"); `article`: `with_the` ("the internet") or `zero_article` ("in hospital", "by car"); `patterns`; `prepositions` |
 | verb           | `transitivity` (required): `transitive`, `intransitive`, or `both`; `patterns`; `prepositions` |
-| adjective      | `position`: `attributive_only` or `predicative_only` (absent means both); `patterns`; `prepositions` |
+| adjective      | `position`: `attributive_only`, `predicative_only`, or `both` (absent means not stated); `patterns`; `prepositions` |
 
 `patterns` lists the common constructions that follow the word, not all of
 them: `to_infinitive`, `bare_infinitive`, `ing_form`, `that_clause`,
 `wh_clause`, `object_to_infinitive`, `object_bare_infinitive`, `object_ing`,
 `two_objects`, and `object_complement` for verbs; adjectives take
-`to_infinitive`, `ing_form`, `that_clause`, and `wh_clause`.
+`to_infinitive`, `ing_form`, `that_clause`, `wh_clause`, and `of_ing`
+("afraid of falling"); nouns take `to_infinitive` ("a decision to leave"),
+`that_clause` ("the fact that"), and `of_ing` ("the habit of smoking"). Each
+pattern's parts of speech are those its illustration table names
+(`grammarPatterns` in the registry). An adjective's position `both` lets every
+adjective state its grammar ("a big house", "the house is big"), so the
+adjective grammar gap is always fillable.
 
 `prepositions` names the prepositions a learner uses after the word in this
 sense, as learner's dictionaries write them ("rely on/upon sb/sth", "good at
@@ -400,10 +460,10 @@ values, each once, from a closed list of prepositions and adverb particles
 `into`, `like`, `near`, `of`, `off`, `on`, `onto`, `out`, `out of`, `over`,
 `past`, `round`, `through`, `to`, `toward`, `towards`, `under`, `up`, `upon`,
 `with`, `within`, and `without`. Time adjuncts such as *during*, *since*, and
-*until* are never selected by a word, so they are not listed. Nouns keep
-countability alone: the prepositions a noun takes ("an increase in") are
-`noun_preposition` collocations, and a noun's grammar is the one slot every
-noun sense must fill, so it stays one required property. The earlier bare
+*until* are never selected by a word, so they are not listed. A noun names
+the prepositions it takes in its grammar too ("an increase in", "interest in"),
+beside its required countability; its `number` and `article` say what a
+learner's dictionary marks [sing.], [pl.], or "the …" / "in hospital". The earlier bare
 `preposition` pattern claimed only that the word takes some preposition, which
 is nearly always true; the migration `grammar_prepositions` retracted every
 live grammar fact that used it, so the grammar gap of its sense reopens and the
@@ -425,7 +485,7 @@ affixes (`unhappiness` = `un-` + `happy` + `-ness`), and a Latin or Greek root
 may carry a short meaning (`spectator` = `spect` "look" + `-ator`). Roles are
 `prefix`, `root`, `suffix`, and `base`. A phrase has no word formation: a
 morphology fact about a multiword entry is `422 invalid_reference`. The check
-of the parts is light: their letters, without hyphens and apostrophes and
+of the parts is light: their letters, without hyphens, apostrophes, and periods and
 ignoring case, must spell the lemma within two changed letters for each place
 two parts join (`happy` + `-ness` gives *happiness*, `decide` + `-ion`
 *decision*); otherwise it is `422`. Whether the parts are the real formation is
@@ -738,8 +798,16 @@ but only to choose the message.
   delivery of the form's review publishes nothing and marks nothing; an entry
   the LLM judged is not reopened; at most one entry fact is marked per form,
   the one of the exact lemma.
-- **Relation floor.** A relation request carries `settlesFailBelow` from
-  `RELATION_JEV_FLOORS`, 0.5 for every type: a Jev answer under it settles the
+- **Antonyms** go to the LLM alone: Jev passed converse role pairs as
+  opposites (teacher and student), and the rubric says a converse role pair,
+  where each role implies the other (teacher and student, interviewer and
+  interviewee, buyer and seller, parent and child), is not an antonym. Every
+  relation rubric also fails a target that is archaic or old-fashioned in its
+  sense: a target labelled `dated` is refused at write (Relation ends), so a
+  target that reaches review claims to be current English.
+- **Relation floor.** A relation request Jev judges (synonym, hypernym,
+  part_of) carries `settlesFailBelow` from
+  `RELATION_JEV_FLOORS`, 0.5 for each of those types: a Jev answer under it settles the
   fail without asking the LLM. It started at 0.15, when every relation the LLM
   had published under that line was wrong (shore `part_of` key at 0.09); the
   relation audit (see Relations) found the LLM's passes under 0.5 mostly wrong
@@ -773,13 +841,26 @@ but only to choose the message.
   unnatural with it, or a named preposition that is not the one learners use
   with this sense or is rare with it, and does not fail a pattern or
   preposition left out.
-- **Word formation** asks Jev whether the word is formed from exactly these
-  parts with these meanings, as a learner's dictionary analyses it, with no
-  part missing or extra and no folk etymology; one base part asks whether the
-  word is a simple word. The LLM rubric allows spelling changes where parts
-  join and fails a wrong, missing, or extra part, a wrong meaning, folk
-  etymology, letters that only look like an affix (the "er" of "water"), and a
-  word claimed simple that has parts.
+- **Word formation** goes to the LLM alone: Jev passed etymological splits of
+  opaque words (fact + -ory). The rubric asks for the formation a learner's
+  dictionary gives, a synchronic English formation a present-day speaker can
+  see: an unanalysable loan or a historically opaque word is a single base
+  ("factory", "window"), and so is an abbreviation or contraction ("Mrs",
+  "o'clock", "a.m."). It allows spelling changes where parts join and fails a
+  wrong, missing, or extra part, a wrong meaning, etymology rather than
+  present-day formation, folk etymology, letters that only look like an affix
+  (the "er" of "water"), and a word claimed simple that has parts.
+- **Senses** state their region: `region` is `british` or `american` for a
+  sense only that variety uses. Jev is asked about the region stated, and, with
+  none, told that a sense used only in British or only in American English
+  answers no, so its LLM second opinion judges it. The rubric fails a BrE-only
+  or AmE-only sense without its region ("lorry" british, "sidewalk" american),
+  a region that does not fit, and a sense learner's dictionaries label
+  old-fashioned that is not labelled `dated`, which is how this dictionary
+  writes that label (there is no separate old-fashioned register). A region is
+  a label like the register: it is part of the content key, not of the meaning
+  key, so a region-only correction supersedes the gloss without re-reviewing
+  its dependents.
 - **Collocations** go to the LLM alone, like examples: is the text a
   collocation of this sense that a learner's dictionary of collocations would
   list, in the claimed pattern? It fails a free combination anyone composes
@@ -790,13 +871,20 @@ but only to choose the message.
   inventory. The rubric gives the lemma and every listed sense with its part of
   speech and gloss, numbered, the common senses in their claimed order and then
   the extra ones, and passes only when all of these hold: the common senses
-  cover every common, general-knowledge sense a learner's dictionary (Oxford
-  Advanced Learner's, Longman, Cambridge) lists for the word, in every part of
-  speech, so a missing common sense fails; no two common senses are duplicates
-  or one meaning split too finely; the common senses run from most to least
-  common; and every extra sense is genuinely rare, archaic, technical, or
-  specialist. A rare, archaic, Old English, technical, or specialist sense
-  missing from both lists is never a failure. Entries are case-sensitive, so
+  cover every sense a learner's dictionary (Oxford Advanced Learner's, Longman,
+  Cambridge) lists among its main senses of the word for A1 to B1 learners, in
+  every part of speech, so a missing main sense fails and a sense only an
+  advanced or specialist dictionary lists does not; no two common senses are
+  duplicates or one meaning split too finely; the common senses run in a
+  plausible order from more to less common, frequency order being approximate,
+  so the reviewer judges plausibility and never answers uncertain because exact
+  frequency order cannot be verified; and specialist, technical, archaic, and
+  rare senses belong in extra, every extra sense being one a learner does not
+  meet in general use. A rare, archaic, Old English, technical, or specialist sense
+  missing from both lists is never a failure. Uncertain is only for a word the
+  reviewer cannot judge at all: 178 sense lists had published on an uncertain
+  verdict, mostly over unverifiable order, and `completeness_rules` marked them
+  for review in place. Entries are case-sensitive, so
   the rubric judges only the exact spelling: a sense that belongs to a spelling
   differing in capitalization, or to a proper name spelled otherwise, belongs
   to that other entry and is never missing ("May" the month is not missing
@@ -811,7 +899,7 @@ but only to choose the message.
   substituted for it. The reason of a fail names
   everything to change, even past one sentence: each missing common sense with
   its part of speech and a short meaning, each pair of duplicates by number,
-  each sense out of order, and each common sense put in extra, so the producer
+  each sense out of order, each specialist sense in common, and each common sense put in extra, so the producer
   can add, merge, or reorder senses and submit a corrected list. A list that
   names a sense without a live gloss is `unreviewable` and rejected without
   asking the LLM. The entry review context carries each sense's id for this.
@@ -867,12 +955,18 @@ Both scores are pure functions of the entry's facts in `server/domain/work.ts`
 (`assessEntry`), computed on read for the views and stored on the worklist for
 the claim.
 
-**Completeness** (0..1) is filled slots over the slots the gap rules count. The
-entry has three slots (the sense inventory, forms, pronunciation), a
-single-word entry two more (word formation, syllables), and one per live
-irregular form (its pronunciation); each counted sense adds the relations,
-topics, grammar, and collocations its part of speech needs, one example, one
-`zh` translation, and one example with a `zh` translation. A counted sense is one whose gloss is live and
+**Completeness** (0..1) is filled slots over the slots the gap rules count.
+"Complete" means every piece of data a learner's dictionary should have for the
+word exists, not that every field has a value. The entry has the sense
+inventory slot and two pronunciation slots (a strong `us` and a strong `uk`
+pronunciation); a single word adds one slot per inflection its paradigm needs
+(see Forms), word formation, and syllables; an A1 or A2 single-word verb one
+for a phrase built on it; and one per live irregular form (its
+pronunciation). Each counted sense adds the relations, topics, grammar, and
+collocations its part of speech needs, its examples (two for an A1 or A2
+entry, else one), one `zh` translation, and one example with a `zh`
+translation. A live gap closure fills every slot of the gap it closes (see Gap
+closures). A counted sense is one whose gloss is live and
 that the entry's current sense list does not put in `extra`; before a list
 exists, every sense with a live gloss counts. A relations gap with `count`
 relations fills `count` of its slots. A relation counts, at either end, only
@@ -985,23 +1079,65 @@ is the one table of the relations a sense needs: noun, verb, and adjective 2;
 adverb 1; every other part of speech 0, which means no relations gap and no
 relation slots.
 
-`TOPICS_NEEDED` is the table of the topics a sense needs: noun, verb, and
-adjective 1; every other part of speech 0, which means no topics gap and no
-topic slot. Nouns, verbs, and adjectives name the things, actions, and
-qualities a scene is made of. An adverb may carry topics but needs none.
-General-vocabulary senses (*get*, *make*, *thing*, *important*) belong to no
-topic, so they are expected to stay untagged: their topics gap stays open and
-the entry stalls after one pass.
+`TOPICS_NEEDED` is the table of the topics a sense needs: noun and verb 1;
+every other part of speech 0, which means no topics gap and no topic slot.
+Nouns and verbs name the things and actions a scene is made of. An adjective or
+adverb may carry topics but needs none: most adjectives are general (*big*,
+*good*), and their topics gaps stalled. General-vocabulary noun and verb senses
+(*get*, *make*, *thing*) belong to no topic: a reviewed gap closure closes
+their topics gap instead of leaving the entry stalled.
 
 ### Grammar, collocations, and word formation
 
 `GRAMMAR_NEEDED` and `COLLOCATIONS_NEEDED` in `server/domain/work.ts` are the
-tables of what a sense needs, like `RELATIONS_NEEDED`. Noun and verb senses
-need one grammar fact: countability and transitivity are what a learner most
-needs of them. An adjective may have grammar, where its position, patterns, or
-prepositions restrict it, but has no grammar gap. Noun, verb, and adjective senses need one
-collocation; other parts of speech none. A single-word entry needs one word
-formation; a phrase none, since its words are their own entries.
+tables of what a sense needs, like `RELATIONS_NEEDED`. Noun, verb, and
+adjective senses need one grammar fact: countability, transitivity, and
+position, patterns, or prepositions are what a learner most needs of them (an
+adjective with no restriction states `position: both`). Noun, verb, and
+adjective senses need one collocation, and so does a manner or degree adverb
+(`isMannerAdverb`): a single word ending in -ly (*quickly*, *really*), or one
+that compares with -er and -est (*hard*, *soon* with a recorded *sooner*).
+Other adverbs (*here*, *then*, *ago*) and other parts of speech need none; a
+gap closure closes the gap of an -ly adverb without collocations (*only*). A
+single-word entry needs one word formation; a phrase none, since its words are
+their own entries.
+
+#### Forms
+
+The forms gap names the inflections a learner's dictionary gives for the
+word's parts of speech (`formSlots`), each as `{ type, pos }`, for a single
+word's counted senses:
+
+| Part of speech | Slots                                                              |
+| -------------- | ------------------------------------------------------------------ |
+| verb           | `third_person_singular`, `past`, `past_participle`, `present_participle` |
+| noun           | `plural`, when a counted noun sense's live grammar is `countable` or `both` |
+| adjective      | `comparative`, `superlative`, when it compares with -er and -est: its live syllables fact has one syllable, or two and the lemma ends in y, or an inflected comparison of the adjective is recorded |
+| adverb         | `comparative`, `superlative`, when an inflected comparison of the adverb is recorded |
+
+A live form fills a slot of its type when it is labelled with the slot's part
+of speech, or unlabelled and shown under it (`formMeaning`, the carrier order
+the public view uses). A periphrastic comparison fills nothing, and is refused
+at write. A phrase inflects in its words' entries, so it has no forms gap;
+neither does an invariable word (*ago*, *ours*), an uncountable noun, or a
+word whose comparisons are periphrastic. A defective word (*beware*) closes
+its forms gap with a gap closure. The test for comparison reads the syllables
+fact, so a short adjective's comparison slots open once its syllables are
+recorded, which changes its open work.
+
+#### Phrases
+
+An A1 or A2 single-word entry with a counted verb sense needs one live
+multiword entry that has its lemma as a whole word (*give up*, *give way*):
+learners meet core verbs in phrasal verbs and idioms. The snapshot loads the
+lemmas of the live multiword entries whose spaced lemma contains the spaced
+headword, case-sensitively. The producer fills the gap by creating the phrase
+as its own entry (`POST /manage/v1/entries`), then its sense with its gloss and
+the facts a phrase needs; the head's gap closes as soon as the phrase's entry
+fact is live, because an entry fact's write marks the entries of its words
+stale and its refresh rescores them (`touchLinkedWorkOfFact`,
+`relatedWorklistRows`). A verb with no established phrase closes it with a gap
+closure.
 
 ### The worklist table
 
@@ -1044,6 +1180,46 @@ hides work; the cron rescores up to 100 stale rows every run
 failures together, so a row that keeps failing holds one slot and the rows
 behind it still drain. Every fact insert or status change also rewrites `live`
 for its subject.
+
+**Rescore.** Scores never go stale silently: whenever the gap rules change,
+the release's migration bumps `revision` on every row, so every stored score is
+stale until `assessEntry` scores it again under the new rules. A stale row is
+claimable, and the claim computes its gaps from the facts, so nothing is hidden
+meanwhile; the management view (`GET /manage/v1/entries/{lemma}` and the
+claim's entry) computes `completeness` and `quality` from the facts on read, so
+it never reports a stored number at all, and no public document carries one.
+The cron's 100 rows every five minutes would take hours over the dataset, so
+`POST /manage/v1/work/rescore` (admins only, body `{ limit }`, 1 to 200,
+default 100) rescores up to `limit` stale rows as the cron does and returns
+`{ rescored, remaining }`; repeat it until `remaining` is 0 right after
+`wrangler d1 migrations apply`:
+
+```sh
+until [ "$(curl -sf -X POST "$BASE/manage/v1/work/rescore" \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"limit":200}' | jq .remaining)" = 0 ]; do :; done
+```
+
+On a copy of the development database (13,323 entries, 98,156 facts), a full
+rescore under the new rules took 148.5 s through local D1 (90 rows/s; the old
+rules took 127.7 s, 104 rows/s; the phrases lookup is the extra cost), about
+67 calls of 200.
+
+The migration `completeness_rules` brings stored facts to this release's
+rules, then bumps every row. On the same copy it ran in 0.76 s and:
+
+| Step | Rule | Rows |
+| ---- | ---- | ---- |
+| Orphans | live facts of a sense whose gloss was retracted and that has no live gloss, as subject or relation object, retracted | 103 (30 relation, 18 example, 18 translation, 15 collocation, 11 grammar, 11 topic) |
+| Periphrastic forms | live `more …` comparatives and `most …` superlatives retracted | 82 (38 on A1 entries) |
+| IPA house style | live pronunciation and form ipa rewritten with their content keys; collisions retracted first | 491 pronunciations rewritten (with syllable dots 33, US ɛ 255, ɚ 172, ɝ 73; a row may have several), 0 forms (the 2 form ipas outside the style were periphrastic, retracted), 0 collisions |
+| zh translations | ASCII `; , ( )` made fullwidth and repeated alternatives dropped, with the key `zh|` plus the lowercased text; collisions retracted first | 1 rewritten (建造；建造), 0 collisions, 0 with ASCII punctuation |
+| Sense lists | published on an uncertain verdict, marked for review in place | 178 |
+| Worklist | `revision` bumped | 13,323 |
+
+After it, every live fact's stored content key equals the registry's, and every
+live pronunciation, form, and translation passes the new write rules.
+
 
 The claim is one `UPDATE … WHERE entry_id = (SELECT … WHERE claim_rank IS NOT
 NULL ORDER BY claim_rank, claimed_at, zipf DESC, completeness, created_at,
@@ -1118,18 +1294,24 @@ facts close its gap:
 | ---------------------------------------- | ------------------------------------------------------- |
 | `{ type: "senses" }`                     | No sense has a live gloss                               |
 | `{ type: "sense_list", rejected }`       | Some sense has a live gloss, and the current sense list does not name exactly the senses with a live gloss; `rejected` counts the rejected lists naming exactly those senses, up to `MAX_SENSE_LIST_ATTEMPTS - 1` |
-| `{ type: "forms" }`                      | No live form                                            |
-| `{ type: "pronunciation" }`              | No live pronunciation                                   |
+| `{ type: "forms", missing }`             | A paradigm slot of a single word has no live form filling it; `missing` names each `{ type, pos }` (see Forms) |
+| `{ type: "pronunciation", accents }`     | `us` or `uk` has no live strong pronunciation; `accents` names them |
+| `{ type: "phrases" }`                    | An A1 or A2 single-word verb has no live multiword entry containing it |
 | `{ type: "relations", sense_id, count, have }` | The sense is in fewer live relations, as subject or object, than its part of speech needs |
-| `{ type: "examples", sense_id }`         | The sense has no live example                           |
+| `{ type: "examples", sense_id, count, need }` | The sense has fewer live examples than `need`: 2 for an A1 or A2 entry, else 1 |
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` translation |
-| `{ type: "topics", sense_id }`           | The sense has fewer live topic facts than its part of speech needs (`TOPICS_NEEDED`) |
+| `{ type: "topics", sense_id }`           | A noun or verb sense has fewer live topic facts than it needs (`TOPICS_NEEDED`) |
 | `{ type: "morphology" }`                 | A single-word entry has no live word formation          |
 | `{ type: "syllables" }`                  | A single-word entry has no live syllables fact          |
 | `{ type: "form_pronunciations", forms }` | A live irregular form has no live fact of it with `ipa`; `forms` names them |
 | `{ type: "example_translations", sense_id, language: "zh" }` | No live example of the sense has a `zh` translation |
-| `{ type: "grammar", sense_id }`          | A noun or verb sense has no live grammar fact           |
-| `{ type: "collocations", sense_id }`     | A noun, verb, or adjective sense has no live collocation |
+| `{ type: "grammar", sense_id }`          | A noun, verb, or adjective sense has no live grammar fact |
+| `{ type: "collocations", sense_id }`     | A noun, verb, adjective, or manner or degree adverb sense has no live collocation |
+
+A live `gap_closure` on the gap's node closes `forms`, `phrases`,
+`relations`, `topics`, `grammar`, or `collocations`: the gap is gone and its
+slots count as filled. Rules can be strict without stalling a word they do not
+fit, while review keeps a closure of a slot that plainly applies out.
 
 `senses` and `sense_list` are one slot, the sense inventory: its gap asks for
 senses while the entry has none, and for a list once it has some. The current
@@ -1433,7 +1615,9 @@ entry document; every list returns summaries.
   never limits lookup: `GET /v1/forms/{form}` finds every published form of a
   public entry, shown or not. `variant` forms are the entry's `variants`, with
   their part of speech when labelled.
-- **Senses.** `labels` is the register (empty for none), `rare` marks an
+- **Senses.** `labels` is the register (empty for none), `region` is
+  `british` or `american` for a sense only that variety uses (null when both
+  do), `rare` marks an
   `extra` sense of the sense list, `grammar` lists `patterns` and
   `prepositions` (empty when none). `relations` groups related senses by what
   they say about this one: `synonyms` and `antonyms` from either end;
@@ -1452,7 +1636,10 @@ entry document; every list returns summaries.
   fact_id, confidence, verdict }`; claims shown as strings have theirs in the
   owner's `review` (a sense's `review.gloss` and `review.translations`, in the
   shape of its translations, a meaning's `review.forms`, the entry's
-  `review.entry` and `review.sense_list`). Feedback on a fact names it by these
+  `review.entry`, `review.sense_list`, and `review.syllables`). Gap closures
+  show only here: the entry's `review.closures` lists each published closure
+  of the entry or of a shown sense as `{ gap, sense_id, reason, fact_id,
+  confidence, verdict }` (`sense_id` null for an entry gap). Feedback on a fact names it by these
   ids. Sources appear only in `GET /v1/sources`.
 
 **Language.** The dataset serves the languages it collects translations in
@@ -1705,7 +1892,10 @@ the rows to the rebuild: `public_view_backfill` set `view_revision = revision -
 every row, and `scored_revision` with it where the scores were current, as a
 reference import does, so no entry turns claimable; `public_view_v3_clear` did
 the same for search and filtered lists, and `form_pos_content_key` bumped the
-entries whose form keys it rewrote. Reads of entries and
+entries whose form keys it rewrote. `completeness_rules` bumps `revision` alone
+on every row, since the gap rules changed and every score must be recomputed,
+and the documents gain a sense's `region` and the entry's `review.closures`.
+Reads of entries and
 senses rebuild what they touch; `POST /manage/v1/public/rebuild` (admins only,
 body `{ limit }`, 1 to 200, default 100) rebuilds up to `limit` stale views and
 returns `{ rebuilt, remaining }`. Form lookups, the lists, search, and the joined

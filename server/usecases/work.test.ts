@@ -8,7 +8,7 @@ import { retractFact, submitFact } from './facts'
 import { claimFeedback, resolveFeedback, submitFeedback } from './feedback'
 import { reviewFact } from './review'
 import { claimWork, completeWork } from './work'
-import { refreshStaleWork } from './work-scores'
+import { refreshStaleWork, rescoreStaleWork } from './work-scores'
 
 const start = '2026-01-01T00:00:00.000Z'
 
@@ -48,6 +48,7 @@ async function fill(world: World, entryId: EntryId, author = agentA) {
     { kind: 'morphology', subject_id: entryId, payload: { parts: [{ form: entry?.lemma, role: 'base' }] } },
     { kind: 'form', subject_id: entryId, payload: { form: 'bys', type: 'plural' } },
     { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'us' } },
+    { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'uk' } },
     { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } } },
     { kind: 'translation', subject_id: sense.id, payload: { language: 'zh', text: '在旁边' } },
     { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } },
@@ -204,7 +205,7 @@ describe('claimWork', () => {
     const claim = await claimWork(world.deps, agentA)
     expect(claim?.gaps).toEqual([])
     expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 9 })
+    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 10 })
     const { fact: correction } = await submitFact(world.deps, agentA, {
       kind: 'example',
       subject_id: sense as SenseId,
@@ -243,9 +244,21 @@ describe('claimWork', () => {
     await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
     await claimFeedback(world.deps, agentB, item.id)
     const claimed = world.work.get(entries[0].entry.id)
-    expect(claimed).toMatchObject({ quality: 1 - 1 / 9, scoredRevision: claimed?.revision })
+    expect(claimed).toMatchObject({ quality: 1 - 1 / 10, scoredRevision: claimed?.revision })
     await resolveFeedback(world.deps, agentB, item.id, { resolution: 'dismissed', note: 'It is.' })
     expect(world.work.get(entries[0].entry.id)).toMatchObject({ quality: 1 })
+  })
+
+  it('drains stale rows a batch at a time and reports what is left [spec: work/rescore]', async () => {
+    const { world, entries } = await worldWith(['by', 'to', 'at'])
+    for (const { entry } of entries) {
+      const row = world.work.get(entry.id)
+      if (!row) throw new Error('No worklist row.')
+      Object.assign(row, { revision: row.revision + 1 })
+    }
+    expect(await rescoreStaleWork(world.deps, 2)).toEqual({ rescored: 2, remaining: 1 })
+    expect(await rescoreStaleWork(world.deps, 2)).toEqual({ rescored: 1, remaining: 0 })
+    expect(await rescoreStaleWork(world.deps, 2)).toEqual({ rescored: 0, remaining: 0 })
   })
 
   it('rescores rows a lost rescore left stale, which stay claimable meanwhile', async () => {
@@ -279,9 +292,9 @@ describe('claimWork', () => {
     expect(claim?.entry.senses.map((s) => s.id)).toEqual([sense.id])
     expect(claim?.entry.facts).toHaveLength(2)
     expect(claim?.weakFacts).toEqual([])
+    // The noun has no countability yet, so its paradigm asks for no plural.
     expect(claim?.gaps.map((gap) => gap.type)).toEqual([
       'sense_list',
-      'forms',
       'pronunciation',
       'morphology',
       'syllables',

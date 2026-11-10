@@ -296,6 +296,8 @@ export interface WorkRepo {
   listStale(nodeIds: string[]): Promise<StaleWork[]>
   /** Up to `limit` stale rows of any entry. */
   listAnyStale(limit: number): Promise<StaleWork[]>
+  /** How many rows are stale. */
+  countStale(): Promise<number>
   /** Stores the scores as of the stale revision; a no-op when another write bumped it since. */
   saveScores(stale: StaleWork, scores: WorkScores): Promise<void>
 }

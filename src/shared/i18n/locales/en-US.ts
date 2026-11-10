@@ -43,6 +43,7 @@ export const enUS = {
     collocation: 'Collocation',
     sense_list: 'Sense list',
     syllables: 'Syllables',
+    gap_closure: 'Gap closure',
   },
   signal: {
     unreviewed: 'Not reviewed',

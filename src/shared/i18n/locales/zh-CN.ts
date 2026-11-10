@@ -46,6 +46,7 @@ export const zhCN: typeof enUS = {
     collocation: '搭配',
     sense_list: '义项列表',
     syllables: '音节',
+    gap_closure: '不适用标记',
   },
   signal: {
     unreviewed: '未审阅',

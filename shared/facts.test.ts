@@ -47,7 +47,7 @@ describe('ipa format', () => {
   it.each([
     'ˈwɔtər',
     'tuː',
-    'ˈæn.sɚ',
+    'ˈænsər',
     'ˈɔrɡən ˌsɪstəm',
     'ðət',
     'bʌtn̩',
@@ -66,10 +66,21 @@ describe('ipa format', () => {
     ["'wɔtər", `"'" (write ˈ)`],
     ['tu:', '":" (write ː)'],
     ['Wɔtər', '"W"'],
+    ['ˈæn.sɚ', '"." (write nothing: no syllable dots), "ɚ" (write ər in American, ə in British)'],
+    ['bɝd', '"ɝ" (write ɜːr in American, ɜː in British)'],
+    ['bɛd', 'An American ipa writes the vowel of "bed" as e, not ɛ'],
   ])('rejects %j [spec: facts/ipa-format]', (text, fragment) => {
     const messages = ipa(text)
     expect(messages).toHaveLength(1)
     expect(messages[0]).toContain(fragment)
+  })
+
+  it('keeps ɛ for a British transcription only, in pronunciations and forms alike [spec: facts/ipa-format]', () => {
+    expect(ipa('ˈsɛntə', { accent: 'uk' })).toEqual([])
+    const form = (accent: string) =>
+      issues({ kind: 'form', subject_id: entry, payload: { form: 'fed', type: 'past', ipa: 'fɛd', accent } })
+    expect(form('uk')).toEqual([])
+    expect(form('us')).toEqual([expect.stringContaining('An American ipa writes the vowel of "bed" as e')])
   })
 
   it('applies only to writes: stored transcriptions still parse [spec: facts/ipa-format]', () => {
@@ -94,14 +105,33 @@ describe('translation language', () => {
     expect(translation(language)).toEqual([expect.stringContaining('served language: zh')])
   })
 
+  it('writes zh with fullwidth punctuation and each alternative once [spec: facts/zh-translation-format]', () => {
+    const zh = (text: string) => issues({ kind: 'translation', subject_id: sense, payload: { language: 'zh', text } })
+    expect(zh('银行；河岸')).toEqual([])
+    expect(zh('建造；建造')).toEqual(['A translation lists each alternative once: "建造；建造" repeats one.'])
+    expect(zh('建造； 建造')).toEqual(['A translation lists each alternative once: "建造；建造" repeats one.'])
+    for (const text of ['银行;河岸', '银行,河岸', '银行(机构)']) {
+      expect(zh(text)).toEqual(['A zh text uses fullwidth punctuation: write ； ， （ ） in place of ASCII ; , ( ).'])
+    }
+    const example = (translation: string) =>
+      issues({
+        kind: 'example',
+        subject_id: sense,
+        payload: { text: 'We go home.', translations: { zh: translation } },
+      })
+    expect(example('我们回家，好吗？')).toEqual([])
+    expect(example('我们回家,好吗？')).toEqual([expect.stringContaining('fullwidth punctuation')])
+  })
+
   it('applies only to writes: stored translations still parse [spec: facts/translation-language]', () => {
     expect(factPayloadSchemas.translation.safeParse({ language: 'zh-Hans', text: '河岸' }).success).toBe(true)
   })
 })
 
 describe('labels', () => {
-  it('accepts the optional register, form POS, and pronunciation strength and POS [spec: facts/write-labels]', () => {
+  it('accepts the optional register, region, form POS, and pronunciation strength and POS [spec: facts/write-labels]', () => {
     expect(gloss('Semen.', { register: 'taboo' })).toEqual([])
+    expect(gloss('A large goods vehicle.', { region: 'british' })).toEqual([])
     expect(ipa('tə', { strength: 'weak', pos: 'preposition' })).toEqual([])
     expect(
       issues({ kind: 'form', subject_id: entry, payload: { form: 'would', type: 'past', pos: 'auxiliary' } }),
@@ -110,6 +140,7 @@ describe('labels', () => {
 
   it('rejects labels outside their vocabularies [spec: facts/write-labels]', () => {
     expect(gloss('Semen.', { register: 'vulgar' })).toHaveLength(1)
+    expect(gloss('A large goods vehicle.', { region: 'australian' })).toHaveLength(1)
     expect(ipa('tə', { strength: 'reduced' })).toHaveLength(1)
     expect(
       issues({ kind: 'form', subject_id: entry, payload: { form: 'would', type: 'past', pos: 'modal' } }),
@@ -137,6 +168,11 @@ describe('grammar, word formation, and collocation formats', () => {
     expect(submit('grammar', sense, { prepositions: ['about', 'at', 'for', 'of', 'on'] })).toHaveLength(1)
     expect(submit('grammar', sense, { prepositions: ['during'] })).toHaveLength(1)
     expect(submit('grammar', sense, { patterns: ['preposition'] })).toHaveLength(1)
+    expect(
+      submit('grammar', sense, { countability: 'uncountable', article: 'with_the', number: 'singular_only' }),
+    ).toEqual([])
+    expect(submit('grammar', sense, { countability: 'countable', number: 'dual' })).toHaveLength(1)
+    expect(submit('grammar', sense, { position: 'both' })).toEqual([])
   })
 
   it('spells parts with their hyphens in written order [spec: facts/usage-formats]', () => {
@@ -153,6 +189,8 @@ describe('grammar, word formation, and collocation formats', () => {
       'A word formation has at least one base or root part.',
     ])
     expect(morphology(['spect', 'root'])).toEqual(['A word of one part is a simple word: its part is a base.'])
+    for (const form of ['a.m.', "o'clock", 'Mrs.', 'e.g.']) expect(morphology([form, 'base'])).toEqual([])
+    expect(morphology(['.am', 'base'])).toEqual([expect.stringContaining('is not a base')])
   })
 
   it('needs a collocation of at least two words [spec: facts/usage-formats]', () => {
@@ -161,6 +199,17 @@ describe('grammar, word formation, and collocation formats', () => {
       'A collocation has at least two words.',
     ])
     expect(submit('collocation', sense, { text: 'heavy rain', pattern: 'adjective' })).toHaveLength(1)
+  })
+})
+
+describe('gap closure format', () => {
+  const closure = (payload: unknown) => issues({ kind: 'gap_closure', subject_id: sense, payload })
+
+  it('names a closable gap and a reason [spec: facts/gap-closure-format]', () => {
+    expect(closure({ gap: 'collocations', reason: 'A month name has no common collocations.' })).toEqual([])
+    expect(closure({ gap: 'examples', reason: 'None.' })).toHaveLength(1)
+    expect(closure({ gap: 'collocations', reason: ' ' })).toHaveLength(1)
+    expect(closure({ gap: 'collocations' })).toHaveLength(1)
   })
 })
 

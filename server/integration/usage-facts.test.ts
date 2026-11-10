@@ -64,7 +64,8 @@ describe('grammar, word formation, and collocations', () => {
     expect(view.morphology).toEqual({
       parts: [{ form: 'decide', role: 'base', lemma: 'decide' }],
       family: [],
-      review: { fact_id: ids[1], ...meta },
+      // The LLM judges word formation alone.
+      review: { fact_id: ids[1], confidence: 0.88, verdict: 'pass' },
     })
     const [published] = view.meanings[0]?.senses ?? []
     expect(published?.grammar).toEqual({

@@ -1,19 +1,24 @@
-import { type Fact, isKind } from '@server/domain/fact'
+import { currentGloss, type Fact, isKind } from '@server/domain/fact'
 import {
   type AdmissionViews,
   admissionOf,
   contentKeyOf,
+  endsAdmissionOf,
   factKinds,
   type Link,
+  type LinkEnd,
   linkAdmissionOf,
   orientOf,
+  type SenseEnd,
   type SubjectType,
   type SubjectTypeOf,
+  subjectTypeOf,
   targetOf,
   topicOf,
 } from '@server/domain/fact-kinds'
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
+import { currentSenseList } from '@server/domain/sense-list'
 import { isLeaf } from '@server/domain/topics'
 import type {
   EntryId,
@@ -96,8 +101,8 @@ const UNDER_CORRECTION = 'A live correction supersedes this fact; review that co
 const ALREADY_CORRECTED =
   'The fact this corrects already has a live correction; retract that one or wait for its review.'
 
-function slotTakenMessage(kind: FactKind): string {
-  const { maxLive, subject } = factKinds[kind]
+function slotTakenMessage(kind: FactKind, subject: SubjectType): string {
+  const { maxLive } = factKinds[kind]
   if (maxLive !== undefined) {
     return `A ${subject} holds at most ${maxLive} live ${kind} facts; retract one before adding another.`
   }
@@ -119,9 +124,10 @@ export async function submitFact(
   const oriented = orientOf(kind, input.subject_id, input.payload)
   const subjectId = oriented.subjectId as EntryId | SenseId
   const payload = oriented.payload
-  const subject = await subjectNode[spec.subject](deps, subjectId)
+  const subjectType = subjectTypeOf(kind, payload)
+  const subject = await subjectNode[subjectType](deps, subjectId)
   if (!subject) {
-    throw new InvalidReferenceError(`A ${kind} fact is about a ${spec.subject}; ${subjectId} is not one.`)
+    throw new InvalidReferenceError(`A ${kind} fact is about a ${subjectType}; ${subjectId} is not one.`)
   }
   const { entryId, pos } = subject
   if (spec.subjectPos && !(pos && spec.subjectPos.includes(pos))) {
@@ -147,12 +153,14 @@ export async function submitFact(
   if (spec.admit) await assertAdmitted(kind, payload, subject)
   const factId = deps.ids.fact()
   if (targetSense) {
-    await assertLinkAdmitted(deps, kind, {
+    const link = {
       id: factId,
       payload,
       subject: { sense: subjectId as SenseId, entry: entryId },
       target: { sense: targetSense.id, entry: targetSense.entryId },
-    })
+    }
+    await assertEndsAdmitted(deps, kind, link)
+    await assertLinkAdmitted(deps, kind, link)
   }
   const supersedesId = input.supersedes_id ?? null
   if (supersedesId) await assertSupersedable(deps, supersedesId, kind, subjectId)
@@ -177,7 +185,7 @@ export async function submitFact(
   if (!fact) {
     // The insert checked every rule in its own statement; this read only explains the refusal.
     if (supersedesId) await assertCorrectable(deps, supersedesId, kind, subjectId)
-    throw new ConflictError(slotTakenMessage(kind))
+    throw new ConflictError(slotTakenMessage(kind, subjectType))
   }
   const created = fact.id === draft.id
   await refreshEntries(deps, [subjectId, target])
@@ -192,6 +200,28 @@ async function assertAdmitted<K extends FactKind>(
   subject: SubjectNode<SubjectTypeOf[K]>,
 ): Promise<void> {
   const refusal = admissionOf(kind, payload, await subject.admission())
+  if (refusal) throw new InvalidReferenceError(refusal)
+}
+
+/** What a link's end rule sees of a sense: whether its entry's current list puts it in extra, and its gloss's register. */
+async function linkEnd(deps: SubjectDeps, { sense, entry }: SenseEnd): Promise<LinkEnd> {
+  const [glosses, lists] = await Promise.all([
+    deps.nodes.listLiveGlosses(entry),
+    deps.facts.listLive('sense_list', entry),
+  ])
+  const [first, ...rest] = glosses.filter((gloss) => gloss.sense.id === sense).map(({ fact }) => fact)
+  const gloss = first && currentGloss([first, ...rest])
+  return {
+    sense,
+    rare: currentSenseList(lists)?.payload.extra.includes(sense) ?? false,
+    register: gloss?.payload.register ?? null,
+  }
+}
+
+/** Runs the kind's end rule against the senses at both ends as they are now; a read before the write, as `admit` is. */
+async function assertEndsAdmitted<K extends FactKind>(deps: SubjectDeps, kind: K, link: Link<K>): Promise<void> {
+  const [subject, target] = await Promise.all([linkEnd(deps, link.subject), linkEnd(deps, link.target)])
+  const refusal = endsAdmissionOf(kind, link.payload, { subject, target })
   if (refusal) throw new InvalidReferenceError(refusal)
 }
 
@@ -230,7 +260,7 @@ async function storedLink(deps: Pick<Deps, 'nodes'>, fact: Fact, targetId: Sense
 
 /** The subject of a stored fact, which nodes never outlive. */
 async function existingSubject(deps: SubjectDeps, fact: Fact): Promise<SubjectNode<SubjectType>> {
-  const subject = await subjectNode[factKinds[fact.kind].subject](deps, fact.subjectId)
+  const subject = await subjectNode[subjectTypeOf(fact.kind, fact.payload)](deps, fact.subjectId)
   if (!subject) throw new Error(`Fact ${fact.id} is about ${fact.subjectId}, which does not exist.`)
   return subject
 }
@@ -315,8 +345,11 @@ export async function rereviewFact(
     const reviving = !isLive(fact.status)
     if (reviving && factKinds[fact.kind].admit)
       await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact))
-    if (reviving && fact.objectId)
-      await assertLinkAdmitted(deps, fact.kind, await storedLink(deps, fact, fact.objectId))
+    if (reviving && fact.objectId) {
+      const link = await storedLink(deps, fact, fact.objectId)
+      await assertEndsAdmitted(deps, fact.kind, link)
+      await assertLinkAdmitted(deps, fact.kind, link)
+    }
     const { maxLive } = factKinds[fact.kind]
     const liveBelow = reviving && maxLive !== undefined ? { max: maxLive, excluding: fact.supersedesId } : undefined
     const originalPublished = (reviving && fact.supersedesId) || undefined
@@ -337,7 +370,7 @@ export async function rereviewFact(
       if (current.status === fact.status) {
         if (await deps.facts.findLiveCorrection(id)) throw new ConflictError(UNDER_CORRECTION)
         if (originalPublished) await assertCorrectable(deps, originalPublished, fact.kind, fact.subjectId)
-        if (liveBelow) throw new ConflictError(slotTakenMessage(fact.kind))
+        if (liveBelow) throw new ConflictError(slotTakenMessage(fact.kind, subjectTypeOf(fact.kind, fact.payload)))
       }
       throw new ConflictError('The fact changed while it was being reset.')
     }

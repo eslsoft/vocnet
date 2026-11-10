@@ -215,3 +215,9 @@ Feature: Catalog
     Given an agent submits syllables, a form with a pronunciation, and a translated example
     When the payloads break a rule, or once they are reviewed and published
     Then a malformed ipa, an ipa without an accent, or an unserved language is 400, syllables that do not spell the lemma are 422, and the public entry serves the published fields
+
+  @catalog/region-and-closures @domain
+  Scenario: The public entry shows a sense region and the gap closures
+    Given an entry with a region-labelled sense and published, pending, and hidden-sense gap closures
+    When its public document is projected
+    Then the sense shows its region (null when both varieties use it), and the review metadata lists the published closures of the entry and its shown senses with their gap and reason
