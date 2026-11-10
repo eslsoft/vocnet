@@ -1490,7 +1490,7 @@ export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
   },
   category: {
     subject: 'sense',
-    slot: 'an everyday category: a broader term a learner files this sense under, a real headword ("dog": animal, pet; "eagle": bird; "stroll": walk)',
+    slot: 'an everyday category: a broader term a learner files this sense under, a real headword ("dog": animal, pet; "eagle": bird; "rose": flower)',
     attempts: { of: 'node', kinds: ['relation'] },
   },
   parts: {
@@ -1539,7 +1539,7 @@ const CLOSURE_FAILS = [
   'a common verb lacks inflections, or a noun its plural, that a learner can look up in any dictionary',
   'a verb with common phrasal verbs the reason leaves out ("throw" has throw away, throw out, and throw up), or a word with common derivatives ("happy" has happiness)',
   'a word with ordinary synonyms, collocations, or a topic only someone has not found yet',
-  'a kind of thing or action a learner files under an everyday category ("eagle" is a bird, "stroll" is a kind of walk)',
+  'a kind of thing a learner files under an everyday category ("eagle" is a bird, "a rose" is a flower)',
   "a thing whose main parts a learner's dictionary names (a bird's beak, wings, and feathers; a car's wheels and engine)",
   'a reason that is wrong, vague, or only says the data is hard to find',
 ]

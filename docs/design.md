@@ -1411,7 +1411,7 @@ baby). Three slots replace it, each one fact deep and each closable:
 
 | Slot | Senses | Filled by |
 | ---- | ------ | --------- |
-| `category` | Counted noun and verb senses (`CATEGORY_POS`) | A live everyday hypernym (no `domain`) from the sense to a sense that can show; a word may have several (dog: animal, pet), and one fills the slot |
+| `category` | Counted noun senses (`CATEGORY_POS`); learner's dictionaries file nouns, not verbs, so no verb sense is asked for a broader verb | A live everyday hypernym (no `domain`) from the sense to a sense that can show; a word may have several (dog: animal, pet), and one fills the slot |
 | `parts` | Counted noun senses with an everyday category (`PARTS_POS`) | A live `part_of` from a sense that can show to this one (bird: beak, wing, feather) |
 | `synonyms` | Counted noun, verb, adjective, and adverb senses (`SYNONYMS_POS`) | A live synonym or antonym at either end, to a sense that can show |
 
@@ -1737,7 +1737,7 @@ facts close its gap:
 | `{ type: "pronunciation", accents }`     | `us` or `uk` has no live strong pronunciation; `accents` names them |
 | `{ type: "phrases", have, need }`        | An A1 or A2 single-word verb has fewer than `need` (3) live phrasal verbs or verb idioms headed by it; `have` names the ones it has |
 | `{ type: "family" }`                     | An A1 or A2 single word has no live entry whose morphology names it as a base |
-| `{ type: "category", sense_id }`         | A noun or verb sense has no live everyday hypernym to a sense that can show |
+| `{ type: "category", sense_id }`         | A noun sense has no live everyday hypernym to a sense that can show |
 | `{ type: "parts", sense_id }`            | A noun sense with an everyday category has no live `part_of` attached to it from a sense that can show |
 | `{ type: "synonyms", sense_id }`         | A noun, verb, adjective, or adverb sense has no live synonym or antonym to a sense that can show |
 | `{ type: "examples", sense_id, count, need }` | The sense has fewer live examples than `need`: 2 for an A1 or A2 entry, else 1 |

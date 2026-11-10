@@ -331,10 +331,12 @@ const entryGapRules: readonly EntryRule[] = [
 ]
 
 /**
- * The parts of speech whose senses name a kind of thing or action, so a learner files them under
- * an everyday category ("dog": animal; "stroll": walk). Other parts of speech have no category gap.
+ * The parts of speech whose senses name a kind of thing, so a learner files them under an everyday
+ * category ("dog": animal, pet). Learner's dictionaries file nouns, not verbs: asking every verb sense
+ * for a broader verb built a WordNet-style troponym tree ("get": arrange, "come": include) that review
+ * rejected half the time. A verb may still carry a hypernym; none is required.
  */
-export const CATEGORY_POS: readonly Pos[] = ['noun', 'verb']
+export const CATEGORY_POS: readonly Pos[] = ['noun']
 
 /** The parts of speech of the things a learner's dictionary names main parts for ("bird": beak, wing). */
 export const PARTS_POS: readonly Pos[] = ['noun']

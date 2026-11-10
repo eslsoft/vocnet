@@ -418,7 +418,7 @@ const reviewed = <F extends Fact>(made: F, verdict: Review['verdict']): F =>
   }) as F
 
 describe('relation slots by part of speech', () => {
-  it('asks nouns and verbs for a category, content words for a synonym, and pronouns and other function words for none [spec: work/relation-slots-by-pos]', () => {
+  it('asks only nouns for a category, content words for a synonym, and pronouns and other function words for none [spec: work/relation-slots-by-pos]', () => {
     const needs = Object.fromEntries(
       Object.keys(GRAMMAR_NEEDED).map((pos) => {
         const focus = sense(pos as Pos)
@@ -447,7 +447,7 @@ describe('relation slots by part of speech', () => {
     expect(needs).toEqual({
       noun: { category: true, synonyms: true, completeness: 1 - 12 / 13 },
       // A verb's paradigm adds four form slots.
-      verb: { category: true, synonyms: true, completeness: 1 - 16 / 17 },
+      verb: { category: false, synonyms: true, completeness: 1 - 15 / 16 },
       adjective: { category: false, synonyms: true, completeness: 1 - 10 / 11 },
       // An adverb adds a grammar and a collocation slot, a pronoun grammar, a determiner both, and a
       // preposition or conjunction a collocation.
@@ -1024,6 +1024,6 @@ describe('completeness rules for a learner dictionary', () => {
         flagged: new Set(),
         neighbors,
       }).completeness
-    expect(score([closure(entryId, 'forms')]) - score([])).toBeCloseTo(4 / 17)
+    expect(score([closure(entryId, 'forms')]) - score([])).toBeCloseTo(4 / 16)
   })
 })

@@ -1639,7 +1639,7 @@ describe('completeness write rules and rubrics', () => {
     expect(onSense).toContain('a sense no learner files under a category word')
     expect(onSense).toContain('or whose parts are recorded on the more general whole they belong to')
     expect(onSense).toContain('a sense with no synonym or antonym a learner could use in its place')
-    expect(onSense).toContain('a kind of thing or action a learner files under an everyday category ("eagle" is a bird')
+    expect(onSense).toContain('a kind of thing a learner files under an everyday category ("eagle" is a bird')
     expect(onSense).toContain(
       'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
     )

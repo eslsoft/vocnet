@@ -53,7 +53,7 @@ Feature: Work items
   Scenario: The relation slots a sense needs depend on its part of speech
     Given a live sense of each part of speech
     When the gaps and completeness are computed
-    Then nouns and verbs need a category, nouns, verbs, adjectives, and adverbs a synonym or antonym, and pronouns and every other part of speech no relation slot
+    Then only nouns need a category, nouns, verbs, adjectives, and adverbs a synonym or antonym, and pronouns and every other part of speech no relation slot
 
   @work/topics-gap @domain
   Scenario: Nouns and verbs need a topic
