@@ -465,6 +465,8 @@ Feature: Facts and review
     When it is submitted
     Then its text must contain the lemma or one of the entry's live forms as whole words, or it is an invalid reference
     And a typographic apostrophe matches a straight one
+    And a word with a fused clitic ('s, 're, 've, 'll, 'd, n't) also reads as the word it is fused to, so "let's see" contains let and "can't" contains can
+    And the closed-class forms of be, have, and do count as forms of their lemma whether or not they are recorded
 
   @facts/rereview-admits @usecase
   Scenario: A revived fact must still fit its subject

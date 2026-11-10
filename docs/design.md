@@ -263,14 +263,22 @@ as *make a decision*. `pattern` is `verb_noun`, `adjective_noun`, `noun_noun`,
 `adverb_adjective`, `verb_adverb`, `verb_preposition`, `noun_preposition`,
 `adjective_preposition`, or `phrase`. Its text must contain the lemma, or the
 form of one of the entry's live `form` facts, as whole words, case-insensitively
-and with a typographic apostrophe (’) matching a straight one; otherwise it is
-`422 invalid_reference`, and the message tells the agent to use the word or one
-of its recorded forms. A sense holds at most five live collocations
+and with a typographic apostrophe (’ or ‘) matching a straight one; otherwise it
+is `422 invalid_reference`, and the message tells the agent to use the word or
+one of its recorded forms. A word with a fused clitic (`'s`, `'re`, `'ve`,
+`'ll`, `'d`, `n't`) also reads as the word it is fused to: *let's see* contains
+*let*, *don't* *do*, and *can't*, *won't*, and *shan't* *can*, *will*, and
+*shall*. The auxiliaries *be*, *have*, and *do* are a closed class, so their
+irregular forms (*am, is, are, was, were, been, being*; *has, had, having*;
+*does, did, done, doing*) count as forms of the lemma whether or not they are
+recorded as `form` facts. A sense holds at most five live collocations
 (`maxLive` in the registry): a sixth is `409 conflict`, a resubmission of a live
 one returns it, and a correction that supersedes one takes its place. The cap
 is enforced as the topics limit is: inside the insert and the re-review reset,
 so concurrent submissions cannot pass it. Its content key is the pattern and
-the case-folded text.
+the case-folded text with typographic apostrophes straightened, so *five
+o’clock* and *five o'clock* are one collocation. The same text under two
+patterns is two collocations.
 
 The payload rules against the subject are the registry's `admit` hook, which
 `subjectPos` cannot express because they read the payload: when a kind has one,

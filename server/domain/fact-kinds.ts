@@ -735,20 +735,54 @@ const collocationPatterns: Record<CollocationPattern, string> = {
   phrase: 'a fixed phrase built around the word ("in the long run")',
 }
 
-/** Lowercase words between single spaces; a typographic apostrophe is the straight one. */
+/** Typographic apostrophes (’ and ‘) read as the straight one, so either spelling is the same text. */
+const straightApostrophes = (text: string) => text.replace(/[\u2018\u2019]/g, "'")
+
+/** Lowercase words, split on anything but letters, digits, apostrophes, and hyphens. */
 const wordsOf = (text: string) =>
-  ` ${text
-    .toLowerCase()
-    .replaceAll('\u2019', "'")
+  straightApostrophes(text.toLowerCase())
     .replace(/[^\p{L}\p{N}'-]+/gu, ' ')
-    .trim()} `
+    .trim()
+    .split(' ')
+
+/** Negatives whose stem is not the word before n't: can't is can not, not ca not. */
+const IRREGULAR_NEGATIVES: ReadonlyMap<string, string> = new Map([
+  ["can't", 'can'],
+  ["won't", 'will'],
+  ["shan't", 'shall'],
+])
+
+/** A clitic fused to the word before it: let's is let us, don't do not, the decision's impact. */
+const CLITIC = /^(.+?)(?:'s|'re|'ve|'ll|'d|n't)$/
+
+/** The word as written and, when a clitic is fused to it, the word it is fused to. */
+function readingsOf(word: string): readonly string[] {
+  const stem = IRREGULAR_NEGATIVES.get(word) ?? CLITIC.exec(word)?.[1]
+  return stem === undefined ? [word] : [word, stem]
+}
+
+/**
+ * The auxiliaries be, have, and do are a closed class: their irregular forms are fixed and known,
+ * so they are part of the word here rather than depending on an agent having recorded each one
+ * as a form fact ("there are" is a collocation of be whether or not "are" is recorded).
+ */
+const AUXILIARY_FORMS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['be', ['am', 'is', 'are', 'was', 'were', 'been', 'being']],
+  ['have', ['has', 'had', 'having']],
+  ['do', ['does', 'did', 'done', 'doing']],
+])
+
+/** Whether the words of `term` appear in order as whole words of the text, each as written or by its stem. */
+const containsTerm = (readings: readonly (readonly string[])[], term: readonly string[]) =>
+  readings.some((_, at) => term.every((word, offset) => readings[at + offset]?.includes(word)))
 
 function admitCollocation(
   { text }: FactPayloads['collocation'],
   { lemma, forms }: AdmissionViews['sense'],
 ): string | null {
-  const words = wordsOf(text)
-  if ([lemma, ...forms].some((term) => words.includes(wordsOf(term)))) return null
+  const readings = wordsOf(text).map(readingsOf)
+  const terms = [lemma, ...forms, ...(AUXILIARY_FORMS.get(lemma) ?? [])]
+  if (terms.some((term) => containsTerm(readings, wordsOf(term)))) return null
   return `A collocation contains the word: ${quote(text)} has neither ${quote(lemma)} nor one of its live forms.`
 }
 
@@ -959,7 +993,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     cardinality: 'many',
     chain: ['llm'],
     maxLive: MAX_COLLOCATIONS,
-    contentKey: ({ text, pattern }) => `${pattern}|${textKey(text)}`,
+    contentKey: ({ text, pattern }) => `${pattern}|${straightApostrophes(textKey(text))}`,
     admit: admitCollocation,
     plan: ({ text, pattern }, { subject }) =>
       withGloss(subject, (sense) => llm(collocationRubric(text, pattern, { ...subject, ...sense }))),

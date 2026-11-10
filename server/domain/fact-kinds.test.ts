@@ -753,6 +753,44 @@ describe('collocation facts', () => {
     ).toBeNull()
   })
 
+  it('reads a word with a fused clitic as the word it is fused to [spec: facts/collocation-contains-word]', () => {
+    const admitFor = (text: string, lemma: string) =>
+      admissionOf('collocation', { text, pattern: 'phrase' }, { lemma, pos: 'verb', forms: [] })
+    expect(admitFor("let's see", 'let')).toBeNull()
+    expect(admitFor('let’s get started', 'let')).toBeNull()
+    expect(admitFor("don't mind", 'do')).toBeNull()
+    expect(admitFor("can't stand", 'can')).toBeNull()
+    expect(admitFor("won't budge", 'will')).toBeNull()
+    expect(admitFor("shan't stay", 'shall')).toBeNull()
+    expect(admitFor("you'll see", 'you')).toBeNull()
+    expect(admitFor("they're off", 'they')).toBeNull()
+    expect(admitFor("we've done it", 'we')).toBeNull()
+    expect(admitFor("I'd rather", 'I')).toBeNull()
+    expect(admitFor("the decision's impact", 'decision')).toBeNull()
+    expect(admitFor("can't stand", 'ca')).toContain('has neither')
+    expect(admitFor('lets go', 'let')).toContain('has neither')
+    expect(admitFor("let's see", 'lets')).toContain('has neither')
+  })
+
+  it('counts the closed-class forms of be, have, and do as the word [spec: facts/collocation-contains-word]', () => {
+    const admitFor = (text: string, lemma: string) =>
+      admissionOf('collocation', { text, pattern: 'phrase' }, { lemma, pos: 'verb', forms: [] })
+    for (const form of ['am', 'is', 'are', 'was', 'were', 'been', 'being'])
+      expect(admitFor(`there ${form} people`, 'be')).toBeNull()
+    for (const form of ['has', 'had', 'having']) expect(admitFor(`${form} a look`, 'have')).toBeNull()
+    for (const form of ['does', 'did', 'done', 'doing']) expect(admitFor(`${form} the dishes`, 'do')).toBeNull()
+    expect(admitFor("isn't it", 'be')).toBeNull()
+    expect(admitFor('there are people', 'make')).toContain('has neither')
+    expect(admitFor('has a look', 'do')).toContain('has neither')
+  })
+
+  it('keys a collocation by pattern and case-folded text with straight apostrophes', () => {
+    const key = (text: string) => contentKeyOf('collocation', { text, pattern: 'phrase' })
+    expect(key('Five  o’clock')).toBe("phrase|five o'clock")
+    expect(key("‘five o'clock")).toBe("phrase|'five o'clock")
+    expect(key("five o'clock")).toBe(key('five o’clock'))
+  })
+
   it('caps the live collocations of a sense', () => {
     expect(factKinds.collocation.maxLive).toBe(MAX_COLLOCATIONS)
     expect(MAX_COLLOCATIONS).toBe(5)
