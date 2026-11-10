@@ -353,7 +353,7 @@ async function correctedRiverBank() {
   const submit = async (input: Parameters<typeof submitFact>[2]) => (await submitFact(world.deps, agentA, input)).fact
   const dependents = [
     await submit({ kind: 'example', subject_id: river.id, payload: { text: 'We sat on the bank.' } }),
-    await submit({ kind: 'translation', subject_id: river.id, payload: { language: 'fr', text: 'rive' } }),
+    await submit({ kind: 'translation', subject_id: river.id, payload: { language: 'zh', text: '河岸' } }),
     await submit({ kind: 'relation', subject_id: river.id, payload: { type: 'synonym', target_sense_id: shore.id } }),
     await submit({ kind: 'relation', subject_id: shore.id, payload: { type: 'hypernym', target_sense_id: river.id } }),
   ]
@@ -405,7 +405,7 @@ describe('revalidation', () => {
     expect((await getFact(world.deps, unrelated.id)).revalidateSince).toBeNull()
     const visible = (await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]
     const relations = Object.values(visible?.relations ?? {}).flat()
-    expect([visible?.examples.length, visible?.translations, relations.length]).toEqual([1, { fr: ['rive'] }, 2])
+    expect([visible?.examples.length, visible?.translations, relations.length]).toEqual([1, { zh: ['河岸'] }, 2])
 
     world.setNow('2026-01-01T00:06:00.000Z')
     await drain(world)

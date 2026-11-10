@@ -52,11 +52,11 @@ const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: 
       })
     ).body,
   )
-  // Labelled with the sense's part of speech, so the form shows on its meaning and can be reported.
+  // A variant, which an entry shows whatever its meanings, so the form is public and can be reported.
   const form = await submitFact(token, {
     kind: 'form',
     subject_id: entryId,
-    payload: { form: 'bys', type: 'plural', pos: 'preposition' },
+    payload: { form: 'bye', type: 'variant', pos: 'preposition' },
   })
   await submitFact(token, {
     kind: 'morphology',

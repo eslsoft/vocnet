@@ -452,9 +452,18 @@ const INFLECTION_TYPES = (Object.keys(formTypes) as FormType[]).filter((type) =>
 
 const isInflection = (type: FormType) => INFLECTION_TYPES.includes(type)
 
-/** The content keys of the form facts that record `spelling` as an inflection of their entry. */
+/** The content keys of the form facts that record `spelling` as an inflection of their entry, labelled or not. */
 export function inflectionKeysOf(spelling: string): string[] {
-  return INFLECTION_TYPES.map((type) => contentKeyOf('form', { form: spelling, type }))
+  return INFLECTION_TYPES.flatMap((type) =>
+    [undefined, ...formTypes[type].carriers].map((pos) => contentKeyOf('form', { form: spelling, type, pos })),
+  )
+}
+
+/** A labelled inflection names a part of speech its type can be shown under; a variant may name any. */
+function admitForm({ type, pos }: FactPayloads['form']): string | null {
+  const { carriers, name } = formTypes[type]
+  if (!pos || !isInflection(type) || carriers.includes(pos)) return null
+  return `A ${name} inflects a ${carriers.join(', ')}; it cannot be labelled ${pos}.`
 }
 
 /**
@@ -977,7 +986,12 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     subject: 'entry',
     cardinality: 'many',
     chain: ['jev', 'llm'],
-    contentKey: ({ form, type }) => `${type}|${normalizeTerm(form)}`,
+    // The part of speech is part of the claim: "would" as the past of the auxiliary "will" is not
+    // the unlabelled past, so a labelled form never dedupes against it and replaces it by a
+    // correction that supersedes it.
+    contentKey: ({ form, type, pos }) => labelled(`${type}|${normalizeTerm(form)}`, pos),
+    meaningKey: ({ form, type }) => `${type}|${normalizeTerm(form)}`,
+    admit: admitForm,
     plan: ({ form, type, pos }, { subject }) =>
       jevThenLlm({ form: formQuestion(type, form, subject.lemma, pos) }, formRubric(type, form, subject, pos)),
     // An entry review gives a recorded inflection to the LLM alone, but only once the form is live;

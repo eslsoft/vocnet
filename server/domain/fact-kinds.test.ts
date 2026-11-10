@@ -52,7 +52,9 @@ describe('fact-kind registry', () => {
 
   it('keys a gloss by its register too, so a register-only correction is a new fact', () => {
     expect(contentKeyOf('sense', { gloss: 'Semen.', register: 'taboo' })).toBe('semen.|taboo')
-    expect(contentKeyOf('form', { form: 'would', type: 'past', pos: 'auxiliary' })).toBe('past|would')
+    expect(contentKeyOf('form', { form: 'would', type: 'past', pos: 'auxiliary' })).toBe('past|would|auxiliary')
+    expect(contentKeyOf('form', { form: ' would ', type: 'past' })).toBe('past|would')
+    expect(meaningKeyOf('form', { form: 'would', type: 'past', pos: 'auxiliary' })).toBe('past|would')
     expect(contentKeyOf('pronunciation', { ipa: 'tə', accent: 'us', strength: 'weak' })).toBe('us|tə')
   })
 
@@ -546,8 +548,20 @@ describe('fact-kind registry', () => {
     expect(rereviewOf('entry', {})).toBeNull()
   })
 
+  it('admits a labelled form only under a part of speech its type is shown under [spec: facts/form-relabel]', () => {
+    const entry = { lemma: 'will', senses: [] }
+    expect(admissionOf('form', { form: 'would', type: 'past', pos: 'auxiliary' }, entry)).toBeNull()
+    expect(admissionOf('form', { form: 'would', type: 'past' }, entry)).toBeNull()
+    expect(admissionOf('form', { form: "'ll", type: 'variant', pos: 'auxiliary' }, entry)).toBeNull()
+    expect(admissionOf('form', { form: 'more', type: 'comparative', pos: 'determiner' }, entry)).toBeNull()
+    expect(admissionOf('form', { form: 'wills', type: 'past', pos: 'noun' }, entry)).toBe(
+      'A simple past tense form inflects a verb, auxiliary; it cannot be labelled noun.',
+    )
+  })
+
   it('names the inflecting form types, never a spelling variant, as the forms that make a word an inflection', () => {
-    expect(inflectionKeysOf(' saw ')).toEqual([
+    const keys = inflectionKeysOf(' saw ')
+    expect(keys.filter((key) => key.split('|').length === 2)).toEqual([
       'plural|saw',
       'past|saw',
       'past_participle|saw',
@@ -556,6 +570,11 @@ describe('fact-kind registry', () => {
       'comparative|saw',
       'superlative|saw',
     ])
+    expect(keys).toContain('past|saw|auxiliary')
+    expect(keys).toContain('plural|saw|pronoun')
+    expect(keys).toContain('superlative|saw|determiner')
+    expect(keys).not.toContain('past|saw|noun')
+    expect(keys).toHaveLength(24)
   })
 
   it('gives the LLM a rubric prompt that demands a JSON verdict', () => {

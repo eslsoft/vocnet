@@ -154,6 +154,12 @@ Feature: Facts and review
     Then the rubric accepts a sentence that shows the sense in ordinary use
     And rejects one that uses another sense, is ungrammatical, or adds offence the sense does not need
 
+  @facts/form-relabel @usecase
+  Scenario: A labelled form is its own claim and replaces the unlabelled one by a correction
+    Given a published unlabelled form "would" of "will", which has verb and auxiliary meanings
+    When an agent submits "would" labelled auxiliary that supersedes it, or a form labelled with a part of speech its type is never shown under
+    Then the labelled form is a new fact keyed with its part of speech, and once published it replaces the unlabelled one and shows under the auxiliary meaning; the mislabelled one is refused
+
   @facts/form-word-class @domain
   Scenario: A form is judged in the word class it inflects
     Given a form fact such as the past tense "breaded" of "bread"

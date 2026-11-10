@@ -310,7 +310,7 @@ const senseListPayloadSchema = z.strictObject({
  * The languages the dataset collects translations in, and so the only ones a translation is
  * submitted in and a read serves. `zh` is Simplified Chinese.
  */
-export const SERVED_LANGUAGES: readonly string[] = ['zh']
+export const SERVED_LANGUAGES = ['zh'] as const
 
 export const factPayloadSchemas = {
   entry: z.strictObject({}),
@@ -360,11 +360,9 @@ const submitPayloadSchemas = {
   pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }),
   translation: factPayloadSchemas.translation.extend({
     language: z
-      .string()
-      .refine(
-        (language) => SERVED_LANGUAGES.includes(language),
-        `A translation is in a served language: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`,
-      )
+      .enum(SERVED_LANGUAGES, {
+        error: `A translation is in a served language: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`,
+      })
       .meta({ description: `A served language: ${SERVED_LANGUAGES.join(', ')}. zh is Simplified Chinese.` }),
   }),
   grammar: grammarPayloadSchema

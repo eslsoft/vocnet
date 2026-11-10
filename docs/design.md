@@ -228,7 +228,13 @@ plain payload shape, so facts written before a rule still read.
 - **Translation.** `language` is a served language (`SERVED_LANGUAGES` in
   `shared/facts.ts`, now only `zh`, which is Simplified Chinese), so the
   worklist gap it fills and the language reads serve are the same tag; the
+  submit schema is an enum of them, which the OpenAPI document lists, and the
   message names the served languages.
+- **Form.** A labelled inflection names a part of speech its type can be shown
+  under (`carriers` in the registry: a plural a noun, pronoun, or determiner;
+  a past, participle, or third-person form a verb or auxiliary; a comparative or
+  superlative an adjective, adverb, or determiner); a labelled variant may name
+  any. Anything else is `422 invalid_reference`.
 - **Grammar.** At least one property, each pattern once, and one to four
   prepositions, each once.
 - **Word formation.** Parts in written order: prefixes, then at least one base or
@@ -399,9 +405,16 @@ part of speech, and a pronunciation's part of speech by listing it under that
 meaning instead of the entry. A sense's `register` is part of its content key, so a correction
 that only adds or changes a register is a new fact that supersedes the gloss. It
 is not part of the sense's identity or its meaning (see Nodes and revalidation).
-A form's or pronunciation's labels are not:
-the same form or transcription with another label returns the live fact, and
-relabelling one means retracting it and submitting the labelled fact.
+A form's part of speech is part of its content key too (`type|form|pos`, and
+`type|form` unlabelled), so "would" labelled auxiliary is a claim of its own
+beside the unlabelled past of "will": relabelling a form is a correction that
+supersedes it, which once published takes its place, as a register correction
+does a gloss's. The meaning key leaves the label out, as a sense's does. A
+labelled form submitted without `supersedes_id` while the unlabelled one is live
+adds a second fact, and both show, each under its own meaning; producers
+relabel by correction. A pronunciation's labels are not part of its key: the
+same transcription with another label returns the live fact, and relabelling
+one means retracting it and submitting the labelled fact.
 
 ### Fact lifecycle
 
@@ -1267,12 +1280,14 @@ entry document; every list returns summaries.
   meaning, though its determiner is shown first); a past, participle, or third-person form to a verb,
   else an auxiliary (`would` under the auxiliary "will" only while "will" has
   no verb meaning); a comparative or superlative to an adjective, else an
-  adverb, else a determiner (`more` under the determiner "many"). Known gap:
-  an unlabelled verb form of an entry with both a verb and an auxiliary
-  meaning goes to the verb (`would` under the verb "will"); the fix is to
-  label such forms with `pos`, and since a form's content key is `type|form`
-  without its part of speech, relabelling an unlabelled form dedupes against
-  it and must go through a supersede. A
+  adverb, else a determiner (`more` under the determiner "many", and under
+  the adverb "much", which has adverb, determiner, and pronoun meanings but
+  no adjective one). An unlabelled verb form of an entry with both a verb and
+  an auxiliary meaning goes to the verb (`would` under the verb "will"),
+  because nothing in the data says which one it inflects; the producer labels
+  it by a correction that supersedes it (`{ form: "would", type: "past", pos:
+  "auxiliary", supersedes_id }`, see Write rules), and the regular forms
+  (`willed`, `wills`, `willing`) with `verb` the same way. A
   form or a part-of-speech pronunciation with no meaning to show it is not
   shown in the entry document; it reappears when a sense of a part of speech
   that can carry it is published, as a relation waits for its sense. Display
@@ -1549,7 +1564,8 @@ the rows to the rebuild: `public_view_backfill` set `view_revision = revision -
 1`, and `public_api_v2_clear` emptied the view tables and bumped `revision` on
 every row, and `scored_revision` with it where the scores were current, as a
 reference import does, so no entry turns claimable; `public_view_v3_clear` did
-the same for search and filtered lists. Reads of entries and
+the same for search and filtered lists, and `form_pos_content_key` bumped the
+entries whose form keys it rewrote. Reads of entries and
 senses rebuild what they touch; `POST /manage/v1/public/rebuild` (admins only,
 body `{ limit }`, 1 to 200, default 100) rebuilds up to `limit` stale views and
 returns `{ rebuilt, remaining }`. Form lookups, the lists, search, and the joined
@@ -1586,6 +1602,19 @@ stayed within the noise of the earlier view: `run` 3.8 to 4.0 ms before and
 4.1 to 4.7 ms after, and a mean entry (2.9 ms), sense (2.8 ms), form lookup
 (2.7 ms), topic page (3.1 to 3.5 ms), and list page (2.5 to 2.8 ms) the same.
 
+On a later copy (12,663 entries, 12,015 public), the four migrations of search,
+filtered lists, and form keys (`public_view_v3_clear`, `public_view_v3`,
+`public_search_fts`, `form_pos_content_key`, which rekeyed 2,839 labelled form
+facts with no collision) applied in 2.4 seconds through `wrangler d1
+migrations apply --local`, and 64 rebuild calls of 200 rebuilt every view in
+42 seconds, about 290 entries a second, producing 12,015 documents (23.6 MB),
+8,128 meaning rows, 4,889 form rows, 4,178 topic rows, and 29,790 search rows
+(15,179 glosses, 6,992 translations, 7,619 examples; 1.5 MB of indexed text),
+8.4 MB more database in all. Through `wrangler dev`: a search 3 to 14 ms
+(`bank`, `银行`, `rel`), a one-letter search, which matches most glosses, 15 to
+120 ms; a list by level and part of speech or a topic page by frequency or level
+about 5 ms, and a topic-filtered list by frequency, which walks the frequency
+index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
 
 ## Runtime
 

@@ -219,6 +219,38 @@ describe('public reads', () => {
     await expect(lookupForm(world.deps, 'bankz', none)).rejects.toMatchObject({ code: 'not_found' })
   })
 
+  it('moves a form to its labelled meaning when a labelled form supersedes the unlabelled one [spec: facts/form-relabel]', async () => {
+    const world = fakeWorld()
+    const { entry } = await createEntry(world.deps, agentA, { lemma: 'will' })
+    for (const [pos, gloss] of [
+      ['verb', 'To intend something strongly.'],
+      ['auxiliary', 'Used to express the future.'],
+    ] as const) {
+      await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss })
+    }
+    const would = { kind: 'form' as const, subject_id: entry.id, payload: { form: 'would', type: 'past' as const } }
+    const unlabelled = (await submitFact(world.deps, agentA, would)).fact
+    await reviewAll(world)
+    const formsOf = async () =>
+      Object.fromEntries(
+        (await publicEntryOf(world.deps, 'will')).meanings.map((meaning) => [meaning.pos, meaning.forms]),
+      )
+    expect(await formsOf()).toEqual({ verb: { past: ['would'] }, auxiliary: {} })
+
+    const labelled = { ...would, payload: { ...would.payload, pos: 'auxiliary' as const } }
+    const correction = await submitFact(world.deps, agentA, { ...labelled, supersedes_id: unlabelled.id })
+    expect(correction.created).toBe(true)
+    expect(correction.fact.contentKey).toBe('past|would|auxiliary')
+    await reviewAll(world)
+    expect(await formsOf()).toEqual({ verb: {}, auxiliary: { past: ['would'] } })
+    expect((await lookupForm(world.deps, 'would', none)).read()[0]?.matches).toEqual([
+      { type: 'past', pos: 'auxiliary' },
+    ])
+    await expect(
+      submitFact(world.deps, agentA, { ...would, payload: { ...would.payload, pos: 'noun' } }),
+    ).rejects.toMatchObject({ code: 'invalid_reference' })
+  })
+
   it('groups every form of one entry that matched, with its part of speech', async () => {
     const world = fakeWorld()
     const { entry } = await createEntry(world.deps, agentA, { lemma: 'record' })
