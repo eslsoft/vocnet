@@ -455,6 +455,12 @@ Feature: Facts and review
     When the reconciler runs
     Then their review jobs are enqueued again
 
+  @facts/reconcile-pending-first @api
+  Scenario: A revalidation backlog never starves pending facts
+    Given more stuck revalidations than one reconcile run takes, all older than a stuck pending fact
+    When the reconciler runs
+    Then the pending fact is enqueued in that run, ahead of the revalidations
+
   @facts/retract @usecase
   Scenario: Retract a fact
     Given an agent's own pending or published fact

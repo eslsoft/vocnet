@@ -145,7 +145,7 @@ export interface FactRepo {
   transition(write: FactTransitionWrite): Promise<boolean>
   /** Live facts about this node (as subject or object) marked for a review against its new version. */
   listRevalidating(nodeId: EntryId | SenseId): Promise<FactId[]>
-  /** Facts pending since before cutoff, or awaiting revalidation since before it. */
+  /** Facts pending since before cutoff, then facts awaiting revalidation since before it, pending first. */
   listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
   list(filter: { status?: FactStatus; kind?: FactKind }, page: PageRequest): Promise<Page<Fact>>
   countByKindAndStatus(): Promise<Stats['facts']>

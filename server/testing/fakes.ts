@@ -591,12 +591,12 @@ export function fakeWorld(): FakeWorld {
           .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId)
           .map((fact) => fact.id),
       listStuckBefore: async (cutoff, limit) =>
-        world.facts
-          .filter(
-            (fact) =>
-              (fact.status === 'pending' && fact.updatedAt < cutoff) ||
-              (fact.status === 'published' && fact.revalidateSince !== null && fact.revalidateSince < cutoff),
-          )
+        [
+          ...world.facts.filter((fact) => fact.status === 'pending' && fact.updatedAt < cutoff),
+          ...world.facts.filter(
+            (fact) => fact.status === 'published' && fact.revalidateSince !== null && fact.revalidateSince < cutoff,
+          ),
+        ]
           .slice(0, limit)
           .map((fact) => fact.id),
       list: async ({ status, kind }, page) =>

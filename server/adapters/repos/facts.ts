@@ -325,18 +325,25 @@ export function createFactRepo(db: Db): FactRepo {
     },
 
     async listStuckBefore(cutoff, limit) {
-      const rows = await db
+      // Pending facts come first: a revalidation backlog of old published facts must never
+      // starve a pending fact whose enqueue was lost, since pending facts block their entry's claim.
+      const pending = await db
         .select({ id: facts.id })
         .from(facts)
-        .where(
-          or(
-            and(eq(facts.status, 'pending'), lt(facts.updatedAt, cutoff)),
-            and(eq(facts.status, 'published'), lt(facts.revalidateSince, cutoff)),
-          ),
-        )
+        .where(and(eq(facts.status, 'pending'), lt(facts.updatedAt, cutoff)))
         .orderBy(asc(facts.updatedAt))
         .limit(limit)
-      return rows.map((row) => row.id as FactId)
+      const room = limit - pending.length
+      const revalidating =
+        room > 0
+          ? await db
+              .select({ id: facts.id })
+              .from(facts)
+              .where(and(eq(facts.status, 'published'), lt(facts.revalidateSince, cutoff)))
+              .orderBy(asc(facts.revalidateSince))
+              .limit(room)
+          : []
+      return [...pending, ...revalidating].map((row) => row.id as FactId)
     },
 
     async list({ status, kind }, { limit, cursor }) {
