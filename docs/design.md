@@ -511,8 +511,9 @@ but only to choose the message.
   lemma, the entry review carries the listings in its context (`cefr`: each
   level, part of speech, and source name, read in one indexed lookup) and the
   LLM rubric replaces the admission criteria with that evidence: the headword
-  passes unless it is an inflected form of another entry, a proper name, or a
-  misspelling, and a phrase is not asked whether it is a lexical unit. The plan
+  passes unless it is nothing but an inflected form of another word (a
+  headword with uses of its own, such as "could" or "best", passes), a proper
+  name, or a misspelling, and a phrase is not asked whether it is a lexical unit. The plan
   is unchanged: a phrase goes to the LLM alone, a single word to Jev and then
   the LLM unless an inflection is recorded, and a listed single word's LLM
   rubric carries the evidence when it is asked. A lemma no list names (an
@@ -522,7 +523,7 @@ but only to choose the message.
   holds a live form of any type but `variant` spelled like the lemma, the
   entry review carries those entries in its context (`inflectionOf`: each
   entry's lemma and the form type) and goes to the LLM alone. The rubric names
-  them and passes the word only when it also has a meaning of its own as a
+  them and passes the word only when it also has uses of its own as a
   lemma ("saw" the tool besides the past of "see", "left" the side, "found" to
   establish, "better" to improve); it fails a bare inflection. The entry's own
   forms ("sheep" as the plural of "sheep") and spelling variants are no
