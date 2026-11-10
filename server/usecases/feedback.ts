@@ -1,4 +1,4 @@
-import { projectPublicEntry, projectPublicSense, publicFactIds } from '@server/domain/catalog-view'
+import { publicFactIds } from '@server/domain/catalog-view'
 import { factKinds } from '@server/domain/fact-kinds'
 import { claim, claimDecision, close, closeDecision, type FeedbackRecord, isClosed } from '@server/domain/feedback'
 import { principalRef } from '@server/domain/principal'
@@ -14,13 +14,14 @@ import type { Deps } from './deps'
 import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError, RateLimitedError } from './errors'
 import { type Actor, getFact } from './facts'
 import type { PageRequest } from './ports'
+import { projectEntry, topicNamesOf } from './public-view'
 import { refreshEntries } from './refresh'
 
-type LookupDeps = Pick<Deps, 'nodes' | 'facts'>
+type LookupDeps = Pick<Deps, 'nodes' | 'facts' | 'reference' | 'topics'>
 
 async function publicEntryOf(deps: LookupDeps, id: EntryId) {
   const entry = await deps.nodes.findEntry(id)
-  return entry && projectPublicEntry(await deps.nodes.loadEntrySnapshot(entry))
+  return entry && projectEntry(deps, entry, await topicNamesOf(deps))
 }
 
 async function entryIdOf(deps: LookupDeps, subjectType: 'entry' | 'sense', subjectId: string): Promise<EntryId | null> {
@@ -33,15 +34,15 @@ const targetIsPublic: { [T in FeedbackTargetType]: (deps: LookupDeps, id: string
   entry: async (deps, id) => (await publicEntryOf(deps, id as EntryId)) !== null,
   sense: async (deps, id) => {
     const sense = await deps.nodes.findSense(id as SenseId)
-    const entry = sense && (await deps.nodes.findEntry(sense.entryId))
-    return entry !== null && projectPublicSense(await deps.nodes.loadEntrySnapshot(entry), id as SenseId) !== null
+    const view = sense && (await publicEntryOf(deps, sense.entryId))
+    return !!view?.meanings.some((meaning) => meaning.senses.some((candidate) => candidate.id === id))
   },
   fact: async (deps, id) => {
     const fact = await deps.facts.find(id as FactId)
     if (fact?.status !== 'published') return false
     const entryId = await entryIdOf(deps, factKinds[fact.kind].subject, fact.subjectId)
     const view = entryId && (await publicEntryOf(deps, entryId))
-    return view !== null && publicFactIds(view).has(fact.id)
+    return !!view && publicFactIds(view).has(fact.id)
   },
 }
 
@@ -49,7 +50,16 @@ const targetIsPublic: { [T in FeedbackTargetType]: (deps: LookupDeps, id: string
 export async function submitFeedback(
   deps: Pick<
     Deps,
-    'nodes' | 'facts' | 'work' | 'reference' | 'publicViews' | 'feedback' | 'feedbackLimiter' | 'clock' | 'ids'
+    | 'nodes'
+    | 'facts'
+    | 'topics'
+    | 'work'
+    | 'reference'
+    | 'publicViews'
+    | 'feedback'
+    | 'feedbackLimiter'
+    | 'clock'
+    | 'ids'
   >,
   client: string,
   input: SubmitFeedbackInput,
@@ -99,7 +109,7 @@ async function write(deps: Pick<Deps, 'feedback'>, next: FeedbackRecord, previou
 
 /** Takes a one-hour lease so two agents do not work the same report. */
 export async function claimFeedback(
-  deps: Pick<Deps, 'feedback' | 'facts' | 'nodes' | 'work' | 'reference' | 'publicViews' | 'clock'>,
+  deps: Pick<Deps, 'feedback' | 'facts' | 'nodes' | 'topics' | 'work' | 'reference' | 'publicViews' | 'clock'>,
   actor: Actor,
   id: FeedbackId,
 ): Promise<FeedbackRecord> {
@@ -117,7 +127,7 @@ export async function claimFeedback(
 
 /** Open feedback on a fact makes the fact weak, so its entries' scores follow the feedback's status. */
 async function refreshFlagged(
-  deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'reference' | 'publicViews'>,
+  deps: Pick<Deps, 'facts' | 'nodes' | 'topics' | 'work' | 'reference' | 'publicViews'>,
   item: FeedbackRecord,
 ) {
   if (item.targetType !== 'fact') return
@@ -127,7 +137,7 @@ async function refreshFlagged(
 
 /** Closes a claimed item, linking the correcting facts. Repeating the close is a no-op. */
 export async function resolveFeedback(
-  deps: Pick<Deps, 'feedback' | 'facts' | 'nodes' | 'work' | 'reference' | 'publicViews' | 'clock'>,
+  deps: Pick<Deps, 'feedback' | 'facts' | 'nodes' | 'topics' | 'work' | 'reference' | 'publicViews' | 'clock'>,
   actor: Actor,
   id: FeedbackId,
   input: ResolveFeedbackInput,

@@ -2,7 +2,7 @@ import type { Deps } from './deps'
 import { refreshPublicViews } from './public-view'
 import { refreshWork } from './work-scores'
 
-export type RefreshDeps = Pick<Deps, 'work' | 'nodes' | 'reference' | 'publicViews'>
+export type RefreshDeps = Pick<Deps, 'work' | 'nodes' | 'reference' | 'publicViews' | 'topics'>
 
 /**
  * Brings what derives from these nodes' entries up to date after a write: the worklist scores and

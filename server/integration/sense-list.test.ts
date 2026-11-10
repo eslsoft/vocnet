@@ -75,13 +75,20 @@ describe('sense lists', () => {
     expect(settled.map((gap) => gap.type)).not.toContain('sense_list')
     expect(settled.some((gap) => 'sense_id' in gap && gap.sense_id === record.sense.id)).toBe(false)
 
-    const entryView = publicEntrySchema.parse((await call('/v1/entries/book')).body)
-    expect(entryView.senses.map((sense) => [sense.id, sense.common])).toEqual([
-      [volume.sense.id, true],
-      [reserve.sense.id, true],
-      [record.sense.id, false],
+    const entryView = publicEntrySchema.parse((await call('/v1/entries/book?include=review')).body)
+    expect(
+      entryView.meanings.map((meaning) => [meaning.pos, meaning.senses.map((sense) => [sense.id, sense.rare])]),
+    ).toEqual([
+      [
+        'noun',
+        [
+          [volume.sense.id, false],
+          [record.sense.id, true],
+        ],
+      ],
+      ['verb', [[reserve.sense.id, false]]],
     ])
-    expect(entryView.sense_list?.id).toBe(factWriteResultSchema.parse(correction.body).fact.id)
+    expect(entryView.review?.sense_list?.fact_id).toBe(factWriteResultSchema.parse(correction.body).fact.id)
 
     // A listed sense whose gloss leaves live makes it stale too; a failing review leaves the gap open.
     expect((await call(`/manage/v1/facts/${reserve.fact.id}/retract`, { method: 'POST', token })).status).toBe(200)

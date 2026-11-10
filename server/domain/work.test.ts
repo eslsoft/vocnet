@@ -124,7 +124,7 @@ describe('entryGaps', () => {
       fact('relation', object.id, { type: 'part_of', target_sense_id: visibleSense() }),
       fact('example', subject.id, { text: 'We sat on the bank.' }),
       fact('example', object.id, { text: 'Retracted.' }, 'retracted'),
-      fact('translation', subject.id, { language: 'zh-Hans', text: '河岸' }),
+      fact('translation', subject.id, { language: 'zh', text: '河岸' }),
       fact('translation', object.id, { language: 'zh', text: '湖岸' }),
       fact('topic', subject.id, { topic_id: 'water-bodies' as TopicId }, 'pending'),
       fact('topic', object.id, { topic_id: 'landscape-landforms' as TopicId }),
@@ -140,6 +140,25 @@ describe('entryGaps', () => {
       { type: 'examples', sense_id: object.id },
       { type: 'grammar', sense_id: object.id },
     ])
+  })
+
+  it('closes a translations gap only with the served tag zh [spec: work/gaps]', () => {
+    const subject = sense()
+    const translationGaps = (language: string) =>
+      entryGaps({
+        entry: bank,
+        senses: [subject],
+        facts: [
+          fact('sense', subject.id, { gloss: 'land beside a river' }),
+          fact('translation', subject.id, { language, text: '河岸' }),
+        ],
+        incoming: [],
+        neighbors,
+      }).filter((gap) => gap.type === 'translations')
+    expect(translationGaps('zh')).toEqual([])
+    for (const language of ['zh-Hans', 'zh-Hant', 'fr']) {
+      expect(translationGaps(language)).toEqual([{ type: 'translations', sense_id: subject.id, language: 'zh' }])
+    }
   })
 
   it('keeps a relations gap open below two live relations and names the types and directions it has [spec: work/relations-gap]', () => {

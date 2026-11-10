@@ -1,13 +1,15 @@
 Feature: Public view
   The public reads serve prebuilt documents. Each entry's public document is the
   same projection of its published facts, built when the facts change instead of
-  on every read, so a read is one indexed lookup and responses can be cached.
+  on every read, so a read is one indexed lookup and responses can be cached. A
+  document holds every language and review; a read cuts out the variant it asks
+  for and joins what other entries' views supply.
 
   @public-view/document @domain
   Scenario: The view derives from the public document
     Given an entry's public projection and its reference data
     When its view rows are built
-    Then the document is the public entry, nothing for an entry that is not public, a form row per published form under its content key, and a row per topic tag of a public sense
+    Then the document is the public entry with its summary, nothing for an entry that is not public, a form row per published form, shown or not, with the part of speech it is shown under, under its content key, a row per topic tag of a public sense with its summary, a row per word of a multiword lemma, and a row per word formation part
 
   @public-view/refresh @usecase
   Scenario: Writes and reads keep the view current
@@ -37,7 +39,7 @@ Feature: Public view
   Scenario: Public reads are cacheable and revalidate with an ETag
     Given a published entry
     When anyone reads the entry, a sense, a form, or a list
-    Then documents carry an ETag and a Cache-Control that revalidates on every use, a matching If-None-Match gets 304, the ETag changes only when the document does, and lists stay fresh for five seconds
+    Then documents carry an ETag and a Cache-Control that revalidates on every use, a matching If-None-Match gets 304, the ETag changes only when the document or the variant does, every read varies by Accept-Language, and lists stay fresh for five seconds
 
   @public-view/rebuild @api
   Scenario: Stale views are rebuilt on read and drained by an admin
@@ -49,16 +51,46 @@ Feature: Public view
   Scenario: The view serves exactly what the live projection builds
     Given entries with senses, forms, relations, topics, and reference data
     When the view serves them
-    Then each entry and sense body is byte-identical to the live projection of the same facts
+    Then each entry and sense body, in every variant, equals the live projection of the same facts
 
   @public-view/lost-update @api
   Scenario: A rebuild that lost to a newer write stores nothing
     Given a public entry whose revision moved after a rebuild loaded it
     When the rebuild saves its document
-    Then the stored document, form rows, topic rows, and view revision all stay as they were
+    Then the stored document and every lookup row and the view revision stay as they were
 
   @public-view/drain @api
   Scenario: Form lookups and lists wait for the drain after a migration
     Given a migration that marked every view stale and left no view rows
     When anyone looks up a form or lists entries before and after an admin drains the rebuild
     Then they find nothing of the entry before the drain and find it after
+
+  @public-view/phrases @api
+  Scenario: A multiword entry appears among the phrases of each of its words
+    Given published entries "give" and "up"
+    When a multiword entry "give up" is published, and later retracted
+    Then reading "give" or "up" lists "give up" as a phrase summary and then no longer does, with a new ETag each time, though nothing rebuilt their views
+
+  @public-view/family @api
+  Scenario: Entries sharing a base list each other as word family
+    Given published entries "happy" and "happiness" whose word formations share the base "happy"
+    When their word formation is read, and the formation of "happiness" is corrected to another base
+    Then each lists the other in its family and links each part with a public entry, and after the correction neither lists the other
+
+  @public-view/language @api
+  Scenario: The language comes from lang or Accept-Language and changes the ETag
+    Given a published entry with a translation and a topic tag
+    When it is read with lang, with Accept-Language, with both, with lang=all, and without either
+    Then the response carries the stored language it used, lang wins over Accept-Language, translations and topic names follow it, a Traditional Chinese request reads no language, and each language has its own ETag
+
+  @public-view/list-language @api
+  Scenario: Lists accept one language only
+    Given a published entry with a form and a topic tag
+    When the entry list, the form lookup, or the topic listing is requested with lang=all
+    Then the API answers 400 naming the reads that accept lang=all, so every summary has one shape
+
+  @public-view/form-parity @api
+  Scenario: Every published form of a public entry resolves through the form lookup
+    Given a public entry with forms shown, forms whose part of speech has no public sense, and a variant
+    When each of its published forms is looked up
+    Then every one finds the entry with its type, whether or not the entry document shows it

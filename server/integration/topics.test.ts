@@ -147,21 +147,27 @@ describe('topics', () => {
 
     const leaf = await senses('hospital-doctor')
     expect(leaf).toEqual({
+      lang: null,
       items: [
-        { id: care.id, lemma: 'nurse', pos: 'noun', gloss: 'A person trained to care for the sick.' },
-        { id: room.id, lemma: 'ward', pos: 'noun', gloss: 'A room in a hospital for patients.' },
+        { lemma: 'nurse', sense_id: care.id, pos: 'noun', cefr: null, gloss: 'A person trained to care for the sick.' },
+        { lemma: 'ward', sense_id: room.id, pos: 'noun', cefr: null, gloss: 'A room in a hospital for patients.' },
       ],
       next_cursor: null,
     })
     const first = await senses('body-health', '?limit=2')
-    expect(first.items.map((item) => item.id)).toEqual([care.id, tend.id].sort() as string[])
+    expect(first.items.map((item) => item.sense_id)).toEqual([care.id, tend.id].sort() as string[])
     const second = await senses('body-health', `?limit=2&cursor=${first.next_cursor}`)
-    expect(second).toEqual({ items: [leaf.items[1]], next_cursor: null })
+    expect(second).toEqual({ lang: null, items: [leaf.items[1]], next_cursor: null })
     expect((await senses('home')).items).toEqual([])
 
-    const entry = publicEntrySchema.parse((await call('/v1/entries/nurse')).body)
-    expect(entry.senses.find((sense) => sense.id === care.id)?.topics).toEqual([
-      { id: fact.id, confidence: 0.88, verdict: 'pass', topic_id: 'hospital-doctor' },
+    const entry = publicEntrySchema.parse((await call('/v1/entries/nurse?lang=zh&include=review')).body)
+    const nouns = entry.meanings.flatMap((meaning) => meaning.senses)
+    expect(nouns.find((sense) => sense.id === care.id)?.topics).toEqual([
+      {
+        id: 'hospital-doctor',
+        name: { en: 'At the doctor and hospital', zh: expect.any(String) },
+        review: { fact_id: fact.id, confidence: 0.88, verdict: 'pass' },
+      },
     ])
     const listed = factPageSchema.parse(
       (await call('/manage/v1/facts?kind=topic&limit=10', { token: await adminToken() })).body,
@@ -177,7 +183,7 @@ describe('topics', () => {
     await deliverReviews(factPageSchema.parse(body).items.map((item) => item.id))
     expect((await senses('hospital-doctor')).items).toEqual([])
     await deliverPendingReviews()
-    expect((await senses('hospital-doctor')).items.map((item) => item.id)).toEqual([care.id])
+    expect((await senses('hospital-doctor')).items.map((item) => item.sense_id)).toEqual([care.id])
     expect((await call(`/manage/v1/facts/${fact.id}/retract`, { method: 'POST', token })).status).toBe(200)
     expect((await senses('hospital-doctor')).items).toEqual([])
   })

@@ -188,11 +188,12 @@ export const worklist = sqliteTable(
 )
 
 // The public view: each entry's public document, projected from its facts by
-// `publicEntryDocument` in server/domain/public-view.ts and rebuilt whenever the worklist row's
+// `projectPublicEntry` in server/domain/catalog-view.ts and rebuilt whenever the worklist row's
 // `revision` moves past `view_revision`. Derived data only: a row can be dropped and rebuilt from
-// the facts and the reference tables at any time. An entry without a public document has no rows.
+// the facts, the topics, and the reference tables at any time. An entry without a public document
+// has no rows. Every row derives from the entry's own document, so a rebuild touches only its rows.
 
-/** The public entry DTO as served, and a digest of it for the ETag. */
+/** The stored document (every language and review), its digest for the ETag, and the entry's summary. */
 export const publicEntries = sqliteTable('public_entries', {
   entryId: text('entry_id')
     .primaryKey()
@@ -200,21 +201,23 @@ export const publicEntries = sqliteTable('public_entries', {
   lemma: text('lemma').notNull().unique(),
   document: text('document').notNull(),
   digest: text('digest').notNull(),
+  summary: text('summary').notNull(),
   builtAt: text('built_at').notNull(),
 })
 
-/** One row per published form of a public entry, keyed like the form fact's content key. */
+/** One row per published form of a public entry, shown or not, with the part of speech it is shown under (else its label), keyed like the form fact. */
 export const publicForms = sqliteTable(
   'public_forms',
   {
     contentKey: text('content_key').notNull(),
-    factId: text('fact_id').notNull(),
     entryId: text('entry_id')
       .notNull()
       .references(() => entries.id),
+    type: text('type').notNull(),
+    pos: text('pos'),
   },
   (table) => [
-    primaryKey({ columns: [table.contentKey, table.factId] }),
+    index('public_forms_content_key_idx').on(table.contentKey),
     index('public_forms_entry_idx').on(table.entryId),
   ],
 )
@@ -229,12 +232,42 @@ export const publicSenseTopics = sqliteTable(
     entryId: text('entry_id')
       .notNull()
       .references(() => entries.id),
-    pos: text('pos').notNull(),
-    gloss: text('gloss').notNull(),
+    summary: text('summary').notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.topicId, table.lemma, table.senseId] }),
     index('public_sense_topics_entry_idx').on(table.entryId),
+  ],
+)
+
+/** One row per word of a public multiword entry, so the entry of each word lists it as a phrase. */
+export const publicPhraseWords = sqliteTable(
+  'public_phrase_words',
+  {
+    word: text('word').notNull(),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.word, table.entryId] }),
+    index('public_phrase_words_entry_idx').on(table.entryId),
+  ],
+)
+
+/** One row per part of a public entry's word formation, so entries sharing a base or root find each other. */
+export const publicMorphemes = sqliteTable(
+  'public_morphemes',
+  {
+    form: text('form').notNull(),
+    role: text('role').notNull(),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.form, table.role, table.entryId] }),
+    index('public_morphemes_entry_idx').on(table.entryId),
   ],
 )
 

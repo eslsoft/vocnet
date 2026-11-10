@@ -3,7 +3,7 @@ import {
   createEntryResultSchema,
   createSenseResultSchema,
   publicEntrySchema,
-  publicSenseWithEntrySchema,
+  publicSenseDetailSchema,
 } from '@shared/catalog'
 import { factSchema, factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
@@ -60,21 +60,28 @@ describe('grammar, word formation, and collocations', () => {
     expect(gateway).toHaveBeenCalled()
 
     const meta = { confidence: 0.93, verdict: 'pass' }
-    const view = publicEntrySchema.parse((await call('/v1/entries/decide')).body)
-    expect(view.morphology).toEqual({ id: ids[1], ...meta, parts: [{ form: 'decide', role: 'base' }] })
-    const [published] = view.senses
+    const view = publicEntrySchema.parse((await call('/v1/entries/decide?include=review')).body)
+    expect(view.morphology).toEqual({
+      parts: [{ form: 'decide', role: 'base', lemma: 'decide' }],
+      family: [],
+      review: { fact_id: ids[1], ...meta },
+    })
+    const [published] = view.meanings[0]?.senses ?? []
     expect(published?.grammar).toEqual({
-      id: ids[0],
-      ...meta,
       transitivity: 'both',
       patterns: ['to_infinitive', 'that_clause'],
       prepositions: ['on'],
+      review: { fact_id: ids[0], ...meta },
     })
     expect(published?.collocations).toEqual([
-      { id: ids[2], confidence: 0.88, verdict: 'pass', text: 'decide against', pattern: 'verb_preposition' },
+      {
+        text: 'decide against',
+        pattern: 'verb_preposition',
+        review: { fact_id: ids[2], confidence: 0.88, verdict: 'pass' },
+      },
     ])
-    const single = publicSenseWithEntrySchema.parse((await call(`/v1/senses/${sense.id}`)).body)
-    expect(single.grammar?.id).toBe(ids[0])
+    const single = publicSenseDetailSchema.parse((await call(`/v1/senses/${sense.id}?include=review`)).body)
+    expect(single.grammar?.review?.fact_id).toBe(ids[0])
   })
 
   it('refuses payloads that do not fit their subject with 422 and malformed ones with 400 [spec: facts/usage-admission-api]', async () => {
@@ -188,10 +195,10 @@ describe('grammar, word formation, and collocations', () => {
       'superseded',
       'superseded',
     ])
-    const live = await call(`/v1/senses/${sense.id}`)
-    const view = publicSenseWithEntrySchema.parse(live.body)
-    expect(view.grammar).toMatchObject({ id: grammarFix.id, countability: 'uncountable' })
-    expect(view.collocations.map((fact) => fact.id).sort()).toEqual(
+    const live = await call(`/v1/senses/${sense.id}?include=review`)
+    const view = publicSenseDetailSchema.parse(live.body)
+    expect(view.grammar).toMatchObject({ review: { fact_id: grammarFix.id }, countability: 'uncountable' })
+    expect(view.collocations.map((fact) => fact.review?.fact_id).sort()).toEqual(
       [collocationFix.id, ...collocations.slice(1).map((fact) => fact.id)].sort(),
     )
   })

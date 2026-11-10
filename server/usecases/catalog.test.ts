@@ -7,6 +7,7 @@ import {
   createEntry,
   createSense,
   getManagedEntry,
+  getPublicEntry,
   getPublicSense,
   getStats,
   importCoreEntries,
@@ -171,11 +172,14 @@ describe('public reads', () => {
     return { world, entry, sense }
   }
 
+  const none = { lang: null, review: false }
+  const zh = { lang: 'zh', review: false }
+
   it('returns a published entry and 404s an unknown lemma with no fallback [spec: catalog/no-fallback]', async () => {
     const { world } = await publishedBank()
     await expect(publicEntryOf(world.deps, 'bank')).resolves.toMatchObject({
       lemma: 'bank',
-      forms: [{ form: 'banks' }],
+      meanings: [{ pos: 'noun', forms: { plural: ['banks'] } }],
     })
     await expect(publicEntryOf(world.deps, 'banks')).rejects.toMatchObject({ code: 'not_found' })
     await expect(publicEntryOf(world.deps, 'Bank')).rejects.toMatchObject({ code: 'not_found' })
@@ -187,32 +191,85 @@ describe('public reads', () => {
     await expect(publicEntryOf(world.deps, 'pending')).rejects.toMatchObject({ code: 'not_found' })
   })
 
+  it('versions an entry by its document and what other entries supply, and shapes it per variant', async () => {
+    const { world } = await publishedBank()
+    const read = await getPublicEntry(world.deps, 'bank', none)
+    expect(read.versions).toEqual([expect.any(String), JSON.stringify({ phrases: [], family: [], publicParts: [] })])
+    expect(read.read()).toMatchObject({ lang: null, lemma: 'bank', phrases: [] })
+    expect(read.read().review).toBeUndefined()
+    expect((await getPublicEntry(world.deps, 'bank', { lang: 'zh', review: true })).read().review).toBeDefined()
+  })
+
   it('finds entries by an exact published form only [spec: catalog/form-lookup]', async () => {
-    const { world, entry } = await publishedBank()
-    await expect(lookupForm(world.deps, 'banks')).resolves.toEqual({
-      matches: [
-        expect.objectContaining({
-          entry: { id: entry.id, lemma: 'bank' },
-          form: expect.objectContaining({ type: 'plural' }),
-        }),
-      ],
-      digests: [expect.any(String)],
-    })
-    await expect(lookupForm(world.deps, 'bankz')).rejects.toMatchObject({ code: 'not_found' })
+    const { world } = await publishedBank()
+    const found = await lookupForm(world.deps, 'banks', none)
+    expect(found.versions).toEqual([expect.any(String)])
+    expect(found.read()).toEqual([
+      {
+        lemma: 'bank',
+        pos: ['noun'],
+        cefr: null,
+        gloss: 'land beside a river',
+        matches: [{ type: 'plural', pos: 'noun' }],
+      },
+    ])
+    await expect(lookupForm(world.deps, 'bankz', none)).rejects.toMatchObject({ code: 'not_found' })
   })
 
-  it('gets a published sense and 404s unknown or hidden ones', async () => {
+  it('groups every form of one entry that matched, with its part of speech', async () => {
+    const world = fakeWorld()
+    const { entry } = await createEntry(world.deps, agentA, { lemma: 'record' })
+    for (const [pos, gloss] of [
+      ['noun', 'A written account.'],
+      ['verb', 'To write down.'],
+    ] as const) {
+      await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss })
+    }
+    for (const type of ['plural', 'third_person_singular'] as const) {
+      await submitFact(world.deps, agentA, { kind: 'form', subject_id: entry.id, payload: { form: 'records', type } })
+    }
+    await reviewAll(world)
+    const found = await lookupForm(world.deps, 'records', none)
+    expect(found.read()).toEqual([
+      expect.objectContaining({
+        lemma: 'record',
+        pos: ['noun', 'verb'],
+        matches: expect.arrayContaining([
+          { type: 'plural', pos: 'noun' },
+          { type: 'third_person_singular', pos: 'verb' },
+        ]),
+      }),
+    ])
+    expect(found.read()[0]?.matches).toHaveLength(2)
+  })
+
+  it('gets a published sense in the requested language and 404s unknown or hidden ones', async () => {
     const { world, sense } = await publishedBank()
-    await expect(getPublicSense(world.deps, sense.id)).resolves.toMatchObject({
-      sense: { id: sense.id, entry: { lemma: 'bank' } },
+    await submitFact(world.deps, agentA, {
+      kind: 'translation',
+      subject_id: sense.id,
+      payload: { language: 'zh', text: '河岸' },
     })
-    await expect(getPublicSense(world.deps, 'missing' as SenseId)).rejects.toMatchObject({ code: 'not_found' })
+    await reviewAll(world)
+    const found = await getPublicSense(world.deps, sense.id, zh)
+    expect(found.versions).toEqual([expect.any(String)])
+    expect(found.read()).toMatchObject({
+      lang: 'zh',
+      id: sense.id,
+      pos: 'noun',
+      translations: ['河岸'],
+      entry: { lemma: 'bank', translation: '河岸' },
+    })
+    await expect(getPublicSense(world.deps, 'missing' as SenseId, zh)).rejects.toMatchObject({ code: 'not_found' })
   })
 
-  it('searches published entries by normalized prefix', async () => {
+  it('searches published entries by normalized prefix, as summaries', async () => {
     const { world } = await publishedBank()
     await createEntry(world.deps, agentA, { lemma: 'banner' })
-    await expect(searchEntries(world.deps, ' ba', { limit: 10 })).resolves.toMatchObject({ items: [{ lemma: 'bank' }] })
+    await expect(searchEntries(world.deps, ' ba', { limit: 10 }, none)).resolves.toEqual({
+      items: [{ lemma: 'bank', pos: ['noun'], cefr: null, gloss: 'land beside a river' }],
+      nextCursor: null,
+    })
   })
 })
 

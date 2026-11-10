@@ -1,12 +1,14 @@
 Feature: Catalog
   The public dictionary: entries, senses, forms, and relations, shown only as far
-  as their facts are published. Lookups are exact; there are no fallbacks.
+  as their facts are published, in a learner's shape. Lookups are exact; there
+  are no fallbacks.
 
   @catalog/entry-read @api
   Scenario: Read a reviewed entry
     Given an entry whose entry, sense, form, example, and relation facts are published
     When anyone requests the entry by its lemma
-    Then the API returns the entry with each published fact, its confidence, and its verdict
+    Then the API returns the entry with its senses grouped into meanings and no review metadata
+    And with include=review each published claim carries its fact id, confidence, and verdict
 
   @catalog/entry-not-found @api
   Scenario: Unknown or unpublished items are not found
@@ -24,7 +26,7 @@ Feature: Catalog
   Scenario: Grammar, word formation, and collocations are part of the public entry
     Given an entry with published, pending, and rejected grammar, morphology, and collocation facts
     When the public view is built
-    Then the entry shows its published word formation, each sense its published grammar (with its named prepositions) and collocations, each with its id, confidence, and verdict, and null or empty when none is published
+    Then the entry shows its published word formation, each sense its published grammar (with its patterns and named prepositions as lists) and collocations, each with its review, and null or empty when none is published
 
   @catalog/usage-facts-api @api
   Scenario: Grammar, word formation, and collocations are reviewed and published through the queue
@@ -36,13 +38,73 @@ Feature: Catalog
   Scenario: Senses come in the order of the published sense list
     Given an entry with a published sense list, a pending correction, and a sense the list does not name
     When the public view is built
-    Then the senses come common in list order, then extra, then the unnamed ones, each marked common true, false, or null, and the entry carries the published list's id, confidence, and verdict
+    Then each part of speech is a meaning, in the order of its first sense, and its senses come common in list order, then extra marked rare, then the unnamed ones, and the entry's review carries the published list
+
+  @catalog/meaning-shape @domain
+  Scenario: An entry reads as a learner's dictionary entry
+    Given an entry with pronunciations with and without a part of speech, inflections, variants, and labelled senses of two parts of speech
+    When the public view is built
+    Then the default pronunciations are on the entry and the ones particular to a part of speech on its meaning, weak forms marked weak
+    And each meaning lists its inflections by type, a type with several forms listing each, variants are on the entry, and a form or pronunciation with no meaning to show it is not shown
+    And each sense carries its register as labels
+
+  @catalog/form-placement @domain
+  Scenario: A form is shown under the meaning that can carry it
+    Given forms with and without a part of speech, of entries whose first meaning is a noun, an auxiliary, a pronoun, or a determiner
+    When the meaning each form is shown under is chosen
+    Then a labelled form goes to the meaning of its label, an unlabelled one to the meaning of the first part of speech, in its type's preference order, that the entry has, never by display order, and a form no meaning can carry goes nowhere
+
+  @catalog/form-index @domain
+  Scenario: Every published form is indexed for lookup whether or not it is shown
+    Given an entry with published forms that are shown, a labelled form whose part of speech has no public sense, and a variant
+    When the public view is built
+    Then the document indexes every published form with its type and the part of speech it is shown under or labelled with, independent of display
+
+  @catalog/relation-groups @domain
+  Scenario: Relations are grouped by what they say about the sense
+    Given synonym, antonym, hypernym, and part-of relations with the sense at either end
+    When the public view is built
+    Then synonyms and antonyms show on both senses, a hypernym is broader on its subject and narrower on its target, and a part-of is part_of on its subject and parts on its target
+    And each related sense carries its lemma, id, and gloss
+
+  @catalog/language @domain
+  Scenario: A read shows one language
+    Given senses with translations in two languages and a topic with names in two languages
+    When a read asks for a served language, all, a language with no translation, or none
+    Then translations are a list in that language, keyed by language for all, empty for a language with none, and absent for none, never another language
+    And topic names carry English and the language under its stored tag, and summaries the first sense's first translation in it, none with all
+
+  @catalog/script-safety @domain
+  Scenario: A request reads a stored language only in the same script
+    Given translations stored as zh, which is Simplified Chinese
+    When requests name zh, zh-Hans, zh-CN, zh-SG, zh-Hant, zh-TW, zh-HK, zh-MO, another language, or that language with a region or a script
+    Then the Simplified requests read zh, the Traditional ones read nothing, and another language is read only by its own tag or that tag with a region
+
+  @catalog/review-metadata @domain
+  Scenario: Review metadata appears only when asked for
+    Given a public entry
+    When it is read with and without include=review
+    Then without it no fact id, confidence, or verdict appears, and with it every published claim the entry shows carries its own
+
+  @catalog/summary @domain
+  Scenario: Lists show summaries
+    Given public entries with and without senses, CEFR levels, and translations
+    When their summaries and the summaries of their tagged senses are built
+    Then an entry summary has its lemma, the parts of speech of its meanings, its lowest CEFR level, and its first sense's gloss and translation
+    And a sense summary has its id, part of speech, the CEFR level of that part of speech, and its gloss and translation
+
+  @catalog/accept-language @usecase
+  Scenario: The language comes from the query or Accept-Language
+    Given requests with lang, with Accept-Language, with both, and with neither
+    When the read variant is resolved
+    Then lang wins, all in any case, else the most preferred Accept-Language tag by quality that reads a served language, ignoring * and q=0, else none
+    And the read reports the stored tag it uses, not the tag requested
 
   @catalog/visibility @domain
   Scenario: Only published facts are visible
     Given an entry with published, pending, and rejected facts
     When the public view is built
-    Then only the published facts appear, each with its id, confidence, and verdict
+    Then only the published facts appear, each with its review
 
   @catalog/relation-visibility @domain
   Scenario: A relation is visible only when both of its senses are
@@ -54,19 +116,19 @@ Feature: Catalog
   Scenario: Look up an entry by an exact published form
     Given a published plural form "banks" of "bank"
     When anyone looks up the form "banks"
-    Then the result names the entry "bank" and the form fact
+    Then the result is the summary of "bank" with the form type and part of speech that matched
 
   @catalog/form-lookup-api @api
   Scenario: Form lookup over HTTP
     Given a published form fact
     When anyone requests the form endpoint
-    Then the API returns the owning entries, and 404 for a form no entry claims
+    Then the API returns each owning entry as a summary with the forms that matched, and 404 for a form no entry claims
 
   @catalog/search @api
   Scenario: Page through entries by prefix
     Given more published entries with a prefix than fit on one page
     When a client follows next_cursor
-    Then every matching entry is returned exactly once in lemma order, and a broken cursor is rejected
+    Then every matching entry is returned exactly once in lemma order as a summary, and a broken cursor is rejected
 
   @catalog/create-entry @usecase
   Scenario: Creating an entry is idempotent by lemma

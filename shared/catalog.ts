@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   accentSchema,
   collocationPatternSchema,
+  dependentPrepositionSchema,
   entryIdSchema,
   factIdSchema,
   factKindSchema,
@@ -9,126 +10,300 @@ import {
   factStatusSchema,
   formTypeSchema,
   glossSchema,
+  grammarPatternSchema,
   grammarPayloadSchema,
   morphemeSchema,
   posSchema,
   registerSchema,
-  relationTypeSchema,
   senseIdSchema,
   strengthSchema,
   topicIdSchema,
   verdictSchema,
 } from './facts'
-import { lemmaReferenceSchema } from './reference'
+import { cefrLevelSchema, frequencySchema, lemmaReferenceSchema } from './reference'
 
 export const lemmaInputSchema = z.string().trim().min(1).max(100)
 
-// Every published fact on the public surface carries its id and how sure review was.
-const factMeta = {
-  id: factIdSchema,
-  confidence: z.number().min(0).max(1),
-  verdict: verdictSchema,
-}
-export const factMetaSchema = z.object(factMeta).meta({ id: 'FactMeta' })
-export type FactMeta = z.infer<typeof factMetaSchema>
+// The public surface: a learner's dictionary entry and the summaries every list returns. Review
+// metadata appears only with ?include=review, and translations only in the requested language.
 
-export const publicFormSchema = z
-  .object({ ...factMeta, form: z.string(), type: formTypeSchema, pos: posSchema.optional() })
-  .meta({ id: 'Form' })
-export const publicPronunciationSchema = z
-  .object({
-    ...factMeta,
-    ipa: z.string(),
-    accent: accentSchema,
-    strength: strengthSchema.optional(),
-    pos: posSchema.optional(),
+/** A BCP 47 language tag such as zh or zh-CN. */
+export const languageTagSchema = z
+  .string()
+  .regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/, 'A language is a BCP 47 tag such as zh or zh-CN.')
+  .max(35)
+
+const LANGUAGE_MATCHING =
+  'A tag reads a served language only in the same script: zh, zh-Hans, zh-CN and zh-SG read zh (Simplified Chinese); zh-Hant, zh-TW, zh-HK and zh-MO read none; another tag reads a language it equals or adds only a region to. A tag that reads none gives no language.'
+
+/** ?lang= of a document read: a language tag, or all (in any case) for every language. */
+export const langQuerySchema = languageTagSchema.optional().meta({
+  description: `The language of translations and topic names: a BCP 47 tag, or all for every language keyed by tag. Wins over Accept-Language. ${LANGUAGE_MATCHING}`,
+})
+
+/** ?lang= of a list: one language, so every summary has one shape. */
+export const listLangQuerySchema = languageTagSchema
+  .refine((tag) => tag.toLowerCase() !== 'all', {
+    message: 'lang=all is accepted only by GET /v1/entries/{lemma} and GET /v1/senses/{id}; a list shows one language.',
   })
-  .meta({ id: 'Pronunciation' })
-export const publicExampleSchema = z.object({ ...factMeta, text: z.string() }).meta({ id: 'Example' })
-export const publicTranslationSchema = z
-  .object({ ...factMeta, language: z.string(), text: z.string() })
-  .meta({ id: 'Translation' })
+  .optional()
+  .meta({
+    description: `The language of translations: a BCP 47 tag (all is rejected; lists show one language). Wins over Accept-Language. ${LANGUAGE_MATCHING}`,
+  })
 
-export const publicTopicTagSchema = z.object({ ...factMeta, topic_id: topicIdSchema }).meta({ id: 'TopicTag' })
-export const publicGrammarSchema = grammarPayloadSchema.extend(factMeta).meta({ id: 'Grammar' })
+export const includeQuerySchema = z
+  .literal('review')
+  .optional()
+  .meta({ description: 'review adds the fact id, confidence, and verdict behind each published claim.' })
+
+export const responseLangSchema = z.string().nullable().meta({
+  description:
+    'The stored language tag translations and topic names are in (zh is Simplified Chinese): the one ?lang= reads when given, else the one the most preferred Accept-Language tag reads; all for every language; null when no language is read, and then translations are omitted.',
+})
+
+/** The review behind one published claim, shown with ?include=review. */
+export const reviewMetaSchema = z
+  .object({ fact_id: factIdSchema, confidence: z.number().min(0).max(1), verdict: verdictSchema })
+  .meta({ id: 'ReviewMeta', description: 'The published fact behind a claim; only with ?include=review.' })
+export type ReviewMeta = z.infer<typeof reviewMetaSchema>
+const review = { review: reviewMetaSchema.optional() }
+
+const byLanguage = <T extends z.ZodType>(value: T) => z.record(z.string(), value)
+
+export const translationsSchema = z.union([z.array(z.string()), byLanguage(z.array(z.string()))]).meta({
+  id: 'Translations',
+  description:
+    "The translations in the response's language (empty when there are none; no other language or script stands in), or with lang=all an object keyed by language tag. Absent without a language.",
+})
+
+export const summaryTranslationSchema = z.string().meta({
+  id: 'SummaryTranslation',
+  description:
+    "The first sense's first translation in the response's language. Absent without a language, with lang=all, or when there is none.",
+})
+
+const summaryFields = {
+  lemma: z.string(),
+  cefr: cefrLevelSchema.nullable(),
+  translation: summaryTranslationSchema.optional(),
+}
+
+export const wordSummarySchema = z
+  .object({
+    ...summaryFields,
+    pos: z.array(posSchema).meta({ description: "The parts of speech of the entry's meanings, in meaning order." }),
+    cefr: cefrLevelSchema
+      .nullable()
+      .meta({ description: 'The lowest CEFR level of the lemma; null when it has none.' }),
+    gloss: z.string().nullable().meta({ description: 'The gloss of the first sense; null when no sense is public.' }),
+  })
+  .meta({ id: 'WordSummary', description: 'An entry as every list shows it.' })
+export type WordSummary = z.infer<typeof wordSummarySchema>
+
+export const senseSummarySchema = z
+  .object({
+    ...summaryFields,
+    sense_id: senseIdSchema,
+    pos: posSchema,
+    cefr: cefrLevelSchema
+      .nullable()
+      .meta({ description: "The lemma's CEFR level for this part of speech; null when it has none." }),
+    gloss: z.string(),
+    translation: summaryTranslationSchema
+      .optional()
+      .meta({ description: "This sense's first translation in the requested language; as WordSummary otherwise." }),
+  })
+  .meta({ id: 'SenseSummary', description: 'One sense as a topic listing shows it.' })
+export type SenseSummary = z.infer<typeof senseSummarySchema>
+
+export const publicFrequencySchema = frequencySchema
+  .omit({ source_id: true })
+  .meta({ id: 'WordFrequency', description: 'Word frequency; GET /v1/sources names the source.' })
+
+export const publicPronunciationSchema = z
+  .object({ ipa: z.string(), accent: accentSchema, strength: strengthSchema.optional(), ...review })
+  .meta({ id: 'Pronunciation' })
+export type PublicPronunciation = z.infer<typeof publicPronunciationSchema>
+
+export const variantSchema = z
+  .object({ form: z.string(), pos: posSchema.optional(), ...review })
+  .meta({ id: 'Variant', description: 'An accepted spelling variant or alternative form of the whole word.' })
+export type Variant = z.infer<typeof variantSchema>
+
+export const morphologyPartSchema = morphemeSchema
+  .extend({
+    lemma: z.string().optional().meta({
+      description: 'The public entry with exactly this spelling, when there is one: GET /v1/entries/{lemma}.',
+    }),
+  })
+  .meta({ id: 'MorphologyPart' })
+
 export const publicMorphologySchema = z
-  .object({ ...factMeta, parts: z.array(morphemeSchema) })
+  .object({
+    parts: z.array(morphologyPartSchema),
+    family: z.array(wordSummarySchema).meta({
+      description: 'Other public entries whose word formation shares a base or root with this one, in lemma order.',
+    }),
+    ...review,
+  })
   .meta({ id: 'Morphology' })
+
+export const inflectionTypeSchema = formTypeSchema.exclude(['variant']).meta({ id: 'InflectionType' })
+export type InflectionType = z.infer<typeof inflectionTypeSchema>
+
+export const formsSchema = z.partialRecord(inflectionTypeSchema, z.array(z.string())).meta({
+  id: 'Forms',
+  description: 'The inflected forms of this part of speech by type; a type with several accepted forms lists each.',
+})
+export type Forms = z.infer<typeof formsSchema>
+
+export const relatedSenseSchema = z
+  .object({ lemma: z.string(), sense_id: senseIdSchema, gloss: z.string(), ...review })
+  .meta({ id: 'RelatedSense' })
+export type RelatedSense = z.infer<typeof relatedSenseSchema>
+
+export const relationGroupSchema = z.enum(['synonyms', 'antonyms', 'broader', 'narrower', 'part_of', 'parts'])
+export type RelationGroup = z.infer<typeof relationGroupSchema>
+
+export const relationsSchema = z
+  .object({
+    synonyms: z.array(relatedSenseSchema),
+    antonyms: z.array(relatedSenseSchema),
+    broader: z.array(relatedSenseSchema).meta({ description: 'This sense is a kind of each of these.' }),
+    narrower: z.array(relatedSenseSchema).meta({ description: 'Each of these is a kind of this sense.' }),
+    part_of: z.array(relatedSenseSchema).meta({ description: 'This sense is a part of each of these.' }),
+    parts: z.array(relatedSenseSchema).meta({ description: 'Each of these is a part of this sense.' }),
+  })
+  .meta({ id: 'Relations' })
+export type Relations = z.infer<typeof relationsSchema>
+
+export const senseTopicSchema = z
+  .object({
+    id: topicIdSchema,
+    name: byLanguage(z.string()).meta({
+      description:
+        "The English name under en, and the name in the response's language under its tag (every language with lang=all), when there is one.",
+    }),
+    ...review,
+  })
+  .meta({ id: 'SenseTopic' })
+export type SenseTopic = z.infer<typeof senseTopicSchema>
+
+export const publicGrammarSchema = grammarPayloadSchema
+  .extend({
+    patterns: z.array(grammarPatternSchema),
+    prepositions: z.array(dependentPrepositionSchema),
+    ...review,
+  })
+  .meta({ id: 'Grammar' })
+export type PublicGrammar = z.infer<typeof publicGrammarSchema>
+
+export const publicExampleSchema = z.object({ text: z.string(), ...review }).meta({ id: 'Example' })
 export const publicCollocationSchema = z
-  .object({ ...factMeta, text: z.string(), pattern: collocationPatternSchema })
+  .object({ text: z.string(), pattern: collocationPatternSchema, ...review })
   .meta({ id: 'Collocation' })
 
-export const senseRefSchema = z
-  .object({ id: senseIdSchema, lemma: z.string(), pos: posSchema, gloss: z.string() })
-  .meta({ id: 'SenseRef' })
-
-export const publicRelationSchema = z
+export const senseReviewSchema = z
   .object({
-    ...factMeta,
-    type: relationTypeSchema,
-    direction: z.enum(['outgoing', 'incoming']).meta({
-      description: 'outgoing: this sense is the subject (e.g. this IS-A target). incoming: the other sense is.',
-    }),
-    sense: senseRefSchema,
+    gloss: reviewMetaSchema.meta({ description: 'The gloss fact, which also carries the labels.' }),
+    translations: z
+      .union([z.array(reviewMetaSchema), byLanguage(z.array(reviewMetaSchema))])
+      .optional()
+      .meta({ description: 'One per translation, in the same order and shape.' }),
   })
-  .meta({ id: 'Relation' })
-export type PublicRelation = z.infer<typeof publicRelationSchema>
+  .meta({ id: 'SenseReview' })
 
 export const publicSenseSchema = z
   .object({
     id: senseIdSchema,
-    pos: posSchema,
     gloss: z.string(),
-    register: registerSchema.optional(),
-    fact: factMetaSchema,
-    examples: z.array(publicExampleSchema),
-    translations: z.array(publicTranslationSchema),
-    relations: z.array(publicRelationSchema),
-    topics: z
-      .array(publicTopicTagSchema)
-      .meta({ description: 'Leaf topics of GET /v1/topics this sense is tagged with.' }),
-    grammar: publicGrammarSchema.nullable(),
-    collocations: z.array(publicCollocationSchema),
-    common: z.boolean().nullable().meta({
+    labels: z.array(registerSchema).meta({ description: 'Usage labels; empty for neutral standard English.' }),
+    rare: z.boolean().meta({
       description:
-        "true: one of the entry's common senses, which come first, most common first. false: a rare, archaic, technical, or specialist sense. null: the entry's published sense list does not name it (there is none yet, or the sense was added since); such senses come last.",
+        "true: a rare, archaic, technical, or specialist sense the entry's sense list puts after its common ones. Common senses come first, most common first; senses the list does not name yet come last with false.",
     }),
+    translations: translationsSchema.optional(),
+    grammar: publicGrammarSchema.nullable(),
+    examples: z.array(publicExampleSchema),
+    collocations: z.array(publicCollocationSchema),
+    topics: z.array(senseTopicSchema).meta({ description: 'Leaf topics of GET /v1/topics this sense is tagged with.' }),
+    relations: relationsSchema,
+    review: senseReviewSchema.optional(),
   })
   .meta({ id: 'Sense' })
 export type PublicSense = z.infer<typeof publicSenseSchema>
 
+export const meaningSchema = z
+  .object({
+    pos: posSchema,
+    cefr: cefrLevelSchema
+      .nullable()
+      .meta({ description: 'CEFR level of the lemma in this part of speech; null when it has none.' }),
+    pronunciations: z.array(publicPronunciationSchema).meta({
+      description: "Only pronunciations particular to this part of speech; the entry's pronunciations are the default.",
+    }),
+    forms: formsSchema,
+    senses: z.array(publicSenseSchema),
+    review: z
+      .object({ forms: z.partialRecord(inflectionTypeSchema, z.array(reviewMetaSchema)) })
+      .optional()
+      .meta({ description: 'One per form, in the same order as forms.' }),
+  })
+  .meta({ id: 'Meaning', description: 'The senses of one part of speech.' })
+export type Meaning = z.infer<typeof meaningSchema>
+
 export const publicEntrySchema = z
   .object({
+    lang: responseLangSchema,
     id: entryIdSchema,
     lemma: z.string(),
-    fact: factMetaSchema,
-    forms: z.array(publicFormSchema),
-    pronunciations: z.array(publicPronunciationSchema),
+    frequency: publicFrequencySchema.nullable(),
+    pronunciations: z
+      .array(publicPronunciationSchema)
+      .meta({ description: 'The default pronunciations; a meaning lists the ones particular to its part of speech.' }),
+    variants: z.array(variantSchema),
     morphology: publicMorphologySchema.nullable(),
-    sense_list: factMetaSchema.nullable().meta({
-      description: "The published sense list that orders `senses` and marks each one's `common`; null when none is.",
+    meanings: z.array(meaningSchema).meta({
+      description:
+        "One per part of speech, in the order of each one's first sense; senses follow the entry's sense list.",
     }),
-    senses: z.array(publicSenseSchema),
-    ...lemmaReferenceSchema.shape,
+    phrases: z
+      .array(wordSummarySchema)
+      .meta({ description: 'Public multiword entries with this lemma as one of their words, in lemma order.' }),
+    review: z
+      .object({ entry: reviewMetaSchema, sense_list: reviewMetaSchema.nullable() })
+      .optional()
+      .meta({ description: 'The entry fact, and the sense list that orders the senses; null when none is published.' }),
   })
   .meta({ id: 'Entry' })
 export type PublicEntry = z.infer<typeof publicEntrySchema>
 
-export const entryRefSchema = z.object({ id: entryIdSchema, lemma: z.string() }).meta({ id: 'EntryRef' })
-export type EntryRef = z.infer<typeof entryRefSchema>
-
-export const publicSenseWithEntrySchema = publicSenseSchema
-  .extend({ entry: entryRefSchema })
-  .meta({ id: 'SenseWithEntry' })
-export type PublicSenseWithEntry = z.infer<typeof publicSenseWithEntrySchema>
+export const publicSenseDetailSchema = publicSenseSchema
+  .extend({ lang: responseLangSchema, pos: posSchema, entry: wordSummarySchema })
+  .meta({
+    id: 'SenseDetail',
+    description: 'One sense in the shape of the entry document, with its entry as a summary.',
+  })
+export type PublicSenseDetail = z.infer<typeof publicSenseDetailSchema>
 
 export const entryPageSchema = z
-  .object({ items: z.array(entryRefSchema), next_cursor: z.string().nullable() })
+  .object({ lang: responseLangSchema, items: z.array(wordSummarySchema), next_cursor: z.string().nullable() })
   .meta({ id: 'EntryPage' })
 
-export const formMatchSchema = z.object({ entry: entryRefSchema, form: publicFormSchema }).meta({ id: 'FormMatch' })
-export const formLookupSchema = z.object({ items: z.array(formMatchSchema) }).meta({ id: 'FormLookup' })
+export const formMatchSchema = wordSummarySchema
+  .extend({
+    matches: z.array(z.object({ type: formTypeSchema, pos: posSchema.optional() })).meta({
+      description: 'Each published form of the entry with this spelling, with the part of speech it inflects.',
+    }),
+  })
+  .meta({ id: 'FormMatch' })
 export type FormMatch = z.infer<typeof formMatchSchema>
+export const formLookupSchema = z
+  .object({ lang: responseLangSchema, items: z.array(formMatchSchema) })
+  .meta({ id: 'FormLookup' })
+
+export const entryRefSchema = z.object({ id: entryIdSchema, lemma: z.string() }).meta({ id: 'EntryRef' })
+export type EntryRef = z.infer<typeof entryRefSchema>
 
 // Management surface: nodes as stored plus every fact in every status.
 export const entryNodeSchema = z

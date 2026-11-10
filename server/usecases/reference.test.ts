@@ -37,7 +37,12 @@ describe('reference data', () => {
     await createEntry(world.deps, agentA, { lemma: ' bank ' })
     for (const fact of [...world.facts]) await reviewFact(world.deps, fact.id, 'trace')
 
-    expect(await publicEntryOf(world.deps, 'bank')).toMatchObject({ lemma: 'bank', ...reference })
+    // The public entry names no source, and shows CEFR per meaning, of which an entry without senses has none.
+    expect(await publicEntryOf(world.deps, 'bank')).toMatchObject({
+      lemma: 'bank',
+      frequency: { zipf: 5.16, rank: 691 },
+      meanings: [],
+    })
     expect(await getManagedEntry(world.deps, 'bank')).toMatchObject({ seed: false, ...reference })
   })
 })

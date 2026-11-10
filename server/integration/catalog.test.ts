@@ -11,7 +11,7 @@ import {
   managedEntrySchema,
   nodeLocationSchema,
   publicEntrySchema,
-  publicSenseWithEntrySchema,
+  publicSenseDetailSchema,
 } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
@@ -71,29 +71,41 @@ describe('public catalog', () => {
     expect(status).toBe(200)
     const entry = publicEntrySchema.parse(body)
     // A synonym is stored once, from the smaller sense id; both senses list it.
-    const riverIsSubject = river.sense.id < shore.sense.id
-    expect(entry.forms).toEqual([
-      expect.objectContaining({ form: 'banks', type: 'plural', verdict: 'pass', confidence: 0.93 }),
-    ])
-    expect(entry.senses).toEqual([
-      expect.objectContaining({
-        id: river.sense.id,
-        gloss: 'Land beside a river.',
-        examples: [expect.objectContaining({ text: 'We sat on the bank.', confidence: 0.88 })],
-        relations: [
+    expect(entry.meanings).toEqual([
+      {
+        pos: 'noun',
+        cefr: null,
+        pronunciations: [],
+        forms: { plural: ['banks'] },
+        senses: [
           expect.objectContaining({
-            type: 'synonym',
-            direction: riverIsSubject ? 'outgoing' : 'incoming',
-            sense: expect.objectContaining({ id: shore.sense.id, lemma: 'shore' }),
+            id: river.sense.id,
+            gloss: 'Land beside a river.',
+            labels: [],
+            rare: false,
+            examples: [{ text: 'We sat on the bank.' }],
+            relations: expect.objectContaining({
+              synonyms: [{ lemma: 'shore', sense_id: shore.sense.id, gloss: 'Land along water.' }],
+            }),
           }),
         ],
-      }),
+      },
     ])
-    const sense = publicSenseWithEntrySchema.parse((await call(`/v1/senses/${river.sense.id}`)).body)
-    expect(sense.entry.lemma).toBe('bank')
+    expect(JSON.stringify(entry)).not.toContain('confidence')
+
+    const reviewed = publicEntrySchema.parse((await call('/v1/entries/bank?include=review')).body)
+    const [meaning] = reviewed.meanings
+    expect(meaning?.review?.forms.plural).toEqual([expect.objectContaining({ verdict: 'pass', confidence: 0.93 })])
+    expect(meaning?.senses[0]?.examples).toEqual([
+      { text: 'We sat on the bank.', review: expect.objectContaining({ confidence: 0.88 }) },
+    ])
+    expect(meaning?.senses[0]?.relations.synonyms[0]?.review).toEqual(expect.objectContaining({ verdict: 'pass' }))
+
+    const sense = publicSenseDetailSchema.parse((await call(`/v1/senses/${river.sense.id}`)).body)
+    expect(sense).toMatchObject({ id: river.sense.id, pos: 'noun', entry: { lemma: 'bank', pos: ['noun'] } })
     const incoming = publicEntrySchema.parse((await call('/v1/entries/shore')).body)
-    expect(incoming.senses[0]?.relations).toEqual([
-      expect.objectContaining({ direction: riverIsSubject ? 'incoming' : 'outgoing' }),
+    expect(incoming.meanings[0]?.senses[0]?.relations.synonyms).toEqual([
+      { lemma: 'bank', sense_id: river.sense.id, gloss: 'Land beside a river.' },
     ])
   })
 
@@ -111,7 +123,18 @@ describe('public catalog', () => {
     stubReviewers()
     await deliverPendingReviews()
     const lookup = formLookupSchema.parse((await call('/v1/forms/banks')).body)
-    expect(lookup.items).toEqual([expect.objectContaining({ entry: expect.objectContaining({ lemma: 'bank' }) })])
+    expect(lookup).toEqual({
+      lang: null,
+      items: [
+        {
+          lemma: 'bank',
+          pos: ['noun'],
+          cefr: null,
+          gloss: 'Land beside a river.',
+          matches: [{ type: 'plural', pos: 'noun' }],
+        },
+      ],
+    })
     expect((await call('/v1/forms/bank')).status).toBe(404)
   })
 

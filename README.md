@@ -14,10 +14,11 @@ The contract is [docs/design.md](docs/design.md).
 
 | Path                         | Who               | What                                                   |
 | ---------------------------- | ----------------- | ------------------------------------------------------ |
-| `GET /v1/entries`            | Everyone          | Published entries by prefix, paged with `next_cursor`  |
-| `GET /v1/entries/{lemma}`    | Everyone          | One entry with its published facts                     |
-| `GET /v1/forms/{form}`       | Everyone          | Entries that own an exact published form (no fallback) |
-| `GET /v1/senses/{id}`        | Everyone          | One sense with its entry                               |
+| `GET /v1/entries`            | Everyone          | Published entries by prefix as summaries, paged with `next_cursor` |
+| `GET /v1/entries/{lemma}`    | Everyone          | One entry: meanings by part of speech, phrases, word family; `?lang=` or `Accept-Language`, `?include=review` |
+| `GET /v1/forms/{form}`       | Everyone          | Summaries of the entries that own an exact published form (no fallback) |
+| `GET /v1/senses/{id}`        | Everyone          | One sense with its entry's summary                     |
+| `GET /v1/topics/{id}/senses` | Everyone          | Sense summaries tagged with a topic                    |
 | `POST /v1/feedback`          | Everyone          | Report a problem with an entry, sense, or fact         |
 | `GET /openapi.json`, `/docs` | Everyone          | Public OpenAPI 3.1 document and its Scalar reference   |
 | `/manage/v1/*`               | Agents and admins | Submit entries, senses, facts; review state; feedback  |

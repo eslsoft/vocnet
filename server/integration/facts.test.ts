@@ -54,8 +54,8 @@ describe('fact review flow', () => {
       status: 'published',
       review: { reviewer: 'jev', verdict: 'pass', confidence: 0.93 },
     })
-    const entry = publicEntrySchema.parse((await call('/v1/entries/lake')).body)
-    expect(entry.fact).toEqual({ id: fact.id, confidence: 0.93, verdict: 'pass' })
+    const entry = publicEntrySchema.parse((await call('/v1/entries/lake?include=review')).body)
+    expect(entry.review?.entry).toEqual({ fact_id: fact.id, confidence: 0.93, verdict: 'pass' })
 
     const again = await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'lake' } })
     expect(again.status).toBe(200)
@@ -240,7 +240,7 @@ describe('fact review flow', () => {
     expect(invalid.status).toBe(400)
   })
 
-  it('enforces write rules: one fact per symmetric pair, relations across entries, gloss and ipa format [spec: facts/write-rules-api]', async () => {
+  it('enforces write rules: one fact per symmetric pair, relations across entries, gloss and ipa format, served translation language [spec: facts/write-rules-api]', async () => {
     const token = await issueAgentKey()
     const post = (path: string, json: unknown) => call(path, { method: 'POST', token, json })
     const entryOf = async (lemma: string) =>
@@ -287,6 +287,13 @@ describe('fact review flow', () => {
     })
     expect(badIpa.status).toBe(400)
     expect(apiErrorSchema.parse(badIpa.body).error.message).toContain('exactly one transcription')
+    const traditional = await post('/manage/v1/facts', {
+      kind: 'translation',
+      subject_id: eastSense.id,
+      payload: { language: 'zh-Hant', text: '東方' },
+    })
+    expect(traditional.status).toBe(400)
+    expect(apiErrorSchema.parse(traditional.body).error.message).toContain('served language: zh')
   })
 
   it('re-orients stored symmetric relations and leaves live duplicates to retract [spec: facts/orient-stored-relations]', async () => {

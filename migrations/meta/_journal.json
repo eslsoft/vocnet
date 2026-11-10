@@ -232,6 +232,20 @@
       "when": 1794275937954,
       "tag": "20261110015857_public_view_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794278346113,
+      "tag": "20261110023906_public_api_v2_clear",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1794278358947,
+      "tag": "20261110023918_public_api_v2",
+      "breakpoints": true
     }
   ]
 }

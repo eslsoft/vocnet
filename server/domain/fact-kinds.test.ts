@@ -46,7 +46,7 @@ describe('fact-kind registry', () => {
     expect(contentKeyOf('relation', { type: 'synonym', target_sense_id: target })).toBe(`synonym|${target}`)
     expect(contentKeyOf('pronunciation', { ipa: 'bæŋk', accent: 'us' })).toBe('us|bæŋk')
     expect(contentKeyOf('example', { text: 'We sat on the Bank.' })).toBe('we sat on the bank.')
-    expect(contentKeyOf('translation', { language: 'zh-Hans', text: '河岸' })).toBe('zh-Hans|河岸')
+    expect(contentKeyOf('translation', { language: 'zh', text: '河岸' })).toBe('zh|河岸')
     expect(contentKeyOf('topic', { topic_id: hospital })).toBe('hospital-doctor')
   })
 

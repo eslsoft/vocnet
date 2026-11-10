@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { senseRefSchema } from './catalog'
+import { responseLangSchema, senseSummarySchema } from './catalog'
 import { topicIdSchema } from './facts'
 
 // The topic taxonomy on the wire. Topics are admin-curated by migration: categories group the
@@ -23,5 +23,5 @@ export const topicTreeSchema = z.object({ categories: z.array(topicCategorySchem
 export type TopicTree = z.infer<typeof topicTreeSchema>
 
 export const topicSensePageSchema = z
-  .object({ items: z.array(senseRefSchema), next_cursor: z.string().nullable() })
+  .object({ lang: responseLangSchema, items: z.array(senseSummarySchema), next_cursor: z.string().nullable() })
   .meta({ id: 'TopicSensePage', description: 'Published senses tagged with a topic, in lemma order.' })

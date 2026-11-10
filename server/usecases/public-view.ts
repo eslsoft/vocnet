@@ -1,18 +1,41 @@
-import { publicEntryDocument, publicViewRecord } from '@server/domain/public-view'
+import {
+  type ByLanguage,
+  type ProjectionContext,
+  projectPublicEntry,
+  type StoredEntry,
+} from '@server/domain/catalog-view'
+import type { EntryNode } from '@server/domain/nodes'
+import { publicViewRecord } from '@server/domain/public-view'
+import type { TopicId } from '@shared/facts'
 import type { Deps } from './deps'
 import type { StaleView, StoredView, ViewLookup } from './ports'
 
-export type ViewDeps = Pick<Deps, 'publicViews' | 'nodes' | 'reference'>
+export type ViewDeps = Pick<Deps, 'publicViews' | 'nodes' | 'reference' | 'topics'>
 
-/** Projects the entry's public document from its facts and reference data as of the stale revision and stores it. */
-async function rebuild(deps: ViewDeps, stale: StaleView): Promise<void> {
-  const entry = await deps.nodes.findEntry(stale.entryId)
-  if (!entry) throw new Error(`Public view entry ${stale.entryId} does not exist.`)
+/** Each topic's names by language tag, as public documents show them. */
+export async function topicNamesOf(deps: Pick<Deps, 'topics'>): Promise<ProjectionContext['topicNames']> {
+  const topics = await deps.topics.list()
+  return new Map<TopicId, ByLanguage<string>>(topics.map((topic) => [topic.id, { en: topic.nameEn, zh: topic.nameZh }]))
+}
+
+/** The entry's public document as its facts, reference data, and topics make it now; null when it is not public. */
+export async function projectEntry(
+  deps: Pick<Deps, 'nodes' | 'reference'>,
+  entry: EntryNode,
+  topicNames: ProjectionContext['topicNames'],
+): Promise<StoredEntry | null> {
   const [snapshot, reference] = await Promise.all([
     deps.nodes.loadEntrySnapshot(entry),
     deps.reference.forLemma(entry.lemma),
   ])
-  const document = publicEntryDocument(snapshot, reference)
+  return projectPublicEntry(snapshot, { reference, topicNames })
+}
+
+/** Projects the entry's public document as of the stale revision and stores it. */
+async function rebuild(deps: ViewDeps, stale: StaleView, topicNames: ProjectionContext['topicNames']): Promise<void> {
+  const entry = await deps.nodes.findEntry(stale.entryId)
+  if (!entry) throw new Error(`Public view entry ${stale.entryId} does not exist.`)
+  const document = await projectEntry(deps, entry, topicNames)
   await deps.publicViews.save(stale, document && publicViewRecord(document))
 }
 
@@ -21,7 +44,10 @@ async function rebuild(deps: ViewDeps, stale: StaleView): Promise<void> {
  * to these nodes. Every use case that writes calls it after the write, beside the rescore.
  */
 export async function refreshPublicViews(deps: ViewDeps, nodeIds: string[]): Promise<void> {
-  for (const stale of await deps.publicViews.listStale(nodeIds)) await rebuild(deps, stale)
+  const stale = await deps.publicViews.listStale(nodeIds)
+  if (stale.length === 0) return
+  const topicNames = await topicNamesOf(deps)
+  for (const view of stale) await rebuild(deps, view, topicNames)
 }
 
 /**
@@ -34,8 +60,9 @@ export async function rebuildStalePublicViews(
   limit: number,
 ): Promise<{ rebuilt: number; remaining: number }> {
   const stale = await deps.publicViews.listAnyStale(limit)
+  const topicNames = await topicNamesOf(deps)
   const failures: unknown[] = []
-  for (const view of stale) await rebuild(deps, view).catch((error: unknown) => failures.push(error))
+  for (const view of stale) await rebuild(deps, view, topicNames).catch((error: unknown) => failures.push(error))
   if (failures.length > 0) throw new AggregateError(failures, `${failures.length} public views failed to rebuild.`)
   return { rebuilt: stale.length, remaining: await deps.publicViews.countStale() }
 }
@@ -50,15 +77,15 @@ const READ_REBUILD_ATTEMPTS = 3
  * serving it would be a 404 for a public entry, so the read rebuilds again, up to
  * READ_REBUILD_ATTEMPTS times, and is a 404 only when the projection itself is empty.
  */
-export async function readPublicView(
+export async function readPublicView<T extends ViewLookup>(
   deps: ViewDeps,
-  find: () => Promise<ViewLookup | null>,
-): Promise<StoredView | null> {
+  find: () => Promise<T | null>,
+): Promise<(T & { view: StoredView }) | null> {
   let found = await find()
   for (let attempt = 0; found?.stale && attempt < READ_REBUILD_ATTEMPTS; attempt += 1) {
-    await rebuild(deps, found.stale)
+    await rebuild(deps, found.stale, await topicNamesOf(deps))
     found = await find()
     if (found?.view) break
   }
-  return found?.view ?? null
+  return found?.view ? (found as T & { view: StoredView }) : null
 }

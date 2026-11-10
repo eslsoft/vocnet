@@ -70,7 +70,7 @@ Feature: Topics
   Scenario: A topic fact is reviewed, published, and listed on a real database
     Given topic facts submitted on senses of two entries
     When the queue reviews and publishes them
-    Then GET /v1/topics/{id}/senses lists each tagged sense with its lemma, part of speech, and gloss, in lemma order and paginated
+    Then GET /v1/topics/{id}/senses lists each tagged sense as a sense summary with its lemma, id, part of speech, CEFR level, gloss, and translation, in lemma order and paginated
     And a category lists the senses of all its leaves
     And the public entry shows the topic tags of each sense, and the management API lists the topic facts
 

@@ -226,14 +226,19 @@ describe('claimWork', () => {
       await reviewFact(world.deps, fact.id, 'trace')
     }
     expect(await claimWork(world.deps, agentA)).toBeNull()
+    // The plural of a preposition shows on no meaning, so it is not public and cannot be reported.
     const form = world.facts.find((fact) => fact.kind === 'form') as { id: FactId }
+    await expect(
+      submitFeedback(world.deps, 'client', { target_type: 'fact', target_id: form.id, message: 'Not a word.' }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+    const example = world.facts.find((fact) => fact.kind === 'example') as { id: FactId }
     const item = await submitFeedback(world.deps, 'client', {
       target_type: 'fact',
-      target_id: form.id,
-      message: 'Not a word.',
+      target_id: example.id,
+      message: 'Not natural.',
     })
     const claim = await claimWork(world.deps, agentA)
-    expect(claim?.weakFacts).toEqual([{ id: form.id, kind: 'form', reason: 'feedback' }])
+    expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'feedback' }])
     await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
     await claimFeedback(world.deps, agentB, item.id)
     const claimed = world.work.get(entries[0].entry.id)
