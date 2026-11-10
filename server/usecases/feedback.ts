@@ -14,6 +14,7 @@ import type { Deps } from './deps'
 import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError, RateLimitedError } from './errors'
 import { type Actor, getFact } from './facts'
 import type { PageRequest } from './ports'
+import { LIMIT_PERIOD_SECONDS } from './ports'
 import { projectEntry, topicNamesOf } from './public-view'
 import { refreshEntries } from './refresh'
 
@@ -65,7 +66,7 @@ export async function submitFeedback(
   input: SubmitFeedbackInput,
 ): Promise<FeedbackRecord> {
   if (!(await deps.feedbackLimiter.allow(client))) {
-    throw new RateLimitedError('Too much feedback from this address; try again in a minute.')
+    throw new RateLimitedError('Too much feedback from this address; try again in a minute.', LIMIT_PERIOD_SECONDS)
   }
   if (!(await targetIsPublic[input.target_type](deps, input.target_id))) {
     throw new NotFoundError(`No public ${input.target_type} ${input.target_id}.`)

@@ -108,8 +108,14 @@ export default defineConfig({
               compatibilityDate: '2026-06-03',
               compatibilityFlags: ['nodejs_compat'],
               d1Databases: ['DB'],
+              // The edge cache keeps lists for seconds across tests that reuse URLs; tests prove it
+              // over a fake (server/http/public-reads.test.ts), so the Cache API is a no-op here.
+              cache: false,
               queueProducers: { REVIEW_QUEUE: 'vocnet-reviews' },
-              ratelimits: { FEEDBACK_RATE_LIMITER: { simple: { limit: 10, period: 60 } } },
+              ratelimits: {
+                FEEDBACK_RATE_LIMITER: { simple: { limit: 10, period: 60 } },
+                READ_RATE_LIMITER: { simple: { limit: 120, period: 60 } },
+              },
               bindings: {
                 ADMIN_SUBJECTS: 'admin-1, admin-2',
                 MODEL_BASE_URL: 'https://models.test',

@@ -1,5 +1,7 @@
+import type { CacheStorage as WorkersCacheStorage } from '@cloudflare/workers-types'
 import { webCryptoAgentKeys } from '@server/adapters/agent-keys'
 import { createAuthVerifier } from '@server/adapters/auth/verifier'
+import { createEdgeCache } from '@server/adapters/edge-cache'
 import { createRateLimiter } from '@server/adapters/rate-limiter'
 import { createAgentRepo } from '@server/adapters/repos/agents'
 import { createFactRepo } from '@server/adapters/repos/facts'
@@ -36,6 +38,9 @@ export function createDeps(env: Env): Deps {
     llm: createLlmReviewer({ ...review.gateway, model: review.llmModel }),
     reviewQueue: createReviewQueue(env.REVIEW_QUEUE),
     feedbackLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),
+    readLimiter: createRateLimiter(env.READ_RATE_LIMITER),
+    // The DOM lib also declares `caches`; the Workers runtime's has the colo cache as `default`.
+    responseCache: createEdgeCache((caches as unknown as WorkersCacheStorage).default),
     authVerifier: createAuthVerifier(getAuthConfig(env)),
     agentKeys: webCryptoAgentKeys,
     adminSubjects: getAdminSubjects(env),

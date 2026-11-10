@@ -57,8 +57,10 @@ export interface FakeWorld {
   /** Imported reference data by exact lemma; a lemma absent here has none. */
   references: Map<string, LemmaReference>
   referenceSources: ReferenceSource[]
-  /** Client keys the feedback limiter refuses. */
+  /** Client keys the rate limiters refuse. */
   limitedClients: Set<string>
+  /** What the edge cache holds, by key. */
+  cachedResponses: Map<string, Response>
   jevCalls: Array<{ questions: Record<string, string>; state: Record<string, unknown> }>
   llmCalls: Array<{ system: string; user: string }>
   setNow(iso: string): void
@@ -135,6 +137,7 @@ export function fakeWorld(): FakeWorld {
     worked: new Map(),
     queued: [],
     limitedClients: new Set(),
+    cachedResponses: new Map(),
     jevCalls: [],
     llmCalls: [],
     setNow: (iso) => {
@@ -776,6 +779,15 @@ export function fakeWorld(): FakeWorld {
     },
     feedbackLimiter: {
       allow: async (key) => !world.limitedClients.has(key),
+    },
+    readLimiter: {
+      allow: async (key) => !world.limitedClients.has(key),
+    },
+    responseCache: {
+      match: async (key) => world.cachedResponses.get(key)?.clone(),
+      put: async (key, response) => {
+        world.cachedResponses.set(key, response)
+      },
     },
     authVerifier: {
       verify: async (token) => ({ sub: token.replace(/^oidc:/, ''), email: null, name: null }),

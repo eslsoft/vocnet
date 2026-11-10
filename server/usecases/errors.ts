@@ -63,7 +63,11 @@ export class InvalidReferenceError extends ExpectedError {
 }
 
 export class RateLimitedError extends ExpectedError {
-  constructor(message: string) {
+  /** Seconds until the client's allowance renews: the limiter's period, which is all it reports. */
+  readonly retryAfter: number
+
+  constructor(message: string, retryAfter: number) {
     super('rate_limited', 429, message)
+    this.retryAfter = retryAfter
   }
 }

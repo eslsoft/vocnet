@@ -19,15 +19,30 @@ export async function adminToken(sub = 'admin-1') {
     .sign(key)
 }
 
-type CallInit = RequestInit & { token?: string; json?: unknown }
+/** Bindings a test swaps for fakes, as the composition root reads them from the env. */
+type Bindings = Partial<Pick<typeof env, 'READ_RATE_LIMITER'>>
+type CallInit = RequestInit & { token?: string; json?: unknown; bindings?: Bindings }
+
+let clients = 0
+/** A client address no other request uses, so the read limit never couples tests. */
+const freshClient = () => {
+  clients += 1
+  return `198.18.${Math.floor(clients / 256) % 256}.${clients % 256}`
+}
 
 /** The Worker's raw response, for tests that read headers or the exact body. */
 export async function request(path: string, init: CallInit = {}) {
-  const headers = new Headers(init.headers)
-  if (init.token) headers.set('authorization', `Bearer ${init.token}`)
-  if (init.json !== undefined) headers.set('content-type', 'application/json')
-  const body = init.json === undefined ? init.body : JSON.stringify(init.json)
-  return entry.fetch(new Request(`http://app.test${path}`, { ...init, headers, body }), env, createExecutionContext())
+  const { token, json, bindings, ...rest } = init
+  const headers = new Headers(rest.headers)
+  if (token) headers.set('authorization', `Bearer ${token}`)
+  if (json !== undefined) headers.set('content-type', 'application/json')
+  if (!headers.has('cf-connecting-ip')) headers.set('cf-connecting-ip', freshClient())
+  const body = json === undefined ? rest.body : JSON.stringify(json)
+  return entry.fetch(
+    new Request(`http://app.test${path}`, { ...rest, headers, body }),
+    { ...env, ...bindings },
+    createExecutionContext(),
+  )
 }
 
 export async function call(path: string, init: CallInit = {}) {

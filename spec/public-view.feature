@@ -113,3 +113,14 @@ Feature: Public view
     When the query plans of a filtered list by frequency, a topic-filtered list by lemma, a topic listing by level, and a search are explained
     Then each walks or searches an index of the view tables and the full-text index, and none scans a view table
 
+  @public-view/edge-cache @domain
+  Scenario: The edge keeps lists for their max-age, keyed by the language used
+    Given a public read
+    When a response is public with a max-age, and when it is a document, an error, or a HEAD
+    Then the first is kept at the edge under its URL and the served language its Accept-Language reads, a hit is served with its Age and Vary, and nothing else is kept
+
+  @public-view/rate-limit @api
+  Scenario: Public reads are rate limited per client address
+    Given a client address that has used up its reads
+    When it reads an entry or searches
+    Then the API answers 429 rate_limited with Retry-After, while another address reads on

@@ -9,6 +9,7 @@ import { secureBrowserResponse } from './http/browser-security'
 import type { AppVariables } from './http/context'
 import { onError } from './http/errors'
 import { auditBoundary, requestBoundary } from './http/observability'
+import { publicReadBoundary } from './http/public-reads'
 import { ReviewerTransportError } from './usecases/ports'
 import { rebuildStalePublicViews } from './usecases/public-view'
 import { reconcileReviews, reviewFact } from './usecases/review'
@@ -26,6 +27,7 @@ export const worker = new Hono<{ Bindings: Env; Variables: AppVariables }>()
     c.set('deps', createDeps(c.env))
     await next()
   })
+  .use('/v1/*', publicReadBoundary)
   .route('/', app)
 
 const API_PREFIXES = ['/v1/', '/manage/']

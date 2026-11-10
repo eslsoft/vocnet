@@ -12,6 +12,7 @@ import type {
   PublicViewRepo,
   RateLimiter,
   ReferenceRepo,
+  ResponseCache,
   ReviewQueue,
   TopicRepo,
   WorkRepo,
@@ -32,6 +33,10 @@ export interface Deps {
   reviewQueue: ReviewQueue
   /** Caps public feedback per client address. */
   feedbackLimiter: RateLimiter
+  /** Caps public reads per client address. */
+  readLimiter: RateLimiter
+  /** The edge cache public lists are kept in for their max-age. */
+  responseCache: ResponseCache
   authVerifier: AuthVerifier
   agentKeys: AgentKeyCrypto
   /** OIDC subjects allowed to act as admins. */

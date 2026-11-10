@@ -692,7 +692,7 @@ Anyone can report a problem with an entry, a sense, or a fact through the
 public API. The target must be publicly visible under the read rules above;
 anything else is `404 not_found`. Each client address (`CF-Connecting-IP`) may
 send 10 reports a minute through the `FEEDBACK_RATE_LIMITER` binding; more is
-`429 rate_limited`. Feedback moves through `open → claimed → resolved | dismissed`.
+`429 rate_limited` with `Retry-After: 60`. Feedback moves through `open → claimed → resolved | dismissed`.
 An agent claims a feedback item with a one-hour lease, so two agents do not
 work the same report. An expired claim can be claimed again by anyone, and the
 holder can renew its claim at any time. Only the holder resolves (linking the
@@ -1390,6 +1390,11 @@ characters as its characters and every pair of neighbours (`银行业` as 银 �
 translation holding 银行 (`银行`, `银行家`, `银行账户`), `银行家` those holding both
 银行 and 行家, and a single character itself (`server/domain/search.ts`).
 
+**Rate limits.** Every public `GET` counts against the client address
+(`CF-Connecting-IP`) in the `READ_RATE_LIMITER` binding: 120 a minute. More is
+`429 rate_limited` with `Retry-After: 60`, the binding's period, since the
+binding reports no finer reset. Cache hits count too: the limit protects the
+Worker, not only D1. Feedback keeps its own limit of 10 a minute.
 
 ## Public view
 
@@ -1490,7 +1495,8 @@ leaves no document at all (the view was never built), serving it would be a
 `404` for a public entry, so the read rebuilds again, up to three times, and is
 `404` only when the projection itself is empty. Form lookups, the lists, search,
 and the phrases, family, and part links of an entry read only built rows; they
-lag a write only between its commit and its refresh in the same request, and by
+lag a write only between its commit and its refresh in the same request (and
+the lists and search up to five seconds more through a cache), and by
 at most one cron run (five minutes) when that request dies in between, or after
 a reference import or a migration until the views are rebuilt.
 
@@ -1512,9 +1518,30 @@ bump the revision without changing anything public, keep cached bodies valid.
 whenever any entry in them does; an ETag would need the whole page query before
 a `304` could save only the body, so they carry `Cache-Control: public,
 max-age=5`, which stays within the budget, and no ETag. Errors and the feedback
-POST carry no caching headers. The Worker runs in front of Cloudflare's cache,
-so the edge does not store these responses by itself; the headers serve browsers and downstream
-caches until the Worker puts responses in the Cache API.
+POST carry no caching headers.
+
+**Edge cache.** The Worker runs in front of Cloudflare's cache, so the edge
+stores nothing by itself; `publicReadBoundary` (`server/http/public-reads.ts`)
+puts responses in the Workers Cache API (`caches.default`, the cache of the
+colo serving the request) itself, after the read rate limit. It stores exactly
+the `200` `GET` responses whose own headers let a shared cache keep them fresh
+(`public` with a `max-age`, and no `no-cache`, `no-store`, or `private`): the
+three lists. Documents and form lookups are `no-cache`, so they are never
+stored: a stored body would still need the same indexed batch to revalidate,
+and that batch already answers a matching `If-None-Match` with a bodiless
+`304`. The key is the request URL and, when it has no `?lang=`, the served
+language its `Accept-Language` reads (`?lang=zh&vary=accept-language` appended),
+because the Cache API ignores `Vary` and the body depends on nothing else in
+that header; a `?lang=` stays as sent, so a value the route rejects never
+shares a key with one it serves. The stored copy drops `Vary` and carries the
+`Date` it was stored; a hit is served with `Vary: Accept-Language` restored and
+`Age` set from that date, so a browser or downstream cache keeps it only for
+what is left of the five seconds. A list is therefore at most five seconds
+older than the view it was read from, at the edge or anywhere downstream, plus
+the lag every list has behind a write (see Staleness). The cache is per colo
+and is not purged on write: the max-age is the bound. The integration suite
+runs the Cache API off (`cache: false` in `vitest.config.ts`), because tests
+reuse URLs within five seconds; the boundary is proven over a fake cache.
 
 **Backfill and rebuild.** A migration cannot run the projection, so a
 migration that changes what a view stores marks every view stale and leaves

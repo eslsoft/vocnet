@@ -41,3 +41,12 @@ namespace_id = "1001"
   [ratelimits.simple]
   limit = 10
   period = 60
+
+# Public reads: 120 GET requests per client address per minute.
+[[ratelimits]]
+name = "READ_RATE_LIMITER"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60

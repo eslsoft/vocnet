@@ -198,4 +198,18 @@ describe('public lists and search', () => {
     expect(plans.senses).toEqual(['SEARCH public_sense_topics USING INDEX public_sense_topics_level_idx (topic_id=?)'])
     expect(plans.search.some((step) => step.includes('VIRTUAL TABLE INDEX'))).toBe(true)
   })
+
+  it('limits public reads per client address with 429 and Retry-After [spec: public-view/rate-limit]', async () => {
+    await seedWords()
+    const allowed = new Set(['203.0.113.1'])
+    const READ_RATE_LIMITER = { limit: async ({ key }: { key: string }) => ({ success: allowed.has(key) }) }
+    const read = (client: string, path = '/v1/entries/bank') =>
+      request(path, { headers: { 'cf-connecting-ip': client }, bindings: { READ_RATE_LIMITER } })
+    expect((await read('203.0.113.1')).status).toBe(200)
+    const limited = await read('203.0.113.2')
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('Retry-After')).toBe('60')
+    expect(await limited.json()).toMatchObject({ error: { code: 'rate_limited' } })
+    expect((await read('203.0.113.2', '/v1/search?q=bank')).status).toBe(429)
+  })
 })

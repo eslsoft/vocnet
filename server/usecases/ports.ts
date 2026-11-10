@@ -351,9 +351,21 @@ export interface ReviewQueue {
   enqueue(jobs: ReviewJob[]): Promise<void>
 }
 
+/** The period of every rate limit binding (wrangler.toml `ratelimits`), which a 429 reports as Retry-After. */
+export const LIMIT_PERIOD_SECONDS = 60
+
 export interface RateLimiter {
   /** False when this key has used up its allowance for the current period. */
   allow(key: string): Promise<boolean>
+}
+
+/**
+ * A shared cache of whole HTTP responses by URL key, which keeps each for its own Cache-Control
+ * max-age: the Workers Cache API at the edge.
+ */
+export interface ResponseCache {
+  match(key: string): Promise<Response | undefined>
+  put(key: string, response: Response): Promise<void>
 }
 
 export interface AuthUser {
