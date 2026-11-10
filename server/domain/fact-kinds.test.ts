@@ -549,6 +549,7 @@ describe('fact-kind registry', () => {
       '"red blood cell"',
       '"end up"',
       '"sit down"',
+      '"come back"',
       '"at the expense of"',
       '"post office"',
       'even when its meaning is transparent',
@@ -562,9 +563,17 @@ describe('fact-kind registry', () => {
       '"writing implement"',
       '"plant part"',
       '"security device"',
+      '"telephone in"',
+      '"party down"',
+      '"key up"',
+      '"map onto"',
+      '"fish about"',
     ]) {
       expect(rubric).toContain(failing)
     }
+    expect(rubric).toContain('prints as an entry or sub-entry of its verb')
+    expect(rubric).toContain('Being transparent and well-formed is not enough: the dictionaries must print it.')
+    expect(rubric).toContain("A phrasal verb or verb idiom that no learner's dictionary prints")
     expect(rubric).toContain('Being listed in some word list or thesaurus is not enough.')
     expect(rubric).toContain('fail when none of the above holds')
   })

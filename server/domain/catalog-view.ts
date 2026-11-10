@@ -25,6 +25,8 @@ export interface EntrySnapshot {
   seed: boolean
   /** The entry's learner level: 1 for A1 to 6 for C2 (`levelRank`); null without a CEFR level. */
   levelRank: number | null
+  /** A CEFR learner list names the exact lemma as an A1 or A2 verb. */
+  coreVerb: boolean
   /**
    * The lemmas of the live multiword entries headed by this lemma (its first word) with a live
    * verb sense: its phrasal verbs and verb idioms.

@@ -72,8 +72,8 @@ Feature: Facts and review
     When its review is planned
     Then a single word is asked whether it is an established word, as before
     And a multiword lemma is judged on whether it is a lexical unit of English that belongs in a learner's dictionary
-    And its rubric passes idioms, phrasal verbs and fixed grammatical phrases even when transparent, and everyday names of one kind of thing
-    And it fails only a phrase that meets none of those, such as a descriptive phrase or a coined category label, judged from the phrase itself without any external word list
+    And its rubric passes idioms, fixed grammatical phrases even when transparent, everyday names of one kind of thing, and a phrasal verb or verb idiom even when transparent only when a learner's dictionary prints it, such as "sit down" or "come back"
+    And it fails a phrase that meets none of those, such as a descriptive phrase or a coined category label, and a coined phrasal verb no learner's dictionary prints, such as "telephone in", "party down", "key up", "map onto", or "fish about", without any external word list
 
   @facts/entry-multiword-llm @domain
   Scenario: The LLM alone judges a multiword entry

@@ -434,13 +434,15 @@ function entryQuestion(lemma: string): string {
 
 const MULTIWORD_PASSES = [
   'Its meaning is not the sum of its parts: an idiom ("bear fruit", "throw shade") or a fixed compound naming one specific thing ("red blood cell", "stainless steel", "chest of drawers").',
-  'It is a phrasal verb or a fixed prepositional or grammatical phrase, even when its meaning is transparent ("end up", "sit down", "at the expense of", "in front of", "have to").',
+  'It is an established phrasal verb or verb idiom, one a learner\'s dictionary (Oxford Advanced Learner\'s, Longman, Cambridge) prints as an entry or sub-entry of its verb, even when its meaning is transparent ("end up", "sit down", "come back", "give up"). Being transparent and well-formed is not enough: the dictionaries must print it.',
+  'It is a fixed prepositional or grammatical phrase, even when its meaning is transparent ("at the expense of", "in front of", "have to").',
   'It is the everyday name of one kind of thing or place that speakers learn as a whole rather than build ("post office", "bus stop", "credit card", "swimming pool"). Being a common or technically correct name for a part, variety, or record of something is not enough.',
 ]
 
 const MULTIWORD_FAILS = [
   'A descriptive phrase built from the plain meanings of its words, even a common or technical one: a part or piece of something, a variety picked out by an ordinary adjective, or an X of Y ("wheat grain", "hair strand", "oven door", "tooth root", "valley floor", "white rice", "camera angle", "browsing history").',
   'A category label coined to group things ("time unit", "writing implement", "plant part", "protective covering", "cleaning implement", "security device").',
+  'A phrasal verb or verb idiom that no learner\'s dictionary prints: a coined or ad-hoc combination of a verb with a particle or preposition, however understandable or figurative, often a verb made from a noun with a particle added ("telephone in", "telephone back", "party down", "key up", "map onto", "fish about"). It fails even when another rule above seems to hold.',
   'A proper name, a misspelling, or an invented phrase.',
 ]
 

@@ -1,4 +1,4 @@
-import { entries, facts, feedback, senses, worklist } from '@server/db/schema'
+import { entries, facts, feedback, lemmaCefr, senses, worklist } from '@server/db/schema'
 import type { FactOf } from '@server/domain/fact'
 import { meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseWithLemma } from '@server/domain/nodes'
@@ -256,7 +256,23 @@ export function createNodeRepo(db: Db): NodeRepo {
       const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts, flagged, phrases, family] =
         await db.batch([
           db
-            .select({ seed: worklist.seed, levelRank: worklist.levelRank })
+            .select({
+              seed: worklist.seed,
+              levelRank: worklist.levelRank,
+              // One primary-key lookup: the exact lemma listed as an A1 or A2 verb.
+              coreVerb: sql<number>`${exists(
+                db
+                  .select({ one: sql`1` })
+                  .from(lemmaCefr)
+                  .where(
+                    and(
+                      eq(lemmaCefr.lemma, entry.lemma),
+                      eq(lemmaCefr.pos, 'verb'),
+                      inArray(lemmaCefr.level, ['A1', 'A2']),
+                    ),
+                  ),
+              )}`,
+            })
             .from(worklist)
             .where(eq(worklist.entryId, entry.id)),
           db
@@ -309,6 +325,7 @@ export function createNodeRepo(db: Db): NodeRepo {
         entry,
         seed: work[0].seed,
         levelRank: work[0].levelRank,
+        coreVerb: work[0].coreVerb === 1,
         phrases: phrases.map((row) => row.lemma),
         family: family.map((row) => row.lemma),
         senses: ownSenses.map(toSenseWithLemma),

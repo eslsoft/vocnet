@@ -28,7 +28,7 @@ const at = '2026-01-01T00:00:00.000Z'
 const entryId = id<EntryId>()
 const bank = { id: entryId, lemma: 'bank' }
 /** An entry with no CEFR level and no phrases, so the A1-A2 rules stay out of the way. */
-const plain = { levelRank: null, phrases: [], family: [] }
+const plain = { levelRank: null, coreVerb: false, phrases: [], family: [] }
 
 const sense = (pos: Pos = 'noun'): SenseWithLemma => ({
   id: id<SenseId>(),
@@ -699,11 +699,12 @@ describe('completeness rules for a learner dictionary', () => {
     lemma: string,
     senses: SenseWithLemma[],
     facts: Fact[],
-    more: { levelRank?: number | null; phrases?: string[]; family?: string[] } = {},
+    more: { levelRank?: number | null; coreVerb?: boolean; phrases?: string[]; family?: string[] } = {},
   ) =>
     entryGaps({
       entry: { id: entryId, lemma },
       levelRank: more.levelRank ?? null,
+      coreVerb: more.coreVerb ?? false,
       phrases: more.phrases ?? [],
       family: more.family ?? [],
       senses,
@@ -826,28 +827,30 @@ describe('completeness rules for a learner dictionary', () => {
     expect(examples(null)).toBeUndefined()
   })
 
-  it('asks an A1 or A2 verb for three phrases headed by it [spec: work/phrases-gap]', () => {
+  it('asks a core verb, listed at A1 or A2 as a verb, for three phrases headed by it [spec: work/phrases-gap]', () => {
     const verb = sense('verb')
     const noun = sense('noun')
     const asVerb = [fact('sense', verb.id, { gloss: 'To hand over.' })]
-    const phrasesGap = (lemma: string, levelRank: number | null, found: string[], senses = [verb], facts = asVerb) =>
-      gapsOf(lemma, senses, facts, { levelRank, phrases: found }).find((gap) => gap.type === 'phrases')
-    expect(phrasesGap('give', 1, [])).toEqual({ type: 'phrases', have: [], need: 3 })
-    expect(phrasesGap('give', 2, ['give up'])).toEqual({ type: 'phrases', have: ['give up'], need: 3 })
-    expect(phrasesGap('give', 1, ['give in', 'give up'])).toEqual({
+    const phrasesGap = (lemma: string, coreVerb: boolean, found: string[], senses = [verb], facts = asVerb) =>
+      gapsOf(lemma, senses, facts, { levelRank: 1, coreVerb, phrases: found }).find((gap) => gap.type === 'phrases')
+    expect(phrasesGap('give', true, [])).toEqual({ type: 'phrases', have: [], need: 3 })
+    expect(phrasesGap('give', true, ['give up'])).toEqual({ type: 'phrases', have: ['give up'], need: 3 })
+    expect(phrasesGap('give', true, ['give in', 'give up'])).toEqual({
       type: 'phrases',
       have: ['give in', 'give up'],
       need: 3,
     })
-    expect(phrasesGap('give', 1, ['give in', 'give up', 'give way'])).toBeUndefined()
-    expect(phrasesGap('give', 3, [])).toBeUndefined()
-    expect(phrasesGap('give up', 1, [])).toBeUndefined()
-    expect(phrasesGap('desk', 1, [], [noun], [fact('sense', noun.id, { gloss: 'A table.' })])).toBeUndefined()
+    expect(phrasesGap('give', true, ['give in', 'give up', 'give way'])).toBeUndefined()
+    // An A1 noun with a verb sense (telephone, party) is no core verb: it heads few learner phrasal verbs.
+    expect(phrasesGap('telephone', false, [])).toBeUndefined()
+    expect(phrasesGap('give up', true, [])).toBeUndefined()
+    expect(phrasesGap('desk', true, [], [noun], [fact('sense', noun.id, { gloss: 'A table.' })])).toBeUndefined()
     // Each missing phrase is a slot, and a closure fills them all.
     const score = (found: string[], more: Fact[] = []) =>
       assessEntry({
         entry: { id: entryId, lemma: 'give' },
         levelRank: 1,
+        coreVerb: true,
         phrases: found,
         family: ['giver'],
         senses: [verb],

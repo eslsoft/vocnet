@@ -269,14 +269,14 @@ Feature: Worklist
     Then an A1 or A2 entry's sense has an examples gap asking for two and naming the one it has, and other entries need one
 
   @work/phrases-gap @domain
-  Scenario: An A1 or A2 verb needs three phrases headed by it
-    Given a single-word entry with a verb sense, its level, and the live phrasal verbs and verb idioms headed by it
+  Scenario: A core verb needs three phrases headed by it
+    Given a single-word entry with a verb sense, whether a CEFR list names its exact lemma as an A1 or A2 verb, and the live phrasal verbs and verb idioms headed by it
     When the gaps are computed
-    Then an A1 or A2 verb with fewer than three has a phrases gap naming the ones it has and the three it needs, each missing phrase is a slot a closure fills, and a phrase, a noun, or a higher level has none
+    Then a core verb with fewer than three has a phrases gap naming the ones it has and the three it needs, each missing phrase is a slot a closure fills, and a phrase, a noun, or a word no list names as an A1 or A2 verb, such as an A1 noun with a verb sense, has none
 
   @work/phrases-api @api
   Scenario: A live phrasal verb counts on its head at once
-    Given an A1 verb whose claim names a phrases gap
+    Given a word a CEFR list names as an A1 verb, whose claim names a phrases gap
     When multiword entries are created that only contain the verb, are headed by it with no verb sense, gain a verb sense, or are headed by it with only a noun sense
     Then only the one headed by the verb with a live verb sense counts, and the verb's worklist row is rescored in the same request
 
@@ -327,3 +327,9 @@ Feature: Worklist
     Given orphaned facts of a retracted sense, periphrastic comparisons, dotted, r-coloured, and American ɛ transcriptions, ASCII-punctuated or repeated zh alternatives, and an uncertain sense list
     When the completeness_rules migration runs
     Then the orphans and periphrastic forms are retracted, each transcription and zh text is rewritten with the key the registry computes, a collision keeps the published or oldest fact and retracts the rest, the sense list is marked for review in place, and every worklist row is stale
+
+  @work/core-verb-phrases-migration @api
+  Scenario: The core verb release re-judges recent phrasal verbs
+    Given multiword entries an agent created today and earlier, headed by a verb and by a noun, with a verb sense and without, one a CEFR list names, and one an admin created
+    When the core_verb_phrases migration runs
+    Then only the published entry facts of today's agent-created phrasal verbs headed by a verb that no CEFR list names are marked for review in place, and every worklist row is stale

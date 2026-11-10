@@ -100,7 +100,7 @@ describe('completeness', () => {
 
   it('counts on an A1 verb each live phrasal verb headed by it, rescored in the same request [spec: work/phrases-api]', async () => {
     const token = await issueAgentKey()
-    await importLearnerData({ levels: { give: 'A1' } })
+    await importLearnerData({ verbs: { give: 'A1' } })
     const { entry } = await createEntry(token, 'give')
     await createSense(token, { entry_id: entry.id, pos: 'verb', gloss: 'To hand something to someone.' })
     await settle()

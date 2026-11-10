@@ -430,7 +430,7 @@ export const managedEntrySchema = z
     seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        "Share of the slots the gaps count (the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, and a pronunciation per irregular form, a phrase for an A1-A2 verb, and per sense outside the sense list's extra the relations, topic, grammar, and collocation its part of speech needs, its examples, a zh translation, and a translated example) that live facts fill or a live gap closure closes; 1 means no gaps. Computed from the facts on read, never stored.",
+        "Share of the slots the gaps count (the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, and a pronunciation per irregular form, three phrases for a core verb (one a CEFR list names as an A1-A2 verb), and per sense outside the sense list's extra the relations, topic, grammar, and collocation its part of speech needs, its examples, a zh translation, and a translated example) that live facts fill or a live gap closure closes; 1 means no gaps. Computed from the facts on read, never stored.",
     }),
     quality: z.number().min(0).max(1).meta({
       description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',

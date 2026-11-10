@@ -796,15 +796,24 @@ but only to choose the message.
   multiword lemma (one containing whitespace) goes to the LLM alone, with its
   own rubric, and passes only as a lexical unit: its meaning is not the sum of its
   parts (an idiom such as "bear fruit", a compound naming one thing such as
-  "red blood cell"), it is a phrasal verb or fixed grammatical phrase even
-  when transparent ("end up", "sit down", "in front of"), or it is the
-  everyday name of one kind of thing or place that speakers learn as a whole
-  ("post office", "bus stop"). A phrase that meets none of these fails, such
-  as a descriptive phrase built from the plain meanings of its words, even a
-  common one ("wheat grain", "tooth root", "white rice"), or a coined
-  category label ("time unit", "plant part"). The test is about the phrase itself: reviewers
-  cannot consult dictionaries, and no external word list is used, because
-  lists such as WordNet include exactly those category labels. Jev does not
+  "red blood cell"), it is an established phrasal verb or verb idiom, one a
+  learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) prints
+  as an entry or sub-entry of its verb, even when transparent ("end up", "sit
+  down", "come back"), it is a fixed grammatical phrase even when transparent
+  ("in front of"), or it is the everyday name of one kind of thing or place
+  that speakers learn as a whole ("post office", "bus stop"). A phrase that
+  meets none of these fails, such as a descriptive phrase built from the plain
+  meanings of its words, even a common one ("wheat grain", "tooth root",
+  "white rice"), or a coined category label ("time unit", "plant part"). A
+  phrasal verb or verb idiom no learner's dictionary prints fails even when
+  another rule seems to hold: a coined or ad-hoc verb and particle, however
+  understandable, often a verb made from a noun ("telephone in", "party down",
+  "key up", "map onto", "fish about"). Transparent and well-formed is not
+  enough; producers filling the phrases gap on nouns used as verbs coined
+  exactly those, and the earlier rubric passed them as transparent. The test
+  is about the phrase itself and the reviewer's knowledge of those
+  dictionaries: reviewers cannot consult them, and no external word list is
+  used, because lists such as WordNet include exactly those category labels. Jev does not
   judge phrases: over 1,061 multiword entries it settled 314 passes on its
   own, among them descriptive phrases the rubric fails ("spatial
   distribution", "mountain system", "scientific law").
@@ -1211,11 +1220,17 @@ recorded, which changes its open work.
 
 #### Phrases
 
-An A1 or A2 single-word entry with a counted verb sense needs `PHRASES_NEEDED`
-(3) live phrasal verbs or verb idioms headed by it: multiword entries whose
-first word is the lemma, case-sensitively, with a live verb sense (*give up*,
-*give in*, *give way*). Learners meet core verbs in them, and a learner's
-dictionary lists several for most common verbs. A phrase that only contains the
+A core verb, a single-word entry with a counted verb sense whose exact lemma
+`lemma_cefr` lists with pos `verb` at A1 or A2, needs `PHRASES_NEEDED` (3) live
+phrasal verbs or verb idioms headed by it: multiword entries whose first word
+is the lemma, case-sensitively, with a live verb sense (*give up*, *give in*,
+*give way*). Learners meet core verbs in them, and a learner's dictionary
+lists several for most common verbs. An A1 or A2 word listed only as another
+part of speech has no phrases gap even with a verb sense: nouns used as verbs
+(*telephone*, *party*, *key*, *map*, *fish*) head few learner phrasal verbs,
+and asking them for three had producers coin "telephone in" and "party down".
+The snapshot reads `coreVerb` with the worklist row, as one primary-key lookup
+of `lemma_cefr` (`lemma`, `pos`). A phrase that only contains the
 word (*ordinary share*, *hip throw*, *hired help* closed the earlier
 one-phrase rule) or is not a verb (*help desk*, *stay of execution*) does not
 count. Each missing phrase is a slot. The snapshot reads the phrases by one
@@ -1355,6 +1370,27 @@ open 896 family, 436 phrases, 803 translated-example, 1,033 grammar, and 1,281
 collocation gaps the earlier ones never asked for. The
 reconcile cron enqueues the marks 500 a run, so the glosses take about twenty
 runs; each fact stays public until its new verdict.
+
+The migration `core_verb_phrases` follows the core-verb phrases rule and the
+established-phrasal-verb admission rule. It marks for review in place the
+published entry fact of every multiword entry an agent created in the last day
+that has a live verb sense (a phrasal verb or verb idiom), whose first word is
+the lemma of an entry with a live verb sense, and that `lemma_cefr` does not
+list; a fail invalidates the entry, which hides the phrase and drops it from
+its head's phrases. A pending entry fact is judged by the new rubric when its
+review runs. It then bumps every row. On a copy of the development database
+(14,603 entries) it ran in 0.5 s and:
+
+| Step | Rule | Rows |
+| ---- | ---- | ---- |
+| Phrasal verbs | published entry facts, as above, marked for review in place | 320 |
+| Worklist | `revision` bumped | 14,603 |
+
+On the same copy the phrases gap (counted verb sense, fewer than three live
+phrases, no closure) was open on 377 A1 and 303 A2 entries under the earlier
+rule and is on 138 A1 and 128 A2 under this one; the words it leaves are
+listed only as another part of speech at A1 or A2 (*fruit*, *truck*, *party*,
+*map*, *key*) or as a verb from B1 (*touch*, *shop*, *fish*).
 
 
 The claim is one `UPDATE … WHERE entry_id = (SELECT … WHERE claim_rank IS NOT

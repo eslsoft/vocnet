@@ -415,6 +415,9 @@ export function fakeWorld(): FakeWorld {
         entry,
         seed: world.seeds.has(entry.id),
         levelRank: priorityOf(entry).levelRank,
+        coreVerb:
+          world.references.get(entry.lemma)?.cefr.some((cefr) => cefr.pos === 'verb' && levelRank(cefr.level) <= 2) ??
+          false,
         phrases: phrasesOf(entry.lemma),
         family: familyOf(entry),
         senses: own.map(withLemma),

@@ -22,6 +22,8 @@ export interface EntryFacts {
   entry: { id: EntryId; lemma: string }
   /** The entry's learner level: 1 for A1 to 6 for C2 (`levelRank`); null without a CEFR level. */
   levelRank: number | null
+  /** A CEFR learner list names the exact lemma as an A1 or A2 verb (`lemma_cefr`). */
+  coreVerb: boolean
   /**
    * The lemmas of the live multiword entries headed by this lemma: its first word, with a live verb
    * sense (phrasal verbs and verb idioms). Empty for a phrase.
@@ -45,7 +47,7 @@ export interface EntryFacts {
 
 type GapInput = Pick<
   EntryFacts,
-  'entry' | 'levelRank' | 'phrases' | 'family' | 'senses' | 'facts' | 'incoming' | 'neighbors'
+  'entry' | 'levelRank' | 'coreVerb' | 'phrases' | 'family' | 'senses' | 'facts' | 'incoming' | 'neighbors'
 >
 
 export interface WorkLease {
@@ -99,6 +101,8 @@ interface EntryState {
   lemma: string
   /** The entry is at CEFR A1 or A2, where a learner needs more of each sense. */
   core: boolean
+  /** A CEFR learner list names the lemma as an A1 or A2 verb, which a learner meets in phrasal verbs. */
+  coreVerb: boolean
   phrases: readonly string[]
   family: readonly string[]
   facts: readonly Fact[]
@@ -218,13 +222,18 @@ const pronouncedAccents = ({ live }: EntryState) =>
       .map((fact) => fact.payload.accent),
   )
 
-/** An A1 or A2 single-word verb, which a learner meets in phrasal verbs and idioms. */
-const needsPhrases = ({ core, lemma, counted }: EntryState) =>
-  core && !isMultiword(lemma) && counted.some((sense) => sense.pos === 'verb')
+/**
+ * A core verb: a single word that a CEFR learner list names as an A1 or A2 verb, with a counted
+ * verb sense. Only those reliably head several learner phrasal verbs; asking the same of a verb
+ * made from a noun (telephone, party, key, map, fish) had producers coin "telephone in" and
+ * "party down" to fill the slots.
+ */
+const needsPhrases = ({ coreVerb, lemma, counted }: EntryState) =>
+  coreVerb && !isMultiword(lemma) && counted.some((sense) => sense.pos === 'verb')
 
 /**
- * How many phrasal verbs or verb idioms headed by it an A1 or A2 verb needs: a learner's
- * dictionary lists several for most common verbs (throw away, throw out, throw up).
+ * How many phrasal verbs or verb idioms headed by it a core verb needs: a learner's dictionary
+ * lists several for most common verbs (throw away, throw out, throw up).
  */
 export const PHRASES_NEEDED = 3
 
@@ -544,6 +553,7 @@ function openGaps(snapshot: GapInput): {
   const state: EntryState = {
     lemma: snapshot.entry.lemma,
     core: snapshot.levelRank !== null && snapshot.levelRank <= 2,
+    coreVerb: snapshot.coreVerb,
     phrases: snapshot.phrases,
     family: snapshot.family,
     facts: snapshot.facts,

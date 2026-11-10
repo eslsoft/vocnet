@@ -117,18 +117,20 @@ const testSource = (id: string) => ({
 })
 
 /** Imports frequencies by frequency key and CEFR levels by exact lemma, each lemma's level as a noun. */
-export function importLearnerData(data: { zipf?: Record<string, number>; levels?: Record<string, CefrRow['level']> }) {
+/** Reference rows for the test: each of `levels` listed as a noun, each of `verbs` as a verb. */
+export function importLearnerData(data: {
+  zipf?: Record<string, number>
+  levels?: Record<string, CefrRow['level']>
+  verbs?: Record<string, CefrRow['level']>
+}) {
+  const listed = (levels: Record<string, CefrRow['level']> | undefined, pos: CefrRow['pos']) =>
+    Object.entries(levels ?? {}).map(([lemma, level]) => ({ lemma: lemma as Lemma, pos, level, sourceId: 'cefr' }))
   return importReference({
     sources: [testSource('freq'), testSource('cefr')],
     frequency: {
       sourceId: 'freq',
       rows: Object.entries(data.zipf ?? {}).map(([word, zipf], index) => ({ word, zipf, rank: index + 1 })),
     },
-    cefr: Object.entries(data.levels ?? {}).map(([lemma, level]) => ({
-      lemma: lemma as Lemma,
-      pos: 'noun' as const,
-      level,
-      sourceId: 'cefr',
-    })),
+    cefr: [...listed(data.levels, 'noun'), ...listed(data.verbs, 'verb')],
   })
 }
