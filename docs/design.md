@@ -458,6 +458,19 @@ but only to choose the message.
   judge phrases: over 1,061 multiword entries it settled 314 passes on its
   own, among them descriptive phrases the rubric fails ("spatial
   distribution", "mountain system", "scientific law").
+- **CEFR evidence.** The CEFR learner vocabulary lists (see Reference data)
+  are an authority that a headword is vocabulary learners need; the lexical-unit
+  test rejected about half of the multiword entries the lists name ("mental
+  health", "weather forecast", "get changed"). When `lemma_cefr` lists the exact
+  lemma, the entry review carries the listings in its context (`cefr`: each
+  level, part of speech, and source name, read in one indexed lookup) and the
+  LLM rubric replaces the admission criteria with that evidence: the headword
+  passes unless it is an inflected form of another entry, a proper name, or a
+  misspelling, and a phrase is not asked whether it is a lexical unit. The plan
+  is unchanged: a phrase goes to the LLM alone, a single word to Jev and then
+  the LLM unless an inflection is recorded, and a listed single word's LLM
+  rubric carries the evidence when it is asked. A lemma no list names (an
+  agent-created neighbor) keeps the criteria above.
 - **Recorded inflections.** Jev also passed bare inflections as words ("is"
   at 0.99, "was", "has", "did"). When another entry whose entry fact is live
   holds a live form of any type but `variant` spelled like the lemma, the
@@ -469,8 +482,18 @@ but only to choose the message.
   forms ("sheep" as the plural of "sheep") and spelling variants are no
   evidence. No deterministic rule can reject instead: entries are reviewed
   before any sense exists, so the data cannot tell "is" from "saw". The
-  evidence is read when the entry is reviewed; an entry published before
-  another entry recorded its spelling as a form is not reopened.
+  evidence is read when the entry is reviewed, so the check is made
+  independent of order: the registry's `rereviews` names, for a form of any
+  type but `variant`, the other entry spelled like the form whose published
+  `entry` fact Jev settled alone (`review.reviewer` = `jev`). In the same batch
+  that publishes the form, that fact gets `revalidate_since` unless it already
+  has one, and then it is enqueued; its revalidation goes to the LLM alone with
+  the inflection evidence, so a bare inflection such as "could" or "done" that
+  passed on Jev before its base word's forms existed is rejected
+  (`invalidate`), and a homograph keeps its place (`reconfirm`). A duplicate
+  delivery of the form's review publishes nothing and marks nothing; an entry
+  the LLM judged is not reopened; at most one entry fact is marked per form,
+  the one of the exact lemma.
 - **Relation floor.** A relation request carries `settlesFailBelow` 0.15: a Jev
   answer under it settles the fail without asking the LLM. In the audit, every
   relation the LLM published over a Jev answer that low was wrong (shore
@@ -826,7 +849,8 @@ principal ref (`agent:<id>` or `admin:<sub>`).
 Word frequency and CEFR level come from external datasets, not from agents.
 They are reference data with provenance: not facts, never reviewed, never part
 of completeness or quality. An admin imports them offline; the Worker only
-reads them.
+reads them. A CEFR listing is also evidence for an entry review (see Reviews,
+CEFR evidence); a reimport does not reopen decided reviews.
 
 | Table               | Columns                                                    | Key            |
 | ------------------- | ---------------------------------------------------------- | -------------- |

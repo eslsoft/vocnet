@@ -8,11 +8,13 @@ import type {
   Pos,
   Register,
   RelationType,
+  ReviewerChain,
   ReviewerKind,
   SenseId,
   TopicId,
 } from '@shared/facts'
-import { editDistance, isLetterOfTheAlphabet, isMultiword, normalizeTerm, textKey } from './term'
+import type { CefrLevel } from '@shared/reference'
+import { editDistance, isLetterOfTheAlphabet, isMultiword, type Lemma, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
 // The single source of truth for fact kinds. Wire payload schemas live in
@@ -53,9 +55,20 @@ export interface InflectionOf {
   type: FormType
 }
 
+/** A CEFR learner vocabulary list that lists the exact lemma as a headword. */
+export interface CefrListing {
+  level: CefrLevel
+  pos: Pos
+  /** The name of the reference source. */
+  source: string
+}
+
 export interface SubjectViews {
-  /** `inflectionOf`: the other live entries whose live non-variant forms spell this lemma. */
-  entry: { lemma: string; senses: SenseGloss[]; inflectionOf: InflectionOf[] }
+  /**
+   * `inflectionOf`: the other live entries whose live non-variant forms spell this lemma.
+   * `cefr`: the CEFR learner lists that list the exact lemma as a headword.
+   */
+  entry: { lemma: string; senses: SenseGloss[]; inflectionOf: InflectionOf[]; cefr: CefrListing[] }
   sense: SenseView & { siblings: SenseGloss[] }
 }
 
@@ -135,6 +148,24 @@ interface BaseSpec<K extends FactKind> {
    * not fit it, or null when it does.
    */
   admit?(payload: FactPayloads[K], subject: AdmissionViews[SubjectTypeOf[K]]): string | null
+  /**
+   * The facts of another entry to re-review in place once this fact publishes, because their
+   * review lacked it as evidence; null when there are none.
+   */
+  rereviews?(payload: FactPayloads[K]): Rereview | null
+}
+
+/** The kinds whose subject is an entry. */
+type EntryKind = { [K in FactKind]: SubjectTypeOf[K] extends 'entry' ? K : never }[FactKind]
+
+/**
+ * Published facts of `kind` on the other entry spelled `lemma` that `settledBy` settled alone,
+ * judged without the evidence a newly published fact gives.
+ */
+export interface Rereview {
+  kind: EntryKind
+  lemma: Lemma
+  settledBy: ReviewerChain
 }
 
 export interface Oriented<K extends FactKind> {
@@ -277,6 +308,22 @@ const MULTIWORD_FAILS = [
 ]
 
 /**
+ * The owner accepts the CEFR learner lists as authority that a headword is vocabulary learners
+ * need, so a listed phrase skips the lexical-unit test: half of the multiword entries it rejected
+ * were everyday compounds the lists teach ("mental health", "weather forecast", "get changed").
+ * The lists still carry inflected forms and the odd name, which the rubric keeps out.
+ */
+function cefrCriteria(lemma: string, cefr: readonly CefrListing[]): string[] {
+  return [
+    `Does ${quote(lemma)} belong in a learner's dictionary as its own entry?`,
+    'It is a headword of a CEFR learner vocabulary list, which names the vocabulary learners need:',
+    ...cefr.map(({ level, pos, source }) => `- ${level} ${pos} in ${source}`),
+    'Do not ask whether a phrase is a fixed lexical unit: the list settles that it belongs.',
+    'pass: a headword of the list. fail only when it is an inflected form of another entry, a proper name, or a misspelling.',
+  ]
+}
+
+/**
  * Jev settles an entry only where its pass is reliable: a single word that no other entry records
  * as an inflection. Over 1,061 multiword entries it passed 314 outright, descriptive phrases the
  * rubric fails among them ("spatial distribution", "mountain system"), and it passed bare
@@ -307,8 +354,9 @@ function inflectionEvidence(lemma: string, inflectionOf: readonly InflectionOf[]
   ]
 }
 
-function entryRubric({ lemma, senses, inflectionOf }: SubjectViews['entry']): string {
-  const criteria = isMultiword(lemma)
+function entryCriteria(lemma: string, cefr: readonly CefrListing[]): string[] {
+  if (cefr.length > 0) return cefrCriteria(lemma, cefr)
+  return isMultiword(lemma)
     ? [
         `Is the phrase ${quote(lemma)} a lexical unit of English that belongs in a learner's dictionary as its own entry?`,
         'Judge from the phrase itself: would a learner who knows each word still need it explained as a unit? Being listed in some word list or thesaurus is not enough.',
@@ -322,8 +370,11 @@ function entryRubric({ lemma, senses, inflectionOf }: SubjectViews['entry']): st
         'pass: a dictionary lemma or conventional vocabulary term, including function words and established abbreviations.',
         'fail: an ordinary inflection of another word, a proper name, a misspelling, or an invented word.',
       ]
+}
+
+function entryRubric({ lemma, senses, inflectionOf, cefr }: SubjectViews['entry']): string {
   return [
-    ...criteria,
+    ...entryCriteria(lemma, cefr),
     ...inflectionEvidence(lemma, inflectionOf),
     listSenses('Senses recorded for it so far', senses),
   ].join('\n')
@@ -360,6 +411,8 @@ const article = (word: string) => (/^[aeiou]/.test(word) ? 'an' : 'a')
 
 /** The form types that inflect a word; a variant is another spelling of the same word, not an inflection. */
 const INFLECTION_TYPES = (Object.keys(formTypes) as FormType[]).filter((type) => formTypes[type].wordClass !== null)
+
+const isInflection = (type: FormType) => INFLECTION_TYPES.includes(type)
 
 /** The content keys of the form facts that record `spelling` as an inflection of their entry. */
 export function inflectionKeysOf(spelling: string): string[] {
@@ -746,6 +799,10 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     contentKey: ({ form, type }) => `${type}|${normalizeTerm(form)}`,
     plan: ({ form, type, pos }, { subject }) =>
       jevThenLlm({ form: formQuestion(type, form, subject.lemma, pos) }, formRubric(type, form, subject, pos)),
+    // An entry review gives a recorded inflection to the LLM alone, but only once the form is live;
+    // an entry Jev passed before that, as bulk-created entries were, is judged again with it.
+    rereviews: ({ form, type }) =>
+      isInflection(type) ? { kind: 'entry', lemma: normalizeTerm(form), settledBy: 'jev' } : null,
   },
   relation: {
     subject: 'sense',
@@ -893,4 +950,8 @@ export function targetOf<K extends FactKind>(kind: K, payload: FactPayloads[K]):
 
 export function topicOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): TopicId | null {
   return factKinds[kind].topic?.(payload) ?? null
+}
+
+export function rereviewOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): Rereview | null {
+  return factKinds[kind].rereviews?.(payload) ?? null
 }

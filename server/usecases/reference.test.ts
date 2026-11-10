@@ -30,6 +30,7 @@ describe('reference data', () => {
       frequency: { zipf: 5.16, rank: 691, source_id: 'wordfreq' },
       cefr: [{ pos: 'noun' as const, level: 'A1' as const, source_id: 'cefrj' }],
     }
+    world.referenceSources.push(wordfreq, { ...wordfreq, id: 'cefrj', name: 'CEFR-J Wordlist' })
     world.references.set('bank', reference)
     world.references.set('Bank', { frequency: null, cefr: [] })
     await createEntry(world.deps, agentA, { lemma: ' bank ' })

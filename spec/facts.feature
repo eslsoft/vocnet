@@ -68,7 +68,7 @@ Feature: Facts and review
 
   @facts/entry-lexical-unit @domain
   Scenario: A multiword entry is admitted only as a lexical unit
-    Given an entry fact for a single word or for a multiword lemma
+    Given an entry fact for a single word or for a multiword lemma that no CEFR learner list names
     When its review is planned
     Then a single word is asked whether it is an established word, as before
     And a multiword lemma is judged on whether it is a lexical unit of English that belongs in a learner's dictionary
@@ -89,6 +89,34 @@ Feature: Facts and review
     Then only the LLM is asked, and its rubric names each entry that records the spelling and the form type
     And it passes the word only when it also has a meaning of its own as a lemma, such as "saw" or "left", and fails a bare inflection such as "is"
     And a form the entry records of itself, a variant, and a form of an entry whose entry fact is not live are no evidence
+
+  @facts/entry-cefr-evidence @domain
+  Scenario: A CEFR learner list is evidence that a headword belongs
+    Given an entry fact whose exact lemma a CEFR learner vocabulary list names as a headword
+    When its review is planned
+    Then the LLM rubric names each listing's level, part of speech, and source, and says the list settles that the headword belongs
+    And it passes the headword unless it is an inflected form of another entry, a proper name, or a misspelling, without the lexical-unit test for phrases
+    And a multiword lemma still goes to the LLM alone, and a single word to Jev and then the LLM unless another entry records it as an inflection
+
+  @facts/entry-cefr-evidence-api @api
+  Scenario: A CEFR-listed compound passes the review the lexical-unit test fails
+    Given CEFR listings for "mental health" and an LLM that fails a phrase unless the CEFR evidence is in its rubric
+    When the entries "mental health" and "mountain system" are reviewed
+    Then "mental health" is published and records its CEFR listing in the review context
+    And "mountain system" is rejected
+
+  @facts/entry-inflection-rereview @usecase
+  Scenario: Publishing an inflection re-reviews an entry Jev passed without it
+    Given an entry whose entry fact Jev alone published
+    When another entry's form of any type but variant, spelled like that entry's lemma, is published
+    Then that entry fact is marked for a review in place and enqueued, and the LLM alone judges it with the inflection evidence
+    And an entry the LLM judged, a variant, a form an entry records of itself, and a duplicate delivery of the form's review queue nothing
+
+  @facts/entry-inflection-rereview-api @api
+  Scenario: A recorded inflection re-reviews an entry on a real database
+    Given the entries "be" and "is", with "is" published on a Jev pass
+    When the form "is" of "be" is published
+    Then the entry fact of "is" is enqueued, and its review in place by the LLM alone rejects it
 
   @facts/entry-llm-only-api @api
   Scenario: Phrases and recorded inflections reach the LLM alone on a real database

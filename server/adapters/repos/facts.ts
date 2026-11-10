@@ -1,9 +1,9 @@
-import { facts } from '@server/db/schema'
+import { entries, facts } from '@server/db/schema'
 import type { Fact } from '@server/domain/fact'
-import { factKinds } from '@server/domain/fact-kinds'
+import { factKinds, type Rereview } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FactRepo } from '@server/usecases/ports'
-import { type FactId, type FactKind, factKindSchema, factStatusSchema } from '@shared/facts'
+import { type FactId, type FactKind, type FactStatus, factKindSchema, factStatusSchema } from '@shared/facts'
 import {
   and,
   asc,
@@ -17,6 +17,7 @@ import {
   lt,
   ne,
   notExists,
+  notInArray,
   or,
   type SQLWrapper,
   sql,
@@ -91,6 +92,37 @@ function liveCorrectionOf(db: Db, id: SQLWrapper) {
     .where(and(eq(correction.supersedesId, id), inArray(correction.status, ['pending', 'published'])))
 }
 
+/**
+ * Marks for a review in place the facts a `Rereview` names, once the write it accompanies has
+ * applied: the written fact holds its new status and timestamp only if that write ran in this batch.
+ * The entry the written fact is about is never the other entry.
+ */
+function markRereview(db: Db, rereview: Rereview, written: { id: FactId; to: FactStatus; at: string }) {
+  const writtenFact = alias(facts, 'written')
+  const applied = db
+    .select({ subjectId: writtenFact.subjectId })
+    .from(writtenFact)
+    .where(
+      and(eq(writtenFact.id, written.id), eq(writtenFact.status, written.to), eq(writtenFact.updatedAt, written.at)),
+    )
+  const otherEntry = db
+    .select({ id: entries.id })
+    .from(entries)
+    .where(and(eq(entries.lemma, rereview.lemma), exists(applied), notInArray(entries.id, applied)))
+  return db
+    .update(facts)
+    .set({ revalidateSince: written.at })
+    .where(
+      and(
+        inArray(facts.subjectId, otherEntry),
+        eq(facts.kind, rereview.kind),
+        eq(facts.status, 'published'),
+        isNull(facts.revalidateSince),
+        sql`json_extract(${facts.review}, '$.reviewer') = ${rereview.settledBy}`,
+      ),
+    )
+}
+
 export function createFactRepo(db: Db): FactRepo {
   const findLive: FactRepo['findLive'] = async (kind, subjectId, contentKey) => {
     const row = await db
@@ -152,6 +184,7 @@ export function createFactRepo(db: Db): FactRepo {
       liveBelow,
       unsuperseded,
       originalPublished,
+      rereview,
     }) {
       // The review read the fact's revalidation mark; a newer mark means a newer review is due, so
       // neither the correction nor the original it retires may move on this one.
@@ -184,9 +217,10 @@ export function createFactRepo(db: Db): FactRepo {
       // or out of live also changes the gaps of the entries whose relations link to its node.
       const changesLive = from.some((status) => isLive(status) !== isLive(to))
       const sync = [syncLive, touchWorkOfFact(db, id), ...(changesLive ? [touchLinkedWorkOfFact(db, id)] : [])]
+      const rereviews = rereview ? [markRereview(db, rereview, { id, to, at })] : []
       if (!supersede) {
         return guardUnique(UNIQUE_MESSAGES, async () => {
-          const [updated] = await db.batch([update, ...sync])
+          const [updated] = await db.batch([update, ...rereviews, ...sync])
           return updated.length > 0
         })
       }
@@ -227,8 +261,9 @@ export function createFactRepo(db: Db): FactRepo {
               ),
           ]
         : []
-      const results = await guardUnique(UNIQUE_MESSAGES, () => db.batch([retire, ...mark, update, ...sync]))
-      return (results.at(-1 - sync.length) as { id: string }[]).length > 0
+      const statements = [retire, ...mark, update, ...rereviews, ...sync] as const
+      const results = await guardUnique(UNIQUE_MESSAGES, () => db.batch(statements))
+      return (results[statements.indexOf(update)] as { id: string }[]).length > 0
     },
 
     async listRevalidating(nodeId) {

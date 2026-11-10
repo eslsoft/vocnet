@@ -417,6 +417,7 @@ export function fakeWorld(): FakeWorld {
         liveBelow,
         unsuperseded,
         originalPublished,
+        rereview,
       }) => {
         const fact = world.facts.find((candidate) => candidate.id === id)
         if (!fact || !from.includes(fact.status)) return false
@@ -438,11 +439,19 @@ export function fakeWorld(): FakeWorld {
           live(candidate) &&
           revalidate.kinds.includes(candidate.kind) &&
           (candidate.subjectId === revalidate.nodeId || candidate.objectId === revalidate.nodeId)
+        const rereviewed = (candidate: Fact) =>
+          rereview !== undefined &&
+          candidate.kind === rereview.kind &&
+          candidate.status === 'published' &&
+          candidate.revalidateSince === null &&
+          candidate.review?.reviewer === rereview.settledBy &&
+          candidate.subjectId !== fact.subjectId &&
+          world.entries.some((entry) => entry.id === candidate.subjectId && entry.lemma === rereview.lemma)
         const retired = world.facts.map((candidate): Fact => {
           if (candidate.id === supersede && candidate.status === 'published') {
             return { ...candidate, status: 'superseded', updatedAt: at, revalidateSince: null }
           }
-          return dependsOnNode(candidate) ? { ...candidate, revalidateSince: at } : candidate
+          return dependsOnNode(candidate) || rereviewed(candidate) ? { ...candidate, revalidateSince: at } : candidate
         })
         const violation = violatedIndex(retired, next)
         if (violation) throw new ConflictError(violation)
@@ -648,6 +657,12 @@ export function fakeWorld(): FakeWorld {
     adminSubjects: new Set(['admin-1']),
     reference: {
       forLemma: async (lemma) => world.references.get(lemma) ?? { frequency: null, cefr: [] },
+      listCefrListings: async (lemma) =>
+        (world.references.get(lemma)?.cefr ?? []).map(({ level, pos, source_id }) => {
+          const source = world.referenceSources.find((candidate) => candidate.id === source_id)
+          if (!source) throw new Error(`CEFR row of ${lemma} names the unknown source ${source_id}.`)
+          return { level, pos, source: source.name }
+        }),
       listSources: async () => world.referenceSources,
       listCefrLemmasWithoutEntry: async () => {
         const lowest = new Map<string, string>()

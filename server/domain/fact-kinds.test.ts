@@ -13,6 +13,7 @@ import {
   RELATION_JEV_FLOOR,
   type ReviewPlan,
   type ReviewRequest,
+  rereviewOf,
   revalidatedBy,
   targetOf,
   topicOf,
@@ -24,8 +25,8 @@ const hospitalView = { category: 'Body and health', topic: 'At the doctor and ho
 const money = { pos: 'noun' as const, gloss: 'an institution that keeps money' }
 const bank = { lemma: 'bank', pos: 'noun' as const, gloss: 'land beside a river', siblings: [money] }
 const shore = { lemma: 'shore', pos: 'noun' as const, gloss: 'the land along the edge of water', siblings: [] }
-const bankEntry = { lemma: 'bank', senses: [money], inflectionOf: [] }
-const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [] }
+const bankEntry = { lemma: 'bank', senses: [money], inflectionOf: [], cefr: [] }
+const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [], cefr: [] }
 
 const requests = (plan: ReviewPlan): readonly ReviewRequest[] => (plan.kind === 'review' ? plan.requests : [])
 const jevQuestion = (plan: ReviewPlan, key: string) => {
@@ -275,7 +276,7 @@ describe('fact-kind registry', () => {
     const plan = planReview(
       'form',
       { form: 'would', type: 'past', pos: 'auxiliary' },
-      { subject: { lemma: 'will', senses: [], inflectionOf: [] }, target: null, topic: null },
+      { subject: { lemma: 'will', senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null },
     )
     expect(jevQuestion(plan, 'form')).toContain('When "will" is inflected as an auxiliary, is "would"')
     expect(llmPrompt(plan)?.user).toContain(
@@ -300,7 +301,7 @@ describe('fact-kind registry', () => {
   it('tells the LLM whether a pronunciation is the weak or the strong form, and of which part of speech [spec: facts/write-labels]', () => {
     const prompt = (payload: Parameters<typeof planReview<'pronunciation'>>[1]) => {
       const plan = planReview('pronunciation', payload, {
-        subject: { lemma: 'to', senses: [], inflectionOf: [] },
+        subject: { lemma: 'to', senses: [], inflectionOf: [], cefr: [] },
         target: null,
         topic: null,
       })
@@ -317,7 +318,7 @@ describe('fact-kind registry', () => {
     const plan = planReview(
       'form',
       { form: 'colour', type: 'variant' },
-      { subject: { lemma: 'color', senses: [], inflectionOf: [] }, target: null, topic: null },
+      { subject: { lemma: 'color', senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null },
     )
     expect(jevQuestion(plan, 'form')).toBe(
       `Is "colour" an accepted spelling variant of the English word "color" in standard American or British usage? ${tail}`,
@@ -381,7 +382,7 @@ describe('fact-kind registry', () => {
 
   it('rejects a single letter other than "a" and "I" without asking a reviewer [spec: facts/entry-no-letters]', () => {
     const plan = (lemma: string) =>
-      planReview('entry', {}, { subject: { lemma, senses: [], inflectionOf: [] }, target: null, topic: null })
+      planReview('entry', {}, { subject: { lemma, senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null })
     for (const letter of ['F', 'b', 'A', 'i', 'x', 'é', 'Ω']) {
       expect(plan(letter)).toEqual({
         kind: 'unreviewable',
@@ -395,7 +396,7 @@ describe('fact-kind registry', () => {
 
   it('admits a multiword entry only as a lexical unit and keeps single words as before [spec: facts/entry-lexical-unit]', () => {
     const plan = (lemma: string) =>
-      planReview('entry', {}, { subject: { lemma, senses: [], inflectionOf: [] }, target: null, topic: null })
+      planReview('entry', {}, { subject: { lemma, senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null })
     const word = plan('bread')
     expect(jevQuestion(word, 'lemma')).toContain('Is "bread" an established English word')
     expect(llmPrompt(word)?.user).toContain('function words and established abbreviations')
@@ -433,7 +434,11 @@ describe('fact-kind registry', () => {
   it('sends a multiword entry to the LLM alone and keeps Jev first for a single word [spec: facts/entry-multiword-llm]', () => {
     const reviewers = (lemma: string) =>
       requests(
-        planReview('entry', {}, { subject: { lemma, senses: [], inflectionOf: [] }, target: null, topic: null }),
+        planReview(
+          'entry',
+          {},
+          { subject: { lemma, senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null },
+        ),
       ).map((request) => request.reviewer)
     expect(reviewers('spatial distribution')).toEqual(['llm'])
     expect(reviewers('look after')).toEqual(['llm'])
@@ -452,6 +457,7 @@ describe('fact-kind registry', () => {
             { lemma: 'see', type: 'past' },
             { lemma: 'sea', type: 'plural' },
           ],
+          cefr: [],
         },
         target: null,
         topic: null,
@@ -466,6 +472,58 @@ describe('fact-kind registry', () => {
     expect(rubric).toContain('fail when it is only that inflection ("is", "was", "has", "did")')
     const plain = llmPrompt(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }))?.user
     expect(plain).not.toContain('records "bank" as an inflection')
+  })
+
+  it('admits a CEFR-listed headword on the list as evidence, without the lexical-unit test [spec: facts/entry-cefr-evidence]', () => {
+    const listed = (lemma: string, inflectionOf: Array<{ lemma: string; type: 'past' }> = []) =>
+      planReview(
+        'entry',
+        {},
+        {
+          subject: {
+            lemma,
+            senses: [],
+            inflectionOf,
+            cefr: [
+              { level: 'A2', pos: 'noun', source: 'CEFR-J Wordlist' },
+              { level: 'B1', pos: 'verb', source: 'Octanove' },
+            ],
+          },
+          target: null,
+          topic: null,
+        },
+      )
+    const phrase = listed('mental health')
+    expect(requests(phrase).map((request) => request.reviewer)).toEqual(['llm'])
+    const rubric = llmPrompt(phrase)?.user
+    expect(rubric).toContain(
+      'Does "mental health" belong in a learner\'s dictionary as its own entry?\nIt is a headword of a CEFR learner vocabulary list, which names the vocabulary learners need:\n- A2 noun in CEFR-J Wordlist\n- B1 verb in Octanove\n',
+    )
+    expect(rubric).toContain(
+      'fail only when it is an inflected form of another entry, a proper name, or a misspelling.',
+    )
+    expect(rubric).not.toContain('lexical unit of English')
+    expect(rubric).not.toContain('"wheat grain"')
+
+    const word = listed('weather')
+    expect(requests(word).map((request) => request.reviewer)).toEqual(['jev', 'llm'])
+    expect(jevQuestion(word, 'lemma')).toContain('Is "weather" an established English word')
+    expect(llmPrompt(word)?.user).toContain('- A2 noun in CEFR-J Wordlist')
+
+    const inflected = listed('could', [{ lemma: 'can', type: 'past' }])
+    expect(requests(inflected).map((request) => request.reviewer)).toEqual(['llm'])
+    expect(llmPrompt(inflected)?.user).toContain('- B1 verb in Octanove')
+    expect(llmPrompt(inflected)?.user).toContain('- the simple past tense form of "can"')
+  })
+
+  it('names the entry an inflection re-reviews once it publishes [spec: facts/entry-inflection-rereview]', () => {
+    expect(rereviewOf('form', { form: ' is ', type: 'third_person_singular' })).toEqual({
+      kind: 'entry',
+      lemma: 'is',
+      settledBy: 'jev',
+    })
+    expect(rereviewOf('form', { form: 'colour', type: 'variant' })).toBeNull()
+    expect(rereviewOf('entry', {})).toBeNull()
   })
 
   it('names the inflecting form types, never a spelling variant, as the forms that make a word an inflection', () => {
@@ -628,6 +686,7 @@ describe('morphology facts', () => {
       lemma: 'spectator',
       senses: [{ pos: 'noun' as const, gloss: 'A person who watches.' }],
       inflectionOf: [],
+      cefr: [],
     }
     const plan = planReview('morphology', parts(['spect', 'root', 'look'], ['-ator', 'suffix']), {
       subject: spectator,
@@ -641,7 +700,7 @@ describe('morphology facts', () => {
     expect(llmPrompt(plan)?.user).toContain('the "er" of "water"')
     expect(llmPrompt(plan)?.user).toContain('- (noun) "A person who watches."')
     const simple = planReview('morphology', parts(['water', 'base']), {
-      subject: { lemma: 'water', senses: [], inflectionOf: [] },
+      subject: { lemma: 'water', senses: [], inflectionOf: [], cefr: [] },
       target: null,
       topic: null,
     })

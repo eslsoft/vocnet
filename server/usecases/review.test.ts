@@ -153,6 +153,64 @@ describe('reviewFact', () => {
     })
   })
 
+  it('re-reviews an entry Jev passed alone once another entry publishes it as an inflection [spec: facts/entry-inflection-rereview]', async () => {
+    const world = fakeWorld()
+    const entryFactOf = (entryId: string) => {
+      const fact = world.facts.find((candidate) => candidate.kind === 'entry' && candidate.subjectId === entryId)
+      if (!fact) throw new Error(`Entry ${entryId} has no entry fact.`)
+      return fact
+    }
+    const publishEntry = async (lemma: string) => {
+      const { entry, fact } = await createEntry(world.deps, agentA, { lemma })
+      await reviewFact(world.deps, fact.id, 'trace-review')
+      return entry
+    }
+    const publishForm = async (
+      entryId: string,
+      payload: { form: string; type: 'third_person_singular' | 'past' | 'plural' | 'variant' },
+    ) => {
+      const { fact } = await submitFact(world.deps, agentA, { kind: 'form', subject_id: entryId, payload })
+      world.queued.splice(0)
+      await expect(reviewFact(world.deps, fact.id, 'trace-form')).resolves.toBe('published')
+      return fact
+    }
+    const [be, see, color, sheep] = await Promise.all(['be', 'see', 'color', 'sheep'].map(publishEntry))
+    const is = await publishEntry('is')
+    await publishEntry('colour')
+    world.answerJev((questions) => ({
+      model: 'jev-test',
+      answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.05])),
+    }))
+    await publishEntry('saw')
+    world.passReviews()
+    expect(entryFactOf(is.id).review).toMatchObject({ reviewer: 'jev', context: { subject: { inflectionOf: [] } } })
+
+    await publishForm(see.id, { form: 'saw', type: 'past' })
+    await publishForm(color.id, { form: 'colour', type: 'variant' })
+    await publishForm(sheep.id, { form: 'sheep', type: 'plural' })
+    expect(world.queued).toEqual([])
+
+    const form = await publishForm(be.id, { form: 'is', type: 'third_person_singular' })
+    expect(world.queued).toEqual([{ factId: entryFactOf(is.id).id, traceId: 'trace-form' }])
+    expect(entryFactOf(is.id).revalidateSince).not.toBeNull()
+    world.queued.splice(0)
+    await expect(reviewFact(world.deps, form.id, 'trace-form')).resolves.toBe('skipped')
+    expect(world.queued).toEqual([])
+
+    world.failReviews()
+    const jevCalls = world.jevCalls.length
+    await expect(reviewFact(world.deps, entryFactOf(is.id).id, 'trace-form')).resolves.toBe('rejected')
+    expect(world.jevCalls).toHaveLength(jevCalls)
+    expect(entryFactOf(is.id)).toMatchObject({
+      status: 'rejected',
+      revalidateSince: null,
+      review: {
+        reviewer: 'llm',
+        context: { subject: { inflectionOf: [{ lemma: 'be', type: 'third_person_singular' }] } },
+      },
+    })
+  })
+
   it('reviews judgment facts with the LLM against the current gloss', async () => {
     const { world, sense } = await bankWorld()
     const { fact } = await submitFact(world.deps, agentA, {
