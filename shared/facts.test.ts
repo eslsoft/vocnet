@@ -133,3 +133,18 @@ describe('grammar, word formation, and collocation formats', () => {
     expect(submit('collocation', sense, { text: 'heavy rain', pattern: 'adjective' })).toHaveLength(1)
   })
 })
+
+describe('sense list format', () => {
+  const submit = (payload: unknown) => issues({ kind: 'sense_list', subject_id: entry, payload })
+
+  it('names at least one common sense and each sense once [spec: facts/sense-list-write]', () => {
+    expect(submit({ common: [sense], extra: [] })).toEqual([])
+    expect(submit({ common: [], extra: [sense] })).toHaveLength(1)
+    expect(submit({ common: [sense], extra: [sense] })).toEqual([
+      'A sense list names each sense once, in common or in extra.',
+    ])
+    expect(submit({ common: [sense, sense], extra: [] })).toEqual([
+      'A sense list names each sense once, in common or in extra.',
+    ])
+  })
+})

@@ -108,6 +108,53 @@ describe('EntryInspector', () => {
     expect(view.location()).toMatch(/^\/entries\/bank\?fact=/)
   })
 
+  it("orders the senses by the sense list and shows each one's place [spec: console/entry-inspector]", async () => {
+    const bank = { id: crypto.randomUUID(), lemma: 'bank' }
+    const [river, money, oars, added] = ['noun', 'noun', 'noun', 'verb'].map((pos) => ({
+      id: crypto.randomUUID() as never,
+      entry_id: bank.id,
+      pos: pos as 'noun',
+    }))
+    const gloss = (sense: { id: string }, text: string) =>
+      fact({ kind: 'sense', payload: { gloss: text }, subject_id: sense.id })
+    const published = fact({
+      kind: 'sense_list',
+      payload: { common: [river.id, money.id], extra: [oars.id] },
+      subject_id: bank.id,
+    })
+    const correction = fact({
+      kind: 'sense_list',
+      payload: { common: [money.id, river.id], extra: [oars.id] },
+      subject_id: bank.id,
+      status: 'pending',
+      supersedes_id: published.id,
+      review: null,
+    })
+    const facts = [
+      fact({ kind: 'entry', payload: {}, subject_id: bank.id }),
+      gloss(added, 'To rely on.'),
+      gloss(oars, 'A row of oars.'),
+      gloss(river, 'Land beside a river.'),
+      gloss(money, 'A place for money.'),
+      published,
+      correction,
+    ]
+    server.use(...consoleApi({ entries: [bank], senses: [added, oars, river, money], facts }).handlers)
+    renderAt('/entries/bank', routes)
+    expect(await screen.findByRole('heading', { name: 'bank' })).toBeInTheDocument()
+    const titles = screen.getAllByText(/./, { selector: '[data-slot=card-title]' }).map((title) => title.textContent)
+    expect(titles).toEqual([
+      'Reference data',
+      'Entry facts',
+      'Common #1nounA place for money.',
+      'Common #2nounLand beside a river.',
+      'RarenounA row of oars.',
+      'Not in the sense listverbTo rely on.',
+    ])
+    const entryFacts = screen.getByText('Entry facts').closest('[data-slot=card]') as HTMLElement
+    expect(within(entryFacts).getAllByText('2 common, 1 extra')).toHaveLength(2)
+  })
+
   it('shows the reference data with the attribution of each source it came from [spec: console/entry-reference]', async () => {
     server.use(...world().handlers)
     renderAt('/entries/bank', routes)

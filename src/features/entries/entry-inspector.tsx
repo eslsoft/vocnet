@@ -5,7 +5,7 @@ import { FactDrawer, FactStatusBadge, FactTable, useFactSelection } from '@/feat
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { ErrorNotice } from '@/shared/ui/error-notice'
 import { EntryReference } from './entry-reference'
-import { groupEntry } from './entry-view'
+import { groupEntry, type Listing } from './entry-view'
 import { useManagedEntry } from './hooks'
 
 function EntryDetail({ lemma }: { lemma: string }) {
@@ -15,6 +15,11 @@ function EntryDetail({ lemma }: { lemma: string }) {
   if (entry.error) return <ErrorNotice error={entry.error} />
   if (!entry.data) return null
   const { entryFacts, senses } = groupEntry(entry.data)
+  const listingLabel = (listing: Listing) => {
+    if (listing === 'extra') return t('entries.extraSense')
+    if (listing === 'unlisted') return t('entries.unlistedSense')
+    return t('entries.commonRank', { rank: listing.rank })
+  }
   const entryFact = entryFacts.find((fact) => fact.kind === 'entry')
   return (
     <div className="flex flex-col gap-4">
@@ -32,10 +37,11 @@ function EntryDetail({ lemma }: { lemma: string }) {
         </CardContent>
       </Card>
       {senses.length === 0 ? <p className="text-muted-foreground text-sm">{t('entries.noSenses')}</p> : null}
-      {senses.map(({ sense, gloss, facts, incoming }) => (
+      {senses.map(({ sense, gloss, listing, facts, incoming }) => (
         <Card key={sense.id}>
           <CardHeader>
             <CardTitle>
+              {listing ? <span className="mr-2 text-muted-foreground text-xs">{listingLabel(listing)}</span> : null}
               <span className="mr-2 text-muted-foreground italic">{sense.pos}</span>
               {gloss ?? <span className="text-muted-foreground">{t('entries.noGloss')}</span>}
             </CardTitle>

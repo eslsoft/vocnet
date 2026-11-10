@@ -42,6 +42,7 @@ describe('summarizeFact', () => {
       { kind: 'collocation', payload: { text: 'make a decision', pattern: 'verb_noun' } },
       'make a decision (verb_noun)',
     ],
+    [{ kind: 'sense_list', payload: { common: [target, target], extra: [target] } }, '2 common, 1 extra'],
   ])('summarizes a %o fact', (input, expected) => {
     expect(summarizeFact(fact(input as FactDto))).toBe(expected)
   })

@@ -67,6 +67,7 @@ Feature: Console
     Given an entry with senses whose facts are pending, published, rejected, and uncertain
     When the admin opens the entry
     Then each sense shows its gloss and its facts with their statuses, and incoming relations are listed
+    And with a sense list, the senses follow its current list and each shows its common rank, rare, or not in the list, and the list fact shows among the entry facts
     And an unknown lemma shows the server's not-found message
 
   @console/entry-reference @web

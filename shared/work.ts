@@ -43,7 +43,19 @@ const relationHaveSchema = z
 
 export const gapSchema = z
   .discriminatedUnion('type', [
-    z.object({ type: z.literal('senses') }),
+    z.object({ type: z.literal('senses') }).meta({ description: 'The entry has no sense with a live gloss.' }),
+    z
+      .object({
+        type: z.literal('sense_list'),
+        rejected: z.number().int().nonnegative().meta({
+          description:
+            'How many sense lists naming exactly the current senses review rejected, counted up to two. When it is above zero, read the review reason of the latest rejected sense_list in the entry facts and fix exactly what it names: add the missing senses, merge duplicates, reorder, or move senses between common and extra. A third rejection of the same senses no longer changes the gap, so the entry stalls until something else changes it.',
+        }),
+      })
+      .meta({
+        description:
+          "The entry has senses but no live sense_list naming exactly them: none was submitted, it was rejected, or it is stale because a sense was added or a listed sense's gloss is no longer live. Complete the common senses, then submit a list (superseding a published one).",
+      }),
     z.object({ type: z.literal('forms') }),
     z.object({ type: z.literal('pronunciation') }),
     z

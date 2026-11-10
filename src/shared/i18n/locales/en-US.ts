@@ -41,6 +41,7 @@ export const enUS = {
     grammar: 'Grammar',
     morphology: 'Word formation',
     collocation: 'Collocation',
+    sense_list: 'Sense list',
   },
   signal: {
     unreviewed: 'Not reviewed',
@@ -110,6 +111,9 @@ export const enUS = {
     noSenses: 'No senses yet.',
     incoming: 'Relations pointing here',
     noGloss: 'No live gloss',
+    commonRank: 'Common #{{rank}}',
+    extraSense: 'Rare',
+    unlistedSense: 'Not in the sense list',
     reference: 'Reference data',
     frequency: 'Frequency',
     frequencyValue: 'Zipf {{zipf}} · rank {{rank}}',

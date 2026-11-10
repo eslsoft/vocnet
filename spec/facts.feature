@@ -30,7 +30,7 @@ Feature: Facts and review
   @facts/reviewer-routing @domain
   Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
-    Then entry, sense, form, relation, topic, grammar, and morphology go to Jev and then the LLM, and pronunciation, example, translation, and collocation go to the LLM
+    Then entry, sense, form, relation, topic, grammar, and morphology go to Jev and then the LLM, and pronunciation, example, translation, collocation, and sense list go to the LLM
     And a plan may skip straight to the LLM, which ends every chain, but never past it
 
   @facts/second-opinion @domain
@@ -497,3 +497,25 @@ Feature: Facts and review
     When an agent submits a correction of the grammar and of one collocation, then a second correction of each
     Then each first correction is accepted, the collocation's although the sense is at its limit, and each second one is 409 conflict naming the live correction
     And once reviewed, each correction is published, its original superseded, and the sense still holds five live collocations
+
+  @facts/sense-list-write @usecase
+  Scenario: A sense list names exactly the entry's live senses, each once
+    Given an entry with senses, one of whose glosses may no longer be live
+    When an agent submits a sense list of common senses in order and extra senses
+    Then a list with no common sense or a sense named twice is invalid, a list that names a sense that is not a live sense of the entry or leaves out a live one is an invalid reference naming those senses
+    And a resubmission of the same common order and extra set returns the live list, a second list is a conflict, and a correction supersedes the published list
+
+  @facts/sense-list-rubric @domain
+  Scenario: A sense list is judged as a learner's dictionary's sense inventory
+    Given a sense list of an entry
+    When its review is planned
+    Then the LLM alone sees the lemma and every listed sense with its part of speech and gloss, numbered, common in order and then extra
+    And it passes only a list whose common senses cover every common sense a learner's dictionary lists, hold no duplicate or over-split meaning, run from most to least common, and whose extra senses are all rare, archaic, technical, or specialist, never failing a missing rare sense
+    And its reason names each missing, duplicated, misordered, or misplaced sense
+    And a list naming a sense without a live gloss is unreviewable
+
+  @facts/sense-list-review @api
+  Scenario: A sense list is reviewed, published, and reopened through the queue
+    Given an agent submits a sense list for an entry's senses
+    When the queue consumer reviews it, and the entry then gains a sense or loses a listed one
+    Then the LLM judges the list with every listed gloss, the published list closes the sense list gap, and the change reopens it until a correction lists the senses again

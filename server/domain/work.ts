@@ -4,6 +4,7 @@ import { type Fact, type FactOf, isKind } from './fact'
 import { isLive } from './fact-lifecycle'
 import type { SenseNode } from './nodes'
 import type { PrincipalRef } from './principal'
+import { currentSenseList, listsExactly, rejectedAttempts } from './sense-list'
 import { isMultiword } from './term'
 
 /** What the work rules read about an entry: its senses, its facts in every status, and its open feedback. */
@@ -41,26 +42,72 @@ export function completeDecision(lease: WorkLease, who: PrincipalRef, now: Date)
   return Date.parse(lease.expiresAt) <= now.getTime() ? 'expired' : 'allowed'
 }
 
-type EntryGap = Extract<Gap, { type: 'senses' | 'forms' | 'pronunciation' | 'morphology' }>
+type EntryGap = Extract<Gap, { type: 'senses' | 'sense_list' | 'forms' | 'pronunciation' | 'morphology' }>
 type SenseGap = Exclude<Gap, EntryGap>
 type RelationGap = Extract<Gap, { type: 'relations' }>
 
 const isChinese = (language: string) => language === 'zh' || language.startsWith('zh-')
 
+/** What the entry gap rules read: the entry's facts in every status, the live ones, and the senses whose gloss is live. */
+interface EntryState {
+  facts: readonly Fact[]
+  live: Fact[]
+  senses: SenseNode[]
+}
+
+const counting =
+  (kind: Fact['kind']) =>
+  ({ live }: EntryState) =>
+    live.filter((fact) => fact.kind === kind).length
+
+/**
+ * How many sense lists a producer may submit for the same senses. Each rejection changes the
+ * `sense_list` gap, so the pass that follows reads the review's reason; once this many are
+ * rejected, another rejection leaves the open work as the claim found it and the entry stalls.
+ */
+export const MAX_SENSE_LIST_ATTEMPTS = 3
+
+/** The inventory gap: senses while there are none, else a list, counting the attempts rejected so far. */
+function inventoryGap({ facts, senses }: EntryState): EntryGap {
+  if (senses.length === 0) return { type: 'senses' }
+  const attempts = rejectedAttempts(
+    facts,
+    senses.map((sense) => sense.id),
+  )
+  return { type: 'sense_list', rejected: Math.min(attempts, MAX_SENSE_LIST_ATTEMPTS - 1) }
+}
+
+/**
+ * The sense inventory is one slot: settled while the entry's sense list names exactly its live
+ * senses. Its gap asks for senses while the entry has none, and for a list once it has some.
+ */
+function inventorySettled({ live, senses }: EntryState): number {
+  const list = currentSenseList(live)
+  const ids = senses.map((sense) => sense.id)
+  return list !== null && ids.length > 0 && listsExactly(list.payload, ids) ? 1 : 0
+}
+
 // A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
 // (about the entry or its senses) plus relations pointing at its senses, so a kind check scopes to the entry.
-const entryGapRules: ReadonlyArray<{ gap: EntryGap; need: (lemma: string) => number; fills: (fact: Fact) => boolean }> =
-  [
-    { gap: { type: 'senses' }, need: () => 1, fills: (fact) => fact.kind === 'sense' },
-    { gap: { type: 'forms' }, need: () => 1, fills: (fact) => fact.kind === 'form' },
-    { gap: { type: 'pronunciation' }, need: () => 1, fills: (fact) => fact.kind === 'pronunciation' },
-    // Word formation analyses one word; a phrase's parts are its own entries.
-    {
-      gap: { type: 'morphology' },
-      need: (lemma) => (isMultiword(lemma) ? 0 : 1),
-      fills: (fact) => fact.kind === 'morphology',
-    },
-  ]
+const entryGapRules: ReadonlyArray<{
+  gap: (state: EntryState) => EntryGap
+  need: (lemma: string) => number
+  filled: (state: EntryState) => number
+}> = [
+  {
+    gap: inventoryGap,
+    need: () => 1,
+    filled: inventorySettled,
+  },
+  { gap: () => ({ type: 'forms' }), need: () => 1, filled: counting('form') },
+  { gap: () => ({ type: 'pronunciation' }), need: () => 1, filled: counting('pronunciation') },
+  // Word formation analyses one word; a phrase's parts are its own entries.
+  {
+    gap: () => ({ type: 'morphology' }),
+    need: (lemma) => (isMultiword(lemma) ? 0 : 1),
+    filled: counting('morphology'),
+  },
+]
 
 const directions = ['outgoing', 'incoming'] as const
 
@@ -215,29 +262,43 @@ interface OpenGap {
   missing: number
 }
 
-/** The open gaps, and how many slots the rules count for the entry: each entry rule and, per live sense, each need. */
+/**
+ * The senses the per-sense rules count: those whose gloss is live, less the extra senses of the
+ * entry's sense list. Rare senses never count toward completeness; before a list exists, all do.
+ */
+function countedSenses({ live, senses }: EntryState): SenseNode[] {
+  const extra = new Set(currentSenseList(live)?.payload.extra)
+  return senses.filter((sense) => !extra.has(sense.id))
+}
+
+/** The open gaps, and how many slots the rules count for the entry: each entry rule and, per counted sense, each need. */
 function openGaps(snapshot: GapInput): {
   open: OpenGap[]
   slots: number
 } {
   const live = [...snapshot.facts, ...snapshot.incoming].filter((fact) => isLive(fact.status))
   const glossed = new Set(live.flatMap((fact) => (fact.kind === 'sense' ? [fact.subjectId] : [])))
-  const liveSenses = snapshot.senses.filter((sense) => glossed.has(sense.id))
   const visible = visibleNeighbors(snapshot.neighbors)
   const { lemma } = snapshot.entry
+  const state: EntryState = {
+    facts: snapshot.facts,
+    live,
+    senses: snapshot.senses.filter((sense) => glossed.has(sense.id)),
+  }
   const entry = entryGapRules.flatMap((rule) => {
-    const missing = rule.need(lemma) - live.filter(rule.fills).length
-    return missing > 0 ? [{ gap: rule.gap, missing }] : []
+    const missing = rule.need(lemma) - rule.filled(state)
+    return missing > 0 ? [{ gap: rule.gap(state), missing }] : []
   })
   const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(lemma), 0)
-  const senses = liveSenses.flatMap((sense) =>
+  const counted = countedSenses(state)
+  const senses = counted.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {
       const filling = live.filter((fact) => rule.fills(fact, sense.id, visible))
       const missing = rule.need(sense) - filling.length
       return missing > 0 ? [{ gap: rule.gap(sense.id, filling), missing }] : []
     }),
   )
-  const senseSlots = liveSenses.reduce(
+  const senseSlots = counted.reduce(
     (sum, sense) => sum + senseGapRules.reduce((need, rule) => need + rule.need(sense), 0),
     0,
   )
@@ -246,7 +307,8 @@ function openGaps(snapshot: GapInput): {
 
 /**
  * What the entry still lacks, judged from its live facts. A sense counts while its gloss fact is
- * live, and a relation while the sense at its other end has a live gloss and a live entry fact.
+ * live and the entry's sense list does not put it in extra, and a relation while the sense at its
+ * other end has a live gloss and a live entry fact.
  */
 export function entryGaps(snapshot: GapInput): Gap[] {
   return openGaps(snapshot).open.map(({ gap }) => gap)

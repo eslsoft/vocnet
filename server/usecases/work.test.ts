@@ -40,7 +40,7 @@ async function pass(world: World, during?: (entryId: EntryId, lemma: string) => 
   return claim.lease.lemma
 }
 
-/** Gives the entry a preposition sense, which needs no relations, and every other slot. */
+/** Gives the entry a preposition sense, which needs no relations, its sense list, and every other slot. */
 async function fill(world: World, entryId: EntryId, author = agentA) {
   const { sense } = await createSense(world.deps, author, { entry_id: entryId, pos: 'preposition', gloss: 'Near to.' })
   const entry = await world.deps.nodes.findEntry(entryId)
@@ -50,6 +50,7 @@ async function fill(world: World, entryId: EntryId, author = agentA) {
     { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'us' } },
     { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.' } },
     { kind: 'translation', subject_id: sense.id, payload: { language: 'zh', text: '在旁边' } },
+    { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } },
   ] as const
   for (const input of facts) await submitFact(world.deps, author, input as never)
   return sense.id
@@ -202,7 +203,7 @@ describe('claimWork', () => {
     const claim = await claimWork(world.deps, agentA)
     expect(claim?.gaps).toEqual([])
     expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 7 })
+    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 8 })
     const { fact: correction } = await submitFact(world.deps, agentA, {
       kind: 'example',
       subject_id: sense as SenseId,
@@ -236,7 +237,7 @@ describe('claimWork', () => {
     await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
     await claimFeedback(world.deps, agentB, item.id)
     const claimed = world.work.get(entries[0].entry.id)
-    expect(claimed).toMatchObject({ quality: 1 - 1 / 7, scoredRevision: claimed?.revision })
+    expect(claimed).toMatchObject({ quality: 1 - 1 / 8, scoredRevision: claimed?.revision })
     await resolveFeedback(world.deps, agentB, item.id, { resolution: 'dismissed', note: 'It is.' })
     expect(world.work.get(entries[0].entry.id)).toMatchObject({ quality: 1 })
   })
@@ -273,6 +274,7 @@ describe('claimWork', () => {
     expect(claim?.entry.facts).toHaveLength(2)
     expect(claim?.weakFacts).toEqual([])
     expect(claim?.gaps.map((gap) => gap.type)).toEqual([
+      'sense_list',
       'forms',
       'pronunciation',
       'morphology',

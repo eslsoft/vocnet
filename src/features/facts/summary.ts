@@ -29,5 +29,7 @@ export function summarizeFact(fact: FactDto): string {
       return fact.payload.parts.map(({ form, meaning }) => (meaning ? `${form} "${meaning}"` : form)).join(' + ')
     case 'collocation':
       return `${fact.payload.text} (${fact.payload.pattern})`
+    case 'sense_list':
+      return `${fact.payload.common.length} common, ${fact.payload.extra.length} extra`
   }
 }

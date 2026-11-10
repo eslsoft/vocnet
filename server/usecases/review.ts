@@ -128,7 +128,7 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
     ])
     return {
       lemma: entry.lemma,
-      senses: senses.map(({ pos, gloss }) => ({ pos, gloss })),
+      senses: senses.map(({ senseId, pos, gloss }) => ({ id: senseId, pos, gloss })),
       inflectionOf: inflections,
       cefr,
     }
