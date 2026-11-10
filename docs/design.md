@@ -302,6 +302,21 @@ retracted. Then the entry's `sense_list` gap reopens (see Gaps) and the producer
 submits a correction naming the senses as they are. Correcting a gloss does not
 re-review the list.
 
+A rejected list is feedback the producer acts on. Its review reason names each
+missing sense, duplicate pair, misordered sense, and misplaced sense, and the
+`sense_list` gap carries `rejected`: how many of the entry's lists naming
+exactly its live senses review rejected, counted up to
+`MAX_SENSE_LIST_ATTEMPTS - 1` (`MAX_SENSE_LIST_ATTEMPTS` is 3, in
+`server/domain/work.ts`). Each rejection below the bound changes the gap, so the
+open work differs from what the last claim recorded, the entry is not stalled,
+and the next pass reads the latest rejected list's reason among the claim's
+entry facts and fixes exactly what it names. The third rejected list of the
+same senses leaves the gap as the claim found it, so the entry stalls (see
+Stall). A change to the senses starts the count over, since earlier lists no
+longer name exactly the live senses. A sense another principal authored cannot
+be retracted by the producer (retract is author-only), so a duplicate the
+reviewer names among such senses goes through feedback or an admin.
+
 The public entry (`GET /v1/entries/{lemma}`) shows its published word formation
 as `morphology`, and each public sense (also `GET /v1/senses/{id}`) its
 published `grammar` and `collocations`, each with its id, confidence, and
@@ -733,6 +748,11 @@ that made no lasting progress, which the next pass would repeat:
 - a pass that superseded a weak fact with a correction that is weak again,
   since the weak slot keeps its key.
 
+A rejected sense list is the exception, bounded: its rejection changes the
+`sense_list` gap's `rejected` count, so the entry comes back for the producer to
+act on the reason, until `MAX_SENSE_LIST_ATTEMPTS` lists of the same senses are
+rejected (see Sense lists).
+
 The open work changes, and the stall lifts, when another principal fills or
 opens a gap, a fact leaves live, a weak fact is replaced, a new sense opens
 gaps (its own and a stale sense list's), or feedback opens on a fact. A pass that adds a sense makes progress: its
@@ -845,7 +865,9 @@ to need a sense list: it recomputes every entry's completeness with the
 inventory slot filled only by a current list naming exactly the live senses,
 and with the per-sense slots of that list's extra senses left out, and it lifts
 the stall of every entry that has senses its list does not settle, since no
-claim recorded before then named a `sense_list` gap. After that release every
+claim recorded before then named a `sense_list` gap (the gap's `rejected`
+count enters only the open work, not completeness, so the backfill has nothing
+more to compute). After that release every
 entry with senses has a `sense_list` gap until a list is submitted for it. A
 test runs the backfills in order over rescored rows, sense lists among them
 (settled, with extra senses, stale, and with a pending correction), and expects
@@ -876,7 +898,7 @@ facts close its gap:
 | Gap                                      | Open while                                              |
 | ---------------------------------------- | ------------------------------------------------------- |
 | `{ type: "senses" }`                     | No sense has a live gloss                               |
-| `{ type: "sense_list" }`                 | Some sense has a live gloss, and the current sense list does not name exactly the senses with a live gloss |
+| `{ type: "sense_list", rejected }`       | Some sense has a live gloss, and the current sense list does not name exactly the senses with a live gloss; `rejected` counts the rejected lists naming exactly those senses, up to `MAX_SENSE_LIST_ATTEMPTS - 1` |
 | `{ type: "forms" }`                      | No live form                                            |
 | `{ type: "pronunciation" }`              | No live pronunciation                                   |
 | `{ type: "relations", sense_id, count, have }` | The sense is in fewer live relations, as subject or object, than its part of speech needs |

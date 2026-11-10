@@ -3,7 +3,7 @@ import { factSchema, factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { workClaimSchema } from '@shared/work'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
+import { call, deliverPendingReviews, deliverReviews, issueAgentKey, stubReviewers } from './helpers'
 
 const createEntry = async (token: string, lemma: string) =>
   createEntryResultSchema.parse((await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })).body)
@@ -96,5 +96,43 @@ describe('sense lists', () => {
     )
     expect(rejected).toMatchObject({ status: 'rejected', review: { reviewer: 'llm', verdict: 'fail' } })
     expect((await entryGaps(token)).map((gap) => gap.type)).toContain('sense_list')
+  })
+
+  it('brings an entry back with each rejected list until the attempts run out [spec: work/sense-list-retry]', async () => {
+    const token = await issueAgentKey()
+    const { entry } = await createEntry(token, 'may')
+    const can = await createSense(token, entry.id, 'auxiliary', 'Used to say that something is possible.')
+    const allowed = await createSense(token, entry.id, 'auxiliary', 'Used to ask for or give permission.')
+    await settle()
+    const reason = 'Missing the noun sense (the fifth month of the year).'
+    const rejectWith = () =>
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        Response.json({
+          model: 'llm-test',
+          choices: [{ message: { content: JSON.stringify({ verdict: 'fail', confidence: 0.9, reason }) } }],
+        }),
+      )
+
+    for (const attempt of [0, 1, 2]) {
+      const claimed = await call('/manage/v1/work/claim', { method: 'POST', token })
+      expect(claimed.status).toBe(200)
+      const work = workClaimSchema.parse(claimed.body)
+      expect(work.gaps).toContainEqual({ type: 'sense_list', rejected: attempt })
+      const rejected = work.entry.facts.filter((fact) => fact.kind === 'sense_list' && fact.status === 'rejected')
+      expect(rejected.map((fact) => fact.review?.reason)).toEqual(Array(attempt).fill(reason))
+      // A pass that only submits the same list, which review rejects again.
+      const submitted = await submit(token, {
+        kind: 'sense_list',
+        subject_id: entry.id,
+        payload: { common: [can.sense.id, allowed.sense.id], extra: [] },
+      })
+      expect(submitted.status).toBe(201)
+      expect((await call(`/manage/v1/work/${work.lease.id}/complete`, { method: 'POST', token })).status).toBe(200)
+      rejectWith()
+      await deliverReviews([factWriteResultSchema.parse(submitted.body).fact.id])
+      vi.restoreAllMocks()
+    }
+
+    expect((await call('/manage/v1/work/claim', { method: 'POST', token })).status).toBe(204)
   })
 })

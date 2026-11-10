@@ -19,6 +19,18 @@ Feature: Worklist
     When the gaps and completeness are computed
     Then the extra senses have no per-sense gaps and count no slots, while before any list every live sense counts
 
+  @work/sense-list-attempts @domain
+  Scenario: Each rejected list changes the sense list gap, up to a bound
+    Given an entry with live senses and rejected sense lists naming exactly them, or naming other senses
+    When the gaps are computed
+    Then the sense list gap counts the rejected lists that name exactly the live senses, up to one less than MAX_SENSE_LIST_ATTEMPTS, so each rejection changes the open work until the bound and another rejection then leaves it unchanged
+
+  @work/sense-list-retry @api
+  Scenario: A rejected sense list brings the entry back with the reviewer's reason, until the attempts run out
+    Given an entry with senses whose pass submits only a sense list
+    When review rejects the list
+    Then the entry is claimable again with the rejected list and its review reason among the claim's entry facts, and after the third rejected list of the same senses the entry stalls
+
   @work/sense-list-rescore @api
   Scenario: The release of sense list gaps rescores every entry and lifts stalls it outdates
     Given entries stalled on open work recorded before sense list gaps existed

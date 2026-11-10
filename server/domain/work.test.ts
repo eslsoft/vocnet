@@ -15,6 +15,7 @@ import {
   isStalled,
   learnerBand,
   leaseExpiry,
+  MAX_SENSE_LIST_ATTEMPTS,
   RELATIONS_NEEDED,
   TOPICS_NEEDED,
   type WorkLease,
@@ -97,7 +98,7 @@ describe('entryGaps', () => {
       fact('translation', glossed.id, { language: 'fr', text: 'rive' }),
     ]
     expect(entryGaps({ entry: bank, senses: [glossed, rejected], facts, incoming: [], neighbors })).toEqual([
-      { type: 'sense_list' },
+      { type: 'sense_list', rejected: 0 },
       { type: 'pronunciation' },
       { type: 'morphology' },
       { type: 'relations', sense_id: glossed.id, count: 0, have: [] },
@@ -222,10 +223,10 @@ describe('sense list gap', () => {
     expect(entryGaps({ entry: bank, senses: [], facts: [glosses[0]], incoming: [], neighbors })[0]).toEqual({
       type: 'senses',
     })
-    expect(inventory([])).toEqual([{ type: 'sense_list' }])
+    expect(inventory([])).toEqual([{ type: 'sense_list', rejected: 0 }])
     expect(inventory([list()])).toEqual([])
     expect(inventory([list('pending')])).toEqual([])
-    expect(inventory([list('rejected')])).toEqual([{ type: 'sense_list' }])
+    expect(inventory([list('rejected')])).toEqual([{ type: 'sense_list', rejected: 1 }])
     // A live list with no live sense left settles nothing; the entry needs senses again.
     expect(inventory([list()], [])).toEqual([{ type: 'senses' }])
   })
@@ -233,7 +234,7 @@ describe('sense list gap', () => {
   it('reopens when a sense is added or a listed sense is no longer live [spec: work/sense-list-gap]', () => {
     const added = sense()
     const addedGloss = fact('sense', added.id, { gloss: 'to rely on' }, 'pending')
-    expect(inventory([list(), addedGloss], [common, rare, added])).toEqual([{ type: 'sense_list' }])
+    expect(inventory([list(), addedGloss], [common, rare, added])).toEqual([{ type: 'sense_list', rejected: 0 }])
     const withoutRare = [glosses[0], glosses[1], { ...glosses[2], status: 'rejected' } as Fact, list()]
     expect(
       entryGaps({ entry: bank, senses: [common, rare], facts: withoutRare, incoming: [], neighbors }).map(
@@ -245,11 +246,38 @@ describe('sense list gap', () => {
   it('reads a pending correction in place of the list it supersedes [spec: work/sense-list-gap]', () => {
     const stale = list('published', { common: [common.id], extra: [] })
     const correction = { ...list('pending', { common: [rare.id, common.id], extra: [] }), supersedesId: stale.id }
-    expect(inventory([stale])).toEqual([{ type: 'sense_list' }])
+    expect(inventory([stale])).toEqual([{ type: 'sense_list', rejected: 0 }])
     expect(inventory([stale, correction])).toEqual([])
     const settled = list('published')
     const staleCorrection = { ...list('pending', { common: [common.id], extra: [] }), supersedesId: settled.id }
-    expect(inventory([settled, staleCorrection])).toEqual([{ type: 'sense_list' }])
+    expect(inventory([settled, staleCorrection])).toEqual([{ type: 'sense_list', rejected: 0 }])
+  })
+
+  it('counts the rejected attempts at the current senses, up to a bound [spec: work/sense-list-attempts]', () => {
+    const rejected = (count: number) => Array.from({ length: count }, () => list('rejected'))
+    const counts = [0, 1, 2, 3, 5].map((count) => inventory(rejected(count)))
+    expect(counts.map(([gap]) => (gap?.type === 'sense_list' ? gap.rejected : null))).toEqual([
+      0,
+      1,
+      2,
+      MAX_SENSE_LIST_ATTEMPTS - 1,
+      MAX_SENSE_LIST_ATTEMPTS - 1,
+    ])
+    // A rejected list that named other senses was an attempt at a different inventory.
+    const older = list('rejected', { common: [common.id], extra: [] })
+    expect(inventory([older, ...rejected(1)])).toEqual([{ type: 'sense_list', rejected: 1 }])
+    const assess = (facts: Fact[]) =>
+      assessEntry({
+        entry: bank,
+        senses: [common, rare],
+        facts: [...glosses, ...facts],
+        incoming: [],
+        flagged: new Set(),
+        neighbors,
+      }).openWork
+    const claimed = { openWork: assess(rejected(MAX_SENSE_LIST_ATTEMPTS - 1)), completed: true }
+    expect(isStalled(claimed, { openWork: assess(rejected(MAX_SENSE_LIST_ATTEMPTS - 2)) })).toBe(false)
+    expect(isStalled(claimed, { openWork: assess(rejected(MAX_SENSE_LIST_ATTEMPTS)) })).toBe(true)
   })
 
   it('counts per-sense gaps and slots for the common senses only, once a list exists [spec: work/sense-list-scope]', () => {

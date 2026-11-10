@@ -7,7 +7,9 @@
 -- of the entry: a list never names a sense twice. The per-sense needs are those of
 -- worklist_usage_scores, and a relation counts only while its other sense can show, as
 -- worklist_relation_ends_scores counts it. Quality and awaiting_review are unchanged: they count
--- live facts of any kind, which the scores backfill already does.
+-- live facts of any kind, which the scores backfill already does. The `sense_list` gap's `rejected`
+-- count (MAX_SENSE_LIST_ATTEMPTS in server/domain/work.ts) enters only the open work, and the stall
+-- below is lifted for every unsettled entry whatever that count, so it needs no column here.
 WITH `glossed` AS MATERIALIZED (
 	SELECT `senses`.`id`, `senses`.`entry_id`, `senses`.`pos`
 	FROM `senses`
