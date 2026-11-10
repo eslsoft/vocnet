@@ -350,7 +350,7 @@ function inflectionEvidence(lemma: string, inflectionOf: readonly InflectionOf[]
   return [
     `This dictionary already records ${quote(lemma)} as an inflection of another entry:`,
     ...inflectionOf.map(({ lemma: of, type }) => `- the ${formTypes[type].name} of ${quote(of)}`),
-    `pass only when ${quote(lemma)} also has a meaning of its own as a lemma, beyond being that form: "saw" is the past of "see" and also a cutting tool, "left" the past of "leave" and also the side, "found" the past of "find" and also a verb meaning to establish. fail when it is only that inflection ("is", "was", "has", "did").`,
+    `pass only when ${quote(lemma)} also has uses of its own as a lemma, beyond being that form: "saw" is the past of "see" and also a cutting tool, "left" the past of "leave" and also the side, "found" the past of "find" and also a verb meaning to establish, "could" a modal of its own, "best" an adjective, adverb and noun of its own. fail when it is only that inflection ("is", "was", "has", "did").`,
   ]
 }
 

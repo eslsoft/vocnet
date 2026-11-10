@@ -468,7 +468,7 @@ describe('fact-kind registry', () => {
     expect(rubric).toContain('This dictionary already records "saw" as an inflection of another entry:')
     expect(rubric).toContain('- the simple past tense form of "see"')
     expect(rubric).toContain('- the plural form of "sea"')
-    expect(rubric).toContain('pass only when "saw" also has a meaning of its own as a lemma')
+    expect(rubric).toContain('pass only when "saw" also has uses of its own as a lemma')
     expect(rubric).toContain('fail when it is only that inflection ("is", "was", "has", "did")')
     const plain = llmPrompt(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }))?.user
     expect(plain).not.toContain('records "bank" as an inflection')

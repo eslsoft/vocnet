@@ -491,7 +491,7 @@ but only to choose the message.
   the inflection evidence, so a bare inflection such as "went" or "took" that
   passed on Jev before its base word's forms existed is rejected
   (`invalidate`), and a headword with uses of its own ("could", "best",
-  "saw") keeps its place (`reconfirm`). A review that loaded its context
+  "left") keeps its place (`reconfirm`). A review that loaded its context
   before a form published can still settle on Jev without the evidence; the
   window is one review, and the form's later publishes do not reopen it. A duplicate
   delivery of the form's review publishes nothing and marks nothing; an entry

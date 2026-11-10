@@ -87,7 +87,7 @@ Feature: Facts and review
     Given a live entry whose live form of any type but variant is spelled like a new entry's lemma
     When the new entry fact is reviewed
     Then only the LLM is asked, and its rubric names each entry that records the spelling and the form type
-    And it passes the word only when it also has a meaning of its own as a lemma, such as "saw" or "left", and fails a bare inflection such as "is"
+    And it passes the word only when it also has uses of its own as a lemma, such as "saw", "left", "could" or "best", and fails a bare inflection such as "is"
     And a form the entry records of itself, a variant, and a form of an entry whose entry fact is not live are no evidence
 
   @facts/entry-cefr-evidence @domain
@@ -95,7 +95,7 @@ Feature: Facts and review
     Given an entry fact whose exact lemma a CEFR learner vocabulary list names as a headword
     When its review is planned
     Then the LLM rubric names each listing's level, part of speech, and source, and says the list settles that the headword belongs
-    And it passes the headword unless it is an inflected form of another entry, a proper name, or a misspelling, without the lexical-unit test for phrases
+    And it fails the headword only when it is nothing but an inflected form of another word, a proper name, or a misspelling, so a headword with uses of its own such as "could" or "best" passes, without the lexical-unit test for phrases
     And a multiword lemma still goes to the LLM alone, and a single word to Jev and then the LLM unless another entry records it as an inflection
 
   @facts/entry-cefr-evidence-api @api
