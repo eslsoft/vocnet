@@ -402,7 +402,7 @@ const reviewed = <F extends Fact>(made: F, verdict: Review['verdict']): F =>
   }) as F
 
 describe('relations by part of speech', () => {
-  it('needs two relations for content words, one for adverbs and pronouns, none for other function words [spec: work/relations-by-pos]', () => {
+  it('needs two relations for content words, one for adverbs, none for pronouns and other function words [spec: work/relations-by-pos]', () => {
     const needs = Object.fromEntries(
       Object.keys(RELATIONS_NEEDED).map((pos) => {
         const focus = sense(pos as Pos)
@@ -436,7 +436,7 @@ describe('relations by part of speech', () => {
       // An adverb adds a grammar and a collocation slot, a pronoun grammar, a determiner both, and a
       // preposition or conjunction a collocation.
       adverb: { gap: true, completeness: 1 - 10 / 11 },
-      pronoun: { gap: true, completeness: 1 - 9 / 10 },
+      pronoun: { gap: false, completeness: 1 - 8 / 9 },
       determiner: { gap: false, completeness: 1 - 9 / 10 },
       preposition: { gap: false, completeness: 1 - 8 / 9 },
       conjunction: { gap: false, completeness: 1 - 8 / 9 },
@@ -793,7 +793,8 @@ describe('completeness rules for a learner dictionary', () => {
     // Every adverb, not only a manner adverb, needs grammar and a collocation.
     expect(typesOf('adverb').types).toEqual(expect.arrayContaining(['grammar', 'collocations', 'relations']))
     expect(typesOf('determiner').types).toEqual(expect.arrayContaining(['grammar', 'collocations']))
-    expect(typesOf('pronoun').types).toEqual(expect.arrayContaining(['grammar', 'relations']))
+    expect(typesOf('pronoun').types).toContain('grammar')
+    expect(typesOf('pronoun').types).not.toContain('relations')
     expect(typesOf('pronoun').types).not.toContain('collocations')
     expect(typesOf('preposition').types).toContain('collocations')
     expect(typesOf('preposition').types).not.toContain('grammar')

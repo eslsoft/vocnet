@@ -185,12 +185,20 @@ describe('grammar, word formation, and collocation formats', () => {
       '"ness" is not a suffix: a suffix is a hyphen followed by letters ("-ness").',
     ])
     expect(morphology(['happy', 'base'], ['un-', 'prefix'])).toEqual([
-      'Parts are in written order: prefixes, then the bases or roots, then suffixes.',
+      'Parts are in written order: prefixes, then the bases, then suffixes.',
     ])
-    expect(morphology(['re-', 'prefix'], ['-ly', 'suffix'])).toEqual([
-      'A word formation has at least one base or root part.',
+    expect(morphology(['re-', 'prefix'], ['-ly', 'suffix'])).toEqual(['A word formation has at least one base part.'])
+  })
+
+  it('refuses a Latin or Greek root, since a word not built on a present-day word is simple [spec: facts/morphology-synchronic]', () => {
+    const root =
+      '"port" is a root; a part is a present-day English word (base), a prefix, or a suffix. A word not built on a present-day English word is a simple word: one base part, the word itself ("important", "factory").'
+    expect(morphology(['im-', 'prefix'], ['port', 'root'], ['-ant', 'suffix'])).toEqual([
+      root,
+      'A word formation has at least one base part.',
     ])
-    expect(morphology(['spect', 'root'])).toEqual(['A word of one part is a simple word: its part is a base.'])
+    expect(morphology(['important', 'base'])).toEqual([])
+    expect(morphology(['tele-', 'prefix'], ['phone', 'base'])).toEqual([])
     for (const form of ['a.m.', "o'clock", 'Mrs.', 'e.g.']) expect(morphology([form, 'base'])).toEqual([])
     expect(morphology(['.am', 'base'])).toEqual([expect.stringContaining('is not a base')])
   })

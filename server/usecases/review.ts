@@ -1,7 +1,7 @@
 import { currentGloss, type Fact, type FactOf } from '@server/domain/fact'
 import {
   ATTEMPTS_WEIGHED,
-  attemptKindsOf,
+  attemptSourceOf,
   factKinds,
   type InflectionOf,
   inflectionKeysOf,
@@ -159,8 +159,16 @@ async function topicView(deps: ReviewDeps, id: TopicId): Promise<TopicView | nul
   return { category: category.nameEn, topic: topic.nameEn }
 }
 
-/** A rejected fact about the node with the sense at its other end, the topic it names, and why it was rejected. */
-async function rejectedAttempt(deps: ReviewDeps, nodeId: string, fact: Fact): Promise<RejectedAttempt> {
+/**
+ * A rejected fact with the entry it is about when that is another entry, the sense at its other
+ * end, the topic it names, and why it was rejected.
+ */
+async function rejectedAttempt(
+  deps: ReviewDeps,
+  nodeId: string,
+  fact: Fact,
+  word: string | null,
+): Promise<RejectedAttempt> {
   if (!fact.review) throw new Error(`Rejected fact ${fact.id} has no review.`)
   const other = fact.objectId && (fact.objectId === nodeId ? (fact.subjectId as SenseId) : fact.objectId)
   const topic = topicOf(fact.kind, fact.payload)
@@ -168,18 +176,32 @@ async function rejectedAttempt(deps: ReviewDeps, nodeId: string, fact: Fact): Pr
   return {
     kind: fact.kind,
     payload: fact.payload,
+    word,
     other: end ? { lemma: end.lemma, pos: end.pos, gloss: end.gloss } : null,
     topic: topic ? await topicView(deps, topic) : null,
     reason: fact.review.reason,
   }
 }
 
-/** The latest rejected facts of the kinds the fact's review weighs, about the fact's subject. */
-async function rejectedAttempts<K extends FactKind>(deps: ReviewDeps, fact: FactOf<K>): Promise<RejectedAttempt[]> {
-  const kinds = attemptKindsOf(fact.kind, fact.payload)
-  if (kinds.length === 0) return []
-  const rejected = await deps.facts.listRejected(fact.subjectId, kinds, ATTEMPTS_WEIGHED)
-  return Promise.all(rejected.map((attempt) => rejectedAttempt(deps, fact.subjectId, attempt)))
+/**
+ * The latest rejected facts the fact's review weighs: of the kinds that fill its slot about its
+ * subject, or the rejected word formations of other entries built on the subject's lemma.
+ */
+async function rejectedAttempts<K extends FactKind>(
+  deps: ReviewDeps,
+  fact: FactOf<K>,
+  lemma: string,
+): Promise<RejectedAttempt[]> {
+  const source = attemptSourceOf(fact.kind, fact.payload)
+  if (!source) return []
+  if (source.of === 'derivatives') {
+    const derivations = await deps.facts.listRejectedDerivations(lemma, ATTEMPTS_WEIGHED)
+    return Promise.all(
+      derivations.map(({ word, fact: attempt }) => rejectedAttempt(deps, fact.subjectId, attempt, word)),
+    )
+  }
+  const rejected = await deps.facts.listRejected(fact.subjectId, source.kinds, ATTEMPTS_WEIGHED)
+  return Promise.all(rejected.map((attempt) => rejectedAttempt(deps, fact.subjectId, attempt, null)))
 }
 
 async function loadContext<K extends FactKind>(
@@ -194,7 +216,7 @@ async function loadContext<K extends FactKind>(
     subject: subject as SubjectViews[SubjectTypeOf[K]],
     target: target ? await senseContext(deps, target) : null,
     topic: topic ? await topicView(deps, topic) : null,
-    attempts: await rejectedAttempts(deps, fact),
+    attempts: await rejectedAttempts(deps, fact, subject.lemma),
   }
 }
 

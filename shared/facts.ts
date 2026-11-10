@@ -201,7 +201,7 @@ export type DependentPreposition = z.infer<typeof dependentPrepositionSchema>
 export const morphemeRoleSchema = z.enum(['prefix', 'root', 'suffix', 'base']).meta({
   id: 'MorphemeRole',
   description:
-    'base: a word of its own the word is built on ("happy" in "unhappiness"). root: a bound stem, usually Latin or Greek ("spect"). prefix and suffix: affixes, written with their hyphen ("un-", "-ness").',
+    'base: a present-day English word the word is built on ("happy" in "unhappiness"), or the word itself in a simple word. prefix and suffix: affixes, written with their hyphen ("un-", "-ness"). root: a bound Latin or Greek stem ("spect"), read from stored formations only; a submission names none, since a word not built on a present-day English word is a simple word.',
 })
 export type MorphemeRole = z.infer<typeof morphemeRoleSchema>
 
@@ -334,12 +334,10 @@ export const morphemeSchema = z
   .strictObject({
     form: text(30),
     role: morphemeRoleSchema,
-    meaning: text(60)
-      .optional()
-      .meta({ description: 'A short meaning, mainly for a Latin or Greek root: "look" for spect.' }),
+    meaning: text(60).optional().meta({ description: 'A short meaning, mainly for an affix: "not" for un-.' }),
     lemma: text(100).optional().meta({
       description:
-        'Base parts only: the lemma of the live entry this base is, exactly as the entry spells it ("study" for the base of "student"), so the base word lists this one in its word family. Never the word itself.',
+        'Base parts only: the lemma of the live entry this base is, exactly as the entry spells it ("study" for the base of "student"), so the base word lists this one in its word family. Never the word itself. A word made from another word without an affix is one base part, the word itself, naming that word: a conversion with a spelling change ("shelve", lemma "shelf") or a back-formation ("televise", lemma "television").',
     }),
   })
   .meta({ id: 'Morpheme' })
@@ -366,7 +364,7 @@ export type Shortening = z.infer<typeof shorteningSchema>
 const morphologyPayloadSchema = z.strictObject({
   parts: z.array(morphemeSchema).min(1).max(8).meta({
     description:
-      'The parts in written order. A simple word is one base part; unhappiness is un- (prefix), happy (base), -ness (suffix).',
+      'The parts in written order. A simple word is one base part, the word itself; unhappiness is un- (prefix), happy (base), -ness (suffix). A word not built on a present-day English word ("important", "factory") is a simple word.',
   }),
   shortened: shorteningSchema.optional().meta({
     description:
@@ -387,11 +385,11 @@ const MORPHEME_SPELLING: Record<MorphemeRole, string> = {
   root: 'a root is letters only ("spect")',
   base: 'a base is a word ("happy"), an abbreviation, or a contraction ("o\'clock", "a.m.")',
 }
-const isStem = (role: MorphemeRole) => role === 'base' || role === 'root'
-
 /**
- * Parts read prefixes, then at least one base or root, then suffixes; only a base names a lemma. A
- * shortened word is one base part, the word itself, so its source is `shortened`, never a lemma.
+ * Parts read prefixes, then at least one base, then suffixes; only a base names a lemma. A word
+ * formation is synchronic: a bound Latin or Greek root is etymology, so a submission names none and
+ * a word not built on a present-day English word is one base. A shortened word is one base part,
+ * the word itself, so its source is `shortened`, never a lemma.
  */
 function morphologyIssues({
   parts,
@@ -402,17 +400,22 @@ function morphologyIssues({
 }): string[] {
   const misspelt = parts.filter(({ form, role }) => !MORPHEME_FORMS[role].test(form))
   const issues = misspelt.map(({ form, role }) => `"${form}" is not a ${role}: ${MORPHEME_SPELLING[role]}.`)
+  for (const { form } of parts.filter((part) => part.role === 'root')) {
+    issues.push(
+      `"${form}" is a root; a part is a present-day English word (base), a prefix, or a suffix. A word not built on a present-day English word is a simple word: one base part, the word itself ("important", "factory").`,
+    )
+  }
   for (const { form, role } of parts.filter((part) => part.lemma !== undefined && part.role !== 'base')) {
     issues.push(`"${form}" is a ${role}; only a base part names the lemma of the entry it is.`)
   }
   const roles = parts.map((part) => part.role)
-  const stems = roles.flatMap((role, at) => (isStem(role) ? [at] : []))
+  const stems = roles.flatMap((role, at) => (role === 'base' ? [at] : []))
   const [firstStem] = stems
   const lastStem = stems.at(-1)
   if (firstStem === undefined || lastStem === undefined) {
-    issues.push('A word formation has at least one base or root part.')
+    issues.push('A word formation has at least one base part.')
   } else if (roles.some((role, at) => (role === 'prefix' && at > firstStem) || (role === 'suffix' && at < lastStem))) {
-    issues.push('Parts are in written order: prefixes, then the bases or roots, then suffixes.')
+    issues.push('Parts are in written order: prefixes, then the bases, then suffixes.')
   }
   if (parts.length === 1 && roles[0] !== 'base') issues.push('A word of one part is a simple word: its part is a base.')
   if (shortened && (parts.length !== 1 || parts[0]?.lemma !== undefined)) {

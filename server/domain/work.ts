@@ -345,14 +345,17 @@ function relationsHave(relations: FactOf<'relation'>[], senseId: SenseId): Relat
  * antonym, hypernym, part_of) fit content words: on saturated seed entries, the share of senses
  * with two published relations was noun 90%, adjective 75%, verb 72%, adverb 35%, and 11-28% for
  * function words. A sense with one neighbor is still a leaf of the network; two make it a junction.
- * Zero means the sense has no relations gap and its relations count no slot.
+ * A pronoun is a function word: a personal or relative pronoun's sense ("we", "who") has no
+ * synonym or antonym in a learner's dictionary, and its relations closures kept failing over loose
+ * candidates ("I" for the royal "we"). Zero means the sense has no relations gap and its relations
+ * count no slot.
  */
 export const RELATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   noun: 2,
   verb: 2,
   adjective: 2,
   adverb: 1,
-  pronoun: 1,
+  pronoun: 0,
   determiner: 0,
   preposition: 0,
   conjunction: 0,

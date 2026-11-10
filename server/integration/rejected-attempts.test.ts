@@ -77,6 +77,60 @@ describe('rejected attempts', () => {
   })
 })
 
+describe('rejected derivations', () => {
+  it('lists the latest rejected word formations of other entries built on a lemma [spec: facts/rejected-derivations-query]', async () => {
+    const suffix = crypto.randomUUID().slice(0, 8)
+    const base = `pray${suffix}`
+    const entry = async (lemma: string) => {
+      const id = crypto.randomUUID()
+      await env.DB.prepare(
+        `insert into entries (id, lemma, created_by, created_at) values (?, ?, 'agent:test', '2026-01-01T00:00:00.000Z')`,
+      )
+        .bind(id, lemma)
+        .run()
+      return id
+    }
+    const formation = async (subject: string, parts: unknown[], key: string, status: string, minute: number) => {
+      const id = crypto.randomUUID()
+      const at = `2026-01-01T00:0${minute}:00.000Z`
+      await env.DB.prepare(
+        `insert into facts (id, kind, subject_id, object_id, content_key, payload, status, exclusive, author, review, created_at, updated_at)
+         values (?, 'morphology', ?, null, ?, ?, ?, 1, 'agent:test', ?, ?, ?)`,
+      )
+        .bind(id, subject, key, JSON.stringify({ parts }), status, review, at, at)
+        .run()
+      return id
+    }
+    const on = (lemma: string, suffixForm: string) => [
+      { form: lemma, role: 'base', lemma },
+      { form: suffixForm, role: 'suffix' },
+    ]
+    const prayer = await entry(`${base}er`)
+    const praying = await entry(`${base}ing`)
+    const other = await entry(`other${suffix}`)
+    const oldest = await formation(prayer, on(base, '-er'), 'a', 'rejected', 1)
+    const latest = await formation(praying, on(base, '-ing'), 'b', 'rejected', 2)
+    await formation(praying, on(base, '-s'), 'c', 'rejected', 3)
+    await formation(praying, on(base, '-s'), 'c', 'pending', 4)
+    await formation(prayer, on(base, '-ful'), 'd', 'published', 5)
+    await formation(other, on(`${base}x`, '-er'), 'e', 'rejected', 6)
+    await formation(other, [{ form: base, role: 'base' }], 'f', 'rejected', 7)
+
+    const { facts } = createDeps(env)
+    const listed = await facts.listRejectedDerivations(base, 10)
+    expect(listed.map(({ word, fact }) => [word, fact.id])).toEqual([
+      [`${base}ing`, latest],
+      [`${base}er`, oldest],
+    ])
+    expect(listed[0]?.fact).toMatchObject({
+      kind: 'morphology',
+      status: 'rejected',
+      review: { reason: 'Too general.' },
+    })
+    expect((await facts.listRejectedDerivations(base, 1)).map(({ fact }) => fact.id)).toEqual([latest])
+  })
+})
+
 describe('closure attempts release', () => {
   it('lifts every stall and makes every worklist row stale [spec: work/closure-attempts-unstall-migration]', async () => {
     const token = await issueAgentKey()

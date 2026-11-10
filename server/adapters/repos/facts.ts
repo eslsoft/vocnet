@@ -34,6 +34,22 @@ import { z } from 'zod'
 import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
 import { syncWorklistLive, touchLinkedWorkOfFact, touchWorkOf, touchWorkOfFact } from './work'
 
+/** A live fact of the outer fact's kind about its subject with its content, which a rejected attempt is then no longer. */
+function liveAgain(db: Db) {
+  const held = alias(facts, 'held')
+  return db
+    .select({ one: sql`1` })
+    .from(held)
+    .where(
+      and(
+        eq(held.kind, facts.kind),
+        eq(held.subjectId, facts.subjectId),
+        eq(held.contentKey, facts.contentKey),
+        inArray(held.status, ['pending', 'published']),
+      ),
+    )
+}
+
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const UNIQUE_MESSAGES = {
   'facts.supersedes_id':
@@ -311,18 +327,6 @@ export function createFactRepo(db: Db): FactRepo {
     },
 
     async listRejected(nodeId, kinds, limit) {
-      const held = alias(facts, 'held')
-      const heldLive = db
-        .select({ one: sql`1` })
-        .from(held)
-        .where(
-          and(
-            eq(held.kind, facts.kind),
-            eq(held.subjectId, facts.subjectId),
-            eq(held.contentKey, facts.contentKey),
-            inArray(held.status, ['pending', 'published']),
-          ),
-        )
       const rows = await db
         .select()
         .from(facts)
@@ -331,12 +335,31 @@ export function createFactRepo(db: Db): FactRepo {
             eq(facts.status, 'rejected'),
             inArray(facts.kind, [...kinds]),
             or(eq(facts.subjectId, nodeId), eq(facts.objectId, nodeId)),
-            notExists(heldLive),
+            notExists(liveAgain(db)),
           ),
         )
         .orderBy(desc(facts.updatedAt), desc(facts.id))
         .limit(limit)
       return rows.map(toFact)
+    },
+
+    async listRejectedDerivations(baseLemma, limit) {
+      const rows = await db
+        .select({ word: entries.lemma, fact: facts })
+        .from(facts)
+        .innerJoin(entries, eq(entries.id, facts.subjectId))
+        .where(
+          and(
+            eq(facts.kind, 'morphology'),
+            eq(facts.status, 'rejected'),
+            sql`instr(${facts.payload}, ${JSON.stringify(baseLemma)}) > 0`,
+            sql`exists (select 1 from json_each(${facts.payload}, '$.parts') where json_extract(value, '$.role') = 'base' and json_extract(value, '$.lemma') = ${baseLemma})`,
+            notExists(liveAgain(db)),
+          ),
+        )
+        .orderBy(desc(facts.updatedAt), desc(facts.id))
+        .limit(limit)
+      return rows.map(({ word, fact }) => ({ word, fact: toFact(fact) as FactOf<'morphology'> }))
     },
 
     async listRevalidating(nodeId) {

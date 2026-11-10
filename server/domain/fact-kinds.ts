@@ -115,12 +115,21 @@ export interface ReviewContext<S extends SubjectType = SubjectType> {
 }
 
 /**
- * A fact a review rejected, as a later review of the same slot sees it: what it claimed, the sense
- * at its other end and the topic it names when it has them, and why it was rejected.
+ * Where the rejected attempts to fill a slot are: facts of `kinds` about the node, as subject or
+ * object, or the word formations of other entries whose base names the node's lemma (`derivatives`,
+ * the attempts at a word family, which other entries fill).
+ */
+export type AttemptSource = { of: 'node'; kinds: readonly FactKind[] } | { of: 'derivatives' }
+
+/**
+ * A fact a review rejected, as a later review of the same slot sees it: what it claimed, the entry
+ * it is about when that is another entry (a derivative's word formation), the sense at its other
+ * end and the topic it names when it has them, and why it was rejected.
  */
 export interface RejectedAttempt {
   kind: FactKind
   payload: FactPayloads[FactKind]
+  word: string | null
   other: SenseView | null
   topic: TopicView | null
   reason: string
@@ -180,10 +189,10 @@ interface BaseSpec<K extends FactKind> {
   /** The sense a relation points at; absent for kinds without an object. */
   target?(payload: FactPayloads[K]): SenseId
   /**
-   * The kinds whose rejected facts about the same node (as subject or object) the review weighs,
-   * because they tried to fill what this fact claims is empty; absent for kinds that weigh none.
+   * Where the rejected facts the review weighs are, because they tried to fill what this fact
+   * claims is empty; absent, or null for a payload, when the review weighs none.
    */
-  attempts?(payload: FactPayloads[K]): readonly FactKind[]
+  attempts?(payload: FactPayloads[K]): AttemptSource | null
   /** The leaf topic the fact tags its subject with; absent for kinds that reference no topic. */
   topic?(payload: FactPayloads[K]): TopicId
   /** The parts of speech a sense subject must have; absent means any. */
@@ -1220,26 +1229,35 @@ const describeParts = (parts: readonly Morpheme[]) =>
 const baseLemmas = ({ parts }: FactPayloads['morphology']) =>
   parts.flatMap((part) => (part.role === 'base' && part.lemma !== undefined ? [part.lemma] : []))
 
-const isSimpleWord = (parts: readonly Morpheme[]) => parts.length === 1
-
 function formationClaim({ parts, shortened }: FactPayloads['morphology']): string {
   if (shortened) {
-    return `Claimed: a shortened word, ${article(shortened.type)} ${shortened.type} of ${quote(shortened.of)}, with no prefix, suffix, root, or other word to analyse it into.`
+    return `Claimed: a shortened word, ${article(shortened.type)} ${shortened.type} of ${quote(shortened.of)}, with no prefix, suffix, or other word to analyse it into.`
   }
-  return isSimpleWord(parts)
-    ? 'Claimed: a simple word, with no prefix, suffix, root, or other word to analyse it into.'
-    : `Claimed parts: ${describeParts(parts)}.`
+  const [only] = parts
+  if (parts.length > 1 || only === undefined) return `Claimed parts: ${describeParts(parts)}.`
+  return only.lemma === undefined
+    ? 'Claimed: a simple word, with no prefix, suffix, or other word to analyse it into.'
+    : `Claimed: made from the word ${quote(only.lemma)} without a prefix or suffix, as a conversion with a spelling change or a back-formation.`
 }
 
+/**
+ * One synchronic rule, so a word cannot fail both as simple and as analysed: parts are a
+ * present-day English word plus affixes, and any other word is one base. Reviews of borrowed
+ * words ("important", "factory") failed the simple claim for its Latin root and the split as
+ * etymology; "shelve" failed as a simple word because a one-part base naming "shelf" read as one.
+ */
 function morphologyRubric(entry: SubjectViews['entry'], morphology: FactPayloads['morphology']): string {
   return [
     `Is this the word formation of the English word ${quote(entry.lemma)} that a learner's dictionary would give?`,
     formationClaim(morphology),
-    'pass: in present-day English the word is built from exactly these parts: its base word or Latin or Greek root, and its prefixes and suffixes, with every stated meaning right for that part. Spelling changes where parts join are normal (happy + -ness gives happiness). A simple word passes when it has no parts a learner could recognise.',
-    'Parts must be a synchronic English formation, one a present-day speaker can see: an unanalysable loan or a historically opaque word is a single base ("factory" is one base, not fact + -ory; "window" is one base).',
-    'A shortened word is one base part, the word itself, and the claim states what it shortens: an abbreviation ("Mrs" of "mistress", "a.m." of "ante meridiem"), a contraction ("o\'clock" of "of the clock"), a clipping ("phone" of "telephone"), or a blend ("brunch" of "breakfast and lunch"). It passes when the source is right and the type is one a dictionary gives it (dictionaries call some contractions, such as "Mrs", abbreviations; either passes); it fails when the source or the type is wrong, and a shortened word claimed as a plain simple word, without what it shortens, fails.',
+    'Judge by one synchronic rule: a word has parts only when a present-day speaker sees in it a present-day English word (its base) with prefixes, suffixes, or another word, and its meaning comes from that word. Every other word is a simple word, one base part, the word itself.',
+    'So a loan or a historically opaque word is a simple word even when it contains a Latin or Greek root or letters that look like an affix: "important" is one base, not im- + port + -ant; "factory" is one base, not fact + -ory; "window" is one base. A simple claim for such a word passes; never fail it for its etymology. A word whose meaning does not come from the word its letters match is simple too: "business" (trade) is one base, not busy + -ness.',
+    'A part that is not a present-day English word or affix, such as a Latin or Greek root ("spect", "port"), is etymology: fail it.',
     'A base is the present-day word the meaning comes from, even when its spelling changes where the parts join: "student" is study + -ent (a student studies), not stud + -ent; "happiness" is happy + -ness. A base that only shares letters with the word, or a word named for a base that is not the word the meaning comes from, fails.',
-    'fail: a part is wrong, missing, or extra; a stated meaning is wrong; the analysis is etymology rather than present-day formation, folk etymology, or splits off letters that only look like an affix (the "er" of "water"); or the word does have parts and is claimed to be simple.',
+    'A word made from another present-day word without an affix is one base part, the word itself, naming that word: a conversion with a spelling change ("shelve" from "shelf") or a back-formation ("televise" from "television", "edit" from "editor"). It passes when that word is the one the meaning comes from; never fail it for being a back-formation.',
+    'A shortened word is one base part, the word itself, and the claim states what it shortens: an abbreviation ("Mrs" of "mistress", "a.m." of "ante meridiem"), a contraction ("o\'clock" of "of the clock"), a clipping ("phone" of "telephone"), or a blend ("brunch" of "breakfast and lunch"). It passes when the source is right and the type is one a dictionary gives it (dictionaries call some contractions, such as "Mrs", abbreviations; either passes); it fails when the source or the type is wrong, and a shortened word claimed as a plain simple word, without what it shortens, fails.',
+    'pass: the word is built from exactly these parts by this rule, with every stated meaning right for its part, or it is a simple word claimed as one. Spelling changes where parts join are normal (happy + -ness gives happiness).',
+    'fail: a part is wrong, missing, or extra; a stated meaning is wrong; the analysis is etymology rather than present-day formation, folk etymology, or splits off letters that only look like an affix (the "er" of "water"); or the word is transparently built on a present-day English word ("teacher" is teach + -er, "happiness" happy + -ness) and is claimed to be simple.',
     listSenses("The word's senses", entry.senses),
   ].join('\n')
 }
@@ -1409,10 +1427,11 @@ interface ClosableGapSpec {
   /** What the slot holds, as the closure rubric names it. */
   slot: string
   /**
-   * The kinds whose facts about the node fill the slot, so a closure review weighs their rejected
-   * attempts; empty when other entries fill it (a phrase or a derivative is an entry of its own).
+   * Where the rejected attempts to fill the slot are, so a closure review weighs them: the kinds
+   * whose facts about the node fill it, or the derivatives' word formations for a word family;
+   * null for phrases, whose attempts are entries of their own with nothing rejected to name them.
    */
-  filledBy: readonly FactKind[]
+  attempts: AttemptSource | null
 }
 
 /** Each gap a closure may close: the node it is about, what its slot holds, and the kinds that fill it. */
@@ -1420,37 +1439,37 @@ export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
   forms: {
     subject: 'entry',
     slot: 'inflected forms: the third-person singular, past tense, past participle, and present participle of a verb; the plural of a countable noun; the -er and -est comparative and superlative of an adjective or adverb that compares that way',
-    filledBy: ['form'],
+    attempts: { of: 'node', kinds: ['form'] },
   },
   phrases: {
     subject: 'entry',
     slot: 'three phrasal verbs or verb idioms headed by the word, as entries of their own ("give up", "give in", "give way"); the slot is complete with fewer only when fewer than three common ones exist, and the reason names those',
-    filledBy: [],
+    attempts: null,
   },
   family: {
     subject: 'entry',
     slot: 'the word family: common derivatives built on the word that a learner\'s dictionary lists with it ("happiness", "happily", and "unhappy" for "happy"; "student" for "study")',
-    filledBy: [],
+    attempts: { of: 'derivatives' },
   },
   relations: {
     subject: 'sense',
     slot: 'related words: a synonym, an antonym, a broader term it is a kind of, or a whole it is a part of; the slot is complete when the relations recorded so far are the only precise ones',
-    filledBy: ['relation'],
+    attempts: { of: 'node', kinds: ['relation'] },
   },
   topics: {
     subject: 'sense',
     slot: 'a topic: a scene or subject area whose core vocabulary includes this sense ("oven" in household appliances)',
-    filledBy: ['topic'],
+    attempts: { of: 'node', kinds: ['topic'] },
   },
   grammar: {
     subject: 'sense',
     slot: 'grammar: the countability of a noun, the transitivity of a verb, the position, patterns, or prepositions of an adjective, the usual position of an adverb, or what a determiner or pronoun agrees with',
-    filledBy: ['grammar'],
+    attempts: { of: 'node', kinds: ['grammar'] },
   },
   collocations: {
     subject: 'sense',
     slot: 'collocations: combinations native speakers commonly use with the word in this sense ("make a decision")',
-    filledBy: ['collocation'],
+    attempts: { of: 'node', kinds: ['collocation'] },
   },
 }
 
@@ -1461,6 +1480,8 @@ const CLOSURE_PASSES = [
   'a sense whose recorded relations are the only precise ones: no further synonym, antonym, broader term, or whole would help a learner',
   'an uncountable noun ("advice") has no plural',
   'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
+  'a pronoun that governs no agreement has no grammar to record: an object, reflexive, or reciprocal pronoun ("me", "yourself", "each other") is never the subject a verb agrees with, and a relative or interrogative pronoun ("who", "which", "what") takes the verb its antecedent or answer takes, so no fixed agreement fits it',
+  'an adverb used only straight after a number, a clock time, or a measure ("10 a.m.", "children aged five and below") has no clause position to record: front, mid, and end describe where an adverb goes in a clause, not after a number',
   'a non-gradable adjective ("main", "dead") has no comparative',
   'a function word, a general word ("thing", "get"), or a general-purpose sense usable in many scenes belongs to no topic, even where it can appear in one',
 ]
@@ -1478,12 +1499,12 @@ export const ATTEMPTS_WEIGHED = 5
 const describeEnd = ({ lemma, pos, gloss }: SenseView) =>
   `${quote(lemma)} (${pos})${gloss === null ? '' : `, meaning ${quote(gloss)}`}`
 
-function describeAttempt({ kind, payload, other, topic, reason }: RejectedAttempt): string {
+function describeAttempt({ kind, payload, word, other, topic, reason }: RejectedAttempt): string {
   const about = [other && `linking to ${describeEnd(other)}`, topic && `topic ${describeTopic(topic)}`].filter(
     (part) => part !== null,
   )
   const context = about.length === 0 ? '' : ` (${about.join('; ')})`
-  return `- ${kind} ${JSON.stringify(payload)}${context}: rejected because ${quote(reason)}`
+  return `- ${kind}${word === null ? '' : ` of ${quote(word)}`} ${JSON.stringify(payload)}${context}: rejected because ${quote(reason)}`
 }
 
 /**
@@ -1667,7 +1688,8 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
         jevThenLlm(grammarQuestions(payload, sense), grammarRubric(payload, subject, sense)),
       ),
   },
-  // Jev passed etymological splits of opaque words (fact + -ory), so the LLM judges alone.
+  // Jev passed etymological splits of opaque words (fact + -ory) and failed simple claims of loans
+  // for their Latin roots, so the LLM judges alone by one synchronic rule.
   morphology: {
     subject: 'entry',
     cardinality: 'one',
@@ -1720,7 +1742,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // A correction that rewords the reason must differ from the closure it supersedes.
     contentKey: ({ gap, reason }) => `${gap}|${textKey(reason)}`,
     meaningKey: ({ gap }) => gap,
-    attempts: ({ gap }) => closableGaps[gap].filledBy,
+    attempts: ({ gap }) => closableGaps[gap].attempts,
     plan: gapClosureRubric,
   },
 }
@@ -1791,9 +1813,9 @@ export function orientOf<K extends FactKind>(kind: K, subjectId: string, payload
   return factKinds[kind].orient?.(subjectId, payload) ?? { subjectId, payload }
 }
 
-/** The kinds whose rejected facts a review of this fact weighs; none for kinds that weigh none. */
-export function attemptKindsOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): readonly FactKind[] {
-  return factKinds[kind].attempts?.(payload) ?? []
+/** Where the rejected facts a review of this fact weighs are; null for kinds that weigh none. */
+export function attemptSourceOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): AttemptSource | null {
+  return factKinds[kind].attempts?.(payload) ?? null
 }
 
 export function targetOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): SenseId | null {

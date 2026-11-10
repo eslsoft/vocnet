@@ -165,6 +165,22 @@ export function fakeWorld(): FakeWorld {
   const lemmaOf = (entryId: EntryId) => world.entries.find((entry) => entry.id === entryId)?.lemma
   const withLemma = (sense: SenseNode) => ({ ...sense, lemma: lemmaOf(sense.entryId) ?? ('' as never) })
   const live = (fact: Fact) => isLive(fact.status)
+  /** The rejected facts among these whose content no live fact holds again, most recently rejected first. */
+  const latestRejected = <F extends Fact>(candidates: F[], limit: number) =>
+    candidates
+      .filter((fact) => fact.status === 'rejected')
+      .filter(
+        (fact) =>
+          !world.facts.some(
+            (other) =>
+              live(other) &&
+              other.kind === fact.kind &&
+              other.subjectId === fact.subjectId &&
+              other.contentKey === fact.contentKey,
+          ),
+      )
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id))
+      .slice(0, limit)
   /** The learner priority of the entry's lemma, as the worklist row stores it. */
   const priorityOf = (entry: EntryNode) => {
     const reference = world.references.get(entry.lemma)
@@ -586,21 +602,23 @@ export function fakeWorld(): FakeWorld {
         return true
       },
       listRejected: async (nodeId, kinds, limit) =>
-        world.facts
-          .filter((fact) => fact.status === 'rejected' && kinds.includes(fact.kind))
-          .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId)
-          .filter(
-            (fact) =>
-              !world.facts.some(
-                (other) =>
-                  live(other) &&
-                  other.kind === fact.kind &&
-                  other.subjectId === fact.subjectId &&
-                  other.contentKey === fact.contentKey,
-              ),
-          )
-          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id))
-          .slice(0, limit),
+        latestRejected(
+          world.facts
+            .filter((fact) => kinds.includes(fact.kind))
+            .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId),
+          limit,
+        ),
+      listRejectedDerivations: async (baseLemma, limit) =>
+        latestRejected(
+          world.facts
+            .filter(isKind('morphology'))
+            .filter((fact) => fact.payload.parts.some((part) => part.role === 'base' && part.lemma === baseLemma)),
+          limit,
+        ).map((fact) => {
+          const word = lemmaOf(fact.subjectId as EntryId)
+          if (word === undefined) throw new Error(`Word formation ${fact.id} is about no entry.`)
+          return { word, fact }
+        }),
       listRevalidating: async (nodeId) =>
         world.facts
           .filter((fact) => live(fact) && fact.revalidateSince !== null)

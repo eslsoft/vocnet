@@ -368,6 +368,47 @@ describe('reviewFact', () => {
     expect(relations).not.toContain('kitchen')
   })
 
+  it("shows a family closure review the rejected word formations of the word's derivatives [spec: facts/family-closure-attempts-context]", async () => {
+    const world = fakeWorld()
+    const { entry: pray } = await createEntry(world.deps, agentA, { lemma: 'pray' })
+    const { entry: prayer } = await createEntry(world.deps, agentA, { lemma: 'prayer' })
+    const { entry: praying } = await createEntry(world.deps, agentA, { lemma: 'praying' })
+    await drain(world)
+    const formation = (subject: string, form: string) => ({
+      kind: 'morphology' as const,
+      subject_id: subject,
+      payload: {
+        parts: [
+          { form: 'pray', role: 'base' as const, lemma: 'pray' },
+          { form, role: 'suffix' as const },
+        ],
+      },
+    })
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'A single borrowed base.' }))
+    const { fact: rejected } = await submitFact(world.deps, agentA, formation(prayer.id, '-er'))
+    await expect(reviewFact(world.deps, rejected.id, 'trace-review')).resolves.toBe('rejected')
+    world.setNow('2026-01-01T00:01:00.000Z')
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'An inflection.' }))
+    const { fact: again } = await submitFact(world.deps, agentA, formation(praying.id, '-ing'))
+    await expect(reviewFact(world.deps, again.id, 'trace-review')).resolves.toBe('rejected')
+    world.passReviews()
+    await submitFact(world.deps, agentA, formation(praying.id, '-ing'))
+    await drain(world)
+
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Nothing fits.' }))
+    const { fact: closure } = await submitFact(world.deps, agentA, {
+      kind: 'gap_closure',
+      subject_id: pray.id,
+      payload: { gap: 'family', reason: 'Prayer is a borrowed word, not pray + -er.' },
+    })
+    await reviewFact(world.deps, closure.id, 'trace-review')
+    const user = world.llmCalls.at(-1)?.user ?? ''
+    expect(user).toContain(
+      '- morphology of "prayer" {"parts":[{"form":"pray","role":"base","lemma":"pray"},{"form":"-er","role":"suffix"}]}: rejected because "A single borrowed base."',
+    )
+    expect(user).not.toContain('praying')
+  })
+
   it('skips facts that are not pending, so duplicate deliveries change nothing [spec: facts/review-idempotent]', async () => {
     const { world, entryFact } = await bankWorld()
     await reviewFact(world.deps, entryFact.id, 'trace-review')

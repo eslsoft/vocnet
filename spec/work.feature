@@ -59,7 +59,7 @@ Feature: Worklist
   Scenario: The relations a sense needs depend on its part of speech
     Given a live sense of each part of speech
     When the gaps and completeness are computed
-    Then nouns, verbs, and adjectives need two relations, adverbs and pronouns one, and every other part of speech none, with no relations gap and no relation slots
+    Then nouns, verbs, and adjectives need two relations, adverbs one, and pronouns and every other part of speech none, with no relations gap and no relation slots
 
   @work/topics-gap @domain
   Scenario: Nouns and verbs need a topic
@@ -260,7 +260,7 @@ Feature: Worklist
   Scenario: Function words and adverbs need the usage a learner's dictionary gives them
     Given senses of each function-word part of speech and an adverb
     When the gaps are computed
-    Then every adverb needs grammar and a collocation, a determiner grammar and a collocation, a pronoun grammar and a relation, and a preposition or conjunction a collocation, each closable by a gap closure, and an interjection none of them
+    Then every adverb needs grammar and a collocation, a determiner grammar and a collocation, a pronoun grammar, and a preposition or conjunction a collocation, each closable by a gap closure, and an interjection none of them
 
   @work/core-examples @domain
   Scenario: A1 and A2 senses need two examples
@@ -345,3 +345,9 @@ Feature: Worklist
     Given multiword entries an agent created today and earlier, headed by a verb and by a noun, with a verb sense and without, one a CEFR list names, and one an admin created
     When the core_verb_phrases migration runs
     Then only the published entry facts of today's agent-created phrasal verbs headed by a verb that no CEFR list names are marked for review in place, and every worklist row is stale
+
+  @work/synchronic-morphology-migration @api
+  Scenario: The synchronic morphology release re-judges root formations and lifts every stall
+    Given published word formations with and without a root part, a rejected one with a root, and worklist rows stalled on the open work of their last claim
+    When the synchronic_morphology_stalls migration runs
+    Then only the published formation with a root is marked for review in place, no row is stalled or keeps its claimed open work, and every row is stale

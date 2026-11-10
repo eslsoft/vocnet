@@ -122,17 +122,30 @@ for a word with no common derivatives ("notebook", or a function word); and a
 ones, so a sense need not be padded to two with loose relations; a `grammar`
 closure passes for a title used before a name ("Mr", "Mrs", "Ms", "Dr"), which
 a learner's dictionary prints as used before a name and never marks [C] or
-[U]. A fail
+[U], for a pronoun that governs no agreement (an object, reflexive, or
+reciprocal pronoun such as "me", "yourself", or "each other" is never the
+subject a verb agrees with, and a relative or interrogative pronoun such as
+"who" takes the verb its antecedent or answer takes), and for an adverb used
+only straight after a number, a clock time, or a measure ("10 a.m.", "aged five
+and below"), which has no clause position. Review rejected `agreement` and
+`position: end` claims for these and no other property fits them. A fail
 reason names the specific value a learner's dictionary gives for the slot.
 
 A closure review also weighs the attempts already rejected for its slot. Each
-closable gap names the kinds whose facts about its node fill it
-(`closableGaps[gap].filledBy`: `form`; `relation`; `topic`; `grammar`;
-`collocation`; none for `phrases` and `family`, which other entries fill), and
-the review context carries the latest `ATTEMPTS_WEIGHED` (5) rejected facts of
-those kinds about the node, as subject or object, most recently rejected first,
-leaving out any whose content a live fact holds again: each with its payload, the
-sense at its other end, the topic it names, and the rejection reason. When the
+closable gap names where they are (`closableGaps[gap].attempts`, an
+`AttemptSource`): the kinds whose facts about its node fill it (`form`;
+`relation`; `topic`; `grammar`; `collocation`), the word formations of the
+derivatives for `family` (`{ of: "derivatives" }`: the rejected morphology facts
+of other entries with a base part naming the node's lemma, which is how a
+derivative joins a word family), and none for `phrases`. The review context
+carries the latest `ATTEMPTS_WEIGHED` (5) rejected facts from that source, most
+recently rejected first, leaving out any whose content a live fact of its kind
+about the same subject holds again: each with its payload, the derivative's
+lemma for a word formation of another entry (`- morphology of "prayer" {…}`),
+the sense at its other end, the topic it names, and the rejection reason. Review
+rejected *prayer* (pray + -er) and *restaurateur* (restaurant + -eur) as
+borrowed words, so the family closures of *pray* and *restaurant* pass over
+them. When the
 attempts were rejected as not fitting, the closure passes unless the reviewer
 names a specific value that plainly fills the slot and differs from every
 rejected one; a value an attempt tried, or an association as loose as theirs,
@@ -455,9 +468,14 @@ plain payload shape, so facts written before a rule still read.
   `422 invalid_reference`.
 - **Grammar.** At least one property, each pattern once, and one to four
   prepositions, each once.
-- **Word formation.** Parts in written order: prefixes, then at least one base or
-  root, then suffixes. A prefix is letters ending in a hyphen (`un-`), a suffix a
-  hyphen followed by letters (`-ness`), a root letters only (`spect`), and a base a
+- **Word formation.** Parts in written order: prefixes, then at least one base,
+  then suffixes. A submission names no `root` part: a word formation is
+  synchronic, so a word not built on a present-day English word is a simple word
+  (`"port" is a root; a part is a present-day English word (base), a prefix, or a
+  suffix. A word not built on a present-day English word is a simple word: one
+  base part, the word itself ("important", "factory").`); stored formations with
+  a root still read. A prefix is letters ending in a hyphen (`un-`), a suffix a
+  hyphen followed by letters (`-ness`), and a base a
   word (`happy`, or one with an inner hyphen, apostrophe, or period, and an
   abbreviation's final period: `o'clock`, `a.m.`, `Mrs.`). One part is a simple
   word, so its role is `base`; an abbreviation or contraction is one base. A
@@ -547,10 +565,17 @@ end."). Its content key is its properties in a fixed order with sorted
 agreement, patterns, and prepositions.
 
 `morphology` is an entry's word formation as a learner's dictionary gives it:
-a simple word is one `base` part (`water`), a derived word names its base and
-affixes (`unhappiness` = `un-` + `happy` + `-ness`), and a Latin or Greek root
-may carry a short meaning (`spectator` = `spect` "look" + `-ator`). Roles are
-`prefix`, `root`, `suffix`, and `base`. A phrase has no word formation: a
+a simple word is one `base` part (`water`), and a derived word names its base and
+affixes (`unhappiness` = `un-` + `happy` + `-ness`). It follows one synchronic
+rule: a word has parts only when it is built on a present-day English word
+whose meaning it takes; every other word, a loan or a historically opaque word,
+is a simple word (`important`, `factory`, `business`). Roles are `prefix`,
+`suffix`, and `base`; `root` (a bound Latin or Greek stem, `spect`) is read from
+stored formations only and refused on submission. A word made from another
+word without an affix is one base part, the word itself, naming that word by
+`lemma`: a conversion with a spelling change (`shelve` = `shelve` (base, lemma
+`shelf`)) or a back-formation (`televise` = `televise` (base, lemma
+`television`)), so the source word's family lists it. A phrase has no word formation: a
 morphology fact about a multiword entry is `422 invalid_reference`. The check
 of the parts is light: their letters, without hyphens, apostrophes, and periods and
 ignoring case, must spell the lemma within two changed letters for each place
@@ -947,10 +972,24 @@ but only to choose the message.
   plural verb and never with "a" or "an" … as a learner's dictionary marks
   [plural]".
 - **Word formation** goes to the LLM alone: Jev passed etymological splits of
-  opaque words (fact + -ory). The rubric asks for the formation a learner's
-  dictionary gives, a synchronic English formation a present-day speaker can
-  see: an unanalysable loan or a historically opaque word is a single base
-  ("factory", "window"). A shortened word is one base with its source: the
+  opaque words (fact + -ory) and failed simple claims of loans for their Latin
+  roots. The rubric asks for the formation a learner's dictionary gives by one
+  synchronic rule, so a word cannot fail both as simple and as analysed (review
+  had failed *important*, *factory*, and *delicious* as simple words for their
+  Latin roots and their root splits as etymology): a word has parts only when a
+  present-day speaker sees in it a present-day English word with affixes or
+  another word, and its meaning comes from that word; every other word is a
+  simple word, one base, even with a Latin or Greek root or letters that look
+  like an affix ("important" is one base, not im- + port + -ant; "factory";
+  "window"; "business" (trade) is not busy + -ness). A simple claim for such a
+  word passes and is never failed for its etymology; a root part is etymology
+  and fails; a transparent derivative claimed simple ("teacher", "happiness")
+  fails. A one-part base naming another lemma is claimed as "made from the word
+  "shelf" without a prefix or suffix, as a conversion with a spelling change or
+  a back-formation", which passes when that word is the one the meaning comes
+  from (review had failed *shelve* naming *shelf*, because the claim read
+  "a simple word", and *televise* split as telev + -ise for being a
+  back-formation). A shortened word is one base with its source: the
   rubric claims "a shortened word, an abbreviation of "mistress"", passes a right
   source of a type a dictionary gives it (dictionaries call some contractions,
   such as "Mrs", abbreviations), and fails a wrong source or type and a
@@ -1201,9 +1240,13 @@ stalls after one pass and comes back only when something about it changes.
 A review rule change that should reopen stalled entries ships with a migration
 that clears every row's `stalled` and `claimed_work` and bumps its revision, as
 `closure_attempts_unstall` did when closure reviews began weighing rejected
-attempts (see Gap closures), and `plural_only_titles_shortened` did when
+attempts (see Gap closures), `plural_only_titles_shortened` did when
 plural-only noun grammar, title grammar closures, and shortened word formations
-became expressible.
+became expressible, and `synchronic_morphology_stalls` did when word formation
+took one synchronic rule, family closures weighed the derivatives' rejected
+formations, pronoun and after-a-number adverb grammar became closable, and
+pronouns stopped needing relations. It also marks every published formation
+with a `root` part for review in place under the new rubric.
 
 ### Relations by part of speech
 
@@ -1213,8 +1256,12 @@ two published relations was noun 90%, adjective 75%, verb 72%, adverb 35%,
 determiner 28%, preposition 23%, conjunction 20%, interjection 19%,
 auxiliary 13%, and pronoun 11%. `RELATIONS_NEEDED` in `server/domain/work.ts`
 is the one table of the relations a sense needs: noun, verb, and adjective 2;
-adverb and pronoun 1 (*everybody*: everyone, nobody); every other part of
-speech 0, which means no relations gap and no relation slots. A relations gap
+adverb 1; pronoun and every other part of speech 0, which means no relations
+gap and no relation slots. A pronoun is a function word: a personal or
+relative pronoun's sense (*we*, *who*, *everything* meaning life in general)
+has no synonym or antonym in a learner's dictionary, and its relations closures
+kept failing over loose candidates ("I" for the royal *we*, "things" for
+*everything*). A pronoun may still carry relations (*everything*: nothing). A relations gap
 is closable: its closure passes when the relations recorded so far are the only
 precise ones, so a general sense is not padded to two with loose ones (the
 audit's padded relations were loose narrower terms and slang synonyms; see

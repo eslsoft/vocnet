@@ -506,7 +506,7 @@ Feature: Facts and review
   @facts/usage-formats @domain
   Scenario: Grammar, word formation, and collocations are written in a fixed form
     Given a grammar, morphology, or collocation fact to submit
-    When grammar names no property, a pattern or a preposition twice, no preposition or more than four, or a preposition outside the closed list, a part is spelt without its role's hyphen or out of written order, a word formation has no base or root or is one part that is not a base, or a collocation is one word
+    When grammar names no property, a pattern or a preposition twice, no preposition or more than four, or a preposition outside the closed list, a part is spelt without its role's hyphen or out of written order, a word formation has no base, names a Latin or Greek root, or is one part that is not a base, or a collocation is one word
     Then the submission is invalid and the message names each rule to fix
 
   @facts/grammar-by-pos @domain
@@ -580,8 +580,20 @@ Feature: Facts and review
   Scenario: A word formation is judged as a learner's dictionary analyses the word
     Given a morphology fact
     When its review is planned
-    Then the LLM alone is asked whether the word is formed from exactly these parts with these meanings as a present-day English formation, an opaque word or loan being one base ("factory") and a shortened word one base with what it shortens
-    And the rubric fails a wrong, missing, or extra part, a wrong meaning, etymology or folk etymology, and letters that only look like an affix
+    Then the LLM alone is asked whether the word is formed from exactly these parts with these meanings by one synchronic rule: a word has parts only when it is built on a present-day English word whose meaning it takes, and every other word is a simple word, one base ("important", "factory", "business"), whose simple claim passes and is never failed for its etymology, and a shortened word is one base with what it shortens
+    And the rubric fails a Latin or Greek root part, a wrong, missing, or extra part, a wrong meaning, etymology or folk etymology, letters that only look like an affix, and a transparent derivative ("teacher") claimed as simple
+
+  @facts/morphology-synchronic @domain
+  Scenario: A word formation names no Latin or Greek root
+    Given a word formation to submit
+    When one of its parts is a root
+    Then the submission is invalid, saying a word not built on a present-day English word is a simple word, one base part, while a simple word and a formation on a present-day base are accepted
+
+  @facts/morphology-conversion @domain
+  Scenario: A word made from another without an affix names that word
+    Given a word formation of one base part, the word itself, naming another entry's lemma ("shelve" naming "shelf")
+    When it is admitted and its review is planned
+    Then it is admitted with that lemma as its reference, and the rubric claims the word is made from that word without a prefix or suffix, as a conversion with a spelling change or a back-formation, never a simple word, and passes it when that word is the one the meaning comes from
 
   @facts/collocation-contains-word @domain
   Scenario: A collocation contains its word
@@ -753,13 +765,13 @@ Feature: Facts and review
     Given a gap closure with its reason
     When its review is planned
     Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
-    And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, a relations closure when the recorded relations are the only precise ones, and a grammar closure for a title used before a name ("Mrs"), which a learner's dictionary marks neither [C] nor [U]
+    And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, a relations closure when the recorded relations are the only precise ones, and a grammar closure for a title used before a name ("Mrs"), which a learner's dictionary marks neither [C] nor [U], for a pronoun that governs no agreement (an object, reflexive, or reciprocal pronoun such as "yourself" or "each other", or a relative or interrogative pronoun such as "who"), and for an adverb used only after a number or clock time ("a.m.")
 
   @facts/gap-closure-attempts @domain
   Scenario: A gap closure review weighs the attempts already rejected for its slot
     Given a gap closure whose slot has rejected attempts, and one whose slot has none
     When its review is planned
-    Then each closable gap names the kinds that fill it, none for phrases and family, and the rubric lists each rejected attempt with its value, other end or topic, and rejection reason
+    Then each closable gap names where its attempts are, the kinds that fill it about the node, the derivatives' word formations for family, and none for phrases, and the rubric lists each rejected attempt with its value, the derivative it is about, its other end or topic, and rejection reason
     And it passes the closure when the attempts were rejected as not fitting, unless the reviewer names a specific value that plainly fills the slot and differs from every rejected one, and a fail reason always names the value
 
   @facts/gap-closure-attempts-context @usecase
@@ -767,6 +779,18 @@ Feature: Facts and review
     Given a sense with rejected topics, one of them since published, and rejected relations into and out of it
     When a topics closure and a relations closure on it are reviewed
     Then the topics review lists only the rejected topic still not live, with its topic name and reason, and the relations review lists both relations with the sense at their other end
+
+  @facts/family-closure-attempts-context @usecase
+  Scenario: A family closure review sees the rejected word formations of the word's derivatives
+    Given a word with derivatives whose word formations naming it as a base were rejected, one since submitted again and live
+    When a family closure on the word is reviewed
+    Then the review lists the rejected formation still not live with the derivative it is about and its reason, and leaves out the one live again
+
+  @facts/rejected-derivations-query @api
+  Scenario: Rejected derivations are the latest rejected word formations built on a lemma
+    Given rejected, pending, and published word formations of other entries, some with a base naming the lemma
+    When the rejected derivations of the lemma are listed with a limit
+    Then they are the rejected formations with a base part naming the lemma, each with its entry's lemma, most recently rejected first, up to the limit, leaving out one whose content a live fact holds
 
   @facts/rejected-attempts-query @api
   Scenario: Rejected attempts are the latest rejected facts of the filling kinds about the node

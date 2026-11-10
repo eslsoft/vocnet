@@ -330,6 +330,13 @@
       "when": 1794327293451,
       "tag": "20261110161453_plural_only_titles_shortened",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1794329005771,
+      "tag": "20261110164325_synchronic_morphology_stalls",
+      "breakpoints": true
     }
   ]
 }

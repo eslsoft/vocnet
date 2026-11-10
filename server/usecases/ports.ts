@@ -148,6 +148,15 @@ export interface FactRepo {
    * rejected first, leaving out any whose content a live fact of its kind about the same subject holds.
    */
   listRejected(nodeId: EntryId | SenseId, kinds: readonly FactKind[], limit: number): Promise<Fact[]>
+  /**
+   * The latest rejected word formations of other entries with a base part naming this lemma, each
+   * with its entry's lemma, most recently rejected first, leaving out any whose content a live
+   * fact of its kind about the same entry holds.
+   */
+  listRejectedDerivations(
+    baseLemma: string,
+    limit: number,
+  ): Promise<Array<{ word: string; fact: FactOf<'morphology'> }>>
   /** Live facts about this node (as subject or object) marked for a review against its new version. */
   listRevalidating(nodeId: EntryId | SenseId): Promise<FactId[]>
   /** Facts pending since before cutoff, then facts awaiting revalidation since before it, pending first. */

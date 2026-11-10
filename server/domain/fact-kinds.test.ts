@@ -2,7 +2,7 @@ import type { Pos, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
   admissionOf,
-  attemptKindsOf,
+  attemptSourceOf,
   closableGaps,
   contentKeyOf,
   endsAdmissionOf,
@@ -1041,8 +1041,12 @@ describe('morphology facts', () => {
     expect(llmPrompt(plan)?.user).toContain('Claimed parts: "spect" (root meaning "look") + "-ator" (suffix)')
     expect(llmPrompt(plan)?.user).toContain('folk etymology')
     expect(llmPrompt(plan)?.user).toContain('the "er" of "water"')
-    expect(llmPrompt(plan)?.user).toContain('synchronic English formation')
+    expect(llmPrompt(plan)?.user).toContain('Judge by one synchronic rule')
+    expect(llmPrompt(plan)?.user).toContain('"important" is one base, not im- + port + -ant')
     expect(llmPrompt(plan)?.user).toContain('"factory" is one base, not fact + -ory')
+    expect(llmPrompt(plan)?.user).toContain('A simple claim for such a word passes; never fail it for its etymology.')
+    expect(llmPrompt(plan)?.user).toContain('"business" (trade) is one base, not busy + -ness')
+    expect(llmPrompt(plan)?.user).toContain('such as a Latin or Greek root ("spect", "port"), is etymology: fail it')
     expect(llmPrompt(plan)?.user).toContain(
       'A shortened word is one base part, the word itself, and the claim states what it shortens',
     )
@@ -1055,6 +1059,25 @@ describe('morphology facts', () => {
       attempts: [],
     })
     expect(llmPrompt(simple)?.user).toContain('Claimed: a simple word')
+  })
+
+  it('claims a word made from another without an affix as made from that word [spec: facts/morphology-conversion]', () => {
+    const shelve = { parts: [{ form: 'shelve', role: 'base' as const, lemma: 'shelf' }] }
+    expect(admissionOf('morphology', shelve, { lemma: 'shelve', senses: [] })).toBeNull()
+    expect(referencesOf('morphology', shelve)).toEqual(['shelf'])
+    const plan = planReview('morphology', shelve, {
+      subject: { lemma: 'shelve', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
+      target: null,
+      topic: null,
+      attempts: [],
+    })
+    const user = llmPrompt(plan)?.user
+    expect(user).toContain(
+      'Claimed: made from the word "shelf" without a prefix or suffix, as a conversion with a spelling change or a back-formation.',
+    )
+    expect(user).not.toContain('Claimed: a simple word')
+    expect(user).toContain('a back-formation ("televise" from "television", "edit" from "editor")')
+    expect(user).toContain('never fail it for being a back-formation')
   })
 
   it('keys a word formation by its parts, roles, and meanings', () => {
@@ -1569,6 +1592,15 @@ describe('completeness write rules and rubrics', () => {
     expect(onSense).toContain(
       'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
     )
+    expect(onSense).toContain(
+      'an object, reflexive, or reciprocal pronoun ("me", "yourself", "each other") is never the subject a verb agrees with',
+    )
+    expect(onSense).toContain(
+      'a relative or interrogative pronoun ("who", "which", "what") takes the verb its antecedent',
+    )
+    expect(onSense).toContain(
+      'an adverb used only straight after a number, a clock time, or a measure ("10 a.m.", "children aged five and below") has no clause position to record',
+    )
     const onEntry = llmPrompt(
       planReview(
         'gap_closure',
@@ -1600,18 +1632,19 @@ describe('completeness write rules and rubrics', () => {
   })
 
   it('weighs the rejected attempts to fill the slot, passing unless a new value plainly fits [spec: facts/gap-closure-attempts]', () => {
-    expect(Object.fromEntries(Object.entries(closableGaps).map(([gap, spec]) => [gap, spec.filledBy]))).toEqual({
-      forms: ['form'],
-      phrases: [],
-      family: [],
-      relations: ['relation'],
-      topics: ['topic'],
-      grammar: ['grammar'],
-      collocations: ['collocation'],
+    expect(Object.fromEntries(Object.entries(closableGaps).map(([gap, spec]) => [gap, spec.attempts]))).toEqual({
+      forms: { of: 'node', kinds: ['form'] },
+      phrases: null,
+      family: { of: 'derivatives' },
+      relations: { of: 'node', kinds: ['relation'] },
+      topics: { of: 'node', kinds: ['topic'] },
+      grammar: { of: 'node', kinds: ['grammar'] },
+      collocations: { of: 'node', kinds: ['collocation'] },
     })
-    expect(attemptKindsOf('gap_closure', { gap: 'topics', reason: 'r' })).toEqual(['topic'])
-    expect(attemptKindsOf('gap_closure', { gap: 'family', reason: 'r' })).toEqual([])
-    expect(attemptKindsOf('topic', { topic_id: 'kitchen' as TopicId })).toEqual([])
+    expect(attemptSourceOf('gap_closure', { gap: 'topics', reason: 'r' })).toEqual({ of: 'node', kinds: ['topic'] })
+    expect(attemptSourceOf('gap_closure', { gap: 'family', reason: 'r' })).toEqual({ of: 'derivatives' })
+    expect(attemptSourceOf('gap_closure', { gap: 'phrases', reason: 'r' })).toBeNull()
+    expect(attemptSourceOf('topic', { topic_id: 'kitchen' as TopicId })).toBeNull()
     const body = { lemma: 'body', pos: 'noun' as const, gloss: 'The main part of anything.', siblings: [] }
     const closure = { gap: 'topics' as const, reason: 'A general sense with no specific topic.' }
     const prompt = (attempts: Parameters<typeof planReview>[2]['attempts']) =>
@@ -1620,6 +1653,7 @@ describe('completeness write rules and rubrics', () => {
       {
         kind: 'topic',
         payload: { topic_id: 'music' as TopicId },
+        word: null,
         other: null,
         topic: { category: 'Arts', topic: 'Music' },
         reason: 'Too general to be core vocabulary for music.',
@@ -1627,6 +1661,7 @@ describe('completeness write rules and rubrics', () => {
       {
         kind: 'relation',
         payload: { type: 'hypernym', target_sense_id: sense(1) },
+        word: null,
         other: { lemma: 'part', pos: 'noun', gloss: null },
         topic: null,
         reason: 'Not a kind of part.',
@@ -1646,6 +1681,36 @@ describe('completeness write rules and rubrics', () => {
       "A fail reason names the specific value a learner's dictionary gives for the slot, never only that one exists.",
     )
     expect(attempted).toContain('or a general-purpose sense usable in many scenes belongs to no topic')
+    const pray = { lemma: 'pray', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] }
+    const family = llmPrompt(
+      planReview(
+        'gap_closure',
+        { gap: 'family', reason: 'Prayer is a borrowed word, not pray + -er.' },
+        {
+          subject: pray,
+          target: null,
+          topic: null,
+          attempts: [
+            {
+              kind: 'morphology',
+              payload: {
+                parts: [
+                  { form: 'pray', role: 'base', lemma: 'pray' },
+                  { form: '-er', role: 'suffix' },
+                ],
+              },
+              word: 'prayer',
+              other: null,
+              topic: null,
+              reason: 'A single borrowed base.',
+            },
+          ],
+        },
+      ),
+    )?.user
+    expect(family).toContain(
+      '- morphology of "prayer" {"parts":[{"form":"pray","role":"base","lemma":"pray"},{"form":"-er","role":"suffix"}]}: rejected because "A single borrowed base."',
+    )
     const fresh = prompt([])
     expect(fresh).not.toContain('Review already rejected')
     expect(fresh).toContain("A fail reason names the specific value a learner's dictionary gives for the slot")
@@ -1729,7 +1794,7 @@ describe('completeness write rules and rubrics', () => {
       ),
     )?.user
     expect(prompt).toContain(
-      'Claimed: a shortened word, a contraction of "of the clock", with no prefix, suffix, root, or other word to analyse it into.',
+      'Claimed: a shortened word, a contraction of "of the clock", with no prefix, suffix, or other word to analyse it into.',
     )
     expect(prompt).toContain('a clipping ("phone" of "telephone"), or a blend ("brunch" of "breakfast and lunch")')
     expect(
