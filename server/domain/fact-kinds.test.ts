@@ -621,7 +621,14 @@ describe('grammar facts', () => {
   it('admits only the properties of the sense part of speech [spec: facts/grammar-by-pos]', () => {
     expect(admit({ countability: 'both' }, 'noun')).toBeNull()
     expect(admit({ transitivity: 'transitive', patterns: ['two_objects'] }, 'verb')).toBeNull()
-    expect(admit({ position: 'predicative_only', patterns: ['preposition'] }, 'adjective')).toBeNull()
+    expect(admit({ position: 'predicative_only', prepositions: ['of'] }, 'adjective')).toBeNull()
+    expect(admit({ transitivity: 'intransitive', prepositions: ['on', 'upon'] }, 'verb')).toBeNull()
+    expect(admit({ countability: 'countable', prepositions: ['in'] }, 'noun')).toBe(
+      'The grammar of a noun sense names only countability; remove prepositions.',
+    )
+    expect(admit({ countability: 'countable' }, 'adjective')).toBe(
+      'The grammar of an adjective sense names only position, patterns, and prepositions; remove countability.',
+    )
     expect(admit({ patterns: ['to_infinitive'] }, 'adjective')).toBeNull()
     expect(admit({ countability: 'countable', transitivity: 'transitive' }, 'noun')).toBe(
       'The grammar of a noun sense names only countability; remove transitivity.',
@@ -639,6 +646,12 @@ describe('grammar facts', () => {
       contentKeyOf('grammar', { patterns: ['ing_form', 'that_clause'], transitivity: 'both' }),
     )
     expect(contentKeyOf('grammar', { countability: 'countable' })).toBe('countability:countable')
+    expect(contentKeyOf('grammar', { transitivity: 'intransitive', prepositions: ['upon', 'on'] })).toBe(
+      'transitivity:intransitive|prepositions:on,upon',
+    )
+    expect(contentKeyOf('grammar', { transitivity: 'intransitive', prepositions: ['on'] })).not.toBe(
+      contentKeyOf('grammar', { transitivity: 'intransitive', prepositions: ['upon'] }),
+    )
   })
 
   it('asks Jev one question per property of the sense and gives the LLM every claim [spec: facts/grammar-review]', () => {
@@ -655,7 +668,25 @@ describe('grammar facts', () => {
     expect(jevQuestion(plan, 'pattern_to_infinitive')).toContain('"decide to leave"')
     const rubric = llmPrompt(plan)?.user
     expect(rubric).toContain('- intransitive: it never takes a direct object')
-    expect(rubric).toContain('a pattern left out is not an error')
+    expect(rubric).toContain('a pattern or preposition left out is not an error')
+    const rely = { lemma: 'rely', pos: 'verb' as const, gloss: 'To trust someone to help you.', siblings: [] }
+    const prepositions = planReview(
+      'grammar',
+      { transitivity: 'intransitive', prepositions: ['on', 'out of'] },
+      { subject: rely, target: null, topic: null },
+    )
+    const [prepositionsJev] = requests(prepositions)
+    expect(prepositionsJev?.reviewer === 'jev' && Object.keys(prepositionsJev.questions)).toEqual([
+      'transitivity',
+      'preposition_on',
+      'preposition_out_of',
+    ])
+    expect(jevQuestion(prepositions, 'preposition_on')).toContain(
+      'verb "rely" only in the sense "To trust someone to help you.", not in any other sense. Is it commonly followed by the preposition "on"?',
+    )
+    const prepositionsRubric = llmPrompt(prepositions)?.user
+    expect(prepositionsRubric).toContain('- commonly followed by the preposition "out of"')
+    expect(prepositionsRubric).toContain('a named preposition is not the one learners use with this sense or is rare')
     const adjective = planReview(
       'grammar',
       { patterns: ['to_infinitive'] },

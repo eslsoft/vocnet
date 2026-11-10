@@ -87,7 +87,7 @@ needs a new column.
 | `example`       | sense   | many        | `{ text }`                                               | LLM            |
 | `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)                        | LLM            |
 | `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | LLM            |
-| `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns? }` | Jev, then LLM  |
+| `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns?, prepositions? }` | Jev, then LLM  |
 | `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | Jev, then LLM  |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM            |
 | `sense_list`    | entry   | one         | `{ common: [sense_id], extra: [sense_id] }`              | LLM            |
@@ -221,7 +221,8 @@ plain payload shape, so facts written before a rule still read.
   `g`; `ˈ` and `ː`, not `'` and `:`; `tʃ` and `dʒ`, not ligatures. The message
   names each symbol to replace.
 
-- **Grammar.** At least one property, each pattern once.
+- **Grammar.** At least one property, each pattern once, and one to four
+  prepositions, each once.
 - **Word formation.** Parts in written order: prefixes, then at least one base or
   root, then suffixes. A prefix is letters ending in a hyphen (`un-`), a suffix a
   hyphen followed by letters (`-ness`), a root letters only (`spect`), and a base a
@@ -239,19 +240,43 @@ depend on the sense's part of speech, which a submission is checked against:
 | Part of speech | Properties                                                         |
 | -------------- | ------------------------------------------------------------------ |
 | noun           | `countability` (required): `countable`, `uncountable`, or `both`   |
-| verb           | `transitivity` (required): `transitive`, `intransitive`, or `both`; `patterns` |
-| adjective      | `position`: `attributive_only` or `predicative_only` (absent means both); `patterns` |
+| verb           | `transitivity` (required): `transitive`, `intransitive`, or `both`; `patterns`; `prepositions` |
+| adjective      | `position`: `attributive_only` or `predicative_only` (absent means both); `patterns`; `prepositions` |
 
 `patterns` lists the common constructions that follow the word, not all of
 them: `to_infinitive`, `bare_infinitive`, `ing_form`, `that_clause`,
 `wh_clause`, `object_to_infinitive`, `object_bare_infinitive`, `object_ing`,
-`two_objects`, `object_complement`, and `preposition` for verbs; adjectives take
-`to_infinitive`, `ing_form`, `that_clause`, `wh_clause`, and `preposition`.
+`two_objects`, and `object_complement` for verbs; adjectives take
+`to_infinitive`, `ing_form`, `that_clause`, and `wh_clause`.
+
+`prepositions` names the prepositions a learner uses after the word in this
+sense, as learner's dictionaries write them ("rely on/upon sb/sth", "good at
+sth"): `["on", "upon"]` for *rely*, `["at"]` for *good*. It holds one to four
+values, each once, from a closed list of prepositions and adverb particles
+(`DependentPreposition` in `shared/facts.ts`): `about`, `above`, `across`,
+`after`, `against`, `along`, `among`, `around`, `as`, `at`, `before`, `behind`,
+`below`, `beside`, `between`, `beyond`, `by`, `down`, `for`, `from`, `in`,
+`into`, `like`, `near`, `of`, `off`, `on`, `onto`, `out`, `out of`, `over`,
+`past`, `round`, `through`, `to`, `toward`, `towards`, `under`, `up`, `upon`,
+`with`, `within`, and `without`. Time adjuncts such as *during*, *since*, and
+*until* are never selected by a word, so they are not listed. Nouns keep
+countability alone: the prepositions a noun takes ("an increase in") are
+`noun_preposition` collocations, and a noun's grammar is the one slot every
+noun sense must fill, so it stays one required property. The earlier bare
+`preposition` pattern claimed only that the word takes some preposition, which
+is nearly always true; the migration `grammar_prepositions` retracted every
+live grammar fact that used it, so the grammar gap of its sense reopens and the
+producer resubmits it with named prepositions, and marked those entries' worklist
+rows stale for the rescore cron. It dropped the pattern from every stored
+payload, live or not, because reads parse the current shape; a fact's review
+still records the claim it judged. On a copy of the development database
+(4,049 grammar facts) it retracted 227 published and 2 pending facts, rewrote 28
+rejected ones, and marked 149 entries stale, in about 70 ms.
 Grammar about any other part of speech is refused by the registry's
 `subjectPos`, as a topic on a function word is. A property the part of speech
 does not take, a missing required one, or a pattern it does not take is
 `422 invalid_reference` with a message naming what to change. Its content key is
-its properties in a fixed order with sorted patterns.
+its properties in a fixed order with sorted patterns and sorted prepositions.
 
 `morphology` is an entry's word formation as a learner's dictionary gives it:
 a simple word is one `base` part (`water`), a derived word names its base and
@@ -579,16 +604,21 @@ but only to choose the message.
   same act, event, or state (腹泻；拉肚子 for "run" meaning diarrhoea). A wrong
   meaning, a different sense, a noun-only equivalent of a verb sense,
   unnatural wording, or equivalents of unrelated senses fail.
-- **Grammar** asks Jev one yes/no question per property and per pattern, each
+- **Grammar** asks Jev one yes/no question per property, per pattern, and per
+  named preposition, each
   about the sense only ("Consider the English verb "run" only in the sense …,
   not in any other sense. Is it intransitive: it never takes a direct object?").
   The questions are keyed `countability`, `transitivity`, `position`, and
-  `pattern_<name>`, and each pattern names an illustration ("decide to leave"
-  for a verb, "happy to help" for an adjective). The LLM second opinion lists
+  `pattern_<name>`, and `preposition_<name>` (spaces as underscores), and each
+  pattern names an illustration ("decide to leave" for a verb, "happy to help"
+  for an adjective); a preposition asks "Is it commonly followed by the
+  preposition "on"?". The LLM second opinion lists
   every claim, as the Oxford Advanced Learner's, Longman, or Cambridge would
   mark the sense: it passes when each claim holds for this sense, fails a claim
-  that is wrong or holds only for another sense, or a pattern that is rare or
-  unnatural with it, and does not fail a pattern left out.
+  that is wrong or holds only for another sense, a pattern that is rare or
+  unnatural with it, or a named preposition that is not the one learners use
+  with this sense or is rare with it, and does not fail a pattern or
+  preposition left out.
 - **Word formation** asks Jev whether the word is formed from exactly these
   parts with these meanings, as a learner's dictionary analyses it, with no
   part missing or extra and no folk etymology; one base part asks whether the
@@ -813,8 +843,8 @@ the entry stalls after one pass.
 `GRAMMAR_NEEDED` and `COLLOCATIONS_NEEDED` in `server/domain/work.ts` are the
 tables of what a sense needs, like `RELATIONS_NEEDED`. Noun and verb senses
 need one grammar fact: countability and transitivity are what a learner most
-needs of them. An adjective may have grammar, where its position or patterns
-restrict it, but has no grammar gap. Noun, verb, and adjective senses need one
+needs of them. An adjective may have grammar, where its position, patterns, or
+prepositions restrict it, but has no grammar gap. Noun, verb, and adjective senses need one
 collocation; other parts of speech none. A single-word entry needs one word
 formation; a phrase none, since its words are their own entries.
 

@@ -27,6 +27,10 @@ describe('summarizeFact', () => {
       'both, to_infinitive, that_clause',
     ],
     [
+      { kind: 'grammar', payload: { transitivity: 'intransitive', prepositions: ['on', 'upon'] } },
+      'intransitive, on, upon',
+    ],
+    [
       {
         kind: 'morphology',
         payload: {
