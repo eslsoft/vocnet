@@ -151,6 +151,13 @@ describe('public read model', () => {
     expect([morphology.id, grammar.id, collocation.id].every((factId) => ids.has(factId))).toBe(true)
     const bare = project(snapshot)
     expect([bare?.morphology, firstSense(bare)?.grammar, firstSense(bare)?.collocations]).toEqual([null, null, []])
+    const shortened = { type: 'abbreviation' as const, of: 'mistress' }
+    const mrs = fact('morphology', bank.id, { parts: [{ form: 'Mrs', role: 'base' }], shortened })
+    expect(project({ ...snapshot, facts: [...snapshot.facts, mrs] })?.morphology).toEqual({
+      parts: [{ form: 'Mrs', role: 'base' }],
+      shortened,
+      review: review(mrs),
+    })
   })
 
   it('groups senses into meanings in sense-list order, rare after common [spec: catalog/sense-order]', () => {

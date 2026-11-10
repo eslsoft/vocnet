@@ -64,6 +64,13 @@ describe('summarizeFact', () => {
       'study → study + -ent',
     ],
     [
+      {
+        kind: 'morphology',
+        payload: { parts: [{ form: 'Mrs', role: 'base' }], shortened: { type: 'abbreviation', of: 'mistress' } },
+      },
+      'Mrs (abbreviation of mistress)',
+    ],
+    [
       { kind: 'grammar', payload: { countability: 'uncountable', number: 'singular_only', article: 'with_the' } },
       'uncountable, singular_only, with_the',
     ],

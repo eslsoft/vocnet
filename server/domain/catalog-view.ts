@@ -10,7 +10,18 @@ import type {
   ReviewMeta,
   Variant,
 } from '@shared/catalog'
-import type { EntryId, FactId, FactKind, FormType, Morpheme, Pos, RelationType, SenseId, TopicId } from '@shared/facts'
+import type {
+  EntryId,
+  FactId,
+  FactKind,
+  FormType,
+  Morpheme,
+  Pos,
+  RelationType,
+  SenseId,
+  Shortening,
+  TopicId,
+} from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
 import { formMeaning, isIrregularForm } from './fact-kinds'
@@ -121,7 +132,7 @@ export interface StoredEntry {
   pronunciations: PublicPronunciation[]
   variants: Variant[]
   syllables: string[] | null
-  morphology: { parts: Morpheme[]; review: ReviewMeta } | null
+  morphology: { parts: Morpheme[]; shortened?: Shortening; review: ReviewMeta } | null
   meanings: StoredMeaning[]
   summary: StoredSummary
   review: {
@@ -347,7 +358,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     pronunciations,
     variants,
     syllables: syllables ? syllables.payload.syllables : null,
-    morphology: morphology ? { parts: morphology.payload.parts, review: reviewOf(morphology) } : null,
+    morphology: morphology ? { ...morphology.payload, review: reviewOf(morphology) } : null,
     meanings: ordered,
     summary: {
       lemma: snapshot.entry.lemma,

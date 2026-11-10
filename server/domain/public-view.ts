@@ -251,6 +251,7 @@ export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: Re
         ...part,
         ...(publicParts.has(partWord({ lemma, ...part })) ? { lemma: partWord({ lemma, ...part }) } : {}),
       })),
+      ...(document.morphology.shortened ? { shortened: document.morphology.shortened } : {}),
       family: summaries(links.family),
       ...reviewed(document.morphology.review, variant),
     },

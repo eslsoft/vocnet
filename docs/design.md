@@ -90,7 +90,7 @@ needs a new column.
 | `translation`   | sense   | many        | `{ language, text }` (a served language: `zh`)           | LLM            |
 | `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | LLM            |
 | `grammar`       | sense   | one         | `{ countability?, number?, article?, transitivity?, position?, agreement?, patterns?, prepositions? }` | Jev, then LLM  |
-| `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning?, lemma? }] }` (`lemma` on a base: the entry it is) | LLM            |
+| `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning?, lemma? }], shortened?: { type, of } }` (`lemma` on a base: the entry it is; `shortened` for an abbreviation, contraction, clipping, or blend) | LLM            |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM            |
 | `sense_list`    | entry   | one         | `{ common: [sense_id], extra: [sense_id] }`              | LLM            |
 | `syllables`     | entry   | one         | `{ syllables: [string] }` (`["a", "bil", "i", "ty"]`)     | LLM            |
@@ -119,7 +119,10 @@ verbs or verb idioms exist and its reason names the ones that do ("throw" has
 throw away, throw out, and throw up, so it fails there); a `family` closure only
 for a word with no common derivatives ("notebook", or a function word); and a
 `relations` closure when the relations recorded so far are the only precise
-ones, so a sense need not be padded to two with loose relations. A fail
+ones, so a sense need not be padded to two with loose relations; a `grammar`
+closure passes for a title used before a name ("Mr", "Mrs", "Ms", "Dr"), which
+a learner's dictionary prints as used before a name and never marks [C] or
+[U]. A fail
 reason names the specific value a learner's dictionary gives for the slot.
 
 A closure review also weighs the attempts already rejected for its slot. Each
@@ -457,7 +460,10 @@ plain payload shape, so facts written before a rule still read.
   hyphen followed by letters (`-ness`), a root letters only (`spect`), and a base a
   word (`happy`, or one with an inner hyphen, apostrophe, or period, and an
   abbreviation's final period: `o'clock`, `a.m.`, `Mrs.`). One part is a simple
-  word, so its role is `base`; an abbreviation or contraction is one base.
+  word, so its role is `base`; an abbreviation or contraction is one base. A
+  formation with `shortened` is one base part without a lemma (`A shortened word
+  is one base part, the word itself, without a lemma; "mistress" goes in
+  shortened.of only.`).
 - **Collocation.** At least two words.
 - **Relation ends** (`admitEnds`, `422 invalid_reference`). A relation links
   common, current senses: its target, and for a symmetric type (synonym,
@@ -479,7 +485,7 @@ depend on the sense's part of speech, which a submission is checked against:
 
 | Part of speech | Properties                                                         |
 | -------------- | ------------------------------------------------------------------ |
-| noun           | `countability` (required): `countable`, `uncountable`, or `both`; `number`: `singular_only` ("a while", "the sun") or `plural_only` ("trousers"); `article`: `with_the` ("the internet") or `zero_article` ("in hospital", "by car"); `patterns`; `prepositions` |
+| noun           | `countability` (required unless `number` is `plural_only`): `countable`, `uncountable`, or `both`; `number`: `singular_only` ("a while", "the sun") or `plural_only` ("jeans", "trousers"), which stands in place of countability; `article`: `with_the` ("the internet") or `zero_article` ("in hospital", "by car"); `patterns`; `prepositions` |
 | verb           | `transitivity` (required): `transitive`, `intransitive`, or `both`; `patterns`; `prepositions` |
 | adjective      | `position`: `attributive_only`, `predicative_only`, or `both` (absent means not stated); `patterns`; `prepositions` |
 | adverb         | `position`, the usual one: `front` ("Suddenly, …"), `mid` ("I usually walk", "She has just left"), or `end` ("He works hard"); `prepositions` |
@@ -510,7 +516,17 @@ values, each once, from a closed list of prepositions and adverb particles
 *until* are never selected by a word, so they are not listed. A noun names
 the prepositions it takes in its grammar too ("an increase in", "interest in"),
 beside its required countability; its `number` and `article` say what a
-learner's dictionary marks [sing.], [pl.], or "the …" / "in hospital". The earlier bare
+learner's dictionary marks [sing.], [pl.], or "the …" / "in hospital". A
+plural-only noun (*jeans*, *trousers*, *scissors*) is marked [plural] in place
+of [C] or [U]: it takes no "a" and has no singular, so no countability is true
+of it, and review rejected every one tried for *jeans*. Its grammar names
+`number: plural_only` and no countability (`standsIn` on the noun rule in the
+registry); one naming both is `422 invalid_reference` ("For a plural-only noun
+("jeans", "scissors"), number plural_only takes the place of countability;
+remove countability."). Its grammar names no countable sense, so the entry has
+no plural slot. A title used before a name (*Mr*, *Mrs*, *Dr*) has no
+grammar a learner's dictionary prints, so its sense closes the grammar gap with
+a gap closure (see Gap closures). The earlier bare
 `preposition` pattern claimed only that the word takes some preposition, which
 is nearly always true; the migration `grammar_prepositions` retracted every
 live grammar fact that used it, so the grammar gap of its sense reopens and the
@@ -549,9 +565,17 @@ spelled. Create that entry first, or leave the lemma out."), checked by the
 registry's `references` hook before the write, and again when a rejected fact is
 re-reviewed back to life; a base naming the word itself is refused by `admit`
 ("A base names the entry of another word the word is built on; \"study\" is
-this entry, so leave its lemma out."). Its content key is each part's role,
-form, meaning, and `=lemma` in order (`base:study|=study+suffix:-ent`), so
-adding a lemma to a published formation is a correction.
+this entry, so leave its lemma out."). A shortened word states what it
+shortens in `shortened`: `type` is `abbreviation` (*Mrs*, of *mistress*;
+*a.m.*), `contraction` (*o'clock*, of *of the clock*), `clipping` (*phone*, of
+*telephone*), or `blend` (*brunch*, of *breakfast and lunch*), and `of` is the
+source written in full. Review rejected *Mrs* and *o'clock* as plain simple
+words for not naming their source. `of` is text, not a link: it names no entry
+and adds nothing to a word family. Its content key is each part's role,
+form, meaning, and `=lemma` in order (`base:study|=study+suffix:-ent`), then
+`|~type:of` for a shortened word (`base:mrs|~abbreviation:mistress`), so
+adding a lemma or a source to a published formation is a correction. The public
+entry's `morphology` carries `shortened` when the formation has one.
 
 `collocation` is a combination native speakers commonly use with a sense, such
 as *make a decision*. `pattern` is `verb_noun`, `adjective_noun`, `noun_noun`,
@@ -917,13 +941,20 @@ but only to choose the message.
   that is wrong or holds only for another sense, a pattern that is rare or
   unnatural with it, or a named preposition that is not the one learners use
   with this sense or is rare with it, and does not fail a pattern or
-  preposition left out.
+  preposition left out. It says a plural-only noun is marked [plural] in place
+  of countable or uncountable, so a missing countability is not an omission, and
+  the `number` claim of `plural_only` reads "used only in the plural, with a
+  plural verb and never with "a" or "an" … as a learner's dictionary marks
+  [plural]".
 - **Word formation** goes to the LLM alone: Jev passed etymological splits of
   opaque words (fact + -ory). The rubric asks for the formation a learner's
   dictionary gives, a synchronic English formation a present-day speaker can
   see: an unanalysable loan or a historically opaque word is a single base
-  ("factory", "window"), and so is an abbreviation or contraction ("Mrs",
-  "o'clock", "a.m."). It allows spelling changes where parts join and fails a
+  ("factory", "window"). A shortened word is one base with its source: the
+  rubric claims "a shortened word, an abbreviation of "mistress"", passes a right
+  source of a type a dictionary gives it (dictionaries call some contractions,
+  such as "Mrs", abbreviations), and fails a wrong source or type and a
+  shortened word claimed as a plain simple word. It allows spelling changes where parts join and fails a
   wrong, missing, or extra part, a wrong meaning, etymology rather than
   present-day formation, folk etymology, letters that only look like an affix
   (the "er" of "water"), and a word claimed simple that has parts. A base is the
@@ -1170,7 +1201,9 @@ stalls after one pass and comes back only when something about it changes.
 A review rule change that should reopen stalled entries ships with a migration
 that clears every row's `stalled` and `claimed_work` and bumps its revision, as
 `closure_attempts_unstall` did when closure reviews began weighing rejected
-attempts (see Gap closures).
+attempts (see Gap closures), and `plural_only_titles_shortened` did when
+plural-only noun grammar, title grammar closures, and shortened word formations
+became expressible.
 
 ### Relations by part of speech
 

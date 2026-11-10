@@ -195,6 +195,28 @@ describe('grammar, word formation, and collocation formats', () => {
     expect(morphology(['.am', 'base'])).toEqual([expect.stringContaining('is not a base')])
   })
 
+  it('gives a shortened word one base part and its source [spec: facts/morphology-shortened]', () => {
+    const shortened = (parts: unknown[], source: unknown) => submit('morphology', entry, { parts, shortened: source })
+    const mrs = { form: 'Mrs', role: 'base' }
+    expect(shortened([mrs], { type: 'abbreviation', of: 'mistress' })).toEqual([])
+    expect(shortened([mrs], { type: 'acronym', of: 'mistress' })).toHaveLength(1)
+    expect(shortened([mrs], { type: 'abbreviation' })).toHaveLength(1)
+    expect(shortened([{ ...mrs, lemma: 'mistress' }], { type: 'abbreviation', of: 'mistress' })).toEqual([
+      'A shortened word is one base part, the word itself, without a lemma; "mistress" goes in shortened.of only.',
+    ])
+    expect(
+      shortened(
+        [
+          { form: 'brunch', role: 'base' },
+          { form: '-es', role: 'suffix' },
+        ],
+        { type: 'blend', of: 'breakfast and lunch' },
+      ),
+    ).toEqual([
+      'A shortened word is one base part, the word itself, without a lemma; "breakfast and lunch" goes in shortened.of only.',
+    ])
+  })
+
   it('needs a collocation of at least two words [spec: facts/usage-formats]', () => {
     expect(submit('collocation', sense, { text: 'heavy rain', pattern: 'adjective_noun' })).toEqual([])
     expect(submit('collocation', sense, { text: 'rain', pattern: 'adjective_noun' })).toEqual([

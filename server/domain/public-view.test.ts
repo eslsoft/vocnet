@@ -253,6 +253,19 @@ describe('public read variants', () => {
     expect(shapeEntry({ ...bank, morphology: null }, links, none).morphology).toBeNull()
   })
 
+  it('shows what a shortened word shortens [spec: catalog/usage-facts]', () => {
+    const review = bank.morphology?.review
+    if (!review) throw new Error('The fixture has no morphology.')
+    const shortened = { type: 'abbreviation' as const, of: 'mistress' }
+    const mrs = { ...bank, morphology: { parts: [{ form: 'Mrs', role: 'base' as const }], shortened, review } }
+    expect(shapeEntry(mrs, links, none).morphology).toEqual({
+      parts: [{ form: 'Mrs', role: 'base' }],
+      shortened,
+      family: [expect.objectContaining({ lemma: 'banker' })],
+    })
+    expect(shapeEntry(bank, links, none).morphology).not.toHaveProperty('shortened')
+  })
+
   it('reads a base by the entry it names, so the words built on one entry find each other [spec: public-view/family-lemma]', () => {
     const review = bank.morphology?.review
     if (!review) throw new Error('The fixture has no morphology.')

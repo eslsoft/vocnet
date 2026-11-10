@@ -334,6 +334,12 @@ Feature: Worklist
     When the closure_attempts_unstall migration runs
     Then no row is stalled or keeps its claimed open work, and every row is stale, so the producer resubmits the closures
 
+  @work/plural-only-shortened-migration @api
+  Scenario: The plural-only and shortened release re-scores every row and lifts every stall
+    Given worklist rows stalled on the open work of their last claim
+    When the plural_only_titles_shortened migration runs
+    Then no row is stalled or keeps its claimed open work, and every row is stale, so the producer resubmits plural-only grammar, title grammar closures, and shortened word formations
+
   @work/core-verb-phrases-migration @api
   Scenario: The core verb release re-judges recent phrasal verbs
     Given multiword entries an agent created today and earlier, headed by a verb and by a noun, with a verb sense and without, one a CEFR list names, and one an admin created

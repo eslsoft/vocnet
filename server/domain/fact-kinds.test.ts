@@ -854,7 +854,7 @@ describe('grammar facts', () => {
     expect(admit({ transitivity: 'intransitive', prepositions: ['on', 'upon'] }, 'verb')).toBeNull()
     expect(admit({ countability: 'countable', prepositions: ['in'], patterns: ['to_infinitive'] }, 'noun')).toBeNull()
     expect(admit({ countability: 'uncountable', article: 'zero_article' }, 'noun')).toBeNull()
-    expect(admit({ countability: 'countable', number: 'plural_only', patterns: ['of_ing'] }, 'noun')).toBeNull()
+    expect(admit({ countability: 'countable', number: 'singular_only' }, 'noun')).toBeNull()
     expect(admit({ position: 'both' }, 'adjective')).toBeNull()
     expect(admit({ patterns: ['of_ing'] }, 'adjective')).toBeNull()
     expect(admit({ transitivity: 'transitive', patterns: ['of_ing'] }, 'verb')).toContain(
@@ -872,7 +872,9 @@ describe('grammar facts', () => {
       'The grammar of a noun sense names only countability, number, article, patterns, and prepositions; remove transitivity.',
     )
     expect(admit({ patterns: ['ing_form'] }, 'verb')).toBe('The grammar of a verb sense names its transitivity.')
-    expect(admit({ patterns: ['to_infinitive'] }, 'noun')).toBe('The grammar of a noun sense names its countability.')
+    expect(admit({ patterns: ['to_infinitive'] }, 'noun')).toBe(
+      'The grammar of a noun sense names its countability, or number plural_only for a plural-only noun ("jeans", "scissors").',
+    )
     expect(admit({ patterns: ['two_objects', 'object_ing'] }, 'adjective')).toContain(
       'two_objects, object_ing are not patterns of an adjective',
     )
@@ -1042,8 +1044,9 @@ describe('morphology facts', () => {
     expect(llmPrompt(plan)?.user).toContain('synchronic English formation')
     expect(llmPrompt(plan)?.user).toContain('"factory" is one base, not fact + -ory')
     expect(llmPrompt(plan)?.user).toContain(
-      'An abbreviation or contraction ("Mrs", "o\'clock", "a.m.") is one base too.',
+      'A shortened word is one base part, the word itself, and the claim states what it shortens',
     )
+    expect(llmPrompt(plan)?.user).toContain('a shortened word claimed as a plain simple word')
     expect(llmPrompt(plan)?.user).toContain('- (noun) "A person who watches."')
     const simple = planReview('morphology', parts(['water', 'base']), {
       subject: { lemma: 'water', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
@@ -1563,6 +1566,9 @@ describe('completeness write rules and rubrics', () => {
     expect(onSense).toContain('fail when the slot plainly applies to this word')
     expect(onSense).toContain('months, days, and numbers have no common collocations')
     expect(onSense).toContain('a sense whose recorded relations are the only precise ones')
+    expect(onSense).toContain(
+      'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
+    )
     const onEntry = llmPrompt(
       planReview(
         'gap_closure',
@@ -1677,6 +1683,64 @@ describe('completeness write rules and rubrics', () => {
         ),
       )?.user,
     ).toContain('commonly followed by "of" and an -ing form (a pattern like "the habit of smoking")')
+  })
+
+  it('takes number plural_only in place of countability for a plural-only noun [spec: facts/grammar-plural-only]', () => {
+    const admit = (payload: Parameters<typeof admissionOf<'grammar'>>[1]) =>
+      admissionOf('grammar', payload, { lemma: 'jeans', pos: 'noun', forms: [] })
+    expect(admit({ number: 'plural_only' })).toBeNull()
+    expect(admit({ number: 'plural_only', article: 'zero_article', prepositions: ['in'] })).toBeNull()
+    for (const countability of ['countable', 'uncountable', 'both'] as const) {
+      expect(admit({ countability, number: 'plural_only' })).toBe(
+        'For a plural-only noun ("jeans", "scissors"), number plural_only takes the place of countability; remove countability.',
+      )
+    }
+    expect(admit({ number: 'singular_only' })).toContain('names its countability, or number plural_only')
+    const jeans = { lemma: 'jeans', pos: 'noun' as const, gloss: 'Trousers made of denim.', siblings: [] }
+    const plan = planReview(
+      'grammar',
+      { number: 'plural_only' },
+      { subject: jeans, target: null, topic: null, attempts: [] },
+    )
+    const [jev] = requests(plan)
+    expect(jev?.reviewer === 'jev' && Object.keys(jev.questions)).toEqual(['number'])
+    expect(jev?.reviewer === 'jev' && jev.questions.number).toContain(
+      'used only in the plural, with a plural verb and never with "a" or "an" ("jeans", "trousers", "scissors"), as a learner\'s dictionary marks [plural]',
+    )
+    expect(llmPrompt(plan)?.user).toContain(
+      'A plural-only noun ("jeans", "trousers", "scissors") is marked [plural] in place of countable or uncountable, so its grammar claims no countability; that is not an omission.',
+    )
+  })
+
+  it('states what a shortened word shortens [spec: facts/morphology-shortened]', () => {
+    const mrs = {
+      parts: [{ form: 'Mrs', role: 'base' as const }],
+      shortened: { type: 'abbreviation' as const, of: 'mistress' },
+    }
+    expect(admissionOf('morphology', mrs, entry('Mrs'))).toBeNull()
+    expect(contentKeyOf('morphology', mrs)).toBe('base:mrs|~abbreviation:mistress')
+    expect(contentKeyOf('morphology', { parts: mrs.parts })).toBe('base:mrs')
+    const subject = { lemma: "o'clock", senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] }
+    const prompt = llmPrompt(
+      planReview(
+        'morphology',
+        { parts: [{ form: "o'clock", role: 'base' }], shortened: { type: 'contraction', of: 'of the clock' } },
+        { subject, target: null, topic: null, attempts: [] },
+      ),
+    )?.user
+    expect(prompt).toContain(
+      'Claimed: a shortened word, a contraction of "of the clock", with no prefix, suffix, root, or other word to analyse it into.',
+    )
+    expect(prompt).toContain('a clipping ("phone" of "telephone"), or a blend ("brunch" of "breakfast and lunch")')
+    expect(
+      llmPrompt(
+        planReview(
+          'morphology',
+          { parts: [{ form: 'a.m.', role: 'base' }], shortened: { type: 'abbreviation', of: 'ante meridiem' } },
+          { subject: { ...subject, lemma: 'a.m.' }, target: null, topic: null, attempts: [] },
+        ),
+      )?.user,
+    ).toContain('an abbreviation of "ante meridiem"')
   })
 
   it('allows an abbreviation or contraction as one base part [spec: facts/morphology-parts]', () => {

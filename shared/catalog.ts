@@ -18,6 +18,7 @@ import {
   regionSchema,
   registerSchema,
   senseIdSchema,
+  shorteningSchema,
   strengthSchema,
   topicIdSchema,
   verdictSchema,
@@ -144,6 +145,9 @@ export const morphologyPartSchema = morphemeSchema
 export const publicMorphologySchema = z
   .object({
     parts: z.array(morphologyPartSchema),
+    shortened: shorteningSchema.optional().meta({
+      description: 'For a shortened word (an abbreviation, contraction, clipping, or blend), what it is short for.',
+    }),
     family: z.array(wordSummarySchema).meta({
       description:
         'Other public entries whose word formation shares a base or root with this one, a base by the entry it names, in lemma order: a base word lists the words built on it.',

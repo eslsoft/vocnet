@@ -983,6 +983,8 @@ const grammarRules: Record<
   {
     fields: readonly GrammarField[]
     requires?: GrammarField
+    /** A value that takes the place of the required field, which it then refuses. */
+    standsIn?: { field: GrammarField; value: string; name: string }
     patterns: readonly GrammarPattern[]
     positions?: readonly Position[]
   }
@@ -990,6 +992,9 @@ const grammarRules: Record<
   noun: {
     fields: ['countability', 'number', 'article', 'patterns', 'prepositions'],
     requires: 'countability',
+    // A learner's dictionary marks a plural-only noun [plural] in place of [C] or [U]: "jeans" takes
+    // no "a" and no singular, so neither countable nor uncountable is true of it.
+    standsIn: { field: 'number', value: 'plural_only', name: 'a plural-only noun ("jeans", "scissors")' },
     patterns: patternsOf('noun'),
   },
   verb: {
@@ -1020,8 +1025,14 @@ function admitGrammar(grammar: Grammar, { pos }: AdmissionViews['sense']): strin
   if (foreign.length > 0) {
     return `The grammar of ${article(pos)} ${pos} sense names only ${inWords(rule.fields)}; remove ${listed(foreign)}.`
   }
-  if (rule.requires && grammar[rule.requires] === undefined) {
-    return `The grammar of ${article(pos)} ${pos} sense names its ${rule.requires}.`
+  const standsIn = rule.standsIn
+  if (standsIn && grammar[standsIn.field] === standsIn.value) {
+    if (rule.requires && grammar[rule.requires] !== undefined) {
+      return `For ${standsIn.name}, ${standsIn.field} ${standsIn.value} takes the place of ${rule.requires}; remove ${rule.requires}.`
+    }
+  } else if (rule.requires && grammar[rule.requires] === undefined) {
+    const instead = standsIn ? `, or ${standsIn.field} ${standsIn.value} for ${standsIn.name}` : ''
+    return `The grammar of ${article(pos)} ${pos} sense names its ${rule.requires}${instead}.`
   }
   const unfit = (grammar.patterns ?? []).filter((pattern) => !rule.patterns.includes(pattern))
   if (unfit.length > 0) {
@@ -1081,7 +1092,8 @@ const grammarClaims = {
   },
   number: {
     singular_only: 'used only in the singular ("a while", "the sun"), never in the plural',
-    plural_only: 'used only in the plural, with a plural verb ("trousers", "scissors")',
+    plural_only:
+      'used only in the plural, with a plural verb and never with "a" or "an" ("jeans", "trousers", "scissors"), as a learner\'s dictionary marks [plural]',
   },
   article: {
     with_the: 'usually used with "the" in this sense ("the internet", "the environment")',
@@ -1145,6 +1157,7 @@ function grammarRubric(grammar: Grammar, subject: SubjectViews['sense'], sense: 
     'It claims the word in this sense is:',
     ...grammarClaimsOf(grammar, sense.pos).map(([, claim]) => `- ${claim}`),
     'Judge each claim for this sense only, never for another sense of the word.',
+    'A plural-only noun ("jeans", "trousers", "scissors") is marked [plural] in place of countable or uncountable, so its grammar claims no countability; that is not an omission.',
     'A named preposition claims that learners use that preposition after the word in this sense, as a learner\'s dictionary writes it ("rely on/upon sb/sth", "good at sth").',
     'An adverb position claims where the adverb usually goes in a clause; an adverb that can also go elsewhere still has its usual position. An agreement claims what a determiner or pronoun commonly goes with; one it goes with only rarely is wrong.',
     'pass: every claim holds for this sense. Patterns and prepositions are the common ones a learner needs, not all of them: a pattern or preposition left out is not an error.',
@@ -1209,14 +1222,22 @@ const baseLemmas = ({ parts }: FactPayloads['morphology']) =>
 
 const isSimpleWord = (parts: readonly Morpheme[]) => parts.length === 1
 
-function morphologyRubric(entry: SubjectViews['entry'], parts: readonly Morpheme[]): string {
+function formationClaim({ parts, shortened }: FactPayloads['morphology']): string {
+  if (shortened) {
+    return `Claimed: a shortened word, ${article(shortened.type)} ${shortened.type} of ${quote(shortened.of)}, with no prefix, suffix, root, or other word to analyse it into.`
+  }
+  return isSimpleWord(parts)
+    ? 'Claimed: a simple word, with no prefix, suffix, root, or other word to analyse it into.'
+    : `Claimed parts: ${describeParts(parts)}.`
+}
+
+function morphologyRubric(entry: SubjectViews['entry'], morphology: FactPayloads['morphology']): string {
   return [
     `Is this the word formation of the English word ${quote(entry.lemma)} that a learner's dictionary would give?`,
-    isSimpleWord(parts)
-      ? 'Claimed: a simple word, with no prefix, suffix, root, or other word to analyse it into.'
-      : `Claimed parts: ${describeParts(parts)}.`,
+    formationClaim(morphology),
     'pass: in present-day English the word is built from exactly these parts: its base word or Latin or Greek root, and its prefixes and suffixes, with every stated meaning right for that part. Spelling changes where parts join are normal (happy + -ness gives happiness). A simple word passes when it has no parts a learner could recognise.',
-    'Parts must be a synchronic English formation, one a present-day speaker can see: an unanalysable loan or a historically opaque word is a single base ("factory" is one base, not fact + -ory; "window" is one base). An abbreviation or contraction ("Mrs", "o\'clock", "a.m.") is one base too.',
+    'Parts must be a synchronic English formation, one a present-day speaker can see: an unanalysable loan or a historically opaque word is a single base ("factory" is one base, not fact + -ory; "window" is one base).',
+    'A shortened word is one base part, the word itself, and the claim states what it shortens: an abbreviation ("Mrs" of "mistress", "a.m." of "ante meridiem"), a contraction ("o\'clock" of "of the clock"), a clipping ("phone" of "telephone"), or a blend ("brunch" of "breakfast and lunch"). It passes when the source is right and the type is one a dictionary gives it (dictionaries call some contractions, such as "Mrs", abbreviations; either passes); it fails when the source or the type is wrong, and a shortened word claimed as a plain simple word, without what it shortens, fails.',
     'A base is the present-day word the meaning comes from, even when its spelling changes where the parts join: "student" is study + -ent (a student studies), not stud + -ent; "happiness" is happy + -ness. A base that only shares letters with the word, or a word named for a base that is not the word the meaning comes from, fails.',
     'fail: a part is wrong, missing, or extra; a stated meaning is wrong; the analysis is etymology rather than present-day formation, folk etymology, or splits off letters that only look like an affix (the "er" of "water"); or the word does have parts and is claimed to be simple.',
     listSenses("The word's senses", entry.senses),
@@ -1439,6 +1460,7 @@ const CLOSURE_PASSES = [
   'a word with no common derivatives ("notebook", "salad"), or a function word ("and", "with")',
   'a sense whose recorded relations are the only precise ones: no further synonym, antonym, broader term, or whole would help a learner',
   'an uncountable noun ("advice") has no plural',
+  'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
   'a non-gradable adjective ("main", "dead") has no comparative',
   'a function word, a general word ("thing", "get"), or a general-purpose sense usable in many scenes belongs to no topic, even where it can appear in one',
 ]
@@ -1651,15 +1673,19 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     cardinality: 'one',
     chain: ['llm'],
     // A base's lemma is part of the claim: adding one to a published formation is a correction.
-    contentKey: ({ parts }) =>
-      parts
-        .map(({ form, role, meaning, lemma }) =>
-          labelled(`${role}:${textKey(form)}`, meaning && textKey(meaning), lemma && `=${lemma}`),
-        )
-        .join('+'),
+    // So is what a shortened word shortens: stating it on a published simple word is a correction.
+    contentKey: ({ parts, shortened }) =>
+      labelled(
+        parts
+          .map(({ form, role, meaning, lemma }) =>
+            labelled(`${role}:${textKey(form)}`, meaning && textKey(meaning), lemma && `=${lemma}`),
+          )
+          .join('+'),
+        shortened && `~${shortened.type}:${textKey(shortened.of)}`,
+      ),
     admit: admitMorphology,
     references: baseLemmas,
-    plan: ({ parts }, { subject }) => llm(morphologyRubric(subject, parts)),
+    plan: (morphology, { subject }) => llm(morphologyRubric(subject, morphology)),
   },
   syllables: {
     subject: 'entry',

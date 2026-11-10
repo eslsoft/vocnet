@@ -513,8 +513,15 @@ Feature: Facts and review
   Scenario: Grammar fits the part of speech of its sense
     Given a grammar fact about a sense
     When it is submitted
-    Then a noun sense always takes its countability and optionally its number, article, noun patterns, and prepositions, a verb sense always its transitivity and optionally verb patterns and prepositions, an adjective sense its position (attributive only, predicative only, or both), adjective patterns, or prepositions, an adverb sense its usual position (front, mid, or end) or prepositions, and a determiner or pronoun sense always its agreement
+    Then a noun sense always takes its countability (or number plural_only in its place) and optionally its number, article, noun patterns, and prepositions, a verb sense always its transitivity and optionally verb patterns and prepositions, an adjective sense its position (attributive only, predicative only, or both), adjective patterns, or prepositions, an adverb sense its usual position (front, mid, or end) or prepositions, and a determiner or pronoun sense always its agreement
     And grammar of any other part of speech is refused by the kind's parts of speech, and a property or pattern that does not fit is an invalid reference that names what to remove
+
+  @facts/grammar-plural-only @domain
+  Scenario: A plural-only noun is marked plural in place of countable or uncountable
+    Given grammar of a plural-only noun such as "jeans"
+    When it is submitted and its review is planned
+    Then number plural_only stands in place of countability, so grammar naming it needs no countability and grammar naming both is an invalid reference that says to remove countability
+    And Jev and the rubric claim it is used only in the plural, with a plural verb and never with "a" or "an", as a learner's dictionary marks [plural], and the rubric does not count the missing countability as an omission
 
   @facts/grammar-review @domain
   Scenario: Grammar is reviewed one property at a time
@@ -538,6 +545,19 @@ Feature: Facts and review
     And parts whose letters do not spell the word, allowing two changed letters where each pair of parts joins, are an invalid reference
     And an abbreviation or contraction such as "a.m.", "o'clock", or "Mrs" is one base part
 
+  @facts/morphology-shortened @domain
+  Scenario: A shortened word states what it shortens
+    Given a word formation of an abbreviation, contraction, clipping, or blend
+    When it is submitted, keyed, and its review is planned
+    Then it gives shortened with its type and the words it shortens, its parts are one base part without a lemma or the submission is invalid, and what it shortens is part of the content key
+    And the rubric claims a shortened word of that type and source, passes a right source of a type a dictionary gives it, and fails a wrong source or type and a shortened word claimed as a plain simple word
+
+  @facts/plural-only-shortened-api @api
+  Scenario: Plural-only grammar and a shortened word's source are published through the queue
+    Given a plural-only noun sense and a shortened word's entry
+    When an agent submits grammar naming countability with plural_only, grammar naming plural_only alone, and a word formation with its shortened source, and the queue reviews them
+    Then the first is refused as an invalid reference, and the public entries show the plural-only grammar without countability and the word formation with what it shortens
+
   @facts/function-word-grammar @domain
   Scenario: Adverbs state their usual position and determiners and pronouns what they agree with
     Given grammar of an adverb, a determiner, a pronoun, and an adjective
@@ -560,7 +580,7 @@ Feature: Facts and review
   Scenario: A word formation is judged as a learner's dictionary analyses the word
     Given a morphology fact
     When its review is planned
-    Then the LLM alone is asked whether the word is formed from exactly these parts with these meanings as a present-day English formation, an opaque word or loan being one base ("factory") and an abbreviation or contraction one base too
+    Then the LLM alone is asked whether the word is formed from exactly these parts with these meanings as a present-day English formation, an opaque word or loan being one base ("factory") and a shortened word one base with what it shortens
     And the rubric fails a wrong, missing, or extra part, a wrong meaning, etymology or folk etymology, and letters that only look like an affix
 
   @facts/collocation-contains-word @domain
@@ -733,7 +753,7 @@ Feature: Facts and review
     Given a gap closure with its reason
     When its review is planned
     Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
-    And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, and a relations closure when the recorded relations are the only precise ones
+    And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, a relations closure when the recorded relations are the only precise ones, and a grammar closure for a title used before a name ("Mrs"), which a learner's dictionary marks neither [C] nor [U]
 
   @facts/gap-closure-attempts @domain
   Scenario: A gap closure review weighs the attempts already rejected for its slot

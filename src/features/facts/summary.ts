@@ -42,10 +42,13 @@ export function summarizeFact(fact: FactDto): string {
         ...(prepositions ?? []),
       )
     }
-    case 'morphology':
-      return fact.payload.parts
+    case 'morphology': {
+      const { parts, shortened } = fact.payload
+      const formation = parts
         .map(({ form, meaning, lemma }) => `${form}${meaning ? ` "${meaning}"` : ''}${lemma ? ` → ${lemma}` : ''}`)
         .join(' + ')
+      return shortened ? `${formation} (${shortened.type} of ${shortened.of})` : formation
+    }
     case 'collocation':
       return `${fact.payload.text} (${fact.payload.pattern})`
     case 'sense_list':

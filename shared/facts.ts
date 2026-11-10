@@ -116,7 +116,7 @@ export type Agreement = z.infer<typeof agreementSchema>
 export const nounNumberSchema = z.enum(['singular_only', 'plural_only']).meta({
   id: 'NounNumber',
   description:
-    'singular_only: used only in the singular ("a while", "the sun"). plural_only: used only in the plural, with a plural verb ("trousers", "scissors").',
+    'singular_only: used only in the singular ("a while", "the sun"). plural_only: used only in the plural, with a plural verb and never with a or an ("jeans", "trousers", "scissors"), which a learner\'s dictionary marks [plural] in place of countable or uncountable.',
 })
 
 export const nounArticleSchema = z.enum(['with_the', 'zero_article']).meta({
@@ -303,8 +303,12 @@ const alternativesOf = (text: string) => text.split(ALTERNATIVES).map((alternati
 const zhText = (max: number) => text(max).refine((value) => !ASCII_PUNCTUATION.test(value), ZH_PUNCTUATION_ISSUE)
 
 export const grammarPayloadSchema = z.strictObject({
-  countability: countabilitySchema.optional().meta({ description: 'Noun senses only, and required for them.' }),
-  number: nounNumberSchema.optional().meta({ description: 'Noun senses only.' }),
+  countability: countabilitySchema.optional().meta({
+    description: 'Noun senses only, and required for them unless number is plural_only; a plural-only noun takes none.',
+  }),
+  number: nounNumberSchema
+    .optional()
+    .meta({ description: 'Noun senses only; plural_only stands in place of countability.' }),
   article: nounArticleSchema.optional().meta({ description: 'Noun senses only.' }),
   transitivity: transitivitySchema.optional().meta({ description: 'Verb senses only, and required for them.' }),
   position: z.union([adjectivePositionSchema, adverbPositionSchema]).optional().meta({
@@ -341,10 +345,32 @@ export const morphemeSchema = z
   .meta({ id: 'Morpheme' })
 export type Morpheme = z.infer<typeof morphemeSchema>
 
+export const shorteningTypeSchema = z.enum(['abbreviation', 'contraction', 'clipping', 'blend']).meta({
+  id: 'ShorteningType',
+  description:
+    'abbreviation: letters standing for a word or words ("Mrs", "a.m."). contraction: words run together with letters left out ("o\'clock"). clipping: a part of a longer word ("phone"). blend: parts of two words joined ("brunch").',
+})
+export type ShorteningType = z.infer<typeof shorteningTypeSchema>
+
+export const shorteningSchema = z
+  .strictObject({
+    type: shorteningTypeSchema,
+    of: text(100).meta({
+      description:
+        'What it shortens, written in full: "mistress" for Mrs, "of the clock" for o\'clock, "telephone" for phone, "breakfast and lunch" for brunch.',
+    }),
+  })
+  .meta({ id: 'Shortening' })
+export type Shortening = z.infer<typeof shorteningSchema>
+
 const morphologyPayloadSchema = z.strictObject({
   parts: z.array(morphemeSchema).min(1).max(8).meta({
     description:
       'The parts in written order. A simple word is one base part; unhappiness is un- (prefix), happy (base), -ness (suffix).',
+  }),
+  shortened: shorteningSchema.optional().meta({
+    description:
+      'A shortened word only (an abbreviation, contraction, clipping, or blend): what it is short for. Its parts are one base part, the word itself, with no lemma.',
   }),
 })
 
@@ -363,8 +389,17 @@ const MORPHEME_SPELLING: Record<MorphemeRole, string> = {
 }
 const isStem = (role: MorphemeRole) => role === 'base' || role === 'root'
 
-/** Parts read prefixes, then at least one base or root, then suffixes; only a base names a lemma. */
-function morphologyIssues(parts: ReadonlyArray<{ form: string; role: MorphemeRole; lemma?: string }>): string[] {
+/**
+ * Parts read prefixes, then at least one base or root, then suffixes; only a base names a lemma. A
+ * shortened word is one base part, the word itself, so its source is `shortened`, never a lemma.
+ */
+function morphologyIssues({
+  parts,
+  shortened,
+}: {
+  parts: ReadonlyArray<{ form: string; role: MorphemeRole; lemma?: string }>
+  shortened?: Shortening
+}): string[] {
   const misspelt = parts.filter(({ form, role }) => !MORPHEME_FORMS[role].test(form))
   const issues = misspelt.map(({ form, role }) => `"${form}" is not a ${role}: ${MORPHEME_SPELLING[role]}.`)
   for (const { form, role } of parts.filter((part) => part.lemma !== undefined && part.role !== 'base')) {
@@ -380,6 +415,11 @@ function morphologyIssues(parts: ReadonlyArray<{ form: string; role: MorphemeRol
     issues.push('Parts are in written order: prefixes, then the bases or roots, then suffixes.')
   }
   if (parts.length === 1 && roles[0] !== 'base') issues.push('A word of one part is a simple word: its part is a base.')
+  if (shortened && (parts.length !== 1 || parts[0]?.lemma !== undefined)) {
+    issues.push(
+      `A shortened word is one base part, the word itself, without a lemma; "${shortened.of}" goes in shortened.of only.`,
+    )
+  }
   return issues
 }
 
@@ -545,8 +585,8 @@ const submitPayloadSchemas = {
       ({ agreement }) => !agreement || new Set(agreement).size === agreement.length,
       'Each grammar agreement is listed once.',
     ),
-  morphology: morphologyPayloadSchema.superRefine(({ parts }, ctx) => {
-    for (const message of morphologyIssues(parts)) ctx.addIssue({ code: 'custom', message })
+  morphology: morphologyPayloadSchema.superRefine((morphology, ctx) => {
+    for (const message of morphologyIssues(morphology)) ctx.addIssue({ code: 'custom', message })
   }),
   collocation: factPayloadSchemas.collocation.extend({
     text: text(80).refine((value) => /\s/.test(value), 'A collocation has at least two words.'),

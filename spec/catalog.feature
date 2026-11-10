@@ -26,7 +26,7 @@ Feature: Catalog
   Scenario: Grammar, word formation, and collocations are part of the public entry
     Given an entry with published, pending, and rejected grammar, morphology, and collocation facts
     When the public view is built
-    Then the entry shows its published word formation, each sense its published grammar (with its patterns and named prepositions as lists) and collocations, each with its review, and null or empty when none is published
+    Then the entry shows its published word formation, with what a shortened word shortens, each sense its published grammar (with its patterns and named prepositions as lists) and collocations, each with its review, and null or empty when none is published
 
   @catalog/usage-facts-api @api
   Scenario: Grammar, word formation, and collocations are reviewed and published through the queue
