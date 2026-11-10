@@ -587,7 +587,8 @@ describe('fact-kind registry', () => {
       'fail when the sense is general-purpose, usable in many scenes, and merely can appear in this one; when the link is only a loose association; or when the topic fits a different sense of the word, not this one.',
     )
     expect(rubric).toContain('- "full" (holding as much as possible) in "Hotels and accommodation"')
-    expect(rubric).toContain('uncertain: you cannot tell. When in doubt, fail.')
+    expect(rubric).toContain('A sense may be core vocabulary of several topics')
+    expect(rubric).toContain('If you doubt whether the sense is core to the topic, fail.')
     expect(rubric).toContain('- (noun) "an institution that keeps money"')
     expect(factKinds.topic).toMatchObject({
       subject: 'sense',

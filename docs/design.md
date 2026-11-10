@@ -177,10 +177,15 @@ colours and shapes). It fails a general-purpose sense usable in many scenes
 that merely can appear in this one, a loose association, or a topic that fits
 a different sense of the word. It lists audited passes ("oven" in household
 appliances, "credit" in banking, "angry" in emotions) and fails ("full" in
-hotels, "stop" in driving, "event" in news) as examples, and says to fail
-when in doubt; an uncertain verdict still publishes as weak, as in every
-chain. It sees the
-entry's other senses. A topic fact is judged against the gloss, so a gloss
+hotels, "stop" in driving, "event" in news) as examples. A sense may be
+core to several topics ("ticket" in trains and in buses); each tag is judged
+on its own. The rubric keeps uncertain for a sense or topic it cannot judge at
+all and says to fail when it doubts the sense is core; an uncertain verdict
+still publishes as weak, as in every chain. It sees the entry's other senses.
+Tags published under the earlier Jev-first rubric are judged again: the
+migration `topics_strict_revalidate` marks every published topic fact for
+revalidation, so the tags stay public while the reconcile cron re-enqueues
+them (500 per run) and a fail invalidates a loose one. A topic fact is judged against the gloss, so a gloss
 correction that changes its meaning revalidates it like examples,
 translations, and relations.
 

@@ -533,7 +533,8 @@ function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicVi
     ...TOPIC_PASSES.map((example) => `- ${example}`),
     'fail when the sense is general-purpose, usable in many scenes, and merely can appear in this one; when the link is only a loose association; or when the topic fits a different sense of the word, not this one. For example:',
     ...TOPIC_FAILS.map((example) => `- ${example}`),
-    'uncertain: you cannot tell. When in doubt, fail.',
+    'A sense may be core vocabulary of several topics ("ticket" in trains and in buses); judge only this one.',
+    'uncertain: only when you cannot judge the sense or the topic at all. If you doubt whether the sense is core to the topic, fail.',
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
 }
