@@ -27,6 +27,8 @@ export const jsonBody = <T extends z.ZodType>(schema: T) => ({
 
 export const errorResponse = json(apiErrorSchema, 'Error with a stable code.')
 
+export const notModifiedResponse = { description: 'The If-None-Match ETag still matches; no body.' }
+
 export const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().min(1).optional().meta({ description: 'next_cursor from the previous page.' }),

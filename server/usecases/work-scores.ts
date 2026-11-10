@@ -17,9 +17,9 @@ async function rescore(deps: ScoreDeps, stale: StaleWork): Promise<void> {
 }
 
 /**
- * Rescores the stale worklist rows of the entries that are, or own as a sense, these nodes. Every
- * use case that writes facts, senses, feedback, or work calls it after the write; a row it leaves
- * stale stays claimable until `refreshStaleWork` gets to it.
+ * Rescores the stale worklist rows of the entries that are, or own as a sense, these nodes, or link
+ * to them by a relation. `refreshEntries` calls it after every write; a row it leaves stale stays
+ * claimable until `refreshStaleWork` gets to it.
  */
 export async function refreshWork(deps: ScoreDeps, nodeIds: Array<string | null>): Promise<void> {
   const ids = nodeIds.filter((id): id is string => id !== null)

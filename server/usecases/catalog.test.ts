@@ -1,12 +1,12 @@
 import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
+import { publicEntryOf } from '@server/testing/public-view'
 import type { EntryId, FactId, SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
   createEntry,
   createSense,
   getManagedEntry,
-  getPublicEntry,
   getPublicSense,
   getStats,
   importCoreEntries,
@@ -173,36 +173,38 @@ describe('public reads', () => {
 
   it('returns a published entry and 404s an unknown lemma with no fallback [spec: catalog/no-fallback]', async () => {
     const { world } = await publishedBank()
-    await expect(getPublicEntry(world.deps, 'bank')).resolves.toMatchObject({
+    await expect(publicEntryOf(world.deps, 'bank')).resolves.toMatchObject({
       lemma: 'bank',
       forms: [{ form: 'banks' }],
     })
-    await expect(getPublicEntry(world.deps, 'banks')).rejects.toMatchObject({ code: 'not_found' })
-    await expect(getPublicEntry(world.deps, 'Bank')).rejects.toMatchObject({ code: 'not_found' })
+    await expect(publicEntryOf(world.deps, 'banks')).rejects.toMatchObject({ code: 'not_found' })
+    await expect(publicEntryOf(world.deps, 'Bank')).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('404s an entry that exists but is not yet published', async () => {
     const world = fakeWorld()
     await createEntry(world.deps, agentA, { lemma: 'pending' })
-    await expect(getPublicEntry(world.deps, 'pending')).rejects.toMatchObject({ code: 'not_found' })
+    await expect(publicEntryOf(world.deps, 'pending')).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('finds entries by an exact published form only [spec: catalog/form-lookup]', async () => {
     const { world, entry } = await publishedBank()
-    await expect(lookupForm(world.deps, 'banks')).resolves.toEqual([
-      expect.objectContaining({
-        entry: { id: entry.id, lemma: 'bank' },
-        form: expect.objectContaining({ type: 'plural' }),
-      }),
-    ])
+    await expect(lookupForm(world.deps, 'banks')).resolves.toEqual({
+      matches: [
+        expect.objectContaining({
+          entry: { id: entry.id, lemma: 'bank' },
+          form: expect.objectContaining({ type: 'plural' }),
+        }),
+      ],
+      digests: [expect.any(String)],
+    })
     await expect(lookupForm(world.deps, 'bankz')).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('gets a published sense and 404s unknown or hidden ones', async () => {
     const { world, sense } = await publishedBank()
     await expect(getPublicSense(world.deps, sense.id)).resolves.toMatchObject({
-      id: sense.id,
-      entry: { lemma: 'bank' },
+      sense: { id: sense.id, entry: { lemma: 'bank' } },
     })
     await expect(getPublicSense(world.deps, 'missing' as SenseId)).rejects.toMatchObject({ code: 'not_found' })
   })

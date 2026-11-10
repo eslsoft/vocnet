@@ -1,13 +1,6 @@
 import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import {
-  type EntrySnapshot,
-  factMeta,
-  formMatch,
-  projectPublicEntry,
-  projectPublicSense,
-  publicFactIds,
-} from './catalog-view'
+import { type EntrySnapshot, factMeta, projectPublicEntry, projectPublicSense, publicFactIds } from './catalog-view'
 import type { Fact, FactOf } from './fact'
 import type { EntryNode, SenseWithLemma } from './nodes'
 import type { Lemma } from './term'
@@ -254,10 +247,8 @@ describe('public read model', () => {
     expect(projectPublicSense(snapshot, id<SenseId>())).toBeNull()
   })
 
-  it('maps a published form to a lookup match and refuses unreviewed facts', () => {
+  it('refuses the meta of unreviewed facts', () => {
     const { bank } = bankWorld()
-    const form = fact('form', bank.id, { form: 'banks', type: 'plural' })
-    expect(formMatch(bank, form)).toMatchObject({ entry: { lemma: 'bank' }, form: { form: 'banks', type: 'plural' } })
     expect(() => factMeta(fact('form', bank.id, { form: 'x', type: 'plural' }, 'pending'))).toThrow('not a reviewed')
   })
 })

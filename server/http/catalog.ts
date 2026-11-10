@@ -13,7 +13,8 @@ import { senseIdSchema } from '@shared/facts'
 import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/feedback'
 import { referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
-import { createRouter, errorResponse, json, jsonBody, pageQuery } from './router'
+import { etagOf, LIST_CACHE, notModified } from './caching'
+import { createRouter, errorResponse, json, jsonBody, notModifiedResponse, pageQuery } from './router'
 
 const tags = ['Dictionary']
 
@@ -31,9 +32,11 @@ const getEntry = createRoute({
   path: '/entries/{lemma}',
   tags,
   summary: 'Get an entry by its exact lemma',
-  description: 'Only published facts appear, and a relation appears only when both of its senses are published.',
+  description:
+    'Only published facts appear, and a relation appears only when both of its senses are published. ' +
+    'Served from the prebuilt public view with an ETag; send it as If-None-Match to get 304 while the entry is unchanged.',
   request: { params: z.object({ lemma: lemmaInputSchema }) },
-  responses: { 200: json(publicEntrySchema, 'The entry.'), 404: errorResponse },
+  responses: { 200: json(publicEntrySchema, 'The entry.'), 304: notModifiedResponse, 404: errorResponse },
 })
 
 const getForm = createRoute({
@@ -43,7 +46,7 @@ const getForm = createRoute({
   summary: 'Find the entries an inflected or variant form belongs to',
   description: 'Exact match on published form facts. A form no entry claims is 404; there is no fuzzy fallback.',
   request: { params: z.object({ form: lemmaInputSchema }) },
-  responses: { 200: json(formLookupSchema, 'Entries with this form.'), 404: errorResponse },
+  responses: { 200: json(formLookupSchema, 'Entries with this form.'), 304: notModifiedResponse, 404: errorResponse },
 })
 
 const getSense = createRoute({
@@ -52,7 +55,12 @@ const getSense = createRoute({
   tags,
   summary: 'Get one sense with its entry',
   request: { params: z.object({ id: senseIdSchema }) },
-  responses: { 200: json(publicSenseWithEntrySchema, 'The sense.'), 400: errorResponse, 404: errorResponse },
+  responses: {
+    200: json(publicSenseWithEntrySchema, 'The sense.'),
+    304: notModifiedResponse,
+    400: errorResponse,
+    404: errorResponse,
+  },
 })
 
 const listSources = createRoute({
@@ -84,11 +92,22 @@ export const publicRoutes = createRouter()
   .openapi(listEntries, async (c) => {
     const { prefix, limit, cursor } = c.req.valid('query')
     const page = await searchEntries(c.get('deps'), prefix ?? '', { limit, cursor })
+    c.header('Cache-Control', LIST_CACHE)
     return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
   })
-  .openapi(getEntry, async (c) => c.json(await getPublicEntry(c.get('deps'), c.req.valid('param').lemma), 200))
-  .openapi(getForm, async (c) => c.json({ items: await lookupForm(c.get('deps'), c.req.valid('param').form) }, 200))
-  .openapi(getSense, async (c) => c.json(await getPublicSense(c.get('deps'), c.req.valid('param').id), 200))
+  .openapi(getEntry, async (c) => {
+    const view = await getPublicEntry(c.get('deps'), c.req.valid('param').lemma)
+    // The stored document is the serialized DTO, so it is sent as stored.
+    return notModified(c, etagOf([view.digest])) ?? c.body(view.json, 200, { 'Content-Type': 'application/json' })
+  })
+  .openapi(getForm, async (c) => {
+    const { matches, digests } = await lookupForm(c.get('deps'), c.req.valid('param').form)
+    return notModified(c, etagOf(digests)) ?? c.json({ items: matches }, 200)
+  })
+  .openapi(getSense, async (c) => {
+    const { sense, digest } = await getPublicSense(c.get('deps'), c.req.valid('param').id)
+    return notModified(c, etagOf([digest])) ?? c.json(sense, 200)
+  })
   .openapi(listSources, async (c) => c.json({ items: await listReferenceSources(c.get('deps')) }, 200))
   .openapi(postFeedback, async (c) => {
     const client = c.req.header('cf-connecting-ip')

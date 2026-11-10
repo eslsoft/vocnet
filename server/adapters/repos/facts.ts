@@ -1,7 +1,6 @@
 import { entries, facts } from '@server/db/schema'
 import type { Fact } from '@server/domain/fact'
 import { factKinds, type Rereview } from '@server/domain/fact-kinds'
-import { isLive } from '@server/domain/fact-lifecycle'
 import type { FactRepo } from '@server/usecases/ports'
 import { type FactId, type FactKind, type FactStatus, factKindSchema, factStatusSchema } from '@shared/facts'
 import {
@@ -212,11 +211,12 @@ export function createFactRepo(db: Db): FactRepo {
         )
         .returning({ id: facts.id })
       const syncLive = syncWorklistLive(db, db.select({ id: facts.subjectId }).from(facts).where(eq(facts.id, id)))
-      // Any status or review change can change the gaps or weak facts at either end; a correction
-      // has its original's subject, so the same rows cover the original it supersedes. A move into
-      // or out of live also changes the gaps of the entries whose relations link to its node.
-      const changesLive = from.some((status) => isLive(status) !== isLive(to))
-      const sync = [syncLive, touchWorkOfFact(db, id), ...(changesLive ? [touchLinkedWorkOfFact(db, id)] : [])]
+      // Any status or review change can change the gaps, weak facts, or public view at either end;
+      // a correction has its original's subject, so the same rows cover the original it supersedes.
+      // An entry or sense fact moving into or out of live or published, or a gloss correction
+      // publishing, also changes the entries whose relations link to its node: their gaps and the
+      // relations their public views show.
+      const sync = [syncLive, touchWorkOfFact(db, id), touchLinkedWorkOfFact(db, id)]
       const rereviews = rereview ? [markRereview(db, rereview, { id, to, at })] : []
       if (!supersede) {
         return guardUnique(UNIQUE_MESSAGES, async () => {

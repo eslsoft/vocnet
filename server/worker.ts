@@ -10,6 +10,7 @@ import type { AppVariables } from './http/context'
 import { onError } from './http/errors'
 import { auditBoundary, requestBoundary } from './http/observability'
 import { ReviewerTransportError } from './usecases/ports'
+import { rebuildStalePublicViews } from './usecases/public-view'
 import { reconcileReviews, reviewFact } from './usecases/review'
 import { refreshStaleWork } from './usecases/work-scores'
 
@@ -66,6 +67,9 @@ async function handleReviewMessage(deps: ReturnType<typeof createDeps>, message:
   }
 }
 
+/** Views a cron run rebuilds: reads rebuild what they find stale, so the sweep only drains leftovers. */
+const STALE_VIEW_BATCH = 100
+
 export async function handleScheduled(env: Env): Promise<void> {
   const traceId = crypto.randomUUID()
   const deps = createDeps(env)
@@ -73,6 +77,8 @@ export async function handleScheduled(env: Env): Promise<void> {
   console.info(JSON.stringify({ event: 'reconcile_reviews', traceId, reenqueued: count }))
   const rescored = await refreshStaleWork(deps)
   console.info(JSON.stringify({ event: 'refresh_stale_work', traceId, rescored }))
+  const views = await rebuildStalePublicViews(deps, STALE_VIEW_BATCH)
+  console.info(JSON.stringify({ event: 'rebuild_public_views', traceId, ...views }))
 }
 
 export default {

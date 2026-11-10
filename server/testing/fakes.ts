@@ -4,6 +4,7 @@ import { factKinds } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { PublicViewRecord } from '@server/domain/public-view'
 import { levelRank } from '@server/domain/reference'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
@@ -17,6 +18,8 @@ import type {
   NodeRepo,
   ReviewJob,
   StaleWork,
+  TaggedSense,
+  ViewLookup,
   WorkScores,
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
@@ -43,7 +46,12 @@ export interface FakeWorld {
   claimed: Map<EntryId, string>
   seeds: Set<EntryId>
   /** Each entry's worklist scores, as the worklist table stores them. */
-  work: Map<EntryId, WorkScores & { claimedWork: string | null; revision: number; scoredRevision: number }>
+  work: Map<
+    EntryId,
+    WorkScores & { claimedWork: string | null; revision: number; scoredRevision: number; viewRevision: number }
+  >
+  /** Each entry's stored public view rows, as the public view tables hold them. */
+  views: Map<EntryId, PublicViewRecord>
   worked: Map<EntryId, { lastWorkedAt: string; lastWorkedBy: string; lastNote: string | null }>
   queued: ReviewJob[]
   /** Imported reference data by exact lemma; a lemma absent here has none. */
@@ -83,6 +91,13 @@ export const fakeTopics: readonly TopicNode[] = [
   topic('dentist', 'body-health', 'At the dentist', 2),
 ]
 
+/** A stand-in for the SHA-256 digest: equal documents, equal digests. */
+function fakeDigest(json: string): string {
+  let hash = 0
+  for (const char of json) hash = (Math.imul(hash, 31) + (char.codePointAt(0) ?? 0)) | 0
+  return (hash >>> 0).toString(16)
+}
+
 export function fakeWorld(): FakeWorld {
   let now = new Date('2026-01-01T00:00:00.000Z')
   let counter = 0
@@ -116,6 +131,7 @@ export function fakeWorld(): FakeWorld {
     claimed: new Map(),
     seeds: new Set(),
     work: new Map(),
+    views: new Map(),
     worked: new Map(),
     queued: [],
     limitedClients: new Set(),
@@ -155,6 +171,7 @@ export function fakeWorld(): FakeWorld {
       claimedWork: null,
       revision: 0,
       scoredRevision: 0,
+      viewRevision: 0,
     }
     world.work.set(entryId, row)
     return row
@@ -238,6 +255,17 @@ export function fakeWorld(): FakeWorld {
     const slice = items.slice(start, start + limit)
     return { items: slice, nextCursor: start + limit < items.length ? String(start + limit) : null }
   }
+
+  const isViewStale = (entryId: EntryId) => workOf(entryId).revision !== workOf(entryId).viewRevision
+  const viewLookup = (entryId: EntryId): ViewLookup => {
+    const record = world.views.get(entryId)
+    const json = record && JSON.stringify(record.document)
+    return {
+      stale: isViewStale(entryId) ? { entryId, revision: workOf(entryId).revision } : null,
+      view: json ? { json, digest: fakeDigest(json) } : null,
+    }
+  }
+  const publicLemma = (entryId: string) => world.views.get(entryId as EntryId)?.document.lemma ?? ''
 
   const creationKeys = new Map<string, string>()
   const nodes: NodeRepo = {
@@ -326,16 +354,6 @@ export function fakeWorld(): FakeWorld {
         },
       }
     },
-    searchPublishedEntries: async (prefix, page) => {
-      const published = world.entries
-        .filter((entry) => entry.lemma.startsWith(prefix))
-        .filter((entry) =>
-          world.facts.some((f) => f.kind === 'entry' && f.subjectId === entry.id && f.status === 'published'),
-        )
-        .sort((a, b) => a.lemma.localeCompare(b.lemma))
-        .map((entry) => ({ id: entry.id, lemma: entry.lemma }))
-      return paged(published, page.limit, page.cursor)
-    },
     listEntrySummaries: async (prefix, page) => {
       const summaries = world.entries
         .filter((entry) => entry.lemma.startsWith(prefix))
@@ -381,14 +399,6 @@ export function fakeWorld(): FakeWorld {
         .filter((entry) => world.facts.some((f) => f.kind === 'entry' && f.subjectId === entry.id && live(f)))
         .map((entry) => entry.lemma)
         .sort(),
-    findPublishedForms: async (contentKeys) =>
-      world.facts
-        .filter((fact): fact is FactOf<'form'> => fact.kind === 'form' && fact.status === 'published')
-        .filter((fact) => contentKeys.includes(fact.contentKey))
-        .flatMap((fact) => {
-          const entry = world.entries.find((candidate) => candidate.id === fact.subjectId)
-          return entry ? [{ entry, fact }] : []
-        }),
   }
 
   const deps: Deps = {
@@ -467,7 +477,7 @@ export function fakeWorld(): FakeWorld {
           ...retired.map((candidate) => (candidate.id === id ? next : candidate)),
         )
         touch([next.subjectId, next.objectId])
-        if (from.some((status) => isLive(status) !== isLive(to))) touchLinked(next)
+        touchLinked(next)
         return true
       },
       listRevalidating: async (nodeId) =>
@@ -503,25 +513,6 @@ export function fakeWorld(): FakeWorld {
     topics: {
       list: async () => world.topics,
       find: async (id) => world.topics.find((node) => node.id === id) ?? null,
-      listTaggedSenses: async (leaves, page) => {
-        const published = (kind: Fact['kind'], subjectId: string) =>
-          world.facts.find((fact) => fact.kind === kind && fact.subjectId === subjectId && fact.status === 'published')
-        const tagged = world.senses.flatMap((sense) => {
-          const entry = world.entries.find((candidate) => candidate.id === sense.entryId)
-          const gloss = published('sense', sense.id) as FactOf<'sense'> | undefined
-          const isTagged = world.facts.some(
-            (fact) =>
-              fact.kind === 'topic' &&
-              fact.subjectId === sense.id &&
-              fact.status === 'published' &&
-              leaves.includes(fact.payload.topic_id),
-          )
-          if (!entry || !gloss || !isTagged || !published('entry', entry.id)) return []
-          return [{ id: sense.id, lemma: entry.lemma, pos: sense.pos, gloss: gloss.payload.gloss }]
-        })
-        const ordered = tagged.sort((a, b) => a.lemma.localeCompare(b.lemma) || a.id.localeCompare(b.id))
-        return paged(ordered, page.limit, page.cursor)
-      },
     },
     feedback: {
       insert: async (item) => {
@@ -631,6 +622,72 @@ export function fakeWorld(): FakeWorld {
         const row = workOf(stale.entryId)
         if (row.revision !== stale.revision) return
         Object.assign(row, scores, { scoredRevision: stale.revision })
+      },
+    },
+    publicViews: {
+      findByLemma: async (lemma) => {
+        const entry = world.entries.find((candidate) => candidate.lemma === lemma)
+        return entry ? viewLookup(entry.id) : null
+      },
+      findBySense: async (id) => {
+        const sense = world.senses.find((candidate) => candidate.id === id)
+        return sense ? viewLookup(sense.entryId) : null
+      },
+      findForms: async (contentKeys) =>
+        [...world.views.entries()]
+          .flatMap(([entryId, record]) =>
+            record.forms
+              .filter((form) => contentKeys.includes(form.contentKey))
+              .map((form) => ({ entryId, factId: form.factId })),
+          )
+          .sort(
+            (a, b) => publicLemma(a.entryId).localeCompare(publicLemma(b.entryId)) || a.factId.localeCompare(b.factId),
+          )
+          .map(({ entryId, factId }) => {
+            const { view } = viewLookup(entryId)
+            if (!view) throw new Error(`Entry ${entryId} has form rows without a document.`)
+            return { view, factId }
+          }),
+      listEntries: async (prefix, page) =>
+        paged(
+          [...world.views.values()]
+            .map(({ document }) => ({ id: document.id, lemma: document.lemma }))
+            .filter((entry) => entry.lemma.startsWith(prefix))
+            .sort((a, b) => a.lemma.localeCompare(b.lemma)),
+          page.limit,
+          page.cursor,
+        ),
+      listTaggedSenses: async (leaves, page) => {
+        const tagged = new Map<string, TaggedSense>()
+        for (const [entryId, record] of world.views) {
+          for (const tag of record.taggedSenses.filter((candidate) => leaves.includes(candidate.topicId))) {
+            const { senseId: id, pos, gloss } = tag
+            tagged.set(id, { id, lemma: publicLemma(entryId) as Lemma, pos, gloss })
+          }
+        }
+        const ordered = [...tagged.values()].sort((a, b) => a.lemma.localeCompare(b.lemma) || a.id.localeCompare(b.id))
+        return paged(ordered, page.limit, page.cursor)
+      },
+      listStale: async (nodeIds) => {
+        const owners = new Set<EntryId>([
+          ...world.entries.filter((entry) => nodeIds.includes(entry.id)).map((entry) => entry.id),
+          ...world.senses.filter((sense) => nodeIds.includes(sense.id)).map((sense) => sense.entryId),
+          ...linkedEntries(nodeIds),
+        ])
+        return [...owners].filter(isViewStale).map((entryId) => ({ entryId, revision: workOf(entryId).revision }))
+      },
+      listAnyStale: async (limit) =>
+        [...world.work.keys()]
+          .filter(isViewStale)
+          .slice(0, limit)
+          .map((entryId) => ({ entryId, revision: workOf(entryId).revision })),
+      countStale: async () => [...world.work.keys()].filter(isViewStale).length,
+      save: async (stale, record) => {
+        const row = workOf(stale.entryId)
+        if (row.revision !== stale.revision) return
+        if (record) world.views.set(stale.entryId, record)
+        else world.views.delete(stale.entryId)
+        row.viewRevision = stale.revision
       },
     },
     jev: {

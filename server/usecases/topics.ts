@@ -14,12 +14,12 @@ export async function getTopicTree(deps: Pick<Deps, 'topics'>): Promise<TopicTre
  * topic is not found; there is no fuzzy fallback.
  */
 export async function listTopicSenses(
-  deps: Pick<Deps, 'topics'>,
+  deps: Pick<Deps, 'topics' | 'publicViews'>,
   id: TopicId,
   page: PageRequest,
 ): Promise<Page<TaggedSense>> {
   const nodes = await deps.topics.list()
   const topic = nodes.find((node) => node.id === id)
   if (!topic) throw new NotFoundError(`No topic has the id ${id}.`)
-  return deps.topics.listTaggedSenses(leavesUnder(topic, nodes), page)
+  return deps.publicViews.listTaggedSenses(leavesUnder(topic, nodes), page)
 }

@@ -8,6 +8,7 @@ import { agentRoutes } from './http/manage/agents'
 import { manageCatalogRoutes } from './http/manage/catalog'
 import { manageFactRoutes } from './http/manage/facts'
 import { manageFeedbackRoutes } from './http/manage/feedback'
+import { managePublicViewRoutes } from './http/manage/public-view'
 import { manageWorkRoutes } from './http/manage/work'
 import { createRouter } from './http/router'
 import { topicRoutes } from './http/topics'
@@ -22,6 +23,7 @@ const manageV1 = createRouter()
   .route('/', manageFactRoutes)
   .route('/', manageFeedbackRoutes)
   .route('/', manageWorkRoutes)
+  .route('/', managePublicViewRoutes)
   .route('/', agentRoutes)
 manageV1.openAPIRegistry.registerComponent('securitySchemes', 'bearer', {
   type: 'http',

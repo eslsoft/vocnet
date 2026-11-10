@@ -4,6 +4,7 @@ import type { CefrListing, JevQuestions, LlmPrompt, Rereview } from '@server/dom
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
+import type { PublicViewRecord } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
 import type { LastClaim, WorkLease } from '@server/domain/work'
@@ -48,8 +49,6 @@ export interface NodeRepo {
   /** The live `sense` facts of every sense of this entry, oldest sense and oldest fact first. */
   listLiveGlosses(entryId: EntryId): Promise<Array<{ sense: SenseNode; fact: FactOf<'sense'> }>>
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
-  /** Published entries whose lemma starts with prefix, in lemma order. */
-  searchPublishedEntries(prefix: string, page: PageRequest): Promise<Page<EntryRef>>
   /** Every entry whose lemma starts with prefix, in any status, in lemma order. */
   listEntrySummaries(prefix: string, page: PageRequest): Promise<Page<EntrySummary>>
   /** Live form facts with one of these content keys, on entries whose entry fact is live. */
@@ -59,8 +58,6 @@ export interface NodeRepo {
    * entry's only in ASCII letter case, in lemma order.
    */
   listLiveCaseVariants(entry: EntryNode): Promise<Lemma[]>
-  /** Published form facts with one of these content keys, on published entries. */
-  findPublishedForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
 }
 
 /** Imported reference data, read by exact lemma spelling. */
@@ -145,11 +142,51 @@ export interface TopicRepo {
   /** Every category and leaf topic. */
   list(): Promise<TopicNode[]>
   find(id: TopicId): Promise<TopicNode | null>
-  /**
-   * Senses a published topic fact tags with one of these leaves, each once, in lemma then sense
-   * order. Visibility is derived on read: the sense's gloss and its entry are published.
-   */
+}
+
+/** A public view whose rows no longer describe the entry. */
+export interface StaleView {
+  entryId: EntryId
+  /** The revision a rebuild describes once saved. */
+  revision: number
+}
+
+/** An entry's public document as stored: the serialized DTO and a digest of it. */
+export interface StoredView {
+  json: string
+  digest: string
+}
+
+/** An entry's public view as a read finds it. */
+export interface ViewLookup {
+  /** Set while the stored rows are older than the entry's facts or reference data. */
+  stale: StaleView | null
+  /** Null when the entry has no public document, or none was built yet. */
+  view: StoredView | null
+}
+
+/** The public view: each entry's public document and the lookup rows derived from it. */
+export interface PublicViewRepo {
+  /** The view of the entry with exactly this lemma; null when no entry has it. */
+  findByLemma(lemma: Lemma): Promise<ViewLookup | null>
+  /** The view of the entry that owns this sense; null when no sense has the id. */
+  findBySense(id: SenseId): Promise<ViewLookup | null>
+  /** Built views holding a form with one of these content keys, with the form's fact, in lemma then fact order. */
+  findForms(contentKeys: string[]): Promise<Array<{ view: StoredView; factId: FactId }>>
+  /** Built public entries whose lemma starts with prefix, in lemma order. */
+  listEntries(prefix: string, page: PageRequest): Promise<Page<EntryRef>>
+  /** Built public senses tagged with one of these leaves, each once, in lemma then sense order. */
   listTaggedSenses(leaves: readonly TopicId[], page: PageRequest): Promise<Page<TaggedSense>>
+  /** Stale views of the entries that are, or own as a sense, these nodes, or link to them by a relation. */
+  listStale(nodeIds: string[]): Promise<StaleView[]>
+  /** Up to `limit` stale views of any entry. */
+  listAnyStale(limit: number): Promise<StaleView[]>
+  countStale(): Promise<number>
+  /**
+   * Replaces the entry's view rows with these (none for null) as of the stale revision; a no-op
+   * when another write bumped the revision since.
+   */
+  save(stale: StaleView, record: PublicViewRecord | null): Promise<void>
 }
 
 export interface FeedbackRepo {

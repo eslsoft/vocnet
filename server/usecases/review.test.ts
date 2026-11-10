@@ -1,8 +1,9 @@
 import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
+import { publicEntryOf } from '@server/testing/public-view'
 import type { FactId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { createEntry, createSense, getPublicEntry } from './catalog'
+import { createEntry, createSense } from './catalog'
 import { getFact, rereviewFact, retractFact, submitFact } from './facts'
 import { ReviewerTransportError } from './ports'
 import { reconcileReviews, reviewFact } from './review'
@@ -300,7 +301,7 @@ describe('reviewFact', () => {
     await drain(world)
     expect((await getFact(world.deps, gloss.id)).status).toBe('superseded')
     expect((await getFact(world.deps, correction.id)).status).toBe('published')
-    const entry = await getPublicEntry(world.deps, 'bank')
+    const entry = await publicEntryOf(world.deps, 'bank')
     expect(entry.senses[0]?.gloss).toBe('the sloping land beside a river')
   })
 
@@ -387,7 +388,7 @@ describe('revalidation', () => {
     expect((await getFact(world.deps, correction.id)).status).toBe('superseded')
     expect(world.queued).toEqual([])
     expect(await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))).toEqual(before)
-    expect((await getPublicEntry(world.deps, 'bank')).senses[0]).toMatchObject({ register: 'literary' })
+    expect((await publicEntryOf(world.deps, 'bank')).senses[0]).toMatchObject({ register: 'literary' })
   })
 
   it('re-reviews published facts judged against a corrected gloss while they stay public [spec: facts/revalidate-dependents]', async () => {
@@ -402,7 +403,7 @@ describe('revalidation', () => {
       })
     }
     expect((await getFact(world.deps, unrelated.id)).revalidateSince).toBeNull()
-    const visible = (await getPublicEntry(world.deps, 'bank')).senses[0]
+    const visible = (await publicEntryOf(world.deps, 'bank')).senses[0]
     expect([visible?.examples.length, visible?.translations.length, visible?.relations.length]).toEqual([1, 1, 2])
 
     world.setNow('2026-01-01T00:06:00.000Z')
@@ -422,7 +423,7 @@ describe('revalidation', () => {
     await drain(world)
     const statuses = await Promise.all(dependents.map(async (fact) => (await getFact(world.deps, fact.id)).status))
     expect(statuses).toEqual(['rejected', 'rejected', 'published', 'published'])
-    const visible = (await getPublicEntry(world.deps, 'bank')).senses[0]
+    const visible = (await publicEntryOf(world.deps, 'bank')).senses[0]
     expect([visible?.examples.length, visible?.translations.length]).toEqual([0, 0])
   })
 
@@ -536,7 +537,7 @@ describe('revalidation', () => {
     await retractFact(world.deps, agentA, current?.id as FactId)
     expect(world.queued).toEqual([])
     for (const fact of dependents) expect((await getFact(world.deps, fact.id)).revalidateSince).toBeNull()
-    expect((await getPublicEntry(world.deps, 'bank')).senses).toEqual([])
+    expect((await publicEntryOf(world.deps, 'bank')).senses).toEqual([])
   })
 })
 

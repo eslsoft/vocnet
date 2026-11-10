@@ -68,6 +68,7 @@ export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) 
           claimedWork: sql`null`.as('claimed_work'),
           revision: sql`0`.as('revision'),
           scoredRevision: sql`0`.as('scored_revision'),
+          viewRevision: sql`0`.as('view_revision'),
           leaseId: sql`null`.as('lease_id'),
           leaseHolder: sql`null`.as('lease_holder'),
           leaseExpiresAt: sql`null`.as('lease_expires_at'),
@@ -155,8 +156,8 @@ function linkedEntriesOf(db: Db, nodeIds: string[] | SQLWrapper) {
 
 /**
  * Marks stale the entries linked by a relation to the entry or sense this fact defines; a fact of
- * any other kind, or one that does not exist, marks nothing. Batch it with every write that moves
- * an `entry` or `sense` fact into or out of live.
+ * any other kind, or one that does not exist, marks nothing. Batch it with every fact insert and
+ * status change.
  */
 export function touchLinkedWorkOfFact(db: Db, factId: string) {
   const defined = db
@@ -167,6 +168,20 @@ export function touchLinkedWorkOfFact(db: Db, factId: string) {
     .update(worklist)
     .set(bumpRevision)
     .where(inArray(worklist.entryId, linkedEntriesOf(db, defined)))
+}
+
+/**
+ * The worklist rows of the entries that are, or own as a sense, these nodes, and of the entries
+ * whose relations link to a sense that is or belongs to one of them: every row a write about the
+ * nodes can make stale.
+ */
+export function relatedWorklistRows(db: Db, nodeIds: string[]) {
+  const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
+  return or(
+    inArray(worklist.entryId, nodeIds),
+    inArray(worklist.entryId, owners),
+    inArray(worklist.entryId, linkedEntriesOf(db, nodeIds)),
+  )
 }
 
 /**
@@ -262,20 +277,10 @@ export function createWorkRepo(db: Db): WorkRepo {
     },
 
     async listStale(nodeIds) {
-      const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
       const rows = await db
         .select(staleColumns)
         .from(worklist)
-        .where(
-          and(
-            isStale,
-            or(
-              inArray(worklist.entryId, nodeIds),
-              inArray(worklist.entryId, owners),
-              inArray(worklist.entryId, linkedEntriesOf(db, nodeIds)),
-            ),
-          ),
-        )
+        .where(and(isStale, relatedWorklistRows(db, nodeIds)))
       return rows.map(toStale)
     },
 
