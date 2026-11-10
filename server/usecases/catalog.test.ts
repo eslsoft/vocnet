@@ -182,7 +182,7 @@ describe('public reads', () => {
     const { world } = await publishedBank()
     await expect(publicEntryOf(world.deps, 'bank')).resolves.toMatchObject({
       lemma: 'bank',
-      meanings: [{ pos: 'noun', forms: { plural: ['banks'] } }],
+      meanings: [{ pos: 'noun', forms: { plural: [{ form: 'banks', irregular: false }] } }],
     })
     await expect(publicEntryOf(world.deps, 'banks')).rejects.toMatchObject({ code: 'not_found' })
     await expect(publicEntryOf(world.deps, 'Bank')).rejects.toMatchObject({ code: 'not_found' })
@@ -235,14 +235,14 @@ describe('public reads', () => {
       Object.fromEntries(
         (await publicEntryOf(world.deps, 'will')).meanings.map((meaning) => [meaning.pos, meaning.forms]),
       )
-    expect(await formsOf()).toEqual({ verb: { past: ['would'] }, auxiliary: {} })
+    expect(await formsOf()).toEqual({ verb: { past: [{ form: 'would', irregular: true }] }, auxiliary: {} })
 
     const labelled = { ...would, payload: { ...would.payload, pos: 'auxiliary' as const } }
     const correction = await submitFact(world.deps, agentA, { ...labelled, supersedes_id: unlabelled.id })
     expect(correction.created).toBe(true)
     expect(correction.fact.contentKey).toBe('past|would|auxiliary')
     await reviewAll(world)
-    expect(await formsOf()).toEqual({ verb: {}, auxiliary: { past: ['would'] } })
+    expect(await formsOf()).toEqual({ verb: {}, auxiliary: { past: [{ form: 'would', irregular: true }] } })
     expect((await lookupForm(world.deps, 'would', none)).read()[0]?.matches).toEqual([
       { type: 'past', pos: 'auxiliary' },
     ])

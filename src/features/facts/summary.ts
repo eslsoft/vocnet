@@ -9,14 +9,20 @@ export function summarizeFact(fact: FactDto): string {
       return ''
     case 'sense':
       return fact.payload.register ? `${fact.payload.gloss} (${fact.payload.register})` : fact.payload.gloss
-    case 'form':
-      return `${fact.payload.form} (${labels(fact.payload.type, fact.payload.pos)})`
+    case 'form': {
+      const { form, type, pos, ipa, accent } = fact.payload
+      return `${form} (${labels(type, pos)})${ipa ? ` /${ipa}/ (${accent})` : ''}`
+    }
     case 'relation':
       return `${fact.payload.type} → sense ${fact.payload.target_sense_id.slice(0, 8)}`
     case 'pronunciation':
       return `/${fact.payload.ipa}/ (${labels(fact.payload.accent, fact.payload.strength, fact.payload.pos)})`
-    case 'example':
-      return fact.payload.text
+    case 'example': {
+      const translations = Object.entries(fact.payload.translations ?? {}).map(
+        ([language, text]) => `${language}: ${text}`,
+      )
+      return [fact.payload.text, ...translations].join(' · ')
+    }
     case 'translation':
       return `${fact.payload.language}: ${fact.payload.text}`
     case 'topic':
@@ -31,5 +37,7 @@ export function summarizeFact(fact: FactDto): string {
       return `${fact.payload.text} (${fact.payload.pattern})`
     case 'sense_list':
       return `${fact.payload.common.length} common, ${fact.payload.extra.length} extra`
+    case 'syllables':
+      return fact.payload.syllables.join('·')
   }
 }

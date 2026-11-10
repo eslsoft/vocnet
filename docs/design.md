@@ -83,16 +83,63 @@ needs a new column.
 | --------------- | ------- | ----------- | -------------------------------------------------------- | -------------- |
 | `entry`         | entry   | one         | `{}` (the lemma is a word or a lexical unit)            | Jev, then LLM; LLM alone for a phrase or a recorded inflection |
 | `sense`         | sense   | one         | `{ gloss, register? }`                                   | Jev, then LLM  |
-| `form`          | entry   | many        | `{ form, type, pos? }` (plural, past, variant…)          | Jev, then LLM  |
+| `form`          | entry   | many        | `{ form, type, pos?, ipa?, accent? }` (plural, past, variant…) | Jev, then LLM; LLM alone for a variant or a form with ipa |
 | `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM  |
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
-| `example`       | sense   | many        | `{ text }`                                               | LLM            |
+| `example`       | sense   | many        | `{ text, translations? }` (`{ zh: "…" }`)                | LLM            |
 | `translation`   | sense   | many        | `{ language, text }` (a served language: `zh`)           | LLM            |
 | `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | LLM            |
 | `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns?, prepositions? }` | Jev, then LLM  |
 | `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | Jev, then LLM  |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM            |
 | `sense_list`    | entry   | one         | `{ common: [sense_id], extra: [sense_id] }`              | LLM            |
+| `syllables`     | entry   | one         | `{ syllables: [string] }` (`["a", "bil", "i", "ty"]`)     | LLM            |
+
+#### Syllables, form pronunciations, and example translations
+
+- **Syllables** divide the written word as a learner's dictionary shows the
+  headword (`a·bil·i·ty`): written breaks, not a phonetic transcription.
+  Joined, the syllables spell the lemma exactly, and none has a space; a phrase
+  has no syllables (its words are their own entries), so a syllables fact about
+  a multiword entry, or one that does not spell the lemma, is `422
+  invalid_reference`. The content key is the syllables joined with `·`. The LLM
+  alone judges the division against the Oxford Advanced Learner's, Cambridge,
+  or Merriam-Webster. A single-word entry has a `syllables` gap until it has
+  one live syllables fact, and the entry document shows them as `syllables`
+  (null when none is published).
+- **Form pronunciation.** A form may give `ipa` and `accent` together (one
+  without the other is `400`), under the IPA write rule of pronunciations,
+  mainly for an irregular form ("went" /went/, the past "read" /red/). The
+  pronunciation is part of the content key (`type|form|pos?|accent:ipa`), so
+  adding one to a published form is a correction that supersedes it; the
+  unlabelled key stays the prefix every lookup by spelling matches. A form with
+  a pronunciation goes to the LLM alone, whose rubric also judges the
+  transcription in that accent. **Irregular** is computed, not stored
+  (`isIrregularForm` in the registry): an inflection of a single word that no
+  regular spelling rule gives, the suffix (`s`/`es`, `ed`/`d`, `ing`,
+  `er`/`r`, `est`/`st`) added plainly, after a doubled final letter, a dropped
+  final e, a consonant-y turned to i, an ie turned to y, or a c taking k. So
+  "went", "children", "better", and "would" are irregular, and "stopped",
+  "making", "dying", "carries", and "panicked" are not; a variant or a
+  phrase's form never is. Each live irregular form without a live
+  pronunciation is named by the `form_pronunciations` gap; regular forms need
+  none.
+- **Example translation.** An example may give `translations` by served
+  language (`{ "zh": "…" }`; another tag is `400`), judged with the sentence:
+  the LLM fails the example when a translation adds, drops, or changes meaning,
+  renders the word in another sense, or is not natural text. The translations
+  are part of the content key, so adding one is a correction. Each counted
+  sense has an `example_translations` gap until one of its live examples has a
+  `zh` translation. The public example shows `translation` in the read's
+  language (by language tag with `lang=all`, absent without a language).
+
+The migration `public_view_v4_fields` cleared every view for the new document
+shape and moved every worklist row's `revision` (not its scored revision), so
+`assessEntry` rescores each row with the new gaps: a write that touches the
+entry does it at once, and the cron's `refreshStaleWork` drains the rest, 100
+a run. Unlike the earlier rescore migrations, it does not recompute the scores
+in SQL: the irregular-form rule is TypeScript, and a stale row is claimable,
+which the new gaps make right for nearly every entry.
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
 one gloss, one grammar, and an entry one word formation and one sense list. Changing it means submitting a correction that supersedes the
@@ -821,10 +868,11 @@ Both scores are pure functions of the entry's facts in `server/domain/work.ts`
 the claim.
 
 **Completeness** (0..1) is filled slots over the slots the gap rules count. The
-entry has three slots (the sense inventory, forms, pronunciation), and a
-single-word entry a fourth (word formation); each counted sense adds the
-relations, topics, grammar, and collocations its part of speech needs, one
-example, and one `zh` translation. A counted sense is one whose gloss is live and
+entry has three slots (the sense inventory, forms, pronunciation), a
+single-word entry two more (word formation, syllables), and one per live
+irregular form (its pronunciation); each counted sense adds the relations,
+topics, grammar, and collocations its part of speech needs, one example, one
+`zh` translation, and one example with a `zh` translation. A counted sense is one whose gloss is live and
 that the entry's current sense list does not put in `extra`; before a list
 exists, every sense with a live gloss counts. A relations gap with `count`
 relations fills `count` of its slots. A relation counts, at either end, only
@@ -1077,6 +1125,9 @@ facts close its gap:
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` translation |
 | `{ type: "topics", sense_id }`           | The sense has fewer live topic facts than its part of speech needs (`TOPICS_NEEDED`) |
 | `{ type: "morphology" }`                 | A single-word entry has no live word formation          |
+| `{ type: "syllables" }`                  | A single-word entry has no live syllables fact          |
+| `{ type: "form_pronunciations", forms }` | A live irregular form has no live fact of it with `ipa`; `forms` names them |
+| `{ type: "example_translations", sense_id, language: "zh" }` | No live example of the sense has a `zh` translation |
 | `{ type: "grammar", sense_id }`          | A noun or verb sense has no live grammar fact           |
 | `{ type: "collocations", sense_id }`     | A noun, verb, or adjective sense has no live collocation |
 
@@ -1323,18 +1374,19 @@ entry document; every list returns summaries.
   "frequency": { "zipf": 5.21, "rank": 606 },
   "pronunciations": [{ "ipa": "ˈrekərd", "accent": "us" }],
   "variants": [{ "form": "…" }],
+  "syllables": ["rec", "ord"],
   "morphology": { "parts": [{ "form": "record", "role": "base", "lemma": "record" }], "family": [] },
   "meanings": [
     {
       "pos": "verb",
       "cefr": "A2",
       "pronunciations": [{ "ipa": "rɪˈkɔːrd", "accent": "us" }],
-      "forms": { "past": ["recorded"], "present_participle": ["recording"] },
+      "forms": { "past": [{ "form": "recorded", "irregular": false }], "present_participle": [{ "form": "recording", "irregular": false }] },
       "senses": [
         {
           "id": "…", "gloss": "…", "labels": [], "rare": false, "translations": ["记录"],
           "grammar": { "transitivity": "transitive", "patterns": [], "prepositions": [] },
-          "examples": [{ "text": "…" }], "collocations": [{ "text": "…", "pattern": "verb_noun" }],
+          "examples": [{ "text": "…", "translation": "…" }], "collocations": [{ "text": "…", "pattern": "verb_noun" }],
           "topics": [{ "id": "office", "name": { "en": "At the office", "zh": "办公室" } }],
           "relations": { "synonyms": [{ "lemma": "log", "sense_id": "…", "gloss": "…" }],
             "antonyms": [], "broader": [], "narrower": [], "part_of": [], "parts": [] }
@@ -1354,8 +1406,11 @@ entry document; every list returns summaries.
   of speech, the ones that differ from the default. A weak form keeps
   `strength: "weak"`.
 - **Forms.** A meaning's `forms` is an object keyed by inflection type; each
-  value lists every published form of that type (`"past": ["dreamed",
-  "dreamt"]`), because a type can have several. A form goes under exactly one
+  value lists every published form of that type as `{ form, irregular, ipa?,
+  accent? }` (`"past": [{ "form": "dreamed", "irregular": false }, { "form":
+  "dreamt", "irregular": true }]`), because a type can have several; `irregular`
+  is computed (see Syllables, form pronunciations, and example translations)
+  and `ipa` with `accent` shows when the form gives them. A form goes under exactly one
   meaning (`formMeaning` in the registry): the meaning of its labelled part of
   speech, else the meaning of the first part of speech the entry has in its
   type's carrier order, never by display order: a plural goes to a noun, else

@@ -288,6 +288,13 @@
       "when": 1794287728965,
       "tag": "20261110051528_variant_spelling_merge",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1794288598617,
+      "tag": "20261110052958_public_view_v4_fields",
+      "breakpoints": true
     }
   ]
 }

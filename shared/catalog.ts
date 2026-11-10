@@ -151,7 +151,19 @@ export const publicMorphologySchema = z
 export const inflectionTypeSchema = formTypeSchema.exclude(['variant']).meta({ id: 'InflectionType' })
 export type InflectionType = z.infer<typeof inflectionTypeSchema>
 
-export const formsSchema = z.partialRecord(inflectionTypeSchema, z.array(z.string())).meta({
+export const publicFormSchema = z
+  .object({
+    form: z.string(),
+    irregular: z.boolean().meta({
+      description: 'true: no regular spelling rule gives the form from the lemma ("went", "children", "better").',
+    }),
+    ipa: z.string().optional().meta({ description: 'The broad IPA of the form in `accent`, when one is published.' }),
+    accent: accentSchema.optional(),
+  })
+  .meta({ id: 'Form' })
+export type PublicForm = z.infer<typeof publicFormSchema>
+
+export const formsSchema = z.partialRecord(inflectionTypeSchema, z.array(publicFormSchema)).meta({
   id: 'Forms',
   description: 'The inflected forms of this part of speech by type; a type with several accepted forms lists each.',
 })
@@ -198,7 +210,20 @@ export const publicGrammarSchema = grammarPayloadSchema
   .meta({ id: 'Grammar' })
 export type PublicGrammar = z.infer<typeof publicGrammarSchema>
 
-export const publicExampleSchema = z.object({ text: z.string(), ...review }).meta({ id: 'Example' })
+export const publicExampleSchema = z
+  .object({
+    text: z.string(),
+    translation: z
+      .union([z.string(), byLanguage(z.string())])
+      .optional()
+      .meta({
+        description:
+          "The sentence in the response's language, when one is published; by language tag with lang=all; absent without a language.",
+      }),
+    ...review,
+  })
+  .meta({ id: 'Example' })
+export type PublicExample = z.infer<typeof publicExampleSchema>
 export const publicCollocationSchema = z
   .object({ text: z.string(), pattern: collocationPatternSchema, ...review })
   .meta({ id: 'Collocation' })
@@ -262,6 +287,10 @@ export const publicEntrySchema = z
       .array(publicPronunciationSchema)
       .meta({ description: 'The default pronunciations; a meaning lists the ones particular to its part of speech.' }),
     variants: z.array(variantSchema),
+    syllables: z.array(z.string()).nullable().meta({
+      description:
+        'The written word divided into syllables, as a learner\'s dictionary breaks it: ["a", "bil", "i", "ty"].',
+    }),
     morphology: publicMorphologySchema.nullable(),
     meanings: z.array(meaningSchema).meta({
       description:
@@ -271,9 +300,16 @@ export const publicEntrySchema = z
       .array(wordSummarySchema)
       .meta({ description: 'Public multiword entries with this lemma as one of their words, in lemma order.' }),
     review: z
-      .object({ entry: reviewMetaSchema, sense_list: reviewMetaSchema.nullable() })
+      .object({
+        entry: reviewMetaSchema,
+        sense_list: reviewMetaSchema.nullable(),
+        syllables: reviewMetaSchema.nullable(),
+      })
       .optional()
-      .meta({ description: 'The entry fact, and the sense list that orders the senses; null when none is published.' }),
+      .meta({
+        description:
+          'The entry fact, the sense list that orders the senses, and the syllables; null when none is published.',
+      }),
   })
   .meta({ id: 'Entry' })
 export type PublicEntry = z.infer<typeof publicEntrySchema>

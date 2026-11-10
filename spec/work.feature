@@ -236,3 +236,9 @@ Feature: Worklist
     Given an agent whose lease has expired
     When the first agent completes its lease and another agent claims work
     Then the first agent gets 409 conflict and the other agent gets the entry
+
+  @work/field-gaps @domain
+  Scenario: Syllables, irregular form pronunciations, and translated examples are gaps
+    Given an entry with senses and forms
+    When its gaps are listed
+    Then a single word lacks syllables, each irregular form without a live pronunciation is named, and each counted sense lacks a translated example until one of its live examples has a zh translation

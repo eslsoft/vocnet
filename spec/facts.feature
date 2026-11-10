@@ -612,3 +612,27 @@ Feature: Facts and review
     Given an agent submits a sense list for an entry's senses
     When the queue consumer reviews it, and the entry then gains a sense or loses a listed one
     Then the LLM judges the list with every listed gloss, the published list closes the sense list gap, and the change reopens it until a correction lists the senses again
+
+  @facts/syllables @domain
+  Scenario: Syllables divide a single written word
+    Given a syllables fact on an entry
+    When it is submitted and reviewed
+    Then its syllables must spell the lemma exactly and a phrase is refused, and the LLM alone judges the division against a learner's dictionary
+
+  @facts/form-irregular @domain
+  Scenario: An irregular form is one no regular spelling rule gives
+    Given an inflection of a single-word lemma
+    When the rules add its suffix plainly, after a doubled letter, a dropped e, a y turned to i, an ie turned to y, or a c taking k
+    Then a form none of them spells, such as "went", "children", "better", or "would", is irregular, and a variant or a phrase's form never is
+
+  @facts/form-pronunciation @domain
+  Scenario: A form may carry its pronunciation
+    Given a form fact with ipa and accent
+    When it is submitted and reviewed
+    Then the pronunciation is part of its content key, so adding one is a correction, and the LLM alone judges the form with its transcription in that accent
+
+  @facts/example-translation @domain
+  Scenario: An example may carry its translation
+    Given an example fact with a translation in a served language
+    When it is submitted and reviewed
+    Then the translation is part of its content key, and the LLM fails the example when the translation is unfaithful or unnatural

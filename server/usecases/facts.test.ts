@@ -156,6 +156,8 @@ describe('submitFact', () => {
       payload: { type: 'synonym', target_sense_id: shore.id },
     })
     await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'invalid_reference' })
+    world.senses.splice(world.senses.indexOf(shore), 1)
+    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toThrow('links a sense that does not exist')
   })
 
   it('rejects a relation between two senses of one entry [spec: facts/relation-across-entries]', async () => {

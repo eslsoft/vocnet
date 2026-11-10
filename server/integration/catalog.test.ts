@@ -76,7 +76,7 @@ describe('public catalog', () => {
         pos: 'noun',
         cefr: null,
         pronunciations: [],
-        forms: { plural: ['banks'] },
+        forms: { plural: [{ form: 'banks', irregular: false }] },
         senses: [
           expect.objectContaining({
             id: river.sense.id,

@@ -12,7 +12,7 @@ import type {
 import type { EntryId, FactId, FactKind, FormType, Morpheme, Pos, RelationType, SenseId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
-import { formMeaning } from './fact-kinds'
+import { formMeaning, isIrregularForm } from './fact-kinds'
 import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
 import { levelRank } from './reference'
 import { listedSenses } from './sense-list'
@@ -63,8 +63,9 @@ export type ByLanguage<T> = Record<string, T>
 // review, so one document serves each language and include variant. Reads cut the variant out of
 // it (server/domain/public-view.ts); fields other entries supply are joined on read.
 
-export interface StoredSense extends Omit<PublicSense, 'translations' | 'topics' | 'review'> {
+export interface StoredSense extends Omit<PublicSense, 'translations' | 'topics' | 'review' | 'examples'> {
   translations: ByLanguage<string[]>
+  examples: Array<{ text: string; translations: ByLanguage<string>; review: ReviewMeta }>
   topics: Array<{ id: TopicId; name: ByLanguage<string>; review: ReviewMeta }>
   review: { gloss: ReviewMeta; translations: ByLanguage<ReviewMeta[]> }
 }
@@ -107,10 +108,11 @@ export interface StoredEntry {
   frequency: { zipf: number; rank: number } | null
   pronunciations: PublicPronunciation[]
   variants: Variant[]
+  syllables: string[] | null
   morphology: { parts: Morpheme[]; review: ReviewMeta } | null
   meanings: StoredMeaning[]
   summary: StoredSummary
-  review: { entry: ReviewMeta; sense_list: ReviewMeta | null }
+  review: { entry: ReviewMeta; sense_list: ReviewMeta | null; syllables: ReviewMeta | null }
   /**
    * Every published form, independent of display: a lookup never depends on presentation. Reads
    * do not show it; the view indexes it (server/domain/public-view.ts).
@@ -152,6 +154,10 @@ export const firstOfEach = (values: ByLanguage<string[]>): ByLanguage<string> =>
   Object.fromEntries(
     Object.entries(values).flatMap(([language, texts]) => texts.slice(0, 1).map((first) => [language, first])),
   )
+
+/** The entries of a partial record that have a value. */
+const definedValues = (values: Partial<Record<string, string>>): ByLanguage<string> =>
+  Object.fromEntries(Object.entries(values).filter((entry): entry is [string, string] => entry[1] !== undefined))
 
 function pushTo<K extends string, T>(groups: Partial<Record<K, T[]>>, key: K, value: T) {
   groups[key] = [...(groups[key] ?? []), value]
@@ -225,7 +231,11 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
             review: reviewOf(grammar),
           }
         : null,
-      examples: about('example', sense.id).map((fact) => ({ text: fact.payload.text, review: reviewOf(fact) })),
+      examples: about('example', sense.id).map((fact) => ({
+        text: fact.payload.text,
+        translations: definedValues(fact.payload.translations ?? {}),
+        review: reviewOf(fact),
+      })),
       collocations: about('collocation', sense.id).map((fact) => ({ ...fact.payload, review: reviewOf(fact) })),
       topics: about('topic', sense.id).map((fact) => ({
         id: fact.payload.topic_id,
@@ -284,13 +294,16 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     }
     const meaning = formMeaning(type, pos, ordered)
     if (meaning) {
-      pushTo(meaning.forms, type, form)
+      const { ipa, accent } = fact.payload
+      const irregular = isIrregularForm(snapshot.entry.lemma, type, form)
+      pushTo(meaning.forms, type, { form, irregular, ...(ipa && accent ? { ipa, accent } : {}) })
       pushTo(meaning.review.forms, type, reviewOf(fact))
     }
     forms.push({ form, type, pos: meaning?.pos ?? pos ?? null })
   }
 
   const [morphology] = about('morphology', snapshot.entry.id)
+  const [syllables] = about('syllables', snapshot.entry.id)
   const first = ordered[0]?.senses[0]
   return {
     id: snapshot.entry.id,
@@ -301,6 +314,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     },
     pronunciations,
     variants,
+    syllables: syllables ? syllables.payload.syllables : null,
     morphology: morphology ? { parts: morphology.payload.parts, review: reviewOf(morphology) } : null,
     meanings: ordered,
     summary: {
@@ -310,7 +324,11 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       gloss: first?.gloss ?? null,
       translations: first ? firstOfEach(first.translations) : {},
     },
-    review: { entry: reviewOf(entryFact), sense_list: senseList ? reviewOf(senseList) : null },
+    review: {
+      entry: reviewOf(entryFact),
+      sense_list: senseList ? reviewOf(senseList) : null,
+      syllables: syllables ? reviewOf(syllables) : null,
+    },
     forms,
   }
 }

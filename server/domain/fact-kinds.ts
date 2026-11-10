@@ -16,7 +16,6 @@ import type {
   SenseId,
   TopicId,
 } from '@shared/facts'
-import { posSchema } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
 import { editDistance, isLetterOfTheAlphabet, isMultiword, type Lemma, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
@@ -38,6 +37,7 @@ export interface SubjectTypeOf {
   morphology: 'entry'
   collocation: 'sense'
   sense_list: 'entry'
+  syllables: 'entry'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -535,16 +535,58 @@ const INFLECTION_TYPES = (Object.keys(formTypes) as FormType[]).filter((type) =>
 
 const isInflection = (type: FormType) => INFLECTION_TYPES.includes(type)
 
-/** The content keys of the form facts that record `spelling` as an inflection of their entry, labelled or not. */
+/**
+ * The unlabelled content keys of the form facts that record `spelling` as an inflection of their
+ * entry; a labelled form's key extends one of them (`key|…`).
+ */
 export function inflectionKeysOf(spelling: string): string[] {
-  return INFLECTION_TYPES.flatMap((type) =>
-    [undefined, ...formTypes[type].carriers].map((pos) => contentKeyOf('form', { form: spelling, type, pos })),
-  )
+  return INFLECTION_TYPES.map((type) => contentKeyOf('form', { form: spelling, type }))
 }
 
-/** The content keys of the form facts that record `spelling` as a spelling variant of their entry, labelled or not. */
+/** The unlabelled content key of the form facts that record `spelling` as a spelling variant of their entry. */
 export function variantKeysOf(spelling: string): string[] {
-  return [undefined, ...posSchema.options].map((pos) => contentKeyOf('form', { form: spelling, type: 'variant', pos }))
+  return [contentKeyOf('form', { form: spelling, type: 'variant' })]
+}
+
+const VOWELS = 'aeiou'
+
+/**
+ * The spellings the regular rules give an inflection: the suffix added, after a doubled final
+ * letter, after a final e is dropped, after a final consonant-y turns to i, after a final ie turns
+ * to y, and after a final c takes k. Generous on purpose, so "irregular" means no regular rule
+ * spells the form.
+ */
+function regularSpellings(lemma: string, suffix: string): Set<string> {
+  const last = lemma.slice(-1)
+  const stem = lemma.slice(0, -1)
+  const spellings = [lemma + suffix, lemma + last + suffix]
+  if (last === 'e') spellings.push(stem + suffix)
+  if (last === 'y' && !VOWELS.includes(lemma.at(-2) ?? '')) spellings.push(`${stem}i${suffix}`, `${stem}ie${suffix}`)
+  if (lemma.endsWith('ie')) spellings.push(`${lemma.slice(0, -2)}y${suffix}`)
+  if (last === 'c') spellings.push(`${lemma}k${suffix}`)
+  return new Set(spellings)
+}
+
+const REGULAR_SUFFIXES: Record<Exclude<FormType, 'variant'>, readonly string[]> = {
+  plural: ['s', 'es'],
+  past: ['ed', 'd'],
+  past_participle: ['ed', 'd'],
+  present_participle: ['ing'],
+  third_person_singular: ['s', 'es'],
+  comparative: ['er', 'r'],
+  superlative: ['est', 'st'],
+}
+
+/**
+ * An inflection no regular spelling rule produces from the lemma ("went", "children", "better"),
+ * judged on the spelling alone. A variant is never irregular, and neither is a phrase's form,
+ * which inflects one of its words.
+ */
+export function isIrregularForm(lemma: string, type: FormType, form: string): boolean {
+  if (type === 'variant' || isMultiword(lemma)) return false
+  const base = lemma.toLowerCase()
+  const spelled = normalizeTerm(form).toLowerCase()
+  return !REGULAR_SUFFIXES[type].some((suffix) => regularSpellings(base, suffix).has(spelled))
 }
 
 /** A labelled inflection names a part of speech its type can be shown under; a variant may name any. */
@@ -571,7 +613,17 @@ function formQuestion(
 const VARIANT_DIRECTION =
   'A variant is recorded on the main entry, and the British spelling is the main one: fail a British spelling recorded as a variant of an American one ("colour" on "color", "theatre" on "theater"); pass an American spelling on the British entry ("color" on "colour").'
 
-function formRubric(type: FormType, form: string, entry: SubjectViews['entry'], pos?: Pos): string {
+const accentLabel = { us: 'American', uk: 'British' } as const
+
+function formPronunciation({ ipa, accent }: FactPayloads['form']): string[] {
+  if (!ipa || !accent) return []
+  return [
+    `It also claims the form is pronounced /${ipa}/ in ${accentLabel[accent]} English, in broad IPA. fail when that transcription is wrong for this form in that accent ("read" as a past is /red/, not /riːd/).`,
+  ]
+}
+
+function formRubric(payload: FactPayloads['form'], entry: SubjectViews['entry']): string {
+  const { form, type, pos } = payload
   const { wordClass, name } = formTypes[type]
   const classes = pos ?? wordClass?.join(' or ')
   const scope = classes ? `, used as ${article(classes)} ${classes}` : ''
@@ -580,6 +632,7 @@ function formRubric(type: FormType, form: string, entry: SubjectViews['entry'], 
     'pass: the form is correct for at least one sense of the word, even a rare one. That includes plural forms of pronouns and determiners (such as "these" for "this"), plurals of letters and of words used as nouns (such as "b\'s" or "ifs"), irregular forms, rare but recorded forms, and, for a variant, spelling variants and alternative forms conditioned by the next sound.',
     'fail: a misspelling, a form of another type, or a form no sense of the word takes.',
     ...(wordClass ? [] : [VARIANT_DIRECTION]),
+    ...formPronunciation(payload),
     listSenses("The word's senses", entry.senses),
   ].join('\n')
 }
@@ -609,6 +662,19 @@ function translationRubric(language: string, text: string, sense: SubjectViews['
     ...TRANSLATION_REJECTS.map((rule) => `- ${rule}`),
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
+}
+
+const languageNames: Record<string, string> = { zh: 'Simplified Chinese' }
+
+/** An example's translations are judged with it: one wrong translation fails the whole fact. */
+function exampleTranslationRules(translations: FactPayloads['example']['translations']): string[] {
+  const given = Object.entries(translations ?? {})
+  if (given.length === 0) return []
+  return [
+    'It also gives translations of the sentence, judged with it:',
+    ...given.map(([language, translation]) => `- ${languageNames[language] ?? language}: ${quote(translation ?? '')}`),
+    'fail when a translation is unfaithful (it adds, drops, or changes meaning, or renders the word in another sense), or is not natural, fluent text in its language.',
+  ]
 }
 
 /** A topic fact names a leaf topic; one that does not exist leaves nothing to judge. */
@@ -894,6 +960,24 @@ function admitMorphology({ parts }: FactPayloads['morphology'], { lemma }: Admis
   return `The parts ${parts.map((part) => part.form).join(' + ')} do not spell ${quote(lemma)}; spelling changes only where parts join (happy + -ness gives happiness).`
 }
 
+/** Syllables divide one written word: joined, they spell the lemma exactly. */
+function admitSyllables({ syllables }: FactPayloads['syllables'], { lemma }: AdmissionViews['entry']): string | null {
+  if (isMultiword(lemma))
+    return `Syllables divide a single word; ${quote(lemma)} is a phrase, syllabified in its words' entries.`
+  if (syllables.join('') === lemma) return null
+  return `The syllables ${syllables.join('·')} do not spell ${quote(lemma)}; joined, they spell the lemma exactly.`
+}
+
+function syllablesRubric(entry: SubjectViews['entry'], syllables: readonly string[]): string {
+  return [
+    `Is ${quote(syllables.join('·'))} how a learner's dictionary such as the Oxford Advanced Learner's, Cambridge, or Merriam-Webster divides the written word ${quote(entry.lemma)} into syllables?`,
+    'Judge the written syllable breaks (the dots a dictionary shows in the headword), not a phonetic transcription. A one-syllable word is one part.',
+    'pass: the division matches a standard dictionary, or differs from one only where dictionaries themselves differ.',
+    'fail: a break falls inside a syllable, two syllables are joined, or the parts are not the syllables of this word.',
+    listSenses('Senses recorded for it so far', entry.senses),
+  ].join('\n')
+}
+
 const morphemeRoles: Record<MorphemeRole, string> = {
   prefix: 'prefix',
   suffix: 'suffix',
@@ -1119,14 +1203,18 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // The part of speech is part of the claim: "would" as the past of the auxiliary "will" is not
     // the unlabelled past, so a labelled form never dedupes against it and replaces it by a
     // correction that supersedes it.
-    contentKey: ({ form, type, pos }) => labelled(`${type}|${normalizeTerm(form)}`, pos),
+    // So is the pronunciation: adding one to a published form is a correction that supersedes it.
+    contentKey: ({ form, type, pos, ipa, accent }) =>
+      labelled(`${type}|${normalizeTerm(form)}`, pos, ipa && accent && `${accent}:${ipa}`),
     meaningKey: ({ form, type }) => `${type}|${normalizeTerm(form)}`,
     admit: admitForm,
-    // Jev cannot tell which spelling is the British one, so a variant goes to the LLM alone.
-    plan: ({ form, type, pos }, { subject }) => {
+    // Jev cannot tell which spelling is the British one, and is not asked about a pronunciation,
+    // so a variant or a form with a pronunciation goes to the LLM alone.
+    plan: (payload, { subject }) => {
+      const { form, type, pos, ipa } = payload
       const spec = formTypes[type]
-      const rubric = formRubric(type, form, subject, pos)
-      if (!spec.wordClass) return llm(rubric)
+      const rubric = formRubric(payload, subject)
+      if (!spec.wordClass || ipa) return llm(rubric)
       return jevThenLlm(
         { form: formQuestion({ ...spec, wordClass: spec.wordClass }, form, subject.lemma, pos) },
         rubric,
@@ -1170,11 +1258,22 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     subject: 'sense',
     cardinality: 'many',
     chain: ['llm'],
-    contentKey: ({ text }) => textKey(text),
-    plan: ({ text }, { subject }) =>
+    // A translation is part of the claim: adding one to a published example is a correction.
+    contentKey: ({ text, translations }) =>
+      labelled(
+        textKey(text),
+        ...Object.entries(translations ?? {})
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([language, translation]) => `${language}:${textKey(translation ?? '')}`),
+      ),
+    meaningKey: ({ text }) => textKey(text),
+    plan: ({ text, translations }, { subject }) =>
       withGloss(subject, (sense) =>
         llm(
-          `Is ${quote(text)} a natural, grammatical English example sentence that uses ${describe(sense)}? A dictionary illustrates vulgar, offensive, and derogatory senses too: an example that shows such a sense in ordinary use is correct, although the word itself offends. Reject sentences that use another sense, are ungrammatical, or add offence the sense does not need, such as abuse of a whole group.`,
+          [
+            `Is ${quote(text)} a natural, grammatical English example sentence that uses ${describe(sense)}? A dictionary illustrates vulgar, offensive, and derogatory senses too: an example that shows such a sense in ordinary use is correct, although the word itself offends. Reject sentences that use another sense, are ungrammatical, or add offence the sense does not need, such as abuse of a whole group.`,
+            ...exampleTranslationRules(translations),
+          ].join('\n'),
         ),
       ),
   },
@@ -1220,6 +1319,14 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     admit: admitMorphology,
     plan: ({ parts }, { subject }) =>
       jevThenLlm({ formation: morphologyQuestion(subject.lemma, parts) }, morphologyRubric(subject, parts)),
+  },
+  syllables: {
+    subject: 'entry',
+    cardinality: 'one',
+    chain: ['llm'],
+    contentKey: ({ syllables }) => syllables.join('·'),
+    admit: admitSyllables,
+    plan: ({ syllables }, { subject }) => llm(syllablesRubric(subject, syllables)),
   },
   collocation: {
     subject: 'sense',

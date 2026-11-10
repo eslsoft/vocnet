@@ -42,6 +42,7 @@ export const enUS = {
     morphology: 'Word formation',
     collocation: 'Collocation',
     sense_list: 'Sense list',
+    syllables: 'Syllables',
   },
   signal: {
     unreviewed: 'Not reviewed',

@@ -391,7 +391,7 @@ export function fakeWorld(): FakeWorld {
     findLiveForms: async (contentKeys) =>
       world.facts
         .filter((fact): fact is FactOf<'form'> => fact.kind === 'form' && live(fact))
-        .filter((fact) => contentKeys.includes(fact.contentKey))
+        .filter((fact) => contentKeys.some((key) => fact.contentKey === key || fact.contentKey.startsWith(`${key}|`)))
         .flatMap((fact) => {
           const entry = world.entries.find((candidate) => candidate.id === fact.subjectId)
           const entryLive = world.facts.some((f) => f.kind === 'entry' && f.subjectId === fact.subjectId && live(f))

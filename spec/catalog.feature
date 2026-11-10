@@ -203,3 +203,15 @@ Feature: Catalog
     Given an entry with a sense
     When management asks for the node behind the entry id, the sense id, or an unknown id
     Then it gets the owning entry's id and lemma for both, and 404 for the unknown id
+
+  @catalog/new-fields @domain
+  Scenario: The entry document shows syllables, form objects, and example translations
+    Given an entry with published syllables, a form with a pronunciation, and a translated example
+    When its document is projected and read
+    Then the entry has its syllables, each form is an object with irregular and its pronunciation, and an example shows its translation in the read's language, every one with lang=all, and none without a language
+
+  @catalog/new-fields-api @api
+  Scenario: The new fields are validated and served through the API
+    Given an agent submits syllables, a form with a pronunciation, and a translated example
+    When the payloads break a rule, or once they are reviewed and published
+    Then a malformed ipa, an ipa without an accent, or an unserved language is 400, syllables that do not spell the lemma are 422, and the public entry serves the published fields

@@ -204,7 +204,6 @@ async function assertLinkAdmitted<K extends FactKind>(
   kind: K,
   link: Link<K>,
 ): Promise<void> {
-  if (!factKinds[kind].admitLink) return
   const live = await deps.facts.listLiveLinks(kind, [link.subject.entry, link.target.entry])
   const refusal = linkAdmissionOf(
     kind,

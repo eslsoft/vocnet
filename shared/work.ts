@@ -61,6 +61,18 @@ export const gapSchema = z
     z
       .object({ type: z.literal('morphology') })
       .meta({ description: 'A single-word entry has no live word formation.' }),
+    z
+      .object({ type: z.literal('syllables') })
+      .meta({ description: 'A single-word entry has no live syllable division.' }),
+    z
+      .object({
+        type: z.literal('form_pronunciations'),
+        forms: z.array(z.string()).meta({ description: 'The irregular forms with no live pronunciation.' }),
+      })
+      .meta({
+        description:
+          'An irregular inflection (one no regular spelling rule gives, such as "went") has no live pronunciation: submit a correction of the form that adds ipa and accent.',
+      }),
     z.object({
       type: z.literal('relations'),
       ...senseGap,
@@ -74,6 +86,10 @@ export const gapSchema = z
     }),
     z.object({ type: z.literal('examples'), ...senseGap }),
     z.object({ type: z.literal('translations'), ...senseGap, language: z.literal('zh') }),
+    z.object({ type: z.literal('example_translations'), ...senseGap, language: z.literal('zh') }).meta({
+      description:
+        'No live example of the sense has a translation in the language: submit one with translations, or a correction of an example that adds it.',
+    }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
       description:
         'The sense has no live topic fact. Nouns, verbs, and adjectives need one; other parts of speech have no topics gap.',

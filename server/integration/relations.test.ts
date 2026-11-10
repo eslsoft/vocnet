@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:test'
-import { createEntryResultSchema, createSenseResultSchema } from '@shared/catalog'
+import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
-import { describe, expect, it } from 'vitest'
-import { call, issueAgentKey } from './helpers'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
 
 async function agent() {
   const token = await issueAgentKey()
@@ -162,5 +162,44 @@ describe('variant_spelling_merge migration', () => {
     expect(
       await env.DB.prepare('SELECT name FROM sqlite_master WHERE name = ?').bind('variant_merge').first(),
     ).toBeNull()
+  })
+})
+
+describe('syllables, form pronunciations, and example translations', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('validates, reviews, and serves the new fields in the entry document [spec: catalog/new-fields-api]', async () => {
+    const token = await issueAgentKey()
+    const post = (path: string, json: unknown) => call(path, { method: 'POST', token, json })
+    const { entry } = createEntryResultSchema.parse((await post('/manage/v1/entries', { lemma: 'go' })).body)
+    const { sense } = createSenseResultSchema.parse(
+      (await post('/manage/v1/senses', { entry_id: entry.id, pos: 'verb', gloss: 'To move or travel.' })).body,
+    )
+    const submit = (kind: string, subject: string, payload: unknown) =>
+      post('/manage/v1/facts', { kind, subject_id: subject, payload })
+    expect((await submit('syllables', entry.id, { syllables: ['g', 'oo'] })).status).toBe(422)
+    expect((await submit('syllables', entry.id, { syllables: ['go'] })).status).toBe(201)
+    expect((await submit('form', entry.id, { form: 'went', type: 'past', ipa: '/went/', accent: 'us' })).status).toBe(
+      400,
+    )
+    expect((await submit('form', entry.id, { form: 'went', type: 'past', ipa: 'went' })).status).toBe(400)
+    expect((await submit('form', entry.id, { form: 'went', type: 'past', ipa: 'went', accent: 'us' })).status).toBe(201)
+    expect(
+      (await submit('example', sense.id, { text: 'We go home.', translations: { 'zh-Hant': '我們回家。' } })).status,
+    ).toBe(400)
+    expect(
+      (await submit('example', sense.id, { text: 'We go home.', translations: { zh: '我们回家。' } })).status,
+    ).toBe(201)
+    stubReviewers()
+    await deliverPendingReviews()
+
+    const read = async (query: string) => publicEntrySchema.parse((await call(`/v1/entries/go${query}`)).body)
+    const zh = await read('?lang=zh')
+    expect(zh.syllables).toEqual(['go'])
+    expect(zh.meanings[0]?.forms).toEqual({ past: [{ form: 'went', irregular: true, ipa: 'went', accent: 'us' }] })
+    expect(zh.meanings[0]?.senses[0]?.examples).toEqual([{ text: 'We go home.', translation: '我们回家。' }])
+    const all = await read('?lang=all')
+    expect(all.meanings[0]?.senses[0]?.examples).toEqual([{ text: 'We go home.', translation: { zh: '我们回家。' } }])
+    expect((await read('')).meanings[0]?.senses[0]?.examples).toEqual([{ text: 'We go home.' }])
   })
 })

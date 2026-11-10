@@ -1,7 +1,9 @@
 import { env } from 'cloudflare:test'
 import { claimStatement } from '@server/adapters/repos/work'
+import { createDeps } from '@server/composition'
 import { createDb } from '@server/db/client'
 import type { PrincipalRef } from '@server/domain/principal'
+import { refreshStaleWork } from '@server/usecases/work-scores'
 import {
   coreImportResultSchema,
   createEntryResultSchema,
@@ -73,8 +75,13 @@ const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: 
     subject_id: sense.id,
     payload: { language: 'zh', text: '在旁边' },
   })
-  const example = await submitFact(token, { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.' } })
+  const example = await submitFact(token, {
+    kind: 'example',
+    subject_id: sense.id,
+    payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } },
+  })
   await submitFact(token, { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } })
+  await submitFact(token, { kind: 'syllables', subject_id: entryId, payload: { syllables: [lemma] } })
   return [form, ipa, translation, example]
 }
 /** Claims and completes the next entry with `during`'s result, which runs while the lease is held. */
@@ -131,6 +138,12 @@ const runBackfills = async () => {
   )
   expect(backfills).toHaveLength(5)
   for (const query of backfills.flatMap((migration) => migration.queries)) await env.DB.prepare(query).run()
+  // The release that added the syllables, form pronunciation, and example translation gaps marks
+  // every row stale instead, for the rescore to score with assessEntry.
+  const stale = env.TEST_MIGRATIONS.find((migration) => migration.name.endsWith('_public_view_v4_fields.sql'))
+  if (!stale) throw new Error('The public_view_v4_fields migration is missing.')
+  for (const query of stale.queries) await env.DB.prepare(query).run()
+  while ((await refreshStaleWork(createDeps(env))) > 0) {}
 }
 const expireLeases = () =>
   env.DB.prepare('update worklist set lease_expires_at = ? where lease_id is not null')
@@ -162,6 +175,7 @@ describe('worklist', () => {
       { type: 'forms' },
       { type: 'pronunciation' },
       { type: 'morphology' },
+      { type: 'syllables' },
     ])
     expect(work.weak_facts).toEqual([])
     expect(work.entry).toMatchObject({ completeness: 0, quality: 1 })
@@ -414,7 +428,8 @@ describe('worklist', () => {
     stubReviewers(0.05, 'fail')
     await deliverReviews([facts.at(-1)?.id as string])
     vi.restoreAllMocks()
-    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 1 / 6, quality: 1 })
+    // The rejected example also took the translated example with it: two of eight slots.
+    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 2 / 8, quality: 1 })
     expect(await lemmaOf(token)).toBeNull()
     await settle()
     expect(await lemmaOf(token)).toBe('by')
@@ -447,9 +462,10 @@ describe('worklist', () => {
       env.DB.prepare('select completeness, revision = scored_revision as fresh from worklist where entry_id = ?')
         .bind(cove.entry.id)
         .first<{ completeness: number; fresh: number }>()
-    // Eleven slots: the sense inventory, forms, pronunciation, word formation, and the noun sense's two
-    // relations, example, translation, topic, grammar, and collocation. Both relations count.
-    expect(await stored()).toEqual({ completeness: 1 - 8 / 11, fresh: 1 })
+    // Thirteen slots: the sense inventory, forms, pronunciation, word formation, syllables, and the
+    // noun sense's two relations, example, translation, translated example, topic, grammar, and
+    // collocation. Both relations count.
+    expect(await stored()).toEqual({ completeness: 1 - 10 / 13, fresh: 1 })
 
     // The inlet entry is re-reviewed and rejected; the bay gloss is retracted by its author.
     const [bay, inlet] = ends
@@ -460,12 +476,12 @@ describe('worklist', () => {
     stubReviewers(0.05, 'fail')
     await deliverReviews([inlet.entryFact.id])
     vi.restoreAllMocks()
-    expect(await stored()).toEqual({ completeness: 1 - 9 / 11, fresh: 1 })
+    expect(await stored()).toEqual({ completeness: 1 - 11 / 13, fresh: 1 })
 
     expect((await call(`/manage/v1/facts/${bay.gloss.id}/retract`, { method: 'POST', token })).status).toBe(200)
-    expect(await stored()).toEqual({ completeness: 1 - 10 / 11, fresh: 1 })
+    expect(await stored()).toEqual({ completeness: 1 - 12 / 13, fresh: 1 })
     const view = managedEntrySchema.parse((await call('/manage/v1/entries/cove', { token })).body)
-    expect(view.completeness).toBe(1 - 10 / 11)
+    expect(view.completeness).toBe(1 - 12 / 13)
   })
 
   it('stalls an entry whose pass made no lasting progress until another principal changes its work [spec: work/stall-api]', async () => {
@@ -530,7 +546,7 @@ describe('worklist', () => {
     const first = workClaimSchema.parse((await claim(token)).body)
     expect(first.gaps).toEqual([])
     expect(first.weak_facts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 8 })
+    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 9 })
     expect((await complete(token, first.lease.id)).status).toBe(200)
     expect(await lemmaOf(token)).toBeNull()
 
@@ -750,7 +766,9 @@ describe('worklist', () => {
       stalled: number
     }>()
     const byEntry = Object.fromEntries(stalled.results.map((row) => [row.entry_id, row.stalled]))
-    expect(byEntry).toEqual({ [by.entry.id]: 1, [cove.entry.id]: 0, [ferry.entry.id]: 1 })
+    // The release after the sense list gap rescores every row with assessEntry, which lifts the
+    // phrase's stall too: its recorded claim named none of the work it has.
+    expect(byEntry).toEqual({ [by.entry.id]: 1, [cove.entry.id]: 0, [ferry.entry.id]: 0 })
   })
 
   it('reads the claim order from an index, without sorting the worklist [spec: work/claim-index]', async () => {

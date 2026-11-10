@@ -45,6 +45,7 @@ export const zhCN: typeof enUS = {
     morphology: '构词',
     collocation: '搭配',
     sense_list: '义项列表',
+    syllables: '音节',
   },
   signal: {
     unreviewed: '未审阅',

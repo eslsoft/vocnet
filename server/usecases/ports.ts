@@ -62,7 +62,10 @@ export interface NodeRepo {
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
   /** Every entry whose lemma starts with prefix, in any status, in lemma order. */
   listEntrySummaries(prefix: string, page: PageRequest): Promise<Page<EntrySummary>>
-  /** Live form facts with one of these content keys, on entries whose entry fact is live. */
+  /**
+   * Live form facts whose content key is one of these keys or one of them extended with labels
+   * (`key|…`), on entries whose entry fact is live.
+   */
   findLiveForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
   /**
    * The lemmas of the other entries whose entry fact is live and whose lemma differs from this

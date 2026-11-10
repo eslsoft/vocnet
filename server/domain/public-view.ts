@@ -135,6 +135,16 @@ function translationsIn<T>(values: ByLanguage<T[]>, lang: string | null): T[] | 
   return values[lang] ?? []
 }
 
+/** An example shows its translation in the read's language, every one with `all`, and none without a language. */
+function exampleTranslationIn(
+  values: ByLanguage<string>,
+  lang: string | null,
+): string | ByLanguage<string> | undefined {
+  if (lang === null) return undefined
+  if (lang === 'all') return values
+  return values[lang]
+}
+
 /** A summary shows one translation in the read's language; with `all` or no language it shows none. */
 const translationIn = (values: ByLanguage<string>, lang: string | null): string | undefined =>
   lang === null || lang === 'all' ? undefined : values[lang]
@@ -193,7 +203,10 @@ function shapeSense(sense: StoredSense, variant: ReadVariant): PublicSense {
     rare: sense.rare,
     ...(translations === undefined ? {} : { translations }),
     grammar: sense.grammar && withReview(sense.grammar, variant),
-    examples: sense.examples.map((item) => withReview(item, variant)),
+    examples: sense.examples.map(({ translations, ...item }) => {
+      const translation = exampleTranslationIn(translations, variant.lang)
+      return withReview({ ...item, ...(translation === undefined ? {} : { translation }) }, variant)
+    }),
     collocations: sense.collocations.map((item) => withReview(item, variant)),
     topics: sense.topics.map((topic) => ({
       id: topic.id,
@@ -223,6 +236,7 @@ export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: Re
     frequency: document.frequency,
     pronunciations: document.pronunciations.map((item) => withReview(item, variant)),
     variants: document.variants.map((item) => withReview(item, variant)),
+    syllables: document.syllables,
     morphology: document.morphology && {
       parts: document.morphology.parts.map((part) => ({
         ...part,

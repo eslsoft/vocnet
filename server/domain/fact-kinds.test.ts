@@ -5,6 +5,7 @@ import {
   contentKeyOf,
   factKinds,
   inflectionKeysOf,
+  isIrregularForm,
   type Link,
   linkAdmissionOf,
   MAX_COLLOCATIONS,
@@ -166,6 +167,7 @@ describe('fact-kind registry', () => {
       morphology: ['jev', 'llm'],
       collocation: ['llm'],
       sense_list: ['llm'],
+      syllables: ['llm'],
     })
   })
 
@@ -195,6 +197,7 @@ describe('fact-kind registry', () => {
         { subject: bank, target: null, topic: null },
       ),
       planReview('sense_list', { common: [target], extra: [] }, { subject: bankEntry, target: null, topic: null }),
+      planReview('syllables', { syllables: ['bank'] }, { subject: bankEntry, target: null, topic: null }),
     ]
     expect(plans.map((plan) => requests(plan).map((request) => request.reviewer))).toEqual(
       Object.values(factKinds).map((spec) => spec.chain),
@@ -678,11 +681,7 @@ describe('fact-kind registry', () => {
       'comparative|saw',
       'superlative|saw',
     ])
-    expect(keys).toContain('past|saw|auxiliary')
-    expect(keys).toContain('plural|saw|pronoun')
-    expect(keys).toContain('superlative|saw|determiner')
-    expect(keys).not.toContain('past|saw|noun')
-    expect(keys).toHaveLength(24)
+    expect(keys).toHaveLength(7)
   })
 
   it('gives the LLM a rubric prompt that demands a JSON verdict', () => {
@@ -1095,5 +1094,78 @@ describe('sense list facts', () => {
     expect(
       planReview('sense_list', { common: [volume, lean], extra: [] }, { subject: book, target: null, topic: null }),
     ).toEqual({ kind: 'unreviewable', reason: `A listed sense has no live gloss: ${lean}.` })
+  })
+})
+
+describe('new data fields', () => {
+  const bankWord = { lemma: 'ability', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] }
+
+  it('admits syllables that spell a single-word lemma and asks the LLM how a dictionary divides it [spec: facts/syllables]', () => {
+    const entry = { lemma: 'ability', senses: [] }
+    expect(admissionOf('syllables', { syllables: ['a', 'bil', 'i', 'ty'] }, entry)).toBeNull()
+    expect(admissionOf('syllables', { syllables: ['a', 'bil', 'ity', 'y'] }, entry)).toBe(
+      'The syllables a·bil·ity·y do not spell "ability"; joined, they spell the lemma exactly.',
+    )
+    expect(admissionOf('syllables', { syllables: ['Abil', 'ity'] }, entry)).toContain('do not spell')
+    expect(admissionOf('syllables', { syllables: ['post', 'office'] }, { lemma: 'post office', senses: [] })).toContain(
+      'is a phrase',
+    )
+    expect(contentKeyOf('syllables', { syllables: ['a', 'bil', 'i', 'ty'] })).toBe('a·bil·i·ty')
+    const plan = planReview(
+      'syllables',
+      { syllables: ['a', 'bil', 'i', 'ty'] },
+      { subject: bankWord, target: null, topic: null },
+    )
+    expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
+    expect(llmPrompt(plan)?.user).toContain('Is "a·bil·i·ty" how a learner\'s dictionary')
+    expect(llmPrompt(plan)?.user).toContain('not a phonetic transcription')
+  })
+
+  it.each([
+    ['go', 'past', 'went', true],
+    ['child', 'plural', 'children', true],
+    ['good', 'comparative', 'better', true],
+    ['will', 'past', 'would', true],
+    ['bank', 'plural', 'banks', false],
+    ['bus', 'plural', 'buses', false],
+    ['stop', 'past', 'stopped', false],
+    ['make', 'present_participle', 'making', false],
+    ['die', 'present_participle', 'dying', false],
+    ['carry', 'third_person_singular', 'carries', false],
+    ['happy', 'superlative', 'happiest', false],
+    ['panic', 'past', 'panicked', false],
+    ['free', 'past', 'freed', false],
+    ['colour', 'variant', 'color', false],
+    ['go out', 'past', 'went out', false],
+  ] as const)('judges %s %s %s irregular: %s [spec: facts/form-irregular]', (lemma, type, form, irregular) => {
+    expect(isIrregularForm(lemma, type, form)).toBe(irregular)
+  })
+
+  it('keys a form by its pronunciation and sends one with a pronunciation to the LLM alone [spec: facts/form-pronunciation]', () => {
+    const went = { form: 'went', type: 'past', ipa: 'went', accent: 'us' } as const
+    expect(contentKeyOf('form', went)).toBe('past|went|us:went')
+    expect(contentKeyOf('form', { ...went, pos: 'verb' })).toBe('past|went|verb|us:went')
+    expect(meaningKeyOf('form', went)).toBe('past|went')
+    const plan = planReview('form', went, { subject: { ...bankWord, lemma: 'go' }, target: null, topic: null })
+    expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
+    expect(llmPrompt(plan)?.user).toContain('pronounced /went/ in American English')
+    const plain = planReview(
+      'form',
+      { form: 'went', type: 'past' },
+      { subject: { ...bankWord, lemma: 'go' }, target: null, topic: null },
+    )
+    expect(requests(plain).map((request) => request.reviewer)).toEqual(['jev', 'llm'])
+    expect(llmPrompt(plain)?.user).not.toContain('pronounced')
+  })
+
+  it('reviews an example with its translations and keys it by them [spec: facts/example-translation]', () => {
+    const translated = { text: 'We sat on the bank.', translations: { zh: '我们坐在河岸上。' } }
+    expect(contentKeyOf('example', translated)).toBe('we sat on the bank.|zh:我们坐在河岸上。')
+    expect(meaningKeyOf('example', translated)).toBe('we sat on the bank.')
+    const prompt = llmPrompt(planReview('example', translated, { subject: bank, target: null, topic: null }))?.user
+    expect(prompt).toContain('- Simplified Chinese: "我们坐在河岸上。"')
+    expect(prompt).toContain('fail when a translation is unfaithful')
+    const plain = llmPrompt(planReview('example', { text: 'x' }, { subject: bank, target: null, topic: null }))?.user
+    expect(plain).not.toContain('translations of the sentence')
   })
 })

@@ -1,6 +1,7 @@
 import { type EntryId, type FactId, type Pos, relationTypeSchema, type SenseId } from '@shared/facts'
 import type { Gap, WeakFact, WorkLeaseId } from '@shared/work'
 import { type Fact, type FactOf, isKind } from './fact'
+import { isIrregularForm } from './fact-kinds'
 import { isLive } from './fact-lifecycle'
 import type { SenseNode } from './nodes'
 import type { PrincipalRef } from './principal'
@@ -42,7 +43,10 @@ export function completeDecision(lease: WorkLease, who: PrincipalRef, now: Date)
   return Date.parse(lease.expiresAt) <= now.getTime() ? 'expired' : 'allowed'
 }
 
-type EntryGap = Extract<Gap, { type: 'senses' | 'sense_list' | 'forms' | 'pronunciation' | 'morphology' }>
+type EntryGap = Extract<
+  Gap,
+  { type: 'senses' | 'sense_list' | 'forms' | 'pronunciation' | 'morphology' | 'syllables' | 'form_pronunciations' }
+>
 type SenseGap = Exclude<Gap, EntryGap>
 type RelationGap = Extract<Gap, { type: 'relations' }>
 
@@ -87,10 +91,26 @@ function inventorySettled({ live, senses }: EntryState): number {
 
 // A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
 // (about the entry or its senses) plus relations pointing at its senses, so a kind check scopes to the entry.
+/**
+ * The entry's live irregular inflections, once per form type, spelling, and part of speech, each
+ * with whether a live fact of it gives a pronunciation: a correction that adds one sits beside
+ * its original while it is pending.
+ */
+function irregularForms(lemma: string, { live }: EntryState): Map<string, { form: string; pronounced: boolean }> {
+  const forms = new Map<string, { form: string; pronounced: boolean }>()
+  for (const fact of live.filter(isKind('form'))) {
+    const { form, type, pos, ipa } = fact.payload
+    if (!isIrregularForm(lemma, type, form)) continue
+    const key = `${type}|${form}|${pos ?? ''}`
+    forms.set(key, { form, pronounced: Boolean(ipa) || (forms.get(key)?.pronounced ?? false) })
+  }
+  return forms
+}
+
 const entryGapRules: ReadonlyArray<{
-  gap: (state: EntryState) => EntryGap
-  need: (lemma: string) => number
-  filled: (state: EntryState) => number
+  gap: (state: EntryState, lemma: string) => EntryGap
+  need: (lemma: string, state: EntryState) => number
+  filled: (state: EntryState, lemma: string) => number
 }> = [
   {
     gap: inventoryGap,
@@ -104,6 +124,21 @@ const entryGapRules: ReadonlyArray<{
     gap: () => ({ type: 'morphology' }),
     need: (lemma) => (isMultiword(lemma) ? 0 : 1),
     filled: counting('morphology'),
+  },
+  // Syllables divide one written word; a phrase's words are their own entries.
+  {
+    gap: () => ({ type: 'syllables' }),
+    need: (lemma) => (isMultiword(lemma) ? 0 : 1),
+    filled: counting('syllables'),
+  },
+  // A learner cannot work out how an irregular form sounds, so each needs a pronunciation.
+  {
+    gap: (state, lemma) => ({
+      type: 'form_pronunciations',
+      forms: [...irregularForms(lemma, state).values()].filter((form) => !form.pronounced).map(({ form }) => form),
+    }),
+    need: (lemma, state) => irregularForms(lemma, state).size,
+    filled: (state, lemma) => [...irregularForms(lemma, state).values()].filter((form) => form.pronounced).length,
   },
 ]
 
@@ -237,6 +272,13 @@ const senseGapRules: ReadonlyArray<{
       fact.kind === 'translation' && fact.subjectId === senseId && fact.payload.language === 'zh',
     gap: (senseId) => ({ type: 'translations', sense_id: senseId, language: 'zh' }),
   },
+  // An example a learner can read in their language; one translated example closes it.
+  {
+    need: () => 1,
+    fills: (fact, senseId) =>
+      fact.kind === 'example' && fact.subjectId === senseId && Boolean(fact.payload.translations?.zh),
+    gap: (senseId) => ({ type: 'example_translations', sense_id: senseId, language: 'zh' }),
+  },
   {
     need: (sense) => TOPICS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'topic' && fact.subjectId === senseId,
@@ -284,10 +326,10 @@ function openGaps(snapshot: GapInput): {
     senses: snapshot.senses.filter((sense) => glossed.has(sense.id)),
   }
   const entry = entryGapRules.flatMap((rule) => {
-    const missing = rule.need(lemma) - rule.filled(state)
-    return missing > 0 ? [{ gap: rule.gap(state), missing }] : []
+    const missing = rule.need(lemma, state) - rule.filled(state, lemma)
+    return missing > 0 ? [{ gap: rule.gap(state, lemma), missing }] : []
   })
-  const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(lemma), 0)
+  const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(lemma, state), 0)
   const counted = countedSenses(state)
   const senses = counted.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {

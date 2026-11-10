@@ -191,7 +191,7 @@ describe('public read model', () => {
   it('shows only published facts, each with its review [spec: catalog/visibility]', () => {
     const { snapshot, bank, bankSense, shoreSense } = bankWorld()
     const view = project(snapshot)
-    expect(view?.meanings[0]?.forms).toEqual({ plural: ['banks'] })
+    expect(view?.meanings[0]?.forms).toEqual({ plural: [{ form: 'banks', irregular: false }] })
     expect(view?.variants).toEqual([])
     expect(view?.pronunciations).toEqual([
       { ipa: 'bæŋk', accent: 'us', review: expect.objectContaining({ verdict: 'uncertain' }) },
@@ -241,9 +241,14 @@ describe('public read model', () => {
     expect(noun?.pronunciations).toEqual([])
     expect(verb?.pronunciations).toEqual([{ ipa: 'bɛŋk', accent: 'us', review: expect.anything() }])
     expect([noun?.forms, verb?.forms, adjective?.forms]).toEqual([
-      { plural: ['banks'] },
-      { past: ['banked', 'bankt'] },
-      { comparative: ['banker'] },
+      { plural: [{ form: 'banks', irregular: false }] },
+      {
+        past: [
+          { form: 'banked', irregular: false },
+          { form: 'bankt', irregular: true },
+        ],
+      },
+      { comparative: [{ form: 'banker', irregular: false }] },
     ])
     expect(verb?.review.forms.past).toHaveLength(2)
     expect(view?.variants.map(({ form, pos }) => ({ form, pos }))).toEqual([
@@ -429,6 +434,26 @@ describe('public read model', () => {
     expect(formMeaning('variant', undefined, meanings('noun'))).toBeUndefined()
   })
 
+  it('projects syllables, a form pronunciation, and example translations [spec: catalog/new-fields]', () => {
+    const go = entry('go')
+    const move = sense(go, 'verb')
+    const facts = [
+      fact('entry', go.id, {}),
+      fact('sense', move.id, { gloss: 'To move.' }),
+      fact('form', go.id, { form: 'went', type: 'past', ipa: 'went', accent: 'uk' }),
+      fact('syllables', go.id, { syllables: ['go'] }),
+      fact('example', move.id, { text: 'We go home.', translations: { zh: '我们回家。' } }),
+    ]
+    const view = project({ ...bankWorld().snapshot, entry: go, senses: [move], facts })
+    expect(view?.meanings[0]?.forms).toEqual({ past: [{ form: 'went', irregular: true, ipa: 'went', accent: 'uk' }] })
+    expect(view?.syllables).toEqual(['go'])
+    expect(view?.review.syllables).toEqual(expect.objectContaining({ fact_id: expect.any(String) }))
+    expect(view?.meanings[0]?.senses[0]?.examples[0]).toMatchObject({
+      text: 'We go home.',
+      translations: { zh: '我们回家。' },
+    })
+  })
+
   it('indexes every published form for lookup, shown or not [spec: catalog/form-index]', () => {
     const will = entry('will')
     const modal = sense(will, 'auxiliary')
@@ -445,8 +470,8 @@ describe('public read model', () => {
     ]
     const view = project({ ...bankWorld().snapshot, entry: will, senses: [modal, testament], facts })
     expect(view?.meanings.map(({ pos, forms }) => ({ pos, forms }))).toEqual([
-      { pos: 'auxiliary', forms: { past: ['would'] } },
-      { pos: 'noun', forms: { plural: ['wills'] } },
+      { pos: 'auxiliary', forms: { past: [{ form: 'would', irregular: true }] } },
+      { pos: 'noun', forms: { plural: [{ form: 'wills', irregular: false }] } },
     ])
     expect(view?.forms).toEqual([
       { form: 'would', type: 'past', pos: 'auxiliary' },

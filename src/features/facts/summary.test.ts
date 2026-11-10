@@ -47,6 +47,12 @@ describe('summarizeFact', () => {
       'make a decision (verb_noun)',
     ],
     [{ kind: 'sense_list', payload: { common: [target, target], extra: [target] } }, '2 common, 1 extra'],
+    [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
+    [{ kind: 'form', payload: { form: 'went', type: 'past', ipa: 'went', accent: 'uk' } }, 'went (past) /went/ (uk)'],
+    [
+      { kind: 'example', payload: { text: 'We sat on the bank.', translations: { zh: '我们坐在河岸上。' } } },
+      'We sat on the bank. · zh: 我们坐在河岸上。',
+    ],
   ])('summarizes a %o fact', (input, expected) => {
     expect(summarizeFact(fact(input as FactDto))).toBe(expected)
   })

@@ -335,7 +335,7 @@ describe('public view', () => {
     await deliverPendingReviews()
 
     const shown = (await entryOf('bank')).meanings.flatMap((meaning) => Object.values(meaning.forms).flat())
-    expect(shown).toEqual(['banks'])
+    expect(shown).toEqual([{ form: 'banks', irregular: false }])
     const { results } = await env.DB.prepare(
       `SELECT entries.lemma, json_extract(facts.payload, '$.form') AS form, json_extract(facts.payload, '$.type') AS type
        FROM facts JOIN entries ON entries.id = facts.subject_id JOIN public_entries ON public_entries.entry_id = entries.id

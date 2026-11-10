@@ -312,16 +312,42 @@ const senseListPayloadSchema = z.strictObject({
  */
 export const SERVED_LANGUAGES = ['zh'] as const
 
+const servedLanguageSchema = z.enum(SERVED_LANGUAGES, {
+  error: `A translation is in a served language: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`,
+})
+
+const formPayloadSchema = z.strictObject({
+  form: text(100),
+  type: formTypeSchema,
+  pos: posSchema.optional().meta({
+    description: 'The part of speech the form inflects, such as auxiliary for "would" and verb for "willed".',
+  }),
+  ipa: text(100).optional().meta({
+    description:
+      'The broad IPA of the form in `accent`, mainly for an irregular form: "went", "red" for the past of read.',
+  }),
+  accent: accentSchema.optional().meta({ description: 'The accent of `ipa`; given with it, never alone.' }),
+})
+
+const examplePayloadSchema = z.strictObject({
+  text: text(500),
+  translations: z
+    .partialRecord(z.string(), text(500))
+    .optional()
+    .meta({ description: 'The example translated, by served language: { "zh": "她在银行工作。" }.' }),
+})
+
+const syllablesPayloadSchema = z.strictObject({
+  syllables: z.array(text(30)).min(1).max(20).meta({
+    description:
+      'The written word divided into syllables as a learner\'s dictionary breaks it: ["a", "bil", "i", "ty"]. Joined, they spell the lemma exactly.',
+  }),
+})
+
 export const factPayloadSchemas = {
   entry: z.strictObject({}),
   sense: z.strictObject({ gloss: text(500), register: registerSchema.optional() }),
-  form: z.strictObject({
-    form: text(100),
-    type: formTypeSchema,
-    pos: posSchema.optional().meta({
-      description: 'The part of speech the form inflects, such as auxiliary for "would" and verb for "willed".',
-    }),
-  }),
+  form: formPayloadSchema,
   relation: z.strictObject({ type: relationTypeSchema, target_sense_id: senseIdSchema }),
   pronunciation: z.strictObject({
     ipa: text(100),
@@ -331,7 +357,7 @@ export const factPayloadSchemas = {
       .optional()
       .meta({ description: 'The part of speech this pronunciation belongs to, when it differs by POS.' }),
   }),
-  example: z.strictObject({ text: text(500) }),
+  example: examplePayloadSchema,
   translation: z.strictObject({
     language: z
       .string()
@@ -349,6 +375,7 @@ export const factPayloadSchemas = {
     pattern: collocationPatternSchema,
   }),
   sense_list: senseListPayloadSchema,
+  syllables: syllablesPayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -358,12 +385,27 @@ const submitPayloadSchemas = {
   ...factPayloadSchemas,
   sense: factPayloadSchemas.sense.extend({ gloss: glossSchema }),
   pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }),
-  translation: factPayloadSchemas.translation.extend({
-    language: z
-      .enum(SERVED_LANGUAGES, {
-        error: `A translation is in a served language: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`,
+  form: formPayloadSchema
+    .extend({ ipa: ipaSchema.optional() })
+    .refine(
+      ({ ipa, accent }) => (ipa === undefined) === (accent === undefined),
+      'A form gives ipa and accent together.',
+    ),
+  example: examplePayloadSchema.extend({
+    translations: z
+      .strictObject(Object.fromEntries(SERVED_LANGUAGES.map((language) => [language, text(500).optional()])), {
+        error: (issue) =>
+          issue.code === 'unrecognized_keys'
+            ? `An example is translated into served languages only: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`
+            : undefined,
       })
-      .meta({ description: `A served language: ${SERVED_LANGUAGES.join(', ')}. zh is Simplified Chinese.` }),
+      .optional()
+      .meta({ description: `The example translated, by served language: ${SERVED_LANGUAGES.join(', ')}.` }),
+  }),
+  translation: factPayloadSchemas.translation.extend({
+    language: servedLanguageSchema.meta({
+      description: `A served language: ${SERVED_LANGUAGES.join(', ')}. zh is Simplified Chinese.`,
+    }),
   }),
   grammar: grammarPayloadSchema
     .refine((grammar) => Object.keys(grammar).length > 0, 'A grammar fact names at least one property.')
@@ -385,6 +427,12 @@ const submitPayloadSchemas = {
     ({ common, extra }) => new Set([...common, ...extra]).size === common.length + extra.length,
     'A sense list names each sense once, in common or in extra.',
   ),
+  syllables: syllablesPayloadSchema.extend({
+    syllables: syllablesPayloadSchema.shape.syllables.refine(
+      (syllables) => syllables.every((syllable) => !/\s/.test(syllable)),
+      'A syllable has no spaces; a phrase is syllabified in the entries of its words.',
+    ),
+  }),
 }
 
 export const factKindSchema = z
@@ -401,6 +449,7 @@ export const factKindSchema = z
     'morphology',
     'collocation',
     'sense_list',
+    'syllables',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -458,6 +507,7 @@ export const submitFactInputSchema = z
     submitVariant('morphology'),
     submitVariant('collocation'),
     submitVariant('sense_list'),
+    submitVariant('syllables'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -492,6 +542,7 @@ export const factSchema = z
     factVariant('morphology'),
     factVariant('collocation'),
     factVariant('sense_list'),
+    factVariant('syllables'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

@@ -24,7 +24,7 @@ const storedSense = (id: string, topics: string[], translations: Record<string, 
   rare: false,
   translations,
   grammar: { countability: 'countable', patterns: [], prepositions: [], review: review(`g-${id}`) },
-  examples: [{ text: `An example of ${id}.`, review: review(`x-${id}`) }],
+  examples: [{ text: `An example of ${id}.`, translations: { zh: `${id} 的例句。` }, review: review(`x-${id}`) }],
   collocations: [{ text: `river ${id}`, pattern: 'noun_noun', review: review(`c-${id}`) }],
   topics: topics.map((topic) => ({
     id: topic as TopicId,
@@ -64,13 +64,14 @@ const bank: StoredEntry = {
   frequency: { zipf: 5.16, rank: 691 },
   pronunciations: [{ ipa: 'bæŋk', accent: 'us', review: review('p1') }],
   variants: [{ form: 'banque', review: review('v1') }],
+  syllables: ['bank'],
   morphology: { parts: [{ form: 'bank', role: 'base' }], review: review('m1') },
   meanings: [
     {
       pos: 'noun',
       cefr: 'A2',
       pronunciations: [],
-      forms: { plural: ['banks'] },
+      forms: { plural: [{ form: 'banks', irregular: false }] },
       senses: [
         storedSense('s1', ['finance', 'places'], { zh: ['银行', '库'], 'zh-Hant': ['銀行'], fr: ['banque'] }),
         storedSense('s2', [], {}),
@@ -81,13 +82,13 @@ const bank: StoredEntry = {
       pos: 'verb',
       cefr: null,
       pronunciations: [{ ipa: 'bæŋk', accent: 'uk', strength: 'weak', review: review('p2') }],
-      forms: { past: ['banked'] },
+      forms: { past: [{ form: 'banked', irregular: false }] },
       senses: [storedSense('s3', [], { zh: ['存'] })],
       review: { forms: { past: [review('f2')] } },
     },
   ],
   summary,
-  review: { entry: review('e1'), sense_list: null },
+  review: { entry: review('e1'), sense_list: null, syllables: review('y1') },
   forms: [
     { form: 'banks', type: 'plural', pos: 'noun' },
     { form: 'banked', type: 'past', pos: 'verb' },
@@ -216,7 +217,7 @@ describe('public read variants', () => {
     expect(plain).not.toContain('fact_id')
 
     const reviewed = shapeEntry(bank, links, { lang: 'zh', review: true })
-    expect(reviewed.review).toEqual({ entry: review('e1'), sense_list: null })
+    expect(reviewed.review).toEqual({ entry: review('e1'), sense_list: null, syllables: review('y1') })
     expect(reviewed.pronunciations[0]?.review).toEqual(review('p1'))
     expect(reviewed.variants[0]?.review).toEqual(review('v1'))
     expect(reviewed.morphology?.review).toEqual(review('m1'))
@@ -231,6 +232,17 @@ describe('public read variants', () => {
     expect(shapeEntry(bank, links, { lang: null, review: true }).meanings[0]?.senses[0]?.review).toEqual({
       gloss: review('s-s1'),
     })
+  })
+
+  it('shows syllables, form objects, and example translations in the read language [spec: catalog/new-fields]', () => {
+    const exampleOf = (lang: string | null) =>
+      shapeEntry(bank, links, { lang, review: false }).meanings[0]?.senses[0]?.examples[0]
+    expect(exampleOf('zh')).toEqual({ text: 'An example of s1.', translation: 's1 的例句。' })
+    expect(exampleOf('all')).toEqual({ text: 'An example of s1.', translation: { zh: 's1 的例句。' } })
+    expect(exampleOf(null)).toEqual({ text: 'An example of s1.' })
+    const entry = shapeEntry(bank, links, { lang: null, review: false })
+    expect(entry.syllables).toEqual(['bank'])
+    expect(entry.meanings[0]?.forms).toEqual({ plural: [{ form: 'banks', irregular: false }] })
   })
 
   it('links each word formation part with a public entry of that spelling', () => {

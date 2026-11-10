@@ -284,12 +284,16 @@ export function createNodeRepo(db: Db): NodeRepo {
     },
 
     async findLiveForms(contentKeys) {
+      // A labelled key extends the unlabelled one with `|…`; `}` is the character after `|`, so
+      // the range stays on the content index.
+      const keyOrLabelled = (key: string) =>
+        or(eq(facts.contentKey, key), and(gt(facts.contentKey, `${key}|`), lt(facts.contentKey, `${key}}`)))
       const liveEntry = liveEntryOf(entries.id, db)
       const rows = await db
         .select({ entry: entries, fact: facts })
         .from(facts)
         .innerJoin(entries, eq(entries.id, facts.subjectId))
-        .where(and(eq(facts.kind, 'form'), inArray(facts.contentKey, contentKeys), liveStatus, liveEntry))
+        .where(and(eq(facts.kind, 'form'), or(...contentKeys.map(keyOrLabelled)), liveStatus, liveEntry))
         .orderBy(asc(entries.lemma), asc(facts.id))
       return rows.map((row) => ({ entry: toEntry(row.entry), fact: toFact(row.fact) as FactOf<'form'> }))
     },

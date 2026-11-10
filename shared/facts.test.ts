@@ -178,3 +178,30 @@ describe('sense list format', () => {
     ])
   })
 })
+
+describe('new data field formats', () => {
+  it('takes a form pronunciation only with its accent, in the IPA format [spec: facts/form-pronunciation]', () => {
+    const form = (payload: object) =>
+      issues({ kind: 'form', subject_id: entry, payload: { form: 'went', type: 'past', ...payload } })
+    expect(form({ ipa: 'went', accent: 'us' })).toEqual([])
+    expect(form({})).toEqual([])
+    expect(form({ ipa: 'went' })).toEqual(['A form gives ipa and accent together.'])
+    expect(form({ accent: 'uk' })).toEqual(['A form gives ipa and accent together.'])
+    expect(form({ ipa: '/went/', accent: 'us' })).toEqual([expect.stringContaining('without slashes')])
+  })
+
+  it('takes example translations in served languages only [spec: facts/example-translation]', () => {
+    const example = (translations: object) =>
+      issues({ kind: 'example', subject_id: sense, payload: { text: 'We go home.', translations } })
+    expect(example({ zh: '我们回家。' })).toEqual([])
+    expect(example({ fr: 'Nous rentrons.' })).toEqual([expect.stringContaining('served language')])
+  })
+
+  it('takes syllables without spaces [spec: facts/syllables]', () => {
+    const syllables = (parts: string[]) =>
+      issues({ kind: 'syllables', subject_id: entry, payload: { syllables: parts } })
+    expect(syllables(['a', 'bil', 'i', 'ty'])).toEqual([])
+    expect(syllables(['post of', 'fice'])).toEqual([expect.stringContaining('A syllable has no spaces')])
+    expect(syllables([])).not.toEqual([])
+  })
+})

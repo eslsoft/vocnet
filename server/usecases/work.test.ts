@@ -48,9 +48,10 @@ async function fill(world: World, entryId: EntryId, author = agentA) {
     { kind: 'morphology', subject_id: entryId, payload: { parts: [{ form: entry?.lemma, role: 'base' }] } },
     { kind: 'form', subject_id: entryId, payload: { form: 'bys', type: 'plural' } },
     { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'us' } },
-    { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.' } },
+    { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } } },
     { kind: 'translation', subject_id: sense.id, payload: { language: 'zh', text: '在旁边' } },
     { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } },
+    { kind: 'syllables', subject_id: entryId, payload: { syllables: [entry?.lemma] } },
   ] as const
   for (const input of facts) await submitFact(world.deps, author, input as never)
   return sense.id
@@ -203,11 +204,11 @@ describe('claimWork', () => {
     const claim = await claimWork(world.deps, agentA)
     expect(claim?.gaps).toEqual([])
     expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 8 })
+    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 9 })
     const { fact: correction } = await submitFact(world.deps, agentA, {
       kind: 'example',
       subject_id: sense as SenseId,
-      payload: { text: 'Sit by the fire.' },
+      payload: { text: 'Sit by the fire.', translations: { zh: '坐在火边。' } },
       supersedes_id: example.id,
     })
     await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
@@ -242,7 +243,7 @@ describe('claimWork', () => {
     await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
     await claimFeedback(world.deps, agentB, item.id)
     const claimed = world.work.get(entries[0].entry.id)
-    expect(claimed).toMatchObject({ quality: 1 - 1 / 8, scoredRevision: claimed?.revision })
+    expect(claimed).toMatchObject({ quality: 1 - 1 / 9, scoredRevision: claimed?.revision })
     await resolveFeedback(world.deps, agentB, item.id, { resolution: 'dismissed', note: 'It is.' })
     expect(world.work.get(entries[0].entry.id)).toMatchObject({ quality: 1 })
   })
@@ -283,9 +284,11 @@ describe('claimWork', () => {
       'forms',
       'pronunciation',
       'morphology',
+      'syllables',
       'relations',
       'examples',
       'translations',
+      'example_translations',
       'topics',
       'grammar',
       'collocations',
