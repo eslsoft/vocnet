@@ -337,6 +337,13 @@
       "when": 1794329005771,
       "tag": "20261110164325_synchronic_morphology_stalls",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794332790159,
+      "tag": "20261110174630_polish_claim_tier",
+      "breakpoints": true
     }
   ]
 }

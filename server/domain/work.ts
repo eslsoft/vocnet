@@ -712,11 +712,18 @@ export function learnerBand({ levelRank, zipf }: LearnerPriority): number {
 const BANDS = 8
 
 /**
- * The claim tier, lowest first. Entries with a gap come before entries whose only work is weak
- * facts, so completeness comes before quality; within each, by learner band; within a band,
+ * Completeness from which an entry's remaining gaps are polish: past it, an entry waits behind every
+ * less complete entry of every band, so the next level fills before this one is finished.
+ */
+export const POLISH_FROM = 0.95
+
+/**
+ * The claim tier, lowest first. Entries below POLISH_FROM come before entries being polished (a
+ * few gaps left, or only weak facts), so filling comes before finishing and quality; within each,
+ * by learner band; within a band,
  * never-claimed entries before claimed ones. Never-claimed entries go by highest frequency, then
  * lowest completeness; claimed entries by least recently claimed, so an entry whose lease keeps
  * lapsing goes behind every other claimed entry of its band.
  */
 export const claimTier = (row: LearnerPriority & { completeness: number; claimed: boolean }) =>
-  2 * ((row.completeness < 1 ? 0 : BANDS) + learnerBand(row)) + (row.claimed ? 1 : 0)
+  2 * ((row.completeness < POLISH_FROM ? 0 : BANDS) + learnerBand(row)) + (row.claimed ? 1 : 0)

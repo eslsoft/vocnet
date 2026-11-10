@@ -159,7 +159,7 @@ export const worklist = sqliteTable(
     /** The revision the entry's public view rows describe; behind `revision` while they are stale. */
     viewRevision: integer('view_revision').notNull().default(0),
     claimRank: integer('claim_rank').generatedAlwaysAs(
-      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 * (8 * (completeness >= 1) + coalesce(level_rank - 1, 6 + (zipf is null))) + (claimed_at is not null) end`,
+      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 * (8 * (completeness >= 0.95) + coalesce(level_rank - 1, 6 + (zipf is null))) + (claimed_at is not null) end`,
       { mode: 'virtual' },
     ),
     leaseId: text('lease_id').unique(),

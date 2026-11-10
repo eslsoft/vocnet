@@ -93,10 +93,10 @@ Feature: Worklist
     Then a live row is claimable when its scores are stale, or when it is not stalled, has no pending fact about it or relation into its senses, and has a gap or a weak fact
 
   @work/claim-tiers @domain
-  Scenario: The claim tier puts gaps before weak facts, then learner priority, then never-claimed before claimed
-    Given entries of every CEFR level, with a frequency and no level, with neither, with a gap or only weak facts, claimed or not
+  Scenario: The claim tier puts filling before polishing, then learner priority, then never-claimed before claimed
+    Given entries of every CEFR level, with a frequency and no level, with neither, below 0.95 completeness, at or above it, or with only weak facts, claimed or not
     When their claim tiers are computed
-    Then every entry with a gap comes before every entry whose only work is weak facts, each by A1, A2, B1, B2, C1, C2, then frequency without a level, then the rest, and within each band never-claimed before claimed
+    Then every entry below 0.95 completeness comes before every entry at or above it, whose remaining gaps and weak facts are polish, each by A1, A2, B1, B2, C1, C2, then frequency without a level, then the rest, and within each band never-claimed before claimed
 
   @work/claim-order @usecase
   Scenario: Learner priority orders the claims, never-claimed by highest frequency, claimed by least recently claimed

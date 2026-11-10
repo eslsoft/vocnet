@@ -1171,9 +1171,11 @@ back once the reviews settle (`isClaimable`).
 Claimable entries come in the order a learner needs them: the words a learner
 must master first, and completeness before quality (`claimTier`):
 
-1. **Gaps before weak facts.** An entry with a gap (completeness below 1) comes
-   before every entry whose only work is weak facts (completeness 1, quality
-   below 1), so the dictionary fills before it polishes.
+1. **Filling before polishing.** An entry below `POLISH_FROM` (0.95)
+   completeness comes before every entry at or above it, whether its remaining
+   work is a few gaps or only weak facts (quality below 1). The last gaps of a
+   nearly complete entry are mostly its rarer senses' collocations and
+   relations, so the next level's words fill before this level is finished.
 2. **Learner band.** Within each, entries come by the lowest CEFR level of their
    exact lemma, A1, A2, B1, B2, C1, then C2; then entries with a frequency but no
    level; then the rest, such as neighbors an agent created that neither list
@@ -1185,11 +1187,11 @@ must master first, and completeness before quality (`claimTier`):
 
 | `claim_rank` | Entries                                                      |
 | ------------ | ------------------------------------------------------------ |
-| 0, 1         | A gap, A1: never claimed, claimed                            |
-| 2 … 11       | A gap, A2 to C2, two ranks per level                         |
-| 12, 13       | A gap, a frequency but no CEFR level                         |
-| 14, 15       | A gap, neither                                               |
-| 16 … 31      | Only weak facts, in the same bands                           |
+| 0, 1         | Below 0.95, A1: never claimed, claimed                       |
+| 2 … 11       | Below 0.95, A2 to C2, two ranks per level                    |
+| 12, 13       | Below 0.95, a frequency but no CEFR level                    |
+| 14, 15       | Below 0.95, neither                                          |
+| 16 … 31      | At or above 0.95 (polish), in the same bands                 |
 
 A seed entry comes from a curated word list: the 850 Basic English words, and
 the CEFR headwords the core import creates (see Reference data). `POST

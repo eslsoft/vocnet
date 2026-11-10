@@ -16,6 +16,7 @@ import {
   learnerBand,
   leaseExpiry,
   MAX_SENSE_LIST_ATTEMPTS,
+  POLISH_FROM,
   RELATIONS_NEEDED,
   TOPICS_NEEDED,
   VERB_PARADIGM,
@@ -691,6 +692,9 @@ describe('worklist admission', () => {
     const qualityOnly = bands.map((band) => claimTier({ ...band, completeness: 1, claimed: false }))
     expect(qualityOnly).toEqual([16, 18, 20, 22, 24, 26, 28, 30])
     expect(Math.min(...qualityOnly)).toBeGreaterThan(Math.max(...tiers))
+    const polishing = bands.map((band) => claimTier({ ...band, completeness: POLISH_FROM, claimed: false }))
+    expect(polishing).toEqual(qualityOnly)
+    expect(claimTier({ ...bands[0], completeness: POLISH_FROM - 0.01, claimed: false })).toBe(0)
   })
 })
 
