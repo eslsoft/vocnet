@@ -500,7 +500,7 @@ describe('fact-kind registry', () => {
       'Does "mental health" belong in a learner\'s dictionary as its own entry?\nIt is a headword of a CEFR learner vocabulary list, which names the vocabulary learners need:\n- A2 noun in CEFR-J Wordlist\n- B1 verb in Octanove\n',
     )
     expect(rubric).toContain(
-      'fail only when it is an inflected form of another entry, a proper name, or a misspelling.',
+      'fail only when it is nothing but an inflected form of another word (a headword with uses of its own, such as "could", "best" or "left", passes), a proper name, or a misspelling.',
     )
     expect(rubric).not.toContain('lexical unit of English')
     expect(rubric).not.toContain('"wheat grain"')

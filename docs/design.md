@@ -488,9 +488,12 @@ but only to choose the message.
   `entry` fact Jev settled alone (`review.reviewer` = `jev`). In the same batch
   that publishes the form, that fact gets `revalidate_since` unless it already
   has one, and then it is enqueued; its revalidation goes to the LLM alone with
-  the inflection evidence, so a bare inflection such as "could" or "done" that
+  the inflection evidence, so a bare inflection such as "went" or "took" that
   passed on Jev before its base word's forms existed is rejected
-  (`invalidate`), and a homograph keeps its place (`reconfirm`). A duplicate
+  (`invalidate`), and a headword with uses of its own ("could", "best",
+  "saw") keeps its place (`reconfirm`). A review that loaded its context
+  before a form published can still settle on Jev without the evidence; the
+  window is one review, and the form's later publishes do not reopen it. A duplicate
   delivery of the form's review publishes nothing and marks nothing; an entry
   the LLM judged is not reopened; at most one entry fact is marked per form,
   the one of the exact lemma.

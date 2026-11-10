@@ -319,7 +319,7 @@ function cefrCriteria(lemma: string, cefr: readonly CefrListing[]): string[] {
     'It is a headword of a CEFR learner vocabulary list, which names the vocabulary learners need:',
     ...cefr.map(({ level, pos, source }) => `- ${level} ${pos} in ${source}`),
     'Do not ask whether a phrase is a fixed lexical unit: the list settles that it belongs.',
-    'pass: a headword of the list. fail only when it is an inflected form of another entry, a proper name, or a misspelling.',
+    'pass: a headword of the list. fail only when it is nothing but an inflected form of another word (a headword with uses of its own, such as "could", "best" or "left", passes), a proper name, or a misspelling.',
   ]
 }
 
