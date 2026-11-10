@@ -375,6 +375,12 @@ export function fakeWorld(): FakeWorld {
           const entryLive = world.facts.some((f) => f.kind === 'entry' && f.subjectId === fact.subjectId && live(f))
           return entry && entryLive ? [{ entry, fact }] : []
         }),
+    listLiveCaseVariants: async ({ id, lemma }) =>
+      world.entries
+        .filter((entry) => entry.id !== id && entry.lemma.toLowerCase() === lemma.toLowerCase())
+        .filter((entry) => world.facts.some((f) => f.kind === 'entry' && f.subjectId === entry.id && live(f)))
+        .map((entry) => entry.lemma)
+        .sort(),
     findPublishedForms: async (contentKeys) =>
       world.facts
         .filter((fact): fact is FactOf<'form'> => fact.kind === 'form' && fact.status === 'published')

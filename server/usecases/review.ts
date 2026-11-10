@@ -121,16 +121,18 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    const [senses, inflections, cefr] = await Promise.all([
+    const [senses, inflections, cefr, caseVariants] = await Promise.all([
       entryGlosses(deps, entry.id),
       inflectionOf(deps, entry),
       deps.reference.listCefrListings(entry.lemma),
+      deps.nodes.listLiveCaseVariants(entry),
     ])
     return {
       lemma: entry.lemma,
       senses: senses.map(({ senseId, pos, gloss }) => ({ id: senseId, pos, gloss })),
       inflectionOf: inflections,
       cefr,
+      caseVariants,
     }
   },
   sense: (deps, id) => senseContext(deps, id as SenseId),

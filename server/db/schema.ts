@@ -11,12 +11,17 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 
-export const entries = sqliteTable('entries', {
-  id: text('id').primaryKey(),
-  lemma: text('lemma').notNull().unique(),
-  createdBy: text('created_by').notNull(),
-  createdAt: text('created_at').notNull(),
-})
+export const entries = sqliteTable(
+  'entries',
+  {
+    id: text('id').primaryKey(),
+    lemma: text('lemma').notNull().unique(),
+    createdBy: text('created_by').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  /** The case-variant lookup: the other entries spelled like a lemma but for letter case. */
+  (table) => [index('entries_lemma_case_idx').on(sql`lower(${table.lemma})`)],
+)
 
 export const senses = sqliteTable(
   'senses',

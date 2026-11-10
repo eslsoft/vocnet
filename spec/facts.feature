@@ -516,6 +516,18 @@ Feature: Facts and review
     And its reason names each missing, duplicated, misordered, or misplaced sense
     And a list naming a sense without a live gloss is unreviewable
 
+  @facts/sense-list-capitalization @domain
+  Scenario: A sense list is never failed for the senses of a differently capitalized entry
+    Given a sense list of an entry, and the other live entries spelled like its lemma but for letter case
+    When its review is planned
+    Then the rubric judges only the exact spelling, says a sense of a differently capitalized spelling or a proper name belongs to that other entry and is never missing, and names each such entry as separate
+
+  @facts/sense-list-capitalization-api @api
+  Scenario: The review of a sense list loads the entries that differ only in letter case
+    Given entries "may" and "May" whose entry facts are live, and "MAY" whose entry fact is retracted
+    When the queue consumer reviews a sense list of "may"
+    Then its review context carries "May" alone as a case variant, and the rubric names "May" as a separate entry
+
   @facts/sense-list-review @api
   Scenario: A sense list is reviewed, published, and reopened through the queue
     Given an agent submits a sense list for an entry's senses

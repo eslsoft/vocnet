@@ -4,7 +4,7 @@ import type { SenseWithLemma } from '@server/domain/nodes'
 import type { Lemma } from '@server/domain/term'
 import type { NodeRepo, PageRequest } from '@server/usecases/ports'
 import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
-import { and, asc, count, desc, eq, exists, gt, gte, inArray, lt, or, type SQL, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, factSelectValues, liveStatus, page, toEntry, toFact, toSense } from './rows'
 import { insertWorklistRow, touchWorkOf } from './work'
@@ -33,6 +33,15 @@ function lemmaStartsWith(prefix: string) {
 
 const noFacts = (): Record<FactStatus, number> =>
   Object.fromEntries(factStatusSchema.options.map((status) => [status, 0])) as Record<FactStatus, number>
+
+function liveEntryOf(entryId: SQL | typeof entries.id, db: Db) {
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(facts)
+      .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entryId), liveStatus)),
+  )
+}
 
 function publishedEntry(entryId: SQL | typeof entries.id, db: Db) {
   return exists(
@@ -307,12 +316,7 @@ export function createNodeRepo(db: Db): NodeRepo {
     },
 
     async findLiveForms(contentKeys) {
-      const liveEntry = exists(
-        db
-          .select({ one: sql`1` })
-          .from(facts)
-          .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entries.id), liveStatus)),
-      )
+      const liveEntry = liveEntryOf(entries.id, db)
       const rows = await db
         .select({ entry: entries, fact: facts })
         .from(facts)
@@ -320,6 +324,16 @@ export function createNodeRepo(db: Db): NodeRepo {
         .where(and(eq(facts.kind, 'form'), inArray(facts.contentKey, contentKeys), liveStatus, liveEntry))
         .orderBy(asc(entries.lemma), asc(facts.id))
       return rows.map((row) => ({ entry: toEntry(row.entry), fact: toFact(row.fact) as FactOf<'form'> }))
+    },
+
+    async listLiveCaseVariants({ id, lemma }) {
+      const rows = await db
+        .select({ lemma: entries.lemma })
+        .from(entries)
+        // Matches the expression of entries_lemma_case_idx so SQLite reads it through the index.
+        .where(and(sql`lower(${entries.lemma}) = lower(${lemma})`, ne(entries.id, id), liveEntryOf(entries.id, db)))
+        .orderBy(asc(entries.lemma))
+      return rows.map((row) => row.lemma as Lemma)
     },
 
     async findPublishedForms(contentKeys) {
