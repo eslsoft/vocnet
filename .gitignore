@@ -12,3 +12,6 @@ blob-report
 playwright/.cache
 artifacts/
 .reference
+
+# Local Claude Code worktrees and settings
+.claude/
