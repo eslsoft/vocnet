@@ -233,6 +233,19 @@ function morphologyIssues(parts: ReadonlyArray<{ form: string; role: MorphemeRol
   return issues
 }
 
+const senseIdsSchema = z.array(senseIdSchema).max(100)
+
+const senseListPayloadSchema = z.strictObject({
+  common: senseIdsSchema.min(1).meta({
+    description:
+      "The entry's common, general-knowledge senses, those a learner's dictionary lists, most common first across parts of speech.",
+  }),
+  extra: senseIdsSchema.meta({
+    description:
+      "The entry's other live senses: rare, archaic, technical, or specialist. They are not ordered and never count toward completeness.",
+  }),
+})
+
 export const factPayloadSchemas = {
   entry: z.strictObject({}),
   sense: z.strictObject({ gloss: text(500), register: registerSchema.optional() }),
@@ -269,6 +282,7 @@ export const factPayloadSchemas = {
     text: text(80).meta({ description: 'The combination with the word in it, such as "make a decision".' }),
     pattern: collocationPatternSchema,
   }),
+  sense_list: senseListPayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -290,6 +304,10 @@ const submitPayloadSchemas = {
   collocation: factPayloadSchemas.collocation.extend({
     text: text(80).refine((value) => /\s/.test(value), 'A collocation has at least two words.'),
   }),
+  sense_list: senseListPayloadSchema.refine(
+    ({ common, extra }) => new Set([...common, ...extra]).size === common.length + extra.length,
+    'A sense list names each sense once, in common or in extra.',
+  ),
 }
 
 export const factKindSchema = z
@@ -305,6 +323,7 @@ export const factKindSchema = z
     'grammar',
     'morphology',
     'collocation',
+    'sense_list',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -361,6 +380,7 @@ export const submitFactInputSchema = z
     submitVariant('grammar'),
     submitVariant('morphology'),
     submitVariant('collocation'),
+    submitVariant('sense_list'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -394,6 +414,7 @@ export const factSchema = z
     factVariant('grammar'),
     factVariant('morphology'),
     factVariant('collocation'),
+    factVariant('sense_list'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

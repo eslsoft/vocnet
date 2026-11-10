@@ -41,7 +41,7 @@ const postSense = async (token: string, entryId: string, gloss: string) =>
   )
 const submitFact = async (token: string, json: unknown) =>
   factWriteResultSchema.parse((await call('/manage/v1/facts', { method: 'POST', token, json })).body).fact
-/** Gives the entry a preposition sense, which needs no relations, and every other slot; returns the facts. */
+/** Gives the entry a preposition sense, which needs no relations, its sense list, and every other slot; returns the facts. */
 const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: string }) => {
   const { sense } = createSenseResultSchema.parse(
     (
@@ -69,6 +69,7 @@ const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: 
     payload: { language: 'zh', text: '在旁边' },
   })
   const example = await submitFact(token, { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.' } })
+  await submitFact(token, { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } })
   return [form, ipa, translation, example]
 }
 /** Claims and completes the next entry with `during`'s result, which runs while the lease is held. */
@@ -119,9 +120,11 @@ const linkToHiddenSenses = async (token: string, from: string, to: string) => {
 const runBackfills = async () => {
   // Every rescore migration in order: the scores backfill, then one per release that added gaps.
   const backfills = env.TEST_MIGRATIONS.filter((migration) =>
-    /worklist_(scores_backfill|topics_scores|usage_scores|relation_ends_scores)\.sql$/.test(migration.name),
+    /worklist_(scores_backfill|topics_scores|usage_scores|relation_ends_scores|sense_list_scores)\.sql$/.test(
+      migration.name,
+    ),
   )
-  expect(backfills).toHaveLength(4)
+  expect(backfills).toHaveLength(5)
   for (const query of backfills.flatMap((migration) => migration.queries)) await env.DB.prepare(query).run()
 }
 const expireLeases = () =>
@@ -429,12 +432,17 @@ describe('worklist', () => {
         return { entryFact: fact, gloss }
       }),
     )
+    await submitFact(token, {
+      kind: 'sense_list',
+      subject_id: cove.entry.id,
+      payload: { common: [nook.sense.id], extra: [] },
+    })
     await settle()
     const stored = () =>
       env.DB.prepare('select completeness, revision = scored_revision as fresh from worklist where entry_id = ?')
         .bind(cove.entry.id)
         .first<{ completeness: number; fresh: number }>()
-    // Eleven slots: senses, forms, pronunciation, word formation, and the noun sense's two
+    // Eleven slots: the sense inventory, forms, pronunciation, word formation, and the noun sense's two
     // relations, example, translation, topic, grammar, and collocation. Both relations count.
     expect(await stored()).toEqual({ completeness: 1 - 8 / 11, fresh: 1 })
 
@@ -517,7 +525,7 @@ describe('worklist', () => {
     const first = workClaimSchema.parse((await claim(token)).body)
     expect(first.gaps).toEqual([])
     expect(first.weak_facts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 7 })
+    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 8 })
     expect((await complete(token, first.lease.id)).status).toBe(200)
     expect(await lemmaOf(token)).toBeNull()
 
@@ -580,6 +588,49 @@ describe('worklist', () => {
     const ferry = await createEntry(token, 'ferry boat')
     await postSense(token, ferry.entry.id, 'A boat that carries people across water.')
     await linkToHiddenSenses(token, quick.sense.id, nook.sense.id)
+    // cove lists its adverb sense as extra, so only its two noun senses count; tide's list goes
+    // stale when a sense is added; reef's published list has a pending correction.
+    const coveSenses = managedEntrySchema.parse((await call('/manage/v1/entries/cove', { token })).body).senses
+    const shelter = coveSenses.find((one) => one.pos === 'adverb')
+    await submitFact(token, {
+      kind: 'sense_list',
+      subject_id: cove.entry.id,
+      payload: { common: [nook.sense.id, quick.sense.id], extra: [shelter?.id] },
+    })
+    await submitFact(token, {
+      kind: 'sense_list',
+      subject_id: tide.entry.id,
+      payload: { common: [sea.sense.id], extra: [] },
+    })
+    const reef = await createEntry(token, 'reef')
+    const ridge = await postSense(token, reef.entry.id, 'A ridge of rock near the surface of the sea.')
+    const reefList = await submitFact(token, {
+      kind: 'sense_list',
+      subject_id: reef.entry.id,
+      payload: { common: [ridge.sense.id], extra: [] },
+    })
+    stubReviewers()
+    await deliverReviews([reefList.id])
+    vi.restoreAllMocks()
+    await postSense(token, tide.entry.id, 'A current of feeling or opinion.')
+    const knot = await postSense(token, reef.entry.id, 'A part of a sail that can be rolled up.')
+    await submitFact(token, {
+      kind: 'sense_list',
+      subject_id: reef.entry.id,
+      supersedes_id: reefList.id,
+      payload: { common: [ridge.sense.id], extra: [knot.sense.id] },
+    })
+    // bay's list names as many senses as are live, but one of them lost its gloss.
+    const bay = await createEntry(token, 'bay')
+    const inlet = await postSense(token, bay.entry.id, 'A part of the sea that curves into the land.')
+    const horse = await postSense(token, bay.entry.id, 'A reddish-brown horse.')
+    await submitFact(token, {
+      kind: 'sense_list',
+      subject_id: bay.entry.id,
+      payload: { common: [inlet.sense.id], extra: [horse.sense.id] },
+    })
+    await call(`/manage/v1/facts/${horse.fact.id}/retract`, { method: 'POST', token })
+    await postSense(token, bay.entry.id, 'A space in a room or building set back from the rest.')
 
     const scores = () =>
       env.DB.prepare(
@@ -591,9 +642,9 @@ describe('worklist', () => {
     ).run()
     await runBackfills()
     expect((await scores()).results).toEqual(stored)
-    expect(stored.map((row) => row.quality)).not.toEqual([1, 1, 1, 1])
+    expect(stored.map((row) => row.quality)).not.toEqual([1, 1, 1, 1, 1, 1])
     expect(stored.find((row) => row.entry_id === cove.entry.id)?.awaiting_review).toBe(1)
-    expect(stored.find((row) => row.entry_id === tide.entry.id)?.awaiting_review).toBe(0)
+    expect(stored.find((row) => row.entry_id === by.entry.id)?.awaiting_review).toBe(0)
   })
 
   it('lifts the stall of an entry whose relations gap counted relations to senses that cannot show [spec: work/relation-ends-rescore]', async () => {
@@ -671,6 +722,30 @@ describe('worklist', () => {
     }>()
     const byEntry = Object.fromEntries(stalled.results.map((row) => [row.entry_id, row.stalled]))
     expect(byEntry).toEqual({ [by.entry.id]: 1, [tide.entry.id]: 0, [swiftly.entry.id]: 0 })
+  })
+
+  it('lifts the stall of an entry whose sense list gap no claim recorded [spec: work/sense-list-rescore]', async () => {
+    const token = await issueAgentKey()
+    // by's list settles its senses; cove has a sense and no list; the phrase, which needs no word
+    // formation, has no sense at all.
+    const by = await createEntry(token, 'by')
+    await fill(token, by.entry)
+    const cove = await createEntry(token, 'cove')
+    await postSense(token, cove.entry.id, 'A small sheltered bay.')
+    const ferry = await createEntry(token, 'ferry boat')
+    await settle()
+    await env.DB.prepare(
+      `update worklist set stalled = 1, claimed_work = '{"gaps":[],"weak":[]}', claimed_at = ?, last_worked_at = ?`,
+    )
+      .bind(new Date().toISOString(), new Date().toISOString())
+      .run()
+    await runBackfills()
+    const stalled = await env.DB.prepare('select entry_id, stalled from worklist').all<{
+      entry_id: string
+      stalled: number
+    }>()
+    const byEntry = Object.fromEntries(stalled.results.map((row) => [row.entry_id, row.stalled]))
+    expect(byEntry).toEqual({ [by.entry.id]: 1, [cove.entry.id]: 0, [ferry.entry.id]: 1 })
   })
 
   it('reads the claim order from an index, without sorting the worklist [spec: work/claim-index]', async () => {

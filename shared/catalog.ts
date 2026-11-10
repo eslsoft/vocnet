@@ -89,6 +89,10 @@ export const publicSenseSchema = z
       .meta({ description: 'Leaf topics of GET /v1/topics this sense is tagged with.' }),
     grammar: publicGrammarSchema.nullable(),
     collocations: z.array(publicCollocationSchema),
+    common: z.boolean().nullable().meta({
+      description:
+        "true: one of the entry's common senses, which come first, most common first. false: a rare, archaic, technical, or specialist sense. null: the entry's published sense list does not name it (there is none yet, or the sense was added since); such senses come last.",
+    }),
   })
   .meta({ id: 'Sense' })
 export type PublicSense = z.infer<typeof publicSenseSchema>
@@ -101,6 +105,9 @@ export const publicEntrySchema = z
     forms: z.array(publicFormSchema),
     pronunciations: z.array(publicPronunciationSchema),
     morphology: publicMorphologySchema.nullable(),
+    sense_list: factMetaSchema.nullable().meta({
+      description: "The published sense list that orders `senses` and marks each one's `common`; null when none is.",
+    }),
     senses: z.array(publicSenseSchema),
     ...lemmaReferenceSchema.shape,
   })
@@ -143,7 +150,7 @@ export const managedEntrySchema = z
     seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        'Share of the slots the gaps count (senses, forms, pronunciation, and per sense the relations and topic its part of speech needs, an example, and a zh translation) that live facts fill; 1 means no gaps.',
+        "Share of the slots the gaps count (the sense inventory, forms, pronunciation, word formation of a single word, and per sense outside the sense list's extra the relations, topic, grammar, and collocation its part of speech needs, an example, and a zh translation) that live facts fill; 1 means no gaps.",
     }),
     quality: z.number().min(0).max(1).meta({
       description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',

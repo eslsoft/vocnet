@@ -5,7 +5,25 @@ Feature: Worklist
   Scenario: A claim names what the entry lacks
     Given an entry and its facts in every status
     When the gaps are computed from its pending and published facts
-    Then each missing senses, forms, pronunciation, or word formation of a single word is a gap, and each live sense with fewer relations than its part of speech needs, or without examples, a zh translation, or the topic, grammar, and collocations its part of speech needs, is a gap
+    Then senses while no sense is live, a sense list while the senses are not settled by one, and missing forms, pronunciation, or word formation of a single word are gaps, and each counted sense with fewer relations than its part of speech needs, or without examples, a zh translation, or the topic, grammar, and collocations its part of speech needs, is a gap
+
+  @work/sense-list-gap @domain
+  Scenario: The sense inventory is settled by a list naming exactly the live senses
+    Given an entry with live senses and sense lists in every status, a pending correction of a published list, and senses added or lost since
+    When the gaps are computed
+    Then the entry has a senses gap while no sense is live, and otherwise a sense list gap unless its current list, the live one no live correction supersedes, names exactly its live senses
+
+  @work/sense-list-scope @domain
+  Scenario: Only common senses count toward completeness once a list exists
+    Given an entry whose current sense list puts some senses in extra
+    When the gaps and completeness are computed
+    Then the extra senses have no per-sense gaps and count no slots, while before any list every live sense counts
+
+  @work/sense-list-rescore @api
+  Scenario: The release of sense list gaps rescores every entry and lifts stalls it outdates
+    Given entries stalled on open work recorded before sense list gaps existed
+    When the rescore migrations run
+    Then an entry with senses and no list naming them is no longer stalled, and an entry without senses or whose list settles them keeps its stall
 
   @work/relations-gap @domain
   Scenario: A relations gap stays open until the sense has the relations it needs
@@ -106,7 +124,7 @@ Feature: Worklist
 
   @work/scores-backfill @api
   Scenario: The backfill computes the scores the rescore stores
-    Given entries of every part of speech with filled, missing, uncertain, reported, and pending facts
+    Given entries of every part of speech with filled, missing, uncertain, reported, and pending facts, and sense lists that settle, leave out extra senses, are stale, or have a pending correction
     When the backfill migrations run over the rescored worklist
     Then every entry's completeness, quality, and awaiting review are unchanged
 

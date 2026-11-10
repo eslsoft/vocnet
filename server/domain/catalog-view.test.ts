@@ -127,6 +127,40 @@ describe('public read model', () => {
     expect([bare?.morphology, bare?.senses[0]?.grammar, bare?.senses[0]?.collocations]).toEqual([null, null, []])
   })
 
+  it('orders senses by the published sense list, common first, and marks each [spec: catalog/sense-order]', () => {
+    const { snapshot, bank, bankSense } = bankWorld()
+    const [money, oars, added] = [sense(bank), sense(bank), sense(bank)]
+    const glossed = [
+      fact('sense', money.id, { gloss: 'An institution that keeps money.' }),
+      fact('sense', oars.id, { gloss: 'A row of oars.' }),
+      fact('sense', added.id, { gloss: 'A slope of land.' }),
+    ]
+    const published = fact('sense_list', bank.id, { common: [money.id, bankSense.id], extra: [oars.id] })
+    const pending = fact('sense_list', bank.id, { common: [bankSense.id], extra: [] }, 'pending')
+    const listed: EntrySnapshot = {
+      ...snapshot,
+      senses: [bankSense, added, oars, money],
+      facts: [...snapshot.facts, ...glossed, published, pending],
+    }
+    const view = projectPublicEntry(listed)
+    expect(view?.senses.map((one) => [one.id, one.common])).toEqual([
+      [money.id, true],
+      [bankSense.id, true],
+      [oars.id, false],
+      [added.id, null],
+    ])
+    expect(view?.sense_list).toEqual({ id: published.id, confidence: 0.6, verdict: 'uncertain' })
+    expect(view ? publicFactIds(view).has(published.id) : false).toBe(true)
+    const unlisted = projectPublicEntry({ ...listed, facts: [...snapshot.facts, ...glossed, pending] })
+    expect(unlisted?.sense_list).toBeNull()
+    expect(unlisted?.senses.map((one) => [one.id, one.common])).toEqual([
+      [bankSense.id, null],
+      [added.id, null],
+      [oars.id, null],
+      [money.id, null],
+    ])
+  })
+
   it('shows only published facts, each with its id, confidence, and verdict [spec: catalog/visibility]', () => {
     const { snapshot, bankSense, shoreSense } = bankWorld()
     const view = projectPublicEntry(snapshot)

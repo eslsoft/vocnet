@@ -33,6 +33,7 @@ export interface SubjectTypeOf {
   grammar: 'sense'
   morphology: 'entry'
   collocation: 'sense'
+  sense_list: 'entry'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -48,6 +49,9 @@ export interface SenseGloss {
   pos: Pos
   gloss: string
 }
+
+/** A sense of the entry under review, with its current gloss. */
+export type EntrySense = SenseGloss & { id: SenseId }
 
 /** Another live entry that records this entry's lemma as one of its live inflections. */
 export interface InflectionOf {
@@ -68,16 +72,16 @@ export interface SubjectViews {
    * `inflectionOf`: the other live entries whose live non-variant forms spell this lemma.
    * `cefr`: the CEFR learner lists that list the exact lemma as a headword.
    */
-  entry: { lemma: string; senses: SenseGloss[]; inflectionOf: InflectionOf[]; cefr: CefrListing[] }
+  entry: { lemma: string; senses: EntrySense[]; inflectionOf: InflectionOf[]; cefr: CefrListing[] }
   sense: SenseView & { siblings: SenseGloss[] }
 }
 
 /**
- * What a write rule sees of the subject when a fact is submitted: the lemma, and for a sense its
- * part of speech and the entry's live forms.
+ * What a write rule sees of the subject when a fact is submitted: the lemma, for an entry the
+ * senses whose gloss is live, and for a sense its part of speech and the entry's live forms.
  */
 export interface AdmissionViews {
-  entry: { lemma: string }
+  entry: { lemma: string; senses: readonly SenseId[] }
   sense: { lemma: string; pos: Pos; forms: readonly string[] }
 }
 
@@ -770,6 +774,65 @@ function collocationRubric(
   ].join('\n')
 }
 
+type SenseList = FactPayloads['sense_list']
+
+const shortIds = (ids: readonly string[]) => ids.join(', ')
+
+/** A list names exactly the entry's live senses: none that is not live, and every one that is. */
+function admitSenseList({ common, extra }: SenseList, { senses }: AdmissionViews['entry']): string | null {
+  const listed = [...common, ...extra]
+  const unknown = listed.filter((id) => !senses.includes(id))
+  if (unknown.length > 0) {
+    return `A sense list names only live senses of this entry; ${shortIds(unknown)} ${unknown.length === 1 ? 'is not one' : 'are not'}.`
+  }
+  const unlisted = senses.filter((id) => !listed.includes(id))
+  if (unlisted.length > 0) {
+    return `A sense list names every live sense of this entry, in common or in extra; it leaves out ${shortIds(unlisted)}.`
+  }
+  return null
+}
+
+/** The order of `common` is the claim; `extra` is a set, so reordering it is the same list. */
+const senseListKey = ({ common, extra }: SenseList) => `${common.join(',')}|${[...extra].sort().join(',')}`
+
+const numbered = (senses: readonly EntrySense[], from: number) =>
+  senses.map(({ pos, gloss }, at) => `${from + at}. (${pos}) ${quote(gloss)}`)
+
+const SENSE_LIST_PASSES = [
+  "Complete: common has every common, general-knowledge sense a learner's dictionary lists for this word, in every part of speech it has. A missing common sense fails.",
+  'Distinct: no two common senses are duplicates, or one meaning split too finely into several.',
+  'Ordered: common runs from the most to the least common use of the word.',
+  'Rare: every sense in extra is genuinely rare, archaic, technical, or specialist, not one a learner meets in general use.',
+]
+
+function senseListRubric(lemma: string, common: readonly EntrySense[], extra: readonly EntrySense[]): string {
+  return [
+    `Is this the sense inventory a learner's dictionary such as the Oxford Advanced Learner's, Longman, or Cambridge gives for the English word ${quote(lemma)}?`,
+    'Common senses, claimed in order from most to least common:',
+    ...numbered(common, 1),
+    extra.length === 0 ? 'Extra senses: none.' : 'Extra senses, claimed rare, archaic, technical, or specialist:',
+    ...numbered(extra, common.length + 1),
+    'Each sense was reviewed on its own; judge the list, not the wording of a gloss.',
+    'pass only when every one of these holds:',
+    ...SENSE_LIST_PASSES.map((rule) => `- ${rule}`),
+    'A rare, archaic, Old English, technical, or specialist sense missing from both lists is never a failure.',
+    'fail when any of them does not hold. The reason then names everything to change, even if that takes more than one sentence: each missing common sense with its part of speech and a short meaning, each pair of duplicates by number, each sense out of order, and each sense in extra that is common.',
+    'uncertain: you cannot tell.',
+  ].join('\n')
+}
+
+/** Every listed sense must have a live gloss to be judged; one that lost it makes the list stale. */
+function planSenseList({ common, extra }: SenseList, entry: SubjectViews['entry']): ReviewPlan<readonly ['llm']> {
+  const byId = new Map(entry.senses.map((sense) => [sense.id, sense]))
+  const missing = [...common, ...extra].filter((id) => !byId.has(id))
+  if (missing.length > 0) {
+    return { kind: 'unreviewable', reason: `A listed sense has no live gloss: ${shortIds(missing)}.` }
+  }
+  // Every id resolves: the check above returned otherwise.
+  const resolve = (ids: readonly SenseId[]) => ids.flatMap((id) => byId.get(id) ?? [])
+  return llm(senseListRubric(entry.lemma, resolve(common), resolve(extra)))
+}
+
 export const factKinds: { [K in FactKind]: KindSpec<K> } = {
   entry: {
     subject: 'entry',
@@ -900,6 +963,14 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     admit: admitCollocation,
     plan: ({ text, pattern }, { subject }) =>
       withGloss(subject, (sense) => llm(collocationRubric(text, pattern, { ...subject, ...sense }))),
+  },
+  sense_list: {
+    subject: 'entry',
+    cardinality: 'one',
+    chain: ['llm'],
+    contentKey: senseListKey,
+    admit: admitSenseList,
+    plan: (payload, { subject }) => planSenseList(payload, subject),
   },
 }
 

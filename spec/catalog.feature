@@ -32,6 +32,12 @@ Feature: Catalog
     When the queue consumer reviews them
     Then Jev answers one question per grammar property, the LLM judges the collocation, and the public entry and sense show all three
 
+  @catalog/sense-order @domain
+  Scenario: Senses come in the order of the published sense list
+    Given an entry with a published sense list, a pending correction, and a sense the list does not name
+    When the public view is built
+    Then the senses come common in list order, then extra, then the unnamed ones, each marked common true, false, or null, and the entry carries the published list's id, confidence, and verdict
+
   @catalog/visibility @domain
   Scenario: Only published facts are visible
     Given an entry with published, pending, and rejected facts

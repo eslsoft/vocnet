@@ -90,9 +90,10 @@ needs a new column.
 | `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns? }` | Jev, then LLM  |
 | `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | Jev, then LLM  |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM            |
+| `sense_list`    | entry   | one         | `{ common: [sense_id], extra: [sense_id] }`              | LLM            |
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
-one gloss, one grammar, and an entry one word formation. Changing it means submitting a correction that supersedes the
+one gloss, one grammar, and an entry one word formation and one sense list. Changing it means submitting a correction that supersedes the
 published fact; a second gloss without `supersedes_id` is a conflict.
 
 D1 enforces this with two partial unique indexes on `(kind, subject_id)` over
@@ -220,6 +221,8 @@ plain payload shape, so facts written before a rule still read.
   word (`happy`, or one with an inner hyphen or apostrophe). One part is a simple
   word, so its role is `base`.
 - **Collocation.** At least two words.
+- **Sense list.** At least one common sense, and each sense named once, in
+  `common` or in `extra`.
 
 #### Grammar, word formation, and collocations
 
@@ -278,10 +281,38 @@ same rule against the subject as it is then, because a live form the fact relied
 on may have been retracted or rejected since: a fact that no longer fits answers
 the same `422 invalid_reference` and stays rejected.
 
+#### Sense lists
+
+`sense_list` says which of an entry's senses a learner needs and in what order.
+`common` holds the common, general-knowledge senses a learner's dictionary
+(Oxford Advanced Learner's, Longman, Cambridge) lists, most common first across
+parts of speech; `extra` holds the entry's other live senses: rare, archaic,
+Old English, technical, or specialist ones. Rare senses may exist and can be
+added at any time, but they never count toward completeness. The list must name
+exactly the entry's live senses (those whose gloss is live): a sense that is not
+one, or a live sense it leaves out, is `422 invalid_reference`, and the message
+names those sense ids. Its content key is the `common` ids in order and the
+`extra` ids sorted, so resubmitting the same list, or one that only reorders
+`extra`, returns the live one. The rule is checked after the dedupe, like every
+`admit` rule. A changed list is a correction that supersedes the published one.
+
+A list is decided with the senses it names, so it goes stale when they change:
+a new sense that it does not name, or a listed sense whose gloss is rejected or
+retracted. Then the entry's `sense_list` gap reopens (see Gaps) and the producer
+submits a correction naming the senses as they are. Correcting a gloss does not
+re-review the list.
+
 The public entry (`GET /v1/entries/{lemma}`) shows its published word formation
 as `morphology`, and each public sense (also `GET /v1/senses/{id}`) its
 published `grammar` and `collocations`, each with its id, confidence, and
 verdict. A kind of cardinality *one* reads `null` when nothing is published.
+The entry's `senses` come in the order of its published sense list: `common`
+in order, then `extra` in the order given, then any sense the list does not
+name (one added since). Each sense carries `common`: `true` for a common sense,
+`false` for an extra one, and `null` when the published list does not name it or
+there is none; without a list the senses keep their creation order. The entry
+carries `sense_list` with the published list's id, confidence, and verdict, or
+`null`, so feedback can target it.
 
 Labels are optional, and absent means unlabelled:
 
@@ -538,6 +569,23 @@ but only to choose the message.
   from the plain meanings ("a nice decision"), a combination that uses another
   sense of the word (the entry's other senses are listed), rare, unnatural, or
   ungrammatical wording, and the wrong pattern.
+- **Sense lists** go to the LLM alone: no Jev question can judge a whole
+  inventory. The rubric gives the lemma and every listed sense with its part of
+  speech and gloss, numbered, the common senses in their claimed order and then
+  the extra ones, and passes only when all of these hold: the common senses
+  cover every common, general-knowledge sense a learner's dictionary (Oxford
+  Advanced Learner's, Longman, Cambridge) lists for the word, in every part of
+  speech, so a missing common sense fails; no two common senses are duplicates
+  or one meaning split too finely; the common senses run from most to least
+  common; and every extra sense is genuinely rare, archaic, technical, or
+  specialist. A rare, archaic, Old English, technical, or specialist sense
+  missing from both lists is never a failure. The reason of a fail names
+  everything to change, even past one sentence: each missing common sense with
+  its part of speech and a short meaning, each pair of duplicates by number,
+  each sense out of order, and each common sense put in extra, so the producer
+  can add, merge, or reorder senses and submit a corrected list. A list that
+  names a sense without a live gloss is `unreviewable` and rejected without
+  asking the LLM. The entry review context carries each sense's id for this.
 - **Examples** of vulgar, offensive, or derogatory senses are judged as
   illustrations of that sense: a sentence that shows the sense in ordinary use
   passes, and one that adds offence the sense does not need, such as abuse of
@@ -591,17 +639,20 @@ Both scores are pure functions of the entry's facts in `server/domain/work.ts`
 the claim.
 
 **Completeness** (0..1) is filled slots over the slots the gap rules count. The
-entry has three slots (senses, forms, pronunciation), and a single-word entry a
-fourth (word formation); each sense with a live gloss adds the relations, topics,
-grammar, and collocations its part of speech needs, one example, and one
-`zh` translation. A relations gap with `count` relations fills `count` of its
-slots. A relation counts, at either end, only while the sense at its other end
-has a live gloss and its entry a live entry fact: a relation to a sense of a
-rejected entry, or to a sense whose gloss was rejected or retracted, fills
-nothing, as the public view shows nothing of it. The entry snapshot already
-loads the senses at the other end of the entry's relations, incoming and
-outgoing, with their `entry` and `sense` facts in one batch, so the rule costs
-no extra query. Completeness derives from `entryGaps`, so the gap rules stay the one
+entry has three slots (the sense inventory, forms, pronunciation), and a
+single-word entry a fourth (word formation); each counted sense adds the
+relations, topics, grammar, and collocations its part of speech needs, one
+example, and one `zh` translation. A counted sense is one whose gloss is live and
+that the entry's current sense list does not put in `extra`; before a list
+exists, every sense with a live gloss counts. A relations gap with `count`
+relations fills `count` of its slots. A relation counts, at either end, only
+while the sense at its other end has a live gloss and its entry a live entry
+fact: a relation to a sense of a rejected entry, or to a sense whose gloss was
+rejected or retracted, fills nothing, as the public view shows nothing of it.
+The entry snapshot already loads the senses at the other end of the entry's
+relations, incoming and outgoing, with their `entry` and `sense` facts in one
+batch, so the rule costs no extra query. Completeness derives from `entryGaps`,
+so the gap rules stay the one
 source: it is 1 exactly when there are no gaps.
 
 **Quality** (0..1) is one minus weak facts over live facts about the entry and
@@ -684,7 +735,7 @@ that made no lasting progress, which the next pass would repeat:
 
 The open work changes, and the stall lifts, when another principal fills or
 opens a gap, a fact leaves live, a weak fact is replaced, a new sense opens
-gaps, or feedback opens on a fact. A pass that adds a sense makes progress: its
+gaps (its own and a stale sense list's), or feedback opens on a fact. A pass that adds a sense makes progress: its
 gaps are new work for the next pass. A word whose relations no agent can find
 stalls after one pass and comes back only when something about it changes.
 
@@ -788,9 +839,17 @@ did the same when relations to senses that cannot show stopped counting: it
 recomputed every entry's completeness, counting a relation only when its other
 sense has a live gloss and a live entry fact, and lifted the stall of an entry
 with a sense whose relations gap is open and whose count changed, which is
-exactly when its open work changed (the new count is never above the old). A
-test runs the backfills in order over rescored rows and expects the same
-scores.
+exactly when its open work changed (the new count is never above the old).
+`worklist_sense_list_scores` did the same when the sense inventory slot started
+to need a sense list: it recomputes every entry's completeness with the
+inventory slot filled only by a current list naming exactly the live senses,
+and with the per-sense slots of that list's extra senses left out, and it lifts
+the stall of every entry that has senses its list does not settle, since no
+claim recorded before then named a `sense_list` gap. After that release every
+entry with senses has a `sense_list` gap until a list is submitted for it. A
+test runs the backfills in order over rescored rows, sense lists among them
+(settled, with extra senses, stale, and with a pending correction), and expects
+the same scores.
 
 The learner priority is stored on the row so the claim stays one index scan.
 The row reads it from the reference tables when it is created, in the same batch
@@ -817,6 +876,7 @@ facts close its gap:
 | Gap                                      | Open while                                              |
 | ---------------------------------------- | ------------------------------------------------------- |
 | `{ type: "senses" }`                     | No sense has a live gloss                               |
+| `{ type: "sense_list" }`                 | Some sense has a live gloss, and the current sense list does not name exactly the senses with a live gloss |
 | `{ type: "forms" }`                      | No live form                                            |
 | `{ type: "pronunciation" }`              | No live pronunciation                                   |
 | `{ type: "relations", sense_id, count, have }` | The sense is in fewer live relations, as subject or object, than its part of speech needs |
@@ -827,7 +887,21 @@ facts close its gap:
 | `{ type: "grammar", sense_id }`          | A noun or verb sense has no live grammar fact           |
 | `{ type: "collocations", sense_id }`     | A noun, verb, or adjective sense has no live collocation |
 
-Per-sense gaps apply to each sense whose gloss is live.
+`senses` and `sense_list` are one slot, the sense inventory: its gap asks for
+senses while the entry has none, and for a list once it has some. The current
+sense list is the entry's live `sense_list` fact that no live correction
+supersedes, so a pending correction stands for the published list it would
+replace and a rejected one leaves the published list in place. It settles the
+inventory while it names exactly the senses whose gloss is live; a sense added
+since, or a listed sense whose gloss left live, reopens the gap. Like every gap,
+a pending list fills it until its review rejects it.
+
+Per-sense gaps apply to each counted sense: a sense whose gloss is live and that
+the current list does not put in `extra`. Rare senses never count toward
+completeness, so an entry is complete without examples, translations, or
+relations for them. Before any list exists every sense with a live gloss
+counts, and a sense the list does not name (added since) counts until a new list
+places it.
 
 Relations are the core of the dictionary, and a content-word sense with one
 neighbor is a leaf, so its relations gap stays open until it has two. `count`
@@ -1017,7 +1091,10 @@ The console is how admins watch the dictionary. It reads and acts only through
   dictionary grows. A test pins those query plans.
 - **Entry inspector**: one lemma with every sense and every fact in every
   status, so pending, rejected, and uncertain data is seen in context, and its
-  reference data with the attribution of each source it came from.
+  reference data with the attribution of each source it came from. With a sense
+  list, the senses follow the current list (as the worklist reads it) and each
+  shows its common rank, *Rare*, or *Not in the sense list*; the list itself is
+  an entry fact whose drawer shows its review.
 - **Feedback**: read-only. Claiming and resolving belong to agents.
 - **Agents**: issue a key (shown once) and revoke it.
 

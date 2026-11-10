@@ -248,6 +248,46 @@ describe('submitting grammar, word formation, and collocations', () => {
   })
 })
 
+describe('submitting a sense list', () => {
+  const list = (entryId: string, common: SenseId[], extra: SenseId[] = [], supersedes_id?: FactId) => ({
+    kind: 'sense_list' as const,
+    subject_id: entryId,
+    payload: { common, extra },
+    ...(supersedes_id ? { supersedes_id } : {}),
+  })
+
+  it('takes a list of exactly the live senses of the entry [spec: facts/sense-list-write]', async () => {
+    const { world, entry, river, money, shore } = await withShore()
+    await expect(
+      submitFact(world.deps, agentA, list(entry.id, [river.id, shore.id], [money.id])),
+    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining(`${shore.id} is not one`) })
+    await expect(submitFact(world.deps, agentA, list(entry.id, [river.id]))).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining(`it leaves out ${money.id}`),
+    })
+    const { fact, created } = await submitFact(world.deps, agentA, list(entry.id, [money.id, river.id]))
+    expect(created).toBe(true)
+    expect(fact).toMatchObject({ kind: 'sense_list', subjectId: entry.id, status: 'pending' })
+    expect((await submitFact(world.deps, agentA, list(entry.id, [money.id, river.id]))).created).toBe(false)
+    await expect(submitFact(world.deps, agentA, list(entry.id, [river.id, money.id]))).rejects.toMatchObject({
+      code: 'conflict',
+    })
+  })
+
+  it('refuses a sense whose gloss is no longer live and takes a correction of the published list [spec: facts/sense-list-write]', async () => {
+    const { world, entry, river, money } = await bankWorld()
+    const { fact: original } = await submitFact(world.deps, agentA, list(entry.id, [river.id], [money.id]))
+    for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
+    const moneyGloss = world.facts.find((fact) => fact.kind === 'sense' && fact.subjectId === money.id)
+    await retractFact(world.deps, agentA, moneyGloss?.id as FactId)
+    await expect(
+      submitFact(world.deps, agentA, list(entry.id, [money.id, river.id], [], original.id)),
+    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining(`${money.id} is not one`) })
+    const correction = await submitFact(world.deps, agentA, list(entry.id, [river.id], [], original.id))
+    expect(correction).toMatchObject({ created: true, fact: { supersedesId: original.id } })
+  })
+})
+
 describe('reading facts', () => {
   it('gets a fact by id and 404s an unknown one', async () => {
     const { world, riverGloss } = await bankWorld()

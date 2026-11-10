@@ -10,6 +10,7 @@ import type { EntryId, FactId, FactKind, SenseId } from '@shared/facts'
 import type { LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
 import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
+import { listedSenses } from './sense-list'
 import { assessEntry } from './work'
 
 /** The public entry as its facts make it, before the imported reference data joins it. */
@@ -103,7 +104,17 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntryFacts | 
     return [...outgoing, ...incoming]
   }
 
-  const publicSenses = snapshot.senses.flatMap((sense): PublicSense[] => {
+  // Senses in the published list's order, common first; those it does not name come last.
+  const senseList = about('sense_list', snapshot.entry.id)[0]
+  const listed = new Set(senseList ? listedSenses(senseList.payload) : [])
+  const common = new Set(senseList?.payload.common)
+  const ownSenses = new Map(snapshot.senses.map((sense) => [sense.id, sense]))
+  const inOrder = [
+    ...[...listed].flatMap((id) => ownSenses.get(id) ?? []),
+    ...snapshot.senses.filter((sense) => !listed.has(sense.id)),
+  ]
+
+  const publicSenses = inOrder.flatMap((sense): PublicSense[] => {
     const glossFact = about('sense', sense.id)[0]
     if (!glossFact) return []
     return [
@@ -123,6 +134,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntryFacts | 
         topics: about('topic', sense.id).map((fact) => ({ ...factMeta(fact), topic_id: fact.payload.topic_id })),
         grammar: publicOne(about('grammar', sense.id), (fact) => fact.payload),
         collocations: about('collocation', sense.id).map((fact) => ({ ...factMeta(fact), ...fact.payload })),
+        common: listed.has(sense.id) ? common.has(sense.id) : null,
       },
     ]
   })
@@ -134,6 +146,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot): PublicEntryFacts | 
     forms: about('form', snapshot.entry.id).map(publicForm),
     pronunciations: about('pronunciation', snapshot.entry.id).map((fact) => ({ ...factMeta(fact), ...fact.payload })),
     morphology: publicOne(about('morphology', snapshot.entry.id), (fact) => fact.payload),
+    sense_list: senseList ? factMeta(senseList) : null,
     senses: publicSenses,
   }
 }
@@ -174,8 +187,6 @@ export function publicFactIds(view: PublicEntryFacts): Set<FactId> {
     ...(sense.grammar ? [sense.grammar] : []),
     ...sense.collocations,
   ])
-  const morphology = view.morphology ? [view.morphology] : []
-  return new Set(
-    [view.fact, ...view.forms, ...view.pronunciations, ...morphology, ...senseFacts].map((fact) => fact.id),
-  )
+  const entryOnes = [view.morphology, view.sense_list].filter((fact) => fact !== null)
+  return new Set([view.fact, ...view.forms, ...view.pronunciations, ...entryOnes, ...senseFacts].map((fact) => fact.id))
 }

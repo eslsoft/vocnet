@@ -25,7 +25,7 @@ const hospitalView = { category: 'Body and health', topic: 'At the doctor and ho
 const money = { pos: 'noun' as const, gloss: 'an institution that keeps money' }
 const bank = { lemma: 'bank', pos: 'noun' as const, gloss: 'land beside a river', siblings: [money] }
 const shore = { lemma: 'shore', pos: 'noun' as const, gloss: 'the land along the edge of water', siblings: [] }
-const bankEntry = { lemma: 'bank', senses: [money], inflectionOf: [], cefr: [] }
+const bankEntry = { lemma: 'bank', senses: [{ ...money, id: target }], inflectionOf: [], cefr: [] }
 const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [], cefr: [] }
 
 const requests = (plan: ReviewPlan): readonly ReviewRequest[] => (plan.kind === 'review' ? plan.requests : [])
@@ -106,6 +106,7 @@ describe('fact-kind registry', () => {
       grammar: ['jev', 'llm'],
       morphology: ['jev', 'llm'],
       collocation: ['llm'],
+      sense_list: ['llm'],
     })
   })
 
@@ -134,6 +135,7 @@ describe('fact-kind registry', () => {
         { text: 'river bank', pattern: 'noun_noun' },
         { subject: bank, target: null, topic: null },
       ),
+      planReview('sense_list', { common: [target], extra: [] }, { subject: bankEntry, target: null, topic: null }),
     ]
     expect(plans.map((plan) => requests(plan).map((request) => request.reviewer))).toEqual(
       Object.values(factKinds).map((spec) => spec.chain),
@@ -659,7 +661,8 @@ describe('morphology facts', () => {
   const parts = (...list: Array<[string, 'prefix' | 'root' | 'suffix' | 'base', string?]>) => ({
     parts: list.map(([form, role, meaning]) => ({ form, role, ...(meaning ? { meaning } : {}) })),
   })
-  const admit = (lemma: string, payload: ReturnType<typeof parts>) => admissionOf('morphology', payload, { lemma })
+  const admit = (lemma: string, payload: ReturnType<typeof parts>) =>
+    admissionOf('morphology', payload, { lemma, senses: [] })
 
   it('admits parts that spell the word, allowing spelling changes where they join [spec: facts/morphology-parts]', () => {
     expect(admit('unhappiness', parts(['un-', 'prefix'], ['happy', 'base'], ['-ness', 'suffix']))).toBeNull()
@@ -684,7 +687,7 @@ describe('morphology facts', () => {
   it('asks whether the word is formed from exactly these parts, without folk etymology [spec: facts/morphology-review]', () => {
     const spectator = {
       lemma: 'spectator',
-      senses: [{ pos: 'noun' as const, gloss: 'A person who watches.' }],
+      senses: [{ id: target, pos: 'noun' as const, gloss: 'A person who watches.' }],
       inflectionOf: [],
       cefr: [],
     }
@@ -769,5 +772,85 @@ describe('collocation facts', () => {
     expect(rubric).toContain('It uses the word in another sense')
     expect(rubric).toContain('rare, unnatural')
     expect(rubric).toContain('- (noun) "an institution that keeps money"')
+  })
+})
+
+describe('sense list facts', () => {
+  const sid = (n: number) => `00000000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}` as SenseId
+  const [reserve, volume, record, lean] = [sid(1), sid(2), sid(3), sid(4)]
+  const book = {
+    lemma: 'book',
+    senses: [
+      { id: volume, pos: 'noun' as const, gloss: 'A written work published in printed or electronic form.' },
+      { id: reserve, pos: 'verb' as const, gloss: 'To arrange to have a seat, room, or ticket.' },
+      { id: record, pos: 'noun' as const, gloss: "A bookmaker's record of bets." },
+    ],
+    inflectionOf: [],
+    cefr: [],
+  }
+  const admit = (common: SenseId[], extra: SenseId[], senses = [volume, reserve, record]) =>
+    admissionOf('sense_list', { common, extra }, { lemma: 'book', senses })
+
+  it('admits a list that names exactly the live senses of the entry [spec: facts/sense-list-write]', () => {
+    expect(admit([volume, reserve], [record])).toBeNull()
+    expect(admit([reserve, volume, record], [])).toBeNull()
+    expect(admit([volume, lean], [reserve, record])).toBe(
+      `A sense list names only live senses of this entry; ${lean} is not one.`,
+    )
+    expect(admit([volume], [])).toBe(
+      `A sense list names every live sense of this entry, in common or in extra; it leaves out ${reserve}, ${record}.`,
+    )
+  })
+
+  it('keys a list by its common order and its extra set [spec: facts/sense-list-write]', () => {
+    expect(contentKeyOf('sense_list', { common: [volume, reserve], extra: [record, lean] })).toBe(
+      contentKeyOf('sense_list', { common: [volume, reserve], extra: [lean, record] }),
+    )
+    expect(contentKeyOf('sense_list', { common: [volume, reserve], extra: [] })).not.toBe(
+      contentKeyOf('sense_list', { common: [reserve, volume], extra: [] }),
+    )
+    expect(contentKeyOf('sense_list', { common: [volume], extra: [reserve] })).not.toBe(
+      contentKeyOf('sense_list', { common: [volume, reserve], extra: [] }),
+    )
+    expect(factKinds.sense_list).toMatchObject({ subject: 'entry', cardinality: 'one', chain: ['llm'] })
+  })
+
+  it('asks the LLM whether the list is complete, distinct, ordered, and its extra senses rare [spec: facts/sense-list-rubric]', () => {
+    const plan = planReview(
+      'sense_list',
+      { common: [volume, reserve], extra: [record] },
+      { subject: book, target: null, topic: null },
+    )
+    const rubric = llmPrompt(plan)?.user
+    expect(rubric).toContain(
+      [
+        'Common senses, claimed in order from most to least common:',
+        '1. (noun) "A written work published in printed or electronic form."',
+        '2. (verb) "To arrange to have a seat, room, or ticket."',
+        'Extra senses, claimed rare, archaic, technical, or specialist:',
+        '3. (noun) "A bookmaker\'s record of bets."',
+      ].join('\n'),
+    )
+    expect(rubric).toContain("Oxford Advanced Learner's, Longman, or Cambridge")
+    expect(rubric).toContain('A missing common sense fails.')
+    expect(rubric).toContain('duplicates, or one meaning split too finely')
+    expect(rubric).toContain('from the most to the least common')
+    expect(rubric).toContain('genuinely rare, archaic, technical, or specialist')
+    expect(rubric).toContain('missing from both lists is never a failure')
+    expect(rubric).toContain('each missing common sense with its part of speech')
+    const bare = llmPrompt(
+      planReview(
+        'sense_list',
+        { common: [volume, reserve, record], extra: [] },
+        { subject: book, target: null, topic: null },
+      ),
+    )?.user
+    expect(bare).toContain('Extra senses: none.')
+  })
+
+  it('cannot judge a list that names a sense without a live gloss [spec: facts/sense-list-rubric]', () => {
+    expect(
+      planReview('sense_list', { common: [volume, lean], extra: [] }, { subject: book, target: null, topic: null }),
+    ).toEqual({ kind: 'unreviewable', reason: `A listed sense has no live gloss: ${lean}.` })
   })
 })

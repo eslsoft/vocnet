@@ -97,6 +97,7 @@ describe('entryGaps', () => {
       fact('translation', glossed.id, { language: 'fr', text: 'rive' }),
     ]
     expect(entryGaps({ entry: bank, senses: [glossed, rejected], facts, incoming: [], neighbors })).toEqual([
+      { type: 'sense_list' },
       { type: 'pronunciation' },
       { type: 'morphology' },
       { type: 'relations', sense_id: glossed.id, count: 0, have: [] },
@@ -131,6 +132,7 @@ describe('entryGaps', () => {
       fact('grammar', object.id, { countability: 'countable' }, 'rejected'),
       fact('collocation', subject.id, { text: 'river bank', pattern: 'noun_noun' }, 'pending'),
       fact('collocation', object.id, { text: 'steep bank', pattern: 'adjective_noun' }),
+      fact('sense_list', entryId, { common: [object.id, subject.id], extra: [] }, 'pending'),
     ]
     const incoming = [fact('relation', elsewhere, { type: 'hypernym', target_sense_id: object.id })]
     expect(entryGaps({ entry: bank, senses: [subject, object], facts, incoming, neighbors })).toEqual([
@@ -202,6 +204,83 @@ describe('entryGaps', () => {
   })
 })
 
+describe('sense list gap', () => {
+  const [common, rare] = [sense(), sense()]
+  const glosses = [
+    fact('entry', entryId, {}),
+    fact('sense', common.id, { gloss: 'land beside a river' }),
+    fact('sense', rare.id, { gloss: 'a bank of oars' }),
+  ]
+  const inventory = (facts: Fact[], senses = [common, rare]) =>
+    entryGaps({ entry: bank, senses, facts: [...glosses, ...facts], incoming: [], neighbors }).filter(
+      (gap) => gap.type === 'senses' || gap.type === 'sense_list',
+    )
+  const list = (status: FactStatus = 'published', ids = { common: [common.id], extra: [rare.id] }) =>
+    fact('sense_list', entryId, ids, status)
+
+  it('asks for senses, then for a list naming exactly the live senses [spec: work/sense-list-gap]', () => {
+    expect(entryGaps({ entry: bank, senses: [], facts: [glosses[0]], incoming: [], neighbors })[0]).toEqual({
+      type: 'senses',
+    })
+    expect(inventory([])).toEqual([{ type: 'sense_list' }])
+    expect(inventory([list()])).toEqual([])
+    expect(inventory([list('pending')])).toEqual([])
+    expect(inventory([list('rejected')])).toEqual([{ type: 'sense_list' }])
+    // A live list with no live sense left settles nothing; the entry needs senses again.
+    expect(inventory([list()], [])).toEqual([{ type: 'senses' }])
+  })
+
+  it('reopens when a sense is added or a listed sense is no longer live [spec: work/sense-list-gap]', () => {
+    const added = sense()
+    const addedGloss = fact('sense', added.id, { gloss: 'to rely on' }, 'pending')
+    expect(inventory([list(), addedGloss], [common, rare, added])).toEqual([{ type: 'sense_list' }])
+    const withoutRare = [glosses[0], glosses[1], { ...glosses[2], status: 'rejected' } as Fact, list()]
+    expect(
+      entryGaps({ entry: bank, senses: [common, rare], facts: withoutRare, incoming: [], neighbors }).map(
+        (gap) => gap.type,
+      ),
+    ).toContain('sense_list')
+  })
+
+  it('reads a pending correction in place of the list it supersedes [spec: work/sense-list-gap]', () => {
+    const stale = list('published', { common: [common.id], extra: [] })
+    const correction = { ...list('pending', { common: [rare.id, common.id], extra: [] }), supersedesId: stale.id }
+    expect(inventory([stale])).toEqual([{ type: 'sense_list' }])
+    expect(inventory([stale, correction])).toEqual([])
+    const settled = list('published')
+    const staleCorrection = { ...list('pending', { common: [common.id], extra: [] }), supersedesId: settled.id }
+    expect(inventory([settled, staleCorrection])).toEqual([{ type: 'sense_list' }])
+  })
+
+  it('counts per-sense gaps and slots for the common senses only, once a list exists [spec: work/sense-list-scope]', () => {
+    const perSense = (facts: Fact[]) =>
+      entryGaps({
+        entry: bank,
+        senses: [common, rare],
+        facts: [...glosses, ...facts],
+        incoming: [],
+        neighbors,
+      }).flatMap((gap) => ('sense_id' in gap ? [gap.sense_id] : []))
+    expect(new Set(perSense([]))).toEqual(new Set([common.id, rare.id]))
+    expect(new Set(perSense([list()]))).toEqual(new Set([common.id]))
+    expect(new Set(perSense([list('rejected')]))).toEqual(new Set([common.id, rare.id]))
+    const score = (facts: Fact[]) =>
+      assessEntry({
+        entry: bank,
+        senses: [common, rare],
+        facts: [...glosses, ...facts],
+        incoming: [],
+        neighbors,
+        flagged: new Set(),
+      })
+    // Before a list: four entry slots and seven per noun sense, none filled.
+    expect(score([]).completeness).toBe(0)
+    // With the list: the inventory slot filled, and only the common sense's seven slots count.
+    expect(score([list()]).completeness).toBe(1 - 10 / 11)
+    expect(score([list()]).openWork).not.toBe(score([]).openWork)
+  })
+})
+
 describe('work lease', () => {
   const lease: WorkLease = {
     id: id<WorkLeaseId>(),
@@ -242,7 +321,10 @@ describe('relations by part of speech', () => {
     const needs = Object.fromEntries(
       Object.keys(RELATIONS_NEEDED).map((pos) => {
         const focus = sense(pos as Pos)
-        const facts = [fact('sense', focus.id, { gloss: 'a meaning' })]
+        const facts = [
+          fact('sense', focus.id, { gloss: 'a meaning' }),
+          fact('sense_list', entryId, { common: [focus.id], extra: [] }),
+        ]
         const gap = entryGaps({ entry: bank, senses: [focus], facts, incoming: [], neighbors }).find(
           (open) => open.type === 'relations',
         )
@@ -254,7 +336,7 @@ describe('relations by part of speech', () => {
           flagged: new Set(),
           neighbors,
         })
-        // Every slot but the senses one is missing: forms, pronunciation, morphology, and the
+        // Every slot but the sense inventory one is missing: forms, pronunciation, morphology, and the
         // sense's relations, example, translation, topics, grammar, and collocations as the pos needs them.
         return [pos, { gap: gap !== undefined, completeness }]
       }),
@@ -353,6 +435,7 @@ describe('assessEntry', () => {
     fact('morphology', entryId, { parts: [{ form: 'bank', role: 'base' }] }),
     fact('grammar', focus.id, { countability: 'countable' }),
     fact('collocation', focus.id, { text: 'river bank', pattern: 'noun_noun' }),
+    fact('sense_list', entryId, { common: [focus.id], extra: [] }),
   ]
   const incoming = [fact('relation', visibleSense(), { type: 'hypernym', target_sense_id: focus.id })]
   const assess = (facts: Fact[], more: { incoming?: Fact[]; flagged?: FactId[] } = {}) =>

@@ -50,11 +50,22 @@ type SubjectDeps = Pick<Deps, 'nodes' | 'facts'>
 const liveForms = async (deps: SubjectDeps, entryId: EntryId) =>
   (await deps.facts.listLive('form', entryId)).filter(isKind('form')).map((fact) => fact.payload.form)
 
+/** The entry's senses whose gloss is live, each once. */
+const liveSenses = async (deps: SubjectDeps, entryId: EntryId) => [
+  ...new Set((await deps.nodes.listLiveGlosses(entryId)).map(({ sense }) => sense.id)),
+]
+
 /** The subject node, or null when it does not exist. */
 const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Promise<SubjectNode<S> | null> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
-    return entry && { entryId: entry.id, pos: null, admission: async () => ({ lemma: entry.lemma }) }
+    return (
+      entry && {
+        entryId: entry.id,
+        pos: null,
+        admission: async () => ({ lemma: entry.lemma, senses: await liveSenses(deps, entry.id) }),
+      }
+    )
   },
   sense: async (deps, id) => {
     const sense = await deps.nodes.findSense(id as SenseId)

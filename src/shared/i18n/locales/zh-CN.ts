@@ -44,6 +44,7 @@ export const zhCN: typeof enUS = {
     grammar: '语法',
     morphology: '构词',
     collocation: '搭配',
+    sense_list: '义项列表',
   },
   signal: {
     unreviewed: '未审阅',
@@ -113,6 +114,9 @@ export const zhCN: typeof enUS = {
     noSenses: '还没有义项。',
     incoming: '指向这里的关系',
     noGloss: '没有有效释义',
+    commonRank: '常用 #{{rank}}',
+    extraSense: '罕用',
+    unlistedSense: '不在义项列表中',
     reference: '参考数据',
     frequency: '词频',
     frequencyValue: 'Zipf {{zipf}} · 排名 {{rank}}',

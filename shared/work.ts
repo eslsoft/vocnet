@@ -43,7 +43,11 @@ const relationHaveSchema = z
 
 export const gapSchema = z
   .discriminatedUnion('type', [
-    z.object({ type: z.literal('senses') }),
+    z.object({ type: z.literal('senses') }).meta({ description: 'The entry has no sense with a live gloss.' }),
+    z.object({ type: z.literal('sense_list') }).meta({
+      description:
+        "The entry has senses but no live sense_list naming exactly them: none was submitted, it was rejected, or it is stale because a sense was added or a listed sense's gloss is no longer live. Complete the common senses, then submit a list (superseding a published one).",
+    }),
     z.object({ type: z.literal('forms') }),
     z.object({ type: z.literal('pronunciation') }),
     z
