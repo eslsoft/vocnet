@@ -31,7 +31,7 @@ import type {
   Stats,
   WordSummary,
 } from '@shared/catalog'
-import { type EntryId, type Pos, regionSchema, registerSchema, type SenseId, type TopicId } from '@shared/facts'
+import type { EntryId, Pos, SenseId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
@@ -109,12 +109,7 @@ export async function createSense(
   if (!entry) throw new InvalidReferenceError(`Entry ${input.entry_id} does not exist.`)
 
   const payload = { gloss: input.gloss, register: input.register, region: input.region }
-  const labellings = [undefined, ...registerSchema.options].flatMap((register) =>
-    [undefined, ...regionSchema.options].map((region) =>
-      contentKeyOf('sense', { gloss: input.gloss, register, region }),
-    ),
-  )
-  const existing = await deps.nodes.findSenseByGloss(entry.id, input.pos, labellings)
+  const existing = await deps.nodes.findSenseByGloss(entry.id, input.pos, meaningKeyOf('sense', payload))
   if (existing) return { ...existing, created: false }
 
   const now = deps.clock.now().toISOString()

@@ -603,6 +603,73 @@ describe('completeness write rules', () => {
     })
   })
 
+  it('refuses a synonym between spellings of one word and a narrower term past the cap [spec: facts/relation-padding-usecase]', async () => {
+    const world = fakeWorld()
+    const sensed = async (lemma: string, pos: 'verb' | 'noun' = 'verb') => {
+      const { entry } = await createEntry(world.deps, agentA, { lemma })
+      const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss: `To ${lemma}.` })
+      return { entry, sense }
+    }
+    const practise = await sensed('practise')
+    const practice = await sensed('practice')
+    await submitFact(world.deps, agentA, {
+      kind: 'form',
+      subject_id: practise.entry.id,
+      payload: { form: 'practice', type: 'variant' },
+    })
+    const relate = (from: SenseId, type: 'synonym' | 'hypernym', to: SenseId) =>
+      submitFact(world.deps, agentA, { kind: 'relation', subject_id: from, payload: { type, target_sense_id: to } })
+    for (const [from, to] of [
+      [practise.sense.id, practice.sense.id],
+      [practice.sense.id, practise.sense.id],
+    ]) {
+      await expect(relate(from, 'synonym', to)).rejects.toMatchObject({
+        code: 'invalid_reference',
+        message: expect.stringContaining('are spellings of one word'),
+      })
+    }
+    const kill = await sensed('kill')
+    for (let at = 0; at < 12; at++) {
+      const narrower = await sensed(`slay${at}`)
+      await relate(narrower.sense.id, 'hypernym', kill.sense.id)
+    }
+    const thirteenth = await sensed('murder')
+    await expect(relate(thirteenth.sense.id, 'hypernym', kill.sense.id)).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('already has 12 narrower terms'),
+    })
+    await expect(relate(thirteenth.sense.id, 'synonym', kill.sense.id)).resolves.toMatchObject({ created: true })
+  })
+
+  it('takes a base lemma only of a live entry, and links the derivative into its family [spec: facts/morphology-base-lemma-usecase]', async () => {
+    const world = fakeWorld()
+    const { entry: student } = await createEntry(world.deps, agentA, { lemma: 'student' })
+    const morphology = {
+      kind: 'morphology' as const,
+      subject_id: student.id,
+      payload: {
+        parts: [
+          { form: 'study', role: 'base' as const, lemma: 'study' },
+          { form: '-ent', role: 'suffix' as const },
+        ],
+      },
+    }
+    const refused = {
+      code: 'invalid_reference',
+      message:
+        '"study" is not the lemma of a live entry; a base names an entry exactly as it is spelled. Create that entry first, or leave the lemma out.',
+    }
+    await expect(submitFact(world.deps, agentA, morphology)).rejects.toMatchObject(refused)
+    const { entry: study, fact: studyFact } = await createEntry(world.deps, agentA, { lemma: 'study' })
+    const { fact } = await submitFact(world.deps, agentA, morphology)
+    expect((await world.deps.nodes.loadEntrySnapshot(study)).family).toEqual(['student'])
+    expect((await world.deps.nodes.loadEntrySnapshot(student)).family).toEqual([])
+    await retractFact(world.deps, agentA, fact.id)
+    expect((await world.deps.nodes.loadEntrySnapshot(study)).family).toEqual([])
+    await retractFact(world.deps, agentA, studyFact.id)
+    await expect(submitFact(world.deps, agentA, morphology)).rejects.toMatchObject(refused)
+  })
+
   it('takes a gap closure on the node its gap is about [spec: facts/gap-closure-subject]', async () => {
     const { world, entry, river } = await bankWorld()
     const closure = (subject: string, gap: 'forms' | 'collocations') =>

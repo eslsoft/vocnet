@@ -98,24 +98,32 @@ describe('completeness', () => {
     expect(plain.review).toBeUndefined()
   })
 
-  it('opens a phrases gap on an A1 verb that a live phrase entry closes in the same request [spec: work/phrases-api]', async () => {
+  it('counts on an A1 verb each live phrasal verb headed by it, rescored in the same request [spec: work/phrases-api]', async () => {
     const token = await issueAgentKey()
     await importLearnerData({ levels: { give: 'A1' } })
     const { entry } = await createEntry(token, 'give')
     await createSense(token, { entry_id: entry.id, pos: 'verb', gloss: 'To hand something to someone.' })
     await settle()
     const claim = await gapsOf(token)
-    expect(claim.gaps).toContainEqual({ type: 'phrases' })
+    expect(claim.gaps).toContainEqual({ type: 'phrases', have: [], need: 3 })
     await call(`/manage/v1/work/${claim.lease.id}/complete`, { method: 'POST', token })
     const row = () =>
       env.DB.prepare('select revision = scored_revision as fresh, completeness from worklist where entry_id = ?')
         .bind(entry.id)
         .first<{ fresh: number; completeness: number }>()
     const open = await row()
-    await createEntry(token, 'give up')
+    // A phrase that only contains the verb, or has no verb sense yet, does not count.
+    const { entry: lifeGiving } = await createEntry(token, 'life give')
+    await createSense(token, { entry_id: lifeGiving.id, pos: 'verb', gloss: 'To give life.' })
+    const { entry: giveUp } = await createEntry(token, 'give up')
+    expect((await row())?.completeness).toBe(open?.completeness)
+    await createSense(token, { entry_id: giveUp.id, pos: 'verb', gloss: 'To stop trying.' })
     const closed = await row()
     expect(closed?.fresh).toBe(1)
     expect(closed?.completeness).toBeGreaterThan(open?.completeness ?? 1)
+    const { entry: giveWay } = await createEntry(token, 'give way')
+    await createSense(token, { entry_id: giveWay.id, pos: 'noun', gloss: 'A yielding.' })
+    expect((await row())?.completeness).toBe(closed?.completeness)
   })
 
   it('refuses periphrastic comparisons, non-house IPA, ASCII zh punctuation, and links to rare or dated senses [spec: facts/completeness-write-rules-api]', async () => {

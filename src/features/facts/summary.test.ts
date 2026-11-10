@@ -49,6 +49,20 @@ describe('summarizeFact', () => {
     [{ kind: 'sense_list', payload: { common: [target, target], extra: [target] } }, '2 common, 1 extra'],
     [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
     [{ kind: 'sense', payload: { gloss: 'A lorry.', region: 'british' } }, 'A lorry. (british)'],
+    [{ kind: 'grammar', payload: { agreement: ['singular_noun', 'of_plural'] } }, 'singular_noun, of_plural'],
+    [{ kind: 'grammar', payload: { position: 'mid' } }, 'mid'],
+    [
+      {
+        kind: 'morphology',
+        payload: {
+          parts: [
+            { form: 'study', role: 'base', lemma: 'study' },
+            { form: '-ent', role: 'suffix' },
+          ],
+        },
+      },
+      'study → study + -ent',
+    ],
     [
       { kind: 'grammar', payload: { countability: 'uncountable', number: 'singular_only', article: 'with_the' } },
       'uncountable, singular_only, with_the',

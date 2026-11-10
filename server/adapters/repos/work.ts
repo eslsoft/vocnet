@@ -19,6 +19,7 @@ import {
   lte,
   ne,
   or,
+  type SQL,
   type SQLWrapper,
   sql,
 } from 'drizzle-orm'
@@ -157,48 +158,67 @@ function linkedEntriesOf(db: Db, nodeIds: string[] | SQLWrapper) {
 }
 
 /**
- * The entries whose lemma is one of the words of a multiword entry among these nodes: a phrase
- * entering or leaving live changes their phrases gap. The lemma, spaced on both sides, is in the
- * spaced phrase.
+ * The entries spelled like the first word of a multiword entry that is, or owns as a sense, one of
+ * these nodes: the phrase or its verb sense entering or leaving live changes their phrases gap.
  */
 function phraseHeadsOf(db: Db, nodeIds: string[] | SQLWrapper) {
   const phrase = alias(entries, 'phrase')
+  const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
   return db
     .select({ id: entries.id })
     .from(phrase)
-    .innerJoin(entries, sql`instr(' ' || ${phrase.lemma} || ' ', ' ' || ${entries.lemma} || ' ') > 0`)
-    .where(and(inArray(phrase.id, nodeIds), sql`instr(${phrase.lemma}, ' ') > 0`, ne(entries.id, phrase.id)))
+    .innerJoin(entries, sql`${entries.lemma} = substr(${phrase.lemma}, 1, instr(${phrase.lemma}, ' ') - 1)`)
+    .where(and(or(inArray(phrase.id, nodeIds), inArray(phrase.id, owners)), sql`instr(${phrase.lemma}, ' ') > 0`))
+}
+
+/** The entries a base part names in the morphology facts `named` that `which` picks. */
+function namedBases(db: Db, which: SQL) {
+  return db
+    .select({ id: entries.id })
+    .from(entries)
+    .where(
+      sql`${entries.lemma} in (select json_extract(part.value, '$.lemma') from facts as named, json_each(named.payload, '$.parts') as part where named.kind = 'morphology' and json_extract(part.value, '$.role') = 'base' and ${which})`,
+    )
 }
 
 /**
- * Marks stale the entries linked to the entry or sense this fact defines: by a relation, or as a
- * word of the phrase an entry fact defines. A fact of any other kind, or one that does not exist,
- * marks nothing. Batch it with every fact insert and status change.
+ * The entries a base part names in this fact, when it is a morphology fact, or in the morphology
+ * of the entry it defines, when it is an entry fact: either entering or leaving live changes their
+ * family gap.
+ */
+const familyBasesOf = (db: Db, factId: string) =>
+  namedBases(
+    db,
+    sql`(named.id = ${factId} or named.subject_id = (select defining.subject_id from facts as defining where defining.id = ${factId} and defining.kind = 'entry'))`,
+  )
+
+/**
+ * Marks stale the entries linked to the entry or sense this fact defines: by a relation, as the
+ * head of the phrase an entry or sense fact defines, or as a base the entry's word formation
+ * names; and the bases a morphology fact names. A fact of any other kind, or one that does not
+ * exist, marks nothing. Batch it with every fact insert and status change.
  */
 export function touchLinkedWorkOfFact(db: Db, factId: string) {
   const defined = db
     .select({ id: facts.subjectId })
     .from(facts)
     .where(and(eq(facts.id, factId), inArray(facts.kind, ['entry', 'sense'])))
-  const definedEntry = db
-    .select({ id: facts.subjectId })
-    .from(facts)
-    .where(and(eq(facts.id, factId), eq(facts.kind, 'entry')))
   return db
     .update(worklist)
     .set(bumpRevision)
     .where(
       or(
         inArray(worklist.entryId, linkedEntriesOf(db, defined)),
-        inArray(worklist.entryId, phraseHeadsOf(db, definedEntry)),
+        inArray(worklist.entryId, phraseHeadsOf(db, defined)),
+        inArray(worklist.entryId, familyBasesOf(db, factId)),
       ),
     )
 }
 
 /**
  * The worklist rows of the entries that are, or own as a sense, these nodes, of the entries whose
- * relations link to a sense that is or belongs to one of them, and of the words of a phrase among
- * them: every row a write about the nodes can make stale.
+ * relations link to a sense that is or belongs to one of them, of the head of a phrase among them,
+ * and of the bases their word formations name: every row a write about the nodes can make stale.
  */
 export function relatedWorklistRows(db: Db, nodeIds: string[]) {
   const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
@@ -207,6 +227,7 @@ export function relatedWorklistRows(db: Db, nodeIds: string[]) {
     inArray(worklist.entryId, owners),
     inArray(worklist.entryId, linkedEntriesOf(db, nodeIds)),
     inArray(worklist.entryId, phraseHeadsOf(db, nodeIds)),
+    inArray(worklist.entryId, namedBases(db, inArray(sql`named.subject_id`, nodeIds))),
   )
 }
 

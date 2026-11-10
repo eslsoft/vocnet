@@ -1,6 +1,6 @@
 import type { EntrySnapshot, StoredSenseSummary } from '@server/domain/catalog-view'
-import type { Fact, FactOf } from '@server/domain/fact'
-import { factKinds, type Link } from '@server/domain/fact-kinds'
+import { type Fact, type FactOf, isKind } from '@server/domain/fact'
+import { factKinds, type Link, meaningKeyOf } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
@@ -173,14 +173,44 @@ export function fakeWorld(): FakeWorld {
   }
   const liveEntry = (entryId: string) =>
     world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entryId && live(fact))
-  /** The live multiword entries with this lemma as one of their words. */
+  /** A sense of the entry that is a verb with a live gloss. */
+  const hasLiveVerb = (entryId: string) =>
+    world.senses.some(
+      (sense) =>
+        sense.entryId === entryId &&
+        sense.pos === 'verb' &&
+        world.facts.some((fact) => fact.kind === 'sense' && fact.subjectId === sense.id && live(fact)),
+    )
+  /** The live multiword entries headed by this lemma, its first word, with a live verb sense. */
   const phrasesOf = (lemma: string) =>
     isMultiword(lemma)
       ? []
       : world.entries
-          .filter((other) => isMultiword(other.lemma) && other.lemma.split(' ').includes(lemma) && liveEntry(other.id))
+          .filter(
+            (other) =>
+              isMultiword(other.lemma) &&
+              other.lemma.split(' ')[0] === lemma &&
+              liveEntry(other.id) &&
+              hasLiveVerb(other.id),
+          )
           .map((other) => other.lemma)
           .sort()
+  /** The other live entries with a live morphology fact naming this lemma as a base. */
+  const familyOf = (entry: EntryNode) =>
+    [
+      ...new Set(
+        world.facts
+          .filter(isKind('morphology'))
+          .filter(
+            (fact) =>
+              live(fact) &&
+              fact.subjectId !== entry.id &&
+              liveEntry(fact.subjectId) &&
+              fact.payload.parts.some((part) => part.role === 'base' && part.lemma === entry.lemma),
+          )
+          .flatMap((fact) => lemmaOf(fact.subjectId as EntryId) ?? []),
+      ),
+    ].sort()
   const workOf = (entryId: EntryId) => {
     const row = world.work.get(entryId) ?? {
       completeness: 0,
@@ -215,16 +245,34 @@ export function fakeWorld(): FakeWorld {
         ...(nodeSenses.has(fact.subjectId) ? [fact.objectId] : []),
         ...(nodeSenses.has(fact.objectId ?? '') ? [fact.subjectId] : []),
       ])
-    const phraseWords = world.entries
-      .filter((entry) => nodeIds.includes(entry.id) && isMultiword(entry.lemma))
-      .flatMap((entry) => entry.lemma.split(' '))
+    const phraseHeads = world.entries
+      .filter(
+        (entry) =>
+          isMultiword(entry.lemma) &&
+          (nodeIds.includes(entry.id) ||
+            world.senses.some((sense) => sense.entryId === entry.id && nodeIds.includes(sense.id))),
+      )
+      .map((entry) => entry.lemma.split(' ')[0])
     return new Set([
       ...world.senses.filter((sense) => ends.includes(sense.id)).map((sense) => sense.entryId),
-      ...world.entries.filter((entry) => phraseWords.includes(entry.lemma)).map((entry) => entry.id),
+      ...world.entries.filter((entry) => phraseHeads.includes(entry.lemma)).map((entry) => entry.id),
     ])
   }
-  /** Marks stale the entries linked to the node an entry or sense fact defines, as the real batches do. */
+  /** The entries a morphology fact, or the morphology of the entry an entry fact defines, names as a base. */
+  const familyBases = (fact: Fact) => {
+    const named = world.facts
+      .filter(isKind('morphology'))
+      .filter(
+        (candidate) => candidate.id === fact.id || (fact.kind === 'entry' && candidate.subjectId === fact.subjectId),
+      )
+      .flatMap((candidate) =>
+        candidate.payload.parts.flatMap((part) => (part.role === 'base' && part.lemma ? [part.lemma] : [])),
+      )
+    return world.entries.filter((entry) => named.includes(entry.lemma)).map((entry) => entry.id)
+  }
+  /** Marks stale the entries linked to the node an entry or sense fact defines, and the bases a morphology names, as the real batches do. */
   const touchLinked = (fact: Fact) => {
+    for (const entryId of familyBases(fact)) workOf(entryId).revision += 1
     if (fact.kind !== 'entry' && fact.kind !== 'sense') return
     for (const entryId of linkedEntries([fact.subjectId])) workOf(entryId).revision += 1
   }
@@ -308,12 +356,16 @@ export function fakeWorld(): FakeWorld {
       const sense = world.senses.find((candidate) => candidate.id === id)
       return sense ? withLemma(sense) : null
     },
-    findSenseByGloss: async (entryId, pos, contentKeys) => {
+    findSenseByGloss: async (entryId, pos, meaningKey) => {
       for (const sense of world.senses.filter((s) => s.entryId === entryId && s.pos === pos)) {
-        for (const contentKey of contentKeys) {
-          const fact = findLive('sense', sense.id, contentKey)
-          if (fact) return { sense, fact }
-        }
+        const fact = world.facts.find(
+          (candidate) =>
+            candidate.kind === 'sense' &&
+            candidate.subjectId === sense.id &&
+            live(candidate) &&
+            meaningKeyOf('sense', candidate.payload as FactOf<'sense'>['payload']) === meaningKey,
+        )
+        if (fact) return { sense, fact }
       }
       return null
     },
@@ -345,6 +397,7 @@ export function fakeWorld(): FakeWorld {
       creationKeys.set(sense.id, creationKey)
       world.facts.push(fact)
       touch([sense.entryId])
+      touchLinked(fact)
       return { sense, fact }
     },
     loadEntrySnapshot: async (entry): Promise<EntrySnapshot> => {
@@ -363,6 +416,7 @@ export function fakeWorld(): FakeWorld {
         seed: world.seeds.has(entry.id),
         levelRank: priorityOf(entry).levelRank,
         phrases: phrasesOf(entry.lemma),
+        family: familyOf(entry),
         senses: own.map(withLemma),
         facts,
         incoming,
@@ -448,6 +502,8 @@ export function fakeWorld(): FakeWorld {
         touchLinked(fact)
         return fact
       },
+      countLiveWithKey: async (kind, contentKey) =>
+        world.facts.filter((fact) => fact.kind === kind && fact.contentKey === contentKey && live(fact)).length,
       listLiveLinks: async <K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]) => {
         const entryOf = (id: string | null) => world.senses.find((sense) => sense.id === id)?.entryId
         return world.facts.flatMap((fact): Link<K>[] => {
@@ -655,6 +711,9 @@ export function fakeWorld(): FakeWorld {
           ...world.entries.filter((entry) => nodeIds.includes(entry.id)).map((entry) => entry.id),
           ...world.senses.filter((sense) => nodeIds.includes(sense.id)).map((sense) => sense.entryId),
           ...linkedEntries(nodeIds),
+          ...world.facts
+            .filter((fact) => fact.kind === 'morphology' && nodeIds.includes(fact.subjectId))
+            .flatMap(familyBases),
         ])
         return [...owners].filter(isStale).map(staleOf)
       },

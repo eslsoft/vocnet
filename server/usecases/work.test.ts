@@ -51,6 +51,7 @@ async function fill(world: World, entryId: EntryId, author = agentA) {
     { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'uk' } },
     { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } } },
     { kind: 'translation', subject_id: sense.id, payload: { language: 'zh', text: '在旁边' } },
+    { kind: 'collocation', subject_id: sense.id, payload: { text: `${entry?.lemma} the door`, pattern: 'phrase' } },
     { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } },
     { kind: 'syllables', subject_id: entryId, payload: { syllables: [entry?.lemma] } },
   ] as const
@@ -145,7 +146,11 @@ describe('claimWork', () => {
       })
       await settle(world)
       const extra = () =>
-        submitFact(world.deps, agentA, { kind: 'example', subject_id: nook, payload: { text: 'Another cove.' } })
+        submitFact(world.deps, agentA, {
+          kind: 'example',
+          subject_id: nook,
+          payload: { text: 'Another cove.', translations: { zh: '另一个小海湾。' } },
+        })
       expect(await pass(world, extra)).toBe('cove')
       await settle(world)
       expect(await claimWork(world.deps, agentA)).toBeNull()
@@ -205,7 +210,7 @@ describe('claimWork', () => {
     const claim = await claimWork(world.deps, agentA)
     expect(claim?.gaps).toEqual([])
     expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 10 })
+    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 11 })
     const { fact: correction } = await submitFact(world.deps, agentA, {
       kind: 'example',
       subject_id: sense as SenseId,
@@ -244,7 +249,7 @@ describe('claimWork', () => {
     await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
     await claimFeedback(world.deps, agentB, item.id)
     const claimed = world.work.get(entries[0].entry.id)
-    expect(claimed).toMatchObject({ quality: 1 - 1 / 10, scoredRevision: claimed?.revision })
+    expect(claimed).toMatchObject({ quality: 1 - 1 / 11, scoredRevision: claimed?.revision })
     await resolveFeedback(world.deps, agentB, item.id, { resolution: 'dismissed', note: 'It is.' })
     expect(world.work.get(entries[0].entry.id)).toMatchObject({ quality: 1 })
   })

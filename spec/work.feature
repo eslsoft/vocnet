@@ -59,7 +59,7 @@ Feature: Worklist
   Scenario: The relations a sense needs depend on its part of speech
     Given a live sense of each part of speech
     When the gaps and completeness are computed
-    Then nouns, verbs, and adjectives need two relations, adverbs one, and every other part of speech none, with no relations gap and no relation slots
+    Then nouns, verbs, and adjectives need two relations, adverbs and pronouns one, and every other part of speech none, with no relations gap and no relation slots
 
   @work/topics-gap @domain
   Scenario: Nouns and verbs need a topic
@@ -72,7 +72,7 @@ Feature: Worklist
   Scenario: Grammar, collocations, and word formation are gaps where a learner needs them
     Given an entry with a live sense of each part of speech
     When the gaps are computed
-    Then noun, verb, and adjective senses need one grammar fact and one collocation, and a single-word entry, not a phrase, one word formation
+    Then noun, verb, adjective, adverb, determiner, and pronoun senses need one grammar fact, noun, verb, adjective, adverb, determiner, preposition, and conjunction senses one collocation, and a single-word entry, not a phrase, one word formation
 
   @work/scores @domain
   Scenario: An entry's completeness and quality come from its live facts
@@ -241,7 +241,7 @@ Feature: Worklist
   Scenario: Syllables, irregular form pronunciations, and translated examples are gaps
     Given an entry with senses and forms
     When its gaps are listed
-    Then a single word lacks syllables, each irregular form without a live pronunciation is named, and each counted sense lacks a translated example until one of its live examples has a zh translation
+    Then a single word lacks syllables, each irregular form without a live pronunciation is named, and each counted sense has one translated-example slot per live example (at least as many as the examples it needs), naming every live example without a zh translation, a pending correction that adds one standing for its original
 
   @work/form-paradigm @domain
   Scenario: The forms gap names the inflections the paradigm needs
@@ -256,11 +256,11 @@ Feature: Worklist
     When the gaps are computed
     Then the pronunciation gap names each accent of us and uk with no live strong pronunciation
 
-  @work/adverb-collocations @domain
-  Scenario: A manner or degree adverb needs a collocation
-    Given an adverb sense of a word ending in -ly, a word that compares with -er, or another adverb
+  @work/function-word-usage @domain
+  Scenario: Function words and adverbs need the usage a learner's dictionary gives them
+    Given senses of each function-word part of speech and an adverb
     When the gaps are computed
-    Then the first two need a collocation and the other has no collocations gap
+    Then every adverb needs grammar and a collocation, a determiner grammar and a collocation, a pronoun grammar and a relation, and a preposition or conjunction a collocation, each closable by a gap closure, and an interjection none of them
 
   @work/core-examples @domain
   Scenario: A1 and A2 senses need two examples
@@ -269,16 +269,28 @@ Feature: Worklist
     Then an A1 or A2 entry's sense has an examples gap asking for two and naming the one it has, and other entries need one
 
   @work/phrases-gap @domain
-  Scenario: An A1 or A2 verb needs a phrase built on it
-    Given a single-word entry with a verb sense, its level, and the live multiword entries that contain it
+  Scenario: An A1 or A2 verb needs three phrases headed by it
+    Given a single-word entry with a verb sense, its level, and the live phrasal verbs and verb idioms headed by it
     When the gaps are computed
-    Then an A1 or A2 verb with no such phrase has a phrases gap, and a phrase, a noun, or a higher level has none
+    Then an A1 or A2 verb with fewer than three has a phrases gap naming the ones it has and the three it needs, each missing phrase is a slot a closure fills, and a phrase, a noun, or a higher level has none
 
   @work/phrases-api @api
-  Scenario: A live phrase entry closes its head's phrases gap at once
+  Scenario: A live phrasal verb counts on its head at once
     Given an A1 verb whose claim names a phrases gap
-    When a multiword entry with the verb as a word is created
-    Then the verb's worklist row is rescored in the same request with the gap closed
+    When multiword entries are created that only contain the verb, are headed by it with no verb sense, gain a verb sense, or are headed by it with only a noun sense
+    Then only the one headed by the verb with a live verb sense counts, and the verb's worklist row is rescored in the same request
+
+  @work/family-gap @domain
+  Scenario: An A1 or A2 single word needs a word family member
+    Given a single-word entry, its level, and the live entries whose morphology names it as a base
+    When the gaps are computed
+    Then an A1 or A2 single word with none has a family gap that one such entry or a closure fills, and a phrase or a higher level has none
+
+  @work/family-api @api
+  Scenario: A derivative naming its base fills the base's family gap at once
+    Given an A1 word whose claim names a family gap
+    When a derivative's morphology names a lemma that is no live entry, names a lemma on a suffix, names the word, and is later retracted
+    Then the unknown lemma is an invalid reference, the misplaced lemma a validation error, the formation rescores the word with its gap filled in the same request and shows the base's lemma publicly, and the retraction reopens the gap
 
   @work/gap-closure @domain
   Scenario: A live gap closure closes exactly the gap it names
@@ -297,6 +309,18 @@ Feature: Worklist
     Given every worklist row stale
     When an agent and then an admin call the rescore with a limit
     Then the agent gets 403, a limit out of range is 400, and the admin's calls rescore up to the limit until none is stale
+
+  @work/failed-gloss @usecase
+  Scenario: A gloss that fails its review in place stays published as a weak fact
+    Given a published gloss marked for review in place
+    When the review fails it
+    Then it stays published and public with the failing review, the entry names it as a weak fact with the reason failed, and a correction that adds the missing label replaces it
+
+  @work/usage-family-migration @api
+  Scenario: The usage and family release brings stored facts to the new rules
+    Given a word formation whose base is spelled like a live entry, a simple word, a synonym between a word and its spelling variant, a phrases closure, a sense list and glosses of an A1 entry common and extra, and a gloss of an entry without a level
+    When the completeness_usage_family migration runs
+    Then the base names its entry with the key the registry computes, the simple word is unchanged, the synonym is retracted, the A1 common gloss, sense list, closure, and formation of several parts are marked for review in place and the rest are not, and every worklist row is stale
 
   @work/completeness-migration @api
   Scenario: The completeness release brings stored facts to the new rules

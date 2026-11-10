@@ -81,8 +81,23 @@ const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: 
     subject_id: sense.id,
     payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } },
   })
-  // An A1 or A2 entry needs a second example of each sense.
-  await submitFact(token, { kind: 'example', subject_id: sense.id, payload: { text: 'The house by the river.' } })
+  // An A1 or A2 entry needs a second example of each sense, each translated, a word family, and a
+  // collocation of the preposition.
+  await submitFact(token, {
+    kind: 'example',
+    subject_id: sense.id,
+    payload: { text: 'The house by the river.', translations: { zh: '河边的房子。' } },
+  })
+  await submitFact(token, {
+    kind: 'collocation',
+    subject_id: sense.id,
+    payload: { text: `${lemma} the river`, pattern: 'phrase' },
+  })
+  await submitFact(token, {
+    kind: 'gap_closure',
+    subject_id: entryId,
+    payload: { gap: 'family', reason: 'A preposition has no derivatives.' },
+  })
   await submitFact(token, { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } })
   await submitFact(token, { kind: 'syllables', subject_id: entryId, payload: { syllables: [lemma] } })
   return [form, ipa, translation, example]
@@ -428,10 +443,10 @@ describe('worklist', () => {
 
     // A rejection reopens the gap; the entry is claimable once its other facts are reviewed too.
     stubReviewers(0.05, 'fail')
-    await deliverReviews([facts.at(-1)?.id as string])
+    await deliverReviews([facts[2]?.id as string])
     vi.restoreAllMocks()
-    // The rejected example took the translated example with it; the other example still fills its slot: one of eight.
-    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 1 / 8, quality: 1 })
+    // The rejected translation reopens its slot: one of ten, each live example holding a translated-example slot.
+    expect(await scoresOf('by')).toMatchObject({ completeness: 1 - 1 / 10, quality: 1 })
     expect(await lemmaOf(token)).toBeNull()
     await settle()
     expect(await lemmaOf(token)).toBe('by')
@@ -548,7 +563,7 @@ describe('worklist', () => {
     const first = workClaimSchema.parse((await claim(token)).body)
     expect(first.gaps).toEqual([])
     expect(first.weak_facts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 11 })
+    expect(first.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 13 })
     expect((await complete(token, first.lease.id)).status).toBe(200)
     expect(await lemmaOf(token)).toBeNull()
 

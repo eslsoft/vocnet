@@ -30,11 +30,22 @@ export function summarizeFact(fact: FactDto): string {
     case 'topic':
       return fact.payload.topic_id
     case 'grammar': {
-      const { countability, number, article, transitivity, position, patterns, prepositions } = fact.payload
-      return labels(countability, number, article, transitivity, position, ...(patterns ?? []), ...(prepositions ?? []))
+      const { countability, number, article, transitivity, position, agreement, patterns, prepositions } = fact.payload
+      return labels(
+        countability,
+        number,
+        article,
+        transitivity,
+        position,
+        ...(agreement ?? []),
+        ...(patterns ?? []),
+        ...(prepositions ?? []),
+      )
     }
     case 'morphology':
-      return fact.payload.parts.map(({ form, meaning }) => (meaning ? `${form} "${meaning}"` : form)).join(' + ')
+      return fact.payload.parts
+        .map(({ form, meaning, lemma }) => `${form}${meaning ? ` "${meaning}"` : ''}${lemma ? ` → ${lemma}` : ''}`)
+        .join(' + ')
     case 'collocation':
       return `${fact.payload.text} (${fact.payload.pattern})`
     case 'sense_list':

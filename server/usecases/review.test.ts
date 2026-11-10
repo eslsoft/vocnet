@@ -1,3 +1,4 @@
+import { assessEntry } from '@server/domain/work'
 import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
@@ -463,6 +464,38 @@ describe('revalidation', () => {
       context: { subject: { gloss: 'the sloping land beside a river' } },
     })
     expect(world.llmCalls.at(-1)?.user).toContain('the sloping land beside a river')
+  })
+
+  it('keeps a gloss that fails its review in place published, as a weak fact its producer corrects [spec: work/failed-gloss]', async () => {
+    const { world, entry, gloss, entryFact } = await bankWorld()
+    await drain(world)
+    await reviewFact(world.deps, entryFact.id, 'trace')
+    await reviewFact(world.deps, gloss.id, 'trace')
+    const stored = world.facts.find((fact) => fact.id === gloss.id)
+    if (!stored) throw new Error('The gloss is missing.')
+    stored.revalidateSince = '2026-01-01T00:00:00.000Z'
+    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.1 } }))
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'British only; no region.' }))
+    await expect(reviewFact(world.deps, gloss.id, 'trace')).resolves.toBe('published')
+    expect(await getFact(world.deps, gloss.id)).toMatchObject({
+      status: 'published',
+      revalidateSince: null,
+      review: { verdict: 'fail', reason: 'Jev lexical=0.1 | British only; no region.' },
+    })
+    const snapshot = await world.deps.nodes.loadEntrySnapshot(entry)
+    expect(assessEntry(snapshot).weakFacts).toEqual([{ id: gloss.id, kind: 'sense', reason: 'failed' }])
+    expect((await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]?.gloss).toBe('land beside a river')
+    // A correction that adds the region replaces it and keeps everything judged against it.
+    world.passReviews()
+    const { fact: relabel } = await submitFact(world.deps, agentA, {
+      kind: 'sense',
+      subject_id: gloss.subjectId,
+      supersedes_id: gloss.id,
+      payload: { gloss: 'land beside a river', region: 'british' },
+    })
+    await reviewFact(world.deps, relabel.id, 'trace')
+    expect((await getFact(world.deps, gloss.id)).status).toBe('superseded')
+    expect(assessEntry(await world.deps.nodes.loadEntrySnapshot(entry)).weakFacts).toEqual([])
   })
 
   it('rejects a dependent whose new review fails and keeps the rest', async () => {

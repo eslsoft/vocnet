@@ -23,6 +23,16 @@ describe('fact lifecycle', () => {
     expect(canApply('invalidate', 'pending')).toBe(false)
   })
 
+  it('keeps a fact of a flagging kind published with its failed revalidation [spec: facts/sense-revalidation-flag]', () => {
+    expect(decide('revalidation', 'fail', 'flag')).toBe('flag')
+    expect(decide('revalidation', 'fail', 'invalidate')).toBe('invalidate')
+    expect(decide('revalidation', 'pass', 'flag')).toBe('reconfirm')
+    expect(decide('review', 'fail', 'flag')).toBe('reject')
+    expect(reviewEffects.flag).toEqual({ outcome: 'published', records: true })
+    expect(canApply('flag', 'published')).toBe(true)
+    expect(canApply('flag', 'pending')).toBe(false)
+  })
+
   it('reviews pending facts and published facts marked for revalidation, nothing else', () => {
     const at = '2026-01-01T00:00:00.000Z'
     expect(reviewModeOf({ status: 'pending', revalidateSince: null })).toBe('review')

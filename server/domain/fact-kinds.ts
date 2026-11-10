@@ -1,4 +1,5 @@
 import type {
+  Agreement,
   ClosableGap,
   CollocationPattern,
   DependentPreposition,
@@ -19,6 +20,7 @@ import type {
   TopicId,
 } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
+import type { RevalidationFailure } from './fact-lifecycle'
 import { editDistance, isLetterOfTheAlphabet, isMultiword, type Lemma, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
@@ -143,12 +145,16 @@ export type ReviewPlan<C extends ReviewChain = ReviewChain> =
 
 /**
  * What a write rule sees of one end of a relation: whether the end's sense is rare (in the extra
- * senses of its entry's current sense list) and the register of its current gloss.
+ * senses of its entry's current sense list), the register of its current gloss, its entry's lemma
+ * and live spelling variants, and how many live hypernym relations make another sense a kind of it.
  */
 export interface LinkEnd {
   sense: SenseId
   rare: boolean
   register: Register | null
+  lemma: string
+  variants: readonly string[]
+  narrower: number
 }
 
 interface BaseSpec<K extends FactKind> {
@@ -175,6 +181,13 @@ interface BaseSpec<K extends FactKind> {
    * correction that only relabels leaves them alone.
    */
   revalidates?: readonly FactKind[]
+  /** What a failed review in place does to a published fact of this kind; absent means `invalidate`. */
+  revalidationFailure?: RevalidationFailure
+  /**
+   * The entry lemmas the payload names; each must be the lemma of a live entry when the fact is
+   * submitted. Absent for kinds that name no entry.
+   */
+  references?(payload: FactPayloads[K]): readonly string[]
   /**
    * A write rule that needs the subject, checked when the fact is submitted: why the payload does
    * not fit it, or null when it does.
@@ -305,7 +318,20 @@ function listSenses(heading: string, senses: readonly SenseGloss[]): string {
   return [`${heading}:`, ...senses.map(({ pos, gloss }) => `- (${pos}) ${quote(gloss)}`)].join('\n')
 }
 
-const regionNames: Record<Region, string> = { british: 'British English', american: 'American English' }
+const regionNames: Record<Region, string> = {
+  british: 'British English',
+  american: 'American English',
+  australian: 'Australian English',
+  new_zealand: 'New Zealand English',
+  canadian: 'Canadian English',
+  irish: 'Irish English',
+  scottish: 'Scottish English',
+  south_african: 'South African English',
+  indian: 'Indian English',
+}
+
+/** The registers a learner's dictionary always labels, so a sense used only in one of them states it. */
+const LABELLED_REGISTERS = 'formal, literary, dated (old-fashioned), or ironic'
 
 /** How a sense is used, as a question or rubric states it: its register and region, if any. */
 function usageOf(register?: Register, region?: Region): string {
@@ -317,7 +343,7 @@ function usageOf(register?: Register, region?: Region): string {
 
 // Jev question texts started as the producer's qualified questions.
 function lexicalQuestion(word: string, pos: Pos, gloss: string, register?: Register, region?: Region): string {
-  return `Does English have AT LEAST ONE established ${pos} sense of ${quote(word)} meaning ${quote(gloss)}${usageOf(register, region)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ''} ${region ? 'A region that does not fit where the sense is used is wrong.' : 'If the sense is used only in British English or only in American English, the answer is no, since no region is stated.'} ${DATA_NOT_INSTRUCTIONS}`
+  return `Does English have AT LEAST ONE established ${pos} sense of ${quote(word)} meaning ${quote(gloss)}${usageOf(register, region)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ` If the sense is used only in a ${LABELLED_REGISTERS} register, the answer is no, since no register is stated.`} ${region ? 'A region that does not fit where the sense is used is wrong.' : 'If the sense is used only in one variety of English (only British, only American, only Australian, only Scottish English, and so on), the answer is no, since no region is stated.'} ${DATA_NOT_INSTRUCTIONS}`
 }
 
 const DIFFERENT_WORDS = 'Two senses of the same word never stand in this relation.'
@@ -377,6 +403,7 @@ const RELATION_TYPE_RULES = [
   'part_of: the source is a distinct component or region of the target. A material, substance, or ingredient the target is made from is not a part, and neither is something located in, used by, or associated with it, or a generic part any object has, such as a back, side, or top. A body part, organ, or limb is never part of a person-type noun (a role, kinship term, occupation, title, or nickname): a head is part of a person, not of a princess, and a hand is not part of a worker.',
   'The source and the target must be different words.',
   'The target sense carries no dated label, so it claims to be current English: fail when the target word in this sense is archaic or old-fashioned, since a learner would take it for a current word.',
+  'The target must be a word an A1 to B2 learner can use in place of or beside the source, in the same register: fail a slang, taboo, archaic, rare, or technical target for a source in neutral standard English ("ice" or "waste" as slang for killing, "abstain" for sharing), unless the source sense itself carries that register.',
 ]
 
 const GLOSSES_ARE_PARAPHRASES =
@@ -505,8 +532,8 @@ function entryRubric({ lemma, senses, inflectionOf, variantOf, cefr }: SubjectVi
 }
 
 const SENSE_LABELS = [
-  'A sense used only in British English or only in American English states its region: fail such a sense without one ("lorry", "queue" as a verb, and "flat" meaning an apartment are british; "truck" meaning a lorry, "sidewalk", and "apartment" are american), and fail a region that does not fit.',
-  "Register labels follow learner's dictionaries, where dated is the label they write as old-fashioned: fail a sense they label old-fashioned that is not labelled dated.",
+  'A sense used only in one variety of English states its region: fail such a sense without one ("lorry", "queue" as a verb, "flat" meaning an apartment, and "mobile" meaning a mobile phone are british; "truck" meaning a lorry, "sidewalk", and "cell" meaning a phone are american; "arvo" is australian; "stay" meaning to live somewhere permanently is scottish), and fail a region that does not fit. A sense used in British and American English alike states none.',
+  `Register labels follow learner's dictionaries, where dated is the label they write as old-fashioned: fail a sense used only in a ${LABELLED_REGISTERS} register that states no register or another one ("fine" meaning not good at all, as in "a fine friend you are", is ironic), and fail a sense they label old-fashioned that is not labelled dated.`,
 ]
 
 function senseRubric(sense: SubjectViews['sense'], { gloss, register, region }: FactPayloads['sense']): string {
@@ -842,14 +869,32 @@ function admitRelationLink(link: Link<'relation'>, live: readonly Link<'relation
 }
 
 /**
+ * The most narrower terms one sense holds: live hypernym relations that make another sense a kind
+ * of it. A broad sense with more lists every kind it covers, which tells a learner nothing; the
+ * audit's padded senses (kill, share) had a dozen loose narrower terms each.
+ */
+export const MAX_NARROWER = 12
+
+/** A spelling variant of one end's entry is the same word, never its synonym (practise and practice). */
+const isVariantPair = (subject: LinkEnd, target: LinkEnd) =>
+  subject.variants.includes(target.lemma) || target.variants.includes(subject.lemma)
+
+/**
  * A relation links current, common senses: a sense in its entry's extra (rare, archaic, technical,
  * or specialist) or labelled dated never shows a learner a word to use. A directed relation is
- * checked at its target; a symmetric one reads the same from both ends, so at both.
+ * checked at its target; a symmetric one reads the same from both ends, so at both. A synonym never
+ * links two spellings of one word, and a sense holds at most `MAX_NARROWER` narrower terms.
  */
 function admitRelationEnds(
   { type }: FactPayloads['relation'],
   { subject, target }: { subject: LinkEnd; target: LinkEnd },
 ): string | null {
+  if (type === 'synonym' && isVariantPair(subject, target)) {
+    return `${quote(subject.lemma)} and ${quote(target.lemma)} are spellings of one word: one entry records the other as a live spelling variant, so they are never synonyms. Relate a different word.`
+  }
+  if (type === 'hypernym' && target.narrower >= MAX_NARROWER) {
+    return `Sense ${target.sense} already has ${target.narrower} narrower terms (live hypernym relations to it), and a sense holds at most ${MAX_NARROWER}. Relate this sense to a more specific broader term instead.`
+  }
   const ends = relationSymmetry[type] === 'symmetric' ? [target, subject] : [target]
   const rare = ends.find((end) => end.rare)
   if (rare) {
@@ -868,7 +913,11 @@ const labelled = (key: string, ...labels: Array<string | undefined>) =>
 type Grammar = FactPayloads['grammar']
 type GrammarField = keyof Grammar
 
-type GrammarPos = 'noun' | 'verb' | 'adjective'
+type GrammarPos = 'noun' | 'verb' | 'adjective' | 'adverb' | 'determiner' | 'pronoun'
+type Position = NonNullable<Grammar['position']>
+
+const ADJECTIVE_POSITIONS: readonly Position[] = ['attributive_only', 'predicative_only', 'both']
+const ADVERB_POSITIONS: readonly Position[] = ['front', 'mid', 'end']
 
 /** A pattern's name, and for each part of speech that takes it a word that does, as an illustration. */
 type PatternSpec = { name: string } & Partial<Record<GrammarPos, string>>
@@ -904,10 +953,18 @@ const grammarPatterns: Record<GrammarPattern, PatternSpec> = {
 const patternsOf = (pos: GrammarPos) =>
   (Object.keys(grammarPatterns) as GrammarPattern[]).filter((pattern) => grammarPatterns[pattern][pos])
 
-/** The grammar each part of speech takes; only these parts of speech take a grammar fact. */
+/**
+ * The grammar each part of speech takes; only these parts of speech take a grammar fact. A
+ * determiner or pronoun names what it agrees with, an adverb its usual position.
+ */
 const grammarRules: Record<
   GrammarPos,
-  { fields: readonly GrammarField[]; requires?: GrammarField; patterns: readonly GrammarPattern[] }
+  {
+    fields: readonly GrammarField[]
+    requires?: GrammarField
+    patterns: readonly GrammarPattern[]
+    positions?: readonly Position[]
+  }
 > = {
   noun: {
     fields: ['countability', 'number', 'article', 'patterns', 'prepositions'],
@@ -919,7 +976,14 @@ const grammarRules: Record<
     requires: 'transitivity',
     patterns: patternsOf('verb'),
   },
-  adjective: { fields: ['position', 'patterns', 'prepositions'], patterns: patternsOf('adjective') },
+  adjective: {
+    fields: ['position', 'patterns', 'prepositions'],
+    patterns: patternsOf('adjective'),
+    positions: ADJECTIVE_POSITIONS,
+  },
+  adverb: { fields: ['position', 'prepositions'], patterns: [], positions: ADVERB_POSITIONS },
+  determiner: { fields: ['agreement'], requires: 'agreement', patterns: [] },
+  pronoun: { fields: ['agreement'], requires: 'agreement', patterns: [] },
 }
 
 const listed = (values: readonly string[]) => values.join(', ')
@@ -942,6 +1006,9 @@ function admitGrammar(grammar: Grammar, { pos }: AdmissionViews['sense']): strin
   if (unfit.length > 0) {
     return `${listed(unfit)} ${unfit.length === 1 ? 'is not a pattern' : 'are not patterns'} of ${article(pos)} ${pos}; its patterns are ${listed(rule.patterns)}.`
   }
+  if (grammar.position && !rule.positions?.includes(grammar.position)) {
+    return `${grammar.position} is not a position of ${article(pos)} ${pos}; its positions are ${listed(rule.positions ?? [])}.`
+  }
   return null
 }
 
@@ -952,6 +1019,7 @@ function grammarKey({
   article,
   transitivity,
   position,
+  agreement,
   patterns,
   prepositions,
 }: Grammar): string {
@@ -961,6 +1029,7 @@ function grammarKey({
     article && `article:${article}`,
     transitivity && `transitivity:${transitivity}`,
     position && `position:${position}`,
+    agreement && `agreement:${[...agreement].sort().join(',')}`,
     patterns && `patterns:${[...patterns].sort().join(',')}`,
     prepositions && `prepositions:${[...prepositions].sort().join(',')}`,
   ]
@@ -985,6 +1054,9 @@ const grammarClaims = {
     predicative_only:
       'predicative only: used after a linking verb such as "be" ("the baby is asleep") but not before a noun',
     both: 'used both before a noun ("a big house") and after a linking verb such as "be" ("the house is big")',
+    front: 'usually placed at the front of the clause, before the subject ("Suddenly, the lights went out")',
+    mid: 'usually placed in mid position: between the subject and the main verb, or after the first auxiliary or "be" ("I usually walk", "She has just left")',
+    end: 'usually placed at the end of the clause, after the verb and its object ("He works hard")',
   },
   number: {
     singular_only: 'used only in the singular ("a while", "the sun"), never in the plural',
@@ -1002,6 +1074,15 @@ function patternClaim(pattern: GrammarPattern, pos: Pos): string {
   return `commonly followed by ${spec.name}${example ? ` (a pattern like "${example}")` : ''}`
 }
 
+const agreementClaims: Record<Agreement, string> = {
+  singular_noun: 'used before a singular countable noun ("each day", "either side")',
+  plural_noun: 'used before a plural noun ("many books", "any questions")',
+  uncountable_noun: 'used before an uncountable noun ("much time", "any milk")',
+  of_plural: 'followed by "of" and a plural noun or pronoun ("each of the boys", "either of them")',
+  singular_verb: 'used with a singular verb when it is the subject ("everybody is here", "each has a key")',
+  plural_verb: 'used with a plural verb when it is the subject ("both are here", "few were left")',
+}
+
 const prepositionClaim = (preposition: DependentPreposition): [string, string] => [
   `preposition_${preposition.replaceAll(' ', '_')}`,
   `commonly followed by the preposition ${quote(preposition)}`,
@@ -1009,7 +1090,7 @@ const prepositionClaim = (preposition: DependentPreposition): [string, string] =
 
 /** Each property the fact claims, keyed as its Jev question is. */
 function grammarClaimsOf(
-  { countability, number, article, transitivity, position, patterns, prepositions }: Grammar,
+  { countability, number, article, transitivity, position, agreement, patterns, prepositions }: Grammar,
   pos: Pos,
 ): Array<[key: string, claim: string]> {
   const properties = [
@@ -1021,6 +1102,7 @@ function grammarClaimsOf(
   ] as const
   return [
     ...properties.flatMap(([key, claim]): Array<[string, string]> => (claim ? [[key, claim]] : [])),
+    ...(agreement ?? []).map((value): [string, string] => [`agreement_${value}`, agreementClaims[value]]),
     ...(patterns ?? []).map((pattern): [string, string] => [`pattern_${pattern}`, patternClaim(pattern, pos)]),
     ...(prepositions ?? []).map(prepositionClaim),
   ]
@@ -1043,6 +1125,7 @@ function grammarRubric(grammar: Grammar, subject: SubjectViews['sense'], sense: 
     ...grammarClaimsOf(grammar, sense.pos).map(([, claim]) => `- ${claim}`),
     'Judge each claim for this sense only, never for another sense of the word.',
     'A named preposition claims that learners use that preposition after the word in this sense, as a learner\'s dictionary writes it ("rely on/upon sb/sth", "good at sth").',
+    'An adverb position claims where the adverb usually goes in a clause; an adverb that can also go elsewhere still has its usual position. An agreement claims what a determiner or pronoun commonly goes with; one it goes with only rarely is wrong.',
     'pass: every claim holds for this sense. Patterns and prepositions are the common ones a learner needs, not all of them: a pattern or preposition left out is not an error.',
     'fail: any claim is wrong for this sense or holds only for another sense, a pattern is rare or unnatural with this sense, or a named preposition is not the one learners use with this sense or is rare with it.',
     listSenses('Other senses of this entry, for reference', subject.siblings),
@@ -1058,6 +1141,9 @@ const letters = (form: string) => form.toLowerCase().replace(/[-'’.]/g, '')
 
 function admitMorphology({ parts }: FactPayloads['morphology'], { lemma }: AdmissionViews['entry']): string | null {
   if (isMultiword(lemma)) return `A word formation describes a single word; ${quote(lemma)} is a phrase.`
+  if (parts.some((part) => part.lemma === lemma)) {
+    return `A base names the entry of another word the word is built on; ${quote(lemma)} is this entry, so leave its lemma out.`
+  }
   const joined = parts.map((part) => letters(part.form)).join('')
   if (editDistance(joined, letters(lemma)) <= JOIN_CHANGES * (parts.length - 1)) return null
   return `The parts ${parts.map((part) => part.form).join(' + ')} do not spell ${quote(lemma)}; spelling changes only where parts join (happy + -ness gives happiness).`
@@ -1091,10 +1177,14 @@ const morphemeRoles: Record<MorphemeRole, string> = {
 const describeParts = (parts: readonly Morpheme[]) =>
   parts
     .map(
-      ({ form, role, meaning }) =>
-        `${quote(form)} (${morphemeRoles[role]}${meaning ? ` meaning ${quote(meaning)}` : ''})`,
+      ({ form, role, meaning, lemma }) =>
+        `${quote(form)} (${morphemeRoles[role]}${meaning ? ` meaning ${quote(meaning)}` : ''}${lemma ? `, the word ${quote(lemma)}` : ''})`,
     )
     .join(' + ')
+
+/** The entry lemmas a word formation names: each base part's lemma. */
+const baseLemmas = ({ parts }: FactPayloads['morphology']) =>
+  parts.flatMap((part) => (part.role === 'base' && part.lemma !== undefined ? [part.lemma] : []))
 
 const isSimpleWord = (parts: readonly Morpheme[]) => parts.length === 1
 
@@ -1106,6 +1196,7 @@ function morphologyRubric(entry: SubjectViews['entry'], parts: readonly Morpheme
       : `Claimed parts: ${describeParts(parts)}.`,
     'pass: in present-day English the word is built from exactly these parts: its base word or Latin or Greek root, and its prefixes and suffixes, with every stated meaning right for that part. Spelling changes where parts join are normal (happy + -ness gives happiness). A simple word passes when it has no parts a learner could recognise.',
     'Parts must be a synchronic English formation, one a present-day speaker can see: an unanalysable loan or a historically opaque word is a single base ("factory" is one base, not fact + -ory; "window" is one base). An abbreviation or contraction ("Mrs", "o\'clock", "a.m.") is one base too.',
+    'A base is the present-day word the meaning comes from, even when its spelling changes where the parts join: "student" is study + -ent (a student studies), not stud + -ent; "happiness" is happy + -ness. A base that only shares letters with the word, or a word named for a base that is not the word the meaning comes from, fails.',
     'fail: a part is wrong, missing, or extra; a stated meaning is wrong; the analysis is etymology rather than present-day formation, folk etymology, or splits off letters that only look like an affix (the "er" of "water"); or the word does have parts and is claimed to be simple.',
     listSenses("The word's senses", entry.senses),
   ].join('\n')
@@ -1226,8 +1317,8 @@ const numbered = (senses: readonly EntrySense[], from: number) =>
 const SENSE_LIST_PASSES = [
   "Complete: common has every sense a learner's dictionary lists among its main senses of this word for A1 to B1 learners, in every part of speech it has. A missing main sense fails; a sense only an advanced or specialist dictionary lists does not.",
   'Distinct: no two common senses are duplicates, or one meaning split too finely into several.',
-  'Ordered: common runs in a plausible order from more to less common use. Frequency order is approximate: judge only whether the order is plausible, never whether exact frequency can be verified.',
-  'Rare: specialist, technical, archaic, and rare senses belong in extra, and every sense in extra is one a learner does not meet in general use.',
+  'Ordered: common runs in a plausible order from more to less common use for a learner, judged sense by sense across every part of speech, never one part of speech before another. The first common sense is the one a learner most needs: "mobile" starts with the noun meaning a mobile phone, before any adjective sense. Frequency order is approximate: judge only whether the order is plausible, never whether exact frequency can be verified.',
+  'Rare: specialist, technical, legal, archaic, and rare senses, and senses used only in a variety other than British or American English, belong in extra ("stay" meaning to stop legal proceedings, "mobile" meaning changing facial expression, Scottish "stay" meaning to live somewhere), and every sense in extra is one a learner does not meet in general use.',
 ]
 
 /** Entries are case-sensitive: "May" the month is its own entry, never a sense missing from "may". */
@@ -1285,11 +1376,15 @@ export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
   },
   phrases: {
     subject: 'entry',
-    slot: 'phrases built on the word as entries of their own: a phrasal verb ("give up") or an idiom ("give way")',
+    slot: 'three phrasal verbs or verb idioms headed by the word, as entries of their own ("give up", "give in", "give way"); the slot is complete with fewer only when fewer than three common ones exist, and the reason names those',
+  },
+  family: {
+    subject: 'entry',
+    slot: 'the word family: common derivatives built on the word that a learner\'s dictionary lists with it ("happiness", "happily", and "unhappy" for "happy"; "student" for "study")',
   },
   relations: {
     subject: 'sense',
-    slot: 'related words: a synonym, an antonym, a broader term it is a kind of, or a whole it is a part of',
+    slot: 'related words: a synonym, an antonym, a broader term it is a kind of, or a whole it is a part of; the slot is complete when the relations recorded so far are the only precise ones',
   },
   topics: {
     subject: 'sense',
@@ -1297,7 +1392,7 @@ export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
   },
   grammar: {
     subject: 'sense',
-    slot: 'grammar: the countability of a noun, the transitivity of a verb, or the position, patterns, or prepositions of an adjective',
+    slot: 'grammar: the countability of a noun, the transitivity of a verb, the position, patterns, or prepositions of an adjective, the usual position of an adverb, or what a determiner or pronoun agrees with',
   },
   collocations: {
     subject: 'sense',
@@ -1307,6 +1402,9 @@ export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
 
 const CLOSURE_PASSES = [
   'months, days, and numbers have no common collocations or synonyms beyond the names of their set',
+  'a verb with fewer than three common phrasal verbs or verb idioms, when the reason names the ones that exist ("describe" has none)',
+  'a word with no common derivatives ("notebook", "salad"), or a function word ("and", "with")',
+  'a sense whose recorded relations are the only precise ones: no further synonym, antonym, broader term, or whole would help a learner',
   'an uncountable noun ("advice") has no plural',
   'a non-gradable adjective ("main", "dead") has no comparative',
   'a function word or a general word ("thing", "get") belongs to no topic',
@@ -1314,6 +1412,7 @@ const CLOSURE_PASSES = [
 
 const CLOSURE_FAILS = [
   'a common verb lacks inflections, or a noun its plural, that a learner can look up in any dictionary',
+  'a verb with common phrasal verbs the reason leaves out ("throw" has throw away, throw out, and throw up), or a word with common derivatives ("happy" has happiness)',
   'a word with ordinary synonyms, collocations, or a topic only someone has not found yet',
   'a reason that is wrong, vague, or only says the data is hard to find',
 ]
@@ -1358,6 +1457,9 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // A label-only correction must differ from the gloss it supersedes.
     contentKey: ({ gloss, register, region }) => labelled(textKey(gloss), register, region),
     meaningKey: ({ gloss }) => textKey(gloss),
+    // A failed gloss stays published as a weak fact: rejecting it would hide the sense and every
+    // fact judged against it, and a correction that adds the missing label keeps them.
+    revalidationFailure: 'flag',
     revalidates: ['example', 'translation', 'relation', 'topic', 'grammar', 'collocation', 'gap_closure'],
     plan: (payload, { subject }) =>
       jevThenLlm(
@@ -1486,11 +1588,15 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     subject: 'entry',
     cardinality: 'one',
     chain: ['llm'],
+    // A base's lemma is part of the claim: adding one to a published formation is a correction.
     contentKey: ({ parts }) =>
       parts
-        .map(({ form, role, meaning }) => labelled(`${role}:${textKey(form)}`, meaning && textKey(meaning)))
+        .map(({ form, role, meaning, lemma }) =>
+          labelled(`${role}:${textKey(form)}`, meaning && textKey(meaning), lemma && `=${lemma}`),
+        )
         .join('+'),
     admit: admitMorphology,
+    references: baseLemmas,
     plan: ({ parts }, { subject }) => llm(morphologyRubric(subject, parts)),
   },
   syllables: {
@@ -1551,6 +1657,11 @@ export function admissionOf<K extends FactKind>(
   subject: AdmissionViews[SubjectTypeOf[K]],
 ): string | null {
   return factKinds[kind].admit?.(payload, subject) ?? null
+}
+
+/** The entry lemmas the payload names, each of which must be a live entry; none for kinds that name none. */
+export function referencesOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): readonly string[] {
+  return factKinds[kind].references?.(payload) ?? []
 }
 
 /** Why the link may not join the senses at its ends; null for kinds without an end rule. */

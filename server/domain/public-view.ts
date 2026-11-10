@@ -66,6 +66,12 @@ export interface ReadVariant {
 /** The roles a word family shares: the parts that carry the meaning. */
 export const STEM_ROLES: readonly MorphemeRole[] = ['base', 'root']
 
+/**
+ * The word a morphology part stands for: the entry a base names by its lemma, else the part as
+ * spelled. Entries built on the same entry share it, so they find each other as a family.
+ */
+export const partWord = (part: { form: string; lemma?: string }) => part.lemma ?? part.form
+
 /** The sort order of entries without a frequency rank: after every ranked one. */
 export const UNRANKED = 2 ** 31 - 1
 
@@ -116,7 +122,9 @@ export function publicViewRecord(document: StoredEntry): PublicViewRecord {
     ),
     phraseWords: isMultiword(document.lemma) ? [...new Set(document.lemma.split(' '))] : [],
     morphemes: [
-      ...new Map(parts.map((part) => [`${part.role}:${part.form}`, { form: part.form, role: part.role }])).values(),
+      ...new Map(
+        parts.map((part) => [`${part.role}:${partWord(part)}`, { form: partWord(part), role: part.role }]),
+      ).values(),
     ],
     searchTexts: searchTextsOf(document),
   }
@@ -239,9 +247,9 @@ export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: Re
     variants: document.variants.map((item) => withReview(item, variant)),
     syllables: document.syllables,
     morphology: document.morphology && {
-      parts: document.morphology.parts.map((part) => ({
+      parts: document.morphology.parts.map(({ lemma, ...part }) => ({
         ...part,
-        ...(publicParts.has(part.form) ? { lemma: part.form } : {}),
+        ...(publicParts.has(partWord({ lemma, ...part })) ? { lemma: partWord({ lemma, ...part }) } : {}),
       })),
       family: summaries(links.family),
       ...reviewed(document.morphology.review, variant),

@@ -28,7 +28,7 @@ const at = '2026-01-01T00:00:00.000Z'
 const entryId = id<EntryId>()
 const bank = { id: entryId, lemma: 'bank' }
 /** An entry with no CEFR level and no phrases, so the A1-A2 rules stay out of the way. */
-const plain = { levelRank: null, phrases: [] }
+const plain = { levelRank: null, phrases: [], family: [] }
 
 const sense = (pos: Pos = 'noun'): SenseWithLemma => ({
   id: id<SenseId>(),
@@ -127,7 +127,7 @@ describe('entryGaps', () => {
       { type: 'relations', sense_id: glossed.id, count: 0, have: [] },
       { type: 'examples', sense_id: glossed.id, count: 0, need: 1 },
       { type: 'translations', sense_id: glossed.id, language: 'zh' },
-      { type: 'example_translations', sense_id: glossed.id, language: 'zh' },
+      { type: 'example_translations', sense_id: glossed.id, language: 'zh', examples: [] },
       { type: 'topics', sense_id: glossed.id },
       { type: 'grammar', sense_id: glossed.id },
       { type: 'collocations', sense_id: glossed.id },
@@ -164,7 +164,7 @@ describe('entryGaps', () => {
     const incoming = [fact('relation', elsewhere, { type: 'hypernym', target_sense_id: object.id })]
     expect(entryGaps({ entry: bank, ...plain, senses: [subject, object], facts, incoming, neighbors })).toEqual([
       { type: 'examples', sense_id: object.id, count: 0, need: 1 },
-      { type: 'example_translations', sense_id: object.id, language: 'zh' },
+      { type: 'example_translations', sense_id: object.id, language: 'zh', examples: [] },
       { type: 'grammar', sense_id: object.id },
     ])
   })
@@ -402,7 +402,7 @@ const reviewed = <F extends Fact>(made: F, verdict: Review['verdict']): F =>
   }) as F
 
 describe('relations by part of speech', () => {
-  it('needs two relations for content words, one for adverbs, none for function words [spec: work/relations-by-pos]', () => {
+  it('needs two relations for content words, one for adverbs and pronouns, none for other function words [spec: work/relations-by-pos]', () => {
     const needs = Object.fromEntries(
       Object.keys(RELATIONS_NEEDED).map((pos) => {
         const focus = sense(pos as Pos)
@@ -433,11 +433,13 @@ describe('relations by part of speech', () => {
       // A verb's paradigm adds four form slots.
       verb: { gap: true, completeness: 1 - 16 / 17 },
       adjective: { gap: true, completeness: 1 - 11 / 12 },
-      adverb: { gap: true, completeness: 1 - 8 / 9 },
-      pronoun: { gap: false, completeness: 1 - 7 / 8 },
-      determiner: { gap: false, completeness: 1 - 7 / 8 },
-      preposition: { gap: false, completeness: 1 - 7 / 8 },
-      conjunction: { gap: false, completeness: 1 - 7 / 8 },
+      // An adverb adds a grammar and a collocation slot, a pronoun grammar, a determiner both, and a
+      // preposition or conjunction a collocation.
+      adverb: { gap: true, completeness: 1 - 10 / 11 },
+      pronoun: { gap: true, completeness: 1 - 9 / 10 },
+      determiner: { gap: false, completeness: 1 - 9 / 10 },
+      preposition: { gap: false, completeness: 1 - 8 / 9 },
+      conjunction: { gap: false, completeness: 1 - 8 / 9 },
       interjection: { gap: false, completeness: 1 - 7 / 8 },
       auxiliary: { gap: false, completeness: 1 - 7 / 8 },
     })
@@ -455,7 +457,7 @@ describe('relations by part of speech', () => {
 })
 
 describe('grammar and collocations by part of speech', () => {
-  it('needs grammar and collocations for nouns, verbs, and adjectives [spec: work/usage-gaps]', () => {
+  it('needs grammar for content words, adverbs, determiners, and pronouns, and collocations for content words, adverbs, determiners, prepositions, and conjunctions [spec: work/usage-gaps]', () => {
     const needs = Object.fromEntries(
       Object.keys(GRAMMAR_NEEDED).map((pos) => {
         const focus = sense(pos as Pos)
@@ -466,12 +468,13 @@ describe('grammar and collocations by part of speech', () => {
         return [pos, { grammar: types.includes('grammar'), collocations: types.includes('collocations') }]
       }),
     )
-    const content = ['noun', 'verb', 'adjective']
+    const grammar = ['noun', 'verb', 'adjective', 'adverb', 'determiner', 'pronoun']
+    const collocations = ['noun', 'verb', 'adjective', 'adverb', 'determiner', 'preposition', 'conjunction']
     expect(needs).toEqual(
       Object.fromEntries(
         Object.keys(GRAMMAR_NEEDED).map((pos) => [
           pos,
-          { grammar: content.includes(pos), collocations: content.includes(pos) },
+          { grammar: grammar.includes(pos), collocations: collocations.includes(pos) },
         ]),
       ),
     )
@@ -526,10 +529,36 @@ describe('new usage gaps', () => {
       fact('form', entryId, { form: 'went', type: 'past', ipa: 'went', accent: 'us' }, 'pending'),
       fact('example', focus.id, { text: 'We go home.' }),
     ]
+    const untranslated = facts.at(-1)?.id
+    const corrected = fact('example', focus.id, { text: 'They go out.' })
+    const translated = [
+      fact('example', focus.id, { text: 'I go now.', translations: { zh: '我现在走。' } }),
+      corrected,
+      {
+        ...fact('example', focus.id, { text: 'They go out.', translations: { zh: '他们出去。' } }, 'pending'),
+        supersedesId: corrected.id,
+      },
+    ]
     const gaps = entryGaps({ entry: go, ...plain, senses: [focus], facts, incoming: [], neighbors })
     expect(gaps).toContainEqual({ type: 'syllables' })
     expect(gaps).toContainEqual({ type: 'form_pronunciations', forms: ['gone'] })
-    expect(gaps).toContainEqual({ type: 'example_translations', sense_id: focus.id, language: 'zh' })
+    expect(gaps).toContainEqual({
+      type: 'example_translations',
+      sense_id: focus.id,
+      language: 'zh',
+      examples: [untranslated],
+    })
+    // Each untranslated live example is named; a pending correction that adds a translation stands
+    // for its original, and the slots follow the live examples.
+    const more = { entry: go, ...plain, senses: [focus], facts: [...facts, ...translated], incoming: [], neighbors }
+    expect(entryGaps(more).find((gap) => gap.type === 'example_translations')).toEqual({
+      type: 'example_translations',
+      sense_id: focus.id,
+      language: 'zh',
+      examples: [untranslated],
+    })
+    const translatedAll = { ...more, facts: [...facts.slice(0, -1), ...translated] }
+    expect(entryGaps(translatedAll).map((gap) => gap.type)).not.toContain('example_translations')
     const phrase = entryGaps({
       entry: { id: entryId, lemma: 'go out' },
       ...plain,
@@ -670,12 +699,13 @@ describe('completeness rules for a learner dictionary', () => {
     lemma: string,
     senses: SenseWithLemma[],
     facts: Fact[],
-    more: { levelRank?: number | null; phrases?: string[] } = {},
+    more: { levelRank?: number | null; phrases?: string[]; family?: string[] } = {},
   ) =>
     entryGaps({
       entry: { id: entryId, lemma },
       levelRank: more.levelRank ?? null,
       phrases: more.phrases ?? [],
+      family: more.family ?? [],
       senses,
       facts: [fact('entry', entryId, {}), ...facts],
       incoming: [],
@@ -753,17 +783,33 @@ describe('completeness rules for a learner dictionary', () => {
     expect(accents([pronounce('us'), pronounce('uk')])).toBeUndefined()
   })
 
-  it('needs a collocation of a manner or degree adverb only [spec: work/adverb-collocations]', () => {
-    const adverb = sense('adverb')
-    const gloss = fact('sense', adverb.id, { gloss: 'In a quick way.' })
-    const collocations = (lemma: string, facts: Fact[] = []) =>
-      gapsOf(lemma, [adverb], [gloss, ...facts]).some((gap) => gap.type === 'collocations')
-    expect(collocations('quickly')).toBe(true)
-    expect(collocations('here')).toBe(false)
-    expect(collocations('hard', [fact('form', entryId, { form: 'harder', type: 'comparative' })])).toBe(true)
-    expect(
-      collocations('quickly', [fact('collocation', adverb.id, { text: 'move quickly', pattern: 'verb_adverb' })]),
-    ).toBe(false)
+  it('asks function words and adverbs for the usage a learner needs, each closable [spec: work/function-word-usage]', () => {
+    const typesOf = (pos: Pos, more: Fact[] = []) => {
+      const focus = sense(pos)
+      const gaps = gapsOf('each', [focus], [fact('sense', focus.id, { gloss: 'Every one of two or more.' }), ...more])
+      return { focus, types: gaps.map((gap) => gap.type) }
+    }
+    // Every adverb, not only a manner adverb, needs grammar and a collocation.
+    expect(typesOf('adverb').types).toEqual(expect.arrayContaining(['grammar', 'collocations', 'relations']))
+    expect(typesOf('determiner').types).toEqual(expect.arrayContaining(['grammar', 'collocations']))
+    expect(typesOf('pronoun').types).toEqual(expect.arrayContaining(['grammar', 'relations']))
+    expect(typesOf('pronoun').types).not.toContain('collocations')
+    expect(typesOf('preposition').types).toContain('collocations')
+    expect(typesOf('preposition').types).not.toContain('grammar')
+    expect(typesOf('conjunction').types).toContain('collocations')
+    expect(typesOf('interjection').types).not.toContain('collocations')
+    const determiner = sense('determiner')
+    const closed = gapsOf(
+      'each',
+      [determiner],
+      [
+        fact('sense', determiner.id, { gloss: 'Every one of two or more.' }),
+        fact('grammar', determiner.id, { agreement: ['singular_noun', 'of_plural'] }),
+        fact('gap_closure', determiner.id, { gap: 'collocations', reason: 'It combines freely.' }),
+      ],
+    ).map((gap) => gap.type)
+    expect(closed).not.toContain('grammar')
+    expect(closed).not.toContain('collocations')
   })
 
   it('needs two examples of each counted sense of an A1 or A2 entry [spec: work/core-examples]', () => {
@@ -780,18 +826,54 @@ describe('completeness rules for a learner dictionary', () => {
     expect(examples(null)).toBeUndefined()
   })
 
-  it('asks an A1 or A2 verb for a live phrase built on it [spec: work/phrases-gap]', () => {
+  it('asks an A1 or A2 verb for three phrases headed by it [spec: work/phrases-gap]', () => {
     const verb = sense('verb')
     const noun = sense('noun')
     const asVerb = [fact('sense', verb.id, { gloss: 'To hand over.' })]
-    const phrases = (lemma: string, levelRank: number | null, found: string[], senses = [verb], facts = asVerb) =>
-      gapsOf(lemma, senses, facts, { levelRank, phrases: found }).some((gap) => gap.type === 'phrases')
-    expect(phrases('give', 1, [])).toBe(true)
-    expect(phrases('give', 2, [])).toBe(true)
-    expect(phrases('give', 1, ['give up'])).toBe(false)
-    expect(phrases('give', 3, [])).toBe(false)
-    expect(phrases('give up', 1, [])).toBe(false)
-    expect(phrases('desk', 1, [], [noun], [fact('sense', noun.id, { gloss: 'A table.' })])).toBe(false)
+    const phrasesGap = (lemma: string, levelRank: number | null, found: string[], senses = [verb], facts = asVerb) =>
+      gapsOf(lemma, senses, facts, { levelRank, phrases: found }).find((gap) => gap.type === 'phrases')
+    expect(phrasesGap('give', 1, [])).toEqual({ type: 'phrases', have: [], need: 3 })
+    expect(phrasesGap('give', 2, ['give up'])).toEqual({ type: 'phrases', have: ['give up'], need: 3 })
+    expect(phrasesGap('give', 1, ['give in', 'give up'])).toEqual({
+      type: 'phrases',
+      have: ['give in', 'give up'],
+      need: 3,
+    })
+    expect(phrasesGap('give', 1, ['give in', 'give up', 'give way'])).toBeUndefined()
+    expect(phrasesGap('give', 3, [])).toBeUndefined()
+    expect(phrasesGap('give up', 1, [])).toBeUndefined()
+    expect(phrasesGap('desk', 1, [], [noun], [fact('sense', noun.id, { gloss: 'A table.' })])).toBeUndefined()
+    // Each missing phrase is a slot, and a closure fills them all.
+    const score = (found: string[], more: Fact[] = []) =>
+      assessEntry({
+        entry: { id: entryId, lemma: 'give' },
+        levelRank: 1,
+        phrases: found,
+        family: ['giver'],
+        senses: [verb],
+        facts: [fact('entry', entryId, {}), ...asVerb, ...more],
+        incoming: [],
+        flagged: new Set(),
+        neighbors,
+      }).completeness
+    expect(score(['give up'])).toBeGreaterThan(score([]))
+    const closure = fact('gap_closure', entryId, { gap: 'phrases', reason: 'Only give up and give in are common.' })
+    expect(score(['give in', 'give up'], [closure])).toBeGreaterThan(score(['give in', 'give up']))
+  })
+
+  it('asks an A1 or A2 single word for a word family member, filled by a linked derivative [spec: work/family-gap]', () => {
+    const adjective = sense('adjective')
+    const facts = [fact('sense', adjective.id, { gloss: 'Feeling pleasure.' })]
+    const familyGap = (lemma: string, levelRank: number | null, family: string[], more: Fact[] = []) =>
+      gapsOf(lemma, [adjective], [...facts, ...more], { levelRank, family }).find((gap) => gap.type === 'family')
+    expect(familyGap('happy', 1, [])).toEqual({ type: 'family' })
+    expect(familyGap('happy', 2, [])).toEqual({ type: 'family' })
+    expect(familyGap('happy', 1, ['happiness'])).toBeUndefined()
+    expect(familyGap('happy', 3, [])).toBeUndefined()
+    expect(familyGap('happy', null, [])).toBeUndefined()
+    expect(familyGap('good night', 1, [])).toBeUndefined()
+    const closure = fact('gap_closure', entryId, { gap: 'family', reason: 'A compound with no derivatives.' })
+    expect(familyGap('notebook', 1, [], [closure])).toBeUndefined()
   })
 
   it('closes exactly the gap a live closure names on its node, counting its slots as filled [spec: work/gap-closure]', () => {

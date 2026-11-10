@@ -87,8 +87,19 @@ export const gapSchema = z
         accents: z.array(accentSchema).meta({ description: 'The accents with no live strong pronunciation.' }),
       })
       .meta({ description: 'The entry needs a strong (citation) pronunciation in both us and uk.' }),
-    z.object({ type: z.literal('phrases') }).meta({
-      description: `An A1 or A2 single-word verb has no live multiword entry containing it as a word, such as a phrasal verb ("give up") or an idiom ("give way"). Create the phrase as its own entry (POST /manage/v1/entries) with its entry fact, a sense with its gloss, and the facts a phrase needs; the head's gap closes once the phrase entry is live. ${CLOSABLE}`,
+    z
+      .object({
+        type: z.literal('phrases'),
+        have: z.array(z.string()).meta({
+          description: 'The live phrases headed by the word that already count, in lemma order.',
+        }),
+        need: z.number().int().positive().meta({ description: 'How many headed phrases the verb needs: three.' }),
+      })
+      .meta({
+        description: `An A1 or A2 single-word verb has fewer than three live phrasal verbs or verb idioms headed by it: multiword entries whose first word is the verb and that have a live verb sense ("give up", "give way"). A phrase that only contains the word ("ordinary share") or is not a verb ("help desk") does not count. Create each phrase as its own entry (POST /manage/v1/entries) with its entry fact, a verb sense with its gloss, and the facts a phrase needs; the head's gap updates once the phrase entry and its verb sense are live. When fewer than three common phrasal verbs or verb idioms exist, create the ones that do and submit a gap_closure naming this gap whose reason names them; review fails it when a common one is missing.`,
+      }),
+    z.object({ type: z.literal('family') }).meta({
+      description: `An A1 or A2 single word has no live word-family member: no live entry has a live morphology fact with a base part whose lemma is this word. Find the common derivatives a learner's dictionary lists with it (happy: happiness, happily, unhappy; study: student, studious). For each, create the derivative's entry if it is missing (POST /manage/v1/entries with its entry fact and senses), then submit its morphology with the base part naming this word as its lemma ({"form": "study", "role": "base", "lemma": "study"}), or correct its published morphology to add the lemma. ${CLOSABLE}`,
     }),
     z
       .object({ type: z.literal('morphology') })
@@ -111,7 +122,7 @@ export const gapSchema = z
         ...senseGap,
         count: z.number().int().nonnegative().meta({
           description:
-            'Live relations the sense is in, as subject or object. The gap stays open below what its part of speech needs: two for nouns, verbs, and adjectives, one for adverbs; other parts of speech have no relations gap.',
+            'Live relations the sense is in, as subject or object. The gap stays open below what its part of speech needs: two for nouns, verbs, and adjectives, one for adverbs and pronouns; other parts of speech have no relations gap.',
         }),
         have: z.array(relationHaveSchema).meta({
           description:
@@ -130,18 +141,27 @@ export const gapSchema = z
       })
       .meta({ description: 'The sense has fewer live examples than it needs.' }),
     z.object({ type: z.literal('translations'), ...senseGap, language: z.literal('zh') }),
-    z.object({ type: z.literal('example_translations'), ...senseGap, language: z.literal('zh') }).meta({
-      description:
-        'No live example of the sense has a translation in the language: submit one with translations, or a correction of an example that adds it.',
-    }),
+    z
+      .object({
+        type: z.literal('example_translations'),
+        ...senseGap,
+        language: z.literal('zh'),
+        examples: z.array(factIdSchema).meta({
+          description: 'The live examples of the sense with no translation in the language.',
+        }),
+      })
+      .meta({
+        description:
+          'Every live example of the sense needs a translation in the language: submit a correction of each example named that adds it (supersedes_id set to the example).',
+      }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
       description: `The sense has no live topic fact. Nouns and verbs need one; other parts of speech have no topics gap. ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('grammar'), ...senseGap }).meta({
-      description: `A noun, verb, or adjective sense has no live grammar fact: countability for a noun, transitivity for a verb, and position, patterns, or prepositions for an adjective. ${CLOSABLE}`,
+      description: `A noun, verb, adjective, adverb, determiner, or pronoun sense has no live grammar fact: countability for a noun, transitivity for a verb, position, patterns, or prepositions for an adjective, the usual position (front, mid, end) or prepositions for an adverb, and agreement for a determiner or pronoun (singular_noun, plural_noun, uncountable_noun, of_plural, singular_verb, plural_verb). ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('collocations'), ...senseGap }).meta({
-      description: `A noun, verb, or adjective sense, or a manner or degree adverb sense (an -ly adverb, or one that compares), has no live collocation. ${CLOSABLE}`,
+      description: `A noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation: a combination native speakers commonly use with the word in this sense ("make a decision", "work hard", "hardly any", "filled with", "both ... and"). ${CLOSABLE}`,
     }),
   ])
   .meta({ id: 'Gap', description: 'Something the entry has too few live (pending or published) facts for.' })
@@ -151,9 +171,9 @@ export const weakFactSchema = z
   .object({
     id: factIdSchema,
     kind: factKindSchema,
-    reason: z.enum(['feedback', 'uncertain']).meta({
+    reason: z.enum(['feedback', 'uncertain', 'failed']).meta({
       description:
-        'feedback: an open or claimed feedback item targets the fact. uncertain: the fact published on an uncertain review verdict.',
+        'feedback: an open or claimed feedback item targets the fact. uncertain: the fact published on an uncertain review verdict. failed: the fact stays published although a review in place failed it (a gloss that lacks the region or register label its sense needs); read the review reason and submit a correction that supersedes it.',
     }),
   })
   .meta({

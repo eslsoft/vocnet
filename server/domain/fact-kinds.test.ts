@@ -9,8 +9,10 @@ import {
   isIrregularForm,
   isPeriphrastic,
   type Link,
+  type LinkEnd,
   linkAdmissionOf,
   MAX_COLLOCATIONS,
+  MAX_NARROWER,
   MAX_TOPICS_PER_SENSE,
   meaningKeyOf,
   orientOf,
@@ -18,6 +20,7 @@ import {
   RELATION_JEV_FLOORS,
   type ReviewPlan,
   type ReviewRequest,
+  referencesOf,
   rereviewOf,
   revalidatedBy,
   subjectTypeOf,
@@ -388,10 +391,15 @@ describe('fact-kind registry', () => {
     expect(question('formal')).toContain('meaning "Not divisible by two.", used in a formal register?')
     expect(question('formal')).toContain('A register that does not fit how the sense is used is wrong.')
     expect(question()).toContain('meaning "Not divisible by two."? ')
-    expect(question()).not.toContain('register')
+    expect(question()).not.toContain('A register that does not fit')
+    // An unlabelled sense used only in a register learner's dictionaries label fails.
+    expect(question()).toContain(
+      'If the sense is used only in a formal, literary, dated (old-fashioned), or ironic register, the answer is no, since no register is stated.',
+    )
     expect(rubric('formal')).toContain('noun sense meaning "Not divisible by two.", used in a formal register?')
     expect(rubric('formal')).toContain('or the sense is not used in this register.')
-    expect(rubric()).not.toContain('register')
+    expect(rubric()).not.toContain('used in a formal register')
+    expect(rubric()).toContain('"fine" meaning not good at all, as in "a fine friend you are", is ironic')
   })
 
   it('tells the LLM whether a pronunciation is the weak or the strong form, and of which part of speech [spec: facts/write-labels]', () => {
@@ -782,7 +790,45 @@ describe('grammar facts', () => {
     expect(admit({ patterns: ['two_objects', 'object_ing'] }, 'adjective')).toContain(
       'two_objects, object_ing are not patterns of an adjective',
     )
-    expect(factKinds.grammar.subjectPos).toEqual(['noun', 'verb', 'adjective'])
+    expect(factKinds.grammar.subjectPos).toEqual(['noun', 'verb', 'adjective', 'adverb', 'determiner', 'pronoun'])
+  })
+
+  it('takes the usual position of an adverb and the agreement of a determiner or pronoun [spec: facts/function-word-grammar]', () => {
+    expect(admit({ position: 'mid' }, 'adverb')).toBeNull()
+    expect(admit({ position: 'end', prepositions: ['from'] }, 'adverb')).toBeNull()
+    expect(admit({ position: 'both' }, 'adverb')).toBe(
+      'both is not a position of an adverb; its positions are front, mid, end.',
+    )
+    expect(admit({ position: 'mid' }, 'adjective')).toBe(
+      'mid is not a position of an adjective; its positions are attributive_only, predicative_only, both.',
+    )
+    expect(admit({ agreement: ['singular_noun', 'of_plural'] }, 'determiner')).toBeNull()
+    expect(admit({ agreement: ['singular_verb'] }, 'pronoun')).toBeNull()
+    expect(admit({ position: 'mid' }, 'determiner')).toBe(
+      'The grammar of a determiner sense names only agreement; remove position.',
+    )
+    expect(admit({ agreement: ['plural_noun'] }, 'noun')).toContain('remove agreement')
+    expect(contentKeyOf('grammar', { agreement: ['plural_noun', 'uncountable_noun'] })).toBe(
+      contentKeyOf('grammar', { agreement: ['uncountable_noun', 'plural_noun'] }),
+    )
+    const each = { lemma: 'each', pos: 'determiner' as const, gloss: 'Every one of two or more.', siblings: [] }
+    const plan = planReview(
+      'grammar',
+      { agreement: ['singular_noun', 'of_plural'] },
+      {
+        subject: each,
+        target: null,
+        topic: null,
+      },
+    )
+    expect(jevQuestion(plan, 'agreement_singular_noun')).toContain(
+      'Is it used before a singular countable noun ("each day", "either side")?',
+    )
+    expect(jevQuestion(plan, 'agreement_of_plural')).toContain('followed by "of" and a plural noun or pronoun')
+    const usually = { lemma: 'usually', pos: 'adverb' as const, gloss: 'In most cases.', siblings: [] }
+    const position = planReview('grammar', { position: 'mid' }, { subject: usually, target: null, topic: null })
+    expect(jevQuestion(position, 'position')).toContain('usually placed in mid position')
+    expect(llmPrompt(position)?.user).toContain('An adverb position claims where the adverb usually goes')
   })
 
   it('keys grammar by its properties in a stable order', () => {
@@ -915,6 +961,39 @@ describe('morphology facts', () => {
     expect(contentKeyOf('morphology', parts(['Spect', 'root', 'Look'], ['-ator', 'suffix']))).toBe(
       'root:spect|look+suffix:-ator',
     )
+  })
+
+  it('names the entry a base is, never the word itself, and judges the present-day base [spec: facts/morphology-base-lemma]', () => {
+    const student = {
+      parts: [
+        { form: 'study', role: 'base' as const, lemma: 'study' },
+        { form: '-ent', role: 'suffix' as const },
+      ],
+    }
+    expect(contentKeyOf('morphology', student)).toBe('base:study|=study+suffix:-ent')
+    expect(contentKeyOf('morphology', student)).not.toBe(
+      contentKeyOf('morphology', parts(['study', 'base'], ['-ent', 'suffix'])),
+    )
+    expect(referencesOf('morphology', student)).toEqual(['study'])
+    expect(referencesOf('morphology', parts(['spect', 'root', 'look'], ['-ator', 'suffix']))).toEqual([])
+    expect(referencesOf('example', { text: 'x' })).toEqual([])
+    expect(admissionOf('morphology', student, { lemma: 'student', senses: [] })).toBeNull()
+    expect(
+      admissionOf(
+        'morphology',
+        { parts: [{ form: 'study', role: 'base', lemma: 'study' }] },
+        { lemma: 'study', senses: [] },
+      ),
+    ).toBe(
+      'A base names the entry of another word the word is built on; "study" is this entry, so leave its lemma out.',
+    )
+    const plan = planReview('morphology', student, {
+      subject: { lemma: 'student', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
+      target: null,
+      topic: null,
+    })
+    expect(llmPrompt(plan)?.user).toContain('"study" (base word, the word "study") + "-ent" (suffix)')
+    expect(llmPrompt(plan)?.user).toContain('"student" is study + -ent (a student studies), not stud + -ent')
   })
 })
 
@@ -1075,9 +1154,12 @@ describe('sense list facts', () => {
     expect(rubric).toContain('among its main senses of this word for A1 to B1 learners')
     expect(rubric).toContain('a sense only an advanced or specialist dictionary lists does not')
     expect(rubric).toContain('duplicates, or one meaning split too finely')
-    expect(rubric).toContain('a plausible order from more to less common use')
+    expect(rubric).toContain('a plausible order from more to less common use for a learner')
+    expect(rubric).toContain('never one part of speech before another')
+    expect(rubric).toContain('"mobile" starts with the noun meaning a mobile phone, before any adjective sense')
     expect(rubric).toContain('never whether exact frequency can be verified')
-    expect(rubric).toContain('specialist, technical, archaic, and rare senses belong in extra')
+    expect(rubric).toContain('specialist, technical, legal, archaic, and rare senses')
+    expect(rubric).toContain('"stay" meaning to stop legal proceedings')
     expect(rubric).toContain('Never answer uncertain because the exact frequency order cannot be verified')
     expect(rubric).toContain('missing from both lists is never a failure')
     expect(rubric).toContain('each missing common sense with its part of speech')
@@ -1224,10 +1306,13 @@ describe('completeness write rules and rubrics', () => {
   })
 
   it('links only common, current senses [spec: facts/relation-ends]', () => {
-    const end = (sense: SenseId, rare = false, register: 'dated' | 'formal' | null = null) => ({
+    const end = (sense: SenseId, rare = false, register: 'dated' | 'formal' | null = null): LinkEnd => ({
       sense,
       rare,
       register,
+      lemma: `word${sense}`,
+      variants: [],
+      narrower: 0,
     })
     const [a, b] = [sense(1), sense(2)]
     const ends = (subject: ReturnType<typeof end>, other: ReturnType<typeof end>) => ({ subject, target: other })
@@ -1248,15 +1333,80 @@ describe('completeness write rules and rubrics', () => {
     expect(endsAdmissionOf('example', { text: 'x' }, ends(end(a, true), end(b, true)))).toBeNull()
   })
 
+  it('refuses a synonym between spellings of one word and a narrower term past the cap [spec: facts/relation-padding]', () => {
+    const [a, b] = [sense(1), sense(2)]
+    const practise: LinkEnd = {
+      sense: a,
+      rare: false,
+      register: null,
+      lemma: 'practise',
+      variants: ['practice'],
+      narrower: 0,
+    }
+    const practice: LinkEnd = { sense: b, rare: false, register: null, lemma: 'practice', variants: [], narrower: 0 }
+    const refusal = `"practise" and "practice" are spellings of one word: one entry records the other as a live spelling variant, so they are never synonyms. Relate a different word.`
+    expect(
+      endsAdmissionOf('relation', { type: 'synonym', target_sense_id: b }, { subject: practise, target: practice }),
+    ).toBe(refusal)
+    expect(
+      endsAdmissionOf('relation', { type: 'synonym', target_sense_id: a }, { subject: practice, target: practise }),
+    ).toBe(
+      `"practice" and "practise" are spellings of one word: one entry records the other as a live spelling variant, so they are never synonyms. Relate a different word.`,
+    )
+    expect(
+      endsAdmissionOf('relation', { type: 'hypernym', target_sense_id: b }, { subject: practise, target: practice }),
+    ).toBeNull()
+    const broad = { ...practice, lemma: 'kill', narrower: MAX_NARROWER - 1 }
+    const hypernym = { type: 'hypernym', target_sense_id: b } as const
+    expect(endsAdmissionOf('relation', hypernym, { subject: practise, target: broad })).toBeNull()
+    expect(
+      endsAdmissionOf('relation', hypernym, { subject: practise, target: { ...broad, narrower: MAX_NARROWER } }),
+    ).toBe(
+      `Sense ${b} already has 12 narrower terms (live hypernym relations to it), and a sense holds at most 12. Relate this sense to a more specific broader term instead.`,
+    )
+    // The cap counts narrower terms only: a synonym of a broad sense is admitted.
+    expect(
+      endsAdmissionOf(
+        'relation',
+        { type: 'synonym', target_sense_id: b },
+        {
+          subject: { ...practise, variants: [] },
+          target: { ...broad, narrower: MAX_NARROWER },
+        },
+      ),
+    ).toBeNull()
+    const kill = { lemma: 'kill', pos: 'verb' as const, gloss: 'To cause death.', siblings: [] }
+    const rubric = llmPrompt(
+      planReview(
+        'relation',
+        { type: 'synonym', target_sense_id: b },
+        {
+          subject: kill,
+          target: { lemma: 'waste', pos: 'verb', gloss: 'To kill.', siblings: [] },
+          topic: null,
+        },
+      ),
+    )?.user
+    expect(rubric).toContain('The target must be a word an A1 to B2 learner can use')
+    expect(rubric).toContain('in the same register')
+  })
+
   it('states a sense region and judges it, with dated as the old-fashioned label [spec: facts/sense-region]', () => {
     expect(contentKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.|british')
     expect(meaningKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.')
     const lorry = { lemma: 'lorry', pos: 'noun' as const, gloss: null, siblings: [] }
     const unlabelled = planReview('sense', { gloss: 'A large vehicle.' }, { subject: lorry, target: null, topic: null })
     expect(jevQuestion(unlabelled, 'lexical')).toContain(
-      'If the sense is used only in British English or only in American English, the answer is no, since no region is stated.',
+      'If the sense is used only in one variety of English (only British, only American, only Australian, only Scottish English, and so on), the answer is no, since no region is stated.',
     )
     expect(llmPrompt(unlabelled)?.user).toContain('fail such a sense without one')
+    expect(llmPrompt(unlabelled)?.user).toContain('"stay" meaning to live somewhere permanently is scottish')
+    const scottish = planReview(
+      'sense',
+      { gloss: 'To live somewhere permanently.', region: 'scottish' },
+      { subject: lorry, target: null, topic: null },
+    )
+    expect(jevQuestion(scottish, 'lexical')).toContain('in Scottish English only?')
     expect(llmPrompt(unlabelled)?.user).toContain('dated is the label they write as old-fashioned')
     const british = planReview(
       'sense',
@@ -1296,6 +1446,7 @@ describe('completeness write rules and rubrics', () => {
     expect(onSense).toContain("pass only if a learner's dictionary")
     expect(onSense).toContain('fail when the slot plainly applies to this word')
     expect(onSense).toContain('months, days, and numbers have no common collocations')
+    expect(onSense).toContain('a sense whose recorded relations are the only precise ones')
     const onEntry = llmPrompt(
       planReview(
         'gap_closure',
@@ -1304,6 +1455,18 @@ describe('completeness write rules and rubrics', () => {
       ),
     )?.user
     expect(onEntry).toContain('this slot of the English word "beware"?')
+    expect(onEntry).toContain('a verb with fewer than three common phrasal verbs or verb idioms')
+    expect(onEntry).toContain('"throw" has throw away, throw out, and throw up')
+    expect(subjectTypeOf('gap_closure', { gap: 'family', reason: 'r' })).toBe('entry')
+    const family = llmPrompt(
+      planReview(
+        'gap_closure',
+        { gap: 'family', reason: 'A compound with no common derivatives.' },
+        { subject: { ...breadEntry, lemma: 'notebook' }, target: null, topic: null },
+      ),
+    )?.user
+    expect(family).toContain('Slot: the word family: common derivatives built on the word')
+    expect(family).toContain('a word with no common derivatives ("notebook", "salad")')
     expect(onEntry).toContain("The word's senses: none recorded yet.")
     expect(
       planReview(

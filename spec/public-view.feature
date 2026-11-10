@@ -77,6 +77,12 @@ Feature: Public view
     When their word formation is read, and the formation of "happiness" is corrected to another base
     Then each lists the other in its family and links each part with a public entry, and after the correction neither lists the other
 
+  @public-view/family-lemma @domain
+  Scenario: A base is read by the entry it names
+    Given a word formation whose base part names an entry spelled otherwise
+    When its view record and public entry are built
+    Then its morpheme is the named lemma, so the words built on that entry share it as a family, and the part links that lemma only when it is public
+
   @public-view/language @api
   Scenario: The language comes from lang or Accept-Language and changes the ETag
     Given a published entry with a translation and a topic tag

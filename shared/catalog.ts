@@ -135,7 +135,8 @@ export type Variant = z.infer<typeof variantSchema>
 export const morphologyPartSchema = morphemeSchema
   .extend({
     lemma: z.string().optional().meta({
-      description: 'The public entry with exactly this spelling, when there is one: GET /v1/entries/{lemma}.',
+      description:
+        'The public entry the part is, when there is one: the entry a base names, else the entry spelled exactly like the part. GET /v1/entries/{lemma}.',
     }),
   })
   .meta({ id: 'MorphologyPart' })
@@ -144,7 +145,8 @@ export const publicMorphologySchema = z
   .object({
     parts: z.array(morphologyPartSchema),
     family: z.array(wordSummarySchema).meta({
-      description: 'Other public entries whose word formation shares a base or root with this one, in lemma order.',
+      description:
+        'Other public entries whose word formation shares a base or root with this one, a base by the entry it names, in lemma order: a base word lists the words built on it.',
     }),
     ...review,
   })

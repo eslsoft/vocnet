@@ -5,6 +5,7 @@ export type FactEvent =
   | 'reject'
   | 'reconfirm'
   | 'invalidate'
+  | 'flag'
   | 'release'
   | 'supersede'
   | 'retract'
@@ -17,6 +18,8 @@ export const factTransitions: Record<FactEvent, { from: readonly FactStatus[]; t
   // Revalidation re-reviews a published fact in place after the gloss it was judged against changed.
   reconfirm: { from: ['published'], to: 'published' },
   invalidate: { from: ['published'], to: 'rejected' },
+  // A failed revalidation of a fact whose rejection would hide what was judged against it.
+  flag: { from: ['published'], to: 'published' },
   release: { from: ['published'], to: 'published' },
   supersede: { from: ['published'], to: 'superseded' },
   retract: { from: ['pending', 'published'], to: 'retracted' },
@@ -35,7 +38,13 @@ export function isLive(status: FactStatus): boolean {
 /** What a review decides: a pending fact's first review, or a published fact's revalidation. */
 export type ReviewMode = 'review' | 'revalidation'
 
-export type ReviewEvent = 'publish' | 'reject' | 'reconfirm' | 'invalidate' | 'release'
+export type ReviewEvent = 'publish' | 'reject' | 'reconfirm' | 'invalidate' | 'flag' | 'release'
+
+/**
+ * What a failed revalidation does to a kind's fact: `invalidate` rejects it; `flag` keeps it
+ * published with the failing review, a weak fact its producer corrects.
+ */
+export type RevalidationFailure = 'invalidate' | 'flag'
 
 /** What a review found: the reviewer's verdict, or that the fact's context leaves nothing to judge. */
 export type ReviewFinding = Verdict | 'unreviewable'
@@ -46,9 +55,17 @@ const findingEvents: Record<ReviewMode, Record<ReviewFinding, ReviewEvent>> = {
   revalidation: { pass: 'reconfirm', uncertain: 'reconfirm', fail: 'invalidate', unreviewable: 'release' },
 }
 
-/** Publish with flaws, correct later: only a failing review rejects, and only it unpublishes. */
-export function decide(mode: ReviewMode, finding: ReviewFinding): ReviewEvent {
-  return findingEvents[mode][finding]
+/**
+ * Publish with flaws, correct later: only a failing review rejects, and only it unpublishes. A
+ * kind that flags a failed revalidation stays published instead, for a correction to replace.
+ */
+export function decide(
+  mode: ReviewMode,
+  finding: ReviewFinding,
+  onFailedRevalidation: RevalidationFailure = 'invalidate',
+): ReviewEvent {
+  const event = findingEvents[mode][finding]
+  return event === 'invalidate' && onFailedRevalidation === 'flag' ? 'flag' : event
 }
 
 /** The status each review event reports, and whether it records the new review on the fact. */
@@ -57,6 +74,7 @@ export const reviewEffects: Record<ReviewEvent, { outcome: 'published' | 'reject
   reject: { outcome: 'rejected', records: true },
   reconfirm: { outcome: 'published', records: true },
   invalidate: { outcome: 'rejected', records: true },
+  flag: { outcome: 'published', records: true },
   release: { outcome: 'published', records: false },
 }
 

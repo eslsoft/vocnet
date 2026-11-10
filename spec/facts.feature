@@ -507,7 +507,7 @@ Feature: Facts and review
   Scenario: Grammar fits the part of speech of its sense
     Given a grammar fact about a sense
     When it is submitted
-    Then a noun sense always takes its countability and optionally its number, article, noun patterns, and prepositions, a verb sense always its transitivity and optionally verb patterns and prepositions, and an adjective sense its position (attributive only, predicative only, or both), adjective patterns, or prepositions
+    Then a noun sense always takes its countability and optionally its number, article, noun patterns, and prepositions, a verb sense always its transitivity and optionally verb patterns and prepositions, an adjective sense its position (attributive only, predicative only, or both), adjective patterns, or prepositions, an adverb sense its usual position (front, mid, or end) or prepositions, and a determiner or pronoun sense always its agreement
     And grammar of any other part of speech is refused by the kind's parts of speech, and a property or pattern that does not fit is an invalid reference that names what to remove
 
   @facts/grammar-review @domain
@@ -531,6 +531,24 @@ Feature: Facts and review
     Then a multiword entry is an invalid reference
     And parts whose letters do not spell the word, allowing two changed letters where each pair of parts joins, are an invalid reference
     And an abbreviation or contraction such as "a.m.", "o'clock", or "Mrs" is one base part
+
+  @facts/function-word-grammar @domain
+  Scenario: Adverbs state their usual position and determiners and pronouns what they agree with
+    Given grammar of an adverb, a determiner, a pronoun, and an adjective
+    When it is submitted and its review is planned
+    Then an adverb takes front, mid, or end and never an adjective position, an adjective never an adverb position, a determiner or pronoun its agreement (singular_noun, plural_noun, uncountable_noun, of_plural, singular_verb, plural_verb) keyed in a stable order, and Jev and the rubric are asked about each claim
+
+  @facts/morphology-base-lemma @domain
+  Scenario: A base part names the entry it is
+    Given a word formation whose base names a lemma
+    When it is keyed, admitted, and its review is planned
+    Then the lemma is part of the content key and a reference the write must find live, a base naming the word itself is refused, and the rubric names the base's word and fails a base that is not the present-day word the meaning comes from ("student" is study + -ent, not stud + -ent)
+
+  @facts/morphology-base-lemma-usecase @usecase
+  Scenario: A base lemma must be a live entry
+    Given a derivative entry
+    When its formation names a base lemma with no entry, the base entry is created, the formation is retracted, and the base's entry fact is retracted
+    Then the first and last submissions are invalid references, and the base lists the derivative in its family only while the formation is live
 
   @facts/morphology-review @domain
   Scenario: A word formation is judged as a learner's dictionary analyses the word
@@ -592,7 +610,7 @@ Feature: Facts and review
     Given a sense list of an entry
     When its review is planned
     Then the LLM alone sees the lemma and every listed sense with its part of speech and gloss, numbered, common in order and then extra
-    And it passes only a list whose common senses cover every main sense a learner's dictionary lists for A1 to B1 learners, hold no duplicate or over-split meaning, run in a plausible order from more to less common, and whose extra senses are all rare, archaic, technical, or specialist, never failing a missing rare sense and never answering uncertain because exact frequency order cannot be verified
+    And it passes only a list whose common senses cover every main sense a learner's dictionary lists for A1 to B1 learners, hold no duplicate or over-split meaning, run in a plausible order from more to less common for a learner sense by sense across parts of speech with the sense a learner most needs first, and whose extra senses are all rare, archaic, technical, legal, specialist, or of a variety other than British or American English, never failing a missing rare sense and never answering uncertain because exact frequency order cannot be verified
     And its reason names each missing, duplicated, misordered, or misplaced sense
     And a list naming a sense without a live gloss is unreviewable
 
@@ -657,10 +675,34 @@ Feature: Facts and review
     Then it is an invalid reference that names the sense, and a directed relation from a rare sense is admitted
 
   @facts/sense-region @domain
-  Scenario: A sense states its region, and review enforces it
-    Given a sense with or without a region of british or american
+  Scenario: A sense states its region and register, and review enforces them
+    Given a sense with or without a region (british, american, australian, new_zealand, canadian, irish, scottish, south_african, indian) or a register
     When it is keyed and its review is planned
-    Then the region is a label of the content key, Jev answers no for a one-region sense with no region, and the rubric fails a BrE-only or AmE-only sense without its region and an old-fashioned sense without the dated register
+    Then the region is a label of the content key, Jev answers no for a sense used in only one variety with no region and for a formal, literary, dated, or ironic sense with no register, and the rubric fails such a sense and an old-fashioned sense without the dated register
+
+  @facts/sense-revalidation-flag @domain
+  Scenario: A gloss that fails its review in place is flagged, not rejected
+    Given the review outcome table and a kind that flags a failed revalidation
+    When a published fact of that kind fails its review in place
+    Then it stays published with the failing review recorded, while a first review still rejects and every other kind is still invalidated
+
+  @facts/relation-padding @domain
+  Scenario: Relations do not pad a sense
+    Given a synonym between two entries one of which records the other as a live spelling variant, a hypernym to a sense with twelve narrower terms, and a relation rubric
+    When they are submitted or reviewed
+    Then the synonym is refused in either direction, the thirteenth narrower term is refused naming the cap, a synonym of the broad sense is admitted, and the rubric fails a target an A1 to B2 learner cannot use or of another register
+
+  @facts/relation-padding-usecase @usecase
+  Scenario: The relation padding rules read the live store
+    Given entries with a recorded spelling variant and a sense that twelve live hypernyms point at
+    When a synonym between the spellings or a thirteenth hypernym is submitted
+    Then each is an invalid reference, and a synonym of the broad sense is created
+
+  @facts/relation-padding-api @api
+  Scenario: A synonym between spellings of one word is refused over HTTP
+    Given "practise" recording "practice" as its spelling variant, each with a verb sense
+    When a synonym between them is submitted
+    Then it is 422 naming the spellings
 
   @facts/zh-translation-format @domain
   Scenario: A zh text uses fullwidth punctuation and lists each alternative once
@@ -685,6 +727,7 @@ Feature: Facts and review
     Given a gap closure with its reason
     When its review is planned
     Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
+    And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, and a relations closure when the recorded relations are the only precise ones
 
   @facts/gap-closure-api @api
   Scenario: A reviewed closure closes its gap and shows in the review metadata

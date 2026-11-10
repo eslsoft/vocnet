@@ -227,7 +227,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
   if (!fact || !mode) return 'skipped'
 
   const { finding, verdict, context } = await judge(deps, fact)
-  const event = decide(mode, finding)
+  const event = decide(mode, finding, factKinds[fact.kind].revalidationFailure)
   const { outcome, records } = reviewEffects[event]
   const at = deps.clock.now().toISOString()
   const { from, to } = factTransitions[event]

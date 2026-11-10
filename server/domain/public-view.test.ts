@@ -253,6 +253,34 @@ describe('public read variants', () => {
     expect(shapeEntry({ ...bank, morphology: null }, links, none).morphology).toBeNull()
   })
 
+  it('reads a base by the entry it names, so the words built on one entry find each other [spec: public-view/family-lemma]', () => {
+    const review = bank.morphology?.review
+    if (!review) throw new Error('The fixture has no morphology.')
+    const student = {
+      ...bank,
+      morphology: {
+        parts: [
+          { form: 'stud', role: 'base' as const, lemma: 'study' },
+          { form: '-ent', role: 'suffix' as const },
+        ],
+        review,
+      },
+    }
+    expect(publicViewRecord(student).morphemes).toEqual([
+      { form: 'study', role: 'base' },
+      { form: '-ent', role: 'suffix' },
+    ])
+    const parts = (publicParts: string[]) => shapeEntry(student, { ...links, publicParts }, none).morphology?.parts
+    expect(parts(['study'])).toEqual([
+      { form: 'stud', role: 'base', lemma: 'study' },
+      { form: '-ent', role: 'suffix' },
+    ])
+    expect(parts([])).toEqual([
+      { form: 'stud', role: 'base' },
+      { form: '-ent', role: 'suffix' },
+    ])
+  })
+
   it('cuts one sense out with its part of speech and entry summary', () => {
     const detail = shapeSenseDetail(bank, 's3' as SenseId, { lang: 'zh', review: false })
     expect(detail).toMatchObject({

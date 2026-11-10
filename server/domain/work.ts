@@ -22,8 +22,16 @@ export interface EntryFacts {
   entry: { id: EntryId; lemma: string }
   /** The entry's learner level: 1 for A1 to 6 for C2 (`levelRank`); null without a CEFR level. */
   levelRank: number | null
-  /** The lemmas of the other live multiword entries that have this lemma as one of their words. */
+  /**
+   * The lemmas of the live multiword entries headed by this lemma: its first word, with a live verb
+   * sense (phrasal verbs and verb idioms). Empty for a phrase.
+   */
   phrases: readonly string[]
+  /**
+   * The lemmas of the other live entries with a live morphology fact whose base part names this
+   * lemma: its word family.
+   */
+  family: readonly string[]
   senses: readonly SenseNode[]
   /** Facts whose subject is the entry or one of its senses. */
   facts: Fact[]
@@ -35,7 +43,10 @@ export interface EntryFacts {
   neighbors: { senses: readonly SenseNode[]; facts: Fact[] }
 }
 
-type GapInput = Pick<EntryFacts, 'entry' | 'levelRank' | 'phrases' | 'senses' | 'facts' | 'incoming' | 'neighbors'>
+type GapInput = Pick<
+  EntryFacts,
+  'entry' | 'levelRank' | 'phrases' | 'family' | 'senses' | 'facts' | 'incoming' | 'neighbors'
+>
 
 export interface WorkLease {
   id: WorkLeaseId
@@ -65,6 +76,7 @@ type EntryGap = Extract<
       | 'forms'
       | 'pronunciation'
       | 'phrases'
+      | 'family'
       | 'morphology'
       | 'syllables'
       | 'form_pronunciations'
@@ -88,6 +100,7 @@ interface EntryState {
   /** The entry is at CEFR A1 or A2, where a learner needs more of each sense. */
   core: boolean
   phrases: readonly string[]
+  family: readonly string[]
   facts: readonly Fact[]
   live: Fact[]
   senses: SenseNode[]
@@ -209,6 +222,17 @@ const pronouncedAccents = ({ live }: EntryState) =>
 const needsPhrases = ({ core, lemma, counted }: EntryState) =>
   core && !isMultiword(lemma) && counted.some((sense) => sense.pos === 'verb')
 
+/**
+ * How many phrasal verbs or verb idioms headed by it an A1 or A2 verb needs: a learner's
+ * dictionary lists several for most common verbs (throw away, throw out, throw up).
+ */
+export const PHRASES_NEEDED = 3
+
+const phrasesNeeded = (state: EntryState) => (needsPhrases(state) ? PHRASES_NEEDED : 0)
+
+/** An A1 or A2 single word, whose common derivatives a learner's dictionary lists with it. */
+const needsFamily = ({ core, lemma }: EntryState) => core && !isMultiword(lemma)
+
 // A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
 // (about the entry or its senses) plus relations pointing at its senses, so a kind check scopes to the entry.
 /**
@@ -257,10 +281,17 @@ const entryGapRules: readonly EntryRule[] = [
     filled: (state) => pronouncedAccents(state).size,
   },
   {
-    gap: () => ({ type: 'phrases' }),
-    need: (state) => (needsPhrases(state) ? 1 : 0),
-    filled: ({ phrases }) => Math.min(phrases.length, 1),
+    gap: (state) => ({ type: 'phrases', have: [...state.phrases], need: phrasesNeeded(state) }),
+    need: phrasesNeeded,
+    filled: (state) => Math.min(state.phrases.length, phrasesNeeded(state)),
     closable: 'phrases',
+  },
+  // One live derivative linked by its morphology fills it; the producer adds the common ones.
+  {
+    gap: () => ({ type: 'family' }),
+    need: (state) => (needsFamily(state) ? 1 : 0),
+    filled: ({ family }) => Math.min(family.length, 1),
+    closable: 'family',
   },
   // Word formation analyses one word; a phrase's parts are its own entries.
   {
@@ -312,7 +343,7 @@ export const RELATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   verb: 2,
   adjective: 2,
   adverb: 1,
-  pronoun: 0,
+  pronoun: 1,
   determiner: 0,
   preposition: 0,
   conjunction: 0,
@@ -341,15 +372,16 @@ export const TOPICS_NEEDED: Readonly<Record<Pos, number>> = {
 
 /**
  * How many grammar facts a sense needs. Countability is what a learner most needs of a noun,
- * transitivity of a verb, and position, patterns, or prepositions of an adjective.
+ * transitivity of a verb, position, patterns, or prepositions of an adjective, the usual position
+ * of an adverb, and what a determiner or pronoun agrees with ("each" + a singular noun).
  */
 export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
   noun: 1,
   verb: 1,
   adjective: 1,
-  adverb: 0,
-  pronoun: 0,
-  determiner: 0,
+  adverb: 1,
+  pronoun: 1,
+  determiner: 1,
   preposition: 0,
   conjunction: 0,
   interjection: 0,
@@ -357,18 +389,19 @@ export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
 }
 
 /**
- * How many collocations a sense needs: content words that combine with other words in set ways.
- * An adverb needs one only when it is a manner or degree adverb (`isMannerAdverb`).
+ * How many collocations a sense needs: content words, adverbs, and the function words a learner
+ * meets in set combinations ("hardly any", "filled with", "both ... and"). A pronoun or
+ * interjection combines freely.
  */
 export const COLLOCATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   noun: 1,
   verb: 1,
   adjective: 1,
-  adverb: 0,
+  adverb: 1,
   pronoun: 0,
-  determiner: 0,
-  preposition: 0,
-  conjunction: 0,
+  determiner: 1,
+  preposition: 1,
+  conjunction: 1,
   interjection: 0,
   auxiliary: 0,
 }
@@ -391,21 +424,22 @@ function linksVisible(fact: FactOf<'relation'>, senseId: SenseId, visible: Reado
   return fact.objectId === senseId && visible.has(fact.subjectId)
 }
 
-/**
- * A manner or degree adverb, which combines in set ways ("work hard", "drive carefully"): a single
- * word ending in -ly, or one that compares with -er and -est. Other adverbs (here, then, ago) have
- * no collocations gap.
- */
-const isMannerAdverb = (state: EntryState) =>
-  (!isMultiword(state.lemma) && state.lemma.endsWith('ly')) || compares(state, 'adverb')
-
 /** Examples a counted sense needs: two at CEFR A1 or A2, where a learner meets the word first, else one. */
 const examplesNeeded = ({ core }: EntryState) => (core ? 2 : 1)
+
+/**
+ * The sense's live examples that no live correction supersedes: a pending correction that adds a
+ * translation stands for its original.
+ */
+function currentExamples(live: readonly Fact[], senseId: SenseId): FactOf<'example'>[] {
+  const examples = live.filter(isKind('example')).filter((fact) => fact.subjectId === senseId)
+  return examples.filter((fact) => !examples.some((other) => other.supersedesId === fact.id))
+}
 
 interface SenseRule {
   need: (sense: SenseNode, state: EntryState) => number
   /** `visible`: the neighbor senses a relation may link to and count. */
-  fills: (fact: Fact, senseId: SenseId, visible: ReadonlySet<string>) => boolean
+  fills: (fact: Fact, senseId: SenseId, visible: ReadonlySet<string>, state: EntryState) => boolean
   gap: (senseId: SenseId, filling: Fact[], state: EntryState) => SenseGap
   /** The gap a gap_closure fact on the sense closes, filling every slot of the rule; absent when none may. */
   closable?: ClosableGap
@@ -439,12 +473,23 @@ const senseGapRules: readonly SenseRule[] = [
       fact.kind === 'translation' && fact.subjectId === senseId && fact.payload.language === 'zh',
     gap: (senseId) => ({ type: 'translations', sense_id: senseId, language: 'zh' }),
   },
-  // An example a learner can read in their language; one translated example closes it.
+  // Every example a learner reads needs its translation: one slot per current live example, and
+  // one per example the sense still needs, which comes with its translation.
   {
-    need: () => 1,
-    fills: (fact, senseId) =>
-      fact.kind === 'example' && fact.subjectId === senseId && Boolean(fact.payload.translations?.zh),
-    gap: (senseId) => ({ type: 'example_translations', sense_id: senseId, language: 'zh' }),
+    need: (sense, state) => Math.max(examplesNeeded(state), currentExamples(state.live, sense.id).length),
+    fills: (fact, senseId, _visible, state) =>
+      fact.kind === 'example' &&
+      fact.subjectId === senseId &&
+      Boolean(fact.payload.translations?.zh) &&
+      currentExamples(state.live, senseId).some((example) => example.id === fact.id),
+    gap: (senseId, _filling, state) => ({
+      type: 'example_translations',
+      sense_id: senseId,
+      language: 'zh',
+      examples: currentExamples(state.live, senseId)
+        .filter((example) => !example.payload.translations?.zh)
+        .map((example) => example.id),
+    }),
   },
   {
     need: (sense) => TOPICS_NEEDED[sense.pos],
@@ -459,7 +504,7 @@ const senseGapRules: readonly SenseRule[] = [
     closable: 'grammar',
   },
   {
-    need: (sense, state) => (sense.pos === 'adverb' && isMannerAdverb(state) ? 1 : COLLOCATIONS_NEEDED[sense.pos]),
+    need: (sense) => COLLOCATIONS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'collocation' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'collocations', sense_id: senseId }),
     closable: 'collocations',
@@ -500,6 +545,7 @@ function openGaps(snapshot: GapInput): {
     lemma: snapshot.entry.lemma,
     core: snapshot.levelRank !== null && snapshot.levelRank <= 2,
     phrases: snapshot.phrases,
+    family: snapshot.family,
     facts: snapshot.facts,
     live,
     senses,
@@ -513,7 +559,7 @@ function openGaps(snapshot: GapInput): {
   const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(state), 0)
   const perSense = counted.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {
-      const filling = live.filter((fact) => rule.fills(fact, sense.id, visible))
+      const filling = live.filter((fact) => rule.fills(fact, sense.id, visible, state))
       const missing = closedBy(live, rule.closable, sense.id) ? 0 : rule.need(sense, state) - filling.length
       return missing > 0 ? [{ gap: rule.gap(sense.id, filling, state), missing }] : []
     }),
@@ -535,8 +581,9 @@ export function entryGaps(snapshot: GapInput): Gap[] {
 }
 
 /**
- * The entry's live facts worth replacing: one that open feedback targets, or one published on an
- * uncertain verdict. Relations count on the entry their subject belongs to.
+ * The entry's live facts worth replacing: one that open feedback targets, one published on an
+ * uncertain verdict, or one a review in place failed that stays published (a gloss, which a
+ * correction replaces). Relations count on the entry their subject belongs to.
  */
 export function weakFacts(snapshot: Pick<EntryFacts, 'facts' | 'flagged'>): WeakFact[] {
   return snapshot.facts
@@ -545,6 +592,9 @@ export function weakFacts(snapshot: Pick<EntryFacts, 'facts' | 'flagged'>): Weak
       if (snapshot.flagged.has(fact.id)) return [{ id: fact.id, kind: fact.kind, reason: 'feedback' }]
       if (fact.status === 'published' && fact.review?.verdict === 'uncertain') {
         return [{ id: fact.id, kind: fact.kind, reason: 'uncertain' }]
+      }
+      if (fact.status === 'published' && fact.review?.verdict === 'fail') {
+        return [{ id: fact.id, kind: fact.kind, reason: 'failed' }]
       }
       return []
     })

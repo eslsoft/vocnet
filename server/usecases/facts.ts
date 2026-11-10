@@ -9,6 +9,7 @@ import {
   type LinkEnd,
   linkAdmissionOf,
   orientOf,
+  referencesOf,
   type SenseEnd,
   type SubjectType,
   type SubjectTypeOf,
@@ -19,6 +20,7 @@ import {
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import { mayActOn, type Principal, principalRef } from '@server/domain/principal'
 import { currentSenseList } from '@server/domain/sense-list'
+import type { Lemma } from '@server/domain/term'
 import { isLeaf } from '@server/domain/topics'
 import type {
   EntryId,
@@ -151,6 +153,7 @@ export async function submitFact(
   if (existing) return { fact: existing, created: false }
 
   if (spec.admit) await assertAdmitted(kind, payload, subject)
+  await assertReferencesLive(deps, referencesOf(kind, payload))
   const factId = deps.ids.fact()
   if (targetSense) {
     const link = {
@@ -203,18 +206,44 @@ async function assertAdmitted<K extends FactKind>(
   if (refusal) throw new InvalidReferenceError(refusal)
 }
 
-/** What a link's end rule sees of a sense: whether its entry's current list puts it in extra, and its gloss's register. */
+/** Each lemma the payload names is a live entry's; a read before the write, as `admit` is. */
+async function assertReferencesLive(deps: SubjectDeps, lemmas: readonly string[]): Promise<void> {
+  for (const lemma of lemmas) {
+    const entry = await deps.nodes.findEntryByLemma(lemma as Lemma)
+    const live = entry && (await deps.facts.listLive('entry', entry.id)).length > 0
+    if (!live) {
+      throw new InvalidReferenceError(
+        `${JSON.stringify(lemma)} is not the lemma of a live entry; a base names an entry exactly as it is spelled. Create that entry first, or leave the lemma out.`,
+      )
+    }
+  }
+}
+
+/**
+ * What a link's end rule sees of a sense: whether its entry's current list puts it in extra, its
+ * gloss's register, its entry's lemma and live spelling variants, and its live narrower terms.
+ */
 async function linkEnd(deps: SubjectDeps, { sense, entry }: SenseEnd): Promise<LinkEnd> {
-  const [glosses, lists] = await Promise.all([
+  const [node, glosses, lists, forms, narrower] = await Promise.all([
+    deps.nodes.findEntry(entry),
     deps.nodes.listLiveGlosses(entry),
     deps.facts.listLive('sense_list', entry),
+    deps.facts.listLive('form', entry),
+    deps.facts.countLiveWithKey('relation', contentKeyOf('relation', { type: 'hypernym', target_sense_id: sense })),
   ])
+  if (!node) throw new Error(`Sense ${sense} belongs to entry ${entry}, which does not exist.`)
   const [first, ...rest] = glosses.filter((gloss) => gloss.sense.id === sense).map(({ fact }) => fact)
   const gloss = first && currentGloss([first, ...rest])
   return {
     sense,
     rare: currentSenseList(lists)?.payload.extra.includes(sense) ?? false,
     register: gloss?.payload.register ?? null,
+    lemma: node.lemma,
+    variants: forms
+      .filter(isKind('form'))
+      .filter((fact) => fact.payload.type === 'variant')
+      .map((fact) => fact.payload.form),
+    narrower,
   }
 }
 
@@ -345,6 +374,7 @@ export async function rereviewFact(
     const reviving = !isLive(fact.status)
     if (reviving && factKinds[fact.kind].admit)
       await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact))
+    if (reviving) await assertReferencesLive(deps, referencesOf(fact.kind, fact.payload))
     if (reviving && fact.objectId) {
       const link = await storedLink(deps, fact, fact.objectId)
       await assertEndsAdmitted(deps, fact.kind, link)

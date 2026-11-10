@@ -45,8 +45,11 @@ export interface NodeRepo {
   /** Inserts unless the lemma exists; returns the stored entry either way. */
   insertEntry(entry: EntryNode): Promise<EntryNode>
   findSense(id: SenseId): Promise<SenseWithLemma | null>
-  /** The sense of this entry and POS whose live `sense` fact has one of these content keys. */
-  findSenseByGloss(entryId: EntryId, pos: Pos, contentKeys: string[]): Promise<{ sense: SenseNode; fact: Fact } | null>
+  /**
+   * The sense of this entry and POS whose live `sense` fact means this gloss: its meaning key is
+   * `meaningKey`, whatever its labels.
+   */
+  findSenseByGloss(entryId: EntryId, pos: Pos, meaningKey: string): Promise<{ sense: SenseNode; fact: Fact } | null>
   /**
    * Atomically creates a sense together with its defining fact, unless the entry already has a
    * sense of this POS with the same creation key; returns the stored sense and its defining fact,
@@ -121,6 +124,8 @@ export interface FactRepo {
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
   /** The live facts of a kind about a subject, oldest first. */
   listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
+  /** How many live facts of this kind, about any subject, have this content key. */
+  countLiveWithKey(kind: FactKind, contentKey: string): Promise<number>
   /** The live facts of a linking kind whose subject and target senses belong one to each of the two entries. */
   listLiveLinks<K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]): Promise<Link<K>[]>
   /** The live (pending or published) correction that supersedes this fact, if any. */

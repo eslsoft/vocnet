@@ -1,13 +1,14 @@
 import { entries, facts, feedback, senses, worklist } from '@server/db/schema'
 import type { FactOf } from '@server/domain/fact'
-import type { SenseWithLemma } from '@server/domain/nodes'
+import { meaningKeyOf } from '@server/domain/fact-kinds'
+import type { EntryNode, SenseWithLemma } from '@server/domain/nodes'
 import { isMultiword, type Lemma } from '@server/domain/term'
 import type { NodeRepo, PageRequest } from '@server/usecases/ports'
 import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
 import { and, asc, count, desc, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, factSelectValues, liveStatus, page, toEntry, toFact, toSense } from './rows'
-import { insertWorklistRow, touchWorkOf } from './work'
+import { insertWorklistRow, touchLinkedWorkOfFact, touchWorkOf } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
 const entryCursor = z.object({ lemma: z.string() })
@@ -29,6 +30,47 @@ const toSenseWithLemma = (row: Parameters<typeof toSense>[0] & { lemma: string }
 /** Lemma range scan on the unique lemma index. */
 function lemmaStartsWith(prefix: string) {
   return prefix ? and(gte(entries.lemma, prefix), lt(entries.lemma, `${prefix}${PREFIX_END}`)) : undefined
+}
+
+/**
+ * A phrase headed by the lemma: its first word is the lemma. The phrase sorts between the lemma
+ * and a space and the lemma and "!", the character after the space, a range scan on the unique
+ * lemma index. A phrase heads nothing.
+ */
+const headedBy = (lemma: string) =>
+  isMultiword(lemma) ? sql`0` : and(gt(entries.lemma, `${lemma} `), lt(entries.lemma, `${lemma}!`))
+
+/** A sense of the entry in the outer query that is a verb and has a live gloss. */
+function liveVerbSense(db: Db) {
+  return db
+    .select({ one: sql`1` })
+    .from(senses)
+    .innerJoin(facts, and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id), liveStatus))
+    .where(and(eq(senses.entryId, entries.id), eq(senses.pos, 'verb')))
+}
+
+/**
+ * The other live entries with a live morphology fact that names this lemma as a base. The JSON
+ * text holds the lemma as a quoted string wherever a part names it, so `instr` reads only the
+ * candidates' parts.
+ */
+function familyOf(db: Db, entry: EntryNode) {
+  const quoted = JSON.stringify(entry.lemma)
+  return db
+    .selectDistinct({ lemma: entries.lemma })
+    .from(facts)
+    .innerJoin(entries, eq(entries.id, facts.subjectId))
+    .where(
+      and(
+        eq(facts.kind, 'morphology'),
+        liveStatus,
+        ne(entries.id, entry.id),
+        sql`instr(${facts.payload}, ${quoted}) > 0`,
+        sql`exists (select 1 from json_each(${facts.payload}, '$.parts') where json_extract(value, '$.role') = 'base' and json_extract(value, '$.lemma') = ${entry.lemma})`,
+        liveEntryOf(entries.id, db),
+      ),
+    )
+    .orderBy(asc(entries.lemma))
 }
 
 const noFacts = (): Record<FactStatus, number> =>
@@ -133,22 +175,29 @@ export function createNodeRepo(db: Db): NodeRepo {
       return row ? toSenseWithLemma(row) : null
     },
 
-    async findSenseByGloss(entryId, pos, contentKeys) {
-      const row = await db
+    async findSenseByGloss(entryId, pos, meaningKey) {
+      // A labelled key extends the meaning key with `|…`; `}` is the character after `|`, so the
+      // range stays on the content index. The meaning key of each candidate decides.
+      const rows = await db
         .select({ sense: senses, fact: facts })
         .from(senses)
         .innerJoin(
           facts,
           and(
             eq(facts.kind, 'sense'),
-            inArray(facts.contentKey, contentKeys),
+            or(
+              eq(facts.contentKey, meaningKey),
+              and(gt(facts.contentKey, `${meaningKey}|`), lt(facts.contentKey, `${meaningKey}}`)),
+            ),
             eq(facts.subjectId, senses.id),
             liveStatus,
           ),
         )
         .where(and(eq(senses.entryId, entryId), eq(senses.pos, pos)))
-        .get()
-      return row ? { sense: toSense(row.sense), fact: toFact(row.fact) } : null
+      const match = rows
+        .map((row) => ({ sense: toSense(row.sense), fact: toFact(row.fact) }))
+        .find(({ fact }) => fact.kind === 'sense' && meaningKeyOf('sense', fact.payload) === meaningKey)
+      return match ?? null
     },
 
     async insertSenseWithFact(sense, fact, creationKey) {
@@ -162,6 +211,7 @@ export function createNodeRepo(db: Db): NodeRepo {
           .onConflictDoNothing(),
         db.insert(facts).select(db.select(values).from(senses).where(eq(senses.id, sense.id)) as never),
         touchWorkOf(db, [sense.entryId]),
+        touchLinkedWorkOfFact(db, fact.id),
       ])
       const stored = await db
         .select({ sense: senses, fact: facts })
@@ -203,12 +253,8 @@ export function createNodeRepo(db: Db): NodeRepo {
         .select({ id: facts.id })
         .from(facts)
         .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own)))
-      // A phrase has this lemma as a word when the lemma, spaced on both sides, is in the spaced phrase.
-      const hasWord = isMultiword(entry.lemma)
-        ? sql`0`
-        : sql`instr(' ' || ${entries.lemma} || ' ', ${` ${entry.lemma} `}) > 0`
-      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts, flagged, phrases] = await db.batch(
-        [
+      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts, flagged, phrases, family] =
+        await db.batch([
           db
             .select({ seed: worklist.seed, levelRank: worklist.levelRank })
             .from(worklist)
@@ -253,10 +299,10 @@ export function createNodeRepo(db: Db): NodeRepo {
           db
             .select({ lemma: entries.lemma })
             .from(entries)
-            .where(and(hasWord, sql`instr(${entries.lemma}, ' ') > 0`, liveEntryOf(entries.id, db)))
+            .where(and(headedBy(entry.lemma), liveEntryOf(entries.id, db), exists(liveVerbSense(db))))
             .orderBy(asc(entries.lemma)),
-        ],
-      )
+          familyOf(db, entry),
+        ])
 
       if (!work[0]) throw new Error(`Entry ${entry.id} has no worklist row.`)
       return {
@@ -264,6 +310,7 @@ export function createNodeRepo(db: Db): NodeRepo {
         seed: work[0].seed,
         levelRank: work[0].levelRank,
         phrases: phrases.map((row) => row.lemma),
+        family: family.map((row) => row.lemma),
         senses: ownSenses.map(toSenseWithLemma),
         facts: subjectFacts.map(toFact),
         incoming: incoming.map(toFact),

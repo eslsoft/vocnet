@@ -54,15 +54,27 @@ export type FormType = z.infer<typeof formTypeSchema>
 export const accentSchema = z.enum(['us', 'uk']).meta({ id: 'Accent' })
 
 export const registerSchema = z
-  .enum(['informal', 'slang', 'taboo', 'literary', 'formal', 'dated', 'offensive', 'technical'])
+  .enum(['informal', 'slang', 'taboo', 'literary', 'formal', 'dated', 'offensive', 'technical', 'ironic'])
   .meta({ id: 'Register', description: 'Usage label of a sense outside neutral standard English.' })
 export type Register = z.infer<typeof registerSchema>
 
-export const regionSchema = z.enum(['british', 'american']).meta({
-  id: 'Region',
-  description:
-    'The variety of English a sense is used in, when only one uses it: british for a BrE-only sense ("lorry", "queue up"), american for an AmE-only one ("truck", "sidewalk"). Absent means both.',
-})
+export const regionSchema = z
+  .enum([
+    'british',
+    'american',
+    'australian',
+    'new_zealand',
+    'canadian',
+    'irish',
+    'scottish',
+    'south_african',
+    'indian',
+  ])
+  .meta({
+    id: 'Region',
+    description:
+      'The variety of English a sense is used in, when only one uses it: british for a BrE-only sense ("lorry", "queue up"), american for an AmE-only one ("truck", "sidewalk"), australian for an Australian-only one ("arvo"), scottish for a Scottish-only one ("stay" meaning to live somewhere). Absent means every variety.',
+  })
 export type Region = z.infer<typeof regionSchema>
 
 export const strengthSchema = z.enum(['strong', 'weak']).meta({
@@ -85,6 +97,21 @@ export const adjectivePositionSchema = z.enum(['attributive_only', 'predicative_
   description:
     'attributive_only: only before a noun ("the main reason"). predicative_only: only after a linking verb ("the baby is asleep"). both: before a noun and after a linking verb ("a big house", "the house is big"). Absent means not stated.',
 })
+
+export const adverbPositionSchema = z.enum(['front', 'mid', 'end']).meta({
+  id: 'AdverbPosition',
+  description:
+    'Where the adverb usually goes in a clause: front, before the subject ("Suddenly, the lights went out"); mid, between the subject and the main verb or after the first auxiliary or be ("I usually walk", "She has just left"); end, after the verb and its object ("He works hard").',
+})
+
+export const agreementSchema = z
+  .enum(['singular_noun', 'plural_noun', 'uncountable_noun', 'of_plural', 'singular_verb', 'plural_verb'])
+  .meta({
+    id: 'Agreement',
+    description:
+      'What a determiner or pronoun goes with. singular_noun: before a singular countable noun ("each day", "either side"). plural_noun: before a plural noun ("many books", "any questions"). uncountable_noun: before an uncountable noun ("much time", "any milk"). of_plural: followed by of and a plural noun or pronoun ("each of the boys", "either of them"). singular_verb: takes a singular verb as subject ("everybody is", "each has"). plural_verb: takes a plural verb as subject ("both are", "few were").',
+  })
+export type Agreement = z.infer<typeof agreementSchema>
 
 export const nounNumberSchema = z.enum(['singular_only', 'plural_only']).meta({
   id: 'NounNumber',
@@ -280,7 +307,13 @@ export const grammarPayloadSchema = z.strictObject({
   number: nounNumberSchema.optional().meta({ description: 'Noun senses only.' }),
   article: nounArticleSchema.optional().meta({ description: 'Noun senses only.' }),
   transitivity: transitivitySchema.optional().meta({ description: 'Verb senses only, and required for them.' }),
-  position: adjectivePositionSchema.optional().meta({ description: 'Adjective senses only.' }),
+  position: z.union([adjectivePositionSchema, adverbPositionSchema]).optional().meta({
+    description:
+      'Adjective senses: attributive_only, predicative_only, or both. Adverb senses: the usual position, front, mid, or end.',
+  }),
+  agreement: z.array(agreementSchema).min(1).max(4).optional().meta({
+    description: 'Determiner and pronoun senses only, and required for them: what the word goes with.',
+  }),
   patterns: z
     .array(grammarPatternSchema)
     .min(1)
@@ -300,6 +333,10 @@ export const morphemeSchema = z
     meaning: text(60)
       .optional()
       .meta({ description: 'A short meaning, mainly for a Latin or Greek root: "look" for spect.' }),
+    lemma: text(100).optional().meta({
+      description:
+        'Base parts only: the lemma of the live entry this base is, exactly as the entry spells it ("study" for the base of "student"), so the base word lists this one in its word family. Never the word itself.',
+    }),
   })
   .meta({ id: 'Morpheme' })
 export type Morpheme = z.infer<typeof morphemeSchema>
@@ -326,10 +363,13 @@ const MORPHEME_SPELLING: Record<MorphemeRole, string> = {
 }
 const isStem = (role: MorphemeRole) => role === 'base' || role === 'root'
 
-/** Parts read prefixes, then at least one base or root, then suffixes. */
-function morphologyIssues(parts: ReadonlyArray<{ form: string; role: MorphemeRole }>): string[] {
+/** Parts read prefixes, then at least one base or root, then suffixes; only a base names a lemma. */
+function morphologyIssues(parts: ReadonlyArray<{ form: string; role: MorphemeRole; lemma?: string }>): string[] {
   const misspelt = parts.filter(({ form, role }) => !MORPHEME_FORMS[role].test(form))
   const issues = misspelt.map(({ form, role }) => `"${form}" is not a ${role}: ${MORPHEME_SPELLING[role]}.`)
+  for (const { form, role } of parts.filter((part) => part.lemma !== undefined && part.role !== 'base')) {
+    issues.push(`"${form}" is a ${role}; only a base part names the lemma of the entry it is.`)
+  }
   const roles = parts.map((part) => part.role)
   const stems = roles.flatMap((role, at) => (isStem(role) ? [at] : []))
   const [firstStem] = stems
@@ -386,14 +426,14 @@ const formPayloadSchema = z.strictObject({
  * never closed.
  */
 export const closableGapSchema = z
-  .enum(['forms', 'phrases', 'relations', 'topics', 'grammar', 'collocations'])
+  .enum(['forms', 'phrases', 'family', 'relations', 'topics', 'grammar', 'collocations'])
   .meta({ id: 'ClosableGap', description: 'A gap type a gap_closure fact may close.' })
 export type ClosableGap = z.infer<typeof closableGapSchema>
 
 const gapClosurePayloadSchema = z.strictObject({
   gap: closableGapSchema.meta({
     description:
-      'The gap this closes: forms or phrases on the entry; relations, topics, grammar, or collocations on a sense.',
+      'The gap this closes: forms, phrases, or family on the entry; relations, topics, grammar, or collocations on a sense.',
   }),
   reason: text(300).meta({
     description:
@@ -500,6 +540,10 @@ const submitPayloadSchemas = {
     .refine(
       ({ prepositions }) => !prepositions || new Set(prepositions).size === prepositions.length,
       'Each grammar preposition is listed once.',
+    )
+    .refine(
+      ({ agreement }) => !agreement || new Set(agreement).size === agreement.length,
+      'Each grammar agreement is listed once.',
     ),
   morphology: morphologyPayloadSchema.superRefine(({ parts }, ctx) => {
     for (const message of morphologyIssues(parts)) ctx.addIssue({ code: 'custom', message })

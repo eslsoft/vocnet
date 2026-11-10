@@ -140,7 +140,9 @@ describe('labels', () => {
 
   it('rejects labels outside their vocabularies [spec: facts/write-labels]', () => {
     expect(gloss('Semen.', { register: 'vulgar' })).toHaveLength(1)
-    expect(gloss('A large goods vehicle.', { region: 'australian' })).toHaveLength(1)
+    expect(gloss('A large goods vehicle.', { region: 'welsh' })).toHaveLength(1)
+    expect(gloss('An afternoon.', { region: 'australian', register: 'informal' })).toEqual([])
+    expect(gloss('Not good at all.', { register: 'ironic' })).toEqual([])
     expect(ipa('tə', { strength: 'reduced' })).toHaveLength(1)
     expect(
       issues({ kind: 'form', subject_id: entry, payload: { form: 'would', type: 'past', pos: 'modal' } }),
