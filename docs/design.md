@@ -86,7 +86,7 @@ needs a new column.
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
 | `example`       | sense   | many        | `{ text }`                                               | LLM            |
 | `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)                        | LLM            |
-| `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | Jev, then LLM  |
+| `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | LLM            |
 | `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns? }` | Jev, then LLM  |
 | `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | Jev, then LLM  |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM            |
@@ -165,19 +165,21 @@ enforced by the submission use case and never by name:
   fact lifecycle), so a correction and its original never both publish.
 
 The content key is the topic id, so resubmitting a tag returns the live fact.
-Jev is asked one question (`topic`):
-
-> Does a learner of English commonly meet or need "*lemma*" (*pos*), meaning
-> "*gloss*", when dealing with or talking about the topic "*topic name*" (in
-> the category "*category name*")? Judge this sense only, not other senses of
-> the word. A loose association, or a word that only turns up incidentally in
-> this topic as it does in many others, does not count.
-
-The LLM second opinion passes a sense a learner would commonly meet or need
-when dealing with or talking about the topic, whether the topic is a scene (at
-the hospital) or a subject area (emotions, colours and shapes). It fails a loose
-association, a topic that fits a different sense of the word, or a topic in
-which the word only turns up incidentally. It sees the
+A tag means "a learner meets or needs this sense mainly in this topic", not
+"the sense can turn up there", so the LLM alone reviews a topic fact. Jev
+passed loose associations: an audit of 100 published topic tags found about 15
+loose ones ("full" in hotels, "stop" in driving, "event" in news) while review
+had rejected 1.5% of all topic facts. The rubric passes only when the topic is
+where a learner characteristically meets or needs the sense: the sense is core
+vocabulary of the topic, a word a learner studying the topic should learn,
+whether the topic is a scene (at the hospital) or a subject area (emotions,
+colours and shapes). It fails a general-purpose sense usable in many scenes
+that merely can appear in this one, a loose association, or a topic that fits
+a different sense of the word. It lists audited passes ("oven" in household
+appliances, "credit" in banking, "angry" in emotions) and fails ("full" in
+hotels, "stop" in driving, "event" in news) as examples, and says to fail
+when in doubt; an uncertain verdict still publishes as weak, as in every
+chain. It sees the
 entry's other senses. A topic fact is judged against the gloss, so a gloss
 correction that changes its meaning revalidates it like examples,
 translations, and relations.
@@ -480,7 +482,7 @@ but only to choose the message.
   settles only `pass`, and the LLM settles every verdict. A plan asks its
   kind's whole chain, or the LLM alone for a subject Jev misjudges; the LLM
   ends every chain, so a plan may skip the reviewers before it, never it. When Jev fails or is
-  unsure about an entry, sense, form, relation, or topic, the LLM judges the same
+  unsure about an entry, sense, form, or relation, the LLM judges the same
   claim with a kind-specific rubric and decides: pass or uncertain publishes
   with the LLM's verdict and confidence, fail rejects. The rubric gets the
   lemma, the part of speech, and the entry's other senses; for a relation it

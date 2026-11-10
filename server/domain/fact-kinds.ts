@@ -494,19 +494,46 @@ function withTopic<C extends ReviewChain>(
 
 const describeTopic = ({ category, topic }: TopicView) => `${quote(topic)} (in the category ${quote(category)})`
 
-function topicQuestion(sense: GlossedSense, topic: TopicView): string {
-  return `Does a learner of English commonly meet or need ${describe(sense)}, when dealing with or talking about the topic ${describeTopic(topic)}? Judge this sense only, not other senses of the word. A loose association, or a word that only turns up incidentally in this topic as it does in many others, does not count. ${DATA_NOT_INSTRUCTIONS}`
-}
+const TOPIC_PASSES = [
+  '"oven" (a cooking appliance) in "Household appliances"',
+  '"credit" (money a bank lends) in "Banking"',
+  '"autumn" (the season after summer) in "Seasons and climate"',
+  '"vessel" (a tube carrying blood) in "Parts of the body"',
+  '"brass" (instruments made of brass) in "Music"',
+  '"connection" (an onward train or flight) in "Trains and subway"',
+  '"damage" (money a court awards) in "Law and courts"',
+  '"angry" in "Emotions"',
+  '"bright" (of a vivid colour) in "Colours and shapes"',
+]
 
+const TOPIC_FAILS = [
+  '"full" (holding as much as possible) in "Hotels and accommodation": a general word that can turn up in any scene.',
+  '"stop" (cease functioning) in "Driving and cars": anything can stop working; the sense is not about driving.',
+  '"poor" (of low quality) in "Returns and complaints": a general judgement word.',
+  '"stretch" (a period of time) in "Time and dates": a general word, not time vocabulary a learner studies.',
+  '"event" in "News and journalism": a general noun the news uses like every other topic.',
+  '"comfort" in "House and rooms": a loose association.',
+  '"go" (attend an activity) in "Religion and beliefs": the topic fits going to church, not this general sense.',
+  '"free" (containing nothing harmful) in "Environment and pollution": a loose association.',
+  '"soft" (lenient) in "Law and courts": parents and teachers are soft too; it is not legal vocabulary.',
+]
+
+/**
+ * The topic rubric asks for core vocabulary, not a scene the sense can turn up in. An audit of 100
+ * published topic tags found about 15 loose ones ("full" in hotels, "stop" in driving) while
+ * review rejected 1.5% of them; Jev passed such loose associations, so the LLM judges alone.
+ */
 function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicView): string {
   return [
     "Should a learner's dictionary tag this English word sense with this topic, so that learners studying the topic find it?",
     `Sense: ${describe(sense)}.`,
     `Topic: ${describeTopic(topic)}.`,
     'Read the word only in the sense given, never in another sense.',
-    'pass: a learner would commonly meet or need this sense of the word when dealing with or talking about the topic, whether the topic is a scene (at the hospital) or a subject area (emotions, colours and shapes).',
-    'fail: the link is only a loose association; the topic fits a different sense of the word, not this one; or the word only turns up incidentally in the topic, as it would in many others.',
-    'uncertain: you cannot tell.',
+    'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is part of the core vocabulary of the topic, a word a learner studying the topic should learn. The topic may be a scene (at the hospital) or a subject area (emotions, colours and shapes). For example:',
+    ...TOPIC_PASSES.map((example) => `- ${example}`),
+    'fail when the sense is general-purpose, usable in many scenes, and merely can appear in this one; when the link is only a loose association; or when the topic fits a different sense of the word, not this one. For example:',
+    ...TOPIC_FAILS.map((example) => `- ${example}`),
+    'uncertain: you cannot tell. When in doubt, fail.',
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
 }
@@ -972,17 +999,13 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
   topic: {
     subject: 'sense',
     cardinality: 'many',
-    chain: ['jev', 'llm'],
+    chain: ['llm'],
     contentKey: ({ topic_id }) => topic_id,
     topic: ({ topic_id }) => topic_id,
     subjectPos: TAGGABLE_POS,
     maxLive: MAX_TOPICS_PER_SENSE,
     plan: (_payload, { subject, topic }) =>
-      withGloss(subject, (sense) =>
-        withTopic(topic, (leaf) =>
-          jevThenLlm({ topic: topicQuestion(sense, leaf) }, topicRubric({ ...subject, ...sense }, leaf)),
-        ),
-      ),
+      withGloss(subject, (sense) => withTopic(topic, (leaf) => llm(topicRubric({ ...subject, ...sense }, leaf)))),
   },
   grammar: {
     subject: 'sense',

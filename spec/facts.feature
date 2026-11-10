@@ -30,7 +30,7 @@ Feature: Facts and review
   @facts/reviewer-routing @domain
   Scenario: Each kind has one reviewer chain
     Given the fact-kind registry
-    Then entry, sense, form, relation, topic, grammar, and morphology go to Jev and then the LLM, and pronunciation, example, translation, collocation, and sense list go to the LLM
+    Then entry, sense, form, relation, grammar, and morphology go to Jev and then the LLM, and pronunciation, example, translation, topic, collocation, and sense list go to the LLM
     And a plan may skip straight to the LLM, which ends every chain, but never past it
 
   @facts/second-opinion @domain
@@ -520,7 +520,7 @@ Feature: Facts and review
   Scenario: A sense list is never failed for the senses of a differently capitalized entry
     Given a sense list of an entry, and the other live entries spelled like its lemma but for letter case
     When its review is planned
-    Then the rubric judges only the exact spelling, says a sense of a differently capitalized spelling or a proper name belongs to that other entry and is never missing, and names each such entry as separate
+    Then the rubric judges only the exact spelling, says a sense of a differently capitalized spelling or of a proper name spelled otherwise belongs to that other entry and is never missing, and names each such entry as separate
 
   @facts/sense-list-capitalization-api @api
   Scenario: The review of a sense list loads the entries that differ only in letter case
