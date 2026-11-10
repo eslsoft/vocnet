@@ -1,20 +1,19 @@
 import {
   accentSchema,
-  type ClosableGap,
   type EntryId,
   type FactId,
+  type FactStatus,
   type FormType,
   type Pos,
-  relationTypeSchema,
   type SenseId,
 } from '@shared/facts'
-import type { Gap, WeakFact, WorkLeaseId } from '@shared/work'
+import type { Gap, WeakFact, WorkItemId, WorkLeaseId, WorkType } from '@shared/work'
 import { type Fact, type FactOf, isKind } from './fact'
 import { formMeaning, isIrregularForm, isPeriphrastic } from './fact-kinds'
 import { isLive } from './fact-lifecycle'
 import type { SenseNode } from './nodes'
 import type { PrincipalRef } from './principal'
-import { currentSenseList, listsExactly, rejectedAttempts } from './sense-list'
+import { currentSenseList, listsExactly } from './sense-list'
 import { isMultiword } from './term'
 
 /** What the work rules read about an entry: its senses, its facts in every status, and its open feedback. */
@@ -50,11 +49,19 @@ type GapInput = Pick<
   'entry' | 'levelRank' | 'coreVerb' | 'phrases' | 'family' | 'senses' | 'facts' | 'incoming' | 'neighbors'
 >
 
+/** Which fact statuses a computation counts: the live ones, or only the published (settled) ones. */
+type Counts = (status: FactStatus) => boolean
+const isSettled: Counts = (status) => status === 'published'
+
+/** A claim of up to `limit` items of one type, held by one principal until it completes or expires. */
 export interface WorkLease {
   id: WorkLeaseId
-  entryId: EntryId
   holder: PrincipalRef
-  /** When this lease's claim was made, which starts the pass. */
+  type: WorkType
+  /** The entries of the items it leased, rescored when it completes. */
+  entryIds: readonly EntryId[]
+  /** The items it leased; one closed by the pass's own facts is gone by the time it completes. */
+  itemIds: readonly WorkItemId[]
   claimedAt: string
   expiresAt: string
 }
@@ -64,7 +71,11 @@ export function leaseExpiry(now: Date, leaseSeconds: number): string {
 }
 
 /** Only the holder completes its lease, and only before it expires. */
-export function completeDecision(lease: WorkLease, who: PrincipalRef, now: Date): 'allowed' | 'not_holder' | 'expired' {
+export function completeDecision(
+  lease: Pick<WorkLease, 'holder' | 'expiresAt'>,
+  who: PrincipalRef,
+  now: Date,
+): 'allowed' | 'not_holder' | 'expired' {
   if (lease.holder !== who) return 'not_holder'
   return Date.parse(lease.expiresAt) <= now.getTime() ? 'expired' : 'allowed'
 }
@@ -84,8 +95,7 @@ type EntryGap = Extract<
       | 'form_pronunciations'
   }
 >
-type SenseGap = Exclude<Gap, EntryGap>
-type RelationGap = Extract<Gap, { type: 'relations' }>
+type SenseGap = Exclude<Gap, EntryGap | WeakFact>
 
 /** A live inflection with the part of speech it fills: its label, else the meaning the entry shows it under. */
 interface Inflection {
@@ -94,8 +104,9 @@ interface Inflection {
 }
 
 /**
- * What the gap rules read: the entry's facts in every status, the live ones, the senses whose
- * gloss is live, the counted ones among them, and the entry's live inflections.
+ * What the gap rules read: the entry's facts in every status, the counted ones (live, or only
+ * published for the settled view), the senses whose gloss is counted, the counted ones among them,
+ * and the entry's counted inflections.
  */
 interface EntryState {
   lemma: string
@@ -110,6 +121,8 @@ interface EntryState {
   senses: SenseNode[]
   counted: SenseNode[]
   inflections: Inflection[]
+  /** The neighbor senses a relation may link to and count. */
+  visible: ReadonlySet<string>
 }
 
 const counting =
@@ -124,20 +137,12 @@ function currentOf<K extends Fact['kind']>(live: readonly Fact[], kind: K): Fact
 }
 
 /**
- * How many sense lists a producer may submit for the same senses. Each rejection changes the
- * `sense_list` gap, so the pass that follows reads the review's reason; once this many are
- * rejected, another rejection leaves the open work as the claim found it and the entry stalls.
+ * The inventory gap: senses while there are none, else a list naming exactly the senses. A
+ * rejected list leaves the gap as it was, so each rejected pass counts an attempt of its item.
  */
-export const MAX_SENSE_LIST_ATTEMPTS = 3
-
-/** The inventory gap: senses while there are none, else a list, counting the attempts rejected so far. */
-function inventoryGap({ facts, senses }: EntryState): EntryGap {
+function inventoryGap({ senses }: EntryState): EntryGap {
   if (senses.length === 0) return { type: 'senses' }
-  const attempts = rejectedAttempts(
-    facts,
-    senses.map((sense) => sense.id),
-  )
-  return { type: 'sense_list', rejected: Math.min(attempts, MAX_SENSE_LIST_ATTEMPTS - 1) }
+  return { type: 'sense_list', senses: senses.map((sense) => sense.id) }
 }
 
 /**
@@ -242,8 +247,6 @@ const phrasesNeeded = (state: EntryState) => (needsPhrases(state) ? PHRASES_NEED
 /** An A1 or A2 single word, whose common derivatives a learner's dictionary lists with it. */
 const needsFamily = ({ core, lemma }: EntryState) => core && !isMultiword(lemma)
 
-// A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
-// (about the entry or its senses) plus relations pointing at its senses, so a kind check scopes to the entry.
 /**
  * The entry's live irregular inflections, once per form type, spelling, and part of speech, each
  * with whether a live fact of it gives a pronunciation: a correction that adds one sits beside
@@ -265,9 +268,11 @@ interface EntryRule {
   need: (state: EntryState) => number
   filled: (state: EntryState) => number
   /** The gap a gap_closure fact on the entry closes, filling every slot of the rule; absent when none may. */
-  closable?: ClosableGap
+  closable?: 'forms' | 'phrases' | 'family'
 }
 
+// A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
+// (about the entry or its senses) plus relations pointing at its senses, so a kind check scopes to the entry.
 const entryGapRules: readonly EntryRule[] = [
   {
     gap: inventoryGap,
@@ -325,43 +330,20 @@ const entryGapRules: readonly EntryRule[] = [
   },
 ]
 
-const directions = ['outgoing', 'incoming'] as const
+/**
+ * The parts of speech whose senses name a kind of thing or action, so a learner files them under
+ * an everyday category ("dog": animal; "stroll": walk). Other parts of speech have no category gap.
+ */
+export const CATEGORY_POS: readonly Pos[] = ['noun', 'verb']
 
-/** The distinct (type, direction) pairs of a sense's relations, in a stable order. */
-function relationsHave(relations: FactOf<'relation'>[], senseId: SenseId): RelationGap['have'] {
-  return relationTypeSchema.options.flatMap((type) =>
-    directions
-      .filter((direction) =>
-        relations.some(
-          (fact) => fact.payload.type === type && (fact.subjectId === senseId) === (direction === 'outgoing'),
-        ),
-      )
-      .map((direction) => ({ type, direction })),
-  )
-}
+/** The parts of speech of the things a learner's dictionary names main parts for ("bird": beak, wing). */
+export const PARTS_POS: readonly Pos[] = ['noun']
 
 /**
- * How many live relations a sense of each part of speech needs. The relation types (synonym,
- * antonym, hypernym, part_of) fit content words: on saturated seed entries, the share of senses
- * with two published relations was noun 90%, adjective 75%, verb 72%, adverb 35%, and 11-28% for
- * function words. A sense with one neighbor is still a leaf of the network; two make it a junction.
- * A pronoun is a function word: a personal or relative pronoun's sense ("we", "who") has no
- * synonym or antonym in a learner's dictionary, and its relations closures kept failing over loose
- * candidates ("I" for the royal "we"). Zero means the sense has no relations gap and its relations
- * count no slot.
+ * The parts of speech that have synonyms and antonyms a learner uses. A pronoun or another function
+ * word has none in a learner's dictionary: "I" for the royal "we" kept failing review.
  */
-export const RELATIONS_NEEDED: Readonly<Record<Pos, number>> = {
-  noun: 2,
-  verb: 2,
-  adjective: 2,
-  adverb: 1,
-  pronoun: 0,
-  determiner: 0,
-  preposition: 0,
-  conjunction: 0,
-  interjection: 0,
-  auxiliary: 0,
-}
+export const SYNONYMS_POS: readonly Pos[] = ['noun', 'verb', 'adjective', 'adverb']
 
 /**
  * How many live topic facts a sense of each part of speech needs. Nouns and verbs name the things
@@ -420,21 +402,27 @@ export const COLLOCATIONS_NEEDED: Readonly<Record<Pos, number>> = {
 
 /**
  * The senses at the other end of the entry's relations that can show: their gloss and their
- * entry's fact are live. A relation to any other sense is hidden from the public view, so it fills
- * nothing.
+ * entry's fact are counted. A relation to any other sense is hidden from the public view, so it
+ * fills nothing.
  */
-function visibleNeighbors({ senses, facts }: GapInput['neighbors']): ReadonlySet<string> {
-  const live = new Set(facts.filter((fact) => isLive(fact.status)).map((fact) => `${fact.kind}:${fact.subjectId}`))
+function visibleNeighbors({ senses, facts }: GapInput['neighbors'], counts: Counts): ReadonlySet<string> {
+  const shown = new Set(facts.filter((fact) => counts(fact.status)).map((fact) => `${fact.kind}:${fact.subjectId}`))
   return new Set(
-    senses.filter((sense) => live.has(`sense:${sense.id}`) && live.has(`entry:${sense.entryId}`)).map(({ id }) => id),
+    senses.filter((sense) => shown.has(`sense:${sense.id}`) && shown.has(`entry:${sense.entryId}`)).map(({ id }) => id),
   )
 }
 
-/** The relation links this sense to a sense that can show. */
-function linksVisible(fact: FactOf<'relation'>, senseId: SenseId, visible: ReadonlySet<string>): boolean {
-  if (fact.subjectId === senseId) return visible.has(fact.payload.target_sense_id)
-  return fact.objectId === senseId && visible.has(fact.subjectId)
-}
+/** The relation makes this sense a kind of a sense that can show, in the everyday layer. */
+const everydayCategoryOf = (fact: Fact, senseId: SenseId, visible: ReadonlySet<string>) =>
+  fact.kind === 'relation' &&
+  fact.payload.type === 'hypernym' &&
+  fact.payload.domain === undefined &&
+  fact.subjectId === senseId &&
+  visible.has(fact.payload.target_sense_id)
+
+/** The sense has an everyday category, so it names a kind of thing whose parts a learner may need. */
+const hasEverydayCategory = (sense: SenseNode, state: EntryState) =>
+  state.live.some((fact) => everydayCategoryOf(fact, sense.id, state.visible))
 
 /** Examples a counted sense needs: two at CEFR A1 or A2, where a learner meets the word first, else one. */
 const examplesNeeded = ({ core }: EntryState) => (core ? 2 : 1)
@@ -450,24 +438,44 @@ function currentExamples(live: readonly Fact[], senseId: SenseId): FactOf<'examp
 
 interface SenseRule {
   need: (sense: SenseNode, state: EntryState) => number
-  /** `visible`: the neighbor senses a relation may link to and count. */
-  fills: (fact: Fact, senseId: SenseId, visible: ReadonlySet<string>, state: EntryState) => boolean
+  fills: (fact: Fact, senseId: SenseId, state: EntryState) => boolean
   gap: (senseId: SenseId, filling: Fact[], state: EntryState) => SenseGap
   /** The gap a gap_closure fact on the sense closes, filling every slot of the rule; absent when none may. */
-  closable?: ClosableGap
+  closable?: 'category' | 'parts' | 'synonyms' | 'topics' | 'grammar' | 'collocations'
 }
 
+const onePer = (poses: readonly Pos[]) => (sense: SenseNode) => (poses.includes(sense.pos) ? 1 : 0)
+
 const senseGapRules: readonly SenseRule[] = [
+  // One everyday category opens the slot's work; a word may have several, and the producer
+  // submits every one a learner uses. Narrower terms are never asked of the category word.
   {
-    need: (sense) => RELATIONS_NEEDED[sense.pos],
-    fills: (fact, senseId, visible) => fact.kind === 'relation' && linksVisible(fact, senseId, visible),
-    gap: (senseId, filling) => ({
-      type: 'relations',
-      sense_id: senseId,
-      count: filling.length,
-      have: relationsHave(filling.filter(isKind('relation')), senseId),
-    }),
-    closable: 'relations',
+    need: onePer(CATEGORY_POS),
+    fills: (fact, senseId, state) => everydayCategoryOf(fact, senseId, state.visible),
+    gap: (senseId) => ({ type: 'category', sense_id: senseId }),
+    closable: 'category',
+  },
+  // A thing placed in an everyday category may have main parts a learner needs; a sense whose
+  // category is closed as general or abstract has none to ask for.
+  {
+    need: (sense, state) => (PARTS_POS.includes(sense.pos) && hasEverydayCategory(sense, state) ? 1 : 0),
+    fills: (fact, senseId, state) =>
+      fact.kind === 'relation' &&
+      fact.payload.type === 'part_of' &&
+      fact.objectId === senseId &&
+      state.visible.has(fact.subjectId),
+    gap: (senseId) => ({ type: 'parts', sense_id: senseId }),
+    closable: 'parts',
+  },
+  {
+    need: onePer(SYNONYMS_POS),
+    fills: (fact, senseId, state) =>
+      fact.kind === 'relation' &&
+      (fact.payload.type === 'synonym' || fact.payload.type === 'antonym') &&
+      ((fact.subjectId === senseId && state.visible.has(fact.payload.target_sense_id)) ||
+        (fact.objectId === senseId && state.visible.has(fact.subjectId))),
+    gap: (senseId) => ({ type: 'synonyms', sense_id: senseId }),
+    closable: 'synonyms',
   },
   {
     need: (_sense, state) => examplesNeeded(state),
@@ -489,7 +497,7 @@ const senseGapRules: readonly SenseRule[] = [
   // one per example the sense still needs, which comes with its translation.
   {
     need: (sense, state) => Math.max(examplesNeeded(state), currentExamples(state.live, sense.id).length),
-    fills: (fact, senseId, _visible, state) =>
+    fills: (fact, senseId, state) =>
       fact.kind === 'example' &&
       fact.subjectId === senseId &&
       Boolean(fact.payload.translations?.zh) &&
@@ -525,7 +533,7 @@ const senseGapRules: readonly SenseRule[] = [
 
 interface OpenGap {
   gap: Gap
-  /** How many more live facts the gap needs to close. */
+  /** How many more counted facts the gap needs to close. */
   missing: number
 }
 
@@ -538,19 +546,24 @@ function countedSenses(live: readonly Fact[], senses: readonly SenseNode[]): Sen
   return senses.filter((sense) => !extra.has(sense.id))
 }
 
-/** A live gap_closure fact on the node closes the gap: its slots count as filled. */
-const closedBy = (live: readonly Fact[], gap: ClosableGap | undefined, subjectId: string) =>
+/** A counted gap_closure fact on the node closes the gap: its slots count as filled. */
+const closedBy = (live: readonly Fact[], gap: string | undefined, subjectId: string) =>
   gap !== undefined &&
   live.filter(isKind('gap_closure')).some((fact) => fact.subjectId === subjectId && fact.payload.gap === gap)
 
-/** The open gaps, and how many slots the rules count for the entry: each entry rule and, per counted sense, each need. */
-function openGaps(snapshot: GapInput): {
+/**
+ * The open gaps, and how many slots the rules count for the entry: each entry rule and, per counted
+ * sense, each need. `counts` picks the facts that fill: the live ones, or only the published ones.
+ */
+function openGaps(
+  snapshot: GapInput,
+  counts: Counts,
+): {
   open: OpenGap[]
   slots: number
 } {
-  const live = [...snapshot.facts, ...snapshot.incoming].filter((fact) => isLive(fact.status))
+  const live = [...snapshot.facts, ...snapshot.incoming].filter((fact) => counts(fact.status))
   const glossed = new Set(live.flatMap((fact) => (fact.kind === 'sense' ? [fact.subjectId] : [])))
-  const visible = visibleNeighbors(snapshot.neighbors)
   const senses = snapshot.senses.filter((sense) => glossed.has(sense.id))
   const counted = countedSenses(live, senses)
   const state: EntryState = {
@@ -564,6 +577,7 @@ function openGaps(snapshot: GapInput): {
     senses,
     counted,
     inflections: inflectionsOf(live, counted),
+    visible: visibleNeighbors(snapshot.neighbors, counts),
   }
   const entry = entryGapRules.flatMap((rule) => {
     const missing = closedBy(live, rule.closable, snapshot.entry.id) ? 0 : rule.need(state) - rule.filled(state)
@@ -572,7 +586,7 @@ function openGaps(snapshot: GapInput): {
   const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(state), 0)
   const perSense = counted.flatMap((sense) =>
     senseGapRules.flatMap((rule) => {
-      const filling = live.filter((fact) => rule.fills(fact, sense.id, visible, state))
+      const filling = live.filter((fact) => rule.fills(fact, sense.id, state))
       const missing = closedBy(live, rule.closable, sense.id) ? 0 : rule.need(sense, state) - filling.length
       return missing > 0 ? [{ gap: rule.gap(sense.id, filling, state), missing }] : []
     }),
@@ -590,109 +604,112 @@ function openGaps(snapshot: GapInput): {
  * other end has a live gloss and a live entry fact.
  */
 export function entryGaps(snapshot: GapInput): Gap[] {
-  return openGaps(snapshot).open.map(({ gap }) => gap)
+  return openGaps(snapshot, isLive).open.map(({ gap }) => gap)
 }
 
 /**
- * The entry's live facts worth replacing: one that open feedback targets, one published on an
- * uncertain verdict, or one a review in place failed that stays published (a gloss, which a
- * correction replaces). Relations count on the entry their subject belongs to.
+ * The entry's facts worth replacing, among those `counts` counts: one that open feedback targets,
+ * one published on an uncertain verdict, or one a review in place failed that stays published (a
+ * gloss, which a correction replaces). A fact a counted correction supersedes is being replaced,
+ * so it is not listed. Relations count on the entry their subject belongs to.
  */
-export function weakFacts(snapshot: Pick<EntryFacts, 'facts' | 'flagged'>): WeakFact[] {
-  return snapshot.facts
-    .filter((fact) => isLive(fact.status))
+export function weakFacts(snapshot: Pick<EntryFacts, 'facts' | 'flagged'>, counts: Counts = isLive): WeakFact[] {
+  const counted = snapshot.facts.filter((fact) => counts(fact.status))
+  const replaced = new Set(counted.flatMap((fact) => (fact.supersedesId ? [fact.supersedesId] : [])))
+  return counted
+    .filter((fact) => !replaced.has(fact.id))
     .flatMap((fact): WeakFact[] => {
-      if (snapshot.flagged.has(fact.id)) return [{ id: fact.id, kind: fact.kind, reason: 'feedback' }]
-      if (fact.status === 'published' && fact.review?.verdict === 'uncertain') {
-        return [{ id: fact.id, kind: fact.kind, reason: 'uncertain' }]
-      }
-      if (fact.status === 'published' && fact.review?.verdict === 'fail') {
-        return [{ id: fact.id, kind: fact.kind, reason: 'failed' }]
-      }
+      const weak = (reason: WeakFact['reason']): WeakFact[] => [
+        { type: 'weak_fact', fact_id: fact.id, kind: fact.kind, reason },
+      ]
+      if (snapshot.flagged.has(fact.id)) return weak('feedback')
+      if (fact.status === 'published' && fact.review?.verdict === 'uncertain') return weak('uncertain')
+      if (fact.status === 'published' && fact.review?.verdict === 'fail') return weak('failed')
       return []
     })
 }
 
+/** The node a piece of open work is about: its sense, its weak fact, or else the entry. */
+export function subjectOf(gap: Gap, entryId: EntryId): string {
+  if ('sense_id' in gap) return gap.sense_id
+  if ('fact_id' in gap) return gap.fact_id
+  return entryId
+}
+
+/**
+ * One piece of open work as the rescore finds it. `awaiting`: a pending fact changes it, so it is
+ * judged once that fact's review settles; `gap` is then the live view of it, or the settled one
+ * when the pending facts close it.
+ */
+export interface OpenWork {
+  gap: Gap
+  subjectId: string
+  awaiting: boolean
+}
+
 export interface EntryAssessment {
-  gaps: Gap[]
-  weakFacts: WeakFact[]
+  /** Every piece of open work: each gap and each weak fact. */
+  work: OpenWork[]
   /** Filled slots over the slots the gap rules count, 0..1; 1 exactly when there are no gaps. */
   completeness: number
   /** One minus weak facts over live facts about the entry, 0..1; 1 exactly when no fact is weak. */
   quality: number
-  /**
-   * Identifies the open work: the gaps, and each weak fact by kind, subject, and reason. A weak
-   * fact replaced by a correction that is weak again keeps its key, so trading one for the other
-   * is not a change.
-   */
-  openWork: string
-  /**
-   * A fact about the entry or its senses, or a relation into one of its senses, is pending. Its
-   * review can still change the open work, so a pass now would race the verdict.
-   */
-  awaitingReview: boolean
 }
 
-/** Scores the entry from its live facts. Completeness derives from `entryGaps`, so the gap rules stay the one source. */
+const keyOf = (type: WorkType, subjectId: string) => `${type}|${subjectId}`
+
+/** A gap as text with its keys sorted, so two gaps compare equal exactly when they say the same. */
+export const gapText = (gap: Gap | undefined): string =>
+  JSON.stringify(gap ?? null, (_key, value: unknown) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)))
+      : value,
+  )
+
+/**
+ * The open work of an entry, keyed by type and node, as the facts `counts` counts give it. An
+ * entry whose entry fact is not counted has none.
+ */
+function openWorkOf(snapshot: EntryFacts, counts: Counts): Map<string, Gap> {
+  const entryLive = snapshot.facts.some(
+    (fact) => fact.kind === 'entry' && fact.subjectId === snapshot.entry.id && counts(fact.status),
+  )
+  if (!entryLive) return new Map()
+  const gaps: Gap[] = [...openGaps(snapshot, counts).open.map(({ gap }) => gap), ...weakFacts(snapshot, counts)]
+  return new Map(gaps.map((gap) => [keyOf(gap.type, subjectOf(gap, snapshot.entry.id)), gap]))
+}
+
+/**
+ * Scores the entry from its live facts and lists its open work. Each piece is compared with the
+ * same computation over the published facts alone: where they differ, a pending fact may still
+ * change it, so it waits for that review instead of being worked or judged.
+ */
 export function assessEntry(snapshot: EntryFacts): EntryAssessment {
-  const { open, slots } = openGaps(snapshot)
+  const { open, slots } = openGaps(snapshot, isLive)
   const missing = open.reduce((sum, { missing }) => sum + missing, 0)
   const weak = weakFacts(snapshot)
   const live = snapshot.facts.filter((fact) => isLive(fact.status)).length
-  const subjects = new Map(snapshot.facts.map((fact) => [fact.id, fact.subjectId]))
-  const weakSlots = weak.map((fact) => `${fact.kind}:${subjects.get(fact.id)}:${fact.reason}`).sort()
-  const gaps = open.map(({ gap }) => gap)
+  const current = openWorkOf(snapshot, isLive)
+  const settled = openWorkOf(snapshot, isSettled)
+  const work = [...new Set([...current.keys(), ...settled.keys()])].flatMap((key): OpenWork[] => {
+    const now = current.get(key)
+    const then = settled.get(key)
+    const gap = now ?? then
+    if (!gap) return []
+    return [
+      {
+        gap,
+        subjectId: subjectOf(gap, snapshot.entry.id),
+        awaiting: gapText(now) !== gapText(then),
+      },
+    ]
+  })
   return {
-    gaps,
-    weakFacts: weak,
+    work,
     completeness: 1 - missing / slots,
     quality: live === 0 ? 1 : 1 - weak.length / live,
-    openWork: JSON.stringify({ gaps, weak: weakSlots }),
-    awaitingReview: [...snapshot.facts, ...snapshot.incoming].some((fact) => fact.status === 'pending'),
   }
 }
-
-/** Whether the entry has work left: a gap or a weak fact. */
-export const hasWork = (scores: { completeness: number; quality: number }) =>
-  scores.completeness < 1 || scores.quality < 1
-
-/** The worklist's last claim of an entry, as the stall rule reads it. */
-export interface LastClaim {
-  /** The open work when the entry was last claimed; null before its first claim. */
-  openWork: string | null
-  /** The holder completed that claim's pass. */
-  completed: boolean
-}
-
-/**
- * A completed pass that left the open work as the claim found it made no progress, and another
- * pass would do the same: nothing it added stayed, or it added only what no gap needed. Such an
- * entry stays stalled while its open work is unchanged, so a review that rejects the pass's facts
- * stalls it as well. A new sense, another principal's fact, a fact leaving live, or feedback on a
- * fact changes the open work and lifts the stall. A lease that lapsed is not a completed pass.
- */
-export const isStalled = (last: LastClaim, assessment: Pick<EntryAssessment, 'openWork'>) =>
-  last.completed && last.openWork === assessment.openWork
-
-/** The worklist state that admits an entry to a claim. */
-export interface Admission {
-  live: boolean
-  /** A write changed the entry's facts since the stored scores were computed. */
-  stale: boolean
-  stalled: boolean
-  awaitingReview: boolean
-  completeness: number
-  quality: number
-}
-
-/**
- * An entry is claimable while live with work left, not stalled, and not awaiting review. Waiting
- * for reviews to settle keeps a pass from recording open work that a verdict then undoes, which
- * would lift the stall the verdict should keep. Stale scores admit it, since the write that made
- * them stale may have opened work.
- */
-export const isClaimable = (row: Admission) =>
-  row.live && (row.stale || (!row.stalled && !row.awaitingReview && hasWork(row)))
 
 /**
  * What learner priority reads about an entry, from the reference data of its lemma: its lowest
@@ -709,21 +726,120 @@ export function learnerBand({ levelRank, zipf }: LearnerPriority): number {
   return zipf === null ? 7 : 6
 }
 
-const BANDS = 8
+export const BANDS = 8
 
 /**
- * Completeness from which an entry's remaining gaps are polish: past it, an entry waits behind every
- * less complete entry of every band, so the next level fills before this one is finished.
+ * The priority policy, the one table of what each type of work is worth and what a worker needs to
+ * do it. `stage` orders the queue ahead of the learner band: 1 identity (the sense inventory), 2
+ * meaning (translations, categories, parts), 3 usage, 4 network, 5 weak facts. So every A1-C2
+ * noun's category comes before any B1 example. `context: 'entry'` hands the worker the entry's whole
+ * management view, for work that reads every sense at once; `'node'` the facts about the item's node.
  */
-export const POLISH_FROM = 0.95
+export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'entry' | 'node' }>> = {
+  senses: { stage: 1, context: 'entry' },
+  sense_list: { stage: 1, context: 'entry' },
+  translations: { stage: 2, context: 'node' },
+  category: { stage: 2, context: 'node' },
+  parts: { stage: 2, context: 'node' },
+  examples: { stage: 3, context: 'node' },
+  example_translations: { stage: 3, context: 'node' },
+  grammar: { stage: 3, context: 'node' },
+  collocations: { stage: 3, context: 'node' },
+  forms: { stage: 3, context: 'node' },
+  pronunciation: { stage: 3, context: 'node' },
+  syllables: { stage: 3, context: 'node' },
+  morphology: { stage: 3, context: 'node' },
+  form_pronunciations: { stage: 3, context: 'node' },
+  synonyms: { stage: 4, context: 'node' },
+  family: { stage: 4, context: 'entry' },
+  phrases: { stage: 4, context: 'entry' },
+  topics: { stage: 4, context: 'node' },
+  weak_fact: { stage: 5, context: 'node' },
+}
 
 /**
- * The claim tier, lowest first. Entries below POLISH_FROM come before entries being polished (a
- * few gaps left, or only weak facts), so filling comes before finishing and quality; within each,
- * by learner band; within a band,
- * never-claimed entries before claimed ones. Never-claimed entries go by highest frequency, then
- * lowest completeness; claimed entries by least recently claimed, so an entry whose lease keeps
- * lapsing goes behind every other claimed entry of its band.
+ * Where an item sorts, lowest first: its type's stage, then the learner band of its entry, so the
+ * stage dominates; within a rank, the more frequent entry first (`zipfOrder` descending, -1 for
+ * none, which sorts last).
  */
-export const claimTier = (row: LearnerPriority & { completeness: number; claimed: boolean }) =>
-  2 * ((row.completeness < POLISH_FROM ? 0 : BANDS) + learnerBand(row)) + (row.claimed ? 1 : 0)
+export function workPriority(
+  type: WorkType,
+  learner: LearnerPriority,
+): { stage: number; rank: number; zipfOrder: number } {
+  const { stage } = WORK_POLICY[type]
+  return { stage, rank: stage * BANDS + learnerBand(learner), zipfOrder: learner.zipf ?? -1 }
+}
+
+/**
+ * How many completed passes may leave an item as their claim found it. The next one moves it out
+ * of the production queue to the curators: the producers cannot fill it and should stop trying.
+ */
+export const MAX_ATTEMPTS = 3
+
+/** A stored work item as the rescore and the claim read it. */
+export interface WorkItem {
+  id: WorkItemId
+  entryId: EntryId
+  type: WorkType
+  subjectId: string
+  gap: Gap
+  stage: number
+  rank: number
+  zipfOrder: number
+  awaiting: boolean
+  attempts: number
+  /** A completed pass worked the item and its verdict is not drawn yet: the item awaited review. */
+  worked: boolean
+  /** The gap when the item was last claimed; null before its first claim. */
+  claimedGap: Gap | null
+  lease: { id: WorkLeaseId; holder: PrincipalRef; expiresAt: string } | null
+  lastWorkedAt: string | null
+  lastWorkedBy: PrincipalRef | null
+  lastNote: string | null
+}
+
+/** What a rescore writes of an item: everything but its id, lease, and claim and work records. */
+export type WorkItemWrite = Pick<
+  WorkItem,
+  'type' | 'subjectId' | 'gap' | 'stage' | 'rank' | 'zipfOrder' | 'awaiting' | 'attempts' | 'worked'
+>
+
+/**
+ * Brings an entry's stored items to its open work: one item per piece, the rest deleted. A write
+ * keeps the id of the stored item it updates; a new piece has none yet. While a piece awaits
+ * review its attempts and pending verdict are kept. Once settled, an item a completed pass worked
+ * counts an attempt when the gap is still what its claim found, and any other change (another
+ * principal's fact, a new sense, a partial fill) resets the attempts: the item is new work.
+ */
+export function reconcileItems(
+  stored: readonly WorkItem[],
+  open: readonly OpenWork[],
+  learner: LearnerPriority,
+): { writes: Array<WorkItemWrite & { id: WorkItemId | null }>; deletes: WorkItemId[] } {
+  const byKey = new Map(stored.map((item) => [keyOf(item.type, item.subjectId), item]))
+  const writes = open.map((work) => {
+    const item = byKey.get(keyOf(work.gap.type, work.subjectId))
+    const base = {
+      id: item?.id ?? null,
+      type: work.gap.type,
+      subjectId: work.subjectId,
+      gap: work.gap,
+      awaiting: work.awaiting,
+      ...workPriority(work.gap.type, learner),
+    }
+    if (!item) return { ...base, attempts: 0, worked: false }
+    if (work.awaiting) return { ...base, attempts: item.attempts, worked: item.worked }
+    const judgedAgainst = item.worked ? item.claimedGap : item.gap
+    if (gapText(work.gap) !== gapText(judgedAgainst ?? undefined)) return { ...base, attempts: 0, worked: false }
+    return { ...base, attempts: item.attempts + (item.worked ? 1 : 0), worked: false }
+  })
+  const kept = new Set(writes.map((write) => keyOf(write.type, write.subjectId)))
+  const deletes = stored.filter((item) => !kept.has(keyOf(item.type, item.subjectId))).map((item) => item.id)
+  return { writes, deletes }
+}
+
+/** Where an item stands for a worker: in the production queue, waiting on reviews, or with the curators. */
+export function itemState(item: Pick<WorkItem, 'awaiting' | 'attempts'>): 'open' | 'awaiting_review' | 'curation' {
+  if (item.attempts >= MAX_ATTEMPTS) return 'curation'
+  return item.awaiting ? 'awaiting_review' : 'open'
+}

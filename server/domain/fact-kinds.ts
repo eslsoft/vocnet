@@ -13,6 +13,7 @@ import type {
   Pos,
   Region,
   Register,
+  RelationDomain,
   RelationType,
   ReviewerChain,
   ReviewerKind,
@@ -168,8 +169,8 @@ export type ReviewPlan<C extends ReviewChain = ReviewChain> =
 
 /**
  * What a write rule sees of one end of a relation: whether the end's sense is rare (in the extra
- * senses of its entry's current sense list), the register of its current gloss, its entry's lemma
- * and live spelling variants, and how many live hypernym relations make another sense a kind of it.
+ * senses of its entry's current sense list), the register of its current gloss, and its entry's
+ * lemma and live spelling variants.
  */
 export interface LinkEnd {
   sense: SenseId
@@ -177,7 +178,6 @@ export interface LinkEnd {
   register: Register | null
   lemma: string
   variants: readonly string[]
-  narrower: number
 }
 
 interface BaseSpec<K extends FactKind> {
@@ -377,14 +377,19 @@ function lexicalQuestion(word: string, pos: Pos, gloss: string, register?: Regis
 const DIFFERENT_WORDS = 'Two senses of the same word never stand in this relation.'
 
 /** Jev's questions; an antonym goes to the LLM alone, so it has none. */
-const relationQuestions: Record<Exclude<RelationType, 'antonym'>, (meanings: string) => string> = {
-  hypernym: (meanings) =>
-    `For these exact senses, is the first a strict kind of the second: ${meanings}? Every instance of the narrower sense must belong to the broader category. The target must include kinds outside the source. If either term can replace the other in both directions without changing the meaning, that is synonymy, not hypernymy: answer no. Hypernymy holds only between two nouns or two verbs. The broader sense must be an informative category, not a maximally generic head such as "cause", "do", "make", "activity", or "thing". Preserve restrictions on purpose, natural origin, material, location, participants and causation; do not narrow or broaden either meaning to force the link. ${DIFFERENT_WORDS}`,
+const relationQuestions: Record<
+  Exclude<RelationType, 'antonym'>,
+  (meanings: string, domain?: RelationDomain) => string
+> = {
+  hypernym: (meanings, domain) =>
+    `For these exact senses, is the first a strict kind of the second${domain ? ` in the taxonomy of ${domainNames[domain]}` : ''}: ${meanings}? Every instance of the narrower sense must belong to the broader category. The target must include kinds outside the source. If either term can replace the other in both directions without changing the meaning, that is synonymy, not hypernymy: answer no. Hypernymy holds only between two nouns or two verbs. The broader sense must be an informative category, not a maximally generic head such as "cause", "do", "make", "activity", or "thing". Preserve restrictions on purpose, natural origin, material, location, participants and causation; do not narrow or broaden either meaning to force the link. ${DIFFERENT_WORDS}`,
   part_of: (meanings) =>
     `For these exact senses, is the first a normal constituent or installed component of the second: ${meanings}? Mere location, ownership, interaction, use, production input, the material or ingredient the whole is made from, or earlier developmental stage is insufficient. The part must retain its lexical identity within the whole. ${DIFFERENT_WORDS}`,
   synonym: (meanings) =>
     `For these exact senses, do these terms denote the same thing or action in both directions: ${meanings}? Register differences are allowed, but co-hyponyms, narrower categories and mere associations are not synonymy. ${DIFFERENT_WORDS}`,
 }
+
+const domainNames: Record<RelationDomain, string> = { biology: 'biology', medicine: 'medicine' }
 
 const relationClaims: Record<RelationType, string> = {
   hypernym: 'the source is a kind of the target (the target is its hypernym)',
@@ -424,21 +429,49 @@ const LIGHT_VERBS = ['make', 'do', 'take', 'give', 'have', 'get'] as const
 
 const quoted = (words: readonly string[]) => words.map(quote).join(', ')
 
+/**
+ * A part is listed once, on the whole a learner's dictionary names it for: the producers attached
+ * wing to turkey, rail, and pen instead of bird, and head to princess instead of person.
+ */
+const PART_OF_WHOLE =
+  "A part attaches to the most general common whole it is a part of, the one a learner's dictionary names it for: a wing is part of a bird, not of a turkey; a tail is part of an animal, not of a dog; a wheel is part of a vehicle or a car, not of a taxi. Fail a part attached to a narrower kind of that whole. A body part, organ, or limb is never part of a person-type noun (a role, kinship term, occupation, title, or nickname): a head is part of a person, not of a princess, and a hand is not part of a worker."
+
+const SYNONYM_PEERS =
+  'The target must be a word an A1 to B2 learner can use in place of or beside the source, in the same register: fail a slang, taboo, archaic, rare, or technical target for a source in neutral standard English ("ice" or "waste" as slang for killing, "abstain" for sharing), unless the source sense itself carries that register.'
+
 const RELATION_TYPE_RULES = [
   `synonym: the two senses denote the same meaning, so a dictionary could list either word as a synonym of the other. Differences of register, connotation, word order, articles, or collocation are allowed. Co-hyponyms, a narrower or broader term, meanings that only partly overlap, a pair that needs a different construction to say the same thing, and mere association are not synonyms. A light verb (${quoted(LIGHT_VERBS)}) takes its meaning from its object, so it is never a synonym of a full verb ("make" is not a synonym of "perform").`,
   `hypernym: a strict kind-of link. Every instance of the source is an instance of the target, and the target also covers other kinds. Substitution test: if the source gloss is "A …" or "An …" followed by the target word, or the target word on its own paraphrases the source sense, the two are synonyms, not a hypernym pair ("number" meaning "a quantity of people or things" is not a kind of "quantity"). Pass only when you can name the concrete feature that sets the source apart from the other kinds of the target, and name it in the reason. It holds only between two nouns or two verbs. A head as generic as ${quoted(GENERIC_HYPERNYM_HEADS)} tells a learner nothing: fail it, because a more specific head exists ("parry" is a kind of "block", not of "meet").`,
   'antonym: conventional opposites on one semantic dimension. Mere difference is not enough. Co-hyponyms of one set, such as titles ("Mrs." and "Miss"), colours, days, months, or numbers, are not antonyms. A converse role pair, where each role implies the other (teacher and student, interviewer and interviewee, buyer and seller, parent and child), is not an antonym.',
-  'part_of: the source is a distinct component or region of the target. A material, substance, or ingredient the target is made from is not a part, and neither is something located in, used by, or associated with it, or a generic part any object has, such as a back, side, or top. A body part, organ, or limb is never part of a person-type noun (a role, kinship term, occupation, title, or nickname): a head is part of a person, not of a princess, and a hand is not part of a worker.',
+  `part_of: the source is a distinct component or region of the target. A material, substance, or ingredient the target is made from is not a part, and neither is something located in, used by, or associated with it, or a generic part any object has, such as a back, side, or top. ${PART_OF_WHOLE}`,
   'The source and the target must be different words.',
   'The target sense carries no dated label, so it claims to be current English: fail when the target word in this sense is archaic or old-fashioned, since a learner would take it for a current word.',
-  'The target must be a word an A1 to B2 learner can use in place of or beside the source, in the same register: fail a slang, taboo, archaic, rare, or technical target for a source in neutral standard English ("ice" or "waste" as slang for killing, "abstain" for sharing), unless the source sense itself carries that register.',
 ]
+
+/**
+ * The everyday layer is the taxonomy a learner uses, so it never invents a node: every broader term
+ * is a real headword a learner files the word under. Technical taxa belong to a domain layer.
+ */
+const EVERYDAY_LAYER = [
+  'This hypernym is in the everyday layer: the category words a learner uses and a learner\'s dictionary defines the word by ("a dog is an animal", "a dog is a pet", "an eagle is a bird", "a rose is a flower"). A word may have several everyday categories. Fail a technical taxon or a term a learner would not use for the category, such as "canine", "passerine", "mammal" for a single animal where the dictionary says "animal", "feline", "rodent", "ungulate", "angiosperm", or "carnivore": it belongs in a domain layer (biology), not in the everyday one. Fail a target that is no category a learner would file the word under, even when the kind-of claim is true.',
+  SYNONYM_PEERS,
+]
+
+const domainLayer = (domain: RelationDomain) => [
+  `This hypernym is in the ${domainNames[domain]} layer: a specialist taxonomy shown only to learners who ask for it. Pass only when the target is a real term of the taxonomy of ${domainNames[domain]}, a headword a dictionary defines, at the rank that field puts directly or conventionally above the source ("dog" is a kind of "canine", "canine" of "carnivore", "carnivore" of "mammal" in biology). Fail an invented intermediate node or a descriptive phrase that is no term of the field, an everyday category word that belongs in the everyday layer ("animal", "pet"), and a target in another field's taxonomy.`,
+]
+
+/** The rules of the layer a relation is in: a hypernym's everyday or domain layer, or the plain rule for the other types. */
+function layerRules(type: RelationType, domain: RelationDomain | undefined): string[] {
+  if (type !== 'hypernym') return [SYNONYM_PEERS]
+  return domain ? domainLayer(domain) : EVERYDAY_LAYER
+}
 
 const GLOSSES_ARE_PARAPHRASES =
   'Glosses are short paraphrases. Judge the relation between the words in these senses, and do not fail a pair over a detail one gloss happens to mention and the other omits, such as a transitive use or an extension in time.'
 
 function relationRubric(
-  type: RelationType,
+  { type, domain }: FactPayloads['relation'],
   source: GlossedSense,
   target: GlossedSense & Pick<SubjectViews['sense'], 'siblings'>,
 ): string {
@@ -446,11 +479,12 @@ function relationRubric(
     'Is this relation between two English word senses correct, and is its type the most accurate one?',
     `Source: ${describe(source)}.`,
     `Target: ${describe(target)}.`,
-    `Claimed type: ${type}, meaning ${relationClaims[type]}.`,
+    `Claimed type: ${type}, meaning ${relationClaims[type]}${domain ? ` in the taxonomy of ${domainNames[domain]}` : ''}.`,
     'Read each word only in the sense given, never in another sense.',
     GLOSSES_ARE_PARAPHRASES,
     'The types mean:',
     ...RELATION_TYPE_RULES.map((rule) => `- ${rule}`),
+    ...layerRules(type, domain).map((rule) => `- ${rule}`),
     listSenses(`Other senses of the target ${quote(target.lemma)}`, target.siblings),
     'pass: the claim holds for these senses and no other type fits better. fail: the claim is false for these senses, another type fits better, or another sense of the target listed above is the better match for the source. uncertain: you cannot tell.',
   ].join('\n')
@@ -858,7 +892,7 @@ const relationSymmetry: Record<RelationType, 'symmetric' | 'directed'> = {
 function orientRelation(subjectId: string, payload: FactPayloads['relation']): Oriented<'relation'> {
   const { type, target_sense_id: target } = payload
   if (relationSymmetry[type] === 'directed' || subjectId < target) return { subjectId, payload }
-  return { subjectId: target, payload: { type, target_sense_id: subjectId as SenseId } }
+  return { subjectId: target, payload: { ...payload, target_sense_id: subjectId as SenseId } }
 }
 
 /**
@@ -888,6 +922,15 @@ function admitRelationLink(link: Link<'relation'>, live: readonly Link<'relation
     return `This sense already has a live ${rival.payload.type} relation (${rival.id}) to a sense of the target's entry; a sense relates to another entry by one type only. Retract that fact first if ${type} is the better type.`
   }
   if (type !== 'hypernym') return null
+  const otherLayer = live.find(
+    (other) =>
+      other.payload.type === 'hypernym' &&
+      other.payload.domain !== link.payload.domain &&
+      relationSlots(other).some((slot) => slots.some((own) => sameSlot(own, slot))),
+  )
+  if (otherLayer) {
+    return `This sense already has a live ${layerName(otherLayer.payload.domain)} hypernym (${otherLayer.id}) to a sense of the target's entry; a broader term belongs to one layer. Retract that fact first if the ${layerName(link.payload.domain)} layer fits it better.`
+  }
   const reverse = live.find(
     (other) =>
       other.payload.type === 'hypernym' &&
@@ -898,12 +941,7 @@ function admitRelationLink(link: Link<'relation'>, live: readonly Link<'relation
   return `A live hypernym relation (${reverse.id}) already makes a sense of the target's entry a kind of this entry; two entries cannot each be a kind of the other.`
 }
 
-/**
- * The most narrower terms one sense holds: live hypernym relations that make another sense a kind
- * of it. A broad sense with more lists every kind it covers, which tells a learner nothing; the
- * audit's padded senses (kill, share) had a dozen loose narrower terms each.
- */
-export const MAX_NARROWER = 12
+const layerName = (domain: RelationDomain | undefined) => domain ?? 'everyday'
 
 /** A spelling variant of one end's entry is the same word, never its synonym (practise and practice). */
 const isVariantPair = (subject: LinkEnd, target: LinkEnd) =>
@@ -912,21 +950,20 @@ const isVariantPair = (subject: LinkEnd, target: LinkEnd) =>
 /**
  * A relation links current, common senses: a sense in its entry's extra (rare, archaic, technical,
  * or specialist) or labelled dated never shows a learner a word to use. A directed relation is
- * checked at its target; a symmetric one reads the same from both ends, so at both. A synonym never
- * links two spellings of one word, and a sense holds at most `MAX_NARROWER` narrower terms.
+ * checked at its target; a symmetric one reads the same from both ends, so at both. A domain
+ * hypernym's target is a specialist term, often one of its word's extra senses ("canine" as a
+ * zoological family), so it is checked only for being current. A synonym never links two spellings
+ * of one word.
  */
 function admitRelationEnds(
-  { type }: FactPayloads['relation'],
+  { type, domain }: FactPayloads['relation'],
   { subject, target }: { subject: LinkEnd; target: LinkEnd },
 ): string | null {
   if (type === 'synonym' && isVariantPair(subject, target)) {
     return `${quote(subject.lemma)} and ${quote(target.lemma)} are spellings of one word: one entry records the other as a live spelling variant, so they are never synonyms. Relate a different word.`
   }
-  if (type === 'hypernym' && target.narrower >= MAX_NARROWER) {
-    return `Sense ${target.sense} already has ${target.narrower} narrower terms (live hypernym relations to it), and a sense holds at most ${MAX_NARROWER}. Relate this sense to a more specific broader term instead.`
-  }
   const ends = relationSymmetry[type] === 'symmetric' ? [target, subject] : [target]
-  const rare = ends.find((end) => end.rare)
+  const rare = domain ? undefined : ends.find((end) => end.rare)
   if (rare) {
     return `Sense ${rare.sense} is in the extra senses of its entry's sense list (rare, archaic, technical, or specialist); a relation links only common senses. Relate a common sense of the word instead.`
   }
@@ -1451,9 +1488,19 @@ export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
     slot: 'the word family: common derivatives built on the word that a learner\'s dictionary lists with it ("happiness", "happily", and "unhappy" for "happy"; "student" for "study")',
     attempts: { of: 'derivatives' },
   },
-  relations: {
+  category: {
     subject: 'sense',
-    slot: 'related words: a synonym, an antonym, a broader term it is a kind of, or a whole it is a part of; the slot is complete when the relations recorded so far are the only precise ones',
+    slot: 'an everyday category: a broader term a learner files this sense under, a real headword ("dog": animal, pet; "eagle": bird; "stroll": walk)',
+    attempts: { of: 'node', kinds: ['relation'] },
+  },
+  parts: {
+    subject: 'sense',
+    slot: 'parts: the main parts a learner\'s dictionary names for this thing, each recorded as part_of it ("bird": beak, wing, feather; "car": wheel, engine)',
+    attempts: { of: 'node', kinds: ['relation'] },
+  },
+  synonyms: {
+    subject: 'sense',
+    slot: 'a synonym or an antonym a learner can use in this sense ("big": large, small)',
     attempts: { of: 'node', kinds: ['relation'] },
   },
   topics: {
@@ -1477,7 +1524,9 @@ const CLOSURE_PASSES = [
   'months, days, and numbers have no common collocations or synonyms beyond the names of their set',
   'a verb with fewer than three common phrasal verbs or verb idioms, when the reason names the ones that exist ("describe" has none)',
   'a word with no common derivatives ("notebook", "salad"), or a function word ("and", "with")',
-  'a sense whose recorded relations are the only precise ones: no further synonym, antonym, broader term, or whole would help a learner',
+  'a sense no learner files under a category word: a very general or abstract sense ("thing", "idea", "way") or a verb of general action ("do", "happen") has no everyday broader term',
+  'a thing whose main parts a learner\'s dictionary does not name (a substance, an abstract or uniform thing: "water", "idea", "song"), or whose parts are recorded on the more general whole they belong to ("dog": tail and paw are parts of "animal")',
+  'a sense with no synonym or antonym a learner could use in its place ("eagle", "oxygen", "Tuesday")',
   'an uncountable noun ("advice") has no plural',
   'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
   'a pronoun that governs no agreement has no grammar to record: an object, reflexive, or reciprocal pronoun ("me", "yourself", "each other") is never the subject a verb agrees with, and a relative or interrogative pronoun ("who", "which", "what") takes the verb its antecedent or answer takes, so no fixed agreement fits it',
@@ -1490,6 +1539,8 @@ const CLOSURE_FAILS = [
   'a common verb lacks inflections, or a noun its plural, that a learner can look up in any dictionary',
   'a verb with common phrasal verbs the reason leaves out ("throw" has throw away, throw out, and throw up), or a word with common derivatives ("happy" has happiness)',
   'a word with ordinary synonyms, collocations, or a topic only someone has not found yet',
+  'a kind of thing or action a learner files under an everyday category ("eagle" is a bird, "stroll" is a kind of walk)',
+  "a thing whose main parts a learner's dictionary names (a bird's beak, wings, and feathers; a car's wheels and engine)",
   'a reason that is wrong, vague, or only says the data is hard to find',
 ]
 
@@ -1605,21 +1656,27 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     subject: 'sense',
     cardinality: 'many',
     chain: ['jev', 'llm'],
-    contentKey: ({ type, target_sense_id }) => `${type}|${target_sense_id}`,
+    // The layer is part of the claim: canine as a biology hypernym of dog is not an everyday one.
+    contentKey: ({ type, target_sense_id, domain }) => labelled(`${type}|${target_sense_id}`, domain),
     target: ({ target_sense_id }) => target_sense_id,
     orient: orientRelation,
     admitLink: admitRelationLink,
     admitEnds: admitRelationEnds,
     // Jev passed converse role pairs as antonyms (teacher and student), so the LLM judges them alone.
-    plan: ({ type }, { subject, target }) =>
+    plan: (payload, { subject, target }) =>
       withGloss(subject, (source) =>
         withGloss(target, (other) =>
-          type === 'antonym'
-            ? llm(relationRubric(type, source, other))
+          payload.type === 'antonym'
+            ? llm(relationRubric(payload, source, other))
             : jevThenLlm(
-                { relation: relationQuestions[type](`${describe(source)}, and ${describe(other)}`) },
-                relationRubric(type, source, other),
-                RELATION_JEV_FLOORS[type],
+                {
+                  relation: relationQuestions[payload.type](
+                    `${describe(source)}, and ${describe(other)}`,
+                    payload.domain,
+                  ),
+                },
+                relationRubric(payload, source, other),
+                RELATION_JEV_FLOORS[payload.type],
               ),
         ),
       ),

@@ -1,5 +1,5 @@
 import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Pos, Review, SenseId, TopicId } from '@shared/facts'
-import type { WorkLeaseId } from '@shared/work'
+import type { Gap, WorkItemId, WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import type { Fact, FactOf } from './fact'
 import type { SenseWithLemma } from './nodes'
@@ -7,20 +7,23 @@ import type { Lemma } from './term'
 import {
   assessEntry,
   COLLOCATIONS_NEEDED,
-  claimTier,
   completeDecision,
   entryGaps,
   GRAMMAR_NEEDED,
-  isClaimable,
-  isStalled,
+  gapText,
+  itemState,
   learnerBand,
   leaseExpiry,
-  MAX_SENSE_LIST_ATTEMPTS,
-  POLISH_FROM,
-  RELATIONS_NEEDED,
+  MAX_ATTEMPTS,
+  type OpenWork,
+  reconcileItems,
   TOPICS_NEEDED,
   VERB_PARADIGM,
+  WORK_POLICY,
+  type WorkItem,
   type WorkLease,
+  weakFacts,
+  workPriority,
 } from './work'
 
 let counter = 0
@@ -121,11 +124,12 @@ describe('entryGaps', () => {
       fact('translation', glossed.id, { language: 'fr', text: 'rive' }),
     ]
     expect(entryGaps({ entry: bank, ...plain, senses: [glossed, rejected], facts, incoming: [], neighbors })).toEqual([
-      { type: 'sense_list', rejected: 0 },
+      { type: 'sense_list', senses: [glossed.id] },
       { type: 'pronunciation', accents: ['us', 'uk'] },
       { type: 'morphology' },
       { type: 'syllables' },
-      { type: 'relations', sense_id: glossed.id, count: 0, have: [] },
+      { type: 'category', sense_id: glossed.id },
+      { type: 'synonyms', sense_id: glossed.id },
       { type: 'examples', sense_id: glossed.id, count: 0, need: 1 },
       { type: 'translations', sense_id: glossed.id, language: 'zh' },
       { type: 'example_translations', sense_id: glossed.id, language: 'zh', examples: [] },
@@ -135,7 +139,7 @@ describe('entryGaps', () => {
     ])
   })
 
-  it('closes sense gaps with live examples, zh translations, grammar, collocations, and two relations in either direction', () => {
+  it('closes sense gaps with live examples, zh translations, grammar, collocations, a category, parts, and a synonym in either direction', () => {
     const subject = sense()
     const object = sense()
     const elsewhere = visibleSense()
@@ -147,7 +151,9 @@ describe('entryGaps', () => {
       fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'uk' }),
       fact('relation', subject.id, { type: 'synonym', target_sense_id: elsewhere }),
       fact('relation', subject.id, { type: 'hypernym', target_sense_id: visibleSense() }, 'pending'),
+      fact('relation', object.id, { type: 'hypernym', target_sense_id: visibleSense() }),
       fact('relation', object.id, { type: 'part_of', target_sense_id: visibleSense() }),
+      fact('gap_closure', object.id, { gap: 'parts', reason: 'An edge has no parts of its own.' }),
       fact('example', subject.id, { text: 'We sat on the bank.', translations: { zh: '我们坐在河岸上。' } }),
       fact('example', object.id, { text: 'Retracted.', translations: { zh: '撤回。' } }, 'retracted'),
       fact('translation', subject.id, { language: 'zh', text: '河岸' }),
@@ -162,7 +168,10 @@ describe('entryGaps', () => {
       fact('collocation', object.id, { text: 'steep bank', pattern: 'adjective_noun' }),
       fact('sense_list', entryId, { common: [object.id, subject.id], extra: [] }, 'pending'),
     ]
-    const incoming = [fact('relation', elsewhere, { type: 'hypernym', target_sense_id: object.id })]
+    const incoming = [
+      fact('relation', elsewhere, { type: 'antonym', target_sense_id: object.id }),
+      fact('relation', visibleSense(), { type: 'part_of', target_sense_id: subject.id }, 'pending'),
+    ]
     expect(entryGaps({ entry: bank, ...plain, senses: [subject, object], facts, incoming, neighbors })).toEqual([
       { type: 'examples', sense_id: object.id, count: 0, need: 1 },
       { type: 'example_translations', sense_id: object.id, language: 'zh', examples: [] },
@@ -190,30 +199,42 @@ describe('entryGaps', () => {
     }
   })
 
-  it('keeps a relations gap open below two live relations and names the types and directions it has [spec: work/relations-gap]', () => {
+  it('asks a noun for an everyday category, then for its parts, and a content word for a synonym or antonym, with no quotas [spec: work/relation-slots]', () => {
     const focus = sense()
-    const [kind, whole, part] = [visibleSense(), visibleSense(), visibleSense()]
+    const [kind, whole, part, taxon] = [visibleSense(), visibleSense(), visibleSense(), visibleSense()]
     const base: Fact[] = [
       fact('sense', focus.id, { gloss: 'a branch of a tree' }),
       fact('example', focus.id, { text: 'A bird sat on the bough.' }),
       fact('translation', focus.id, { language: 'zh', text: '树枝' }),
     ]
-    const relationGaps = (facts: Fact[], incoming: Fact[] = []) =>
+    const slots = (facts: Fact[], incoming: Fact[] = []) =>
       entryGaps({ entry: bank, ...plain, senses: [focus], facts: [...base, ...facts], incoming, neighbors }).filter(
-        (gap) => gap.type === 'relations',
+        (gap) => gap.type === 'category' || gap.type === 'parts' || gap.type === 'synonyms',
       )
-
-    expect(relationGaps([])).toEqual([{ type: 'relations', sense_id: focus.id, count: 0, have: [] }])
+    const category = { type: 'category', sense_id: focus.id }
+    const parts = { type: 'parts', sense_id: focus.id }
+    const synonyms = { type: 'synonyms', sense_id: focus.id }
+    expect(slots([])).toEqual([category, synonyms])
+    // A domain hypernym is a specialist layer: it fills no everyday category, so no parts are asked yet.
+    const biology = fact('relation', focus.id, { type: 'hypernym', target_sense_id: taxon, domain: 'biology' })
+    expect(slots([biology])).toEqual([category, synonyms])
+    // One everyday category fills the slot and opens the parts the thing has.
+    const everyday = fact('relation', focus.id, { type: 'hypernym', target_sense_id: whole })
+    expect(slots([biology, everyday])).toEqual([parts, synonyms])
+    const twig = fact('relation', part, { type: 'part_of', target_sense_id: focus.id }, 'pending')
+    expect(slots([everyday], [twig])).toEqual([synonyms])
+    // Its own part_of fills nothing: the parts slot counts the parts attached to it.
+    expect(slots([everyday, fact('relation', focus.id, { type: 'part_of', target_sense_id: kind })])).toEqual([
+      parts,
+      synonyms,
+    ])
     const rejected = fact('relation', focus.id, { type: 'synonym', target_sense_id: kind }, 'rejected')
-    const partOf = fact('relation', focus.id, { type: 'part_of', target_sense_id: whole })
-    expect(relationGaps([rejected, partOf])).toEqual([
-      { type: 'relations', sense_id: focus.id, count: 1, have: [{ type: 'part_of', direction: 'outgoing' }] },
-    ])
-    const twig = [fact('relation', part, { type: 'part_of', target_sense_id: focus.id }, 'pending')]
-    expect(relationGaps([rejected], twig)).toEqual([
-      { type: 'relations', sense_id: focus.id, count: 1, have: [{ type: 'part_of', direction: 'incoming' }] },
-    ])
-    expect(relationGaps([partOf], twig)).toEqual([])
+    expect(slots([everyday, rejected], [twig])).toEqual([synonyms])
+    const antonym = fact('relation', kind, { type: 'antonym', target_sense_id: focus.id })
+    expect(slots([everyday], [twig, antonym])).toEqual([])
+    // A closed category is a general or abstract sense, which has no parts to ask for.
+    const closed = fact('gap_closure', focus.id, { gap: 'category', reason: 'A general sense with no category.' })
+    expect(slots([closed])).toEqual([synonyms])
   })
 
   it('counts a relation only while the sense at its other end has a live gloss and a live entry fact [spec: work/relations-visible-ends]', () => {
@@ -236,27 +257,25 @@ describe('entryGaps', () => {
         pendingGloss.gloss,
       ],
     }
-    const facts: Fact[] = [
-      fact('sense', focus.id, { gloss: 'a branch of a tree' }),
+    const slotTypes = (facts: Fact[], incoming: Fact[], around = ends) =>
+      entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming, neighbors: around })
+        .map((gap) => gap.type)
+        .filter((type) => type === 'category' || type === 'parts' || type === 'synonyms')
+    const gloss = fact('sense', focus.id, { gloss: 'a branch of a tree' })
+    const hidden = [
+      gloss,
       fact('relation', focus.id, { type: 'synonym', target_sense_id: ofRejectedEntry.other.id }),
-      fact('relation', focus.id, { type: 'antonym', target_sense_id: pendingGloss.other.id }),
+      fact('relation', focus.id, { type: 'hypernym', target_sense_id: unglossed.other.id }),
     ]
-    const incoming = [fact('relation', unglossed.other.id, { type: 'part_of', target_sense_id: focus.id })]
-    const relations = entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming, neighbors: ends }).filter(
-      (gap) => gap.type === 'relations',
-    )
-    expect(relations).toEqual([
-      { type: 'relations', sense_id: focus.id, count: 1, have: [{ type: 'antonym', direction: 'outgoing' }] },
-    ])
-    const unknown = entryGaps({
-      entry: bank,
-      ...plain,
-      senses: [focus],
-      facts,
-      incoming,
-      neighbors: { senses: [], facts: [] },
-    })
-    expect(unknown).toContainEqual({ type: 'relations', sense_id: focus.id, count: 0, have: [] })
+    expect(slotTypes(hidden, [])).toEqual(['category', 'synonyms'])
+    const shown = [
+      gloss,
+      fact('relation', focus.id, { type: 'antonym', target_sense_id: pendingGloss.other.id }),
+      fact('relation', focus.id, { type: 'hypernym', target_sense_id: pendingGloss.other.id }),
+    ]
+    const parts = [fact('relation', unglossed.other.id, { type: 'part_of', target_sense_id: focus.id })]
+    expect(slotTypes(shown, parts)).toEqual(['parts'])
+    expect(slotTypes(shown, parts, { senses: [], facts: [] })).toEqual(['category', 'synonyms'])
   })
 })
 
@@ -278,10 +297,11 @@ describe('sense list gap', () => {
     expect(entryGaps({ entry: bank, ...plain, senses: [], facts: [glosses[0]], incoming: [], neighbors })[0]).toEqual({
       type: 'senses',
     })
-    expect(inventory([])).toEqual([{ type: 'sense_list', rejected: 0 }])
+    const both = { type: 'sense_list', senses: [common.id, rare.id] }
+    expect(inventory([])).toEqual([both])
     expect(inventory([list()])).toEqual([])
     expect(inventory([list('pending')])).toEqual([])
-    expect(inventory([list('rejected')])).toEqual([{ type: 'sense_list', rejected: 1 }])
+    expect(inventory([list('rejected')])).toEqual([both])
     // A live list with no live sense left settles nothing; the entry needs senses again.
     expect(inventory([list()], [])).toEqual([{ type: 'senses' }])
   })
@@ -289,7 +309,9 @@ describe('sense list gap', () => {
   it('reopens when a sense is added or a listed sense is no longer live [spec: work/sense-list-gap]', () => {
     const added = sense()
     const addedGloss = fact('sense', added.id, { gloss: 'to rely on' }, 'pending')
-    expect(inventory([list(), addedGloss], [common, rare, added])).toEqual([{ type: 'sense_list', rejected: 0 }])
+    expect(inventory([list(), addedGloss], [common, rare, added])).toEqual([
+      { type: 'sense_list', senses: [common.id, rare.id, added.id] },
+    ])
     const withoutRare = [glosses[0], glosses[1], { ...glosses[2], status: 'rejected' } as Fact, list()]
     expect(
       entryGaps({ entry: bank, ...plain, senses: [common, rare], facts: withoutRare, incoming: [], neighbors }).map(
@@ -301,27 +323,16 @@ describe('sense list gap', () => {
   it('reads a pending correction in place of the list it supersedes [spec: work/sense-list-gap]', () => {
     const stale = list('published', { common: [common.id], extra: [] })
     const correction = { ...list('pending', { common: [rare.id, common.id], extra: [] }), supersedesId: stale.id }
-    expect(inventory([stale])).toEqual([{ type: 'sense_list', rejected: 0 }])
+    const both = { type: 'sense_list', senses: [common.id, rare.id] }
+    expect(inventory([stale])).toEqual([both])
     expect(inventory([stale, correction])).toEqual([])
     const settled = list('published')
     const staleCorrection = { ...list('pending', { common: [common.id], extra: [] }), supersedesId: settled.id }
-    expect(inventory([settled, staleCorrection])).toEqual([{ type: 'sense_list', rejected: 0 }])
+    expect(inventory([settled, staleCorrection])).toEqual([both])
   })
 
-  it('counts the rejected attempts at the current senses, up to a bound [spec: work/sense-list-attempts]', () => {
-    const rejected = (count: number) => Array.from({ length: count }, () => list('rejected'))
-    const counts = [0, 1, 2, 3, 5].map((count) => inventory(rejected(count)))
-    expect(counts.map(([gap]) => (gap?.type === 'sense_list' ? gap.rejected : null))).toEqual([
-      0,
-      1,
-      2,
-      MAX_SENSE_LIST_ATTEMPTS - 1,
-      MAX_SENSE_LIST_ATTEMPTS - 1,
-    ])
-    // A rejected list that named other senses was an attempt at a different inventory.
-    const older = list('rejected', { common: [common.id], extra: [] })
-    expect(inventory([older, ...rejected(1)])).toEqual([{ type: 'sense_list', rejected: 1 }])
-    const assess = (facts: Fact[]) =>
+  it('leaves the gap as it was after a rejected list, so each rejected pass counts an attempt [spec: work/sense-list-attempts]', () => {
+    const open = (facts: Fact[]) =>
       assessEntry({
         entry: bank,
         ...plain,
@@ -330,10 +341,12 @@ describe('sense list gap', () => {
         incoming: [],
         flagged: new Set(),
         neighbors,
-      }).openWork
-    const claimed = { openWork: assess(rejected(MAX_SENSE_LIST_ATTEMPTS - 1)), completed: true }
-    expect(isStalled(claimed, { openWork: assess(rejected(MAX_SENSE_LIST_ATTEMPTS - 2)) })).toBe(false)
-    expect(isStalled(claimed, { openWork: assess(rejected(MAX_SENSE_LIST_ATTEMPTS)) })).toBe(true)
+      }).work.find((work) => work.gap.type === 'sense_list')
+    const before = open([])
+    const afterRejections = open([list('rejected'), list('rejected')])
+    expect(afterRejections).toEqual(before)
+    // While a list is pending its review, the item waits with the gap the list would close.
+    expect(open([list('pending')])).toEqual({ ...before, awaiting: true })
   })
 
   it('counts per-sense gaps and slots for the common senses only, once a list exists [spec: work/sense-list-scope]', () => {
@@ -363,15 +376,17 @@ describe('sense list gap', () => {
     expect(score([]).completeness).toBe(0)
     // With the list: the inventory slot filled, and only the common sense's eight slots count.
     expect(score([list()]).completeness).toBe(1 - 12 / 13)
-    expect(score([list()]).openWork).not.toBe(score([]).openWork)
+    expect(score([list()]).work).not.toEqual(score([]).work)
   })
 })
 
 describe('work lease', () => {
   const lease: WorkLease = {
     id: id<WorkLeaseId>(),
-    entryId,
     holder: 'agent:a',
+    type: 'category',
+    entryIds: [entryId],
+    itemIds: [],
     claimedAt: at,
     expiresAt: leaseExpiry(new Date(at), 900),
   }
@@ -402,17 +417,17 @@ const reviewed = <F extends Fact>(made: F, verdict: Review['verdict']): F =>
     },
   }) as F
 
-describe('relations by part of speech', () => {
-  it('needs two relations for content words, one for adverbs, none for pronouns and other function words [spec: work/relations-by-pos]', () => {
+describe('relation slots by part of speech', () => {
+  it('asks nouns and verbs for a category, content words for a synonym, and pronouns and other function words for none [spec: work/relation-slots-by-pos]', () => {
     const needs = Object.fromEntries(
-      Object.keys(RELATIONS_NEEDED).map((pos) => {
+      Object.keys(GRAMMAR_NEEDED).map((pos) => {
         const focus = sense(pos as Pos)
         const facts = [
           fact('sense', focus.id, { gloss: 'a meaning' }),
           fact('sense_list', entryId, { common: [focus.id], extra: [] }),
         ]
-        const gap = entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming: [], neighbors }).find(
-          (open) => open.type === 'relations',
+        const types = entryGaps({ entry: bank, ...plain, senses: [focus], facts, incoming: [], neighbors }).map(
+          (open) => open.type,
         )
         const { completeness } = assessEntry({
           entry: bank,
@@ -424,36 +439,26 @@ describe('relations by part of speech', () => {
           neighbors,
         })
         // Every slot but the sense inventory one is missing: forms, pronunciation, morphology,
-        // syllables, and the sense's relations, example, translation, translated example, topics,
-        // grammar, and collocations as the pos needs them.
-        return [pos, { gap: gap !== undefined, completeness }]
+        // syllables, and the sense's category, synonym, example, translation, translated example,
+        // topics, grammar, and collocations as the pos needs them.
+        return [pos, { category: types.includes('category'), synonyms: types.includes('synonyms'), completeness }]
       }),
     )
     expect(needs).toEqual({
-      noun: { gap: true, completeness: 1 - 12 / 13 },
+      noun: { category: true, synonyms: true, completeness: 1 - 12 / 13 },
       // A verb's paradigm adds four form slots.
-      verb: { gap: true, completeness: 1 - 16 / 17 },
-      adjective: { gap: true, completeness: 1 - 11 / 12 },
+      verb: { category: true, synonyms: true, completeness: 1 - 16 / 17 },
+      adjective: { category: false, synonyms: true, completeness: 1 - 10 / 11 },
       // An adverb adds a grammar and a collocation slot, a pronoun grammar, a determiner both, and a
       // preposition or conjunction a collocation.
-      adverb: { gap: true, completeness: 1 - 10 / 11 },
-      pronoun: { gap: false, completeness: 1 - 8 / 9 },
-      determiner: { gap: false, completeness: 1 - 9 / 10 },
-      preposition: { gap: false, completeness: 1 - 8 / 9 },
-      conjunction: { gap: false, completeness: 1 - 8 / 9 },
-      interjection: { gap: false, completeness: 1 - 7 / 8 },
-      auxiliary: { gap: false, completeness: 1 - 7 / 8 },
+      adverb: { category: false, synonyms: true, completeness: 1 - 10 / 11 },
+      pronoun: { category: false, synonyms: false, completeness: 1 - 8 / 9 },
+      determiner: { category: false, synonyms: false, completeness: 1 - 9 / 10 },
+      preposition: { category: false, synonyms: false, completeness: 1 - 8 / 9 },
+      conjunction: { category: false, synonyms: false, completeness: 1 - 8 / 9 },
+      interjection: { category: false, synonyms: false, completeness: 1 - 7 / 8 },
+      auxiliary: { category: false, synonyms: false, completeness: 1 - 7 / 8 },
     })
-    const adverb = sense('adverb')
-    const linked = [
-      fact('sense', adverb.id, { gloss: 'quickly' }),
-      fact('relation', adverb.id, { type: 'synonym', target_sense_id: visibleSense() }),
-    ]
-    expect(
-      entryGaps({ entry: bank, ...plain, senses: [adverb], facts: linked, incoming: [], neighbors }).map(
-        (gap) => gap.type,
-      ),
-    ).not.toContain('relations')
   })
 })
 
@@ -589,8 +594,9 @@ describe('assessEntry', () => {
     fact('sense_list', entryId, { common: [focus.id], extra: [] }),
     fact('syllables', entryId, { syllables: ['bank'] }),
     fact('pronunciation', entryId, { ipa: 'bæŋk', accent: 'uk' }),
+    fact('relation', focus.id, { type: 'hypernym', target_sense_id: visibleSense() }),
   ]
-  const incoming = [fact('relation', visibleSense(), { type: 'hypernym', target_sense_id: focus.id })]
+  const incoming = [fact('relation', visibleSense(), { type: 'part_of', target_sense_id: focus.id })]
   const assess = (facts: Fact[], more: { incoming?: Fact[]; flagged?: FactId[] } = {}) =>
     assessEntry({
       entry: bank,
@@ -603,76 +609,103 @@ describe('assessEntry', () => {
     })
 
   it('scores completeness as filled slots over the slots the gaps count [spec: work/scores]', () => {
-    expect(assess(complete)).toMatchObject({ gaps: [], completeness: 1, quality: 1, weakFacts: [] })
-    // One of two relations and the translation missing: 2 of 14 slots.
+    expect(assess(complete)).toEqual({ work: [], completeness: 1, quality: 1 })
+    // The parts and the translation missing: 2 of 15 slots.
     const noTranslation = complete.filter((candidate) => candidate.kind !== 'translation')
-    expect(assess(noTranslation, { incoming: [] }).completeness).toBe(1 - 2 / 14)
+    expect(assess(noTranslation, { incoming: [] }).completeness).toBe(1 - 2 / 15)
     // A bare entry counts only its five entry slots: the inventory, two accents, formation, syllables.
     expect(assess([complete[0]], { incoming: [] }).completeness).toBe(0)
     expect(assess([complete[0], complete[3]], { incoming: [] }).completeness).toBe(1 - 4 / 5)
   })
 
-  it('scores quality from live facts that are uncertain or under open feedback [spec: work/scores]', () => {
+  it('scores quality from live facts that are uncertain or under open feedback, each a weak fact [spec: work/scores]', () => {
     const uncertain = reviewed(complete[5], 'uncertain')
     const passed = reviewed(complete[6], 'pass')
     const pendingUncertain = reviewed({ ...complete[3], status: 'pending' }, 'uncertain')
     const retracted = { ...fact('example', focus.id, { text: 'Gone.' }), status: 'retracted' } as Fact
     const facts = [...complete.slice(0, 3), pendingUncertain, complete[4], uncertain, passed, retracted]
     const scored = assess(facts, { flagged: [complete[2].id, retracted.id] })
-    expect(scored.weakFacts).toEqual([
-      { id: complete[2].id, kind: 'form', reason: 'feedback' },
-      { id: uncertain.id, kind: 'example', reason: 'uncertain' },
-    ])
+    const weak = [
+      { type: 'weak_fact', fact_id: complete[2].id, kind: 'form', reason: 'feedback' },
+      { type: 'weak_fact', fact_id: uncertain.id, kind: 'example', reason: 'uncertain' },
+    ]
+    expect(scored.work.filter((work) => work.gap.type === 'weak_fact')).toEqual(
+      weak.map((gap) => ({ gap, subjectId: gap.fact_id, awaiting: false })),
+    )
     expect(scored.quality).toBe(1 - 2 / 7)
     expect(assess([]).quality).toBe(1)
   })
 
-  it('keys open work by gaps and weak slots, so a weak fact replaced by another weak one is no change', () => {
+  it('stops listing a weak fact a live correction replaces, which awaits that review [spec: work/weak-facts]', () => {
     const weak = reviewed(complete[5], 'uncertain')
-    const correction = reviewed(
-      fact('example', focus.id, { text: 'Another bank.', translations: { zh: '另一个河岸。' } }),
-      'uncertain',
-    )
-    const before = assess([...complete.slice(0, 5), weak, complete[6]])
-    expect(assess([...complete.slice(0, 5), correction, complete[6]]).openWork).toBe(before.openWork)
-    expect(assess(complete).openWork).not.toBe(before.openWork)
-    expect(assess(complete.slice(0, 6)).openWork).not.toBe(assess(complete).openWork)
+    const correction = { ...fact('example', focus.id, { text: 'Another bank.' }, 'pending'), supersedesId: weak.id }
+    const facts = [...complete.slice(0, 5), weak, ...complete.slice(6)]
+    expect(weakFacts({ facts, flagged: new Set() })).toEqual([
+      { type: 'weak_fact', fact_id: weak.id, kind: 'example', reason: 'uncertain' },
+    ])
+    expect(weakFacts({ facts: [...facts, correction], flagged: new Set() })).toEqual([])
+    const item = assess([...facts, correction]).work.find((work) => work.gap.type === 'weak_fact')
+    expect(item).toEqual({
+      gap: { type: 'weak_fact', fact_id: weak.id, kind: 'example', reason: 'uncertain' },
+      subjectId: weak.id,
+      awaiting: true,
+    })
   })
 
-  it('awaits review while a fact about the entry or a relation into its senses is pending [spec: work/admission]', () => {
+  it('awaits review exactly where a pending fact changes the open work, and lists none for a dead entry [spec: work/awaiting-review]', () => {
     const pending = (candidate: Fact) => ({ ...candidate, status: 'pending' }) as Fact
     const rejected = { ...complete[5], status: 'rejected' } as Fact
-    expect(assess([...complete, rejected]).awaitingReview).toBe(false)
-    expect(assess([...complete.slice(0, 6), pending(complete[6])]).awaitingReview).toBe(true)
-    expect(assess([pending(complete[0])], { incoming: [] }).awaitingReview).toBe(true)
-    expect(assess(complete, { incoming: incoming.map(pending) }).awaitingReview).toBe(true)
+    expect(assess([...complete, rejected]).work).toEqual([])
+    // A pending translation closes its gap only once it publishes: the item waits for the verdict.
+    expect(assess([...complete.slice(0, 6), pending(complete[6]), ...complete.slice(7)]).work).toEqual([
+      { gap: { type: 'translations', sense_id: focus.id, language: 'zh' }, subjectId: focus.id, awaiting: true },
+    ])
+    // An unrelated gap of the same entry stays workable while another awaits review.
+    const noTopic = complete.filter((candidate) => candidate.kind !== 'topic')
+    expect(assess([...noTopic.slice(0, 6), pending(complete[6]), ...noTopic.slice(7)]).work).toContainEqual({
+      gap: { type: 'topics', sense_id: focus.id },
+      subjectId: focus.id,
+      awaiting: false,
+    })
+    // A pending relation into a sense counts for the gap it fills.
+    expect(assess(complete, { incoming: incoming.map(pending) }).work).toEqual([
+      { gap: { type: 'parts', sense_id: focus.id }, subjectId: focus.id, awaiting: true },
+    ])
+    // A pending entry fact holds every item for its review; a rejected one leaves no work at all.
+    expect(assess([pending(complete[0])], { incoming: [] }).work.every((work) => work.awaiting)).toBe(true)
+    expect(assess([{ ...complete[0], status: 'rejected' } as Fact], { incoming: [] }).work).toEqual([])
   })
 })
 
-describe('worklist admission', () => {
-  it('stalls an entry whose completed pass left the open work as the claim found it [spec: work/stall]', () => {
-    const work = { openWork: 'gaps' }
-    expect(isStalled({ openWork: 'gaps', completed: true }, work)).toBe(true)
-    expect(isStalled({ openWork: 'gaps', completed: false }, work)).toBe(false)
-    expect(isStalled({ openWork: 'other gaps', completed: true }, work)).toBe(false)
-    expect(isStalled({ openWork: null, completed: true }, work)).toBe(false)
+describe('work items', () => {
+  const sensed = sense()
+  const learner = { levelRank: 1, zipf: 5.2 }
+  const open = (gap: Gap, awaiting = false): OpenWork => ({
+    gap,
+    subjectId: 'sense_id' in gap ? gap.sense_id : entryId,
+    awaiting,
+  })
+  const category: Gap = { type: 'category', sense_id: sensed.id }
+  const examples = (count: number): Gap => ({ type: 'examples', sense_id: sensed.id, count, need: 2 })
+  const stored = (gap: Gap, more: Partial<WorkItem> = {}): WorkItem => ({
+    id: id<WorkItemId>(),
+    entryId,
+    type: gap.type,
+    subjectId: 'sense_id' in gap ? gap.sense_id : entryId,
+    gap,
+    ...workPriority(gap.type, learner),
+    awaiting: false,
+    attempts: 0,
+    worked: false,
+    claimedGap: null,
+    lease: null,
+    lastWorkedAt: null,
+    lastWorkedBy: null,
+    lastNote: null,
+    ...more,
   })
 
-  it('admits a live entry with work left that is neither stalled nor awaiting review, or whose scores are stale [spec: work/admission]', () => {
-    const row = { live: true, stale: false, stalled: false, awaitingReview: false, completeness: 0.5, quality: 1 }
-    expect(isClaimable(row)).toBe(true)
-    expect(isClaimable({ ...row, awaitingReview: true })).toBe(false)
-    expect(isClaimable({ ...row, awaitingReview: true, stale: true })).toBe(true)
-    expect(isClaimable({ ...row, completeness: 1 })).toBe(false)
-    expect(isClaimable({ ...row, completeness: 1, quality: 0.9 })).toBe(true)
-    expect(isClaimable({ ...row, stalled: true })).toBe(false)
-    expect(isClaimable({ ...row, stalled: true, stale: true })).toBe(true)
-    expect(isClaimable({ ...row, completeness: 1, stale: true })).toBe(true)
-    expect(isClaimable({ ...row, live: false, stale: true })).toBe(false)
-  })
-
-  it('serves gaps before weak facts, then by learner band, never-claimed before claimed within a band [spec: work/claim-tiers]', () => {
-    const gap = { completeness: 0.5, claimed: false }
+  it('ranks by the policy stage before the learner band, then by frequency [spec: work/item-priority]', () => {
     const bands = [
       { levelRank: 1, zipf: 3 },
       { levelRank: 2, zipf: null },
@@ -684,17 +717,90 @@ describe('worklist admission', () => {
       { levelRank: null, zipf: null },
     ]
     expect(bands.map(learnerBand)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
-    const tiers = bands.flatMap((band) => [
-      claimTier({ ...band, ...gap }),
-      claimTier({ ...band, ...gap, claimed: true }),
+    // Every CEFR noun's category comes before any B1 example, and a C2 word's senses before an A1 category.
+    const c2Senses = workPriority('senses', bands[5]).rank
+    const a1Category = workPriority('category', bands[0]).rank
+    const a1Examples = workPriority('examples', bands[0]).rank
+    const c2Category = workPriority('category', bands[5]).rank
+    expect(c2Senses).toBeLessThan(a1Category)
+    expect(c2Category).toBeLessThan(a1Examples)
+    expect(workPriority('weak_fact', bands[0]).rank).toBeGreaterThan(workPriority('topics', bands[7]).rank)
+    expect(workPriority('examples', { levelRank: null, zipf: null }).zipfOrder).toBe(-1)
+    expect(workPriority('examples', bands[2]).zipfOrder).toBe(6)
+    expect(Object.fromEntries(Object.entries(WORK_POLICY).map(([type, { stage }]) => [type, stage]))).toEqual({
+      senses: 1,
+      sense_list: 1,
+      translations: 2,
+      category: 2,
+      parts: 2,
+      examples: 3,
+      example_translations: 3,
+      grammar: 3,
+      collocations: 3,
+      forms: 3,
+      pronunciation: 3,
+      syllables: 3,
+      morphology: 3,
+      form_pronunciations: 3,
+      synonyms: 4,
+      family: 4,
+      phrases: 4,
+      topics: 4,
+      weak_fact: 5,
+    })
+  })
+
+  it('upserts the open work by type and node and deletes the rest [spec: work/item-upsert]', () => {
+    const kept = stored(category, { attempts: 1 })
+    const closed = stored(examples(0))
+    const { writes, deletes } = reconcileItems([kept, closed], [open(category), open({ type: 'syllables' })], learner)
+    expect(deletes).toEqual([closed.id])
+    expect(writes).toEqual([
+      {
+        id: kept.id,
+        type: 'category',
+        subjectId: sensed.id,
+        gap: category,
+        awaiting: false,
+        attempts: 1,
+        worked: false,
+        ...workPriority('category', learner),
+      },
+      {
+        id: null,
+        type: 'syllables',
+        subjectId: entryId,
+        gap: { type: 'syllables' },
+        awaiting: false,
+        attempts: 0,
+        worked: false,
+        ...workPriority('syllables', learner),
+      },
     ])
-    expect(tiers).toEqual([...Array(16).keys()])
-    const qualityOnly = bands.map((band) => claimTier({ ...band, completeness: 1, claimed: false }))
-    expect(qualityOnly).toEqual([16, 18, 20, 22, 24, 26, 28, 30])
-    expect(Math.min(...qualityOnly)).toBeGreaterThan(Math.max(...tiers))
-    const polishing = bands.map((band) => claimTier({ ...band, completeness: POLISH_FROM, claimed: false }))
-    expect(polishing).toEqual(qualityOnly)
-    expect(claimTier({ ...bands[0], completeness: POLISH_FROM - 0.01, claimed: false })).toBe(0)
+  })
+
+  it('counts an attempt for a worked item its pass left as claimed, once its reviews settle [spec: work/item-attempts]', () => {
+    const claimed = stored(category, { worked: true, claimedGap: category, attempts: 1 })
+    const attemptsAfter = (item: WorkItem, work: OpenWork) => reconcileItems([item], [work], learner).writes[0]
+    // Unchanged after the pass: an attempt, and the verdict is drawn.
+    expect(attemptsAfter(claimed, open(category))).toMatchObject({ attempts: 2, worked: false })
+    // Its facts pending: the item waits with its attempts and its pending verdict.
+    expect(attemptsAfter(claimed, open(category, true))).toMatchObject({ attempts: 1, worked: true, awaiting: true })
+    // A partial fill is progress: the attempts start over.
+    const filling = stored(examples(0), { worked: true, claimedGap: examples(0), attempts: 2 })
+    expect(attemptsAfter(filling, open(examples(1)))).toMatchObject({ attempts: 0, worked: false })
+    // Another principal's change of an item nobody worked also starts it over; no change keeps it.
+    const idle = stored(examples(0), { attempts: 2 })
+    expect(attemptsAfter(idle, open(examples(1)))).toMatchObject({ attempts: 0 })
+    expect(attemptsAfter(idle, open(examples(0)))).toMatchObject({ attempts: 2 })
+    // Gaps compare by what they say, not by the order of their keys.
+    expect(gapText({ sense_id: sensed.id, type: 'category' } as Gap)).toBe(gapText(category))
+  })
+
+  it('moves an item to the curators once three passes leave it unchanged [spec: work/item-curation]', () => {
+    expect(itemState({ awaiting: false, attempts: MAX_ATTEMPTS - 1 })).toBe('open')
+    expect(itemState({ awaiting: true, attempts: 0 })).toBe('awaiting_review')
+    expect(itemState({ awaiting: false, attempts: MAX_ATTEMPTS })).toBe('curation')
   })
 })
 
@@ -795,10 +901,10 @@ describe('completeness rules for a learner dictionary', () => {
       return { focus, types: gaps.map((gap) => gap.type) }
     }
     // Every adverb, not only a manner adverb, needs grammar and a collocation.
-    expect(typesOf('adverb').types).toEqual(expect.arrayContaining(['grammar', 'collocations', 'relations']))
+    expect(typesOf('adverb').types).toEqual(expect.arrayContaining(['grammar', 'collocations', 'synonyms']))
     expect(typesOf('determiner').types).toEqual(expect.arrayContaining(['grammar', 'collocations']))
     expect(typesOf('pronoun').types).toContain('grammar')
-    expect(typesOf('pronoun').types).not.toContain('relations')
+    expect(typesOf('pronoun').types).not.toContain('synonyms')
     expect(typesOf('pronoun').types).not.toContain('collocations')
     expect(typesOf('preposition').types).toContain('collocations')
     expect(typesOf('preposition').types).not.toContain('grammar')

@@ -146,6 +146,7 @@ describe('public view records', () => {
       {
         topicId: 'finance',
         levelOrder: 2,
+        rare: false,
         summary: {
           lemma: 'bank',
           sense_id: 's1',

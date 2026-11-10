@@ -2,6 +2,7 @@ import {
   entries,
   publicEntries,
   publicForms,
+  publicHypernyms,
   publicMeanings,
   publicMorphemes,
   publicPhraseWords,
@@ -22,7 +23,7 @@ import type {
   ViewLookup,
 } from '@server/usecases/ports'
 import type { EntrySort, SenseSort } from '@shared/catalog'
-import { type EntryId, formTypeSchema, posSchema, type TopicId } from '@shared/facts'
+import { type EntryId, formTypeSchema, posSchema, type RelationDomain, type SenseId, type TopicId } from '@shared/facts'
 import { and, asc, count, eq, exists, gte, inArray, lt, ne, type SQL, sql } from 'drizzle-orm'
 import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
@@ -35,6 +36,13 @@ const rankedLemmaCursor = z.object({ order: z.number().int(), lemma: z.string() 
 const senseCursor = z.object({ lemma: z.string(), id: z.string() })
 const rankedSenseCursor = z.object({ order: z.number().int(), lemma: z.string(), id: z.string() })
 const searchCursor = z.object({ tier: z.number().int(), order: z.number().int(), lemma: z.string() })
+const memberCursor = z.object({ depth: z.number().int(), lemma: z.string(), id: z.string() })
+
+/**
+ * How deep the members walk goes. The everyday taxonomy is a few levels deep and a domain one under
+ * ten; the bound also ends a walk that a cycle of three or more entries would keep going.
+ */
+export const MEMBER_DEPTH = 12
 
 /** The lemma starts with prefix: a range on the lemma index. */
 const startsWith = (column: SQLiteColumn, prefix: string) =>
@@ -123,7 +131,8 @@ export function entryListStatement(db: Db, filter: EntryFilter, sort: EntrySort,
     pos === null ? undefined : eq(posColumn, pos),
     levels.length > 0 ? inArray(cefrColumn, [...levels]) : undefined,
   ]
-  // Topic, part of speech, and level hold for one tagged sense, or without a topic for one meaning.
+  // Topic, part of speech, and level hold for one tagged common sense, or without a topic for one
+  // meaning. A topic on a rare sense does not put its entry in the topic's word list.
   const restriction = leaves
     ? exists(
         db
@@ -133,6 +142,7 @@ export function entryListStatement(db: Db, filter: EntryFilter, sort: EntrySort,
             and(
               eq(publicSenseTopics.entryId, publicEntries.entryId),
               inArray(publicSenseTopics.topicId, [...leaves]),
+              eq(publicSenseTopics.rare, false),
               ...fits(publicSenseTopics.pos, publicSenseTopics.cefr),
             ),
           ),
@@ -225,6 +235,35 @@ export function searchStatement(query: SearchQuery, { limit, cursor }: PageReque
     FROM best JOIN public_entries ON public_entries.entry_id = best.entry_id
     ${last ? sql`WHERE (best.tier, public_entries.frequency_order, public_entries.lemma) > (${last.tier}, ${last.order}, ${last.lemma})` : sql``}
     ORDER BY best.tier, public_entries.frequency_order, public_entries.lemma
+    LIMIT ${limit + 1}
+  `
+}
+
+/**
+ * The page query of `GET /v1/senses/{id}/members`: a recursive walk down public_hypernyms from the
+ * category, everyday links and those of the domain asked for, each member at its nearest depth.
+ * Exported so a test can pin it.
+ */
+export function memberStatement(id: SenseId, domain: RelationDomain | null, { limit, cursor }: PageRequest) {
+  const last = cursor ? decodeCursor(cursor, memberCursor) : undefined
+  return sql`
+    WITH RECURSIVE walk(sense_id, depth) AS (
+      SELECT sense_id, 1 FROM public_hypernyms AS h
+        WHERE h.broader_sense_id = ${id} AND (h.domain IS NULL OR h.domain = ${domain})
+      UNION
+      SELECT h.sense_id, walk.depth + 1 FROM public_hypernyms AS h JOIN walk ON h.broader_sense_id = walk.sense_id
+        WHERE walk.depth < ${MEMBER_DEPTH} AND (h.domain IS NULL OR h.domain = ${domain})
+    ),
+    nearest(sense_id, depth) AS (SELECT sense_id, min(depth) FROM walk WHERE sense_id <> ${id} GROUP BY sense_id),
+    members AS (
+      SELECT nearest.sense_id AS id, nearest.depth AS depth,
+        (SELECT lemma FROM public_hypernyms WHERE sense_id = nearest.sense_id LIMIT 1) AS lemma,
+        (SELECT summary FROM public_hypernyms WHERE sense_id = nearest.sense_id LIMIT 1) AS summary
+      FROM nearest
+    )
+    SELECT id, depth, lemma, summary FROM members
+    ${last ? sql`WHERE (depth, lemma, id) > (${last.depth}, ${last.lemma}, ${last.id})` : sql``}
+    ORDER BY depth, lemma, id
     LIMIT ${limit + 1}
   `
 }
@@ -345,6 +384,18 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       )
     },
 
+    async listMembers(id, domain, request) {
+      const rows = await db.all<{ id: string; depth: number; lemma: string; summary: string }>(
+        memberStatement(id, domain, request),
+      )
+      return page(
+        rows,
+        request.limit,
+        (row) => ({ summary: readStored<StoredSenseSummary>(row.summary), depth: row.depth }),
+        (row) => ({ depth: row.depth, lemma: row.lemma, id: row.id }),
+      )
+    },
+
     async listStale(nodeIds) {
       const rows = await db
         .select({ entryId: worklist.entryId, revision: worklist.revision })
@@ -382,6 +433,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         db.delete(publicMeanings).where(ofEntry(publicMeanings.entryId)),
         db.delete(publicForms).where(ofEntry(publicForms.entryId)),
         db.delete(publicSenseTopics).where(ofEntry(publicSenseTopics.entryId)),
+        db.delete(publicHypernyms).where(ofEntry(publicHypernyms.entryId)),
         db.delete(publicPhraseWords).where(ofEntry(publicPhraseWords.entryId)),
         db.delete(publicMorphemes).where(ofEntry(publicMorphemes.entryId)),
         db.delete(publicSearch).where(ofEntry(publicSearch.entryId)),
@@ -466,10 +518,29 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
             levelOrder: field('levelOrder').as('level_order'),
             frequencyOrder: sql`${record.frequencyOrder}`.as('frequency_order'),
             summary: sql<string>`json(json_extract(value, '$.summary'))`.as('summary'),
+            rare: field('rare').as('rare'),
           })
           .from(rows(record.taggedSenses))
           .where(current),
       )
+      const insertHypernyms = db
+        .insert(publicHypernyms)
+        .select(
+          db
+            .select({
+              broaderSenseId: field('broaderSenseId').as('broader_sense_id'),
+              senseId: field('summary.sense_id').as('sense_id'),
+              domain: field('domain').as('domain'),
+              entryId: sql`${stale.entryId}`.as('entry_id'),
+              lemma: sql`${record.document.lemma}`.as('lemma'),
+              summary: sql<string>`json(json_extract(value, '$.summary'))`.as('summary'),
+            })
+            .from(rows(record.hypernyms))
+            .where(current),
+        )
+        // The one-layer rule is a read before the write, so two concurrent submissions can give one
+        // pair a hypernym in each layer; the walk lists the pair once.
+        .onConflictDoNothing()
       const insertPhraseWords = db.insert(publicPhraseWords).select(
         db
           .select({ word: sql<string>`value`.as('word'), entryId: sql`${stale.entryId}`.as('entry_id') })
@@ -505,6 +576,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         insertMeanings,
         insertForms,
         insertTopics,
+        insertHypernyms,
         insertPhraseWords,
         insertMorphemes,
         insertSearch,

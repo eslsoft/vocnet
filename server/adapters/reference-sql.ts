@@ -1,4 +1,5 @@
 import { type CefrRow, type FrequencyRow, levelRank } from '@server/domain/reference'
+import { BANDS } from '@server/domain/work'
 import { cefrLevelSchema, type ReferenceSource } from '@shared/reference'
 
 // Renders one reference import as SQL statements for D1 (`wrangler d1 execute --file`). An
@@ -47,10 +48,17 @@ export const rankWorklistSql = `UPDATE worklist SET level_rank = ${levelRankSql(
 )}, zipf = (select zipf from word_frequency where word_frequency.word = worklist.frequency_key);`
 
 /**
+ * Re-ranks every work item from its entry's reread learner priority: `workPriority` in
+ * server/domain/work.ts, the stage times the band count plus `learnerBand`, and the Zipf frequency
+ * with -1 for none. It follows `rankWorklistSql` in every import, so a reimport moves the queue.
+ */
+export const rankWorkItemsSql = `UPDATE work_items SET rank = stage * ${BANDS} + (select case when level_rank is not null then level_rank - 1 when zipf is null then 7 else 6 end from worklist where worklist.entry_id = work_items.entry_id), zipf_order = coalesce((select zipf from worklist where worklist.entry_id = work_items.entry_id), -1);`
+
+/**
  * Marks every entry's public view stale, since its document carries the frequency and CEFR levels
  * the import replaced. It bumps the shared `revision`, and with it `scored_revision` where the
- * scores were current: reference data is not part of the scores, so they still describe the row
- * and the entry does not become claimable meanwhile. A rescore in flight reads the old revision
+ * scores were current: reference data is not part of the scores, so they still describe the row,
+ * and its items, already re-ranked, stay as they are. A rescore in flight reads the old revision
  * and saves nothing, as after any other bump.
  */
 export const staleViewsSql =
@@ -93,6 +101,7 @@ export function referenceImportSql({ sources, frequency, cefr }: ReferenceImport
       cefr.map((row) => [text(row.lemma), text(row.pos), text(row.level), text(row.sourceId)]),
     ),
     rankWorklistSql,
+    rankWorkItemsSql,
     staleViewsSql,
   ]
 }

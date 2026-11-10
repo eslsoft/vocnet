@@ -1,25 +1,30 @@
-import { assessEntry, isStalled } from '@server/domain/work'
+import { assessEntry, reconcileItems } from '@server/domain/work'
 import type { Deps } from './deps'
 import type { StaleWork } from './ports'
 
 export type ScoreDeps = Pick<Deps, 'work' | 'nodes'>
 
+/** Assesses the entry and stores its scores and work items as of the stale revision: the items converge on its open work. */
 async function rescore(deps: ScoreDeps, stale: StaleWork): Promise<void> {
   const entry = await deps.nodes.findEntry(stale.entryId)
   if (!entry) throw new Error(`Worklist entry ${stale.entryId} does not exist.`)
-  const assessment = assessEntry(await deps.nodes.loadEntrySnapshot(entry))
-  await deps.work.saveScores(stale, {
-    completeness: assessment.completeness,
-    quality: assessment.quality,
-    stalled: isStalled(stale.lastClaim, assessment),
-    awaitingReview: assessment.awaitingReview,
-  })
+  const [snapshot, stored] = await Promise.all([deps.nodes.loadEntrySnapshot(entry), deps.work.listItems(entry.id)])
+  const assessment = assessEntry(snapshot)
+  const { writes, deletes } = reconcileItems(stored, assessment.work, snapshot)
+  await deps.work.saveAssessment(
+    stale,
+    { completeness: assessment.completeness, quality: assessment.quality },
+    {
+      writes,
+      deletes,
+    },
+  )
 }
 
 /**
  * Rescores the stale worklist rows of the entries that are, or own as a sense, these nodes, or link
- * to them by a relation. `refreshEntries` calls it after every write; a row it leaves stale stays
- * claimable until `refreshStaleWork` gets to it.
+ * to them by a relation. `refreshEntries` calls it after every write; a row it leaves stale keeps
+ * its items as of its last rescore until `refreshStaleWork` gets to it.
  */
 export async function refreshWork(deps: ScoreDeps, nodeIds: Array<string | null>): Promise<void> {
   const ids = nodeIds.filter((id): id is string => id !== null)

@@ -1,4 +1,3 @@
-import { env } from 'cloudflare:test'
 import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
@@ -49,27 +48,5 @@ describe('plural-only nouns and shortened words', () => {
     expect((await entryOf('jeans')).meanings[0]?.senses[0]?.grammar).toMatchObject({ number: 'plural_only' })
     expect((await entryOf('jeans')).meanings[0]?.senses[0]?.grammar).not.toHaveProperty('countability')
     expect((await entryOf('Mrs')).morphology).toMatchObject({ parts: [{ form: 'Mrs', role: 'base' }], shortened })
-  })
-})
-
-describe('plural-only and shortened release', () => {
-  it('lifts every stall and makes every worklist row stale [spec: work/plural-only-shortened-migration]', async () => {
-    const token = await issueAgentKey()
-    for (const lemma of ['jeans', 'Mrs']) await post(token, '/manage/v1/entries', { lemma })
-    await env.DB.prepare(
-      `update worklist set scored_revision = revision, stalled = 1, claimed_work = '{"gaps":[]}'`,
-    ).run()
-
-    const migration = env.TEST_MIGRATIONS.find((candidate) =>
-      candidate.name.endsWith('_plural_only_titles_shortened.sql'),
-    )
-    if (!migration) throw new Error('The plural_only_titles_shortened migration is missing.')
-    for (const query of migration.queries) await env.DB.prepare(query).run()
-
-    const rows = await env.DB.prepare(
-      'select count(*) as n, sum(stalled) as stalled, sum(claimed_work is not null) as claimed, sum(revision = scored_revision) as fresh from worklist',
-    ).first()
-    expect(rows).toMatchObject({ stalled: 0, claimed: 0, fresh: 0 })
-    expect(rows?.n).toBeGreaterThanOrEqual(2)
   })
 })

@@ -1,4 +1,4 @@
-import type { Pos, SenseId, TopicId } from '@shared/facts'
+import { type FactPayloads, type Pos, type SenseId, submitFactInputSchema, type TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
   admissionOf,
@@ -14,7 +14,6 @@ import {
   type LinkEnd,
   linkAdmissionOf,
   MAX_COLLOCATIONS,
-  MAX_NARROWER,
   MAX_TOPICS_PER_SENSE,
   meaningKeyOf,
   orientOf,
@@ -101,6 +100,78 @@ describe('relation link rules', () => {
     const partOf = link('new', 'part_of', [3, 'surprise'], [4, 'shock'])
     expect(linkAdmissionOf('relation', partOf, [up])).toBeNull()
     expect(linkAdmissionOf('example', link('x', 'synonym', [1, 'a'], [2, 'b']) as never, [])).toBeNull()
+  })
+
+  it('keeps each broader term in one layer, everyday or a domain [spec: facts/relation-one-layer]', () => {
+    const everyday = link('f1', 'hypernym', [1, 'dog'], [2, 'canine'])
+    const biology = { ...link('new', 'hypernym', [1, 'dog'], [3, 'canine']) }
+    biology.payload = { ...biology.payload, domain: 'biology' }
+    expect(linkAdmissionOf('relation', biology, [everyday])).toBe(
+      "This sense already has a live everyday hypernym (f1) to a sense of the target's entry; a broader term belongs to one layer. Retract that fact first if the biology layer fits it better.",
+    )
+    expect(linkAdmissionOf('relation', everyday, [{ ...biology, id: 'f2' as never }])).toContain(
+      'a live biology hypernym (f2)',
+    )
+    const sameLayer = link('new', 'hypernym', [1, 'dog'], [4, 'canine'])
+    expect(linkAdmissionOf('relation', sameLayer, [everyday])).toBeNull()
+  })
+})
+
+describe('relation layers', () => {
+  const [dog, animal] = [sense(1), sense(2)]
+  const source = { lemma: 'dog', pos: 'noun' as const, gloss: 'An animal kept as a pet.', siblings: [] }
+  const target = { lemma: 'canine', pos: 'noun' as const, gloss: 'An animal of the dog family.', siblings: [] }
+  const rubric = (payload: FactPayloads['relation']) =>
+    llmPrompt(planReview('relation', payload, { subject: source, target, topic: null, attempts: [] }))?.user ?? ''
+
+  it('keys a hypernym by its layer, so the everyday and the domain claim are different facts [spec: facts/relation-layers]', () => {
+    expect(contentKeyOf('relation', { type: 'hypernym', target_sense_id: animal })).toBe(`hypernym|${animal}`)
+    expect(contentKeyOf('relation', { type: 'hypernym', target_sense_id: animal, domain: 'biology' })).toBe(
+      `hypernym|${animal}|biology`,
+    )
+    expect(orientOf('relation', animal, { type: 'hypernym', target_sense_id: dog, domain: 'medicine' })).toEqual({
+      subjectId: animal,
+      payload: { type: 'hypernym', target_sense_id: dog, domain: 'medicine' },
+    })
+    expect(
+      submitFactInputSchema.safeParse({
+        kind: 'relation',
+        subject_id: dog,
+        payload: { type: 'synonym', target_sense_id: animal, domain: 'biology' },
+      }).error?.issues[0]?.message,
+    ).toBe(
+      'Only a hypernym carries a domain: a specialist taxonomy layers broader terms, never synonyms, antonyms, or parts.',
+    )
+  })
+
+  it('judges an everyday hypernym as a learner category and a domain one as a term of its taxonomy [spec: facts/relation-layer-rubric]', () => {
+    const everyday = rubric({ type: 'hypernym', target_sense_id: animal })
+    expect(everyday).toContain('This hypernym is in the everyday layer: the category words a learner uses')
+    expect(everyday).toContain(
+      'Fail a technical taxon or a term a learner would not use for the category, such as "canine", "passerine"',
+    )
+    expect(everyday).toContain('The target must be a word an A1 to B2 learner can use')
+    const biology = rubric({ type: 'hypernym', target_sense_id: animal, domain: 'biology' })
+    expect(biology).toContain(
+      'Claimed type: hypernym, meaning the source is a kind of the target (the target is its hypernym) in the taxonomy of biology.',
+    )
+    expect(biology).toContain('Pass only when the target is a real term of the taxonomy of biology')
+    expect(biology).toContain('Fail an invented intermediate node')
+    expect(biology).not.toContain('This hypernym is in the everyday layer')
+    expect(biology).not.toContain('The target must be a word an A1 to B2 learner can use')
+    const question = jevQuestion(
+      planReview(
+        'relation',
+        { type: 'hypernym', target_sense_id: animal, domain: 'biology' },
+        { subject: source, target, topic: null, attempts: [] },
+      ),
+      'relation',
+    )
+    expect(question).toContain('in the taxonomy of biology:')
+    const partOf = rubric({ type: 'part_of', target_sense_id: animal })
+    expect(partOf).toContain('A part attaches to the most general common whole it is a part of')
+    expect(partOf).toContain('a wing is part of a bird, not of a turkey')
+    expect(partOf).not.toContain('This hypernym is in the everyday layer')
   })
 })
 
@@ -1449,7 +1520,6 @@ describe('completeness write rules and rubrics', () => {
       register,
       lemma: `word${sense}`,
       variants: [],
-      narrower: 0,
     })
     const [a, b] = [sense(1), sense(2)]
     const ends = (subject: ReturnType<typeof end>, other: ReturnType<typeof end>) => ({ subject, target: other })
@@ -1468,19 +1538,16 @@ describe('completeness write rules and rubrics', () => {
       `Sense ${a} is labelled dated`,
     )
     expect(endsAdmissionOf('example', { text: 'x' }, ends(end(a, true), end(b, true)))).toBeNull()
+    // A domain hypernym's target is a specialist term, often an extra sense of its word; it must still be current.
+    const biology = { ...hypernym, domain: 'biology' } as const
+    expect(endsAdmissionOf('relation', biology, ends(end(a), end(b, true)))).toBeNull()
+    expect(endsAdmissionOf('relation', biology, ends(end(a), end(b, false, 'dated')))).toContain('labelled dated')
   })
 
-  it('refuses a synonym between spellings of one word and a narrower term past the cap [spec: facts/relation-padding]', () => {
+  it('refuses a synonym between spellings of one word [spec: facts/relation-padding]', () => {
     const [a, b] = [sense(1), sense(2)]
-    const practise: LinkEnd = {
-      sense: a,
-      rare: false,
-      register: null,
-      lemma: 'practise',
-      variants: ['practice'],
-      narrower: 0,
-    }
-    const practice: LinkEnd = { sense: b, rare: false, register: null, lemma: 'practice', variants: [], narrower: 0 }
+    const practise: LinkEnd = { sense: a, rare: false, register: null, lemma: 'practise', variants: ['practice'] }
+    const practice: LinkEnd = { sense: b, rare: false, register: null, lemma: 'practice', variants: [] }
     const refusal = `"practise" and "practice" are spellings of one word: one entry records the other as a live spelling variant, so they are never synonyms. Relate a different word.`
     expect(
       endsAdmissionOf('relation', { type: 'synonym', target_sense_id: b }, { subject: practise, target: practice }),
@@ -1492,25 +1559,6 @@ describe('completeness write rules and rubrics', () => {
     )
     expect(
       endsAdmissionOf('relation', { type: 'hypernym', target_sense_id: b }, { subject: practise, target: practice }),
-    ).toBeNull()
-    const broad = { ...practice, lemma: 'kill', narrower: MAX_NARROWER - 1 }
-    const hypernym = { type: 'hypernym', target_sense_id: b } as const
-    expect(endsAdmissionOf('relation', hypernym, { subject: practise, target: broad })).toBeNull()
-    expect(
-      endsAdmissionOf('relation', hypernym, { subject: practise, target: { ...broad, narrower: MAX_NARROWER } }),
-    ).toBe(
-      `Sense ${b} already has 12 narrower terms (live hypernym relations to it), and a sense holds at most 12. Relate this sense to a more specific broader term instead.`,
-    )
-    // The cap counts narrower terms only: a synonym of a broad sense is admitted.
-    expect(
-      endsAdmissionOf(
-        'relation',
-        { type: 'synonym', target_sense_id: b },
-        {
-          subject: { ...practise, variants: [] },
-          target: { ...broad, narrower: MAX_NARROWER },
-        },
-      ),
     ).toBeNull()
     const kill = { lemma: 'kill', pos: 'verb' as const, gloss: 'To cause death.', siblings: [] }
     const rubric = llmPrompt(
@@ -1565,7 +1613,7 @@ describe('completeness write rules and rubrics', () => {
   it('closes a gap on the node its gap is about, judged by the LLM [spec: facts/gap-closure-review]', () => {
     expect(subjectTypeOf('gap_closure', { gap: 'forms', reason: 'r' })).toBe('entry')
     expect(subjectTypeOf('gap_closure', { gap: 'phrases', reason: 'r' })).toBe('entry')
-    for (const gap of ['relations', 'topics', 'grammar', 'collocations'] as const) {
+    for (const gap of ['category', 'parts', 'synonyms', 'topics', 'grammar', 'collocations'] as const) {
       expect(subjectTypeOf('gap_closure', { gap, reason: 'r' })).toBe('sense')
     }
     expect(subjectTypeOf('example', { text: 'x' })).toBe('sense')
@@ -1588,7 +1636,10 @@ describe('completeness write rules and rubrics', () => {
     expect(onSense).toContain("pass only if a learner's dictionary")
     expect(onSense).toContain('fail when the slot plainly applies to this word')
     expect(onSense).toContain('months, days, and numbers have no common collocations')
-    expect(onSense).toContain('a sense whose recorded relations are the only precise ones')
+    expect(onSense).toContain('a sense no learner files under a category word')
+    expect(onSense).toContain('or whose parts are recorded on the more general whole they belong to')
+    expect(onSense).toContain('a sense with no synonym or antonym a learner could use in its place')
+    expect(onSense).toContain('a kind of thing or action a learner files under an everyday category ("eagle" is a bird')
     expect(onSense).toContain(
       'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
     )
@@ -1636,7 +1687,9 @@ describe('completeness write rules and rubrics', () => {
       forms: { of: 'node', kinds: ['form'] },
       phrases: null,
       family: { of: 'derivatives' },
-      relations: { of: 'node', kinds: ['relation'] },
+      category: { of: 'node', kinds: ['relation'] },
+      parts: { of: 'node', kinds: ['relation'] },
+      synonyms: { of: 'node', kinds: ['relation'] },
       topics: { of: 'node', kinds: ['topic'] },
       grammar: { of: 'node', kinds: ['grammar'] },
       collocations: { of: 'node', kinds: ['collocation'] },

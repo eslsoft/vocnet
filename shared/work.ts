@@ -5,39 +5,26 @@ import {
   entryIdSchema,
   factIdSchema,
   factKindSchema,
+  factSchema,
   formTypeSchema,
   posSchema,
-  relationTypeSchema,
+  regionSchema,
+  registerSchema,
   senseIdSchema,
 } from './facts'
+import { cefrLevelSchema } from './reference'
 
 export const workLeaseIdSchema = z.uuid().brand<'WorkLeaseId'>()
 export type WorkLeaseId = z.infer<typeof workLeaseIdSchema>
 
+export const workItemIdSchema = z.uuid().brand<'WorkItemId'>()
+export type WorkItemId = z.infer<typeof workItemIdSchema>
+
 export const DEFAULT_LEASE_SECONDS = 900
 
-export const claimWorkInputSchema = z
-  .object({
-    lease_seconds: z
-      .number()
-      .int()
-      .min(60)
-      .max(3600)
-      .optional()
-      .meta({ description: `How long the lease lasts. Defaults to ${DEFAULT_LEASE_SECONDS}.` }),
-  })
-  .meta({ id: 'ClaimWorkInput' })
-export type ClaimWorkInput = z.infer<typeof claimWorkInputSchema>
-
-export const workLeaseSchema = z
-  .object({
-    id: workLeaseIdSchema,
-    entry_id: entryIdSchema,
-    lemma: z.string(),
-    holder: z.string(),
-    expires_at: z.iso.datetime(),
-  })
-  .meta({ id: 'WorkLease' })
+/** The most items one claim leases, so building their context stays inside one request's budget. */
+export const MAX_CLAIM_ITEMS = 50
+export const DEFAULT_CLAIM_ITEMS = 10
 
 const senseGap = { sense_id: senseIdSchema }
 
@@ -46,29 +33,23 @@ const CLOSABLE =
 
 const formSlotSchema = z.object({ type: formTypeSchema, pos: posSchema }).meta({ id: 'FormSlot' })
 
-const relationHaveSchema = z
-  .object({
-    type: relationTypeSchema,
-    direction: z.enum(['outgoing', 'incoming']).meta({
-      description: 'outgoing: the sense is the subject (e.g. this IS-A target). incoming: the other sense is.',
-    }),
-  })
-  .meta({ id: 'RelationHave' })
-
 export const gapSchema = z
   .discriminatedUnion('type', [
-    z.object({ type: z.literal('senses') }).meta({ description: 'The entry has no sense with a live gloss.' }),
+    z.object({ type: z.literal('senses') }).meta({
+      description:
+        "The entry has no sense with a live gloss. Create every common sense a learner's dictionary gives the word (POST /manage/v1/senses), then its sense list.",
+    }),
     z
       .object({
         type: z.literal('sense_list'),
-        rejected: z.number().int().nonnegative().meta({
+        senses: z.array(senseIdSchema).meta({
           description:
-            'How many sense lists naming exactly the current senses review rejected, counted up to two. When it is above zero, read the review reason of the latest rejected sense_list in the entry facts and fix exactly what it names: add the missing senses, merge duplicates, reorder, or move senses between common and extra. A third rejection of the same senses no longer changes the gap, so the entry stalls until something else changes it.',
+            'The senses with a live gloss, oldest first: the list names each exactly once, in common or in extra.',
         }),
       })
       .meta({
         description:
-          "The entry has senses but no live sense_list naming exactly them: none was submitted, it was rejected, or it is stale because a sense was added or a listed sense's gloss is no longer live. Complete the common senses, then submit a list (superseding a published one).",
+          "The entry has senses but no live sense_list naming exactly them: none was submitted, it was rejected, or it is stale because a sense was added or a listed sense's gloss is no longer live. Complete the common senses, then submit a list (superseding a published one). Read the review reason of any rejected sense_list among the entry's facts and fix exactly what it names.",
       }),
     z
       .object({
@@ -116,20 +97,15 @@ export const gapSchema = z
         description:
           'An irregular inflection (one no regular spelling rule gives, such as "went") has no live pronunciation: submit a correction of the form that adds ipa and accent.',
       }),
-    z
-      .object({
-        type: z.literal('relations'),
-        ...senseGap,
-        count: z.number().int().nonnegative().meta({
-          description:
-            'Live relations the sense is in, as subject or object. The gap stays open below what its part of speech needs: two for nouns, verbs, and adjectives, one for adverbs and pronouns; other parts of speech have no relations gap.',
-        }),
-        have: z.array(relationHaveSchema).meta({
-          description:
-            'Each relation type and direction the sense already has, once, so an agent looks for the others.',
-        }),
-      })
-      .meta({ description: CLOSABLE }),
+    z.object({ type: z.literal('category'), ...senseGap }).meta({
+      description: `A noun or verb sense has no live everyday hypernym: no broader term a learner files it under. Submit a hypernym relation (no domain) from this sense to each category word a learner's dictionary uses for it: "dog" to animal and to pet, "eagle" to bird, "stroll" to walk. Every target is a real headword; never a technical taxon ("canine", "passerine"), which goes in a domain layer (domain: "biology"). Narrower terms are never needed on the category word: its members are the words that name it as their category. ${CLOSABLE}`,
+    }),
+    z.object({ type: z.literal('parts'), ...senseGap }).meta({
+      description: `A noun sense with an everyday category has no live part attached to it: no live part_of relation names this sense as the whole. Submit, in one pass, a part_of relation from each main part a learner's dictionary names for this thing to this sense ("beak", "wing", "feather" to "bird"; "wheel", "engine" to "car"). A part attaches to the most general common whole it belongs to: a tail to "animal", not to "dog". ${CLOSABLE}`,
+    }),
+    z.object({ type: z.literal('synonyms'), ...senseGap }).meta({
+      description: `A content-word sense has no live synonym or antonym. Submit the synonyms and antonyms a learner can use in this sense ("big": large; small). ${CLOSABLE}`,
+    }),
     z
       .object({
         type: z.literal('examples'),
@@ -163,42 +139,188 @@ export const gapSchema = z
     z.object({ type: z.literal('collocations'), ...senseGap }).meta({
       description: `A noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation: a combination native speakers commonly use with the word in this sense ("make a decision", "work hard", "hardly any", "filled with", "both ... and"). ${CLOSABLE}`,
     }),
+    z
+      .object({
+        type: z.literal('weak_fact'),
+        fact_id: factIdSchema,
+        kind: factKindSchema,
+        reason: z.enum(['feedback', 'uncertain', 'failed']).meta({
+          description:
+            'feedback: an open or claimed feedback item targets the fact. uncertain: the fact published on an uncertain review verdict. failed: the fact stays published although a review in place failed it (a gloss that lacks the region or register label its sense needs).',
+        }),
+      })
+      .meta({
+        description:
+          'A live fact worth replacing: read its review reason (in the context facts) and submit a correction that supersedes it, or retract it.',
+      }),
   ])
-  .meta({ id: 'Gap', description: 'Something the entry has too few live (pending or published) facts for.' })
+  .meta({
+    id: 'Gap',
+    description:
+      'One piece of open work: a slot the entry has too few live (pending or published) facts for, or a weak fact.',
+  })
 export type Gap = z.infer<typeof gapSchema>
 
-export const weakFactSchema = z
+export const workTypeSchema = z
+  .enum(gapSchema.options.map((option) => option.shape.type.value) as [Gap['type'], ...Gap['type'][]])
+  .meta({ id: 'WorkType', description: 'The type of a work item: the gap it is, or weak_fact.' })
+export type WorkType = z.infer<typeof workTypeSchema>
+
+export type WeakFact = Extract<Gap, { type: 'weak_fact' }>
+
+export const claimWorkInputSchema = z
   .object({
-    id: factIdSchema,
-    kind: factKindSchema,
-    reason: z.enum(['feedback', 'uncertain', 'failed']).meta({
+    types: z
+      .array(workTypeSchema)
+      .min(1)
+      .refine((types) => new Set(types).size === types.length, 'Each type is listed once.')
+      .optional()
+      .meta({ description: 'Lease only items of these types; absent means any type.' }),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_CLAIM_ITEMS)
+      .default(DEFAULT_CLAIM_ITEMS)
+      .meta({ description: `The most items to lease, all of one type. Defaults to ${DEFAULT_CLAIM_ITEMS}.` }),
+    lease_seconds: z
+      .number()
+      .int()
+      .min(60)
+      .max(3600)
+      .optional()
+      .meta({ description: `How long the lease lasts. Defaults to ${DEFAULT_LEASE_SECONDS}.` }),
+  })
+  .meta({ id: 'ClaimWorkInput' })
+export type ClaimWorkInput = z.infer<typeof claimWorkInputSchema>
+
+export const workLeaseSchema = z
+  .object({
+    id: workLeaseIdSchema,
+    type: workTypeSchema,
+    holder: z.string(),
+    expires_at: z.iso.datetime(),
+  })
+  .meta({ id: 'WorkLease' })
+
+const contextSenseSchema = z
+  .object({
+    id: senseIdSchema,
+    pos: posSchema,
+    gloss: z.string(),
+    register: registerSchema.nullable(),
+    region: regionSchema.nullable(),
+    rare: z.boolean().meta({ description: "In the extra senses of the entry's current sense list." }),
+    status: z.enum(['pending', 'published']).meta({ description: 'The status of the gloss.' }),
+  })
+  .meta({ id: 'WorkSense' })
+
+const relatedSenseSchema = z
+  .object({ sense_id: senseIdSchema, lemma: z.string(), pos: posSchema, gloss: z.string().nullable() })
+  .meta({ id: 'WorkRelatedSense', description: 'A sense at the other end of a relation among the context facts.' })
+
+export const workContextSchema = z
+  .object({
+    entry: z
+      .object({
+        id: entryIdSchema,
+        lemma: z.string(),
+        cefr: z.array(z.object({ pos: posSchema, level: cefrLevelSchema })),
+        zipf: z.number().nullable(),
+        senses: z.array(contextSenseSchema).meta({
+          description: 'The senses with a live gloss, common senses first in the order of the current sense list.',
+        }),
+      })
+      .meta({ description: 'The entry the item belongs to.' }),
+    sense: contextSenseSchema.nullable().meta({ description: 'The sense the item is about; null for an entry item.' }),
+    facts: z.array(factSchema).meta({
       description:
-        'feedback: an open or claimed feedback item targets the fact. uncertain: the fact published on an uncertain review verdict. failed: the fact stays published although a review in place failed it (a gloss that lacks the region or register label its sense needs); read the review reason and submit a correction that supersedes it.',
+        "Every fact about the item's node, in every status with its review: an entry's own facts, or a sense's facts and the relations pointing at it. For a weak fact, the node the fact is about.",
+    }),
+    related: z.array(relatedSenseSchema),
+    view: managedEntrySchema.nullable().meta({
+      description:
+        'The whole management view of the entry, for the types that need every sense and fact at once (senses, sense_list, phrases, family); null for the others.',
     }),
   })
-  .meta({
-    id: 'WeakFact',
-    description: 'A live fact of the entry worth replacing: submit a correction that supersedes it, or retract it.',
+  .meta({ id: 'WorkContext' })
+
+export const workItemSchema = z
+  .object({
+    id: workItemIdSchema,
+    type: workTypeSchema,
+    entry_id: entryIdSchema,
+    lemma: z.string(),
+    subject_id: z.uuid().meta({ description: 'The node the item is about: the entry, a sense, or the weak fact.' }),
+    stage: z.number().int().positive().meta({
+      description: '1 identity, 2 meaning, 3 usage, 4 network, 5 weak facts: the priority policy stage of the type.',
+    }),
+    attempts: z.number().int().nonnegative().meta({
+      description:
+        'Completed passes that left this gap as their claim found it. At three the item leaves the production queue for curators.',
+    }),
+    gap: gapSchema,
   })
-export type WeakFact = z.infer<typeof weakFactSchema>
+  .meta({ id: 'WorkItem' })
+
+export const claimedWorkItemSchema = workItemSchema
+  .extend({ context: workContextSchema })
+  .meta({ id: 'ClaimedWorkItem' })
 
 export const workClaimSchema = z
-  .object({
-    lease: workLeaseSchema,
-    entry: managedEntrySchema,
-    gaps: z.array(gapSchema),
-    weak_facts: z.array(weakFactSchema),
-  })
+  .object({ lease: workLeaseSchema, items: z.array(claimedWorkItemSchema) })
   .meta({ id: 'WorkClaim' })
 
 export const completeWorkInputSchema = z
-  .object({ note: z.string().trim().min(1).max(500).optional() })
+  .object({
+    items: z
+      .array(
+        z.object({
+          id: workItemIdSchema,
+          note: z.string().trim().min(1).max(500).optional(),
+        }),
+      )
+      .max(MAX_CLAIM_ITEMS)
+      .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Each item is listed once.')
+      .meta({
+        description:
+          'The leased items this pass worked. Each is judged against the gap its claim found: unchanged once its reviews settle, it counts an attempt. Leased items left out are released without one.',
+      }),
+  })
   .meta({ id: 'CompleteWorkInput' })
 export type CompleteWorkInput = z.infer<typeof completeWorkInputSchema>
 
+export const workItemStateSchema = z.enum(['closed', 'open', 'awaiting_review', 'curation']).meta({
+  id: 'WorkItemState',
+  description:
+    'closed: the gap is gone. open: back in the production queue. awaiting_review: facts that may fill it are pending, so it waits for their verdicts before it is judged. curation: three passes left it unchanged, so it waits for a curator.',
+})
+export type WorkItemState = z.infer<typeof workItemStateSchema>
+
 export const workCompletionSchema = z
-  .object({ entry_id: entryIdSchema, last_worked_at: z.iso.datetime() })
+  .object({
+    lease_id: workLeaseIdSchema,
+    items: z.array(
+      z.object({
+        id: workItemIdSchema,
+        state: workItemStateSchema,
+        attempts: z.number().int().nonnegative(),
+      }),
+    ),
+  })
   .meta({ id: 'WorkCompletion' })
+
+export const curationItemSchema = workItemSchema
+  .extend({
+    last_worked_at: z.iso.datetime().nullable(),
+    last_worked_by: z.string().nullable(),
+    last_note: z.string().nullable(),
+  })
+  .meta({ id: 'CurationItem' })
+
+export const curationPageSchema = z
+  .object({ items: z.array(curationItemSchema), next_cursor: z.string().nullable() })
+  .meta({ id: 'CurationPage' })
 
 /**
  * At most this many rows per rescore call. A rescore costs three D1 calls (the entry, its snapshot

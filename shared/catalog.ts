@@ -17,6 +17,7 @@ import {
   posSchema,
   regionSchema,
   registerSchema,
+  relationDomainSchema,
   senseIdSchema,
   shorteningSchema,
   strengthSchema,
@@ -178,7 +179,16 @@ export const formsSchema = z.partialRecord(inflectionTypeSchema, z.array(publicF
 export type Forms = z.infer<typeof formsSchema>
 
 export const relatedSenseSchema = z
-  .object({ lemma: z.string(), sense_id: senseIdSchema, gloss: z.string(), ...review })
+  .object({
+    lemma: z.string(),
+    sense_id: senseIdSchema,
+    gloss: z.string(),
+    domain: relationDomainSchema.optional().meta({
+      description:
+        'The specialist taxonomy of this broader or narrower term, shown only when the read asks for that domain; absent in the everyday layer.',
+    }),
+    ...review,
+  })
   .meta({ id: 'RelatedSense' })
 export type RelatedSense = z.infer<typeof relatedSenseSchema>
 
@@ -355,6 +365,22 @@ export const entryPageSchema = z
   .object({ lang: responseLangSchema, items: z.array(wordSummarySchema), next_cursor: z.string().nullable() })
   .meta({ id: 'EntryPage' })
 
+export const memberSchema = senseSummarySchema
+  .extend({
+    depth: z.number().int().positive().meta({
+      description: 'How many broader-term links lead from the member up to the category: 1 for a direct kind.',
+    }),
+  })
+  .meta({
+    id: 'Member',
+    description: 'A sense that is a kind of the category, directly or through narrower categories.',
+  })
+export type Member = z.infer<typeof memberSchema>
+
+export const memberPageSchema = z
+  .object({ lang: responseLangSchema, items: z.array(memberSchema), next_cursor: z.string().nullable() })
+  .meta({ id: 'MemberPage', description: 'The members of a category, nearest first, then by lemma.' })
+
 export const formMatchSchema = wordSummarySchema
   .extend({
     matches: z.array(z.object({ type: formTypeSchema, pos: posSchema.optional() })).meta({
@@ -434,7 +460,7 @@ export const managedEntrySchema = z
     seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        "Share of the slots the gaps count (the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, and a pronunciation per irregular form, three phrases for a core verb (one a CEFR list names as an A1-A2 verb), and per sense outside the sense list's extra the relations, topic, grammar, and collocation its part of speech needs, its examples, a zh translation, and a translated example) that live facts fill or a live gap closure closes; 1 means no gaps. Computed from the facts on read, never stored.",
+        "Share of the slots the gaps count (the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, and a pronunciation per irregular form, three phrases for a core verb (one a CEFR list names as an A1-A2 verb), and per sense outside the sense list's extra the category, parts, and synonym slots, topic, grammar, and collocation its part of speech needs, its examples, a zh translation, and a translated example) that live facts fill or a live gap closure closes; 1 means no gaps. Computed from the facts on read, never stored.",
     }),
     quality: z.number().min(0).max(1).meta({
       description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',

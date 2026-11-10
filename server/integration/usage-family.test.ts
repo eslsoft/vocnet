@@ -38,9 +38,11 @@ describe('usage and word family completeness', () => {
     const { entry: happy } = await createEntry(token, 'happy')
     await createSense(token, { entry_id: happy.id, pos: 'adjective', gloss: 'Feeling pleasure.' })
     await settle()
-    const claim = workClaimSchema.parse((await call('/manage/v1/work/claim', { method: 'POST', token })).body)
-    expect(claim.gaps).toContainEqual({ type: 'family' })
-    await call(`/manage/v1/work/${claim.lease.id}/complete`, { method: 'POST', token })
+    const claim = workClaimSchema.parse(
+      (await call('/manage/v1/work/claim', { method: 'POST', token, json: { types: ['family'] } })).body,
+    )
+    expect(claim.items.map((item) => [item.lemma, item.gap])).toEqual([['happy', { type: 'family' }]])
+    await call(`/manage/v1/work/${claim.lease.id}/complete`, { method: 'POST', token, json: { items: [] } })
     const open = await rowOf(happy.id)
     const { entry: happiness } = await createEntry(token, 'happiness')
     const parts = [

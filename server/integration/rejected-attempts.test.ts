@@ -2,7 +2,6 @@ import { env } from 'cloudflare:test'
 import { createDeps } from '@server/composition'
 import type { SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { call, issueAgentKey } from './helpers'
 
 const review = JSON.stringify({
   reviewer: 'llm',
@@ -128,27 +127,5 @@ describe('rejected derivations', () => {
       review: { reason: 'Too general.' },
     })
     expect((await facts.listRejectedDerivations(base, 1)).map(({ fact }) => fact.id)).toEqual([latest])
-  })
-})
-
-describe('closure attempts release', () => {
-  it('lifts every stall and makes every worklist row stale [spec: work/closure-attempts-unstall-migration]', async () => {
-    const token = await issueAgentKey()
-    for (const lemma of ['body', 'care']) {
-      await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })
-    }
-    await env.DB.prepare(
-      `update worklist set scored_revision = revision, stalled = 1, claimed_work = '{"gaps":[]}'`,
-    ).run()
-
-    const migration = env.TEST_MIGRATIONS.find((candidate) => candidate.name.endsWith('_closure_attempts_unstall.sql'))
-    if (!migration) throw new Error('The closure_attempts_unstall migration is missing.')
-    for (const query of migration.queries) await env.DB.prepare(query).run()
-
-    const rows = await env.DB.prepare(
-      'select count(*) as n, sum(stalled) as stalled, sum(claimed_work is not null) as claimed, sum(revision = scored_revision) as fresh from worklist',
-    ).first()
-    expect(rows).toMatchObject({ stalled: 0, claimed: 0, fresh: 0 })
-    expect(rows?.n).toBeGreaterThanOrEqual(2)
   })
 })

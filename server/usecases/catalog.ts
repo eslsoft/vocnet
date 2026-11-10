@@ -15,6 +15,7 @@ import {
   readStored,
   shapeEntry,
   shapeSenseDetail,
+  shapeSenseSummary,
   shapeSummary,
 } from '@server/domain/public-view'
 import { searchTerms } from '@server/domain/search'
@@ -24,6 +25,7 @@ import type {
   CreateSenseInput,
   EntrySort,
   FormMatch,
+  Member,
   NodeLocation,
   PublicEntry,
   PublicSenseDetail,
@@ -31,7 +33,7 @@ import type {
   Stats,
   WordSummary,
 } from '@shared/catalog'
-import type { EntryId, Pos, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
@@ -192,6 +194,28 @@ export async function getPublicSense(
   const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant)
   if (!found || !sense) throw new NotFoundError(`Sense ${id} not found.`)
   return { versions: [found.view.digest], read: () => sense }
+}
+
+/**
+ * The members of a public sense taken as a category: every public sense whose broader terms lead
+ * up to it, in the everyday layer and, when asked, the domain's, each once at its nearest depth. A
+ * sense that is not public is not found.
+ */
+export async function listSenseMembers(
+  deps: ViewDeps,
+  id: SenseId,
+  domain: RelationDomain | null,
+  page: PageRequest,
+  variant: ReadVariant,
+): Promise<Page<Member>> {
+  const found = await readPublicView(deps, () => deps.publicViews.findBySense(id))
+  const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant)
+  if (!sense) throw new NotFoundError(`Sense ${id} not found.`)
+  const members = await deps.publicViews.listMembers(id, domain, page)
+  return {
+    ...members,
+    items: members.items.map(({ summary, depth }) => ({ ...shapeSenseSummary(summary, variant), depth })),
+  }
 }
 
 /**

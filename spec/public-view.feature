@@ -107,6 +107,30 @@ Feature: Public view
     When the entry list is read with level (repeated or comma-separated), pos, topic (a leaf or a category), and sort, page by page
     Then it keeps the entries with one meaning, or with a topic one tagged sense, of that part of speech at one of those levels, in lemma order or by frequency with unranked entries last, every page continuing where the last stopped; a cursor of another sort, an unknown level or sort is 400 and an unknown topic 404
 
+  @public-view/topic-common-senses @api
+  Scenario: A topic lists an entry only for a common sense
+    Given an entry whose rare sense, in the extra of its sense list, is tagged with a topic
+    When the entry list is read by that topic, and again once a common sense is tagged
+    Then the entry is listed only after the common sense is tagged, while the topic's senses list the rare sense itself
+
+  @public-view/relation-layers-api @api
+  Scenario: Relations show the everyday layer, and a domain layer on request
+    Given a sense with everyday hypernyms and a biology hypernym
+    When its entry is read without a domain, with domain biology, with another domain, and with an unknown one
+    Then the everyday broader terms always show, the biology one only with domain biology and marked with it, its target lists the narrower term only then, each read has its own ETag, and an unknown domain is 400
+
+  @public-view/members @usecase
+  Scenario: The members walk reads the public hypernyms
+    Given public senses linked by everyday and biology hypernyms
+    When the members of the top category are listed a page at a time, with and without the domain, and of a sense that is not public
+    Then each member comes with its depth, pages continue, the domain adds its members, and the hidden sense is not found
+
+  @public-view/members-api @api
+  Scenario: A category lists its members transitively
+    Given everyday hypernyms making bird, dog, and eagle animals and eagle a bird, and biology hypernyms making dog a canine and canine a carnivore
+    When the members of animal, bird, and carnivore are read, page by page, with and without domain biology, and of an unknown sense
+    Then each member comes once at its nearest depth, nearest first then by lemma, pages continue where the last stopped, a domain taxonomy is walked only on request, and an unknown sense is 404
+
   @public-view/topic-sort @api
   Scenario: The senses of a topic sort by lemma, frequency, or level
     Given senses of entries with frequencies and levels tagged with topics of one category

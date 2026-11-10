@@ -201,14 +201,6 @@ export function createFactRepo(db: Db): FactRepo {
       return rows.map(toFact)
     },
 
-    async countLiveWithKey(kind, contentKey) {
-      const [row] = await db
-        .select({ count: count() })
-        .from(facts)
-        .where(and(eq(facts.kind, kind), eq(facts.contentKey, contentKey), liveStatus))
-      return row?.count ?? 0
-    },
-
     async listLiveLinks<K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]): Promise<Link<K>[]> {
       const subjectSense = alias(senses, 'subject_sense')
       const targetSense = alias(senses, 'target_sense')

@@ -209,7 +209,7 @@ describe('public lists and search', () => {
     )
     expect(plans.byTopic[0]).toBe('SEARCH public_entries USING INDEX public_entries_lemma_unique (lemma>? AND lemma<?)')
     expect(plans.byTopic).toContain(
-      'SEARCH public_sense_topics USING COVERING INDEX public_sense_topics_entry_idx (entry_id=? AND topic_id=?)',
+      'SEARCH public_sense_topics USING COVERING INDEX public_sense_topics_entry_idx (entry_id=? AND rare=? AND topic_id=?)',
     )
     expect(plans.senses).toEqual(['SEARCH public_sense_topics USING INDEX public_sense_topics_level_idx (topic_id=?)'])
     expect(plans.search.some((step) => step.includes('VIRTUAL TABLE INDEX'))).toBe(true)

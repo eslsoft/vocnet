@@ -1,17 +1,17 @@
-Feature: Worklist
-  Agents ask the server what to work on next, and no two agents work the same entry at once.
+Feature: Work items
+  Agents ask the server for the next work items of one type, the most valuable first, and no two agents hold the same item at once.
 
   @work/gaps @domain
-  Scenario: A claim names what the entry lacks
+  Scenario: The open work names what the entry lacks
     Given an entry and its facts in every status
     When the gaps are computed from its pending and published facts
-    Then senses while no sense is live, a sense list while the senses are not settled by one, and missing paradigm forms, a pronunciation in either accent, or word formation of a single word are gaps, and each counted sense with fewer relations than its part of speech needs, or without the examples, a zh translation, or the topic, grammar, and collocations its part of speech needs, is a gap
+    Then senses while no sense is live, a sense list while the senses are not settled by one, and missing paradigm forms, a pronunciation in either accent, or word formation of a single word are gaps, and each counted sense without the category, parts, synonym, examples, zh translation, topic, grammar, and collocations its part of speech needs is a gap
 
   @work/sense-list-gap @domain
   Scenario: The sense inventory is settled by a list naming exactly the live senses
     Given an entry with live senses and sense lists in every status, a pending correction of a published list, and senses added or lost since
     When the gaps are computed
-    Then the entry has a senses gap while no sense is live, and otherwise a sense list gap unless its current list, the live one no live correction supersedes, names exactly its live senses
+    Then the entry has a senses gap while no sense is live, and otherwise a sense list gap naming its live senses unless its current list, the live one no live correction supersedes, names exactly them
 
   @work/sense-list-scope @domain
   Scenario: Only common senses count toward completeness once a list exists
@@ -20,46 +20,40 @@ Feature: Worklist
     Then the extra senses have no per-sense gaps and count no slots, while before any list every live sense counts
 
   @work/sense-list-attempts @domain
-  Scenario: Each rejected list changes the sense list gap, up to a bound
-    Given an entry with live senses and rejected sense lists naming exactly them, or naming other senses
-    When the gaps are computed
-    Then the sense list gap counts the rejected lists that name exactly the live senses, up to one less than MAX_SENSE_LIST_ATTEMPTS, so each rejection changes the open work until the bound and another rejection then leaves it unchanged
+  Scenario: A rejected list leaves the sense list gap as it was
+    Given an entry with live senses and rejected or pending sense lists naming exactly them
+    When the open work is computed
+    Then the sense list gap is the same after any number of rejections, so each rejected pass counts an attempt of its item, and a pending list holds the item for its review
 
   @work/sense-list-retry @api
-  Scenario: A rejected sense list brings the entry back with the reviewer's reason, until the attempts run out
-    Given an entry with senses whose pass submits only a sense list
-    When review rejects the list
-    Then the entry is claimable again with the rejected list and its review reason among the claim's entry facts, and after the third rejected list of the same senses the entry stalls
+  Scenario: A rejected sense list brings its item back with the reviewer's reason, until three attempts hand it to the curators
+    Given an entry with senses whose sense list item each pass works by submitting the same list
+    When review rejects each list after its pass completes
+    Then the item comes back with one more attempt and the rejected lists and their reasons in its context, and after the third no sense list item is claimable
 
-  @work/sense-list-rescore @api
-  Scenario: The release of sense list gaps rescores every entry and lifts stalls it outdates
-    Given entries stalled on open work recorded before sense list gaps existed
-    When the rescore migrations run
-    Then an entry with senses and no list naming them is no longer stalled, and an entry without senses or whose list settles them keeps its stall
-
-  @work/relations-gap @domain
-  Scenario: A relations gap stays open until the sense has the relations it needs
-    Given a live noun sense with no, one, or two live relations, as subject or object
+  @work/relation-slots @domain
+  Scenario: Relations fill slots, with no quotas and with layers
+    Given a live noun sense with no relations, a biology hypernym, an everyday hypernym, its own part_of, parts attached to it, a synonym or antonym in either direction, or a closed category
     When the gaps are computed
-    Then the sense has a relations gap while it has fewer than two, and the gap counts them and names each type and direction it already has
+    Then it needs one everyday category, which a domain hypernym does not fill; once it has one it needs a part attached to it, which its own part_of does not fill; it needs one synonym or antonym; and a closed category asks for no parts
 
   @work/relations-visible-ends @domain
-  Scenario: A relation fills a gap only while its other end can show
+  Scenario: A relation fills a slot only while its other end can show
     Given a live sense whose live relations lead to senses with a live gloss and entry, a rejected gloss, or a rejected entry
     When the gaps are computed from the entry and the senses at the other end of its relations
-    Then only the relations whose other sense has a live gloss and a live entry fact count toward the relations gap
+    Then only the relations whose other sense has a live gloss and a live entry fact fill the category, parts, or synonym slot
 
   @work/relations-visible-ends-api @api
-  Scenario: A relation's other end leaving live reopens the gap on a real database
-    Given an entry whose noun sense has two published relations, each to a sense of another entry
+  Scenario: A relation's other end leaving live reopens its slot on a real database
+    Given an entry whose noun sense has two published everyday hypernyms, each to a sense of another entry
     When one other entry fact is re-reviewed and rejected, and the other gloss is retracted
-    Then the entry's stored completeness drops by one relation slot each time, rescored in the same request
+    Then the one category slot stays filled while one hypernym can show, and opens, closing the parts slot, once none can, rescored in the same request
 
-  @work/relations-by-pos @domain
-  Scenario: The relations a sense needs depend on its part of speech
+  @work/relation-slots-by-pos @domain
+  Scenario: The relation slots a sense needs depend on its part of speech
     Given a live sense of each part of speech
     When the gaps and completeness are computed
-    Then nouns, verbs, and adjectives need two relations, adverbs one, and pronouns and every other part of speech none, with no relations gap and no relation slots
+    Then nouns and verbs need a category, nouns, verbs, adjectives, and adverbs a synonym or antonym, and pronouns and every other part of speech no relation slot
 
   @work/topics-gap @domain
   Scenario: Nouns and verbs need a topic
@@ -78,98 +72,157 @@ Feature: Worklist
   Scenario: An entry's completeness and quality come from its live facts
     Given an entry with some slots filled, some facts published on an uncertain verdict, and some under open feedback
     When the entry is assessed
-    Then completeness is the filled share of the slots its gaps count, quality is one minus the weak share of its live facts, and each weak fact is named with its reason
+    Then completeness is the filled share of the slots its gaps count, quality is one minus the weak share of its live facts, and each weak fact is a piece of open work with its reason
 
-  @work/stall @domain
-  Scenario: A completed pass that left the open work as its claim found it stalls the entry
-    Given the open work an entry's last claim found, whether that pass completed, and the open work now
-    When the stall rule is applied
-    Then the entry is stalled only if the pass completed and the open work is unchanged
+  @work/awaiting-review @domain
+  Scenario: A piece of open work waits for the reviews that may change it
+    Given an entry with pending facts that fill a gap, an unrelated open gap, a pending relation into a sense, a pending entry fact, or a rejected entry fact
+    When the open work is computed over the live facts and over the published ones alone
+    Then exactly the pieces the two computations disagree on await review, the others stay workable, and an entry whose entry fact is not live has no open work
 
-  @work/admission @domain
-  Scenario: Only a live entry with work left that is neither stalled nor awaiting review is claimable
-    Given worklist rows that are live or dead, stalled or not, awaiting review or not, stale or scored, with and without work left
-    When admission is decided
-    Then a live row is claimable when its scores are stale, or when it is not stalled, has no pending fact about it or relation into its senses, and has a gap or a weak fact
+  @work/weak-facts @usecase
+  Scenario: A weak fact is an item until a correction replaces it
+    Given a fact published on an uncertain verdict
+    When its item is claimed, and a correction that supersedes it is submitted and then published
+    Then the item is in the weak-fact stage with the fact in its context, it awaits review while the correction is pending, and it closes once the correction publishes
 
-  @work/claim-tiers @domain
-  Scenario: The claim tier puts filling before polishing, then learner priority, then never-claimed before claimed
-    Given entries of every CEFR level, with a frequency and no level, with neither, below 0.95 completeness, at or above it, or with only weak facts, claimed or not
-    When their claim tiers are computed
-    Then every entry below 0.95 completeness comes before every entry at or above it, whose remaining gaps and weak facts are polish, each by A1, A2, B1, B2, C1, C2, then frequency without a level, then the rest, and within each band never-claimed before claimed
+  @work/weak-facts-api @api
+  Scenario: A weak fact is claimable over HTTP
+    Given a form published on an uncertain verdict
+    When an agent claims weak fact items
+    Then the item names the fact, its kind, and the reason uncertain, in stage five
 
-  @work/claim-order @usecase
-  Scenario: Learner priority orders the claims, never-claimed by highest frequency, claimed by least recently claimed
-    Given never-claimed A1 entries of different frequency, a B2 entry, an entry with a frequency and no level, one with neither, and an A1 entry whose entry fact is retracted
-    When agents claim and complete work, each first pass adding a sense, and reviews land between passes
-    Then the A1 entries are claimed first by highest frequency and claimed again by least recently claimed, then the B2 entry, the entry with only a frequency, and the entry with neither, every pass that added nothing stalls its entry, and the dead entry is never claimed
+  @work/item-priority @domain
+  Scenario: The priority policy puts the stage before the learner band
+    Given items of every type on entries of every CEFR level, with a frequency and no level, and with neither
+    When their priority is computed
+    Then the stage of the type (1 identity, 2 meaning, 3 usage, 4 network, 5 weak facts) comes first, then A1 to C2, then a frequency without a level, then the rest, then the higher frequency, so every C2 noun's category comes before any A1 example and a C2 word's senses before any A1 category
 
-  @work/stall-loop @usecase
-  Scenario: No loop hands out an entry whose passes make no lasting progress
-    Given an entry whose pass submits a relation review rejects, or only adds a second example
-    When agents claim and complete work
-    Then the entry is stalled after that pass, and claimable again only after another principal's fact or a fact leaving live changes its open work
+  @work/item-upsert @domain
+  Scenario: A rescore converges the stored items on the open work
+    Given stored items and the open work of a rescore
+    When they are reconciled
+    Then each piece of open work updates the stored item of its type and node, keeping its id, or is new, and every other stored item is deleted
 
-  @work/awaiting-review @usecase
-  Scenario: An entry waits while its facts are under review, so a rejection after its lease stalls it
-    Given an entry whose pass submits a relation and completes before the review lands
-    When agents keep claiming work, and then review rejects the relation
-    Then neither end of the relation is claimed while it is pending, and after the rejection the entry is stalled and claimed no more
+  @work/item-attempts @domain
+  Scenario: An attempt counts only when a completed pass left the gap as its claim found it
+    Given a worked item whose gap is unchanged, awaiting review, or partly filled, and an item nobody worked that another principal changed or left alone
+    When the item is reconciled
+    Then the unchanged worked item gains an attempt, the awaiting one keeps its attempts and its pending verdict, and any change starts the attempts over
 
-  @work/weak-facts @api
-  Scenario: A claim names the entry's weak facts
-    Given a complete entry with a fact published on an uncertain verdict, and later open feedback on another fact
-    When an agent claims work
-    Then the claim names each weak fact with its reason, the entry stays claimable until a pass replaces them, and a pass that replaced nothing stalls it until the feedback opens
+  @work/item-curation @domain
+  Scenario: Three attempts move an item to the curators
+    Given items with fewer than three attempts, awaiting review, or with three
+    When their state is read
+    Then they are open, awaiting review, or with the curators
 
-  @work/claim-empty @api
-  Scenario: The worklist empties once every entry is complete and good
-    Given entries whose every gap is filled and none of whose facts is weak
-    When an agent claims work
-    Then the claim answers no content, until a rejection reopens a gap
+  @work/item-awaiting @usecase
+  Scenario: An item a pending fact may change is not served
+    Given an entry with a pending pronunciation
+    When agents claim pronunciation and syllables items
+    Then the pronunciation item awaits review and is not served, while the syllables item is
 
-  @work/stall-api @api
-  Scenario: A stalled entry waits until another principal changes its work
-    Given an A1 entry whose pass links it to another entry, and review rejects the link after the lease ended
-    When agents claim and complete work
-    Then neither entry is claimable while the link is pending, the entry is not claimed again, the worklist empties, and another principal's example makes it claimable
+  @work/item-attempts-usecase @usecase
+  Scenario: Passes that add nothing hand an item to the curators
+    Given an item whose passes add nothing
+    When three passes complete
+    Then it is open with one and two attempts and then with the curators, it is no longer claimed, the curators' queue lists it with the last note for curators and admins only, and a curator's fact closes it
 
-  @work/scores-backfill @api
-  Scenario: The backfill computes the scores the rescore stores
-    Given entries of every part of speech with filled, missing, uncertain, reported, and pending facts, and sense lists that settle, leave out extra senses, are stale, or have a pending correction
-    When the backfill migrations run over the rescored worklist
-    Then every entry's completeness, quality, and awaiting review are unchanged
+  @work/item-attempts-api @api
+  Scenario: The curators' queue over HTTP
+    Given an item three passes left unchanged
+    When a producer agent, an admin, and a curator agent read the curators' queue, and the curator submits a curated fact
+    Then the producer gets 403, the others the item with its gap, attempts, and last note, filtered by type, and the curated fact empties the queue
 
-  @work/topics-rescore @api
-  Scenario: The release of topics gaps rescores every entry and lifts stalls it outdates
-    Given entries stalled on open work recorded before topics gaps existed
-    When the topics rescore migration runs
-    Then an entry with an open topics gap is no longer stalled and one without keeps its stall
+  @work/item-review-verdict @usecase
+  Scenario: A worked item is judged once its facts are reviewed
+    Given a pass that submits a pronunciation and completes before its review
+    When review rejects it, and a later pass's pronunciation is published
+    Then the item awaits review after each pass, the rejection counts one attempt, and the published fact moves the gap on and starts the attempts over
 
-  @work/usage-rescore @api
-  Scenario: The release of grammar, collocations, and word formation gaps rescores every entry and lifts stalls it outdates
-    Given entries stalled on open work recorded before grammar, collocations, and word formation gaps existed
-    When the rescore migrations run
-    Then an entry with an open grammar, collocations, or word formation gap is no longer stalled and one without keeps its stall
+  @work/item-review-api @api
+  Scenario: A rejection after the lease counts the attempt on a real database
+    Given a pass that submits syllables and completes
+    When review rejects them
+    Then the item awaits review and is not claimable until the verdict, then comes back with one attempt and the rejected fact in its context
 
-  @work/relation-ends-rescore @api
-  Scenario: The release of the relation end rule rescores every entry and lifts stalls it outdates
-    Given entries stalled on open work recorded while relations to senses that cannot show still counted
-    When the relation ends rescore migration runs
-    Then an entry whose open relations gap changed is no longer stalled and one without keeps its stall
+  @work/claim-one-type @usecase
+  Scenario: A claim leases items of one type, the most valuable first
+    Given entries of several CEFR levels with no senses
+    When agents claim with and without a limit and a type filter
+    Then the first claim leases sense items in learner order up to its limit, the next one the rest, and a claim for pronunciation items leases only those, all of them, with the entry context
+
+  @work/claim-context @usecase
+  Scenario: A claimed item carries the context its type needs
+    Given a C2 and an A1 noun with their sense lists
+    When an agent claims category and example items
+    Then the category items come first, both of them, each with its gap, its entry's level and senses, its sense, and the facts about that sense
+
+  @work/claim-api @api
+  Scenario: Claim and complete over HTTP
+    Given a submitted entry
+    When an agent claims work before and after the entry is reviewed, another agent claims and completes, and the holder completes with its items
+    Then the first claim is 204, the second leases the senses item with the entry's management view, the other agent gets the next type and 409, an item from another lease is 422, the holder's item is closed, and a repeated complete is 404
+
+  @work/claim-race @api
+  Scenario: Concurrent claims get distinct items
+    Given several items of one type
+    When agents claim one item each at the same moment
+    Then each claim gets a different item, and the claims beyond the item count get no content
+
+  @work/claim-expired-race @api
+  Scenario: Concurrent claims split expired leases
+    Given every item of one type has an expired lease
+    When more agents than items claim at the same moment
+    Then each expired item goes to exactly one agent
+
+  @work/lease-expiry-api @api
+  Scenario: An expired lease is claimable again and cannot be completed
+    Given an agent whose lease has expired
+    When the first agent completes its lease and another agent claims work
+    Then the first agent gets 409 conflict and the other agent gets the same items
 
   @work/claim-priority @api
-  Scenario: Entries are claimed in learner priority, re-ranked by every reference import
+  Scenario: Items are claimed by stage and learner priority, re-ranked by every reference import
     Given entries with CEFR levels, with a frequency and no level, and with neither, one created after the reference import
-    When agents claim work, and again after a reimport changes the levels and the leases lapse
-    Then A1 entries come first, then the higher levels in order, then frequency without a level, then the rest; within a level the more frequent first and an entry without a frequency last
-    And a capitalized lemma has the frequency of its lowercase word form, and the reimport's levels decide the next claim
+    When agents claim items, and again after a reimport changes the levels and the leases lapse
+    Then within a type A1 entries come first, then the higher levels in order, then frequency without a level, then the rest, the more frequent first; identity items come before every later stage; a capitalized lemma has the frequency of its lowercase word form, and the reimport's levels decide the next claim
 
-  @work/claim-gaps-first @api
-  Scenario: Completeness comes before quality
-    Given a complete A1 entry with a fact published on an uncertain verdict, and an entry with gaps and no reference data
-    When agents claim work
-    Then the entry with gaps is claimed first, and the complete entry only after it
+  @work/claim-lease @usecase
+  Scenario: A claimed item is leased to one agent
+    Given an agent holds the lease on the only item of a type
+    When another agent claims it before and after the lease expires, the first agent completes late, and the expired lease is purged a day later
+    Then nothing is claimable before expiry, the other agent gets it after, the late complete is a conflict, and after the purge it is not found
+
+  @work/complete @usecase
+  Scenario: Only the holder completes its own items, once
+    Given an agent holds a lease on two items
+    When another agent or an admin completes it, the holder names an item of another lease, and the holder completes one item twice
+    Then the others get conflict, the foreign item is an invalid reference, the named item gains an attempt, the other is released without one, and the repeat is not found
+
+  @work/claim-live @api
+  Scenario: Only a live entry has items
+    Given an entry whose entry fact is retracted
+    When an agent claims work, then the entry is submitted again and reviewed
+    Then no item is claimable until the new entry fact publishes
+
+  @work/claim-empty @api
+  Scenario: The queue empties once every entry is complete and good
+    Given an entry whose every gap is filled and none of whose facts is weak
+    When an agent claims work, and a fact is rejected in place
+    Then the claim answers no content, until the rejection reopens its gap
+
+  @work/claim-index @api
+  Scenario: A claim does not sort the items
+    Given the next-type and lease statements
+    When their query plans are read
+    Then they walk the queue indexes and build no temporary sort
+
+  @work/entry-seed @api
+  Scenario: The entry view says whether the entry is a seed entry
+    Given an entry created without seed and one created with seed true
+    When an agent reads either entry or claims their senses items
+    Then the management view and the whole-entry context say seed false for the first and seed true for the second
 
   @work/priority-backfill @api
   Scenario: The backfill computes the learner priority that creation and the import store
@@ -177,65 +230,29 @@ Feature: Worklist
     When the learner priority backfill migration runs over scrambled rows
     Then every row's frequency key, level rank, and frequency are unchanged
 
-  @work/claim-rotation @api
-  Scenario: An entry whose lease lapses goes back without stalling
-    Given the least complete of three A1 entries is claimed and its lease keeps expiring without a complete
-    When agents claim work
-    Then the never-claimed entries of the band come first, and then the claimed entries least recently claimed first, so the lapsing entry never comes ahead of one claimed before it
+  @work/items-migration @api
+  Scenario: The work items release brings stored facts to the new relation rules
+    Given a relations closure as the earlier release stored it, a published hypernym, a curated part_of, and scored rows
+    When the work_items_relation_layers migration runs
+    Then the closure is a synonyms closure with the registry's key, marked for review in place with the hypernym, the curated fact is left alone, and every row is stale
 
-  @work/entry-seed @api
-  Scenario: The entry view says whether the entry is a seed entry
-    Given an entry created without seed and one created with seed true
-    When an agent reads either entry or claims it
-    Then the management view and the claim say seed false for the first and seed true for the second
+  @work/rescore @usecase
+  Scenario: Stale worklist rows drain a batch at a time
+    Given stale worklist rows
+    When the rescore runs with a limit
+    Then it rescores at most that many and reports how many stay stale
 
-  @work/claim-live @api
-  Scenario: Only an entry with a live entry fact is claimable
-    Given an entry whose entry fact is retracted
-    When an agent claims work, then the entry is submitted again and the agent claims again
-    Then the first claim gets no content and the second gets the entry
+  @work/rescore-api @api
+  Scenario: An admin drains stale scores after a gap rule change
+    Given every worklist row stale
+    When an agent and then an admin call the rescore with a limit
+    Then the agent gets 403, a limit out of range is 400, and the admin's calls rescore up to the limit until none is stale
 
-  @work/claim-index @api
-  Scenario: A claim does not sort the worklist
-    Given the claim statement
-    When its query plan is read
-    Then it walks the claim-order index and builds no temporary sort
-
-  @work/claim-lease @usecase
-  Scenario: A claimed entry is leased to one agent
-    Given an agent holds the lease on the only live entry
-    When another agent claims work before the lease expires
-    Then nothing is claimable, and after the lease expires the other agent gets the entry
-
-  @work/complete @usecase
-  Scenario: Only the holder completes its lease, once
-    Given an agent holds a lease
-    When another agent completes it, the lease expired, or the holder completes it twice
-    Then the other agent and the expired lease get conflict, and the repeat gets not_found
-
-  @work/claim-api @api
-  Scenario: Claim and complete over HTTP
-    Given a submitted entry
-    When an agent claims work, another agent claims or completes, and the holder completes with a note
-    Then the claim returns the lease, the management entry view with its completeness and quality, its gaps, and its weak facts; the other agent gets 204 and 409; a repeated complete is 404
-
-  @work/claim-race @api
-  Scenario: Concurrent claims get distinct entries
-    Given several live entries
-    When agents claim work at the same moment
-    Then each claim gets a different entry, and the claims beyond the entry count get no content
-
-  @work/claim-expired-race @api
-  Scenario: Concurrent claims split expired leases
-    Given every live entry has an expired lease
-    When more agents than entries claim work at the same moment
-    Then each expired entry goes to exactly one agent, and the other claims get no content
-
-  @work/lease-expiry-api @api
-  Scenario: An expired lease is claimable again and cannot be completed
-    Given an agent whose lease has expired
-    When the first agent completes its lease and another agent claims work
-    Then the first agent gets 409 conflict and the other agent gets the entry
+  @work/failed-gloss @usecase
+  Scenario: A gloss that fails its review in place stays published as a weak fact
+    Given a published gloss marked for review in place
+    When the review fails it
+    Then it stays published and public with the failing review, the entry names it as a weak fact with the reason failed, and a correction that adds the missing label replaces it
 
   @work/field-gaps @domain
   Scenario: Syllables, irregular form pronunciations, and translated examples are gaps
@@ -260,7 +277,7 @@ Feature: Worklist
   Scenario: Function words and adverbs need the usage a learner's dictionary gives them
     Given senses of each function-word part of speech and an adverb
     When the gaps are computed
-    Then every adverb needs grammar and a collocation, a determiner grammar and a collocation, a pronoun grammar, and a preposition or conjunction a collocation, each closable by a gap closure, and an interjection none of them
+    Then every adverb needs grammar, a collocation, and a synonym, a determiner grammar and a collocation, a pronoun grammar and no relation, and a preposition or conjunction a collocation, each closable by a gap closure, and an interjection none of them
 
   @work/core-examples @domain
   Scenario: A1 and A2 senses need two examples
@@ -276,7 +293,7 @@ Feature: Worklist
 
   @work/phrases-api @api
   Scenario: A live phrasal verb counts on its head at once
-    Given a word a CEFR list names as an A1 verb, whose claim names a phrases gap
+    Given a word a CEFR list names as an A1 verb, whose items include a phrases gap
     When multiword entries are created that only contain the verb, are headed by it with no verb sense, gain a verb sense, or are headed by it with only a noun sense
     Then only the one headed by the verb with a live verb sense counts, and the verb's worklist row is rescored in the same request
 
@@ -288,7 +305,7 @@ Feature: Worklist
 
   @work/family-api @api
   Scenario: A derivative naming its base fills the base's family gap at once
-    Given an A1 word whose claim names a family gap
+    Given an A1 word whose family item is claimed
     When a derivative's morphology names a lemma that is no live entry, names a lemma on a suffix, names the word, and is later retracted
     Then the unknown lemma is an invalid reference, the misplaced lemma a validation error, the formation rescores the word with its gap filled in the same request and shows the base's lemma publicly, and the retraction reopens the gap
 
@@ -297,24 +314,6 @@ Feature: Worklist
     Given a gap closure on an entry or a sense, in each status
     When the gaps and completeness are computed
     Then a pending or published closure closes only its gap on its node, its slots count as filled, and a rejected one or one on another node closes nothing
-
-  @work/rescore @usecase
-  Scenario: Stale worklist rows drain a batch at a time
-    Given stale worklist rows
-    When the rescore runs with a limit
-    Then it rescores at most that many and reports how many stay stale
-
-  @work/rescore-api @api
-  Scenario: An admin drains stale scores after a gap rule change
-    Given every worklist row stale
-    When an agent and then an admin call the rescore with a limit
-    Then the agent gets 403, a limit out of range is 400, and the admin's calls rescore up to the limit until none is stale
-
-  @work/failed-gloss @usecase
-  Scenario: A gloss that fails its review in place stays published as a weak fact
-    Given a published gloss marked for review in place
-    When the review fails it
-    Then it stays published and public with the failing review, the entry names it as a weak fact with the reason failed, and a correction that adds the missing label replaces it
 
   @work/usage-family-migration @api
   Scenario: The usage and family release brings stored facts to the new rules
@@ -328,26 +327,8 @@ Feature: Worklist
     When the completeness_rules migration runs
     Then the orphans and periphrastic forms are retracted, each transcription and zh text is rewritten with the key the registry computes, a collision keeps the published or oldest fact and retracts the rest, the sense list is marked for review in place, and every worklist row is stale
 
-  @work/closure-attempts-unstall-migration @api
-  Scenario: The closure attempts release lifts every stall
-    Given worklist rows stalled on the open work of their last claim
-    When the closure_attempts_unstall migration runs
-    Then no row is stalled or keeps its claimed open work, and every row is stale, so the producer resubmits the closures
-
-  @work/plural-only-shortened-migration @api
-  Scenario: The plural-only and shortened release re-scores every row and lifts every stall
-    Given worklist rows stalled on the open work of their last claim
-    When the plural_only_titles_shortened migration runs
-    Then no row is stalled or keeps its claimed open work, and every row is stale, so the producer resubmits plural-only grammar, title grammar closures, and shortened word formations
-
   @work/core-verb-phrases-migration @api
   Scenario: The core verb release re-judges recent phrasal verbs
     Given multiword entries an agent created today and earlier, headed by a verb and by a noun, with a verb sense and without, one a CEFR list names, and one an admin created
     When the core_verb_phrases migration runs
     Then only the published entry facts of today's agent-created phrasal verbs headed by a verb that no CEFR list names are marked for review in place, and every worklist row is stale
-
-  @work/synchronic-morphology-migration @api
-  Scenario: The synchronic morphology release re-judges root formations and lifts every stall
-    Given published word formations with and without a root part, a rejected one with a root, and worklist rows stalled on the open work of their last claim
-    When the synchronic_morphology_stalls migration runs
-    Then only the published formation with a root is marked for review in place, no row is stalled or keeps its claimed open work, and every row is stale

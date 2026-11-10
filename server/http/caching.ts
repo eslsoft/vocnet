@@ -22,7 +22,7 @@ export const LIST_CACHE = 'public, max-age=5'
  * first 16 bytes of their SHA-256 in hex, so it changes exactly when the body of that variant can.
  */
 export async function etagOf(versions: string[], variant: ReadVariant): Promise<string> {
-  const input = JSON.stringify([versions, variant.lang, variant.review])
+  const input = JSON.stringify([versions, variant.lang, variant.review, variant.domain ?? null])
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input)))
   return `"${[...hash.subarray(0, 16)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}"`
 }

@@ -1,4 +1,4 @@
-import { assessEntry } from '@server/domain/work'
+import { weakFacts } from '@server/domain/work'
 import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
@@ -343,7 +343,7 @@ describe('reviewFact', () => {
     await drain(world)
 
     world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Nothing fits.' }))
-    const closure = async (gap: 'topics' | 'relations') => {
+    const closure = async (gap: 'topics' | 'synonyms') => {
       const { fact } = await submitFact(world.deps, agentA, {
         kind: 'gap_closure',
         subject_id: sense.id,
@@ -358,7 +358,7 @@ describe('reviewFact', () => {
     )
     expect(topics).not.toContain('furniture')
     expect(topics).not.toContain('riverside.')
-    const relations = await closure('relations')
+    const relations = await closure('synonyms')
     expect(relations).toContain(
       `(linking to "shore" (noun), meaning "a riverside"): rejected because "Not the opposite of a riverside."`,
     )
@@ -585,7 +585,7 @@ describe('revalidation', () => {
       review: { verdict: 'fail', reason: 'Jev lexical=0.1 | British only; no region.' },
     })
     const snapshot = await world.deps.nodes.loadEntrySnapshot(entry)
-    expect(assessEntry(snapshot).weakFacts).toEqual([{ id: gloss.id, kind: 'sense', reason: 'failed' }])
+    expect(weakFacts(snapshot)).toEqual([{ type: 'weak_fact', fact_id: gloss.id, kind: 'sense', reason: 'failed' }])
     expect((await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]?.gloss).toBe('land beside a river')
     // A correction that adds the region replaces it and keeps everything judged against it.
     world.passReviews()
@@ -597,7 +597,7 @@ describe('revalidation', () => {
     })
     await reviewFact(world.deps, relabel.id, 'trace')
     expect((await getFact(world.deps, gloss.id)).status).toBe('superseded')
-    expect(assessEntry(await world.deps.nodes.loadEntrySnapshot(entry)).weakFacts).toEqual([])
+    expect(weakFacts(await world.deps.nodes.loadEntrySnapshot(entry))).toEqual([])
   })
 
   it('rejects a dependent whose new review fails and keeps the rest', async () => {

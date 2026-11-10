@@ -3,6 +3,7 @@ import {
   getPublicEntry,
   getPublicSense,
   listPublicEntries,
+  listSenseMembers,
   lookupForm,
   searchPublicEntries,
 } from '@server/usecases/catalog'
@@ -17,12 +18,13 @@ import {
   lemmaInputSchema,
   levelFilterSchema,
   listLangQuerySchema,
+  memberPageSchema,
   publicEntrySchema,
   publicSenseDetailSchema,
   searchPageSchema,
   searchQueryTextSchema,
 } from '@shared/catalog'
-import { posSchema, senseIdSchema, topicIdSchema } from '@shared/facts'
+import { posSchema, relationDomainSchema, senseIdSchema, topicIdSchema } from '@shared/facts'
 import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/feedback'
 import { referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
@@ -32,7 +34,14 @@ import { createRouter, errorResponse, json, jsonBody, notModifiedResponse, pageQ
 
 const tags = ['Dictionary']
 
-const documentQuery = z.object({ lang: langQuerySchema, include: includeQuerySchema })
+const documentQuery = z.object({
+  lang: langQuerySchema,
+  include: includeQuerySchema,
+  domain: relationDomainSchema.optional().meta({
+    description:
+      'Also show the hypernyms of this specialist taxonomy (biology: dog is a kind of canine) beside the everyday layer, each marked with its domain. Absent shows the everyday layer alone.',
+  }),
+})
 const LANGUAGE =
   ' Translations and topic names are in the language of ?lang=, else of Accept-Language; the response says which in lang.'
 
@@ -117,6 +126,26 @@ const getSense = createRoute({
   },
 })
 
+const listMembers = createRoute({
+  method: 'get',
+  path: '/senses/{id}/members',
+  tags,
+  summary: 'List the kinds of a sense taken as a category',
+  description:
+    'Every public sense whose broader terms lead up to this one ("animal": dog, cat, eagle, and each bird through "bird"), each once at its nearest depth, nearest first, then by lemma. The everyday layer by default; ?domain= also walks that specialist taxonomy (biology: canine, carnivore, mammal). A sense that is not public is 404.' +
+    LANGUAGE,
+  request: {
+    params: z.object({ id: senseIdSchema }),
+    query: pageQuery.extend({
+      domain: relationDomainSchema.optional().meta({
+        description: 'Also walk the hypernyms of this specialist taxonomy; absent walks the everyday layer alone.',
+      }),
+      lang: listLangQuerySchema,
+    }),
+  },
+  responses: { 200: json(memberPageSchema, 'A page of members.'), 400: errorResponse, 404: errorResponse },
+})
+
 const listSources = createRoute({
   method: 'get',
   path: '/sources',
@@ -174,6 +203,19 @@ export const publicRoutes = createRouter()
     const variant = readVariant(c, c.req.valid('query'))
     const sense = await getPublicSense(c.get('deps'), c.req.valid('param').id, variant)
     return notModified(c, await etagOf(sense.versions, variant)) ?? c.json(sense.read(), 200)
+  })
+  .openapi(listMembers, async (c) => {
+    const { domain, limit, cursor, lang } = c.req.valid('query')
+    const variant = readVariant(c, { lang })
+    const page = await listSenseMembers(
+      c.get('deps'),
+      c.req.valid('param').id,
+      domain ?? null,
+      { limit, cursor },
+      variant,
+    )
+    c.header('Cache-Control', LIST_CACHE)
+    return c.json({ lang: variant.lang, items: page.items, next_cursor: page.nextCursor }, 200)
   })
   .openapi(listSources, async (c) => c.json({ items: await listReferenceSources(c.get('deps')) }, 200))
   .openapi(postFeedback, async (c) => {

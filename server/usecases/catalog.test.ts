@@ -15,6 +15,7 @@ import {
   importCoreEntries,
   listEntrySummaries,
   listPublicEntries,
+  listSenseMembers,
   locateNode,
   lookupForm,
   searchPublicEntries,
@@ -276,6 +277,44 @@ describe('public reads', () => {
       }),
     ])
     expect(found.read()[0]?.matches).toHaveLength(2)
+  })
+
+  it('lists the members of a public category through every layer asked for, nearest first [spec: public-view/members]', async () => {
+    const world = fakeWorld()
+    const noun = async (lemma: string) => {
+      const { entry } = await createEntry(world.deps, agentA, { lemma })
+      const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: `A ${lemma}.` })
+      return sense.id
+    }
+    const [animal, bird, eagle, raptor] = [
+      await noun('animal'),
+      await noun('bird'),
+      await noun('eagle'),
+      await noun('raptor'),
+    ]
+    const relate = (from: SenseId, to: SenseId, domain?: 'biology') =>
+      submitFact(world.deps, agentA, {
+        kind: 'relation',
+        subject_id: from,
+        payload: { type: 'hypernym', target_sense_id: to, ...(domain ? { domain } : {}) },
+      })
+    await relate(bird, animal)
+    await relate(eagle, bird)
+    await relate(raptor, animal, 'biology')
+    await reviewAll(world)
+    const members = async (domain: 'biology' | null, cursor?: string) =>
+      listSenseMembers(world.deps, animal, domain, { limit: 1, cursor }, zh)
+    const first = await members(null)
+    expect(first.items).toEqual([
+      expect.objectContaining({ lemma: 'bird', sense_id: bird, depth: 1, gloss: 'A bird.' }),
+    ])
+    const second = await members(null, first.nextCursor ?? undefined)
+    expect([second.items.map((item) => [item.lemma, item.depth]), second.nextCursor]).toEqual([[['eagle', 2]], null])
+    const all = await listSenseMembers(world.deps, animal, 'biology', { limit: 10 }, zh)
+    expect(all.items.map((item) => item.lemma)).toEqual(['bird', 'raptor', 'eagle'])
+    await expect(listSenseMembers(world.deps, 'missing' as SenseId, null, { limit: 10 }, zh)).rejects.toMatchObject({
+      code: 'not_found',
+    })
   })
 
   it('gets a published sense in the requested language and 404s unknown or hidden ones', async () => {

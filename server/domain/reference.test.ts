@@ -170,7 +170,7 @@ describe('rankFrequencies', () => {
     expect([...junk, `i${String.fromCodePoint(0xfe0f)}`].some(isWordForm)).toBe(false)
   })
 
-  it('ranks levels in learning order [spec: work/claim-tiers]', () => {
+  it('ranks levels in learning order [spec: work/item-priority]', () => {
     expect((['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const).map(levelRank)).toEqual([1, 2, 3, 4, 5, 6])
   })
 })

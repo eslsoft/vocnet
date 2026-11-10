@@ -7,7 +7,7 @@ import type { PrincipalRef } from '@server/domain/principal'
 import type { EntryLinks, PublicViewRecord } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
-import type { LastClaim, WorkLease } from '@server/domain/work'
+import type { WorkItem, WorkItemWrite, WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
 import type { EntrySort, EntrySummary, SearchMatch, SenseSort, Stats } from '@shared/catalog'
 import type {
@@ -17,6 +17,7 @@ import type {
   FactStatus,
   FormType,
   Pos,
+  RelationDomain,
   Review,
   SenseId,
   TopicId,
@@ -24,7 +25,7 @@ import type {
 } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
-import type { WorkLeaseId } from '@shared/work'
+import type { WorkItemId, WorkLeaseId, WorkType } from '@shared/work'
 
 // Interfaces for everything beyond the process boundary. Implemented in adapters/.
 
@@ -133,8 +134,6 @@ export interface FactRepo {
   findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
   /** The live facts of a kind about a subject, oldest first. */
   listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
-  /** How many live facts of this kind, about any subject, have this content key. */
-  countLiveWithKey(kind: FactKind, contentKey: string): Promise<number>
   /** The live facts of a linking kind whose subject and target senses belong one to each of the two entries. */
   listLiveLinks<K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]): Promise<Link<K>[]>
   /** The live (pending or published) correction that supersedes this fact, if any. */
@@ -217,6 +216,12 @@ export interface FormRow {
   pos: Pos | null
 }
 
+/** A member of a category as the view stores it: its sense summary and how far below the category it is. */
+export interface StoredMember {
+  summary: StoredSenseSummary
+  depth: number
+}
+
 /** Which public entries a list shows. */
 export interface EntryFilter {
   /** The lemma starts with it; empty for any lemma. */
@@ -265,6 +270,11 @@ export interface PublicViewRepo {
    * frequency, then by lemma.
    */
   search(query: SearchQuery, page: PageRequest): Promise<Page<SearchRow>>
+  /**
+   * The public senses a broader-term walk from this sense reaches through everyday links, and the
+   * links of `domain` when one is given, each once at its nearest depth, by depth, lemma, and id.
+   */
+  listMembers(id: SenseId, domain: RelationDomain | null, page: PageRequest): Promise<Page<StoredMember>>
   /** Stale views of the entries that are, or own as a sense, these nodes, or link to them by a relation. */
   listStale(nodeIds: string[]): Promise<StaleView[]>
   /** Up to `limit` stale views of any entry. */
@@ -286,39 +296,24 @@ export interface FeedbackRepo {
   countOpen(): Promise<number>
 }
 
-/** A worklist row whose stored scores no longer describe the entry. */
+/** A worklist row whose stored scores and items no longer describe the entry. */
 export interface StaleWork {
   entryId: EntryId
   /** The revision a rescore describes once saved. */
   revision: number
-  lastClaim: LastClaim
 }
 
 export interface WorkScores {
   completeness: number
   quality: number
-  stalled: boolean
-  awaitingReview: boolean
 }
 
+/** A stored item with the lemma of its entry. */
+export type WorkItemWithLemma = WorkItem & { lemma: Lemma }
+
 export interface WorkRepo {
-  /**
-   * Atomically leases the next claimable entry (see `isClaimable`) that has no unexpired lease,
-   * replacing an expired one; null when none is. Order: `claimTier`, then least recently claimed
-   * (never-claimed entries have no claim time), then highest frequency with none last, then lowest
-   * completeness, then oldest.
-   */
-  claimNext(
-    lease: Omit<WorkLease, 'entryId' | 'claimedAt'>,
-    now: string,
-  ): Promise<{ lease: WorkLease; entry: EntryNode } | null>
-  /** Records the entry's open work as this claim found it, for the stall rule. */
-  recordClaimedWork(lease: WorkLease, openWork: string): Promise<void>
   /** Marks the entry as a seed entry; a repeat is a no-op. */
   markSeed(entryId: EntryId): Promise<void>
-  findLease(id: WorkLeaseId): Promise<WorkLease | null>
-  /** Records the work on the entry, deletes the lease while it is still unexpired, and marks the row stale; false otherwise. */
-  complete(lease: WorkLease, at: string, note: string | null): Promise<boolean>
   /**
    * Stale rows of the entries that are, or own as a sense, these nodes, and of the entries whose
    * relations link to a sense that is or belongs to one of them.
@@ -328,8 +323,42 @@ export interface WorkRepo {
   listAnyStale(limit: number): Promise<StaleWork[]>
   /** How many rows are stale. */
   countStale(): Promise<number>
-  /** Stores the scores as of the stale revision; a no-op when another write bumped it since. */
-  saveScores(stale: StaleWork, scores: WorkScores): Promise<void>
+  /** The entry's stored work items. */
+  listItems(entryId: EntryId): Promise<WorkItem[]>
+  /** The stored items with these ids; an id with no item is left out. */
+  findItems(ids: readonly WorkItemId[]): Promise<WorkItem[]>
+  /**
+   * Stores the scores and brings the entry's items to `items` as of the stale revision, in one
+   * batch: each write upserts by type and node, keeping a stored item's id, lease, and claim and
+   * work records, and a new item gets a fresh id. A no-op when another write bumped the revision since.
+   */
+  saveAssessment(
+    stale: StaleWork,
+    scores: WorkScores,
+    items: { writes: ReadonlyArray<WorkItemWrite & { id: WorkItemId | null }>; deletes: readonly WorkItemId[] },
+  ): Promise<void>
+  /**
+   * Leases up to `limit` free items of the production queue, all of the type of its first free
+   * item (among `types` when given), in queue order, recording each one's gap as claimed, and
+   * stores the lease; null when no item is free. An item whose lease expired is free.
+   */
+  claim(
+    lease: Pick<WorkLease, 'id' | 'holder' | 'expiresAt'>,
+    types: readonly WorkType[] | undefined,
+    limit: number,
+    now: string,
+  ): Promise<{ lease: WorkLease; items: WorkItem[] } | null>
+  findLease(id: WorkLeaseId): Promise<WorkLease | null>
+  /**
+   * While the lease is still held at `at`: marks the `worked` items of it as worked with their
+   * notes, releases every item it holds, bumps the revision of its entries, and deletes it; false
+   * when it is no longer held, changing nothing.
+   */
+  complete(lease: WorkLease, worked: ReadonlyArray<{ id: WorkItemId; note?: string }>, at: string): Promise<boolean>
+  /** The curators' queue: items at the attempt bound, of `type` when given, in queue order. */
+  listCuration(type: WorkType | null, page: PageRequest): Promise<Page<WorkItemWithLemma>>
+  /** Deletes the leases that expired at or before `before`; returns how many. */
+  purgeLeases(before: string): Promise<number>
 }
 
 export interface AgentRecord {

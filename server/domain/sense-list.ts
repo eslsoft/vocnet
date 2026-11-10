@@ -24,14 +24,3 @@ export function listsExactly(list: SenseList, senses: readonly SenseId[]): boole
   const listed = listedSenses(list)
   return listed.length === senses.length && senses.every((id) => listed.includes(id))
 }
-
-/**
- * How many of the entry's sense lists review rejected while naming exactly these senses: the failed
- * attempts at the inventory as it stands. The count is per exact sense set over all history, so a set
- * never seen before starts at zero while returning to an earlier set resumes its count.
- */
-export function rejectedAttempts(facts: readonly Fact[], senses: readonly SenseId[]): number {
-  return facts
-    .filter(isKind('sense_list'))
-    .filter((fact) => fact.status === 'rejected' && listsExactly(fact.payload, senses)).length
-}

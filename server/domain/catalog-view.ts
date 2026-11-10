@@ -36,6 +36,8 @@ export interface EntrySnapshot {
   seed: boolean
   /** The entry's learner level: 1 for A1 to 6 for C2 (`levelRank`); null without a CEFR level. */
   levelRank: number | null
+  /** The Zipf frequency of the entry's lemma, as its worklist row stores it; null without one. */
+  zipf: number | null
   /** A CEFR learner list names the exact lemma as an A1 or A2 verb. */
   coreVerb: boolean
   /**
@@ -216,7 +218,15 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     if (!sense || about('entry', sense.entryId).length === 0) return []
     const glossFact = about('sense', id)[0]
     return glossFact
-      ? [{ lemma: sense.lemma, sense_id: sense.id, gloss: glossFact.payload.gloss, review: reviewOf(fact) }]
+      ? [
+          {
+            lemma: sense.lemma,
+            sense_id: sense.id,
+            gloss: glossFact.payload.gloss,
+            ...(fact.payload.domain ? { domain: fact.payload.domain } : {}),
+            review: reviewOf(fact),
+          },
+        ]
       : []
   }
 

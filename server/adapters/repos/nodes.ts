@@ -259,6 +259,7 @@ export function createNodeRepo(db: Db): NodeRepo {
             .select({
               seed: worklist.seed,
               levelRank: worklist.levelRank,
+              zipf: worklist.zipf,
               // One primary-key lookup: the exact lemma listed as an A1 or A2 verb.
               coreVerb: sql<number>`${exists(
                 db
@@ -325,6 +326,7 @@ export function createNodeRepo(db: Db): NodeRepo {
         entry,
         seed: work[0].seed,
         levelRank: work[0].levelRank,
+        zipf: work[0].zipf,
         coreVerb: work[0].coreVerb === 1,
         phrases: phrases.map((row) => row.lemma),
         family: family.map((row) => row.lemma),

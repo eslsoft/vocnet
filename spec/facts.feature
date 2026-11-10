@@ -175,6 +175,24 @@ Feature: Facts and review
     Then it is refused with the live relation it conflicts with
     And a relation of the same type, or from another sense, is admitted, and a rejected relation revived beside a rival is refused too
 
+  @facts/relation-one-layer @domain
+  Scenario: A broader term belongs to one layer
+    Given a sense with an everyday hypernym to a sense of an entry, or a biology one
+    When a hypernym of the other layer to a sense of the same entry is submitted
+    Then it is refused naming the layer that holds it, while another hypernym of the same layer is admitted
+
+  @facts/relation-layers @domain
+  Scenario: A hypernym carries its layer in its claim
+    Given an everyday hypernym, a biology hypernym, a medicine hypernym submitted from its target end, and a synonym with a domain
+    When their content keys and orientation are computed and the synonym is validated
+    Then the domain extends the content key, a directed relation keeps its direction and domain, and only a hypernym may carry a domain
+
+  @facts/relation-layer-rubric @domain
+  Scenario: Each layer has its own rubric, and a part attaches to its most general whole
+    Given an everyday hypernym, a biology hypernym, and a part_of between two senses
+    When their reviews are planned
+    Then the everyday rubric fails a technical taxon and a word a learner would not use as its category, the biology rubric and Jev question pass only a real term of that taxonomy and fail an invented node, and the part_of rubric fails a part attached to a narrower kind of its whole
+
   @facts/relation-no-hypernym-cycle @domain
   Scenario: Two entries are never each a kind of the other
     Given a live hypernym from a sense of one entry to a sense of another
@@ -726,15 +744,15 @@ Feature: Facts and review
 
   @facts/relation-padding @domain
   Scenario: Relations do not pad a sense
-    Given a synonym between two entries one of which records the other as a live spelling variant, a hypernym to a sense with twelve narrower terms, and a relation rubric
+    Given a synonym between two entries one of which records the other as a live spelling variant, and a relation rubric
     When they are submitted or reviewed
-    Then the synonym is refused in either direction, the thirteenth narrower term is refused naming the cap, a synonym of the broad sense is admitted, and the rubric fails a target an A1 to B2 learner cannot use or of another register
+    Then the synonym is refused in either direction, a hypernym between them is admitted, and the rubric fails a synonym target an A1 to B2 learner cannot use or of another register
 
   @facts/relation-padding-usecase @usecase
-  Scenario: The relation padding rules read the live store
-    Given entries with a recorded spelling variant and a sense that twelve live hypernyms point at
-    When a synonym between the spellings or a thirteenth hypernym is submitted
-    Then each is an invalid reference, and a synonym of the broad sense is created
+  Scenario: The relation padding rules read the live store, and no category is capped
+    Given entries with a recorded spelling variant, a category sense with many kinds, and a sense with a biology hypernym
+    When a synonym between the spellings, a thirteenth kind of the category, and an everyday hypernym to the biology hypernym's entry are submitted
+    Then the synonym and the second layer are invalid references, the thirteenth kind is created, and the biology hypernym's content key names its domain
 
   @facts/relation-padding-api @api
   Scenario: A synonym between spellings of one word is refused over HTTP

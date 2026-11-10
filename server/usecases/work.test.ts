@@ -1,263 +1,292 @@
-import { admin, agentA, agentB } from '@server/testing/actors'
+import { admin, agentA, agentB, curatorAgent } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
-import type { EntryId, FactId, SenseId } from '@shared/facts'
-import type { WorkLeaseId } from '@shared/work'
+import type { EntryId, SenseId } from '@shared/facts'
+import type { ClaimWorkInput, WorkItemId, WorkLeaseId, WorkType } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
-import { retractFact, submitFact } from './facts'
-import { claimFeedback, resolveFeedback, submitFeedback } from './feedback'
+import { submitFact } from './facts'
 import { reviewFact } from './review'
-import { claimWork, completeWork } from './work'
+import { claimWork, completeWork, EXPIRED_LEASE_RETENTION_MS, listCurationItems, purgeExpiredLeases } from './work'
 import { refreshStaleWork, rescoreStaleWork } from './work-scores'
 
 const start = '2026-01-01T00:00:00.000Z'
 
-async function worldWith(lemmas: string[]) {
-  const world = fakeWorld()
-  const entries = []
-  for (const [index, lemma] of lemmas.entries()) {
-    world.setNow(`2026-01-01T00:00:0${index}.000Z`)
-    entries.push(await createEntry(world.deps, agentA, { lemma }))
-  }
-  world.setNow(start)
-  await settle(world)
-  return { world, entries }
-}
-
 type World = ReturnType<typeof fakeWorld>
+
 /** Lets every pending review land with the reviewers' current answers. */
 async function settle(world: World) {
   for (const fact of world.facts.filter((candidate) => candidate.status === 'pending')) {
     await reviewFact(world.deps, fact.id, 'trace')
   }
 }
-/** Claims and completes the next entry, running `during` while the lease is held. */
-async function pass(world: World, during?: (entryId: EntryId, lemma: string) => Promise<unknown>) {
-  const claim = await claimWork(world.deps, agentA)
-  if (!claim) return null
-  await during?.(claim.lease.entryId, claim.lease.lemma)
-  await completeWork(world.deps, agentA, claim.lease.id, {})
-  return claim.lease.lemma
+
+const level = (zipf: number, cefr: 'A1' | 'B1' | 'C2') => ({
+  frequency: { zipf, rank: 1, source_id: 'wordfreq' },
+  cefr: [{ pos: 'noun' as const, level: cefr, source_id: 'cefrj' }],
+})
+
+async function worldWith(lemmas: Record<string, ReturnType<typeof level> | null>) {
+  const world = fakeWorld()
+  world.referenceSources.push({
+    id: 'cefrj',
+    name: 'CEFR-J Wordlist',
+    version: '1.6',
+    license: 'Custom',
+    license_url: 'https://www.cefr-j.org/download.html',
+    changes: 'None.',
+    attribution: 'CEFR-J',
+    url: 'https://www.cefr-j.org/',
+    retrieved_at: '2026-11-09',
+  })
+  const entries: EntryId[] = []
+  for (const [index, [lemma, reference]] of Object.entries(lemmas).entries()) {
+    if (reference) world.references.set(lemma, reference)
+    world.setNow(`2026-01-01T00:00:0${index}.000Z`)
+    entries.push((await createEntry(world.deps, agentA, { lemma })).entry.id)
+  }
+  world.setNow(start)
+  await settle(world)
+  return { world, entries }
 }
 
-/** Gives the entry a preposition sense, which needs no relations, its sense list, and every other slot. */
-async function fill(world: World, entryId: EntryId, author = agentA) {
-  const { sense } = await createSense(world.deps, author, { entry_id: entryId, pos: 'preposition', gloss: 'Near to.' })
-  const entry = await world.deps.nodes.findEntry(entryId)
-  const facts = [
-    { kind: 'morphology', subject_id: entryId, payload: { parts: [{ form: entry?.lemma, role: 'base' }] } },
-    { kind: 'form', subject_id: entryId, payload: { form: 'bys', type: 'plural' } },
-    { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'us' } },
-    { kind: 'pronunciation', subject_id: entryId, payload: { ipa: 'baɪ', accent: 'uk' } },
-    { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } } },
-    { kind: 'translation', subject_id: sense.id, payload: { language: 'zh', text: '在旁边' } },
-    { kind: 'collocation', subject_id: sense.id, payload: { text: `${entry?.lemma} the door`, pattern: 'phrase' } },
-    { kind: 'sense_list', subject_id: entryId, payload: { common: [sense.id], extra: [] } },
-    { kind: 'syllables', subject_id: entryId, payload: { syllables: [entry?.lemma] } },
-  ] as const
-  for (const input of facts) await submitFact(world.deps, author, input as never)
+const claim = (world: World, input: Partial<ClaimWorkInput> = {}, actor = agentA) =>
+  claimWork(world.deps, actor, { limit: 10, ...input })
+
+/** A published noun sense on the entry. */
+async function noun(world: World, entryId: EntryId, gloss: string): Promise<SenseId> {
+  const { sense } = await createSense(world.deps, agentA, { entry_id: entryId, pos: 'noun', gloss })
+  await settle(world)
   return sense.id
 }
 
-const drain = async (world: World) => {
-  const order = []
-  for (let step = 0; step < 20; step++) {
-    const lemma = await pass(world)
-    if (lemma === null) return order
-    order.push(lemma)
-  }
-  throw new Error('The worklist did not empty.')
-}
+const itemOf = (world: World, type: WorkType) => world.items.find((item) => item.type === type)
+/** A review that never answers, so the facts it is asked about stay pending. */
+const holdReviews = (world: World) => world.answerLlm(() => new Promise(() => {}))
 
 describe('claimWork', () => {
-  it('serves A1 to C2, then frequency without a level, then the rest; never-claimed by frequency, claimed by least recently claimed, never a dead one [spec: work/claim-order]', async () => {
-    const reference = (zipf: number | null, level?: 'A1' | 'B2') => ({
-      frequency: zipf === null ? null : { zipf, rank: 1, source_id: 'wordfreq' },
-      cefr: level ? [{ pos: 'noun' as const, level, source_id: 'cefrj' }] : [],
-    })
-    const { world } = await worldWith(['reef', 'wave', 'tide', 'cove', 'bank', 'sand'])
-    world.references.set('bank', reference(5, 'A1'))
-    world.references.set('cove', reference(3, 'A1'))
-    world.references.set('sand', reference(6, 'A1'))
-    world.references.set('tide', reference(4, 'B2'))
-    world.references.set('wave', reference(4.5))
-    const sand = world.facts.find((fact) => fact.kind === 'entry' && fact.subjectId === world.entries[5].id)
-    await retractFact(world.deps, agentA, sand?.id as FactId)
-    const order: Array<string | null> = []
-    for (let minute = 10; minute < 21; minute++) {
-      world.setNow(`2026-01-01T00:${minute}:00.000Z`)
-      // Each entry's first pass gives it a sense, which leaves gaps; its second adds nothing and stalls it.
-      const seen = [...order]
-      order.push(
-        await pass(world, async (entryId, lemma) => {
-          if (!seen.includes(lemma))
-            await createSense(world.deps, agentA, { entry_id: entryId, pos: 'noun', gloss: `A ${lemma}.` })
-        }),
-      )
-      await settle(world)
-    }
-    expect(order).toEqual(['bank', 'cove', 'bank', 'cove', 'tide', 'tide', 'wave', 'wave', 'reef', 'reef', null])
+  it('leases the items of the highest-priority type only, within the types asked, in learner order [spec: work/claim-one-type]', async () => {
+    const { world } = await worldWith({ eagle: level(4, 'B1'), dog: level(5, 'A1'), owl: level(3, 'C2') })
+    // Identity first: every entry without senses, A1 before B1 before C2.
+    const senses = await claim(world, { limit: 2 })
+    expect(senses?.lease.type).toBe('senses')
+    expect(senses?.items.map(({ lemma }) => lemma)).toEqual(['dog', 'eagle'])
+    expect(senses?.items[0]?.context.view?.entry.lemma).toBe('dog')
+    // The third senses item is next, and nobody else gets the two leased ones meanwhile.
+    expect((await claim(world, {}, agentB))?.items.map(({ lemma }) => lemma)).toEqual(['owl'])
+    // Asking only for pronunciation leases that type, though senses would come first.
+    const sounds = await claim(world, { types: ['pronunciation'], limit: 50 }, agentB)
+    expect(sounds?.lease.type).toBe('pronunciation')
+    expect(sounds?.items.map(({ lemma }) => lemma)).toEqual(['dog', 'eagle', 'owl'])
+    expect(sounds?.items[0]?.context).toMatchObject({ sense: null, view: null, entry: { lemma: 'dog', zipf: 5 } })
+    expect(await claim(world, { types: ['pronunciation'] }, agentB)).toBeNull()
   })
 
-  it('hands out nothing once every entry is complete and good [spec: work/claim-empty]', async () => {
-    const { world, entries } = await worldWith(['by', 'of'])
-    expect(await pass(world, (entryId) => fill(world, entryId))).toBe('by')
-    await fill(world, entries[1].entry.id, agentB)
-    expect(await claimWork(world.deps, agentA)).toBeNull()
-    expect(world.work.get(entries[0].entry.id)).toMatchObject({ completeness: 1, quality: 1, stalled: false })
+  it('ranks a meaning item of any level before a usage one, and carries the sense context [spec: work/claim-context]', async () => {
+    const { world, entries } = await worldWith({ eagle: level(4, 'C2'), bird: level(5, 'A1') })
+    const [eagle, bird] = entries as [EntryId, EntryId]
+    const eagleSense = await noun(world, eagle, 'A large bird of prey.')
+    const birdSense = await noun(world, bird, 'An animal with feathers and wings.')
+    await submitFact(world.deps, agentA, {
+      kind: 'sense_list',
+      subject_id: eagle,
+      payload: { common: [eagleSense], extra: [] },
+    })
+    await submitFact(world.deps, agentA, {
+      kind: 'sense_list',
+      subject_id: bird,
+      payload: { common: [birdSense], extra: [] },
+    })
+    await settle(world)
+    const categories = await claim(world, { types: ['category', 'examples'] })
+    // The C2 eagle's category comes before the A1 bird's examples.
+    expect(categories?.lease.type).toBe('category')
+    expect(categories?.items.map(({ lemma }) => lemma)).toEqual(['bird', 'eagle'])
+    const eagleItem = categories?.items[1]
+    expect(eagleItem?.item.gap).toEqual({ type: 'category', sense_id: eagleSense })
+    expect(eagleItem?.context).toMatchObject({
+      entry: { lemma: 'eagle', cefr: [{ pos: 'noun', level: 'C2' }], senses: [{ id: eagleSense, rare: false }] },
+      sense: { id: eagleSense, gloss: 'A large bird of prey.', status: 'published' },
+      view: null,
+      related: [],
+    })
+    expect(eagleItem?.context.facts.map((fact) => fact.kind)).toEqual(['sense'])
   })
 
-  describe('stalls an entry whose pass made no lasting progress until its open work changes [spec: work/stall-loop]', () => {
-    async function cove() {
-      const { world, entries } = await worldWith(['bay', 'cove'])
-      const bay = await createSense(world.deps, agentB, { entry_id: entries[0].entry.id, pos: 'noun', gloss: 'A bay.' })
-      const nook = await createSense(world.deps, agentB, {
-        entry_id: entries[1].entry.id,
-        pos: 'noun',
-        gloss: 'A small bay.',
+  it("serves no item a pending fact may change, while the entry's other items stay workable [spec: work/item-awaiting]", async () => {
+    const { world, entries } = await worldWith({ bank: null })
+    holdReviews(world)
+    await submitFact(world.deps, agentA, {
+      kind: 'pronunciation',
+      subject_id: entries[0] as EntryId,
+      payload: { ipa: 'bæŋk', accent: 'us' },
+    })
+    expect(itemOf(world, 'pronunciation')).toMatchObject({ awaiting: true })
+    expect(await claim(world, { types: ['pronunciation'] })).toBeNull()
+    expect((await claim(world, { types: ['syllables'] }))?.items).toHaveLength(1)
+  })
+})
+
+describe('completeWork', () => {
+  it('counts an attempt when a pass leaves the gap as claimed, and moves the item to the curators after three [spec: work/item-attempts-usecase]', async () => {
+    const { world, entries } = await worldWith({ dawn: null })
+    const passOver = async (type: WorkType) => {
+      const lease = await claim(world, { types: [type] })
+      const id = lease?.items[0]?.item.id as WorkItemId
+      return completeWork(world.deps, agentA, lease?.lease.id as WorkLeaseId, {
+        items: [{ id, note: 'Nothing found.' }],
       })
-      await submitFact(world.deps, agentB, { kind: 'example', subject_id: nook.sense.id, payload: { text: 'A cove.' } })
-      world.references.set('cove', { frequency: { zipf: 3, rank: 1, source_id: 'wordfreq' }, cefr: [] })
-      await settle(world)
-      return { world, bay: bay.sense.id, nook: nook.sense.id }
     }
-
-    it('stalls when review rejects what the pass added, and after a pass that only added what no gap needed', async () => {
-      const { world, bay, nook } = await cove()
-      const rejected = await pass(world, async () => {
-        const { fact } = await submitFact(world.deps, agentA, {
-          kind: 'relation',
-          subject_id: nook,
-          payload: { type: 'hypernym', target_sense_id: bay },
-        })
-        world.failReviews()
-        expect(await reviewFact(world.deps, fact.id, 'trace')).toBe('rejected')
-      })
-      expect(rejected).toBe('cove')
-      expect(await pass(world)).toBe('bay')
-      expect(await claimWork(world.deps, agentA)).toBeNull()
-
-      // Another principal's translation changes cove's open work; a pass adding a second example does not.
-      world.passReviews()
-      await submitFact(world.deps, agentB, {
-        kind: 'translation',
-        subject_id: nook,
-        payload: { language: 'zh', text: '小海湾' },
-      })
-      await settle(world)
-      const extra = () =>
-        submitFact(world.deps, agentA, {
-          kind: 'example',
-          subject_id: nook,
-          payload: { text: 'Another cove.', translations: { zh: '另一个小海湾。' } },
-        })
-      expect(await pass(world, extra)).toBe('cove')
-      await settle(world)
-      expect(await claimWork(world.deps, agentA)).toBeNull()
+    expect((await passOver('syllables')).items).toEqual([{ id: expect.any(String), state: 'open', attempts: 1 }])
+    expect((await passOver('syllables')).items[0]).toMatchObject({ state: 'open', attempts: 2 })
+    expect((await passOver('syllables')).items[0]).toMatchObject({ state: 'curation', attempts: 3 })
+    expect(await claim(world, { types: ['syllables'] })).toBeNull()
+    await expect(listCurationItems(world.deps, agentA, null, { limit: 10 })).rejects.toMatchObject({
+      code: 'forbidden',
     })
-
-    it('keeps the entry out of claims while its facts await review, so a rejection after the lease stalls it [spec: work/awaiting-review]', async () => {
-      const { world, bay, nook } = await cove()
-      const claims: string[] = []
-      const relations: FactId[] = []
-      for (let minute = 1; minute <= 6; minute++) {
-        world.setNow(`2026-01-01T00:0${minute}:00.000Z`)
-        const lemma = await pass(world, async (_entryId, claimed) => {
-          if (claimed !== 'cove' || relations.length > 0) return
-          const { fact } = await submitFact(world.deps, agentA, {
-            kind: 'relation',
-            subject_id: nook,
-            payload: { type: 'hypernym', target_sense_id: bay },
-          })
-          relations.push(fact.id)
-        })
-        if (lemma) claims.push(lemma)
-      }
-      // The pass ended with its relation pending, so cove and bay, the relation's target, both wait.
-      expect(claims).toEqual(['cove'])
-      world.failReviews()
-      expect(await reviewFact(world.deps, relations[0], 'trace')).toBe('rejected')
-      expect(await drain(world)).toEqual(['bay'])
-      expect(world.work.get(world.senses.find((sense) => sense.id === nook)?.entryId as EntryId)).toMatchObject({
-        stalled: true,
-        awaitingReview: false,
-      })
+    const queue = await listCurationItems(world.deps, curatorAgent, 'syllables', { limit: 10 })
+    expect(queue.items).toMatchObject([
+      { type: 'syllables', lemma: 'dawn', attempts: 3, lastNote: 'Nothing found.', lastWorkedBy: 'agent:agent-a' },
+    ])
+    expect((await listCurationItems(world.deps, admin, 'senses', { limit: 10 })).items).toEqual([])
+    // A curator's fact fills the slot, which closes the item.
+    await submitFact(world.deps, curatorAgent, {
+      kind: 'syllables',
+      subject_id: entries[0] as EntryId,
+      payload: { syllables: ['dawn'] },
+      curation: { reason: 'One syllable.' },
     })
+    expect(itemOf(world, 'syllables')).toBeUndefined()
+  })
 
-    it('lifts the stall when a fact about the entry leaves live', async () => {
-      const { world, nook } = await cove()
-      expect(await drain(world)).toEqual(['cove', 'bay'])
-      const example = world.facts.find((fact) => fact.kind === 'example' && fact.subjectId === nook)
-      await retractFact(world.deps, agentB, example?.id as FactId)
-      expect(await drain(world)).toEqual(['cove'])
+  it('judges a worked item once its facts are reviewed: a rejection counts the attempt, a pass moves it on [spec: work/item-review-verdict]', async () => {
+    const { world, entries } = await worldWith({ dawn: null })
+    const passWith = async (ipa: string) => {
+      const lease = await claim(world, { types: ['pronunciation'] })
+      const id = lease?.items[0]?.item.id as WorkItemId
+      await submitFact(world.deps, agentA, {
+        kind: 'pronunciation',
+        subject_id: entries[0] as EntryId,
+        payload: { ipa, accent: 'us' },
+      })
+      return completeWork(world.deps, agentA, lease?.lease.id as WorkLeaseId, { items: [{ id }] })
+    }
+    // The pending pronunciation fills the us accent only once it publishes: the item waits for it.
+    holdReviews(world)
+    expect((await passWith('dɔːn')).items[0]).toMatchObject({ state: 'awaiting_review', attempts: 0 })
+    world.failReviews()
+    await settle(world)
+    expect(itemOf(world, 'pronunciation')).toMatchObject({ attempts: 1, awaiting: false, worked: false })
+    holdReviews(world)
+    expect((await passWith('dɑːn')).items[0]).toMatchObject({ state: 'awaiting_review', attempts: 1 })
+    world.passReviews()
+    await settle(world)
+    expect(itemOf(world, 'pronunciation')).toMatchObject({
+      gap: { type: 'pronunciation', accents: ['uk'] },
+      attempts: 0,
+      worked: false,
     })
   })
 
-  it('names weak facts, and stops serving the entry once a correction replaces them [spec: work/weak-facts]', async () => {
-    const { world, entries } = await worldWith(['by'])
-    const sense = await fill(world, entries[0].entry.id)
-    const example = world.facts.find((fact) => fact.kind === 'example') as { id: FactId }
-    for (const fact of world.facts.filter((candidate) => candidate.id !== example.id)) {
-      await reviewFact(world.deps, fact.id, 'trace')
-    }
-    world.answerJev((questions) => ({
-      model: 'jev-test',
-      answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.6])),
-    }))
+  it('lets only the holder complete its own items before expiry, once, and releases the rest without an attempt [spec: work/complete]', async () => {
+    const { world, entries } = await worldWith({ bank: null, cove: null })
+    const lease = await claim(world, { types: ['syllables'] })
+    const id = lease?.lease.id as WorkLeaseId
+    const [bank, cove] = lease?.items ?? []
+    await expect(completeWork(world.deps, agentB, id, { items: [] })).rejects.toMatchObject({ code: 'conflict' })
+    await expect(completeWork(world.deps, admin, id, { items: [] })).rejects.toMatchObject({ code: 'conflict' })
+    const foreign = itemOf(world, 'pronunciation')?.id as WorkItemId
+    await expect(completeWork(world.deps, agentA, id, { items: [{ id: foreign }] })).rejects.toMatchObject({
+      code: 'invalid_reference',
+    })
+    world.setNow('2026-01-01T00:05:00.000Z')
+    const done = await completeWork(world.deps, agentA, id, { items: [{ id: bank?.item.id as WorkItemId }] })
+    expect(done).toEqual({ leaseId: id, items: [{ id: bank?.item.id, state: 'open', attempts: 1 }] })
+    expect(world.items.find((item) => item.id === cove?.item.id)).toMatchObject({ attempts: 0, lease: null })
+    expect(world.work.get(entries[0] as EntryId)?.lastWorkedAt).toBe('2026-01-01T00:05:00.000Z')
+    await expect(completeWork(world.deps, agentA, id, { items: [] })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('leases an item to one holder until the lease expires, then refuses the late complete [spec: work/claim-lease]', async () => {
+    const { world } = await worldWith({ bank: null })
+    const held = await claim(world, { types: ['syllables'] })
+    expect(held?.lease.expiresAt).toBe('2026-01-01T00:15:00.000Z')
+    expect(await claim(world, { types: ['syllables'] }, agentB)).toBeNull()
+    world.setNow('2026-01-01T00:15:00.000Z')
+    const taken = await claim(world, { types: ['syllables'] }, agentB)
+    expect(taken?.lease.holder).toBe('agent:agent-b')
+    const late = () => completeWork(world.deps, agentA, held?.lease.id as WorkLeaseId, { items: [] })
+    await expect(late()).rejects.toMatchObject({ code: 'conflict' })
+    // An expired lease is kept a day, so a late complete still learns it expired; then it is purged.
+    world.setNow(new Date(Date.parse('2026-01-01T00:15:00.000Z') + EXPIRED_LEASE_RETENTION_MS).toISOString())
+    expect(await purgeExpiredLeases(world.deps)).toBe(1)
+    await expect(late()).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('reports an item its own pass closed as closed, and fails loudly on an item whose entry is gone', async () => {
+    const { world, entries } = await worldWith({ dawn: null, dusk: null })
+    const lease = await claim(world, { types: ['syllables'], limit: 1 })
+    const [item] = lease?.items ?? []
+    await submitFact(world.deps, curatorAgent, {
+      kind: 'syllables',
+      subject_id: item?.item.entryId as EntryId,
+      payload: { syllables: [item?.lemma ?? ''] },
+      curation: { reason: 'One syllable.' },
+    })
+    const done = await completeWork(world.deps, agentA, lease?.lease.id as WorkLeaseId, {
+      items: [{ id: item?.item.id as WorkItemId }],
+    })
+    expect(done.items).toEqual([{ id: item?.item.id, state: 'closed', attempts: 0 }])
+    world.entries.splice(0, world.entries.length)
+    await expect(claim(world, { types: ['syllables'] })).rejects.toThrow(/Work item entry .* does not exist/)
+    expect(entries).toHaveLength(2)
+  })
+
+  it('refuses a lease that expired under the write', async () => {
+    const { world } = await worldWith({ bank: null })
+    const held = await claim(world, { types: ['syllables'] })
+    world.deps.work.complete = async () => false
+    await expect(completeWork(world.deps, agentA, held?.lease.id as WorkLeaseId, { items: [] })).rejects.toMatchObject({
+      code: 'conflict',
+    })
+  })
+})
+
+describe('weak facts as work', () => {
+  it('lists a weak fact as an item of its own stage until a correction replaces it [spec: work/weak-facts]', async () => {
+    const { world, entries } = await worldWith({ bank: null })
     world.answerLlm(() => ({ model: 'llm-test', verdict: 'uncertain', confidence: 0.5, reason: 'Unsure.' }))
-    expect(await reviewFact(world.deps, example.id, 'trace')).toBe('published')
-
-    const claim = await claimWork(world.deps, agentA)
-    expect(claim?.gaps).toEqual([])
-    expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'uncertain' }])
-    expect(claim?.entry).toMatchObject({ completeness: 1, quality: 1 - 1 / 11 })
-    const { fact: correction } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: sense as SenseId,
-      payload: { text: 'Sit by the fire.', translations: { zh: '坐在火边。' } },
-      supersedes_id: example.id,
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'pronunciation',
+      subject_id: entries[0] as EntryId,
+      payload: { ipa: 'bæŋk', accent: 'us' },
     })
-    await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
-    // The correction awaits review, and the weak example holds its slot until it publishes.
-    expect(await claimWork(world.deps, agentA)).toBeNull()
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Right.' }))
-    expect(await reviewFact(world.deps, correction.id, 'trace')).toBe('published')
-    expect(world.work.get(entries[0].entry.id)).toMatchObject({ completeness: 1, quality: 1 })
-    expect(await claimWork(world.deps, agentA)).toBeNull()
-  })
-
-  it('counts a fact under open feedback as weak until the feedback closes', async () => {
-    const { world, entries } = await worldWith(['by'])
-    await fill(world, entries[0].entry.id)
-    for (const fact of world.facts.filter((candidate) => candidate.status === 'pending')) {
-      await reviewFact(world.deps, fact.id, 'trace')
-    }
-    expect(await claimWork(world.deps, agentA)).toBeNull()
-    // The plural of a preposition shows on no meaning, so it is not public and cannot be reported.
-    const form = world.facts.find((fact) => fact.kind === 'form') as { id: FactId }
-    await expect(
-      submitFeedback(world.deps, 'client', { target_type: 'fact', target_id: form.id, message: 'Not a word.' }),
-    ).rejects.toMatchObject({ code: 'not_found' })
-    const example = world.facts.find((fact) => fact.kind === 'example') as { id: FactId }
-    const item = await submitFeedback(world.deps, 'client', {
-      target_type: 'fact',
-      target_id: example.id,
-      message: 'Not natural.',
+    await settle(world)
+    const weak = await claim(world, { types: ['weak_fact'] })
+    expect(weak?.items[0]?.item).toMatchObject({
+      stage: 5,
+      subjectId: fact.id,
+      gap: { type: 'weak_fact', fact_id: fact.id, kind: 'pronunciation', reason: 'uncertain' },
     })
-    const claim = await claimWork(world.deps, agentA)
-    expect(claim?.weakFacts).toEqual([{ id: example.id, kind: 'example', reason: 'feedback' }])
-    await completeWork(world.deps, agentA, claim?.lease.id as WorkLeaseId, {})
-    await claimFeedback(world.deps, agentB, item.id)
-    const claimed = world.work.get(entries[0].entry.id)
-    expect(claimed).toMatchObject({ quality: 1 - 1 / 11, scoredRevision: claimed?.revision })
-    await resolveFeedback(world.deps, agentB, item.id, { resolution: 'dismissed', note: 'It is.' })
-    expect(world.work.get(entries[0].entry.id)).toMatchObject({ quality: 1 })
+    expect(weak?.items[0]?.context.facts.map((candidate) => candidate.id)).toContain(fact.id)
+    holdReviews(world)
+    await submitFact(world.deps, agentA, {
+      kind: 'pronunciation',
+      subject_id: entries[0] as EntryId,
+      supersedes_id: fact.id,
+      payload: { ipa: 'beɪŋk', accent: 'us' },
+    })
+    expect(itemOf(world, 'weak_fact')).toMatchObject({ awaiting: true })
+    world.passReviews()
+    await settle(world)
+    expect(itemOf(world, 'weak_fact')).toBeUndefined()
   })
+})
 
+describe('rescore', () => {
   it('drains stale rows a batch at a time and reports what is left [spec: work/rescore]', async () => {
-    const { world, entries } = await worldWith(['by', 'to', 'at'])
-    for (const { entry } of entries) {
-      const row = world.work.get(entry.id)
+    const { world, entries } = await worldWith({ by: null, to: null, at: null })
+    for (const entry of entries) {
+      const row = world.work.get(entry)
       if (!row) throw new Error('No worklist row.')
       Object.assign(row, { revision: row.revision + 1 })
     }
@@ -266,115 +295,17 @@ describe('claimWork', () => {
     expect(await rescoreStaleWork(world.deps, 2)).toEqual({ rescored: 0, remaining: 0 })
   })
 
-  it('rescores rows a lost rescore left stale, which stay claimable meanwhile', async () => {
-    const { world, entries } = await worldWith(['by'])
-    await fill(world, entries[0].entry.id)
-    const row = world.work.get(entries[0].entry.id)
-    if (!row) throw new Error('No worklist row.')
-    Object.assign(row, { revision: row.revision + 1 })
-    expect(await refreshStaleWork(world.deps)).toBe(1)
-    expect(await refreshStaleWork(world.deps)).toBe(0)
-    expect(await claimWork(world.deps, agentA)).toBeNull()
-  })
-
-  it('returns the lease, the management view, and the gaps', async () => {
-    const { world, entries } = await worldWith(['bank'])
-    const { sense } = await createSense(world.deps, agentA, {
-      entry_id: entries[0].entry.id,
-      pos: 'noun',
-      gloss: 'land beside a river',
-    })
-    await settle(world)
-    const claim = await claimWork(world.deps, agentA, 60)
-    expect(claim?.lease).toEqual({
-      id: expect.any(String),
-      entryId: entries[0].entry.id,
-      lemma: 'bank',
-      holder: 'agent:agent-a',
-      claimedAt: start,
-      expiresAt: '2026-01-01T00:01:00.000Z',
-    })
-    expect(claim?.entry.senses.map((s) => s.id)).toEqual([sense.id])
-    expect(claim?.entry.facts).toHaveLength(2)
-    expect(claim?.weakFacts).toEqual([])
-    // The noun has no countability yet, so its paradigm asks for no plural.
-    expect(claim?.gaps.map((gap) => gap.type)).toEqual([
-      'sense_list',
-      'pronunciation',
-      'morphology',
-      'syllables',
-      'relations',
-      'examples',
-      'translations',
-      'example_translations',
-      'topics',
-      'grammar',
-      'collocations',
-    ])
-  })
-
-  it('leases an entry to one holder until the lease expires [spec: work/claim-lease]', async () => {
-    const { world } = await worldWith(['bank'])
-    const held = await claimWork(world.deps, agentA)
-    expect(held?.lease.expiresAt).toBe('2026-01-01T00:15:00.000Z')
-    expect(await claimWork(world.deps, agentB)).toBeNull()
-
-    world.setNow('2026-01-01T00:15:00.000Z')
-    const taken = await claimWork(world.deps, agentB)
-    expect(taken?.lease).toMatchObject({ lemma: 'bank', holder: 'agent:agent-b' })
-    expect(taken?.lease.id).not.toBe(held?.lease.id)
-    await expect(completeWork(world.deps, agentA, held?.lease.id as WorkLeaseId, {})).rejects.toMatchObject({
-      code: 'not_found',
-    })
-  })
-})
-
-describe('completeWork', () => {
-  it('lets only the holder complete before expiry, and only once [spec: work/complete]', async () => {
-    const { world, entries } = await worldWith(['bank'])
-    const claim = await claimWork(world.deps, agentA)
-    const id = claim?.lease.id as WorkLeaseId
-
-    await expect(completeWork(world.deps, agentB, id, {})).rejects.toMatchObject({ code: 'conflict' })
-    await expect(completeWork(world.deps, admin, id, {})).rejects.toMatchObject({ code: 'conflict' })
-
-    world.setNow('2026-01-01T00:05:00.000Z')
-    await expect(completeWork(world.deps, agentA, id, { note: 'Added forms.' })).resolves.toEqual({
-      entryId: entries[0].entry.id,
-      lastWorkedAt: '2026-01-01T00:05:00.000Z',
-    })
-    expect(world.worked.get(entries[0].entry.id)).toEqual({
-      lastWorkedAt: '2026-01-01T00:05:00.000Z',
-      lastWorkedBy: 'agent:agent-a',
-      lastNote: 'Added forms.',
-    })
-    await expect(completeWork(world.deps, agentA, id, {})).rejects.toMatchObject({ code: 'not_found' })
-  })
-
-  it('refuses an expired lease and a lease that changed under the write', async () => {
-    const { world } = await worldWith(['bank'])
-    const claim = await claimWork(world.deps, agentA)
-    const id = claim?.lease.id as WorkLeaseId
-    world.setNow('2026-01-01T00:15:00.000Z')
-    await expect(completeWork(world.deps, agentA, id, {})).rejects.toMatchObject({ code: 'conflict' })
-
-    world.setNow(start)
-    world.deps.work.complete = async () => false
-    await expect(completeWork(world.deps, agentA, id, {})).rejects.toMatchObject({ code: 'conflict' })
-    expect(world.worked.size).toBe(0)
-  })
-
   it('fails loudly when a stale row has no entry, after rescoring the rows behind it', async () => {
-    const { world, entries } = await worldWith(['bank', 'cove'])
-    for (const { entry } of entries) {
-      const row = world.work.get(entry.id)
+    const { world, entries } = await worldWith({ bank: null, cove: null })
+    for (const entry of entries) {
+      const row = world.work.get(entry)
       Object.assign(row ?? {}, { revision: (row?.revision ?? 0) + 1 })
     }
     world.entries.splice(0, 1)
     await expect(refreshStaleWork(world.deps)).rejects.toMatchObject({
       errors: [expect.objectContaining({ message: expect.stringMatching(/Worklist entry .* does not exist/) })],
     })
-    const cove = world.work.get(entries[1].entry.id)
+    const cove = world.work.get(entries[1] as EntryId)
     expect(cove?.scoredRevision).toBe(cove?.revision)
   })
 })

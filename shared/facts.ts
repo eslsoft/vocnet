@@ -37,6 +37,18 @@ export type Pos = z.infer<typeof posSchema>
 export const relationTypeSchema = z.enum(['synonym', 'antonym', 'hypernym', 'part_of']).meta({ id: 'RelationType' })
 export type RelationType = z.infer<typeof relationTypeSchema>
 
+/**
+ * The specialist taxonomies a hypernym may belong to. A hypernym without a domain is in the
+ * everyday layer, the categories a learner uses (dog: animal, pet); one with a domain is in that
+ * domain's taxonomy (dog: canine in biology), which public reads hide unless asked for.
+ */
+export const relationDomainSchema = z.enum(['biology', 'medicine']).meta({
+  id: 'RelationDomain',
+  description:
+    'A specialist taxonomy: biology (dog is a kind of canine) or medicine. A hypernym without one is in the everyday layer, the category words a learner uses (dog is a kind of animal, and of pet).',
+})
+export type RelationDomain = z.infer<typeof relationDomainSchema>
+
 export const formTypeSchema = z
   .enum([
     'plural',
@@ -469,14 +481,14 @@ const formPayloadSchema = z.strictObject({
  * never closed.
  */
 export const closableGapSchema = z
-  .enum(['forms', 'phrases', 'family', 'relations', 'topics', 'grammar', 'collocations'])
+  .enum(['forms', 'phrases', 'family', 'category', 'parts', 'synonyms', 'topics', 'grammar', 'collocations'])
   .meta({ id: 'ClosableGap', description: 'A gap type a gap_closure fact may close.' })
 export type ClosableGap = z.infer<typeof closableGapSchema>
 
 const gapClosurePayloadSchema = z.strictObject({
   gap: closableGapSchema.meta({
     description:
-      'The gap this closes: forms, phrases, or family on the entry; relations, topics, grammar, or collocations on a sense.',
+      'The gap this closes: forms, phrases, or family on the entry; category, parts, synonyms, topics, grammar, or collocations on a sense.',
   }),
   reason: text(300).meta({
     description:
@@ -507,7 +519,14 @@ export const factPayloadSchemas = {
     region: regionSchema.optional(),
   }),
   form: formPayloadSchema,
-  relation: z.strictObject({ type: relationTypeSchema, target_sense_id: senseIdSchema }),
+  relation: z.strictObject({
+    type: relationTypeSchema,
+    target_sense_id: senseIdSchema,
+    domain: relationDomainSchema.optional().meta({
+      description:
+        'Only on a hypernym: the specialist taxonomy it belongs to. Absent means the everyday layer, a category word learners use.',
+    }),
+  }),
   pronunciation: z.strictObject({
     ipa: text(100),
     accent: accentSchema,
@@ -552,6 +571,10 @@ const submitPayloadSchemas = {
       'A form gives ipa and accent together.',
     )
     .refine(usIpaFits, US_IPA_ISSUE),
+  relation: factPayloadSchemas.relation.refine(
+    ({ type, domain }) => domain === undefined || type === 'hypernym',
+    'Only a hypernym carries a domain: a specialist taxonomy layers broader terms, never synonyms, antonyms, or parts.',
+  ),
   example: examplePayloadSchema.extend({
     translations: z
       .strictObject({ zh: zhText(500).optional() } satisfies Record<(typeof SERVED_LANGUAGES)[number], z.ZodType>, {

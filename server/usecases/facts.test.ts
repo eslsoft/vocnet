@@ -603,7 +603,7 @@ describe('completeness write rules', () => {
     })
   })
 
-  it('refuses a synonym between spellings of one word and a narrower term past the cap [spec: facts/relation-padding-usecase]', async () => {
+  it('refuses a synonym between spellings of one word and caps no category, while one layer holds each broader term [spec: facts/relation-padding-usecase]', async () => {
     const world = fakeWorld()
     const sensed = async (lemma: string, pos: 'verb' | 'noun' = 'verb') => {
       const { entry } = await createEntry(world.deps, agentA, { lemma })
@@ -628,17 +628,23 @@ describe('completeness write rules', () => {
         message: expect.stringContaining('are spellings of one word'),
       })
     }
-    const kill = await sensed('kill')
-    for (let at = 0; at < 12; at++) {
-      const narrower = await sensed(`slay${at}`)
-      await relate(narrower.sense.id, 'hypernym', kill.sense.id)
+    // A category lists every kind a learner files under it: no cap on its narrower terms.
+    const animal = await sensed('animal', 'noun')
+    for (let at = 0; at < 13; at++) {
+      const kind = await sensed(`beast${at}`, 'noun')
+      await expect(relate(kind.sense.id, 'hypernym', animal.sense.id)).resolves.toMatchObject({ created: true })
     }
-    const thirteenth = await sensed('murder')
-    await expect(relate(thirteenth.sense.id, 'hypernym', kill.sense.id)).rejects.toMatchObject({
+    // A broader term belongs to one layer: the same word cannot be dog's everyday and biology category.
+    const dog = await sensed('dog', 'noun')
+    const canine = await sensed('canine', 'noun')
+    const biology = { type: 'hypernym', target_sense_id: canine.sense.id, domain: 'biology' } as const
+    await expect(
+      submitFact(world.deps, agentA, { kind: 'relation', subject_id: dog.sense.id, payload: biology }),
+    ).resolves.toMatchObject({ created: true, fact: { contentKey: `hypernym|${canine.sense.id}|biology` } })
+    await expect(relate(dog.sense.id, 'hypernym', canine.sense.id)).rejects.toMatchObject({
       code: 'invalid_reference',
-      message: expect.stringContaining('already has 12 narrower terms'),
+      message: expect.stringContaining('already has a live biology hypernym'),
     })
-    await expect(relate(thirteenth.sense.id, 'synonym', kill.sense.id)).resolves.toMatchObject({ created: true })
   })
 
   it('takes a base lemma only of a live entry, and links the derivative into its family [spec: facts/morphology-base-lemma-usecase]', async () => {

@@ -18,13 +18,15 @@ The contract is [docs/design.md](docs/design.md).
 | `GET /v1/entries/{lemma}`    | Everyone          | One entry: meanings by part of speech, phrases, word family; `?lang=` or `Accept-Language`, `?include=review` |
 | `GET /v1/forms/{form}`       | Everyone          | Summaries of the entries that own an exact published form (no fallback) |
 | `GET /v1/senses/{id}`        | Everyone          | One sense with its entry's summary                     |
+| `GET /v1/senses/{id}/members` | Everyone         | The kinds of a sense taken as a category, transitively; `?domain=biology` adds that taxonomy |
 | `GET /v1/topics/{id}/senses` | Everyone          | Sense summaries tagged with a topic                    |
 | `POST /v1/feedback`          | Everyone          | Report a problem with an entry, sense, or fact         |
 | `GET /openapi.json`, `/docs` | Everyone          | Public OpenAPI 3.1 document and its Scalar reference   |
 | `/manage/v1/*`               | Agents and admins | Submit entries, senses, facts; review state; feedback  |
-| `POST /manage/v1/work/claim` | Agents and admins | Lease the next entry with work left, with its gaps and weak facts; gaps before weak facts, then CEFR level and frequency; 204 when none |
+| `POST /manage/v1/work/claim` | Agents and admins | Lease up to `limit` work items of one type (a gap or a weak fact), each with its context; by policy stage, then CEFR level and frequency; 204 when none |
 | `POST /manage/v1/entries/core` | Admins | Create entries for the imported CEFR headwords that have none, a batch per call |
-| `POST /manage/v1/work/{lease_id}/complete` | Agents and admins | Finish work on a leased entry            |
+| `POST /manage/v1/work/{lease_id}/complete` | Agents and admins | Finish a pass over leased items; reports where each stands |
+| `GET /manage/v1/work/curation` | Curators and admins | Items three passes left unchanged                     |
 | `GET /manage/openapi.json`   | Agents and admins | The management OpenAPI document                        |
 | `/manage/v1/agents`          | Admins            | Issue, list, and revoke agent keys                     |
 

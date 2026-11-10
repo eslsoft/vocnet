@@ -1,65 +1,143 @@
-import { type ManagedEntryView, managedEntryView } from '@server/domain/catalog-view'
 import { principalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
-import { assessEntry, completeDecision, leaseExpiry, type WorkLease } from '@server/domain/work'
+import { completeDecision, itemState, leaseExpiry, type WorkItem, type WorkLease } from '@server/domain/work'
+import { type WorkContext, workContext } from '@server/domain/work-context'
 import type { EntryId } from '@shared/facts'
-import { type CompleteWorkInput, DEFAULT_LEASE_SECONDS, type Gap, type WeakFact, type WorkLeaseId } from '@shared/work'
+import {
+  type ClaimWorkInput,
+  type CompleteWorkInput,
+  DEFAULT_LEASE_SECONDS,
+  type WorkItemId,
+  type WorkItemState,
+  type WorkLeaseId,
+  type WorkType,
+} from '@shared/work'
+import { requireCurator } from './access'
 import type { Deps } from './deps'
-import { ConflictError, NotFoundError } from './errors'
+import { ConflictError, InvalidReferenceError, NotFoundError } from './errors'
 import type { Actor } from './facts'
+import type { Page, PageRequest, WorkItemWithLemma } from './ports'
 import { refreshEntries } from './refresh'
 
-export interface WorkClaim {
-  lease: WorkLease & { lemma: Lemma }
-  entry: ManagedEntryView
-  gaps: Gap[]
-  weakFacts: WeakFact[]
+export interface ClaimedItem {
+  item: WorkItem
+  lemma: Lemma
+  context: WorkContext
 }
 
-/** Leases the next entry with work left to the caller, with its gaps and weak facts; null when none is. */
-export async function claimWork(
-  deps: Pick<Deps, 'work' | 'nodes' | 'clock' | 'ids'>,
-  actor: Actor,
-  leaseSeconds = DEFAULT_LEASE_SECONDS,
-): Promise<WorkClaim | null> {
-  const now = deps.clock.now()
-  const claimed = await deps.work.claimNext(
-    { id: deps.ids.lease(), holder: principalRef(actor.principal), expiresAt: leaseExpiry(now, leaseSeconds) },
-    now.toISOString(),
-  )
-  if (!claimed) return null
-  const { lease, entry } = claimed
-  const snapshot = await deps.nodes.loadEntrySnapshot(entry)
-  const assessment = assessEntry(snapshot)
-  await deps.work.recordClaimedWork(lease, assessment.openWork)
-  return {
-    lease: { ...lease, lemma: entry.lemma },
-    entry: managedEntryView(snapshot),
-    gaps: assessment.gaps,
-    weakFacts: assessment.weakFacts,
-  }
+export interface WorkClaim {
+  lease: WorkLease
+  items: ClaimedItem[]
 }
 
 /**
- * The holder records its work and gives the entry back; the rescore then judges whether the pass
- * stalled the entry. The lease is gone afterwards, so a repeat is not found.
+ * Leases up to `limit` items of one type to the caller: the type of the first free item of the
+ * production queue (among `types` when given), then that type's next items in queue order, each
+ * with the context its type needs. Null when no item is free.
+ */
+export async function claimWork(
+  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'clock' | 'ids'>,
+  actor: Actor,
+  input: ClaimWorkInput,
+): Promise<WorkClaim | null> {
+  const now = deps.clock.now()
+  const claimed = await deps.work.claim(
+    {
+      id: deps.ids.lease(),
+      holder: principalRef(actor.principal),
+      expiresAt: leaseExpiry(now, input.lease_seconds ?? DEFAULT_LEASE_SECONDS),
+    },
+    input.types,
+    input.limit,
+    now.toISOString(),
+  )
+  if (!claimed) return null
+  // The lease names the entry of every item it leased.
+  const contexts = new Map(
+    await Promise.all(claimed.lease.entryIds.map(async (id) => [id, await entryContext(deps, id)] as const)),
+  )
+  return {
+    lease: claimed.lease,
+    items: claimed.items.map((item) => {
+      const entry = contexts.get(item.entryId)!
+      return { item, lemma: entry.lemma, context: workContext(item, entry.snapshot, entry.reference) }
+    }),
+  }
+}
+
+async function entryContext(deps: Pick<Deps, 'nodes' | 'reference'>, id: EntryId) {
+  const entry = await deps.nodes.findEntry(id)
+  if (!entry) throw new Error(`Work item entry ${id} does not exist.`)
+  const [snapshot, reference] = await Promise.all([
+    deps.nodes.loadEntrySnapshot(entry),
+    deps.reference.forLemma(entry.lemma),
+  ])
+  return { lemma: entry.lemma, snapshot, reference }
+}
+
+/** Where each item a pass worked stands once its entry is rescored. */
+export interface WorkCompletion {
+  leaseId: WorkLeaseId
+  items: Array<{ id: WorkItemId; state: WorkItemState; attempts: number }>
+}
+
+/**
+ * The holder ends its pass: the items it names were worked, the rest of the lease is released
+ * without an attempt, and the lease's entries are rescored, which draws each worked item's verdict
+ * (or keeps it for its reviews). The lease is gone afterwards, so a repeat is not found.
  */
 export async function completeWork(
-  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'publicViews' | 'topics' | 'clock'>,
+  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'publicViews' | 'topics' | 'clock' | 'ids'>,
   actor: Actor,
   id: WorkLeaseId,
   input: CompleteWorkInput,
-): Promise<{ entryId: EntryId; lastWorkedAt: string }> {
+): Promise<WorkCompletion> {
   const lease = await deps.work.findLease(id)
   if (!lease) throw new NotFoundError(`Work lease ${id} not found.`)
   const now = deps.clock.now()
   const decision = completeDecision(lease, principalRef(actor.principal), now)
   if (decision === 'not_holder') throw new ConflictError(`Work lease ${id} is held by ${lease.holder}.`)
   if (decision === 'expired') throw new ConflictError(`Work lease ${id} expired at ${lease.expiresAt}.`)
-  const at = now.toISOString()
-  if (!(await deps.work.complete(lease, at, input.note ?? null))) {
-    throw new ConflictError(`Work lease ${id} changed concurrently; claim again.`)
+  const foreign = input.items.filter((item) => !lease.itemIds.includes(item.id))
+  if (foreign.length > 0) {
+    throw new InvalidReferenceError(
+      `Work lease ${id} did not lease ${foreign.map((item) => item.id).join(', ')}; complete only the items it claimed.`,
+    )
   }
-  await refreshEntries(deps, [lease.entryId])
-  return { entryId: lease.entryId, lastWorkedAt: at }
+  if (!(await deps.work.complete(lease, input.items, now.toISOString()))) {
+    throw new ConflictError(`Work lease ${id} expired while it was being completed; claim again.`)
+  }
+  await refreshEntries(deps, [...lease.entryIds])
+  const after = new Map((await deps.work.findItems(input.items.map((item) => item.id))).map((item) => [item.id, item]))
+  return {
+    leaseId: lease.id,
+    items: input.items.map(({ id: itemId }) => {
+      const item = after.get(itemId)
+      return item
+        ? { id: itemId, state: itemState(item), attempts: item.attempts }
+        : { id: itemId, state: 'closed', attempts: 0 }
+    }),
+  }
+}
+
+/** The curators' queue: items three passes left unchanged, in queue order, of one type when given. */
+export async function listCurationItems(
+  deps: Pick<Deps, 'work'>,
+  actor: Actor,
+  type: WorkType | null,
+  page: PageRequest,
+): Promise<Page<WorkItemWithLemma>> {
+  requireCurator(actor.principal)
+  return deps.work.listCuration(type, page)
+}
+
+/**
+ * How long an expired lease is kept, so a holder that completes late still learns that its lease
+ * expired (409) rather than that it never existed (404).
+ */
+export const EXPIRED_LEASE_RETENTION_MS = 24 * 60 * 60 * 1000
+
+/** Deletes the leases that expired more than a day ago; the cron runs it. */
+export async function purgeExpiredLeases(deps: Pick<Deps, 'work' | 'clock'>): Promise<number> {
+  return deps.work.purgeLeases(new Date(deps.clock.now().getTime() - EXPIRED_LEASE_RETENTION_MS).toISOString())
 }

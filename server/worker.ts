@@ -13,6 +13,7 @@ import { publicReadBoundary } from './http/public-reads'
 import { ReviewerTransportError } from './usecases/ports'
 import { rebuildStalePublicViews } from './usecases/public-view'
 import { reconcileReviews, reviewFact } from './usecases/review'
+import { purgeExpiredLeases } from './usecases/work'
 import { refreshStaleWork } from './usecases/work-scores'
 
 // Composition root: wire per-request deps, then delegate to the app. Kept out of
@@ -79,6 +80,8 @@ export async function handleScheduled(env: Env): Promise<void> {
   console.info(JSON.stringify({ event: 'reconcile_reviews', traceId, reenqueued: count }))
   const rescored = await refreshStaleWork(deps)
   console.info(JSON.stringify({ event: 'refresh_stale_work', traceId, rescored }))
+  const purged = await purgeExpiredLeases(deps)
+  console.info(JSON.stringify({ event: 'purge_expired_leases', traceId, purged }))
   const views = await rebuildStalePublicViews(deps, STALE_VIEW_BATCH)
   console.info(JSON.stringify({ event: 'rebuild_public_views', traceId, ...views }))
 }

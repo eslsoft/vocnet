@@ -240,15 +240,14 @@ async function assertReferencesLive(deps: SubjectDeps, lemmas: readonly string[]
 
 /**
  * What a link's end rule sees of a sense: whether its entry's current list puts it in extra, its
- * gloss's register, its entry's lemma and live spelling variants, and its live narrower terms.
+ * gloss's register, and its entry's lemma and live spelling variants.
  */
 async function linkEnd(deps: SubjectDeps, { sense, entry }: SenseEnd): Promise<LinkEnd> {
-  const [node, glosses, lists, forms, narrower] = await Promise.all([
+  const [node, glosses, lists, forms] = await Promise.all([
     deps.nodes.findEntry(entry),
     deps.nodes.listLiveGlosses(entry),
     deps.facts.listLive('sense_list', entry),
     deps.facts.listLive('form', entry),
-    deps.facts.countLiveWithKey('relation', contentKeyOf('relation', { type: 'hypernym', target_sense_id: sense })),
   ])
   if (!node) throw new Error(`Sense ${sense} belongs to entry ${entry}, which does not exist.`)
   const [first, ...rest] = glosses.filter((gloss) => gloss.sense.id === sense).map(({ fact }) => fact)
@@ -262,7 +261,6 @@ async function linkEnd(deps: SubjectDeps, { sense, entry }: SenseEnd): Promise<L
       .filter(isKind('form'))
       .filter((fact) => fact.payload.type === 'variant')
       .map((fact) => fact.payload.form),
-    narrower,
   }
 }
 

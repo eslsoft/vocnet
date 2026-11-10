@@ -84,7 +84,7 @@ needs a new column.
 | `entry`         | entry   | one         | `{}` (the lemma is a word or a lexical unit)            | Jev, then LLM; LLM alone for a phrase or a recorded inflection |
 | `sense`         | sense   | one         | `{ gloss, register?, region? }` (region `british`, `american`, `australian`, …) | Jev, then LLM  |
 | `form`          | entry   | many        | `{ form, type, pos?, ipa?, accent? }` (plural, past, variant…) | Jev, then LLM; LLM alone for a variant or a form with ipa |
-| `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM; LLM alone for an antonym |
+| `relation`      | sense   | many        | `{ type, target_sense_id, domain? }` (`domain` only on a hypernym: `biology` or `medicine`) | Jev, then LLM; LLM alone for an antonym |
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
 | `example`       | sense   | many        | `{ text, translations? }` (`{ zh: "…" }`)                | LLM            |
 | `translation`   | sense   | many        | `{ language, text }` (a served language: `zh`)           | LLM            |
@@ -103,7 +103,7 @@ some slots are genuinely empty for some words: a month name has no common
 collocations, *beware* has no inflections, a general word (*thing*) belongs to
 no topic. A `gap_closure` fact claims exactly that: `{ gap, reason }`, where
 `gap` is one of `closableGapSchema` (`forms`, `phrases`, and `family` about the entry;
-`relations`, `topics`, `grammar`, and `collocations` about a sense), and its
+`category`, `parts`, `synonyms`, `topics`, `grammar`, and `collocations` about a sense), and its
 subject is the node that gap is about (`closableGaps` in the registry, read by
 `subjectTypeOf`; a closure on the other node is `422 invalid_reference`).
 Senses, the sense list, pronunciations, translations, examples, syllables, and
@@ -117,9 +117,16 @@ common verb's inflections, a word with ordinary synonyms) or a wrong or vague
 reason. A `phrases` closure passes only when fewer than three common phrasal
 verbs or verb idioms exist and its reason names the ones that do ("throw" has
 throw away, throw out, and throw up, so it fails there); a `family` closure only
-for a word with no common derivatives ("notebook", or a function word); and a
-`relations` closure when the relations recorded so far are the only precise
-ones, so a sense need not be padded to two with loose relations; a `grammar`
+for a word with no common derivatives ("notebook", or a function word); a
+`category` closure for a sense no learner files under a category word (a very
+general or abstract sense such as "thing", "idea", or a verb of general action
+such as "do"), failing for a kind of thing a learner files under one ("eagle"
+is a bird); a `parts` closure for a thing whose main parts a learner's
+dictionary does not name (a substance, an abstract or uniform thing) or whose
+parts are recorded on the more general whole they belong to ("dog": tail and
+paw are parts of "animal"), failing for an object whose parts it names (a
+bird's beak, wings, and feathers); a `synonyms` closure for a sense with no
+synonym or antonym a learner could use in its place ("eagle", "Tuesday"); a `grammar`
 closure passes for a title used before a name ("Mr", "Mrs", "Ms", "Dr"), which
 a learner's dictionary prints as used before a name and never marks [C] or
 [U], for a pronoun that governs no agreement (an object, reflexive, or
@@ -134,7 +141,7 @@ reason names the specific value a learner's dictionary gives for the slot.
 A closure review also weighs the attempts already rejected for its slot. Each
 closable gap names where they are (`closableGaps[gap].attempts`, an
 `AttemptSource`): the kinds whose facts about its node fill it (`form`;
-`relation`; `topic`; `grammar`; `collocation`), the word formations of the
+`relation` for `category`, `parts`, and `synonyms`; `topic`; `grammar`; `collocation`), the word formations of the
 derivatives for `family` (`{ of: "derivatives" }`: the rejected morphology facts
 of other entries with a base part naming the node's lemma, which is how a
 derivative joins a word family), and none for `phrases`. The review context
@@ -206,8 +213,7 @@ shape and moved every worklist row's `revision` (not its scored revision), so
 `assessEntry` rescores each row with the new gaps: a write that touches the
 entry does it at once, and the cron's `refreshStaleWork` drains the rest, 100
 a run. Unlike the earlier rescore migrations, it does not recompute the scores
-in SQL: the irregular-form rule is TypeScript, and a stale row is claimable,
-which the new gaps make right for nearly every entry.
+in SQL: the irregular-form rule is TypeScript.
 
 A kind with cardinality *one* admits a single live fact per subject: a sense has
 one gloss, one grammar, and an entry one word formation and one sense list. Changing it means submitting a correction that supersedes the
@@ -288,7 +294,27 @@ published 323 relations over a Jev answer under 0.5 (142 hypernym, 89 synonym,
 others held. Structural checks found 38 (sense, entry) slots holding two
 relation types (78 relations), 14 entry pairs each a hypernym of the other (28
 relations), and 40 `part_of` relations from a body part to a person-type noun
-(head `part_of` princess, hand `part_of` worker). The rules that follow:
+(head `part_of` princess, hand `part_of` worker). A later look at the network
+found the taxonomy inconsistent where like decisions were made in separate
+passes (dog under canine, wing part of turkey, rail, and pen instead of bird)
+and quota-driven where a sense had to reach two relations ("bird" listed only
+turkey as a kind; "animal" listed he, girl, head, and baby). The rules that
+follow:
+
+- **Layers.** A hypernym is in the *everyday* layer, the taxonomy a learner
+  uses, unless its payload names a `domain` (`relationDomainSchema`: `biology`,
+  `medicine`), the specialist taxonomy it belongs to. Only a hypernym carries a
+  domain: a synonym, antonym, or `part_of` with one is `400 invalid_request`,
+  "Only a hypernym carries a domain: a specialist taxonomy layers broader terms,
+  never synonyms, antonyms, or parts." The domain is part of the claim and of
+  the content key (`hypernym|<target>|biology`), so the same target in two
+  layers would be two facts; a broader term belongs to one layer, so the second
+  is refused (see Write rules). Neither layer invents nodes: every node is a
+  real headword with its own entry. The everyday layer is what reads show by
+  default; a domain layer shows only when asked for (see Public API). A sense
+  may have several everyday categories (dog: animal, pet). Narrower terms are
+  never asked of a category word: the members of "animal" are the senses whose
+  hypernyms lead to it, walked on read (`GET /v1/senses/{id}/members`).
 
 - **Floor.** `RELATION_JEV_FLOORS` in the registry is 0.5 for every type Jev
   judges, Jev's fail line: a Jev fail settles a relation, and the LLM decides only
@@ -309,6 +335,24 @@ relations), and 40 `part_of` relations from a body part to a person-type noun
   source carries that register; and fails a light verb ("make", "do", "take", "give", "have",
   "get") as a synonym of a full verb. It lists the target entry's other senses
   and fails a relation when one of them is the better match for the source.
+  The rubric then states the layer. An everyday hypernym (`EVERYDAY_LAYER`)
+  must be a category word learners use and a learner's dictionary defines the
+  word by ("a dog is an animal", "a dog is a pet", "an eagle is a bird"): it
+  fails a technical taxon or a term a learner would not use for the category
+  ("canine", "passerine", "feline", "rodent", "carnivore", "mammal" for a single
+  animal where the dictionary says "animal"), which belongs in a domain layer,
+  and a target that is no category a learner files the word under. A domain
+  hypernym (`domainLayer`) passes only when the target is a real term of that
+  field's taxonomy at the rank the field puts above the source ("dog" a kind of
+  "canine", "canine" of "carnivore", "carnivore" of "mammal" in biology), and
+  fails an invented intermediate node, a descriptive phrase, an everyday
+  category word, or a term of another field; its Jev question asks for the kind
+  of link "in the taxonomy of biology", and the register rule for a learner's
+  target is left out. A `part_of` attaches a part to the most general common
+  whole it is a part of (`PART_OF_WHOLE`: a wing to a bird, not to a turkey; a
+  tail to an animal, not to a dog; a wheel to a vehicle or a car, not to a
+  taxi), failing one attached to a narrower kind of that whole, and never to a
+  person-type noun.
 - **Write rules.** Checked at submission, and when a rejected relation is
   re-reviewed back to life, against the live relations between the two
   entries (`admitLink` in the registry; a read before the write, as `admit`
@@ -318,24 +362,25 @@ relations), and 40 `part_of` relations from a body part to a person-type noun
   another entry by one type only. Retract that fact first if <type> is the
   better type." A hypernym may not close an entry-level 2-cycle: "A live
   hypernym relation (<id>) already makes a sense of the target's entry a kind
-  of this entry; two entries cannot each be a kind of the other." Both are
+  of this entry; two entries cannot each be a kind of the other." A hypernym to
+  a sense of an entry that this sense already reaches by a hypernym of the
+  other layer is refused: "This sense already has a live everyday hypernym
+  (<id>) to a sense of the target's entry; a broader term belongs to one layer.
+  Retract that fact first if the biology layer fits it better." All are
   `422 invalid_reference`. No fact waits on another: the rule reads only which
   facts are live.
-- **Padding.** Two end rules (`admitEnds`, whose `LinkEnd` carries each end's
-  entry lemma, its live spelling variants, and its live narrower count) keep a
-  sense from being padded. A synonym never links two spellings of one word: when
-  either end's entry records the other's lemma as a live `variant` form, the
-  synonym is refused, "\"practise\" and \"practice\" are spellings of one word:
-  one entry records the other as a live spelling variant, so they are never
-  synonyms. Relate a different word." (the audit found three on *practise*). A
-  sense holds at most `MAX_NARROWER` (12) narrower terms, live hypernyms pointing
-  at it: a thirteenth is refused, "Sense <id> already has 12 narrower terms (live
-  hypernym relations to it), and a sense holds at most 12. Relate this sense to a
-  more specific broader term instead." The count is the live facts with the
-  content key `hypernym|<sense>`, one index range. Both are `422
-  invalid_reference`, read before the write as `admit` is. Existing senses over
-  the cap (35 on the development copy) keep their relations; the cap stops new
-  ones.
+- **Padding.** An end rule (`admitEnds`, whose `LinkEnd` carries each end's
+  entry lemma and its live spelling variants) keeps a sense from being padded
+  with another spelling of itself. A synonym never links two spellings of one
+  word: when either end's entry records the other's lemma as a live `variant`
+  form, the synonym is refused, "\"practise\" and \"practice\" are spellings of
+  one word: one entry records the other as a live spelling variant, so they are
+  never synonyms. Relate a different word." (the audit found three on
+  *practise*), `422 invalid_reference`, read before the write as `admit` is. No
+  sense caps its narrower terms: the earlier cap of twelve kept "animal" from
+  listing its animals, while the padding it stopped (a dozen loose narrower
+  terms of *kill* and *share*) is what the everyday rubric now fails. With no
+  quota on relations, nothing asks a producer for a second loose one.
 - **Re-judging.** The migration `relations_strict_revalidate` marked for
   revalidation every published relation the old rules let through weakly:
   `part_of` to a person-type noun (the target sense has a published hypernym
@@ -344,7 +389,10 @@ relations), and 40 `part_of` relations from a body part to a person-type noun
   Jev answer under the floor, and every relation in a structural conflict the
   write rules now refuse. On a copy of the development database it marked 447
   (196 hypernym, 117 `part_of`, 115 synonym, 19 antonym); the reconcile cron
-  re-enqueues 500 a run, and each stays public until its new verdict.
+  re-enqueues 500 a run, and each stays public until its new verdict. The
+  migration `work_items_relation_layers` marks every published hypernym and
+  `part_of` that no curator settled for review in place under the layer and
+  whole rubrics (see Work items, Migration).
 
 ### Topics
 
@@ -360,7 +408,7 @@ agents cannot create topics.
 A `topic` fact tags one sense with one leaf topic. Topics are tags, not
 relations between words: a relation to an "anchor word" would need an anchor
 that is itself ambiguous, a fuzzy "related to" type that review cannot judge,
-and would count toward the relations gap; a tag points into a fixed hierarchy
+and would fill a relation slot; a tag points into a fixed hierarchy
 the server owns. The registry gives the kind three more properties, each
 enforced by the submission use case and never by name:
 
@@ -488,7 +536,9 @@ plain payload shape, so facts written before a rule still read.
   antonym) either end, may not be in the extra senses of its entry's current
   sense list (`Sense … is in the extra senses of its entry's sense list (rare,
   archaic, technical, or specialist); a relation links only common senses.
-  Relate a common sense of the word instead.`) or have a current gloss labelled
+  Relate a common sense of the word instead.`), except the target of a domain
+  hypernym, a specialist term that is often an extra sense of its word
+  ("canine" as a zoological family), or have a current gloss labelled
   `dated` (`Sense … is labelled dated; a relation links only current senses.
   Relate a current sense of the word instead.`). The rule reads both ends'
   glosses and sense lists before the write, at submission and when a rejected
@@ -655,19 +705,14 @@ submits a correction naming the senses as they are. Correcting a gloss does not
 re-review the list.
 
 A rejected list is feedback the producer acts on. Its review reason names each
-missing sense, duplicate pair, misordered sense, and misplaced sense, and the
-`sense_list` gap carries `rejected`: how many of the entry's lists naming
-exactly its live senses review rejected, counted up to
-`MAX_SENSE_LIST_ATTEMPTS - 1` (`MAX_SENSE_LIST_ATTEMPTS` is 3, in
-`server/domain/work.ts`). Each rejection below the bound changes the gap, so the
-open work differs from what the last claim recorded, the entry is not stalled,
-and the next pass reads the latest rejected list's reason among the claim's
-entry facts and fixes exactly what it names. The third rejected list of the
-same senses leaves the gap as the claim found it, so the entry stalls (see
-Stall). The count belongs to the exact set of live senses over the entry's
-whole history: a set never seen before starts at zero, since no earlier list
-names exactly it, while returning to a set seen before (a sense added and then
-retracted) resumes that set's count. A sense another principal authored cannot
+missing sense, duplicate pair, misordered sense, and misplaced sense. The
+`sense_list` gap names the senses the list must name, so a rejection leaves it
+as the pass's claim found it: the item comes back with one more attempt, its
+context (the whole management view) carries every rejected list with its
+review reason, and the next pass fixes exactly what the latest names. The third
+rejected pass over the same senses hands the item to the curators (see Work
+items, Attempts); a sense added or lost changes the gap and starts the attempts
+over. A sense another principal authored cannot
 be retracted by the producer (retract is author-only), so a duplicate the
 reviewer names among such senses goes through feedback or an admin.
 
@@ -1149,34 +1194,178 @@ curator is **curated**.
   lowest CEFR level of the lemma of the entry the fact is about, or whose sense
   it is about, as the worklist's `level_rank` stores it).
 
+- **Items to fill.** `GET /manage/v1/work/curation` lists the work items three
+  producer passes left unchanged (see Work items, Curators' queue); a curated
+  write that fills or closes one closes the item.
+
 A curated write or settle bumps the entry's worklist revision and rescores it
 like any fact write, and a curated fact counts as a published one. The audit
 boundary logs each of these `POST`s with the curator as the actor. The public
 API is unchanged: its review metadata names no reviewer.
 
-## Worklist
+## Work items
 
-Agents ask the server what to work on instead of keeping their own list, and a
-lease keeps two agents off the same entry. Each entry carries a completeness
-and a quality score, and the two scores decide what the worklist hands out:
-once every entry is complete and good enough, stalled, or awaiting review, the
-claim answers `204` and producers stop. An entry awaiting review comes back
-once its reviews settle, within seconds, so a producer that stops on `204` may
-leave such entries for its next run.
+Agents ask the server what to work on instead of keeping their own list. The
+unit of work is a **work item**: one open gap of an entry or of one of its
+senses (see Gaps), or one weak fact. Facts are the unit of review, and items are
+the unit of work, so cheap, valuable work never waits behind the rest of its
+entry: "eagle is a kind of bird" is a category item of its own, claimed long
+before eagle's examples, and like decisions come together because a claim
+leases items of one type at a time. Each item is leased, worked, and judged on
+its own; a lease keeps two agents off the same item. The entry keeps a
+completeness and a quality score for stats and the console, derived as before.
 
-`POST /manage/v1/work/claim` (body `{ lease_seconds? }`, 60 to 3600, default
-900) leases one entry to the caller and returns
-`{ lease, entry, gaps, weak_facts }`: the lease (`id`, `entry_id`, `lemma`,
-`holder`, `expires_at`), the same management view `GET /manage/v1/entries/{lemma}`
-returns, the entry's gaps, and its weak facts. The management view carries
-`seed`, `completeness`, and `quality`, so an agent reads them from the server
-instead of keeping its own copy. It answers `204` when no entry is claimable.
+### Claim
+
+`POST /manage/v1/work/claim` with `{ types?, limit?, lease_seconds? }` leases up
+to `limit` items (1 to 50, default 10) of **one** type: the type of the
+highest-priority free item of the production queue, among `types` when given,
+then that type's next free items in priority order. `lease_seconds` is 60 to
+3600, default 900. A body naming an unknown type, a type twice, an empty
+`types`, or a limit or lease out of range is `400 invalid_request`; no body is
+the defaults. It answers `204` when no item is free:
+
+```json
+{
+  "lease": { "id": "…", "type": "category", "holder": "agent:…", "expires_at": "…" },
+  "items": [
+    {
+      "id": "…", "type": "category", "entry_id": "…", "lemma": "eagle", "subject_id": "<sense id>",
+      "stage": 2, "attempts": 0,
+      "gap": { "type": "category", "sense_id": "…" },
+      "context": {
+        "entry": { "id": "…", "lemma": "eagle", "cefr": [{ "pos": "noun", "level": "B1" }], "zipf": 4.1,
+                   "senses": [{ "id": "…", "pos": "noun", "gloss": "…", "register": null, "region": null,
+                                "rare": false, "status": "published" }] },
+        "sense": { "id": "…", "pos": "noun", "gloss": "A large bird of prey.", "…": "…" },
+        "facts": ["Fact, in every status with its review"],
+        "related": [{ "sense_id": "…", "lemma": "bird", "pos": "noun", "gloss": "…" }],
+        "view": null
+      }
+    }
+  ]
+}
+```
+
+`subject_id` is the node the item is about: the entry, a sense, or the weak
+fact. The context is what a worker needs without another read (`workContext`
+in `server/domain/work-context.ts`): the entry with its level, frequency, and
+senses (current glosses, common senses first in the current list's order, each
+marked rare when the list puts it in extra), the sense the item is about (null
+for an entry item), every fact about the item's node in every status with its
+review (a sense's facts and the relations pointing at it, an entry's own facts,
+or for a weak fact the node it is about), the senses at the other end of those
+relations, and, for the types that read every sense at once (`senses`,
+`sense_list`, `phrases`, `family`), the entry's whole management view as `GET
+/manage/v1/entries/{lemma}` returns it. A rejected fact in the context carries
+its review reason, so a retry reads why the last attempt failed.
+
+The claim is two statements. The first reads the type of the first free item in
+queue order (`nextTypeStatement`, a walk of `work_items_queue_idx`); the second
+leases that type's first `limit` free items in one `UPDATE … WHERE id IN (SELECT
+… ORDER BY rank, zipf_order DESC, created_at, id LIMIT ?) RETURNING`
+(`leaseStatement`, a range of `work_items_type_queue_idx`) and records the gap
+each was claimed with. D1 runs statements one at a time, so two concurrent
+claims never lease the same item; an item whose lease expired is free. The
+lease row (`work_leases`) records the holder, the type, and the items and
+entries it leased.
+
+### Complete
+
+`POST /manage/v1/work/{lease_id}/complete` with `{ items: [{ id, note? }] }`
+(notes up to 500 characters) ends the pass. The items named were worked; the
+lease's other items are released without an attempt. Only the holder completes,
+and only before `expires_at`: another principal or an expired lease is `409
+conflict`, a lease that is gone `404 not_found` (so a second complete is 404),
+and an item the lease did not claim `422 invalid_reference`. In one batch, while
+the lease is still held, it marks the named items worked with the note and the
+holder, releases every item of the lease, bumps the revision of the lease's
+entries and stamps their `last_worked_at`, and deletes the lease; then it
+rescores those entries and answers where each named item stands:
+
+```json
+{ "lease_id": "…", "items": [{ "id": "…", "state": "awaiting_review", "attempts": 0 }] }
+```
+
+`closed`: the gap is gone (the pass filled it with published facts, or a
+closure). `open`: back in the production queue. `awaiting_review`: a pending
+fact may change it, so its verdict waits for that review (see Attempts).
+`curation`: three passes left it unchanged. An expired lease is kept a day
+(`EXPIRED_LEASE_RETENTION_MS`), so a holder that completes late learns that it
+expired; the cron then deletes it (`purgeExpiredLeases`).
+
+### Curators' queue
+
+`GET /manage/v1/work/curation?type=&limit=&cursor=` (curators and admins; a
+producer agent gets `403 forbidden`) pages the items three completed passes
+left as their claims found them, in queue order, each with its gap, attempts,
+lemma, and the last pass's `last_worked_at`, `last_worked_by`, and `last_note`.
+They are out of the production queue: the producers cannot fill them. A curator
+fills or settles them with curated facts (see Curation); a curated write
+rescores the entry like any other, and any change to an item's gap (a new fact
+from anyone, a fact leaving live) starts its attempts over and puts it back in
+the production queue.
+
+### Priority
+
+`WORK_POLICY` in `server/domain/work.ts` is the one table of what each type of
+work is worth and what context it needs; nothing else branches on a type.
+`workPriority` ranks an item by its type's **stage**, then the **learner band**
+of its entry, then its entry's Zipf frequency, highest first (`zipf_order`, -1
+without one), then age and id:
+
+| Stage | Types | Why |
+| ----- | ----- | --- |
+| 1 identity | `senses`, `sense_list` | Nothing else can be judged before the senses exist and are settled |
+| 2 meaning | `translations`, `category`, `parts` | What the word means to a learner, and where it sits in the everyday taxonomy |
+| 3 usage | `examples`, `example_translations`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations` | How the word is used |
+| 4 network | `synonyms`, `family`, `phrases`, `topics` | What the word connects to |
+| 5 weak facts | `weak_fact` | Replacing what is there comes after filling what is not |
+
+The band is the entry's lowest CEFR level, A1 to C2 (0 to 5), then a frequency
+without a level (6), then neither (7) (`learnerBand`). `rank` is the stage
+times the eight bands plus the band, so the stage dominates: every CEFR noun's
+category is claimed before any B1 example, and a C2 word's senses before any A1
+category. The CEFR headwords the core import creates (see Core entries) are live
+entries with no senses until a producer works them, so their `senses` items are
+stage 1 in every band and come before every category, whose items follow them.
+The table is a starting policy, tuned by editing it; a release that changes it
+ships with a migration that bumps every worklist row so the rescore re-ranks
+the items. An import re-ranks the items with the worklist (`rankWorkItemsSql`).
+A claim does not group items of one topic or category neighbourhood beyond
+their type and rank.
+
+### Attempts and awaiting review
+
+A rescore computes the entry's open work twice: over its live facts and over
+its published facts alone (`assessEntry`). A piece of work the two disagree on
+**awaits review**: a pending fact may fill it, change it, or close it, so it is
+not served (`awaiting`), while the entry's other items stay workable. A pending
+pronunciation holds only the pronunciation item; a pending entry fact holds every
+item of its entry. A weak fact a pending correction supersedes awaits that
+correction. An entry whose entry fact is not live has no open work.
+
+An item counts **attempts**, the completed passes that left its gap as their
+claim found it (`reconcileItems`). Completing a lease marks the named items
+`worked`; the rescore that follows judges each once it no longer awaits review:
+if its gap is what the claim recorded (`claimed_gap`), the pass made no lasting
+progress and the item gains an attempt; any other gap starts the attempts over.
+So a pass that added nothing counts at once, a pass whose facts review rejects
+counts when the rejection lands (the item awaited the verdict, so no other pass
+changed it meanwhile), and a pass whose facts publish moves the item on or
+closes it. A change by anyone to an item nobody worked also starts it over: a
+new sense, another principal's fact, a fact leaving live. At
+`MAX_ATTEMPTS` (3) the item leaves the production queue for the curators. Gaps
+compare by what they say (`gapText`, keys sorted), and the `sense_list` gap
+names the senses its list must name rather than counting rejections, so each
+rejected list is an attempt of the same item and the third hands it to the
+curators (see Sense lists).
 
 ### Scores
 
 Both scores are pure functions of the entry's facts in `server/domain/work.ts`
 (`assessEntry`), computed on read for the views and stored on the worklist for
-the claim.
+stats and the console. The work itself is the items.
 
 **Completeness** (0..1) is filled slots over the slots the gap rules count.
 "Complete" means every piece of data a learner's dictionary should have for the
@@ -1185,14 +1374,13 @@ inventory slot and two pronunciation slots (a strong `us` and a strong `uk`
 pronunciation); a single word adds one slot per inflection its paradigm needs
 (see Forms), word formation, and syllables; an A1 or A2 single-word verb one
 for a phrase built on it; and one per live irregular form (its
-pronunciation). Each counted sense adds the relations, topics, grammar, and
-collocations its part of speech needs, its examples (two for an A1 or A2
+pronunciation). Each counted sense adds the relation slots (see Relation
+slots), topics, grammar, and collocations its part of speech needs, its examples (two for an A1 or A2
 entry, else one), one `zh` translation, and one example with a `zh`
 translation. A live gap closure fills every slot of the gap it closes (see Gap
 closures). A counted sense is one whose gloss is live and
 that the entry's current sense list does not put in `extra`; before a list
-exists, every sense with a live gloss counts. A relations gap with `count`
-relations fills `count` of its slots. A relation counts, at either end, only
+exists, every sense with a live gloss counts. A relation counts, at either end, only
 while the sense at its other end has a live gloss and its entry a live entry
 fact: a relation to a sense of a rejected entry, or to a sense whose gloss was
 rejected or retracted, fills nothing, as the public view shows nothing of it.
@@ -1206,136 +1394,53 @@ source: it is 1 exactly when there are no gaps.
 its senses. A live fact is weak when an `open` or `claimed` feedback item
 targets it, when it is published on an `uncertain` review verdict, or when it
 stays published on a `fail` verdict (a gloss its review in place failed; see
-Fact lifecycle). The claim lists each as `{ id, kind, reason }` with reason
-`feedback`, `uncertain`, or `failed`, so a producer reads the review reason and
-submits a correction that supersedes it or retracts it. Feedback on an
+Fact lifecycle). Each is a `weak_fact` item, `{ type: "weak_fact", fact_id,
+kind, reason }` with reason `feedback`, `uncertain`, or `failed`, so a producer
+reads the review reason and submits a correction that supersedes it or retracts
+it. A weak fact a live correction supersedes is being replaced, so it is not
+counted weak and its item awaits that correction's review. Feedback on an
 entry or sense, not a fact, makes nothing weak: it is worked through the
 feedback API. Quality is 1 exactly when no fact is weak.
 
-### Admission and order
+### Relation slots
 
-An entry is claimable while its entry fact is live, no unexpired lease holds
-it, it is not stalled, it is not **awaiting review**, and it has work left
-(completeness or quality below 1). An entry awaits review while any fact about
-it or its senses, or any relation into one of its senses, is `pending`. Such a
-review can still change the entry's open work, so a pass claimed before it
-lands would record open work the verdict then undoes (see Stall). The queue
-reviews within seconds and the cron re-enqueues stuck facts, so the entry comes
-back once the reviews settle (`isClaimable`).
+Relations have no quotas. The earlier rule asked two relations of every noun,
+verb, and adjective sense, so a sense was padded with whatever relation came to
+hand ("bird" listed only turkey as a kind; "animal" listed he, girl, head, and
+baby). Three slots replace it, each one fact deep and each closable:
 
-Claimable entries come in the order a learner needs them: the words a learner
-must master first, and completeness before quality (`claimTier`):
+| Slot | Senses | Filled by |
+| ---- | ------ | --------- |
+| `category` | Counted noun and verb senses (`CATEGORY_POS`) | A live everyday hypernym (no `domain`) from the sense to a sense that can show; a word may have several (dog: animal, pet), and one fills the slot |
+| `parts` | Counted noun senses with an everyday category (`PARTS_POS`) | A live `part_of` from a sense that can show to this one (bird: beak, wing, feather) |
+| `synonyms` | Counted noun, verb, adjective, and adverb senses (`SYNONYMS_POS`) | A live synonym or antonym at either end, to a sense that can show |
 
-1. **Filling before polishing.** An entry below `POLISH_FROM` (0.95)
-   completeness comes before every entry at or above it, whether its remaining
-   work is a few gaps or only weak facts (quality below 1). The last gaps of a
-   nearly complete entry are mostly its rarer senses' collocations and
-   relations, so the next level's words fill before this level is finished.
-2. **Learner band.** Within each, entries come by the lowest CEFR level of their
-   exact lemma, A1, A2, B1, B2, C1, then C2; then entries with a frequency but no
-   level; then the rest, such as neighbors an agent created that neither list
-   knows.
-3. **Never-claimed before claimed.** Within a band, never-claimed entries come
-   first, by highest Zipf frequency (an entry without one last), then lowest
-   completeness; claimed entries follow by least recently claimed. Then by
-   creation time and id.
-
-| `claim_rank` | Entries                                                      |
-| ------------ | ------------------------------------------------------------ |
-| 0, 1         | Below 0.95, A1: never claimed, claimed                       |
-| 2 … 11       | Below 0.95, A2 to C2, two ranks per level                    |
-| 12, 13       | Below 0.95, a frequency but no CEFR level                    |
-| 14, 15       | Below 0.95, neither                                          |
-| 16 … 31      | At or above 0.95 (polish), in the same bands                 |
-
-A seed entry comes from a curated word list: the 850 Basic English words, and
-the CEFR headwords the core import creates (see Reference data). `POST
-/manage/v1/entries` with `seed: true` marks the entry as a seed entry, whether
-the call creates it or it already exists. The mark only ever goes on: `seed:
-false` or no `seed` leaves it as it is. The management view shows it, but it no
-longer orders the claim: a seed entry and an agent's neighbor with the same level
-and frequency are claimed alike. Of the 850 Basic English entries, 829 have a
-CEFR level and all have a frequency, so they sit in the bands they belong to.
-
-Every claim sets `claimed_at`, so an entry leaves the never-claimed part of its
-band and moves to the back of the claimed part whether or not its work
-completes. A lease that lapses does not stall the entry: an agent that crashes on
-one entry gets it again only after every other entry of its band claimed less
-recently, however incomplete or frequent the crashing entry is. The claimed part
-of a band still comes before the next band, so an A1 entry with work left is
-claimed again before any A2 entry. Finished entries are not rotated: an entry
-with no work left is never claimed.
-
-### Stall
-
-One claim is one pass. When the claim is made, the worklist records the entry's
-*open work* (`claimed_work`): its gaps, and each weak fact by kind, subject, and
-reason. The entry is **stalled** while the last claim's pass completed and the
-open work is still what the claim found (`isStalled`). That covers every pass
-that made no lasting progress, which the next pass would repeat:
-
-- a pass that added nothing, or only facts no gap needed, such as a second
-  example where one exists;
-- a pass whose facts review then rejects: the rejection puts the open work back
-  to the claim's, so a relation that keeps failing review is tried once. The
-  entry awaits review from the pass's end until the verdict, so no other pass
-  records the pending fact's open work in between and turns the rejection into
-  a change;
-- a pass that superseded a weak fact with a correction that is weak again,
-  since the weak slot keeps its key.
-
-A rejected sense list is the exception, bounded: its rejection changes the
-`sense_list` gap's `rejected` count, so the entry comes back for the producer to
-act on the reason, until `MAX_SENSE_LIST_ATTEMPTS` lists of the same senses are
-rejected (see Sense lists).
-
-The open work changes, and the stall lifts, when another principal fills or
-opens a gap, a fact leaves live, a weak fact is replaced, a new sense opens
-gaps (its own and a stale sense list's), or feedback opens on a fact. A pass that adds a sense makes progress: its
-gaps are new work for the next pass. A word whose relations no agent can find
-stalls after one pass and comes back only when something about it changes.
-A review rule change that should reopen stalled entries ships with a migration
-that clears every row's `stalled` and `claimed_work` and bumps its revision, as
-`closure_attempts_unstall` did when closure reviews began weighing rejected
-attempts (see Gap closures), `plural_only_titles_shortened` did when
-plural-only noun grammar, title grammar closures, and shortened word formations
-became expressible, and `synchronic_morphology_stalls` did when word formation
-took one synchronic rule, family closures weighed the derivatives' rejected
-formations, pronoun and after-a-number adverb grammar became closable, and
-pronouns stopped needing relations. It also marks every published formation
-with a `root` part for review in place under the new rubric.
-
-### Relations by part of speech
-
-The relation types (`synonym`, `antonym`, `hypernym`, `part_of`) fit content
-words. On seed entries claimed at least three times, the share of senses with
-two published relations was noun 90%, adjective 75%, verb 72%, adverb 35%,
-determiner 28%, preposition 23%, conjunction 20%, interjection 19%,
-auxiliary 13%, and pronoun 11%. `RELATIONS_NEEDED` in `server/domain/work.ts`
-is the one table of the relations a sense needs: noun, verb, and adjective 2;
-adverb 1; pronoun and every other part of speech 0, which means no relations
-gap and no relation slots. A pronoun is a function word: a personal or
-relative pronoun's sense (*we*, *who*, *everything* meaning life in general)
-has no synonym or antonym in a learner's dictionary, and its relations closures
-kept failing over loose candidates ("I" for the royal *we*, "things" for
-*everything*). A pronoun may still carry relations (*everything*: nothing). A relations gap
-is closable: its closure passes when the relations recorded so far are the only
-precise ones, so a general sense is not padded to two with loose ones (the
-audit's padded relations were loose narrower terms and slang synonyms; see
-Relations, Padding).
+A domain hypernym fills no slot: the specialist layer is never required. A
+sense's own `part_of` fills nothing here; it is the whole's parts slot. A sense
+whose category is closed as general or abstract has no parts slot, so only
+things a learner files under a category are asked for parts; a thing whose
+parts are recorded on its more general whole closes it ("dog": tail and paw are
+parts of "animal"). The slots ask for the relations a learner's dictionary
+gives, all of them in one pass, not for a count; the gap descriptions say so.
+Narrower terms and parts are never asked of the category or whole: "animal"
+gets its members from every animal's category item, which is why every CEFR
+noun's category is stage 2. A pronoun or another function word has no relation
+slot: a personal or relative pronoun's sense has no synonym or antonym in a
+learner's dictionary, and its closures kept failing over loose candidates ("I"
+for the royal *we*). A pronoun may still carry relations (*everything*:
+nothing).
 
 `TOPICS_NEEDED` is the table of the topics a sense needs: noun and verb 1;
 every other part of speech 0, which means no topics gap and no topic slot.
 Nouns and verbs name the things and actions a scene is made of. An adjective or
 adverb may carry topics but needs none: most adjectives are general (*big*,
-*good*), and their topics gaps stalled. General-vocabulary noun and verb senses
-(*get*, *make*, *thing*) belong to no topic: a reviewed gap closure closes
-their topics gap instead of leaving the entry stalled.
+*good*). General-vocabulary noun and verb senses (*get*, *make*, *thing*)
+belong to no topic: a reviewed gap closure closes their topics gap.
 
 ### Grammar, collocations, and word formation
 
 `GRAMMAR_NEEDED` and `COLLOCATIONS_NEEDED` in `server/domain/work.ts` are the
-tables of what a sense needs, like `RELATIONS_NEEDED`. Noun, verb, adjective,
+tables of what a sense needs, like `TOPICS_NEEDED`. Noun, verb, adjective,
 adverb, determiner, and pronoun senses need one grammar fact: countability,
 transitivity, position, patterns, or prepositions are what a learner most needs
 of a content word (an adjective with no restriction states `position: both`),
@@ -1424,7 +1529,7 @@ derivatives (*notebook*, a function word) closes the gap with a closure. The
 public entry reads a base by the lemma it names (`partWord`), so the words built
 on one entry list each other, and the base itself, in their `family`.
 
-### The worklist table
+### The worklist and work item tables
 
 `worklist` holds one row per entry, written in the same batch as the entry:
 
@@ -1432,18 +1537,34 @@ on one entry list each other, and the base itself, in their `family`.
 | ------------------------------------------------- | ---------------------------------------------------------- |
 | `entry_id`, `created_at`                          | The entry and its creation time                            |
 | `live`                                            | The entry fact is pending or published                     |
-| `claimed_at`                                      | When the entry was last claimed; null until the first claim |
 | `seed`                                            | The entry was submitted as part of a seed list             |
 | `frequency_key`                                   | `frequencyKey` of the lemma, written with the row          |
 | `level_rank`, `zipf`                              | The learner priority: 1 (A1) to 6 (C2) for the lowest CEFR level of the exact lemma, and the Zipf frequency of `frequency_key`; null when the reference data has none |
-| `completeness`, `quality`, `stalled`              | The scores and the stall, as of `scored_revision`          |
-| `awaiting_review`                                 | A fact about the entry or its senses, or a relation into one of its senses, is pending, as of `scored_revision` |
-| `claimed_work`                                    | The open work the last claim found                         |
-| `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work or public view; the revision the scores describe |
+| `completeness`, `quality`                         | The scores, as of `scored_revision`                        |
+| `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work or public view; the revision the scores and items describe |
 | `view_revision`                                   | The revision the entry's public view rows describe         |
-| `claim_rank`                                      | Generated: `claimTier` of a claimable entry, else null; a stale row counts as claimable and its stored completeness picks gaps or weak facts |
-| `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
-| `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
+| `last_worked_at`                                  | When a pass over one of its items last completed           |
+
+`work_items` holds one row per piece of open work:
+
+| Column | Meaning |
+| ------ | ------- |
+| `id` | The item; kept while its gap stays open, however it changes |
+| `entry_id`, `type`, `subject_id` | The entry, the work type, and the node it is about (entry, sense, or weak fact); `(type, subject_id)` is unique |
+| `gap` | The gap as the wire shows it, JSON |
+| `stage`, `rank`, `zipf_order` | The policy stage, the stage times eight plus the learner band, and the entry's Zipf frequency (-1 without one) |
+| `awaiting` | A pending fact changes the gap, so it is not served |
+| `attempts`, `worked`, `claimed_gap` | Completed passes that left it unchanged; a completed pass whose verdict waits for a review; the gap at the last claim |
+| `lease_id`, `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null |
+| `last_worked_at`, `last_worked_by`, `last_note` | The last completed pass over it |
+| `created_at` | When the item opened |
+
+The production queue is the items with `awaiting = 0 and attempts < 3`, in the
+partial indexes `work_items_queue_idx` `(rank, zipf_order DESC, created_at, id)`
+and `work_items_type_queue_idx` (the same, led by `type`); the curators' queue
+is `work_items_curation_idx` over `attempts >= 3`. `work_leases` holds one row
+per lease (`id`, `holder`, `type`, `entry_ids`, `item_ids`, `claimed_at`,
+`expires_at`), deleted by its completion or a day after it expires.
 
 Every write that can change an entry's gaps, weak facts, or public view bumps
 `revision` of the entries at both ends in its own batch: a fact insert or status
@@ -1451,33 +1572,36 @@ change (review, retraction, re-review, supersede), a sense insert, a feedback
 insert or status change on a fact, and a completion. Every insert or status
 change of an `entry` or `sense` fact also bumps the entries whose relations
 link to the senses that fact defines: moving into or out of live changes their
-relations gaps, and moving into or out of published, or a gloss correction
+relation slots, and moving into or out of published, or a gloss correction
 publishing, changes the relations their public views show. A reference import
 bumps every row (see Public view). The use case that made the write then
 rescores the stale rows it touched, linked entries included, and rebuilds their
 public views (`refreshEntries`, which runs `refreshWork` and
-`refreshPublicViews`). The rescore loads the entry, assesses
-it, and stores the scores and the stall conditional on `revision` being
-unchanged, so a concurrent write's rescore wins instead of being overwritten. A
-stale row stays claimable, so a request that crashed before its rescore never
-hides work; the cron rescores up to 100 stale rows every run
+`refreshPublicViews`). The rescore loads the entry and its stored items,
+assesses it, reconciles the items with its open work (`reconcileItems`), and
+writes the scores, the upserted items (by `(type, subject_id)`, keeping each
+stored item's id, lease, and claim and work records; a new item gets a fresh
+id), and the deletion of closed ones in one batch, each statement conditional on
+`revision` being unchanged, so a concurrent write's rescore wins instead of
+being overwritten. A stale row keeps its items as of its last rescore until a
+rescore reaches it, and the cron rescores up to 100 stale rows every run
 (`refreshStaleWork`). It tries every row of the batch before it throws the
 failures together, so a row that keeps failing holds one slot and the rows
 behind it still drain. Every fact insert or status change also rewrites `live`
 for its subject.
 
 **Rescore.** Scores never go stale silently: whenever the gap rules change,
-the release's migration bumps `revision` on every row, so every stored score is
-stale until `assessEntry` scores it again under the new rules. A stale row is
-claimable, and the claim computes its gaps from the facts, so nothing is hidden
-meanwhile; the management view (`GET /manage/v1/entries/{lemma}` and the
-claim's entry) computes `completeness` and `quality` from the facts on read, so
-it never reports a stored number at all, and no public document carries one.
+the release's migration bumps `revision` on every row, so every stored score
+and item is stale until `assessEntry` scores it again under the new rules. The
+management view (`GET /manage/v1/entries/{lemma}` and a claimed item's `view`)
+computes `completeness` and `quality` from the facts on read, so it never
+reports a stored number at all, and no public document carries one.
 The cron's 100 rows every five minutes would take hours over the dataset, so
 `POST /manage/v1/work/rescore` (admins only, body `{ limit }`, 1 to 200,
 default 100) rescores up to `limit` stale rows as the cron does and returns
 `{ rescored, remaining }`; repeat it until `remaining` is 0 right after
-`wrangler d1 migrations apply`:
+`wrangler d1 migrations apply`, then drain the public views the same way with
+`POST /manage/v1/public/rebuild`:
 
 ```sh
 until [ "$(curl -sf -X POST "$BASE/manage/v1/work/rescore" \
@@ -1551,65 +1675,49 @@ rule and is on 138 A1 and 128 A2 under this one; the words it leaves are
 listed only as another part of speech at A1 or A2 (*fruit*, *truck*, *party*,
 *map*, *key*) or as a verb from B1 (*touch*, *shop*, *fish*).
 
+#### Migration to work items
 
-The claim is one `UPDATE … WHERE entry_id = (SELECT … WHERE claim_rank IS NOT
-NULL ORDER BY claim_rank, claimed_at, zipf DESC, completeness, created_at,
-entry_id LIMIT 1) RETURNING` statement that picks the entry, writes the lease,
-and stamps `claimed_at`; the claim then records `claimed_work`. Never-claimed
-rows have a null `claimed_at`, so their order falls to frequency, where SQLite
-sorts null last in descending order, and then completeness. The index
-`(claim_rank, claimed_at, zipf DESC, completeness, created_at, entry_id)` gives
-that order without a sort, and the scan passes at most one row per held lease before a free row. D1
-runs statements one at a time, so two concurrent claims never get the same
-entry, and a claim takes over a lease only once it has expired. Work state
-lives in this table, not on the `entries` node, which keeps identity only.
+The migrations `work_items` (the `work_items`, `work_leases`, and
+`public_hypernyms` tables, the `rare` column of `public_sense_topics` with its
+entry index widened to `(entry_id, rare, topic_id)`, and the worklist rebuilt
+without its claim columns: `claimed_at`, `stalled`, `awaiting_review`,
+`claimed_work`, `claim_rank`, the lease, `last_worked_by`, `last_note`, and the
+claim-order index) and `work_items_relation_layers` replace the entry claim.
+The latter rewrites every `relations` gap closure, in every status, as a
+`synonyms` closure with the registry's content key; marks for review in place
+every published synonyms closure, hypernym, and `part_of` that no curator
+settled; and bumps every worklist row. The items are not built in SQL: the
+rescore drain builds them with `assessEntry`, and the view drain fills
+`public_hypernyms` and the topic rows' rarity. On a copy of the development
+database (15,825 entries, 157,402 facts) both migrations ran in under 5 s and:
 
-The migration `worklist_drop_revisit` removed the revisit marks, streak, and
-claim count that ordered the earlier rotation, and `worklist_scores_backfill`
-computed every entry's completeness, quality, and `awaiting_review` in SQL by
-the same rules, aggregating per entry once over the indexed fact lookups; no
-entry starts stalled.
+| Step | Rows |
+| ---- | ---- |
+| Relations closures rewritten as synonyms closures | 1,591 (456 published, 1,135 rejected) |
+| Marked for review in place | 10,492 (8,814 hypernym, 1,243 `part_of`, 435 synonyms closures; 21 published closures were already marked) |
+| Worklist rows stale | 15,825 |
 
-Topics gaps opened on every live noun, verb, and adjective sense at once, so
-`worklist_topics_scores` recomputed every entry's completeness in SQL by the
-rules above, topics included, in one aggregating statement instead of marking
-every row stale for the cron to drain 100 at a time (a stale row is claimable,
-so finished entries would have been handed out meanwhile). The same statement
-lifts the stall of an entry with an open topics gap whose `claimed_work` names
-no topics gap: its open work changed, as `isStalled` would find on the next
-rescore. `worklist_usage_scores` did the same when grammar, collocations, and
-word formation gaps opened: it recomputed every entry's completeness over every
-slot, those three included, and kept an entry stalled only when none of them is
-open, since no claim recorded before then named one. `worklist_relation_ends_scores`
-did the same when relations to senses that cannot show stopped counting: it
-recomputed every entry's completeness, counting a relation only when its other
-sense has a live gloss and a live entry fact, and lifted the stall of an entry
-with a sense whose relations gap is open and whose count changed, which is
-exactly when its open work changed (the new count is never above the old).
-`worklist_sense_list_scores` did the same when the sense inventory slot started
-to need a sense list: it recomputes every entry's completeness with the
-inventory slot filled only by a current list naming exactly the live senses,
-and with the per-sense slots of that list's extra senses left out, and it lifts
-the stall of every entry that has senses its list does not settle, since no
-claim recorded before then named a `sense_list` gap (the gap's `rejected`
-count enters only the open work, not completeness, so the backfill has nothing
-more to compute). After that release every
-entry with senses has a `sense_list` gap until a list is submitted for it. A
-test runs the backfills in order over rescored rows, sense lists among them
-(settled, with extra senses, stale, and with a pending correction), and expects
-the same scores.
+The rescore drain then took 165 s (about 95 rows/s, 80 calls of 200) and the
+view drain 154 s. It built 140,569 items, none awaiting review or with the
+curators: by stage, identity 13,737 (5,166 `senses`, 8,571 `sense_list`),
+meaning 23,613 (10,576 `translations`, 8,933 `category`, 4,104 `parts`), usage
+83,831, network 19,385 (8,469 `synonyms`, 10,121 `topics`, 671 `family`, 124
+`phrases`), and 3 weak facts. The 5,166 entries with no sense, 4,238 of them
+with a CEFR level (2,169 a CEFR noun), are all stage 1, so their categories
+follow their senses. `public_hypernyms` holds 8,059 everyday rows, and 224 of
+the 6,198 topic rows are on rare senses.
 
-The learner priority is stored on the row so the claim stays one index scan.
+The learner priority is stored on the row, and copied onto its items as their
+rank and `zipf_order`, so a claim stays one index scan.
 The row reads it from the reference tables when it is created, in the same batch
 as the entry, and every reference import ends by rereading it for every row
-(`rankWorklistSql` in `server/adapters/reference-sql.ts`), so a reimport
-re-ranks the worklist. CEFR is read by the exact lemma and frequency by
+(`rankWorklistSql` in `server/adapters/reference-sql.ts`) and re-ranking every
+item from it (`rankWorkItemsSql`), so a reimport re-ranks the queue. CEFR is read by the exact lemma and frequency by
 `frequency_key`, the rules entry reads use. `frequency_key` is stored because
 SQLite's `lower()` folds only ASCII letters, while `frequencyKey` lowercases all
 of Unicode. The migrations `worklist_learner_priority` (columns),
 `worklist_learner_priority_backfill` (`frequency_key` as `lower(lemma)`, then
-the import's update), and `worklist_learner_claim_rank` (the new `claim_rank`
-and index) moved the existing rows over; the backfill's `lower()` matched
+the import's update) moved the existing rows over; the backfill's `lower()` matched
 `frequencyKey` for every lemma then, since none had a non-ASCII capital. A test
 scrambles the stored priority, runs the backfill, and expects the rows creation
 wrote. `frequency_key` is nullable only because SQLite cannot add a `NOT NULL`
@@ -1624,12 +1732,14 @@ facts close its gap:
 | Gap                                      | Open while                                              |
 | ---------------------------------------- | ------------------------------------------------------- |
 | `{ type: "senses" }`                     | No sense has a live gloss                               |
-| `{ type: "sense_list", rejected }`       | Some sense has a live gloss, and the current sense list does not name exactly the senses with a live gloss; `rejected` counts the rejected lists naming exactly those senses, up to `MAX_SENSE_LIST_ATTEMPTS - 1` |
+| `{ type: "sense_list", senses }`         | Some sense has a live gloss, and the current sense list does not name exactly the senses with a live gloss; `senses` names them, oldest first |
 | `{ type: "forms", missing }`             | A paradigm slot of a single word has no live form filling it; `missing` names each `{ type, pos }` (see Forms) |
 | `{ type: "pronunciation", accents }`     | `us` or `uk` has no live strong pronunciation; `accents` names them |
 | `{ type: "phrases", have, need }`        | An A1 or A2 single-word verb has fewer than `need` (3) live phrasal verbs or verb idioms headed by it; `have` names the ones it has |
 | `{ type: "family" }`                     | An A1 or A2 single word has no live entry whose morphology names it as a base |
-| `{ type: "relations", sense_id, count, have }` | The sense is in fewer live relations, as subject or object, than its part of speech needs |
+| `{ type: "category", sense_id }`         | A noun or verb sense has no live everyday hypernym to a sense that can show |
+| `{ type: "parts", sense_id }`            | A noun sense with an everyday category has no live `part_of` attached to it from a sense that can show |
+| `{ type: "synonyms", sense_id }`         | A noun, verb, adjective, or adverb sense has no live synonym or antonym to a sense that can show |
 | `{ type: "examples", sense_id, count, need }` | The sense has fewer live examples than `need`: 2 for an A1 or A2 entry, else 1 |
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` translation |
 | `{ type: "topics", sense_id }`           | A noun or verb sense has fewer live topic facts than it needs (`TOPICS_NEEDED`) |
@@ -1640,8 +1750,10 @@ facts close its gap:
 | `{ type: "grammar", sense_id }`          | A noun, verb, adjective, adverb, determiner, or pronoun sense has no live grammar fact |
 | `{ type: "collocations", sense_id }`     | A noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation |
 
-A live `gap_closure` on the gap's node closes `forms`, `phrases`, `family`,
-`relations`, `topics`, `grammar`, or `collocations`: the gap is gone and its
+A weak fact is open work too, `{ type: "weak_fact", fact_id, kind, reason }`
+(see Scores). A live `gap_closure` on the gap's node closes `forms`, `phrases`,
+`family`, `category`, `parts`, `synonyms`, `topics`, `grammar`, or
+`collocations`: the gap is gone and its
 slots count as filled. Rules can be strict without stalling a word they do not
 fit, while review keeps a closure of a slot that plainly applies out.
 
@@ -1661,23 +1773,10 @@ relations for them. Before any list exists every sense with a live gloss
 counts, and a sense the list does not name (added since) counts until a new list
 places it.
 
-Relations are the core of the dictionary, and a content-word sense with one
-neighbor is a leaf, so its relations gap stays open until it has two. `count`
-is the number of live relations the sense is in. `have` lists each relation
-type and direction it already has once, as `{ type, direction }`, `outgoing`
-when the sense is the subject and `incoming` when it is the target.
-An agent looks for the types it does not have yet instead of finding the same
-kind of neighbor again. The need is the bar for the gap, not a quota: an agent
-submits a relation only where one holds.
-
-`POST /manage/v1/work/{lease_id}/complete` (body `{ note? }`, up to 500
-characters) records `last_worked_at`, the holder, and the note, clears the lease,
-and marks the row stale in one statement; the rescore then decides the stall.
-Only the holder completes, and only before `expires_at`: another principal or an
-expired lease answers `409 conflict`. A lease that is gone answers
-`404 not_found`, so completing the same lease twice is a 404, and so is
-completing a lease after another agent reclaimed the entry. The holder is the
-principal ref (`agent:<id>` or `admin:<sub>`).
+The relation slots (see Relation slots) are one each: a category, the parts,
+a synonym or antonym. A slot is the bar for the gap, not a quota: an agent
+submits every relation a learner's dictionary gives in the pass, and only where
+one holds.
 
 ## Reference data
 
@@ -1778,13 +1877,14 @@ On a copy of the development database (5,882 entries) the local import of
 lemmas) and 2,785 have CEFR levels; all 850 seed entries have a frequency and
 829 have CEFR levels.
 
-The worklist orders by CEFR level and frequency (see Admission and order). An
-import ends by re-ranking every worklist row from the new tables, so the
-statement that replaces the reference data also moves the claim order. It then
+Work items order by CEFR level and frequency within their stage (see Work
+items, Priority). An import ends by re-ranking every worklist row and every
+work item from the new tables, so the statement that replaces the reference
+data also moves the queue. It then
 marks every public view stale (`staleViewsSql`), since each public document
 carries its entry's frequency and CEFR levels: it bumps `revision`, and
 `scored_revision` with it where the scores were current, because reference
-data is not part of the scores and the entries must not turn claimable. Reads
+data is not part of the scores, and the items, already re-ranked, stay as they are. Reads
 rebuild what they touch at once; run the admin rebuild (see Public view) to
 drain the rest instead of waiting for the cron.
 
@@ -1821,7 +1921,7 @@ seed entries a level. The core import then created 6,015 entries in 121 calls
 in 26 seconds against a local Worker (about 0.2 s per call of 50): 405 A1,
 663 A2, 1,399 B1, 1,917 B2, 803 C1, and 828 C2, 132 of them multiword, 5,738
 with a frequency; no headword was skipped. Each entry fact is queued for
-review, so the queue reviews about 6,000 entries before they become claimable.
+review, so the queue reviews about 6,000 entries before their items are served.
 A repeated call created nothing. The worklist then held 12,029 rows: 7,841 with
 a CEFR level, 1,756 with only a frequency, and 1,432 with neither.
 
@@ -1957,7 +2057,11 @@ entry document; every list returns summaries.
   `broader` for a hypernym this sense is the subject of and `narrower` for one
   it is the target of; `part_of` for a part-of this sense is the subject of and
   `parts` for one it is the target of. Each related sense is `{ lemma,
-  sense_id, gloss }`.
+  sense_id, gloss }`, and a hypernym of a specialist taxonomy also `domain`.
+  The everyday layer always shows; `?domain=biology` (or `medicine`) adds that
+  domain's broader and narrower terms, each marked with it, and an unknown
+  domain is `400 invalid_request`. The domain is part of the read's variant, so
+  it changes the ETag. `GET /v1/senses/{id}` takes `?domain=` the same way.
 - **Word formation.** Each part carries `lemma` when a public entry has exactly
   that spelling. `family` lists, as summaries in lemma order, the other public
   entries whose word formation has a part of the same form and role among
@@ -2020,6 +2124,19 @@ a form the document does not show is still found. List pages are
 `pos`, its entry's word summary as `entry`, and `lang`; it takes `?lang=` and
 `?include=review` like the entry.
 
+`GET /v1/senses/{id}/members?domain=&lang=&limit=&cursor=` lists the members of
+a public sense taken as a category: every public sense whose broader terms lead
+up to it, in the everyday layer and, with `domain`, that domain's as well, each
+once at its nearest `depth` (1 for a direct kind), as `{ lang, items: [sense
+summary + depth], next_cursor }` ordered by depth, lemma, and sense id. "animal"
+lists dog, cat, and bird at depth 1 and eagle, through bird, at 2; with
+`domain=biology`, "carnivore" lists canine and then dog. It walks the view's
+`public_hypernyms` rows (one per broader term a public sense shows, with the
+narrower sense's summary) in one recursive query, bounded at `MEMBER_DEPTH`
+(12), the depth that also ends a walk round a cycle of three or more entries. A
+sense that is not public is `404 not_found`. It is a list, cached for five
+seconds like the others.
+
 **Lists.** `GET /v1/entries` takes `prefix`, `level` (CEFR levels, repeated
 `level=A1&level=A2` or comma-separated `level=A1,A2`), `pos`, `topic` (a leaf
 topic, or a category for any of its leaves), and `sort` (`lemma`, the default,
@@ -2028,8 +2145,11 @@ without one last, ties by lemma). `level` and `pos` hold for one meaning: an
 entry is listed when one of its meanings has that part of speech and one of
 those levels (the CEFR level of the lemma in that part of speech), so
 `level=A1&pos=noun` lists the A1 nouns, not entries that are A1 as a verb and
-also nouns. With `topic`, they hold for one sense tagged with the topic, at
-the level of its part of speech. An unknown topic is `404 not_found`; an
+also nouns. With `topic`, they hold for one common sense tagged with the topic,
+at the level of its part of speech: a topic on a sense the entry's sense list
+puts in `extra` does not list the entry, since a learner browsing the topic
+would not meet the word in that sense (`public_sense_topics.rare`). `GET
+/v1/topics/{id}/senses` still lists the rare sense itself. An unknown topic is `404 not_found`; an
 unknown level, part of speech, or sort is `400 invalid_request`. `GET
 /v1/topics/{id}/senses` takes `sort`: `lemma` (the default, then by sense),
 `frequency` (by the entry's frequency rank), or `level` (by the sense's
@@ -2223,7 +2343,7 @@ migration that changes what a view stores marks every view stale and leaves
 the rows to the rebuild: `public_view_backfill` set `view_revision = revision -
 1`, and `public_api_v2_clear` emptied the view tables and bumped `revision` on
 every row, and `scored_revision` with it where the scores were current, as a
-reference import does, so no entry turns claimable; `public_view_v3_clear` did
+reference import does, so the scores stay current; `public_view_v3_clear` did
 the same for search and filtered lists, and `form_pos_content_key` bumped the
 entries whose form keys it rewrote. `completeness_rules` bumps `revision` alone
 on every row, since the gap rules changed and every score must be recomputed,

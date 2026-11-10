@@ -1,6 +1,7 @@
 import { negotiateLanguage, servedLanguage } from '@server/domain/language'
 import type { ReadVariant } from '@server/domain/public-view'
 import { languageTagSchema } from '@shared/catalog'
+import type { RelationDomain } from '@shared/facts'
 import type { Context } from 'hono'
 
 /**
@@ -26,7 +27,10 @@ export const negotiatedLanguage = (header: string | undefined) => negotiateLangu
  * Accept-Language tag that reads a served language. `?include=review` adds review metadata. The body
  * depends on Accept-Language, so the response varies by it.
  */
-export function readVariant(c: Context, query: { lang?: string; include?: 'review' }): ReadVariant {
+export function readVariant(
+  c: Context,
+  query: { lang?: string; include?: 'review'; domain?: RelationDomain },
+): ReadVariant {
   c.header('Vary', 'Accept-Language')
   const lang =
     query.lang === undefined
@@ -34,5 +38,5 @@ export function readVariant(c: Context, query: { lang?: string; include?: 'revie
       : query.lang.toLowerCase() === 'all'
         ? 'all'
         : servedLanguage(query.lang)
-  return { lang, review: query.include === 'review' }
+  return { lang, review: query.include === 'review', ...(query.domain ? { domain: query.domain } : {}) }
 }

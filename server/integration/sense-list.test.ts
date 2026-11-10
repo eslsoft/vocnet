@@ -1,7 +1,8 @@
+import { env } from 'cloudflare:test'
 import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
 import { factSchema, factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
-import { workClaimSchema } from '@shared/work'
+import { gapSchema, workClaimSchema, workCompletionSchema } from '@shared/work'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { call, deliverPendingReviews, deliverReviews, issueAgentKey, stubReviewers } from './helpers'
 
@@ -20,12 +21,13 @@ const settle = async (verdict: 'pass' | 'fail' = 'pass') => {
   vi.restoreAllMocks()
   return gateway
 }
-/** The entry-level gap types of the one claimable entry, read by a pass that adds nothing. */
-const entryGaps = async (token: string) => {
-  const work = workClaimSchema.parse((await call('/manage/v1/work/claim', { method: 'POST', token })).body)
-  expect((await call(`/manage/v1/work/${work.lease.id}/complete`, { method: 'POST', token })).status).toBe(200)
-  return work.gaps
-}
+/** The gaps of the entry's stored work items, as its last rescore wrote them. */
+const entryGaps = async (entryId: string) =>
+  (
+    await env.DB.prepare('select gap from work_items where entry_id = ? order by rowid')
+      .bind(entryId)
+      .all<{ gap: string }>()
+  ).results.map((row) => gapSchema.parse(JSON.parse(row.gap)))
 
 describe('sense lists', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -51,7 +53,7 @@ describe('sense lists', () => {
       422,
       expect.objectContaining({ code: 'invalid_reference', message: expect.stringContaining(reserve.sense.id) }),
     ])
-    expect((await entryGaps(token)).map((gap) => gap.type)).toContain('sense_list')
+    expect((await entryGaps(entry.id)).map((gap) => gap.type)).toContain('sense_list')
 
     const submitted = await submit(token, list([volume.sense.id, reserve.sense.id]))
     expect(submitted.status).toBe(201)
@@ -62,16 +64,16 @@ describe('sense lists', () => {
     const prompt = (published.review?.detail.prompt as { user: string }).user
     expect(prompt).toContain('1. (noun) "A written work published in printed or electronic form."')
     expect(prompt).toContain('2. (verb) "To arrange to have a seat or room kept for you."')
-    expect((await entryGaps(token)).map((gap) => gap.type)).not.toContain('sense_list')
+    expect((await entryGaps(entry.id)).map((gap) => gap.type)).not.toContain('sense_list')
 
     // A sense added since makes the list stale until a correction names it.
     const record = await createSense(token, entry.id, 'noun', "A bookmaker's record of the bets made.")
     await settle()
-    expect((await entryGaps(token)).map((gap) => gap.type)).toContain('sense_list')
+    expect((await entryGaps(entry.id)).map((gap) => gap.type)).toContain('sense_list')
     const correction = await submit(token, list([volume.sense.id, reserve.sense.id], [record.sense.id], original.id))
     expect(correction.status).toBe(201)
     await settle()
-    const settled = await entryGaps(token)
+    const settled = await entryGaps(entry.id)
     expect(settled.map((gap) => gap.type)).not.toContain('sense_list')
     expect(settled.some((gap) => 'sense_id' in gap && gap.sense_id === record.sense.id)).toBe(false)
 
@@ -102,7 +104,7 @@ describe('sense lists', () => {
       (await call(`/manage/v1/facts/${factWriteResultSchema.parse(failing.body).fact.id}`, { token })).body,
     )
     expect(rejected).toMatchObject({ status: 'rejected', review: { reviewer: 'llm', verdict: 'fail' } })
-    expect((await entryGaps(token)).map((gap) => gap.type)).toContain('sense_list')
+    expect((await entryGaps(entry.id)).map((gap) => gap.type)).toContain('sense_list')
   })
 
   it('reviews a list knowing the live entries that differ only in letter case [spec: facts/sense-list-capitalization-api]', async () => {
@@ -128,7 +130,7 @@ describe('sense lists', () => {
     expect(JSON.stringify(reviewed.review?.detail)).toContain('\\"May\\" is a separate entry')
   })
 
-  it('brings an entry back with each rejected list until the attempts run out [spec: work/sense-list-retry]', async () => {
+  it('brings a sense list item back after each rejected list, with the reasons, until three attempts hand it to the curators [spec: work/sense-list-retry]', async () => {
     const token = await issueAgentKey()
     const { entry } = await createEntry(token, 'may')
     const can = await createSense(token, entry.id, 'auxiliary', 'Used to say that something is possible.')
@@ -142,14 +144,20 @@ describe('sense lists', () => {
           choices: [{ message: { content: JSON.stringify({ verdict: 'fail', confidence: 0.9, reason }) } }],
         }),
       )
+    const claimList = () => call('/manage/v1/work/claim', { method: 'POST', token, json: { types: ['sense_list'] } })
 
     for (const attempt of [0, 1, 2]) {
-      const claimed = await call('/manage/v1/work/claim', { method: 'POST', token })
+      const claimed = await claimList()
       expect(claimed.status).toBe(200)
-      const work = workClaimSchema.parse(claimed.body)
-      expect(work.gaps).toContainEqual({ type: 'sense_list', rejected: attempt })
-      const rejected = work.entry.facts.filter((fact) => fact.kind === 'sense_list' && fact.status === 'rejected')
-      expect(rejected.map((fact) => fact.review?.reason)).toEqual(Array(attempt).fill(reason))
+      const [item] = workClaimSchema.parse(claimed.body).items
+      expect(item).toMatchObject({
+        attempts: attempt,
+        gap: { type: 'sense_list', senses: [can.sense.id, allowed.sense.id] },
+      })
+      const rejected = item?.context.view?.facts.filter(
+        (fact) => fact.kind === 'sense_list' && fact.status === 'rejected',
+      )
+      expect(rejected?.map((fact) => fact.review?.reason)).toEqual(Array(attempt).fill(reason))
       // A pass that only submits the same list, which review rejects again.
       const submitted = await submit(token, {
         kind: 'sense_list',
@@ -157,12 +165,18 @@ describe('sense lists', () => {
         payload: { common: [can.sense.id, allowed.sense.id], extra: [] },
       })
       expect(submitted.status).toBe(201)
-      expect((await call(`/manage/v1/work/${work.lease.id}/complete`, { method: 'POST', token })).status).toBe(200)
+      const lease = workClaimSchema.parse(claimed.body).lease.id
+      const done = await call(`/manage/v1/work/${lease}/complete`, {
+        method: 'POST',
+        token,
+        json: { items: [{ id: item?.id }] },
+      })
+      expect(workCompletionSchema.parse(done.body).items[0]?.state).toBe('awaiting_review')
       rejectWith()
       await deliverReviews([factWriteResultSchema.parse(submitted.body).fact.id])
       vi.restoreAllMocks()
     }
 
-    expect((await call('/manage/v1/work/claim', { method: 'POST', token })).status).toBe(204)
+    expect((await claimList()).status).toBe(204)
   })
 })

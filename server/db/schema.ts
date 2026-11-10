@@ -112,17 +112,13 @@ export const feedback = sqliteTable(
 
 /**
  * One row per entry, created with it. `live` mirrors whether the entry fact is pending or
- * published. `completeness`, `quality`, `awaiting_review`, and `stalled` are computed by
- * `assessEntry` and `isStalled` in server/domain/work.ts as of `scored_revision`; every write that can change the
- * entry's work bumps `revision` in its own batch, and the use case that made it rescores. A stale
- * row (`revision <> scored_revision`) stays claimable, so a lost rescore never hides work.
+ * published. `completeness` and `quality` are computed by `assessEntry` in server/domain/work.ts as
+ * of `scored_revision`, for stats and the console; the work itself is the entry's `work_items`.
+ * Every write that can change the entry's work bumps `revision` in its own batch, and the use case
+ * that made it rescores, which rewrites the scores and the items together. A stale row
+ * (`revision <> scored_revision`) keeps its items as of the last rescore until the cron drains it.
  * `level_rank` and `zipf` are the learner priority of the entry's lemma, read from the reference
  * tables when the row is created and again by every reference import.
- * `claim_rank` is `claimTier` in server/domain/work.ts for a claimable entry and null otherwise,
- * so the claim order is one index: entries with a gap before entries with only weak facts, each by
- * learner band (A1 to C2, then frequency without a level, then the rest), never-claimed before
- * claimed within a band. Never-claimed rows go by highest `zipf` (their `claimed_at` is null), then
- * lowest completeness; claimed rows by least recently claimed.
  */
 export const worklist = sqliteTable(
   'worklist',
@@ -132,8 +128,6 @@ export const worklist = sqliteTable(
       .references(() => entries.id),
     createdAt: text('created_at').notNull(),
     live: integer('live', { mode: 'boolean' }).notNull(),
-    /** Set by every claim, so an entry moves back in its tier whether or not its work completes. */
-    claimedAt: text('claimed_at'),
     /** Set when an entry is submitted as part of a seed list; never cleared. */
     seed: integer('seed', { mode: 'boolean' }).notNull().default(false),
     /**
@@ -148,43 +142,92 @@ export const worklist = sqliteTable(
     zipf: real('zipf'),
     completeness: real('completeness').notNull().default(0),
     quality: real('quality').notNull().default(1),
-    /** The last completed pass left the open work as its claim found it, and nothing changed it since. */
-    stalled: integer('stalled', { mode: 'boolean' }).notNull().default(false),
-    /** A fact about the entry or its senses, or a relation into one of its senses, is pending. */
-    awaitingReview: integer('awaiting_review', { mode: 'boolean' }).notNull().default(false),
-    /** `openWork` of the entry when it was last claimed. */
-    claimedWork: text('claimed_work'),
     revision: integer('revision').notNull().default(0),
     scoredRevision: integer('scored_revision').notNull().default(0),
     /** The revision the entry's public view rows describe; behind `revision` while they are stale. */
     viewRevision: integer('view_revision').notNull().default(0),
-    claimRank: integer('claim_rank').generatedAlwaysAs(
-      sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 * (8 * (completeness >= 0.95) + coalesce(level_rank - 1, 6 + (zipf is null))) + (claimed_at is not null) end`,
-      { mode: 'virtual' },
-    ),
-    leaseId: text('lease_id').unique(),
+    /** When a pass over an item of the entry last completed. */
+    lastWorkedAt: text('last_worked_at'),
+  },
+  (table) => [
+    index('worklist_stale_idx').on(table.entryId).where(sql`revision <> scored_revision`),
+    index('worklist_view_stale_idx').on(table.entryId).where(sql`revision <> view_revision`),
+  ],
+)
+
+/**
+ * One row per piece of open work: a gap of an entry or of one of its senses, or a weak fact. The
+ * rescore of the entry writes them (`reconcileItems` in server/domain/work.ts): it upserts the open
+ * ones by `(type, subject_id)` and deletes the rest. `rank` is the priority policy's stage times
+ * the band count plus the learner band; `zipf_order` the entry's Zipf frequency, -1 without one.
+ * An item is in the production queue while it does not await a review and has fewer than three
+ * attempts; at three it is in the curators' queue.
+ */
+export const workItems = sqliteTable(
+  'work_items',
+  {
+    id: text('id').primaryKey(),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    type: text('type').notNull(),
+    /** The entry, the sense, or the weak fact the item is about. */
+    subjectId: text('subject_id').notNull(),
+    /** The gap as the wire shows it, as JSON. */
+    gap: text('gap').notNull(),
+    stage: integer('stage').notNull(),
+    rank: integer('rank').notNull(),
+    zipfOrder: real('zipf_order').notNull(),
+    /** A pending fact changes the gap, so it waits for that review before it is worked or judged. */
+    awaiting: integer('awaiting', { mode: 'boolean' }).notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    /** A completed pass worked the item while it awaited review; the settled gap decides the attempt. */
+    worked: integer('worked', { mode: 'boolean' }).notNull().default(false),
+    /** The gap when the item was last claimed, as JSON. */
+    claimedGap: text('claimed_gap'),
+    leaseId: text('lease_id'),
     leaseHolder: text('lease_holder'),
     leaseExpiresAt: text('lease_expires_at'),
     lastWorkedAt: text('last_worked_at'),
     lastWorkedBy: text('last_worked_by'),
     lastNote: text('last_note'),
+    createdAt: text('created_at').notNull(),
   },
   (table) => [
-    index('worklist_claim_order_idx').on(
-      table.claimRank,
-      table.claimedAt,
-      sql`${table.zipf} desc`,
-      table.completeness,
-      table.createdAt,
-      table.entryId,
-    ),
-    index('worklist_stale_idx').on(table.entryId).where(sql`revision <> scored_revision`),
-    index('worklist_view_stale_idx').on(table.entryId).where(sql`revision <> view_revision`),
+    uniqueIndex('work_items_subject_idx').on(table.type, table.subjectId),
+    index('work_items_entry_idx').on(table.entryId),
+    index('work_items_lease_idx').on(table.leaseId).where(sql`lease_id is not null`),
+    // The production queue in claim order, across types and within one.
+    index('work_items_queue_idx')
+      .on(table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
+      .where(sql`awaiting = 0 and attempts < 3`),
+    index('work_items_type_queue_idx')
+      .on(table.type, table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
+      .where(sql`awaiting = 0 and attempts < 3`),
+    index('work_items_curation_idx')
+      .on(table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
+      .where(sql`attempts >= 3`),
     check(
-      'worklist_lease_whole',
+      'work_items_lease_whole',
       sql`(${table.leaseId} is null) = (${table.leaseHolder} is null) and (${table.leaseId} is null) = (${table.leaseExpiresAt} is null)`,
     ),
   ],
+)
+
+/** One row per claim: what it leased, to whom, until when. Completing it deletes it. */
+export const workLeases = sqliteTable(
+  'work_leases',
+  {
+    id: text('id').primaryKey(),
+    holder: text('holder').notNull(),
+    type: text('type').notNull(),
+    /** JSON arrays of the entry and item ids the claim leased. */
+    entryIds: text('entry_ids').notNull(),
+    itemIds: text('item_ids').notNull(),
+    claimedAt: text('claimed_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+  },
+  (table) => [index('work_leases_expires_idx').on(table.expiresAt)],
 )
 
 // The public view: each entry's public document, projected from its facts by
@@ -258,12 +301,15 @@ export const publicSenseTopics = sqliteTable(
     levelOrder: integer('level_order').notNull(),
     frequencyOrder: integer('frequency_order').notNull(),
     summary: text('summary').notNull(),
+    /** The sense is in the extra senses of its entry's published sense list. */
+    rare: integer('rare', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [
     primaryKey({ columns: [table.topicId, table.lemma, table.senseId] }),
     index('public_sense_topics_frequency_idx').on(table.topicId, table.frequencyOrder, table.lemma, table.senseId),
     index('public_sense_topics_level_idx').on(table.topicId, table.levelOrder, table.lemma, table.senseId),
-    index('public_sense_topics_entry_idx').on(table.entryId, table.topicId),
+    // An entry list by topic checks one common tagged sense per entry: entry, rarity, then topic.
+    index('public_sense_topics_entry_idx').on(table.entryId, table.rare, table.topicId),
   ],
 )
 
@@ -285,6 +331,30 @@ export const publicSearch = sqliteTable(
     body: text('body').notNull(),
   },
   (table) => [index('public_search_entry_idx').on(table.entryId)],
+)
+
+/**
+ * One row per broader term a public sense shows, everyday or of a domain, with the narrower
+ * sense's summary, so a category lists its members by walking these rows down from it.
+ */
+export const publicHypernyms = sqliteTable(
+  'public_hypernyms',
+  {
+    broaderSenseId: text('broader_sense_id').notNull(),
+    senseId: text('sense_id').notNull(),
+    /** The specialist taxonomy of the link; null in the everyday layer. */
+    domain: text('domain'),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    lemma: text('lemma').notNull(),
+    summary: text('summary').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.broaderSenseId, table.senseId] }),
+    index('public_hypernyms_sense_idx').on(table.senseId),
+    index('public_hypernyms_entry_idx').on(table.entryId),
+  ],
 )
 
 /** One row per word of a public multiword entry, so the entry of each word lists it as a phrase. */

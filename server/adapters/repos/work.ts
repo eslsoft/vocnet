@@ -1,10 +1,11 @@
-import { entries, facts, senses, wordFrequency, worklist } from '@server/db/schema'
+import { entries, facts, senses, wordFrequency, workItems, workLeases, worklist } from '@server/db/schema'
 import type { PrincipalRef } from '@server/domain/principal'
 import { frequencyKey } from '@server/domain/reference'
-import type { WorkLease } from '@server/domain/work'
+import type { Lemma } from '@server/domain/term'
+import { MAX_ATTEMPTS, type WorkItem, type WorkLease } from '@server/domain/work'
 import type { StaleWork, WorkRepo } from '@server/usecases/ports'
-import type { EntryId } from '@shared/facts'
-import type { WorkLeaseId } from '@shared/work'
+import { type EntryId, entryIdSchema } from '@shared/facts'
+import { gapSchema, type WorkItemId, type WorkLeaseId, workItemIdSchema, workTypeSchema } from '@shared/work'
 import {
   and,
   asc,
@@ -24,28 +25,13 @@ import {
   sql,
 } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
+import { z } from 'zod'
 import { levelRankSql } from '../reference-sql'
-import { type Db, liveStatus, toEntry } from './rows'
-
-type LeasedRow = typeof worklist.$inferSelect & {
-  claimedAt: string
-  leaseId: string
-  leaseHolder: string
-  leaseExpiresAt: string
-}
-
-const toLease = (row: LeasedRow): WorkLease => ({
-  id: row.leaseId as WorkLeaseId,
-  entryId: row.entryId as EntryId,
-  holder: row.leaseHolder as PrincipalRef,
-  claimedAt: row.claimedAt,
-  expiresAt: row.leaseExpiresAt,
-})
+import { type Db, decodeCursor, liveStatus, page } from './rows'
 
 /**
  * Creates the entry's worklist row once the entry row exists, with the learner priority of its
- * lemma as the reference tables give it now; a repeat is a no-op. The select goes in as SQL
- * because drizzle's builder check demands the generated `claim_rank` among the fields.
+ * lemma as the reference tables give it now; a repeat is a no-op.
  */
 export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) {
   const key = frequencyKey(entry.lemma)
@@ -57,7 +43,6 @@ export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) 
           entryId: entries.id,
           createdAt: entries.createdAt,
           live: sql`0`.as('live'),
-          claimedAt: sql`null`.as('claimed_at'),
           seed: sql`0`.as('seed'),
           frequencyKey: sql`${key}`.as('frequency_key'),
           levelRank: sql.raw(levelRankSql('entries.lemma')).as('level_rank'),
@@ -66,18 +51,10 @@ export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) 
           ),
           completeness: sql`0`.as('completeness'),
           quality: sql`1`.as('quality'),
-          stalled: sql`0`.as('stalled'),
-          awaitingReview: sql`0`.as('awaiting_review'),
-          claimedWork: sql`null`.as('claimed_work'),
           revision: sql`0`.as('revision'),
           scoredRevision: sql`0`.as('scored_revision'),
           viewRevision: sql`0`.as('view_revision'),
-          leaseId: sql`null`.as('lease_id'),
-          leaseHolder: sql`null`.as('lease_holder'),
-          leaseExpiresAt: sql`null`.as('lease_expires_at'),
           lastWorkedAt: sql`null`.as('last_worked_at'),
-          lastWorkedBy: sql`null`.as('last_worked_by'),
-          lastNote: sql`null`.as('last_note'),
         })
         .from(entries)
         .where(eq(entries.id, entry.id))
@@ -232,95 +209,103 @@ export function relatedWorklistRows(db: Db, nodeIds: string[]) {
 }
 
 /**
- * Leases the first free claimable entry in claim order and stamps the claim time, in one
- * statement. D1 runs statements one at a time, so two concurrent claims never take the same entry.
- * The scan passes at most one row per held lease before a free row.
+ * In the production queue: not awaiting a review and short of the attempt bound. A literal, not
+ * bound, so SQLite matches it against the partial queue indexes.
  */
-export function claimStatement(db: Db, lease: Omit<WorkLease, 'entryId' | 'claimedAt'>, now: string) {
-  const next = db
-    .select({ entryId: worklist.entryId })
-    .from(worklist)
-    .where(and(isNotNull(worklist.claimRank), or(isNull(worklist.leaseExpiresAt), lte(worklist.leaseExpiresAt, now))))
-    .orderBy(
-      asc(worklist.claimRank),
-      asc(worklist.claimedAt),
-      desc(worklist.zipf),
-      asc(worklist.completeness),
-      asc(worklist.createdAt),
-      asc(worklist.entryId),
-    )
-    .limit(1)
+const inQueue = sql.raw(`work_items.awaiting = 0 and work_items.attempts < ${MAX_ATTEMPTS}`)
+const inCuration = sql.raw(`work_items.attempts >= ${MAX_ATTEMPTS}`)
+const free = (now: string) => or(isNull(workItems.leaseExpiresAt), lte(workItems.leaseExpiresAt, now))
+const queueOrder = [asc(workItems.rank), desc(workItems.zipfOrder), asc(workItems.createdAt), asc(workItems.id)]
+
+export function toWorkItem(row: typeof workItems.$inferSelect): WorkItem {
+  return {
+    id: row.id as WorkItemId,
+    entryId: row.entryId as EntryId,
+    type: workTypeSchema.parse(row.type),
+    subjectId: row.subjectId,
+    gap: gapSchema.parse(JSON.parse(row.gap)),
+    stage: row.stage,
+    rank: row.rank,
+    zipfOrder: row.zipfOrder,
+    awaiting: row.awaiting,
+    attempts: row.attempts,
+    worked: row.worked,
+    claimedGap: row.claimedGap === null ? null : gapSchema.parse(JSON.parse(row.claimedGap)),
+    lease:
+      row.leaseId === null || row.leaseHolder === null || row.leaseExpiresAt === null
+        ? null
+        : { id: row.leaseId as WorkLeaseId, holder: row.leaseHolder as PrincipalRef, expiresAt: row.leaseExpiresAt },
+    lastWorkedAt: row.lastWorkedAt,
+    lastWorkedBy: row.lastWorkedBy as PrincipalRef | null,
+    lastNote: row.lastNote,
+  }
+}
+
+const toLease = (row: typeof workLeases.$inferSelect): WorkLease => ({
+  id: row.id as WorkLeaseId,
+  holder: row.holder as PrincipalRef,
+  type: workTypeSchema.parse(row.type),
+  entryIds: z.array(entryIdSchema).parse(JSON.parse(row.entryIds)),
+  itemIds: z.array(workItemIdSchema).parse(JSON.parse(row.itemIds)),
+  claimedAt: row.claimedAt,
+  expiresAt: row.expiresAt,
+})
+
+/**
+ * The type of the first free item of the production queue, among `types` when given: the claim
+ * leases items of this one type. Exported so a test can pin its query plan.
+ */
+export function nextTypeStatement(db: Db, types: readonly string[] | undefined, now: string) {
   return db
-    .update(worklist)
-    .set({ claimedAt: now, leaseId: lease.id, leaseHolder: lease.holder, leaseExpiresAt: lease.expiresAt })
-    .where(eq(worklist.entryId, sql`(${next})`))
+    .select({ type: workItems.type })
+    .from(workItems)
+    .where(and(inQueue, free(now), types ? inArray(workItems.type, [...types]) : undefined))
+    .orderBy(...queueOrder)
+    .limit(1)
+}
+
+/**
+ * Leases the first `limit` free items of one type in queue order and records the gap each was
+ * claimed with, in one statement: D1 runs statements one at a time, so two concurrent claims never
+ * lease the same item. An expired lease is free.
+ */
+export function leaseStatement(
+  db: Db,
+  lease: Pick<WorkLease, 'id' | 'holder' | 'type' | 'expiresAt'>,
+  limit: number,
+  now: string,
+) {
+  const next = db
+    .select({ id: workItems.id })
+    .from(workItems)
+    .where(and(inQueue, free(now), eq(workItems.type, lease.type)))
+    .orderBy(...queueOrder)
+    .limit(limit)
+  return db
+    .update(workItems)
+    .set({
+      leaseId: lease.id,
+      leaseHolder: lease.holder,
+      leaseExpiresAt: lease.expiresAt,
+      claimedGap: sql`${workItems.gap}`,
+    })
+    .where(inArray(workItems.id, next))
     .returning()
 }
 
-const staleColumns = {
-  entryId: worklist.entryId,
-  revision: worklist.revision,
-  claimedWork: worklist.claimedWork,
-  completed: sql<number>`${worklist.lastWorkedAt} is not null and ${worklist.claimedAt} is not null and ${worklist.lastWorkedAt} >= ${worklist.claimedAt}`,
-}
+const curationCursor = z.object({ rank: z.number().int(), zipf: z.number(), created_at: z.string(), id: z.string() })
+
+const staleColumns = { entryId: worklist.entryId, revision: worklist.revision }
 const isStale = ne(worklist.revision, worklist.scoredRevision)
-const toStale = (row: {
-  entryId: string
-  revision: number
-  claimedWork: string | null
-  completed: number
-}): StaleWork => ({
+const toStale = (row: { entryId: string; revision: number }): StaleWork => ({
   entryId: row.entryId as EntryId,
   revision: row.revision,
-  lastClaim: { openWork: row.claimedWork, completed: row.completed === 1 },
 })
 
 export function createWorkRepo(db: Db): WorkRepo {
-  const held = (lease: WorkLease, at: string) =>
-    and(eq(worklist.leaseId, lease.id), eq(worklist.leaseHolder, lease.holder), gt(worklist.leaseExpiresAt, at))
-
   return {
-    async claimNext(lease, now) {
-      const [row] = await claimStatement(db, lease, now)
-      if (!row) return null
-      const entry = await db.select().from(entries).where(eq(entries.id, row.entryId)).get()
-      if (!entry) throw new Error(`Leased entry ${row.entryId} does not exist.`)
-      return { lease: toLease(row as LeasedRow), entry: toEntry(entry) }
-    },
-
     async markSeed(entryId) {
       await db.update(worklist).set({ seed: true }).where(eq(worklist.entryId, entryId))
-    },
-
-    async findLease(id) {
-      const row = await db.select().from(worklist).where(eq(worklist.leaseId, id)).get()
-      return row ? toLease(row as LeasedRow) : null
-    },
-
-    async recordClaimedWork(lease, openWork) {
-      const rows = await db
-        .update(worklist)
-        .set({ claimedWork: openWork })
-        .where(eq(worklist.leaseId, lease.id))
-        .returning({ entryId: worklist.entryId })
-      if (rows.length === 0) throw new Error(`Lease ${lease.id} vanished right after its claim.`)
-    },
-
-    async complete(lease, at, note) {
-      const done = await db
-        .update(worklist)
-        .set({
-          lastWorkedAt: at,
-          lastWorkedBy: lease.holder,
-          lastNote: note,
-          ...bumpRevision,
-          leaseId: null,
-          leaseHolder: null,
-          leaseExpiresAt: null,
-        })
-        .where(held(lease, at))
-        .returning({ entryId: worklist.entryId })
-      return done.length > 0
     },
 
     async listStale(nodeIds) {
@@ -346,11 +331,185 @@ export function createWorkRepo(db: Db): WorkRepo {
       return row?.count ?? 0
     },
 
-    async saveScores(stale, scores) {
-      await db
+    async listItems(entryId) {
+      const rows = await db.select().from(workItems).where(eq(workItems.entryId, entryId))
+      return rows.map(toWorkItem)
+    },
+
+    async findItems(itemIds) {
+      if (itemIds.length === 0) return []
+      const rows = await db
+        .select()
+        .from(workItems)
+        .where(inArray(workItems.id, [...itemIds]))
+      return rows.map(toWorkItem)
+    },
+
+    async saveAssessment(stale, scores, { writes, deletes }) {
+      // One batch, each statement conditional on the revision the rescore read: a write that bumped
+      // it since leaves the scores and the items as they were, and its own rescore follows.
+      const current = exists(
+        db
+          .select({ one: sql`1` })
+          .from(worklist)
+          .where(and(eq(worklist.entryId, stale.entryId), eq(worklist.revision, stale.revision))),
+      )
+      const now = new Date().toISOString()
+      const rows = writes.map((write) => ({
+        ...write,
+        id: write.id ?? crypto.randomUUID(),
+        gap: JSON.stringify(write.gap),
+      }))
+      const field = (name: string) => sql`json_extract(value, ${`$.${name}`})`
+      const upsert = db
+        .insert(workItems)
+        .select(
+          db
+            .select({
+              id: field('id').as('id'),
+              entryId: sql`${stale.entryId}`.as('entry_id'),
+              type: field('type').as('type'),
+              subjectId: field('subjectId').as('subject_id'),
+              gap: field('gap').as('gap'),
+              stage: field('stage').as('stage'),
+              rank: field('rank').as('rank'),
+              zipfOrder: field('zipfOrder').as('zipf_order'),
+              awaiting: field('awaiting').as('awaiting'),
+              attempts: field('attempts').as('attempts'),
+              worked: field('worked').as('worked'),
+              claimedGap: sql`null`.as('claimed_gap'),
+              leaseId: sql`null`.as('lease_id'),
+              leaseHolder: sql`null`.as('lease_holder'),
+              leaseExpiresAt: sql`null`.as('lease_expires_at'),
+              lastWorkedAt: sql`null`.as('last_worked_at'),
+              lastWorkedBy: sql`null`.as('last_worked_by'),
+              lastNote: sql`null`.as('last_note'),
+              createdAt: sql`${now}`.as('created_at'),
+            })
+            .from(sql`json_each(${JSON.stringify(rows)})`)
+            .where(current),
+        )
+        .onConflictDoUpdate({
+          target: [workItems.type, workItems.subjectId],
+          set: {
+            gap: sql`excluded.gap`,
+            stage: sql`excluded.stage`,
+            rank: sql`excluded.rank`,
+            zipfOrder: sql`excluded.zipf_order`,
+            awaiting: sql`excluded.awaiting`,
+            attempts: sql`excluded.attempts`,
+            worked: sql`excluded.worked`,
+          },
+        })
+      const remove = db.delete(workItems).where(and(inArray(workItems.id, [...deletes]), current))
+      const score = db
         .update(worklist)
         .set({ ...scores, scoredRevision: stale.revision })
         .where(and(eq(worklist.entryId, stale.entryId), eq(worklist.revision, stale.revision)))
+      await db.batch([upsert, remove, score])
+    },
+
+    async claim(draft, types, limit, now) {
+      const [next] = await nextTypeStatement(db, types, now)
+      if (!next) return null
+      const type = workTypeSchema.parse(next.type)
+      const rows = await leaseStatement(db, { ...draft, type }, limit, now)
+      if (rows.length === 0) return null
+      const items = rows.map(toWorkItem)
+      const lease: WorkLease = {
+        ...draft,
+        type,
+        entryIds: [...new Set(items.map((item) => item.entryId))],
+        itemIds: items.map((item) => item.id),
+        claimedAt: now,
+      }
+      await db.insert(workLeases).values({
+        id: lease.id,
+        holder: lease.holder,
+        type: lease.type,
+        entryIds: JSON.stringify(lease.entryIds),
+        itemIds: JSON.stringify(lease.itemIds),
+        claimedAt: lease.claimedAt,
+        expiresAt: lease.expiresAt,
+      })
+      return { lease, items: items.sort((a, b) => compareQueue(a, b)) }
+    },
+
+    async findLease(id) {
+      const row = await db.select().from(workLeases).where(eq(workLeases.id, id)).get()
+      return row ? toLease(row) : null
+    },
+
+    async complete(lease, worked, at) {
+      // One batch, every statement conditional on the lease still being held: an expired lease
+      // changes nothing, and the delete that comes last says whether it was held.
+      const held = and(eq(workLeases.id, lease.id), eq(workLeases.holder, lease.holder), gt(workLeases.expiresAt, at))
+      const stillHeld = exists(db.select({ one: sql`1` }).from(workLeases).where(held))
+      const notes = JSON.stringify(worked.map((item) => ({ id: item.id, note: item.note ?? null })))
+      const markWorked = db
+        .update(workItems)
+        .set({
+          worked: true,
+          lastWorkedAt: at,
+          lastWorkedBy: lease.holder,
+          lastNote: sql`(select json_extract(value, '$.note') from json_each(${notes}) where json_extract(value, '$.id') = ${workItems.id})`,
+        })
+        .where(
+          and(
+            eq(workItems.leaseId, lease.id),
+            inArray(
+              workItems.id,
+              worked.map((item) => item.id),
+            ),
+            stillHeld,
+          ),
+        )
+      const release = db
+        .update(workItems)
+        .set({ leaseId: null, leaseHolder: null, leaseExpiresAt: null })
+        .where(and(eq(workItems.leaseId, lease.id), stillHeld))
+      const bump = db
+        .update(worklist)
+        .set({ ...bumpRevision, lastWorkedAt: at })
+        .where(and(inArray(worklist.entryId, [...lease.entryIds]), stillHeld))
+      const remove = db.delete(workLeases).where(held).returning({ id: workLeases.id })
+      const [, , , removed] = await db.batch([markWorked, release, bump, remove])
+      return removed.length > 0
+    },
+
+    async listCuration(type, request) {
+      const last = request.cursor ? decodeCursor(request.cursor, curationCursor) : undefined
+      const rows = await db
+        .select({ item: workItems, lemma: entries.lemma })
+        .from(workItems)
+        .innerJoin(entries, eq(entries.id, workItems.entryId))
+        .where(
+          and(
+            inCuration,
+            type ? eq(workItems.type, type) : undefined,
+            last
+              ? sql`(${workItems.rank}, -${workItems.zipfOrder}, ${workItems.createdAt}, ${workItems.id}) > (${last.rank}, ${-last.zipf}, ${last.created_at}, ${last.id})`
+              : undefined,
+          ),
+        )
+        .orderBy(...queueOrder)
+        .limit(request.limit + 1)
+      return page(
+        rows,
+        request.limit,
+        (row) => ({ ...toWorkItem(row.item), lemma: row.lemma as Lemma }),
+        (row) => ({ rank: row.item.rank, zipf: row.item.zipfOrder, created_at: row.item.createdAt, id: row.item.id }),
+      )
+    },
+
+    async purgeLeases(before) {
+      const rows = await db.delete(workLeases).where(lte(workLeases.expiresAt, before)).returning({ id: workLeases.id })
+      return rows.length
     },
   }
+}
+
+/** Queue order of two items: rank, then the more frequent entry, then the older item. */
+function compareQueue(a: WorkItem, b: WorkItem): number {
+  return a.rank - b.rank || b.zipfOrder - a.zipfOrder || a.id.localeCompare(b.id)
 }

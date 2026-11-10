@@ -8,7 +8,7 @@ import type {
   SenseSummary,
   WordSummary,
 } from '@shared/catalog'
-import type { FormType, MorphemeRole, Pos, SenseId, TopicId } from '@shared/facts'
+import type { FormType, MorphemeRole, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
 import { type CefrLevel, cefrLevelSchema } from '@shared/reference'
 import {
   type ByLanguage,
@@ -37,7 +37,10 @@ export interface PublicViewRecord {
   /** One per published form, shown or not, by its spelling, with the part of speech it is shown under. */
   forms: Array<{ form: string; type: FormType; pos: Pos | null }>
   /** One per published topic tag of a public sense, with where it sorts by level. */
-  taggedSenses: Array<{ topicId: TopicId; summary: StoredSenseSummary; levelOrder: number }>
+  /** `rare`: the sense is in the extra senses of the entry's sense list, so an entry listing by topic leaves it out. */
+  taggedSenses: Array<{ topicId: TopicId; summary: StoredSenseSummary; levelOrder: number; rare: boolean }>
+  /** One per broader term a public sense shows, with the sense's summary: the members walk of a category. */
+  hypernyms: Array<{ broaderSenseId: SenseId; domain: RelationDomain | null; summary: StoredSenseSummary }>
   /** One per distinct gloss, translation, and example of a public sense, as the search index stores it. */
   searchTexts: Array<{ field: SearchField; scope: string; body: string }>
   /** The words of a multiword lemma, so each word's entry finds it as a phrase. */
@@ -61,7 +64,13 @@ export interface ReadVariant {
   /** A served language tag, `all` for every language, or null for none. */
   lang: string | null
   review: boolean
+  /** A specialist taxonomy whose hypernyms the relations show beside the everyday layer; absent shows the everyday layer alone. */
+  domain?: RelationDomain
 }
+
+/** A related sense shows in the everyday layer, or in the domain layer the read asks for. */
+const inLayer = (item: { domain?: RelationDomain }, variant: ReadVariant) =>
+  item.domain === undefined || item.domain === variant.domain
 
 /** The roles a word family shares: the parts that carry the meaning. */
 export const STEM_ROLES: readonly MorphemeRole[] = ['base', 'root']
@@ -97,6 +106,19 @@ function searchTextsOf(document: StoredEntry): PublicViewRecord['searchTexts'] {
   return [...texts.values()]
 }
 
+const senseSummaryOf = (
+  document: StoredEntry,
+  meaning: StoredEntry['meanings'][number],
+  sense: StoredSense,
+): StoredSenseSummary => ({
+  lemma: document.lemma,
+  sense_id: sense.id,
+  pos: meaning.pos,
+  cefr: meaning.cefr,
+  gloss: sense.gloss,
+  translations: firstOfEach(sense.translations),
+})
+
 export function publicViewRecord(document: StoredEntry): PublicViewRecord {
   const parts = document.morphology?.parts ?? []
   return {
@@ -109,14 +131,17 @@ export function publicViewRecord(document: StoredEntry): PublicViewRecord {
         sense.topics.map((topic) => ({
           topicId: topic.id,
           levelOrder: levelOrder(meaning.cefr),
-          summary: {
-            lemma: document.lemma,
-            sense_id: sense.id,
-            pos: meaning.pos,
-            cefr: meaning.cefr,
-            gloss: sense.gloss,
-            translations: firstOfEach(sense.translations),
-          },
+          rare: sense.rare,
+          summary: senseSummaryOf(document, meaning, sense),
+        })),
+      ),
+    ),
+    hypernyms: document.meanings.flatMap((meaning) =>
+      meaning.senses.flatMap((sense) =>
+        sense.relations.broader.map((broader) => ({
+          broaderSenseId: broader.sense_id,
+          domain: broader.domain ?? null,
+          summary: senseSummaryOf(document, meaning, sense),
         })),
       ),
     ),
@@ -201,7 +226,7 @@ function shapeSense(sense: StoredSense, variant: ReadVariant): PublicSense {
   const relations = Object.fromEntries(
     Object.entries(sense.relations).map(([group, related]) => [
       group,
-      related.map((item) => withReview(item, variant)),
+      related.filter((item) => inLayer(item, variant)).map((item) => withReview(item, variant)),
     ]),
   ) as Relations
   return {

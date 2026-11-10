@@ -7,7 +7,7 @@ import {
 } from '@shared/catalog'
 import { factSchema, factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
-import { workClaimSchema, workRescoreResultSchema } from '@shared/work'
+import { gapSchema, workRescoreResultSchema } from '@shared/work'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { adminToken, call, deliverPendingReviews, importLearnerData, issueAgentKey, stubReviewers } from './helpers'
 
@@ -26,8 +26,13 @@ const settle = async () => {
   await deliverPendingReviews()
   reviewers.mockRestore()
 }
-const gapsOf = async (token: string) =>
-  workClaimSchema.parse((await call('/manage/v1/work/claim', { method: 'POST', token })).body)
+/** The gaps of the entry's stored work items, as its last rescore wrote them. */
+const gapsOf = async (entryId: string) =>
+  (
+    await env.DB.prepare('select gap from work_items where entry_id = ? order by rowid')
+      .bind(entryId)
+      .all<{ gap: string }>()
+  ).results.map((row) => gapSchema.parse(JSON.parse(row.gap)))
 const factOf = async (id: string) =>
   factSchema.parse((await call(`/manage/v1/facts/${id}`, { token: await adminToken() })).body)
 const errorOf = (body: unknown) => apiErrorSchema.parse(body).error
@@ -63,8 +68,8 @@ describe('completeness', () => {
       region: 'british',
     })
     await settle()
-    const before = await gapsOf(token)
-    expect(before.gaps).toContainEqual({ type: 'collocations', sense_id: sense.id })
+    const before = managedEntrySchema.parse((await call('/manage/v1/entries/May', { token })).body)
+    expect(await gapsOf(entry.id)).toContainEqual({ type: 'collocations', sense_id: sense.id })
     const onEntry = await submit(token, {
       kind: 'gap_closure',
       subject_id: entry.id,
@@ -76,12 +81,11 @@ describe('completeness', () => {
       subject_id: sense.id,
       payload: { gap: 'collocations', reason: 'A month name has no common collocations.' },
     })
-    await call(`/manage/v1/work/${before.lease.id}/complete`, { method: 'POST', token })
     await settle()
     expect(await factOf(closure.id)).toMatchObject({ status: 'published', review: { reviewer: 'llm' } })
     const after = managedEntrySchema.parse((await call('/manage/v1/entries/May', { token })).body)
-    expect(after.completeness).toBeGreaterThan(before.entry.completeness)
-    expect((await gapsOf(token)).gaps).not.toContainEqual({ type: 'collocations', sense_id: sense.id })
+    expect(after.completeness).toBeGreaterThan(before.completeness)
+    expect(await gapsOf(entry.id)).not.toContainEqual({ type: 'collocations', sense_id: sense.id })
     const view = publicEntrySchema.parse((await call('/v1/entries/May?include=review')).body)
     expect(view.review?.closures).toEqual([
       {
@@ -104,9 +108,7 @@ describe('completeness', () => {
     const { entry } = await createEntry(token, 'give')
     await createSense(token, { entry_id: entry.id, pos: 'verb', gloss: 'To hand something to someone.' })
     await settle()
-    const claim = await gapsOf(token)
-    expect(claim.gaps).toContainEqual({ type: 'phrases', have: [], need: 3 })
-    await call(`/manage/v1/work/${claim.lease.id}/complete`, { method: 'POST', token })
+    expect(await gapsOf(entry.id)).toContainEqual({ type: 'phrases', have: [], need: 3 })
     const row = () =>
       env.DB.prepare('select revision = scored_revision as fresh, completeness from worklist where entry_id = ?')
         .bind(entry.id)
