@@ -253,6 +253,7 @@ export const morphemeSchema = z
       .meta({ description: 'A short meaning, mainly for a Latin or Greek root: "look" for spect.' }),
   })
   .meta({ id: 'Morpheme' })
+export type Morpheme = z.infer<typeof morphemeSchema>
 
 const morphologyPayloadSchema = z.strictObject({
   parts: z.array(morphemeSchema).min(1).max(8).meta({

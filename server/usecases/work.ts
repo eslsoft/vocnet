@@ -45,7 +45,7 @@ export async function claimWork(
  * stalled the entry. The lease is gone afterwards, so a repeat is not found.
  */
 export async function completeWork(
-  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'publicViews' | 'clock'>,
+  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'publicViews' | 'topics' | 'clock'>,
   actor: Actor,
   id: WorkLeaseId,
   input: CompleteWorkInput,

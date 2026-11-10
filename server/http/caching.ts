@@ -1,3 +1,4 @@
+import type { ReadVariant } from '@server/domain/public-view'
 import type { Context } from 'hono'
 
 // HTTP caching of the public reads. A document read is one indexed lookup of a prebuilt view, so
@@ -16,8 +17,15 @@ export const DOCUMENT_CACHE = 'public, no-cache'
  */
 export const LIST_CACHE = 'public, max-age=5'
 
-/** A strong ETag over the digests of the entry documents a response is cut from. */
-export const etagOf = (digests: string[]) => `"${digests.join('.')}"`
+/**
+ * A strong ETag over the versions of what a response is cut from and the variant it asks for: the
+ * first 16 bytes of their SHA-256 in hex, so it changes exactly when the body of that variant can.
+ */
+export async function etagOf(versions: string[], variant: ReadVariant): Promise<string> {
+  const input = JSON.stringify([versions, variant.lang, variant.review])
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input)))
+  return `"${[...hash.subarray(0, 16)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}"`
+}
 
 /**
  * Sets the caching headers and answers 304 when the client's If-None-Match holds the ETag;

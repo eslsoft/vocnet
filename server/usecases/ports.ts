@@ -1,16 +1,27 @@
-import type { EntrySnapshot } from '@server/domain/catalog-view'
+import type { EntrySnapshot, StoredSenseSummary, StoredSummary } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
 import type { CefrListing, JevQuestions, LlmPrompt, Rereview } from '@server/domain/fact-kinds'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
-import type { PublicViewRecord } from '@server/domain/public-view'
+import type { EntryLinks, PublicViewRecord } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
 import type { LastClaim, WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
-import type { EntryRef, EntrySummary, Stats } from '@shared/catalog'
-import type { EntryId, FactId, FactKind, FactStatus, Pos, Review, SenseId, TopicId, Verdict } from '@shared/facts'
+import type { EntrySummary, Stats } from '@shared/catalog'
+import type {
+  EntryId,
+  FactId,
+  FactKind,
+  FactStatus,
+  FormType,
+  Pos,
+  Review,
+  SenseId,
+  TopicId,
+  Verdict,
+} from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
 import type { LemmaReference, ReferenceSource } from '@shared/reference'
 import type { WorkLeaseId } from '@shared/work'
@@ -130,14 +141,6 @@ export interface FactRepo {
   countByKindAndStatus(): Promise<Stats['facts']>
 }
 
-/** A published sense as a topic listing shows it. */
-export interface TaggedSense {
-  id: SenseId
-  lemma: Lemma
-  pos: Pos
-  gloss: string
-}
-
 export interface TopicRepo {
   /** Every category and leaf topic. */
   list(): Promise<TopicNode[]>
@@ -151,7 +154,7 @@ export interface StaleView {
   revision: number
 }
 
-/** An entry's public document as stored: the serialized DTO and a digest of it. */
+/** An entry's public document as stored: the serialized stored document and a digest of it. */
 export interface StoredView {
   json: string
   digest: string
@@ -165,18 +168,32 @@ export interface ViewLookup {
   view: StoredView | null
 }
 
+/** An entry's public view with what other entries' built views supply to it. */
+export interface EntryViewLookup extends ViewLookup {
+  links: EntryLinks
+}
+
+/** A built form row with the summary of the entry it belongs to. */
+export interface FormRow {
+  summary: StoredSummary
+  /** The digest of that entry's document. */
+  digest: string
+  type: FormType
+  pos: Pos | null
+}
+
 /** The public view: each entry's public document and the lookup rows derived from it. */
 export interface PublicViewRepo {
-  /** The view of the entry with exactly this lemma; null when no entry has it. */
-  findByLemma(lemma: Lemma): Promise<ViewLookup | null>
+  /** The view of the entry with exactly this lemma and its links; null when no entry has it. */
+  findByLemma(lemma: Lemma): Promise<EntryViewLookup | null>
   /** The view of the entry that owns this sense; null when no sense has the id. */
   findBySense(id: SenseId): Promise<ViewLookup | null>
-  /** Built views holding a form with one of these content keys, with the form's fact, in lemma then fact order. */
-  findForms(contentKeys: string[]): Promise<Array<{ view: StoredView; factId: FactId }>>
-  /** Built public entries whose lemma starts with prefix, in lemma order. */
-  listEntries(prefix: string, page: PageRequest): Promise<Page<EntryRef>>
+  /** Built form rows with one of these content keys, in lemma order. */
+  findForms(contentKeys: string[]): Promise<FormRow[]>
+  /** Summaries of the built public entries whose lemma starts with prefix, in lemma order. */
+  listEntries(prefix: string, page: PageRequest): Promise<Page<StoredSummary>>
   /** Built public senses tagged with one of these leaves, each once, in lemma then sense order. */
-  listTaggedSenses(leaves: readonly TopicId[], page: PageRequest): Promise<Page<TaggedSense>>
+  listTaggedSenses(leaves: readonly TopicId[], page: PageRequest): Promise<Page<StoredSenseSummary>>
   /** Stale views of the entries that are, or own as a sense, these nodes, or link to them by a relation. */
   listStale(nodeIds: string[]): Promise<StaleView[]>
   /** Up to `limit` stale views of any entry. */

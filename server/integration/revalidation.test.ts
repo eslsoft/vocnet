@@ -68,9 +68,10 @@ describe('revalidation', () => {
   it('re-reviews facts judged against a corrected gloss in place, keeping them public [spec: facts/revalidate-api]', async () => {
     const { example, incoming, unrelated } = await correctedRiverBank({ gloss: 'The sloping land beside a river.' })
     const before = await factOf(unrelated.id)
-    const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
-    expect(entry.senses[0]?.examples.map((item) => item.id)).toEqual([example.id])
-    expect(entry.senses[0]?.relations.map((item) => item.id)).toEqual([incoming.id])
+    const entry = publicEntrySchema.parse((await call('/v1/entries/bank?include=review')).body)
+    const [sense] = entry.meanings[0]?.senses ?? []
+    expect(sense?.examples.map((item) => item.review?.fact_id)).toEqual([example.id])
+    expect(sense?.relations.synonyms.map((item) => item.review?.fact_id)).toEqual([incoming.id])
 
     llmVerdict('pass')
     const result = await deliverReviews([example.id, incoming.id, unrelated.id, example.id])
@@ -92,8 +93,11 @@ describe('revalidation', () => {
     expect(await marks([example.id, incoming.id])).toEqual([null, null])
     expect((await factOf(correction.id)).status).toBe('published')
     expect((await factOf(river.fact.id)).status).toBe('superseded')
-    const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
-    expect(entry.senses[0]).toMatchObject({ register: 'literary', examples: [{ id: example.id }] })
+    const entry = publicEntrySchema.parse((await call('/v1/entries/bank?include=review')).body)
+    expect(entry.meanings[0]?.senses[0]).toMatchObject({
+      labels: ['literary'],
+      examples: [{ review: { fact_id: example.id } }],
+    })
   })
 
   it('rejects a dependent whose revalidation fails and hides it', async () => {
@@ -104,7 +108,7 @@ describe('revalidation', () => {
     expect(await factOf(example.id)).toMatchObject({ status: 'rejected', review: { verdict: 'fail' } })
     expect((await factOf(incoming.id)).status).toBe('published')
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
-    expect(entry.senses[0]?.examples).toEqual([])
+    expect(entry.meanings[0]?.senses[0]?.examples).toEqual([])
   })
 
   it('keeps dependents published and unmarked when the correction is retracted before they revalidate [spec: facts/revalidate-gloss-retracted]', async () => {

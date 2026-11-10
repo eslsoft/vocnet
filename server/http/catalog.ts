@@ -5,25 +5,34 @@ import { listReferenceSources } from '@server/usecases/reference'
 import {
   entryPageSchema,
   formLookupSchema,
+  includeQuerySchema,
+  langQuerySchema,
   lemmaInputSchema,
   publicEntrySchema,
-  publicSenseWithEntrySchema,
+  publicSenseDetailSchema,
 } from '@shared/catalog'
 import { senseIdSchema } from '@shared/facts'
 import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/feedback'
 import { referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
 import { etagOf, LIST_CACHE, notModified } from './caching'
+import { readVariant } from './language'
 import { createRouter, errorResponse, json, jsonBody, notModifiedResponse, pageQuery } from './router'
 
 const tags = ['Dictionary']
+
+const langQuery = z.object({ lang: langQuerySchema })
+const documentQuery = langQuery.extend({ include: includeQuerySchema })
+const LANGUAGE =
+  ' Translations and topic names are in the language of ?lang=, else of Accept-Language; the response says which in lang.'
 
 const listEntries = createRoute({
   method: 'get',
   path: '/entries',
   tags,
   summary: 'List published entries in lemma order',
-  request: { query: pageQuery.extend({ prefix: lemmaInputSchema.optional() }) },
+  description: `Each entry as a summary.${LANGUAGE}`,
+  request: { query: pageQuery.extend({ prefix: lemmaInputSchema.optional(), lang: langQuerySchema }) },
   responses: { 200: json(entryPageSchema, 'A page of entries.'), 400: errorResponse },
 })
 
@@ -34,8 +43,9 @@ const getEntry = createRoute({
   summary: 'Get an entry by its exact lemma',
   description:
     'Only published facts appear, and a relation appears only when both of its senses are published. ' +
+    `Senses are grouped into meanings, one per part of speech.${LANGUAGE} ` +
     'Served from the prebuilt public view with an ETag; send it as If-None-Match to get 304 while the entry is unchanged.',
-  request: { params: z.object({ lemma: lemmaInputSchema }) },
+  request: { params: z.object({ lemma: lemmaInputSchema }), query: documentQuery },
   responses: { 200: json(publicEntrySchema, 'The entry.'), 304: notModifiedResponse, 404: errorResponse },
 })
 
@@ -44,8 +54,8 @@ const getForm = createRoute({
   path: '/forms/{form}',
   tags,
   summary: 'Find the entries an inflected or variant form belongs to',
-  description: 'Exact match on published form facts. A form no entry claims is 404; there is no fuzzy fallback.',
-  request: { params: z.object({ form: lemmaInputSchema }) },
+  description: `Exact match on published form facts: each entry with the form as a summary with the forms that matched. A form no entry claims is 404; there is no fuzzy fallback.${LANGUAGE}`,
+  request: { params: z.object({ form: lemmaInputSchema }), query: langQuery },
   responses: { 200: json(formLookupSchema, 'Entries with this form.'), 304: notModifiedResponse, 404: errorResponse },
 })
 
@@ -54,9 +64,10 @@ const getSense = createRoute({
   path: '/senses/{id}',
   tags,
   summary: 'Get one sense with its entry',
-  request: { params: z.object({ id: senseIdSchema }) },
+  description: `The sense as the entry document shows it, with its part of speech and its entry as a summary.${LANGUAGE}`,
+  request: { params: z.object({ id: senseIdSchema }), query: documentQuery },
   responses: {
-    200: json(publicSenseWithEntrySchema, 'The sense.'),
+    200: json(publicSenseDetailSchema, 'The sense.'),
     304: notModifiedResponse,
     400: errorResponse,
     404: errorResponse,
@@ -90,23 +101,28 @@ const postFeedback = createRoute({
 
 export const publicRoutes = createRouter()
   .openapi(listEntries, async (c) => {
-    const { prefix, limit, cursor } = c.req.valid('query')
-    const page = await searchEntries(c.get('deps'), prefix ?? '', { limit, cursor })
+    const { prefix, limit, cursor, lang } = c.req.valid('query')
+    const variant = readVariant(c, { lang })
+    const page = await searchEntries(c.get('deps'), prefix ?? '', { limit, cursor }, variant)
     c.header('Cache-Control', LIST_CACHE)
-    return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
+    return c.json({ lang: variant.lang, items: page.items, next_cursor: page.nextCursor }, 200)
   })
   .openapi(getEntry, async (c) => {
-    const view = await getPublicEntry(c.get('deps'), c.req.valid('param').lemma)
-    // The stored document is the serialized DTO, so it is sent as stored.
-    return notModified(c, etagOf([view.digest])) ?? c.body(view.json, 200, { 'Content-Type': 'application/json' })
+    const variant = readVariant(c, c.req.valid('query'))
+    const entry = await getPublicEntry(c.get('deps'), c.req.valid('param').lemma, variant)
+    return notModified(c, await etagOf(entry.versions, variant)) ?? c.json(entry.read(), 200)
   })
   .openapi(getForm, async (c) => {
-    const { matches, digests } = await lookupForm(c.get('deps'), c.req.valid('param').form)
-    return notModified(c, etagOf(digests)) ?? c.json({ items: matches }, 200)
+    const variant = readVariant(c, c.req.valid('query'))
+    const found = await lookupForm(c.get('deps'), c.req.valid('param').form, variant)
+    return (
+      notModified(c, await etagOf(found.versions, variant)) ?? c.json({ lang: variant.lang, items: found.read() }, 200)
+    )
   })
   .openapi(getSense, async (c) => {
-    const { sense, digest } = await getPublicSense(c.get('deps'), c.req.valid('param').id)
-    return notModified(c, etagOf([digest])) ?? c.json(sense, 200)
+    const variant = readVariant(c, c.req.valid('query'))
+    const sense = await getPublicSense(c.get('deps'), c.req.valid('param').id, variant)
+    return notModified(c, await etagOf(sense.versions, variant)) ?? c.json(sense.read(), 200)
   })
   .openapi(listSources, async (c) => c.json({ items: await listReferenceSources(c.get('deps')) }, 200))
   .openapi(postFeedback, async (c) => {

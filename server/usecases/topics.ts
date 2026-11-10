@@ -1,9 +1,11 @@
+import { type ReadVariant, shapeSenseSummary } from '@server/domain/public-view'
 import { leavesUnder, topicTree } from '@server/domain/topics'
+import type { SenseSummary } from '@shared/catalog'
 import type { TopicId } from '@shared/facts'
 import type { TopicTree } from '@shared/topics'
 import type { Deps } from './deps'
 import { NotFoundError } from './errors'
-import type { Page, PageRequest, TaggedSense } from './ports'
+import type { Page, PageRequest } from './ports'
 
 export async function getTopicTree(deps: Pick<Deps, 'topics'>): Promise<TopicTree> {
   return topicTree(await deps.topics.list())
@@ -17,9 +19,11 @@ export async function listTopicSenses(
   deps: Pick<Deps, 'topics' | 'publicViews'>,
   id: TopicId,
   page: PageRequest,
-): Promise<Page<TaggedSense>> {
+  variant: ReadVariant,
+): Promise<Page<SenseSummary>> {
   const nodes = await deps.topics.list()
   const topic = nodes.find((node) => node.id === id)
   if (!topic) throw new NotFoundError(`No topic has the id ${id}.`)
-  return deps.publicViews.listTaggedSenses(leavesUnder(topic, nodes), page)
+  const found = await deps.publicViews.listTaggedSenses(leavesUnder(topic, nodes), page)
+  return { ...found, items: found.items.map((summary) => shapeSenseSummary(summary, variant)) }
 }

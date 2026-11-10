@@ -1,7 +1,15 @@
-import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, SenseId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Pos, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { type EntrySnapshot, factMeta, projectPublicEntry, projectPublicSense, publicFactIds } from './catalog-view'
+import {
+  type EntrySnapshot,
+  type ProjectionContext,
+  projectPublicEntry,
+  publicFactIds,
+  reviewOf,
+  type StoredEntry,
+} from './catalog-view'
 import type { Fact, FactOf } from './fact'
+import { formClasses } from './fact-kinds'
 import type { EntryNode, SenseWithLemma } from './nodes'
 import type { Lemma } from './term'
 
@@ -15,10 +23,10 @@ const entry = (lemma: string): EntryNode => ({
   createdBy: 'agent:a',
   createdAt: at,
 })
-const sense = (of: EntryNode): SenseWithLemma => ({
+const sense = (of: EntryNode, pos: Pos = 'noun'): SenseWithLemma => ({
   id: id<SenseId>(),
   entryId: of.id,
-  pos: 'noun',
+  pos,
   lemma: of.lemma,
   createdBy: 'agent:a',
   createdAt: at,
@@ -90,6 +98,23 @@ function bankWorld() {
   return { bank, shore, bankSense, shoreSense, snapshot, neighborFacts }
 }
 
+const context: ProjectionContext = {
+  reference: { frequency: null, cefr: [] },
+  topicNames: new Map([['kitchen' as TopicId, { en: 'In the kitchen', zh: '厨房' }]]),
+}
+const project = (snapshot: EntrySnapshot, with_: Partial<ProjectionContext> = {}) =>
+  projectPublicEntry(snapshot, { ...context, ...with_ })
+const review = (of: Fact) => ({ fact_id: of.id, confidence: 0.6, verdict: 'uncertain' })
+const senses = (view: StoredEntry | null) => view?.meanings.flatMap((meaning) => meaning.senses) ?? []
+const firstSense = (view: StoredEntry | null) => senses(view)[0]
+
+/** Another entry with one published noun sense, for relations. */
+function neighbor(lemma: string, gloss: string, pos: Pos = 'noun') {
+  const node = entry(lemma)
+  const one = sense(node, pos)
+  return { node, sense: one, facts: [fact('entry', node.id, {}), fact('sense', one.id, { gloss })] }
+}
+
 describe('public read model', () => {
   it('shows published grammar, word formation, and collocations [spec: catalog/usage-facts]', () => {
     const { snapshot, bank, bankSense } = bankWorld()
@@ -107,89 +132,235 @@ describe('public read model', () => {
         fact('collocation', bankSense.id, { text: 'steep bank', pattern: 'adjective_noun' }, 'rejected'),
       ],
     }
-    const meta = { confidence: 0.6, verdict: 'uncertain' }
-    const view = projectPublicEntry(usage)
-    expect(view?.morphology).toEqual({ id: morphology.id, ...meta, parts: [{ form: 'bank', role: 'base' }] })
-    expect(view?.senses[0]?.grammar).toEqual({ id: grammar.id, ...meta, countability: 'countable' })
-    expect(view?.senses[0]?.collocations).toEqual([
-      { id: collocation.id, ...meta, text: 'river bank', pattern: 'noun_noun' },
+    const view = project(usage)
+    expect(view?.morphology).toEqual({ parts: [{ form: 'bank', role: 'base' }], review: review(morphology) })
+    expect(firstSense(view)?.grammar).toEqual({
+      countability: 'countable',
+      patterns: [],
+      prepositions: [],
+      review: review(grammar),
+    })
+    expect(firstSense(view)?.collocations).toEqual([
+      { text: 'river bank', pattern: 'noun_noun', review: review(collocation) },
     ])
     const ids = view ? publicFactIds(view) : new Set()
     expect([morphology.id, grammar.id, collocation.id].every((factId) => ids.has(factId))).toBe(true)
-    const bare = projectPublicEntry(snapshot)
-    expect([bare?.morphology, bare?.senses[0]?.grammar, bare?.senses[0]?.collocations]).toEqual([null, null, []])
+    const bare = project(snapshot)
+    expect([bare?.morphology, firstSense(bare)?.grammar, firstSense(bare)?.collocations]).toEqual([null, null, []])
   })
 
-  it('orders senses by the published sense list, common first, and marks each [spec: catalog/sense-order]', () => {
+  it('groups senses into meanings in sense-list order, rare after common [spec: catalog/sense-order]', () => {
     const { snapshot, bank, bankSense } = bankWorld()
-    const [money, oars, added] = [sense(bank), sense(bank), sense(bank)]
+    const [money, rely, oars, added] = [sense(bank), sense(bank, 'verb'), sense(bank), sense(bank, 'adjective')]
     const glossed = [
       fact('sense', money.id, { gloss: 'An institution that keeps money.' }),
+      fact('sense', rely.id, { gloss: 'To rely on.' }),
       fact('sense', oars.id, { gloss: 'A row of oars.' }),
-      fact('sense', added.id, { gloss: 'A slope of land.' }),
+      fact('sense', added.id, { gloss: 'Of a bank.' }),
     ]
-    const published = fact('sense_list', bank.id, { common: [money.id, bankSense.id], extra: [oars.id] })
+    // A list may still name a sense whose gloss was since retracted: it is not shown.
+    const gone = id<SenseId>()
+    const published = fact('sense_list', bank.id, { common: [rely.id, money.id, gone, bankSense.id], extra: [oars.id] })
     const pending = fact('sense_list', bank.id, { common: [bankSense.id], extra: [] }, 'pending')
     const listed: EntrySnapshot = {
       ...snapshot,
-      senses: [bankSense, added, oars, money],
+      senses: [bankSense, added, oars, money, rely],
       facts: [...snapshot.facts, ...glossed, published, pending],
     }
-    const view = projectPublicEntry(listed)
-    expect(view?.senses.map((one) => [one.id, one.common])).toEqual([
-      [money.id, true],
-      [bankSense.id, true],
-      [oars.id, false],
-      [added.id, null],
-    ])
-    expect(view?.sense_list).toEqual({ id: published.id, confidence: 0.6, verdict: 'uncertain' })
-    expect(view ? publicFactIds(view).has(published.id) : false).toBe(true)
-    const unlisted = projectPublicEntry({ ...listed, facts: [...snapshot.facts, ...glossed, pending] })
-    expect(unlisted?.sense_list).toBeNull()
-    expect(unlisted?.senses.map((one) => [one.id, one.common])).toEqual([
-      [bankSense.id, null],
-      [added.id, null],
-      [oars.id, null],
-      [money.id, null],
-    ])
-  })
-
-  it('shows only published facts, each with its id, confidence, and verdict [spec: catalog/visibility]', () => {
-    const { snapshot, bankSense, shoreSense } = bankWorld()
-    const view = projectPublicEntry(snapshot)
-    expect(view?.forms.map((form) => form.form)).toEqual(['banks'])
-    expect(view?.pronunciations).toEqual([
-      expect.objectContaining({ ipa: 'bæŋk', confidence: 0.6, verdict: 'uncertain' }),
-    ])
-    expect(view?.senses).toHaveLength(1)
-    const [only] = view?.senses ?? []
-    expect(only).toMatchObject({ id: bankSense.id, gloss: 'land beside a river', fact: { verdict: 'uncertain' } })
-    expect(only?.examples.map((example) => example.text)).toEqual(['We sat on the bank.'])
-    expect(only?.translations).toEqual([expect.objectContaining({ language: 'fr', text: 'rive' })])
-    expect(only?.relations).toEqual([
-      expect.objectContaining({
-        type: 'synonym',
-        direction: 'outgoing',
-        sense: { id: shoreSense.id, lemma: 'shore', pos: 'noun', gloss: 'land along water' },
-      }),
-    ])
-  })
-
-  it('shows the register, form POS, and pronunciation strength and POS a fact carries [spec: facts/write-labels]', () => {
-    const { snapshot, bank, bankSense } = bankWorld()
-    const labelled: EntrySnapshot = {
-      ...snapshot,
-      facts: [
-        fact('entry', bank.id, {}),
-        fact('sense', bankSense.id, { gloss: 'To rely on.', register: 'informal' }),
-        fact('form', bank.id, { form: 'banked', type: 'past', pos: 'verb' }),
-        fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'us', strength: 'strong', pos: 'verb' }),
+    const view = project(listed)
+    expect(view?.meanings.map((meaning) => [meaning.pos, meaning.senses.map((one) => [one.id, one.rare])])).toEqual([
+      ['verb', [[rely.id, false]]],
+      [
+        'noun',
+        [
+          [money.id, false],
+          [bankSense.id, false],
+          [oars.id, true],
+        ],
       ],
+      ['adjective', [[added.id, false]]],
+    ])
+    expect(view?.review.sense_list).toEqual(review(published))
+    expect(view ? publicFactIds(view).has(published.id) : false).toBe(true)
+    const unlisted = project({ ...listed, facts: [...snapshot.facts, ...glossed, pending] })
+    expect(unlisted?.review.sense_list).toBeNull()
+    expect(unlisted?.meanings.map((meaning) => meaning.pos)).toEqual(['noun', 'adjective', 'verb'])
+    expect(senses(unlisted).map((one) => one.rare)).toEqual([false, false, false, false, false])
+  })
+
+  it('shows only published facts, each with its review [spec: catalog/visibility]', () => {
+    const { snapshot, bank, bankSense, shoreSense } = bankWorld()
+    const view = project(snapshot)
+    expect(view?.meanings[0]?.forms).toEqual({ plural: ['banks'] })
+    expect(view?.variants).toEqual([])
+    expect(view?.pronunciations).toEqual([
+      { ipa: 'bæŋk', accent: 'us', review: expect.objectContaining({ verdict: 'uncertain' }) },
+    ])
+    expect(senses(view)).toHaveLength(1)
+    const only = firstSense(view)
+    expect(only).toMatchObject({ id: bankSense.id, gloss: 'land beside a river', labels: [], rare: false })
+    expect(only?.review.gloss).toMatchObject({ verdict: 'uncertain', confidence: 0.6 })
+    expect(only?.examples.map((example) => example.text)).toEqual(['We sat on the bank.'])
+    expect(only?.translations).toEqual({ fr: ['rive'] })
+    expect(only?.relations.synonyms).toEqual([
+      expect.objectContaining({ lemma: 'shore', sense_id: shoreSense.id, gloss: 'land along water' }),
+    ])
+    const entryFact = snapshot.facts.find((one) => one.kind === 'entry') as Fact
+    expect(view?.review.entry).toEqual(review(entryFact))
+    expect(view?.id).toBe(bank.id)
+  })
+
+  it('splits pronunciations, forms, variants, and labels the way a learner reads them [spec: catalog/meaning-shape] [spec: facts/write-labels]', () => {
+    const { snapshot, bank, bankSense } = bankWorld()
+    const tilt = sense(bank, 'verb')
+    const neat = sense(bank, 'adjective')
+    const facts = [
+      fact('entry', bank.id, {}),
+      fact('sense', bankSense.id, { gloss: 'Land beside a river.' }),
+      fact('sense', tilt.id, { gloss: 'To tilt an aircraft.', register: 'technical' }),
+      fact('sense', neat.id, { gloss: 'Neat.', register: 'informal' }),
+      fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'us' }),
+      fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'uk', strength: 'weak' }),
+      fact('pronunciation', bank.id, { ipa: 'bɛŋk', accent: 'us', pos: 'verb' }),
+      fact('pronunciation', bank.id, { ipa: 'bɑŋk', accent: 'us', pos: 'adverb' }),
+      fact('form', bank.id, { form: 'banks', type: 'plural' }),
+      fact('form', bank.id, { form: 'banked', type: 'past' }),
+      fact('form', bank.id, { form: 'bankt', type: 'past', pos: 'verb' }),
+      fact('form', bank.id, { form: 'banker', type: 'comparative' }),
+      fact('form', bank.id, { form: 'banka', type: 'plural', pos: 'pronoun' }),
+      fact('form', bank.id, { form: 'banque', type: 'variant' }),
+      fact('form', bank.id, { form: 'bancque', type: 'variant', pos: 'noun' }),
+    ]
+    const view = project({ ...snapshot, senses: [bankSense, tilt, neat], facts })
+    expect(view?.pronunciations.map(({ ipa, accent, strength }) => ({ ipa, accent, strength }))).toEqual([
+      { ipa: 'bæŋk', accent: 'us', strength: undefined },
+      { ipa: 'bæŋk', accent: 'uk', strength: 'weak' },
+    ])
+    const [noun, verb, adjective] = view?.meanings ?? []
+    expect(noun?.pronunciations).toEqual([])
+    expect(verb?.pronunciations).toEqual([{ ipa: 'bɛŋk', accent: 'us', review: expect.anything() }])
+    expect([noun?.forms, verb?.forms, adjective?.forms]).toEqual([
+      { plural: ['banks'] },
+      { past: ['banked', 'bankt'] },
+      { comparative: ['banker'] },
+    ])
+    expect(verb?.review.forms.past).toHaveLength(2)
+    expect(view?.variants.map(({ form, pos }) => ({ form, pos }))).toEqual([
+      { form: 'banque', pos: undefined },
+      { form: 'bancque', pos: 'noun' },
+    ])
+    expect(senses(view).map((one) => one.labels)).toEqual([[], ['technical'], ['informal']])
+    // A form or pronunciation of a part of speech no public sense has is not shown, nor public.
+    const hidden = facts.filter((one) =>
+      ['bɑŋk', 'banka'].includes(
+        (one.payload as { ipa?: string; form?: string }).ipa ?? (one.payload as { form?: string }).form ?? '',
+      ),
+    )
+    const ids = view ? publicFactIds(view) : new Set()
+    expect(hidden.map((one) => ids.has(one.id))).toEqual([false, false])
+  })
+
+  it('groups relations by what they say about each end [spec: catalog/relation-groups]', () => {
+    const { snapshot, bank, bankSense } = bankWorld()
+    const others = {
+      shore: neighbor('shore', 'Land along water.'),
+      sea: neighbor('sea', 'Open water.'),
+      land: neighbor('land', 'Ground.'),
+      edge: neighbor('edge', 'A border.'),
+      river: neighbor('river', 'Flowing water.'),
+      mud: neighbor('mud', 'Wet earth.'),
+      dune: neighbor('dune', 'A hill of sand.'),
     }
-    const view = projectPublicEntry(labelled)
-    expect(view?.senses[0]).toMatchObject({ gloss: 'To rely on.', register: 'informal' })
-    expect(view?.forms).toEqual([expect.objectContaining({ form: 'banked', type: 'past', pos: 'verb' })])
-    expect(view?.pronunciations).toEqual([expect.objectContaining({ ipa: 'bæŋk', strength: 'strong', pos: 'verb' })])
+    const relation = (type: FactPayloads['relation']['type'], from: SenseId, to: SenseId) =>
+      fact('relation', from, { type, target_sense_id: to })
+    const outgoing = [
+      relation('synonym', bankSense.id, others.shore.sense.id),
+      relation('hypernym', bankSense.id, others.land.sense.id),
+      relation('part_of', bankSense.id, others.river.sense.id),
+    ]
+    const incoming = [
+      relation('antonym', others.sea.sense.id, bankSense.id),
+      relation('hypernym', others.dune.sense.id, bankSense.id),
+      relation('part_of', others.edge.sense.id, bankSense.id),
+      relation('synonym', others.mud.sense.id, bankSense.id),
+    ]
+    const all = Object.values(others)
+    const view = project({
+      ...snapshot,
+      facts: [fact('entry', bank.id, {}), fact('sense', bankSense.id, { gloss: 'Land beside a river.' }), ...outgoing],
+      incoming,
+      neighbors: { senses: all.map((one) => one.sense), facts: all.flatMap((one) => one.facts) },
+    })
+    const lemmas = Object.fromEntries(
+      Object.entries(firstSense(view)?.relations ?? {}).map(([group, related]) => [
+        group,
+        related.map((one) => one.lemma),
+      ]),
+    )
+    expect(lemmas).toEqual({
+      synonyms: ['shore', 'mud'],
+      antonyms: ['sea'],
+      broader: ['land'],
+      narrower: ['dune'],
+      part_of: ['river'],
+      parts: ['edge'],
+    })
+    expect(firstSense(view)?.relations.broader).toEqual([
+      { lemma: 'land', sense_id: others.land.sense.id, gloss: 'Ground.', review: review(outgoing[1] as Fact) },
+    ])
+  })
+
+  it('keeps every language and names each topic, with the first translation in the summary', () => {
+    const { snapshot, bankSense } = bankWorld()
+    const facts = [
+      ...snapshot.facts,
+      fact('translation', bankSense.id, { language: 'zh', text: '河岸' }),
+      fact('translation', bankSense.id, { language: 'zh', text: '岸' }),
+      fact('topic', bankSense.id, { topic_id: 'kitchen' as TopicId }),
+    ]
+    const view = project(
+      { ...snapshot, facts },
+      {
+        reference: {
+          frequency: { zipf: 5, rank: 900, source_id: 'freq' },
+          cefr: [
+            { pos: 'noun', level: 'B1', source_id: 'c' },
+            { pos: 'verb', level: 'A2', source_id: 'c' },
+            { pos: 'adverb', level: 'C1', source_id: 'c' },
+          ],
+        },
+      },
+    )
+    expect(firstSense(view)?.translations).toEqual({ fr: ['rive'], zh: ['河岸', '岸'] })
+    expect(firstSense(view)?.review.translations.zh).toHaveLength(2)
+    expect(firstSense(view)?.topics).toEqual([
+      { id: 'kitchen', name: { en: 'In the kitchen', zh: '厨房' }, review: expect.anything() },
+    ])
+    expect(view?.frequency).toEqual({ zipf: 5, rank: 900 })
+    expect(view?.meanings[0]?.cefr).toBe('B1')
+    expect(view?.summary).toEqual({
+      lemma: 'bank',
+      pos: ['noun'],
+      cefr: 'A2',
+      gloss: 'land beside a river',
+      translations: { fr: 'rive', zh: '河岸' },
+    })
+    expect(() => project({ ...snapshot, facts }, { topicNames: new Map() })).toThrow('does not exist')
+  })
+
+  it('summarizes an entry without public senses', () => {
+    const { bank } = bankWorld()
+    const view = project({
+      entry: bank,
+      flagged: new Set(),
+      seed: false,
+      senses: [],
+      facts: [fact('entry', bank.id, {})],
+      incoming: [],
+      neighbors: { senses: [], facts: [] },
+    })
+    expect(view?.meanings).toEqual([])
+    expect(view?.summary).toEqual({ lemma: 'bank', pos: [], cefr: null, gloss: null, translations: {} })
   })
 
   it('hides an entry whose entry fact is not published', () => {
@@ -198,7 +369,7 @@ describe('public read model', () => {
       ...snapshot,
       facts: snapshot.facts.map((f) => (f.kind === 'entry' ? { ...f, status: 'pending' as const } : f)),
     }
-    expect(projectPublicEntry(hidden)).toBeNull()
+    expect(project(hidden)).toBeNull()
   })
 
   it('hides a relation until both endpoint senses and their entries are published [spec: catalog/relation-visibility]', () => {
@@ -210,13 +381,13 @@ describe('public read model', () => {
         facts: neighborFacts.map((f) => (f.kind === kind ? { ...f, status: 'pending' as const } : f)),
       },
     })
-    expect(projectPublicEntry(unpublish('entry'))?.senses[0]?.relations).toEqual([])
-    expect(projectPublicEntry(unpublish('sense'))?.senses[0]?.relations).toEqual([])
+    expect(firstSense(project(unpublish('entry')))?.relations.synonyms).toEqual([])
+    expect(firstSense(project(unpublish('sense')))?.relations.synonyms).toEqual([])
     const unknownTarget = { ...snapshot, neighbors: { senses: [], facts: [] } }
-    expect(projectPublicEntry(unknownTarget)?.senses[0]?.relations).toEqual([])
+    expect(firstSense(project(unknownTarget))?.relations.synonyms).toEqual([])
   })
 
-  it('shows relations pointing at a sense as incoming', () => {
+  it('shows a relation pointing at a sense from its other end', () => {
     const { shore, shoreSense, bankSense, snapshot } = bankWorld()
     const relation = snapshot.facts.find((f) => f.kind === 'relation') as Fact
     const fromShore: EntrySnapshot = {
@@ -231,24 +402,22 @@ describe('public read model', () => {
         facts: snapshot.facts.filter((f) => f.kind === 'entry' || f.kind === 'sense'),
       },
     }
-    expect(projectPublicEntry(fromShore)?.senses[0]?.relations).toEqual([
-      expect.objectContaining({ direction: 'incoming', sense: expect.objectContaining({ lemma: 'bank' }) }),
+    expect(firstSense(project(fromShore))?.relations.synonyms).toEqual([
+      expect.objectContaining({ lemma: 'bank', sense_id: bankSense.id }),
     ])
     const hiddenSource = { ...fromShore, neighbors: { senses: [bankSense], facts: [] } }
-    expect(projectPublicEntry(hiddenSource)?.senses[0]?.relations).toEqual([])
+    expect(firstSense(project(hiddenSource))?.relations.synonyms).toEqual([])
   })
 
-  it('projects one sense with its entry, or nothing when hidden', () => {
-    const { snapshot, bankSense, bank } = bankWorld()
-    expect(projectPublicSense(snapshot, bankSense.id)).toMatchObject({
-      id: bankSense.id,
-      entry: { id: bank.id, lemma: 'bank' },
-    })
-    expect(projectPublicSense(snapshot, id<SenseId>())).toBeNull()
+  it('places a form under the parts of speech of its label or type', () => {
+    expect(formClasses('plural', undefined)).toEqual(['noun'])
+    expect(formClasses('comparative', undefined)).toEqual(['adjective', 'adverb'])
+    expect(formClasses('past', 'auxiliary')).toEqual(['auxiliary'])
+    expect(formClasses('variant', undefined)).toEqual([])
   })
 
-  it('refuses the meta of unreviewed facts', () => {
+  it('refuses the review of unreviewed facts', () => {
     const { bank } = bankWorld()
-    expect(() => factMeta(fact('form', bank.id, { form: 'x', type: 'plural' }, 'pending'))).toThrow('not a reviewed')
+    expect(() => reviewOf(fact('form', bank.id, { form: 'x', type: 'plural' }, 'pending'))).toThrow('not a reviewed')
   })
 })

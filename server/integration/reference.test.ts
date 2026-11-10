@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test'
 import { referenceImportSql } from '@server/adapters/reference-sql'
 import type { CefrRow } from '@server/domain/reference'
 import type { Lemma } from '@server/domain/term'
-import { createEntryResultSchema, managedEntryDetailSchema, publicEntrySchema } from '@shared/catalog'
+import { createEntryResultSchema, entryPageSchema, managedEntryDetailSchema, publicEntrySchema } from '@shared/catalog'
 import { type ReferenceSource, referenceSourceListSchema } from '@shared/reference'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { adminToken, call, deliverPendingReviews, importReference, issueAgentKey, stubReviewers } from './helpers'
@@ -40,12 +40,17 @@ const fixture = {
   ],
 }
 
-async function publishEntries(...lemmas: string[]) {
+/** Publishes each entry with a sense of each part of speech, so its meanings show their CEFR levels. */
+async function publishEntries(entries: Record<string, Array<CefrRow['pos']>>) {
   const token = await issueAgentKey()
-  for (const value of lemmas) {
-    createEntryResultSchema.parse(
+  for (const [value, kinds] of Object.entries(entries)) {
+    const { entry } = createEntryResultSchema.parse(
       (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: value } })).body,
     )
+    for (const pos of kinds) {
+      const gloss = `A ${pos} sense of ${value}.`
+      await call('/manage/v1/senses', { method: 'POST', token, json: { entry_id: entry.id, pos, gloss } })
+    }
   }
   stubReviewers()
   await deliverPendingReviews()
@@ -57,28 +62,35 @@ describe('reference data', () => {
 
   it('joins CEFR by exact lemma and frequency by word form into entries [spec: reference/entry-read]', async () => {
     await importReference(fixture)
-    const token = await publishEntries('bank', 'Bank', 'shore')
+    const token = await publishEntries({ bank: ['noun', 'verb'], Bank: ['noun'], shore: ['noun'] })
 
-    const expected = {
+    const managedBank = await call('/manage/v1/entries/bank', { token })
+    expect(managedEntryDetailSchema.parse(managedBank.body)).toMatchObject({
       frequency: { zipf: 5.16, rank: 691, source_id: 'freq' },
       cefr: [
         { pos: 'noun', level: 'A1', source_id: 'profile-a' },
         { pos: 'verb', level: 'C1', source_id: 'profile-b' },
       ],
-    }
-    const publicBank = await call('/v1/entries/bank')
-    expect(publicBank.status).toBe(200)
-    expect(publicEntrySchema.parse(publicBank.body)).toMatchObject(expected)
-    const managedBank = await call('/manage/v1/entries/bank', { token })
-    expect(managedEntryDetailSchema.parse(managedBank.body)).toMatchObject(expected)
-
-    const capitalized = publicEntrySchema.parse((await call('/v1/entries/Bank')).body)
-    expect(capitalized).toMatchObject({
-      frequency: expected.frequency,
-      cefr: [{ pos: 'noun', level: 'C2', source_id: 'profile-b' }],
     })
-    const shore = publicEntrySchema.parse((await call('/v1/entries/shore')).body)
-    expect(shore).toMatchObject({ frequency: null, cefr: [] })
+    const levels = async (lemma: string) => {
+      const entry = publicEntrySchema.parse((await call(`/v1/entries/${lemma}`)).body)
+      return { frequency: entry.frequency, cefr: entry.meanings.map((meaning) => [meaning.pos, meaning.cefr]) }
+    }
+    expect(await levels('bank')).toEqual({
+      frequency: { zipf: 5.16, rank: 691 },
+      cefr: [
+        ['noun', 'A1'],
+        ['verb', 'C1'],
+      ],
+    })
+    expect(await levels('Bank')).toEqual({ frequency: { zipf: 5.16, rank: 691 }, cefr: [['noun', 'C2']] })
+    expect(await levels('shore')).toEqual({ frequency: null, cefr: [['noun', null]] })
+    const summaries = entryPageSchema.parse((await call('/v1/entries')).body).items
+    expect(summaries.map((summary) => [summary.lemma, summary.cefr])).toEqual([
+      ['Bank', 'C2'],
+      ['bank', 'A1'],
+      ['shore', null],
+    ])
     expect((await call('/v1/entries/BANK')).status).toBe(404)
   })
 
@@ -107,12 +119,13 @@ describe('reference data', () => {
       frequency: { sourceId: 'freq', rows: [{ word: 'bank', zipf: 5.2, rank: 680 }] },
       cefr: [cefr('bank', 'noun', 'A2', 'profile-a')],
     })
-    await publishEntries('bank')
+    await publishEntries({ bank: ['noun', 'verb'] })
     const bank = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
-    expect(bank).toMatchObject({
-      frequency: { zipf: 5.2, rank: 680, source_id: 'freq' },
-      cefr: [{ pos: 'noun', level: 'A2', source_id: 'profile-a' }],
-    })
+    expect(bank.frequency).toEqual({ zipf: 5.2, rank: 680 })
+    expect(bank.meanings.map((meaning) => [meaning.pos, meaning.cefr])).toEqual([
+      ['noun', 'A2'],
+      ['verb', null],
+    ])
     const sources = referenceSourceListSchema.parse((await call('/v1/sources')).body)
     expect(sources.items.map(({ id, version }) => `${id}@${version}`)).toEqual(['freq@2.0', 'profile-a@1.0'])
   })

@@ -235,7 +235,7 @@ export function listFacts(
 
 /** Withdraws a pending or published fact. Agents retract only their own facts. */
 export async function retractFact(
-  deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'reference' | 'publicViews' | 'clock'>,
+  deps: Pick<Deps, 'facts' | 'nodes' | 'topics' | 'work' | 'reference' | 'publicViews' | 'clock'>,
   actor: Actor,
   id: FactId,
 ): Promise<Fact> {
@@ -260,7 +260,7 @@ export async function retractFact(
  * the write, as a submission's is.
  */
 export async function rereviewFact(
-  deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'reference' | 'publicViews' | 'reviewQueue' | 'clock'>,
+  deps: Pick<Deps, 'facts' | 'nodes' | 'topics' | 'work' | 'reference' | 'publicViews' | 'reviewQueue' | 'clock'>,
   actor: Actor,
   id: FactId,
 ): Promise<Fact> {

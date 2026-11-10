@@ -302,7 +302,7 @@ describe('reviewFact', () => {
     expect((await getFact(world.deps, gloss.id)).status).toBe('superseded')
     expect((await getFact(world.deps, correction.id)).status).toBe('published')
     const entry = await publicEntryOf(world.deps, 'bank')
-    expect(entry.senses[0]?.gloss).toBe('the sloping land beside a river')
+    expect(entry.meanings[0]?.senses[0]?.gloss).toBe('the sloping land beside a river')
   })
 
   it('leaves the original published when its correction is rejected', async () => {
@@ -388,7 +388,7 @@ describe('revalidation', () => {
     expect((await getFact(world.deps, correction.id)).status).toBe('superseded')
     expect(world.queued).toEqual([])
     expect(await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))).toEqual(before)
-    expect((await publicEntryOf(world.deps, 'bank')).senses[0]).toMatchObject({ register: 'literary' })
+    expect((await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]).toMatchObject({ labels: ['literary'] })
   })
 
   it('re-reviews published facts judged against a corrected gloss while they stay public [spec: facts/revalidate-dependents]', async () => {
@@ -403,8 +403,9 @@ describe('revalidation', () => {
       })
     }
     expect((await getFact(world.deps, unrelated.id)).revalidateSince).toBeNull()
-    const visible = (await publicEntryOf(world.deps, 'bank')).senses[0]
-    expect([visible?.examples.length, visible?.translations.length, visible?.relations.length]).toEqual([1, 1, 2])
+    const visible = (await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]
+    const relations = Object.values(visible?.relations ?? {}).flat()
+    expect([visible?.examples.length, visible?.translations, relations.length]).toEqual([1, { fr: ['rive'] }, 2])
 
     world.setNow('2026-01-01T00:06:00.000Z')
     await drain(world)
@@ -423,8 +424,8 @@ describe('revalidation', () => {
     await drain(world)
     const statuses = await Promise.all(dependents.map(async (fact) => (await getFact(world.deps, fact.id)).status))
     expect(statuses).toEqual(['rejected', 'rejected', 'published', 'published'])
-    const visible = (await publicEntryOf(world.deps, 'bank')).senses[0]
-    expect([visible?.examples.length, visible?.translations.length]).toEqual([0, 0])
+    const visible = (await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]
+    expect([visible?.examples.length, visible?.translations]).toEqual([0, {}])
   })
 
   it('skips a revalidation whose gloss was corrected again while it was being reviewed', async () => {
@@ -537,7 +538,7 @@ describe('revalidation', () => {
     await retractFact(world.deps, agentA, current?.id as FactId)
     expect(world.queued).toEqual([])
     for (const fact of dependents) expect((await getFact(world.deps, fact.id)).revalidateSince).toBeNull()
-    expect((await publicEntryOf(world.deps, 'bank')).senses).toEqual([])
+    expect((await publicEntryOf(world.deps, 'bank')).meanings).toEqual([])
   })
 })
 

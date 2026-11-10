@@ -1,8 +1,19 @@
-import { entries, publicEntries, publicForms, publicSenseTopics, senses, worklist } from '@server/db/schema'
-import type { Lemma } from '@server/domain/term'
+import {
+  entries,
+  publicEntries,
+  publicForms,
+  publicMorphemes,
+  publicPhraseWords,
+  publicSenseTopics,
+  senses,
+  worklist,
+} from '@server/db/schema'
+import type { StoredSenseSummary, StoredSummary } from '@server/domain/catalog-view'
+import { readStored, STEM_ROLES } from '@server/domain/public-view'
 import type { PublicViewRepo, StaleView, ViewLookup } from '@server/usecases/ports'
-import { type EntryId, type FactId, posSchema, type SenseId } from '@shared/facts'
+import { type EntryId, formTypeSchema, posSchema } from '@shared/facts'
 import { and, asc, count, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, page } from './rows'
 import { relatedWorklistRows } from './work'
@@ -46,41 +57,90 @@ const toStale = (row: { entryId: string; revision: number }): StaleView => ({
 })
 
 export function createPublicViewRepo(db: Db): PublicViewRepo {
-  /** The worklist row and view of the entry the key column matches, in one statement. */
-  const lookup = async (
+  /** The worklist row and view of the entry the key column matches. */
+  const lookup = (
     from: typeof entries | typeof senses,
     where: SQL,
     entryId: typeof entries.id | typeof senses.entryId,
-  ) => {
-    const row = await db
+  ) =>
+    db
       .select(lookupColumns)
       .from(from)
       .innerJoin(worklist, eq(worklist.entryId, entryId))
       .leftJoin(publicEntries, eq(publicEntries.entryId, entryId))
       .where(where)
-      .get()
-    return row ? toLookup(row) : null
-  }
+
+  const self = alias(publicEntries, 'self')
+  const own = alias(publicMorphemes, 'own')
+  const other = alias(publicMorphemes, 'other')
+  const stems = inArray(own.role, [...STEM_ROLES])
 
   return {
-    findByLemma: (lemma) => lookup(entries, eq(entries.lemma, lemma), entries.id),
+    async findByLemma(lemma) {
+      // One batch: the view, and what the built views of other entries supply to it.
+      const [rows, phrases, family, parts] = await db.batch([
+        lookup(entries, eq(entries.lemma, lemma), entries.id),
+        db
+          .select({ summary: publicEntries.summary })
+          .from(publicPhraseWords)
+          .innerJoin(publicEntries, eq(publicEntries.entryId, publicPhraseWords.entryId))
+          .where(eq(publicPhraseWords.word, lemma))
+          .orderBy(asc(publicEntries.lemma)),
+        db
+          .selectDistinct({ lemma: publicEntries.lemma, summary: publicEntries.summary })
+          .from(own)
+          .innerJoin(self, and(eq(self.entryId, own.entryId), eq(self.lemma, lemma)))
+          .innerJoin(other, and(eq(other.form, own.form), eq(other.role, own.role), ne(other.entryId, own.entryId)))
+          .innerJoin(publicEntries, eq(publicEntries.entryId, other.entryId))
+          .where(stems)
+          .orderBy(asc(publicEntries.lemma)),
+        db
+          .selectDistinct({ form: own.form })
+          .from(own)
+          .innerJoin(self, and(eq(self.entryId, own.entryId), eq(self.lemma, lemma)))
+          .innerJoin(publicEntries, eq(publicEntries.lemma, own.form)),
+      ])
+      const [row] = rows
+      if (!row) return null
+      return {
+        ...toLookup(row),
+        links: {
+          phrases: phrases.map((item) => readStored<StoredSummary>(item.summary)),
+          family: family.map((item) => readStored<StoredSummary>(item.summary)),
+          publicParts: parts.map((item) => item.form),
+        },
+      }
+    },
 
-    findBySense: (id) => lookup(senses, eq(senses.id, id), senses.entryId),
+    async findBySense(id) {
+      const row = await lookup(senses, eq(senses.id, id), senses.entryId).get()
+      return row ? toLookup(row) : null
+    },
 
     async findForms(contentKeys) {
       const rows = await db
-        .select({ factId: publicForms.factId, json: publicEntries.document, digest: publicEntries.digest })
+        .select({
+          summary: publicEntries.summary,
+          digest: publicEntries.digest,
+          type: publicForms.type,
+          pos: publicForms.pos,
+        })
         .from(publicForms)
         .innerJoin(publicEntries, eq(publicEntries.entryId, publicForms.entryId))
         .where(inArray(publicForms.contentKey, contentKeys))
-        .orderBy(asc(publicEntries.lemma), asc(publicForms.factId))
-      return rows.map((row) => ({ factId: row.factId as FactId, view: { json: row.json, digest: row.digest } }))
+        .orderBy(asc(publicEntries.lemma), asc(publicForms.type), asc(publicForms.pos))
+      return rows.map((row) => ({
+        summary: readStored<StoredSummary>(row.summary),
+        digest: row.digest,
+        type: formTypeSchema.parse(row.type),
+        pos: row.pos === null ? null : posSchema.parse(row.pos),
+      }))
     },
 
     async listEntries(prefix, { limit, cursor }) {
       const after = cursor ? decodeCursor(cursor, entryCursor) : undefined
       const rows = await db
-        .select({ id: publicEntries.entryId, lemma: publicEntries.lemma })
+        .select({ lemma: publicEntries.lemma, summary: publicEntries.summary })
         .from(publicEntries)
         .where(
           and(
@@ -96,7 +156,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       return page(
         rows,
         limit,
-        (row) => ({ id: row.id as EntryId, lemma: row.lemma }),
+        (row) => readStored<StoredSummary>(row.summary),
         (row) => ({ lemma: row.lemma }),
       )
     },
@@ -108,8 +168,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         .selectDistinct({
           id: publicSenseTopics.senseId,
           lemma: publicSenseTopics.lemma,
-          pos: publicSenseTopics.pos,
-          gloss: publicSenseTopics.gloss,
+          summary: publicSenseTopics.summary,
         })
         .from(publicSenseTopics)
         .where(
@@ -128,12 +187,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       return page(
         rows,
         limit,
-        (row) => ({
-          id: row.id as SenseId,
-          lemma: row.lemma as Lemma,
-          pos: posSchema.parse(row.pos),
-          gloss: row.gloss,
-        }),
+        (row) => readStored<StoredSenseSummary>(row.summary),
         (row) => ({ lemma: row.lemma, id: row.id }),
       )
     },
@@ -170,11 +224,18 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
           .from(worklist)
           .where(and(eq(worklist.entryId, stale.entryId), eq(worklist.revision, stale.revision))),
       )
-      const ofEntry = (column: typeof publicForms.entryId | typeof publicSenseTopics.entryId) =>
-        and(eq(column, stale.entryId), current)
+      const ofEntry = (
+        column:
+          | typeof publicForms.entryId
+          | typeof publicSenseTopics.entryId
+          | typeof publicPhraseWords.entryId
+          | typeof publicMorphemes.entryId,
+      ) => and(eq(column, stale.entryId), current)
       const clear = [
         db.delete(publicForms).where(ofEntry(publicForms.entryId)),
         db.delete(publicSenseTopics).where(ofEntry(publicSenseTopics.entryId)),
+        db.delete(publicPhraseWords).where(ofEntry(publicPhraseWords.entryId)),
+        db.delete(publicMorphemes).where(ofEntry(publicMorphemes.entryId)),
       ] as const
       const markBuilt = db
         .update(worklist)
@@ -205,6 +266,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
               lemma: sql`${record.document.lemma}`.as('lemma'),
               document: sql`${json}`.as('document'),
               digest: sql`${digest}`.as('digest'),
+              summary: sql`${JSON.stringify(record.document.summary)}`.as('summary'),
               builtAt: sql`${new Date().toISOString()}`.as('built_at'),
             })
             .from(worklist)
@@ -215,6 +277,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
           set: {
             document: sql`excluded.document`,
             digest: sql`excluded.digest`,
+            summary: sql`excluded.summary`,
             builtAt: sql`excluded.built_at`,
           },
           setWhere: ne(publicEntries.digest, sql`excluded.digest`),
@@ -223,8 +286,9 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         db
           .select({
             contentKey: field('contentKey').as('content_key'),
-            factId: field('factId').as('fact_id'),
             entryId: sql`${stale.entryId}`.as('entry_id'),
+            type: field('type').as('type'),
+            pos: field('pos').as('pos'),
           })
           .from(rows(record.forms))
           .where(current),
@@ -234,15 +298,30 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
           .select({
             topicId: field('topicId').as('topic_id'),
             lemma: sql`${record.document.lemma}`.as('lemma'),
-            senseId: field('senseId').as('sense_id'),
+            senseId: field('summary.sense_id').as('sense_id'),
             entryId: sql`${stale.entryId}`.as('entry_id'),
-            pos: field('pos').as('pos'),
-            gloss: field('gloss').as('gloss'),
+            summary: sql<string>`json(json_extract(value, '$.summary'))`.as('summary'),
           })
           .from(rows(record.taggedSenses))
           .where(current),
       )
-      await db.batch([upsert, ...clear, insertForms, insertTopics, markBuilt])
+      const insertPhraseWords = db.insert(publicPhraseWords).select(
+        db
+          .select({ word: sql<string>`value`.as('word'), entryId: sql`${stale.entryId}`.as('entry_id') })
+          .from(rows(record.phraseWords))
+          .where(current),
+      )
+      const insertMorphemes = db.insert(publicMorphemes).select(
+        db
+          .select({
+            form: field('form').as('form'),
+            role: field('role').as('role'),
+            entryId: sql`${stale.entryId}`.as('entry_id'),
+          })
+          .from(rows(record.morphemes))
+          .where(current),
+      )
+      await db.batch([upsert, ...clear, insertForms, insertTopics, insertPhraseWords, insertMorphemes, markBuilt])
     },
   }
 }

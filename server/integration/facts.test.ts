@@ -54,8 +54,8 @@ describe('fact review flow', () => {
       status: 'published',
       review: { reviewer: 'jev', verdict: 'pass', confidence: 0.93 },
     })
-    const entry = publicEntrySchema.parse((await call('/v1/entries/lake')).body)
-    expect(entry.fact).toEqual({ id: fact.id, confidence: 0.93, verdict: 'pass' })
+    const entry = publicEntrySchema.parse((await call('/v1/entries/lake?include=review')).body)
+    expect(entry.review?.entry).toEqual({ fact_id: fact.id, confidence: 0.93, verdict: 'pass' })
 
     const again = await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'lake' } })
     expect(again.status).toBe(200)

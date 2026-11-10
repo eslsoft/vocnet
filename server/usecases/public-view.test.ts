@@ -1,6 +1,6 @@
 import { agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
-import { publicEntryOf } from '@server/testing/public-view'
+import { FULL, publicEntryOf } from '@server/testing/public-view'
 import type { EntryId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense, getPublicEntry } from './catalog'
@@ -41,13 +41,13 @@ const markStale = (world: ReturnType<typeof fakeWorld>, entryId: EntryId) => {
 describe('public view refresh [spec: public-view/refresh]', () => {
   it('rebuilds the views a write makes stale, linked entries included, without a read', async () => {
     const { world, bank, shore } = await linkedWorld()
-    expect(world.views.get(bank.entry.id)?.document.senses[0]?.relations).toHaveLength(1)
+    expect(world.views.get(bank.entry.id)?.document.meanings[0]?.senses[0]?.relations.synonyms).toHaveLength(1)
     for (const [, row] of world.work) expect(row.viewRevision).toBe(row.revision)
 
     await retractFact(world.deps, agentA, shore.fact.id)
     expect(world.views.has(shore.entry.id)).toBe(false)
-    expect(world.views.get(bank.entry.id)?.document.senses[0]?.relations).toEqual([])
-    await expect(getPublicEntry(world.deps, 'shore')).rejects.toMatchObject({ code: 'not_found' })
+    expect(world.views.get(bank.entry.id)?.document.meanings[0]?.senses[0]?.relations.synonyms).toEqual([])
+    await expect(getPublicEntry(world.deps, 'shore', FULL)).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('rebuilds a stale view on read before serving it', async () => {
@@ -56,11 +56,7 @@ describe('public view refresh [spec: public-view/refresh]', () => {
     expect((await publicEntryOf(world.deps, 'bank')).frequency).toBeNull()
 
     markStale(world, bank.entry.id)
-    expect((await publicEntryOf(world.deps, 'bank')).frequency).toEqual({
-      zipf: 5.16,
-      rank: 691,
-      source_id: 'wordfreq',
-    })
+    expect((await publicEntryOf(world.deps, 'bank')).frequency).toEqual({ zipf: 5.16, rank: 691 })
     expect(world.work.get(bank.entry.id)?.viewRevision).toBe(world.work.get(bank.entry.id)?.revision)
   })
 
@@ -68,7 +64,7 @@ describe('public view refresh [spec: public-view/refresh]', () => {
     const { world, bank } = await linkedWorld()
     const pending = await createEntry(world.deps, agentA, { lemma: 'pending' })
     markStale(world, pending.entry.id)
-    await expect(getPublicEntry(world.deps, 'pending')).rejects.toMatchObject({ code: 'not_found' })
+    await expect(getPublicEntry(world.deps, 'pending', FULL)).rejects.toMatchObject({ code: 'not_found' })
 
     const lookups = [{ stale: { entryId: bank.entry.id, revision: 99 }, view: null }, null]
     expect(await readPublicView(world.deps, async () => lookups.shift() ?? null)).toBeNull()
@@ -76,8 +72,7 @@ describe('public view refresh [spec: public-view/refresh]', () => {
 
   it('serves the stored view when a write lands during the rebuild', async () => {
     const { world, bank } = await linkedWorld()
-    const stored =
-      (await readPublicView(world.deps, () => world.deps.publicViews.findByLemma(bank.entry.lemma))) ?? null
+    const stored = (await readPublicView(world.deps, () => world.deps.publicViews.findByLemma(bank.entry.lemma)))?.view
     const { save } = world.deps.publicViews
     world.deps.publicViews.save = async (stale, record) => {
       markStale(world, stale.entryId)
@@ -86,7 +81,10 @@ describe('public view refresh [spec: public-view/refresh]', () => {
     markStale(world, bank.entry.id)
     world.references.set('bank', { frequency: null, cefr: [{ pos: 'noun', level: 'A1', source_id: 'cefrj' }] })
 
-    expect(await readPublicView(world.deps, () => world.deps.publicViews.findByLemma(bank.entry.lemma))).toEqual(stored)
+    const served = await readPublicView(world.deps, () => world.deps.publicViews.findByLemma(bank.entry.lemma))
+    expect(served?.view).toEqual(stored)
+    expect(served?.stale).not.toBeNull()
+    expect(served?.links).toEqual({ phrases: [], family: [], publicParts: [] })
     expect(await world.deps.publicViews.countStale()).toBe(1)
   })
 
@@ -121,7 +119,7 @@ describe('public view refresh [spec: public-view/refresh]', () => {
     world.views.delete(bank.entry.id)
     markStale(world, bank.entry.id)
 
-    await expect(getPublicEntry(world.deps, 'bank')).rejects.toMatchObject({ code: 'not_found' })
+    await expect(getPublicEntry(world.deps, 'bank', FULL)).rejects.toMatchObject({ code: 'not_found' })
     expect(saves).toBe(3)
   })
 

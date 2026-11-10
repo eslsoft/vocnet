@@ -419,6 +419,15 @@ const formTypes: Record<FormType, FormTypeSpec> = {
   variant: { wordClass: null, name: 'accepted variant' },
 }
 
+/**
+ * The parts of speech a form belongs to: its own label when it has one, else the word class of its
+ * type. None for an unlabelled variant, which is another spelling of the whole word.
+ */
+export function formClasses(type: FormType, pos: Pos | undefined): readonly Pos[] {
+  if (pos) return [pos]
+  return formTypes[type].wordClass ?? []
+}
+
 const article = (word: string) => (/^[aeiou]/.test(word) ? 'an' : 'a')
 
 /** The form types that inflect a word; a variant is another spelling of the same word, not an inflection. */

@@ -37,7 +37,7 @@ Feature: Reference data
   Scenario: An entry shows the CEFR levels of its exact lemma and the frequency of its word form
     Given an imported frequency for the word "bank" and CEFR rows for "bank" and for "Bank"
     When anyone requests the published entries "bank" and "Bank", and an agent requests "bank" through the management API
-    Then "bank" carries the frequency and every CEFR level of "bank" with their source ids
+    Then the management entry "bank" carries the frequency and every CEFR level of "bank" with their source ids, and the public one the frequency without its source and each meaning the CEFR level of its part of speech
     And "Bank" carries the same frequency but only the CEFR levels of "Bank"
     And an entry whose lemma has no reference rows carries a null frequency and no CEFR levels
 

@@ -1,10 +1,10 @@
-import type { EntrySnapshot } from '@server/domain/catalog-view'
+import type { EntrySnapshot, StoredSenseSummary } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
 import { factKinds } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
-import type { PublicViewRecord } from '@server/domain/public-view'
+import { type PublicViewRecord, STEM_ROLES } from '@server/domain/public-view'
 import { levelRank } from '@server/domain/reference'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
@@ -18,7 +18,6 @@ import type {
   NodeRepo,
   ReviewJob,
   StaleWork,
-  TaggedSense,
   ViewLookup,
   WorkScores,
 } from '@server/usecases/ports'
@@ -265,7 +264,6 @@ export function fakeWorld(): FakeWorld {
       view: json ? { json, digest: fakeDigest(json) } : null,
     }
   }
-  const publicLemma = (entryId: string) => world.views.get(entryId as EntryId)?.document.lemma ?? ''
 
   const creationKeys = new Map<string, string>()
   const nodes: NodeRepo = {
@@ -627,45 +625,67 @@ export function fakeWorld(): FakeWorld {
     publicViews: {
       findByLemma: async (lemma) => {
         const entry = world.entries.find((candidate) => candidate.lemma === lemma)
-        return entry ? viewLookup(entry.id) : null
+        if (!entry) return null
+        const built = [...world.views.entries()].sort(([, a], [, b]) =>
+          a.document.lemma.localeCompare(b.document.lemma),
+        )
+        const own = world.views.get(entry.id)?.morphemes ?? []
+        const shares = (record: PublicViewRecord) =>
+          record.morphemes.some(
+            (part) =>
+              STEM_ROLES.includes(part.role) && own.some((mine) => mine.form === part.form && mine.role === part.role),
+          )
+        return {
+          ...viewLookup(entry.id),
+          links: {
+            phrases: built
+              .filter(([, record]) => record.phraseWords.includes(lemma))
+              .map(([, r]) => r.document.summary),
+            family: built
+              .filter(([entryId, record]) => entryId !== entry.id && shares(record))
+              .map(([, record]) => record.document.summary),
+            publicParts: [...new Set(own.map((part) => part.form))].filter((form) =>
+              built.some(([, record]) => record.document.lemma === form),
+            ),
+          },
+        }
       },
       findBySense: async (id) => {
         const sense = world.senses.find((candidate) => candidate.id === id)
         return sense ? viewLookup(sense.entryId) : null
       },
       findForms: async (contentKeys) =>
-        [...world.views.entries()]
-          .flatMap(([entryId, record]) =>
+        [...world.views.values()]
+          .sort((a, b) => a.document.lemma.localeCompare(b.document.lemma))
+          .flatMap((record) =>
             record.forms
               .filter((form) => contentKeys.includes(form.contentKey))
-              .map((form) => ({ entryId, factId: form.factId })),
-          )
-          .sort(
-            (a, b) => publicLemma(a.entryId).localeCompare(publicLemma(b.entryId)) || a.factId.localeCompare(b.factId),
-          )
-          .map(({ entryId, factId }) => {
-            const { view } = viewLookup(entryId)
-            if (!view) throw new Error(`Entry ${entryId} has form rows without a document.`)
-            return { view, factId }
-          }),
+              .map((form) => ({
+                summary: record.document.summary,
+                digest: fakeDigest(JSON.stringify(record.document)),
+                type: form.type,
+                pos: form.pos,
+              })),
+          ),
       listEntries: async (prefix, page) =>
         paged(
           [...world.views.values()]
-            .map(({ document }) => ({ id: document.id, lemma: document.lemma }))
-            .filter((entry) => entry.lemma.startsWith(prefix))
+            .map(({ document }) => document.summary)
+            .filter((summary) => summary.lemma.startsWith(prefix))
             .sort((a, b) => a.lemma.localeCompare(b.lemma)),
           page.limit,
           page.cursor,
         ),
       listTaggedSenses: async (leaves, page) => {
-        const tagged = new Map<string, TaggedSense>()
-        for (const [entryId, record] of world.views) {
+        const tagged = new Map<string, StoredSenseSummary>()
+        for (const record of world.views.values()) {
           for (const tag of record.taggedSenses.filter((candidate) => leaves.includes(candidate.topicId))) {
-            const { senseId: id, pos, gloss } = tag
-            tagged.set(id, { id, lemma: publicLemma(entryId) as Lemma, pos, gloss })
+            tagged.set(tag.summary.sense_id, tag.summary)
           }
         }
-        const ordered = [...tagged.values()].sort((a, b) => a.lemma.localeCompare(b.lemma) || a.id.localeCompare(b.id))
+        const ordered = [...tagged.values()].sort(
+          (a, b) => a.lemma.localeCompare(b.lemma) || a.sense_id.localeCompare(b.sense_id),
+        )
         return paged(ordered, page.limit, page.cursor)
       },
       listStale: async (nodeIds) => {

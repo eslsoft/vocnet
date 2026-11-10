@@ -52,7 +52,12 @@ const fill = async (token: string, { id: entryId, lemma }: { id: string; lemma: 
       })
     ).body,
   )
-  const form = await submitFact(token, { kind: 'form', subject_id: entryId, payload: { form: 'bys', type: 'plural' } })
+  // Labelled with the sense's part of speech, so the form shows on its meaning and can be reported.
+  const form = await submitFact(token, {
+    kind: 'form',
+    subject_id: entryId,
+    payload: { form: 'bys', type: 'plural', pos: 'preposition' },
+  })
   await submitFact(token, {
     kind: 'morphology',
     subject_id: entryId,

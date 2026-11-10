@@ -54,7 +54,9 @@ describe('exclusive fact slots', () => {
     expect((await factOf(correction.id)).status).toBe('published')
     expect((await factOf(gloss.id)).status).toBe('superseded')
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
-    expect(entry.senses.map((sense) => sense.gloss)).toEqual(['Sloping land beside a river.'])
+    expect(entry.meanings.flatMap((meaning) => meaning.senses).map((sense) => sense.gloss)).toEqual([
+      'Sloping land beside a river.',
+    ])
   })
 
   it('sends a rejected fact back through review until it publishes [spec: facts/rereview-api]', async () => {
@@ -206,6 +208,6 @@ describe('exclusive fact slots', () => {
     expect(new Set(results.map((result) => result.sense.id)).size).toBe(1)
     expect(results.map((result) => result.created).filter(Boolean)).toHaveLength(1)
     const entryView = publicEntrySchema.parse((await call('/v1/entries/odd')).body)
-    expect(entryView.senses.map((sense) => sense.gloss)).toEqual([gloss])
+    expect(entryView.meanings.flatMap((meaning) => meaning.senses).map((sense) => sense.gloss)).toEqual([gloss])
   })
 })

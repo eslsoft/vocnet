@@ -1,24 +1,38 @@
-import { type EntrySnapshot, type ManagedEntryView, managedEntryView } from '@server/domain/catalog-view'
+import {
+  type EntrySnapshot,
+  type ManagedEntryView,
+  managedEntryView,
+  type StoredEntry,
+} from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
 import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
-import { formMatchOf, publicSenseOf, readDocument } from '@server/domain/public-view'
+import {
+  formMatches,
+  type ReadVariant,
+  readStored,
+  shapeEntry,
+  shapeSenseDetail,
+  shapeSummary,
+} from '@server/domain/public-view'
 import { isLetterOfTheAlphabet, type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
   CreateSenseInput,
   FormMatch,
   NodeLocation,
-  PublicSenseWithEntry,
+  PublicEntry,
+  PublicSenseDetail,
   Stats,
+  WordSummary,
 } from '@shared/catalog'
 import { type EntryId, formTypeSchema, registerSchema, type SenseId } from '@shared/facts'
 import type { LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
-import type { PageRequest, StoredView } from './ports'
+import type { Page, PageRequest } from './ports'
 import { readPublicView, type ViewDeps } from './public-view'
 import { refreshEntries } from './refresh'
 
@@ -140,43 +154,66 @@ async function snapshotOf(
   return { snapshot, reference }
 }
 
-/** The entry's public document as stored, rebuilt first when stale. Exact lemma only. */
-export async function getPublicEntry(deps: ViewDeps, lemma: string): Promise<StoredView> {
-  const view = await readPublicView(deps, () => deps.publicViews.findByLemma(normalizeTerm(lemma)))
-  if (!view) throw new NotFoundError(`No entry for ${JSON.stringify(lemma)}.`)
-  return view
-}
-
-/** One public sense with its entry, and the digest of the entry document it comes from. */
-export async function getPublicSense(
-  deps: ViewDeps,
-  id: SenseId,
-): Promise<{ sense: PublicSenseWithEntry; digest: string }> {
-  const view = await readPublicView(deps, () => deps.publicViews.findBySense(id))
-  const sense = view && publicSenseOf(readDocument(view.json), id)
-  if (!view || !sense) throw new NotFoundError(`Sense ${id} not found.`)
-  return { sense, digest: view.digest }
+/** A public read: what its ETag is computed over, and its body, built only when it is sent. */
+export interface VersionedRead<T> {
+  /** Changes whenever the body of any variant does. */
+  versions: string[]
+  read: () => T
 }
 
 /**
- * Exact match on a published form, with the digests of the entry documents the matches come
- * from. No fuzzy or lemma fallback: no match is not found.
+ * The entry's public document in the requested variant, rebuilt first when stale, with what other
+ * entries supply joined in. Exact lemma only.
+ */
+export async function getPublicEntry(
+  deps: ViewDeps,
+  lemma: string,
+  variant: ReadVariant,
+): Promise<VersionedRead<PublicEntry>> {
+  const found = await readPublicView(deps, () => deps.publicViews.findByLemma(normalizeTerm(lemma)))
+  if (!found) throw new NotFoundError(`No entry for ${JSON.stringify(lemma)}.`)
+  const { view, links } = found
+  return {
+    versions: [view.digest, JSON.stringify(links)],
+    read: () => shapeEntry(readStored<StoredEntry>(view.json), links, variant),
+  }
+}
+
+/** One public sense in the requested variant, with its entry's summary. */
+export async function getPublicSense(
+  deps: ViewDeps,
+  id: SenseId,
+  variant: ReadVariant,
+): Promise<VersionedRead<PublicSenseDetail>> {
+  const found = await readPublicView(deps, () => deps.publicViews.findBySense(id))
+  const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant)
+  if (!found || !sense) throw new NotFoundError(`Sense ${id} not found.`)
+  return { versions: [found.view.digest], read: () => sense }
+}
+
+/**
+ * Exact match on a published form: each entry with the form, as a summary with the forms that
+ * matched. No fuzzy or lemma fallback: no match is not found.
  */
 export async function lookupForm(
   deps: Pick<Deps, 'publicViews'>,
   form: string,
-): Promise<{ matches: FormMatch[]; digests: string[] }> {
+  variant: ReadVariant,
+): Promise<VersionedRead<FormMatch[]>> {
   const keys = formTypeSchema.options.map((type) => contentKeyOf('form', { form, type }))
-  const found = await deps.publicViews.findForms(keys)
-  if (found.length === 0) throw new NotFoundError(`No entry has the form ${JSON.stringify(form)}.`)
-  return {
-    matches: found.map(({ view, factId }) => formMatchOf(readDocument(view.json), factId)),
-    digests: [...new Set(found.map(({ view }) => view.digest))],
-  }
+  const rows = await deps.publicViews.findForms(keys)
+  if (rows.length === 0) throw new NotFoundError(`No entry has the form ${JSON.stringify(form)}.`)
+  return { versions: [...new Set(rows.map((row) => row.digest))], read: () => formMatches(rows, variant) }
 }
 
-export function searchEntries(deps: Pick<Deps, 'publicViews'>, prefix: string, page: PageRequest) {
-  return deps.publicViews.listEntries(normalizeTerm(prefix), page)
+export async function searchEntries(
+  deps: Pick<Deps, 'publicViews'>,
+  prefix: string,
+  page: PageRequest,
+  variant: ReadVariant,
+): Promise<Page<WordSummary>> {
+  const found = await deps.publicViews.listEntries(normalizeTerm(prefix), page)
+  return { ...found, items: found.items.map((summary) => shapeSummary(summary, variant)) }
 }
 
 export function listEntrySummaries(deps: Pick<Deps, 'nodes'>, prefix: string, page: PageRequest) {
