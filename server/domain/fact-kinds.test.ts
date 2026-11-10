@@ -25,8 +25,8 @@ const hospitalView = { category: 'Body and health', topic: 'At the doctor and ho
 const money = { pos: 'noun' as const, gloss: 'an institution that keeps money' }
 const bank = { lemma: 'bank', pos: 'noun' as const, gloss: 'land beside a river', siblings: [money] }
 const shore = { lemma: 'shore', pos: 'noun' as const, gloss: 'the land along the edge of water', siblings: [] }
-const bankEntry = { lemma: 'bank', senses: [{ ...money, id: target }], inflectionOf: [], cefr: [] }
-const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [], cefr: [] }
+const bankEntry = { lemma: 'bank', senses: [{ ...money, id: target }], inflectionOf: [], cefr: [], caseVariants: [] }
+const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [], cefr: [], caseVariants: [] }
 
 const requests = (plan: ReviewPlan): readonly ReviewRequest[] => (plan.kind === 'review' ? plan.requests : [])
 const jevQuestion = (plan: ReviewPlan, key: string) => {
@@ -278,7 +278,11 @@ describe('fact-kind registry', () => {
     const plan = planReview(
       'form',
       { form: 'would', type: 'past', pos: 'auxiliary' },
-      { subject: { lemma: 'will', senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null },
+      {
+        subject: { lemma: 'will', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
+        target: null,
+        topic: null,
+      },
     )
     expect(jevQuestion(plan, 'form')).toContain('When "will" is inflected as an auxiliary, is "would"')
     expect(llmPrompt(plan)?.user).toContain(
@@ -303,7 +307,7 @@ describe('fact-kind registry', () => {
   it('tells the LLM whether a pronunciation is the weak or the strong form, and of which part of speech [spec: facts/write-labels]', () => {
     const prompt = (payload: Parameters<typeof planReview<'pronunciation'>>[1]) => {
       const plan = planReview('pronunciation', payload, {
-        subject: { lemma: 'to', senses: [], inflectionOf: [], cefr: [] },
+        subject: { lemma: 'to', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
         target: null,
         topic: null,
       })
@@ -320,7 +324,11 @@ describe('fact-kind registry', () => {
     const plan = planReview(
       'form',
       { form: 'colour', type: 'variant' },
-      { subject: { lemma: 'color', senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null },
+      {
+        subject: { lemma: 'color', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
+        target: null,
+        topic: null,
+      },
     )
     expect(jevQuestion(plan, 'form')).toBe(
       `Is "colour" an accepted spelling variant of the English word "color" in standard American or British usage? ${tail}`,
@@ -384,7 +392,11 @@ describe('fact-kind registry', () => {
 
   it('rejects a single letter other than "a" and "I" without asking a reviewer [spec: facts/entry-no-letters]', () => {
     const plan = (lemma: string) =>
-      planReview('entry', {}, { subject: { lemma, senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null })
+      planReview(
+        'entry',
+        {},
+        { subject: { lemma, senses: [], inflectionOf: [], cefr: [], caseVariants: [] }, target: null, topic: null },
+      )
     for (const letter of ['F', 'b', 'A', 'i', 'x', 'é', 'Ω']) {
       expect(plan(letter)).toEqual({
         kind: 'unreviewable',
@@ -398,7 +410,11 @@ describe('fact-kind registry', () => {
 
   it('admits a multiword entry only as a lexical unit and keeps single words as before [spec: facts/entry-lexical-unit]', () => {
     const plan = (lemma: string) =>
-      planReview('entry', {}, { subject: { lemma, senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null })
+      planReview(
+        'entry',
+        {},
+        { subject: { lemma, senses: [], inflectionOf: [], cefr: [], caseVariants: [] }, target: null, topic: null },
+      )
     const word = plan('bread')
     expect(jevQuestion(word, 'lemma')).toContain('Is "bread" an established English word')
     expect(llmPrompt(word)?.user).toContain('function words and established abbreviations')
@@ -439,7 +455,7 @@ describe('fact-kind registry', () => {
         planReview(
           'entry',
           {},
-          { subject: { lemma, senses: [], inflectionOf: [], cefr: [] }, target: null, topic: null },
+          { subject: { lemma, senses: [], inflectionOf: [], cefr: [], caseVariants: [] }, target: null, topic: null },
         ),
       ).map((request) => request.reviewer)
     expect(reviewers('spatial distribution')).toEqual(['llm'])
@@ -460,6 +476,7 @@ describe('fact-kind registry', () => {
             { lemma: 'sea', type: 'plural' },
           ],
           cefr: [],
+          caseVariants: [],
         },
         target: null,
         topic: null,
@@ -490,6 +507,7 @@ describe('fact-kind registry', () => {
               { level: 'A2', pos: 'noun', source: 'CEFR-J Wordlist' },
               { level: 'B1', pos: 'verb', source: 'Octanove' },
             ],
+            caseVariants: [],
           },
           target: null,
           topic: null,
@@ -690,6 +708,7 @@ describe('morphology facts', () => {
       senses: [{ id: target, pos: 'noun' as const, gloss: 'A person who watches.' }],
       inflectionOf: [],
       cefr: [],
+      caseVariants: [],
     }
     const plan = planReview('morphology', parts(['spect', 'root', 'look'], ['-ator', 'suffix']), {
       subject: spectator,
@@ -703,7 +722,7 @@ describe('morphology facts', () => {
     expect(llmPrompt(plan)?.user).toContain('the "er" of "water"')
     expect(llmPrompt(plan)?.user).toContain('- (noun) "A person who watches."')
     const simple = planReview('morphology', parts(['water', 'base']), {
-      subject: { lemma: 'water', senses: [], inflectionOf: [], cefr: [] },
+      subject: { lemma: 'water', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
       target: null,
       topic: null,
     })
@@ -825,6 +844,7 @@ describe('sense list facts', () => {
     ],
     inflectionOf: [],
     cefr: [],
+    caseVariants: [],
   }
   const admit = (common: SenseId[], extra: SenseId[], senses = [volume, reserve, record]) =>
     admissionOf('sense_list', { common, extra }, { lemma: 'book', senses })
@@ -884,6 +904,29 @@ describe('sense list facts', () => {
       ),
     )?.user
     expect(bare).toContain('Extra senses: none.')
+  })
+
+  it('never asks an entry for the senses of a differently capitalized entry [spec: facts/sense-list-capitalization]', () => {
+    const may = { ...book, lemma: 'may', caseVariants: ['MAY', 'May'] }
+    const rubric = llmPrompt(
+      planReview(
+        'sense_list',
+        { common: [volume, reserve], extra: [record] },
+        { subject: may, target: null, topic: null },
+      ),
+    )?.user
+    expect(rubric).toContain(
+      'Judge only the word spelled exactly "may". A sense of a spelling that differs in capitalization, or of a proper name, belongs to that other entry and is never missing from this one.\n"MAY" is a separate entry; its senses are not this word\'s.\n"May" is a separate entry; its senses are not this word\'s.',
+    )
+    const alone = llmPrompt(
+      planReview(
+        'sense_list',
+        { common: [volume, reserve], extra: [record] },
+        { subject: book, target: null, topic: null },
+      ),
+    )?.user
+    expect(alone).toContain('Judge only the word spelled exactly "book".')
+    expect(alone).not.toContain('is a separate entry')
   })
 
   it('cannot judge a list that names a sense without a live gloss [spec: facts/sense-list-rubric]', () => {

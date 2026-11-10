@@ -54,6 +54,11 @@ export interface NodeRepo {
   listEntrySummaries(prefix: string, page: PageRequest): Promise<Page<EntrySummary>>
   /** Live form facts with one of these content keys, on entries whose entry fact is live. */
   findLiveForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
+  /**
+   * The lemmas of the other entries whose entry fact is live and whose lemma differs from this
+   * entry's only in ASCII letter case, in lemma order.
+   */
+  listLiveCaseVariants(entry: EntryNode): Promise<Lemma[]>
   /** Published form facts with one of these content keys, on published entries. */
   findPublishedForms(contentKeys: string[]): Promise<Array<{ entry: EntryNode; fact: FactOf<'form'> }>>
 }

@@ -98,6 +98,29 @@ describe('sense lists', () => {
     expect((await entryGaps(token)).map((gap) => gap.type)).toContain('sense_list')
   })
 
+  it('reviews a list knowing the live entries that differ only in letter case [spec: facts/sense-list-capitalization-api]', async () => {
+    const token = await issueAgentKey()
+    const { entry } = await createEntry(token, 'may')
+    await createEntry(token, 'May')
+    const shouted = await createEntry(token, 'MAY')
+    expect((await call(`/manage/v1/facts/${shouted.fact.id}/retract`, { method: 'POST', token })).status).toBe(200)
+    const can = await createSense(token, entry.id, 'auxiliary', 'Used to say that something is possible.')
+    await settle()
+
+    const submitted = await submit(token, {
+      kind: 'sense_list',
+      subject_id: entry.id,
+      payload: { common: [can.sense.id], extra: [] },
+    })
+    expect(submitted.status).toBe(201)
+    await settle()
+    const reviewed = factSchema.parse(
+      (await call(`/manage/v1/facts/${factWriteResultSchema.parse(submitted.body).fact.id}`, { token })).body,
+    )
+    expect(reviewed.review?.context).toMatchObject({ subject: { lemma: 'may', caseVariants: ['May'] } })
+    expect(JSON.stringify(reviewed.review?.detail)).toContain('\\"May\\" is a separate entry')
+  })
+
   it('brings an entry back with each rejected list until the attempts run out [spec: work/sense-list-retry]', async () => {
     const token = await issueAgentKey()
     const { entry } = await createEntry(token, 'may')

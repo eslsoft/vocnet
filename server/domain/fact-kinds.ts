@@ -71,8 +71,15 @@ export interface SubjectViews {
   /**
    * `inflectionOf`: the other live entries whose live non-variant forms spell this lemma.
    * `cefr`: the CEFR learner lists that list the exact lemma as a headword.
+   * `caseVariants`: the lemmas of the other live entries spelled like this one but for letter case.
    */
-  entry: { lemma: string; senses: EntrySense[]; inflectionOf: InflectionOf[]; cefr: CefrListing[] }
+  entry: {
+    lemma: string
+    senses: EntrySense[]
+    inflectionOf: InflectionOf[]
+    cefr: CefrListing[]
+    caseVariants: string[]
+  }
   sense: SenseView & { siblings: SenseGloss[] }
 }
 
@@ -839,7 +846,19 @@ const SENSE_LIST_PASSES = [
   'Rare: every sense in extra is genuinely rare, archaic, technical, or specialist, not one a learner meets in general use.',
 ]
 
-function senseListRubric(lemma: string, common: readonly EntrySense[], extra: readonly EntrySense[]): string {
+/** Entries are case-sensitive: "May" the month is its own entry, never a sense missing from "may". */
+function otherCaseRules(lemma: string, caseVariants: readonly string[]): string[] {
+  return [
+    `Judge only the word spelled exactly ${quote(lemma)}. A sense of a spelling that differs in capitalization, or of a proper name, belongs to that other entry and is never missing from this one.`,
+    ...caseVariants.map((variant) => `${quote(variant)} is a separate entry; its senses are not this word's.`),
+  ]
+}
+
+function senseListRubric(
+  { lemma, caseVariants }: SubjectViews['entry'],
+  common: readonly EntrySense[],
+  extra: readonly EntrySense[],
+): string {
   return [
     `Is this the sense inventory a learner's dictionary such as the Oxford Advanced Learner's, Longman, or Cambridge gives for the English word ${quote(lemma)}?`,
     'Common senses, claimed in order from most to least common:',
@@ -850,6 +869,7 @@ function senseListRubric(lemma: string, common: readonly EntrySense[], extra: re
     'pass only when every one of these holds:',
     ...SENSE_LIST_PASSES.map((rule) => `- ${rule}`),
     'A rare, archaic, Old English, technical, or specialist sense missing from both lists is never a failure.',
+    ...otherCaseRules(lemma, caseVariants),
     'fail when any of them does not hold. The reason then names everything to change, even if that takes more than one sentence: each missing common sense with its part of speech and a short meaning, each pair of duplicates by number, each sense out of order, and each sense in extra that is common.',
     'uncertain: you cannot tell.',
   ].join('\n')
@@ -864,7 +884,7 @@ function planSenseList({ common, extra }: SenseList, entry: SubjectViews['entry'
   }
   // Every id resolves: the check above returned otherwise.
   const resolve = (ids: readonly SenseId[]) => ids.flatMap((id) => byId.get(id) ?? [])
-  return llm(senseListRubric(entry.lemma, resolve(common), resolve(extra)))
+  return llm(senseListRubric(entry, resolve(common), resolve(extra)))
 }
 
 export const factKinds: { [K in FactKind]: KindSpec<K> } = {

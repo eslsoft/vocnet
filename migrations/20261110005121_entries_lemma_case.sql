@@ -1,0 +1,1 @@
+CREATE INDEX `entries_lemma_case_idx` ON `entries` (lower("lemma"));

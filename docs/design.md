@@ -320,8 +320,10 @@ open work differs from what the last claim recorded, the entry is not stalled,
 and the next pass reads the latest rejected list's reason among the claim's
 entry facts and fixes exactly what it names. The third rejected list of the
 same senses leaves the gap as the claim found it, so the entry stalls (see
-Stall). A change to the senses starts the count over, since earlier lists no
-longer name exactly the live senses. A sense another principal authored cannot
+Stall). The count belongs to the exact set of live senses over the entry's
+whole history: a set never seen before starts at zero, since no earlier list
+names exactly it, while returning to a set seen before (a sense added and then
+retracted) resumes that set's count. A sense another principal authored cannot
 be retracted by the producer (retract is author-only), so a duplicate the
 reviewer names among such senses goes through feedback or an admin.
 
@@ -603,7 +605,18 @@ but only to choose the message.
   or one meaning split too finely; the common senses run from most to least
   common; and every extra sense is genuinely rare, archaic, technical, or
   specialist. A rare, archaic, Old English, technical, or specialist sense
-  missing from both lists is never a failure. The reason of a fail names
+  missing from both lists is never a failure. Entries are case-sensitive, so
+  the rubric judges only the exact spelling: a sense of a spelling that differs
+  in capitalization, or of a proper name, belongs to that other entry and is
+  never missing ("May" the month is not missing from "may", nor "Polish" from
+  "polish"). When other entries whose entry fact is live are spelled like the
+  lemma but for letter case, the review context carries their lemmas
+  (`caseVariants`) and the rubric names each as a separate entry whose senses
+  are not this word's. They are read in one lookup on `entries_lemma_case_idx`,
+  an index on `lower(lemma)` (SQLite folds ASCII letters only). This is not a
+  fallback: the lookup of the entry under review stays exact, and the variants
+  are other entries named to the reviewer as what this entry is not, never
+  substituted for it. The reason of a fail names
   everything to change, even past one sentence: each missing common sense with
   its part of speech and a short meaning, each pair of duplicates by number,
   each sense out of order, and each common sense put in extra, so the producer
