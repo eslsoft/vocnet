@@ -90,6 +90,41 @@ describe('public view refresh [spec: public-view/refresh]', () => {
     expect(await world.deps.publicViews.countStale()).toBe(1)
   })
 
+  it('rebuilds again while every rebuild loses to a write and no view was ever stored', async () => {
+    const { world, bank } = await linkedWorld()
+    const { save } = world.deps.publicViews
+    let losses = 2
+    world.deps.publicViews.save = async (stale, record) => {
+      if (losses > 0) {
+        losses -= 1
+        markStale(world, stale.entryId)
+      }
+      await save(stale, record)
+    }
+    world.views.delete(bank.entry.id)
+    markStale(world, bank.entry.id)
+
+    expect((await publicEntryOf(world.deps, 'bank')).lemma).toBe('bank')
+    expect(losses).toBe(0)
+    expect(world.work.get(bank.entry.id)?.viewRevision).toBe(world.work.get(bank.entry.id)?.revision)
+  })
+
+  it('serves nothing once a bounded number of rebuilds have all lost', async () => {
+    const { world, bank } = await linkedWorld()
+    const { save } = world.deps.publicViews
+    let saves = 0
+    world.deps.publicViews.save = async (stale, record) => {
+      saves += 1
+      markStale(world, stale.entryId)
+      await save(stale, record)
+    }
+    world.views.delete(bank.entry.id)
+    markStale(world, bank.entry.id)
+
+    await expect(getPublicEntry(world.deps, 'bank')).rejects.toMatchObject({ code: 'not_found' })
+    expect(saves).toBe(3)
+  })
+
   it('drains stale views a batch at a time and reports what is left', async () => {
     const { world, bank, shore } = await linkedWorld()
     markStale(world, bank.entry.id)

@@ -13,7 +13,7 @@ Feature: Public view
   Scenario: Writes and reads keep the view current
     Given entries linked by a relation, with built views
     When a write changes one entry's facts, a view goes stale, or a write lands during a rebuild
-    Then the write rebuilds every view it made stale, linked entries included, a read rebuilds a stale view before serving it, and a rebuild that lost to a newer write stores nothing
+    Then the write rebuilds every view it made stale, linked entries included, a read rebuilds a stale view before serving it, rebuilding again a bounded number of times while it keeps losing and nothing is stored, and a rebuild that lost to a newer write stores nothing
 
   @public-view/publish @api
   Scenario: Publishing and retracting move the entry in and out of every public read
@@ -37,7 +37,7 @@ Feature: Public view
   Scenario: Public reads are cacheable and revalidate with an ETag
     Given a published entry
     When anyone reads the entry, a sense, a form, or a list
-    Then documents carry an ETag and a Cache-Control header, a matching If-None-Match gets 304, the ETag changes only when the document does, and lists carry a shorter Cache-Control
+    Then documents carry an ETag and a Cache-Control that revalidates on every use, a matching If-None-Match gets 304, the ETag changes only when the document does, and lists stay fresh for five seconds
 
   @public-view/rebuild @api
   Scenario: Stale views are rebuilt on read and drained by an admin
@@ -50,3 +50,15 @@ Feature: Public view
     Given entries with senses, forms, relations, topics, and reference data
     When the view serves them
     Then each entry and sense body is byte-identical to the live projection of the same facts
+
+  @public-view/lost-update @api
+  Scenario: A rebuild that lost to a newer write stores nothing
+    Given a public entry whose revision moved after a rebuild loaded it
+    When the rebuild saves its document
+    Then the stored document, form rows, topic rows, and view revision all stay as they were
+
+  @public-view/drain @api
+  Scenario: Form lookups and lists wait for the drain after a migration
+    Given a migration that marked every view stale and left no view rows
+    When anyone looks up a form or lists entries before and after an admin drains the rebuild
+    Then they find nothing of the entry before the drain and find it after

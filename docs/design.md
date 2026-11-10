@@ -1254,7 +1254,10 @@ A read never serves an entry or sense document older than the facts it read:
 the read's statement returns the revisions with the document, and a stale view
 is rebuilt before it is served. The only window is a write that commits during
 that rebuild, which the read then serves the previous document across, for the
-milliseconds until the write's own refresh finishes. Form lookups and the two
+milliseconds until the write's own refresh finishes. When the lost rebuild
+leaves no document at all (the view was never built), serving it would be a
+`404` for a public entry, so the read rebuilds again, up to three times, and is
+`404` only when the projection itself is empty. Form lookups and the two
 lists read only built rows; they lag a write only between its commit and its
 refresh in the same request, and by at most one cron run (five minutes) when
 that request dies in between, or after a reference import or the backfill
@@ -1262,14 +1265,17 @@ until the views are rebuilt.
 
 **HTTP caching.** Entry, sense, and form responses carry `ETag` (the digest of
 the entry document, or the digests of the matched entries for a form, joined by
-`.`) and `Cache-Control: public, max-age=60, stale-while-revalidate=300`; a
-matching `If-None-Match` gets `304` without a body. The ETag changes only when
-the document does, so feedback and completed work, which bump the revision
-without changing anything public, keep caches valid. A minute fresh keeps
-browsers and caches close to the view, and revalidation costs one indexed read.
-`GET /v1/entries` and `GET /v1/topics/{id}/senses` change whenever any entry in
-them does, so they carry `Cache-Control: public, max-age=15,
-stale-while-revalidate=60` and no ETag. Errors and the feedback POST carry no
+`.`) and `Cache-Control: public, no-cache`; a matching `If-None-Match` gets
+`304` without a body. The staleness budget of a public read is a few seconds,
+and a write rebuilds its views within its own request, so a cache must not keep
+a document fresh past it: every use revalidates, and the revalidation costs one
+indexed read and no body. The ETag changes only when the document does, so
+feedback and completed work, which bump the revision without changing anything
+public, keep cached bodies valid. `GET /v1/entries` and
+`GET /v1/topics/{id}/senses` change whenever any entry in them does; an ETag
+would need the whole page query before a `304` could save only the body, so
+they carry `Cache-Control: public, max-age=5`, which stays within the budget,
+and no ETag. Errors and the feedback POST carry no
 caching headers. The Worker runs in front of Cloudflare's cache, so the edge
 does not store these responses by itself; the headers serve browsers and
 downstream caches until the Worker puts responses in the Cache API.
@@ -1279,13 +1285,24 @@ downstream caches until the Worker puts responses in the Cache API.
 view starts stale and empty. Reads of entries and senses rebuild what they
 touch; `POST /manage/v1/public/rebuild` (admins only, body `{ limit }`, 1 to
 200, default 100) rebuilds up to `limit` stale views and returns
-`{ rebuilt, remaining }`. Repeat it until `remaining` is 0:
+`{ rebuilt, remaining }`. Form lookups and the two lists read only built rows,
+so after `wrangler d1 migrations apply` of a migration that marks views stale,
+repeat it until `remaining` is 0 before relying on them:
 
 ```sh
 until [ "$(curl -sf -X POST "$BASE/manage/v1/public/rebuild" \
   -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
   -d '{"limit":200}' | jq .remaining)" = 0 ]; do :; done
 ```
+
+A data migration cannot rebuild a view either, and nothing else notices that it
+changed what a document shows. Any migration that rewrites fact payloads,
+statuses, or content keys, entry lemmas, sense glosses, reference data, or
+anything else a public document is projected from must bump `revision` on the
+worklist rows of the entries it touches, in the same migration, so their views
+go stale and are rebuilt. `grammar_prepositions` is the pattern: its first
+statement bumps the revision of every entry that owned a live fact it then
+retracts and rewrites. Deploy such a migration with the drain above.
 
 On a local copy of the development database (12,466 entries, 79,794 facts),
 63 calls of 200 rebuilt every view in 30 seconds, about 415 entries a second,

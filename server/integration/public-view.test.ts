@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test'
 import { createDeps } from '@server/composition'
 import { projectPublicEntry, projectPublicSense } from '@server/domain/catalog-view'
+import { publicViewRecord, readDocument } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
 import {
   createEntryResultSchema,
@@ -23,8 +24,8 @@ import {
   stubReviewers,
 } from './helpers'
 
-const DOCUMENT_CACHE = 'public, max-age=60, stale-while-revalidate=300'
-const LIST_CACHE = 'public, max-age=15, stale-while-revalidate=60'
+const DOCUMENT_CACHE = 'public, no-cache'
+const LIST_CACHE = 'public, max-age=5'
 
 /** "bank" with a plural form and a topic-tagged river sense, linked by a synonym to "shore"; all published. */
 async function seedBank() {
@@ -55,6 +56,16 @@ const entryOf = async (lemma: string) => publicEntrySchema.parse((await call(`/v
 const listed = async () => entryPageSchema.parse((await call('/v1/entries')).body).items.map((item) => item.lemma)
 const tagged = async () =>
   topicSensePageSchema.parse((await call('/v1/topics/people-feelings/senses')).body).items.map((item) => item.id)
+/** Every stored view row of the entry and its view revision, to compare across a save. */
+const viewRowsOf = (entryId: string) =>
+  env.DB.batch(
+    [
+      'SELECT document, digest, built_at FROM public_entries WHERE entry_id = ?1',
+      'SELECT content_key, fact_id FROM public_forms WHERE entry_id = ?1 ORDER BY content_key, fact_id',
+      'SELECT topic_id, sense_id, gloss FROM public_sense_topics WHERE entry_id = ?1 ORDER BY topic_id, sense_id',
+      'SELECT revision, view_revision FROM worklist WHERE entry_id = ?1',
+    ].map((statement) => env.DB.prepare(statement).bind(entryId)),
+  ).then((results) => results.map((result) => result.results))
 const staleViews = async () =>
   (await env.DB.prepare('SELECT count(*) AS n FROM worklist WHERE revision <> view_revision').first<{ n: number }>())?.n
 
@@ -180,6 +191,55 @@ describe('public view', () => {
     expect(publicRebuildResultSchema.parse((await rebuild(admin, 1)).body)).toEqual({ rebuilt: 0, remaining: 0 })
     expect(await listed()).toEqual(['bank', 'shore'])
     expect((await rebuild(admin, 0)).status).toBe(400)
+  })
+
+  it('stores nothing from a rebuild whose revision moved before it saved [spec: public-view/lost-update]', async () => {
+    const { bank } = await seedBank()
+    const { publicViews } = createDeps(env)
+    const built = await viewRowsOf(bank.entry.id)
+    const [documentRow] = built[0] as Array<{ document: string }>
+    if (!documentRow) throw new Error('bank has no stored document.')
+    const document = readDocument(documentRow.document)
+    expect(built[1]).toHaveLength(1)
+    expect(built[2]).toHaveLength(1)
+
+    // A rebuild loads the stale revision, then another write bumps it before the rebuild saves.
+    await env.DB.prepare('UPDATE worklist SET revision = revision + 1 WHERE entry_id = ?').bind(bank.entry.id).run()
+    const [stale] = await publicViews.listStale([bank.entry.id])
+    if (!stale) throw new Error('bank is not stale.')
+    await env.DB.prepare('UPDATE worklist SET revision = revision + 1 WHERE entry_id = ?').bind(bank.entry.id).run()
+    const moved = await viewRowsOf(bank.entry.id)
+
+    await publicViews.save(stale, publicViewRecord({ ...document, forms: [], senses: [], frequency: null }))
+    expect(await viewRowsOf(bank.entry.id)).toEqual(moved)
+    await publicViews.save(stale, null)
+    expect(await viewRowsOf(bank.entry.id)).toEqual(moved)
+    expect(moved.slice(0, 3)).toEqual(built.slice(0, 3))
+  })
+
+  it('finds forms and list rows only once the drain has built them [spec: public-view/drain]', async () => {
+    const { bank, river } = await seedBank()
+    // What a migration that marks views stale leaves, as public_view_backfill does.
+    await env.DB.batch(
+      [
+        'UPDATE worklist SET view_revision = revision - 1',
+        'DELETE FROM public_forms',
+        'DELETE FROM public_sense_topics',
+        'DELETE FROM public_entries',
+      ].map((statement) => env.DB.prepare(statement)),
+    )
+    expect((await call('/v1/forms/banks')).status).toBe(404)
+    expect(await listed()).toEqual([])
+    expect(await tagged()).toEqual([])
+
+    const admin = await adminToken()
+    const drained = await call('/manage/v1/public/rebuild', { method: 'POST', token: admin, json: { limit: 200 } })
+    expect(publicRebuildResultSchema.parse(drained.body)).toEqual({ rebuilt: 2, remaining: 0 })
+    expect(formLookupSchema.parse((await call('/v1/forms/banks')).body).items).toEqual([
+      expect.objectContaining({ entry: { id: bank.entry.id, lemma: 'bank' } }),
+    ])
+    expect(await listed()).toEqual(['bank', 'shore'])
+    expect(await tagged()).toEqual([river.sense.id])
   })
 
   it('serves bodies byte-identical to the live projection [spec: public-view/parity]', async () => {

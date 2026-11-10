@@ -4,14 +4,17 @@ import type { Context } from 'hono'
 // revalidation is cheap: a client or cache that holds the ETag gets 304 without the body.
 
 /**
- * Entry, sense, and form reads. A minute fresh keeps the edge and browsers close to the view,
- * which a write rebuilds within its own request; another five minutes stale while revalidating
- * lets a cache answer at once and refetch in the background.
+ * Entry, sense, and form reads. A write rebuilds the view within its own request, so a cache that
+ * kept a document fresh for any time would serve it past that write; the staleness budget is a few
+ * seconds. Every use revalidates instead, and the 304 for an unchanged ETag is one indexed lookup.
  */
-export const DOCUMENT_CACHE = 'public, max-age=60, stale-while-revalidate=300'
+export const DOCUMENT_CACHE = 'public, no-cache'
 
-/** Lists change whenever any entry in them does, so they stay fresh for less time and have no ETag. */
-export const LIST_CACHE = 'public, max-age=15, stale-while-revalidate=60'
+/**
+ * Lists change whenever any entry in them does, and an ETag would cost the whole page query before
+ * a 304 could save only the body; five seconds fresh stays within the staleness budget.
+ */
+export const LIST_CACHE = 'public, max-age=5'
 
 /** A strong ETag over the digests of the entry documents a response is cut from. */
 export const etagOf = (digests: string[]) => `"${digests.join('.')}"`

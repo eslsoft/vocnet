@@ -40,17 +40,25 @@ export async function rebuildStalePublicViews(
   return { rebuilt: stale.length, remaining: await deps.publicViews.countStale() }
 }
 
+/** Rebuilds a read makes in a row while each loses to a newer write and no view was ever stored. */
+const READ_REBUILD_ATTEMPTS = 3
+
 /**
  * The view a lookup finds, rebuilt first when it is stale, so a read never serves a document older
  * than the facts it read. A write that lands during the rebuild leaves the view stale again; the
- * read serves what is stored and that write's own refresh rebuilds it.
+ * read serves what is stored and that write's own refresh rebuilds it. When nothing is stored yet,
+ * serving it would be a 404 for a public entry, so the read rebuilds again, up to
+ * READ_REBUILD_ATTEMPTS times, and is a 404 only when the projection itself is empty.
  */
 export async function readPublicView(
   deps: ViewDeps,
   find: () => Promise<ViewLookup | null>,
 ): Promise<StoredView | null> {
-  const found = await find()
-  if (!found?.stale) return found?.view ?? null
-  await rebuild(deps, found.stale)
-  return (await find())?.view ?? null
+  let found = await find()
+  for (let attempt = 0; found?.stale && attempt < READ_REBUILD_ATTEMPTS; attempt += 1) {
+    await rebuild(deps, found.stale)
+    found = await find()
+    if (found?.view) break
+  }
+  return found?.view ?? null
 }
