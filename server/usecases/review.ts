@@ -1,9 +1,12 @@
-import { currentGloss, type FactOf } from '@server/domain/fact'
+import { currentGloss, type Fact, type FactOf } from '@server/domain/fact'
 import {
+  ATTEMPTS_WEIGHED,
+  attemptKindsOf,
   factKinds,
   type InflectionOf,
   inflectionKeysOf,
   planReview,
+  type RejectedAttempt,
   type Rereview,
   type ReviewContext,
   type ReviewRequest,
@@ -156,6 +159,29 @@ async function topicView(deps: ReviewDeps, id: TopicId): Promise<TopicView | nul
   return { category: category.nameEn, topic: topic.nameEn }
 }
 
+/** A rejected fact about the node with the sense at its other end, the topic it names, and why it was rejected. */
+async function rejectedAttempt(deps: ReviewDeps, nodeId: string, fact: Fact): Promise<RejectedAttempt> {
+  if (!fact.review) throw new Error(`Rejected fact ${fact.id} has no review.`)
+  const other = fact.objectId && (fact.objectId === nodeId ? (fact.subjectId as SenseId) : fact.objectId)
+  const topic = topicOf(fact.kind, fact.payload)
+  const end = other && (await senseContext(deps, other))
+  return {
+    kind: fact.kind,
+    payload: fact.payload,
+    other: end ? { lemma: end.lemma, pos: end.pos, gloss: end.gloss } : null,
+    topic: topic ? await topicView(deps, topic) : null,
+    reason: fact.review.reason,
+  }
+}
+
+/** The latest rejected facts of the kinds the fact's review weighs, about the fact's subject. */
+async function rejectedAttempts<K extends FactKind>(deps: ReviewDeps, fact: FactOf<K>): Promise<RejectedAttempt[]> {
+  const kinds = attemptKindsOf(fact.kind, fact.payload)
+  if (kinds.length === 0) return []
+  const rejected = await deps.facts.listRejected(fact.subjectId, kinds, ATTEMPTS_WEIGHED)
+  return Promise.all(rejected.map((attempt) => rejectedAttempt(deps, fact.subjectId, attempt)))
+}
+
 async function loadContext<K extends FactKind>(
   deps: ReviewDeps,
   fact: FactOf<K>,
@@ -168,6 +194,7 @@ async function loadContext<K extends FactKind>(
     subject: subject as SubjectViews[SubjectTypeOf[K]],
     target: target ? await senseContext(deps, target) : null,
     topic: topic ? await topicView(deps, topic) : null,
+    attempts: await rejectedAttempts(deps, fact),
   }
 }
 

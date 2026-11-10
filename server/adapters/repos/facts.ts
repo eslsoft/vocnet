@@ -310,6 +310,35 @@ export function createFactRepo(db: Db): FactRepo {
       return (results[statements.indexOf(update)] as { id: string }[]).length > 0
     },
 
+    async listRejected(nodeId, kinds, limit) {
+      const held = alias(facts, 'held')
+      const heldLive = db
+        .select({ one: sql`1` })
+        .from(held)
+        .where(
+          and(
+            eq(held.kind, facts.kind),
+            eq(held.subjectId, facts.subjectId),
+            eq(held.contentKey, facts.contentKey),
+            inArray(held.status, ['pending', 'published']),
+          ),
+        )
+      const rows = await db
+        .select()
+        .from(facts)
+        .where(
+          and(
+            eq(facts.status, 'rejected'),
+            inArray(facts.kind, [...kinds]),
+            or(eq(facts.subjectId, nodeId), eq(facts.objectId, nodeId)),
+            notExists(heldLive),
+          ),
+        )
+        .orderBy(desc(facts.updatedAt), desc(facts.id))
+        .limit(limit)
+      return rows.map(toFact)
+    },
+
     async listRevalidating(nodeId) {
       const rows = await db
         .select({ id: facts.id })

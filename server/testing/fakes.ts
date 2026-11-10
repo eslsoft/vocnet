@@ -585,6 +585,22 @@ export function fakeWorld(): FakeWorld {
         touchLinked(next)
         return true
       },
+      listRejected: async (nodeId, kinds, limit) =>
+        world.facts
+          .filter((fact) => fact.status === 'rejected' && kinds.includes(fact.kind))
+          .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId)
+          .filter(
+            (fact) =>
+              !world.facts.some(
+                (other) =>
+                  live(other) &&
+                  other.kind === fact.kind &&
+                  other.subjectId === fact.subjectId &&
+                  other.contentKey === fact.contentKey,
+              ),
+          )
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id))
+          .slice(0, limit),
       listRevalidating: async (nodeId) =>
         world.facts
           .filter((fact) => live(fact) && fact.revalidateSince !== null)

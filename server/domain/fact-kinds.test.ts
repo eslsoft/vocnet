@@ -2,6 +2,8 @@ import type { Pos, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
   admissionOf,
+  attemptKindsOf,
+  closableGaps,
   contentKeyOf,
   endsAdmissionOf,
   factKinds,
@@ -181,35 +183,55 @@ describe('fact-kind registry', () => {
 
   it('plans the requests of the chain its kind names', () => {
     const plans = [
-      planReview('entry', {}, { subject: bankEntry, target: null, topic: null }),
-      planReview('sense', { gloss: 'land beside a river' }, { subject: bank, target: null, topic: null }),
-      planReview('form', { form: 'banks', type: 'plural' }, { subject: bankEntry, target: null, topic: null }),
+      planReview('entry', {}, { subject: bankEntry, target: null, topic: null, attempts: [] }),
+      planReview('sense', { gloss: 'land beside a river' }, { subject: bank, target: null, topic: null, attempts: [] }),
+      planReview(
+        'form',
+        { form: 'banks', type: 'plural' },
+        { subject: bankEntry, target: null, topic: null, attempts: [] },
+      ),
       planReview(
         'relation',
         { type: 'synonym', target_sense_id: target },
-        { subject: bank, target: shore, topic: null },
+        { subject: bank, target: shore, topic: null, attempts: [] },
       ),
-      planReview('pronunciation', { ipa: 'bæŋk', accent: 'uk' }, { subject: bankEntry, target: null, topic: null }),
-      planReview('example', { text: 'We sat on the bank.' }, { subject: bank, target: null, topic: null }),
-      planReview('translation', { language: 'fr', text: 'rive' }, { subject: bank, target: null, topic: null }),
-      planReview('topic', { topic_id: hospital }, { subject: bank, target: null, topic: hospitalView }),
-      planReview('grammar', { countability: 'countable' }, { subject: bank, target: null, topic: null }),
+      planReview(
+        'pronunciation',
+        { ipa: 'bæŋk', accent: 'uk' },
+        { subject: bankEntry, target: null, topic: null, attempts: [] },
+      ),
+      planReview(
+        'example',
+        { text: 'We sat on the bank.' },
+        { subject: bank, target: null, topic: null, attempts: [] },
+      ),
+      planReview(
+        'translation',
+        { language: 'fr', text: 'rive' },
+        { subject: bank, target: null, topic: null, attempts: [] },
+      ),
+      planReview('topic', { topic_id: hospital }, { subject: bank, target: null, topic: hospitalView, attempts: [] }),
+      planReview('grammar', { countability: 'countable' }, { subject: bank, target: null, topic: null, attempts: [] }),
       planReview(
         'morphology',
         { parts: [{ form: 'bank', role: 'base' }] },
-        { subject: bankEntry, target: null, topic: null },
+        { subject: bankEntry, target: null, topic: null, attempts: [] },
       ),
       planReview(
         'collocation',
         { text: 'river bank', pattern: 'noun_noun' },
-        { subject: bank, target: null, topic: null },
+        { subject: bank, target: null, topic: null, attempts: [] },
       ),
-      planReview('sense_list', { common: [target], extra: [] }, { subject: bankEntry, target: null, topic: null }),
-      planReview('syllables', { syllables: ['bank'] }, { subject: bankEntry, target: null, topic: null }),
+      planReview(
+        'sense_list',
+        { common: [target], extra: [] },
+        { subject: bankEntry, target: null, topic: null, attempts: [] },
+      ),
+      planReview('syllables', { syllables: ['bank'] }, { subject: bankEntry, target: null, topic: null, attempts: [] }),
       planReview(
         'gap_closure',
         { gap: 'collocations', reason: 'No common collocations.' },
-        { subject: bank, target: null, topic: null },
+        { subject: bank, target: null, topic: null, attempts: [] },
       ),
     ]
     expect(plans.map((plan) => requests(plan).map((request) => request.reviewer))).toEqual(
@@ -218,34 +240,42 @@ describe('fact-kind registry', () => {
   })
 
   it('asks Jev typed questions built from the review context', () => {
-    expect(jevQuestion(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }), 'lemma')).toContain(
-      '"bank"',
-    )
+    expect(
+      jevQuestion(planReview('entry', {}, { subject: bankEntry, target: null, topic: null, attempts: [] }), 'lemma'),
+    ).toContain('"bank"')
     const sense = planReview(
       'sense',
       { gloss: 'land beside a river' },
-      { subject: { ...bank, gloss: null }, target: null, topic: null },
+      { subject: { ...bank, gloss: null }, target: null, topic: null, attempts: [] },
     )
     expect(jevQuestion(sense, 'lexical')).toContain('established noun sense of "bank" meaning "land beside a river"')
   })
 
   it("gives the second opinion the claim with the lemma, part of speech, and the entry's other senses [spec: facts/second-opinion-context]", () => {
-    const entry = llmPrompt(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }))
+    const entry = llmPrompt(planReview('entry', {}, { subject: bankEntry, target: null, topic: null, attempts: [] }))
     expect(entry?.user).toContain('"bank"')
     expect(entry?.user).toContain('- (noun) "an institution that keeps money"')
     const sense = llmPrompt(
-      planReview('sense', { gloss: 'land beside a river' }, { subject: bank, target: null, topic: null }),
+      planReview('sense', { gloss: 'land beside a river' }, { subject: bank, target: null, topic: null, attempts: [] }),
     )
     expect(sense?.user).toContain('established noun sense meaning "land beside a river"')
     expect(sense?.user).toContain('usage notes')
     expect(sense?.user).toContain('- (noun) "an institution that keeps money"')
     const form = llmPrompt(
-      planReview('form', { form: 'an', type: 'variant' }, { subject: bankEntry, target: null, topic: null }),
+      planReview(
+        'form',
+        { form: 'an', type: 'variant' },
+        { subject: bankEntry, target: null, topic: null, attempts: [] },
+      ),
     )
     expect(form?.user).toContain('Is "an" the accepted variant of the English word "bank"')
     expect(form?.user).toContain('conditioned by the next sound')
     const plural = llmPrompt(
-      planReview('form', { form: 'Bs', type: 'plural' }, { subject: breadEntry, target: null, topic: null }),
+      planReview(
+        'form',
+        { form: 'Bs', type: 'plural' },
+        { subject: breadEntry, target: null, topic: null, attempts: [] },
+      ),
     )
     expect(plural?.user).toContain('plural form of the English word "bread", used as a noun')
     expect(plural?.user).toContain('plurals of letters')
@@ -260,7 +290,11 @@ describe('fact-kind registry', () => {
     ['part_of', 'part_of, meaning the source is a part of the target'],
   ] as const)('asks the second opinion whether %s is the most accurate relation type [spec: facts/second-opinion-relation-type]', (type, claim) => {
     const prompt = llmPrompt(
-      planReview('relation', { type, target_sense_id: target }, { subject: bank, target: shore, topic: null }),
+      planReview(
+        'relation',
+        { type, target_sense_id: target },
+        { subject: bank, target: shore, topic: null, attempts: [] },
+      ),
     )
     expect(prompt?.user).toContain(`Claimed type: ${claim}.`)
     expect(prompt?.user).toContain('Source: "bank" (noun), meaning "land beside a river".')
@@ -283,7 +317,7 @@ describe('fact-kind registry', () => {
       planReview(
         'relation',
         { type: 'part_of', target_sense_id: target },
-        { subject: bank, target: shore, topic: null },
+        { subject: bank, target: shore, topic: null, attempts: [] },
       ),
     )?.user
     expect(prompt).toContain('a head is part of a person, not of a princess')
@@ -298,19 +332,21 @@ describe('fact-kind registry', () => {
       planReview(
         'relation',
         { type: 'part_of', target_sense_id: target },
-        { subject: bank, target: shore, topic: null },
+        { subject: bank, target: shore, topic: null, attempts: [] },
       ),
     )
     expect(jev).toMatchObject({ reviewer: 'jev', settlesFailBelow: 0.5 })
     expect(Object.values(RELATION_JEV_FLOORS)).toEqual([0.5, 0.5, 0.5])
-    const [entryJev] = requests(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }))
+    const [entryJev] = requests(
+      planReview('entry', {}, { subject: bankEntry, target: null, topic: null, attempts: [] }),
+    )
     expect(entryJev).not.toHaveProperty('settlesFailBelow')
     expect(
       jevQuestion(
         planReview(
           'relation',
           { type: 'part_of', target_sense_id: target },
-          { subject: bank, target: shore, topic: null },
+          { subject: bank, target: shore, topic: null, attempts: [] },
         ),
         'relation',
       ),
@@ -319,7 +355,11 @@ describe('fact-kind registry', () => {
 
   it('judges an example of an offensive sense as an illustration of that sense [spec: facts/example-offensive-sense]', () => {
     const prompt = llmPrompt(
-      planReview('example', { text: 'She called him a dog.' }, { subject: bank, target: null, topic: null }),
+      planReview(
+        'example',
+        { text: 'She called him a dog.' },
+        { subject: bank, target: null, topic: null, attempts: [] },
+      ),
     )
     expect(prompt?.user).toContain('an example that shows such a sense in ordinary use is correct')
     expect(prompt?.user).toContain(
@@ -331,7 +371,11 @@ describe('fact-kind registry', () => {
 
   it('accepts descriptive translations of function words but not wrong or mixed senses [spec: facts/translation-rubric]', () => {
     const prompt = llmPrompt(
-      planReview('translation', { language: 'zh', text: '回来' }, { subject: bank, target: null, topic: null }),
+      planReview(
+        'translation',
+        { language: 'zh', text: '回来' },
+        { subject: bank, target: null, topic: null, attempts: [] },
+      ),
     )
     expect(prompt?.user).toContain(
       'verb-like or descriptive rendering of a preposition, adverb, particle, or conjunction',
@@ -361,7 +405,7 @@ describe('fact-kind registry', () => {
     ['comparative', 'breader', 'an adjective or adverb', 'comparative form', 'adjective or adverb'],
     ['superlative', 'breadest', 'an adjective or adverb', 'superlative form', 'adjective or adverb'],
   ] as const)('asks whether a %s form belongs to the word class that inflects that way [spec: facts/form-word-class]', (type, form, asClass, name, wordClass) => {
-    const plan = planReview('form', { form, type }, { subject: breadEntry, target: null, topic: null })
+    const plan = planReview('form', { form, type }, { subject: breadEntry, target: null, topic: null, attempts: [] })
     expect(jevQuestion(plan, 'form')).toBe(
       `When "bread" is inflected as ${asClass}, is "${form}" its ${name} in standard American or British usage? Evaluate the ${wordClass} use even if another part of speech is more common. ${tail}`,
     )
@@ -375,6 +419,7 @@ describe('fact-kind registry', () => {
         subject: { lemma: 'will', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
         target: null,
         topic: null,
+        attempts: [],
       },
     )
     expect(jevQuestion(plan, 'form')).toContain('When "will" is inflected as an auxiliary, is "would"')
@@ -385,7 +430,11 @@ describe('fact-kind registry', () => {
 
   it('asks Jev and the LLM whether a sense is used in its labelled register [spec: facts/write-labels]', () => {
     const plan = (register?: 'formal') =>
-      planReview('sense', { gloss: 'Not divisible by two.', register }, { subject: bank, target: null, topic: null })
+      planReview(
+        'sense',
+        { gloss: 'Not divisible by two.', register },
+        { subject: bank, target: null, topic: null, attempts: [] },
+      )
     const question = (register?: 'formal') => jevQuestion(plan(register), 'lexical') ?? ''
     const rubric = (register?: 'formal') => llmPrompt(plan(register))?.user ?? ''
     expect(question('formal')).toContain('meaning "Not divisible by two.", used in a formal register?')
@@ -408,6 +457,7 @@ describe('fact-kind registry', () => {
         subject: { lemma: 'to', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
         target: null,
         topic: null,
+        attempts: [],
       })
       return llmPrompt(plan)?.user ?? ''
     }
@@ -426,6 +476,7 @@ describe('fact-kind registry', () => {
         subject: { lemma: 'color', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
         target: null,
         topic: null,
+        attempts: [],
       },
     )
     expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
@@ -440,6 +491,7 @@ describe('fact-kind registry', () => {
           subject: { lemma: 'color', senses: [], inflectionOf: [], variantOf: ['colour'], cefr: [], caseVariants: [] },
           target: null,
           topic: null,
+          attempts: [],
         },
       ),
     )?.user
@@ -456,7 +508,7 @@ describe('fact-kind registry', () => {
     const plan = planReview(
       'relation',
       { type, target_sense_id: target },
-      { subject: bank, target: shore, topic: null },
+      { subject: bank, target: shore, topic: null, attempts: [] },
     )
     const question = jevQuestion(plan, 'relation')
     expect(question).toContain(phrase)
@@ -469,7 +521,7 @@ describe('fact-kind registry', () => {
       planReview(
         'relation',
         { type: 'hypernym', target_sense_id: target },
-        { subject: bank, target: shore, topic: null },
+        { subject: bank, target: shore, topic: null, attempts: [] },
       ),
       'relation',
     )
@@ -480,7 +532,9 @@ describe('fact-kind registry', () => {
 
   it('cannot review a meaning-dependent fact against a sense without a gloss [spec: facts/unreviewable]', () => {
     const glossless = { ...bank, gloss: null }
-    expect(planReview('example', { text: 'x' }, { subject: glossless, target: null, topic: null })).toEqual({
+    expect(
+      planReview('example', { text: 'x' }, { subject: glossless, target: null, topic: null, attempts: [] }),
+    ).toEqual({
       kind: 'unreviewable',
       reason: 'The referenced sense has no live gloss.',
     })
@@ -488,14 +542,14 @@ describe('fact-kind registry', () => {
       planReview(
         'relation',
         { type: 'synonym', target_sense_id: target },
-        { subject: bank, target: { ...shore, gloss: null }, topic: null },
+        { subject: bank, target: { ...shore, gloss: null }, topic: null, attempts: [] },
       ),
     ).toMatchObject({ kind: 'unreviewable' })
     expect(
       planReview(
         'relation',
         { type: 'synonym', target_sense_id: target },
-        { subject: bank, target: null, topic: null },
+        { subject: bank, target: null, topic: null, attempts: [] },
       ),
     ).toMatchObject({
       kind: 'unreviewable',
@@ -511,6 +565,7 @@ describe('fact-kind registry', () => {
           subject: { lemma, senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
           target: null,
           topic: null,
+          attempts: [],
         },
       )
     for (const letter of ['F', 'b', 'A', 'i', 'x', 'é', 'Ω']) {
@@ -533,6 +588,7 @@ describe('fact-kind registry', () => {
           subject: { lemma, senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
           target: null,
           topic: null,
+          attempts: [],
         },
       )
     const word = plan('bread')
@@ -588,6 +644,7 @@ describe('fact-kind registry', () => {
             subject: { lemma, senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
             target: null,
             topic: null,
+            attempts: [],
           },
         ),
       ).map((request) => request.reviewer)
@@ -614,6 +671,7 @@ describe('fact-kind registry', () => {
         },
         target: null,
         topic: null,
+        attempts: [],
       },
     )
     expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
@@ -623,7 +681,9 @@ describe('fact-kind registry', () => {
     expect(rubric).toContain('- the plural form of "sea"')
     expect(rubric).toContain('pass only when "saw" also has uses of its own as a lemma')
     expect(rubric).toContain('fail when it is only that inflection ("is", "was", "has", "did")')
-    const plain = llmPrompt(planReview('entry', {}, { subject: bankEntry, target: null, topic: null }))?.user
+    const plain = llmPrompt(
+      planReview('entry', {}, { subject: bankEntry, target: null, topic: null, attempts: [] }),
+    )?.user
     expect(plain).not.toContain('records "bank" as an inflection')
   })
 
@@ -646,6 +706,7 @@ describe('fact-kind registry', () => {
           },
           target: null,
           topic: null,
+          attempts: [],
         },
       )
     const phrase = listed('mental health')
@@ -712,10 +773,22 @@ describe('fact-kind registry', () => {
 
   it('gives the LLM a rubric prompt that demands a JSON verdict', () => {
     const plans = [
-      planReview('pronunciation', { ipa: 'bæŋk', accent: 'uk' }, { subject: bankEntry, target: null, topic: null }),
-      planReview('example', { text: 'We sat on the bank.' }, { subject: bank, target: null, topic: null }),
-      planReview('translation', { language: 'fr', text: 'rive' }, { subject: bank, target: null, topic: null }),
-      planReview('entry', {}, { subject: bankEntry, target: null, topic: null }),
+      planReview(
+        'pronunciation',
+        { ipa: 'bæŋk', accent: 'uk' },
+        { subject: bankEntry, target: null, topic: null, attempts: [] },
+      ),
+      planReview(
+        'example',
+        { text: 'We sat on the bank.' },
+        { subject: bank, target: null, topic: null, attempts: [] },
+      ),
+      planReview(
+        'translation',
+        { language: 'fr', text: 'rive' },
+        { subject: bank, target: null, topic: null, attempts: [] },
+      ),
+      planReview('entry', {}, { subject: bankEntry, target: null, topic: null, attempts: [] }),
     ]
     const prompts = plans.map(llmPrompt)
     expect(prompts.every((prompt) => prompt?.system.includes('"verdict"'))).toBe(true)
@@ -725,7 +798,11 @@ describe('fact-kind registry', () => {
   })
 
   it('asks the LLM alone whether this sense is core vocabulary of the topic [spec: topics/review-plan]', () => {
-    const plan = planReview('topic', { topic_id: hospital }, { subject: bank, target: null, topic: hospitalView })
+    const plan = planReview(
+      'topic',
+      { topic_id: hospital },
+      { subject: bank, target: null, topic: hospitalView, attempts: [] },
+    )
     expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
     const rubric = llmPrompt(plan)?.user
     expect(rubric).toContain('Sense: "bank" (noun), meaning "land beside a river".')
@@ -755,9 +832,9 @@ describe('fact-kind registry', () => {
 
   it('cannot judge a topic fact without a glossed sense or a leaf topic', () => {
     const payload = { topic_id: hospital }
-    const unglossed = { subject: { ...bank, gloss: null }, target: null, topic: hospitalView }
+    const unglossed = { subject: { ...bank, gloss: null }, target: null, topic: hospitalView, attempts: [] }
     expect(planReview('topic', payload, unglossed)).toMatchObject({ kind: 'unreviewable' })
-    expect(planReview('topic', payload, { subject: bank, target: null, topic: null })).toEqual({
+    expect(planReview('topic', payload, { subject: bank, target: null, topic: null, attempts: [] })).toEqual({
       kind: 'unreviewable',
       reason: 'The referenced topic is not a leaf topic of the taxonomy.',
     })
@@ -828,6 +905,7 @@ describe('grammar facts', () => {
         subject: each,
         target: null,
         topic: null,
+        attempts: [],
       },
     )
     expect(jevQuestion(plan, 'agreement_singular_noun')).toContain(
@@ -835,7 +913,11 @@ describe('grammar facts', () => {
     )
     expect(jevQuestion(plan, 'agreement_of_plural')).toContain('followed by "of" and a plural noun or pronoun')
     const usually = { lemma: 'usually', pos: 'adverb' as const, gloss: 'In most cases.', siblings: [] }
-    const position = planReview('grammar', { position: 'mid' }, { subject: usually, target: null, topic: null })
+    const position = planReview(
+      'grammar',
+      { position: 'mid' },
+      { subject: usually, target: null, topic: null, attempts: [] },
+    )
     expect(jevQuestion(position, 'position')).toContain('usually placed in mid position')
     expect(llmPrompt(position)?.user).toContain('An adverb position claims where the adverb usually goes')
   })
@@ -857,7 +939,7 @@ describe('grammar facts', () => {
     const plan = planReview(
       'grammar',
       { transitivity: 'intransitive', patterns: ['to_infinitive'] },
-      { subject: run, target: null, topic: null },
+      { subject: run, target: null, topic: null, attempts: [] },
     )
     const [jev] = requests(plan)
     expect(jev?.reviewer === 'jev' && Object.keys(jev.questions)).toEqual(['transitivity', 'pattern_to_infinitive'])
@@ -872,7 +954,7 @@ describe('grammar facts', () => {
     const prepositions = planReview(
       'grammar',
       { transitivity: 'intransitive', prepositions: ['on', 'out of'] },
-      { subject: rely, target: null, topic: null },
+      { subject: rely, target: null, topic: null, attempts: [] },
     )
     const [prepositionsJev] = requests(prepositions)
     expect(prepositionsJev?.reviewer === 'jev' && Object.keys(prepositionsJev.questions)).toEqual([
@@ -889,16 +971,20 @@ describe('grammar facts', () => {
     const adjective = planReview(
       'grammar',
       { patterns: ['to_infinitive'] },
-      { subject: asleep, target: null, topic: null },
+      { subject: asleep, target: null, topic: null, attempts: [] },
     )
     expect(jevQuestion(adjective, 'pattern_to_infinitive')).toContain('"happy to help"')
-    const noun = planReview('grammar', { countability: 'uncountable' }, { subject: bank, target: null, topic: null })
+    const noun = planReview(
+      'grammar',
+      { countability: 'uncountable' },
+      { subject: bank, target: null, topic: null, attempts: [] },
+    )
     expect(jevQuestion(noun, 'countability')).toContain('Is it uncountable')
     expect(
       planReview(
         'grammar',
         { countability: 'countable' },
-        { subject: { ...bank, gloss: null }, target: null, topic: null },
+        { subject: { ...bank, gloss: null }, target: null, topic: null, attempts: [] },
       ),
     ).toEqual({
       kind: 'unreviewable',
@@ -947,6 +1033,7 @@ describe('morphology facts', () => {
       subject: spectator,
       target: null,
       topic: null,
+      attempts: [],
     })
     expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
     expect(llmPrompt(plan)?.user).toContain('Claimed parts: "spect" (root meaning "look") + "-ator" (suffix)')
@@ -962,6 +1049,7 @@ describe('morphology facts', () => {
       subject: { lemma: 'water', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
       target: null,
       topic: null,
+      attempts: [],
     })
     expect(llmPrompt(simple)?.user).toContain('Claimed: a simple word')
   })
@@ -1000,6 +1088,7 @@ describe('morphology facts', () => {
       subject: { lemma: 'student', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
       target: null,
       topic: null,
+      attempts: [],
     })
     expect(llmPrompt(plan)?.user).toContain('"study" (base word, the word "study") + "-ent" (suffix)')
     expect(llmPrompt(plan)?.user).toContain('"student" is study + -ent (a student studies), not stud + -ent')
@@ -1089,7 +1178,7 @@ describe('collocation facts', () => {
       planReview(
         'collocation',
         { text: 'steep bank', pattern: 'adjective_noun' },
-        { subject: bank, target: null, topic: null },
+        { subject: bank, target: null, topic: null, attempts: [] },
       ),
     )?.user
     expect(rubric).toContain('Is "steep bank" a collocation of "bank" (noun), meaning "land beside a river"')
@@ -1147,7 +1236,7 @@ describe('sense list facts', () => {
     const plan = planReview(
       'sense_list',
       { common: [volume, reserve], extra: [record] },
-      { subject: book, target: null, topic: null },
+      { subject: book, target: null, topic: null, attempts: [] },
     )
     const rubric = llmPrompt(plan)?.user
     expect(rubric).toContain(
@@ -1176,7 +1265,7 @@ describe('sense list facts', () => {
       planReview(
         'sense_list',
         { common: [volume, reserve, record], extra: [] },
-        { subject: book, target: null, topic: null },
+        { subject: book, target: null, topic: null, attempts: [] },
       ),
     )?.user
     expect(bare).toContain('Extra senses: none.')
@@ -1188,7 +1277,7 @@ describe('sense list facts', () => {
       planReview(
         'sense_list',
         { common: [volume, reserve], extra: [record] },
-        { subject: may, target: null, topic: null },
+        { subject: may, target: null, topic: null, attempts: [] },
       ),
     )?.user
     expect(rubric).toContain(
@@ -1198,7 +1287,7 @@ describe('sense list facts', () => {
       planReview(
         'sense_list',
         { common: [volume, reserve], extra: [record] },
-        { subject: book, target: null, topic: null },
+        { subject: book, target: null, topic: null, attempts: [] },
       ),
     )?.user
     expect(alone).toContain('Judge only the word spelled exactly "book".')
@@ -1207,7 +1296,11 @@ describe('sense list facts', () => {
 
   it('cannot judge a list that names a sense without a live gloss [spec: facts/sense-list-rubric]', () => {
     expect(
-      planReview('sense_list', { common: [volume, lean], extra: [] }, { subject: book, target: null, topic: null }),
+      planReview(
+        'sense_list',
+        { common: [volume, lean], extra: [] },
+        { subject: book, target: null, topic: null, attempts: [] },
+      ),
     ).toEqual({ kind: 'unreviewable', reason: `A listed sense has no live gloss: ${lean}.` })
   })
 })
@@ -1229,7 +1322,7 @@ describe('new data fields', () => {
     const plan = planReview(
       'syllables',
       { syllables: ['a', 'bil', 'i', 'ty'] },
-      { subject: bankWord, target: null, topic: null },
+      { subject: bankWord, target: null, topic: null, attempts: [] },
     )
     expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
     expect(llmPrompt(plan)?.user).toContain('Is "a·bil·i·ty" how a learner\'s dictionary')
@@ -1261,13 +1354,18 @@ describe('new data fields', () => {
     expect(contentKeyOf('form', went)).toBe('past|went|us:went')
     expect(contentKeyOf('form', { ...went, pos: 'verb' })).toBe('past|went|verb|us:went')
     expect(meaningKeyOf('form', went)).toBe('past|went')
-    const plan = planReview('form', went, { subject: { ...bankWord, lemma: 'go' }, target: null, topic: null })
+    const plan = planReview('form', went, {
+      subject: { ...bankWord, lemma: 'go' },
+      target: null,
+      topic: null,
+      attempts: [],
+    })
     expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
     expect(llmPrompt(plan)?.user).toContain('pronounced /went/ in American English')
     const plain = planReview(
       'form',
       { form: 'went', type: 'past' },
-      { subject: { ...bankWord, lemma: 'go' }, target: null, topic: null },
+      { subject: { ...bankWord, lemma: 'go' }, target: null, topic: null, attempts: [] },
     )
     expect(requests(plain).map((request) => request.reviewer)).toEqual(['jev', 'llm'])
     expect(llmPrompt(plain)?.user).not.toContain('pronounced')
@@ -1277,10 +1375,14 @@ describe('new data fields', () => {
     const translated = { text: 'We sat on the bank.', translations: { zh: '我们坐在河岸上。' } }
     expect(contentKeyOf('example', translated)).toBe('we sat on the bank.|zh:我们坐在河岸上。')
     expect(meaningKeyOf('example', translated)).toBe('we sat on the bank.')
-    const prompt = llmPrompt(planReview('example', translated, { subject: bank, target: null, topic: null }))?.user
+    const prompt = llmPrompt(
+      planReview('example', translated, { subject: bank, target: null, topic: null, attempts: [] }),
+    )?.user
     expect(prompt).toContain('- Simplified Chinese: "我们坐在河岸上。"')
     expect(prompt).toContain('fail when a translation is unfaithful')
-    const plain = llmPrompt(planReview('example', { text: 'x' }, { subject: bank, target: null, topic: null }))?.user
+    const plain = llmPrompt(
+      planReview('example', { text: 'x' }, { subject: bank, target: null, topic: null, attempts: [] }),
+    )?.user
     expect(plain).not.toContain('translations of the sentence')
   })
 })
@@ -1305,7 +1407,7 @@ describe('completeness write rules and rubrics', () => {
     const plan = planReview(
       'relation',
       { type: 'antonym', target_sense_id: target },
-      { subject: bank, target: shore, topic: null },
+      { subject: bank, target: shore, topic: null, attempts: [] },
     )
     expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
     expect(llmPrompt(plan)?.user).toContain(
@@ -1393,6 +1495,7 @@ describe('completeness write rules and rubrics', () => {
           subject: kill,
           target: { lemma: 'waste', pos: 'verb', gloss: 'To kill.', siblings: [] },
           topic: null,
+          attempts: [],
         },
       ),
     )?.user
@@ -1404,7 +1507,11 @@ describe('completeness write rules and rubrics', () => {
     expect(contentKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.|british')
     expect(meaningKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.')
     const lorry = { lemma: 'lorry', pos: 'noun' as const, gloss: null, siblings: [] }
-    const unlabelled = planReview('sense', { gloss: 'A large vehicle.' }, { subject: lorry, target: null, topic: null })
+    const unlabelled = planReview(
+      'sense',
+      { gloss: 'A large vehicle.' },
+      { subject: lorry, target: null, topic: null, attempts: [] },
+    )
     expect(jevQuestion(unlabelled, 'lexical')).toContain(
       'If the sense is used only in one variety of English (only British, only American, only Australian, only Scottish English, and so on), the answer is no, since no region is stated.',
     )
@@ -1413,14 +1520,14 @@ describe('completeness write rules and rubrics', () => {
     const scottish = planReview(
       'sense',
       { gloss: 'To live somewhere permanently.', region: 'scottish' },
-      { subject: lorry, target: null, topic: null },
+      { subject: lorry, target: null, topic: null, attempts: [] },
     )
     expect(jevQuestion(scottish, 'lexical')).toContain('in Scottish English only?')
     expect(llmPrompt(unlabelled)?.user).toContain('dated is the label they write as old-fashioned')
     const british = planReview(
       'sense',
       { gloss: 'A large vehicle.', register: 'informal', region: 'british' },
-      { subject: lorry, target: null, topic: null },
+      { subject: lorry, target: null, topic: null, attempts: [] },
     )
     expect(jevQuestion(british, 'lexical')).toContain(
       'meaning "A large vehicle.", used in an informal register, in British English only?',
@@ -1444,7 +1551,7 @@ describe('completeness write rules and rubrics', () => {
       planReview(
         'gap_closure',
         { gap: 'collocations', reason: 'A month name has no common collocations.' },
-        { subject: may, target: null, topic: null },
+        { subject: may, target: null, topic: null, attempts: [] },
       ),
     )?.user
     expect(onSense).toContain(
@@ -1460,7 +1567,7 @@ describe('completeness write rules and rubrics', () => {
       planReview(
         'gap_closure',
         { gap: 'forms', reason: 'Beware is used only in the base form.' },
-        { subject: { ...breadEntry, lemma: 'beware' }, target: null, topic: null },
+        { subject: { ...breadEntry, lemma: 'beware' }, target: null, topic: null, attempts: [] },
       ),
     )?.user
     expect(onEntry).toContain('this slot of the English word "beware"?')
@@ -1471,7 +1578,7 @@ describe('completeness write rules and rubrics', () => {
       planReview(
         'gap_closure',
         { gap: 'family', reason: 'A compound with no common derivatives.' },
-        { subject: { ...breadEntry, lemma: 'notebook' }, target: null, topic: null },
+        { subject: { ...breadEntry, lemma: 'notebook' }, target: null, topic: null, attempts: [] },
       ),
     )?.user
     expect(family).toContain('Slot: the word family: common derivatives built on the word')
@@ -1481,9 +1588,61 @@ describe('completeness write rules and rubrics', () => {
       planReview(
         'gap_closure',
         { gap: 'topics', reason: 'General.' },
-        { subject: { ...may, gloss: null }, target: null, topic: null },
+        { subject: { ...may, gloss: null }, target: null, topic: null, attempts: [] },
       ),
     ).toEqual({ kind: 'unreviewable', reason: 'The referenced sense has no live gloss.' })
+  })
+
+  it('weighs the rejected attempts to fill the slot, passing unless a new value plainly fits [spec: facts/gap-closure-attempts]', () => {
+    expect(Object.fromEntries(Object.entries(closableGaps).map(([gap, spec]) => [gap, spec.filledBy]))).toEqual({
+      forms: ['form'],
+      phrases: [],
+      family: [],
+      relations: ['relation'],
+      topics: ['topic'],
+      grammar: ['grammar'],
+      collocations: ['collocation'],
+    })
+    expect(attemptKindsOf('gap_closure', { gap: 'topics', reason: 'r' })).toEqual(['topic'])
+    expect(attemptKindsOf('gap_closure', { gap: 'family', reason: 'r' })).toEqual([])
+    expect(attemptKindsOf('topic', { topic_id: 'kitchen' as TopicId })).toEqual([])
+    const body = { lemma: 'body', pos: 'noun' as const, gloss: 'The main part of anything.', siblings: [] }
+    const closure = { gap: 'topics' as const, reason: 'A general sense with no specific topic.' }
+    const prompt = (attempts: Parameters<typeof planReview>[2]['attempts']) =>
+      llmPrompt(planReview('gap_closure', closure, { subject: body, target: null, topic: null, attempts }))?.user ?? ''
+    const attempted = prompt([
+      {
+        kind: 'topic',
+        payload: { topic_id: 'music' as TopicId },
+        other: null,
+        topic: { category: 'Arts', topic: 'Music' },
+        reason: 'Too general to be core vocabulary for music.',
+      },
+      {
+        kind: 'relation',
+        payload: { type: 'hypernym', target_sense_id: sense(1) },
+        other: { lemma: 'part', pos: 'noun', gloss: null },
+        topic: null,
+        reason: 'Not a kind of part.',
+      },
+    ])
+    expect(attempted).toContain('Review already rejected these attempts to fill this slot, most recent first:')
+    expect(attempted).toContain(
+      '- topic {"topic_id":"music"} (topic "Music" (in the category "Arts")): rejected because "Too general to be core vocabulary for music."',
+    )
+    expect(attempted).toContain(
+      `- relation {"type":"hypernym","target_sense_id":"${sense(1)}"} (linking to "part" (noun)): rejected because "Not a kind of part."`,
+    )
+    expect(attempted).toContain(
+      'when the attempts were rejected as not fitting, pass unless you can name a specific value that plainly fills the slot and differs from every rejected one.',
+    )
+    expect(attempted).toContain(
+      "A fail reason names the specific value a learner's dictionary gives for the slot, never only that one exists.",
+    )
+    expect(attempted).toContain('or a general-purpose sense usable in many scenes belongs to no topic')
+    const fresh = prompt([])
+    expect(fresh).not.toContain('Review already rejected')
+    expect(fresh).toContain("A fail reason names the specific value a learner's dictionary gives for the slot")
   })
 
   it('claims a noun number and article and an adjective used in both positions [spec: facts/grammar-review]', () => {
@@ -1491,7 +1650,7 @@ describe('completeness write rules and rubrics', () => {
     const plan = planReview(
       'grammar',
       { countability: 'uncountable', article: 'with_the', number: 'singular_only', prepositions: ['on'] },
-      { subject: internet, target: null, topic: null },
+      { subject: internet, target: null, topic: null, attempts: [] },
     )
     const [jev] = requests(plan)
     expect(jev?.reviewer === 'jev' && Object.keys(jev.questions)).toEqual([
@@ -1503,7 +1662,8 @@ describe('completeness write rules and rubrics', () => {
     expect(llmPrompt(plan)?.user).toContain('usually used with "the" in this sense ("the internet", "the environment")')
     const big = { lemma: 'big', pos: 'adjective' as const, gloss: 'Large.', siblings: [] }
     expect(
-      llmPrompt(planReview('grammar', { position: 'both' }, { subject: big, target: null, topic: null }))?.user,
+      llmPrompt(planReview('grammar', { position: 'both' }, { subject: big, target: null, topic: null, attempts: [] }))
+        ?.user,
     ).toContain('used both before a noun ("a big house") and after a linking verb')
     expect(
       contentKeyOf('grammar', { countability: 'uncountable', article: 'zero_article', number: 'singular_only' }),
@@ -1513,7 +1673,7 @@ describe('completeness write rules and rubrics', () => {
         planReview(
           'grammar',
           { countability: 'countable', patterns: ['of_ing'] },
-          { subject: internet, target: null, topic: null },
+          { subject: internet, target: null, topic: null, attempts: [] },
         ),
       )?.user,
     ).toContain('commonly followed by "of" and an -ing form (a pattern like "the habit of smoking")')

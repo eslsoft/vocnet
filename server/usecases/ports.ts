@@ -143,6 +143,11 @@ export interface FactRepo {
    * original already has another live correction.
    */
   transition(write: FactTransitionWrite): Promise<boolean>
+  /**
+   * The latest rejected facts of these kinds about this node (as subject or object), most recently
+   * rejected first, leaving out any whose content a live fact of its kind about the same subject holds.
+   */
+  listRejected(nodeId: EntryId | SenseId, kinds: readonly FactKind[], limit: number): Promise<Fact[]>
   /** Live facts about this node (as subject or object) marked for a review against its new version. */
   listRevalidating(nodeId: EntryId | SenseId): Promise<FactId[]>
   /** Facts pending since before cutoff, then facts awaiting revalidation since before it, pending first. */

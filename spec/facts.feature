@@ -735,6 +735,25 @@ Feature: Facts and review
     Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
     And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, and a relations closure when the recorded relations are the only precise ones
 
+  @facts/gap-closure-attempts @domain
+  Scenario: A gap closure review weighs the attempts already rejected for its slot
+    Given a gap closure whose slot has rejected attempts, and one whose slot has none
+    When its review is planned
+    Then each closable gap names the kinds that fill it, none for phrases and family, and the rubric lists each rejected attempt with its value, other end or topic, and rejection reason
+    And it passes the closure when the attempts were rejected as not fitting, unless the reviewer names a specific value that plainly fills the slot and differs from every rejected one, and a fail reason always names the value
+
+  @facts/gap-closure-attempts-context @usecase
+  Scenario: A closure review sees the rejected facts of the kinds that fill its slot
+    Given a sense with rejected topics, one of them since published, and rejected relations into and out of it
+    When a topics closure and a relations closure on it are reviewed
+    Then the topics review lists only the rejected topic still not live, with its topic name and reason, and the relations review lists both relations with the sense at their other end
+
+  @facts/rejected-attempts-query @api
+  Scenario: Rejected attempts are the latest rejected facts of the filling kinds about the node
+    Given rejected, published, and retracted facts of several kinds about a node and another node
+    When the rejected attempts of some kinds are listed with a limit
+    Then they are the rejected facts of those kinds with the node as subject or object, most recently rejected first, up to the limit, leaving out one whose content a live fact holds
+
   @facts/gap-closure-api @api
   Scenario: A reviewed closure closes its gap and shows in the review metadata
     Given a sense with a collocations gap

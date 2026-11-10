@@ -328,6 +328,12 @@ Feature: Worklist
     When the completeness_rules migration runs
     Then the orphans and periphrastic forms are retracted, each transcription and zh text is rewritten with the key the registry computes, a collision keeps the published or oldest fact and retracts the rest, the sense list is marked for review in place, and every worklist row is stale
 
+  @work/closure-attempts-unstall-migration @api
+  Scenario: The closure attempts release lifts every stall
+    Given worklist rows stalled on the open work of their last claim
+    When the closure_attempts_unstall migration runs
+    Then no row is stalled or keeps its claimed open work, and every row is stale, so the producer resubmits the closures
+
   @work/core-verb-phrases-migration @api
   Scenario: The core verb release re-judges recent phrasal verbs
     Given multiword entries an agent created today and earlier, headed by a verb and by a noun, with a verb sense and without, one a CEFR list names, and one an admin created

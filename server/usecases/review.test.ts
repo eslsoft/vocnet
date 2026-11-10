@@ -2,7 +2,7 @@ import { assessEntry } from '@server/domain/work'
 import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
-import type { FactId } from '@shared/facts'
+import type { FactId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
 import { getFact, rereviewFact, retractFact, submitFact } from './facts'
@@ -305,6 +305,67 @@ describe('reviewFact', () => {
     })
     await reviewFact(world.deps, fact.id, 'trace-review')
     expect(world.llmCalls.at(-1)?.user).toContain('Other senses of the target "shore":\n- (verb) "to prop up"')
+  })
+
+  it('shows a closure review the rejected attempts to fill its slot [spec: facts/gap-closure-attempts-context]', async () => {
+    const { world, sense } = await bankWorld()
+    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
+    const other = await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'noun', gloss: 'a riverside' })
+    await drain(world)
+    const rejectAs = async (reason: string, input: Parameters<typeof submitFact>[2]) => {
+      world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason }))
+      const { fact } = await submitFact(world.deps, agentA, input)
+      await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
+      return fact
+    }
+    const topic = (topic_id: string) => ({
+      kind: 'topic' as const,
+      subject_id: sense.id,
+      payload: { topic_id: topic_id as TopicId },
+    })
+    await rejectAs('Too general for the kitchen.', topic('kitchen'))
+    world.setNow('2026-01-01T00:01:00.000Z')
+    await rejectAs('Too general for furniture.', topic('furniture'))
+    world.setNow('2026-01-01T00:02:00.000Z')
+    await rejectAs('Not the opposite of a riverside.', {
+      kind: 'relation',
+      subject_id: other.sense.id,
+      payload: { type: 'antonym', target_sense_id: sense.id },
+    })
+    world.answerJev(() => ({ model: 'jev-test', answers: { relation: 0.05 } }))
+    await rejectAs('unused', {
+      kind: 'relation',
+      subject_id: other.sense.id,
+      payload: { type: 'hypernym', target_sense_id: sense.id },
+    })
+    world.passReviews()
+    await submitFact(world.deps, agentA, topic('furniture'))
+    await drain(world)
+
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Nothing fits.' }))
+    const closure = async (gap: 'topics' | 'relations') => {
+      const { fact } = await submitFact(world.deps, agentA, {
+        kind: 'gap_closure',
+        subject_id: sense.id,
+        payload: { gap, reason: 'Nothing fits.' },
+      })
+      await reviewFact(world.deps, fact.id, 'trace-review')
+      return world.llmCalls.at(-1)?.user ?? ''
+    }
+    const topics = await closure('topics')
+    expect(topics).toContain(
+      '- topic {"topic_id":"kitchen"} (topic "In the kitchen" (in the category "Home")): rejected because "Too general for the kitchen."',
+    )
+    expect(topics).not.toContain('furniture')
+    expect(topics).not.toContain('riverside.')
+    const relations = await closure('relations')
+    expect(relations).toContain(
+      `(linking to "shore" (noun), meaning "a riverside"): rejected because "Not the opposite of a riverside."`,
+    )
+    expect(relations).toContain(
+      `- relation {"type":"hypernym","target_sense_id":"${sense.id}"} (linking to "shore" (noun), meaning "a riverside"): rejected because "Jev relation=0.05"`,
+    )
+    expect(relations).not.toContain('kitchen')
   })
 
   it('skips facts that are not pending, so duplicate deliveries change nothing [spec: facts/review-idempotent]', async () => {

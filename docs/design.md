@@ -119,7 +119,25 @@ verbs or verb idioms exist and its reason names the ones that do ("throw" has
 throw away, throw out, and throw up, so it fails there); a `family` closure only
 for a word with no common derivatives ("notebook", or a function word); and a
 `relations` closure when the relations recorded so far are the only precise
-ones, so a sense need not be padded to two with loose relations. A gloss correction that changes a sense's meaning re-reviews the
+ones, so a sense need not be padded to two with loose relations. A fail
+reason names the specific value a learner's dictionary gives for the slot.
+
+A closure review also weighs the attempts already rejected for its slot. Each
+closable gap names the kinds whose facts about its node fill it
+(`closableGaps[gap].filledBy`: `form`; `relation`; `topic`; `grammar`;
+`collocation`; none for `phrases` and `family`, which other entries fill), and
+the review context carries the latest `ATTEMPTS_WEIGHED` (5) rejected facts of
+those kinds about the node, as subject or object, most recently rejected first,
+leaving out any whose content a live fact holds again: each with its payload, the
+sense at its other end, the topic it names, and the rejection reason. When the
+attempts were rejected as not fitting, the closure passes unless the reviewer
+names a specific value that plainly fills the slot and differs from every
+rejected one; a value an attempt tried, or an association as loose as theirs,
+is no reason to fail. Without this a reviewer that rejects each topic of a
+general sense as too general, then the closure because the sense "has a topic
+association", stalls the entry for good. A rejected closure holds no content
+key (dedupe is against live facts only), so the producer's resubmission after a
+rule change is a new fact with a fresh review. A gloss correction that changes a sense's meaning re-reviews the
 sense's closures in place. A live closure closes exactly its gap on its node:
 the rule's slots count as filled (see Gaps). The public entry shows a
 published closure of the entry or of a shown sense only in its review metadata
@@ -1149,6 +1167,10 @@ opens a gap, a fact leaves live, a weak fact is replaced, a new sense opens
 gaps (its own and a stale sense list's), or feedback opens on a fact. A pass that adds a sense makes progress: its
 gaps are new work for the next pass. A word whose relations no agent can find
 stalls after one pass and comes back only when something about it changes.
+A review rule change that should reopen stalled entries ships with a migration
+that clears every row's `stalled` and `claimed_work` and bumps its revision, as
+`closure_attempts_unstall` did when closure reviews began weighing rejected
+attempts (see Gap closures).
 
 ### Relations by part of speech
 

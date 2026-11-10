@@ -110,6 +110,20 @@ export interface ReviewContext<S extends SubjectType = SubjectType> {
   target: SubjectViews['sense'] | null
   /** The topic a topic fact tags its sense with; null for every other kind, or when no such leaf topic exists. */
   topic: TopicView | null
+  /** The rejected facts the kind's `attempts` names, most recently rejected first; empty for every other kind. */
+  attempts: readonly RejectedAttempt[]
+}
+
+/**
+ * A fact a review rejected, as a later review of the same slot sees it: what it claimed, the sense
+ * at its other end and the topic it names when it has them, and why it was rejected.
+ */
+export interface RejectedAttempt {
+  kind: FactKind
+  payload: FactPayloads[FactKind]
+  other: SenseView | null
+  topic: TopicView | null
+  reason: string
 }
 
 export type JevQuestions = Record<string, string>
@@ -165,6 +179,11 @@ interface BaseSpec<K extends FactKind> {
   contentKey(payload: FactPayloads[K]): string
   /** The sense a relation points at; absent for kinds without an object. */
   target?(payload: FactPayloads[K]): SenseId
+  /**
+   * The kinds whose rejected facts about the same node (as subject or object) the review weighs,
+   * because they tried to fill what this fact claims is empty; absent for kinds that weigh none.
+   */
+  attempts?(payload: FactPayloads[K]): readonly FactKind[]
   /** The leaf topic the fact tags its subject with; absent for kinds that reference no topic. */
   topic?(payload: FactPayloads[K]): TopicId
   /** The parts of speech a sense subject must have; absent means any. */
@@ -1368,37 +1387,49 @@ interface ClosableGapSpec {
   subject: 'entry' | 'sense'
   /** What the slot holds, as the closure rubric names it. */
   slot: string
+  /**
+   * The kinds whose facts about the node fill the slot, so a closure review weighs their rejected
+   * attempts; empty when other entries fill it (a phrase or a derivative is an entry of its own).
+   */
+  filledBy: readonly FactKind[]
 }
 
-/** Each gap a closure may close: the node it is about and what its slot holds. */
+/** Each gap a closure may close: the node it is about, what its slot holds, and the kinds that fill it. */
 export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
   forms: {
     subject: 'entry',
     slot: 'inflected forms: the third-person singular, past tense, past participle, and present participle of a verb; the plural of a countable noun; the -er and -est comparative and superlative of an adjective or adverb that compares that way',
+    filledBy: ['form'],
   },
   phrases: {
     subject: 'entry',
     slot: 'three phrasal verbs or verb idioms headed by the word, as entries of their own ("give up", "give in", "give way"); the slot is complete with fewer only when fewer than three common ones exist, and the reason names those',
+    filledBy: [],
   },
   family: {
     subject: 'entry',
     slot: 'the word family: common derivatives built on the word that a learner\'s dictionary lists with it ("happiness", "happily", and "unhappy" for "happy"; "student" for "study")',
+    filledBy: [],
   },
   relations: {
     subject: 'sense',
     slot: 'related words: a synonym, an antonym, a broader term it is a kind of, or a whole it is a part of; the slot is complete when the relations recorded so far are the only precise ones',
+    filledBy: ['relation'],
   },
   topics: {
     subject: 'sense',
     slot: 'a topic: a scene or subject area whose core vocabulary includes this sense ("oven" in household appliances)',
+    filledBy: ['topic'],
   },
   grammar: {
     subject: 'sense',
     slot: 'grammar: the countability of a noun, the transitivity of a verb, the position, patterns, or prepositions of an adjective, the usual position of an adverb, or what a determiner or pronoun agrees with',
+    filledBy: ['grammar'],
   },
   collocations: {
     subject: 'sense',
     slot: 'collocations: combinations native speakers commonly use with the word in this sense ("make a decision")',
+    filledBy: ['collocation'],
   },
 }
 
@@ -1409,7 +1440,7 @@ const CLOSURE_PASSES = [
   'a sense whose recorded relations are the only precise ones: no further synonym, antonym, broader term, or whole would help a learner',
   'an uncountable noun ("advice") has no plural',
   'a non-gradable adjective ("main", "dead") has no comparative',
-  'a function word or a general word ("thing", "get") belongs to no topic',
+  'a function word, a general word ("thing", "get"), or a general-purpose sense usable in many scenes belongs to no topic, even where it can appear in one',
 ]
 
 const CLOSURE_FAILS = [
@@ -1419,9 +1450,36 @@ const CLOSURE_FAILS = [
   'a reason that is wrong, vague, or only says the data is hard to find',
 ]
 
+/** How many of the latest rejected attempts a review weighs: enough to show what was tried. */
+export const ATTEMPTS_WEIGHED = 5
+
+const describeEnd = ({ lemma, pos, gloss }: SenseView) =>
+  `${quote(lemma)} (${pos})${gloss === null ? '' : `, meaning ${quote(gloss)}`}`
+
+function describeAttempt({ kind, payload, other, topic, reason }: RejectedAttempt): string {
+  const about = [other && `linking to ${describeEnd(other)}`, topic && `topic ${describeTopic(topic)}`].filter(
+    (part) => part !== null,
+  )
+  const context = about.length === 0 ? '' : ` (${about.join('; ')})`
+  return `- ${kind} ${JSON.stringify(payload)}${context}: rejected because ${quote(reason)}`
+}
+
+/**
+ * A reviewer that rejects every value tried for a slot and then refuses to close it loops the
+ * producer forever, so the closure is judged against what was already rejected.
+ */
+function rejectedAttemptRules(attempts: readonly RejectedAttempt[]): string[] {
+  if (attempts.length === 0) return []
+  return [
+    'Review already rejected these attempts to fill this slot, most recent first:',
+    ...attempts.map(describeAttempt),
+    'Each was judged not to fit. Never fail for a value one of them tried, or for an association as loose as theirs: when the attempts were rejected as not fitting, pass unless you can name a specific value that plainly fills the slot and differs from every rejected one.',
+  ]
+}
+
 function gapClosureRubric(
   { gap, reason }: FactPayloads['gap_closure'],
-  subject: SubjectViews['entry'] | SubjectViews['sense'],
+  { subject, attempts }: ReviewContext<'entry' | 'sense'>,
 ): ReviewPlan<readonly ['llm']> {
   const about = (described: string, others: string) => [
     `Does a learner's dictionary genuinely have nothing for this slot of ${described}?`,
@@ -1431,6 +1489,8 @@ function gapClosureRubric(
     ...CLOSURE_PASSES.map((rule) => `- ${rule}`),
     'fail when the slot plainly applies to this word, so a learner would expect it filled, or the reason is wrong. For example:',
     ...CLOSURE_FAILS.map((rule) => `- ${rule}`),
+    "A fail reason names the specific value a learner's dictionary gives for the slot, never only that one exists.",
+    ...rejectedAttemptRules(attempts),
     'uncertain: only when you cannot judge the word at all.',
     others,
   ]
@@ -1634,7 +1694,8 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // A correction that rewords the reason must differ from the closure it supersedes.
     contentKey: ({ gap, reason }) => `${gap}|${textKey(reason)}`,
     meaningKey: ({ gap }) => gap,
-    plan: (payload, { subject }) => gapClosureRubric(payload, subject),
+    attempts: ({ gap }) => closableGaps[gap].filledBy,
+    plan: gapClosureRubric,
   },
 }
 
@@ -1702,6 +1763,11 @@ export function revalidatedBy<K extends FactKind>(
 /** The orientation a submitted claim is stored in. */
 export function orientOf<K extends FactKind>(kind: K, subjectId: string, payload: FactPayloads[K]): Oriented<K> {
   return factKinds[kind].orient?.(subjectId, payload) ?? { subjectId, payload }
+}
+
+/** The kinds whose rejected facts a review of this fact weighs; none for kinds that weigh none. */
+export function attemptKindsOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): readonly FactKind[] {
+  return factKinds[kind].attempts?.(payload) ?? []
 }
 
 export function targetOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): SenseId | null {
