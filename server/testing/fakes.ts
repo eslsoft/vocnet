@@ -6,6 +6,7 @@ import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { type PublicViewRecord, STEM_ROLES } from '@server/domain/public-view'
 import { levelRank } from '@server/domain/reference'
+import { EXACT_LEMMA_TIER, fieldTier, LEMMA_PREFIX_TIER, SEARCH_TIERS } from '@server/domain/search'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
 import { claimTier, isClaimable, type WorkLease } from '@server/domain/work'
@@ -22,9 +23,9 @@ import type {
   WorkScores,
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
-import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, Pos, SenseId, TopicId } from '@shared/facts'
 import type { FeedbackId } from '@shared/feedback'
-import type { LemmaReference, ReferenceSource } from '@shared/reference'
+import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
 import type { WorkLeaseId } from '@shared/work'
 
 // In-memory stand-ins for every port, shared by the use-case tests. They model
@@ -255,6 +256,8 @@ export function fakeWorld(): FakeWorld {
     return { items: slice, nextCursor: start + limit < items.length ? String(start + limit) : null }
   }
 
+  /** Built views in lemma order, as the view's lemma index reads them. */
+  const builtViews = () => [...world.views.values()].sort((a, b) => a.document.lemma.localeCompare(b.document.lemma))
   const isViewStale = (entryId: EntryId) => workOf(entryId).revision !== workOf(entryId).viewRevision
   const viewLookup = (entryId: EntryId): ViewLookup => {
     const record = world.views.get(entryId)
@@ -654,39 +657,83 @@ export function fakeWorld(): FakeWorld {
         const sense = world.senses.find((candidate) => candidate.id === id)
         return sense ? viewLookup(sense.entryId) : null
       },
-      findForms: async (contentKeys) =>
-        [...world.views.values()]
-          .sort((a, b) => a.document.lemma.localeCompare(b.document.lemma))
-          .flatMap((record) =>
-            record.forms
-              .filter((form) => contentKeys.includes(form.contentKey))
-              .map((form) => ({
-                summary: record.document.summary,
-                digest: fakeDigest(JSON.stringify(record.document)),
-                type: form.type,
-                pos: form.pos,
-              })),
-          ),
-      listEntries: async (prefix, page) =>
-        paged(
-          [...world.views.values()]
-            .map(({ document }) => document.summary)
-            .filter((summary) => summary.lemma.startsWith(prefix))
-            .sort((a, b) => a.lemma.localeCompare(b.lemma)),
+      findForms: async (spelling) =>
+        builtViews().flatMap((record) =>
+          record.forms
+            .filter((form) => form.form === spelling)
+            .map((form) => ({
+              summary: record.document.summary,
+              digest: fakeDigest(JSON.stringify(record.document)),
+              type: form.type,
+              pos: form.pos,
+            })),
+        ),
+      listEntries: async ({ prefix, levels, pos, leaves }, sort, page) => {
+        const fits = (candidate: { pos: Pos; cefr: CefrLevel | null }) =>
+          (pos === null || candidate.pos === pos) &&
+          (levels.length === 0 || (candidate.cefr !== null && levels.includes(candidate.cefr)))
+        const admitted = builtViews().filter(
+          (record) =>
+            record.document.lemma.startsWith(prefix) &&
+            (leaves
+              ? record.taggedSenses.some((tag) => leaves.includes(tag.topicId) && fits(tag.summary))
+              : pos === null && levels.length === 0
+                ? true
+                : record.meanings.some(fits)),
+        )
+        if (sort === 'frequency') admitted.sort((a, b) => a.frequencyOrder - b.frequencyOrder)
+        return paged(
+          admitted.map((record) => record.document.summary),
           page.limit,
           page.cursor,
-        ),
-      listTaggedSenses: async (leaves, page) => {
-        const tagged = new Map<string, StoredSenseSummary>()
-        for (const record of world.views.values()) {
+        )
+      },
+      listTaggedSenses: async (leaves, sort, page) => {
+        const tagged = new Map<string, { summary: StoredSenseSummary; order: number }>()
+        for (const record of builtViews()) {
           for (const tag of record.taggedSenses.filter((candidate) => leaves.includes(candidate.topicId))) {
-            tagged.set(tag.summary.sense_id, tag.summary)
+            const order = { lemma: 0, frequency: record.frequencyOrder, level: tag.levelOrder }[sort]
+            tagged.set(tag.summary.sense_id, { summary: tag.summary, order })
           }
         }
         const ordered = [...tagged.values()].sort(
-          (a, b) => a.lemma.localeCompare(b.lemma) || a.sense_id.localeCompare(b.sense_id),
+          (a, b) =>
+            a.order - b.order ||
+            a.summary.lemma.localeCompare(b.summary.lemma) ||
+            a.summary.sense_id.localeCompare(b.summary.sense_id),
         )
-        return paged(ordered, page.limit, page.cursor)
+        return paged(
+          ordered.map((tag) => tag.summary),
+          page.limit,
+          page.cursor,
+        )
+      },
+      search: async ({ text, terms, scopes }, page) => {
+        const tierOf = (record: PublicViewRecord) => {
+          const { lemma } = record.document
+          if (lemma === text) return EXACT_LEMMA_TIER
+          if (lemma.startsWith(text)) return LEMMA_PREFIX_TIER
+          const words = (body: string) => body.toLowerCase().split(/[^\p{L}\p{N}]+/u)
+          const tiers = record.searchTexts
+            .filter(
+              ({ scope, body }) =>
+                terms.length > 0 &&
+                scopes.includes(scope) &&
+                terms.every((term) => words(body).includes(term.toLowerCase())),
+            )
+            .map(({ field }) => fieldTier(field))
+          return tiers.length > 0 ? Math.min(...tiers) : null
+        }
+        const hits = builtViews().flatMap((record) => {
+          const tier = tierOf(record)
+          return tier === null ? [] : [{ record, tier }]
+        })
+        hits.sort((a, b) => a.tier - b.tier || a.record.frequencyOrder - b.record.frequencyOrder)
+        return paged(
+          hits.map(({ record, tier }) => ({ summary: record.document.summary, match: SEARCH_TIERS[tier] ?? 'lemma' })),
+          page.limit,
+          page.cursor,
+        )
       },
       listStale: async (nodeIds) => {
         const owners = new Set<EntryId>([

@@ -302,6 +302,50 @@ export const formLookupSchema = z
   .object({ lang: responseLangSchema, items: z.array(formMatchSchema) })
   .meta({ id: 'FormLookup' })
 
+/** What a search hit matched: its lemma (exactly or as a prefix), or a gloss, translation, or example of one of its senses. */
+export const searchMatchSchema = z.enum(['lemma', 'gloss', 'translation', 'example']).meta({ id: 'SearchMatch' })
+export type SearchMatch = z.infer<typeof searchMatchSchema>
+
+export const searchHitSchema = wordSummarySchema
+  .extend({
+    match: searchMatchSchema.meta({
+      description:
+        'What matched, by rank: lemma (the exact lemma first, then lemmas that start with the query), then gloss, translation (in the response language), and example.',
+    }),
+  })
+  .meta({ id: 'SearchHit' })
+export type SearchHit = z.infer<typeof searchHitSchema>
+export const searchPageSchema = z
+  .object({ lang: responseLangSchema, items: z.array(searchHitSchema), next_cursor: z.string().nullable() })
+  .meta({ id: 'SearchPage' })
+
+export const searchQueryTextSchema = z.string().trim().min(1).max(100).meta({
+  description:
+    'An English headword or its start, English words that a gloss or example holds, or words of a translation in the response language, such as 银行. Matches exactly as spelled after case folding: no typo correction or stemming.',
+})
+
+/** Each value of a query parameter given repeated, comma-separated, or both. */
+const listValues = (value: string | string[]) => [value].flat().join(',').split(',')
+
+/** ?level= of a list: CEFR levels, repeated or comma-separated. */
+export const levelFilterSchema = z
+  .union([z.string(), z.array(z.string())])
+  .transform(listValues)
+  .pipe(z.array(cefrLevelSchema).min(1))
+  .optional()
+  .meta({ description: 'CEFR levels, repeated (level=A1&level=A2) or comma-separated (level=A1,A2).' })
+
+export const entrySortSchema = z.enum(['lemma', 'frequency']).default('lemma').meta({
+  description: 'lemma: alphabetical. frequency: most frequent first, entries without a frequency last, then by lemma.',
+})
+export type EntrySort = z.infer<typeof entrySortSchema>
+
+export const senseSortSchema = z.enum(['lemma', 'frequency', 'level']).default('lemma').meta({
+  description:
+    "lemma: alphabetical, then by sense. frequency: by the entry's frequency, most frequent first. level: by the CEFR level of the sense's part of speech, lowest first. Unranked or unlevelled senses come last; ties go by lemma, then sense.",
+})
+export type SenseSort = z.infer<typeof senseSortSchema>
+
 export const entryRefSchema = z.object({ id: entryIdSchema, lemma: z.string() }).meta({ id: 'EntryRef' })
 export type EntryRef = z.infer<typeof entryRefSchema>
 

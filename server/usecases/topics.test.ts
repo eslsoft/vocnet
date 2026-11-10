@@ -231,14 +231,14 @@ describe('topic listings', () => {
     const page = { limit: 10 }
     const none = { lang: null, review: false }
     const ids = async (topic: string) =>
-      (await listTopicSenses(world.deps, topic as TopicId, page, none)).items.map((item) => item.sense_id)
+      (await listTopicSenses(world.deps, topic as TopicId, 'lemma', page, none)).items.map((item) => item.sense_id)
     expect(await ids('hospital-doctor')).toEqual([nurse.id])
-    expect((await listTopicSenses(world.deps, 'hospital-doctor' as TopicId, page, none)).items).toEqual([
+    expect((await listTopicSenses(world.deps, 'hospital-doctor' as TopicId, 'lemma', page, none)).items).toEqual([
       { lemma: 'nurse', sense_id: nurse.id, pos: 'noun', cefr: null, gloss: 'A person trained to care for the sick.' },
     ])
     expect((await ids('body-health')).sort()).toEqual([nurse.id, tend.id].sort())
     expect(await ids('furniture')).toEqual([])
-    await expect(listTopicSenses(world.deps, 'no-such-topic' as TopicId, page, none)).rejects.toMatchObject({
+    await expect(listTopicSenses(world.deps, 'no-such-topic' as TopicId, 'lemma', page, none)).rejects.toMatchObject({
       code: 'not_found',
     })
   })

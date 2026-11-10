@@ -9,6 +9,7 @@ import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
 import {
+  ENGLISH_SCOPE,
   formMatches,
   type ReadVariant,
   readStored,
@@ -16,25 +17,29 @@ import {
   shapeSenseDetail,
   shapeSummary,
 } from '@server/domain/public-view'
+import { searchTerms } from '@server/domain/search'
 import { isLetterOfTheAlphabet, type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
   CreateSenseInput,
+  EntrySort,
   FormMatch,
   NodeLocation,
   PublicEntry,
   PublicSenseDetail,
+  SearchHit,
   Stats,
   WordSummary,
 } from '@shared/catalog'
-import { type EntryId, formTypeSchema, registerSchema, type SenseId } from '@shared/facts'
-import type { LemmaReference } from '@shared/reference'
+import { type EntryId, type Pos, registerSchema, type SenseId, type TopicId } from '@shared/facts'
+import type { CefrLevel, LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
 import type { Page, PageRequest } from './ports'
 import { readPublicView, type ViewDeps } from './public-view'
 import { refreshEntries } from './refresh'
+import { leavesOf } from './topics'
 
 type WriteDeps = Pick<
   Deps,
@@ -200,20 +205,61 @@ export async function lookupForm(
   form: string,
   variant: ReadVariant,
 ): Promise<VersionedRead<FormMatch[]>> {
-  const keys = formTypeSchema.options.map((type) => contentKeyOf('form', { form, type }))
-  const rows = await deps.publicViews.findForms(keys)
+  const rows = await deps.publicViews.findForms(normalizeTerm(form))
   if (rows.length === 0) throw new NotFoundError(`No entry has the form ${JSON.stringify(form)}.`)
   return { versions: [...new Set(rows.map((row) => row.digest))], read: () => formMatches(rows, variant) }
 }
 
-export async function searchEntries(
-  deps: Pick<Deps, 'publicViews'>,
-  prefix: string,
+/** Which public entries a list shows; `topic` is a leaf topic or a category. */
+export interface EntryListFilter {
+  prefix: string
+  levels: readonly CefrLevel[]
+  pos: Pos | null
+  topic: TopicId | null
+}
+
+/**
+ * Public entries in lemma or frequency order, filtered by lemma prefix, and by a meaning (or with
+ * a topic, a tagged sense) of the part of speech and levels asked. An unknown topic is not found.
+ */
+export async function listPublicEntries(
+  deps: Pick<Deps, 'publicViews' | 'topics'>,
+  filter: EntryListFilter,
+  sort: EntrySort,
   page: PageRequest,
   variant: ReadVariant,
 ): Promise<Page<WordSummary>> {
-  const found = await deps.publicViews.listEntries(normalizeTerm(prefix), page)
+  const leaves = filter.topic === null ? null : await leavesOf(deps, filter.topic)
+  const found = await deps.publicViews.listEntries(
+    { prefix: normalizeTerm(filter.prefix), levels: filter.levels, pos: filter.pos, leaves },
+    sort,
+    page,
+  )
   return { ...found, items: found.items.map((summary) => shapeSummary(summary, variant)) }
+}
+
+/**
+ * Public entries matching a query: the exact lemma, lemmas starting with it, then entries with a
+ * gloss, a translation in the read's language, or an example holding every word of it. No typo
+ * correction, stemming, or other fallback.
+ */
+export async function searchPublicEntries(
+  deps: Pick<Deps, 'publicViews'>,
+  text: string,
+  page: PageRequest,
+  variant: ReadVariant,
+): Promise<Page<SearchHit>> {
+  if (variant.lang === 'all') throw new Error('A search reads one language or none.')
+  const query = normalizeTerm(text)
+  const found = await deps.publicViews.search(
+    {
+      text: query,
+      terms: searchTerms(query),
+      scopes: [ENGLISH_SCOPE, ...(variant.lang === null ? [] : [variant.lang])],
+    },
+    page,
+  )
+  return { ...found, items: found.items.map((row) => ({ ...shapeSummary(row.summary, variant), match: row.match })) }
 }
 
 export function listEntrySummaries(deps: Pick<Deps, 'nodes'>, prefix: string, page: PageRequest) {

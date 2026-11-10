@@ -193,36 +193,57 @@ export const worklist = sqliteTable(
 // the facts, the topics, and the reference tables at any time. An entry without a public document
 // has no rows. Every row derives from the entry's own document, so a rebuild touches only its rows.
 
-/** The stored document (every language and review), its digest for the ETag, and the entry's summary. */
-export const publicEntries = sqliteTable('public_entries', {
-  entryId: text('entry_id')
-    .primaryKey()
-    .references(() => entries.id),
-  lemma: text('lemma').notNull().unique(),
-  document: text('document').notNull(),
-  digest: text('digest').notNull(),
-  summary: text('summary').notNull(),
-  builtAt: text('built_at').notNull(),
-})
+/**
+ * The stored document (every language and review), its digest for the ETag, the entry's summary,
+ * and where it sorts by frequency (its frequency rank, else after every ranked entry).
+ */
+export const publicEntries = sqliteTable(
+  'public_entries',
+  {
+    entryId: text('entry_id')
+      .primaryKey()
+      .references(() => entries.id),
+    lemma: text('lemma').notNull().unique(),
+    document: text('document').notNull(),
+    digest: text('digest').notNull(),
+    summary: text('summary').notNull(),
+    frequencyOrder: integer('frequency_order').notNull(),
+    builtAt: text('built_at').notNull(),
+  },
+  (table) => [index('public_entries_frequency_idx').on(table.frequencyOrder, table.lemma)],
+)
 
-/** One row per published form of a public entry, shown or not, with the part of speech it is shown under (else its label), keyed like the form fact. */
+/** One row per meaning of a public entry, so lists filter by part of speech and CEFR level. */
+export const publicMeanings = sqliteTable(
+  'public_meanings',
+  {
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    pos: text('pos').notNull(),
+    cefr: text('cefr'),
+  },
+  (table) => [primaryKey({ columns: [table.entryId, table.pos] })],
+)
+
+/** One row per published form of a public entry, shown or not, by its spelling, with the part of speech it is shown under (else its label). */
 export const publicForms = sqliteTable(
   'public_forms',
   {
-    contentKey: text('content_key').notNull(),
+    form: text('form').notNull(),
     entryId: text('entry_id')
       .notNull()
       .references(() => entries.id),
     type: text('type').notNull(),
     pos: text('pos'),
   },
-  (table) => [
-    index('public_forms_content_key_idx').on(table.contentKey),
-    index('public_forms_entry_idx').on(table.entryId),
-  ],
+  (table) => [index('public_forms_form_idx').on(table.form), index('public_forms_entry_idx').on(table.entryId)],
 )
 
-/** One row per published topic tag of a public sense, in the order a topic listing pages. */
+/**
+ * One row per published topic tag of a public sense, with the sense's part of speech and level and
+ * its entry's frequency order, in each order a topic listing pages.
+ */
 export const publicSenseTopics = sqliteTable(
   'public_sense_topics',
   {
@@ -232,12 +253,38 @@ export const publicSenseTopics = sqliteTable(
     entryId: text('entry_id')
       .notNull()
       .references(() => entries.id),
+    pos: text('pos').notNull(),
+    cefr: text('cefr'),
+    levelOrder: integer('level_order').notNull(),
+    frequencyOrder: integer('frequency_order').notNull(),
     summary: text('summary').notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.topicId, table.lemma, table.senseId] }),
-    index('public_sense_topics_entry_idx').on(table.entryId),
+    index('public_sense_topics_frequency_idx').on(table.topicId, table.frequencyOrder, table.lemma, table.senseId),
+    index('public_sense_topics_level_idx').on(table.topicId, table.levelOrder, table.lemma, table.senseId),
+    index('public_sense_topics_entry_idx').on(table.entryId, table.topicId),
   ],
+)
+
+/**
+ * One row per distinct gloss, translation, and example of a public entry's senses: `scope` is en
+ * for English text and the language tag of a translation, `body` the text as the index stores it
+ * (server/domain/search.ts). The FTS5 table `public_search_fts` indexes `body` with this table as
+ * its external content, kept in step by triggers (migration 20261110034927_public_search_fts).
+ */
+export const publicSearch = sqliteTable(
+  'public_search',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    field: text('field').notNull(),
+    scope: text('scope').notNull(),
+    body: text('body').notNull(),
+  },
+  (table) => [index('public_search_entry_idx').on(table.entryId)],
 )
 
 /** One row per word of a public multiword entry, so the entry of each word lists it as a phrase. */

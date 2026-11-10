@@ -9,6 +9,7 @@ import type {
   WordSummary,
 } from '@shared/catalog'
 import type { FormType, MorphemeRole, Pos, SenseId, TopicId } from '@shared/facts'
+import { type CefrLevel, cefrLevelSchema } from '@shared/reference'
 import {
   type ByLanguage,
   firstOfEach,
@@ -17,8 +18,9 @@ import {
   type StoredSenseSummary,
   type StoredSummary,
 } from './catalog-view'
-import { contentKeyOf } from './fact-kinds'
-import { isMultiword } from './term'
+import { levelRank } from './reference'
+import { type SearchField, searchBody } from './search'
+import { isMultiword, normalizeTerm } from './term'
 
 // The public view stores each entry's public document, built by the same projection that defines
 // visibility, plus the lookup rows the other public reads need. Everything here derives from the
@@ -28,10 +30,16 @@ import { isMultiword } from './term'
 /** The rows the public view stores for one entry. */
 export interface PublicViewRecord {
   document: StoredEntry
-  /** One per published form, shown or not, with the part of speech it is shown under, keyed like the form fact. */
-  forms: Array<{ contentKey: string; type: FormType; pos: Pos | null }>
-  /** One per published topic tag of a public sense. */
-  taggedSenses: Array<{ topicId: TopicId; summary: StoredSenseSummary }>
+  /** Where the entry sorts by frequency: by its frequency rank, after every ranked entry without one. */
+  frequencyOrder: number
+  /** One per meaning, so lists filter by part of speech and level. */
+  meanings: Array<{ pos: Pos; cefr: CefrLevel | null }>
+  /** One per published form, shown or not, by its spelling, with the part of speech it is shown under. */
+  forms: Array<{ form: string; type: FormType; pos: Pos | null }>
+  /** One per published topic tag of a public sense, with where it sorts by level. */
+  taggedSenses: Array<{ topicId: TopicId; summary: StoredSenseSummary; levelOrder: number }>
+  /** One per distinct gloss, translation, and example of a public sense, as the search index stores it. */
+  searchTexts: Array<{ field: SearchField; scope: string; body: string }>
   /** The words of a multiword lemma, so each word's entry finds it as a phrase. */
   phraseWords: string[]
   /** The parts of the entry's word formation, so entries sharing a base or root find each other. */
@@ -58,19 +66,43 @@ export interface ReadVariant {
 /** The roles a word family shares: the parts that carry the meaning. */
 export const STEM_ROLES: readonly MorphemeRole[] = ['base', 'root']
 
+/** The sort order of entries without a frequency rank: after every ranked one. */
+export const UNRANKED = 2 ** 31 - 1
+
+/** The sort order of a CEFR level, lowest first, with no level after every level. */
+export const levelOrder = (cefr: CefrLevel | null) => (cefr ? levelRank(cefr) : cefrLevelSchema.options.length + 1)
+
+/** The scope of English text in the search index; a translation's is its language tag. */
+export const ENGLISH_SCOPE = 'en'
+
+function searchTextsOf(document: StoredEntry): PublicViewRecord['searchTexts'] {
+  const texts = new Map<string, PublicViewRecord['searchTexts'][number]>()
+  const add = (field: SearchField, scope: string, text: string) => {
+    const body = searchBody(text)
+    texts.set(JSON.stringify([field, scope, body]), { field, scope, body })
+  }
+  for (const sense of document.meanings.flatMap((meaning) => meaning.senses)) {
+    add('gloss', ENGLISH_SCOPE, sense.gloss)
+    for (const [language, translations] of Object.entries(sense.translations)) {
+      for (const text of translations) add('translation', language, text)
+    }
+    for (const example of sense.examples) add('example', ENGLISH_SCOPE, example.text)
+  }
+  return [...texts.values()]
+}
+
 export function publicViewRecord(document: StoredEntry): PublicViewRecord {
   const parts = document.morphology?.parts ?? []
   return {
     document,
-    forms: document.forms.map(({ form, type, pos }) => ({
-      contentKey: contentKeyOf('form', { form, type }),
-      type,
-      pos,
-    })),
+    frequencyOrder: document.frequency?.rank ?? UNRANKED,
+    meanings: document.meanings.map(({ pos, cefr }) => ({ pos, cefr })),
+    forms: document.forms.map(({ form, type, pos }) => ({ form: normalizeTerm(form), type, pos })),
     taggedSenses: document.meanings.flatMap((meaning) =>
       meaning.senses.flatMap((sense) =>
         sense.topics.map((topic) => ({
           topicId: topic.id,
+          levelOrder: levelOrder(meaning.cefr),
           summary: {
             lemma: document.lemma,
             sense_id: sense.id,
@@ -86,6 +118,7 @@ export function publicViewRecord(document: StoredEntry): PublicViewRecord {
     morphemes: [
       ...new Map(parts.map((part) => [`${part.role}:${part.form}`, { form: part.form, role: part.role }])).values(),
     ],
+    searchTexts: searchTextsOf(document),
   }
 }
 

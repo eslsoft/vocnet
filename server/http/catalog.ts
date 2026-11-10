@@ -1,18 +1,28 @@
 import { createRoute } from '@hono/zod-openapi'
-import { getPublicEntry, getPublicSense, lookupForm, searchEntries } from '@server/usecases/catalog'
+import {
+  getPublicEntry,
+  getPublicSense,
+  listPublicEntries,
+  lookupForm,
+  searchPublicEntries,
+} from '@server/usecases/catalog'
 import { submitFeedback } from '@server/usecases/feedback'
 import { listReferenceSources } from '@server/usecases/reference'
 import {
   entryPageSchema,
+  entrySortSchema,
   formLookupSchema,
   includeQuerySchema,
   langQuerySchema,
   lemmaInputSchema,
+  levelFilterSchema,
   listLangQuerySchema,
   publicEntrySchema,
   publicSenseDetailSchema,
+  searchPageSchema,
+  searchQueryTextSchema,
 } from '@shared/catalog'
-import { senseIdSchema } from '@shared/facts'
+import { posSchema, senseIdSchema, topicIdSchema } from '@shared/facts'
 import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/feedback'
 import { referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
@@ -30,10 +40,33 @@ const listEntries = createRoute({
   method: 'get',
   path: '/entries',
   tags,
-  summary: 'List published entries in lemma order',
-  description: `Each entry as a summary.${LANGUAGE}`,
-  request: { query: pageQuery.extend({ prefix: lemmaInputSchema.optional(), lang: listLangQuerySchema }) },
-  responses: { 200: json(entryPageSchema, 'A page of entries.'), 400: errorResponse },
+  summary: 'List published entries, filtered and sorted',
+  description:
+    'Each entry as a summary, in lemma order or by frequency. level and pos keep the entries with a meaning of that part of speech at one of those levels; with topic, a sense tagged with that topic (a leaf, or any leaf of a category) must also have that part of speech and level. An unknown topic is 404.' +
+    LANGUAGE,
+  request: {
+    query: pageQuery.extend({
+      prefix: lemmaInputSchema.optional(),
+      level: levelFilterSchema,
+      pos: posSchema.optional(),
+      topic: topicIdSchema.optional(),
+      sort: entrySortSchema,
+      lang: listLangQuerySchema,
+    }),
+  },
+  responses: { 200: json(entryPageSchema, 'A page of entries.'), 400: errorResponse, 404: errorResponse },
+})
+
+const search = createRoute({
+  method: 'get',
+  path: '/search',
+  tags,
+  summary: 'Search headwords, glosses, examples, and translations',
+  description:
+    'Ranks the exact lemma first, then lemmas that start with q, then entries with a gloss, then a translation in the response language, then an example that holds every word of q (Chinese is matched by its character pairs, so 银行 finds every translation holding 银行). Each entry appears once, at its best rank, then by frequency, then by lemma, with what matched. There is no typo correction or stemming.' +
+    LANGUAGE,
+  request: { query: pageQuery.extend({ q: searchQueryTextSchema, lang: listLangQuerySchema }) },
+  responses: { 200: json(searchPageSchema, 'A page of matching entries.'), 400: errorResponse },
 })
 
 const getEntry = createRoute({
@@ -111,9 +144,17 @@ const postFeedback = createRoute({
 
 export const publicRoutes = createRouter()
   .openapi(listEntries, async (c) => {
-    const { prefix, limit, cursor, lang } = c.req.valid('query')
+    const { prefix, level, pos, topic, sort, limit, cursor, lang } = c.req.valid('query')
     const variant = readVariant(c, { lang })
-    const page = await searchEntries(c.get('deps'), prefix ?? '', { limit, cursor }, variant)
+    const filter = { prefix: prefix ?? '', levels: level ?? [], pos: pos ?? null, topic: topic ?? null }
+    const page = await listPublicEntries(c.get('deps'), filter, sort, { limit, cursor }, variant)
+    c.header('Cache-Control', LIST_CACHE)
+    return c.json({ lang: variant.lang, items: page.items, next_cursor: page.nextCursor }, 200)
+  })
+  .openapi(search, async (c) => {
+    const { q, limit, cursor, lang } = c.req.valid('query')
+    const variant = readVariant(c, { lang })
+    const page = await searchPublicEntries(c.get('deps'), q, { limit, cursor }, variant)
     c.header('Cache-Control', LIST_CACHE)
     return c.json({ lang: variant.lang, items: page.items, next_cursor: page.nextCursor }, 200)
   })

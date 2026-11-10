@@ -134,7 +134,7 @@ export function fromFeedback(item: FeedbackRecord): FeedbackRow {
 }
 
 // Opaque keyset cursors: base64url JSON of the ordering key, including a unique tiebreaker.
-export function encodeCursor(key: Record<string, string>): string {
+export function encodeCursor(key: Record<string, string | number>): string {
   const bytes = new TextEncoder().encode(JSON.stringify(key))
   return btoa(String.fromCharCode(...bytes))
     .replaceAll('+', '-')
@@ -153,7 +153,12 @@ export function decodeCursor<T extends z.ZodType>(cursor: string, schema: T): z.
   }
 }
 
-export function page<T, R>(rows: R[], limit: number, map: (row: R) => T, key: (row: R) => Record<string, string>) {
+export function page<T, R>(
+  rows: R[],
+  limit: number,
+  map: (row: R) => T,
+  key: (row: R) => Record<string, string | number>,
+) {
   const items = rows.slice(0, limit)
   const last = items.at(-1)
   return { items: items.map(map), nextCursor: rows.length > limit && last ? encodeCursor(key(last)) : null }

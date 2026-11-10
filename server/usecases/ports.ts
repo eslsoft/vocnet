@@ -9,7 +9,7 @@ import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
 import type { LastClaim, WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
-import type { EntrySummary, Stats } from '@shared/catalog'
+import type { EntrySort, EntrySummary, SearchMatch, SenseSort, Stats } from '@shared/catalog'
 import type {
   EntryId,
   FactId,
@@ -23,7 +23,7 @@ import type {
   Verdict,
 } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
-import type { LemmaReference, ReferenceSource } from '@shared/reference'
+import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
 import type { WorkLeaseId } from '@shared/work'
 
 // Interfaces for everything beyond the process boundary. Implemented in adapters/.
@@ -182,18 +182,54 @@ export interface FormRow {
   pos: Pos | null
 }
 
+/** Which public entries a list shows. */
+export interface EntryFilter {
+  /** The lemma starts with it; empty for any lemma. */
+  prefix: string
+  /**
+   * A meaning of the entry, or with `leaves` a sense tagged with one of them, has one of these
+   * levels (any when empty) and this part of speech (any when null).
+   */
+  levels: readonly CefrLevel[]
+  pos: Pos | null
+  /** Leaf topics one of its senses is tagged with; null for no topic filter. */
+  leaves: readonly TopicId[] | null
+}
+
+/** A search: the exact query for the lemma tiers, the index terms it must all match, and the scopes to match them in. */
+export interface SearchQuery {
+  text: string
+  /** Empty when the query has no word to match in a text, so only lemmas can match. */
+  terms: readonly string[]
+  /** en, and the language of the read when it has one. */
+  scopes: readonly string[]
+}
+
+export interface SearchRow {
+  summary: StoredSummary
+  match: SearchMatch
+}
+
 /** The public view: each entry's public document and the lookup rows derived from it. */
 export interface PublicViewRepo {
   /** The view of the entry with exactly this lemma and its links; null when no entry has it. */
   findByLemma(lemma: Lemma): Promise<EntryViewLookup | null>
   /** The view of the entry that owns this sense; null when no sense has the id. */
   findBySense(id: SenseId): Promise<ViewLookup | null>
-  /** Built form rows with one of these content keys, in lemma order. */
-  findForms(contentKeys: string[]): Promise<FormRow[]>
-  /** Summaries of the built public entries whose lemma starts with prefix, in lemma order. */
-  listEntries(prefix: string, page: PageRequest): Promise<Page<StoredSummary>>
-  /** Built public senses tagged with one of these leaves, each once, in lemma then sense order. */
-  listTaggedSenses(leaves: readonly TopicId[], page: PageRequest): Promise<Page<StoredSenseSummary>>
+  /** Built form rows spelled exactly so, in lemma order. */
+  findForms(form: string): Promise<FormRow[]>
+  /** Summaries of the built public entries the filter admits, by lemma or by frequency then lemma. */
+  listEntries(filter: EntryFilter, sort: EntrySort, page: PageRequest): Promise<Page<StoredSummary>>
+  /**
+   * Built public senses tagged with one of these leaves, each once, by lemma, frequency, or level,
+   * each then by lemma and sense.
+   */
+  listTaggedSenses(leaves: readonly TopicId[], sort: SenseSort, page: PageRequest): Promise<Page<StoredSenseSummary>>
+  /**
+   * Built public entries the query matches, each once at its best tier (`SEARCH_TIERS`), then by
+   * frequency, then by lemma.
+   */
+  search(query: SearchQuery, page: PageRequest): Promise<Page<SearchRow>>
   /** Stale views of the entries that are, or own as a sense, these nodes, or link to them by a relation. */
   listStale(nodeIds: string[]): Promise<StaleView[]>
   /** Up to `limit` stale views of any entry. */

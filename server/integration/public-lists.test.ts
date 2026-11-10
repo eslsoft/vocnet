@@ -1,0 +1,201 @@
+import { env } from 'cloudflare:test'
+import { entryListStatement, searchStatement, taggedSenseStatement } from '@server/adapters/repos/public-view'
+import { createDb } from '@server/db/client'
+import { createEntryResultSchema, createSenseResultSchema, entryPageSchema, searchPageSchema } from '@shared/catalog'
+import { factWriteResultSchema, type TopicId } from '@shared/facts'
+import { topicSensePageSchema } from '@shared/topics'
+import type { SQL } from 'drizzle-orm'
+import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { call, deliverPendingReviews, importLearnerData, issueAgentKey, request, stubReviewers } from './helpers'
+
+/**
+ * bank (A1 noun, also a verb), river (A1 noun), banker (B2 noun), and money (no level or
+ * frequency), with Chinese translations, examples, and family tags; all published.
+ */
+async function seedWords() {
+  await importLearnerData({
+    zipf: { bank: 5.2, river: 4.9, banker: 3.6 },
+    levels: { bank: 'A1', river: 'A1', banker: 'B2' },
+  })
+  const token = await issueAgentKey()
+  const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
+  const senses: Record<string, string> = {}
+  for (const [lemma, pos, gloss, translation, example] of [
+    ['bank', 'noun', 'An organization that keeps money for its customers.', '银行', 'She works at the bank.'],
+    ['bank', 'verb', 'To put money into an account.', '存钱', null],
+    ['river', 'noun', 'A large natural stream of water.', '河流', 'We sat on the bank of the river.'],
+    ['banker', 'noun', 'A person who runs a bank.', '银行家', null],
+    ['money', 'noun', 'What people earn and keep in a bank.', '钱', null],
+  ] as const) {
+    const entry = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma })).entry
+    const { sense } = createSenseResultSchema.parse(await post('/manage/v1/senses', { entry_id: entry.id, pos, gloss }))
+    senses[`${lemma} ${pos}`] = sense.id
+    const submit = (kind: string, payload: unknown) =>
+      post('/manage/v1/facts', { kind, subject_id: sense.id, payload }).then(factWriteResultSchema.parse)
+    await submit('translation', { language: 'zh', text: translation })
+    if (example) await submit('example', { text: example })
+    if (pos === 'noun' && lemma !== 'money') await submit('topic', { topic_id: 'family' })
+  }
+  stubReviewers()
+  await deliverPendingReviews()
+  return senses
+}
+
+const lemmas = async (path: string) => entryPageSchema.parse((await call(path)).body).items.map((item) => item.lemma)
+
+/** Every page of a list, following next_cursor. */
+async function allPages(path: string): Promise<string[]> {
+  const seen: string[] = []
+  let cursor: string | null = null
+  do {
+    const separator = path.includes('?') ? '&' : '?'
+    const { body } = await call(`${path}${separator}limit=1${cursor ? `&cursor=${cursor}` : ''}`)
+    const parsed: { items: Array<{ lemma: string; sense_id?: string }>; next_cursor: string | null } = body as never
+    seen.push(...parsed.items.map((item) => item.sense_id ?? item.lemma))
+    cursor = parsed.next_cursor
+  } while (cursor)
+  return seen
+}
+
+async function planOf(statement: SQL | { toSQL(): { sql: string; params: unknown[] } }) {
+  const { sql, params } = 'toSQL' in statement ? statement.toSQL() : new SQLiteSyncDialect().sqlToQuery(statement)
+  const { results } = await env.DB.prepare(`explain query plan ${sql}`)
+    .bind(...params)
+    .all<{ detail: string }>()
+  return results.map((row) => row.detail)
+}
+
+describe('public lists and search', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('filters entries by level, part of speech, and topic, sorted by lemma or frequency, across pages [spec: public-view/list-filters]', async () => {
+    await seedWords()
+    expect(await lemmas('/v1/entries')).toEqual(['bank', 'banker', 'money', 'river'])
+    expect(await lemmas('/v1/entries?sort=frequency')).toEqual(['bank', 'river', 'banker', 'money'])
+    expect(await allPages('/v1/entries?sort=frequency')).toEqual(['bank', 'river', 'banker', 'money'])
+    expect(await allPages('/v1/entries?level=A1&pos=noun&sort=frequency')).toEqual(['bank', 'river'])
+    expect(await lemmas('/v1/entries?level=A1,B2')).toEqual(['bank', 'banker', 'river'])
+    expect(await lemmas('/v1/entries?level=A1&level=B2&prefix=ban')).toEqual(['bank', 'banker'])
+    expect(await lemmas('/v1/entries?pos=verb')).toEqual(['bank'])
+    // The verb meaning has no level, so no one meaning is both.
+    expect(await lemmas('/v1/entries?pos=verb&level=A1')).toEqual([])
+    expect(await lemmas('/v1/entries?topic=family')).toEqual(['bank', 'banker', 'river'])
+    expect(await allPages('/v1/entries?topic=people-feelings&level=A1&sort=frequency')).toEqual(['bank', 'river'])
+    expect(await lemmas('/v1/entries?topic=family&pos=verb')).toEqual([])
+
+    const lemmaCursor = entryPageSchema.parse((await call('/v1/entries?limit=1')).body).next_cursor
+    expect((await call(`/v1/entries?sort=frequency&cursor=${lemmaCursor}`)).status).toBe(400)
+    expect((await call('/v1/entries?level=a1')).status).toBe(400)
+    expect((await call('/v1/entries?sort=zipf')).status).toBe(400)
+    expect((await call('/v1/entries?topic=no-such-topic')).status).toBe(404)
+  })
+
+  it('sorts the senses of a topic by lemma, frequency, or level, across pages [spec: public-view/topic-sort]', async () => {
+    const senses = await seedWords()
+    const ids = (...keys: string[]) => keys.map((key) => senses[key])
+    const page = async (sort: string) =>
+      topicSensePageSchema
+        .parse((await call(`/v1/topics/family/senses?sort=${sort}`)).body)
+        .items.map((item) => item.sense_id)
+    expect(await page('lemma')).toEqual(ids('bank noun', 'banker noun', 'river noun'))
+    expect(await page('frequency')).toEqual(ids('bank noun', 'river noun', 'banker noun'))
+    expect(await page('level')).toEqual(ids('bank noun', 'river noun', 'banker noun'))
+    for (const sort of ['lemma', 'frequency', 'level']) {
+      expect(await allPages(`/v1/topics/people-feelings/senses?sort=${sort}`)).toEqual(await page(sort))
+    }
+    expect((await call('/v1/topics/family/senses?sort=zipf')).status).toBe(400)
+  })
+
+  it('ranks the exact lemma, lemma prefixes, glosses, translations, then examples, each entry once [spec: search/rank]', async () => {
+    await seedWords()
+    const hits = async (query: string, init?: RequestInit) => {
+      const response = await request(`/v1/search?${query}`, init)
+      expect(response.headers.get('Cache-Control')).toBe('public, max-age=5')
+      expect(response.headers.get('Vary')).toBe('Accept-Language')
+      return searchPageSchema.parse(await response.json())
+    }
+    const bank = await hits('q=bank&lang=zh')
+    expect(bank.lang).toBe('zh')
+    expect(bank.items.map(({ lemma, match }) => [lemma, match])).toEqual([
+      ['bank', 'lemma'],
+      ['banker', 'lemma'],
+      ['money', 'gloss'],
+      ['river', 'example'],
+    ])
+    expect(bank.items[0]).toEqual({
+      lemma: 'bank',
+      pos: ['noun', 'verb'],
+      cefr: 'A1',
+      gloss: 'An organization that keeps money for its customers.',
+      translation: '银行',
+      match: 'lemma',
+    })
+    expect(await allPages('/v1/search?q=bank')).toEqual(['bank', 'banker', 'money', 'river'])
+    // Case folds in text, never in the lemma; nothing is corrected or stemmed.
+    expect((await hits('q=BANK')).items.map(({ lemma, match }) => [lemma, match])).toEqual([
+      ['banker', 'gloss'],
+      ['money', 'gloss'],
+      ['bank', 'example'],
+      ['river', 'example'],
+    ])
+    expect((await hits('q=bnak')).items).toEqual([])
+    expect((await hits('q=banks')).items).toEqual([])
+    expect((await call('/v1/search?q=bank&lang=all')).status).toBe(400)
+    expect((await call('/v1/search?q=%20')).status).toBe(400)
+  })
+
+  it('finds Chinese words in translations of the requested language only [spec: search/chinese]', async () => {
+    await seedWords()
+    const found = async (query: string, init?: RequestInit, params = '') =>
+      searchPageSchema
+        .parse((await call(`/v1/search?q=${encodeURIComponent(query)}${params}`, init)).body)
+        .items.map(({ lemma, match }) => [lemma, match])
+    expect(await found('银行', { headers: { 'accept-language': 'zh-CN' } })).toEqual([
+      ['bank', 'translation'],
+      ['banker', 'translation'],
+    ])
+    expect(await found('银行', {}, '&lang=zh-Hans')).toEqual([
+      ['bank', 'translation'],
+      ['banker', 'translation'],
+    ])
+    expect(await found('银行家', {}, '&lang=zh')).toEqual([['banker', 'translation']])
+    expect(await found('钱', { headers: { 'accept-language': 'zh' } })).toEqual([
+      ['bank', 'translation'],
+      ['money', 'translation'],
+    ])
+    // A Chinese query reads no other language or script.
+    expect(await found('银行')).toEqual([])
+    expect(await found('银行', { headers: { 'accept-language': 'zh-TW' } })).toEqual([])
+  })
+
+  it('serves every list and search through indexes [spec: public-view/list-indexes]', async () => {
+    await seedWords()
+    const db = createDb(env)
+    const page = { limit: 20 }
+    const plans = {
+      byFrequency: await planOf(
+        entryListStatement(db, { prefix: '', levels: ['A1'], pos: 'noun', leaves: null }, 'frequency', page),
+      ),
+      byTopic: await planOf(
+        entryListStatement(db, { prefix: 'b', levels: [], pos: null, leaves: ['family' as TopicId] }, 'lemma', page),
+      ),
+      senses: await planOf(taggedSenseStatement(db, ['family' as TopicId], 'level', page)),
+      search: await planOf(searchStatement({ text: 'bank', terms: ['bank'], scopes: ['en', 'zh'] }, page)),
+    }
+    console.info(`public list query plans:\n${JSON.stringify(plans, null, 2)}`)
+    for (const plan of Object.values(plans)) {
+      expect(plan.filter((step) => step.startsWith('SCAN public_') && !step.includes(' INDEX '))).toEqual([])
+    }
+    expect(plans.byFrequency[0]).toBe('SCAN public_entries USING INDEX public_entries_frequency_idx')
+    expect(plans.byFrequency).toContain(
+      'SEARCH public_meanings USING INDEX sqlite_autoindex_public_meanings_1 (entry_id=? AND pos=?)',
+    )
+    expect(plans.byTopic[0]).toBe('SEARCH public_entries USING INDEX public_entries_lemma_unique (lemma>? AND lemma<?)')
+    expect(plans.byTopic).toContain(
+      'SEARCH public_sense_topics USING COVERING INDEX public_sense_topics_entry_idx (entry_id=? AND topic_id=?)',
+    )
+    expect(plans.senses).toEqual(['SEARCH public_sense_topics USING INDEX public_sense_topics_level_idx (topic_id=?)'])
+    expect(plans.search.some((step) => step.includes('VIRTUAL TABLE INDEX'))).toBe(true)
+  })
+})

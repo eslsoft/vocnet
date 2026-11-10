@@ -1,20 +1,23 @@
+import type { ReadVariant } from '@server/domain/public-view'
 import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
-import type { EntryId, FactId, SenseId } from '@shared/facts'
+import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
   createEntry,
   createSense,
+  type EntryListFilter,
   getManagedEntry,
   getPublicEntry,
   getPublicSense,
   getStats,
   importCoreEntries,
   listEntrySummaries,
+  listPublicEntries,
   locateNode,
   lookupForm,
-  searchEntries,
+  searchPublicEntries,
 } from './catalog'
 import { submitFact } from './facts'
 import { reviewFact } from './review'
@@ -263,13 +266,122 @@ describe('public reads', () => {
     await expect(getPublicSense(world.deps, 'missing' as SenseId, zh)).rejects.toMatchObject({ code: 'not_found' })
   })
 
-  it('searches published entries by normalized prefix, as summaries', async () => {
+  const everyEntry: EntryListFilter = { prefix: '', levels: [], pos: null, topic: null }
+
+  it('lists published entries by normalized prefix, as summaries', async () => {
     const { world } = await publishedBank()
     await createEntry(world.deps, agentA, { lemma: 'banner' })
-    await expect(searchEntries(world.deps, ' ba', { limit: 10 }, none)).resolves.toEqual({
+    await expect(
+      listPublicEntries(world.deps, { ...everyEntry, prefix: ' ba' }, 'lemma', { limit: 10 }, none),
+    ).resolves.toEqual({
       items: [{ lemma: 'bank', pos: ['noun'], cefr: null, gloss: 'land beside a river' }],
       nextCursor: null,
     })
+  })
+
+  it('filters entries by level, part of speech, and topic, and sorts them by frequency [spec: public-view/list-filters]', async () => {
+    const world = fakeWorld()
+    world.referenceSources.push({
+      id: 'cefrj',
+      name: 'CEFR-J Wordlist',
+      version: '1.6',
+      license: 'Custom',
+      license_url: 'https://www.cefr-j.org/download.html',
+      changes: 'None.',
+      attribution: 'CEFR-J',
+      url: 'https://www.cefr-j.org/',
+      retrieved_at: '2026-11-09',
+    })
+    const reference = (rank: number | null, pos: 'noun' | 'verb', level: 'A1' | 'B2') => ({
+      frequency: rank === null ? null : { zipf: 5, rank, source_id: 'wordfreq' as const },
+      cefr: [{ pos, level, source_id: 'cefrj' as const }],
+    })
+    world.references.set('house', reference(300, 'noun', 'A1'))
+    world.references.set('run', reference(120, 'verb', 'A1'))
+    world.references.set('hut', reference(null, 'noun', 'B2'))
+    const senses = new Map<string, SenseId>()
+    for (const [lemma, pos, gloss] of [
+      ['house', 'noun', 'a building people live in'],
+      ['run', 'verb', 'to move fast on foot'],
+      ['hut', 'noun', 'a small simple house'],
+    ] as const) {
+      const { entry } = await createEntry(world.deps, agentA, { lemma })
+      const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss })
+      senses.set(lemma, sense.id)
+    }
+    for (const lemma of ['house', 'hut'] as const) {
+      const sense = senses.get(lemma) as SenseId
+      await submitFact(world.deps, agentA, {
+        kind: 'topic',
+        subject_id: sense,
+        payload: { topic_id: 'furniture' as TopicId },
+      })
+    }
+    await reviewAll(world)
+    const lemmas = async (filter: Partial<EntryListFilter>, sort: 'lemma' | 'frequency' = 'lemma') =>
+      (await listPublicEntries(world.deps, { ...everyEntry, ...filter }, sort, { limit: 10 }, none)).items.map(
+        (item) => item.lemma,
+      )
+    expect(await lemmas({})).toEqual(['house', 'hut', 'run'])
+    expect(await lemmas({}, 'frequency')).toEqual(['run', 'house', 'hut'])
+    expect(await lemmas({ levels: ['A1'] })).toEqual(['house', 'run'])
+    expect(await lemmas({ levels: ['A1'], pos: 'noun' })).toEqual(['house'])
+    expect(await lemmas({ pos: 'verb' })).toEqual(['run'])
+    expect(await lemmas({ topic: 'furniture' as TopicId })).toEqual(['house', 'hut'])
+    expect(await lemmas({ topic: 'home' as TopicId, levels: ['B2'] })).toEqual(['hut'])
+    expect(await lemmas({ topic: 'furniture' as TopicId, pos: 'verb' })).toEqual([])
+    await expect(lemmas({ topic: 'no-such-topic' as TopicId })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('searches lemmas, glosses, translations in the read language, and examples, in rank order [spec: search/rank]', async () => {
+    const { world, sense } = await publishedBank()
+    const { entry: banker } = await createEntry(world.deps, agentA, { lemma: 'banker' })
+    const { sense: person } = await createSense(world.deps, agentA, {
+      entry_id: banker.id,
+      pos: 'noun',
+      gloss: 'a person who runs a bank',
+    })
+    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
+    const { sense: coast } = await createSense(world.deps, agentA, {
+      entry_id: shore.id,
+      pos: 'noun',
+      gloss: 'land along the sea',
+    })
+    for (const [subject, payload] of [
+      [sense.id, { language: 'zh', text: '河岸' }],
+      [person.id, { language: 'zh', text: '银行家' }],
+    ] as const) {
+      await submitFact(world.deps, agentA, { kind: 'translation', subject_id: subject, payload })
+    }
+    await submitFact(world.deps, agentA, {
+      kind: 'example',
+      subject_id: coast.id,
+      payload: { text: 'We walked along the river bank to the shore.' },
+    })
+    await reviewAll(world)
+    const search = async (text: string, variant: ReadVariant = none) =>
+      (await searchPublicEntries(world.deps, text, { limit: 10 }, variant)).items.map(({ lemma, match }) => ({
+        lemma,
+        match,
+      }))
+    expect(await search(' bank ')).toEqual([
+      { lemma: 'bank', match: 'lemma' },
+      { lemma: 'banker', match: 'lemma' },
+      { lemma: 'shore', match: 'example' },
+    ])
+    expect(await search('river')).toEqual([
+      { lemma: 'bank', match: 'gloss' },
+      { lemma: 'shore', match: 'example' },
+    ])
+    expect(await search('银行', zh)).toEqual([{ lemma: 'banker', match: 'translation' }])
+    expect(await search('银行')).toEqual([])
+    expect(await search('bnak')).toEqual([])
+    expect((await searchPublicEntries(world.deps, 'bank', { limit: 1 }, zh)).items).toEqual([
+      { lemma: 'bank', pos: ['noun'], cefr: null, gloss: 'land beside a river', translation: '河岸', match: 'lemma' },
+    ])
+    await expect(searchPublicEntries(world.deps, 'bank', { limit: 1 }, { lang: 'all', review: false })).rejects.toThrow(
+      'one language',
+    )
   })
 })
 

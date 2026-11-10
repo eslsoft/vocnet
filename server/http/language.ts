@@ -17,6 +17,9 @@ export function acceptedLanguages(header: string | undefined): string[] {
   return ranges.sort((a, b) => b.q - a.q).map((range) => range.tag)
 }
 
+/** The served language the most preferred Accept-Language tag that reads one reads; null when none does. */
+export const negotiatedLanguage = (header: string | undefined) => negotiateLanguage(acceptedLanguages(header))
+
 /**
  * The variant a public read asks for. `?lang=` wins over Accept-Language: `all` (in any case) for
  * every language, else the served language the tag reads, or none. Without it, the most preferred
@@ -27,7 +30,7 @@ export function readVariant(c: Context, query: { lang?: string; include?: 'revie
   c.header('Vary', 'Accept-Language')
   const lang =
     query.lang === undefined
-      ? negotiateLanguage(acceptedLanguages(c.req.header('accept-language')))
+      ? negotiatedLanguage(c.req.header('accept-language'))
       : query.lang.toLowerCase() === 'all'
         ? 'all'
         : servedLanguage(query.lang)

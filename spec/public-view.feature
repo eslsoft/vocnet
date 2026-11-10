@@ -9,7 +9,7 @@ Feature: Public view
   Scenario: The view derives from the public document
     Given an entry's public projection and its reference data
     When its view rows are built
-    Then the document is the public entry with its summary, nothing for an entry that is not public, a form row per published form, shown or not, with the part of speech it is shown under, under its content key, a row per topic tag of a public sense with its summary, a row per word of a multiword lemma, and a row per word formation part
+    Then the document is the public entry with its summary and frequency order, nothing for an entry that is not public, a row per meaning with its level, a form row per published form, shown or not, by its spelling with the part of speech it is shown under, a row per topic tag of a public sense with its summary and level order, a row per word of a multiword lemma, a row per word formation part, and a search row per distinct gloss, translation, and example
 
   @public-view/refresh @usecase
   Scenario: Writes and reads keep the view current
@@ -94,3 +94,22 @@ Feature: Public view
     Given a public entry with forms shown, forms whose part of speech has no public sense, and a variant
     When each of its published forms is looked up
     Then every one finds the entry with its type, whether or not the entry document shows it
+
+  @public-view/list-filters @api
+  Scenario: Entry lists filter by level, part of speech, and topic and sort by frequency
+    Given published entries with CEFR levels, frequencies, several parts of speech, and topic tags
+    When the entry list is read with level (repeated or comma-separated), pos, topic (a leaf or a category), and sort, page by page
+    Then it keeps the entries with one meaning, or with a topic one tagged sense, of that part of speech at one of those levels, in lemma order or by frequency with unranked entries last, every page continuing where the last stopped; a cursor of another sort, an unknown level or sort is 400 and an unknown topic 404
+
+  @public-view/topic-sort @api
+  Scenario: The senses of a topic sort by lemma, frequency, or level
+    Given senses of entries with frequencies and levels tagged with topics of one category
+    When a leaf or the category is listed with sort lemma, frequency, or level, page by page
+    Then the senses come in that order, ties by lemma and sense, each once, the same across pages
+
+  @public-view/list-indexes @api
+  Scenario: Lists and search read through indexes
+    Given published entries in the view
+    When the query plans of a filtered list by frequency, a topic-filtered list by lemma, a topic listing by level, and a search are explained
+    Then each walks or searches an index of the view tables and the full-text index, and none scans a view table
+

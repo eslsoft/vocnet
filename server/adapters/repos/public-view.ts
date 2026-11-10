@@ -2,25 +2,50 @@ import {
   entries,
   publicEntries,
   publicForms,
+  publicMeanings,
   publicMorphemes,
   publicPhraseWords,
+  publicSearch,
   publicSenseTopics,
   senses,
   worklist,
 } from '@server/db/schema'
 import type { StoredSenseSummary, StoredSummary } from '@server/domain/catalog-view'
 import { readStored, STEM_ROLES } from '@server/domain/public-view'
-import type { PublicViewRepo, StaleView, ViewLookup } from '@server/usecases/ports'
-import { type EntryId, formTypeSchema, posSchema } from '@shared/facts'
-import { and, asc, count, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/sqlite-core'
+import { EXACT_LEMMA_TIER, fieldTier, LEMMA_PREFIX_TIER, SEARCH_FIELDS, SEARCH_TIERS } from '@server/domain/search'
+import type {
+  EntryFilter,
+  PageRequest,
+  PublicViewRepo,
+  SearchQuery,
+  StaleView,
+  ViewLookup,
+} from '@server/usecases/ports'
+import type { EntrySort, SenseSort } from '@shared/catalog'
+import { type EntryId, formTypeSchema, posSchema, type TopicId } from '@shared/facts'
+import { and, asc, count, eq, exists, gte, inArray, lt, ne, type SQL, sql } from 'drizzle-orm'
+import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, page } from './rows'
 import { relatedWorklistRows } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
-const entryCursor = z.object({ lemma: z.string() })
+const lemmaCursor = z.object({ lemma: z.string() })
+const rankedLemmaCursor = z.object({ order: z.number().int(), lemma: z.string() })
 const senseCursor = z.object({ lemma: z.string(), id: z.string() })
+const rankedSenseCursor = z.object({ order: z.number().int(), lemma: z.string(), id: z.string() })
+const searchCursor = z.object({ tier: z.number().int(), order: z.number().int(), lemma: z.string() })
+
+/** The lemma starts with prefix: a range on the lemma index. */
+const startsWith = (column: SQLiteColumn, prefix: string) =>
+  and(gte(column, prefix), lt(column, `${prefix}${PREFIX_END}`))
+
+/** A keyset condition: the row's sort key comes after the cursor's, compared as one row value. */
+const after = (columns: SQLiteColumn[], values: Array<string | number>) =>
+  sql`(${sql.join(columns, sql`, `)}) > (${sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )})`
 
 const isStale = ne(worklist.revision, worklist.viewRevision)
 
@@ -55,6 +80,152 @@ const toStale = (row: { entryId: string; revision: number }): StaleView => ({
   entryId: row.entryId as EntryId,
   revision: row.revision,
 })
+
+/** The column a topic listing sorts by before lemma and sense; none for lemma order. */
+const sortColumn: Record<SenseSort, SQLiteColumn | null> = {
+  lemma: null,
+  frequency: publicSenseTopics.frequencyOrder,
+  level: publicSenseTopics.levelOrder,
+}
+
+/** FTS5 query syntax: each term a quoted string, all of them required. */
+const ftsQuery = (terms: readonly string[]) => terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(' AND ')
+
+/** The texts of public senses that hold every term, in the scopes searched, at the tier of their field. */
+const textHits = (query: SearchQuery) => sql`
+  UNION ALL
+  SELECT public_search.entry_id,
+    CASE public_search.field ${sql.join(
+      SEARCH_FIELDS.map((field) => sql`WHEN ${field} THEN ${fieldTier(field)}`),
+      sql` `,
+    )} END
+  FROM public_search_fts JOIN public_search ON public_search.id = public_search_fts.rowid
+  WHERE public_search_fts MATCH ${ftsQuery(query.terms)}
+    AND public_search.scope IN (${sql.join(
+      query.scopes.map((scope) => sql`${scope}`),
+      sql`, `,
+    )})`
+
+function tierMatch(tier: number) {
+  const match = SEARCH_TIERS[tier]
+  if (!match) throw new Error(`Search tier ${tier} has no match.`)
+  return match
+}
+
+/**
+ * The page query of `GET /v1/entries`: a range on the lemma index, or a walk of the frequency
+ * index, with the filter checked per entry through the primary key of public_meanings or the
+ * (entry_id, topic_id) index of public_sense_topics. Exported so a test can pin its query plan.
+ */
+export function entryListStatement(db: Db, filter: EntryFilter, sort: EntrySort, { limit, cursor }: PageRequest) {
+  const { prefix, levels, pos, leaves } = filter
+  const fits = (posColumn: SQLiteColumn, cefrColumn: SQLiteColumn) => [
+    pos === null ? undefined : eq(posColumn, pos),
+    levels.length > 0 ? inArray(cefrColumn, [...levels]) : undefined,
+  ]
+  // Topic, part of speech, and level hold for one tagged sense, or without a topic for one meaning.
+  const restriction = leaves
+    ? exists(
+        db
+          .select({ one: sql`1` })
+          .from(publicSenseTopics)
+          .where(
+            and(
+              eq(publicSenseTopics.entryId, publicEntries.entryId),
+              inArray(publicSenseTopics.topicId, [...leaves]),
+              ...fits(publicSenseTopics.pos, publicSenseTopics.cefr),
+            ),
+          ),
+      )
+    : pos !== null || levels.length > 0
+      ? exists(
+          db
+            .select({ one: sql`1` })
+            .from(publicMeanings)
+            .where(
+              and(eq(publicMeanings.entryId, publicEntries.entryId), ...fits(publicMeanings.pos, publicMeanings.cefr)),
+            ),
+        )
+      : undefined
+  const keyColumns = sort === 'lemma' ? [publicEntries.lemma] : [publicEntries.frequencyOrder, publicEntries.lemma]
+  const keyOf = (value: string) => {
+    if (sort === 'lemma') return [decodeCursor(value, lemmaCursor).lemma]
+    const { order, lemma } = decodeCursor(value, rankedLemmaCursor)
+    return [order, lemma]
+  }
+  const last = cursor && keyOf(cursor)
+  return db
+    .select({ lemma: publicEntries.lemma, summary: publicEntries.summary, order: publicEntries.frequencyOrder })
+    .from(publicEntries)
+    .where(
+      and(
+        prefix ? startsWith(publicEntries.lemma, prefix) : undefined,
+        restriction,
+        last ? after(keyColumns, last) : undefined,
+      ),
+    )
+    .orderBy(...keyColumns.map((column) => asc(column)))
+    .limit(limit + 1)
+}
+
+/**
+ * The page query of `GET /v1/topics/{id}/senses`: one index of public_sense_topics per sort,
+ * each led by topic_id. Exported so a test can pin its query plan.
+ */
+export function taggedSenseStatement(
+  db: Db,
+  leaves: readonly TopicId[],
+  sort: SenseSort,
+  { limit, cursor }: PageRequest,
+) {
+  const orderColumn = sortColumn[sort]
+  const keyColumns = [...(orderColumn ? [orderColumn] : []), publicSenseTopics.lemma, publicSenseTopics.senseId]
+  const keyOf = (value: string) => {
+    if (!orderColumn) {
+      const { lemma, id } = decodeCursor(value, senseCursor)
+      return [lemma, id]
+    }
+    const { order, lemma, id } = decodeCursor(value, rankedSenseCursor)
+    return [order, lemma, id]
+  }
+  const last = cursor && keyOf(cursor)
+  // A sense tagged with two leaves of one category has a row under each; distinct shows it once.
+  return db
+    .selectDistinct({
+      id: publicSenseTopics.senseId,
+      lemma: publicSenseTopics.lemma,
+      order: sql<number>`${orderColumn ?? publicSenseTopics.frequencyOrder}`,
+      summary: publicSenseTopics.summary,
+    })
+    .from(publicSenseTopics)
+    .where(and(inArray(publicSenseTopics.topicId, [...leaves]), last ? after(keyColumns, last) : undefined))
+    .orderBy(...keyColumns.map((column) => asc(column)))
+    .limit(limit + 1)
+}
+
+/**
+ * The page query of `GET /v1/search`: every entry the lemma index or the full-text index finds,
+ * once at its best tier, then by frequency and lemma. Exported so a test can pin its query plan.
+ */
+export function searchStatement(query: SearchQuery, { limit, cursor }: PageRequest) {
+  const last = cursor ? decodeCursor(cursor, searchCursor) : undefined
+  return sql`
+    WITH hits(entry_id, tier) AS (
+      SELECT entry_id, ${EXACT_LEMMA_TIER} FROM public_entries WHERE lemma = ${query.text}
+      UNION ALL
+      SELECT entry_id, ${LEMMA_PREFIX_TIER} FROM public_entries
+        WHERE lemma >= ${query.text} AND lemma < ${`${query.text}${PREFIX_END}`}
+      ${query.terms.length > 0 ? textHits(query) : sql``}
+    ),
+    best(entry_id, tier) AS (SELECT entry_id, min(tier) FROM hits GROUP BY entry_id)
+    SELECT public_entries.lemma AS lemma, public_entries.summary AS summary,
+      public_entries.frequency_order AS "order", best.tier AS tier
+    FROM best JOIN public_entries ON public_entries.entry_id = best.entry_id
+    ${last ? sql`WHERE (best.tier, public_entries.frequency_order, public_entries.lemma) > (${last.tier}, ${last.order}, ${last.lemma})` : sql``}
+    ORDER BY best.tier, public_entries.frequency_order, public_entries.lemma
+    LIMIT ${limit + 1}
+  `
+}
 
 export function createPublicViewRepo(db: Db): PublicViewRepo {
   /** The worklist row and view of the entry the key column matches. */
@@ -117,7 +288,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       return row ? toLookup(row) : null
     },
 
-    async findForms(contentKeys) {
+    async findForms(form) {
       const rows = await db
         .select({
           summary: publicEntries.summary,
@@ -127,7 +298,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         })
         .from(publicForms)
         .innerJoin(publicEntries, eq(publicEntries.entryId, publicForms.entryId))
-        .where(inArray(publicForms.contentKey, contentKeys))
+        .where(eq(publicForms.form, form))
         .orderBy(asc(publicEntries.lemma), asc(publicForms.type), asc(publicForms.pos))
       return rows.map((row) => ({
         summary: readStored<StoredSummary>(row.summary),
@@ -137,58 +308,38 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       }))
     },
 
-    async listEntries(prefix, { limit, cursor }) {
-      const after = cursor ? decodeCursor(cursor, entryCursor) : undefined
-      const rows = await db
-        .select({ lemma: publicEntries.lemma, summary: publicEntries.summary })
-        .from(publicEntries)
-        .where(
-          and(
-            prefix
-              ? and(gte(publicEntries.lemma, prefix), lt(publicEntries.lemma, `${prefix}${PREFIX_END}`))
-              : undefined,
-            after ? gt(publicEntries.lemma, after.lemma) : undefined,
-          ),
-        )
-        .orderBy(asc(publicEntries.lemma))
-        .limit(limit + 1)
-      // lemma is unique, so it is its own keyset tiebreaker.
+    async listEntries(filter, sort, request) {
+      const rows = await entryListStatement(db, filter, sort, request)
       return page(
         rows,
-        limit,
+        request.limit,
         (row) => readStored<StoredSummary>(row.summary),
-        (row) => ({ lemma: row.lemma }),
+        // lemma is unique, so it is its own keyset tiebreaker.
+        (row): Record<string, string | number> =>
+          sort === 'lemma' ? { lemma: row.lemma } : { order: row.order, lemma: row.lemma },
       )
     },
 
-    async listTaggedSenses(leaves, { limit, cursor }) {
-      const after = cursor ? decodeCursor(cursor, senseCursor) : undefined
-      // A sense tagged with two leaves of one category has a row under each; distinct shows it once.
-      const rows = await db
-        .selectDistinct({
-          id: publicSenseTopics.senseId,
-          lemma: publicSenseTopics.lemma,
-          summary: publicSenseTopics.summary,
-        })
-        .from(publicSenseTopics)
-        .where(
-          and(
-            inArray(publicSenseTopics.topicId, [...leaves]),
-            after
-              ? or(
-                  gt(publicSenseTopics.lemma, after.lemma),
-                  and(eq(publicSenseTopics.lemma, after.lemma), gt(publicSenseTopics.senseId, after.id)),
-                )
-              : undefined,
-          ),
-        )
-        .orderBy(asc(publicSenseTopics.lemma), asc(publicSenseTopics.senseId))
-        .limit(limit + 1)
+    async listTaggedSenses(leaves, sort, request) {
+      const rows = await taggedSenseStatement(db, leaves, sort, request)
       return page(
         rows,
-        limit,
+        request.limit,
         (row) => readStored<StoredSenseSummary>(row.summary),
-        (row) => ({ lemma: row.lemma, id: row.id }),
+        (row): Record<string, string | number> =>
+          sort === 'lemma' ? { lemma: row.lemma, id: row.id } : { order: row.order, lemma: row.lemma, id: row.id },
+      )
+    },
+
+    async search(query, request) {
+      const rows = await db.all<{ lemma: string; summary: string; order: number; tier: number }>(
+        searchStatement(query, request),
+      )
+      return page(
+        rows,
+        request.limit,
+        (row) => ({ summary: readStored<StoredSummary>(row.summary), match: tierMatch(row.tier) }),
+        (row) => ({ tier: row.tier, order: row.order, lemma: row.lemma }),
       )
     },
 
@@ -224,18 +375,14 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
           .from(worklist)
           .where(and(eq(worklist.entryId, stale.entryId), eq(worklist.revision, stale.revision))),
       )
-      const ofEntry = (
-        column:
-          | typeof publicForms.entryId
-          | typeof publicSenseTopics.entryId
-          | typeof publicPhraseWords.entryId
-          | typeof publicMorphemes.entryId,
-      ) => and(eq(column, stale.entryId), current)
+      const ofEntry = (column: SQLiteColumn) => and(eq(column, stale.entryId), current)
       const clear = [
+        db.delete(publicMeanings).where(ofEntry(publicMeanings.entryId)),
         db.delete(publicForms).where(ofEntry(publicForms.entryId)),
         db.delete(publicSenseTopics).where(ofEntry(publicSenseTopics.entryId)),
         db.delete(publicPhraseWords).where(ofEntry(publicPhraseWords.entryId)),
         db.delete(publicMorphemes).where(ofEntry(publicMorphemes.entryId)),
+        db.delete(publicSearch).where(ofEntry(publicSearch.entryId)),
       ] as const
       const markBuilt = db
         .update(worklist)
@@ -267,6 +414,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
               document: sql`${json}`.as('document'),
               digest: sql`${digest}`.as('digest'),
               summary: sql`${JSON.stringify(record.document.summary)}`.as('summary'),
+              frequencyOrder: sql`${record.frequencyOrder}`.as('frequency_order'),
               builtAt: sql`${new Date().toISOString()}`.as('built_at'),
             })
             .from(worklist)
@@ -278,14 +426,25 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
             document: sql`excluded.document`,
             digest: sql`excluded.digest`,
             summary: sql`excluded.summary`,
+            frequencyOrder: sql`excluded.frequency_order`,
             builtAt: sql`excluded.built_at`,
           },
           setWhere: ne(publicEntries.digest, sql`excluded.digest`),
         })
+      const insertMeanings = db.insert(publicMeanings).select(
+        db
+          .select({
+            entryId: sql`${stale.entryId}`.as('entry_id'),
+            pos: field('pos').as('pos'),
+            cefr: field('cefr').as('cefr'),
+          })
+          .from(rows(record.meanings))
+          .where(current),
+      )
       const insertForms = db.insert(publicForms).select(
         db
           .select({
-            contentKey: field('contentKey').as('content_key'),
+            form: field('form').as('form'),
             entryId: sql`${stale.entryId}`.as('entry_id'),
             type: field('type').as('type'),
             pos: field('pos').as('pos'),
@@ -300,6 +459,10 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
             lemma: sql`${record.document.lemma}`.as('lemma'),
             senseId: field('summary.sense_id').as('sense_id'),
             entryId: sql`${stale.entryId}`.as('entry_id'),
+            pos: field('summary.pos').as('pos'),
+            cefr: field('summary.cefr').as('cefr'),
+            levelOrder: field('levelOrder').as('level_order'),
+            frequencyOrder: sql`${record.frequencyOrder}`.as('frequency_order'),
             summary: sql<string>`json(json_extract(value, '$.summary'))`.as('summary'),
           })
           .from(rows(record.taggedSenses))
@@ -321,7 +484,30 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
           .from(rows(record.morphemes))
           .where(current),
       )
-      await db.batch([upsert, ...clear, insertForms, insertTopics, insertPhraseWords, insertMorphemes, markBuilt])
+      const insertSearch = db.insert(publicSearch).select(
+        db
+          .select({
+            // Null takes the next rowid, the key the search index stores.
+            id: sql`null`.as('id'),
+            entryId: sql`${stale.entryId}`.as('entry_id'),
+            field: field('field').as('field'),
+            scope: field('scope').as('scope'),
+            body: field('body').as('body'),
+          })
+          .from(rows(record.searchTexts))
+          .where(current),
+      )
+      await db.batch([
+        upsert,
+        ...clear,
+        insertMeanings,
+        insertForms,
+        insertTopics,
+        insertPhraseWords,
+        insertMorphemes,
+        insertSearch,
+        markBuilt,
+      ])
     },
   }
 }

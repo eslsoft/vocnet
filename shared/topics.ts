@@ -24,4 +24,4 @@ export type TopicTree = z.infer<typeof topicTreeSchema>
 
 export const topicSensePageSchema = z
   .object({ lang: responseLangSchema, items: z.array(senseSummarySchema), next_cursor: z.string().nullable() })
-  .meta({ id: 'TopicSensePage', description: 'Published senses tagged with a topic, in lemma order.' })
+  .meta({ id: 'TopicSensePage', description: 'Published senses tagged with a topic, in the order asked.' })

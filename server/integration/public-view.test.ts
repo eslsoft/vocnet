@@ -68,11 +68,13 @@ const tagged = async () =>
 const viewRowsOf = (entryId: string) =>
   env.DB.batch(
     [
-      'SELECT document, digest, built_at FROM public_entries WHERE entry_id = ?1',
-      'SELECT content_key, type, pos FROM public_forms WHERE entry_id = ?1 ORDER BY content_key, pos',
-      'SELECT topic_id, sense_id, summary FROM public_sense_topics WHERE entry_id = ?1 ORDER BY topic_id, sense_id',
+      'SELECT document, digest, frequency_order, built_at FROM public_entries WHERE entry_id = ?1',
+      'SELECT pos, cefr FROM public_meanings WHERE entry_id = ?1 ORDER BY pos',
+      'SELECT form, type, pos FROM public_forms WHERE entry_id = ?1 ORDER BY form, type, pos',
+      'SELECT topic_id, sense_id, pos, cefr, level_order, frequency_order, summary FROM public_sense_topics WHERE entry_id = ?1 ORDER BY topic_id, sense_id',
       'SELECT word FROM public_phrase_words WHERE entry_id = ?1 ORDER BY word',
       'SELECT form, role FROM public_morphemes WHERE entry_id = ?1 ORDER BY form, role',
+      'SELECT field, scope, body FROM public_search WHERE entry_id = ?1 ORDER BY field, scope, body',
       'SELECT revision, view_revision FROM worklist WHERE entry_id = ?1',
     ].map((statement) => env.DB.prepare(statement).bind(entryId)),
   ).then((results) => results.map((result) => result.results))
@@ -101,7 +103,7 @@ describe('public view', () => {
     expect(await listed()).toEqual(['shore'])
     expect(await tagged()).toEqual([])
     const rows = await env.DB.prepare(
-      'SELECT (SELECT count(*) FROM public_entries WHERE entry_id = ?1) + (SELECT count(*) FROM public_forms WHERE entry_id = ?1) + (SELECT count(*) FROM public_sense_topics WHERE entry_id = ?1) + (SELECT count(*) FROM public_phrase_words WHERE entry_id = ?1) + (SELECT count(*) FROM public_morphemes WHERE entry_id = ?1) AS n',
+      "SELECT (SELECT count(*) FROM public_entries WHERE entry_id = ?1) + (SELECT count(*) FROM public_forms WHERE entry_id = ?1) + (SELECT count(*) FROM public_sense_topics WHERE entry_id = ?1) + (SELECT count(*) FROM public_phrase_words WHERE entry_id = ?1) + (SELECT count(*) FROM public_morphemes WHERE entry_id = ?1) + (SELECT count(*) FROM public_meanings WHERE entry_id = ?1) + (SELECT count(*) FROM public_search WHERE entry_id = ?1) + (SELECT count(*) FROM public_search_fts WHERE public_search_fts MATCH 'river') AS n",
     )
       .bind(bank.entry.id)
       .first<{ n: number }>()
@@ -194,6 +196,8 @@ describe('public view', () => {
         'DELETE FROM public_sense_topics',
         'DELETE FROM public_phrase_words',
         'DELETE FROM public_morphemes',
+        'DELETE FROM public_meanings',
+        'DELETE FROM public_search',
         'DELETE FROM public_entries',
       ].map((statement) => env.DB.prepare(statement)),
     )
@@ -226,8 +230,10 @@ describe('public view', () => {
     const document = readStored<StoredEntry>(documentRow.document)
     expect(built[1]).toHaveLength(1)
     expect(built[2]).toHaveLength(1)
-    expect(built[3]).toHaveLength(0)
-    expect(built[4]).toHaveLength(1)
+    expect(built[3]).toHaveLength(1)
+    expect(built[4]).toHaveLength(0)
+    expect(built[5]).toHaveLength(1)
+    expect(built[6]).toHaveLength(1)
 
     // A rebuild loads the stale revision, then another write bumps it before the rebuild saves.
     await env.DB.prepare('UPDATE worklist SET revision = revision + 1 WHERE entry_id = ?').bind(bank.entry.id).run()
@@ -243,7 +249,7 @@ describe('public view', () => {
     expect(await viewRowsOf(bank.entry.id)).toEqual(moved)
     await publicViews.save(stale, null)
     expect(await viewRowsOf(bank.entry.id)).toEqual(moved)
-    expect(moved.slice(0, 5)).toEqual(built.slice(0, 5))
+    expect(moved.slice(0, 7)).toEqual(built.slice(0, 7))
   })
 
   it('finds forms and list rows only once the drain has built them [spec: public-view/drain]', async () => {

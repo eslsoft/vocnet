@@ -1,8 +1,7 @@
 import type { ReviewMeta } from '@shared/catalog'
 import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import type { StoredEntry, StoredSense, StoredSummary } from './catalog-view'
-import { contentKeyOf } from './fact-kinds'
+import type { StoredEntry, StoredMeaning, StoredSense, StoredSummary } from './catalog-view'
 import {
   type EntryLinks,
   formMatches,
@@ -12,6 +11,7 @@ import {
   shapeSenseDetail,
   shapeSenseSummary,
   shapeSummary,
+  UNRANKED,
 } from './public-view'
 
 const review = (id: string): ReviewMeta => ({ fact_id: id as FactId, confidence: 0.9, verdict: 'pass' })
@@ -108,19 +108,42 @@ describe('public view records', () => {
   it('derives every row from the stored document [spec: public-view/document]', () => {
     const record = publicViewRecord(bank)
     expect(record.document).toBe(bank)
-    expect(record.forms).toEqual([
-      { contentKey: contentKeyOf('form', { form: 'banks', type: 'plural' }), type: 'plural', pos: 'noun' },
-      { contentKey: contentKeyOf('form', { form: 'banked', type: 'past' }), type: 'past', pos: 'verb' },
-      {
-        contentKey: contentKeyOf('form', { form: 'bankest', type: 'superlative' }),
-        type: 'superlative',
-        pos: 'adverb',
-      },
-      { contentKey: contentKeyOf('form', { form: 'banque', type: 'variant' }), type: 'variant', pos: null },
+    expect(record.frequencyOrder).toBe(691)
+    expect(record.meanings).toEqual([
+      { pos: 'noun', cefr: 'A2' },
+      { pos: 'verb', cefr: null },
     ])
+    expect(record.forms).toEqual([
+      { form: 'banks', type: 'plural', pos: 'noun' },
+      { form: 'banked', type: 'past', pos: 'verb' },
+      { form: 'bankest', type: 'superlative', pos: 'adverb' },
+      { form: 'banque', type: 'variant', pos: null },
+    ])
+    expect(publicViewRecord({ ...bank, forms: [{ form: ' bank  up ', type: 'variant', pos: null }] }).forms).toEqual([
+      { form: 'bank up', type: 'variant', pos: null },
+    ])
+    expect(record.searchTexts).toEqual([
+      { field: 'gloss', scope: 'en', body: 'Gloss of s1.' },
+      { field: 'translation', scope: 'zh', body: ' 银 行 银行 ' },
+      { field: 'translation', scope: 'zh', body: ' 库 ' },
+      { field: 'translation', scope: 'zh-Hant', body: ' 銀 行 銀行 ' },
+      { field: 'translation', scope: 'fr', body: 'banque' },
+      { field: 'example', scope: 'en', body: 'An example of s1.' },
+      { field: 'gloss', scope: 'en', body: 'Gloss of s2.' },
+      { field: 'example', scope: 'en', body: 'An example of s2.' },
+      { field: 'gloss', scope: 'en', body: 'Gloss of s3.' },
+      { field: 'translation', scope: 'zh', body: ' 存 ' },
+      { field: 'example', scope: 'en', body: 'An example of s3.' },
+    ])
+    const twice = storedSense('s1', [], { zh: ['银行', '银行'] })
+    expect(
+      publicViewRecord({ ...bank, meanings: [{ ...(bank.meanings[0] as StoredMeaning), senses: [twice, twice] }] })
+        .searchTexts,
+    ).toHaveLength(3)
     expect(record.taggedSenses).toEqual([
       {
         topicId: 'finance',
+        levelOrder: 2,
         summary: {
           lemma: 'bank',
           sense_id: 's1',
@@ -149,6 +172,13 @@ describe('public view records', () => {
     expect(phrase.phraseWords).toEqual(['bank', 'on'])
     expect(phrase.morphemes).toEqual([{ form: 'on', role: 'base' }])
     expect(publicViewRecord({ ...bank, morphology: null }).morphemes).toEqual([])
+    const unranked = publicViewRecord({
+      ...bank,
+      frequency: null,
+      meanings: [{ ...(bank.meanings[0] as StoredMeaning), cefr: null }],
+    })
+    expect(unranked.frequencyOrder).toBe(UNRANKED)
+    expect(unranked.taggedSenses[0]?.levelOrder).toBe(7)
     expect(readStored<StoredEntry>(JSON.stringify(bank))).toEqual(bank)
   })
 })

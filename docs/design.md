@@ -1322,8 +1322,8 @@ carry `lang`, the stored tag used (`"zh"` for a `zh-CN` request), `all`, or
 language, empty when it has none, and absent without a language; `?lang=all`
 gives an object keyed by stored tag. `all` is accepted only by the document
 reads (`GET /v1/entries/{lemma}`, `GET /v1/senses/{id}`); the lists
-(`GET /v1/entries`, `GET /v1/forms/{form}`, `GET /v1/topics/{id}/senses`)
-reject it with `400 invalid_request`, so every summary has one shape. A
+(`GET /v1/entries`, `GET /v1/forms/{form}`, `GET /v1/topics/{id}/senses`,
+`GET /v1/search`) reject it with `400 invalid_request`, so every summary has one shape. A
 topic's `name` is `{ "en": …, "<lang>": … }` keyed by the stored tag, with the
 language only when the topic has a name in it (the taxonomy has English and
 Chinese names), and every name for `all`.
@@ -1346,6 +1346,51 @@ a form the document does not show is still found. List pages are
 `pos`, its entry's word summary as `entry`, and `lang`; it takes `?lang=` and
 `?include=review` like the entry.
 
+**Lists.** `GET /v1/entries` takes `prefix`, `level` (CEFR levels, repeated
+`level=A1&level=A2` or comma-separated `level=A1,A2`), `pos`, `topic` (a leaf
+topic, or a category for any of its leaves), and `sort` (`lemma`, the default,
+or `frequency`: most frequent first by the entry's frequency rank, entries
+without one last, ties by lemma). `level` and `pos` hold for one meaning: an
+entry is listed when one of its meanings has that part of speech and one of
+those levels (the CEFR level of the lemma in that part of speech), so
+`level=A1&pos=noun` lists the A1 nouns, not entries that are A1 as a verb and
+also nouns. With `topic`, they hold for one sense tagged with the topic, at
+the level of its part of speech. An unknown topic is `404 not_found`; an
+unknown level, part of speech, or sort is `400 invalid_request`. `GET
+/v1/topics/{id}/senses` takes `sort`: `lemma` (the default, then by sense),
+`frequency` (by the entry's frequency rank), or `level` (by the sense's
+CEFR level, lowest first); unranked or unlevelled senses go last, ties by
+lemma, then sense. Every sort pages by keyset over its whole sort key, so a
+cursor names the sort it came from and is `400 invalid_cursor` under another.
+
+**Search.** `GET /v1/search?q=&lang=&limit=&cursor=` returns `{ lang, items,
+next_cursor }` with each item a word summary plus `match`, what matched:
+
+```json
+{ "lang": "zh", "items": [
+  { "lemma": "bank", "pos": ["noun", "verb"], "cefr": "A1", "gloss": "…", "translation": "银行（金融机构）", "match": "lemma" },
+  { "lemma": "banker", "pos": [], "cefr": "B2", "gloss": null, "match": "lemma" },
+  { "lemma": "account", "pos": ["noun", "verb"], "cefr": "A2", "gloss": "… with a bank …", "translation": "银行账户", "match": "gloss" }
+], "next_cursor": "…" }
+```
+
+An entry is found by `q` as its exact lemma (rank 0), a lemma that starts with
+`q` (1), a gloss (2), a translation in the read's language (3), or an example (4)
+of one of its public senses that holds every word of `q`; it appears once, at its
+best rank, then by frequency rank (unranked last), then by lemma, and `match` is
+`lemma`, `gloss`, `translation`, or `example`. Lemmas match exactly as spelled,
+like every lookup; text matches fold case and diacritics but are otherwise
+exact: no stemming and no typo correction (`bnak` and `banks` find nothing a
+gloss does not literally hold). Fuzzy matching is a follow-up. Translations are
+searched only in the language the read resolves (`?lang=` or
+`Accept-Language`), so a Chinese query without a served language finds nothing.
+Chinese has no spaces between words, so the index stores each run of CJK
+characters as its characters and every pair of neighbours (`银行业` as 银 行 业
+银行 行业), and a query looks a run up by its pairs: `银行` finds every
+translation holding 银行 (`银行`, `银行家`, `银行账户`), `银行家` those holding both
+银行 and 行家, and a single character itself (`server/domain/search.ts`).
+
+
 ## Public view
 
 The public reads serve prebuilt documents instead of projecting an entry's
@@ -1362,31 +1407,49 @@ writes it but the rebuild.
 
 | Table                 | Columns                                                      | Key                              |
 | --------------------- | ------------------------------------------------------------ | -------------------------------- |
-| `public_entries`      | `entry_id`, `lemma` (unique), `document`, `digest`, `summary`, `built_at` | `entry_id`          |
-| `public_forms`        | `content_key`, `entry_id`, `type`, `pos`                     | indexed by `content_key`         |
-| `public_sense_topics` | `topic_id`, `lemma`, `sense_id`, `entry_id`, `summary`       | `(topic_id, lemma, sense_id)`    |
+| `public_entries`      | `entry_id`, `lemma` (unique), `document`, `digest`, `summary`, `frequency_order`, `built_at` | `entry_id`; indexed by `(frequency_order, lemma)` |
+| `public_meanings`     | `entry_id`, `pos`, `cefr`                                    | `(entry_id, pos)`                |
+| `public_forms`        | `form`, `entry_id`, `type`, `pos`                            | indexed by `form`                |
+| `public_sense_topics` | `topic_id`, `lemma`, `sense_id`, `entry_id`, `pos`, `cefr`, `level_order`, `frequency_order`, `summary` | `(topic_id, lemma, sense_id)`; indexed by `(topic_id, frequency_order, lemma, sense_id)`, `(topic_id, level_order, lemma, sense_id)`, and `(entry_id, topic_id)` |
 | `public_phrase_words` | `word`, `entry_id`                                           | `(word, entry_id)`               |
 | `public_morphemes`    | `form`, `role`, `entry_id`                                   | `(form, role, entry_id)`         |
+| `public_search`       | `id`, `entry_id`, `field`, `scope`, `body`                   | `id`; FTS5 `public_search_fts` over `body` |
 
 `document` is the serialized stored document and `digest` the first 128 bits
 of its SHA-256 in hex. `summary` is the entry's word summary with its first
 translation in every language. `built_at` is when the document last changed: a
 rebuild that produces the same digest leaves the row alone. Every row derives
-from the entry's own document (`publicViewRecord`): `public_forms` a row per
-published form, shown or not (the document's form index), with the part of
-speech it is shown under, else its label, keyed by the form fact's content key, so a form lookup matches exactly as the facts do;
-`public_sense_topics` a row per topic tag of a public sense with its sense
-summary; `public_phrase_words` a row per word of a multiword lemma; and
-`public_morphemes` a row per part of its word formation. An entry whose entry
+from the entry's own document (`publicViewRecord`). `frequency_order` is the
+entry's frequency rank, or 2³¹−1 without one, so a sort by it puts unranked
+entries last and a keyset cursor stays a plain integer. `public_meanings` has a
+row per meaning with its CEFR level; `public_forms` a row per published form,
+shown or not (the document's form index), by its spelling as the form fact
+normalizes it, with the part of speech it is shown under, else its label, so a
+form lookup matches exactly as the facts do; `public_sense_topics` a row per
+topic tag of a public sense with its part of speech, level, `level_order` (the
+level's rank, 7 without one), the entry's `frequency_order`, and its sense
+summary; `public_phrase_words` a row per word of a multiword lemma;
+`public_morphemes` a row per part of its word formation; and `public_search` a
+row per distinct gloss (`field` `gloss`, `scope` `en`), example (`example`,
+`en`), and translation (`translation`, its language tag) of a public sense,
+whose `body` is the text as the search index stores it (see Search).
+`public_search_fts` is an FTS5 table (`unicode61 remove_diacritics 2`) with
+`public_search` as its external content: it stores only the index, and two
+triggers on `public_search` insert and delete its entries, so a rebuild writes
+`public_search` rows like any other. It is a virtual table, which `wrangler d1
+export` cannot export: drop `public_search_fts` before an export, and restore it
+by running `migrations/20261110034927_public_search_fts.sql` and then `INSERT
+INTO public_search_fts(public_search_fts) VALUES ('rebuild')`. An entry whose entry
 fact is not published has no rows, so every public read of it is `404`.
 
 | Read                          | Served from                                                    |
 | ----------------------------- | -------------------------------------------------------------- |
 | `GET /v1/entries/{lemma}`     | One batch: `entries` by lemma with its worklist row and `public_entries` row; the summaries of the entries whose `public_phrase_words` name the lemma; the summaries of the entries whose `public_morphemes` share a base or root with its own; and its parts that are a public lemma |
 | `GET /v1/senses/{id}`         | The same statement from `senses`; the sense is cut out of the document |
-| `GET /v1/forms/{form}`        | `public_forms` by content key joined to `public_entries`, in lemma order |
-| `GET /v1/entries`             | `public_entries` summaries by lemma range                      |
-| `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf, in lemma then sense order |
+| `GET /v1/forms/{form}`        | `public_forms` by spelling joined to `public_entries`, in lemma order |
+| `GET /v1/entries`             | `public_entries` summaries by lemma range or along `(frequency_order, lemma)`, each checked through the key of `public_meanings`, or with a topic the `(entry_id, topic_id)` index of `public_sense_topics` |
+| `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf along the index of the sort |
+| `GET /v1/search`              | `public_entries` by exact lemma and lemma range, and `public_search_fts` joined to `public_search` by rowid, grouped by entry |
 
 Feedback and the management API keep reading the facts: they need every status.
 
@@ -1425,7 +1488,7 @@ that rebuild, which the read then serves the previous document across, for the
 milliseconds until the write's own refresh finishes. When the lost rebuild
 leaves no document at all (the view was never built), serving it would be a
 `404` for a public entry, so the read rebuilds again, up to three times, and is
-`404` only when the projection itself is empty. Form lookups, the two lists,
+`404` only when the projection itself is empty. Form lookups, the lists, search,
 and the phrases, family, and part links of an entry read only built rows; they
 lag a write only between its commit and its refresh in the same request, and by
 at most one cron run (five minutes) when that request dies in between, or after
@@ -1445,12 +1508,12 @@ request, so a cache must not keep a document fresh past it: every use
 revalidates, and the revalidation costs one indexed batch and no body. The
 ETag changes only when the body can, so feedback and completed work, which
 bump the revision without changing anything public, keep cached bodies valid.
-`GET /v1/entries` and `GET /v1/topics/{id}/senses` change whenever any entry in
-them does; an ETag would need the whole page query before a `304` could save
-only the body, so they carry `Cache-Control: public, max-age=5`, which stays
-within the budget, and no ETag. Errors and the feedback POST carry no caching
-headers. The Worker runs in front of Cloudflare's cache, so the edge does not
-store these responses by itself; the headers serve browsers and downstream
+`GET /v1/entries`, `GET /v1/topics/{id}/senses`, and `GET /v1/search` change
+whenever any entry in them does; an ETag would need the whole page query before
+a `304` could save only the body, so they carry `Cache-Control: public,
+max-age=5`, which stays within the budget, and no ETag. Errors and the feedback
+POST carry no caching headers. The Worker runs in front of Cloudflare's cache,
+so the edge does not store these responses by itself; the headers serve browsers and downstream
 caches until the Worker puts responses in the Cache API.
 
 **Backfill and rebuild.** A migration cannot run the projection, so a
@@ -1458,10 +1521,11 @@ migration that changes what a view stores marks every view stale and leaves
 the rows to the rebuild: `public_view_backfill` set `view_revision = revision -
 1`, and `public_api_v2_clear` emptied the view tables and bumped `revision` on
 every row, and `scored_revision` with it where the scores were current, as a
-reference import does, so no entry turns claimable. Reads of entries and
+reference import does, so no entry turns claimable; `public_view_v3_clear` did
+the same for search and filtered lists. Reads of entries and
 senses rebuild what they touch; `POST /manage/v1/public/rebuild` (admins only,
 body `{ limit }`, 1 to 200, default 100) rebuilds up to `limit` stale views and
-returns `{ rebuilt, remaining }`. Form lookups, the two lists, and the joined
+returns `{ rebuilt, remaining }`. Form lookups, the lists, search, and the joined
 phrases and families read only built rows, so after `wrangler d1 migrations
 apply` of a migration that marks views stale, repeat it until `remaining` is 0
 before relying on them:
@@ -1494,6 +1558,7 @@ no public sense of their part of speech yet. The largest document, `run`, is
 stayed within the noise of the earlier view: `run` 3.8 to 4.0 ms before and
 4.1 to 4.7 ms after, and a mean entry (2.9 ms), sense (2.8 ms), form lookup
 (2.7 ms), topic page (3.1 to 3.5 ms), and list page (2.5 to 2.8 ms) the same.
+
 
 ## Runtime
 
