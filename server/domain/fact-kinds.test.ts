@@ -32,8 +32,15 @@ const shore = {
   gloss: 'the land along the edge of water',
   siblings: [{ pos: 'verb' as const, gloss: 'to support with props' }],
 }
-const bankEntry = { lemma: 'bank', senses: [{ ...money, id: target }], inflectionOf: [], cefr: [], caseVariants: [] }
-const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [], cefr: [], caseVariants: [] }
+const bankEntry = {
+  lemma: 'bank',
+  senses: [{ ...money, id: target }],
+  inflectionOf: [],
+  variantOf: [],
+  cefr: [],
+  caseVariants: [],
+}
+const breadEntry = { lemma: 'bread', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] }
 
 const requests = (plan: ReviewPlan): readonly ReviewRequest[] => (plan.kind === 'review' ? plan.requests : [])
 const jevQuestion = (plan: ReviewPlan, key: string) => {
@@ -349,7 +356,7 @@ describe('fact-kind registry', () => {
       'form',
       { form: 'would', type: 'past', pos: 'auxiliary' },
       {
-        subject: { lemma: 'will', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
+        subject: { lemma: 'will', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
         target: null,
         topic: null,
       },
@@ -377,7 +384,7 @@ describe('fact-kind registry', () => {
   it('tells the LLM whether a pronunciation is the weak or the strong form, and of which part of speech [spec: facts/write-labels]', () => {
     const prompt = (payload: Parameters<typeof planReview<'pronunciation'>>[1]) => {
       const plan = planReview('pronunciation', payload, {
-        subject: { lemma: 'to', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
+        subject: { lemma: 'to', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
         target: null,
         topic: null,
       })
@@ -390,19 +397,34 @@ describe('fact-kind registry', () => {
     expect(prompt({ ipa: 'duː', accent: 'us', pos: 'verb' })).toContain('"to" as a verb?')
   })
 
-  it('asks about a spelling variant without a word class, since it spans all of them [spec: facts/form-word-class]', () => {
+  it('asks the LLM alone about a spelling variant, recorded on the British entry [spec: facts/variant-british-main]', () => {
     const plan = planReview(
       'form',
       { form: 'colour', type: 'variant' },
       {
-        subject: { lemma: 'color', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
+        subject: { lemma: 'color', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
         target: null,
         topic: null,
       },
     )
-    expect(jevQuestion(plan, 'form')).toBe(
-      `Is "colour" an accepted spelling variant of the English word "color" in standard American or British usage? ${tail}`,
+    expect(requests(plan).map((request) => request.reviewer)).toEqual(['llm'])
+    expect(llmPrompt(plan)?.user).toContain(
+      'fail a British spelling recorded as a variant of an American one ("colour" on "color"',
     )
+    const entry = llmPrompt(
+      planReview(
+        'entry',
+        {},
+        {
+          subject: { lemma: 'color', senses: [], inflectionOf: [], variantOf: ['colour'], cefr: [], caseVariants: [] },
+          target: null,
+          topic: null,
+        },
+      ),
+    )?.user
+    expect(entry).toContain('This dictionary already records "color" as a spelling variant of another entry: "colour".')
+    expect(entry).toContain('the British spelling is the main entry')
+    expect(entry).toContain('"story" is a word of its own')
   })
 
   it.each([
@@ -465,7 +487,11 @@ describe('fact-kind registry', () => {
       planReview(
         'entry',
         {},
-        { subject: { lemma, senses: [], inflectionOf: [], cefr: [], caseVariants: [] }, target: null, topic: null },
+        {
+          subject: { lemma, senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
+          target: null,
+          topic: null,
+        },
       )
     for (const letter of ['F', 'b', 'A', 'i', 'x', 'é', 'Ω']) {
       expect(plan(letter)).toEqual({
@@ -483,7 +509,11 @@ describe('fact-kind registry', () => {
       planReview(
         'entry',
         {},
-        { subject: { lemma, senses: [], inflectionOf: [], cefr: [], caseVariants: [] }, target: null, topic: null },
+        {
+          subject: { lemma, senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
+          target: null,
+          topic: null,
+        },
       )
     const word = plan('bread')
     expect(jevQuestion(word, 'lemma')).toContain('Is "bread" an established English word')
@@ -525,7 +555,11 @@ describe('fact-kind registry', () => {
         planReview(
           'entry',
           {},
-          { subject: { lemma, senses: [], inflectionOf: [], cefr: [], caseVariants: [] }, target: null, topic: null },
+          {
+            subject: { lemma, senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
+            target: null,
+            topic: null,
+          },
         ),
       ).map((request) => request.reviewer)
     expect(reviewers('spatial distribution')).toEqual(['llm'])
@@ -545,6 +579,7 @@ describe('fact-kind registry', () => {
             { lemma: 'see', type: 'past' },
             { lemma: 'sea', type: 'plural' },
           ],
+          variantOf: [],
           cefr: [],
           caseVariants: [],
         },
@@ -573,6 +608,7 @@ describe('fact-kind registry', () => {
             lemma,
             senses: [],
             inflectionOf,
+            variantOf: [],
             cefr: [
               { level: 'A2', pos: 'noun', source: 'CEFR-J Wordlist' },
               { level: 'B1', pos: 'verb', source: 'Octanove' },
@@ -612,7 +648,11 @@ describe('fact-kind registry', () => {
       lemma: 'is',
       settledBy: 'jev',
     })
-    expect(rereviewOf('form', { form: 'colour', type: 'variant' })).toBeNull()
+    expect(rereviewOf('form', { form: 'color', type: 'variant' })).toEqual({
+      kind: 'entry',
+      lemma: 'color',
+      settledBy: 'jev',
+    })
     expect(rereviewOf('entry', {})).toBeNull()
   })
 
@@ -827,6 +867,7 @@ describe('morphology facts', () => {
       lemma: 'spectator',
       senses: [{ id: target, pos: 'noun' as const, gloss: 'A person who watches.' }],
       inflectionOf: [],
+      variantOf: [],
       cefr: [],
       caseVariants: [],
     }
@@ -842,7 +883,7 @@ describe('morphology facts', () => {
     expect(llmPrompt(plan)?.user).toContain('the "er" of "water"')
     expect(llmPrompt(plan)?.user).toContain('- (noun) "A person who watches."')
     const simple = planReview('morphology', parts(['water', 'base']), {
-      subject: { lemma: 'water', senses: [], inflectionOf: [], cefr: [], caseVariants: [] },
+      subject: { lemma: 'water', senses: [], inflectionOf: [], variantOf: [], cefr: [], caseVariants: [] },
       target: null,
       topic: null,
     })
@@ -963,6 +1004,7 @@ describe('sense list facts', () => {
       { id: record, pos: 'noun' as const, gloss: "A bookmaker's record of bets." },
     ],
     inflectionOf: [],
+    variantOf: [],
     cefr: [],
     caseVariants: [],
   }

@@ -116,3 +116,51 @@ describe('relations_strict_revalidate migration', () => {
     for (const id of Object.values(kept)) expect((await mark(id))?.mark).toBeNull()
   })
 })
+
+describe('variant_spelling_merge migration', () => {
+  it('retracts spelling-variant entries and records the variant on the British entry [spec: facts/variant-spelling-merge]', async () => {
+    const token = await issueAgentKey()
+    const post = (path: string, json: unknown) => call(path, { method: 'POST', token, json })
+    const entries: Record<string, { id: string; factId: string }> = {}
+    for (const lemma of ['colour', 'color', 'theatre', 'theater', 'story', 'storey']) {
+      const { entry, fact } = createEntryResultSchema.parse((await post('/manage/v1/entries', { lemma })).body)
+      entries[lemma] = { id: entry.id, factId: fact.id }
+    }
+    const theatre = entries.theatre?.id as string
+    await post('/manage/v1/facts', { kind: 'form', subject_id: theatre, payload: { form: 'theater', type: 'variant' } })
+    const revision = (id: string) =>
+      env.DB.prepare('SELECT revision, live FROM worklist WHERE entry_id = ?')
+        .bind(id)
+        .first<{ revision: number; live: number }>()
+    const before = await revision(entries.color?.id as string)
+
+    const migration = env.TEST_MIGRATIONS.find((candidate) => candidate.name.endsWith('_variant_spelling_merge.sql'))
+    if (!migration) throw new Error('The variant_spelling_merge migration is missing.')
+    for (const query of migration.queries) await env.DB.prepare(query).run()
+
+    const status = async (lemma: string) =>
+      (
+        await env.DB.prepare('SELECT status FROM facts WHERE id = ?')
+          .bind(entries[lemma]?.factId)
+          .first<{ status: string }>()
+      )?.status
+    expect(await status('color')).toBe('retracted')
+    expect(await status('theater')).toBe('retracted')
+    for (const lemma of ['colour', 'theatre', 'story', 'storey']) expect(await status(lemma)).toBe('pending')
+    expect(await revision(entries.color?.id as string)).toEqual({ revision: (before?.revision ?? 0) + 1, live: 0 })
+    const variants = await env.DB.prepare(
+      "SELECT subject_id AS subject, payload, status, author FROM facts WHERE kind = 'form' ORDER BY subject_id",
+    ).all<{ subject: string; payload: string; status: string; author: string }>()
+    expect(
+      variants.results.map(({ subject, payload, status }) => [subject, JSON.parse(payload), status]).sort(),
+    ).toEqual(
+      [
+        [entries.colour?.id, { form: 'color', type: 'variant' }, 'pending'],
+        [theatre, { form: 'theater', type: 'variant' }, 'pending'],
+      ].sort(),
+    )
+    expect(
+      await env.DB.prepare('SELECT name FROM sqlite_master WHERE name = ?').bind('variant_merge').first(),
+    ).toBeNull()
+  })
+})

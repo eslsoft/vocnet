@@ -105,12 +105,33 @@ Feature: Facts and review
     Then "mental health" is published and records its CEFR listing in the review context
     And "mountain system" is rejected
 
+  @facts/entry-variant-evidence @usecase
+  Scenario: A spelling variant is not an entry
+    Given the entry "colour" with the published variant form "color"
+    When the entry "color" is reviewed
+    Then the LLM alone judges it with the evidence that "color" is a spelling variant of "colour"
+    And it fails unless the word has meanings of its own beyond that spelling, or is the British spelling of the pair
+
+  @facts/variant-british-main @domain
+  Scenario: Spelling variants are recorded on the British entry
+    Given a variant form fact
+    When its review is planned
+    Then the LLM alone judges it, failing a British spelling recorded as a variant of an American one
+    And an entry review with variant evidence passes only a word of its own or the British spelling
+
+  @facts/variant-spelling-merge @api
+  Scenario: Existing spelling-variant entries merge into the British entry
+    Given live entries "colour" and "color", and "theater" and "theatre" with "theatre" already holding the variant "theater"
+    When the variant_spelling_merge migration runs
+    Then the entry facts of "color" and "theater" are retracted and their worklist rows stop being live and go stale
+    And "colour" gets one pending variant form "color", "theatre" keeps its one variant, and "story" and "storey" stay entries
+
   @facts/entry-inflection-rereview @usecase
   Scenario: Publishing an inflection re-reviews an entry Jev passed without it
     Given an entry whose entry fact Jev alone published
-    When another entry's form of any type but variant, spelled like that entry's lemma, is published
-    Then that entry fact is marked for a review in place and enqueued, and the LLM alone judges it with the inflection evidence
-    And an entry the LLM judged, a variant, a form an entry records of itself, and a duplicate delivery of the form's review queue nothing
+    When another entry's form of any type, spelled like that entry's lemma, is published
+    Then that entry fact is marked for a review in place and enqueued, and the LLM alone judges it with the inflection or variant evidence
+    And an entry the LLM judged, a form an entry records of itself, and a duplicate delivery of the form's review queue nothing
 
   @facts/entry-inflection-rereview-api @api
   Scenario: A recorded inflection re-reviews an entry on a real database
@@ -205,7 +226,6 @@ Feature: Facts and review
     Given a form fact such as the past tense "breaded" of "bread"
     When its review is planned
     Then the Jev question names the word class that form type belongs to, such as verb for tenses, noun for plurals, and adjective or adverb for comparison
-    And a spelling variant is asked about the word as a whole
 
   @facts/entry-no-letters @domain
   Scenario: A letter of the alphabet is not an entry

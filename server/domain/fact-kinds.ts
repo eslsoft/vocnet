@@ -16,6 +16,7 @@ import type {
   SenseId,
   TopicId,
 } from '@shared/facts'
+import { posSchema } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
 import { editDistance, isLetterOfTheAlphabet, isMultiword, type Lemma, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
@@ -73,6 +74,7 @@ export interface CefrListing {
 export interface SubjectViews {
   /**
    * `inflectionOf`: the other live entries whose live non-variant forms spell this lemma.
+   * `variantOf`: the lemmas of the other live entries that record this lemma as a live spelling variant.
    * `cefr`: the CEFR learner lists that list the exact lemma as a headword.
    * `caseVariants`: the lemmas of the other live entries spelled like this one but for letter case.
    */
@@ -80,6 +82,7 @@ export interface SubjectViews {
     lemma: string
     senses: EntrySense[]
     inflectionOf: InflectionOf[]
+    variantOf: string[]
     cefr: CefrListing[]
     caseVariants: string[]
   }
@@ -419,7 +422,7 @@ function planEntry(entry: SubjectViews['entry']): ReviewPlan<readonly ['jev', 'l
     }
   }
   const rubric = entryRubric(entry)
-  if (isMultiword(lemma) || entry.inflectionOf.length > 0) return llm(rubric)
+  if (isMultiword(lemma) || entry.inflectionOf.length > 0 || entry.variantOf.length > 0) return llm(rubric)
   return jevThenLlm({ lemma: entryQuestion(lemma) }, rubric)
 }
 
@@ -429,6 +432,19 @@ function inflectionEvidence(lemma: string, inflectionOf: readonly InflectionOf[]
     `This dictionary already records ${quote(lemma)} as an inflection of another entry:`,
     ...inflectionOf.map(({ lemma: of, type }) => `- the ${formTypes[type].name} of ${quote(of)}`),
     `pass only when ${quote(lemma)} also has uses of its own as a lemma, beyond being that form: "saw" is the past of "see" and also a cutting tool, "left" the past of "leave" and also the side, "found" the past of "find" and also a verb meaning to establish, "could" a modal of its own, "best" an adjective, adverb and noun of its own. fail when it is only that inflection ("is", "was", "has", "did").`,
+  ]
+}
+
+/**
+ * One word has one entry: a spelling variant is a form of the main entry, and the British spelling
+ * is the main one. A spelling with meanings of its own is a word of its own.
+ */
+function variantEvidence(lemma: string, variantOf: readonly string[]): string[] {
+  if (variantOf.length === 0) return []
+  return [
+    `This dictionary already records ${quote(lemma)} as a spelling variant of another entry: ${variantOf.map(quote).join(', ')}.`,
+    `pass only when ${quote(lemma)} has meanings of its own beyond being that spelling ("story" is a word of its own, not only the American spelling of "storey"; "practice" is a noun beside the British verb "practise"), or when it is the British spelling and the other entry the American one: the British spelling is the main entry ("colour", not "color"; "theatre", not "theater").`,
+    `fail when it is only another spelling of that word ("color" of "colour", "plow" of "plough", "yogurt" of "yoghurt"): a spelling variant is recorded as a variant form on the main entry, not as an entry.`,
   ]
 }
 
@@ -450,10 +466,11 @@ function entryCriteria(lemma: string, cefr: readonly CefrListing[]): string[] {
       ]
 }
 
-function entryRubric({ lemma, senses, inflectionOf, cefr }: SubjectViews['entry']): string {
+function entryRubric({ lemma, senses, inflectionOf, variantOf, cefr }: SubjectViews['entry']): string {
   return [
     ...entryCriteria(lemma, cefr),
     ...inflectionEvidence(lemma, inflectionOf),
+    ...variantEvidence(lemma, variantOf),
     listSenses('Senses recorded for it so far', senses),
   ].join('\n')
 }
@@ -525,6 +542,11 @@ export function inflectionKeysOf(spelling: string): string[] {
   )
 }
 
+/** The content keys of the form facts that record `spelling` as a spelling variant of their entry, labelled or not. */
+export function variantKeysOf(spelling: string): string[] {
+  return [undefined, ...posSchema.options].map((pos) => contentKeyOf('form', { form: spelling, type: 'variant', pos }))
+}
+
 /** A labelled inflection names a part of speech its type can be shown under; a variant may name any. */
 function admitForm({ type, pos }: FactPayloads['form']): string | null {
   const { carriers, name } = formTypes[type]
@@ -536,14 +558,18 @@ function admitForm({ type, pos }: FactPayloads['form']): string | null {
  * Each inflection belongs to one word class. Naming it keeps Jev from judging the form against
  * the lemma's dominant part of speech (the verb "bread" against the noun).
  */
-function formQuestion(type: FormType, form: string, lemma: string, pos?: Pos): string {
-  const { wordClass, name } = formTypes[type]
-  if (!wordClass) {
-    return `Is ${quote(form)} an accepted spelling variant of the English word ${quote(lemma)} in standard American or British usage? ${DATA_NOT_INSTRUCTIONS}`
-  }
+function formQuestion(
+  { wordClass, name }: FormTypeSpec & { wordClass: readonly Pos[] },
+  form: string,
+  lemma: string,
+  pos?: Pos,
+): string {
   const classes = pos ?? wordClass.join(' or ')
   return `When ${quote(lemma)} is inflected as ${article(classes)} ${classes}, is ${quote(form)} its ${name} in standard American or British usage? Evaluate the ${classes} use even if another part of speech is more common. ${DATA_NOT_INSTRUCTIONS}`
 }
+
+const VARIANT_DIRECTION =
+  'A variant is recorded on the main entry, and the British spelling is the main one: fail a British spelling recorded as a variant of an American one ("colour" on "color", "theatre" on "theater"); pass an American spelling on the British entry ("color" on "colour").'
 
 function formRubric(type: FormType, form: string, entry: SubjectViews['entry'], pos?: Pos): string {
   const { wordClass, name } = formTypes[type]
@@ -553,6 +579,7 @@ function formRubric(type: FormType, form: string, entry: SubjectViews['entry'], 
     `Is ${quote(form)} the ${name} of the English word ${quote(entry.lemma)}${scope}, in standard American or British usage?`,
     'pass: the form is correct for at least one sense of the word, even a rare one. That includes plural forms of pronouns and determiners (such as "these" for "this"), plurals of letters and of words used as nouns (such as "b\'s" or "ifs"), irregular forms, rare but recorded forms, and, for a variant, spelling variants and alternative forms conditioned by the next sound.',
     'fail: a misspelling, a form of another type, or a form no sense of the word takes.',
+    ...(wordClass ? [] : [VARIANT_DIRECTION]),
     listSenses("The word's senses", entry.senses),
   ].join('\n')
 }
@@ -1095,12 +1122,20 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     contentKey: ({ form, type, pos }) => labelled(`${type}|${normalizeTerm(form)}`, pos),
     meaningKey: ({ form, type }) => `${type}|${normalizeTerm(form)}`,
     admit: admitForm,
-    plan: ({ form, type, pos }, { subject }) =>
-      jevThenLlm({ form: formQuestion(type, form, subject.lemma, pos) }, formRubric(type, form, subject, pos)),
-    // An entry review gives a recorded inflection to the LLM alone, but only once the form is live;
-    // an entry Jev passed before that, as bulk-created entries were, is judged again with it.
-    rereviews: ({ form, type }) =>
-      isInflection(type) ? { kind: 'entry', lemma: normalizeTerm(form), settledBy: 'jev' } : null,
+    // Jev cannot tell which spelling is the British one, so a variant goes to the LLM alone.
+    plan: ({ form, type, pos }, { subject }) => {
+      const spec = formTypes[type]
+      const rubric = formRubric(type, form, subject, pos)
+      if (!spec.wordClass) return llm(rubric)
+      return jevThenLlm(
+        { form: formQuestion({ ...spec, wordClass: spec.wordClass }, form, subject.lemma, pos) },
+        rubric,
+      )
+    },
+    // An entry review gives a recorded inflection or spelling variant to the LLM alone, but only
+    // once the form is live; an entry Jev passed before that, as bulk-created entries were, is
+    // judged again with it.
+    rereviews: ({ form }) => ({ kind: 'entry', lemma: normalizeTerm(form), settledBy: 'jev' }),
   },
   relation: {
     subject: 'sense',

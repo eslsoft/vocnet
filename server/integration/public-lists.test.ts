@@ -145,6 +145,22 @@ describe('public lists and search', () => {
     expect((await call('/v1/search?q=%20')).status).toBe(400)
   })
 
+  it('finds the main entry by its spelling variant, as the exact lemma [spec: search/variant]', async () => {
+    const token = await issueAgentKey()
+    const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
+    const colour = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'colour' })).entry
+    await post('/manage/v1/senses', { entry_id: colour.id, pos: 'noun', gloss: 'The quality of red, blue, or green.' })
+    await post('/manage/v1/facts', { kind: 'form', subject_id: colour.id, payload: { form: 'color', type: 'variant' } })
+    stubReviewers()
+    await deliverPendingReviews()
+    const found = searchPageSchema.parse((await call('/v1/search?q=color')).body)
+    expect(found.items.map(({ lemma, match }) => [lemma, match])).toEqual([['colour', 'lemma']])
+    expect((await call('/v1/forms/color')).body).toMatchObject({
+      items: [{ lemma: 'colour', matches: [{ type: 'variant' }] }],
+    })
+    expect((await call('/v1/entries/color')).status).toBe(404)
+  })
+
   it('finds Chinese words in translations of the requested language only [spec: search/chinese]', async () => {
     await seedWords()
     const found = async (query: string, init?: RequestInit, params = '') =>

@@ -239,7 +239,7 @@ export async function listPublicEntries(
 }
 
 /**
- * Public entries matching a query: the exact lemma, lemmas starting with it, then entries with a
+ * Public entries matching a query: the exact lemma or a spelling variant of it, lemmas starting with it, then entries with a
  * gloss, a translation in the read's language, or an example holding every word of it. No typo
  * correction, stemming, or other fallback.
  */

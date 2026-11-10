@@ -14,6 +14,7 @@ import {
   type SubjectViews,
   targetOf,
   topicOf,
+  variantKeysOf,
 } from '@server/domain/fact-kinds'
 import {
   decide,
@@ -116,13 +117,20 @@ async function inflectionOf(deps: ReviewDeps, entry: EntryNode): Promise<Inflect
     .map((form) => ({ lemma: form.entry.lemma, type: form.fact.payload.type }))
 }
 
+/** The lemmas of the other live entries that record this entry's lemma as a live spelling variant. */
+async function variantOf(deps: ReviewDeps, entry: EntryNode): Promise<string[]> {
+  const forms = await deps.nodes.findLiveForms(variantKeysOf(entry.lemma))
+  return forms.filter((form) => form.entry.id !== entry.id).map((form) => form.entry.lemma)
+}
+
 const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    const [senses, inflections, cefr, caseVariants] = await Promise.all([
+    const [senses, inflections, variants, cefr, caseVariants] = await Promise.all([
       entryGlosses(deps, entry.id),
       inflectionOf(deps, entry),
+      variantOf(deps, entry),
       deps.reference.listCefrListings(entry.lemma),
       deps.nodes.listLiveCaseVariants(entry),
     ])
@@ -130,6 +138,7 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
       lemma: entry.lemma,
       senses: senses.map(({ senseId, pos, gloss }) => ({ id: senseId, pos, gloss })),
       inflectionOf: inflections,
+      variantOf: variants,
       cefr,
       caseVariants,
     }

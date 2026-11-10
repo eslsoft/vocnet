@@ -110,7 +110,38 @@ Each inflecting form type belongs to one word class. Plurals are noun forms;
 past, past participle, present participle, and third-person singular are verb
 forms; comparative and superlative are adjective or adverb forms. The form
 question names that class, so Jev judges "breaded" against the verb "bread",
-not the dominant noun. A spelling variant is asked about the word as a whole.
+not the dominant noun. A spelling variant goes to the LLM alone (see Spelling
+variants).
+
+#### Spelling variants
+
+One word has one entry, and the British spelling is the main one: American and
+other spellings are `variant` forms on it ("color" on "colour", "yogurt" on
+"yoghurt"), never entries of their own. Jev cannot tell which spelling of a
+pair is British, so a variant form is judged by the LLM alone, whose rubric
+fails a British spelling recorded as a variant of an American one. An entry
+whose lemma another live entry records as a live variant form carries those
+entries in its review context (`variantOf`) and goes to the LLM alone; the
+rubric passes it only when the word has meanings of its own beyond that
+spelling ("story" beside "storey", "practice" beside the verb "practise") or
+is the British spelling of the pair, and fails it otherwise. As for
+inflections (Reviews, Recorded inflections), a variant that publishes marks
+for a review in place the entry spelled like it that Jev passed alone. A
+variant has no region field: the rule is that a variant on a British entry is
+not British.
+
+The migration `variant_spelling_merge` merged the duplicates that existed: for
+each (main, variant) pair it lists, whose entries were both live, it retracted
+the variant's entry fact (its senses and facts leave the public view), gave the
+main entry a pending `variant` form naming the variant unless it held one, and
+marked both worklist rows stale. Nothing moved across entries; the producers
+refill what the main entry lacks. Homographs and words of their own stayed
+entries: a/an, among/amongst, AM and PM/pm, backward/backwards,
+forward/forwards, dependent/dependant, practice/practise, licence/license,
+program/programme, prise/prize, metre/meter, gram/gramme, kilogram/kilogramme,
+dialog/dialogue, and story/storey. Lookups stay exact: `GET /v1/entries/color`
+is `404`, while `GET /v1/forms/color` finds "colour" and search ranks an
+entry whose variant is the query as its exact lemma.
 
 Relation types are `synonym`, `antonym`, `hypernym`, and `part_of`. The Jev
 questions started as the ones the producer qualified. Each now says that two
@@ -636,7 +667,7 @@ but only to choose the message.
   agent-created neighbor) keeps the criteria above.
 - **Recorded inflections.** Jev also passed bare inflections as words ("is"
   at 0.99, "was", "has", "did"). When another entry whose entry fact is live
-  holds a live form of any type but `variant` spelled like the lemma, the
+  holds a live inflection (a form of any type but `variant`) spelled like the lemma, the
   entry review carries those entries in its context (`inflectionOf`: each
   entry's lemma and the form type) and goes to the LLM alone. The rubric names
   them and passes the word only when it also has uses of its own as a
@@ -647,7 +678,7 @@ but only to choose the message.
   before any sense exists, so the data cannot tell "is" from "saw". The
   evidence is read when the entry is reviewed, so the check is made
   independent of order: the registry's `rereviews` names, for a form of any
-  type but `variant`, the other entry spelled like the form whose published
+  type (a variant too, with the variant evidence of Spelling variants), the other entry spelled like the form whose published
   `entry` fact Jev settled alone (`review.reviewer` = `jev`). In the same batch
   that publishes the form, that fact gets `revalidate_since` unless it already
   has one, and then it is enqueued; its revalidation goes to the LLM alone with
@@ -1442,7 +1473,8 @@ next_cursor }` with each item a word summary plus `match`, what matched:
 ], "next_cursor": "…" }
 ```
 
-An entry is found by `q` as its exact lemma (rank 0), a lemma that starts with
+An entry is found by `q` as its exact lemma or a published spelling variant of
+it (rank 0, `match` `lemma`), a lemma that starts with
 `q` (1), a gloss (2), a translation in the read's language (3), or an example (4)
 of one of its public senses that holds every word of `q`; it appears once, at its
 best rank, then by frequency rank (unranked last), then by lemma, and `match` is
@@ -1522,7 +1554,7 @@ fact is not published has no rows, so every public read of it is `404`.
 | `GET /v1/forms/{form}`        | `public_forms` by spelling joined to `public_entries`, in lemma order |
 | `GET /v1/entries`             | `public_entries` summaries by lemma range or along `(frequency_order, lemma)`, each checked through the key of `public_meanings`, or with a topic the `(entry_id, topic_id)` index of `public_sense_topics` |
 | `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf along the index of the sort |
-| `GET /v1/search`              | `public_entries` by exact lemma and lemma range, and `public_search_fts` joined to `public_search` by rowid, grouped by entry |
+| `GET /v1/search`              | `public_entries` by exact lemma and lemma range, `public_forms` by variant form, and `public_search_fts` joined to `public_search` by rowid, grouped by entry |
 
 Feedback and the management API keep reading the facts: they need every status.
 

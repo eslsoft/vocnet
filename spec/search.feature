@@ -21,3 +21,9 @@ Feature: Search
     Given a text or a query with Chinese and Latin parts
     When it is indexed or looked up
     Then every Chinese run is stored as its characters and their pairs, a query looks a run up by its pairs (a single character by itself), and Latin words are matched by the tokenizer
+
+  @search/variant @api
+  Scenario: A spelling variant finds its main entry
+    Given a published entry "colour" with the published variant form "color"
+    When anyone searches "color" or looks up the form "color"
+    Then "colour" is found as the exact lemma and as the variant's entry, while the entry "color" is not found

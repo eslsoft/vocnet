@@ -205,13 +205,15 @@ export function taggedSenseStatement(
 
 /**
  * The page query of `GET /v1/search`: every entry the lemma index or the full-text index finds,
- * once at its best tier, then by frequency and lemma. Exported so a test can pin its query plan.
+ * an entry whose spelling variant is the query ranking as its exact lemma, once at its best tier, then by frequency and lemma. Exported so a test can pin its query plan.
  */
 export function searchStatement(query: SearchQuery, { limit, cursor }: PageRequest) {
   const last = cursor ? decodeCursor(cursor, searchCursor) : undefined
   return sql`
     WITH hits(entry_id, tier) AS (
       SELECT entry_id, ${EXACT_LEMMA_TIER} FROM public_entries WHERE lemma = ${query.text}
+      UNION ALL
+      SELECT entry_id, ${EXACT_LEMMA_TIER} FROM public_forms WHERE form = ${query.text} AND type = 'variant'
       UNION ALL
       SELECT entry_id, ${LEMMA_PREFIX_TIER} FROM public_entries
         WHERE lemma >= ${query.text} AND lemma < ${`${query.text}${PREFIX_END}`}

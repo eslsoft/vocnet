@@ -177,7 +177,7 @@ describe('reviewFact', () => {
     }
     const [be, see, color, sheep] = await Promise.all(['be', 'see', 'color', 'sheep'].map(publishEntry))
     const is = await publishEntry('is')
-    await publishEntry('colour')
+    const colour = await publishEntry('colour')
     world.answerJev((questions) => ({
       model: 'jev-test',
       answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.05])),
@@ -187,9 +187,11 @@ describe('reviewFact', () => {
     expect(entryFactOf(is.id).review).toMatchObject({ reviewer: 'jev', context: { subject: { inflectionOf: [] } } })
 
     await publishForm(see.id, { form: 'saw', type: 'past' })
-    await publishForm(color.id, { form: 'colour', type: 'variant' })
     await publishForm(sheep.id, { form: 'sheep', type: 'plural' })
     expect(world.queued).toEqual([])
+    await publishForm(colour.id, { form: 'color', type: 'variant' })
+    expect(world.queued).toEqual([{ factId: entryFactOf(color.id).id, traceId: 'trace-form' }])
+    world.queued.splice(0)
 
     const form = await publishForm(be.id, { form: 'is', type: 'third_person_singular' })
     expect(world.queued).toEqual([{ factId: entryFactOf(is.id).id, traceId: 'trace-form' }])
@@ -209,6 +211,30 @@ describe('reviewFact', () => {
         reviewer: 'llm',
         context: { subject: { inflectionOf: [{ lemma: 'be', type: 'third_person_singular' }] } },
       },
+    })
+  })
+
+  it('asks the LLM alone about a word another live entry records as a spelling variant [spec: facts/entry-variant-evidence]', async () => {
+    const world = fakeWorld()
+    const { entry: colour, fact: colourFact } = await createEntry(world.deps, agentA, { lemma: 'colour' })
+    const { fact: colorFact } = await createEntry(world.deps, agentA, { lemma: 'color' })
+    await reviewFact(world.deps, colourFact.id, 'trace-review')
+    const { fact: variant } = await submitFact(world.deps, agentA, {
+      kind: 'form',
+      subject_id: colour.id,
+      payload: { form: 'color', type: 'variant' },
+    })
+    await reviewFact(world.deps, variant.id, 'trace-review')
+    const jevCalls = world.jevCalls.length
+    world.failReviews()
+    await expect(reviewFact(world.deps, colorFact.id, 'trace-review')).resolves.toBe('rejected')
+    expect(world.jevCalls).toHaveLength(jevCalls)
+    expect(world.llmCalls.at(-1)?.user).toContain(
+      'This dictionary already records "color" as a spelling variant of another entry: "colour".',
+    )
+    expect((await getFact(world.deps, colorFact.id)).review).toMatchObject({
+      reviewer: 'llm',
+      context: { subject: { variantOf: ['colour'] } },
     })
   })
 
