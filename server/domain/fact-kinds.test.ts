@@ -916,7 +916,7 @@ describe('sense list facts', () => {
       ),
     )?.user
     expect(rubric).toContain(
-      'Judge only the word spelled exactly "may". A sense of a spelling that differs in capitalization, or of a proper name, belongs to that other entry and is never missing from this one.\n"MAY" is a separate entry; its senses are not this word\'s.\n"May" is a separate entry; its senses are not this word\'s.',
+      'Judge only the word spelled exactly "may". A sense that belongs to a spelling differing in capitalization, or to a proper name spelled otherwise, belongs to that other entry and is never missing from this one.\n"MAY" is a separate entry; its senses are not this word\'s.\n"May" is a separate entry; its senses are not this word\'s.',
     )
     const alone = llmPrompt(
       planReview(

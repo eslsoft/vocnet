@@ -606,10 +606,11 @@ but only to choose the message.
   common; and every extra sense is genuinely rare, archaic, technical, or
   specialist. A rare, archaic, Old English, technical, or specialist sense
   missing from both lists is never a failure. Entries are case-sensitive, so
-  the rubric judges only the exact spelling: a sense of a spelling that differs
-  in capitalization, or of a proper name, belongs to that other entry and is
-  never missing ("May" the month is not missing from "may", nor "Polish" from
-  "polish"). When other entries whose entry fact is live are spelled like the
+  the rubric judges only the exact spelling: a sense that belongs to a spelling
+  differing in capitalization, or to a proper name spelled otherwise, belongs
+  to that other entry and is never missing ("May" the month is not missing
+  from "may", nor "Polish" from "polish"); reviewing "May" itself, the month
+  is its own common sense. When other entries whose entry fact is live are spelled like the
   lemma but for letter case, the review context carries their lemmas
   (`caseVariants`) and the rubric names each as a separate entry whose senses
   are not this word's. They are read in one lookup on `entries_lemma_case_idx`,

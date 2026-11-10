@@ -849,7 +849,7 @@ const SENSE_LIST_PASSES = [
 /** Entries are case-sensitive: "May" the month is its own entry, never a sense missing from "may". */
 function otherCaseRules(lemma: string, caseVariants: readonly string[]): string[] {
   return [
-    `Judge only the word spelled exactly ${quote(lemma)}. A sense of a spelling that differs in capitalization, or of a proper name, belongs to that other entry and is never missing from this one.`,
+    `Judge only the word spelled exactly ${quote(lemma)}. A sense that belongs to a spelling differing in capitalization, or to a proper name spelled otherwise, belongs to that other entry and is never missing from this one.`,
     ...caseVariants.map((variant) => `${quote(variant)} is a separate entry; its senses are not this word's.`),
   ]
 }
@@ -866,10 +866,10 @@ function senseListRubric(
     extra.length === 0 ? 'Extra senses: none.' : 'Extra senses, claimed rare, archaic, technical, or specialist:',
     ...numbered(extra, common.length + 1),
     'Each sense was reviewed on its own; judge the list, not the wording of a gloss.',
+    ...otherCaseRules(lemma, caseVariants),
     'pass only when every one of these holds:',
     ...SENSE_LIST_PASSES.map((rule) => `- ${rule}`),
     'A rare, archaic, Old English, technical, or specialist sense missing from both lists is never a failure.',
-    ...otherCaseRules(lemma, caseVariants),
     'fail when any of them does not hold. The reason then names everything to change, even if that takes more than one sentence: each missing common sense with its part of speech and a short meaning, each pair of duplicates by number, each sense out of order, and each sense in extra that is common.',
     'uncertain: you cannot tell.',
   ].join('\n')
