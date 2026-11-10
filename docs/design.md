@@ -87,7 +87,7 @@ needs a new column.
 | `relation`      | sense   | many        | `{ type, target_sense_id }`                              | Jev, then LLM  |
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM            |
 | `example`       | sense   | many        | `{ text }`                                               | LLM            |
-| `translation`   | sense   | many        | `{ language, text }` (BCP 47 tag)                        | LLM            |
+| `translation`   | sense   | many        | `{ language, text }` (a served language: `zh`)           | LLM            |
 | `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | LLM            |
 | `grammar`       | sense   | one         | `{ countability?, transitivity?, position?, patterns?, prepositions? }` | Jev, then LLM  |
 | `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning? }] }`                  | Jev, then LLM  |
@@ -225,6 +225,10 @@ plain payload shape, so facts written before a rule still read.
   `g`; `ˈ` and `ː`, not `'` and `:`; `tʃ` and `dʒ`, not ligatures. The message
   names each symbol to replace.
 
+- **Translation.** `language` is a served language (`SERVED_LANGUAGES` in
+  `shared/facts.ts`, now only `zh`, which is Simplified Chinese), so the
+  worklist gap it fills and the language reads serve are the same tag; the
+  message names the served languages.
 - **Grammar.** At least one property, each pattern once, and one to four
   prepositions, each once.
 - **Word formation.** Parts in written order: prefixes, then at least one base or
@@ -973,7 +977,7 @@ facts close its gap:
 | `{ type: "pronunciation" }`              | No live pronunciation                                   |
 | `{ type: "relations", sense_id, count, have }` | The sense is in fewer live relations, as subject or object, than its part of speech needs |
 | `{ type: "examples", sense_id }`         | The sense has no live example                           |
-| `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` or `zh-*` translation |
+| `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` translation |
 | `{ type: "topics", sense_id }`           | The sense has fewer live topic facts than its part of speech needs (`TOPICS_NEEDED`) |
 | `{ type: "morphology" }`                 | A single-word entry has no live word formation          |
 | `{ type: "grammar", sense_id }`          | A noun or verb sense has no live grammar fact           |
@@ -1256,11 +1260,19 @@ entry document; every list returns summaries.
   value lists every published form of that type (`"past": ["dreamed",
   "dreamt"]`), because a type can have several. A form goes under exactly one
   meaning (`formMeaning` in the registry): the meaning of its labelled part of
-  speech, else the first meaning in display order whose part of speech can
-  carry its type: a plural a noun, pronoun, or determiner (`these` under the
-  determiner "this"); a past, participle, or third-person form a verb or
-  auxiliary (`would` under the auxiliary "will"); a comparative or superlative
-  an adjective, adverb, or determiner (`more` under the determiner "many"). A
+  speech, else the meaning of the first part of speech the entry has in its
+  type's carrier order, never by display order: a plural goes to a noun, else
+  a pronoun, else a determiner (`mines` under the noun "mine" though the
+  pronoun is shown first; `these` under the determiner "this", which has no
+  noun or pronoun meaning); a past, participle, or third-person form to a verb,
+  else an auxiliary (`would` under the auxiliary "will" only while "will" has
+  no verb meaning); a comparative or superlative to an adjective, else an
+  adverb, else a determiner (`more` under the determiner "many"). Known gap:
+  an unlabelled verb form of an entry with both a verb and an auxiliary
+  meaning goes to the verb (`would` under the verb "will"); the fix is to
+  label such forms with `pos`, and since a form's content key is `type|form`
+  without its part of speech, relabelling an unlabelled form dedupes against
+  it and must go through a supersede. A
   form or a part-of-speech pronunciation with no meaning to show it is not
   shown in the entry document; it reappears when a sense of a part of speech
   that can carry it is published, as a relation waits for its sense. Display
@@ -1290,8 +1302,8 @@ entry document; every list returns summaries.
   ids. Sources appear only in `GET /v1/sources`.
 
 **Language.** The dataset serves the languages it collects translations in
-(`SERVED_LANGUAGES` in `server/domain/language.ts`; the worklist asks for
-`zh`). Every stored translation is tagged plain `zh` and is Simplified
+(`SERVED_LANGUAGES` in `shared/facts.ts`; the worklist asks for `zh`, and a
+translation is submitted only in a served language). Every stored translation is tagged plain `zh` and is Simplified
 Chinese: in this dataset `zh` means Simplified. A requested tag reads a served
 language only in the same script, never another language or script:
 

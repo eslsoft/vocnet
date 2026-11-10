@@ -2,12 +2,7 @@
 // stores translations under its own tags. A requested tag reads a stored one only when it names the
 // same language in the same script, so no other language or script ever stands in for the one asked.
 
-/**
- * The languages the dataset collects translations in (the worklist asks for zh) and so serves.
- * Every stored translation is tagged plain `zh` and is Simplified Chinese: in this dataset `zh`
- * means Simplified.
- */
-export const SERVED_LANGUAGES: readonly string[] = ['zh']
+import { SERVED_LANGUAGES } from '@shared/facts'
 
 // Chinese tags name a script explicitly (zh-Hans, zh-Hant) or imply one by region. Stored zh is
 // Simplified, so only these requests read it; zh-Hant*, zh-TW, zh-HK, zh-MO and any other zh tag

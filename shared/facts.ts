@@ -306,6 +306,12 @@ const senseListPayloadSchema = z.strictObject({
   }),
 })
 
+/**
+ * The languages the dataset collects translations in, and so the only ones a translation is
+ * submitted in and a read serves. `zh` is Simplified Chinese.
+ */
+export const SERVED_LANGUAGES: readonly string[] = ['zh']
+
 export const factPayloadSchemas = {
   entry: z.strictObject({}),
   sense: z.strictObject({ gloss: text(500), register: registerSchema.optional() }),
@@ -330,7 +336,7 @@ export const factPayloadSchemas = {
     language: z
       .string()
       .regex(/^[a-z]{2,3}(-[A-Z][A-Za-z]{1,3})?$/)
-      .meta({ description: 'BCP 47 language tag, e.g. zh-Hans or fr.' }),
+      .meta({ description: 'BCP 47 language tag, e.g. zh.' }),
     text: text(200),
   }),
   topic: z.strictObject({
@@ -352,6 +358,15 @@ const submitPayloadSchemas = {
   ...factPayloadSchemas,
   sense: factPayloadSchemas.sense.extend({ gloss: glossSchema }),
   pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }),
+  translation: factPayloadSchemas.translation.extend({
+    language: z
+      .string()
+      .refine(
+        (language) => SERVED_LANGUAGES.includes(language),
+        `A translation is in a served language: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`,
+      )
+      .meta({ description: `A served language: ${SERVED_LANGUAGES.join(', ')}. zh is Simplified Chinese.` }),
+  }),
   grammar: grammarPayloadSchema
     .refine((grammar) => Object.keys(grammar).length > 0, 'A grammar fact names at least one property.')
     .refine(

@@ -19,7 +19,7 @@ describe('summarizeFact', () => {
       '/tə/ (us, weak, preposition)',
     ],
     [{ kind: 'example', payload: { text: 'We sat on the bank.' } }, 'We sat on the bank.'],
-    [{ kind: 'translation', payload: { language: 'zh-Hans', text: '河岸' } }, 'zh-Hans: 河岸'],
+    [{ kind: 'translation', payload: { language: 'zh', text: '河岸' } }, 'zh: 河岸'],
     [{ kind: 'topic', payload: { topic_id: 'hospital' } }, 'hospital'],
     [{ kind: 'grammar', payload: { countability: 'countable' } }, 'countable'],
     [

@@ -77,6 +77,28 @@ describe('ipa format', () => {
   })
 })
 
+describe('translation language', () => {
+  const translation = (language: string) =>
+    issues({ kind: 'translation', subject_id: sense, payload: { language, text: '河岸' } })
+
+  it('accepts a served language [spec: facts/translation-language]', () => {
+    expect(translation('zh')).toEqual([])
+  })
+
+  it.each([
+    'zh-Hans',
+    'zh-Hant',
+    'zh-CN',
+    'fr',
+  ])('rejects %j and names the served languages [spec: facts/translation-language]', (language) => {
+    expect(translation(language)).toEqual([expect.stringContaining('served language: zh')])
+  })
+
+  it('applies only to writes: stored translations still parse [spec: facts/translation-language]', () => {
+    expect(factPayloadSchemas.translation.safeParse({ language: 'zh-Hans', text: '河岸' }).success).toBe(true)
+  })
+})
+
 describe('labels', () => {
   it('accepts the optional register, form POS, and pronunciation strength and POS [spec: facts/write-labels]', () => {
     expect(gloss('Semen.', { register: 'taboo' })).toEqual([])

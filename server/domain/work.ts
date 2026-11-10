@@ -46,8 +46,6 @@ type EntryGap = Extract<Gap, { type: 'senses' | 'sense_list' | 'forms' | 'pronun
 type SenseGap = Exclude<Gap, EntryGap>
 type RelationGap = Extract<Gap, { type: 'relations' }>
 
-const isChinese = (language: string) => language === 'zh' || language.startsWith('zh-')
-
 /** What the entry gap rules read: the entry's facts in every status, the live ones, and the senses whose gloss is live. */
 interface EntryState {
   facts: readonly Fact[]
@@ -236,7 +234,7 @@ const senseGapRules: ReadonlyArray<{
   {
     need: () => 1,
     fills: (fact, senseId) =>
-      fact.kind === 'translation' && fact.subjectId === senseId && isChinese(fact.payload.language),
+      fact.kind === 'translation' && fact.subjectId === senseId && fact.payload.language === 'zh',
     gap: (senseId) => ({ type: 'translations', sense_id: senseId, language: 'zh' }),
   },
   {

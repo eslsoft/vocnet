@@ -52,7 +52,7 @@ Feature: Catalog
   Scenario: A form is shown under the meaning that can carry it
     Given forms with and without a part of speech, of entries whose first meaning is a noun, an auxiliary, a pronoun, or a determiner
     When the meaning each form is shown under is chosen
-    Then a labelled form goes to the meaning of its label, an unlabelled one to the first meaning in display order whose part of speech can carry its type, and a form no meaning can carry goes nowhere
+    Then a labelled form goes to the meaning of its label, an unlabelled one to the meaning of the first part of speech, in its type's preference order, that the entry has, never by display order, and a form no meaning can carry goes nowhere
 
   @catalog/form-index @domain
   Scenario: Every published form is indexed for lookup whether or not it is shown

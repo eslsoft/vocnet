@@ -218,6 +218,12 @@ Feature: Facts and review
     When its ipa packs two transcriptions, carries slashes or brackets, or uses a symbol outside broad English IPA
     Then the submission is invalid and the message names the symbols to replace, such as ɹ with r
 
+  @facts/translation-language @domain
+  Scenario: A translation is submitted in a served language
+    Given a translation to submit
+    When its language is zh, or another tag such as zh-Hans, zh-Hant, or fr
+    Then zh is accepted, any other tag is invalid and the message names the served languages, and translations stored before the rule still read
+
   @facts/write-labels @domain
   Scenario: Facts carry optional usage labels
     Given a sense register, a form part of speech, or a pronunciation strength and part of speech
@@ -227,7 +233,7 @@ Feature: Facts and review
   @facts/write-rules-api @api
   Scenario: Write rules over HTTP
     Given an agent key and senses of different entries
-    When it submits a mirrored antonym, a relation inside one entry, a malformed gloss, and two packed transcriptions
+    When it submits a mirrored antonym, a relation inside one entry, a malformed gloss, two packed transcriptions, and a translation in an unserved language
     Then the API answers 200 with the first fact, 422 invalid_reference, and 400 invalid_request with the rules to fix
 
   @facts/orient-stored-relations @api

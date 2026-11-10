@@ -406,9 +406,10 @@ interface FormTypeSpec {
   /** The word class the reviewer judges an unlabelled form of this type in; null for a variant, which spans all of them. */
   wordClass: readonly Pos[] | null
   /**
-   * The parts of speech whose meaning can show an unlabelled form of this type, in no order: the
-   * word class plus the closed classes that inflect the same way (these/those as determiner plurals,
-   * would/might as auxiliary pasts, more/most as determiner comparatives). Empty for a variant.
+   * The parts of speech whose meaning can show an unlabelled form of this type, most preferred
+   * first: the word class, then the closed classes that inflect the same way (these/those as
+   * determiner plurals, would/might as auxiliary pasts, more/most as determiner comparatives).
+   * Empty for a variant.
    */
   carriers: readonly Pos[]
   name: string
@@ -433,13 +434,15 @@ const formTypes: Record<FormType, FormTypeSpec> = {
 }
 
 /**
- * The meaning an entry shows a form under, from its meanings in display order: the one of the
- * form's labelled part of speech, else the first whose part of speech can carry the form's type.
- * None for an unlabelled variant, which is another spelling of the whole word, or when no meaning
- * fits yet.
+ * The meaning an entry shows a form under: the one of the form's labelled part of speech, else the
+ * one of the first carrier of the form's type that the entry has. Carrier order, not display
+ * order, decides, so a plural goes to a noun meaning before a pronoun one ("mines" under the noun
+ * "mine", not the pronoun shown first). None for an unlabelled variant, which is another spelling
+ * of the whole word, or when no meaning fits yet.
  */
 export function formMeaning<M extends { pos: Pos }>(type: FormType, pos: Pos | undefined, meanings: readonly M[]) {
-  return meanings.find((meaning) => (pos ? meaning.pos === pos : formTypes[type].carriers.includes(meaning.pos)))
+  const preferred = pos ? [pos] : formTypes[type].carriers
+  return preferred.map((carrier) => meanings.find((meaning) => meaning.pos === carrier)).find((meaning) => meaning)
 }
 
 const article = (word: string) => (/^[aeiou]/.test(word) ? 'an' : 'a')

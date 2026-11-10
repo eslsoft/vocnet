@@ -1,5 +1,6 @@
+import { SERVED_LANGUAGES } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { negotiateLanguage, readsLanguage, SERVED_LANGUAGES, servedLanguage } from './language'
+import { negotiateLanguage, readsLanguage, servedLanguage } from './language'
 
 describe('served language', () => {
   it('reads stored zh, which is Simplified, only for Simplified Chinese requests [spec: catalog/script-safety]', () => {

@@ -414,14 +414,16 @@ describe('public read model', () => {
     expect(firstSense(project(hiddenSource))?.relations.synonyms).toEqual([])
   })
 
-  it('places a form under its labelled part of speech, else the first meaning that can carry its type [spec: catalog/form-placement]', () => {
+  it('places a form under its labelled part of speech, else the first carrier of its type the entry has [spec: catalog/form-placement]', () => {
     const meanings = (...pos: Pos[]) => pos.map((one) => ({ pos: one }))
-    expect(formMeaning('past', undefined, meanings('auxiliary', 'noun', 'verb'))?.pos).toBe('auxiliary')
-    expect(formMeaning('past', 'verb', meanings('auxiliary', 'noun', 'verb'))?.pos).toBe('verb')
-    expect(formMeaning('plural', undefined, meanings('determiner', 'pronoun'))?.pos).toBe('determiner')
-    expect(formMeaning('plural', undefined, meanings('pronoun'))?.pos).toBe('pronoun')
-    expect(formMeaning('comparative', undefined, meanings('determiner', 'pronoun'))?.pos).toBe('determiner')
-    expect(formMeaning('superlative', undefined, meanings('noun', 'adverb'))?.pos).toBe('adverb')
+    expect(formMeaning('past', undefined, meanings('auxiliary', 'noun'))?.pos).toBe('auxiliary')
+    expect(formMeaning('past', undefined, meanings('auxiliary', 'noun', 'verb'))?.pos).toBe('verb')
+    expect(formMeaning('past', 'auxiliary', meanings('auxiliary', 'noun', 'verb'))?.pos).toBe('auxiliary')
+    expect(formMeaning('plural', undefined, meanings('pronoun', 'noun'))?.pos).toBe('noun')
+    expect(formMeaning('plural', undefined, meanings('determiner', 'pronoun'))?.pos).toBe('pronoun')
+    expect(formMeaning('plural', undefined, meanings('determiner', 'adverb'))?.pos).toBe('determiner')
+    expect(formMeaning('comparative', undefined, meanings('determiner', 'adverb'))?.pos).toBe('adverb')
+    expect(formMeaning('superlative', undefined, meanings('noun', 'determiner'))?.pos).toBe('determiner')
     expect(formMeaning('third_person_singular', undefined, meanings('noun'))).toBeUndefined()
     expect(formMeaning('past', 'verb', meanings('noun'))).toBeUndefined()
     expect(formMeaning('variant', undefined, meanings('noun'))).toBeUndefined()
