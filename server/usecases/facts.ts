@@ -251,8 +251,10 @@ export async function retractFact(
  * Sends a decided fact back through review. Pending facts are simply re-enqueued. The reset
  * conflicts when it would make a second live fact with the same content or in an exclusive slot,
  * when a live correction supersedes the fact, or when a rejected correction's original is no
- * longer published or already has another live correction. Every rule is a condition of the reset
- * write itself, which applies only to the status it read, so no concurrent write can slip past one.
+ * longer published or already has another live correction. Each of those rules is a condition of
+ * the reset write itself, which applies only to the status it read, so no concurrent write can slip
+ * past one. Whether a revived payload still fits its subject (`admit`) is checked by a read before
+ * the write, as a submission's is.
  */
 export async function rereviewFact(
   deps: Pick<Deps, 'facts' | 'nodes' | 'work' | 'reviewQueue' | 'clock'>,
