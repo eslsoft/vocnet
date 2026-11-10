@@ -1,6 +1,6 @@
 import type { EntrySnapshot } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
-import type { JevQuestions, LlmPrompt } from '@server/domain/fact-kinds'
+import type { CefrListing, JevQuestions, LlmPrompt, Rereview } from '@server/domain/fact-kinds'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
@@ -61,6 +61,8 @@ export interface NodeRepo {
 /** Imported reference data, read by exact lemma spelling. */
 export interface ReferenceRepo {
   forLemma(lemma: Lemma): Promise<LemmaReference>
+  /** The CEFR listings of the exact lemma with their source names, lowest level first. */
+  listCefrListings(lemma: Lemma): Promise<CefrListing[]>
   listSources(): Promise<ReferenceSource[]>
   /** Every lemma the CEFR profiles list that no entry has, lowest level first, then by lemma. */
   listCefrLemmasWithoutEntry(): Promise<Lemma[]>
@@ -91,6 +93,11 @@ export interface FactTransitionWrite {
   unsuperseded?: boolean
   /** The write applies only while this fact (the original a correction supersedes) is published, checked in the same statement. */
   originalPublished?: FactId
+  /**
+   * When the write applies, mark these facts of the other entry for a review in place, in the same
+   * batch; facts already marked keep their mark.
+   */
+  rereview?: Rereview
 }
 
 export interface FactRepo {

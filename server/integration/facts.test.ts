@@ -3,7 +3,35 @@ import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema, st
 import { factSchema, factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { adminToken, call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
+import {
+  adminToken,
+  call,
+  deliverPendingReviews,
+  deliverReviews,
+  importLearnerData,
+  issueAgentKey,
+  stubReviewers,
+} from './helpers'
+
+/** Jev passes everything; the LLM passes a rubric only when it contains `evidence`. */
+function stubLlmPassingOn(evidence: string) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const request = new Request(input, init)
+    const body = (await request.json()) as {
+      questions?: Record<string, unknown>
+      messages?: Array<{ content: string }>
+    }
+    if (request.url.endsWith('/v1/systemone')) {
+      const answers = Object.fromEntries(
+        Object.keys(body.questions ?? {}).map((key) => [key, { type: 'noul', noul: 0.99 }]),
+      )
+      return Response.json({ model: 'jev-test', answers })
+    }
+    const verdict = body.messages?.some((message) => message.content.includes(evidence)) ? 'pass' : 'fail'
+    const content = JSON.stringify({ verdict, confidence: 0.9, reason: 'Judged.' })
+    return Response.json({ model: 'llm-test', choices: [{ message: { content } }] })
+  })
+}
 
 describe('fact review flow', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -87,6 +115,62 @@ describe('fact review flow', () => {
     expect(JSON.stringify(is.review?.detail)).toContain('the third-person singular present tense form of \\"be\\"')
     expect(phrase).toMatchObject({ status: 'rejected', review: { reviewer: 'llm', verdict: 'fail' } })
     expect(lake).toMatchObject({ status: 'published', review: { reviewer: 'jev', verdict: 'pass' } })
+  })
+
+  it('publishes a CEFR-listed compound the lexical-unit test alone would reject [spec: facts/entry-cefr-evidence-api]', async () => {
+    await importLearnerData({ levels: { 'mental health': 'B1' } })
+    const token = await issueAgentKey()
+    const entries = await Promise.all(
+      ['mental health', 'mountain system'].map(async (lemma) =>
+        createEntryResultSchema.parse(
+          (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })).body,
+        ),
+      ),
+    )
+    stubLlmPassingOn('It is a headword of a CEFR learner vocabulary list')
+    await deliverPendingReviews()
+    const [listed, unlisted] = await Promise.all(
+      entries.map(async ({ fact }) => factSchema.parse((await call(`/manage/v1/facts/${fact.id}`, { token })).body)),
+    )
+    expect(listed).toMatchObject({ status: 'published', review: { reviewer: 'llm', verdict: 'pass' } })
+    expect(listed.review?.context).toMatchObject({
+      subject: { lemma: 'mental health', cefr: [{ level: 'B1', pos: 'noun', source: 'cefr' }] },
+    })
+    expect(unlisted).toMatchObject({ status: 'rejected', review: { reviewer: 'llm', verdict: 'fail' } })
+  })
+
+  it('re-reviews an entry Jev passed alone once a form of another entry spells it [spec: facts/entry-inflection-rereview-api]', async () => {
+    const token = await issueAgentKey()
+    const createEntry = async (lemma: string) =>
+      createEntryResultSchema.parse((await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })).body)
+    const be = await createEntry('be')
+    const is = await createEntry('is')
+    stubReviewers(0.99)
+    await deliverPendingReviews()
+    const mark = env.DB.prepare('SELECT revalidate_since AS mark FROM facts WHERE id = ?').bind(is.fact.id)
+    expect(await mark.first('mark')).toBeNull()
+
+    const form = factWriteResultSchema.parse(
+      (
+        await call('/manage/v1/facts', {
+          method: 'POST',
+          token,
+          json: { kind: 'form', subject_id: be.entry.id, payload: { form: 'is', type: 'third_person_singular' } },
+        })
+      ).body,
+    )
+    await deliverReviews([form.fact.id])
+    expect(await mark.first('mark')).not.toBeNull()
+    vi.restoreAllMocks()
+
+    stubReviewers(0.99, 'fail')
+    expect((await deliverReviews([is.fact.id])).explicitAcks).toEqual(['m0'])
+    const reviewed = factSchema.parse((await call(`/manage/v1/facts/${is.fact.id}`, { token })).body)
+    expect(reviewed).toMatchObject({ status: 'rejected', review: { reviewer: 'llm', verdict: 'fail' } })
+    expect(reviewed.review?.context).toMatchObject({
+      subject: { inflectionOf: [{ lemma: 'be', type: 'third_person_singular' }] },
+    })
+    expect(await mark.first('mark')).toBeNull()
   })
 
   it('retries the message and keeps the fact pending when the gateway is down [spec: facts/transport-retry-api]', async () => {

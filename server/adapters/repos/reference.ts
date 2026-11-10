@@ -2,7 +2,8 @@ import { entries, lemmaCefr, referenceSources, wordFrequency } from '@server/db/
 import { frequencyKey } from '@server/domain/reference'
 import type { Lemma } from '@server/domain/term'
 import type { ReferenceRepo } from '@server/usecases/ports'
-import { cefrSchema, frequencySchema, referenceSourceSchema } from '@shared/reference'
+import { posSchema } from '@shared/facts'
+import { cefrLevelSchema, cefrSchema, frequencySchema, referenceSourceSchema } from '@shared/reference'
 import { asc, eq, min, notExists, sql } from 'drizzle-orm'
 import type { Db } from './rows'
 
@@ -21,6 +22,20 @@ export function createReferenceRepo(db: Db): ReferenceRepo {
         frequency: row ? frequencySchema.parse({ zipf: row.zipf, rank: row.rank, source_id: row.sourceId }) : null,
         cefr: cefr.map((item) => cefrSchema.parse({ pos: item.pos, level: item.level, source_id: item.sourceId })),
       }
+    },
+
+    async listCefrListings(lemma) {
+      const rows = await db
+        .select({ level: lemmaCefr.level, pos: lemmaCefr.pos, source: referenceSources.name })
+        .from(lemmaCefr)
+        .innerJoin(referenceSources, eq(referenceSources.id, lemmaCefr.sourceId))
+        .where(eq(lemmaCefr.lemma, lemma))
+        .orderBy(asc(lemmaCefr.level), asc(lemmaCefr.pos))
+      return rows.map((row) => ({
+        level: cefrLevelSchema.parse(row.level),
+        pos: posSchema.parse(row.pos),
+        source: row.source,
+      }))
     },
 
     async listSources() {

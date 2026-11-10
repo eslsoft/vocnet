@@ -4,8 +4,10 @@ import {
   type InflectionOf,
   inflectionKeysOf,
   planReview,
+  type Rereview,
   type ReviewContext,
   type ReviewRequest,
+  rereviewOf,
   revalidatedBy,
   type SenseGloss,
   type SenseView,
@@ -30,7 +32,10 @@ import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, TopicId } from '
 import type { Deps } from './deps'
 import { refreshWork } from './work-scores'
 
-type ReviewDeps = Pick<Deps, 'nodes' | 'facts' | 'topics' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'>
+type ReviewDeps = Pick<
+  Deps,
+  'nodes' | 'facts' | 'topics' | 'reference' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'
+>
 
 const reviewers: {
   [R in ReviewerKind]: (deps: ReviewDeps, request: ReviewRequest<R>, state: Record<string, unknown>) => Promise<Opinion>
@@ -116,8 +121,17 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    const [senses, inflections] = await Promise.all([entryGlosses(deps, entry.id), inflectionOf(deps, entry)])
-    return { lemma: entry.lemma, senses: senses.map(({ pos, gloss }) => ({ pos, gloss })), inflectionOf: inflections }
+    const [senses, inflections, cefr] = await Promise.all([
+      entryGlosses(deps, entry.id),
+      inflectionOf(deps, entry),
+      deps.reference.listCefrListings(entry.lemma),
+    ])
+    return {
+      lemma: entry.lemma,
+      senses: senses.map(({ pos, gloss }) => ({ pos, gloss })),
+      inflectionOf: inflections,
+      cefr,
+    }
   },
   sense: (deps, id) => senseContext(deps, id as SenseId),
 }
@@ -181,6 +195,14 @@ async function revalidatedByCorrection<K extends FactKind>(
   return revalidatedBy(correction.kind, original.payload, correction.payload)
 }
 
+/** Enqueues the facts a publish marked for a review in place: the live marked facts of the other entry. */
+async function enqueueRereviews(deps: ReviewDeps, { lemma }: Rereview, traceId: string): Promise<void> {
+  const entry = await deps.nodes.findEntryByLemma(lemma)
+  if (!entry) return
+  const ids = await deps.facts.listRevalidating(entry.id)
+  if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
+}
+
 export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
 
 /**
@@ -189,7 +211,9 @@ export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
  * conditional on the status and revalidation mark the review read, so a duplicate delivery
  * cannot change a decided fact and a review that read a superseded gloss cannot land. When a
  * correction publishes, the live facts judged or about to be judged against the old version are
- * marked and enqueued. Reviewer transport errors propagate so the queue retries.
+ * marked and enqueued, and when a fact publishes that another entry's review lacked as evidence
+ * (an inflection spelled like that entry's lemma), the facts it names are marked and enqueued too.
+ * Reviewer transport errors propagate so the queue retries.
  */
 export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string): Promise<ReviewOutcome> {
   const fact = await deps.facts.find(id)
@@ -203,6 +227,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
   const { from, to } = factTransitions[event]
   const supersede = event === 'publish' ? (fact.supersedesId ?? undefined) : undefined
   const dependents = supersede && (await revalidatedByCorrection(deps, fact, supersede))
+  const rereview = event === 'publish' ? rereviewOf(fact.kind, fact.payload) : null
   const applied = await deps.facts.transition({
     id,
     from,
@@ -212,6 +237,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     supersede,
     revalidate: dependents ? { nodeId: fact.subjectId, kinds: dependents } : undefined,
     revalidateSince: fact.revalidateSince,
+    rereview: rereview ?? undefined,
   })
   if (!applied) return 'skipped'
   await refreshWork(deps, [fact.subjectId, fact.objectId])
@@ -219,6 +245,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     const ids = await deps.facts.listRevalidating(fact.subjectId)
     if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
   }
+  if (rereview) await enqueueRereviews(deps, rereview, traceId)
   return outcome
 }
 
