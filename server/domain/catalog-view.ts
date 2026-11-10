@@ -1,11 +1,4 @@
-import type {
-  FactMeta,
-  FormMatch,
-  PublicEntry,
-  PublicRelation,
-  PublicSense,
-  PublicSenseWithEntry,
-} from '@shared/catalog'
+import type { FactMeta, PublicEntry, PublicRelation, PublicSense, PublicSenseWithEntry } from '@shared/catalog'
 import type { EntryId, FactId, FactKind, SenseId } from '@shared/facts'
 import type { LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
@@ -59,13 +52,6 @@ export function managedEntryView(snapshot: EntrySnapshot): ManagedEntryView {
 export function factMeta(fact: Fact): FactMeta {
   if (fact.status !== 'published' || !fact.review) throw new Error(`Fact ${fact.id} is not a reviewed published fact.`)
   return { id: fact.id, confidence: fact.review.confidence, verdict: fact.review.verdict }
-}
-
-export function formMatch(entry: EntryNode, fact: FactOf<'form'>): FormMatch {
-  return {
-    entry: { id: entry.id, lemma: entry.lemma },
-    form: publicForm(fact),
-  }
 }
 
 const publicForm = (fact: FactOf<'form'>) => ({ ...factMeta(fact), ...fact.payload })

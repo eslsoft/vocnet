@@ -3,6 +3,7 @@ import { getTopicTree, listTopicSenses } from '@server/usecases/topics'
 import { topicIdSchema } from '@shared/facts'
 import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { z } from 'zod'
+import { LIST_CACHE } from './caching'
 import { createRouter, errorResponse, json, pageQuery } from './router'
 
 const tags = ['Topics']
@@ -31,5 +32,6 @@ export const topicRoutes = createRouter()
   .openapi(getTopics, async (c) => c.json(await getTopicTree(c.get('deps')), 200))
   .openapi(getTopicSenses, async (c) => {
     const page = await listTopicSenses(c.get('deps'), c.req.valid('param').id, c.req.valid('query'))
+    c.header('Cache-Control', LIST_CACHE)
     return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
   })

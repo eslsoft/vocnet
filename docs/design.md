@@ -18,7 +18,9 @@ own and publishes it on its own.
   proposition go to Jev first. Facts whose quality is a judgment go to a
   general LLM. A Jev pass is trusted; anything else gets an LLM second opinion.
 - **Visibility is derived on read.** The public API shows a fact only when it
-  and every node it references are published.
+  and every node it references are published. The rule is one projection of
+  the facts; the public view stores its result per entry so a read does not
+  rerun it, and rebuilds it whenever the facts change (see Public view).
 - **Every write converges.** Submissions are idempotent by content key, review
   is idempotent by fact status, and a reconciler re-enqueues stuck work.
 
@@ -195,8 +197,9 @@ returns a keyset page `{ items: [{ id, lemma, pos, gloss }], next_cursor }` of
 the senses that published topic facts tag with that leaf, or with any leaf of
 that category, each sense once, in lemma then sense-id order. A sense appears
 only while its topic fact, its gloss, and its entry are published. An unknown
-id is `404 not_found`, without a fuzzy fallback. The query starts from the topic
-facts through the live-content index, so only the tagged senses are sorted.
+id is `404 not_found`, without a fuzzy fallback. The listing reads the public
+view's `public_sense_topics` rows, one per topic tag of a public sense, keyed
+`(topic_id, lemma, sense_id)`, so a leaf is one index range in page order.
 The public entry lists each sense's `topics` as `{ id, confidence, verdict,
 topic_id }`, and topic facts appear wherever the management API lists facts.
 
@@ -863,20 +866,24 @@ formation; a phrase none, since its words are their own entries.
 | `completeness`, `quality`, `stalled`              | The scores and the stall, as of `scored_revision`          |
 | `awaiting_review`                                 | A fact about the entry or its senses, or a relation into one of its senses, is pending, as of `scored_revision` |
 | `claimed_work`                                    | The open work the last claim found                         |
-| `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work; the revision the scores describe |
+| `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work or public view; the revision the scores describe |
+| `view_revision`                                   | The revision the entry's public view rows describe         |
 | `claim_rank`                                      | Generated: `claimTier` of a claimable entry, else null; a stale row counts as claimable and its stored completeness picks gaps or weak facts |
 | `lease_id` (unique), `lease_holder`, `lease_expires_at` | The current or last lease; all set or all null      |
 | `last_worked_at`, `last_worked_by`, `last_note`   | The last completed work                                    |
 
-Every write that can change an entry's gaps or weak facts bumps `revision` of
-the entries at both ends in its own batch: a fact insert or status change
-(review, retraction, re-review, supersede), a sense insert, a feedback insert or
-status change on a fact, and a completion. A write that moves an `entry` or
-`sense` fact into or out of live (an insert, a rejection, a retraction, a
-supersede, a re-review of a rejected fact) also bumps the entries whose
-relations link to the senses that fact defines, since their relations gaps
-depend on it. The use case that made the write then rescores the stale rows it
-touched, linked entries included (`refreshWork`): it loads the entry, assesses
+Every write that can change an entry's gaps, weak facts, or public view bumps
+`revision` of the entries at both ends in its own batch: a fact insert or status
+change (review, retraction, re-review, supersede), a sense insert, a feedback
+insert or status change on a fact, and a completion. Every insert or status
+change of an `entry` or `sense` fact also bumps the entries whose relations
+link to the senses that fact defines: moving into or out of live changes their
+relations gaps, and moving into or out of published, or a gloss correction
+publishing, changes the relations their public views show. A reference import
+bumps every row (see Public view). The use case that made the write then
+rescores the stale rows it touched, linked entries included, and rebuilds their
+public views (`refreshEntries`, which runs `refreshWork` and
+`refreshPublicViews`). The rescore loads the entry, assesses
 it, and stores the scores and the stall conditional on `revision` being
 unchanged, so a concurrent write's rescore wins instead of being overwritten. A
 stale row stays claimable, so a request that crashed before its rescore never
@@ -1102,7 +1109,13 @@ lemmas) and 2,785 have CEFR levels; all 850 seed entries have a frequency and
 
 The worklist orders by CEFR level and frequency (see Admission and order). An
 import ends by re-ranking every worklist row from the new tables, so the
-statement that replaces the reference data also moves the claim order.
+statement that replaces the reference data also moves the claim order. It then
+marks every public view stale (`staleViewsSql`), since each public document
+carries its entry's frequency and CEFR levels: it bumps `revision`, and
+`scored_revision` with it where the scores were current, because reference
+data is not part of the scores and the entries must not turn claimable. Reads
+rebuild what they touch at once; run the admin rebuild (see Public view) to
+drain the rest instead of waiting for the cron.
 
 ### Core entries
 
@@ -1190,14 +1203,106 @@ The public wire format is snake_case JSON. Errors are
 `{ items, next_cursor }` over keyset cursors with a unique tiebreaker. The
 console reads its public OIDC settings from `GET /configz`.
 
+## Public view
+
+The public reads serve prebuilt documents instead of projecting an entry's
+facts on every request. An entry's public document is exactly the
+`GET /v1/entries/{lemma}` DTO: `publicEntryDocument` in
+`server/domain/public-view.ts` runs the projection above (`projectPublicEntry`)
+and joins the reference data. The view is derived data only, never a second
+source of truth: every row can be dropped and rebuilt from the facts and the
+reference tables, and nothing writes it but the rebuild.
+
+| Table                 | Columns                                                      | Key                              |
+| --------------------- | ------------------------------------------------------------ | -------------------------------- |
+| `public_entries`      | `entry_id`, `lemma` (unique), `document`, `digest`, `built_at` | `entry_id`                     |
+| `public_forms`        | `content_key`, `fact_id`, `entry_id`                         | `(content_key, fact_id)`         |
+| `public_sense_topics` | `topic_id`, `lemma`, `sense_id`, `entry_id`, `pos`, `gloss`  | `(topic_id, lemma, sense_id)`    |
+
+`document` is the serialized DTO and `digest` the first 128 bits of its
+SHA-256 in hex. `built_at` is when the document last changed: a rebuild that
+produces the same digest leaves the row alone. `public_forms` has a row per
+published form under the form fact's content key, so a form lookup matches
+exactly as the facts do; `public_sense_topics` a row per topic tag of a public
+sense (`publicViewRecord`). An entry whose entry fact is not published has no
+rows, so every public read of it is `404` as before.
+
+| Read                          | Served from                                                    |
+| ----------------------------- | -------------------------------------------------------------- |
+| `GET /v1/entries/{lemma}`     | One statement: `entries` by lemma, its worklist row, and its `public_entries` row; the stored document is sent as stored |
+| `GET /v1/senses/{id}`         | The same statement from `senses`; the sense is cut out of the document |
+| `GET /v1/forms/{form}`        | `public_forms` by content key joined to `public_entries`, in lemma then fact order |
+| `GET /v1/entries`             | `public_entries` by lemma range                               |
+| `GET /v1/topics/{id}/senses`  | `public_sense_topics` by leaf, in lemma then sense order       |
+
+Feedback and the management API keep reading the facts: they need every status.
+
+**Staleness.** The view shares the worklist's `revision`: a view is stale while
+`view_revision <> revision` (partial index `worklist_view_stale_idx`). Every
+write that can change a document already bumps `revision` in its own batch (see
+The worklist table), and `refreshEntries` rebuilds the stale views of the
+entries the write touched, linked entries included, in the same request after
+the rescore. A rebuild reads the revision, loads the snapshot and the reference
+data, and writes the document, the lookup rows, and `view_revision` in one batch
+whose every statement is conditional on `revision` being unchanged, so a write
+that lands meanwhile wins: the rebuild stores nothing and that write's own
+refresh rebuilds the view. The cron rebuilds up to 100 leftover stale views a
+run (`rebuildStalePublicViews`), trying every one before it throws the failures
+together, like the rescore.
+
+A read never serves an entry or sense document older than the facts it read:
+the read's statement returns the revisions with the document, and a stale view
+is rebuilt before it is served. The only window is a write that commits during
+that rebuild, which the read then serves the previous document across, for the
+milliseconds until the write's own refresh finishes. Form lookups and the two
+lists read only built rows; they lag a write only between its commit and its
+refresh in the same request, and by at most one cron run (five minutes) when
+that request dies in between, or after a reference import or the backfill
+until the views are rebuilt.
+
+**HTTP caching.** Entry, sense, and form responses carry `ETag` (the digest of
+the entry document, or the digests of the matched entries for a form, joined by
+`.`) and `Cache-Control: public, max-age=60, stale-while-revalidate=300`; a
+matching `If-None-Match` gets `304` without a body. The ETag changes only when
+the document does, so feedback and completed work, which bump the revision
+without changing anything public, keep caches valid. A minute fresh keeps
+browsers and caches close to the view, and revalidation costs one indexed read.
+`GET /v1/entries` and `GET /v1/topics/{id}/senses` change whenever any entry in
+them does, so they carry `Cache-Control: public, max-age=15,
+stale-while-revalidate=60` and no ETag. Errors and the feedback POST carry no
+caching headers. The Worker runs in front of Cloudflare's cache, so the edge
+does not store these responses by itself; the headers serve browsers and
+downstream caches until the Worker puts responses in the Cache API.
+
+**Backfill and rebuild.** A migration cannot run the projection, so
+`public_view_backfill` sets `view_revision = revision - 1` on every row: every
+view starts stale and empty. Reads of entries and senses rebuild what they
+touch; `POST /manage/v1/public/rebuild` (admins only, body `{ limit }`, 1 to
+200, default 100) rebuilds up to `limit` stale views and returns
+`{ rebuilt, remaining }`. Repeat it until `remaining` is 0:
+
+```sh
+until [ "$(curl -sf -X POST "$BASE/manage/v1/public/rebuild" \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"limit":200}' | jq .remaining)" = 0 ]; do :; done
+```
+
+On a local copy of the development database (12,466 entries, 79,794 facts),
+63 calls of 200 rebuilt every view in 30 seconds, about 415 entries a second,
+producing 11,806 documents (17 MB), 4,871 form rows, and 4,249 topic rows. The
+largest document (`run`, 53 KB) went from 20 ms to 2.5 ms a read; a mean entry
+read from 5.6 to 2.2 ms, a sense from 4.1 to 1.9 ms, a form lookup from 39 to
+1.9 ms, and a topic page from 44 to 2.9 ms, every body byte-identical.
+
 ## Runtime
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
-- D1 stores nodes, facts, the topic taxonomy, feedback, agents, work leases, and
+- D1 stores nodes, facts, the topic taxonomy, feedback, agents, work leases, the public view, and
   imported reference data.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   takes batches of up to 25, reviews them concurrently, and logs the trace ID.
-- A cron trigger runs every five minutes and re-enqueues facts whose last
+- A cron trigger runs every five minutes, rescores up to 100 stale worklist
+  rows, rebuilds up to 100 stale public views, and re-enqueues facts whose last
   status change is more than five minutes old and that are still `pending`, and
   published facts whose
   `revalidate_since` is more than five minutes old, so a lost enqueue cannot

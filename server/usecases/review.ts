@@ -30,11 +30,11 @@ import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/
 import type { TopicView } from '@server/domain/topics'
 import type { EntryId, FactId, FactKind, ReviewerKind, SenseId, TopicId } from '@shared/facts'
 import type { Deps } from './deps'
-import { refreshWork } from './work-scores'
+import { refreshEntries } from './refresh'
 
 type ReviewDeps = Pick<
   Deps,
-  'nodes' | 'facts' | 'topics' | 'reference' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'
+  'nodes' | 'facts' | 'topics' | 'reference' | 'publicViews' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'
 >
 
 const reviewers: {
@@ -242,7 +242,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     rereview: rereview ?? undefined,
   })
   if (!applied) return 'skipped'
-  await refreshWork(deps, [fact.subjectId, fact.objectId])
+  await refreshEntries(deps, [fact.subjectId, fact.objectId])
   if (dependents) {
     const ids = await deps.facts.listRevalidating(fact.subjectId)
     if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))

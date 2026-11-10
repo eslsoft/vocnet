@@ -3,7 +3,8 @@ import { cefrLevelSchema, type ReferenceSource } from '@shared/reference'
 
 // Renders one reference import as SQL statements for D1 (`wrangler d1 execute --file`). An
 // import replaces all reference data, so applying it twice, or after an older import with
-// other rows or sources, leaves exactly the rows of this one, and then re-ranks the worklist.
+// other rows or sources, leaves exactly the rows of this one, then re-ranks the worklist and marks
+// every public view stale.
 
 export interface ReferenceImport {
   sources: ReferenceSource[]
@@ -45,6 +46,16 @@ export const rankWorklistSql = `UPDATE worklist SET level_rank = ${levelRankSql(
   '(select lemma from entries where entries.id = worklist.entry_id)',
 )}, zipf = (select zipf from word_frequency where word_frequency.word = worklist.frequency_key);`
 
+/**
+ * Marks every entry's public view stale, since its document carries the frequency and CEFR levels
+ * the import replaced. It bumps the shared `revision`, and with it `scored_revision` where the
+ * scores were current: reference data is not part of the scores, so they still describe the row
+ * and the entry does not become claimable meanwhile. A rescore in flight reads the old revision
+ * and saves nothing, as after any other bump.
+ */
+export const staleViewsSql =
+  'UPDATE worklist SET revision = revision + 1, scored_revision = CASE WHEN scored_revision = revision THEN revision + 1 ELSE scored_revision END;'
+
 export function referenceImportSql({ sources, frequency, cefr }: ReferenceImport): string[] {
   const known = new Set(sources.map((source) => source.id))
   for (const id of [frequency.sourceId, ...cefr.map((row) => row.sourceId)]) {
@@ -82,5 +93,6 @@ export function referenceImportSql({ sources, frequency, cefr }: ReferenceImport
       cefr.map((row) => [text(row.lemma), text(row.pos), text(row.level), text(row.sourceId)]),
     ),
     rankWorklistSql,
+    staleViewsSql,
   ]
 }

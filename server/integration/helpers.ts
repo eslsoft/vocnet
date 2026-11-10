@@ -19,16 +19,19 @@ export async function adminToken(sub = 'admin-1') {
     .sign(key)
 }
 
-export async function call(path: string, init: RequestInit & { token?: string; json?: unknown } = {}) {
+type CallInit = RequestInit & { token?: string; json?: unknown }
+
+/** The Worker's raw response, for tests that read headers or the exact body. */
+export async function request(path: string, init: CallInit = {}) {
   const headers = new Headers(init.headers)
   if (init.token) headers.set('authorization', `Bearer ${init.token}`)
   if (init.json !== undefined) headers.set('content-type', 'application/json')
   const body = init.json === undefined ? init.body : JSON.stringify(init.json)
-  const response = await entry.fetch(
-    new Request(`http://app.test${path}`, { ...init, headers, body }),
-    env,
-    createExecutionContext(),
-  )
+  return entry.fetch(new Request(`http://app.test${path}`, { ...init, headers, body }), env, createExecutionContext())
+}
+
+export async function call(path: string, init: CallInit = {}) {
+  const response = await request(path, init)
   return { status: response.status, body: (response.status === 204 ? null : await response.json()) as unknown }
 }
 

@@ -1,7 +1,8 @@
 import { agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
+import { publicEntryOf } from '@server/testing/public-view'
 import { describe, expect, it } from 'vitest'
-import { createEntry, getManagedEntry, getPublicEntry } from './catalog'
+import { createEntry, getManagedEntry } from './catalog'
 import { listReferenceSources } from './reference'
 import { reviewFact } from './review'
 
@@ -36,7 +37,7 @@ describe('reference data', () => {
     await createEntry(world.deps, agentA, { lemma: ' bank ' })
     for (const fact of [...world.facts]) await reviewFact(world.deps, fact.id, 'trace')
 
-    expect(await getPublicEntry(world.deps, 'bank')).toMatchObject({ lemma: 'bank', ...reference })
+    expect(await publicEntryOf(world.deps, 'bank')).toMatchObject({ lemma: 'bank', ...reference })
     expect(await getManagedEntry(world.deps, 'bank')).toMatchObject({ seed: false, ...reference })
   })
 })

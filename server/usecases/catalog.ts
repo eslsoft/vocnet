@@ -1,22 +1,15 @@
-import {
-  type EntrySnapshot,
-  formMatch,
-  type ManagedEntryView,
-  managedEntryView,
-  projectPublicEntry,
-  projectPublicSense,
-} from '@server/domain/catalog-view'
+import { type EntrySnapshot, type ManagedEntryView, managedEntryView } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
 import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
+import { formMatchOf, publicSenseOf, readDocument } from '@server/domain/public-view'
 import { isLetterOfTheAlphabet, type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
   CreateSenseInput,
   FormMatch,
   NodeLocation,
-  PublicEntry,
   PublicSenseWithEntry,
   Stats,
 } from '@shared/catalog'
@@ -25,10 +18,14 @@ import type { LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
-import type { PageRequest } from './ports'
-import { refreshWork } from './work-scores'
+import type { PageRequest, StoredView } from './ports'
+import { readPublicView, type ViewDeps } from './public-view'
+import { refreshEntries } from './refresh'
 
-type WriteDeps = Pick<Deps, 'nodes' | 'facts' | 'topics' | 'work' | 'reviewQueue' | 'clock' | 'ids'>
+type WriteDeps = Pick<
+  Deps,
+  'nodes' | 'facts' | 'topics' | 'work' | 'reference' | 'publicViews' | 'reviewQueue' | 'clock' | 'ids'
+>
 
 /**
  * Ensures the entry node exists, is marked as a seed entry when asked, and its `entry` fact is
@@ -60,7 +57,7 @@ export async function createEntry(
  * listed. Repeating it continues where the last call stopped and creates nothing once done.
  */
 export async function importCoreEntries(
-  deps: WriteDeps & Pick<Deps, 'reference'>,
+  deps: WriteDeps,
   actor: Actor,
   limit: number,
 ): Promise<{ created: Lemma[]; skipped: Lemma[]; remaining: number }> {
@@ -124,7 +121,7 @@ export async function createSense(
   }
   const stored = await deps.nodes.insertSenseWithFact(sense, fact, meaningKeyOf('sense', payload))
   const created = stored.sense.id === sense.id
-  await refreshWork(deps, [entry.id])
+  await refreshEntries(deps, [entry.id])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { ...stored, created }
 }
@@ -143,31 +140,43 @@ async function snapshotOf(
   return { snapshot, reference }
 }
 
-export async function getPublicEntry(deps: Pick<Deps, 'nodes' | 'reference'>, lemma: string): Promise<PublicEntry> {
-  const { snapshot, reference } = await snapshotOf(deps, lemma)
-  const view = projectPublicEntry(snapshot)
+/** The entry's public document as stored, rebuilt first when stale. Exact lemma only. */
+export async function getPublicEntry(deps: ViewDeps, lemma: string): Promise<StoredView> {
+  const view = await readPublicView(deps, () => deps.publicViews.findByLemma(normalizeTerm(lemma)))
   if (!view) throw new NotFoundError(`No entry for ${JSON.stringify(lemma)}.`)
-  return { ...view, ...reference }
-}
-
-export async function getPublicSense(deps: Pick<Deps, 'nodes'>, id: SenseId): Promise<PublicSenseWithEntry> {
-  const sense = await deps.nodes.findSense(id)
-  const entry = sense && (await deps.nodes.findEntry(sense.entryId))
-  const view = entry && projectPublicSense(await deps.nodes.loadEntrySnapshot(entry), id)
-  if (!view) throw new NotFoundError(`Sense ${id} not found.`)
   return view
 }
 
-/** Exact match on a published form. No fuzzy or lemma fallback: no match is not found. */
-export async function lookupForm(deps: Pick<Deps, 'nodes'>, form: string): Promise<FormMatch[]> {
-  const keys = formTypeSchema.options.map((type) => contentKeyOf('form', { form, type }))
-  const matches = await deps.nodes.findPublishedForms(keys)
-  if (matches.length === 0) throw new NotFoundError(`No entry has the form ${JSON.stringify(form)}.`)
-  return matches.map(({ entry, fact }) => formMatch(entry, fact))
+/** One public sense with its entry, and the digest of the entry document it comes from. */
+export async function getPublicSense(
+  deps: ViewDeps,
+  id: SenseId,
+): Promise<{ sense: PublicSenseWithEntry; digest: string }> {
+  const view = await readPublicView(deps, () => deps.publicViews.findBySense(id))
+  const sense = view && publicSenseOf(readDocument(view.json), id)
+  if (!view || !sense) throw new NotFoundError(`Sense ${id} not found.`)
+  return { sense, digest: view.digest }
 }
 
-export function searchEntries(deps: Pick<Deps, 'nodes'>, prefix: string, page: PageRequest) {
-  return deps.nodes.searchPublishedEntries(normalizeTerm(prefix), page)
+/**
+ * Exact match on a published form, with the digests of the entry documents the matches come
+ * from. No fuzzy or lemma fallback: no match is not found.
+ */
+export async function lookupForm(
+  deps: Pick<Deps, 'publicViews'>,
+  form: string,
+): Promise<{ matches: FormMatch[]; digests: string[] }> {
+  const keys = formTypeSchema.options.map((type) => contentKeyOf('form', { form, type }))
+  const found = await deps.publicViews.findForms(keys)
+  if (found.length === 0) throw new NotFoundError(`No entry has the form ${JSON.stringify(form)}.`)
+  return {
+    matches: found.map(({ view, factId }) => formMatchOf(readDocument(view.json), factId)),
+    digests: [...new Set(found.map(({ view }) => view.digest))],
+  }
+}
+
+export function searchEntries(deps: Pick<Deps, 'publicViews'>, prefix: string, page: PageRequest) {
+  return deps.publicViews.listEntries(normalizeTerm(prefix), page)
 }
 
 export function listEntrySummaries(deps: Pick<Deps, 'nodes'>, prefix: string, page: PageRequest) {

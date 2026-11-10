@@ -43,15 +43,6 @@ function liveEntryOf(entryId: SQL | typeof entries.id, db: Db) {
   )
 }
 
-function publishedEntry(entryId: SQL | typeof entries.id, db: Db) {
-  return exists(
-    db
-      .select({ one: sql`1` })
-      .from(facts)
-      .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entryId), eq(facts.status, 'published'))),
-  )
-}
-
 /**
  * The statements behind one page of entry summaries. Each one reads only the page's entries and
  * their senses and facts through an index, so a page costs the same however large the dictionary
@@ -265,29 +256,6 @@ export function createNodeRepo(db: Db): NodeRepo {
       }
     },
 
-    async searchPublishedEntries(prefix, { limit, cursor }) {
-      const after = cursor ? decodeCursor(cursor, entryCursor) : undefined
-      const rows = await db
-        .select({ id: entries.id, lemma: entries.lemma })
-        .from(entries)
-        .where(
-          and(
-            lemmaStartsWith(prefix),
-            after ? gt(entries.lemma, after.lemma) : undefined,
-            publishedEntry(entries.id, db),
-          ),
-        )
-        .orderBy(asc(entries.lemma))
-        .limit(limit + 1)
-      // lemma is unique, so it is its own keyset tiebreaker.
-      return page(
-        rows,
-        limit,
-        (row) => ({ id: row.id as EntryId, lemma: row.lemma }),
-        (row) => ({ lemma: row.lemma }),
-      )
-    },
-
     async listEntrySummaries(prefix, request) {
       const [rows, entryFacts, senseFacts, glossed] = await db.batch(entrySummaryStatements(db, prefix, request))
 
@@ -334,25 +302,6 @@ export function createNodeRepo(db: Db): NodeRepo {
         .where(and(sql`lower(${entries.lemma}) = lower(${lemma})`, ne(entries.id, id), liveEntryOf(entries.id, db)))
         .orderBy(asc(entries.lemma))
       return rows.map((row) => row.lemma as Lemma)
-    },
-
-    async findPublishedForms(contentKeys) {
-      const rows = await db
-        .select({ entry: entries, fact: facts })
-        .from(facts)
-        .innerJoin(entries, eq(entries.id, facts.subjectId))
-        .where(
-          and(
-            eq(facts.kind, 'form'),
-            inArray(facts.contentKey, contentKeys),
-            // Repeats the partial index predicate verbatim so SQLite can use the index.
-            liveStatus,
-            eq(facts.status, 'published'),
-            publishedEntry(entries.id, db),
-          ),
-        )
-        .orderBy(asc(entries.lemma), asc(facts.id))
-      return rows.map((row) => ({ entry: toEntry(row.entry), fact: toFact(row.fact) as FactOf<'form'> }))
     },
   }
 }

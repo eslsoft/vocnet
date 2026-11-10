@@ -7,7 +7,7 @@ import { type CompleteWorkInput, DEFAULT_LEASE_SECONDS, type Gap, type WeakFact,
 import type { Deps } from './deps'
 import { ConflictError, NotFoundError } from './errors'
 import type { Actor } from './facts'
-import { refreshWork } from './work-scores'
+import { refreshEntries } from './refresh'
 
 export interface WorkClaim {
   lease: WorkLease & { lemma: Lemma }
@@ -45,7 +45,7 @@ export async function claimWork(
  * stalled the entry. The lease is gone afterwards, so a repeat is not found.
  */
 export async function completeWork(
-  deps: Pick<Deps, 'work' | 'nodes' | 'clock'>,
+  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'publicViews' | 'clock'>,
   actor: Actor,
   id: WorkLeaseId,
   input: CompleteWorkInput,
@@ -60,6 +60,6 @@ export async function completeWork(
   if (!(await deps.work.complete(lease, at, input.note ?? null))) {
     throw new ConflictError(`Work lease ${id} changed concurrently; claim again.`)
   }
-  await refreshWork(deps, [lease.entryId])
+  await refreshEntries(deps, [lease.entryId])
   return { entryId: lease.entryId, lastWorkedAt: at }
 }

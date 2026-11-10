@@ -156,6 +156,8 @@ export const worklist = sqliteTable(
     claimedWork: text('claimed_work'),
     revision: integer('revision').notNull().default(0),
     scoredRevision: integer('scored_revision').notNull().default(0),
+    /** The revision the entry's public view rows describe; behind `revision` while they are stale. */
+    viewRevision: integer('view_revision').notNull().default(0),
     claimRank: integer('claim_rank').generatedAlwaysAs(
       sql`case when live = 0 or (revision = scored_revision and (stalled = 1 or awaiting_review = 1 or (completeness >= 1 and quality >= 1))) then null else 2 * (8 * (completeness >= 1) + coalesce(level_rank - 1, 6 + (zipf is null))) + (claimed_at is not null) end`,
       { mode: 'virtual' },
@@ -177,10 +179,62 @@ export const worklist = sqliteTable(
       table.entryId,
     ),
     index('worklist_stale_idx').on(table.entryId).where(sql`revision <> scored_revision`),
+    index('worklist_view_stale_idx').on(table.entryId).where(sql`revision <> view_revision`),
     check(
       'worklist_lease_whole',
       sql`(${table.leaseId} is null) = (${table.leaseHolder} is null) and (${table.leaseId} is null) = (${table.leaseExpiresAt} is null)`,
     ),
+  ],
+)
+
+// The public view: each entry's public document, projected from its facts by
+// `publicEntryDocument` in server/domain/public-view.ts and rebuilt whenever the worklist row's
+// `revision` moves past `view_revision`. Derived data only: a row can be dropped and rebuilt from
+// the facts and the reference tables at any time. An entry without a public document has no rows.
+
+/** The public entry DTO as served, and a digest of it for the ETag. */
+export const publicEntries = sqliteTable('public_entries', {
+  entryId: text('entry_id')
+    .primaryKey()
+    .references(() => entries.id),
+  lemma: text('lemma').notNull().unique(),
+  document: text('document').notNull(),
+  digest: text('digest').notNull(),
+  builtAt: text('built_at').notNull(),
+})
+
+/** One row per published form of a public entry, keyed like the form fact's content key. */
+export const publicForms = sqliteTable(
+  'public_forms',
+  {
+    contentKey: text('content_key').notNull(),
+    factId: text('fact_id').notNull(),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.contentKey, table.factId] }),
+    index('public_forms_entry_idx').on(table.entryId),
+  ],
+)
+
+/** One row per published topic tag of a public sense, in the order a topic listing pages. */
+export const publicSenseTopics = sqliteTable(
+  'public_sense_topics',
+  {
+    topicId: text('topic_id').notNull(),
+    lemma: text('lemma').notNull(),
+    senseId: text('sense_id').notNull(),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    pos: text('pos').notNull(),
+    gloss: text('gloss').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.topicId, table.lemma, table.senseId] }),
+    index('public_sense_topics_entry_idx').on(table.entryId),
   ],
 )
 
