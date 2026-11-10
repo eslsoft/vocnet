@@ -9,7 +9,7 @@ Feature: Public view
   Scenario: The view derives from the public document
     Given an entry's public projection and its reference data
     When its view rows are built
-    Then the document is the public entry with its summary, nothing for an entry that is not public, a form row per shown form and part of speech under its content key, a row per topic tag of a public sense with its summary, a row per word of a multiword lemma, and a row per word formation part
+    Then the document is the public entry with its summary, nothing for an entry that is not public, a form row per published form, shown or not, with the part of speech it is shown under, under its content key, a row per topic tag of a public sense with its summary, a row per word of a multiword lemma, and a row per word formation part
 
   @public-view/refresh @usecase
   Scenario: Writes and reads keep the view current
@@ -81,4 +81,16 @@ Feature: Public view
   Scenario: The language comes from lang or Accept-Language and changes the ETag
     Given a published entry with a translation and a topic tag
     When it is read with lang, with Accept-Language, with both, with lang=all, and without either
-    Then the response carries the language it used, lang wins over Accept-Language, translations and topic names follow it, and each language has its own ETag
+    Then the response carries the stored language it used, lang wins over Accept-Language, translations and topic names follow it, a Traditional Chinese request reads no language, and each language has its own ETag
+
+  @public-view/list-language @api
+  Scenario: Lists accept one language only
+    Given a published entry with a form and a topic tag
+    When the entry list, the form lookup, or the topic listing is requested with lang=all
+    Then the API answers 400 naming the reads that accept lang=all, so every summary has one shape
+
+  @public-view/form-parity @api
+  Scenario: Every published form of a public entry resolves through the form lookup
+    Given a public entry with forms shown, forms whose part of speech has no public sense, and a variant
+    When each of its published forms is looked up
+    Then every one finds the entry with its type, whether or not the entry document shows it

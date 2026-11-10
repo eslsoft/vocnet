@@ -403,29 +403,43 @@ function senseRubric(sense: SubjectViews['sense'], gloss: string, register?: Reg
 }
 
 interface FormTypeSpec {
-  /** The word class that inflects this way; null for a variant, which spans all of them. */
+  /** The word class the reviewer judges an unlabelled form of this type in; null for a variant, which spans all of them. */
   wordClass: readonly Pos[] | null
+  /**
+   * The parts of speech whose meaning can show an unlabelled form of this type, in no order: the
+   * word class plus the closed classes that inflect the same way (these/those as determiner plurals,
+   * would/might as auxiliary pasts, more/most as determiner comparatives). Empty for a variant.
+   */
+  carriers: readonly Pos[]
   name: string
 }
 
+const VERB_FORM: readonly Pos[] = ['verb', 'auxiliary']
+const GRADED: readonly Pos[] = ['adjective', 'adverb', 'determiner']
+
 const formTypes: Record<FormType, FormTypeSpec> = {
-  plural: { wordClass: ['noun'], name: 'plural form' },
-  past: { wordClass: ['verb'], name: 'simple past tense form' },
-  past_participle: { wordClass: ['verb'], name: 'past participle' },
-  present_participle: { wordClass: ['verb'], name: 'present participle (-ing form)' },
-  third_person_singular: { wordClass: ['verb'], name: 'third-person singular present tense form' },
-  comparative: { wordClass: ['adjective', 'adverb'], name: 'comparative form' },
-  superlative: { wordClass: ['adjective', 'adverb'], name: 'superlative form' },
-  variant: { wordClass: null, name: 'accepted variant' },
+  plural: { wordClass: ['noun'], carriers: ['noun', 'pronoun', 'determiner'], name: 'plural form' },
+  past: { wordClass: ['verb'], carriers: VERB_FORM, name: 'simple past tense form' },
+  past_participle: { wordClass: ['verb'], carriers: VERB_FORM, name: 'past participle' },
+  present_participle: { wordClass: ['verb'], carriers: VERB_FORM, name: 'present participle (-ing form)' },
+  third_person_singular: {
+    wordClass: ['verb'],
+    carriers: VERB_FORM,
+    name: 'third-person singular present tense form',
+  },
+  comparative: { wordClass: ['adjective', 'adverb'], carriers: GRADED, name: 'comparative form' },
+  superlative: { wordClass: ['adjective', 'adverb'], carriers: GRADED, name: 'superlative form' },
+  variant: { wordClass: null, carriers: [], name: 'accepted variant' },
 }
 
 /**
- * The parts of speech a form belongs to: its own label when it has one, else the word class of its
- * type. None for an unlabelled variant, which is another spelling of the whole word.
+ * The meaning an entry shows a form under, from its meanings in display order: the one of the
+ * form's labelled part of speech, else the first whose part of speech can carry the form's type.
+ * None for an unlabelled variant, which is another spelling of the whole word, or when no meaning
+ * fits yet.
  */
-export function formClasses(type: FormType, pos: Pos | undefined): readonly Pos[] {
-  if (pos) return [pos]
-  return formTypes[type].wordClass ?? []
+export function formMeaning<M extends { pos: Pos }>(type: FormType, pos: Pos | undefined, meanings: readonly M[]) {
+  return meanings.find((meaning) => (pos ? meaning.pos === pos : formTypes[type].carriers.includes(meaning.pos)))
 }
 
 const article = (word: string) => (/^[aeiou]/.test(word) ? 'an' : 'a')

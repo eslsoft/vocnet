@@ -45,8 +45,20 @@ Feature: Catalog
     Given an entry with pronunciations with and without a part of speech, inflections, variants, and labelled senses of two parts of speech
     When the public view is built
     Then the default pronunciations are on the entry and the ones particular to a part of speech on its meaning, weak forms marked weak
-    And each meaning lists its inflections by type, a type with several forms listing each, variants are on the entry, and a form of a part of speech no public sense has is not shown
+    And each meaning lists its inflections by type, a type with several forms listing each, variants are on the entry, and a form or pronunciation with no meaning to show it is not shown
     And each sense carries its register as labels
+
+  @catalog/form-placement @domain
+  Scenario: A form is shown under the meaning that can carry it
+    Given forms with and without a part of speech, of entries whose first meaning is a noun, an auxiliary, a pronoun, or a determiner
+    When the meaning each form is shown under is chosen
+    Then a labelled form goes to the meaning of its label, an unlabelled one to the first meaning in display order whose part of speech can carry its type, and a form no meaning can carry goes nowhere
+
+  @catalog/form-index @domain
+  Scenario: Every published form is indexed for lookup whether or not it is shown
+    Given an entry with published forms that are shown, a labelled form whose part of speech has no public sense, and a variant
+    When the public view is built
+    Then the document indexes every published form with its type and the part of speech it is shown under or labelled with, independent of display
 
   @catalog/relation-groups @domain
   Scenario: Relations are grouped by what they say about the sense
@@ -58,9 +70,15 @@ Feature: Catalog
   @catalog/language @domain
   Scenario: A read shows one language
     Given senses with translations in two languages and a topic with names in two languages
-    When a read asks for one language, a longer tag of it, all, a language with no translation, or none
+    When a read asks for a served language, all, a language with no translation, or none
     Then translations are a list in that language, keyed by language for all, empty for a language with none, and absent for none, never another language
-    And topic names carry English and the requested language, and summaries the first sense's first translation in it
+    And topic names carry English and the language under its stored tag, and summaries the first sense's first translation in it, none with all
+
+  @catalog/script-safety @domain
+  Scenario: A request reads a stored language only in the same script
+    Given translations stored as zh, which is Simplified Chinese
+    When requests name zh, zh-Hans, zh-CN, zh-SG, zh-Hant, zh-TW, zh-HK, zh-MO, another language, or that language with a region or a script
+    Then the Simplified requests read zh, the Traditional ones read nothing, and another language is read only by its own tag or that tag with a region
 
   @catalog/review-metadata @domain
   Scenario: Review metadata appears only when asked for
@@ -79,7 +97,8 @@ Feature: Catalog
   Scenario: The language comes from the query or Accept-Language
     Given requests with lang, with Accept-Language, with both, and with neither
     When the read variant is resolved
-    Then lang wins, else the preferred language tag of Accept-Language by quality, ignoring * and q=0, else none
+    Then lang wins, all in any case, else the most preferred Accept-Language tag by quality that reads a served language, ignoring * and q=0, else none
+    And the read reports the stored tag it uses, not the tag requested
 
   @catalog/visibility @domain
   Scenario: Only published facts are visible

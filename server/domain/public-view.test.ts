@@ -6,7 +6,6 @@ import { contentKeyOf } from './fact-kinds'
 import {
   type EntryLinks,
   formMatches,
-  inLanguage,
   publicViewRecord,
   readStored,
   shapeEntry,
@@ -89,6 +88,12 @@ const bank: StoredEntry = {
   ],
   summary,
   review: { entry: review('e1'), sense_list: null },
+  forms: [
+    { form: 'banks', type: 'plural', pos: 'noun' },
+    { form: 'banked', type: 'past', pos: 'verb' },
+    { form: 'bankest', type: 'superlative', pos: 'adverb' },
+    { form: 'banque', type: 'variant', pos: null },
+  ],
 }
 
 const links: EntryLinks = {
@@ -106,6 +111,11 @@ describe('public view records', () => {
     expect(record.forms).toEqual([
       { contentKey: contentKeyOf('form', { form: 'banks', type: 'plural' }), type: 'plural', pos: 'noun' },
       { contentKey: contentKeyOf('form', { form: 'banked', type: 'past' }), type: 'past', pos: 'verb' },
+      {
+        contentKey: contentKeyOf('form', { form: 'bankest', type: 'superlative' }),
+        type: 'superlative',
+        pos: 'adverb',
+      },
       { contentKey: contentKeyOf('form', { form: 'banque', type: 'variant' }), type: 'variant', pos: null },
     ])
     expect(record.taggedSenses).toEqual([
@@ -144,19 +154,10 @@ describe('public view records', () => {
 })
 
 describe('public read variants', () => {
-  it('reads one language by lookup, never another [spec: catalog/language]', () => {
-    const values = { zh: 'a', 'zh-Hant': 'b', fr: 'c' }
-    expect(inLanguage(values, 'zh')).toBe('a')
-    expect(inLanguage(values, 'ZH-hant')).toBe('b')
-    expect(inLanguage(values, 'zh-Hant-TW')).toBe('b')
-    expect(inLanguage(values, 'zh-CN')).toBe('a')
-    expect(inLanguage(values, 'ja')).toBeUndefined()
-    expect(inLanguage({ 'zh-Hant': 'b' }, 'zh')).toBeUndefined()
-
+  it('reads exactly the served language, never another [spec: catalog/language]', () => {
     const translations = (lang: string | null) =>
       shapeEntry(bank, links, { lang, review: false }).meanings[0]?.senses.map((sense) => sense.translations)
     expect(translations('zh')).toEqual([['银行', '库'], []])
-    expect(translations('zh-TW')).toEqual([['银行', '库'], []])
     expect(translations('ja')).toEqual([[], []])
     expect(translations('all')).toEqual([{ zh: ['银行', '库'], 'zh-Hant': ['銀行'], fr: ['banque'] }, {}])
     expect(translations(null)).toEqual([undefined, undefined])
@@ -165,11 +166,11 @@ describe('public read variants', () => {
     const names = (lang: string | null) =>
       shapeEntry(bank, links, { lang, review: false }).meanings[0]?.senses[0]?.topics.map((topic) => topic.name)[0]
     expect(names('zh')).toEqual({ en: 'Topic finance', zh: '话题 finance' })
-    expect(names('zh-CN')).toEqual({ en: 'Topic finance', 'zh-CN': '话题 finance' })
-    expect(names('en')).toEqual({ en: 'Topic finance' })
     expect(names('ja')).toEqual({ en: 'Topic finance' })
     expect(names(null)).toEqual({ en: 'Topic finance' })
     expect(names('all')).toEqual({ en: 'Topic finance', zh: '话题 finance' })
+    // Summaries keep one shape: with all they carry no translation.
+    expect(shapeEntry(bank, links, { lang: 'all', review: false }).phrases[0]).not.toHaveProperty('translation')
 
     const entry = shapeEntry(bank, links, { lang: 'zh', review: false })
     expect(entry.lang).toBe('zh')
@@ -229,10 +230,7 @@ describe('public read variants', () => {
       gloss: 'Gloss of s1.',
     })
     expect(shapeSummary(summary, { lang: 'zh', review: true }).translation).toBe('银行')
-    expect(shapeSummary(summary, { lang: 'all', review: false }).translation).toEqual({ zh: '银行' })
-    expect(shapeSummary({ ...summary, translations: {} }, { lang: 'all', review: false })).not.toHaveProperty(
-      'translation',
-    )
+    expect(shapeSummary(summary, { lang: 'all', review: false })).not.toHaveProperty('translation')
     expect(shapeSummary(summary, { lang: 'fr', review: false })).not.toHaveProperty('translation')
 
     const sense = {

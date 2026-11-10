@@ -205,7 +205,7 @@ export const publicEntries = sqliteTable('public_entries', {
   builtAt: text('built_at').notNull(),
 })
 
-/** One row per published form of a public entry and part of speech it is shown under, keyed like the form fact. */
+/** One row per published form of a public entry, shown or not, with the part of speech it is shown under (else its label), keyed like the form fact. */
 export const publicForms = sqliteTable(
   'public_forms',
   {

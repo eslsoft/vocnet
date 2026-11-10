@@ -9,7 +9,7 @@ import {
   type StoredEntry,
 } from './catalog-view'
 import type { Fact, FactOf } from './fact'
-import { formClasses } from './fact-kinds'
+import { formMeaning } from './fact-kinds'
 import type { EntryNode, SenseWithLemma } from './nodes'
 import type { Lemma } from './term'
 
@@ -228,6 +228,7 @@ describe('public read model', () => {
       fact('form', bank.id, { form: 'bankt', type: 'past', pos: 'verb' }),
       fact('form', bank.id, { form: 'banker', type: 'comparative' }),
       fact('form', bank.id, { form: 'banka', type: 'plural', pos: 'pronoun' }),
+      fact('form', bank.id, { form: 'bankest', type: 'superlative', pos: 'adverb' }),
       fact('form', bank.id, { form: 'banque', type: 'variant' }),
       fact('form', bank.id, { form: 'bancque', type: 'variant', pos: 'noun' }),
     ]
@@ -250,14 +251,18 @@ describe('public read model', () => {
       { form: 'bancque', pos: 'noun' },
     ])
     expect(senses(view).map((one) => one.labels)).toEqual([[], ['technical'], ['informal']])
-    // A form or pronunciation of a part of speech no public sense has is not shown, nor public.
+    // A form or pronunciation with no meaning to show it is not shown, nor public, but its form is indexed.
+    expect(view?.forms.filter((one) => ['banka', 'bankest'].includes(one.form))).toEqual([
+      { form: 'banka', type: 'plural', pos: 'pronoun' },
+      { form: 'bankest', type: 'superlative', pos: 'adverb' },
+    ])
     const hidden = facts.filter((one) =>
-      ['bɑŋk', 'banka'].includes(
+      ['bɑŋk', 'banka', 'bankest'].includes(
         (one.payload as { ipa?: string; form?: string }).ipa ?? (one.payload as { form?: string }).form ?? '',
       ),
     )
     const ids = view ? publicFactIds(view) : new Set()
-    expect(hidden.map((one) => ids.has(one.id))).toEqual([false, false])
+    expect(hidden.map((one) => ids.has(one.id))).toEqual([false, false, false])
   })
 
   it('groups relations by what they say about each end [spec: catalog/relation-groups]', () => {
@@ -409,11 +414,44 @@ describe('public read model', () => {
     expect(firstSense(project(hiddenSource))?.relations.synonyms).toEqual([])
   })
 
-  it('places a form under the parts of speech of its label or type', () => {
-    expect(formClasses('plural', undefined)).toEqual(['noun'])
-    expect(formClasses('comparative', undefined)).toEqual(['adjective', 'adverb'])
-    expect(formClasses('past', 'auxiliary')).toEqual(['auxiliary'])
-    expect(formClasses('variant', undefined)).toEqual([])
+  it('places a form under its labelled part of speech, else the first meaning that can carry its type [spec: catalog/form-placement]', () => {
+    const meanings = (...pos: Pos[]) => pos.map((one) => ({ pos: one }))
+    expect(formMeaning('past', undefined, meanings('auxiliary', 'noun', 'verb'))?.pos).toBe('auxiliary')
+    expect(formMeaning('past', 'verb', meanings('auxiliary', 'noun', 'verb'))?.pos).toBe('verb')
+    expect(formMeaning('plural', undefined, meanings('determiner', 'pronoun'))?.pos).toBe('determiner')
+    expect(formMeaning('plural', undefined, meanings('pronoun'))?.pos).toBe('pronoun')
+    expect(formMeaning('comparative', undefined, meanings('determiner', 'pronoun'))?.pos).toBe('determiner')
+    expect(formMeaning('superlative', undefined, meanings('noun', 'adverb'))?.pos).toBe('adverb')
+    expect(formMeaning('third_person_singular', undefined, meanings('noun'))).toBeUndefined()
+    expect(formMeaning('past', 'verb', meanings('noun'))).toBeUndefined()
+    expect(formMeaning('variant', undefined, meanings('noun'))).toBeUndefined()
+  })
+
+  it('indexes every published form for lookup, shown or not [spec: catalog/form-index]', () => {
+    const will = entry('will')
+    const modal = sense(will, 'auxiliary')
+    const testament = sense(will, 'noun')
+    const facts = [
+      fact('entry', will.id, {}),
+      fact('sense', modal.id, { gloss: 'Expressing the future.' }),
+      fact('sense', testament.id, { gloss: 'A legal document.' }),
+      fact('form', will.id, { form: 'would', type: 'past' }),
+      fact('form', will.id, { form: 'wills', type: 'plural' }),
+      fact('form', will.id, { form: 'willed', type: 'past', pos: 'verb' }),
+      fact('form', will.id, { form: 'willing', type: 'present_participle', pos: 'verb' }, 'pending'),
+      fact('form', will.id, { form: 'wil', type: 'variant' }),
+    ]
+    const view = project({ ...bankWorld().snapshot, entry: will, senses: [modal, testament], facts })
+    expect(view?.meanings.map(({ pos, forms }) => ({ pos, forms }))).toEqual([
+      { pos: 'auxiliary', forms: { past: ['would'] } },
+      { pos: 'noun', forms: { plural: ['wills'] } },
+    ])
+    expect(view?.forms).toEqual([
+      { form: 'would', type: 'past', pos: 'auxiliary' },
+      { form: 'wills', type: 'plural', pos: 'noun' },
+      { form: 'willed', type: 'past', pos: 'verb' },
+      { form: 'wil', type: 'variant', pos: null },
+    ])
   })
 
   it('refuses the review of unreviewed facts', () => {

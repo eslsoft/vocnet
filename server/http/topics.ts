@@ -1,6 +1,6 @@
 import { createRoute } from '@hono/zod-openapi'
 import { getTopicTree, listTopicSenses } from '@server/usecases/topics'
-import { langQuerySchema } from '@shared/catalog'
+import { listLangQuerySchema } from '@shared/catalog'
 import { topicIdSchema } from '@shared/facts'
 import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { z } from 'zod'
@@ -26,7 +26,7 @@ const getTopicSenses = createRoute({
   summary: 'List the published senses tagged with a topic',
   description:
     'A leaf topic lists the senses tagged with it; a category lists the senses tagged with any of its topics, each once, as sense summaries. A sense appears when its topic fact, its gloss, and its entry are published. An unknown id is 404. Translations are in the language of ?lang=, else of Accept-Language.',
-  request: { params: z.object({ id: topicIdSchema }), query: pageQuery.extend({ lang: langQuerySchema }) },
+  request: { params: z.object({ id: topicIdSchema }), query: pageQuery.extend({ lang: listLangQuerySchema }) },
   responses: { 200: json(topicSensePageSchema, 'A page of senses.'), 400: errorResponse, 404: errorResponse },
 })
 

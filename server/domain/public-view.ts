@@ -28,7 +28,7 @@ import { isMultiword } from './term'
 /** The rows the public view stores for one entry. */
 export interface PublicViewRecord {
   document: StoredEntry
-  /** One per published form and the part of speech it is shown under, keyed like the form fact. */
+  /** One per published form, shown or not, with the part of speech it is shown under, keyed like the form fact. */
   forms: Array<{ contentKey: string; type: FormType; pos: Pos | null }>
   /** One per published topic tag of a public sense. */
   taggedSenses: Array<{ topicId: TopicId; summary: StoredSenseSummary }>
@@ -50,7 +50,7 @@ export interface EntryLinks {
 
 /** The language and review variant a read asks for. */
 export interface ReadVariant {
-  /** A BCP 47 tag, `all`, or null for none. */
+  /** A served language tag, `all` for every language, or null for none. */
   lang: string | null
   review: boolean
 }
@@ -59,24 +59,14 @@ export interface ReadVariant {
 export const STEM_ROLES: readonly MorphemeRole[] = ['base', 'root']
 
 export function publicViewRecord(document: StoredEntry): PublicViewRecord {
-  const inflections = document.meanings.flatMap((meaning) =>
-    Object.entries(meaning.forms).flatMap(([type, forms]) =>
-      forms.map((form) => ({
-        contentKey: contentKeyOf('form', { form, type: type as FormType }),
-        type: type as FormType,
-        pos: meaning.pos,
-      })),
-    ),
-  )
-  const variants = document.variants.map((variant) => ({
-    contentKey: contentKeyOf('form', { form: variant.form, type: 'variant' }),
-    type: 'variant' as const,
-    pos: variant.pos ?? null,
-  }))
   const parts = document.morphology?.parts ?? []
   return {
     document,
-    forms: [...inflections, ...variants],
+    forms: document.forms.map(({ form, type, pos }) => ({
+      contentKey: contentKeyOf('form', { form, type }),
+      type,
+      pos,
+    })),
     taggedSenses: document.meanings.flatMap((meaning) =>
       meaning.senses.flatMap((sense) =>
         sense.topics.map((topic) => ({
@@ -103,37 +93,24 @@ export function publicViewRecord(document: StoredEntry): PublicViewRecord {
 export const readStored = <T extends StoredEntry | StoredSummary | StoredSenseSummary>(json: string): T =>
   JSON.parse(json) as T
 
-/**
- * The value for a language tag by RFC 4647 lookup: the tag, then each shorter prefix of it, so
- * zh-CN reads zh. A tag never reads a longer one or another language.
- */
-export function inLanguage<T>(values: ByLanguage<T>, lang: string): T | undefined {
-  const keys = new Map(Object.keys(values).map((key) => [key.toLowerCase(), key]))
-  const subtags = lang.toLowerCase().split('-')
-  for (let length = subtags.length; length > 0; length -= 1) {
-    const key = keys.get(subtags.slice(0, length).join('-'))
-    if (key !== undefined) return values[key]
-  }
-  return undefined
-}
+// The variant's language is already a served tag (server/domain/language.ts), so a read takes the
+// values stored under exactly that tag and never another.
 
 function translationsIn<T>(values: ByLanguage<T[]>, lang: string | null): T[] | ByLanguage<T[]> | undefined {
   if (lang === null) return undefined
   if (lang === 'all') return values
-  return inLanguage(values, lang) ?? []
+  return values[lang] ?? []
 }
 
-function translationIn(values: ByLanguage<string>, lang: string | null): string | ByLanguage<string> | undefined {
-  if (lang === null) return undefined
-  if (lang === 'all') return Object.keys(values).length > 0 ? values : undefined
-  return inLanguage(values, lang)
-}
+/** A summary shows one translation in the read's language; with `all` or no language it shows none. */
+const translationIn = (values: ByLanguage<string>, lang: string | null): string | undefined =>
+  lang === null || lang === 'all' ? undefined : values[lang]
 
 function nameIn(names: ByLanguage<string>, lang: string | null): ByLanguage<string> {
   if (lang === 'all') return names
   const { en } = names
-  const local = lang === null ? undefined : inLanguage(names, lang)
-  return lang === null || local === undefined || lang === 'en' ? { en } : { en, [lang]: local }
+  const local = lang === null ? undefined : names[lang]
+  return lang === null || local === undefined ? { en } : { en, [lang]: local }
 }
 
 /** The review field of a claim, present only when the read asks for it. */

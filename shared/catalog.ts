@@ -30,15 +30,25 @@ export const lemmaInputSchema = z.string().trim().min(1).max(100)
 /** A BCP 47 language tag such as zh or zh-CN. */
 export const languageTagSchema = z
   .string()
-  .regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/, 'A language is a BCP 47 tag such as zh or zh-CN, or all.')
+  .regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/, 'A language is a BCP 47 tag such as zh or zh-CN.')
   .max(35)
 
-export const langQuerySchema = z
-  .union([z.literal('all'), languageTagSchema])
+const LANGUAGE_MATCHING =
+  'A tag reads a served language only in the same script: zh, zh-Hans, zh-CN and zh-SG read zh (Simplified Chinese); zh-Hant, zh-TW, zh-HK and zh-MO read none; another tag reads a language it equals or adds only a region to. A tag that reads none gives no language.'
+
+/** ?lang= of a document read: a language tag, or all (in any case) for every language. */
+export const langQuerySchema = languageTagSchema.optional().meta({
+  description: `The language of translations and topic names: a BCP 47 tag, or all for every language keyed by tag. Wins over Accept-Language. ${LANGUAGE_MATCHING}`,
+})
+
+/** ?lang= of a list: one language, so every summary has one shape. */
+export const listLangQuerySchema = languageTagSchema
+  .refine((tag) => tag.toLowerCase() !== 'all', {
+    message: 'lang=all is accepted only by GET /v1/entries/{lemma} and GET /v1/senses/{id}; a list shows one language.',
+  })
   .optional()
   .meta({
-    description:
-      'The language of translations and topic names: a BCP 47 tag, or all for every language keyed by tag. Wins over Accept-Language. A tag also reads translations tagged with a prefix of it (zh-CN reads zh).',
+    description: `The language of translations: a BCP 47 tag (all is rejected; lists show one language). Wins over Accept-Language. ${LANGUAGE_MATCHING}`,
   })
 
 export const includeQuerySchema = z
@@ -48,7 +58,7 @@ export const includeQuerySchema = z
 
 export const responseLangSchema = z.string().nullable().meta({
   description:
-    'The language translations and topic names are in: ?lang= when given, else the preferred tag of Accept-Language; all for every language; null when neither names one, and then translations are omitted.',
+    'The stored language tag translations and topic names are in (zh is Simplified Chinese): the one ?lang= reads when given, else the one the most preferred Accept-Language tag reads; all for every language; null when no language is read, and then translations are omitted.',
 })
 
 /** The review behind one published claim, shown with ?include=review. */
@@ -63,13 +73,13 @@ const byLanguage = <T extends z.ZodType>(value: T) => z.record(z.string(), value
 export const translationsSchema = z.union([z.array(z.string()), byLanguage(z.array(z.string()))]).meta({
   id: 'Translations',
   description:
-    'The translations in the requested language (empty when there are none; no other language stands in), or with lang=all an object keyed by language tag. Absent without a language.',
+    "The translations in the response's language (empty when there are none; no other language or script stands in), or with lang=all an object keyed by language tag. Absent without a language.",
 })
 
-export const summaryTranslationSchema = z.union([z.string(), byLanguage(z.string())]).meta({
+export const summaryTranslationSchema = z.string().meta({
   id: 'SummaryTranslation',
   description:
-    "The first sense's first translation in the requested language, or with lang=all an object keyed by language tag. Absent without a language or when there is none.",
+    "The first sense's first translation in the response's language. Absent without a language, with lang=all, or when there is none.",
 })
 
 const summaryFields = {
@@ -172,7 +182,7 @@ export const senseTopicSchema = z
     id: topicIdSchema,
     name: byLanguage(z.string()).meta({
       description:
-        'The English name under en, and the name in the requested language under its tag, when there is one.',
+        "The English name under en, and the name in the response's language under its tag (every language with lang=all), when there is one.",
     }),
     ...review,
   })

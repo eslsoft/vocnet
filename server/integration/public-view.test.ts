@@ -311,6 +311,43 @@ describe('public view', () => {
     }
   })
 
+  it('resolves every published form of a public entry through the form lookup, shown or not [spec: public-view/form-parity]', async () => {
+    const { bank, submit } = await seedBank()
+    // bank has only a noun sense: the verb forms and the pronoun plural have no meaning to show them.
+    await submit({ kind: 'form', subject_id: bank.entry.id, payload: { form: 'banked', type: 'past' } })
+    await submit({
+      kind: 'form',
+      subject_id: bank.entry.id,
+      payload: { form: 'banking', type: 'present_participle', pos: 'verb' },
+    })
+    await submit({
+      kind: 'form',
+      subject_id: bank.entry.id,
+      payload: { form: 'banken', type: 'plural', pos: 'pronoun' },
+    })
+    await submit({ kind: 'form', subject_id: bank.entry.id, payload: { form: 'banc', type: 'variant' } })
+    await deliverPendingReviews()
+
+    const shown = (await entryOf('bank')).meanings.flatMap((meaning) => Object.values(meaning.forms).flat())
+    expect(shown).toEqual(['banks'])
+    const { results } = await env.DB.prepare(
+      `SELECT entries.lemma, json_extract(facts.payload, '$.form') AS form, json_extract(facts.payload, '$.type') AS type
+       FROM facts JOIN entries ON entries.id = facts.subject_id JOIN public_entries ON public_entries.entry_id = entries.id
+       WHERE facts.kind = 'form' AND facts.status = 'published' ORDER BY form`,
+    ).all<{ lemma: string; form: string; type: string }>()
+    expect(results.map((row) => row.form)).toEqual(['banc', 'banked', 'banken', 'banking', 'banks'])
+    for (const row of results) {
+      const found = formLookupSchema.parse((await call(`/v1/forms/${row.form}`)).body).items
+      expect(found).toEqual([
+        expect.objectContaining({ lemma: row.lemma, matches: [expect.objectContaining({ type: row.type })] }),
+      ])
+    }
+    expect(formLookupSchema.parse((await call('/v1/forms/banking')).body).items[0]?.matches).toEqual([
+      { type: 'present_participle', pos: 'verb' },
+    ])
+    expect(formLookupSchema.parse((await call('/v1/forms/banked')).body).items[0]?.matches).toEqual([{ type: 'past' }])
+  })
+
   it('lists a multiword entry among the phrases of each of its words, joined on read [spec: public-view/phrases]', async () => {
     const { token } = await seedBank()
     const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
@@ -422,23 +459,28 @@ describe('public view', () => {
     expect(zh.sense?.topics).toEqual([{ id: 'family', name: { en: expect.any(String), zh: expect.any(String) } }])
     expect((await read('?lang=zh')).etag).toBe(zh.etag)
 
-    const header = await read('', { 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8' })
-    expect(header.body.lang).toBe('zh-CN')
+    // The response names the stored language it used, so a regional tag reads and reports zh.
+    const header = await read('', { 'accept-language': 'en-US,en;q=0.9,zh-CN;q=0.8' })
+    expect(header.body.lang).toBe('zh')
     expect(header.sense?.translations).toEqual(['河岸'])
-    expect(header.etag).not.toBe(zh.etag)
+    expect(header.etag).toBe(zh.etag)
 
-    const fr = await read('?lang=fr', { 'accept-language': 'zh' })
-    expect(fr.body.lang).toBe('fr')
-    expect(fr.sense?.translations).toEqual([])
-    expect(fr.sense?.topics[0]?.name).toEqual({ en: expect.any(String) })
+    // Stored zh is Simplified: a Traditional request reads no language rather than Simplified text.
+    const traditional = await read('?lang=zh-TW', { 'accept-language': 'zh' })
+    expect(traditional.body.lang).toBeNull()
+    expect(traditional.sense).not.toHaveProperty('translations')
+    expect(traditional.sense?.topics[0]?.name).toEqual({ en: expect.any(String) })
+    expect((await read('', { 'accept-language': 'zh-Hant,en;q=0.5' })).body.lang).toBeNull()
 
-    const all = await read('?lang=all')
+    const all = await read('?lang=ALL')
+    expect(all.body.lang).toBe('all')
     expect(all.sense?.translations).toEqual({ zh: ['河岸'] })
 
     const none = await read('')
     expect(none.body.lang).toBeNull()
     expect(none.sense).not.toHaveProperty('translations')
-    expect(new Set([zh.etag, fr.etag, all.etag, none.etag]).size).toBe(4)
+    expect(none.etag).toBe(traditional.etag)
+    expect(new Set([zh.etag, all.etag, none.etag]).size).toBe(3)
 
     const plain = JSON.stringify(none.body)
     expect(plain).not.toContain('"review"')
@@ -465,5 +507,17 @@ describe('public view', () => {
     const invalid = await call('/v1/entries/bank?lang=not_a_tag')
     expect(invalid.status).toBe(400)
     expect(invalid.body).toMatchObject({ error: { code: 'invalid_request' } })
+  })
+
+  it('rejects lang=all on every list, so each summary has one shape [spec: public-view/list-language]', async () => {
+    await seedBank()
+    for (const path of ['/v1/entries?lang=all', '/v1/forms/banks?lang=All', '/v1/topics/family/senses?lang=all']) {
+      const rejected = await call(path)
+      expect(rejected.status).toBe(400)
+      expect(rejected.body).toMatchObject({
+        error: { code: 'invalid_request', message: expect.stringContaining('lang=all') },
+      })
+    }
+    expect((await call('/v1/entries?lang=zh')).status).toBe(200)
   })
 })

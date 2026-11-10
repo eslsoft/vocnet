@@ -1254,12 +1254,19 @@ entry document; every list returns summaries.
   `strength: "weak"`.
 - **Forms.** A meaning's `forms` is an object keyed by inflection type; each
   value lists every published form of that type (`"past": ["dreamed",
-  "dreamt"]`), because a type can have several. A form goes under the meanings
-  of its labelled part of speech, else of its type's word class (`formClasses`
-  in the registry: a plural under the noun, a comparative under the adjective
-  and the adverb). A form whose part of speech has no public sense is not shown
-  until one is, as a relation waits for its sense. `variant` forms are the
-  entry's `variants`, with their part of speech when labelled.
+  "dreamt"]`), because a type can have several. A form goes under exactly one
+  meaning (`formMeaning` in the registry): the meaning of its labelled part of
+  speech, else the first meaning in display order whose part of speech can
+  carry its type: a plural a noun, pronoun, or determiner (`these` under the
+  determiner "this"); a past, participle, or third-person form a verb or
+  auxiliary (`would` under the auxiliary "will"); a comparative or superlative
+  an adjective, adverb, or determiner (`more` under the determiner "many"). A
+  form or a part-of-speech pronunciation with no meaning to show it is not
+  shown in the entry document; it reappears when a sense of a part of speech
+  that can carry it is published, as a relation waits for its sense. Display
+  never limits lookup: `GET /v1/forms/{form}` finds every published form of a
+  public entry, shown or not. `variant` forms are the entry's `variants`, with
+  their part of speech when labelled.
 - **Senses.** `labels` is the register (empty for none), `rare` marks an
   `extra` sense of the sense list, `grammar` lists `patterns` and
   `prepositions` (empty when none). `relations` groups related senses by what
@@ -1282,29 +1289,45 @@ entry document; every list returns summaries.
   `review.entry` and `review.sense_list`). Feedback on a fact names it by these
   ids. Sources appear only in `GET /v1/sources`.
 
-**Language.** A read picks the language of translations and topic names with
-`?lang=` (a BCP 47 tag, or `all`), else with the most preferred tag of
-`Accept-Language` (highest quality, first of equals, ignoring `*` and `q=0`);
-`?lang=` wins. Responses carry `lang`, the language used, or `null` when
-neither names one. A tag reads translations by RFC 4647 lookup: the tag, then
-each shorter prefix, so `zh-CN` reads `zh`; it never reads a longer tag or
-another language. A sense's `translations` is the list in that language,
-empty when it has none, and absent without a language; `?lang=all` gives an
-object keyed by language. A topic's `name` is `{ "en": …, "<lang>": … }`, the
-requested language only when the topic has a name in it (the taxonomy has
-English and Chinese names).
+**Language.** The dataset serves the languages it collects translations in
+(`SERVED_LANGUAGES` in `server/domain/language.ts`; the worklist asks for
+`zh`). Every stored translation is tagged plain `zh` and is Simplified
+Chinese: in this dataset `zh` means Simplified. A requested tag reads a served
+language only in the same script, never another language or script:
+
+| Request                                   | Reads  |
+| ----------------------------------------- | ------ |
+| `zh`, `zh-Hans`, `zh-Hans-*`, `zh-CN`, `zh-SG` | `zh`   |
+| `zh-Hant`, `zh-Hant-*`, `zh-TW`, `zh-HK`, `zh-MO`, any other `zh-*` | none |
+| another tag                               | a served tag it equals, or one it only adds a region subtag to (`pt-BR` reads `pt`); never a longer tag or another script |
+
+A read picks its language with `?lang=` (a BCP 47 tag, or `all` in any case),
+else with `Accept-Language`: the most preferred tag (highest quality, first of
+equals, ignoring `*` and `q=0`) that reads a served language. `?lang=` wins;
+a `?lang=` tag that reads no served language gives no language. Responses
+carry `lang`, the stored tag used (`"zh"` for a `zh-CN` request), `all`, or
+`null` when no language is read. A sense's `translations` is the list in that
+language, empty when it has none, and absent without a language; `?lang=all`
+gives an object keyed by stored tag. `all` is accepted only by the document
+reads (`GET /v1/entries/{lemma}`, `GET /v1/senses/{id}`); the lists
+(`GET /v1/entries`, `GET /v1/forms/{form}`, `GET /v1/topics/{id}/senses`)
+reject it with `400 invalid_request`, so every summary has one shape. A
+topic's `name` is `{ "en": …, "<lang>": … }` keyed by the stored tag, with the
+language only when the topic has a name in it (the taxonomy has English and
+Chinese names), and every name for `all`.
 
 **Summaries.** Every list returns only summaries: `GET /v1/entries`, morphology
 `family`, `phrases`, and the entry of a sense read return the word summary
 `{ lemma, pos, cefr, gloss, translation? }`: the parts of speech of its meanings,
 the lemma's lowest CEFR level or `null`, its first sense's gloss (or `null`
-without a public sense), and that sense's first translation in the requested
-language, absent without a language or a translation (an object keyed by
-language for `all`). `GET /v1/topics/{id}/senses` returns the sense summary
+without a public sense), and that sense's first translation in the read's
+language, a string, absent without a language, with `all` (in a document
+read's phrases, family, and entry), or without a translation. `GET /v1/topics/{id}/senses` returns the sense summary
 `{ lemma, sense_id, pos, cefr, gloss, translation? }` of each tagged sense,
 with the CEFR level of its part of speech. `GET /v1/forms/{form}` returns a word
 summary per owning entry with `matches: [{ type, pos? }]`, each published form
-with that spelling and the part of speech it is shown under. List pages are
+with that spelling and the part of speech it is shown under, else its label;
+a form the document does not show is still found. List pages are
 `{ lang, items, next_cursor }`; a form lookup is `{ lang, items }`.
 
 `GET /v1/senses/{id}` returns the sense in the entry document's shape with its
@@ -1315,7 +1338,8 @@ with that spelling and the part of speech it is shown under. List pages are
 
 The public reads serve prebuilt documents instead of projecting an entry's
 facts on every request. An entry's stored document is the entry in the shape
-of the Public API with every language and every review: `projectPublicEntry` in
+of the Public API with every language and every review, plus an index of every
+published form that reads never show: `projectPublicEntry` in
 `server/domain/catalog-view.ts` projects it from the entry's facts, its
 reference data, and the topic names. A read cuts the requested language and
 review out of it (`shapeEntry` in `server/domain/public-view.ts`), so one
@@ -1337,8 +1361,8 @@ of its SHA-256 in hex. `summary` is the entry's word summary with its first
 translation in every language. `built_at` is when the document last changed: a
 rebuild that produces the same digest leaves the row alone. Every row derives
 from the entry's own document (`publicViewRecord`): `public_forms` a row per
-shown form and the part of speech it is shown under, keyed by the form fact's
-content key, so a form lookup matches exactly as the facts do;
+published form, shown or not (the document's form index), with the part of
+speech it is shown under, else its label, keyed by the form fact's content key, so a form lookup matches exactly as the facts do;
 `public_sense_topics` a row per topic tag of a public sense with its sense
 summary; `public_phrase_words` a row per word of a multiword lemma; and
 `public_morphemes` a row per part of its word formation. An entry whose entry

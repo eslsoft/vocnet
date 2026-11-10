@@ -9,10 +9,10 @@ import type {
   ReviewMeta,
   Variant,
 } from '@shared/catalog'
-import type { EntryId, FactId, FactKind, Morpheme, Pos, RelationType, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FormType, Morpheme, Pos, RelationType, SenseId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
-import { formClasses } from './fact-kinds'
+import { formMeaning } from './fact-kinds'
 import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
 import { levelRank } from './reference'
 import { listedSenses } from './sense-list'
@@ -93,6 +93,14 @@ export interface StoredSenseSummary {
   translations: ByLanguage<string>
 }
 
+/** One published form of a public entry as the form lookup indexes it, shown or not. */
+export interface IndexedForm {
+  form: string
+  type: FormType
+  /** The part of speech it is shown under, else its own label, else null. */
+  pos: Pos | null
+}
+
 export interface StoredEntry {
   id: EntryId
   lemma: string
@@ -103,6 +111,11 @@ export interface StoredEntry {
   meanings: StoredMeaning[]
   summary: StoredSummary
   review: { entry: ReviewMeta; sense_list: ReviewMeta | null }
+  /**
+   * Every published form, independent of display: a lookup never depends on presentation. Reads
+   * do not show it; the view indexes it (server/domain/public-view.ts).
+   */
+  forms: IndexedForm[]
 }
 
 /** What a public document needs besides the entry's own facts. */
@@ -151,8 +164,9 @@ const lowestLevel = (levels: CefrLevel[]): CefrLevel | null =>
   )
 
 // Visibility is derived on read: a fact shows only when it and every node it references are
-// published. A node is published when its defining fact is. A form or pronunciation of a part of
-// speech no public sense has shows once one does.
+// published. A node is published when its defining fact is. A form or pronunciation is shown under
+// a meaning, so one with no meaning to show it is shown once a sense of a part of speech that can
+// carry it is published; the form lookup indexes every published form regardless.
 export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionContext): StoredEntry | null {
   const byId = new Map([...snapshot.facts, ...snapshot.incoming, ...snapshot.neighbors.facts].map((f) => [f.id, f]))
   const published = [...byId.values()].filter((fact) => fact.status === 'published')
@@ -258,23 +272,25 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     else meanings.get(pos)?.pronunciations.push(shown)
   }
 
+  const ordered = [...meanings.values()]
   const variants: Variant[] = []
+  const forms: IndexedForm[] = []
   for (const fact of about('form', snapshot.entry.id)) {
     const { form, type, pos } = fact.payload
     if (type === 'variant') {
       variants.push({ form, ...(pos ? { pos } : {}), review: reviewOf(fact) })
+      forms.push({ form, type, pos: pos ?? null })
       continue
     }
-    for (const meaningPos of formClasses(type, pos)) {
-      const meaning = meanings.get(meaningPos)
-      if (!meaning) continue
+    const meaning = formMeaning(type, pos, ordered)
+    if (meaning) {
       pushTo(meaning.forms, type, form)
       pushTo(meaning.review.forms, type, reviewOf(fact))
     }
+    forms.push({ form, type, pos: meaning?.pos ?? pos ?? null })
   }
 
   const [morphology] = about('morphology', snapshot.entry.id)
-  const ordered = [...meanings.values()]
   const first = ordered[0]?.senses[0]
   return {
     id: snapshot.entry.id,
@@ -295,6 +311,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       translations: first ? firstOfEach(first.translations) : {},
     },
     review: { entry: reviewOf(entryFact), sense_list: senseList ? reviewOf(senseList) : null },
+    forms,
   }
 }
 

@@ -8,6 +8,7 @@ import {
   includeQuerySchema,
   langQuerySchema,
   lemmaInputSchema,
+  listLangQuerySchema,
   publicEntrySchema,
   publicSenseDetailSchema,
 } from '@shared/catalog'
@@ -21,8 +22,7 @@ import { createRouter, errorResponse, json, jsonBody, notModifiedResponse, pageQ
 
 const tags = ['Dictionary']
 
-const langQuery = z.object({ lang: langQuerySchema })
-const documentQuery = langQuery.extend({ include: includeQuerySchema })
+const documentQuery = z.object({ lang: langQuerySchema, include: includeQuerySchema })
 const LANGUAGE =
   ' Translations and topic names are in the language of ?lang=, else of Accept-Language; the response says which in lang.'
 
@@ -32,7 +32,7 @@ const listEntries = createRoute({
   tags,
   summary: 'List published entries in lemma order',
   description: `Each entry as a summary.${LANGUAGE}`,
-  request: { query: pageQuery.extend({ prefix: lemmaInputSchema.optional(), lang: langQuerySchema }) },
+  request: { query: pageQuery.extend({ prefix: lemmaInputSchema.optional(), lang: listLangQuerySchema }) },
   responses: { 200: json(entryPageSchema, 'A page of entries.'), 400: errorResponse },
 })
 
@@ -46,7 +46,12 @@ const getEntry = createRoute({
     `Senses are grouped into meanings, one per part of speech.${LANGUAGE} ` +
     'Served from the prebuilt public view with an ETag; send it as If-None-Match to get 304 while the entry is unchanged.',
   request: { params: z.object({ lemma: lemmaInputSchema }), query: documentQuery },
-  responses: { 200: json(publicEntrySchema, 'The entry.'), 304: notModifiedResponse, 404: errorResponse },
+  responses: {
+    200: json(publicEntrySchema, 'The entry.'),
+    304: notModifiedResponse,
+    400: errorResponse,
+    404: errorResponse,
+  },
 })
 
 const getForm = createRoute({
@@ -55,8 +60,13 @@ const getForm = createRoute({
   tags,
   summary: 'Find the entries an inflected or variant form belongs to',
   description: `Exact match on published form facts: each entry with the form as a summary with the forms that matched. A form no entry claims is 404; there is no fuzzy fallback.${LANGUAGE}`,
-  request: { params: z.object({ form: lemmaInputSchema }), query: langQuery },
-  responses: { 200: json(formLookupSchema, 'Entries with this form.'), 304: notModifiedResponse, 404: errorResponse },
+  request: { params: z.object({ form: lemmaInputSchema }), query: z.object({ lang: listLangQuerySchema }) },
+  responses: {
+    200: json(formLookupSchema, 'Entries with this form.'),
+    304: notModifiedResponse,
+    400: errorResponse,
+    404: errorResponse,
+  },
 })
 
 const getSense = createRoute({
