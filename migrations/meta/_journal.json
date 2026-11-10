@@ -204,6 +204,13 @@
       "when": 1794271881096,
       "tag": "20261110005121_entries_lemma_case",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1794273065583,
+      "tag": "20261110011105_topics_strict_revalidate",
+      "breakpoints": true
     }
   ]
 }

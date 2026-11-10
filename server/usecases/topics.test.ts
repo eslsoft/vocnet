@@ -47,9 +47,10 @@ describe('topic facts', () => {
     expect(created).toBe(true)
     expect(fact).toMatchObject({ kind: 'topic', contentKey: 'hospital-doctor', objectId: null, status: 'pending' })
     await settle(world)
-    const question = world.jevCalls.at(-1)?.questions.topic
-    expect(question).toContain('"nurse" (noun), meaning "A person trained to care for the sick."')
-    expect(question).toContain('"At the doctor and hospital" (in the category "Body and health")')
+    const rubric = world.llmCalls.at(-1)?.user
+    expect(world.jevCalls.filter((call) => call.questions.topic)).toEqual([])
+    expect(rubric).toContain('"nurse" (noun), meaning "A person trained to care for the sick."')
+    expect(rubric).toContain('"At the doctor and hospital" (in the category "Body and health")')
     expect(world.facts.find((candidate) => candidate.id === fact.id)).toMatchObject({
       status: 'published',
       review: { context: { topic: { category: 'Body and health', topic: 'At the doctor and hospital' } } },
@@ -155,8 +156,9 @@ describe('topic facts', () => {
       payload: { gloss: 'A person who cares for the sick in a hospital.' },
     })
     await settle(world)
-    expect(world.jevCalls.filter((call) => call.questions.topic)).toHaveLength(2)
-    expect(world.jevCalls.at(-1)?.questions.topic).toContain('"A person who cares for the sick in a hospital."')
+    const topicCalls = world.llmCalls.filter((call) => call.user.includes('Topic: '))
+    expect(topicCalls).toHaveLength(2)
+    expect(topicCalls.at(-1)?.user).toContain('"A person who cares for the sick in a hospital."')
     expect(world.facts.find((candidate) => candidate.id === fact.id)).toMatchObject({
       status: 'published',
       revalidateSince: null,

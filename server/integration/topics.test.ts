@@ -140,7 +140,7 @@ describe('topics', () => {
     await deliverPendingReviews()
 
     const published = await call(`/manage/v1/facts/${fact.id}`, { token: await adminToken() })
-    expect(published.body).toMatchObject({ status: 'published', review: { reviewer: 'jev' } })
+    expect(published.body).toMatchObject({ status: 'published', review: { reviewer: 'llm' } })
     expect((published.body as { review: { context: unknown } }).review.context).toMatchObject({
       topic: { category: 'Body and health', topic: 'At the doctor and hospital' },
     })
@@ -161,7 +161,7 @@ describe('topics', () => {
 
     const entry = publicEntrySchema.parse((await call('/v1/entries/nurse')).body)
     expect(entry.senses.find((sense) => sense.id === care.id)?.topics).toEqual([
-      { id: fact.id, confidence: 0.93, verdict: 'pass', topic_id: 'hospital-doctor' },
+      { id: fact.id, confidence: 0.88, verdict: 'pass', topic_id: 'hospital-doctor' },
     ])
     const listed = factPageSchema.parse(
       (await call('/manage/v1/facts?kind=topic&limit=10', { token: await adminToken() })).body,
