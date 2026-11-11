@@ -5,7 +5,7 @@ import { server } from '@/test/msw'
 import { renderAt } from '@/test/render'
 import { FeedbackBrowser } from './index'
 
-const routes = [{ path: '/feedback', element: <FeedbackBrowser /> }]
+const routes = [{ path: '/console/feedback', element: <FeedbackBrowser /> }]
 
 function world() {
   const bank = { id: crypto.randomUUID(), lemma: 'bank' }
@@ -29,27 +29,27 @@ describe('FeedbackBrowser', () => {
   it('filters by status and shows read-only detail with links [spec: console/feedback]', async () => {
     const { api, correction, resolved } = world()
     server.use(...api.handlers)
-    const view = renderAt('/feedback', routes)
+    const view = renderAt('/console/feedback', routes)
 
     expect(await screen.findByText('Gloss is vague.')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'resolved' } })
     await waitFor(() => expect(screen.queryByText('Gloss is vague.')).not.toBeInTheDocument())
 
     fireEvent.click(await screen.findByRole('button', { name: 'Missing plural.' }))
-    expect(view.location()).toBe(`/feedback?status=resolved&item=${resolved.id}`)
+    expect(view.location()).toBe(`/console/feedback?status=resolved&item=${resolved.id}`)
     const detail = screen.getByRole('dialog')
     expect(within(detail).getByText('agent:fixer')).toBeInTheDocument()
     expect(within(detail).getByText('Added the plural.')).toBeInTheDocument()
     expect(within(detail).getByText(/read-only/)).toBeInTheDocument()
     expect(within(detail).queryByRole('button', { name: /resolve|dismiss|claim/i })).not.toBeInTheDocument()
-    expect(await within(detail).findByRole('link', { name: 'bank' })).toHaveAttribute('href', '/entries/bank')
+    expect(await within(detail).findByRole('link', { name: 'bank' })).toHaveAttribute('href', '/console/entries/bank')
     expect(within(detail).getByRole('link', { name: correction.id })).toHaveAttribute(
       'href',
-      `/facts?fact=${correction.id}`,
+      `/console/facts?fact=${correction.id}`,
     )
 
     fireEvent.click(within(detail).getByRole('button', { name: 'Close' }))
-    await waitFor(() => expect(view.location()).toBe('/feedback?status=resolved'))
+    await waitFor(() => expect(view.location()).toBe('/console/feedback?status=resolved'))
   })
 
   it('links fact feedback to the fact and pages through the list', async () => {
@@ -59,17 +59,20 @@ describe('FeedbackBrowser', () => {
     )
     api.state.feedback = [...filler, aboutFact]
     server.use(...api.handlers)
-    renderAt(`/feedback?item=${aboutFact.id}`, routes)
+    renderAt(`/console/feedback?item=${aboutFact.id}`, routes)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Load more' }))
     const detail = await screen.findByRole('dialog')
     expect(within(detail).getByText('Gloss is vague.')).toBeInTheDocument()
-    expect(within(detail).getByRole('link', { name: gloss.id })).toHaveAttribute('href', `/facts?fact=${gloss.id}`)
+    expect(within(detail).getByRole('link', { name: gloss.id })).toHaveAttribute(
+      'href',
+      `/console/facts?fact=${gloss.id}`,
+    )
   })
 
   it('says when nothing has the chosen status', async () => {
     server.use(...world().api.handlers)
-    renderAt('/feedback?status=dismissed', routes)
+    renderAt('/console/feedback?status=dismissed', routes)
     expect(await screen.findByText('No feedback with this status.')).toBeInTheDocument()
   })
 })

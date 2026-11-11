@@ -20,15 +20,21 @@ describe('Overview', () => {
     const view = renderAt('/', routes)
 
     const row = (await screen.findByRole('cell', { name: 'Example' })).closest('tr') as HTMLElement
-    expect(within(row).getByRole('link', { name: '2' })).toHaveAttribute('href', '/facts?kind=example&status=published')
-    expect(within(row).getByRole('link', { name: '1' })).toHaveAttribute('href', '/facts?kind=example&status=pending')
-    expect(within(row).getByRole('link', { name: '3' })).toHaveAttribute('href', '/facts?kind=example')
+    expect(within(row).getByRole('link', { name: '2' })).toHaveAttribute(
+      'href',
+      '/console/facts?kind=example&status=published',
+    )
+    expect(within(row).getByRole('link', { name: '1' })).toHaveAttribute(
+      'href',
+      '/console/facts?kind=example&status=pending',
+    )
+    expect(within(row).getByRole('link', { name: '3' })).toHaveAttribute('href', '/console/facts?kind=example')
     const totals = screen.getByRole('cell', { name: 'Total' }).closest('tr') as HTMLElement
-    expect(within(totals).getByRole('link', { name: '3' })).toHaveAttribute('href', '/facts?status=published')
+    expect(within(totals).getByRole('link', { name: '3' })).toHaveAttribute('href', '/console/facts?status=published')
     expect(within(totals).getByText('4')).toBeInTheDocument()
 
     fireEvent.click(within(row).getByRole('link', { name: '3' }))
-    expect(view.location()).toBe('/facts?kind=example')
+    expect(view.location()).toBe('/console/facts?kind=example')
   })
 
   it('links the open feedback count', async () => {
@@ -38,7 +44,7 @@ describe('Overview', () => {
     expect(await screen.findByText('Open feedback')).toBeInTheDocument()
     const link = screen
       .getAllByRole('link')
-      .find((candidate) => candidate.getAttribute('href') === '/feedback?status=open')
+      .find((candidate) => candidate.getAttribute('href') === '/console/feedback?status=open')
     expect(link).toHaveTextContent('1')
   })
 

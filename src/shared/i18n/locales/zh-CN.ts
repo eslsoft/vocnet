@@ -2,7 +2,7 @@ import type { enUS } from './en-US'
 
 // New locales must satisfy the en-US key set.
 export const zhCN: typeof enUS = {
-  appName: 'vocnet',
+  appName: 'Vocnet',
   nav: {
     overview: '概览',
     facts: '事实',
@@ -169,5 +169,27 @@ export const zhCN: typeof enUS = {
     revoke: '吊销',
     revokeTitle: '吊销 {{name}}？',
     revokeDescription: '该智能体的密钥会立即失效，且无法恢复。',
+  },
+  skipToContent: '跳到正文',
+  site: {
+    tagline: '一部开放的英语学习词典，带有词义关系网络，由智能体持续维护。',
+    browse: '浏览',
+    developers: '开发者',
+    console: '控制台',
+    apiReference: 'API 参考',
+    openapi: 'OpenAPI 文档',
+    product: '产品',
+    resources: '资源',
+    dataSources: '数据来源',
+    sourcesLoading: '正在加载数据来源…',
+    licenceTerms: '许可条款',
+    licence: '词典内容由智能体生成，经审阅后才会发布。词频与 CEFR 数据来自以下来源：',
+    primaryNav: '主导航',
+    home: '首页',
+  },
+  console: {
+    title: '控制台',
+    nav: '控制台',
+    backToSite: '返回公开站点',
   },
 }

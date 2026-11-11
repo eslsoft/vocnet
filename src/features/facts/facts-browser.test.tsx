@@ -7,7 +7,7 @@ import { server } from '@/test/msw'
 import { renderAt } from '@/test/render'
 import { FactsBrowser } from './index'
 
-const routes = [{ path: '/facts', element: <FactsBrowser /> }]
+const routes = [{ path: '/console/facts', element: <FactsBrowser /> }]
 
 function example(text: string, overrides: Partial<FactDto> = {}) {
   return fact({ kind: 'example', payload: { text }, ...overrides } as FactDto)
@@ -24,7 +24,7 @@ describe('FactsBrowser', () => {
   it('filters by status and kind and appends each page [spec: console/facts-browse]', async () => {
     const published = Array.from({ length: 30 }, (_, index) => example(`Example ${index}`))
     const pending = fact({ kind: 'sense', payload: { gloss: 'land beside a river' }, status: 'pending', review: null })
-    const view = open('/facts', consoleApi({ facts: [pending, ...published] }))
+    const view = open('/console/facts', consoleApi({ facts: [pending, ...published] }))
 
     expect(await screen.findByText('land beside a river')).toBeInTheDocument()
     expect(screen.getAllByRole('row')).toHaveLength(26)
@@ -40,22 +40,22 @@ describe('FactsBrowser', () => {
 
     fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'example' } })
     expect(await screen.findByText('No facts match these filters.')).toBeInTheDocument()
-    expect(view.location()).toBe('/facts?status=pending&kind=example')
+    expect(view.location()).toBe('/console/facts?status=pending&kind=example')
 
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: '' } })
     expect(await screen.findByText('Example 0')).toBeInTheDocument()
-    expect(view.location()).toBe('/facts?kind=example')
+    expect(view.location()).toBe('/console/facts?kind=example')
   })
 
   it('ignores filter values outside the vocabulary', async () => {
-    open('/facts?status=bogus', consoleApi({ facts: [example('Kept')] }))
+    open('/console/facts?status=bogus', consoleApi({ facts: [example('Kept')] }))
     expect(await screen.findByText('Kept')).toBeInTheDocument()
     expect(screen.getByLabelText('Status')).toHaveValue('')
   })
 
   it('marks uncertain and low-confidence facts as flagged [spec: console/flagged-facts]', async () => {
     open(
-      '/facts',
+      '/console/facts',
       consoleApi({
         facts: [
           example('Sure', { review: review({ confidence: 0.95 }) }),
@@ -93,7 +93,7 @@ describe('FactsBrowser', () => {
       review: review({ reason: 'An established meaning.' }),
     })
     const view = open(
-      `/facts?fact=${correction.id}`,
+      `/console/facts?fact=${correction.id}`,
       consoleApi({ entries: [entry], senses: [sense], facts: [original, correction] }),
     )
 
@@ -104,21 +104,21 @@ describe('FactsBrowser', () => {
     expect(within(drawer()).getByText('Pass')).toBeInTheDocument()
     expect(within(drawer()).getByText('93%')).toBeInTheDocument()
     expect(within(drawer()).getByText('An established meaning.')).toBeInTheDocument()
-    expect(await within(drawer()).findByRole('link', { name: 'bank' })).toHaveAttribute('href', '/entries/bank')
+    expect(await within(drawer()).findByRole('link', { name: 'bank' })).toHaveAttribute('href', '/console/entries/bank')
 
     fireEvent.click(within(drawer()).getByRole('button', { name: original.id }))
     expect(await within(drawer()).findByText('a river side')).toBeInTheDocument()
-    expect(view.location()).toBe(`/facts?fact=${original.id}`)
+    expect(view.location()).toBe(`/console/facts?fact=${original.id}`)
   })
 
   it('opens a row in the drawer and closes it again', async () => {
     const pending = example('Fresh', { status: 'pending', review: null })
-    const view = open('/facts', consoleApi({ facts: [pending] }))
+    const view = open('/console/facts', consoleApi({ facts: [pending] }))
     fireEvent.click(await screen.findByRole('button', { name: 'Fresh' }))
     expect(await within(drawer()).findByText('Not reviewed yet.')).toBeInTheDocument()
-    expect(view.location()).toBe(`/facts?fact=${pending.id}`)
+    expect(view.location()).toBe(`/console/facts?fact=${pending.id}`)
     fireEvent.click(within(drawer()).getByRole('button', { name: 'Close' }))
-    await waitFor(() => expect(view.location()).toBe('/facts'))
+    await waitFor(() => expect(view.location()).toBe('/console/facts'))
   })
 
   it('retracts and re-reviews in place, offering only allowed moves [spec: console/fact-actions]', async () => {
@@ -128,7 +128,7 @@ describe('FactsBrowser', () => {
       review: review({ verdict: 'fail', confidence: 0.1 }),
     })
     const api = consoleApi({ facts: [published, rejected] })
-    open(`/facts?fact=${published.id}`, api)
+    open(`/console/facts?fact=${published.id}`, api)
 
     fireEvent.click(await within(drawer()).findByRole('button', { name: 'Retract' }))
     await waitFor(() => expect(within(drawer()).getByText('Retracted')).toBeInTheDocument())
@@ -149,7 +149,7 @@ describe('FactsBrowser', () => {
 
   it('shows the server reason when an action is refused [spec: console/fact-action-error]', async () => {
     const published = example('Taken slot')
-    open(`/facts?fact=${published.id}`, consoleApi({ facts: [published] }))
+    open(`/console/facts?fact=${published.id}`, consoleApi({ facts: [published] }))
     server.use(
       http.post('/manage/v1/facts/:id/rereview', () =>
         apiError(409, 'conflict', 'Another live fact now holds this slot.'),
@@ -161,7 +161,7 @@ describe('FactsBrowser', () => {
 
   it('surfaces a missing fact and an unresolvable subject', async () => {
     const orphan = example('Orphan')
-    open(`/facts?fact=${orphan.id}`, consoleApi({ facts: [orphan] }))
+    open(`/console/facts?fact=${orphan.id}`, consoleApi({ facts: [orphan] }))
     expect(await within(drawer()).findByText('No entry or sense has this id.')).toBeInTheDocument()
 
     server.use(http.get('/manage/v1/facts/:id', () => apiError(404, 'not_found', 'Fact not found.')))

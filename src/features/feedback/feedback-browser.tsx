@@ -15,7 +15,7 @@ import { useFeedbackPages } from './hooks'
 
 function factLink(id: string) {
   return (
-    <Link key={id} className="underline-offset-4 hover:underline" to={`/facts?fact=${id}`}>
+    <Link key={id} className="underline-offset-4 hover:underline" to={`/console/facts?fact=${id}`}>
       <code className="text-xs">{id}</code>
     </Link>
   )

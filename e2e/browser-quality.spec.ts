@@ -1,79 +1,43 @@
-import { readFileSync } from 'node:fs'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
+import { expectWithinBudget, observeLayoutShift, routeBudget, signIn } from './support'
 
-const budget = (
-  JSON.parse(readFileSync('quality/performance-budgets.json', 'utf8')) as {
-    routes: {
-      home: {
-        maxDomContentLoadedMs: number
-        maxScriptTransferBytes: number
-        maxRequests: number
-        maxCumulativeLayoutShift: number
-      }
-    }
-  }
-).routes.home
+const axe = async (page: import('@playwright/test').Page) => (await new AxeBuilder({ page }).analyze()).violations
 
-async function signIn(page: import('@playwright/test').Page) {
-  await page.goto('/')
-  const signIn = page.getByRole('button', { name: 'Sign in' })
-  await signIn.focus()
-  await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/$/)
+test('the public site and the console are accessible and keyboard operable [spec: access/console-login]', async ({
+  page,
+}) => {
+  const home = await page.goto('/')
+  expect(home?.headers()['content-security-policy']).toContain("script-src 'self';")
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  expect(await axe(page)).toEqual([])
+
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused()
+
+  await signIn(page, { keyboard: true })
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
+  expect(await axe(page)).toEqual([])
+})
+
+for (const route of ['home'] as const) {
+  test(`the ${route} route stays inside its deterministic performance budget`, async ({ page }) => {
+    const budget = routeBudget(route)
+    await observeLayoutShift(page)
+    await page.goto(budget.path)
+    await expectWithinBudget(page, budget)
+  })
 }
 
-test('critical UI is accessible and keyboard operable [spec: access/console-login]', async ({ page }) => {
-  const loginResponse = await page.goto('/')
-  expect(loginResponse?.headers()['content-security-policy']).toContain("script-src 'self';")
-  const signIn = page.getByRole('button', { name: 'Sign in' })
-  await expect(signIn).toBeVisible()
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
-
-  await signIn.focus()
-  await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
-})
-
-test('home route stays inside its deterministic performance budget', async ({ page }) => {
-  await page.addInitScript(() => {
-    ;(window as unknown as { __e2eCls: number }).__e2eCls = 0
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as Array<PerformanceEntry & { hadRecentInput: boolean; value: number }>) {
-        if (!entry.hadRecentInput) (window as unknown as { __e2eCls: number }).__e2eCls += entry.value
-      }
-    }).observe({ type: 'layout-shift', buffered: true })
-  })
+test('the console route stays inside its deterministic performance budget', async ({ page }) => {
+  await observeLayoutShift(page)
   await signIn(page)
-  await page.waitForLoadState('networkidle')
-
-  const metrics = await page.evaluate(() => {
-    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
-    const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[]
-    return {
-      domContentLoadedMs: navigation.domContentLoadedEventEnd,
-      scriptTransferBytes: resources
-        .filter((entry) => entry.initiatorType === 'script')
-        .reduce((total, entry) => total + (entry.transferSize || entry.encodedBodySize), 0),
-      requests: resources.length + 1,
-      cumulativeLayoutShift: (window as unknown as { __e2eCls: number }).__e2eCls,
-    }
-  })
-
-  expect(metrics.domContentLoadedMs).toBeLessThanOrEqual(budget.maxDomContentLoadedMs)
-  expect(metrics.scriptTransferBytes).toBeLessThanOrEqual(budget.maxScriptTransferBytes)
-  expect(metrics.requests).toBeLessThanOrEqual(budget.maxRequests)
-  expect(metrics.cumulativeLayoutShift).toBeLessThanOrEqual(budget.maxCumulativeLayoutShift)
+  await expectWithinBudget(page, routeBudget('console'))
 })
 
-test('critical page matches its reviewed visual baseline', async ({ page }) => {
+test('critical pages match their reviewed visual baselines', async ({ page }) => {
   await signIn(page)
   await page.getByRole('link', { name: 'About' }).click()
   await expect(page.getByRole('heading', { name: 'About' })).toBeVisible()
-  await expect(page).toHaveScreenshot('about-page.png', {
-    animations: 'disabled',
-    maxDiffPixelRatio: 0.02,
-  })
+  await expect(page).toHaveScreenshot('about-page.png', { animations: 'disabled', maxDiffPixelRatio: 0.02 })
 })

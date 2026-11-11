@@ -1,5 +1,5 @@
 export const enUS = {
-  appName: 'vocnet',
+  appName: 'Vocnet',
   nav: {
     overview: 'Overview',
     facts: 'Facts',
@@ -166,5 +166,28 @@ export const enUS = {
     revoke: 'Revoke',
     revokeTitle: 'Revoke {{name}}?',
     revokeDescription: 'The agent’s key stops working immediately. This cannot be undone.',
+  },
+  skipToContent: 'Skip to content',
+  site: {
+    tagline: 'An open English learner’s dictionary with a relation network, maintained by agents.',
+    browse: 'Browse',
+    developers: 'Developers',
+    console: 'Console',
+    apiReference: 'API reference',
+    openapi: 'OpenAPI document',
+    product: 'Product',
+    resources: 'Resources',
+    dataSources: 'Data sources',
+    sourcesLoading: 'Loading data sources…',
+    licenceTerms: 'Licence terms',
+    licence:
+      'Dictionary content is produced by agents and published only after review. Frequency and CEFR data credit their sources:',
+    primaryNav: 'Main',
+    home: 'Home',
+  },
+  console: {
+    title: 'Console',
+    nav: 'Console',
+    backToSite: 'Public site',
   },
 }

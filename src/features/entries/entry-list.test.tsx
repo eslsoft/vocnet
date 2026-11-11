@@ -6,8 +6,8 @@ import { renderAt } from '@/test/render'
 import { EntryList } from './index'
 
 const routes = [
-  { path: '/entries', element: <EntryList /> },
-  { path: '/entries/:lemma', element: <p>inspector</p> },
+  { path: '/console/entries', element: <EntryList /> },
+  { path: '/console/entries/:lemma', element: <p>inspector</p> },
 ]
 
 function world() {
@@ -43,7 +43,7 @@ const rowOf = async (lemma: string) => (await screen.findByRole('link', { name: 
 describe('EntryList', () => {
   it('lists entries with their progress, page by page, and opens one [spec: console/entry-list]', async () => {
     server.use(...world().handlers)
-    const view = renderAt('/entries', routes)
+    const view = renderAt('/console/entries', routes)
 
     const bank = await rowOf('bank')
     expect(within(bank).getByText('Published')).toBeInTheDocument()
@@ -63,20 +63,20 @@ describe('EntryList', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
 
     fireEvent.click(within(bank).getAllByRole('cell')[2] as HTMLElement)
-    expect(view.location()).toBe('/entries/bank')
+    expect(view.location()).toBe('/console/entries/bank')
   })
 
   it('filters by a debounced prefix kept in the URL [spec: console/entry-list-filter]', async () => {
     server.use(...world().handlers)
-    const view = renderAt('/entries?prefix=ban', routes)
+    const view = renderAt('/console/entries?prefix=ban', routes)
     const input = screen.getByLabelText('Lemma starts with')
     expect(input).toHaveValue('ban')
     expect(await screen.findByRole('link', { name: 'band' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'word00' })).not.toBeInTheDocument()
 
     fireEvent.change(input, { target: { value: ' bank ' } })
-    expect(view.location()).toBe('/entries?prefix=ban')
-    await waitFor(() => expect(view.location()).toBe('/entries?prefix=bank'))
+    expect(view.location()).toBe('/console/entries?prefix=ban')
+    await waitFor(() => expect(view.location()).toBe('/console/entries?prefix=bank'))
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: 'band' })).not.toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'bank' })).toBeInTheDocument()
@@ -86,7 +86,7 @@ describe('EntryList', () => {
     expect(await screen.findByText('No entries match this prefix.')).toBeInTheDocument()
 
     fireEvent.change(input, { target: { value: '  ' } })
-    await waitFor(() => expect(view.location()).toBe('/entries'))
+    await waitFor(() => expect(view.location()).toBe('/console/entries'))
     expect(await screen.findByRole('link', { name: 'word00' })).toBeInTheDocument()
 
     view.router.navigate(-1)

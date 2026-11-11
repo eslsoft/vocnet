@@ -1,13 +1,12 @@
 import { expect, test } from '@playwright/test'
-
-async function signIn(page: import('@playwright/test').Page) {
-  await page.goto('/')
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page).toHaveURL(/\/$/)
-}
+import { signIn } from './support'
 
 test('an admin signs in and reaches the console overview [spec: access/console-login]', async ({ page }) => {
-  await signIn(page)
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Console' }).first().click()
+  await expect(page).toHaveURL(/\/login$/)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page).toHaveURL(/\/console$/)
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   await expect(page.getByText('Open feedback')).toBeVisible()
 })

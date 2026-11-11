@@ -11,11 +11,12 @@ export function ThemeToggle() {
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       aria-label={`Theme: ${theme}`}
+      title={`Theme: ${theme}`}
       onClick={() => setTheme(ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length])}
     >
-      <Icon />
+      <Icon aria-hidden="true" />
     </Button>
   )
 }

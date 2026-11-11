@@ -70,6 +70,21 @@ REVIEW_LLM_MODEL = "e2e-llm"
 binding = "REVIEW_QUEUE"
 queue = "vocnet-e2e-reviews"
 
+[[ratelimits]]
+name = "FEEDBACK_RATE_LIMITER"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# Above the production 120 a minute: the whole suite reads from one address.
+[[ratelimits]]
+name = "READ_RATE_LIMITER"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 1000
+  period = 60
+
 [[d1_databases]]
 binding = "DB"
 database_name = "vocnet-e2e"

@@ -8,7 +8,10 @@ export function EntryLink({ nodeId }: { nodeId: string }) {
   if (!location.data) return <span className="text-muted-foreground">{nodeId}</span>
   const { lemma } = location.data.entry
   return (
-    <Link className="font-medium underline-offset-4 hover:underline" to={`/entries/${encodeURIComponent(lemma)}`}>
+    <Link
+      className="font-medium underline-offset-4 hover:underline"
+      to={`/console/entries/${encodeURIComponent(lemma)}`}
+    >
       {lemma}
     </Link>
   )

@@ -8,7 +8,7 @@ import { Button } from '@/shared/ui/button'
 export default function LoginPage() {
   const { t } = useTranslation()
   const [error, setError] = useState<Error | null>(null)
-  if (isAuthenticated()) return <Navigate to="/" replace />
+  if (isAuthenticated()) return <Navigate to="/console" replace />
 
   return (
     <main className="grid min-h-dvh place-items-center bg-background text-foreground">

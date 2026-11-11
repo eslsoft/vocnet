@@ -10,10 +10,10 @@ function Page({ lemma }: { lemma: string }) {
 }
 
 const routes = [
-  { path: '/entries', element: <p>entry list</p> },
-  { path: '/entries/bank', element: <Page lemma="bank" /> },
-  { path: '/entries/ghost', element: <Page lemma="ghost" /> },
-  { path: '/entries/empty', element: <Page lemma="empty" /> },
+  { path: '/console/entries', element: <p>entry list</p> },
+  { path: '/console/entries/bank', element: <Page lemma="bank" /> },
+  { path: '/console/entries/ghost', element: <Page lemma="ghost" /> },
+  { path: '/console/entries/empty', element: <Page lemma="empty" /> },
 ]
 
 function world() {
@@ -84,7 +84,7 @@ const reference = {
 describe('EntryInspector', () => {
   it('shows every sense with its facts in every status [spec: console/entry-inspector]', async () => {
     server.use(...world().handlers)
-    const view = renderAt('/entries/bank', routes)
+    const view = renderAt('/console/entries/bank', routes)
     expect(await screen.findByRole('heading', { name: 'bank' })).toBeInTheDocument()
     const entryFacts = screen.getByText('Entry facts').closest('[data-slot=card]') as HTMLElement
     expect(within(entryFacts).getByText('banks (plural)')).toBeInTheDocument()
@@ -105,7 +105,7 @@ describe('EntryInspector', () => {
 
     fireEvent.click(within(money).getByRole('button', { name: 'fr: rive' }))
     expect(await within(screen.getByRole('dialog')).findByText('Fail')).toBeInTheDocument()
-    expect(view.location()).toMatch(/^\/entries\/bank\?fact=/)
+    expect(view.location()).toMatch(/^\/console\/entries\/bank\?fact=/)
   })
 
   it("orders the senses by the sense list and shows each one's place [spec: console/entry-inspector]", async () => {
@@ -140,7 +140,7 @@ describe('EntryInspector', () => {
       correction,
     ]
     server.use(...consoleApi({ entries: [bank], senses: [added, oars, river, money], facts }).handlers)
-    renderAt('/entries/bank', routes)
+    renderAt('/console/entries/bank', routes)
     expect(await screen.findByRole('heading', { name: 'bank' })).toBeInTheDocument()
     const titles = screen.getAllByText(/./, { selector: '[data-slot=card-title]' }).map((title) => title.textContent)
     expect(titles).toEqual([
@@ -157,7 +157,7 @@ describe('EntryInspector', () => {
 
   it('shows the reference data with the attribution of each source it came from [spec: console/entry-reference]', async () => {
     server.use(...world().handlers)
-    renderAt('/entries/bank', routes)
+    renderAt('/console/entries/bank', routes)
     const card = (await screen.findByText('Reference data')).closest('[data-slot=card]') as HTMLElement
     expect(within(card).getByText('Zipf 5.16 · rank 1,834')).toBeInTheDocument()
     expect(within(card).getByText('noun A1')).toBeInTheDocument()
@@ -175,7 +175,7 @@ describe('EntryInspector', () => {
     server.use(
       ...consoleApi({ entries: [{ id: crypto.randomUUID(), lemma: 'empty' }], referenceSources: null }).handlers,
     )
-    renderAt('/entries/empty', routes)
+    renderAt('/console/entries/empty', routes)
     const card = (await screen.findByText('Reference data')).closest('[data-slot=card]') as HTMLElement
     expect(within(card).getAllByText('Not listed')).toHaveLength(2)
     expect(await within(card).findByRole('alert')).toHaveTextContent('Sources are unavailable.')
@@ -183,15 +183,15 @@ describe('EntryInspector', () => {
 
   it('shows the server message for an unknown lemma', async () => {
     server.use(...world().handlers)
-    renderAt('/entries/ghost', routes)
+    renderAt('/console/entries/ghost', routes)
     expect(await screen.findByRole('alert')).toHaveTextContent('No entry for "ghost".')
   })
 
   it('says when an entry has no senses and links back to the list', async () => {
     server.use(...world().handlers)
-    const view = renderAt('/entries/empty', routes)
+    const view = renderAt('/console/entries/empty', routes)
     expect(await screen.findByText('No senses yet.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: 'All entries' }))
-    expect(view.location()).toBe('/entries')
+    expect(view.location()).toBe('/console/entries')
   })
 })

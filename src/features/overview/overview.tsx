@@ -11,7 +11,7 @@ import { statsGrid } from './stats-grid'
 function CountLink({ count, query }: { count: number; query: string }) {
   if (count === 0) return <span className="text-muted-foreground/60">0</span>
   return (
-    <Link className="font-medium tabular-nums underline-offset-4 hover:underline" to={`/facts?${query}`}>
+    <Link className="font-medium tabular-nums underline-offset-4 hover:underline" to={`/console/facts?${query}`}>
       {count}
     </Link>
   )
@@ -76,7 +76,7 @@ export function Overview() {
             {t('overview.openFeedback')}
           </CardDescription>
           <CardTitle className="text-3xl tabular-nums">
-            <Link to="/feedback?status=open" className="underline-offset-4 hover:underline">
+            <Link to="/console/feedback?status=open" className="underline-offset-4 hover:underline">
               {stats.data.open_feedback}
             </Link>
           </CardTitle>

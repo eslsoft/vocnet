@@ -1,26 +1,41 @@
 import { createBrowserRouter } from 'react-router'
-import { Layout } from '@/app/layout'
+import { ConsoleLayout } from '@/app/console-layout'
+import { PublicLayout } from '@/app/public-layout'
 import { requireAuthLoader } from '@/features/auth'
 import { RouteError } from '@/routes/error'
 
-// Route-level code splitting via react-router's `lazy` (data router). The `/`
-// subtree requires a token; /login and /callback are public.
+// Route-level code splitting via react-router's `lazy` (data router). The public site needs no
+// sign-in; the `/console` subtree requires a token. /login and /callback stay at the root because
+// the OIDC client is registered with `${origin}/callback` as its redirect URI.
+const page = (load: () => Promise<{ default: React.ComponentType }>) => async () => ({
+  Component: (await load()).default,
+})
+
 export const router = createBrowserRouter([
-  { path: '/login', lazy: async () => ({ Component: (await import('@/routes/login')).default }) },
-  { path: '/callback', lazy: async () => ({ Component: (await import('@/routes/callback')).default }) },
+  { path: '/login', lazy: page(() => import('@/routes/login')) },
+  { path: '/callback', lazy: page(() => import('@/routes/callback')) },
   {
-    path: '/',
+    path: '/console',
     loader: requireAuthLoader,
-    element: <Layout />,
+    element: <ConsoleLayout />,
     errorElement: <RouteError />,
     children: [
-      { index: true, lazy: async () => ({ Component: (await import('@/routes/overview')).default }) },
-      { path: 'facts', lazy: async () => ({ Component: (await import('@/routes/facts')).default }) },
-      { path: 'entries/:lemma?', lazy: async () => ({ Component: (await import('@/routes/entries')).default }) },
-      { path: 'feedback', lazy: async () => ({ Component: (await import('@/routes/feedback')).default }) },
-      { path: 'agents', lazy: async () => ({ Component: (await import('@/routes/agents')).default }) },
-      { path: 'about', lazy: async () => ({ Component: (await import('@/routes/about')).default }) },
-      { path: '*', lazy: async () => ({ Component: (await import('@/routes/not-found')).default }) },
+      { index: true, lazy: page(() => import('@/routes/console/overview')) },
+      { path: 'facts', lazy: page(() => import('@/routes/console/facts')) },
+      { path: 'entries/:lemma?', lazy: page(() => import('@/routes/console/entries')) },
+      { path: 'feedback', lazy: page(() => import('@/routes/console/feedback')) },
+      { path: 'agents', lazy: page(() => import('@/routes/console/agents')) },
+      { path: 'about', lazy: page(() => import('@/routes/console/about')) },
+      { path: '*', lazy: page(() => import('@/routes/not-found')) },
+    ],
+  },
+  {
+    path: '/',
+    element: <PublicLayout />,
+    errorElement: <RouteError />,
+    children: [
+      { index: true, lazy: page(() => import('@/routes/home')) },
+      { path: '*', lazy: page(() => import('@/routes/not-found')) },
     ],
   },
 ])

@@ -67,7 +67,10 @@ export function EntryInspector({ lemma }: { lemma: string }) {
   const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-6">
-      <Link className="flex items-center gap-1 self-start text-muted-foreground text-sm hover:underline" to="/entries">
+      <Link
+        className="flex items-center gap-1 self-start text-muted-foreground text-sm hover:underline"
+        to="/console/entries"
+      >
         <ArrowLeft aria-hidden className="size-4" />
         {t('entries.backToList')}
       </Link>

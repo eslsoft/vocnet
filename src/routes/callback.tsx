@@ -11,7 +11,7 @@ export default function CallbackPage() {
     if (started.current) return
     started.current = true
     completeLogin()
-      .then(() => navigate('/', { replace: true }))
+      .then(() => navigate('/console', { replace: true }))
       .catch((cause: unknown) => {
         const error = cause instanceof Error ? cause : new Error('OIDC callback failed.', { cause })
         reportBrowserError(error, 'oidc.callback')

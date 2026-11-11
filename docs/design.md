@@ -2043,10 +2043,30 @@ SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403. A
 bearer that is not a structurally valid JWT gets 401 before the Worker contacts
 the issuer; an unreachable issuer is a 500, not a bad credential.
 
+## Web
+
+One SPA serves two surfaces from the same origin. The public site needs no
+sign-in and reads only the public API (`/v1`); the console lives under
+`/console` and needs an admin sign-in. `/login` and `/callback` stay at the
+root, since the OIDC client's registered redirect URI is `{origin}/callback`;
+a completed sign-in lands on `/console`, and signing out returns to `/`.
+
+- **Shell**: a top bar with the Vocnet mark, Browse, Developers, the language
+  (English, 中文; stored versioned in `localStorage`, else the browser's
+  preference) and theme toggles, and a Console link; a footer with the
+  sources and licences of `GET /v1/sources`.
+
+The browser policy is strict: `script-src 'self'`, fonts and styles bundled
+(`font-src 'self'`), and no third-party origin but the OIDC issuer in
+`connect-src`. `quality/performance-budgets.json` holds a budget per public
+route and for the console.
+
 ## Console
 
 The console is how admins watch the dictionary. It reads and acts only through
-`/manage/v1` with the admin's access token.
+`/manage/v1` with the admin's access token. Its pages sit under `/console`
+(`/console/facts`, `/console/entries/{lemma}`, `/console/feedback`,
+`/console/agents`) in a shell with a sidebar.
 
 - **Overview**: fact counts by kind and status, and open feedback.
 - **Facts**: a filterable, paged list with a drawer for one fact's payload,

@@ -13,7 +13,7 @@ import { useEntryPages } from './hooks'
 
 const PREFIX_DEBOUNCE_MS = 300
 
-const entryPath = (lemma: string) => `/entries/${encodeURIComponent(lemma)}`
+const entryPath = (lemma: string) => `/console/entries/${encodeURIComponent(lemma)}`
 
 /** The prefix lives in the URL; typing updates it once the admin pauses. */
 function usePrefix(): [string, string, (value: string) => void] {
