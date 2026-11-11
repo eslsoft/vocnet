@@ -16,12 +16,16 @@ function parse<T extends z.ZodType>(schema: T, env: unknown, what: string): z.in
 export interface AuthEnv {
   OIDC_ISSUER: string
   OIDC_CLIENT_ID: string
+  OIDC_AUDIENCE: string
   OIDC_JWKS?: string
 }
 
 const authConfigSchema = z.object({
   OIDC_ISSUER: z.url(),
   OIDC_CLIENT_ID: z.string().min(1),
+  // The `aud` of the console's access tokens: the issuer's UserInfo endpoint, as no
+  // resource is requested (the token authenticates the admin; it grants no API scope).
+  OIDC_AUDIENCE: z.url(),
   // Optional: inline JWKS (tests use a local key set instead of remote discovery).
   OIDC_JWKS: z.string().optional(),
 })
@@ -29,12 +33,13 @@ const authConfigSchema = z.object({
 export interface AuthConfig {
   issuer: string
   clientId: string
+  audience: string
   jwks?: string
 }
 
 export function getAuthConfig(env: AuthEnv): AuthConfig {
-  const { OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_JWKS } = parse(authConfigSchema, env, 'auth')
-  return { issuer: OIDC_ISSUER, clientId: OIDC_CLIENT_ID, jwks: OIDC_JWKS }
+  const { OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_AUDIENCE, OIDC_JWKS } = parse(authConfigSchema, env, 'auth')
+  return { issuer: OIDC_ISSUER, clientId: OIDC_CLIENT_ID, audience: OIDC_AUDIENCE, jwks: OIDC_JWKS }
 }
 
 export interface AccessEnv {

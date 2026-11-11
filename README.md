@@ -59,7 +59,7 @@ at the values it prints. It signs every login in as one fixed subject, so never
 point a deployed Worker at it:
 
 ```bash
-pnpm dev:oidc   # OIDC_ISSUER=http://127.0.0.1:8788, OIDC_CLIENT_ID=vocnet-dev, ADMIN_SUBJECTS=dev-admin
+pnpm dev:oidc   # prints OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_AUDIENCE, and ADMIN_SUBJECTS for .dev.vars
 ```
 
 Once signed in, the Agents page issues agent keys. To call the management API
@@ -81,8 +81,9 @@ One env set, on the Worker. `wrangler.toml` holds bindings and `JEV_MODEL`
 
 | Name               | Meaning                                                                 |
 | ------------------ | ----------------------------------------------------------------------- |
-| `OIDC_ISSUER`      | OIDC issuer; the Worker verifies admin JWTs against its JWKS            |
-| `OIDC_CLIENT_ID`   | Expected audience, also given to the console by `GET /configz`          |
+| `OIDC_ISSUER`      | OIDC issuer (Realmroot: `https://id.realmroot.dev/api/auth`); the Worker verifies admin access tokens against its JWKS |
+| `OIDC_CLIENT_ID`   | The console's client (`vocnet-console`); access tokens must name it in `client_id`; also given to the console by `GET /configz` |
+| `OIDC_AUDIENCE`    | Expected `aud` of those tokens (Realmroot: `https://id.realmroot.dev/api/auth/oauth2/userinfo`) |
 | `ADMIN_SUBJECTS`   | Comma-separated OIDC subjects allowed on the management API             |
 | `MODEL_BASE_URL`   | Gateway for Jev (`/v1/systemone`) and the LLM (`/v1/chat/completions`)  |
 | `MODEL_API_KEY`    | Bearer key for that gateway (a secret)                                  |

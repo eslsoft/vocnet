@@ -11,4 +11,5 @@ console.info(`Dev OIDC provider at ${issuer}, signing in every login as "${subje
 Point .dev.vars at it, then run pnpm dev:
   OIDC_ISSUER=${issuer}
   OIDC_CLIENT_ID=vocnet-dev
+  OIDC_AUDIENCE=${issuer}/oauth2/userinfo
   ADMIN_SUBJECTS=${subject}`)

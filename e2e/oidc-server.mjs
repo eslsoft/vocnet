@@ -102,10 +102,12 @@ export async function startOidcServer({ port = 0, subject = 'e2e-user' } = {}) {
         email: 'e2e@test.invalid',
         name: 'E2E User',
       }
-      const accessToken = await new SignJWT(claims)
-        .setProtectedHeader({ alg: 'ES256', kid: 'e2e' })
+      // Like Realmroot without a requested resource: an RFC 9068 token for the UserInfo
+      // endpoint that names the client it was issued to.
+      const accessToken = await new SignJWT({ ...claims, client_id: transaction.clientId })
+        .setProtectedHeader({ alg: 'ES256', kid: 'e2e', typ: 'at+jwt' })
         .setIssuer(issuer)
-        .setAudience(transaction.clientId)
+        .setAudience(`${issuer}/oauth2/userinfo`)
         .setSubject(subject)
         .setIssuedAt(now)
         .setExpirationTime(now + 300)

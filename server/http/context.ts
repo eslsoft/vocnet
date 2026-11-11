@@ -8,6 +8,7 @@ import type { Deps } from '@server/usecases/deps'
 export interface AppBindings {
   OIDC_ISSUER: string
   OIDC_CLIENT_ID: string
+  OIDC_AUDIENCE: string
 }
 
 export interface AppVariables {

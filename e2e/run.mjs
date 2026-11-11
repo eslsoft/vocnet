@@ -59,6 +59,7 @@ run_worker_first = true
 [vars]
 OIDC_ISSUER = ${quoted(oidc.issuer)}
 OIDC_CLIENT_ID = "e2e-client"
+OIDC_AUDIENCE = ${quoted(`${oidc.issuer}/oauth2/userinfo`)}
 ADMIN_SUBJECTS = "e2e-user"
 # No journey reaches a reviewer; an unroutable gateway makes any accidental call fail loudly.
 MODEL_BASE_URL = "http://127.0.0.1:9"

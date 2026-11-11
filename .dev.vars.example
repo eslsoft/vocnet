@@ -2,9 +2,13 @@
 # `wrangler types` (pnpm cf-typegen); keep keys here in sync with code that
 # reads them via env.
 
-# OIDC: the API verifies bearer JWTs against this issuer's JWKS (audience = client id).
+# OIDC: the API verifies the console's access tokens (RFC 9068 JWTs) against this
+# issuer's JWKS: exact issuer and audience, and client_id = OIDC_CLIENT_ID.
+# Realmroot: OIDC_ISSUER=https://id.realmroot.dev/api/auth, and with no resource
+# requested the audience is the UserInfo endpoint.
 OIDC_ISSUER=https://your-issuer.example.com
 OIDC_CLIENT_ID=your-client-id
+OIDC_AUDIENCE=https://your-issuer.example.com/oauth2/userinfo
 
 # Comma-separated OIDC subjects that may use the management API as admins.
 ADMIN_SUBJECTS=admin-subject-1,admin-subject-2

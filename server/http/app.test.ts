@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest'
 
 // No deps are wired: anything that reaches a use case fails loudly, so these
 // tests prove routing, validation, and the auth wall resolve first.
-const env = { OIDC_ISSUER: 'https://issuer.test', OIDC_CLIENT_ID: 'test-client' }
+const env = {
+  OIDC_ISSUER: 'https://issuer.test',
+  OIDC_CLIENT_ID: 'test-client',
+  OIDC_AUDIENCE: 'https://issuer.test/oauth2/userinfo',
+}
 
 function request(path: string, init?: RequestInit) {
   return app.fetch(new Request(`http://app.test${path}`, init), env)

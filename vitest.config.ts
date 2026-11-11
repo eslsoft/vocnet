@@ -19,6 +19,7 @@ async function testAuthBindings() {
   return {
     OIDC_ISSUER: 'https://issuer.test',
     OIDC_CLIENT_ID: 'test-client',
+    OIDC_AUDIENCE: 'https://issuer.test/oauth2/userinfo',
     OIDC_JWKS: JSON.stringify({ keys: [publicJwk] }),
     TEST_PRIVATE_JWK: JSON.stringify(privateJwk),
   }

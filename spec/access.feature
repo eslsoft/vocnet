@@ -24,6 +24,12 @@ Feature: Access
     When a caller presents a bearer token that is not a structurally valid JWT
     Then the credential is invalid (401); a well-formed token still fails as a provider error (500)
 
+  @access/console-token @usecase
+  Scenario: Only the console's own access tokens sign an admin in
+    Given access tokens from the configured issuer
+    When one names another client, is not an access token, or has another audience
+    Then the credential is invalid (401)
+
   @access/manage-403 @api
   Scenario: Only admin subjects may use OIDC tokens on the management API
     Given a valid OIDC token whose subject is not in ADMIN_SUBJECTS

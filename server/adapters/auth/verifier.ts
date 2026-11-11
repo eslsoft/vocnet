@@ -53,28 +53,42 @@ function assertJwtShape(token: string): void {
   }
 }
 
+/**
+ * Verifies an RFC 9068 access token the console obtained: the exact issuer and audience, and
+ * `client_id` naming the console, so a token the same person got through another
+ * application of the issuer does not sign them in here.
+ */
 export function createAuthVerifier(config: AuthConfig): AuthVerifier {
   return {
     async verify(token) {
       assertJwtShape(token)
-      const jwks = await resolveJwks(config)
-      try {
-        const { payload } = await jwtVerify(token, jwks, { issuer: config.issuer, audience: config.clientId })
-        return toUser(payload)
-      } catch (error) {
-        if (
-          error instanceof errors.JWTClaimValidationFailed ||
-          error instanceof errors.JWTExpired ||
-          error instanceof errors.JWSInvalid ||
-          error instanceof errors.JWTInvalid ||
-          error instanceof errors.JWSSignatureVerificationFailed ||
-          error instanceof errors.JWKSNoMatchingKey ||
-          error instanceof errors.JOSEAlgNotAllowed
-        ) {
-          throw new InvalidCredentialError()
-        }
-        throw error
-      }
+      const payload = await verifySignedClaims(token, await resolveJwks(config), config)
+      if (payload.client_id !== config.clientId) throw new InvalidCredentialError('Token was issued to another client.')
+      return toUser(payload)
     },
+  }
+}
+
+async function verifySignedClaims(token: string, jwks: JwksResolver, config: AuthConfig): Promise<JWTPayload> {
+  try {
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer: config.issuer,
+      audience: config.audience,
+      typ: 'at+jwt',
+    })
+    return payload
+  } catch (error) {
+    if (
+      error instanceof errors.JWTClaimValidationFailed ||
+      error instanceof errors.JWTExpired ||
+      error instanceof errors.JWSInvalid ||
+      error instanceof errors.JWTInvalid ||
+      error instanceof errors.JWSSignatureVerificationFailed ||
+      error instanceof errors.JWKSNoMatchingKey ||
+      error instanceof errors.JOSEAlgNotAllowed
+    ) {
+      throw new InvalidCredentialError()
+    }
+    throw error
   }
 }

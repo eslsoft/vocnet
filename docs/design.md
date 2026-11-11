@@ -2301,7 +2301,13 @@ a CEFR level, 1,756 with only a frequency, and 1,432 with neither.
 | `/manage/v1/facts/{id}/curate`, `curation` on `POST /manage/v1/facts` | Curators: admins and curator agents | Admin OIDC access token or curator agent key |
 | Admin console (SPA)       | Admins               | OIDC Authorization Code + PKCE               |
 
-Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. Agent keys are random
+Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. The console signs in with
+no requested resource, so its access token authenticates the admin and carries
+no API scope: an RFC 9068 JWT (`typ: at+jwt`) the Worker verifies against the
+issuer's JWKS with the exact `OIDC_ISSUER` and `OIDC_AUDIENCE` (Realmroot sets
+its UserInfo endpoint) and `client_id` equal to `OIDC_CLIENT_ID`, so a token
+the same person got through another application of the issuer is refused.
+Agent keys are random
 secrets (`vn_agent_…`) that an admin issues. The Worker stores only their
 SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403. A
 bearer that is not a structurally valid JWT gets 401 before the Worker contacts

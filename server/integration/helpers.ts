@@ -10,11 +10,11 @@ import { vi } from 'vitest'
 
 export async function adminToken(sub = 'admin-1') {
   const key = await importJWK(JSON.parse(env.TEST_PRIVATE_JWK), 'ES256')
-  return new SignJWT({})
-    .setProtectedHeader({ alg: 'ES256', kid: 'test' })
+  return new SignJWT({ client_id: 'test-client' })
+    .setProtectedHeader({ alg: 'ES256', kid: 'test', typ: 'at+jwt' })
     .setSubject(sub)
     .setIssuer('https://issuer.test')
-    .setAudience('test-client')
+    .setAudience('https://issuer.test/oauth2/userinfo')
     .setExpirationTime('5m')
     .sign(key)
 }
