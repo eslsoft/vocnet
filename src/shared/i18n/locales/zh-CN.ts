@@ -60,6 +60,10 @@ export const zhCN: typeof enUS = {
     fail: '未通过',
   },
   overview: {
+    byKind: '按类型和状态统计的事实',
+    publishedHint: '已审阅并公开。',
+    pendingHint: '等待审阅。',
+    rejectedHint: '未通过审阅，不会公开。',
     title: '概览',
     subtitle: '按类型和状态统计的事实数量。点击数字查看对应事实。',
     kind: '类型',
@@ -98,6 +102,7 @@ export const zhCN: typeof enUS = {
     rereview: '重新审阅',
   },
   entries: {
+    publicPage: '公开页面',
     title: '词条检查',
     subtitle: '查看词条及其所有状态的事实，在上下文中看到待审、已拒绝和存疑的数据。',
     listTitle: '词条',
@@ -339,5 +344,14 @@ export const zhCN: typeof enUS = {
       network: { title: '词义关系网络', body: '每个义项都有同义词、反义词、下位词、组成部分和话题。' },
       bilingual: { title: '为中文学习者设计', body: '使用 ?lang=zh 获取义项和例句的中文翻译。' },
     },
+  },
+  login: {
+    title: '登录控制台',
+    body: '控制台供 Vocnet 管理员使用：查看审阅中的事实、检查词条、签发智能体密钥。',
+    signingIn: '正在登录…',
+  },
+  about: {
+    site: '公开词典',
+    guide: '开发者指南',
   },
 }

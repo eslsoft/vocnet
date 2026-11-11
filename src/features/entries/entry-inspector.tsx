@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { FactDrawer, FactStatusBadge, FactTable, useFactSelection } from '@/features/facts'
@@ -23,9 +23,16 @@ function EntryDetail({ lemma }: { lemma: string }) {
   const entryFact = entryFacts.find((fact) => fact.kind === 'entry')
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <h2 className="font-heading font-semibold text-2xl">{entry.data.entry.lemma}</h2>
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="font-semibold font-serif text-3xl tracking-tight">{entry.data.entry.lemma}</h2>
         {entryFact ? <FactStatusBadge status={entryFact.status} /> : null}
+        <Link
+          className="ml-auto inline-flex items-center gap-1.5 text-primary text-sm hover:underline"
+          to={`/words/${encodeURIComponent(entry.data.entry.lemma)}`}
+        >
+          {t('entries.publicPage')}
+          <ArrowUpRight aria-hidden className="size-4" />
+        </Link>
       </div>
       <EntryReference cefr={entry.data.cefr} frequency={entry.data.frequency} />
       <Card>

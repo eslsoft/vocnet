@@ -2100,9 +2100,11 @@ route and for the console.
 The console is how admins watch the dictionary. It reads and acts only through
 `/manage/v1` with the admin's access token. Its pages sit under `/console`
 (`/console/facts`, `/console/entries/{lemma}`, `/console/feedback`,
-`/console/agents`) in a shell with a sidebar.
+`/console/agents`) in a shell with a sidebar; the sign-in page and the
+callback share its look and link back to the public site.
 
-- **Overview**: fact counts by kind and status, and open feedback.
+- **Overview**: tiles for published, pending, and rejected facts and open
+  feedback, then the counts by kind and status.
 - **Facts**: a filterable, paged list with a drawer for one fact's payload,
   author, review, and the fact it supersedes. Admins retract or re-review there.
 - **Entries**: every entry in lemma order, filtered by lemma prefix, with its
@@ -2114,7 +2116,8 @@ The console is how admins watch the dictionary. It reads and acts only through
   dictionary grows. A test pins those query plans.
 - **Entry inspector**: one lemma with every sense and every fact in every
   status, so pending, rejected, and uncertain data is seen in context, and its
-  reference data with the attribution of each source it came from. With a sense
+  reference data with the attribution of each source it came from, and a link
+  to its public page. With a sense
   list, the senses follow the current list (as the worklist reads it) and each
   shows its common rank, *Rare*, or *Not in the sense list*; the list itself is
   an entry fact whose drawer shows its review.

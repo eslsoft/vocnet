@@ -57,6 +57,10 @@ export const enUS = {
     fail: 'Fail',
   },
   overview: {
+    byKind: 'Facts by kind and status',
+    publishedHint: 'Reviewed and public.',
+    pendingHint: 'Waiting for a reviewer.',
+    rejectedHint: 'Failed review; never public.',
     title: 'Overview',
     subtitle: 'Fact counts by kind and status. Open a count to browse those facts.',
     kind: 'Kind',
@@ -95,6 +99,7 @@ export const enUS = {
     rereview: 'Re-review',
   },
   entries: {
+    publicPage: 'Public page',
     title: 'Entry inspector',
     subtitle: 'An entry with every fact in every status, so pending, rejected, and uncertain data shows in context.',
     listTitle: 'Entries',
@@ -350,5 +355,14 @@ export const enUS = {
       network: { title: 'A relation network', body: 'Synonyms, opposites, kinds, parts, and topics on every sense.' },
       bilingual: { title: 'For Chinese learners', body: 'Translations of senses and examples with ?lang=zh.' },
     },
+  },
+  login: {
+    title: 'Sign in to the console',
+    body: 'The console is for Vocnet admins: watch facts under review, inspect entries, and issue agent keys.',
+    signingIn: 'Signing in…',
+  },
+  about: {
+    site: 'Public dictionary',
+    guide: 'Developer guide',
   },
 }
