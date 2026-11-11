@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, NavLink, Outlet, ScrollRestoration } from 'react-router'
-import { SourcesNote } from '@/features/dictionary'
+import { Link, NavLink, Outlet, ScrollRestoration, useLocation } from 'react-router'
+import { SearchBox, SourcesNote } from '@/features/dictionary'
 import { cn } from '@/shared/lib/cn'
 import { buttonVariants } from '@/shared/ui/button'
 import { LanguageToggle } from '@/shared/ui/language-toggle'
@@ -32,8 +32,10 @@ function TopNavLink({ to, children }: { to: string; children: ReactNode }) {
   )
 }
 
-export function PublicLayout({ search }: { search?: ReactNode }) {
+export function PublicLayout() {
   const { t } = useTranslation()
+  // The home page has its own large search box.
+  const home = useLocation().pathname === '/'
   const nav = navItems.map((item) => (
     <TopNavLink key={item.to} to={item.to}>
       {t(item.label)}
@@ -52,7 +54,7 @@ export function PublicLayout({ search }: { search?: ReactNode }) {
             {nav}
           </nav>
           <div className="ml-auto flex min-w-0 items-center gap-1">
-            {search ? <div className="hidden w-64 lg:block">{search}</div> : null}
+            {home ? null : <SearchBox className="hidden w-72 md:block" />}
             <LanguageToggle />
             <ThemeToggle />
             <Link to="/console" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'ml-1')}>
@@ -60,9 +62,12 @@ export function PublicLayout({ search }: { search?: ReactNode }) {
             </Link>
           </div>
         </div>
-        <nav aria-label={t('site.primaryNav')} className="mx-auto flex max-w-6xl gap-1 px-2 pb-2 md:hidden">
-          {nav}
-        </nav>
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 pb-2 md:hidden">
+          {home ? null : <SearchBox className="min-w-0 flex-1" />}
+          <nav aria-label={t('site.primaryNav')} className="-mx-2 flex shrink-0 gap-0.5">
+            {nav}
+          </nav>
+        </div>
       </header>
       <main id="main" className="min-h-[calc(100dvh-3.5rem)] flex-1">
         <Outlet />

@@ -40,3 +40,22 @@ Feature: Public site
     Given an entry with relations
     When the reader follows a related word
     Then its entry page opens at that sense, expanded and highlighted
+
+  @site/home-search @critical @web
+  Scenario: Search finds an entry as you type
+    Given published entries
+    When anyone types into the search box
+    Then GET /v1/search hits appear as you type with their level, translation, and gloss
+    And the arrow keys and Enter open a hit, Enter without a hit looks the text up as a headword, Escape closes the list, and / focuses the search
+
+  @site/browse-expand @critical @web
+  Scenario: Explore a category's kinds level by level
+    Given a category whose kinds have kinds of their own
+    When the reader picks the category and expands a kind
+    Then the direct kinds of each come from GET /v1/senses/{id}/members, in the everyday or the chosen specialist layer, and each links to its sense
+
+  @site/browse-topics @web
+  Scenario: Read the words of a topic
+    Given the topic taxonomy with tagged senses
+    When the reader picks a topic or a whole category and loads more
+    Then its senses are listed most frequent first, page by page, each linking to its sense

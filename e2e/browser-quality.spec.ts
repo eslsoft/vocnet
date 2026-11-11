@@ -14,6 +14,14 @@ test('the public site and the console are accessible and keyboard operable [spec
 
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused()
+  await page.getByRole('combobox', { name: 'Search the dictionary' }).fill('an')
+  await expect(page.getByRole('option').first()).toBeVisible()
+  expect(await axe(page)).toEqual([])
+
+  await page.goto('/browse?root=animal')
+  await page.getByRole('button', { name: 'Kinds of bird' }).click()
+  await expect(page.getByRole('link', { name: /^eagle/ })).toBeVisible()
+  expect(await axe(page)).toEqual([])
 
   await page.goto('/words/animal')
   await expect(page.getByRole('heading', { level: 1, name: 'animal' })).toBeVisible()
@@ -26,7 +34,7 @@ test('the public site and the console are accessible and keyboard operable [spec
   expect(await axe(page)).toEqual([])
 })
 
-for (const route of ['home', 'entry'] as const) {
+for (const route of ['home', 'entry', 'browse'] as const) {
   test(`the ${route} route stays inside its deterministic performance budget`, async ({ page }) => {
     const budget = routeBudget(route)
     await observeLayoutShift(page)
@@ -42,6 +50,17 @@ test('the console route stays inside its deterministic performance budget', asyn
 })
 
 test('critical pages match their reviewed visual baselines', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.getByText('wordfreq', { exact: true })).toBeVisible()
+  // The curl examples name the origin, whose port each run picks.
+  await expect(page).toHaveScreenshot('home-page.png', {
+    animations: 'disabled',
+    fullPage: true,
+    mask: [page.locator('pre')],
+    maxDiffPixelRatio: 0.02,
+  })
+
   await page.goto('/words/animal')
   await expect(page.getByRole('heading', { level: 1, name: 'animal' })).toBeVisible()
   await expect(page.getByText('Very common').or(page.getByText('Common')).first()).toBeVisible()

@@ -102,6 +102,7 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
           }),
           sense(senseIds.brute, 'A cruel person.', {
             labels: ['informal'],
+            relations: { ...noRelations, narrower: [related('beast', 'A cruel person.')] },
             grammar: { countability: 'countable', patterns: ['to_infinitive'], prepositions: ['about'] },
           }),
           sense(senseIds.rare, 'An old sense nobody uses.', { rare: true }),
@@ -211,4 +212,75 @@ export function goEntry() {
     ],
     phrases: [],
   }
+}
+
+/** Stable sense ids of the category tree's words. */
+export const memberIds: Record<string, string> = Object.fromEntries(
+  ['bird', 'fish', 'eagle', 'lion', 'tiger'].map((lemma) => [lemma, crypto.randomUUID()]),
+)
+
+const memberOf = (lemma: string, depth: number) => ({
+  lemma,
+  sense_id: memberIds[lemma],
+  pos: 'noun',
+  cefr: lemma === 'eagle' ? null : 'A1',
+  gloss: `A ${lemma}.`,
+  translation: lemma === 'bird' ? '鸟' : undefined,
+  depth,
+})
+
+/** A category tree: animal has bird and fish; bird has eagle; eagle has none. Records each read. */
+export function networkApi({ topicsFail = false } = {}) {
+  const reads: URL[] = []
+  const tree: Record<string, ReturnType<typeof memberOf>[]> = {
+    [senseIds.animal]: [memberOf('bird', 1), memberOf('fish', 1), memberOf('eagle', 2)],
+    [memberIds.bird]: [memberOf('eagle', 1)],
+    [memberIds.eagle]: [],
+    [senseIds.brute]: [],
+  }
+  const handlers = [
+    http.get('/v1/entries/colour', () => HttpResponse.json(goEntry())),
+    ...dictionaryApi().handlers,
+    http.get('/v1/senses/:id/members', ({ request, params }) => {
+      const url = new URL(request.url)
+      reads.push(url)
+      if (params.id === memberIds.fish) {
+        return HttpResponse.json(
+          url.searchParams.get('cursor')
+            ? { lang: 'zh', items: [memberOf('tiger', 1)], next_cursor: null }
+            : { lang: 'zh', items: [memberOf('lion', 1)], next_cursor: 'page-2' },
+        )
+      }
+      const items = tree[String(params.id)]
+      if (!items) return apiError(404, 'not_found', 'Sense not found.')
+      return HttpResponse.json({ lang: 'zh', items, next_cursor: null })
+    }),
+    http.get('/v1/topics', () =>
+      topicsFail
+        ? apiError(429, 'rate_limited', 'Too many requests.')
+        : HttpResponse.json({
+            categories: [
+              {
+                id: 'nature',
+                name_en: 'Nature',
+                name_zh: '自然',
+                topics: [{ id: 'wild-animals', name_en: 'Wild animals', name_zh: '野生动物' }],
+              },
+            ],
+          }),
+    ),
+    http.get('/v1/topics/:id/senses', ({ request, params }) => {
+      const url = new URL(request.url)
+      reads.push(url)
+      if (params.id === 'nature') return HttpResponse.json({ lang: 'zh', items: [], next_cursor: null })
+      const cursor = url.searchParams.get('cursor')
+      const item = (lemma: string) => ({ ...memberOf(lemma, 1), depth: undefined })
+      return HttpResponse.json(
+        cursor
+          ? { lang: 'zh', items: [item('tiger')], next_cursor: null }
+          : { lang: 'zh', items: [item('lion')], next_cursor: 'page-2' },
+      )
+    }),
+  ]
+  return { handlers, reads }
 }

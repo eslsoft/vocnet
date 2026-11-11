@@ -36,6 +36,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, lazy: page(() => import('@/routes/home')) },
       { path: 'words/:lemma', lazy: page(() => import('@/routes/word')) },
+      { path: 'browse', lazy: page(() => import('@/routes/browse')) },
       { path: '*', lazy: page(() => import('@/routes/not-found')) },
     ],
   },

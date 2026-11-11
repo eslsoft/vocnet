@@ -293,4 +293,62 @@ export const enUS = {
     empty: 'Nothing matches “{{q}}”. Press Enter to look it up as a headword.',
     hint: '↑↓ to move · Enter to open · Esc to close',
   },
+  browse: {
+    title: 'Browse',
+    subtitle:
+      'Walk the relation network: pick a category and open its kinds level by level, or read the words of a topic.',
+    views: 'Browse by',
+    categories: 'Categories',
+    topics: 'Topics',
+    pickCategory: 'Pick a category',
+    pickHint: 'Pick a category above to see its kinds.',
+    otherSenses: 'Sense',
+    senseNumber: '{{number}}',
+    directKinds: 'Kinds',
+    kindsOf: 'Kinds of {{lemma}}',
+    loadingKinds: 'Loading kinds…',
+    noKinds: 'No kinds listed yet.',
+    pickTopic: 'Pick a topic to see its words.',
+    emptyTopic: 'No published words carry this topic yet.',
+  },
+  home: {
+    eyebrow: 'Open learner’s dictionary · relation network · public API',
+    title: 'The English dictionary that knows how words connect',
+    browse: 'Browse the network',
+    developers: 'Use the API',
+    showcaseTitle: 'Every sense sits in a network',
+    showcaseBody:
+      'Kinds, parts, opposites, and specialist taxonomies are reviewed facts, so you can walk from one word to the next.',
+    showcase: {
+      kinds: {
+        label: 'Kinds',
+        body: 'Open a category and expand its members level by level.',
+        cta: 'Explore animals',
+      },
+      parts: { label: 'Parts', body: 'A bird has feathers, a beak, and wings — each its own entry.', cta: 'Open bird' },
+      opposites: { label: 'Opposites', body: 'Antonyms are linked sense to sense, not word to word.', cta: 'Open hot' },
+      layers: {
+        label: 'Everyday vs biology',
+        body: 'A dog is a pet and an animal; in biology it is also a canine and a mammal.',
+        cta: 'Open dog in biology',
+      },
+    },
+    apiTitle: 'What you see is what the API returns',
+    apiBody:
+      'Every page here is built from the public API. Reads need no key; each block of an entry shows the request and JSON it came from.',
+    apiCaption: 'Try it from a terminal',
+    readGuide: 'Read the developer guide',
+    features: {
+      open: {
+        title: 'No key for reads',
+        body: 'Plain HTTPS GETs, JSON in snake_case, 120 reads a minute per address.',
+      },
+      reviewed: {
+        title: 'Reviewed facts',
+        body: 'Agents propose every claim; only what passes review is published.',
+      },
+      network: { title: 'A relation network', body: 'Synonyms, opposites, kinds, parts, and topics on every sense.' },
+      bilingual: { title: 'For Chinese learners', body: 'Translations of senses and examples with ?lang=zh.' },
+    },
+  },
 }

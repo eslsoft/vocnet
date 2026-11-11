@@ -2055,6 +2055,20 @@ a completed sign-in lands on `/console`, and signing out returns to `/`.
   (English, 中文; stored versioned in `localStorage`, else the browser's
   preference) and theme toggles, and a Console link; a footer with the
   sources and licences of `GET /v1/sources`.
+- **Search**: a combobox over `GET /v1/search?lang=zh` in the header and,
+  larger, on the home page. Hits appear as you type (debounced); the arrow keys
+  and Enter open one, Enter without a hit opens `/words/{text}` (an exact
+  lookup), Escape closes, and `/` focuses it.
+- **Home** (`/`): what Vocnet is, the search box, showcase cards into real
+  relations (animal's kinds, bird's parts, hot and cold, dog in biology), and
+  what the API returns.
+- **Browse** (`/browse`): a category explorer (`?root={lemma}`, optional
+  `?sense={id}` and `?domain=`) that resolves the category word through its
+  entry, takes the sense with the most kinds, and expands direct kinds level
+  by level, each the depth-1 members of `GET /v1/senses/{id}/members`; and the
+  topics (`?view=topics`, `?topic={id}`): categories and their leaf topics from
+  `GET /v1/topics`, a topic's senses from `GET /v1/topics/{id}/senses` most
+  frequent first, page by page.
 - **Entry** (`/words/{lemma}`): `GET /v1/entries/{lemma}?lang=zh`, typeset as
   a learner's dictionary: the headword with its syllables, UK and US
   pronunciations, CEFR levels, and a frequency band from the Zipf value; one
