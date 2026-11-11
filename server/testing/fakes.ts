@@ -886,20 +886,33 @@ export function fakeWorld(): FakeWorld {
           page.cursor,
         )
       },
-      listMembers: async (id, domain, page) => {
+      listMembers: async (roots, domain, page) => {
         const links = builtViews().flatMap((record) => record.hypernyms)
         const nearest = new Map<string, StoredMember>()
-        let frontier: string[] = [id]
-        for (let depth = 1; frontier.length > 0; depth += 1) {
-          const next = links.filter(
-            (link) =>
-              frontier.includes(link.broaderSenseId) &&
-              (link.domain === null || link.domain === domain) &&
-              link.summary.sense_id !== id &&
-              !nearest.has(link.summary.sense_id),
-          )
-          for (const link of next) nearest.set(link.summary.sense_id, { summary: link.summary, depth })
-          frontier = [...new Set(next.map((link) => link.summary.sense_id))]
+        for (const root of roots) {
+          const reached = new Set<string>()
+          let frontier: string[] = [root]
+          for (let depth = 1; frontier.length > 0; depth += 1) {
+            const next = links.filter(
+              (link) =>
+                frontier.includes(link.broaderSenseId) &&
+                (link.domain === null || link.domain === domain) &&
+                !roots.includes(link.summary.sense_id) &&
+                !reached.has(link.summary.sense_id),
+            )
+            for (const link of next) {
+              const id = link.summary.sense_id
+              if (reached.has(id)) continue
+              reached.add(id)
+              const known = nearest.get(id)
+              nearest.set(id, {
+                summary: link.summary,
+                depth: Math.min(known?.depth ?? depth, depth),
+                via: [...(known?.via ?? []), root],
+              })
+            }
+            frontier = [...new Set(next.map((link) => link.summary.sense_id))]
+          }
         }
         const ordered = [...nearest.values()].sort(
           (a, b) =>

@@ -315,7 +315,8 @@ follow:
   default; a domain layer shows only when asked for (see Public API). A sense
   may have several everyday categories (dog: animal, pet). Narrower terms are
   never asked of a category word: the members of "animal" are the senses whose
-  hypernyms lead to it, walked on read (`GET /v1/senses/{id}/members`).
+  hypernyms lead to it, walked on read (`GET /v1/senses/{id}/members`, or
+  `GET /v1/entries/animal/members` for every common sense of the word).
 
 - **Floor.** `RELATION_JEV_FLOORS` in the registry is 0.5 for every type Jev
   judges, Jev's fail line: a Jev fail settles a relation, and the LLM decides only
@@ -2144,6 +2145,7 @@ language, empty when it has none, and absent without a language; `?lang=all`
 gives an object keyed by stored tag. `all` is accepted only by the document
 reads (`GET /v1/entries/{lemma}`, `GET /v1/senses/{id}`); the lists
 (`GET /v1/entries`, `GET /v1/forms/{form}`, `GET /v1/topics/{id}/senses`,
+`GET /v1/senses/{id}/members`, `GET /v1/entries/{lemma}/members`,
 `GET /v1/search`) reject it with `400 invalid_request`, so every summary has one shape. A
 topic's `name` is `{ "en": …, "<lang>": … }` keyed by the stored tag, with the
 language only when the topic has a name in it (the taxonomy has English and
@@ -2179,6 +2181,22 @@ narrower sense's summary) in one recursive query, bounded at `MEMBER_DEPTH`
 (12), the depth that also ends a walk round a cycle of three or more entries. A
 sense that is not public is `404 not_found`. It is a list, cached for five
 seconds like the others.
+
+`GET /v1/entries/{lemma}/members?pos=&domain=&lang=&limit=&cursor=` is the
+same walk from every common sense of the exact lemma's public entry at once,
+the senses its sense list does not put in `extra`, of one part of speech with
+`pos` and of every one without it. A client asks by word, and a category word
+has several senses ("animal": a creature other than a human, a living creature
+that feeds) whose members hang off any of them. Each member comes once at its
+nearest `depth` below any of those senses, with `via`, the senses of the entry
+it descends from in the entry's sense order, as `{ lang, items: [sense summary
++ depth + via], next_cursor }` ordered by depth, lemma, and sense id. The roots
+are never their own members, and a rare sense adds none, even in its domain.
+The lemma is matched exactly like `GET /v1/entries/{lemma}`: an entry that is
+not public is `404 not_found`, with no lowercased, stemmed, or fuzzy retry; a
+public entry with no common sense of `pos` has no members. One recursive query
+serves both reads, walking from a list of roots. It is a list, cached for five
+seconds.
 
 **Lists.** `GET /v1/entries` takes `prefix`, `level` (CEFR levels, repeated
 `level=A1&level=A2` or comma-separated `level=A1,A2`), `pos`, `topic` (a leaf
@@ -2292,6 +2310,8 @@ fact is not published has no rows, so every public read of it is `404`.
 | `GET /v1/forms/{form}`        | `public_forms` by spelling joined to `public_entries`, in lemma order |
 | `GET /v1/entries`             | `public_entries` summaries by lemma range or along `(frequency_order, lemma)`, each checked through the key of `public_meanings`, or with a topic the `(entry_id, topic_id)` index of `public_sense_topics` |
 | `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf along the index of the sort |
+| `GET /v1/senses/{id}/members` | The entry statement from `senses`, then one recursive walk down `public_hypernyms` by `broader_sense_id`, bounded at `MEMBER_DEPTH` |
+| `GET /v1/entries/{lemma}/members` | The `GET /v1/entries/{lemma}` batch for the common senses of the document, then the same walk from all of them |
 | `GET /v1/search`              | `public_entries` by exact lemma and lemma range, `public_forms` by variant form, and `public_search_fts` joined to `public_search` by rowid, grouped by entry |
 
 Feedback and the management API keep reading the facts: they need every status.

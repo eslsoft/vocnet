@@ -2,6 +2,7 @@ import { createRoute } from '@hono/zod-openapi'
 import {
   getPublicEntry,
   getPublicSense,
+  listEntryMembers,
   listPublicEntries,
   listSenseMembers,
   lookupForm,
@@ -10,6 +11,7 @@ import {
 import { submitFeedback } from '@server/usecases/feedback'
 import { listReferenceSources } from '@server/usecases/reference'
 import {
+  entryMemberPageSchema,
   entryPageSchema,
   entrySortSchema,
   formLookupSchema,
@@ -146,6 +148,29 @@ const listMembers = createRoute({
   responses: { 200: json(memberPageSchema, 'A page of members.'), 400: errorResponse, 404: errorResponse },
 })
 
+const listMembersOfEntry = createRoute({
+  method: 'get',
+  path: '/entries/{lemma}/members',
+  tags,
+  summary: 'List the kinds of every common sense of an entry taken as a category',
+  description:
+    'The members of each common sense of the exact lemma (not those its sense list puts in extra), of one part of speech with ?pos=, else of every one: each member once at its nearest depth, with via naming the senses of the entry it is a kind of. Ordered by depth, then lemma, then sense. The everyday layer by default; ?domain= also walks that specialist taxonomy. An entry that is not public is 404; there is no fuzzy fallback.' +
+    LANGUAGE,
+  request: {
+    params: z.object({ lemma: lemmaInputSchema }),
+    query: pageQuery.extend({
+      pos: posSchema
+        .optional()
+        .meta({ description: 'Only the senses of this part of speech; absent takes every one.' }),
+      domain: relationDomainSchema.optional().meta({
+        description: 'Also walk the hypernyms of this specialist taxonomy; absent walks the everyday layer alone.',
+      }),
+      lang: listLangQuerySchema,
+    }),
+  },
+  responses: { 200: json(entryMemberPageSchema, 'A page of members.'), 400: errorResponse, 404: errorResponse },
+})
+
 const listSources = createRoute({
   method: 'get',
   path: '/sources',
@@ -210,6 +235,20 @@ export const publicRoutes = createRouter()
     const page = await listSenseMembers(
       c.get('deps'),
       c.req.valid('param').id,
+      domain ?? null,
+      { limit, cursor },
+      variant,
+    )
+    c.header('Cache-Control', LIST_CACHE)
+    return c.json({ lang: variant.lang, items: page.items, next_cursor: page.nextCursor }, 200)
+  })
+  .openapi(listMembersOfEntry, async (c) => {
+    const { pos, domain, limit, cursor, lang } = c.req.valid('query')
+    const variant = readVariant(c, { lang })
+    const page = await listEntryMembers(
+      c.get('deps'),
+      c.req.valid('param').lemma,
+      pos ?? null,
       domain ?? null,
       { limit, cursor },
       variant,

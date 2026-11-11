@@ -381,6 +381,29 @@ export const memberPageSchema = z
   .object({ lang: responseLangSchema, items: z.array(memberSchema), next_cursor: z.string().nullable() })
   .meta({ id: 'MemberPage', description: 'The members of a category, nearest first, then by lemma.' })
 
+export const entryMemberSchema = memberSchema
+  .extend({
+    depth: z.number().int().positive().meta({
+      description:
+        'How many broader-term links lead from the member up to the nearest sense of the entry: 1 for a direct kind.',
+    }),
+    via: z.array(senseIdSchema).min(1).meta({
+      description: "The entry's common senses the member is a kind of, directly or not, in the entry's order.",
+    }),
+  })
+  .meta({
+    id: 'EntryMember',
+    description: 'A sense that is a kind of a common sense of the entry, directly or through narrower categories.',
+  })
+export type EntryMember = z.infer<typeof entryMemberSchema>
+
+export const entryMemberPageSchema = z
+  .object({ lang: responseLangSchema, items: z.array(entryMemberSchema), next_cursor: z.string().nullable() })
+  .meta({
+    id: 'EntryMemberPage',
+    description: 'The members of the common senses of an entry, nearest first, then by lemma and sense.',
+  })
+
 export const formMatchSchema = wordSummarySchema
   .extend({
     matches: z.array(z.object({ type: formTypeSchema, pos: posSchema.optional() })).meta({

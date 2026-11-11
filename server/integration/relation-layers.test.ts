@@ -1,6 +1,7 @@
 import {
   createEntryResultSchema,
   createSenseResultSchema,
+  entryMemberPageSchema,
   entryPageSchema,
   memberPageSchema,
   publicEntrySchema,
@@ -120,6 +121,63 @@ describe('relation layers', () => {
       ['dog', 2],
     ])
     expect((await call('/v1/senses/00000000-0000-4000-8000-000000000999/members')).status).toBe(404)
+  })
+
+  it('lists the members of every common sense of an entry by its exact lemma [spec: public-view/entry-members-api]', async () => {
+    const token = await issueAgentKey()
+    const { entryId, senseId: creature } = await noun(token, 'animal', 'A creature other than a human.')
+    const senseOf = async (gloss: string) =>
+      createSenseResultSchema.parse(
+        (await call('/manage/v1/senses', { method: 'POST', token, json: { entry_id: entryId, pos: 'noun', gloss } }))
+          .body,
+      ).sense.id
+    const living = await senseOf('A living creature that feeds.')
+    const rare = await senseOf('A specialist sense.')
+    await call('/manage/v1/facts', {
+      method: 'POST',
+      token,
+      json: { kind: 'sense_list', subject_id: entryId, payload: { common: [creature, living], extra: [rare] } },
+    })
+    const bird = await noun(token, 'bird')
+    const cat = await noun(token, 'cat')
+    const dog = await noun(token, 'dog')
+    const eagle = await noun(token, 'eagle')
+    const mammal = await noun(token, 'mammal')
+    await relate(token, bird.senseId, 'hypernym', creature)
+    await relate(token, dog.senseId, 'hypernym', creature)
+    await relate(token, dog.senseId, 'hypernym', living)
+    await relate(token, cat.senseId, 'hypernym', living)
+    await relate(token, eagle.senseId, 'hypernym', bird.senseId)
+    await relate(token, mammal.senseId, 'hypernym', rare, 'biology')
+    await settle()
+
+    const membersOfEntry = async (query = '') => {
+      const result = await request(`/v1/entries/animal/members${query}`)
+      expect(result.headers.get('cache-control')).toBe('public, max-age=5')
+      return entryMemberPageSchema.parse(await result.json())
+    }
+    const all = await membersOfEntry()
+    expect(all.items.map((member) => [member.lemma, member.depth, member.via])).toEqual([
+      ['bird', 1, [creature]],
+      ['cat', 1, [living]],
+      ['dog', 1, [creature, living]],
+      ['eagle', 2, [creature]],
+    ])
+    expect(all.items[1]).toMatchObject({ sense_id: cat.senseId, pos: 'noun', gloss: 'A cat.' })
+    const first = await membersOfEntry('?limit=3')
+    const rest = await membersOfEntry(`?limit=3&cursor=${first.next_cursor}`)
+    expect([rest.items.map((member) => member.lemma), rest.next_cursor]).toEqual([['eagle'], null])
+    expect((await membersOfEntry('?pos=noun')).items).toHaveLength(4)
+    expect((await membersOfEntry('?pos=verb')).items).toEqual([])
+    // The rare sense's kinds are left out even in its domain.
+    expect((await membersOfEntry('?domain=biology')).items.map((member) => member.lemma)).toEqual([
+      'bird',
+      'cat',
+      'dog',
+      'eagle',
+    ])
+    expect((await call('/v1/entries/animals/members')).status).toBe(404)
+    expect((await call('/v1/entries/animal/members?pos=thing')).status).toBe(400)
   })
 
   it('lists an entry under a topic only when the topic tags one of its common senses [spec: public-view/topic-common-senses]', async () => {
