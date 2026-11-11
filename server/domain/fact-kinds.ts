@@ -1569,6 +1569,7 @@ const CLOSURE_PASSES = [
   'a sense no learner files under a category word: a very general or abstract sense ("thing", "idea", "way") or a verb of general action ("do", "happen") has no everyday broader term',
   'a thing whose main parts a learner\'s dictionary does not name (a substance, an abstract or uniform thing: "water", "idea", "song"), or whose parts are recorded on the more general whole they belong to ("dog": tail and paw are parts of "animal")',
   'a sense with no synonym or antonym a learner could use in its place ("eagle", "oxygen", "Tuesday")',
+  "a slot whose candidate, named by an earlier review, cannot be recorded here, when the reason says why: the candidate's entry or sense was rejected or retracted, or the two words are already linked by another relation. The slot is complete for this pass; a curator records such a candidate by hand",
   'an uncountable noun ("advice") has no plural',
   'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
   'a pronoun that governs no agreement has no grammar to record: an object, reflexive, or reciprocal pronoun ("me", "yourself", "each other") is never the subject a verb agrees with, and a relative or interrogative pronoun ("who", "which", "what") takes the verb its antecedent or answer takes, so no fixed agreement fits it',

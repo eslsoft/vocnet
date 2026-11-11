@@ -1718,6 +1718,9 @@ describe('completeness write rules and rubrics', () => {
     expect(onSense).toContain('Claimed reason it is empty: "A month name has no common collocations.".')
     expect(onSense).toContain("pass only if a learner's dictionary")
     expect(onSense).toContain('fail when the slot plainly applies to this word')
+    expect(onSense).toContain(
+      "a slot whose candidate, named by an earlier review, cannot be recorded here, when the reason says why: the candidate's entry or sense was rejected or retracted",
+    )
     expect(onSense).toContain('months, days, and numbers have no common collocations')
     expect(onSense).toContain('a sense no learner files under a category word')
     expect(onSense).toContain('or whose parts are recorded on the more general whole they belong to')

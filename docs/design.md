@@ -157,7 +157,13 @@ them. When the
 attempts were rejected as not fitting, the closure passes unless the reviewer
 names a specific value that plainly fills the slot and differs from every
 rejected one; a value an attempt tried, or an association as loose as theirs,
-is no reason to fail. Without this a reviewer that rejects each topic of a
+is no reason to fail. A closure also passes when the candidate an earlier
+review named cannot be recorded and the reason says why: its entry or sense was
+rejected or retracted, or the two words already share another relation (one
+relation per entry pair). Synonym items looped on this: review named "computer
+program" or "office staff", the producer could not link a rejected entry, and
+review failed the closure for citing an internal restriction. A curator records
+such a candidate by hand. Without this a reviewer that rejects each topic of a
 general sense as too general, then the closure because the sense "has a topic
 association", stalls the entry for good. A rejected closure holds no content
 key (dedupe is against live facts only), so the producer's resubmission after a

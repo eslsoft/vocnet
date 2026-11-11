@@ -825,6 +825,7 @@ Feature: Facts and review
     When its review is planned
     Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
     And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, a relations closure when the recorded relations are the only precise ones, and a grammar closure for a title used before a name ("Mrs"), which a learner's dictionary marks neither [C] nor [U], for a pronoun that governs no agreement (an object, reflexive, or reciprocal pronoun such as "yourself" or "each other", or a relative or interrogative pronoun such as "who"), and for an adverb used only after a number or clock time ("a.m.")
+    And a closure passes when an earlier review named a candidate that cannot be recorded, because its entry or sense was rejected or retracted or the two words already share another relation, and the reason says so
 
   @facts/gap-closure-attempts @domain
   Scenario: A gap closure review weighs the attempts already rejected for its slot
