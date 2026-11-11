@@ -2,6 +2,7 @@ import type { WorkSummary } from '@shared/monitor'
 import type { CefrLevel } from '@shared/reference'
 
 const DAY_MS = 86_400_000
+const HOUR_MS = 3_600_000
 const HOURS: Record<WorkSummary['window'], number> = { '24h': 24, '7d': 168 }
 
 /**
@@ -13,10 +14,22 @@ export function daysToClear(open: number, netPerDay: number): number | null {
   return netPerDay > 0 ? open / netPerDay : null
 }
 
+/** A forecast whose rates are known: the server reports every rate or, before a day of history, none. */
+export type KnownForecast = {
+  net_per_day: number
+  net_per_day_24h: number
+  by_level: Array<{ level: CefrLevel | null; open: number; net_per_day: number }>
+}
+
+/** The forecast with its rates; null while the history is younger than a day and nothing can be forecast. */
+export function knownForecast(forecast: WorkSummary['forecast']): KnownForecast | null {
+  return forecast.net_per_day === null ? null : (forecast as KnownForecast)
+}
+
 /** The finish date range the 7-day and the 24-hour rates give, with the 7-day estimate as the headline. */
 export function clearRange(
   open: number,
-  forecast: WorkSummary['forecast'],
+  forecast: Pick<KnownForecast, 'net_per_day' | 'net_per_day_24h'>,
   now: number,
 ): { days: number; from: Date; to: Date } | null {
   const estimates = [daysToClear(open, forecast.net_per_day), daysToClear(open, forecast.net_per_day_24h)]
@@ -26,9 +39,17 @@ export function clearRange(
   return { days: estimates[0] ?? Math.min(...known), from: at(Math.min(...known)), to: at(Math.max(...known)) }
 }
 
-/** Per-hour rates over the window. The net is the change in open tasks: negative while it shrinks. */
-export function hourlyRates(summary: Pick<WorkSummary, 'window' | 'closed' | 'created' | 'agents'>) {
-  const hours = HOURS[summary.window]
+/**
+ * Per-hour rates over the recorded part of the window. The net is the change in open tasks:
+ * negative while it shrinks. Null before the history records anything.
+ */
+export function hourlyRates(
+  summary: Pick<WorkSummary, 'window' | 'closed' | 'created' | 'agents' | 'history_since'>,
+  now: number,
+) {
+  if (summary.history_since === null) return null
+  const recorded = (now - new Date(summary.history_since).getTime()) / HOUR_MS
+  const hours = Math.max(1, Math.min(HOURS[summary.window], recorded))
   const closed = summary.closed / hours
   return {
     closed,

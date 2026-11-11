@@ -29,7 +29,7 @@ Feature: Console monitor
   Scenario: The work summary shows the backlog and how fast it moves
     Given open items in every status, items created and closed over the last week, settled and waiting attempts, and leases
     When the work summary of a window is read
-    Then it counts open items by status overall and by type, every type with its stage, closes and attempt success within the window, buckets of every hour or day, the net closed per day over 7 days and 24 hours overall and by level, and each lease with whether it timed out
+    Then it counts open items by status overall and by type, every type with its stage, closes and attempt success within the window, buckets of every hour or day, when the history began, the net closed per day over the recorded part of 7 days and 24 hours overall and by level (none before a whole day is recorded), and each lease with whether it timed out
 
   @monitor/attempts @usecase
   Scenario: An attempt lists the facts its holder submitted with a summary line
@@ -107,4 +107,4 @@ Feature: Console monitor
   Scenario: The work_history migration backfills the open items' history
     Given open items without history rows
     When the work_history_backfill migration runs
-    Then every open item has a history row with its gap and no close, and every worklist row is stale
+    Then every open item has a backfilled history row with its gap and no close that never counts as created, and every worklist row is stale

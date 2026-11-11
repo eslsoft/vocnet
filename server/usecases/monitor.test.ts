@@ -78,6 +78,7 @@ function monitorOf(rows: Partial<MonitorRepo>): MonitorRepo {
       'attemptStats',
       'listLeases',
       'countHolders',
+      'historySince',
       'listAttempts',
       'listItemAttempts',
       'listOpenItems',
@@ -200,11 +201,13 @@ describe('work summary', () => {
           { ...lease, expiresAt: '2026-11-11T05:15:00.000Z' },
         ],
         countHolders: async () => 1,
+        historySince: async () => '2026-11-01T00:00:00.000Z',
       }),
     )
     const summary = await getWorkSummary(deps, '24h')
     expect(summary).toMatchObject({
       window: '24h',
+      history_since: '2026-11-01T00:00:00.000Z',
       open: { queued: 2, in_progress: 1, waiting_on_review: 1, stuck: 1, total: 5 },
       created: 4,
       closed: 3,
@@ -240,6 +243,34 @@ describe('work summary', () => {
       [2, false],
       [2, true],
     ])
+  })
+
+  it('averages the backlog trend over the recorded history and reports none before a whole day [spec: monitor/work-summary]', async () => {
+    const flow: Awaited<ReturnType<MonitorRepo['itemFlow']>> = [
+      { type: 'syllables', levelRank: 1, created: 2, closed: 8 },
+    ]
+    const summaryOf = (historySince: string | null) => {
+      const { deps } = depsWith(
+        monitorOf({
+          countOpenItems: async () => [open({ count: 2 })],
+          itemFlow: async () => flow,
+          throughput: async () => [],
+          medianCloseSeconds: async () => null,
+          attemptStats: async () => [],
+          listLeases: async () => [],
+          countHolders: async () => 0,
+          historySince: async () => historySince,
+        }),
+      )
+      return getWorkSummary(deps, '24h')
+    }
+    const young = await summaryOf('2026-11-11T00:00:00.000Z')
+    expect(young.forecast).toMatchObject({ net_per_day: null, net_per_day_24h: null })
+    expect(young.forecast.by_level[0]).toMatchObject({ level: 'A1', net_per_day: null })
+    expect((await summaryOf(null)).forecast.net_per_day).toBeNull()
+    const twoDays = await summaryOf('2026-11-09T05:30:00.000Z')
+    expect(twoDays.forecast).toMatchObject({ net_per_day: 3, net_per_day_24h: 6 })
+    expect(twoDays.forecast.by_level[0]).toMatchObject({ level: 'A1', net_per_day: 3 })
   })
 })
 

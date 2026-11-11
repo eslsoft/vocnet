@@ -1804,15 +1804,17 @@ still there after `expires_at` timed out, since its holder never completed it.
 
 `work_item_log` keeps one row per item ever opened, the console's task history:
 `id` (the item's), `entry_id`, `type`, `subject_id`, `gap` (the latest),
-`created_at`, and `closed_at` (null while open). The rescore's batch inserts it
+`created_at`, `closed_at` (null while open), and `backfilled` (the migration
+copied the row from an item already open, so its creation predates the history
+and never counts as created work). The rescore's batch inserts it
 with a new item, refreshes its `gap` with every write of the item, and stamps
 `closed_at` when it deletes the item. `work_attempts` keeps one row per item a
 completion named: `id`, `item_id`, `entry_id`, `type`, `subject_id`, `holder`,
 `lease_id`, `claimed_at`, `completed_at`, `seconds`, `note`, `outcome`
 (`waiting_on_review`, `closed`, `progressed`, `no_progress`, `stuck`), and
 `settled_at`. The migration `work_history` added both and the slot columns;
-`work_history_backfill` gave every open item its history row (items closed
-before it left none, and no earlier attempt has a row) and bumped every
+`work_history_backfill` gave every open item its history row, marked
+`backfilled` (items closed before it left none, and no earlier attempt has a row) and bumped every
 worklist row, so the rescore fills the slot counts.
 
 Every write that can change an entry's gaps, weak facts, or public view bumps
@@ -2010,7 +2012,9 @@ awaits review, else `queued`; a closed item is `closed`.
 
 - `GET /manage/v1/work/summary?window=24h|7d` (default `24h`): open items by
   status, overall and per type (every type of `WORK_POLICY`, with its stage);
-  the items created and closed in each of the 24 hours ending with the current
+  `history_since`, when the history began recording (the earliest creation not
+  `backfilled` or close; null while empty); the items created (not
+  `backfilled`) and closed in each of the 24 hours ending with the current
   hour, or the 7 UTC days ending with the current day, and in the window, which
   starts with its first bucket; the median seconds from created to closed of
   the items closed in the window; per type the items closed, the median attempt
@@ -2018,7 +2022,8 @@ awaits review, else `queued`; a closed item is `closed`.
   the attempts completed in the window; the distinct holders of unexpired
   leases; the forecast: items closed minus created per day over the last 7 days,
   the same over the last 24 hours, and per lowest CEFR level (A1 to C2, then
-  none) the open items and the 7-day net per day; and at most 100 leases that
+  none) the open items and the 7-day net per day, each rate averaged over the
+  recorded part of its span and null while less than a day is recorded; and at most 100 leases that
   are unexpired or expired within a day, newest claim first, each with its
   first three lemmas and whether it timed out.
 - `GET /manage/v1/work/attempts?outcome=&type=&holder=&lemma=&limit=&cursor=`:

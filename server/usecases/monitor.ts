@@ -88,7 +88,7 @@ export async function getWorkSummary(deps: Pick<Deps, 'monitor' | 'clock'>, wind
   const now = deps.clock.now()
   const at = now.toISOString()
   const buckets = windowBuckets(window, now)
-  const [open, flow, week, day, throughput, medianClose, attempts, leases, agents] = await Promise.all([
+  const [open, flow, week, day, throughput, medianClose, attempts, leases, agents, historySince] = await Promise.all([
     deps.monitor.countOpenItems(at),
     deps.monitor.itemFlow(buckets.since),
     deps.monitor.itemFlow(before(now, FORECAST_DAYS * ONE_DAY_MS)),
@@ -98,6 +98,7 @@ export async function getWorkSummary(deps: Pick<Deps, 'monitor' | 'clock'>, wind
     deps.monitor.attemptStats(buckets.since),
     deps.monitor.listLeases(before(now, ONE_DAY_MS), SUMMARY_LEASES),
     deps.monitor.countHolders(at),
+    deps.monitor.historySince(),
   ])
   const totals = emptyCounts()
   const byType = new Map<WorkType, WorkOpenCounts>()
@@ -111,11 +112,16 @@ export async function getWorkSummary(deps: Pick<Deps, 'monitor' | 'clock'>, wind
     openByLevel.set(row.levelRank, (openByLevel.get(row.levelRank) ?? 0) + row.count)
   }
   const net = (rows: typeof week) => rows.reduce((sum, row) => sum + row.closed - row.created, 0)
+  // A rate is averaged over the recorded part of its span, and only once a whole day is recorded.
+  const recordedDays = historySince === null ? 0 : (now.getTime() - Date.parse(historySince)) / ONE_DAY_MS
+  const perDay = (rows: typeof week, spanDays: number) =>
+    recordedDays < 1 ? null : net(rows) / Math.min(spanDays, recordedDays)
   const sumOf = (rows: typeof flow, field: 'created' | 'closed') => rows.reduce((sum, row) => sum + row[field], 0)
   const types = Object.keys(WORK_POLICY) as WorkType[]
   return {
     window,
     open: totals,
+    history_since: historySince,
     created: sumOf(flow, 'created'),
     closed: sumOf(flow, 'closed'),
     median_close_seconds: medianClose,
@@ -139,14 +145,17 @@ export async function getWorkSummary(deps: Pick<Deps, 'monitor' | 'clock'>, wind
     }),
     throughput: fillBuckets(buckets, throughput),
     forecast: {
-      net_per_day: net(week) / FORECAST_DAYS,
-      net_per_day_24h: net(day),
+      net_per_day: perDay(week, FORECAST_DAYS),
+      net_per_day_24h: perDay(day, 1),
       by_level: REPORTED_LEVELS.map((level) => {
         const rank = rankOfLevel(level)
         return {
           level,
           open: openByLevel.get(rank) ?? 0,
-          net_per_day: net(week.filter((row) => row.levelRank === rank)) / FORECAST_DAYS,
+          net_per_day: perDay(
+            week.filter((row) => row.levelRank === rank),
+            FORECAST_DAYS,
+          ),
         }
       }),
     },

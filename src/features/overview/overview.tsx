@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronRight, Hand, Hourglass, MessageSquareWarning, Tim
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
-import { clearRange, daysToClear, useWorkSummary } from '@/features/tasks'
+import { clearRange, daysToClear, type KnownForecast, knownForecast, useWorkSummary } from '@/features/tasks'
 import { cn } from '@/shared/lib/cn'
 import { formatDuration, formatNumber, formatPercent, formatRelative, formatSigned } from '@/shared/lib/format'
 import { Badge } from '@/shared/ui/badge'
@@ -26,34 +26,44 @@ function useFormat() {
 }
 
 function OpenTasksCard({ stats }: { stats: ConsoleStats }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { number } = useFormat()
   const summary = useWorkSummary('24h')
-  const forecast = summary.data?.forecast
-  const a1 = forecast?.by_level.find((row) => row.level === 'A1')
-  const a1Days = a1 ? daysToClear(a1.open, a1.net_per_day) : undefined
-  const range = forecast ? clearRange(stats.work.open, forecast, Date.now()) : null
+  const forecast = summary.data ? knownForecast(summary.data.forecast) : undefined
   return (
     <StatCard
       label={t('overview.openTasks')}
       value={number(stats.work.open)}
-      badge={
-        a1Days === undefined ? null : a1Days === null ? (
-          <Badge variant="destructive">{t('overview.a1Growing')}</Badge>
-        ) : (
-          <Badge variant="success">{t('overview.a1Done', { count: Math.max(1, Math.round(a1Days)) })}</Badge>
-        )
-      }
+      badge={forecast ? <A1Badge forecast={forecast} /> : null}
     >
       <ErrorNotice error={summary.error} />
-      {forecast ? (
-        <span>
-          {t('overview.netPerDay', { net: formatSigned(-forecast.net_per_day, i18n.language) })}
-          {' · '}
-          {range ? t('overview.allDone', { count: Math.max(1, Math.round(range.days)) }) : t('overview.notShrinking')}
-        </span>
-      ) : null}
+      {forecast === null ? <span>{t('overview.collecting')}</span> : null}
+      {forecast ? <OpenTasksTrend open={stats.work.open} forecast={forecast} /> : null}
     </StatCard>
+  )
+}
+
+function A1Badge({ forecast }: { forecast: KnownForecast }) {
+  const { t } = useTranslation()
+  const a1 = forecast.by_level.find((row) => row.level === 'A1')
+  if (!a1) return null
+  const days = daysToClear(a1.open, a1.net_per_day)
+  return days === null ? (
+    <Badge variant="destructive">{t('overview.a1Growing')}</Badge>
+  ) : (
+    <Badge variant="success">{t('overview.a1Done', { count: Math.max(1, Math.round(days)) })}</Badge>
+  )
+}
+
+function OpenTasksTrend({ open, forecast }: { open: number; forecast: KnownForecast }) {
+  const { t, i18n } = useTranslation()
+  const range = clearRange(open, forecast, Date.now())
+  return (
+    <span>
+      {t('overview.netPerDay', { net: formatSigned(-forecast.net_per_day, i18n.language) })}
+      {' · '}
+      {range ? t('overview.allDone', { count: Math.max(1, Math.round(range.days)) }) : t('overview.notShrinking')}
+    </span>
   )
 }
 

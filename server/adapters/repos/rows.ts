@@ -19,7 +19,7 @@ import {
   type SenseId,
 } from '@shared/facts'
 import { type FeedbackId, feedbackStatusSchema, feedbackTargetTypeSchema } from '@shared/feedback'
-import { getTableColumns, sql } from 'drizzle-orm'
+import { getTableColumns, type SQLWrapper, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 export type Db = ReturnType<typeof createDb>
@@ -166,3 +166,7 @@ export function page<T, R>(
   const last = items.at(-1)
   return { items: items.map(map), nextCursor: rows.length > limit && last ? encodeCursor(key(last)) : null }
 }
+
+/** Membership in one bound JSON array, so a list of any length stays inside D1's 100 bound parameters a statement. */
+export const inIds = (column: SQLWrapper, ids: readonly string[]) =>
+  sql`${column} in (select value from json_each(${JSON.stringify(ids)}))`

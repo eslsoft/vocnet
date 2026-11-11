@@ -245,9 +245,10 @@ describe('console monitor', () => {
       median_attempt_seconds: null,
       success_rate: null,
     })
-    expect(day.forecast.net_per_day).toBeCloseTo((1 - created) / 7)
-    expect(day.forecast.net_per_day_24h).toBe(1 - created)
-    expect(day.forecast.by_level[0]).toMatchObject({ level: 'A1', open: created - 1 })
+    // The history is minutes old, so no rate is reported yet.
+    expect(Date.parse(day.history_since ?? '')).toBeLessThanOrEqual(Date.now())
+    expect(day.forecast).toMatchObject({ net_per_day: null, net_per_day_24h: null })
+    expect(day.forecast.by_level[0]).toMatchObject({ level: 'A1', open: created - 1, net_per_day: null })
     expect(day.forecast.by_level.map((level) => level.level)).toEqual(['A1', 'A2', 'B1', 'B2', 'C1', 'C2', null])
     expect(day.leases[0]).toMatchObject({
       id: held.lease.id,
@@ -397,9 +398,12 @@ describe('console monitor', () => {
     for (const query of migration.queries) await env.DB.prepare(query).run()
     expect(
       await scalar<number>(
-        'select count(*) as value from work_items join work_item_log using (id) where work_item_log.gap = work_items.gap and closed_at is null',
+        'select count(*) as value from work_items join work_item_log using (id) where work_item_log.gap = work_items.gap and closed_at is null and backfilled = 1',
       ),
     ).toBe(await scalar<number>('select count(*) as value from work_items'))
+    // Backfilled items were open before the history began: they are not created work.
+    const summary = workSummarySchema.parse((await call('/manage/v1/work/summary', { token: await adminToken() })).body)
+    expect(summary).toMatchObject({ created: 0, history_since: null })
     expect(await scalar<number>('select sum(revision) as value from worklist')).toBe(before + 1)
   })
 })

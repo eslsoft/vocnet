@@ -118,6 +118,18 @@ describe('Overview', () => {
     expect(screen.getByText('100.0%')).toBeInTheDocument()
   })
 
+  it('waits for a day of history before forecasting the open tasks', async () => {
+    const young = workSummary({
+      history_since: new Date().toISOString(),
+      forecast: { net_per_day: null, net_per_day_24h: null, by_level: [{ level: 'A1', open: 5, net_per_day: null }] },
+    })
+    server.use(...consoleApi({ stats, summary: young }).handlers)
+    renderAt('/console', routes)
+    const open = await screen.findByRole('region', { name: 'Open tasks' })
+    expect(await within(open).findByText('Forecast after a day of history')).toBeInTheDocument()
+    expect(within(open).queryByText(/^A1 /)).not.toBeInTheDocument()
+  })
+
   it('shows a failed forecast inside its card', async () => {
     server.use(...consoleApi({ stats }).handlers)
     server.use(http.get('/manage/v1/work/summary', () => apiError(403, 'forbidden', 'Summary is down.')))

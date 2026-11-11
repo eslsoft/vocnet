@@ -97,6 +97,7 @@ export function workSummary(overrides: Partial<WorkSummary> = {}): WorkSummary {
   return {
     window: '24h',
     open: { queued: 0, in_progress: 0, waiting_on_review: 0, stuck: 0, total: 0 },
+    history_since: '2026-11-01T00:00:00.000Z',
     created: 0,
     closed: 0,
     median_close_seconds: null,

@@ -1566,6 +1566,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "backfilled": {
+          "name": "backfilled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
@@ -1576,13 +1584,21 @@
           ],
           "isUnique": false
         },
+        "work_item_log_recorded_idx": {
+          "name": "work_item_log_recorded_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false,
+          "where": "backfilled = 0"
+        },
         "work_item_log_closed_idx": {
           "name": "work_item_log_closed_idx",
           "columns": [
             "closed_at"
           ],
-          "where": "closed_at is not null",
-          "isUnique": false
+          "isUnique": false,
+          "where": "closed_at is not null"
         },
         "work_item_log_subject_idx": {
           "name": "work_item_log_subject_idx",
@@ -1596,15 +1612,15 @@
         "work_item_log_entry_id_entries_id_fk": {
           "name": "work_item_log_entry_id_entries_id_fk",
           "tableFrom": "work_item_log",
+          "tableTo": "entries",
           "columnsFrom": [
             "entry_id"
           ],
-          "tableTo": "entries",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},

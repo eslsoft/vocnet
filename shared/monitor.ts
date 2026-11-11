@@ -60,9 +60,10 @@ export const workLevelForecastSchema = z
   .object({
     level: cefrLevelSchema.nullable().meta({ description: "The entry's lowest CEFR level; null without one." }),
     open: count,
-    net_per_day: z
-      .number()
-      .meta({ description: 'Items closed minus items created per day, averaged over the last 7 days.' }),
+    net_per_day: z.number().nullable().meta({
+      description:
+        'Items closed minus items created per day, averaged over the recorded history of the last 7 days; null while less than a day is recorded.',
+    }),
   })
   .meta({ id: 'WorkLevelForecast' })
 
@@ -83,7 +84,11 @@ export const workSummarySchema = z
   .object({
     window: workWindowSchema,
     open: workOpenCountsSchema,
-    created: count.meta({ description: 'Items created within the window.' }),
+    history_since: z.iso.datetime().nullable().meta({
+      description:
+        'When the history began recording: the first item it saw open or close. Items already open when it began never count as created. Null before anything is recorded.',
+    }),
+    created: count.meta({ description: 'Items created within the window since the history began.' }),
     closed: count.meta({ description: 'Items closed within the window.' }),
     median_close_seconds: seconds
       .nullable()
@@ -92,8 +97,14 @@ export const workSummarySchema = z
     by_type: z.array(workTypeSummarySchema),
     throughput: z.array(workThroughputBucketSchema),
     forecast: z.object({
-      net_per_day: z.number().meta({ description: 'Items closed minus created per day over the last 7 days.' }),
-      net_per_day_24h: z.number().meta({ description: 'The same over the last 24 hours.' }),
+      net_per_day: z.number().nullable().meta({
+        description:
+          'Items closed minus created per day, averaged over the recorded history of the last 7 days; null while less than a day is recorded.',
+      }),
+      net_per_day_24h: z
+        .number()
+        .nullable()
+        .meta({ description: 'The same over the last 24 hours; null while less than a day is recorded.' }),
       by_level: z.array(workLevelForecastSchema),
     }),
     leases: z.array(workLeaseSummarySchema).meta({

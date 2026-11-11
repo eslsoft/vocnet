@@ -25,7 +25,7 @@ import {
 } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { type Db, decodeCursor, liveStatus, page, toFact, weakReview } from './rows'
+import { type Db, decodeCursor, inIds, liveStatus, page, toFact, weakReview } from './rows'
 import { toLease } from './work'
 
 /**
@@ -235,12 +235,25 @@ export function createMonitorRepo(db: Db): MonitorRepo {
       return row?.count ?? 0
     },
 
+    async historySince() {
+      const [row] = await db
+        .select({
+          created: sql<
+            string | null
+          >`(select min(${workItemLog.createdAt}) from ${workItemLog} where not ${workItemLog.backfilled})`,
+          closed: sql<string | null>`(select min(${workItemLog.closedAt}) from ${workItemLog})`,
+        })
+        .from(sql`(select 1)`)
+      const times = [row?.created, row?.closed].filter((time): time is string => time != null)
+      return times.length === 0 ? null : times.sort()[0]!
+    },
+
     async itemFlow(since) {
       const rows = await db
         .select({
           type: workItemLog.type,
           levelRank: worklist.levelRank,
-          created: sql<number>`sum(${workItemLog.createdAt} >= ${since})`,
+          created: sql<number>`coalesce(sum(${workItemLog.createdAt} >= ${since} and not ${workItemLog.backfilled}), 0)`,
           closed: sql<number>`coalesce(sum(${workItemLog.closedAt} >= ${since}), 0)`,
         })
         .from(workItemLog)
@@ -256,7 +269,7 @@ export function createMonitorRepo(db: Db): MonitorRepo {
         db
           .select({ key: bucket(workItemLog.createdAt), count: count() })
           .from(workItemLog)
-          .where(gte(workItemLog.createdAt, since))
+          .where(and(gte(workItemLog.createdAt, since), eq(workItemLog.backfilled, false)))
           .groupBy(bucket(workItemLog.createdAt)),
         db
           .select({ key: bucket(workItemLog.closedAt), count: count() })
@@ -321,7 +334,7 @@ export function createMonitorRepo(db: Db): MonitorRepo {
           : await db
               .select({ id: entries.id, lemma: entries.lemma })
               .from(entries)
-              .where(inArray(entries.id, firstEntries))
+              .where(inIds(entries.id, firstEntries))
       const lemmaOf = new Map(lemmas.map((row) => [row.id, row.lemma as Lemma]))
       return leases.map((lease) => ({ ...lease, lemmas: lease.entryIds.slice(0, 3).map((id) => lemmaOf.get(id)!) }))
     },

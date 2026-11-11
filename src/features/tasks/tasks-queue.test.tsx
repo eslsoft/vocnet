@@ -177,6 +177,31 @@ describe('TasksQueue', () => {
     expect(second).toHaveTextContent('2 tasks · get, play')
   })
 
+  it('collects history before it forecasts or rates the throughput [spec: console/task-queue]', async () => {
+    const collecting = { net_per_day: null, net_per_day_24h: null, by_level: [] }
+    server.use(
+      ...consoleApi({
+        summary: workSummary({ history_since: '2026-11-11T01:00:00.000Z', forecast: collecting }),
+      }).handlers,
+    )
+    const view = renderAt('/console/tasks', routes)
+    const forecast = (await screen.findByText('Forecast')).closest('[data-slot=card]') as HTMLElement
+    expect(await within(forecast).findByText('Collecting history')).toBeInTheDocument()
+    expect(
+      within(forecast).getByText(/^Recording since .+\. Forecasts appear once a full day is recorded\.$/),
+    ).toBeInTheDocument()
+    expect(within(forecast).queryByRole('table')).not.toBeInTheDocument()
+    view.unmount()
+
+    server.use(...consoleApi({ summary: workSummary({ history_since: null, forecast: collecting }) }).handlers)
+    renderAt('/console/tasks', routes)
+    expect(
+      await screen.findByText('Nothing recorded yet. Forecasts appear once a full day is recorded.'),
+    ).toBeInTheDocument()
+    const throughput = screen.getByText('Throughput').closest('[data-slot=card]') as HTMLElement
+    expect(within(throughput).getAllByText('—')).toHaveLength(4)
+  })
+
   it(
     'switches the window in the URL and between Queue and Activity [spec: console/task-queue]',
     async () => {

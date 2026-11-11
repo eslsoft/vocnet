@@ -8,7 +8,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/sha
 import { ErrorNotice } from '@/shared/ui/error-notice'
 import { StatCard } from '@/shared/ui/stat-card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
-import { clearRange, daysToClear, hourlyRates, inLevelOrder, leaseRemaining } from './forecast'
+import {
+  clearRange,
+  daysToClear,
+  hourlyRates,
+  inLevelOrder,
+  type KnownForecast,
+  knownForecast,
+  leaseRemaining,
+} from './forecast'
 import { useWorkSummary } from './hooks'
 import { byStage } from './stages'
 import { TaskTypeBadge } from './task-badges'
@@ -79,7 +87,7 @@ function bucketLabel(start: string, window: WorkSummary['window'], locale: strin
 function Throughput({ summary }: { summary: WorkSummary }) {
   const { t, i18n } = useTranslation()
   const number = useNumber()
-  const rates = hourlyRates(summary)
+  const rates = hourlyRates(summary, Date.now())
   const buckets = summary.throughput
   const max = Math.max(1, ...buckets.map((bucket) => Math.max(bucket.closed, bucket.created)))
   const tick = Math.max(1, Math.round(buckets.length / 4))
@@ -92,16 +100,16 @@ function Throughput({ summary }: { summary: WorkSummary }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <dl className="flex flex-wrap gap-x-10 gap-y-3">
-          <Rate label={t('tasks.closedPerHour')} value={number(rates.closed, decimal)} />
-          <Rate label={t('tasks.createdPerHour')} value={number(rates.created, decimal)} />
+          <Rate label={t('tasks.closedPerHour')} value={rates ? number(rates.closed, decimal) : '—'} />
+          <Rate label={t('tasks.createdPerHour')} value={rates ? number(rates.created, decimal) : '—'} />
           <Rate
             label={t('tasks.netPerHour')}
-            value={formatSigned(Math.round(rates.net), i18n.language)}
-            className={rates.net <= 0 ? 'text-primary' : 'text-destructive'}
+            value={rates ? formatSigned(Math.round(rates.net), i18n.language) : '—'}
+            className={rates === null ? undefined : rates.net <= 0 ? 'text-primary' : 'text-destructive'}
           />
           <Rate
             label={t('tasks.perAgentPerHour')}
-            value={rates.perAgent === null ? '—' : number(rates.perAgent, decimal)}
+            value={rates?.perAgent == null ? '—' : number(rates.perAgent, decimal)}
           />
         </dl>
         <figure className="flex flex-col gap-2">
@@ -158,10 +166,8 @@ function DoneIn({ days }: { days: number | null }) {
 }
 
 function Forecast({ summary }: { summary: WorkSummary }) {
-  const { t, i18n } = useTranslation()
-  const number = useNumber()
-  const { forecast, open } = summary
-  const range = clearRange(open.total, forecast, Date.now())
+  const { t } = useTranslation()
+  const forecast = knownForecast(summary.forecast)
   return (
     <Card>
       <CardHeader>
@@ -169,57 +175,87 @@ function Forecast({ summary }: { summary: WorkSummary }) {
         <CardDescription>{t('tasks.forecastHint')}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-muted p-3">
-          <div className="flex flex-col gap-1 text-xs">
-            <span className="text-sm">{t('tasks.allOpen')}</span>
-            <span className="text-muted-foreground">
-              {range
-                ? t('tasks.rangeHint', {
-                    from: formatDate(range.from, i18n.language),
-                    to: formatDate(range.to, i18n.language),
-                    open: number(open.total),
-                    net: formatSigned(-forecast.net_per_day, i18n.language),
-                  })
-                : t('tasks.growingHint', { net: formatSigned(-forecast.net_per_day, i18n.language) })}
-            </span>
-          </div>
-          <span className="font-semibold text-2xl tabular-nums">
-            {range === null
-              ? t('tasks.growing')
-              : range.days === 0
-                ? t('tasks.done')
-                : t('tasks.days', { count: Math.max(1, Math.round(range.days)) })}
-          </span>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('tasks.level')}</TableHead>
-              <TableHead className="text-right">{t('tasks.openColumn')}</TableHead>
-              <TableHead className="text-right">{t('tasks.netPerDay')}</TableHead>
-              <TableHead className="text-right">{t('tasks.doneIn')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {inLevelOrder(forecast.by_level).map((row) => (
-              <TableRow key={row.level ?? 'none'}>
-                <TableCell>{row.level ?? t('tasks.noLevel')}</TableCell>
-                <TableCell className="text-right tabular-nums">{number(row.open)}</TableCell>
-                <TableCell
-                  className={cn('text-right tabular-nums', row.net_per_day <= 0 && row.open > 0 && 'text-destructive')}
-                >
-                  {formatSigned(-row.net_per_day, i18n.language)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <DoneIn days={daysToClear(row.open, row.net_per_day)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {forecast ? (
+          <ForecastBody open={summary.open.total} forecast={forecast} />
+        ) : (
+          <Collecting since={summary.history_since} />
+        )}
         <p className="text-muted-foreground text-xs">{t('tasks.forecastNote')}</p>
       </CardContent>
     </Card>
+  )
+}
+
+/** Shown until the history covers a full day: rates from a few hours would mislead. */
+function Collecting({ since }: { since: string | null }) {
+  const { t, i18n } = useTranslation()
+  return (
+    <div className="flex flex-col gap-1 rounded-lg bg-muted p-3 text-sm">
+      <span className="font-medium">{t('tasks.collecting')}</span>
+      <span className="text-muted-foreground text-xs">
+        {since === null
+          ? t('tasks.collectingNothing')
+          : t('tasks.collectingSince', { since: formatDate(new Date(since), i18n.language) })}
+      </span>
+    </div>
+  )
+}
+
+function ForecastBody({ open, forecast }: { open: number; forecast: KnownForecast }) {
+  const { t, i18n } = useTranslation()
+  const number = useNumber()
+  const range = clearRange(open, forecast, Date.now())
+  return (
+    <>
+      <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-muted p-3">
+        <div className="flex flex-col gap-1 text-xs">
+          <span className="text-sm">{t('tasks.allOpen')}</span>
+          <span className="text-muted-foreground">
+            {range
+              ? t('tasks.rangeHint', {
+                  from: formatDate(range.from, i18n.language),
+                  to: formatDate(range.to, i18n.language),
+                  open: number(open),
+                  net: formatSigned(-forecast.net_per_day, i18n.language),
+                })
+              : t('tasks.growingHint', { net: formatSigned(-forecast.net_per_day, i18n.language) })}
+          </span>
+        </div>
+        <span className="font-semibold text-2xl tabular-nums">
+          {range === null
+            ? t('tasks.growing')
+            : range.days === 0
+              ? t('tasks.done')
+              : t('tasks.days', { count: Math.max(1, Math.round(range.days)) })}
+        </span>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('tasks.level')}</TableHead>
+            <TableHead className="text-right">{t('tasks.openColumn')}</TableHead>
+            <TableHead className="text-right">{t('tasks.netPerDay')}</TableHead>
+            <TableHead className="text-right">{t('tasks.doneIn')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {inLevelOrder(forecast.by_level).map((row) => (
+            <TableRow key={row.level ?? 'none'}>
+              <TableCell>{row.level ?? t('tasks.noLevel')}</TableCell>
+              <TableCell className="text-right tabular-nums">{number(row.open)}</TableCell>
+              <TableCell
+                className={cn('text-right tabular-nums', row.net_per_day <= 0 && row.open > 0 && 'text-destructive')}
+              >
+                {formatSigned(-row.net_per_day, i18n.language)}
+              </TableCell>
+              <TableCell className="text-right">
+                <DoneIn days={daysToClear(row.open, row.net_per_day)} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </>
   )
 }
 

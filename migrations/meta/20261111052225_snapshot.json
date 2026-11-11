@@ -1566,6 +1566,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "backfilled": {
+          "name": "backfilled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
@@ -1575,6 +1583,14 @@
             "created_at"
           ],
           "isUnique": false
+        },
+        "work_item_log_recorded_idx": {
+          "name": "work_item_log_recorded_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false,
+          "where": "backfilled = 0"
         },
         "work_item_log_closed_idx": {
           "name": "work_item_log_closed_idx",

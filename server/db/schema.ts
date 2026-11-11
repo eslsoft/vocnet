@@ -254,9 +254,16 @@ export const workItemLog = sqliteTable(
     createdAt: text('created_at').notNull(),
     /** When the rescore deleted the item; null while it is open. */
     closedAt: text('closed_at'),
+    /**
+     * The history migration copied the row from an item that was already open, so its creation
+     * predates the log and does not count as created work.
+     */
+    backfilled: integer('backfilled', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [
     index('work_item_log_created_idx').on(table.createdAt),
+    // The first creation the history recorded, past the rows the migration backfilled.
+    index('work_item_log_recorded_idx').on(table.createdAt).where(sql`backfilled = 0`),
     index('work_item_log_closed_idx').on(table.closedAt).where(sql`closed_at is not null`),
     index('work_item_log_subject_idx').on(table.subjectId),
   ],

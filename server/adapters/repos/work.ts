@@ -37,7 +37,7 @@ import {
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { levelRankSql } from '../reference-sql'
-import { type Db, decodeCursor, liveStatus, page } from './rows'
+import { type Db, decodeCursor, inIds, liveStatus, page } from './rows'
 
 /**
  * Creates the entry's worklist row once the entry row exists, with the learner priority of its
@@ -306,10 +306,6 @@ export function leaseStatement(
     .returning()
 }
 
-/** Membership in one bound JSON array, so a list of any length stays inside D1's 100 bound parameters a statement. */
-const inIds = (column: SQLWrapper, ids: readonly string[]) =>
-  sql`${column} in (select value from json_each(${JSON.stringify(ids)}))`
-
 const curationCursor = z.object({ rank: z.number().int(), zipf: z.number(), created_at: z.string(), id: z.string() })
 
 const staleColumns = { entryId: worklist.entryId, revision: worklist.revision }
@@ -431,6 +427,7 @@ export function createWorkRepo(db: Db): WorkRepo {
               gap: workItems.gap,
               createdAt: workItems.createdAt,
               closedAt: sql`null`.as('closed_at'),
+              backfilled: sql`0`.as('backfilled'),
             })
             .from(workItems)
             .where(

@@ -468,9 +468,11 @@ export interface MonitorRepo {
   >
   /** Leases that expired since the cutoff and before now: their holders never completed them. */
   countTimedOutLeases(since: string, now: string): Promise<number>
-  /** Items created and closed since the cutoff, by type and level rank. */
+  /** When the history began recording: the earliest creation it saw (not backfilled) or close; null when empty. */
+  historySince(): Promise<string | null>
+  /** Items created (not backfilled) and closed since the cutoff, by type and level rank. */
   itemFlow(since: string): Promise<Array<ItemFlow & { type: WorkType; levelRank: number | null }>>
-  /** Items created and closed since the cutoff, by the first `keyLength` characters of the timestamp. */
+  /** Items created (not backfilled) and closed since the cutoff, by the first `keyLength` characters of the timestamp. */
   throughput(since: string, keyLength: number): Promise<Array<ItemFlow & { key: string }>>
   /** The median seconds from created to closed of the items closed since the cutoff; null without one. */
   medianCloseSeconds(since: string): Promise<number | null>
