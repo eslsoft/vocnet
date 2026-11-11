@@ -27,6 +27,9 @@ export type Db = ReturnType<typeof createDb>
 /** Literal, not bound, so SQLite matches it against the partial unique index predicate. */
 export const liveStatus = sql`${facts.status} in ('pending', 'published')`
 
+/** Published facts whose standing review is uncertain or failed: the weak facts the reviews leave. */
+export const weakReview = sql`${facts.status} = 'published' and json_extract(${facts.review}, '$.verdict') in ('uncertain', 'fail')`
+
 // Stored rows are external data: each is parsed into its domain shape here, so
 // nothing past the repos sees JSON text or unchecked enums.
 

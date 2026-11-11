@@ -28,6 +28,7 @@ import {
   revalidatedBy,
   showsTaxonomy,
   subjectTypeOf,
+  summarizeFact,
   targetOf,
   topicOf,
   weighsBlockedCandidates,
@@ -2209,5 +2210,58 @@ describe('completeness write rules and rubrics', () => {
     for (const lemma of ['a.m.', "o'clock", 'Mrs']) {
       expect(admissionOf('morphology', { parts: [{ form: lemma, role: 'base' }] }, entry(lemma))).toBeNull()
     }
+  })
+})
+
+describe('fact summaries', () => {
+  const summary = <K extends keyof FactPayloads>(kind: K, payload: FactPayloads[K]) => summarizeFact({ kind, payload })
+
+  it('says in one line what each kind of fact claims [spec: monitor/fact-summary]', () => {
+    expect(summary('entry', {})).toBe('')
+    expect(summary('sense', { gloss: 'a river side' })).toBe('a river side')
+    expect(summary('sense', { gloss: 'a mate', register: 'informal', region: 'british' })).toBe(
+      'a mate (informal, british)',
+    )
+    expect(summary('form', { form: 'banks', type: 'plural' })).toBe('banks (plural)')
+    expect(summary('form', { form: 'went', type: 'past', pos: 'verb', ipa: 'wɛnt', accent: 'us' })).toBe(
+      'went (past, verb) /wɛnt/ (us)',
+    )
+    expect(summary('relation', { type: 'synonym', target_sense_id: target })).toBe(`synonym → ${target}`)
+    expect(summary('relation', { type: 'hypernym', target_sense_id: target, domain: 'biology' })).toBe(
+      `hypernym → ${target} (biology)`,
+    )
+    expect(summary('pronunciation', { ipa: 'bæŋk', accent: 'uk' })).toBe('/bæŋk/ (uk)')
+    expect(summary('pronunciation', { ipa: 'ðə', accent: 'us', strength: 'weak', pos: 'determiner' })).toBe(
+      '/ðə/ (us, weak, determiner)',
+    )
+    expect(summary('example', { text: 'We sat on the bank.' })).toBe('We sat on the bank.')
+    expect(summary('example', { text: 'We sat.', translations: { zh: '我们坐着。' } })).toBe('We sat. · zh: 我们坐着。')
+    expect(summary('translation', { language: 'zh', text: '河岸' })).toBe('zh: 河岸')
+    expect(summary('topic', { topic_id: hospital })).toBe(hospital)
+    expect(summary('grammar', { countability: 'countable' })).toBe('countable')
+    expect(summary('grammar', { agreement: ['plural_noun'], patterns: ['to_infinitive'], prepositions: ['on'] })).toBe(
+      'plural_noun, to_infinitive, on',
+    )
+    expect(summary('grammar', { transitivity: 'transitive' })).toBe('transitive')
+    expect(
+      summary('morphology', {
+        parts: [
+          { form: 'teach', role: 'base', lemma: 'teach' },
+          { form: 'er', role: 'suffix' },
+        ],
+      }),
+    ).toBe('teach (teach) + er')
+    expect(
+      summary('morphology', {
+        parts: [{ form: 'phone', role: 'base' }],
+        shortened: { type: 'clipping', of: 'telephone' },
+      }),
+    ).toBe('phone, clipping of telephone')
+    expect(summary('syllables', { syllables: ['ba', 'nana'] })).toBe('ba·nana')
+    expect(summary('collocation', { text: 'river bank', pattern: 'noun_noun' })).toBe('river bank (noun_noun)')
+    expect(summary('sense_list', { common: [target], extra: [] })).toBe('1 common, 0 extra')
+    expect(summary('gap_closure', { gap: 'parts', reason: 'An abstract idea has no parts.' })).toBe(
+      'parts: An abstract idea has no parts.',
+    )
   })
 })

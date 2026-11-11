@@ -231,8 +231,15 @@ describe('public catalog', () => {
 
   it('reads only the page when it lists entries [spec: catalog/manage-entry-list-index]', async () => {
     const cursor = encodeCursor({ lemma: 'ba' })
+    const unfiltered = { prefix: 'b', level: null, flagged: false, stuck: false }
+    const filtered = { prefix: 'b', level: 'A1', flagged: true, stuck: true } as const
+    const now = new Date().toISOString()
+    const statements = [
+      ...entrySummaryStatements(createDb(env), unfiltered, { limit: 50, cursor }, now),
+      ...entrySummaryStatements(createDb(env), filtered, { limit: 50, cursor }, now),
+    ]
     const plans = await Promise.all(
-      entrySummaryStatements(createDb(env), 'b', { limit: 50, cursor }).map(async (statement) => {
+      statements.map(async (statement) => {
         const { sql, params } = statement.toSQL()
         const { results } = await env.DB.prepare(`explain query plan ${sql}`)
           .bind(...params)

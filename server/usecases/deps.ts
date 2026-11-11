@@ -8,6 +8,7 @@ import type {
   IdGenerator,
   JevReviewer,
   LlmReviewer,
+  MonitorRepo,
   NodeRepo,
   PublicViewRepo,
   RateLimiter,
@@ -26,6 +27,7 @@ export interface Deps {
   feedback: FeedbackRepo
   agents: AgentRepo
   work: WorkRepo
+  monitor: MonitorRepo
   reference: ReferenceRepo
   publicViews: PublicViewRepo
   jev: JevReviewer

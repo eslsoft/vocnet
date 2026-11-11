@@ -6,6 +6,9 @@ import { z } from 'zod'
 
 export const entryIdSchema = z.uuid().brand<'EntryId'>()
 export type EntryId = z.infer<typeof entryIdSchema>
+
+export const entryRefSchema = z.object({ id: entryIdSchema, lemma: z.string() }).meta({ id: 'EntryRef' })
+export type EntryRef = z.infer<typeof entryRefSchema>
 export const senseIdSchema = z.uuid().brand<'SenseId'>()
 export type SenseId = z.infer<typeof senseIdSchema>
 export const factIdSchema = z.uuid().brand<'FactId'>()
@@ -790,6 +793,12 @@ export const factWriteResultSchema = z
   .object({ fact: factSchema, created: z.boolean() })
   .meta({ id: 'FactWriteResult' })
 
+export const listedFactSchema = z.intersection(factSchema, z.object({ entry: entryRefSchema })).meta({
+  id: 'ListedFact',
+  description: 'A fact with the entry its subject is or belongs to.',
+})
+export type ListedFactDto = z.infer<typeof listedFactSchema>
+
 export const factPageSchema = z
-  .object({ items: z.array(factSchema), next_cursor: z.string().nullable() })
+  .object({ items: z.array(listedFactSchema), next_cursor: z.string().nullable() })
   .meta({ id: 'FactPage' })

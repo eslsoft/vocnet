@@ -1,16 +1,17 @@
 import { createRoute } from '@hono/zod-openapi'
-import { claimFeedback, listFeedback, resolveFeedback } from '@server/usecases/feedback'
+import { claimFeedback, getFeedbackWithEntry, listFeedback, resolveFeedback } from '@server/usecases/feedback'
 import {
   feedbackIdSchema,
   feedbackPageSchema,
   feedbackSchema,
   feedbackStatusSchema,
+  listedFeedbackSchema,
   resolveFeedbackInputSchema,
 } from '@shared/feedback'
 import { z } from 'zod'
 import { actorOf } from '../auth'
 import { createRouter, errorResponse, json, jsonBody, pageQuery } from '../router'
-import { feedbackDto, pageDto } from '../serialize'
+import { feedbackDto, listedFeedbackDto, pageDto } from '../serialize'
 
 const tags = ['Feedback']
 const idParams = z.object({ id: feedbackIdSchema })
@@ -20,8 +21,18 @@ const listRoute = createRoute({
   path: '/feedback',
   tags,
   summary: 'List feedback, newest first',
+  description: 'Each item carries the entry its target is or belongs to.',
   request: { query: pageQuery.extend({ status: feedbackStatusSchema.optional() }) },
   responses: { 200: json(feedbackPageSchema, 'A page of feedback.'), 400: errorResponse },
+})
+
+const getRoute = createRoute({
+  method: 'get',
+  path: '/feedback/{id}',
+  tags,
+  summary: 'Get one feedback item with the entry its target is or belongs to',
+  request: { params: idParams },
+  responses: { 200: json(listedFeedbackSchema, 'The feedback.'), 404: errorResponse },
 })
 
 const claimRoute = createRoute({
@@ -52,8 +63,11 @@ const resolveRoute = createRoute({
 export const manageFeedbackRoutes = createRouter()
   .openapi(listRoute, async (c) => {
     const { status, limit, cursor } = c.req.valid('query')
-    return c.json(pageDto(await listFeedback(c.get('deps'), { status }, { limit, cursor }), feedbackDto), 200)
+    return c.json(pageDto(await listFeedback(c.get('deps'), { status }, { limit, cursor }), listedFeedbackDto), 200)
   })
+  .openapi(getRoute, async (c) =>
+    c.json(listedFeedbackDto(await getFeedbackWithEntry(c.get('deps'), c.req.valid('param').id)), 200),
+  )
   .openapi(claimRoute, async (c) =>
     c.json(feedbackDto(await claimFeedback(c.get('deps'), actorOf(c), c.req.valid('param').id)), 200),
   )

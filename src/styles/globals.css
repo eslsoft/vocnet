@@ -44,6 +44,12 @@ button {
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --color-surface: var(--surface);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-highlight: var(--highlight);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -103,6 +109,12 @@ button {
   --accent-foreground: #0b5e57;
   --highlight: #b45309;
   --destructive: oklch(0.577 0.245 27.325);
+  --success: #0f9f6e;
+  --success-foreground: #065f46;
+  --warning: #d97706;
+  --warning-foreground: #8a3c06;
+  --info: #0284c7;
+  --info-foreground: #075985;
   --border: #e0e7e5;
   --input: #cfd9d6;
   --ring: #0f766e;
@@ -140,6 +152,12 @@ button {
   --accent-foreground: #8de5d8;
   --highlight: #f0b25a;
   --destructive: oklch(0.704 0.191 22.216);
+  --success: #34d399;
+  --success-foreground: #6ee7b7;
+  --warning: #fbbf24;
+  --warning-foreground: #fcd34d;
+  --info: #38bdf8;
+  --info-foreground: #7dd3fc;
   --border: #22312f;
   --input: #2c3d3a;
   --ring: #2fb8a8;

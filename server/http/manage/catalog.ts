@@ -3,11 +3,11 @@ import {
   createEntry,
   createSense,
   getManagedEntry,
-  getStats,
   importCoreEntries,
   listEntrySummaries,
   locateNode,
 } from '@server/usecases/catalog'
+import { getConsoleStats } from '@server/usecases/monitor'
 import { listReferenceSources } from '@server/usecases/reference'
 import {
   coreImportInputSchema,
@@ -20,9 +20,9 @@ import {
   lemmaInputSchema,
   managedEntryDetailSchema,
   nodeLocationSchema,
-  statsSchema,
 } from '@shared/catalog'
-import { referenceSourceListSchema } from '@shared/reference'
+import { consoleStatsSchema } from '@shared/monitor'
+import { cefrLevelSchema, referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
 import { actorOf, requireAdmin } from '../auth'
 import { createRouter, errorResponse, json, jsonBody, pageQuery } from '../router'
@@ -83,8 +83,21 @@ const listEntries = createRoute({
   tags,
   summary: 'List entries in every status, in lemma order',
   description:
-    'Each entry comes with its entry status, live sense count, fact counts by status, and last completed work.',
-  request: { query: pageQuery.extend({ prefix: lemmaInputSchema.optional() }) },
+    'Each entry comes with its entry status, live sense count, fact counts by status, last completed work, lowest ' +
+    'CEFR level, its scores and slot counts as of its last rescore, and its open work items by where they stand.',
+  request: {
+    query: pageQuery.extend({
+      prefix: lemmaInputSchema.optional(),
+      level: cefrLevelSchema.optional().meta({ description: "Only entries whose lemma's lowest CEFR level is this." }),
+      flagged: z.enum(['true']).optional().meta({
+        description: 'Only entries with a weak fact about them or a sense: as the facts list `weak` filter selects.',
+      }),
+      stuck: z
+        .enum(['true'])
+        .optional()
+        .meta({ description: "Only entries with an item three passes left unchanged (in the curators' queue)." }),
+    }),
+  },
   responses: { 200: json(entrySummaryPageSchema, 'A page of entry summaries.'), 400: errorResponse },
 })
 
@@ -111,8 +124,12 @@ const stats = createRoute({
   method: 'get',
   path: '/stats',
   tags,
-  summary: 'Fact counts by kind and status, and unresolved feedback',
-  responses: { 200: json(statsSchema, 'Current counts.') },
+  summary: 'Counts for the console overview',
+  description:
+    'Facts by kind and status, weak facts by kind, live facts, average completeness overall and by lowest CEFR level ' +
+    'of the live entries (as of their last rescore), the pending reviews and how many have waited over an hour, ' +
+    'unresolved feedback, and the open, stuck, and timed-out (last 24 hours) work.',
+  responses: { 200: json(consoleStatsSchema, 'Current counts.') },
 })
 
 const sources = createRoute({
@@ -138,8 +155,9 @@ export const manageCatalogRoutes = createRouter()
     return result.created ? c.json(body, 201) : c.json(body, 200)
   })
   .openapi(listEntries, async (c) => {
-    const { prefix, limit, cursor } = c.req.valid('query')
-    const page = await listEntrySummaries(c.get('deps'), prefix ?? '', { limit, cursor })
+    const { prefix, level, flagged, stuck, limit, cursor } = c.req.valid('query')
+    const filter = { prefix: prefix ?? '', level: level ?? null, flagged: flagged === 'true', stuck: stuck === 'true' }
+    const page = await listEntrySummaries(c.get('deps'), filter, { limit, cursor })
     return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
   })
   .openapi(getEntry, async (c) => {
@@ -147,5 +165,5 @@ export const manageCatalogRoutes = createRouter()
     return c.json({ ...managedEntryDto(view), frequency, cefr }, 200)
   })
   .openapi(getNode, async (c) => c.json(await locateNode(c.get('deps'), c.req.valid('param').id), 200))
-  .openapi(stats, async (c) => c.json(await getStats(c.get('deps')), 200))
+  .openapi(stats, async (c) => c.json(await getConsoleStats(c.get('deps')), 200))
   .openapi(sources, async (c) => c.json({ items: await listReferenceSources(c.get('deps')) }, 200))

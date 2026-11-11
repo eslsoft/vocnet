@@ -3,7 +3,7 @@ import { fakeWorld } from '@server/testing/fakes'
 import type { FactId, SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
-import { getFact, listFacts, rereviewFact, retractFact, submitFact } from './facts'
+import { getFact, getFactWithEntry, listFacts, rereviewFact, retractFact, submitFact } from './facts'
 import { reviewFact } from './review'
 
 async function bankWorld() {
@@ -343,6 +343,23 @@ describe('reading facts', () => {
     const { world } = await bankWorld()
     const page = await listFacts(world.deps, { status: 'published', kind: 'sense' }, { limit: 10 })
     expect(page.items).toHaveLength(2)
+  })
+
+  it('lists the facts one principal authored about the entry with exactly this lemma [spec: monitor/fact-filters]', async () => {
+    const { world } = await bankWorld()
+    const about = async (lemma: string, author?: string) =>
+      (await listFacts(world.deps, { lemma, author }, { limit: 50 })).items
+    const facts = await about(' bank ')
+    expect(facts.length).toBeGreaterThan(0)
+    expect(new Set(facts.map((fact) => fact.entry.lemma))).toEqual(new Set(['bank']))
+    const { entry, ...first } = facts[0]!
+    await expect(getFactWithEntry(world.deps, first.id)).resolves.toEqual({ ...first, entry })
+    await expect(getFactWithEntry(world.deps, crypto.randomUUID() as FactId)).rejects.toMatchObject({
+      code: 'not_found',
+    })
+    expect(await about('Bank')).toEqual([])
+    expect(await about('bank', 'agent:nobody')).toEqual([])
+    expect(await about('bank', facts[0]?.author)).toEqual(facts.filter((fact) => fact.author === facts[0]?.author))
   })
 })
 

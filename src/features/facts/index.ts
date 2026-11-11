@@ -1,6 +1,11 @@
-// Public surface of the facts feature.
-export { EntryLink } from './entry-link'
-export { FactStatusBadge } from './fact-badges'
-export { FactDrawer } from './fact-drawer'
-export { FactsBrowser, FactTable } from './facts-browser'
+// Public surface of the facts feature: reading facts, their state, and the entry they belong to.
+
+export { groupEntry, type Listing, type SenseView } from './entry-view'
+export { FactFlagBadge, FactStateBadge, FactStatusBadge } from './fact-badges'
+export { FactClaim } from './fact-claim'
+export { FactSheet } from './fact-sheet'
+export { type FactState, factState } from './fact-state'
+export { FactsBrowser } from './facts-browser'
+export { useFact, useManagedEntry, useNodeLocation } from './hooks'
 export { useFactSelection } from './selection'
+export { summarizeFact } from './summary'

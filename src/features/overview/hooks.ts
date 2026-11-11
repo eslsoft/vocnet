@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { getStats } from './api'
+import { getConsoleStats } from './api'
 
-export function useStats() {
-  return useQuery({ queryKey: ['stats'], queryFn: getStats })
+// Agents keep producing while the admin watches, so the counts refresh themselves.
+const WATCH_INTERVAL_MS = 60_000
+
+export function useConsoleStats() {
+  return useQuery({ queryKey: ['stats'], queryFn: getConsoleStats, refetchInterval: WATCH_INTERVAL_MS })
 }

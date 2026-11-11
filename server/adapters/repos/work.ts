@@ -1,4 +1,14 @@
-import { entries, facts, senses, wordFrequency, workItems, workLeases, worklist } from '@server/db/schema'
+import {
+  entries,
+  facts,
+  senses,
+  wordFrequency,
+  workAttempts,
+  workItemLog,
+  workItems,
+  workLeases,
+  worklist,
+} from '@server/db/schema'
 import type { PrincipalRef } from '@server/domain/principal'
 import { frequencyKey } from '@server/domain/reference'
 import type { Lemma } from '@server/domain/term'
@@ -51,6 +61,9 @@ export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) 
           ),
           completeness: sql`0`.as('completeness'),
           quality: sql`1`.as('quality'),
+          slotsTotal: sql`0`.as('slots_total'),
+          slotsPublished: sql`0`.as('slots_published'),
+          slotsPending: sql`0`.as('slots_pending'),
           revision: sql`0`.as('revision'),
           scoredRevision: sql`0`.as('scored_revision'),
           viewRevision: sql`0`.as('view_revision'),
@@ -241,7 +254,7 @@ export function toWorkItem(row: typeof workItems.$inferSelect): WorkItem {
   }
 }
 
-const toLease = (row: typeof workLeases.$inferSelect): WorkLease => ({
+export const toLease = (row: typeof workLeases.$inferSelect): WorkLease => ({
   id: row.id as WorkLeaseId,
   holder: row.holder as PrincipalRef,
   type: workTypeSchema.parse(row.type),
@@ -292,6 +305,10 @@ export function leaseStatement(
     .where(inArray(workItems.id, next))
     .returning()
 }
+
+/** Membership in one bound JSON array, so a list of any length stays inside D1's 100 bound parameters a statement. */
+const inIds = (column: SQLWrapper, ids: readonly string[]) =>
+  sql`${column} in (select value from json_each(${JSON.stringify(ids)}))`
 
 const curationCursor = z.object({ rank: z.number().int(), zipf: z.number(), created_at: z.string(), id: z.string() })
 
@@ -345,7 +362,7 @@ export function createWorkRepo(db: Db): WorkRepo {
       return rows.map(toWorkItem)
     },
 
-    async saveAssessment(stale, scores, { writes, deletes }) {
+    async saveAssessment(stale, { completeness, quality, slots }, { writes, deletes, verdicts }) {
       // One batch, each statement conditional on the revision the rescore read: a write that bumped
       // it since leaves the scores and the items as they were, and its own rescore follows.
       const current = exists(
@@ -401,12 +418,66 @@ export function createWorkRepo(db: Db): WorkRepo {
             worked: sql`excluded.worked`,
           },
         })
+      // The history row of every item written: inserted with a new item, its gap refreshed after.
+      const log = db
+        .insert(workItemLog)
+        .select(
+          db
+            .select({
+              id: workItems.id,
+              entryId: workItems.entryId,
+              type: workItems.type,
+              subjectId: workItems.subjectId,
+              gap: workItems.gap,
+              createdAt: workItems.createdAt,
+              closedAt: sql`null`.as('closed_at'),
+            })
+            .from(workItems)
+            .where(
+              and(
+                inIds(
+                  workItems.id,
+                  rows.map((row) => row.id),
+                ),
+                current,
+              ),
+            ),
+        )
+        .onConflictDoUpdate({ target: workItemLog.id, set: { gap: sql`excluded.gap` } })
       const remove = db.delete(workItems).where(and(inArray(workItems.id, [...deletes]), current))
+      const close = db
+        .update(workItemLog)
+        .set({ closedAt: now })
+        .where(and(inIds(workItemLog.id, deletes), isNull(workItemLog.closedAt), current))
+      const judged = JSON.stringify(verdicts)
+      const settle = db
+        .update(workAttempts)
+        .set({
+          outcome: sql`(select json_extract(value, '$.verdict') from json_each(${judged}) where json_extract(value, '$.id') = ${workAttempts.itemId})`,
+          settledAt: now,
+        })
+        .where(
+          and(
+            inIds(
+              workAttempts.itemId,
+              verdicts.map((verdict) => verdict.id),
+            ),
+            eq(workAttempts.outcome, 'waiting_on_review'),
+            current,
+          ),
+        )
       const score = db
         .update(worklist)
-        .set({ ...scores, scoredRevision: stale.revision })
+        .set({
+          completeness,
+          quality,
+          slotsTotal: slots.total,
+          slotsPublished: slots.published,
+          slotsPending: slots.pending,
+          scoredRevision: stale.revision,
+        })
         .where(and(eq(worklist.entryId, stale.entryId), eq(worklist.revision, stale.revision)))
-      await db.batch([upsert, remove, score])
+      await db.batch([upsert, log, remove, close, settle, score])
     },
 
     async claim(draft, types, limit, now) {
@@ -445,7 +516,45 @@ export function createWorkRepo(db: Db): WorkRepo {
       // changes nothing, and the delete that comes last says whether it was held.
       const held = and(eq(workLeases.id, lease.id), eq(workLeases.holder, lease.holder), gt(workLeases.expiresAt, at))
       const stillHeld = exists(db.select({ one: sql`1` }).from(workLeases).where(held))
-      const notes = JSON.stringify(worked.map((item) => ({ id: item.id, note: item.note ?? null })))
+      const notes = JSON.stringify(
+        worked.map((item) => ({ id: item.id, note: item.note ?? null, attempt: crypto.randomUUID() })),
+      )
+      // Qualified: a bare "id" inside the subquery names json_each's own id column.
+      const named = (column: string) =>
+        sql`(select json_extract(value, ${`$.${column}`}) from json_each(${notes}) where json_extract(value, '$.id') = "work_item_log"."id")`
+      // An attempt per item named, from the history row, so an item the pass's own facts already
+      // closed is recorded closed; the lease's time is shared among the items named.
+      const seconds = (Date.parse(at) - Date.parse(lease.claimedAt)) / 1000 / Math.max(worked.length, 1)
+      const attempts = db.insert(workAttempts).select(
+        db
+          .select({
+            id: named('attempt').as('id'),
+            itemId: workItemLog.id,
+            entryId: workItemLog.entryId,
+            type: workItemLog.type,
+            subjectId: workItemLog.subjectId,
+            holder: sql`${lease.holder}`.as('holder'),
+            leaseId: sql`${lease.id}`.as('lease_id'),
+            claimedAt: sql`${lease.claimedAt}`.as('claimed_at'),
+            completedAt: sql`${at}`.as('completed_at'),
+            seconds: sql`${seconds}`.as('seconds'),
+            note: named('note').as('note'),
+            outcome: sql`case when ${workItemLog.closedAt} is null then 'waiting_on_review' else 'closed' end`.as(
+              'outcome',
+            ),
+            settledAt: sql`case when ${workItemLog.closedAt} is null then null else ${at} end`.as('settled_at'),
+          })
+          .from(workItemLog)
+          .where(
+            and(
+              inArray(
+                workItemLog.id,
+                worked.map((item) => item.id),
+              ),
+              stillHeld,
+            ),
+          ),
+      )
       const markWorked = db
         .update(workItems)
         .set({
@@ -473,7 +582,7 @@ export function createWorkRepo(db: Db): WorkRepo {
         .set({ ...bumpRevision, lastWorkedAt: at })
         .where(and(inArray(worklist.entryId, [...lease.entryIds]), stillHeld))
       const remove = db.delete(workLeases).where(held).returning({ id: workLeases.id })
-      const [, , , removed] = await db.batch([markWorked, release, bump, remove])
+      const [, , , , removed] = await db.batch([attempts, markWorked, release, bump, remove])
       return removed.length > 0
     },
 

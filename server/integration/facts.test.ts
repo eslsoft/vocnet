@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test'
-import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema, statsSchema } from '@shared/catalog'
+import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
 import { factSchema, factWriteResultSchema } from '@shared/facts'
+import { consoleStatsSchema } from '@shared/monitor'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -356,7 +357,10 @@ describe('fact review flow', () => {
     const rereview = await call(`/manage/v1/facts/${fact.id}/rereview`, { method: 'POST', token: await adminToken() })
     expect(rereview.status).toBe(409)
 
-    const stats = statsSchema.parse((await call('/manage/v1/stats', { token })).body)
-    expect(stats).toEqual({ facts: [{ kind: 'entry', status: 'retracted', count: 1 }], open_feedback: 0 })
+    const stats = consoleStatsSchema.parse((await call('/manage/v1/stats', { token })).body)
+    expect(stats).toMatchObject({
+      facts: [{ kind: 'entry', status: 'retracted', count: 1 }],
+      feedback: { open: 0, claimed: 0, resolved: 0, dismissed: 0 },
+    })
   })
 })

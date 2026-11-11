@@ -1,16 +1,22 @@
-import { entrySummaryPageSchema, managedEntryDetailSchema } from '@shared/catalog'
+import { entrySummaryPageSchema } from '@shared/catalog'
+import type { CefrLevel } from '@shared/reference'
 import { referenceSourceListSchema } from '@shared/reference'
 import { decodeApiResponse, rpc } from '@/shared/api/client'
 
-const entries = rpc.manage.v1.entries
-
-export async function listEntries(prefix: string, cursor: string | undefined) {
-  const response = await entries.$get({ query: { prefix: prefix || undefined, cursor, limit: '50' } })
-  return decodeApiResponse(response, entrySummaryPageSchema)
+export interface EntryFilter {
+  prefix?: string
+  level?: CefrLevel
+  /** Only entries with a flagged fact. */
+  flagged?: 'true'
+  /** Only entries with a stuck task. */
+  stuck?: 'true'
 }
 
-export async function getManagedEntry(lemma: string) {
-  return decodeApiResponse(await entries[':lemma'].$get({ param: { lemma } }), managedEntryDetailSchema)
+const entries = rpc.manage.v1.entries
+
+export async function listEntries(filter: EntryFilter, cursor: string | undefined) {
+  const response = await entries.$get({ query: { ...filter, cursor, limit: '50' } })
+  return decodeApiResponse(response, entrySummaryPageSchema)
 }
 
 export async function listReferenceSources() {

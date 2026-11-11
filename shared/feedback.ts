@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { factIdSchema } from './facts'
+import { entryRefSchema, factIdSchema } from './facts'
 
 export const feedbackIdSchema = z.uuid().brand<'FeedbackId'>()
 export type FeedbackId = z.infer<typeof feedbackIdSchema>
@@ -40,8 +40,13 @@ export const feedbackSchema = z
   .meta({ id: 'Feedback' })
 export type FeedbackDto = z.infer<typeof feedbackSchema>
 
+export const listedFeedbackSchema = feedbackSchema
+  .extend({ entry: entryRefSchema })
+  .meta({ id: 'ListedFeedback', description: 'Feedback with the entry its target is or belongs to.' })
+export type ListedFeedbackDto = z.infer<typeof listedFeedbackSchema>
+
 export const feedbackPageSchema = z
-  .object({ items: z.array(feedbackSchema), next_cursor: z.string().nullable() })
+  .object({ items: z.array(listedFeedbackSchema), next_cursor: z.string().nullable() })
   .meta({ id: 'FeedbackPage' })
 
 export const resolveFeedbackInputSchema = z

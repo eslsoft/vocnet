@@ -9,16 +9,8 @@ async function rescore(deps: ScoreDeps, stale: StaleWork): Promise<void> {
   const entry = await deps.nodes.findEntry(stale.entryId)
   if (!entry) throw new Error(`Worklist entry ${stale.entryId} does not exist.`)
   const [snapshot, stored] = await Promise.all([deps.nodes.loadEntrySnapshot(entry), deps.work.listItems(entry.id)])
-  const assessment = assessEntry(snapshot)
-  const { writes, deletes } = reconcileItems(stored, assessment.work, snapshot)
-  await deps.work.saveAssessment(
-    stale,
-    { completeness: assessment.completeness, quality: assessment.quality },
-    {
-      writes,
-      deletes,
-    },
-  )
+  const { work, completeness, quality, slots } = assessEntry(snapshot)
+  await deps.work.saveAssessment(stale, { completeness, quality, slots }, reconcileItems(stored, work, snapshot))
 }
 
 /**

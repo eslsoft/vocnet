@@ -142,6 +142,10 @@ export const worklist = sqliteTable(
     zipf: real('zipf'),
     completeness: real('completeness').notNull().default(0),
     quality: real('quality').notNull().default(1),
+    /** `slots` of the assessment as of `scored_revision`: counted, filled by published facts, filled only by pending ones. */
+    slotsTotal: integer('slots_total').notNull().default(0),
+    slotsPublished: integer('slots_published').notNull().default(0),
+    slotsPending: integer('slots_pending').notNull().default(0),
     revision: integer('revision').notNull().default(0),
     scoredRevision: integer('scored_revision').notNull().default(0),
     /** The revision the entry's public view rows describe; behind `revision` while they are stale. */
@@ -228,6 +232,69 @@ export const workLeases = sqliteTable(
     expiresAt: text('expires_at').notNull(),
   },
   (table) => [index('work_leases_expires_idx').on(table.expiresAt)],
+)
+
+/**
+ * One row per work item ever opened, kept after the item closes: the console's task history. The
+ * rescore inserts it with the item, refreshes `gap` while the item stays open, and stamps
+ * `closed_at` when it deletes the item, each in its own conditional batch.
+ */
+export const workItemLog = sqliteTable(
+  'work_item_log',
+  {
+    /** The work item's id. */
+    id: text('id').primaryKey(),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    type: text('type').notNull(),
+    subjectId: text('subject_id').notNull(),
+    /** The latest gap as the wire shows it, as JSON: the open one, or the last one a closed item had. */
+    gap: text('gap').notNull(),
+    createdAt: text('created_at').notNull(),
+    /** When the rescore deleted the item; null while it is open. */
+    closedAt: text('closed_at'),
+  },
+  (table) => [
+    index('work_item_log_created_idx').on(table.createdAt),
+    index('work_item_log_closed_idx').on(table.closedAt).where(sql`closed_at is not null`),
+    index('work_item_log_subject_idx').on(table.subjectId),
+  ],
+)
+
+/**
+ * One row per item a completion named: who worked it, from the claim to the completion, with the
+ * lease's time shared among the items named. The completion inserts it `waiting_on_review` (or
+ * `closed` when the pass's own facts already closed the item), and the rescore that judges the
+ * item settles every waiting attempt at it (`reconcileItems` verdicts).
+ */
+export const workAttempts = sqliteTable(
+  'work_attempts',
+  {
+    id: text('id').primaryKey(),
+    itemId: text('item_id').notNull(),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    type: text('type').notNull(),
+    subjectId: text('subject_id').notNull(),
+    holder: text('holder').notNull(),
+    leaseId: text('lease_id').notNull(),
+    claimedAt: text('claimed_at').notNull(),
+    completedAt: text('completed_at').notNull(),
+    seconds: real('seconds').notNull(),
+    note: text('note'),
+    outcome: text('outcome').notNull(),
+    settledAt: text('settled_at'),
+  },
+  (table) => [
+    index('work_attempts_completed_idx').on(table.completedAt, table.id),
+    index('work_attempts_item_idx').on(table.itemId, table.outcome),
+    check(
+      'work_attempts_outcome',
+      sql`${table.outcome} in ('waiting_on_review', 'closed', 'progressed', 'no_progress', 'stuck')`,
+    ),
+  ],
 )
 
 // The public view: each entry's public document, projected from its facts by

@@ -8,7 +8,7 @@ test('an admin signs in and reaches the console overview [spec: access/console-l
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(/\/console$/)
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
-  await expect(page.getByText('Open feedback')).toBeVisible()
+  await expect(page.getByText('Needs attention')).toBeVisible()
 })
 
 test('an admin issues an agent key that authenticates the agent [spec: console/agent-issue]', async ({
@@ -16,7 +16,8 @@ test('an admin issues an agent key that authenticates the agent [spec: console/a
   request,
 }) => {
   await signIn(page)
-  await page.getByRole('link', { name: 'Agents' }).click()
+  await page.getByRole('link', { name: 'API Keys' }).click()
+  await expect(page.getByRole('heading', { name: 'API Keys' })).toBeVisible()
   await page.getByRole('button', { name: 'Issue key' }).click()
   await page.getByRole('dialog').getByLabel('Name').fill('E2E producer')
   await page.getByRole('dialog').getByRole('button', { name: 'Issue' }).click()

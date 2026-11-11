@@ -11,7 +11,6 @@ import {
   getManagedEntry,
   getPublicEntry,
   getPublicSense,
-  getStats,
   importCoreEntries,
   listEntrySummaries,
   listPublicEntries,
@@ -460,7 +459,8 @@ describe('management reads', () => {
   it('lists entries in every status by normalized prefix', async () => {
     const world = fakeWorld()
     for (const lemma of ['bank', 'banner', 'cat']) await createEntry(world.deps, agentA, { lemma })
-    const page = await listEntrySummaries(world.deps, ' ba', { limit: 10 })
+    const filter = { prefix: ' ba', level: null, flagged: false, stuck: false }
+    const page = await listEntrySummaries(world.deps, filter, { limit: 10 })
     expect(page.items.map(({ lemma, entry_status }) => ({ lemma, entry_status }))).toEqual([
       { lemma: 'bank', entry_status: 'pending' },
       { lemma: 'banner', entry_status: 'pending' },
@@ -502,14 +502,5 @@ describe('management reads', () => {
     await expect(locateNode(world.deps, entry.id)).resolves.toEqual({ node_type: 'entry', entry: owner })
     await expect(locateNode(world.deps, sense.id)).resolves.toEqual({ node_type: 'sense', entry: owner })
     await expect(locateNode(world.deps, crypto.randomUUID())).rejects.toMatchObject({ code: 'not_found' })
-  })
-
-  it('counts facts by kind and status, and open feedback', async () => {
-    const world = fakeWorld()
-    await createEntry(world.deps, agentA, { lemma: 'cat' })
-    await expect(getStats(world.deps)).resolves.toEqual({
-      facts: [{ kind: 'entry', status: 'pending', count: 1 }],
-      open_feedback: 0,
-    })
   })
 })

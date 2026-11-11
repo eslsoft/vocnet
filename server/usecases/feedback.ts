@@ -13,7 +13,7 @@ import type {
 import type { Deps } from './deps'
 import { ConflictError, ForbiddenError, InvalidReferenceError, NotFoundError, RateLimitedError } from './errors'
 import { type Actor, getFact } from './facts'
-import type { PageRequest } from './ports'
+import type { PageRequest, WithEntry } from './ports'
 import { LIMIT_PERIOD_SECONDS } from './ports'
 import { projectEntry, topicNamesOf } from './public-view'
 import { refreshEntries } from './refresh'
@@ -95,8 +95,19 @@ export function listFeedback(deps: Pick<Deps, 'feedback'>, filter: { status?: Fe
   return deps.feedback.list(filter, page)
 }
 
-async function findFeedback(deps: Pick<Deps, 'feedback'>, id: FeedbackId): Promise<FeedbackRecord> {
+/** One feedback item; not found when no item has the id. */
+export async function getFeedback(deps: Pick<Deps, 'feedback'>, id: FeedbackId): Promise<FeedbackRecord> {
   const item = await deps.feedback.find(id)
+  if (!item) throw new NotFoundError(`Feedback ${id} not found.`)
+  return item
+}
+
+/** One feedback item with the entry its target is or belongs to; not found when no item has the id. */
+export async function getFeedbackWithEntry(
+  deps: Pick<Deps, 'feedback'>,
+  id: FeedbackId,
+): Promise<WithEntry<FeedbackRecord>> {
+  const item = await deps.feedback.findWithEntry(id)
   if (!item) throw new NotFoundError(`Feedback ${id} not found.`)
   return item
 }
@@ -114,7 +125,7 @@ export async function claimFeedback(
   actor: Actor,
   id: FeedbackId,
 ): Promise<FeedbackRecord> {
-  const item = await findFeedback(deps, id)
+  const item = await getFeedback(deps, id)
   const who = principalRef(actor.principal)
   const now = deps.clock.now()
   const decision = claimDecision(item, who, now)
@@ -143,7 +154,7 @@ export async function resolveFeedback(
   id: FeedbackId,
   input: ResolveFeedbackInput,
 ): Promise<FeedbackRecord> {
-  const item = await findFeedback(deps, id)
+  const item = await getFeedback(deps, id)
   const who = principalRef(actor.principal)
   if (isClosed(item.status) && item.assignee === who) return item
   const decision = closeDecision(item, who)

@@ -38,6 +38,26 @@ test('the public site and the console are accessible and keyboard operable [spec
   await signIn(page, { keyboard: true })
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   expect(await axe(page)).toEqual([])
+
+  const consolePages = [
+    { link: /^Entries/, heading: 'Entries' },
+    { link: /^Facts/, heading: 'Facts' },
+    { link: /^Tickets/, heading: 'Tickets' },
+    { link: /^Tasks/, heading: 'Tasks' },
+    { link: /^API Keys/, heading: 'API Keys' },
+  ]
+  for (const { link, heading } of consolePages) {
+    await page.getByRole('navigation', { name: 'Console' }).getByRole('link', { name: link }).click()
+    await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+    expect(await axe(page)).toEqual([])
+  }
+  await page
+    .getByRole('navigation', { name: 'Console' })
+    .getByRole('link', { name: /^Tasks/ })
+    .click()
+  await page.getByRole('link', { name: 'Activity' }).click()
+  await expect(page).toHaveURL(/\/console\/tasks\/activity$/)
+  expect(await axe(page)).toEqual([])
 })
 
 for (const route of ['home', 'entry', 'browse', 'developers'] as const) {
@@ -73,7 +93,12 @@ test('critical pages match their reviewed visual baselines', async ({ page }) =>
   await expect(page).toHaveScreenshot('entry-page.png', { animations: 'disabled', maxDiffPixelRatio: 0.02 })
 
   await signIn(page)
-  await page.getByRole('link', { name: 'About' }).click()
-  await expect(page.getByRole('heading', { name: 'About' })).toBeVisible()
-  await expect(page).toHaveScreenshot('about-page.png', { animations: 'disabled', maxDiffPixelRatio: 0.02 })
+  await page.getByRole('link', { name: 'API Keys' }).click()
+  await expect(page.getByRole('heading', { name: 'API Keys' })).toBeVisible()
+  // Sidebar counts and the key list follow the run's data; the shell and page layout are the baseline.
+  await expect(page).toHaveScreenshot('console-keys-page.png', {
+    animations: 'disabled',
+    mask: [page.getByRole('navigation', { name: 'Console' }), page.locator('main table')],
+    maxDiffPixelRatio: 0.02,
+  })
 })

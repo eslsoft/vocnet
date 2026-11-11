@@ -1264,7 +1264,11 @@ An agent claims a feedback item with a one-hour lease, so two agents do not
 work the same report. An expired claim can be claimed again by anyone, and the
 holder can renew its claim at any time. Only the holder resolves (linking the
 correcting fact IDs) or dismisses (with a note). Every feedback write is a
-compare-and-set on a revision counter.
+compare-and-set on a revision counter. `GET /manage/v1/feedback/{id}` reads one
+item (`404 not_found` for an unknown id). It and `GET /manage/v1/feedback` give
+each item its `entry` (`{ id, lemma }`): the target entry, or the entry the
+target sense, or the target fact's subject, belongs to, joined in the same
+query.
 
 ## Curation
 
@@ -1314,7 +1318,12 @@ curator is **curated**.
   published facts whose standing review is `uncertain` or `fail`, newest first
   with the usual cursor pages, narrowed by `kind` and by `level` (A1 to C2: the
   lowest CEFR level of the lemma of the entry the fact is about, or whose sense
-  it is about, as the worklist's `level_rank` stores it).
+  it is about, as the worklist's `level_rank` stores it). Any facts list also
+  narrows by `author` (a principal ref) and by `lemma`: the facts about the
+  entry spelled exactly so and its senses; another spelling lists none. Every
+  fact the list and `GET /manage/v1/facts/{id}` return carries `entry`
+  (`{ id, lemma }`), the entry its subject is or belongs to, joined in the same
+  query; the other fact responses do not.
 
 - **Items to fill.** `GET /manage/v1/work/curation` lists the work items three
   producer passes left unchanged (see Work items, Curators' queue); a curated
@@ -1442,7 +1451,12 @@ and an item the lease did not claim `422 invalid_reference`. In one batch, while
 the lease is still held, it marks the named items worked with the note and the
 holder, releases every item of the lease, bumps the revision of the lease's
 entries and stamps their `last_worked_at`, and deletes the lease; then it
-rescores those entries and answers where each named item stands:
+rescores those entries and answers where each named item stands. The same batch
+records an **attempt** per named item in `work_attempts`: the holder, the lease,
+its `claimed_at`, the completion time, the lease's seconds from claim to
+completion divided by the number of items named, and the note. It is
+`waiting_on_review` until the rescore judges the item, or `closed` at once when
+the pass's own facts already closed the item (see Attempts):
 
 ```json
 { "lease_id": "…", "items": [{ "id": "…", "state": "awaiting_review", "attempts": 0 }] }
@@ -1524,6 +1538,15 @@ names the senses its list must name rather than counting rejections, so each
 rejected list is an attempt of the same item and the third hands it to the
 curators (see Sense lists).
 
+Each judgement is also a **verdict** on the attempts at the item:
+`reconcileItems` returns one for every stored item with `worked` set that it
+judges: `closed` when the item is deleted, `progressed` when its gap differs
+from `claimed_gap`, `no_progress` when it does not, and `stuck` when that
+attempt brought it to `MAX_ATTEMPTS`. An item still awaiting review gets none.
+The rescore's batch settles every `waiting_on_review` attempt at a judged item
+with its verdict and `settled_at`, under the same revision condition as the
+items, so a lost rescore leaves the attempts waiting for the next one.
+
 ### Scores
 
 Both scores are pure functions of the entry's facts in `server/domain/work.ts`
@@ -1531,6 +1554,13 @@ Both scores are pure functions of the entry's facts in `server/domain/work.ts`
 stats and the console. The work itself is the items.
 
 **Completeness** (0..1) is filled slots over the slots the gap rules count.
+The assessment also reports the **slot counts** `{ total, published, pending }`:
+the slots the rules count over the live facts, those the same rules over the
+published facts alone fill (capped at what the live facts fill, since a pending
+sense list or sense can drop slots the published ones fill), and the rest of the
+filled ones, which only pending facts fill. The worklist stores them with the
+scores (`slots_total`, `slots_published`, `slots_pending`), and the management
+view computes them on read as `slots`.
 "Complete" means every piece of data a learner's dictionary should have for the
 word exists, not that every field has a value. The entry has the sense
 inventory slot and two pronunciation slots (a strong `us` and a strong `uk`
@@ -1745,6 +1775,7 @@ on one entry list each other, and the base itself, in their `family`.
 | `frequency_key`                                   | `frequencyKey` of the lemma, written with the row          |
 | `level_rank`, `zipf`                              | The learner priority: 1 (A1) to 6 (C2) for the lowest CEFR level of the exact lemma, and the Zipf frequency of `frequency_key`; null when the reference data has none |
 | `completeness`, `quality`                         | The scores, as of `scored_revision`                        |
+| `slots_total`, `slots_published`, `slots_pending` | The slot counts, as of `scored_revision`                   |
 | `revision`, `scored_revision`                     | Bumped by every write that can change the entry's work or public view; the revision the scores and items describe |
 | `view_revision`                                   | The revision the entry's public view rows describe         |
 | `last_worked_at`                                  | When a pass over one of its items last completed           |
@@ -1768,7 +1799,21 @@ partial indexes `work_items_queue_idx` `(rank, zipf_order DESC, created_at, id)`
 and `work_items_type_queue_idx` (the same, led by `type`); the curators' queue
 is `work_items_curation_idx` over `attempts >= 3`. `work_leases` holds one row
 per lease (`id`, `holder`, `type`, `entry_ids`, `item_ids`, `claimed_at`,
-`expires_at`), deleted by its completion or a day after it expires.
+`expires_at`), deleted by its completion or a day after it expires; a lease
+still there after `expires_at` timed out, since its holder never completed it.
+
+`work_item_log` keeps one row per item ever opened, the console's task history:
+`id` (the item's), `entry_id`, `type`, `subject_id`, `gap` (the latest),
+`created_at`, and `closed_at` (null while open). The rescore's batch inserts it
+with a new item, refreshes its `gap` with every write of the item, and stamps
+`closed_at` when it deletes the item. `work_attempts` keeps one row per item a
+completion named: `id`, `item_id`, `entry_id`, `type`, `subject_id`, `holder`,
+`lease_id`, `claimed_at`, `completed_at`, `seconds`, `note`, `outcome`
+(`waiting_on_review`, `closed`, `progressed`, `no_progress`, `stuck`), and
+`settled_at`. The migration `work_history` added both and the slot columns;
+`work_history_backfill` gave every open item its history row (items closed
+before it left none, and no earlier attempt has a row) and bumped every
+worklist row, so the rescore fills the slot counts.
 
 Every write that can change an entry's gaps, weak facts, or public view bumps
 `revision` of the entries at both ends in its own batch: a fact insert or status
@@ -1798,7 +1843,7 @@ for its subject.
 the release's migration bumps `revision` on every row, so every stored score
 and item is stale until `assessEntry` scores it again under the new rules. The
 management view (`GET /manage/v1/entries/{lemma}` and a claimed item's `view`)
-computes `completeness` and `quality` from the facts on read, so it never
+computes `completeness`, `quality`, and `slots` from the facts on read, so it never
 reports a stored number at all, and no public document carries one.
 The cron's 100 rows every five minutes would take hours over the dataset, so
 `POST /manage/v1/work/rescore` (admins only, body `{ limit }`, 1 to 200,
@@ -1954,6 +1999,61 @@ the import's update) moved the existing rows over; the backfill's `lower()` matc
 scrambles the stored priority, runs the backfill, and expects the rows creation
 wrote. `frequency_key` is nullable only because SQLite cannot add a `NOT NULL`
 column without a default to a table with rows; every insert writes it.
+
+### Monitor reads
+
+The console reads how the work is going through admin-only endpoints (agents get
+`403 forbidden`); nothing here writes, and every number derives from stored rows
+on read. An open item **stands** (`openItemStatus`) `stuck` at `MAX_ATTEMPTS`,
+else `in_progress` under an unexpired lease, else `waiting_on_review` while it
+awaits review, else `queued`; a closed item is `closed`.
+
+- `GET /manage/v1/work/summary?window=24h|7d` (default `24h`): open items by
+  status, overall and per type (every type of `WORK_POLICY`, with its stage);
+  the items created and closed in each of the 24 hours ending with the current
+  hour, or the 7 UTC days ending with the current day, and in the window, which
+  starts with its first bucket; the median seconds from created to closed of
+  the items closed in the window; per type the items closed, the median attempt
+  seconds, and the success rate (closed or progressed over settled attempts) of
+  the attempts completed in the window; the distinct holders of unexpired
+  leases; the forecast: items closed minus created per day over the last 7 days,
+  the same over the last 24 hours, and per lowest CEFR level (A1 to C2, then
+  none) the open items and the 7-day net per day; and at most 100 leases that
+  are unexpired or expired within a day, newest claim first, each with its
+  first three lemmas and whether it timed out.
+- `GET /manage/v1/work/attempts?outcome=&type=&holder=&lemma=&limit=&cursor=`:
+  attempts, latest completion first, each with `attempt` (its 1-based ordinal
+  among every attempt at its item by completion, whatever the filter), its
+  entry, the live gloss when
+  the item is about a sense, and the facts the holder authored between the
+  claim and the completion about the item's node (the entry and its senses for
+  an entry's item, the sense, or the weak fact's subject), each with a one-line
+  `summary` (`summary` of its kind in the registry). `lemma` is exact.
+- `GET /manage/v1/work/items?entry_id=` or `?subject_id=` (exactly one, else
+  `400 invalid_request`): the open items of the entry, or about one node, in
+  queue order, each with its status, the lease while unexpired, and the gloss.
+- `GET /manage/v1/work/items/{id}`: one item, open from `work_items` or closed
+  from its history row (`closed_at` set, no attempts counted), with every
+  attempt, newest first, `agent_seconds` (their seconds summed), and
+  `queue_seconds` (from creation to the first attempt's claim; for an item
+  never worked, to its close or, while open, to now). An unknown id is `404`.
+
+`GET /manage/v1/stats` (staff) counts facts by kind and status; weak facts by
+kind, as the facts list `weak=true` selects them; live facts; the average
+stored completeness of the live entries overall and per lowest CEFR level (A1 to
+C2, then none) with how many are complete; the pending facts, the oldest one's
+creation, and how many have waited over an hour; feedback by status (`open`,
+`claimed`, `resolved`, `dismissed`); and the open
+items, the stuck ones, and the leases that timed out in the last 24 hours.
+
+`GET /manage/v1/entries` also gives each entry its lowest CEFR level (from
+`level_rank`), its stored `completeness`, `quality`, and slot counts, and its
+open items by status (`total`, `in_progress`, `waiting_on_review`, `stuck`), and
+filters by `level`, `flagged=true` (a weak fact about it or a sense), and
+`stuck=true` (an item at `MAX_ATTEMPTS`). Each filter is an `EXISTS` through an
+index per entry the lemma order reaches, and the open-work counts read
+`work_items_entry_idx` from the page's entries; the query-plan test covers the
+filtered statements too.
 
 ### Gaps
 
@@ -2256,37 +2356,57 @@ route and for the console.
 
 ## Console
 
-The console is how admins watch the dictionary. It reads and acts only through
-`/manage/v1` with the admin's access token. Its pages sit under `/console`
-(`/console/facts`, `/console/entries/{lemma}`, `/console/feedback`,
-`/console/agents`) in a shell with a sidebar; the sign-in page and the
-callback share its look and link back to the public site.
+The console is how admins watch the dictionary. It reads only through
+`/manage/v1` with the admin's access token and changes nothing but API keys:
+agents make every other change through the API, so no page offers retract,
+re-review, claim, or resolve. The sign-in page and the callback share its look
+and link back to the public site. A flat sidebar lists the pages with what needs
+a look beside each (the entry count, flagged facts, `N open` tickets, stuck
+tasks) and links the public dictionary, the developer guide, and the API
+reference; on a narrow screen it opens from a menu button.
 
-- **Overview**: tiles for published, pending, and rejected facts and open
-  feedback, then the counts by kind and status.
-- **Facts**: a filterable, paged list with a drawer for one fact's payload,
-  author, review, and the fact it supersedes. Admins retract or re-review there.
-- **Entries**: every entry in lemma order, filtered by lemma prefix, with its
-  entry status, live sense count, fact counts by status, and last completed
-  work, so admins watch agents fill the dictionary. It refreshes itself every 30
-  seconds. `GET /manage/v1/entries` serves it: a keyset page on the unique lemma
-  index. Every count starts from the page's entries and reaches their senses and
-  facts through an index, so a page reads the same rows however large the
-  dictionary grows. A test pins those query plans.
-- **Entry inspector**: one lemma with every sense and every fact in every
-  status, so pending, rejected, and uncertain data is seen in context, and its
-  reference data with the attribution of each source it came from, and a link
-  to its public page. With a sense
-  list, the senses follow the current list (as the worklist reads it) and each
-  shows its common rank, *Rare*, or *Not in the sense list*; the list itself is
-  an entry fact whose drawer shows its review.
-- **Feedback**: read-only. Claiming and resolving belong to agents.
-- **Agents**: issue a key (shown once) and revoke it.
+- **Overview** (`/console`): average completeness, quality (the share of live
+  facts not flagged), open tasks with when A1 and the whole backlog finish at
+  the current net rate, facts pending review and the oldest's wait past an
+  hour, completeness per CEFR level, what needs attention (flagged facts, stuck
+  and timed-out tasks, open tickets, reviews over an hour), each linking to the
+  page that lists it, and per kind a bar of published, flagged, pending, and
+  rejected facts linking to those facts.
+- **Entries** (`/console/entries`): every entry in lemma order with its level,
+  senses, completeness split into published and pending, quality, open tasks,
+  and last update, filtered by prefix, level, flagged, and stuck in the URL.
+  `GET /manage/v1/entries` serves it: a keyset page on the unique lemma index;
+  every count starts from the page's entries and reaches their senses and facts
+  through an index, and a test pins those query plans.
+- **Entry inspector** (`/console/entries/{lemma}`): one lemma headed by its
+  pronunciation, CEFR levels, frequency rank, and scores; each sense in its
+  agreed order with its facts in every status, the relations pointing at it, and
+  each open task where its fact would go; the word details, the reference data
+  crediting each source, and the entry's open tasks in their own tab.
+- **Facts** (`/console/facts`): facts newest first, each with its entry's lemma
+  (the list's `entry`), kind, readable claim, and state, filtered by entry,
+  flagged only, kind, status, level, and author in the URL, beside the selected
+  fact's detail: its entry and sense, the claim, its review, the task fixing
+  it, and the corrections it replaced.
+- **Tickets** (`/console/tickets`): feedback in Open, Assigned (claimed),
+  Resolved (resolved and dismissed), and All tabs, each with its count from the
+  stats, each ticket with its entry's lemma and target, beside the selected
+  ticket: its message, the fact or entry it is about, the task fixing it, its
+  assignee, resolution note, and fixes.
+- **Tasks** (`/console/tasks`): the work summary over 24 hours or 7 days in the
+  URL: open tasks by status, throughput, the forecast by level, each type by
+  stage, and each agent's lease.
+- **Activity** (`/console/tasks/activity`): completed attempts newest first,
+  each with its try number (`#n`, the attempt's `attempt`), agent, entry and
+  sense, task, result, time, and facts, filtered in the URL; a task opens in a
+  sheet with what is missing, its times, and every attempt numbered the same way.
+- **API Keys** (`/console/keys`): issue an agent key (shown once) and revoke one.
 
 A review that is `uncertain`, or a pass below 0.8 confidence, is flagged
 wherever a fact is listed: it is published with flaws, the state admins watch.
-Facts and feedback name nodes by id, so `GET /manage/v1/nodes/{id}` resolves an
-entry or sense id to its owning entry for linking.
+Listed facts and feedback carry their entry; a relation names its target sense
+by id, so `GET /manage/v1/nodes/{id}` resolves an entry or sense id to its
+owning entry for linking.
 
 The public wire format is snake_case JSON. Errors are
 `{ "error": { "code", "message" } }` with stable codes; pages are

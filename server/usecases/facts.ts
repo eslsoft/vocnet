@@ -21,13 +21,13 @@ import {
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import { mayActOn, mayCurate, type Principal, principalRef } from '@server/domain/principal'
 import { currentSenseList } from '@server/domain/sense-list'
-import type { Lemma } from '@server/domain/term'
+import { type Lemma, normalizeTerm } from '@server/domain/term'
 import { isLeaf } from '@server/domain/topics'
 import type { EntryId, FactId, FactKind, FactPayloads, Pos, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
 import { requireCurator } from './access'
 import type { Deps } from './deps'
 import { ConflictError, CuratedFactError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
-import type { FactFilter, PageRequest } from './ports'
+import type { FactFilter, PageRequest, WithEntry } from './ports'
 import { refreshEntries } from './refresh'
 import { recordDecision } from './review'
 
@@ -345,8 +345,16 @@ export async function getFact(deps: Pick<Deps, 'facts'>, id: FactId): Promise<Fa
   return fact
 }
 
+/** One fact with the entry its subject is or belongs to; not found when no fact has the id. */
+export async function getFactWithEntry(deps: Pick<Deps, 'facts'>, id: FactId): Promise<WithEntry<Fact>> {
+  const fact = await deps.facts.findWithEntry(id)
+  if (!fact) throw new NotFoundError(`Fact ${id} not found.`)
+  return fact
+}
+
+/** Facts the filter admits, newest first; a lemma matches only the entry spelled exactly so. */
 export function listFacts(deps: Pick<Deps, 'facts'>, filter: FactFilter, page: PageRequest) {
-  return deps.facts.list(filter, page)
+  return deps.facts.list(filter.lemma === undefined ? filter : { ...filter, lemma: normalizeTerm(filter.lemma) }, page)
 }
 
 /** Withdraws a pending or published fact. Agents retract only their own facts, and only curators curated ones. */

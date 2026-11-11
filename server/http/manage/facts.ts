@@ -1,6 +1,7 @@
 import { createRoute } from '@hono/zod-openapi'
 import { curateFact } from '@server/usecases/curation'
-import { getFact, listFacts, rereviewFact, retractFact, submitFact } from '@server/usecases/facts'
+import { getFactWithEntry, listFacts, rereviewFact, retractFact, submitFact } from '@server/usecases/facts'
+import { lemmaInputSchema } from '@shared/catalog'
 import {
   curateFactInputSchema,
   factIdSchema,
@@ -9,13 +10,14 @@ import {
   factSchema,
   factStatusSchema,
   factWriteResultSchema,
+  listedFactSchema,
   submitFactInputSchema,
 } from '@shared/facts'
 import { cefrLevelSchema } from '@shared/reference'
 import { z } from 'zod'
 import { actorOf, requireAdmin } from '../auth'
 import { createRouter, errorResponse, json, jsonBody, pageQuery } from '../router'
-import { factDto, pageDto } from '../serialize'
+import { factDto, listedFactDto, pageDto } from '../serialize'
 
 const tags = ['Facts']
 const idParams = z.object({ id: factIdSchema })
@@ -45,6 +47,7 @@ const listRoute = createRoute({
   path: '/facts',
   tags,
   summary: 'List facts, newest first',
+  description: 'Each fact carries the entry its subject is or belongs to.',
   request: {
     query: pageQuery.extend({
       status: factStatusSchema.optional(),
@@ -56,6 +59,15 @@ const listRoute = createRoute({
       level: cefrLevelSchema.optional().meta({
         description: "Only facts about an entry, or a sense of an entry, whose lemma's lowest CEFR level is this.",
       }),
+      author: z
+        .string()
+        .min(1)
+        .optional()
+        .meta({ description: 'Only facts this principal authored (agent:… or oidc:…).' }),
+      lemma: lemmaInputSchema.optional().meta({
+        description:
+          'Only facts about the entry with exactly this lemma or one of its senses; no other spelling matches.',
+      }),
     }),
   },
   responses: { 200: json(factPageSchema, 'A page of facts.'), 400: errorResponse },
@@ -65,9 +77,9 @@ const getRoute = createRoute({
   method: 'get',
   path: '/facts/{id}',
   tags,
-  summary: 'Get one fact with its review',
+  summary: 'Get one fact with its review and the entry its subject is or belongs to',
   request: { params: idParams },
-  responses: { 200: json(factSchema, 'The fact.'), 404: errorResponse },
+  responses: { 200: json(listedFactSchema, 'The fact.'), 404: errorResponse },
 })
 
 const retractRoute = createRoute({
@@ -128,11 +140,13 @@ export const manageFactRoutes = createRouter()
     return created ? c.json(body, 201) : c.json(body, 200)
   })
   .openapi(listRoute, async (c) => {
-    const { status, kind, weak, level, limit, cursor } = c.req.valid('query')
-    const filter = { status, kind, weak: weak === 'true', level }
-    return c.json(pageDto(await listFacts(c.get('deps'), filter, { limit, cursor }), factDto), 200)
+    const { status, kind, author, lemma, weak, level, limit, cursor } = c.req.valid('query')
+    const filter = { status, kind, author, lemma, weak: weak === 'true', level }
+    return c.json(pageDto(await listFacts(c.get('deps'), filter, { limit, cursor }), listedFactDto), 200)
   })
-  .openapi(getRoute, async (c) => c.json(factDto(await getFact(c.get('deps'), c.req.valid('param').id)), 200))
+  .openapi(getRoute, async (c) =>
+    c.json(listedFactDto(await getFactWithEntry(c.get('deps'), c.req.valid('param').id)), 200),
+  )
   .openapi(retractRoute, async (c) =>
     c.json(factDto(await retractFact(c.get('deps'), actorOf(c), c.req.valid('param').id)), 200),
   )

@@ -6,7 +6,14 @@ import type { FeedbackId } from '@shared/feedback'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
 import { submitFact } from './facts'
-import { claimFeedback, listFeedback, resolveFeedback, submitFeedback } from './feedback'
+import {
+  claimFeedback,
+  getFeedback,
+  getFeedbackWithEntry,
+  listFeedback,
+  resolveFeedback,
+  submitFeedback,
+} from './feedback'
 import { reviewFact } from './review'
 
 const client = '203.0.113.7'
@@ -28,6 +35,20 @@ async function reported() {
   })
   return { ...bank, item }
 }
+
+describe('getFeedback', () => {
+  it('reads one item by id and answers not found for an unknown one [spec: monitor/feedback-read]', async () => {
+    const { world, entry, item } = await reported()
+    await expect(getFeedback(world.deps, item.id)).resolves.toEqual(item)
+    await expect(getFeedbackWithEntry(world.deps, item.id)).resolves.toEqual({
+      ...item,
+      entry: { id: entry.id, lemma: 'bank' },
+    })
+    for (const read of [getFeedback, getFeedbackWithEntry]) {
+      await expect(read(world.deps, crypto.randomUUID() as FeedbackId)).rejects.toMatchObject({ code: 'not_found' })
+    }
+  })
+})
 
 describe('submitFeedback', () => {
   it('records open feedback against a public entry, sense, or fact [spec: feedback/submit]', async () => {

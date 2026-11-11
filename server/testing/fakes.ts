@@ -4,6 +4,7 @@ import { type Fact, type FactOf, isKind } from '@server/domain/fact'
 import { factKinds, type Link, meaningKeyOf } from '@server/domain/fact-kinds'
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
+import { levelOfRank, openItemStatus } from '@server/domain/monitor'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { type PublicViewRecord, STEM_ROLES } from '@server/domain/public-view'
 import { levelRank } from '@server/domain/reference'
@@ -22,6 +23,7 @@ import type {
   StaleWork,
   StoredMember,
   ViewLookup,
+  WithEntry,
   WorkScores,
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
@@ -193,6 +195,35 @@ export function fakeWorld(): FakeWorld {
     const entry = world.entries.find((candidate) => candidate.id === entryId)
     return entry ? priorityOf(entry).levelRank : null
   }
+  /** The entry's open items by where they stand, as the entry list counts them. */
+  const openWorkOf = (items: readonly WorkItem[], now: string) => {
+    const counts = { total: items.length, in_progress: 0, waiting_on_review: 0, stuck: 0 }
+    for (const item of items) {
+      const status = openItemStatus({ ...item, leased: item.lease !== null && item.lease.expiresAt > now })
+      if (status !== 'queued') counts[status] += 1
+    }
+    return counts
+  }
+  /** The entry a node is or belongs to. */
+  const entryOfNode = (nodeId: string) => {
+    const entryId = world.senses.find((sense) => sense.id === nodeId)?.entryId ?? nodeId
+    return world.entries.find((candidate) => candidate.id === entryId)
+  }
+  /** The lemma of the entry a fact's subject is or belongs to. */
+  const lemmaOfSubject = (subjectId: string) => entryOfNode(subjectId)?.lemma
+  const withEntry = <T>(record: T, nodeId: string): WithEntry<T> => {
+    const entry = entryOfNode(nodeId)
+    if (!entry) throw new Error(`Node ${nodeId} belongs to no entry.`)
+    return { ...record, entry: { id: entry.id, lemma: entry.lemma } }
+  }
+  const factWithEntry = (fact: Fact) => withEntry(fact, fact.subjectId)
+  const feedbackWithEntry = (item: FeedbackRecord) => {
+    const fact = item.targetType === 'fact' ? world.facts.find((candidate) => candidate.id === item.targetId) : null
+    return withEntry(item, fact?.subjectId ?? item.targetId)
+  }
+  /** Published on an uncertain or failed review, as the facts list `weak` filter selects. */
+  const isWeak = (fact: Fact) =>
+    fact.status === 'published' && ['uncertain', 'fail'].includes(fact.review?.verdict ?? '')
   const liveEntry = (entryId: string) =>
     world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entryId && live(fact))
   /** A sense of the entry that is a verb with a live gloss. */
@@ -237,6 +268,7 @@ export function fakeWorld(): FakeWorld {
     const row = world.work.get(entryId) ?? {
       completeness: 0,
       quality: 1,
+      slots: { total: 0, published: 0, pending: 0 },
       revision: 0,
       scoredRevision: 0,
       viewRevision: 0,
@@ -472,13 +504,20 @@ export function fakeWorld(): FakeWorld {
         },
       }
     },
-    listEntrySummaries: async (prefix, page) => {
+    listEntrySummaries: async ({ prefix, level, flagged, stuck }, page, now) => {
+      const ownFacts = (entry: EntryNode) => {
+        const own = new Set<string>(world.senses.filter((sense) => sense.entryId === entry.id).map(({ id }) => id))
+        return world.facts.filter((fact) => fact.subjectId === entry.id || own.has(fact.subjectId))
+      }
+      const itemsOf = (entry: EntryNode) => world.items.filter((item) => item.entryId === entry.id)
       const summaries = world.entries
         .filter((entry) => entry.lemma.startsWith(prefix))
+        .filter((entry) => !level || priorityOf(entry).levelRank === levelRank(level))
+        .filter((entry) => !flagged || ownFacts(entry).some(isWeak))
+        .filter((entry) => !stuck || itemsOf(entry).some((item) => item.attempts >= MAX_ATTEMPTS))
         .sort((a, b) => a.lemma.localeCompare(b.lemma))
         .map((entry) => {
-          const own = new Set<string>(world.senses.filter((sense) => sense.entryId === entry.id).map(({ id }) => id))
-          const facts = world.facts.filter((fact) => fact.subjectId === entry.id || own.has(fact.subjectId))
+          const facts = ownFacts(entry)
           const [entryFact] = facts
             .filter((fact) => fact.kind === 'entry')
             .sort((a, b) => Number(live(b)) - Number(live(a)) || b.updatedAt.localeCompare(a.updatedAt))
@@ -498,6 +537,11 @@ export function fakeWorld(): FakeWorld {
             },
             last_worked_at: world.work.get(entry.id)?.lastWorkedAt ?? null,
             created_at: entry.createdAt,
+            level: levelOfRank(priorityOf(entry).levelRank),
+            completeness: workOf(entry.id).completeness,
+            quality: workOf(entry.id).quality,
+            slots: workOf(entry.id).slots,
+            open_work: openWorkOf(itemsOf(entry), now),
           }
         })
       return paged(summaries, page.limit, page.cursor)
@@ -521,6 +565,13 @@ export function fakeWorld(): FakeWorld {
 
   const deps: Deps = {
     nodes,
+    // The console's aggregates are SQL over the work tables, proven by the integration suite; a
+    // use-case test of them passes its own fake.
+    monitor: new Proxy({} as Deps['monitor'], {
+      get: (_target, name) => () => {
+        throw new Error(`fakeWorld does not model monitor.${String(name)}; pass the use case its own fake.`)
+      },
+    }),
     facts: {
       find: async (id) => world.facts.find((fact) => fact.id === id) ?? null,
       findLive: async (kind, subjectId, contentKey) => findLive(kind, subjectId, contentKey),
@@ -659,15 +710,23 @@ export function fakeWorld(): FakeWorld {
             fact.status === 'rejected' &&
             isCurated(fact),
         ) ?? null,
-      list: async ({ status, kind, weak, level }, page) =>
+      findWithEntry: async (id) => {
+        const fact = world.facts.find((candidate) => candidate.id === id)
+        return fact ? factWithEntry(fact) : null
+      },
+      list: async ({ status, kind, author, lemma, weak, level }, page) =>
         paged(
-          world.facts.filter(
-            (fact) =>
-              (!status || fact.status === status) &&
-              (!kind || fact.kind === kind) &&
-              (!weak || (fact.status === 'published' && ['uncertain', 'fail'].includes(fact.review?.verdict ?? ''))) &&
-              (!level || levelOfSubject(fact.subjectId) === levelRank(level)),
-          ),
+          world.facts
+            .filter(
+              (fact) =>
+                (!status || fact.status === status) &&
+                (!kind || fact.kind === kind) &&
+                (!author || fact.author === author) &&
+                (!lemma || lemmaOfSubject(fact.subjectId) === lemma) &&
+                (!weak || isWeak(fact)) &&
+                (!level || levelOfSubject(fact.subjectId) === levelRank(level)),
+            )
+            .map(factWithEntry),
           page.limit,
           page.cursor,
         ),
@@ -698,14 +757,21 @@ export function fakeWorld(): FakeWorld {
         touchFact(next.targetId)
         return true
       },
+      findWithEntry: async (id) => {
+        const item = world.feedback.find((candidate) => candidate.id === id)
+        return item ? feedbackWithEntry(item) : null
+      },
       list: async ({ status }, page) =>
         paged(
-          world.feedback.filter((item) => !status || item.status === status),
+          world.feedback.filter((item) => !status || item.status === status).map(feedbackWithEntry),
           page.limit,
           page.cursor,
         ),
-      countOpen: async () =>
-        world.feedback.filter((item) => item.status === 'open' || item.status === 'claimed').length,
+      countByStatus: async () => {
+        const counts = { open: 0, claimed: 0, resolved: 0, dismissed: 0 }
+        for (const item of world.feedback) counts[item.status] += 1
+        return counts
+      },
     },
     agents: {
       insert: async (agent, keyHash) => {

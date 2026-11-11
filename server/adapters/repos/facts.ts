@@ -1,9 +1,10 @@
-import { entries, facts, senses, worklist } from '@server/db/schema'
+import { entries, type FactRow, facts, senses, worklist } from '@server/db/schema'
 import type { Fact, FactOf } from '@server/domain/fact'
 import { factKinds, type Link, type Rereview } from '@server/domain/fact-kinds'
 import { factTransitions } from '@server/domain/fact-lifecycle'
 import { levelRank } from '@server/domain/reference'
-import type { FactRepo } from '@server/usecases/ports'
+import type { Lemma } from '@server/domain/term'
+import type { FactRepo, WithEntry } from '@server/usecases/ports'
 import {
   CURATOR,
   type EntryId,
@@ -35,7 +36,17 @@ import {
 } from 'drizzle-orm'
 import { type AnySQLiteColumn, alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
+import {
+  type Db,
+  decodeCursor,
+  factSelectValues,
+  fromFact,
+  guardUnique,
+  liveStatus,
+  page,
+  toFact,
+  weakReview,
+} from './rows'
 import { syncWorklistLive, touchLinkedWorkOfFact, touchWorkOf, touchWorkOfFact } from './work'
 
 /** A live fact of the outer fact's kind about its subject with its content, which a rejected attempt is then no longer. */
@@ -72,11 +83,31 @@ function aboutLevel(db: Db, level: CefrLevel) {
   )
 }
 
-/** Published facts whose standing review is uncertain or failed: the weak facts the reviews leave. */
-const weakReview = and(
-  eq(facts.status, 'published'),
-  sql`json_extract(${facts.review}, '$.verdict') in ('uncertain', 'fail')`,
-)
+const subjectSense = alias(senses, 'subject_sense')
+const subjectEntry = alias(entries, 'subject_entry')
+
+/** Facts joined to the entry their subject is or belongs to. */
+function withEntry(db: Db) {
+  return db
+    .select({ fact: facts, entryId: subjectEntry.id, lemma: subjectEntry.lemma })
+    .from(facts)
+    .leftJoin(subjectSense, eq(subjectSense.id, facts.subjectId))
+    .innerJoin(subjectEntry, eq(subjectEntry.id, sql`coalesce(${subjectSense.entryId}, ${facts.subjectId})`))
+}
+
+const toFactWithEntry = (row: { fact: FactRow; entryId: string; lemma: string }): WithEntry<Fact> => ({
+  ...toFact(row.fact),
+  entry: { id: row.entryId as EntryId, lemma: row.lemma as Lemma },
+})
+
+/** The facts about the entry with exactly this lemma or one of its senses; no entry, no facts. */
+function aboutLemma(db: Db, lemma: string) {
+  const entry = db.select({ id: entries.id }).from(entries).where(eq(entries.lemma, lemma))
+  return or(
+    inArray(facts.subjectId, entry),
+    inArray(facts.subjectId, db.select({ id: senses.id }).from(senses).where(inArray(senses.entryId, entry))),
+  )
+}
 
 const factCursor = z.object({ created_at: z.string(), id: z.string() })
 const UNIQUE_MESSAGES = {
@@ -236,6 +267,11 @@ export function createFactRepo(db: Db): FactRepo {
     async find(id) {
       const row = await db.select().from(facts).where(eq(facts.id, id)).get()
       return row ? toFact(row) : null
+    },
+
+    async findWithEntry(id) {
+      const row = await withEntry(db).where(eq(facts.id, id)).get()
+      return row ? toFactWithEntry(row) : null
     },
 
     findLive,
@@ -486,15 +522,15 @@ export function createFactRepo(db: Db): FactRepo {
       return row ? toFact(row) : null
     },
 
-    async list({ status, kind, weak, level }, { limit, cursor }) {
+    async list({ status, kind, author, lemma, weak, level }, { limit, cursor }) {
       const after = cursor ? decodeCursor(cursor, factCursor) : undefined
-      const rows = await db
-        .select()
-        .from(facts)
+      const rows = await withEntry(db)
         .where(
           and(
             status ? eq(facts.status, status) : undefined,
             kind ? eq(facts.kind, kind) : undefined,
+            author ? eq(facts.author, author) : undefined,
+            lemma ? aboutLemma(db, lemma) : undefined,
             weak ? weakReview : undefined,
             level ? aboutLevel(db, level) : undefined,
             after
@@ -507,7 +543,7 @@ export function createFactRepo(db: Db): FactRepo {
         )
         .orderBy(desc(facts.createdAt), desc(facts.id))
         .limit(limit + 1)
-      return page(rows, limit, toFact, (row) => ({ created_at: row.createdAt, id: row.id }))
+      return page(rows, limit, toFactWithEntry, (row) => ({ created_at: row.fact.createdAt, id: row.fact.id }))
     },
 
     async countByKindAndStatus() {

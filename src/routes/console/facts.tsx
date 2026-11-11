@@ -1,13 +1,7 @@
-import { useTranslation } from 'react-i18next'
 import { FactsBrowser } from '@/features/facts'
-import { PageHeader } from '@/shared/ui/page-header'
+import { flaggedTotal, useConsoleStats } from '@/features/overview'
 
 export default function FactsPage() {
-  const { t } = useTranslation()
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={t('facts.title')} subtitle={t('facts.subtitle')} />
-      <FactsBrowser />
-    </div>
-  )
+  const stats = useConsoleStats()
+  return <FactsBrowser flagged={stats.data ? flaggedTotal(stats.data) : undefined} />
 }

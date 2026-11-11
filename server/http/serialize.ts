@@ -2,10 +2,10 @@ import type { ManagedEntryView } from '@server/domain/catalog-view'
 import type { Fact } from '@server/domain/fact'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
-import type { AgentRecord, Page } from '@server/usecases/ports'
+import type { AgentRecord, Page, WithEntry } from '@server/usecases/ports'
 import type { AgentDto } from '@shared/agents'
-import type { FactDto } from '@shared/facts'
-import type { FeedbackDto } from '@shared/feedback'
+import type { FactDto, ListedFactDto } from '@shared/facts'
+import type { FeedbackDto, ListedFeedbackDto } from '@shared/feedback'
 
 // Domain records to the snake_case wire DTOs in shared/.
 
@@ -39,11 +39,14 @@ export const factDto = (fact: Fact): FactDto =>
     updated_at: fact.updatedAt,
   }) as FactDto
 
+export const listedFactDto = (fact: WithEntry<Fact>): ListedFactDto => ({ ...factDto(fact), entry: fact.entry })
+
 export const managedEntryDto = (view: ManagedEntryView) => ({
   entry: entryDto(view.entry),
   seed: view.seed,
   completeness: view.completeness,
   quality: view.quality,
+  slots: view.slots,
   senses: view.senses.map(senseDto),
   facts: view.facts.map(factDto),
 })
@@ -60,6 +63,11 @@ export const feedbackDto = (item: FeedbackRecord): FeedbackDto => ({
   resolution_fact_ids: item.resolutionFactIds,
   created_at: item.createdAt,
   updated_at: item.updatedAt,
+})
+
+export const listedFeedbackDto = (item: WithEntry<FeedbackRecord>): ListedFeedbackDto => ({
+  ...feedbackDto(item),
+  entry: item.entry,
 })
 
 export const agentDto = (agent: AgentRecord): AgentDto => ({

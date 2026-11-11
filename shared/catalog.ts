@@ -5,8 +5,8 @@ import {
   collocationPatternSchema,
   dependentPrepositionSchema,
   entryIdSchema,
+  entryRefSchema,
   factIdSchema,
-  factKindSchema,
   factSchema,
   factStatusSchema,
   formTypeSchema,
@@ -437,9 +437,6 @@ export const senseSortSchema = z.enum(['lemma', 'frequency', 'level']).default('
 })
 export type SenseSort = z.infer<typeof senseSortSchema>
 
-export const entryRefSchema = z.object({ id: entryIdSchema, lemma: z.string() }).meta({ id: 'EntryRef' })
-export type EntryRef = z.infer<typeof entryRefSchema>
-
 // Management surface: nodes as stored plus every fact in every status.
 export const entryNodeSchema = z
   .object({ id: entryIdSchema, lemma: z.string(), created_by: z.string(), created_at: z.iso.datetime() })
@@ -572,11 +569,3 @@ export type CreateSenseInput = z.infer<typeof createSenseInputSchema>
 export const createSenseResultSchema = z
   .object({ sense: senseNodeSchema, fact: factSchema, created: z.boolean() })
   .meta({ id: 'CreateSenseResult' })
-
-export const statsSchema = z
-  .object({
-    facts: z.array(z.object({ kind: factKindSchema, status: factStatusSchema, count: z.number().int().nonnegative() })),
-    open_feedback: z.number().int().nonnegative(),
-  })
-  .meta({ id: 'Stats' })
-export type Stats = z.infer<typeof statsSchema>

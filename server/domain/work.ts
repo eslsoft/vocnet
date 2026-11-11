@@ -702,6 +702,17 @@ export interface OpenWork {
   awaiting: boolean
 }
 
+/**
+ * The slots the gap rules count for the entry over its live facts, and how many of them published
+ * facts fill as the settled computation counts them; the rest of the filled ones only pending facts
+ * fill.
+ */
+export interface SlotCounts {
+  total: number
+  published: number
+  pending: number
+}
+
 export interface EntryAssessment {
   /** Every piece of open work: each gap and each weak fact. */
   work: OpenWork[]
@@ -709,6 +720,7 @@ export interface EntryAssessment {
   completeness: number
   /** One minus weak facts over live facts about the entry, 0..1; 1 exactly when no fact is weak. */
   quality: number
+  slots: SlotCounts
 }
 
 const keyOf = (type: WorkType, subjectId: string) => `${type}|${subjectId}`
@@ -739,11 +751,18 @@ function openWorkOf(snapshot: EntryFacts, counts: Counts): Map<string, Gap> {
  * same computation over the published facts alone: where they differ, a pending fact may still
  * change it, so it waits for that review instead of being worked or judged.
  */
+const missingSlots = ({ open }: ReturnType<typeof openGaps>) => open.reduce((sum, { missing }) => sum + missing, 0)
+const filledSlots = (gaps: ReturnType<typeof openGaps>) => gaps.slots - missingSlots(gaps)
+
 export function assessEntry(snapshot: EntryFacts): EntryAssessment {
-  const { open, slots } = openGaps(snapshot, isLive)
-  const missing = open.reduce((sum, { missing }) => sum + missing, 0)
+  const live = openGaps(snapshot, isLive)
+  const missing = missingSlots(live)
+  const filled = filledSlots(live)
+  // A pending sense list can drop slots the published facts fill, so the published count is capped
+  // at what the live view fills.
+  const published = Math.min(filled, filledSlots(openGaps(snapshot, isSettled)))
   const weak = weakFacts(snapshot)
-  const live = snapshot.facts.filter((fact) => isLive(fact.status)).length
+  const liveFacts = snapshot.facts.filter((fact) => isLive(fact.status)).length
   const current = openWorkOf(snapshot, isLive)
   const settled = openWorkOf(snapshot, isSettled)
   const work = [...new Set([...current.keys(), ...settled.keys()])].flatMap((key): OpenWork[] => {
@@ -761,8 +780,9 @@ export function assessEntry(snapshot: EntryFacts): EntryAssessment {
   })
   return {
     work,
-    completeness: 1 - missing / slots,
-    quality: live === 0 ? 1 : 1 - weak.length / live,
+    completeness: 1 - missing / live.slots,
+    quality: liveFacts === 0 ? 1 : 1 - weak.length / liveFacts,
+    slots: { total: live.slots, published, pending: filled - published },
   }
 }
 
@@ -869,18 +889,34 @@ export type WorkItemWrite = Pick<
 >
 
 /**
+ * The verdict a rescore draws on the completed attempts at a worked item: `closed` when its gap is
+ * gone, `progressed` when the gap changed but stays open, `no_progress` when it is as the claim
+ * found it, and `stuck` when that attempt reached `MAX_ATTEMPTS`.
+ */
+export type AttemptVerdict = 'closed' | 'progressed' | 'no_progress' | 'stuck'
+
+export interface ReconciledItems {
+  writes: Array<WorkItemWrite & { id: WorkItemId | null }>
+  deletes: WorkItemId[]
+  /** The worked items this rescore judged; an item still awaiting review has none yet. */
+  verdicts: Array<{ id: WorkItemId; verdict: AttemptVerdict }>
+}
+
+/**
  * Brings an entry's stored items to its open work: one item per piece, the rest deleted. A write
  * keeps the id of the stored item it updates; a new piece has none yet. While a piece awaits
  * review its attempts and pending verdict are kept. Once settled, an item a completed pass worked
  * counts an attempt when the gap is still what its claim found, and any other change (another
- * principal's fact, a new sense, a partial fill) resets the attempts: the item is new work.
+ * principal's fact, a new sense, a partial fill) resets the attempts: the item is new work. Every
+ * worked item judged so gets its verdict.
  */
 export function reconcileItems(
   stored: readonly WorkItem[],
   open: readonly OpenWork[],
   learner: LearnerPriority,
-): { writes: Array<WorkItemWrite & { id: WorkItemId | null }>; deletes: WorkItemId[] } {
+): ReconciledItems {
   const byKey = new Map(stored.map((item) => [keyOf(item.type, item.subjectId), item]))
+  const verdicts: ReconciledItems['verdicts'] = []
   const writes = open.map((work) => {
     const item = byKey.get(keyOf(work.gap.type, work.subjectId))
     const base = {
@@ -894,12 +930,18 @@ export function reconcileItems(
     if (!item) return { ...base, attempts: 0, worked: false }
     if (work.awaiting) return { ...base, attempts: item.attempts, worked: item.worked }
     const judgedAgainst = item.worked ? item.claimedGap : item.gap
-    if (gapText(work.gap) !== gapText(judgedAgainst ?? undefined)) return { ...base, attempts: 0, worked: false }
-    return { ...base, attempts: item.attempts + (item.worked ? 1 : 0), worked: false }
+    if (gapText(work.gap) !== gapText(judgedAgainst ?? undefined)) {
+      if (item.worked) verdicts.push({ id: item.id, verdict: 'progressed' })
+      return { ...base, attempts: 0, worked: false }
+    }
+    const attempts = item.attempts + (item.worked ? 1 : 0)
+    if (item.worked) verdicts.push({ id: item.id, verdict: attempts >= MAX_ATTEMPTS ? 'stuck' : 'no_progress' })
+    return { ...base, attempts, worked: false }
   })
   const kept = new Set(writes.map((write) => keyOf(write.type, write.subjectId)))
-  const deletes = stored.filter((item) => !kept.has(keyOf(item.type, item.subjectId))).map((item) => item.id)
-  return { writes, deletes }
+  const closed = stored.filter((item) => !kept.has(keyOf(item.type, item.subjectId)))
+  for (const item of closed) if (item.worked) verdicts.push({ id: item.id, verdict: 'closed' })
+  return { writes, deletes: closed.map((item) => item.id), verdicts }
 }
 
 /** Where an item stands for a worker: in the production queue, waiting on reviews, or with the curators. */

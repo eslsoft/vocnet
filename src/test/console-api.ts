@@ -1,19 +1,26 @@
 import type { AgentDto } from '@shared/agents'
+import type { EntrySummary } from '@shared/catalog'
 import type { FactDto, Review } from '@shared/facts'
 import type { FeedbackDto } from '@shared/feedback'
+import type { ConsoleStats, WorkAttemptDto, WorkItemDetail, WorkSummary } from '@shared/monitor'
 import type { LemmaReference, ReferenceSource } from '@shared/reference'
 import { HttpResponse, http } from 'msw'
 
-// An in-memory management API at the network edge, so mutate → invalidate → refetch
-// flows converge on real state instead of fixed responses.
+// An in-memory management API at the network edge, so pages read converging state instead of
+// fixed responses. Builders return payloads that parse with the shared wire schemas.
 
 const at = '2026-11-01T10:00:00.000Z'
 const id = () => crypto.randomUUID()
+
+/** An ISO time `seconds` from now: negative is in the past. */
+export const fromNow = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString()
 
 export interface EntryRecord {
   id: string
   lemma: string
   last_worked_at?: string
+  /** Fields of the entry's summary and management view that the facts do not derive. */
+  summary?: Partial<Pick<EntrySummary, 'level' | 'completeness' | 'quality' | 'slots' | 'open_work'>>
 }
 export interface SenseRecord {
   id: string
@@ -73,6 +80,72 @@ export function agent(input: Partial<AgentDto> & Pick<AgentDto, 'name'>): AgentD
   return { id: id(), curator: false, created_by: 'admin:root', created_at: at, revoked_at: null, ...input } as AgentDto
 }
 
+export function consoleStats(overrides: Partial<ConsoleStats> = {}): ConsoleStats {
+  return {
+    facts: [],
+    flagged: [],
+    live_facts: 0,
+    completeness: { average: 0, by_level: [] },
+    pending_review: { count: 0, oldest_at: null, over_one_hour: 0 },
+    feedback: { open: 0, claimed: 0, resolved: 0, dismissed: 0 },
+    work: { open: 0, stuck: 0, timed_out_24h: 0 },
+    ...overrides,
+  }
+}
+
+export function workSummary(overrides: Partial<WorkSummary> = {}): WorkSummary {
+  return {
+    window: '24h',
+    open: { queued: 0, in_progress: 0, waiting_on_review: 0, stuck: 0, total: 0 },
+    created: 0,
+    closed: 0,
+    median_close_seconds: null,
+    agents: 0,
+    by_type: [],
+    throughput: [],
+    forecast: { net_per_day: 0, net_per_day_24h: 0, by_level: [] },
+    leases: [],
+    ...overrides,
+  }
+}
+
+export function workTask(input: Partial<WorkItemDetail> & Pick<WorkItemDetail, 'entry' | 'gap'>): WorkItemDetail {
+  return {
+    id: id(),
+    type: input.gap.type,
+    stage: 4,
+    subject_id: input.entry.id,
+    sense_gloss: null,
+    status: 'queued',
+    attempts_without_progress: 0,
+    lease: null,
+    created_at: at,
+    closed_at: null,
+    attempts: [],
+    agent_seconds: 0,
+    queue_seconds: 60,
+    ...input,
+  } as WorkItemDetail
+}
+
+export function attempt(input: Partial<WorkAttemptDto> & Pick<WorkAttemptDto, 'entry' | 'type'>): WorkAttemptDto {
+  return {
+    id: id(),
+    item_id: id(),
+    attempt: 1,
+    subject_id: input.entry.id,
+    sense_gloss: null,
+    holder: 'agent:producer',
+    claimed_at: '2026-11-01T09:58:00.000Z',
+    completed_at: at,
+    seconds: 125,
+    outcome: 'progressed',
+    note: null,
+    facts: [],
+    ...input,
+  } as WorkAttemptDto
+}
+
 export function apiError(status: number, code: string, message: string) {
   return HttpResponse.json({ error: { code, message } }, { status })
 }
@@ -84,6 +157,8 @@ function page<T>(items: T[], url: URL) {
   return { items: items.slice(start, end), next_cursor: end < items.length ? String(end) : null }
 }
 
+const isLive = (candidate: FactDto) => candidate.status === 'pending' || candidate.status === 'published'
+
 export function consoleApi(
   seed: {
     entries?: EntryRecord[]
@@ -94,6 +169,10 @@ export function consoleApi(
     references?: Record<string, LemmaReference>
     /** null makes the sources endpoint fail. */
     referenceSources?: ReferenceSource[] | null
+    stats?: ConsoleStats
+    summary?: WorkSummary
+    attempts?: WorkAttemptDto[]
+    tasks?: WorkItemDetail[]
   } = {},
 ) {
   const state = {
@@ -104,63 +183,96 @@ export function consoleApi(
     agents: seed.agents ?? [],
     references: seed.references ?? {},
     referenceSources: seed.referenceSources === undefined ? [] : seed.referenceSources,
+    stats: seed.stats ?? consoleStats(),
+    summary: seed.summary ?? workSummary(),
+    attempts: seed.attempts ?? [],
+    tasks: seed.tasks ?? [],
     issuedKeys: [] as string[],
   }
-  const findFact = (factId: string) => state.facts.find((candidate) => candidate.id === factId)
-  const replaceFact = (next: FactDto) => {
-    state.facts = state.facts.map((candidate) => (candidate.id === next.id ? next : candidate))
-    return HttpResponse.json(next)
+  const entryOfNode = (nodeId: string) =>
+    state.entries.find((entry) => entry.id === nodeId) ??
+    state.entries.find((entry) => entry.id === state.senses.find((sense) => sense.id === nodeId)?.entry_id)
+  /** The entry a node is or belongs to, as the list endpoints join it; an orphan is a broken seed. */
+  const entryRefOf = (nodeId: string) => {
+    const entry = entryOfNode(nodeId)
+    if (!entry) throw new Error(`The seed has no entry for node ${nodeId}.`)
+    return { id: entry.id, lemma: entry.lemma }
   }
+  const listedFact = (candidate: FactDto) => ({ ...candidate, entry: entryRefOf(candidate.subject_id) })
+  const listedFeedback = (item: FeedbackDto) => {
+    const target = state.facts.find((candidate) => candidate.id === item.target_id)
+    return { ...item, entry: entryRefOf(target?.subject_id ?? item.target_id) }
+  }
+  const ownNodes = (entry: EntryRecord) =>
+    new Set([entry.id, ...state.senses.filter((sense) => sense.entry_id === entry.id).map((sense) => sense.id)])
+  const slots = { total: 10, published: 5, pending: 1 }
 
   const handlers = [
-    http.get('/manage/v1/stats', () => {
-      const counts = new Map<string, { kind: string; status: string; count: number }>()
-      for (const { kind, status } of state.facts) {
-        const key = `${kind}/${status}`
-        counts.set(key, { kind, status, count: (counts.get(key)?.count ?? 0) + 1 })
-      }
-      const open = state.feedback.filter((item) => item.status === 'open').length
-      return HttpResponse.json({ facts: [...counts.values()], open_feedback: open })
+    http.get('/manage/v1/stats', () => HttpResponse.json(state.stats)),
+    http.get('/manage/v1/work/summary', ({ request }) => {
+      const window = new URL(request.url).searchParams.get('window') ?? '24h'
+      return HttpResponse.json({ ...state.summary, window })
     }),
-    http.get('/manage/v1/facts', ({ request }) => {
+    http.get('/manage/v1/work/attempts', ({ request }) => {
       const url = new URL(request.url)
-      const status = url.searchParams.get('status')
-      const kind = url.searchParams.get('kind')
-      const matches = state.facts.filter(
-        (candidate) => (!status || candidate.status === status) && (!kind || candidate.kind === kind),
+      const query = (name: string) => url.searchParams.get(name)
+      const matches = state.attempts.filter(
+        (candidate) =>
+          (!query('outcome') || candidate.outcome === query('outcome')) &&
+          (!query('type') || candidate.type === query('type')) &&
+          (!query('holder') || candidate.holder === query('holder')) &&
+          (!query('lemma') || candidate.entry.lemma === query('lemma')),
       )
       return HttpResponse.json(page(matches, url))
     }),
+    http.get('/manage/v1/work/items', ({ request }) => {
+      const url = new URL(request.url)
+      const entryId = url.searchParams.get('entry_id')
+      const subjectId = url.searchParams.get('subject_id')
+      const items = state.tasks
+        .filter((task) => task.status !== 'closed')
+        .filter((task) => (entryId ? task.entry.id === entryId : task.subject_id === subjectId))
+        .map(({ attempts: _, agent_seconds: __, queue_seconds: ___, ...overview }) => overview)
+      return HttpResponse.json({ items })
+    }),
+    http.get('/manage/v1/work/items/:id', ({ params }) => {
+      const found = state.tasks.find((task) => task.id === params.id)
+      return found ? HttpResponse.json(found) : apiError(404, 'not_found', 'Work item not found.')
+    }),
+    http.get('/manage/v1/facts', ({ request }) => {
+      const url = new URL(request.url)
+      const query = (name: string) => url.searchParams.get(name)
+      const matches = state.facts.filter(
+        (candidate) =>
+          (!query('status') || candidate.status === query('status')) &&
+          (!query('kind') || candidate.kind === query('kind')) &&
+          (!query('author') || candidate.author === query('author')) &&
+          (!query('weak') ||
+            (candidate.status === 'published' && candidate.review !== null && candidate.review.verdict !== 'pass')) &&
+          (!query('lemma') || entryOfNode(candidate.subject_id)?.lemma === query('lemma')) &&
+          (!query('level') || entryOfNode(candidate.subject_id)?.summary?.level === query('level')),
+      )
+      return HttpResponse.json(page(matches.map(listedFact), url))
+    }),
     http.get('/manage/v1/facts/:id', ({ params }) => {
-      const found = findFact(String(params.id))
-      return found ? HttpResponse.json(found) : apiError(404, 'not_found', 'Fact not found.')
-    }),
-    http.post('/manage/v1/facts/:id/retract', ({ params }) => {
-      const found = findFact(String(params.id))
-      if (!found) return apiError(404, 'not_found', 'Fact not found.')
-      if (found.status !== 'pending' && found.status !== 'published') {
-        return apiError(409, 'conflict', `Cannot retract a ${found.status} fact.`)
-      }
-      return replaceFact({ ...found, status: 'retracted' })
-    }),
-    http.post('/manage/v1/facts/:id/rereview', ({ params }) => {
-      const found = findFact(String(params.id))
-      if (!found) return apiError(404, 'not_found', 'Fact not found.')
-      return replaceFact({ ...found, status: 'pending', review: null })
+      const found = state.facts.find((candidate) => candidate.id === params.id)
+      return found ? HttpResponse.json(listedFact(found)) : apiError(404, 'not_found', 'Fact not found.')
     }),
     http.get('/manage/v1/entries', ({ request }) => {
       const url = new URL(request.url)
-      const prefix = url.searchParams.get('prefix') ?? ''
+      const query = (name: string) => url.searchParams.get(name)
       const summaries = state.entries
-        .filter((entry) => entry.lemma.startsWith(prefix))
+        .filter((entry) => entry.lemma.startsWith(query('prefix') ?? ''))
+        .filter((entry) => !query('level') || entry.summary?.level === query('level'))
+        .filter((entry) => !query('flagged') || (entry.summary?.quality ?? 1) < 1)
+        .filter((entry) => !query('stuck') || (entry.summary?.open_work?.stuck ?? 0) > 0)
         .sort((a, b) => a.lemma.localeCompare(b.lemma))
-        .map((entry) => {
-          const own = new Set([entry.id, ...state.senses.filter((s) => s.entry_id === entry.id).map((s) => s.id)])
+        .map((entry): EntrySummary => {
+          const own = ownNodes(entry)
           const facts = state.facts.filter((candidate) => own.has(candidate.subject_id))
-          const isLive = (candidate: FactDto) => candidate.status === 'pending' || candidate.status === 'published'
           const count = (status: FactDto['status']) => facts.filter((candidate) => candidate.status === status).length
           return {
-            id: entry.id,
+            id: entry.id as EntrySummary['id'],
             lemma: entry.lemma,
             entry_status: facts.find((candidate) => candidate.kind === 'entry')?.status ?? null,
             sense_count: facts.filter((candidate) => candidate.kind === 'sense' && isLive(candidate)).length,
@@ -173,6 +285,12 @@ export function consoleApi(
             },
             last_worked_at: entry.last_worked_at ?? null,
             created_at: at,
+            level: null,
+            completeness: 0.6,
+            quality: 1,
+            slots,
+            open_work: { total: 0, in_progress: 0, waiting_on_review: 0, stuck: 0 },
+            ...entry.summary,
           }
         })
       return HttpResponse.json(page(summaries, url))
@@ -181,15 +299,16 @@ export function consoleApi(
       const entry = state.entries.find((candidate) => candidate.lemma === params.lemma)
       if (!entry) return apiError(404, 'not_found', `No entry for "${params.lemma}".`)
       const senses = state.senses.filter((sense) => sense.entry_id === entry.id)
-      const nodeIds = new Set([entry.id, ...senses.map((sense) => sense.id)])
+      const nodeIds = ownNodes(entry)
       const facts = state.facts.filter(
         (candidate) => nodeIds.has(candidate.subject_id) || nodeIds.has(candidate.object_id ?? ''),
       )
       return HttpResponse.json({
         entry: { id: entry.id, lemma: entry.lemma, created_by: 'agent:producer', created_at: at },
         seed: false,
-        completeness: 0,
-        quality: 1,
+        completeness: entry.summary?.completeness ?? 0.6,
+        quality: entry.summary?.quality ?? 1,
+        slots: entry.summary?.slots ?? slots,
         senses: senses.map((sense) => ({ ...sense, created_by: 'agent:producer', created_at: at })),
         facts,
         ...(state.references[entry.lemma] ?? { frequency: null, cefr: [] }),
@@ -201,21 +320,21 @@ export function consoleApi(
     }),
     http.get('/manage/v1/nodes/:id', ({ params }) => {
       const entry = state.entries.find((candidate) => candidate.id === params.id)
-      if (entry) return HttpResponse.json({ node_type: 'entry', entry })
-      const sense = state.senses.find((candidate) => candidate.id === params.id)
-      const owner = sense && state.entries.find((candidate) => candidate.id === sense.entry_id)
-      if (owner) return HttpResponse.json({ node_type: 'sense', entry: owner })
+      if (entry) return HttpResponse.json({ node_type: 'entry', entry: { id: entry.id, lemma: entry.lemma } })
+      const owner = entryOfNode(String(params.id))
+      if (owner) return HttpResponse.json({ node_type: 'sense', entry: { id: owner.id, lemma: owner.lemma } })
       return apiError(404, 'not_found', 'No entry or sense has this id.')
     }),
     http.get('/manage/v1/feedback', ({ request }) => {
       const url = new URL(request.url)
       const status = url.searchParams.get('status')
       return HttpResponse.json(
-        page(
-          state.feedback.filter((item) => !status || item.status === status),
-          url,
-        ),
+        page(state.feedback.filter((item) => !status || item.status === status).map(listedFeedback), url),
       )
+    }),
+    http.get('/manage/v1/feedback/:id', ({ params }) => {
+      const found = state.feedback.find((item) => item.id === params.id)
+      return found ? HttpResponse.json(listedFeedback(found)) : apiError(404, 'not_found', 'Feedback not found.')
     }),
     http.get('/manage/v1/agents', () => HttpResponse.json({ items: state.agents })),
     http.post('/manage/v1/agents', async ({ request }) => {

@@ -102,6 +102,12 @@ Feature: Work items
     When the gaps are computed
     Then noun, verb, adjective, adverb, determiner, and pronoun senses need one grammar fact, noun, verb, adjective, adverb, determiner, preposition, and conjunction senses one collocation, and a single-word entry, not a phrase, one word formation
 
+  @work/slot-counts @domain
+  Scenario: An entry's slots split into those published facts fill and those only pending facts fill
+    Given an entry with every slot published, one filled only by a pending fact, and a pending sense that unsettles its sense list
+    When the entry is assessed
+    Then the slots total what completeness counts, the pending fill counts as pending, and the published count never exceeds what the live facts fill
+
   @work/scores @domain
   Scenario: An entry's completeness and quality come from its live facts
     Given an entry with some slots filled, some facts published on an uncertain verdict, and some under open feedback
@@ -155,6 +161,12 @@ Feature: Work items
     Given an entry with a pending pronunciation
     When agents claim pronunciation and syllables items
     Then the pronunciation item awaits review and is not served, while the syllables item is
+
+  @work/attempt-verdicts @domain
+  Scenario: The rescore draws a verdict on every worked item it judges
+    Given worked items whose gaps closed, changed, stayed as claimed, or stayed as claimed on the third attempt, one still awaiting review, and items nobody worked
+    When the items are reconciled
+    Then the closed one is closed, the changed one progressed, the unchanged ones made no progress or are stuck, and the awaiting and unworked ones get no verdict
 
   @work/item-attempts-usecase @usecase
   Scenario: Passes that add nothing hand an item to the curators

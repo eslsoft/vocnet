@@ -700,13 +700,40 @@ describe('assessEntry', () => {
     })
 
   it('scores completeness as filled slots over the slots the gaps count [spec: work/scores]', () => {
-    expect(assess(complete)).toEqual({ work: [], completeness: 1, quality: 1 })
+    expect(assess(complete)).toEqual({
+      work: [],
+      completeness: 1,
+      quality: 1,
+      slots: { total: 15, published: 15, pending: 0 },
+    })
     // The parts and the translation missing: 2 of 15 slots.
     const noTranslation = complete.filter((candidate) => candidate.kind !== 'translation')
     expect(assess(noTranslation, { incoming: [] }).completeness).toBe(1 - 2 / 15)
     // A bare entry counts only its five entry slots: the inventory, two accents, formation, syllables.
     expect(assess([complete[0]], { incoming: [] }).completeness).toBe(0)
     expect(assess([complete[0], complete[3]], { incoming: [] }).completeness).toBe(1 - 4 / 5)
+  })
+
+  it('counts the slots published facts fill and the ones only pending facts fill [spec: work/slot-counts]', () => {
+    const pending = (candidate: Fact) => ({ ...candidate, status: 'pending' }) as Fact
+    // A pending translation fills its slot for the live view only.
+    const translating = [...complete.slice(0, 6), pending(complete[6]), ...complete.slice(7)]
+    expect(assess(translating).slots).toEqual({ total: 15, published: 14, pending: 1 })
+    expect(assess([complete[0]], { incoming: [] }).slots).toEqual({ total: 5, published: 0, pending: 0 })
+    // A pending sense unsettles the live inventory the published list still settles: the published
+    // count never exceeds what the live view fills.
+    const added = sense()
+    const growing = assessEntry({
+      entry: bank,
+      ...plain,
+      senses: [focus, added],
+      facts: [...complete, fact('sense', added.id, { gloss: 'a place that keeps money' }, 'pending')],
+      incoming,
+      flagged: new Set(),
+      neighbors,
+    })
+    // The new sense adds its eight slots; the inventory slot the published list fills is open live.
+    expect(growing.slots).toEqual({ total: 23, published: 14, pending: 0 })
   })
 
   it('scores quality from live facts that are uncertain or under open feedback, each a weak fact [spec: work/scores]', () => {
@@ -890,6 +917,23 @@ describe('work items', () => {
     expect(attemptsAfter(idle, open(examples(0)))).toMatchObject({ attempts: 2 })
     // Gaps compare by what they say, not by the order of their keys.
     expect(gapText({ sense_id: sensed.id, type: 'category' } as Gap)).toBe(gapText(category))
+  })
+
+  it('draws a verdict on each worked item it judges, and none while its reviews are pending [spec: work/attempt-verdicts]', () => {
+    const verdictsOf = (items: WorkItem[], work: OpenWork[]) => reconcileItems(items, work, learner).verdicts
+    const unchanged = stored(category, { worked: true, claimedGap: category, attempts: 0 })
+    expect(verdictsOf([unchanged], [open(category)])).toEqual([{ id: unchanged.id, verdict: 'no_progress' }])
+    // The attempt that reaches the bound hands the item to the curators.
+    const last = stored(category, { worked: true, claimedGap: category, attempts: MAX_ATTEMPTS - 1 })
+    expect(verdictsOf([last], [open(category)])).toEqual([{ id: last.id, verdict: 'stuck' }])
+    const filling = stored(examples(0), { worked: true, claimedGap: examples(0) })
+    expect(verdictsOf([filling], [open(examples(1))])).toEqual([{ id: filling.id, verdict: 'progressed' }])
+    expect(verdictsOf([filling], [])).toEqual([{ id: filling.id, verdict: 'closed' }])
+    // Still awaiting its reviews: no verdict yet. An item nobody worked gets none either way.
+    expect(verdictsOf([filling], [open(examples(1), true)])).toEqual([])
+    const idle = stored(examples(0))
+    expect(verdictsOf([idle], [open(examples(1))])).toEqual([])
+    expect(verdictsOf([idle], [])).toEqual([])
   })
 
   it('moves an item to the curators once three passes leave it unchanged [spec: work/item-curation]', () => {

@@ -7,9 +7,9 @@ import type { PrincipalRef } from '@server/domain/principal'
 import type { EntryLinks, PublicViewRecord } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
-import type { WorkItem, WorkItemWrite, WorkLease } from '@server/domain/work'
+import type { ReconciledItems, SlotCounts, WorkItem, WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
-import type { EntrySort, EntrySummary, SearchMatch, SenseSort, Stats } from '@shared/catalog'
+import type { EntrySort, EntrySummary, SearchMatch, SenseSort } from '@shared/catalog'
 import type {
   EntryId,
   FactId,
@@ -24,8 +24,9 @@ import type {
   Verdict,
 } from '@shared/facts'
 import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
+import type { WorkAttemptOutcome } from '@shared/monitor'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
-import type { WorkItemId, WorkLeaseId, WorkType } from '@shared/work'
+import type { Gap, WorkItemId, WorkLeaseId, WorkType } from '@shared/work'
 
 // Interfaces for everything beyond the process boundary. Implemented in adapters/.
 
@@ -39,6 +40,9 @@ export interface Page<T> {
   items: T[]
   nextCursor: string | null
 }
+
+/** A record with the entry it is about: the entry itself, or the entry its sense or fact belongs to. */
+export type WithEntry<T> = T & { entry: { id: EntryId; lemma: Lemma } }
 
 export interface NodeRepo {
   findEntryByLemma(lemma: Lemma): Promise<EntryNode | null>
@@ -64,8 +68,8 @@ export interface NodeRepo {
   /** The live `sense` facts of every sense of this entry, oldest sense and oldest fact first. */
   listLiveGlosses(entryId: EntryId): Promise<Array<{ sense: SenseNode; fact: FactOf<'sense'> }>>
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
-  /** Every entry whose lemma starts with prefix, in any status, in lemma order. */
-  listEntrySummaries(prefix: string, page: PageRequest): Promise<Page<EntrySummary>>
+  /** Every entry whose lemma starts with prefix and that the filter admits, in any status, in lemma order. */
+  listEntrySummaries(filter: EntrySummaryFilter, page: PageRequest, now: string): Promise<Page<EntrySummary>>
   /**
    * Live form facts whose content key is one of these keys or one of them extended with labels
    * (`key|…`), on entries whose entry fact is live.
@@ -76,6 +80,18 @@ export interface NodeRepo {
    * entry's only in ASCII letter case, in lemma order.
    */
   listLiveCaseVariants(entry: EntryNode): Promise<Lemma[]>
+}
+
+/** Which entries the management entry list shows. */
+export interface EntrySummaryFilter {
+  /** The lemma starts with it; empty for any lemma. */
+  prefix: string
+  /** The lemma's lowest CEFR level is this; null for any. */
+  level: CefrLevel | null
+  /** Only entries with a weak fact about them or their senses. */
+  flagged: boolean
+  /** Only entries with an item at the attempt bound. */
+  stuck: boolean
 }
 
 /** Imported reference data, read by exact lemma spelling. */
@@ -91,6 +107,10 @@ export interface ReferenceRepo {
 export interface FactFilter {
   status?: FactStatus
   kind?: FactKind
+  /** Only facts this principal authored. */
+  author?: string
+  /** Only facts about the entry with exactly this lemma or one of its senses. */
+  lemma?: string
   /** Only weak facts: published on an uncertain review, or kept published by a failed one. */
   weak?: boolean
   /** Only facts about an entry, or a sense of an entry, whose lowest CEFR level is this. */
@@ -171,8 +191,11 @@ export interface FactRepo {
   listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
   /** A rejected fact of this kind about this subject with this content that a curator rejected. */
   findCuratedRejection(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
-  list(filter: FactFilter, page: PageRequest): Promise<Page<Fact>>
-  countByKindAndStatus(): Promise<Stats['facts']>
+  /** The fact with the entry its subject is or belongs to. */
+  findWithEntry(id: FactId): Promise<WithEntry<Fact> | null>
+  /** Facts the filter admits, newest first, each with the entry its subject is or belongs to. */
+  list(filter: FactFilter, page: PageRequest): Promise<Page<WithEntry<Fact>>>
+  countByKindAndStatus(): Promise<Array<{ kind: FactKind; status: FactStatus; count: number }>>
 }
 
 export interface TopicRepo {
@@ -292,8 +315,11 @@ export interface FeedbackRepo {
   find(id: FeedbackId): Promise<FeedbackRecord | null>
   /** Compare-and-set on revision; false when someone else wrote first. */
   update(next: FeedbackRecord, expectedRevision: number): Promise<boolean>
-  list(filter: { status?: FeedbackStatus }, page: PageRequest): Promise<Page<FeedbackRecord>>
-  countOpen(): Promise<number>
+  /** The item with the entry its target is or belongs to. */
+  findWithEntry(id: FeedbackId): Promise<WithEntry<FeedbackRecord> | null>
+  /** Items with the status, newest first, each with the entry its target is or belongs to. */
+  list(filter: { status?: FeedbackStatus }, page: PageRequest): Promise<Page<WithEntry<FeedbackRecord>>>
+  countByStatus(): Promise<Record<FeedbackStatus, number>>
 }
 
 /** A worklist row whose stored scores and items no longer describe the entry. */
@@ -306,6 +332,7 @@ export interface StaleWork {
 export interface WorkScores {
   completeness: number
   quality: number
+  slots: SlotCounts
 }
 
 /** A stored item with the lemma of its entry. */
@@ -330,13 +357,11 @@ export interface WorkRepo {
   /**
    * Stores the scores and brings the entry's items to `items` as of the stale revision, in one
    * batch: each write upserts by type and node, keeping a stored item's id, lease, and claim and
-   * work records, and a new item gets a fresh id. A no-op when another write bumped the revision since.
+   * work records, and a new item gets a fresh id; each item's history row is inserted with it, its
+   * gap refreshed, and stamped closed when the item is deleted; and each verdict settles the
+   * attempts at its item still waiting on review. A no-op when another write bumped the revision since.
    */
-  saveAssessment(
-    stale: StaleWork,
-    scores: WorkScores,
-    items: { writes: ReadonlyArray<WorkItemWrite & { id: WorkItemId | null }>; deletes: readonly WorkItemId[] },
-  ): Promise<void>
+  saveAssessment(stale: StaleWork, scores: WorkScores, items: ReconciledItems): Promise<void>
   /**
    * Leases up to `limit` free items of the production queue, all of the type of its first free
    * item (among `types` when given), in queue order, recording each one's gap as claimed, and
@@ -350,15 +375,121 @@ export interface WorkRepo {
   ): Promise<{ lease: WorkLease; items: WorkItem[] } | null>
   findLease(id: WorkLeaseId): Promise<WorkLease | null>
   /**
-   * While the lease is still held at `at`: marks the `worked` items of it as worked with their
-   * notes, releases every item it holds, bumps the revision of its entries, and deletes it; false
-   * when it is no longer held, changing nothing.
+   * While the lease is still held at `at`: records an attempt at each `worked` item (waiting on
+   * review, or closed when the item is already gone) with the lease's time shared among them,
+   * marks them worked with their notes, releases every item it holds, bumps the revision of its
+   * entries, and deletes it; false when it is no longer held, changing nothing.
    */
   complete(lease: WorkLease, worked: ReadonlyArray<{ id: WorkItemId; note?: string }>, at: string): Promise<boolean>
   /** The curators' queue: items at the attempt bound, of `type` when given, in queue order. */
   listCuration(type: WorkType | null, page: PageRequest): Promise<Page<WorkItemWithLemma>>
   /** Deletes the leases that expired at or before `before`; returns how many. */
   purgeLeases(before: string): Promise<number>
+}
+
+/** A work item as the console reads it: open from `work_items`, or closed from its history row. */
+export interface WorkItemRecord {
+  id: WorkItemId
+  entryId: EntryId
+  lemma: Lemma
+  type: WorkType
+  subjectId: string
+  /** The live gloss when the subject is a sense: the one no live correction supersedes. */
+  senseGloss: string | null
+  gap: Gap
+  awaiting: boolean
+  /** Completed passes that left it unchanged; 0 for a closed item. */
+  attempts: number
+  lease: { holder: PrincipalRef; expiresAt: string } | null
+  createdAt: string
+  /** Null while the item is open. */
+  closedAt: string | null
+}
+
+/** One completed attempt at an item, with the facts its holder submitted about the item meanwhile. */
+export interface WorkAttemptRecord {
+  id: string
+  itemId: WorkItemId
+  /** 1-based, among the item's completed attempts in completion order. */
+  ordinal: number
+  entryId: EntryId
+  lemma: Lemma
+  type: WorkType
+  subjectId: string
+  senseGloss: string | null
+  holder: PrincipalRef
+  claimedAt: string
+  completedAt: string
+  seconds: number
+  note: string | null
+  outcome: WorkAttemptOutcome
+  /**
+   * Facts the holder authored between the claim and the completion about the item's node: the
+   * entry and its senses for an entry's item, the sense for a sense's, and the weak fact's subject
+   * for a weak fact.
+   */
+  facts: Fact[]
+}
+
+export interface WorkAttemptFilter {
+  outcome?: WorkAttemptOutcome
+  type?: WorkType
+  holder?: PrincipalRef
+  /** The item's entry has exactly this lemma. */
+  lemma?: Lemma
+}
+
+/** Item counts by created and closed; each counts the items that opened or closed since the cutoff. */
+export interface ItemFlow {
+  created: number
+  closed: number
+}
+
+/** Read-only aggregates over the facts, the worklist, and the work tables, for the console. */
+export interface MonitorRepo {
+  /** Weak facts by kind, as the facts list `weak` filter selects them. */
+  countWeakByKind(): Promise<Array<{ kind: FactKind; count: number }>>
+  countLiveFacts(): Promise<number>
+  /** The worklist rows of live entries by `level_rank`: how many, how many complete, and their completeness summed. */
+  completenessByLevel(): Promise<Array<{ levelRank: number | null; entries: number; complete: number; sum: number }>>
+  /** Pending facts: how many, the oldest's creation, and how many were created before the cutoff. */
+  pendingReview(before: string): Promise<{ count: number; oldestAt: string | null; olderThan: number }>
+  /** Open items by type, level rank, and the inputs of their status. */
+  countOpenItems(now: string): Promise<
+    Array<{
+      type: WorkType
+      levelRank: number | null
+      attempts: number
+      awaiting: boolean
+      /** Under a lease unexpired at `now`. */
+      leased: boolean
+      count: number
+    }>
+  >
+  /** Leases that expired since the cutoff and before now: their holders never completed them. */
+  countTimedOutLeases(since: string, now: string): Promise<number>
+  /** Items created and closed since the cutoff, by type and level rank. */
+  itemFlow(since: string): Promise<Array<ItemFlow & { type: WorkType; levelRank: number | null }>>
+  /** Items created and closed since the cutoff, by the first `keyLength` characters of the timestamp. */
+  throughput(since: string, keyLength: number): Promise<Array<ItemFlow & { key: string }>>
+  /** The median seconds from created to closed of the items closed since the cutoff; null without one. */
+  medianCloseSeconds(since: string): Promise<number | null>
+  /** Attempts completed since the cutoff by type: their median seconds, how many settled, and how many of those closed or progressed. */
+  attemptStats(
+    since: string,
+  ): Promise<Array<{ type: WorkType; medianSeconds: number; settled: number; succeeded: number }>>
+  /** Up to `limit` leases expiring after the cutoff, newest claim first, each with its first three lemmas. */
+  listLeases(since: string, limit: number): Promise<Array<WorkLease & { lemmas: Lemma[] }>>
+  /** Distinct holders of a lease unexpired at `now`. */
+  countHolders(now: string): Promise<number>
+  /** Attempts the filter admits, latest completion first. */
+  listAttempts(filter: WorkAttemptFilter, page: PageRequest): Promise<Page<WorkAttemptRecord>>
+  /** Every attempt at the item, latest completion first. */
+  listItemAttempts(itemId: WorkItemId): Promise<WorkAttemptRecord[]>
+  /** The open items of the entry, or about the node, in queue order. */
+  listOpenItems(by: { entryId: EntryId } | { subjectId: string }): Promise<WorkItemRecord[]>
+  /** The item, open or closed; null when no item ever had the id. */
+  findItem(id: WorkItemId): Promise<WorkItemRecord | null>
 }
 
 export interface AgentRecord {

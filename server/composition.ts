@@ -6,6 +6,7 @@ import { createRateLimiter } from '@server/adapters/rate-limiter'
 import { createAgentRepo } from '@server/adapters/repos/agents'
 import { createFactRepo } from '@server/adapters/repos/facts'
 import { createFeedbackRepo } from '@server/adapters/repos/feedback'
+import { createMonitorRepo } from '@server/adapters/repos/monitor'
 import { createNodeRepo } from '@server/adapters/repos/nodes'
 import { createPublicViewRepo } from '@server/adapters/repos/public-view'
 import { createReferenceRepo } from '@server/adapters/repos/reference'
@@ -32,6 +33,7 @@ export function createDeps(env: Env): Deps {
     feedback: createFeedbackRepo(db),
     agents: createAgentRepo(db),
     work: createWorkRepo(db),
+    monitor: createMonitorRepo(db),
     reference: createReferenceRepo(db),
     publicViews: createPublicViewRepo(db),
     jev: createJevReviewer({ ...review.gateway, model: review.jevModel }),

@@ -28,7 +28,7 @@ import { formMeaning, isIrregularForm } from './fact-kinds'
 import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
 import { levelRank } from './reference'
 import { listedSenses } from './sense-list'
-import { assessEntry } from './work'
+import { assessEntry, type SlotCounts } from './work'
 /** Everything the read model needs about one entry, in every status. */
 export interface EntrySnapshot {
   entry: EntryNode
@@ -63,6 +63,7 @@ export interface ManagedEntryView {
   seed: boolean
   completeness: number
   quality: number
+  slots: SlotCounts
   senses: SenseNode[]
   facts: Fact[]
 }
@@ -70,12 +71,13 @@ export interface ManagedEntryView {
 /** The management view: the entry with every fact in every status, including relations pointing at it. */
 export function managedEntryView(snapshot: EntrySnapshot): ManagedEntryView {
   const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, fact]))
-  const { completeness, quality } = assessEntry(snapshot)
+  const { completeness, quality, slots } = assessEntry(snapshot)
   return {
     entry: snapshot.entry,
     seed: snapshot.seed,
     completeness,
     quality,
+    slots,
     senses: snapshot.senses,
     facts: [...facts.values()],
   }

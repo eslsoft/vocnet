@@ -30,7 +30,6 @@ import type {
   PublicEntry,
   PublicSenseDetail,
   SearchHit,
-  Stats,
   WordSummary,
 } from '@shared/catalog'
 import type { EntryId, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
@@ -38,7 +37,7 @@ import type { CefrLevel, LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
 import { InvalidReferenceError, NotFoundError } from './errors'
 import { type Actor, submitFact } from './facts'
-import type { Page, PageRequest } from './ports'
+import type { EntrySummaryFilter, Page, PageRequest } from './ports'
 import { readPublicView, type ViewDeps } from './public-view'
 import { refreshEntries } from './refresh'
 import { leavesOf } from './topics'
@@ -284,8 +283,13 @@ export async function searchPublicEntries(
   return { ...found, items: found.items.map((row) => ({ ...shapeSummary(row.summary, variant), match: row.match })) }
 }
 
-export function listEntrySummaries(deps: Pick<Deps, 'nodes'>, prefix: string, page: PageRequest) {
-  return deps.nodes.listEntrySummaries(normalizeTerm(prefix), page)
+/** Entries in lemma order, by lemma prefix, lowest CEFR level, a weak fact, or an item at the attempt bound. */
+export function listEntrySummaries(deps: Pick<Deps, 'nodes' | 'clock'>, filter: EntrySummaryFilter, page: PageRequest) {
+  return deps.nodes.listEntrySummaries(
+    { ...filter, prefix: normalizeTerm(filter.prefix) },
+    page,
+    deps.clock.now().toISOString(),
+  )
 }
 
 export async function getManagedEntry(
@@ -303,9 +307,4 @@ export async function locateNode(deps: Pick<Deps, 'nodes'>, id: string): Promise
   const sense = await deps.nodes.findSense(id as SenseId)
   if (sense) return { node_type: 'sense', entry: { id: sense.entryId, lemma: sense.lemma } }
   throw new NotFoundError(`No entry or sense has the id ${id}.`)
-}
-
-export async function getStats(deps: Pick<Deps, 'facts' | 'feedback'>): Promise<Stats> {
-  const [facts, openFeedback] = await Promise.all([deps.facts.countByKindAndStatus(), deps.feedback.countOpen()])
-  return { facts, open_feedback: openFeedback }
 }

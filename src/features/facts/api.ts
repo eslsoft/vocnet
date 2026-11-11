@@ -1,10 +1,16 @@
-import { nodeLocationSchema } from '@shared/catalog'
-import { type FactId, type FactKind, type FactStatus, factPageSchema, factSchema } from '@shared/facts'
+import { managedEntryDetailSchema, nodeLocationSchema } from '@shared/catalog'
+import { type FactId, type FactKind, type FactStatus, factPageSchema, listedFactSchema } from '@shared/facts'
+import type { CefrLevel } from '@shared/reference'
 import { decodeApiResponse, rpc } from '@/shared/api/client'
 
 export interface FactFilter {
   status?: FactStatus
   kind?: FactKind
+  /** Only published facts whose review is uncertain or failed. */
+  weak?: 'true'
+  level?: CefrLevel
+  author?: string
+  lemma?: string
 }
 
 const facts = rpc.manage.v1.facts
@@ -15,17 +21,14 @@ export async function listFacts(filter: FactFilter, cursor: string | undefined) 
 }
 
 export async function getFact(id: FactId) {
-  return decodeApiResponse(await facts[':id'].$get({ param: { id } }), factSchema)
-}
-
-export async function retractFact(id: FactId) {
-  return decodeApiResponse(await facts[':id'].retract.$post({ param: { id } }), factSchema)
-}
-
-export async function rereviewFact(id: FactId) {
-  return decodeApiResponse(await facts[':id'].rereview.$post({ param: { id } }), factSchema)
+  return decodeApiResponse(await facts[':id'].$get({ param: { id } }), listedFactSchema)
 }
 
 export async function locateNode(id: string) {
   return decodeApiResponse(await rpc.manage.v1.nodes[':id'].$get({ param: { id } }), nodeLocationSchema)
+}
+
+export async function getManagedEntry(lemma: string) {
+  const response = await rpc.manage.v1.entries[':lemma'].$get({ param: { lemma } })
+  return decodeApiResponse(response, managedEntryDetailSchema)
 }

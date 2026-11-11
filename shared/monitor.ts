@@ -97,7 +97,8 @@ export const workSummarySchema = z
       by_level: z.array(workLevelForecastSchema),
     }),
     leases: z.array(workLeaseSummarySchema).meta({
-      description: 'Unexpired leases and leases that expired within the last 24 hours, newest first.',
+      description:
+        'Unexpired leases and leases that expired within the last 24 hours, newest claim first, at most 100.',
     }),
   })
   .meta({ id: 'WorkSummary' })
@@ -111,6 +112,9 @@ export const workAttemptSchema = z
   .object({
     id: z.uuid(),
     item_id: workItemIdSchema,
+    attempt: z.number().int().positive().meta({
+      description: "This attempt's 1-based ordinal among the item's completed attempts, by completion.",
+    }),
     entry: z.object({ id: entryIdSchema, lemma: z.string() }),
     type: workTypeSchema,
     subject_id: z.uuid(),
@@ -158,7 +162,10 @@ export const workItemDetailSchema = workItemOverviewSchema
   .extend({
     attempts: z.array(workAttemptSchema).meta({ description: 'Every completed attempt, newest first.' }),
     agent_seconds: seconds,
-    queue_seconds: seconds.meta({ description: 'From created to the first claim, or to now when never claimed.' }),
+    queue_seconds: seconds.meta({
+      description:
+        "From created to the first attempt's claim; for an item never worked, to its close, or to now while open.",
+    }),
   })
   .meta({ id: 'WorkItemDetail' })
 export type WorkItemDetail = z.infer<typeof workItemDetailSchema>
@@ -170,9 +177,9 @@ export const levelCompletenessSchema = z
 export const consoleStatsSchema = z
   .object({
     facts: z.array(z.object({ kind: factKindSchema, status: factStatusSchema, count })),
-    flagged: z
-      .array(z.object({ kind: factKindSchema, count }))
-      .meta({ description: 'Weak facts by kind: published on an uncertain or failed review, or open feedback.' }),
+    flagged: z.array(z.object({ kind: factKindSchema, count })).meta({
+      description: 'Weak facts by kind: published on an uncertain or failed review (the facts list `weak` filter).',
+    }),
     live_facts: count,
     completeness: z.object({ average: ratio, by_level: z.array(levelCompletenessSchema) }),
     pending_review: z.object({
@@ -180,7 +187,9 @@ export const consoleStatsSchema = z
       oldest_at: z.iso.datetime().nullable(),
       over_one_hour: count,
     }),
-    open_feedback: count,
+    feedback: z
+      .object({ open: count, claimed: count, resolved: count, dismissed: count })
+      .meta({ description: 'Feedback by status.' }),
     work: z.object({ open: count, stuck: count, timed_out_24h: count }),
   })
   .meta({ id: 'ConsoleStats' })

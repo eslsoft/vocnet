@@ -407,6 +407,20 @@
       "when": 1794372091702,
       "tag": "20261111044131_core_senses",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1794374545884,
+      "tag": "20261111052225_work_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1794374557516,
+      "tag": "20261111052237_work_history_backfill",
+      "breakpoints": true
     }
   ]
 }

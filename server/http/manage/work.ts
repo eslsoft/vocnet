@@ -1,14 +1,28 @@
 import { createRoute } from '@hono/zod-openapi'
+import type { PrincipalRef } from '@server/domain/principal'
+import type { Lemma } from '@server/domain/term'
 import type { WorkItem } from '@server/domain/work'
 import type { WorkContext } from '@server/domain/work-context'
+import { getWorkItem, getWorkSummary, listOpenWorkItems, listWorkAttempts } from '@server/usecases/monitor'
 import { claimWork, completeWork, listCurationItems } from '@server/usecases/work'
 import { rescoreStaleWork } from '@server/usecases/work-scores'
+import { lemmaInputSchema } from '@shared/catalog'
+import { entryIdSchema } from '@shared/facts'
+import {
+  workAttemptOutcomeSchema,
+  workAttemptPageSchema,
+  workItemDetailSchema,
+  workItemOverviewListSchema,
+  workSummarySchema,
+  workWindowSchema,
+} from '@shared/monitor'
 import {
   claimWorkInputSchema,
   completeWorkInputSchema,
   curationPageSchema,
   workClaimSchema,
   workCompletionSchema,
+  workItemIdSchema,
   workLeaseIdSchema,
   workRescoreInputSchema,
   workRescoreResultSchema,
@@ -102,6 +116,88 @@ const rescoreRoute = createRoute({
   },
 })
 
+const summaryRoute = createRoute({
+  method: 'get',
+  path: '/work/summary',
+  tags,
+  middleware: requireAdmin,
+  summary: 'How fast the agents close the open work (admins)',
+  description:
+    'Open items by status and type; items created and closed per hour over the last 24 hours (`24h`) or per day ' +
+    'over the last 7 days (`7d`), counted from the start of the first bucket; attempt times and success by type ' +
+    'within the window; the backlog trend over the last 7 days and 24 hours, overall and by lowest CEFR level; ' +
+    'and the leases of the last day, at most 100.',
+  request: { query: z.object({ window: workWindowSchema.default('24h') }) },
+  responses: {
+    200: json(workSummarySchema, 'The summary.'),
+    400: errorResponse,
+    403: errorResponse,
+  },
+})
+
+const attemptsRoute = createRoute({
+  method: 'get',
+  path: '/work/attempts',
+  tags,
+  middleware: requireAdmin,
+  summary: 'List completed attempts, latest first (admins)',
+  description:
+    "Every item a completion named, with its outcome once the rescore judged it and the facts its holder submitted about the item's node between the claim and the completion. `lemma` matches only the entry spelled exactly so.",
+  request: {
+    query: pageQuery.extend({
+      outcome: workAttemptOutcomeSchema.optional(),
+      type: workTypeSchema.optional(),
+      holder: z
+        .string()
+        .min(1)
+        .optional()
+        .meta({ description: 'Only attempts by this principal (agent:… or oidc:…).' }),
+      lemma: lemmaInputSchema.optional(),
+    }),
+  },
+  responses: {
+    200: json(workAttemptPageSchema, 'A page of attempts.'),
+    400: errorResponse,
+    403: errorResponse,
+  },
+})
+
+const itemsRoute = createRoute({
+  method: 'get',
+  path: '/work/items',
+  tags,
+  middleware: requireAdmin,
+  summary: "List an entry's or a node's open work items (admins)",
+  description:
+    'Exactly one of `entry_id` (every open item of the entry) and `subject_id` (the open items about one entry, sense, or weak fact), in queue order.',
+  request: {
+    query: z
+      .object({ entry_id: entryIdSchema.optional(), subject_id: z.uuid().optional() })
+      .refine((query) => (query.entry_id === undefined) !== (query.subject_id === undefined), {
+        message: 'Give exactly one of entry_id and subject_id.',
+      }),
+  },
+  responses: {
+    200: json(workItemOverviewListSchema, 'The open items.'),
+    400: errorResponse,
+    403: errorResponse,
+  },
+})
+
+const itemRoute = createRoute({
+  method: 'get',
+  path: '/work/items/{id}',
+  tags,
+  middleware: requireAdmin,
+  summary: 'Get one work item, open or closed, with its attempts (admins)',
+  request: { params: z.object({ id: workItemIdSchema }) },
+  responses: {
+    200: json(workItemDetailSchema, 'The item.'),
+    403: errorResponse,
+    404: errorResponse,
+  },
+})
+
 const itemDto = (item: WorkItem, lemma: string) => ({
   id: item.id,
   type: item.type,
@@ -138,6 +234,19 @@ const contextDto = (context: WorkContext) => ({
 })
 
 export const manageWorkRoutes = createRouter()
+  .openapi(summaryRoute, async (c) => c.json(await getWorkSummary(c.get('deps'), c.req.valid('query').window), 200))
+  .openapi(attemptsRoute, async (c) => {
+    const { outcome, type, holder, lemma, limit, cursor } = c.req.valid('query')
+    const filter = { outcome, type, holder: holder as PrincipalRef | undefined, lemma: lemma as Lemma | undefined }
+    const page = await listWorkAttempts(c.get('deps'), filter, { limit, cursor })
+    return c.json({ items: page.items, next_cursor: page.nextCursor }, 200)
+  })
+  .openapi(itemsRoute, async (c) => {
+    const { entry_id, subject_id } = c.req.valid('query')
+    const by = entry_id ? { entryId: entry_id } : { subjectId: subject_id! }
+    return c.json({ items: await listOpenWorkItems(c.get('deps'), by) }, 200)
+  })
+  .openapi(itemRoute, async (c) => c.json(await getWorkItem(c.get('deps'), c.req.valid('param').id), 200))
   .openapi(rescoreRoute, async (c) => c.json(await rescoreStaleWork(c.get('deps'), c.req.valid('json').limit), 200))
   .openapi(claimRoute, async (c) => {
     // Without a body the validator is skipped, so the defaults are applied here.
