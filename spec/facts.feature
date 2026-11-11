@@ -443,9 +443,9 @@ Feature: Facts and review
 
   @facts/revalidate-gloss-retracted @api
   Scenario: A retracted correction does not reject the facts waiting to revalidate against it
-    Given a published gloss correction whose dependents are marked for revalidation
+    Given a published gloss correction whose example and incoming relation are marked for revalidation
     When the correction is retracted before the queue delivers their jobs
-    Then the dependents stay published with their standing reviews, unmarked, and no reviewer is asked
+    Then the example stays published with its standing review, unmarked, the relation is retracted because its sense no longer shows, and no reviewer is asked
 
   @facts/revalidate-api @api
   Scenario: Revalidation through the queue on a real database
@@ -453,11 +453,24 @@ Feature: Facts and review
     When the queue delivers their revalidation jobs
     Then they stay published with reviews of the new gloss, and a fact about another sense is untouched
 
-  @facts/retract-no-cascade @usecase
-  Scenario: Retracting a gloss does not cascade
-    Given a sense whose published gloss has dependent facts
-    When the gloss is retracted
-    Then nothing is marked or enqueued, and the sense and its facts drop out of the public view
+  @facts/dead-sense-retires-links @usecase
+  Scenario: A sense that stops showing retires its relations and nothing else
+    Given a sense with an example, a translation, an outgoing relation a curator passed, and an incoming relation
+    When its last live gloss is retracted, or the entry fact of the other end's entry leaves live
+    Then the relations at the sense that cannot show are retracted, the curated one too, while its other facts stay as they were, unmarked, and nothing is enqueued
+    And once the sense has a live gloss again, the same relation submits as a new pending fact
+
+  @facts/dead-sense-retires-links-api @api
+  Scenario: Relations at a sense that stops showing leave live in the status write's batch
+    Given published relations into, out of, and away from a sense, and a relation into a sense of another entry
+    When the sense's gloss is retracted, and then that other entry's entry fact
+    Then each relation at a sense that cannot show is retracted, the relation away from it only once its own end stops showing, the entries at the other end go stale, and the public entry shows none of them
+
+  @facts/dead-end-relations-migration @api
+  Scenario: The dead_end_relations migration retires the relations stored before the rule
+    Given a published relation into a sense whose gloss was retracted, a relation between showing senses, and synonyms and topics items in curation
+    When the migration runs
+    Then the relation at the dead sense is retracted, the other stays published, the synonyms item at its live end returns to the production queue with no attempts, the topics item and the item away from it stay in curation, and the entries at both ends go stale
 
   @facts/review-idempotent @usecase
   Scenario: Duplicate deliveries change nothing

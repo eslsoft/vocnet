@@ -216,7 +216,15 @@ const contextSenseSchema = z
   .meta({ id: 'WorkSense' })
 
 const relatedSenseSchema = z
-  .object({ sense_id: senseIdSchema, lemma: z.string(), pos: posSchema, gloss: z.string().nullable() })
+  .object({
+    sense_id: senseIdSchema,
+    lemma: z.string(),
+    pos: posSchema,
+    gloss: z.string().nullable().meta({
+      description:
+        'Its current gloss while the sense can show (a live gloss and a live entry fact); null when it cannot, and a relation to it then fills nothing.',
+    }),
+  })
   .meta({ id: 'WorkRelatedSense', description: 'A sense at the other end of a relation among the context facts.' })
 
 export const workContextSchema = z

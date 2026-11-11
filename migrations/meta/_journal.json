@@ -393,6 +393,13 @@
       "when": 1794364500419,
       "tag": "20261111023500_core_tier_network_first",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1794367491558,
+      "tag": "20261111032451_dead_end_relations",
+      "breakpoints": true
     }
   ]
 }

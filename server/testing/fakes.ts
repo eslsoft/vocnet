@@ -2,7 +2,7 @@ import type { EntrySnapshot, StoredSenseSummary } from '@server/domain/catalog-v
 import { isCurated } from '@server/domain/curation'
 import { type Fact, type FactOf, isKind } from '@server/domain/fact'
 import { factKinds, type Link, meaningKeyOf } from '@server/domain/fact-kinds'
-import { isLive } from '@server/domain/fact-lifecycle'
+import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { type PublicViewRecord, STEM_ROLES } from '@server/domain/public-view'
@@ -295,6 +295,23 @@ export function fakeWorld(): FakeWorld {
     for (const entryId of familyBases(fact)) workOf(entryId).revision += 1
     if (fact.kind !== 'entry' && fact.kind !== 'sense') return
     for (const entryId of linkedEntries([fact.subjectId])) workOf(entryId).revision += 1
+  }
+  const definedLive = (kind: 'entry' | 'sense', nodeId: string) =>
+    world.facts.some((fact) => fact.kind === kind && fact.subjectId === nodeId && live(fact))
+  /** Retracts the live links at a sense the written entry or sense fact defines that can no longer show, as the real batch does. */
+  const retireDeadLinks = (written: Fact, at: string) => {
+    if (written.kind !== 'entry' && written.kind !== 'sense') return
+    const dead = new Set<string>(
+      world.senses
+        .filter((sense) => sense.id === written.subjectId || sense.entryId === written.subjectId)
+        .filter((sense) => !definedLive('sense', sense.id) || !definedLive('entry', sense.entryId))
+        .map((sense) => sense.id),
+    )
+    world.facts.forEach((fact, index) => {
+      if (fact.objectId === null || !canApply('retract', fact.status)) return
+      if (!dead.has(fact.subjectId) && !dead.has(fact.objectId)) return
+      world.facts[index] = { ...fact, status: factTransitions.retract.to, updatedAt: at, revalidateSince: null } as Fact
+    })
   }
   const touchFact = (factId: string) => {
     const fact = world.facts.find((candidate) => candidate.id === factId)
@@ -596,6 +613,7 @@ export function fakeWorld(): FakeWorld {
           world.facts.length,
           ...retired.map((candidate) => (candidate.id === id ? next : candidate)),
         )
+        retireDeadLinks(next, at)
         touch([next.subjectId, next.objectId])
         touchLinked(next)
         return true

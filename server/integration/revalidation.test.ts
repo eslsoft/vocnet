@@ -111,7 +111,7 @@ describe('revalidation', () => {
     expect(entry.meanings[0]?.senses[0]?.examples).toEqual([])
   })
 
-  it('keeps dependents published and unmarked when the correction is retracted before they revalidate [spec: facts/revalidate-gloss-retracted]', async () => {
+  it('keeps the example published and unmarked and retracts the relation when the correction is retracted before they revalidate [spec: facts/revalidate-gloss-retracted]', async () => {
     const { token, correction, example, incoming } = await correctedRiverBank({
       gloss: 'The sloping land beside a river.',
     })
@@ -125,7 +125,8 @@ describe('revalidation', () => {
     expect((await deliverReviews(ids)).explicitAcks).toEqual(['m0', 'm1'])
     expect(reviewer).not.toHaveBeenCalled()
     const after = await Promise.all(ids.map(factOf))
-    expect(after.map((fact) => fact.status)).toEqual(['published', 'published'])
+    // The sense has no live gloss left, so the relation at it left live with the retraction.
+    expect(after.map((fact) => fact.status)).toEqual(['published', 'retracted'])
     expect(after.map((fact) => fact.review)).toEqual(reviewsBefore)
     expect(await marks(ids)).toEqual([null, null])
   })

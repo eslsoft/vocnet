@@ -158,6 +158,12 @@ Feature: Work items
     When an agent claims category and example items
     Then the category items come first, both of them, each with its gap, its entry's level and senses, its sense, and the facts about that sense
 
+  @work/claim-context-dead-ends @domain
+  Scenario: A claimed item never shows a sense that cannot show as a live end
+    Given a sense whose relations, retired or rejected, end at a sense with a live gloss, a sense whose gloss was retracted, and a sense whose entry fact was rejected
+    When its synonyms item's context is built
+    Then the related senses carry their gloss only while they can show, and null for the other two
+
   @work/claim-api @api
   Scenario: Claim and complete over HTTP
     Given a submitted entry

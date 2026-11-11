@@ -1,6 +1,7 @@
 import { entries, facts, senses, worklist } from '@server/db/schema'
 import type { Fact, FactOf } from '@server/domain/fact'
 import { factKinds, type Link, type Rereview } from '@server/domain/fact-kinds'
+import { factTransitions } from '@server/domain/fact-lifecycle'
 import { levelRank } from '@server/domain/reference'
 import type { FactRepo } from '@server/usecases/ports'
 import {
@@ -174,6 +175,53 @@ function markRereview(db: Db, rereview: Rereview, written: { id: FactId; to: Fac
     )
 }
 
+/** A live fact of `kind` about the node `nodeId` names: a gloss for a sense, an entry fact for an entry. */
+function liveDefining(db: Db, kind: 'entry' | 'sense', nodeId: AnySQLiteColumn) {
+  const defining = alias(facts, `live_${kind}`)
+  return db
+    .select({ one: sql`1` })
+    .from(defining)
+    .where(
+      and(eq(defining.kind, kind), eq(defining.subjectId, nodeId), inArray(defining.status, ['pending', 'published'])),
+    )
+}
+
+/**
+ * Retracts the live links (facts with an object sense) at a sense the written entry or sense fact
+ * defines, or of the entry it defines, that can no longer show: no live gloss, or no live entry
+ * fact. A link to such a sense fills nothing and shows nothing, yet would hold its content key, so
+ * a producer could neither see the gap as open nor resubmit it. Batch it after the status write;
+ * a fact of any other kind, or a node that still shows, retracts nothing. Curated links go too:
+ * their verdict judged the claim, and the end it named is gone.
+ */
+function retireDeadLinks(db: Db, writtenId: FactId, at: string) {
+  const written = alias(facts, 'written_node')
+  const defined = db
+    .select({ id: written.subjectId })
+    .from(written)
+    .where(and(eq(written.id, writtenId), inArray(written.kind, ['entry', 'sense'])))
+  const dead = db
+    .select({ id: senses.id })
+    .from(senses)
+    .where(
+      and(
+        or(inArray(senses.id, defined), inArray(senses.entryId, defined)),
+        or(notExists(liveDefining(db, 'sense', senses.id)), notExists(liveDefining(db, 'entry', senses.entryId))),
+      ),
+    )
+  const { from, to } = factTransitions.retract
+  return db
+    .update(facts)
+    .set({ status: to, updatedAt: at, revalidateSince: null })
+    .where(
+      and(
+        isNotNull(facts.objectId),
+        inArray(facts.status, [...from]),
+        or(inArray(facts.subjectId, dead), inArray(facts.objectId, dead)),
+      ),
+    )
+}
+
 export function createFactRepo(db: Db): FactRepo {
   const findLive: FactRepo['findLive'] = async (kind, subjectId, contentKey) => {
     const row = await db
@@ -296,7 +344,9 @@ export function createFactRepo(db: Db): FactRepo {
       // An entry or sense fact moving into or out of live or published, or a gloss correction
       // publishing, also changes the entries whose relations link to its node: their gaps and the
       // relations their public views show.
-      const sync = [syncLive, touchWorkOfFact(db, id), touchLinkedWorkOfFact(db, id)]
+      // A sense or entry that can no longer show takes its links out of live first, so the rescore
+      // and the linked entries' rows see them gone.
+      const sync = [retireDeadLinks(db, id, at), syncLive, touchWorkOfFact(db, id), touchLinkedWorkOfFact(db, id)]
       const rereviews = rereview ? [markRereview(db, rereview, { id, to, at })] : []
       if (!supersede) {
         return guardUnique(UNIQUE_MESSAGES, async () => {

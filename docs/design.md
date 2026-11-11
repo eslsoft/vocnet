@@ -837,8 +837,50 @@ transition clears the mark, so a duplicate delivery or a review that a newer
 correction overtook changes nothing. That also covers a pending dependent: if
 a correction publishes while its first review is judging the old gloss, the
 correction marks it, the stale write finds the mark and is discarded, and the
-enqueued job reviews it against the new gloss. Retracting a gloss does not cascade: the sense leaves the public view,
-and that already hides its facts.
+enqueued job reviews it against the new gloss.
+
+**A sense that stops showing retires its relations.** A sense can show while
+it has a live gloss and its entry a live entry fact. When a status write takes
+the last live gloss of a sense out of live (retracted, rejected by a review,
+an invalidation, or a curator's fail; a correction that supersedes it is
+itself live), or takes an entry fact out of live, every live fact that links a
+sense that can no longer show, as subject or as object (`object_id` set: the
+relations), is retracted in the same batch, after the status write and before
+the worklist sync (`retireDeadLinks` in `server/adapters/repos/facts.ts`). The
+write is the `retract` transition, conditional on its `from` statuses, and
+clears any revalidation mark; it derives from the stored state, so a duplicate
+or a write that changed nothing retracts nothing new. The status is
+`retracted`, not `rejected`: no reviewer judged the claim, so it must not
+reach a later review as a rejected attempt with a reason, nor be revived by a
+re-review into a slot whose end is gone. A relation to a sense that cannot show
+fills nothing and shows nothing, yet while live it held its content key, so a
+producer read its slot as filled and could not resubmit it; once retracted,
+dedupe ignores it, and when the sense shows again the producer submits the
+relation as a new fact. Curated relations are retracted too: the curator
+judged the claim between two meanings, and one of them is gone; the retraction
+is the node's consequence, not a new verdict. The other facts about the sense
+(examples, translations, grammar, collocations, topics) are not touched: they
+are about the sense alone, the public view already hides them with it, and
+they block no other sense's gap.
+
+The migration `dead_end_relations` applies the rule to the relations stored
+before it. In one predicate (a live fact with `object_id` whose subject or
+object sense has no live gloss or no live entry fact) it first returns to the
+production queue (`attempts` and `worked` reset) the `category`, `parts`, and
+`synonyms` items in curation whose sense is an end of such a relation, then
+bumps the worklist rows of the entries at both ends, then retracts the
+relations. Only the relation slot items return: the others in curation
+(`topics` stalled on the taxonomy, `family` and `phrases` are entry gaps,
+`sense_list` and `senses` on the list) fill by no relation, so the dead end did
+not stall them. The rescore keeps the reset, since the gap is the one the item
+stored. On a copy of the development database (16,711 entries, 182,198 facts)
+it ran in 5.7 s and:
+
+| Step | Rows |
+| ---- | ---- |
+| Curation items back in the production queue | 88 (76 synonyms, 6 category, 6 parts; 80 on A1 entries, 3 on A2) |
+| Worklist rows stale | 1,977 |
+| Relations retracted | 1,669 published (793 hypernym, 573 synonym, 205 antonym, 98 `part_of`; 2 curated) |
 
 An author can retract its own pending or published fact; admins can retract
 any. An admin can re-review a published or rejected fact: it returns to
@@ -1239,7 +1281,8 @@ curator is **curated**.
   or resets them) must add `AND coalesce(json_extract(review, '$.reviewer'),
   '') <> 'curator'` to its `WHERE`. Only a curator may supersede or retract a
   curated fact, or resubmit content a curator rejected; anyone else gets `403
-  curated_fact`.
+  curated_fact`. The one exception judges nothing: a relation at a sense that
+  can no longer show is retracted whoever settled it (see Fact lifecycle).
 - **Weak facts to review.** `GET /manage/v1/facts?weak=true` lists the
   published facts whose standing review is `uncertain` or `fail`, newest first
   with the usual cursor pages, narrowed by `kind` and by `level` (A1 to C2: the
@@ -1307,7 +1350,9 @@ marked rare when the list puts it in extra), the sense the item is about (null
 for an entry item), every fact about the item's node in every status with its
 review (a sense's facts and the relations pointing at it, an entry's own facts,
 or for a weak fact the node it is about), the senses at the other end of those
-relations, and, for the types that read every sense at once (`senses`,
+relations (`related`; its `gloss` is the current gloss only while that sense
+can show, a live gloss and a live entry fact, and null when it cannot, so a
+relation to it fills nothing), and, for the types that read every sense at once (`senses`,
 `sense_list`, `phrases`, `family`), the entry's whole management view as `GET
 /manage/v1/entries/{lemma}` returns it. A rejected fact in the context carries
 its review reason, so a retry reads why the last attempt failed.
@@ -1438,6 +1483,8 @@ exists, every sense with a live gloss counts. A relation counts, at either end, 
 while the sense at its other end has a live gloss and its entry a live entry
 fact: a relation to a sense of a rejected entry, or to a sense whose gloss was
 rejected or retracted, fills nothing, as the public view shows nothing of it.
+Such a relation does not stay live: the write that stops its other end from
+showing retracts it (see Fact lifecycle).
 The entry snapshot already loads the senses at the other end of the entry's
 relations, incoming and outgoing, with their `entry` and `sense` facts in one
 batch, so the rule costs no extra query. Completeness derives from `entryGaps`,

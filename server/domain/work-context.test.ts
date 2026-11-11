@@ -137,6 +137,41 @@ describe('work context', () => {
     expect(context.view).toBeNull()
   })
 
+  it('gives no gloss for a related sense that cannot show [spec: work/claim-context-dead-ends]', () => {
+    const nation = entry('nation')
+    const [country, people] = [sense(nation), sense(nation)]
+    const deadEntry = entry('folk')
+    const kin = sense(deadEntry)
+    const dangling = {
+      ...snapshot,
+      facts: [
+        ...facts,
+        fact('relation', pet.id, { type: 'synonym', target_sense_id: country.id }, 'retracted'),
+        fact('relation', pet.id, { type: 'synonym', target_sense_id: people.id }, 'retracted'),
+        fact('relation', pet.id, { type: 'synonym', target_sense_id: kin.id }, 'retracted'),
+      ],
+      neighbors: {
+        senses: [creature, part, country, people, kin],
+        facts: [
+          ...snapshot.neighbors.facts,
+          fact('entry', nation.id, {}),
+          fact('sense', country.id, { gloss: 'A country.' }),
+          fact('sense', people.id, { gloss: 'A people.' }, 'retracted'),
+          fact('entry', deadEntry.id, {}, 'rejected'),
+          fact('sense', kin.id, { gloss: 'Relatives.' }),
+        ],
+      },
+    }
+    const context = workContext(item(dog, { type: 'synonyms', sense_id: pet.id }, pet.id), dangling, reference)
+    expect(context.related.map(({ senseId, gloss }) => [senseId, gloss])).toEqual([
+      [creature.id, 'A living creature.'],
+      [country.id, 'A country.'],
+      [people.id, null],
+      [kin.id, null],
+      [part.id, null],
+    ])
+  })
+
   it('gives an entry item the whole view where the policy asks for it, and a weak fact the node it is about', () => {
     const list = workContext(item(dog, { type: 'sense_list', senses: [pet.id, hound.id] }, dog.id), snapshot, reference)
     expect([list.sense, list.view?.seed, list.facts.map((candidate) => candidate.kind)]).toEqual([

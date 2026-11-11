@@ -22,6 +22,7 @@ export interface RelatedContextSense {
   senseId: SenseId
   lemma: string
   pos: Pos
+  /** Its current gloss while it can show (a live gloss and a live entry fact); null when it cannot. */
   gloss: string | null
 }
 
@@ -104,6 +105,12 @@ export function workContext(
   const facts = all.filter((fact) => fact.subjectId === node || fact.objectId === node)
   // A relation links senses of two entries, so its other end is always among the neighbors.
   const neighborGlosses = glossesOf(snapshot.neighbors.facts)
+  const liveEntries = new Set(
+    snapshot.neighbors.facts
+      .filter(isKind('entry'))
+      .filter((fact) => isLive(fact.status))
+      .map((fact) => fact.subjectId),
+  )
   const neighbors = new Map(snapshot.neighbors.senses.map((sense) => [sense.id, sense]))
   const ends = new Set(
     facts
@@ -118,7 +125,8 @@ export function workContext(
       senseId: sense.id,
       lemma: sense.lemma,
       pos: sense.pos,
-      gloss: neighborGlosses.get(id)?.payload.gloss ?? null,
+      // A sense that cannot show fills no gap, so a worker never reads it as a live end.
+      gloss: liveEntries.has(sense.entryId) ? (neighborGlosses.get(id)?.payload.gloss ?? null) : null,
     }
   })
   return {

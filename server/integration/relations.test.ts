@@ -3,7 +3,7 @@ import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } f
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
+import { adminToken, call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
 
 async function agent() {
   const token = await issueAgentKey()
@@ -20,8 +20,121 @@ async function agent() {
   }
   const relate = (type: string, from: string, to: string) =>
     post('/manage/v1/facts', { kind: 'relation', subject_id: from, payload: { type, target_sense_id: to } })
-  return { entry, relate }
+  return { entry, relate, post }
 }
+
+const statusOf = async (id: string) =>
+  (await env.DB.prepare('SELECT status FROM facts WHERE id = ?').bind(id).first<{ status: string }>())?.status
+
+const revisionOf = async (lemma: string) =>
+  (
+    await env.DB.prepare('SELECT revision FROM worklist JOIN entries ON entries.id = worklist.entry_id WHERE lemma = ?')
+      .bind(lemma)
+      .first<{ revision: number }>()
+  )?.revision
+
+describe('relations at a sense that stops showing', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('retracts the relations of a sense whose gloss or entry fact leaves live, in the same batch [spec: facts/dead-sense-retires-links-api]', async () => {
+    const { entry, relate } = await agent()
+    const [nation] = await entry('nation', 'A large group of people sharing a country.')
+    const [people] = await entry('people', 'A group sharing a nationality.')
+    const [country] = await entry('country', 'A land with its own government.')
+    const [state] = await entry('state', 'A nation with its own government.')
+    const [land] = await entry('land', 'The ground of a country.')
+    const ids = async (type: string, from: string, to: string) =>
+      factWriteResultSchema.parse((await relate(type, from, to)).body).fact.id
+    const outgoing = await ids('synonym', people as string, nation as string)
+    const incoming = await ids('hypernym', nation as string, country as string)
+    const unrelated = await ids('synonym', country as string, state as string)
+    const viaEntry = await ids('part_of', land as string, state as string)
+    stubReviewers()
+    await deliverPendingReviews()
+    const admin = await adminToken()
+    const glossOf = async (sense: string) =>
+      (
+        await env.DB.prepare("SELECT id FROM facts WHERE kind = 'sense' AND subject_id = ?")
+          .bind(sense)
+          .first<{ id: string }>()
+      )?.id as string
+    const peopleBefore = await revisionOf('people')
+
+    const retract = await call(`/manage/v1/facts/${await glossOf(nation as string)}/retract`, {
+      method: 'POST',
+      token: admin,
+    })
+    expect(retract.status).toBe(200)
+    expect([await statusOf(outgoing), await statusOf(incoming), await statusOf(unrelated)]).toEqual([
+      'retracted',
+      'retracted',
+      'published',
+    ])
+    expect(await revisionOf('people')).toBeGreaterThan(peopleBefore ?? 0)
+
+    const stateEntry = await env.DB.prepare(
+      "SELECT facts.id FROM facts JOIN entries ON entries.id = facts.subject_id WHERE facts.kind = 'entry' AND lemma = 'state'",
+    ).first<{ id: string }>()
+    await call(`/manage/v1/facts/${stateEntry?.id}/retract`, { method: 'POST', token: admin })
+    expect([await statusOf(unrelated), await statusOf(viaEntry)]).toEqual(['retracted', 'retracted'])
+    const people2 = publicEntrySchema.parse((await call('/v1/entries/people')).body)
+    expect(people2.meanings[0]?.senses[0]?.relations.synonyms).toEqual([])
+  })
+})
+
+describe('dead_end_relations migration', () => {
+  it('retracts live relations at a sense that cannot show and returns their relation items to the producers [spec: facts/dead-end-relations-migration]', async () => {
+    const { entry, relate } = await agent()
+    const [nation] = await entry('nation', 'A large group of people sharing a country.')
+    const [people] = await entry('people', 'A group sharing a nationality.')
+    const [country] = await entry('country', 'A land with its own government.')
+    const [state] = await entry('state', 'A nation with its own government.')
+    const ids = async (type: string, from: string, to: string) =>
+      factWriteResultSchema.parse((await relate(type, from, to)).body).fact.id
+    const dangling = await ids('synonym', people as string, nation as string)
+    const kept = await ids('synonym', country as string, state as string)
+    await env.DB.prepare("UPDATE facts SET status = 'published' WHERE kind IN ('entry', 'sense', 'relation')").run()
+    // The state before the rule: the gloss left live and its relations stayed published.
+    await env.DB.prepare("UPDATE facts SET status = 'retracted' WHERE kind = 'sense' AND subject_id = ?")
+      .bind(nation)
+      .run()
+    const item = (type: string, subject: string, attempts: number) =>
+      env.DB.prepare(
+        `INSERT INTO work_items (id, entry_id, type, subject_id, gap, stage, rank, zipf_order, awaiting, attempts, worked, created_at)
+         SELECT ?, entry_id, ?, id, ?, 2, 2, -1, 0, ?, 0, '2026-01-01T00:00:00.000Z' FROM senses WHERE id = ?`,
+      )
+        .bind(crypto.randomUUID(), type, JSON.stringify({ type, sense_id: subject }), attempts, subject)
+        .run()
+    await env.DB.prepare('DELETE FROM work_items').run()
+    await item('synonyms', people as string, 3)
+    await item('topics', people as string, 3)
+    await item('synonyms', country as string, 3)
+    const before = {
+      people: await revisionOf('people'),
+      nation: await revisionOf('nation'),
+      state: await revisionOf('state'),
+    }
+
+    const migration = env.TEST_MIGRATIONS.find((candidate) => candidate.name.endsWith('_dead_end_relations.sql'))
+    if (!migration) throw new Error('The dead_end_relations migration is missing.')
+    for (const query of migration.queries) await env.DB.prepare(query).run()
+
+    expect([await statusOf(dangling), await statusOf(kept)]).toEqual(['retracted', 'published'])
+    const attempts = await env.DB.prepare(
+      'SELECT type, subject_id AS subject, attempts FROM work_items ORDER BY type, subject_id',
+    ).all<{ type: string; subject: string; attempts: number }>()
+    expect(attempts.results.map(({ type, subject, attempts }) => [type, subject, attempts]).sort()).toEqual(
+      [
+        ['synonyms', people, 0],
+        ['synonyms', country, 3],
+        ['topics', people, 3],
+      ].sort(),
+    )
+    expect(await revisionOf('people')).toBe((before.people ?? 0) + 1)
+    expect(await revisionOf('nation')).toBe((before.nation ?? 0) + 1)
+    expect(await revisionOf('state')).toBe(before.state)
+  })
+})
 
 describe('relation write rules', () => {
   it('refuses a second relation type to the same entry and a hypernym 2-cycle with 422 [spec: facts/relation-write-rules-api]', async () => {

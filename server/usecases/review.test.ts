@@ -1,10 +1,12 @@
+import type { Fact, FactOf } from '@server/domain/fact'
 import { weakFacts } from '@server/domain/work'
-import { admin, agentA } from '@server/testing/actors'
+import { admin, agentA, curatorAgent } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
 import type { FactId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { createEntry, createSense } from './catalog'
+import { curateFact } from './curation'
 import { getFact, rereviewFact, retractFact, submitFact } from './facts'
 import { ReviewerTransportError } from './ports'
 import { reconcileReviews, reviewFact } from './review'
@@ -645,9 +647,10 @@ describe('revalidation', () => {
     const jevCalls = world.jevCalls.length
     world.setNow('2026-01-01T00:06:00.000Z')
     await drain(world)
+    // The sense has no live gloss left, so its relations left live with the retraction.
     for (const fact of before) {
       expect(await getFact(world.deps, fact.id)).toMatchObject({
-        status: 'published',
+        status: fact.kind === 'relation' ? 'retracted' : 'published',
         revalidateSince: null,
         review: fact.review,
       })
@@ -712,16 +715,53 @@ describe('revalidation', () => {
     expect(world.queued.map((job) => job.factId).sort()).toEqual(mark ? [published.id, pending.id].sort() : [])
   })
 
-  it('does not cascade when a gloss is retracted [spec: facts/retract-no-cascade]', async () => {
+  it('retires the relations of a sense that stops showing, curated ones included, and nothing else [spec: facts/dead-sense-retires-links]', async () => {
     const { world, river, dependents } = await correctedRiverBank()
     await drain(world)
+    const [example, translation, outgoing, incoming] = dependents as [Fact, Fact, Fact, Fact]
+    await curateFact(world.deps, curatorAgent, outgoing.id, { verdict: 'pass', reason: 'Right.' })
     const current = world.facts.find(
       (fact) => fact.kind === 'sense' && fact.subjectId === river.id && fact.status === 'published',
     )
+    world.setNow('2026-01-01T00:10:00.000Z')
     await retractFact(world.deps, agentA, current?.id as FactId)
+
     expect(world.queued).toEqual([])
-    for (const fact of dependents) expect((await getFact(world.deps, fact.id)).revalidateSince).toBeNull()
+    for (const fact of [outgoing, incoming]) {
+      expect(await getFact(world.deps, fact.id)).toMatchObject({
+        status: 'retracted',
+        updatedAt: '2026-01-01T00:10:00.000Z',
+        revalidateSince: null,
+      })
+    }
+    for (const fact of [example, translation]) {
+      expect(await getFact(world.deps, fact.id)).toMatchObject({ status: 'published', revalidateSince: null })
+    }
     expect((await publicEntryOf(world.deps, 'bank')).meanings).toEqual([])
+
+    // Once the sense shows again, the producer resubmits: dedupe ignores the retracted relation.
+    await submitFact(world.deps, agentA, { kind: 'sense', subject_id: river.id, payload: { gloss: 'land by a river' } })
+    const again = await submitFact(world.deps, agentA, {
+      kind: 'relation',
+      subject_id: river.id,
+      payload: (outgoing as FactOf<'relation'>).payload,
+    })
+    expect([again.fact.id === outgoing.id, again.fact.status]).toEqual([false, 'pending'])
+  })
+
+  it('retires the relations of every sense of an entry whose entry fact leaves live [spec: facts/dead-sense-retires-links]', async () => {
+    const { world, river, dependents } = await correctedRiverBank()
+    await drain(world)
+    const [, , outgoing, incoming] = dependents as [Fact, Fact, Fact, Fact]
+    const shoreFact = world.facts.find(
+      (fact) =>
+        fact.kind === 'entry' && world.entries.some((entry) => entry.id === fact.subjectId && entry.lemma === 'shore'),
+    )
+    await curateFact(world.deps, curatorAgent, shoreFact?.id as FactId, { verdict: 'fail', reason: 'Not a word.' })
+    for (const fact of [outgoing, incoming]) expect((await getFact(world.deps, fact.id)).status).toBe('retracted')
+    expect(
+      world.facts.filter((fact) => fact.subjectId === river.id && fact.kind !== 'relation').map((fact) => fact.status),
+    ).not.toContain('retracted')
   })
 })
 
