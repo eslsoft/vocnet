@@ -111,7 +111,7 @@ describe('work items', () => {
 
     // The other agent gets the next type, then nothing; it cannot complete the holder's lease.
     const next = workClaimSchema.parse((await claim(other, { limit: 50 })).body)
-    expect(next.items.map((other) => [other.lemma, other.stage])).toEqual([['tide', 3]])
+    expect(next.items.map((other) => [other.lemma, other.stage])).toEqual([['tide', 4]])
     const stolen = await complete(other, work.lease.id)
     expect([stolen.status, codeOf(stolen.body)]).toEqual([409, 'conflict'])
     const foreign = await complete(holder, work.lease.id, { items: [{ id: next.items[0]?.id }] })

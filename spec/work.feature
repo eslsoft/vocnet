@@ -96,7 +96,7 @@ Feature: Work items
   Scenario: The priority policy puts the stage before the learner band
     Given items of every type on entries of every CEFR level, with a frequency and no level, and with neither
     When their priority is computed
-    Then the stage of the type (1 identity, 2 meaning, 3 usage, 4 network, 5 weak facts) comes first, then A1 to C2, then a frequency without a level, then the rest, then the higher frequency, so every C2 noun's category comes before any A1 example and a C2 word's senses before any A1 category
+    Then A1 and A2 come first through every stage, then the other bands; within each, the stage of the type (1 identity, 2 network, 3 meaning, 4 usage, 5 weak facts) comes first, then A1 to C2, then a frequency without a level, then the rest, then the higher frequency, so every A2 example comes before any B1 sense and an A1 category before an A1 translation
 
   @work/item-upsert @domain
   Scenario: A rescore converges the stored items on the open work

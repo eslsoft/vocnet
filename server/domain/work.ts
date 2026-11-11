@@ -734,46 +734,55 @@ export function learnerBand({ levelRank, zipf }: LearnerPriority): number {
 
 export const BANDS = 8
 
+/** The learner bands finished first, every stage of them before any other band's work: A1 and A2. */
+export const CORE_BANDS = 2
+
+/** The last stage of the policy; a core band's items all rank before any other band's. */
+export const STAGES = 5
+
 /**
  * The priority policy, the one table of what each type of work is worth and what a worker needs to
- * do it. `stage` orders the queue ahead of the learner band: 1 identity (the sense inventory), 2
- * meaning (translations, categories, parts), 3 usage, 4 network, 5 weak facts. So every A1-C2
- * noun's category comes before any B1 example. `context: 'entry'` hands the worker the entry's whole
- * management view, for work that reads every sense at once; `'node'` the facts about the item's node.
+ * do it. `stage` orders the work of a tier: 1 identity (the sense inventory), 2 network (categories,
+ * parts, synonyms, family, phrases, topics), 3 meaning (translations), 4 usage, 5 weak facts. The
+ * core bands (A1, A2) are one tier and finish every stage first; the other bands follow, stage by
+ * stage. `context: 'entry'` hands the worker the entry's whole management view, for work that reads
+ * every sense at once; `'node'` the facts about the item's node.
  */
 export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'entry' | 'node' }>> = {
   senses: { stage: 1, context: 'entry' },
   sense_list: { stage: 1, context: 'entry' },
-  translations: { stage: 2, context: 'node' },
   category: { stage: 2, context: 'node' },
   parts: { stage: 2, context: 'node' },
-  examples: { stage: 3, context: 'node' },
-  example_translations: { stage: 3, context: 'node' },
-  grammar: { stage: 3, context: 'node' },
-  collocations: { stage: 3, context: 'node' },
-  forms: { stage: 3, context: 'node' },
-  pronunciation: { stage: 3, context: 'node' },
-  syllables: { stage: 3, context: 'node' },
-  morphology: { stage: 3, context: 'node' },
-  form_pronunciations: { stage: 3, context: 'node' },
-  synonyms: { stage: 4, context: 'node' },
-  family: { stage: 4, context: 'entry' },
-  phrases: { stage: 4, context: 'entry' },
-  topics: { stage: 4, context: 'node' },
+  synonyms: { stage: 2, context: 'node' },
+  family: { stage: 2, context: 'entry' },
+  phrases: { stage: 2, context: 'entry' },
+  topics: { stage: 2, context: 'node' },
+  translations: { stage: 3, context: 'node' },
+  examples: { stage: 4, context: 'node' },
+  example_translations: { stage: 4, context: 'node' },
+  grammar: { stage: 4, context: 'node' },
+  collocations: { stage: 4, context: 'node' },
+  forms: { stage: 4, context: 'node' },
+  pronunciation: { stage: 4, context: 'node' },
+  syllables: { stage: 4, context: 'node' },
+  morphology: { stage: 4, context: 'node' },
+  form_pronunciations: { stage: 4, context: 'node' },
   weak_fact: { stage: 5, context: 'node' },
 }
 
 /**
- * Where an item sorts, lowest first: its type's stage, then the learner band of its entry, so the
- * stage dominates; within a rank, the more frequent entry first (`zipfOrder` descending, -1 for
- * none, which sorts last).
+ * Where an item sorts, lowest first: its tier (the core bands A1 and A2 first), then its type's
+ * stage, then the learner band of its entry; within a rank, the more frequent entry first
+ * (`zipfOrder` descending, -1 for none, which sorts last).
  */
 export function workPriority(
   type: WorkType,
   learner: LearnerPriority,
 ): { stage: number; rank: number; zipfOrder: number } {
   const { stage } = WORK_POLICY[type]
-  return { stage, rank: stage * BANDS + learnerBand(learner), zipfOrder: learner.zipf ?? -1 }
+  const band = learnerBand(learner)
+  const tier = band < CORE_BANDS ? 0 : 1
+  return { stage, rank: tier * (STAGES + 1) * BANDS + stage * BANDS + band, zipfOrder: learner.zipf ?? -1 }
 }
 
 /**

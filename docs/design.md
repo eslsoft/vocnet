@@ -1362,25 +1362,27 @@ the production queue.
 
 `WORK_POLICY` in `server/domain/work.ts` is the one table of what each type of
 work is worth and what context it needs; nothing else branches on a type.
-`workPriority` ranks an item by its type's **stage**, then the **learner band**
-of its entry, then its entry's Zipf frequency, highest first (`zipf_order`, -1
-without one), then age and id:
+`workPriority` ranks an item by its **tier**, then its type's **stage**, then the
+**learner band** of its entry, then its entry's Zipf frequency, highest first
+(`zipf_order`, -1 without one), then age and id. The core bands, A1 and A2
+(`CORE_BANDS`), are the first tier: their entries go through every stage before
+any other band's work, so an A2 example is claimed before a B1 sense. The other
+bands follow as the second tier, stage by stage:
 
 | Stage | Types | Why |
 | ----- | ----- | --- |
 | 1 identity | `senses`, `sense_list` | Nothing else can be judged before the senses exist and are settled |
-| 2 meaning | `translations`, `category`, `parts` | What the word means to a learner, and where it sits in the everyday taxonomy |
-| 3 usage | `examples`, `example_translations`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations` | How the word is used |
-| 4 network | `synonyms`, `family`, `phrases`, `topics` | What the word connects to |
+| 2 network | `category`, `parts`, `synonyms`, `family`, `phrases`, `topics` | Where the word sits among other words: its everyday category, its parts, its opposites and synonyms, its family, phrases, and topics |
+| 3 meaning | `translations` | What the word means to a learner in Chinese |
+| 4 usage | `examples`, `example_translations`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations` | How the word is used |
 | 5 weak facts | `weak_fact` | Replacing what is there comes after filling what is not |
 
 The band is the entry's lowest CEFR level, A1 to C2 (0 to 5), then a frequency
-without a level (6), then neither (7) (`learnerBand`). `rank` is the stage
-times the eight bands plus the band, so the stage dominates: every CEFR noun's
-category is claimed before any B1 example, and a C2 word's senses before any A1
-category. The CEFR headwords the core import creates (see Core entries) are live
+without a level (6), then neither (7) (`learnerBand`). `rank` is the tier times
+`(STAGES + 1)` times the eight bands, plus the stage times the eight bands, plus
+the band. The CEFR headwords the core import creates (see Core entries) are live
 entries with no senses until a producer works them, so their `senses` items are
-stage 1 in every band and come before every category, whose items follow them.
+stage 1 in their tier and come before that tier's categories.
 The table is a starting policy, tuned by editing it; a release that changes it
 ships with a migration that bumps every worklist row so the rescore re-ranks
 the items. An import re-ranks the items with the worklist (`rankWorkItemsSql`).

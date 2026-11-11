@@ -71,13 +71,23 @@ describe('claimWork', () => {
     expect(senses?.lease.type).toBe('senses')
     expect(senses?.items.map(({ lemma }) => lemma)).toEqual(['dog', 'eagle'])
     expect(senses?.items[0]?.context.view?.entry.lemma).toBe('dog')
-    // The third senses item is next, and nobody else gets the two leased ones meanwhile.
-    expect((await claim(world, {}, agentB))?.items.map(({ lemma }) => lemma)).toEqual(['owl'])
     // Asking only for pronunciation leases that type, though senses would come first.
     const sounds = await claim(world, { types: ['pronunciation'], limit: 50 }, agentB)
     expect(sounds?.lease.type).toBe('pronunciation')
     expect(sounds?.items.map(({ lemma }) => lemma)).toEqual(['dog', 'eagle', 'owl'])
     expect(sounds?.items[0]?.context).toMatchObject({ sense: null, view: null, entry: { lemma: 'dog', zipf: 5 } })
+    // The A1 dog finishes every stage before the C2 owl's senses, and nobody else gets the two leased
+    // senses items meanwhile: each lease before the owl's senses starts with the dog's item.
+    const before: string[] = []
+    for (let lease = await claim(world, {}, agentB); lease; lease = await claim(world, {}, agentB)) {
+      if (lease.lease.type === 'senses') {
+        expect(lease.items.map(({ lemma }) => lemma)).toEqual(['owl'])
+        break
+      }
+      before.push(lease.items[0]?.lemma ?? '')
+    }
+    expect(before.length).toBeGreaterThan(0)
+    expect(new Set(before)).toEqual(new Set(['dog']))
     expect(await claim(world, { types: ['pronunciation'] }, agentB)).toBeNull()
   })
 
@@ -98,7 +108,7 @@ describe('claimWork', () => {
     })
     await settle(world)
     const categories = await claim(world, { types: ['category', 'examples'] })
-    // The C2 eagle's category comes before the A1 bird's examples.
+    // Network work comes before usage: the category type is leased, the A1 bird's before the C2 eagle's.
     expect(categories?.lease.type).toBe('category')
     expect(categories?.items.map(({ lemma }) => lemma)).toEqual(['bird', 'eagle'])
     const eagleItem = categories?.items[1]

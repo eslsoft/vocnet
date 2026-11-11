@@ -707,7 +707,7 @@ describe('work items', () => {
     ...more,
   })
 
-  it('ranks by the policy stage before the learner band, then by frequency [spec: work/item-priority]', () => {
+  it('ranks A1 and A2 through every stage first, then the rest by stage, band, and frequency [spec: work/item-priority]', () => {
     const bands = [
       { levelRank: 1, zipf: 3 },
       { levelRank: 2, zipf: null },
@@ -719,35 +719,39 @@ describe('work items', () => {
       { levelRank: null, zipf: null },
     ]
     expect(bands.map(learnerBand)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
-    // Every CEFR noun's category comes before any B1 example, and a C2 word's senses before an A1 category.
-    const c2Senses = workPriority('senses', bands[5]).rank
+    // A1 and A2 finish every stage before any other band's work; within a tier, the stage comes first.
+    const a2Examples = workPriority('examples', bands[1]).rank
+    const b1Senses = workPriority('senses', bands[2]).rank
     const a1Category = workPriority('category', bands[0]).rank
+    const a1Translations = workPriority('translations', bands[0]).rank
     const a1Examples = workPriority('examples', bands[0]).rank
-    const c2Category = workPriority('category', bands[5]).rank
-    expect(c2Senses).toBeLessThan(a1Category)
-    expect(c2Category).toBeLessThan(a1Examples)
-    expect(workPriority('weak_fact', bands[0]).rank).toBeGreaterThan(workPriority('topics', bands[7]).rank)
+    expect(a2Examples).toBeLessThan(b1Senses)
+    expect(workPriority('weak_fact', bands[1]).rank).toBeLessThan(b1Senses)
+    expect(a1Category).toBeLessThan(a1Translations)
+    expect(a1Translations).toBeLessThan(a1Examples)
+    expect(workPriority('topics', bands[5]).rank).toBeLessThan(workPriority('translations', bands[2]).rank)
+    expect(workPriority('weak_fact', bands[0]).rank).toBeGreaterThan(workPriority('examples', bands[1]).rank)
     expect(workPriority('examples', { levelRank: null, zipf: null }).zipfOrder).toBe(-1)
     expect(workPriority('examples', bands[2]).zipfOrder).toBe(6)
     expect(Object.fromEntries(Object.entries(WORK_POLICY).map(([type, { stage }]) => [type, stage]))).toEqual({
       senses: 1,
       sense_list: 1,
-      translations: 2,
       category: 2,
       parts: 2,
-      examples: 3,
-      example_translations: 3,
-      grammar: 3,
-      collocations: 3,
-      forms: 3,
-      pronunciation: 3,
-      syllables: 3,
-      morphology: 3,
-      form_pronunciations: 3,
-      synonyms: 4,
-      family: 4,
-      phrases: 4,
-      topics: 4,
+      synonyms: 2,
+      family: 2,
+      phrases: 2,
+      topics: 2,
+      translations: 3,
+      examples: 4,
+      example_translations: 4,
+      grammar: 4,
+      collocations: 4,
+      forms: 4,
+      pronunciation: 4,
+      syllables: 4,
+      morphology: 4,
+      form_pronunciations: 4,
       weak_fact: 5,
     })
   })
