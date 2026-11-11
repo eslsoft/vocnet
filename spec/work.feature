@@ -5,7 +5,7 @@ Feature: Work items
   Scenario: The open work names what the entry lacks
     Given an entry and its facts in every status
     When the gaps are computed from its pending and published facts
-    Then senses while no sense is live, a sense list while the senses are not settled by one, and missing paradigm forms, a pronunciation in either accent, or word formation of a single word are gaps, and each counted sense without the category, parts, synonym, examples, zh translation, topic, grammar, and collocations its part of speech needs is a gap
+    Then senses while no sense is live, a sense list while the senses are not settled by one, and missing paradigm forms, a pronunciation in either accent, or word formation of a single word are gaps, and each core sense without the category, parts, synonym, examples, zh translation, topic, grammar, and collocations its part of speech needs, and each other common sense without its example, zh translation, or grammar, is a gap
 
   @work/sense-list-gap @domain
   Scenario: The sense inventory is settled by a list naming exactly the live senses
@@ -18,6 +18,40 @@ Feature: Work items
     Given an entry whose current sense list puts some senses in extra
     When the gaps and completeness are computed
     Then the extra senses have no per-sense gaps and count no slots, while before any list every live sense counts
+
+  @work/core-senses @domain
+  Scenario: Only core senses need the network, topic, and collocation slots
+    Given an A1 entry whose sense list puts four nouns, two verbs, and an adjective in common in that order and a rare sense in extra, and a sense it does not name yet
+    When the gaps and completeness are computed
+    Then the first three common senses, the first verb, and the first adjective are core and keep every slot their part of speech needs, with two examples
+    And the fourth noun and the second verb need only a zh translation, one translated example, and their grammar, the rare sense nothing, and the unnamed sense every slot until a new list places it
+    And before any sense list every counted sense is core, and completeness counts only the slots each sense's scope needs
+
+  @work/core-senses-api @api
+  Scenario: A published sense list narrows the items of the senses beyond the core ones on a real database
+    Given an entry with four adjective senses and two verb senses, all published
+    When its sense list publishes with them in common in that order
+    Then the first three adjectives and the first verb keep their synonym, topic, and collocation items, and the fourth adjective and the second verb have only their translation, example, translated example, and grammar items
+
+  @work/core-senses-migration @api
+  Scenario: The core_senses migration returns stalled items whose rules changed and rescores every entry
+    Given items in the curators' queue of every type, and an item still in production
+    When the core_senses migration runs
+    Then the sense list, topics, category, parts, and synonyms items return to the production queue with no attempts, every other item keeps its attempts, and every worklist row is stale
+
+  @work/claim-criteria @domain
+  Scenario: A claimed item carries the standard its facts are reviewed by
+    Given an item of any type, and a weak fact
+    When its criteria are rendered
+    Then each kind of fact that fills it comes with the exact Jev questions and how their scores decide, a score below the floor failing without appeal, the exact LLM rubric with placeholder values, and the kind's write rules
+    And a closable gap comes with its closure rubric, a topics closure listing the taxonomy, and never the rules that weigh a slot's rejected attempts or blocked candidates
+    And every item carries the write rules every submission meets, and a weak fact is rendered with its own payload
+
+  @work/claim-criteria-api @api
+  Scenario: The claim response carries each item's criteria
+    Given an entry with a published noun sense
+    When an agent claims its topics item and its synonyms item
+    Then the topics item's criteria give the topic rubric and the closure rubric with the seeded taxonomy, and the synonyms item's give the Jev floor of a synonym
 
   @work/sense-list-attempts @domain
   Scenario: A rejected list leaves the sense list gap as it was
@@ -301,7 +335,7 @@ Feature: Work items
   Scenario: A1 and A2 senses need two examples
     Given a counted sense with one example of an entry at each CEFR level or none
     When the gaps are computed
-    Then an A1 or A2 entry's sense has an examples gap asking for two and naming the one it has, and other entries need one
+    Then a core sense of an A1 or A2 entry has an examples gap asking for two and naming the one it has, and other senses and entries need one
 
   @work/phrases-gap @domain
   Scenario: A core verb needs three phrases headed by it

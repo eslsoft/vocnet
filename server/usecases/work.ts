@@ -1,5 +1,6 @@
 import { principalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
+import { leafViews } from '@server/domain/topics'
 import { completeDecision, itemState, leaseExpiry, type WorkItem, type WorkLease } from '@server/domain/work'
 import { type WorkContext, workContext } from '@server/domain/work-context'
 import type { EntryId } from '@shared/facts'
@@ -36,7 +37,7 @@ export interface WorkClaim {
  * with the context its type needs. Null when no item is free.
  */
 export async function claimWork(
-  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'clock' | 'ids'>,
+  deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'topics' | 'clock' | 'ids'>,
   actor: Actor,
   input: ClaimWorkInput,
 ): Promise<WorkClaim | null> {
@@ -53,14 +54,17 @@ export async function claimWork(
   )
   if (!claimed) return null
   // The lease names the entry of every item it leased.
-  const contexts = new Map(
-    await Promise.all(claimed.lease.entryIds.map(async (id) => [id, await entryContext(deps, id)] as const)),
-  )
+  const [contexts, taxonomy] = await Promise.all([
+    Promise.all(claimed.lease.entryIds.map(async (id) => [id, await entryContext(deps, id)] as const)).then(
+      (entries) => new Map(entries),
+    ),
+    deps.topics.list().then(leafViews),
+  ])
   return {
     lease: claimed.lease,
     items: claimed.items.map((item) => {
       const entry = contexts.get(item.entryId)!
-      return { item, lemma: entry.lemma, context: workContext(item, entry.snapshot, entry.reference) }
+      return { item, lemma: entry.lemma, context: workContext(item, entry.snapshot, entry.reference, taxonomy) }
     }),
   }
 }

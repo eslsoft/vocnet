@@ -1,11 +1,14 @@
-import { currentGloss, type Fact, type FactOf } from '@server/domain/fact'
+import { currentGloss, type Fact, type FactOf, isKind } from '@server/domain/fact'
 import {
   ATTEMPTS_WEIGHED,
   attemptSourceOf,
+  type BlockedCandidate,
   factKinds,
   type InflectionOf,
   inflectionKeysOf,
+  meaningKeyOf,
   planReview,
+  quotedValues,
   type RejectedAttempt,
   type Rereview,
   type ReviewContext,
@@ -15,15 +18,18 @@ import {
   type SenseGloss,
   type SubjectTypeOf,
   type SubjectViews,
+  showsTaxonomy,
   subjectTypeOf,
   targetOf,
   topicOf,
   variantKeysOf,
+  weighsBlockedCandidates,
 } from '@server/domain/fact-kinds'
 import {
   decide,
   type FactEvent,
   factTransitions,
+  isLive,
   JEV_POLICY,
   jevVerdict,
   type ReviewFinding,
@@ -32,7 +38,8 @@ import {
 } from '@server/domain/fact-lifecycle'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/domain/review-chain'
-import type { TopicView } from '@server/domain/topics'
+import type { Lemma } from '@server/domain/term'
+import { leafViews, type TopicView } from '@server/domain/topics'
 import type { EntryId, FactId, FactKind, FactStatus, Review, ReviewerKind, SenseId, TopicId } from '@shared/facts'
 import type { Deps } from './deps'
 import { refreshEntries } from './refresh'
@@ -205,6 +212,72 @@ async function rejectedAttempts<K extends FactKind>(
   return Promise.all(rejected.map((attempt) => rejectedAttempt(deps, fact.subjectId, attempt, null)))
 }
 
+/** The entries the node's live relations link it to, each with one such relation, from its entry's snapshot. */
+async function linkedEntries(deps: ReviewDeps, nodeId: string): Promise<Map<EntryId, FactOf<'relation'>>> {
+  const sense = await deps.nodes.findSense(nodeId as SenseId)
+  const entry = await deps.nodes.findEntry(sense ? sense.entryId : (nodeId as EntryId))
+  if (!entry) throw new Error(`Node ${nodeId} of a reviewed fact has no entry.`)
+  const snapshot = await deps.nodes.loadEntrySnapshot(entry)
+  const ends = new Map<string, EntryId>(snapshot.neighbors.senses.map((end) => [end.id, end.entryId]))
+  const links = [...snapshot.facts, ...snapshot.incoming]
+    .filter(isKind('relation'))
+    .filter((fact) => isLive(fact.status) && (!sense || fact.subjectId === nodeId || fact.objectId === nodeId))
+  return new Map(
+    links.map((fact) => {
+      const other = ends.has(fact.subjectId) ? fact.subjectId : fact.payload.target_sense_id
+      // A relation's other end is always among the entry's neighbors.
+      return [ends.get(other) as EntryId, fact] as const
+    }),
+  )
+}
+
+/** What keeps an existing entry from being recorded at the node, by its stored facts; null when nothing does. */
+async function blockOf(
+  deps: ReviewDeps,
+  entryId: EntryId,
+  link: FactOf<'relation'> | undefined,
+): Promise<string | null> {
+  if ((await deps.facts.listLive('entry', entryId)).length === 0)
+    return 'its entry fact is not live (rejected or retracted)'
+  if ((await deps.nodes.listLiveGlosses(entryId)).length === 0) return 'it has no sense with a live gloss'
+  if (link)
+    return `a live ${link.payload.type} relation (${link.id}) already links the two words, and a sense relates to another entry by one type only`
+  return null
+}
+
+/**
+ * The values earlier rejected reviews of the same slot named (quoted in their reasons) that the
+ * stored facts keep from being recorded: an existing entry whose entry fact is not live, one with
+ * no sense with a live gloss, or one the node already relates to. A named value with no entry is
+ * not blocked: the producer creates it.
+ */
+async function blockedCandidates<K extends FactKind>(
+  deps: ReviewDeps,
+  fact: FactOf<K>,
+  lemma: string,
+): Promise<BlockedCandidate[]> {
+  if (!weighsBlockedCandidates(fact.kind)) return []
+  const slot = meaningKeyOf(fact.kind, fact.payload)
+  const rejected = await deps.facts.listRejected(fact.subjectId, [fact.kind], ATTEMPTS_WEIGHED)
+  const named = new Map<string, string>()
+  for (const other of rejected) {
+    if (meaningKeyOf(other.kind, other.payload) !== slot || !other.review) continue
+    for (const value of quotedValues(other.review.reason)) {
+      if (value !== lemma && !named.has(value)) named.set(value, other.review.reason)
+    }
+  }
+  if (named.size === 0) return []
+  const linked = await linkedEntries(deps, fact.subjectId)
+  const blocked = await Promise.all(
+    [...named].map(async ([value, namedBy]): Promise<BlockedCandidate[]> => {
+      const entry = await deps.nodes.findEntryByLemma(value as Lemma)
+      const blockedBy = entry && (await blockOf(deps, entry.id, linked.get(entry.id)))
+      return blockedBy ? [{ lemma: value, namedBy, blockedBy }] : []
+    }),
+  )
+  return blocked.flat()
+}
+
 async function loadContext<K extends FactKind>(
   deps: ReviewDeps,
   fact: FactOf<K>,
@@ -218,6 +291,8 @@ async function loadContext<K extends FactKind>(
     target: target ? await senseContext(deps, target) : null,
     topic: topic ? await topicView(deps, topic) : null,
     attempts: await rejectedAttempts(deps, fact, subject.lemma),
+    taxonomy: showsTaxonomy(fact.kind, fact.payload) ? leafViews(await deps.topics.list()) : [],
+    blocked: await blockedCandidates(deps, fact, subject.lemma),
   }
 }
 

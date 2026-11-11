@@ -41,6 +41,12 @@ export function topicTree(nodes: readonly TopicNode[]): TopicTree {
   }
 }
 
+/** Every leaf topic with its category's name, in display order: categories, then their leaves. */
+export const leafViews = (nodes: readonly TopicNode[]): TopicView[] =>
+  topicTree(nodes).categories.flatMap((category) =>
+    category.topics.map((topic) => ({ category: category.name_en, topic: topic.name_en })),
+  )
+
 /** The leaves a topic id selects: itself when it is a leaf, every topic of it when it is a category. */
 export function leavesUnder(topic: TopicNode, nodes: readonly TopicNode[]): TopicId[] {
   if (isLeaf(topic)) return [topic.id]

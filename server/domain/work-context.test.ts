@@ -100,7 +100,7 @@ const reference = { cefr: [{ pos: 'noun' as const, level: 'A1' as const }] }
 
 describe('work context', () => {
   it('gives a sense item its entry, its sense, the facts about it, and the senses at the other end of its relations [spec: work/claim-context]', () => {
-    const context = workContext(item(dog, { type: 'parts', sense_id: pet.id }, pet.id), snapshot, reference)
+    const context = workContext(item(dog, { type: 'parts', sense_id: pet.id }, pet.id), snapshot, reference, [])
     expect(context.entry).toEqual({
       id: dog.id,
       lemma: 'dog',
@@ -162,7 +162,7 @@ describe('work context', () => {
         ],
       },
     }
-    const context = workContext(item(dog, { type: 'synonyms', sense_id: pet.id }, pet.id), dangling, reference)
+    const context = workContext(item(dog, { type: 'synonyms', sense_id: pet.id }, pet.id), dangling, reference, [])
     expect(context.related.map(({ senseId, gloss }) => [senseId, gloss])).toEqual([
       [creature.id, 'A living creature.'],
       [country.id, 'A country.'],
@@ -173,7 +173,12 @@ describe('work context', () => {
   })
 
   it('gives an entry item the whole view where the policy asks for it, and a weak fact the node it is about', () => {
-    const list = workContext(item(dog, { type: 'sense_list', senses: [pet.id, hound.id] }, dog.id), snapshot, reference)
+    const list = workContext(
+      item(dog, { type: 'sense_list', senses: [pet.id, hound.id] }, dog.id),
+      snapshot,
+      reference,
+      [],
+    )
     expect([list.sense, list.view?.seed, list.facts.map((candidate) => candidate.kind)]).toEqual([
       null,
       true,
@@ -184,6 +189,7 @@ describe('work context', () => {
       item(dog, { type: 'weak_fact', fact_id: grammar.id, kind: 'grammar', reason: 'uncertain' }, grammar.id),
       snapshot,
       reference,
+      [],
     )
     expect([weak.sense?.id, weak.facts.map((candidate) => candidate.kind), weak.view]).toEqual([
       hound.id,
@@ -200,7 +206,7 @@ describe('work context', () => {
         fact('sense', unlisted.id, { gloss: 'Gone.' }, 'rejected'),
       ],
     }
-    const order = workContext(item(dog, { type: 'syllables' }, dog.id), bare, reference).entry.senses
+    const order = workContext(item(dog, { type: 'syllables' }, dog.id), bare, reference, []).entry.senses
     expect(order.map((candidate) => [candidate.id, candidate.rare])).toEqual([
       [pet.id, false],
       [hound.id, false],
@@ -211,6 +217,7 @@ describe('work context', () => {
         item(dog, { type: 'weak_fact', fact_id: gone, kind: 'grammar', reason: 'uncertain' }, gone),
         snapshot,
         reference,
+        [],
       ),
     ).toThrow(`Weak fact ${gone}`)
     const stranger = sense(entry('stranger'))
@@ -218,8 +225,8 @@ describe('work context', () => {
       ...snapshot,
       facts: [...facts, fact('relation', pet.id, { type: 'synonym', target_sense_id: stranger.id })],
     }
-    expect(() => workContext(item(dog, { type: 'synonyms', sense_id: pet.id }, pet.id), unknownEnd, reference)).toThrow(
-      `Relation end ${stranger.id}`,
-    )
+    expect(() =>
+      workContext(item(dog, { type: 'synonyms', sense_id: pet.id }, pet.id), unknownEnd, reference, []),
+    ).toThrow(`Relation end ${stranger.id}`)
   })
 })

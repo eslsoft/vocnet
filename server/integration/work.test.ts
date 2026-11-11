@@ -132,6 +132,22 @@ describe('work items', () => {
     expect((await claimOf(holder, ['sense_list']))?.items[0]?.gap.type).toBe('sense_list')
   })
 
+  it('carries in each claimed item the standard its facts and closure are reviewed by [spec: work/claim-criteria-api]', async () => {
+    const token = await issueAgentKey()
+    const { entry } = await createEntry(token, 'oven')
+    await postSense(token, entry.id, 'A box for cooking food.')
+    await settle()
+    const topics = await claimOf(token, ['topics'])
+    const criteria = topics?.items[0]?.context.criteria
+    expect(criteria?.fills.map((fill) => [fill.kind, fill.claim, fill.jev])).toEqual([['topic', 'topic', null]])
+    expect(criteria?.fills[0]?.rubric).toContain('Topic: "<topic>" (in the category "<category>").')
+    expect(criteria?.closure).toContain('- House and rooms (Home)\n- Furniture (Home)')
+    expect(criteria?.limits).toContainEqual(expect.stringContaining('Only a published fact can be superseded'))
+    const synonyms = await claimOf(token, ['synonyms'])
+    const [synonym] = synonyms?.items[0]?.context.criteria.fills ?? []
+    expect(synonym?.jev?.rule).toContain('A Jev score below 0.5 fails without appeal.')
+  })
+
   it('rejects a claim body outside its bounds', async () => {
     const token = await issueAgentKey()
     for (const json of [{ lease_seconds: 59 }, { limit: 0 }, { limit: 51 }, { types: ['relations'] }, { types: [] }]) {

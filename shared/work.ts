@@ -98,13 +98,13 @@ export const gapSchema = z
           'An irregular inflection (one no regular spelling rule gives, such as "went") has no live pronunciation: submit a correction of the form that adds ipa and accent.',
       }),
     z.object({ type: z.literal('category'), ...senseGap }).meta({
-      description: `A noun sense has no live everyday hypernym: no broader term a learner files it under. Submit a hypernym relation (no domain) from this sense to each category word a learner's dictionary uses for it: "dog" to animal and to pet, "eagle" to bird, "stroll" to walk. Every target is a real headword; never a technical taxon ("canine", "passerine"), which goes in a domain layer (domain: "biology"). Narrower terms are never needed on the category word: its members are the words that name it as their category. ${CLOSABLE}`,
+      description: `A core noun sense has no live everyday hypernym: no broader term a learner files it under. Submit a hypernym relation (no domain) from this sense to each category word a learner's dictionary uses for it: "dog" to animal and to pet, "eagle" to bird, "stroll" to walk. Every target is a real headword; never a technical taxon ("canine", "passerine"), which goes in a domain layer (domain: "biology"). Narrower terms are never needed on the category word: its members are the words that name it as their category. ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('parts'), ...senseGap }).meta({
-      description: `A noun sense with an everyday category has no live part attached to it: no live part_of relation names this sense as the whole. Submit, in one pass, a part_of relation from each main part a learner's dictionary names for this thing to this sense ("beak", "wing", "feather" to "bird"; "wheel", "engine" to "car"). A part attaches to the most general common whole it belongs to: a tail to "animal", not to "dog". ${CLOSABLE}`,
+      description: `A core noun sense with an everyday category has no live part attached to it: no live part_of relation names this sense as the whole. Submit, in one pass, a part_of relation from each main part a learner's dictionary names for this thing to this sense ("beak", "wing", "feather" to "bird"; "wheel", "engine" to "car"). A part attaches to the most general common whole it belongs to: a tail to "animal", not to "dog". ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('synonyms'), ...senseGap }).meta({
-      description: `A content-word sense has no live synonym or antonym. Submit the synonyms and antonyms a learner can use in this sense ("big": large; small). ${CLOSABLE}`,
+      description: `A core content-word sense has no live synonym or antonym. Submit the synonyms and antonyms a learner can use in this sense ("big": large; small). ${CLOSABLE}`,
     }),
     z
       .object({
@@ -112,7 +112,7 @@ export const gapSchema = z
         ...senseGap,
         count: z.number().int().nonnegative().meta({ description: 'Live examples of the sense.' }),
         need: z.number().int().positive().meta({
-          description: 'Examples the sense needs: two for an entry at CEFR A1 or A2, else one.',
+          description: 'Examples the sense needs: two for a core sense of an entry at CEFR A1 or A2, else one.',
         }),
       })
       .meta({ description: 'The sense has fewer live examples than it needs.' }),
@@ -131,13 +131,13 @@ export const gapSchema = z
           'Every live example of the sense needs a translation in the language: submit a correction of each example named that adds it (supersedes_id set to the example).',
       }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
-      description: `The sense has no live topic fact. Nouns and verbs need one; other parts of speech have no topics gap. ${CLOSABLE}`,
+      description: `The core sense has no live topic fact. Core nouns and verbs need one; other parts of speech have no topics gap. Tag only a leaf topic of the taxonomy (GET /v1/topics); when none fits, close the gap. ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('grammar'), ...senseGap }).meta({
       description: `A noun, verb, adjective, adverb, determiner, or pronoun sense has no live grammar fact: countability for a noun, transitivity for a verb, position, patterns, or prepositions for an adjective, the usual position (front, mid, end) or prepositions for an adverb, and agreement for a determiner or pronoun (singular_noun, plural_noun, uncountable_noun, of_plural, singular_verb, plural_verb). ${CLOSABLE}`,
     }),
     z.object({ type: z.literal('collocations'), ...senseGap }).meta({
-      description: `A noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation: a combination native speakers commonly use with the word in this sense ("make a decision", "work hard", "hardly any", "filled with", "both ... and"). ${CLOSABLE}`,
+      description: `A core noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation: a combination native speakers commonly use with the word in this sense ("make a decision", "work hard", "hardly any", "filled with", "both ... and"). ${CLOSABLE}`,
     }),
     z
       .object({
@@ -227,6 +227,43 @@ const relatedSenseSchema = z
   })
   .meta({ id: 'WorkRelatedSense', description: 'A sense at the other end of a relation among the context facts.' })
 
+const fillCriteriaSchema = z
+  .object({
+    kind: factKindSchema,
+    claim: z.string().meta({ description: 'What the judged fact claims, such as "relation synonym".' }),
+    jev: z
+      .object({
+        questions: z
+          .array(z.string())
+          .meta({ description: 'The questions Jev scores from 0 to 1, as Jev receives them.' }),
+        rule: z.string().meta({ description: "How Jev's scores decide the fact, and when the LLM rubric does." }),
+      })
+      .nullable()
+      .meta({ description: 'Null when the LLM judges the kind alone.' }),
+    rubric: z.string().meta({
+      description: "The LLM reviewer's prompt for the fact, with the item's values as <placeholders>.",
+    }),
+    limits: z.array(z.string()).meta({ description: 'The write rules the submission must meet before review.' }),
+  })
+  .meta({ id: 'WorkFillCriteria', description: 'How one kind of fact that fills the item is judged.' })
+
+export const workCriteriaSchema = z
+  .object({
+    fills: z.array(fillCriteriaSchema).meta({
+      description: "Each kind of fact that fills the item's gap, with the review that judges it.",
+    }),
+    closure: z.string().nullable().meta({
+      description:
+        "The LLM reviewer's prompt for a gap_closure of the item's gap, with the reason as a placeholder; null when no closure may close it.",
+    }),
+    limits: z.array(z.string()).meta({ description: 'The write rules every submission meets.' }),
+  })
+  .meta({
+    id: 'WorkCriteria',
+    description:
+      'The standard the reviewers apply to the facts that fill this item and to a closure of it: the same prompts their reviews receive, rendered for placeholder values. Work to the standard, not to its wording: a value or reason that echoes it without the facts behind it fails.',
+  })
+
 export const workContextSchema = z
   .object({
     entry: z
@@ -250,6 +287,7 @@ export const workContextSchema = z
       description:
         'The whole management view of the entry, for the types that need every sense and fact at once (senses, sense_list, phrases, family); null for the others.',
     }),
+    criteria: workCriteriaSchema,
   })
   .meta({ id: 'WorkContext' })
 

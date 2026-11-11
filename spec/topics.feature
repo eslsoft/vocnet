@@ -8,7 +8,7 @@ Feature: Topics
     Given a topic fact on a glossed sense and the leaf topic it names
     When its review is planned
     Then the LLM alone is asked, with the lemma, part of speech, gloss, topic, category, and the entry's other senses
-    And its rubric passes only a sense a learner characteristically meets or needs in the topic, be it a scene or a subject area
+    And its rubric passes only a sense a learner characteristically meets or needs in the topic, typical vocabulary of that scene or subject area
     And fails a general-purpose sense that merely can appear in the topic, a loose association, or a topic that fits a different sense of the word
     And it gives audited passes and fails as examples and says to fail when in doubt
     And a sense without a gloss or a topic that is not a leaf is unreviewable

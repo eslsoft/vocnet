@@ -134,6 +134,7 @@ const contextDto = (context: WorkContext) => ({
     gloss: sense.gloss,
   })),
   view: context.view && managedEntryDto(context.view),
+  criteria: context.criteria,
 })
 
 export const manageWorkRoutes = createRouter()

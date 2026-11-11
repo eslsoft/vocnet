@@ -20,6 +20,7 @@ import type {
   SenseId,
   TopicId,
 } from '@shared/facts'
+import { GAP_CLOSURE_REASON_MAX, MORPHEME_SPELLING } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
 import type { RevalidationFailure } from './fact-lifecycle'
 import { editDistance, isLetterOfTheAlphabet, isMultiword, type Lemma, normalizeTerm, textKey } from './term'
@@ -113,6 +114,27 @@ export interface ReviewContext<S extends SubjectType = SubjectType> {
   topic: TopicView | null
   /** The rejected facts the kind's `attempts` names, most recently rejected first; empty for every other kind. */
   attempts: readonly RejectedAttempt[]
+  /** Every leaf topic of the taxonomy, in display order, for a kind whose `taxonomy` asks for it; empty otherwise. */
+  taxonomy: readonly TopicView[]
+  /**
+   * The candidates earlier reviews of the slot named that stored facts keep from being recorded,
+   * for a kind whose `blockedCandidates` asks for them; empty otherwise.
+   */
+  blocked: readonly BlockedCandidate[]
+}
+
+/**
+ * A value an earlier review named for a slot (a quoted word in a rejected closure's reason) whose
+ * stored facts keep it from being recorded: its entry fact is not live, it has no sense with a live
+ * gloss, or the node already relates to it by another relation. Found from data, never from the
+ * closure's own reason.
+ */
+export interface BlockedCandidate {
+  lemma: string
+  /** The reason of the rejected review that named it. */
+  namedBy: string
+  /** What the stored facts say keeps it out. */
+  blockedBy: string
 }
 
 /**
@@ -196,6 +218,12 @@ interface BaseSpec<K extends FactKind> {
    * claims is empty; absent, or null for a payload, when the review weighs none.
    */
   attempts?(payload: FactPayloads[K]): AttemptSource | null
+  /** The review is shown every leaf topic of the taxonomy, because the fact claims none fits; absent means never. */
+  taxonomy?(payload: FactPayloads[K]): boolean
+  /** The review is shown the blocked candidates of the slot the fact closes; absent means never. */
+  blockedCandidates?: true
+  /** The write rules a submission of the kind must meet, in plain sentences for the producer. */
+  limits?: readonly string[]
   /** The leaf topic the fact tags its subject with; absent for kinds that reference no topic. */
   topic?(payload: FactPayloads[K]): TopicId
   /** The parts of speech a sense subject must have; absent means any. */
@@ -905,12 +933,12 @@ function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicVi
     `Sense: ${describe(sense)}.`,
     `Topic: ${describeTopic(topic)}.`,
     'Read the word only in the sense given, never in another sense.',
-    'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is part of the core vocabulary of the topic, a word a learner studying the topic should learn. The topic may be a scene (at the hospital) or a subject area (emotions, colours and shapes). For example:',
+    'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is typical vocabulary of that scene or subject area, a word a learner studying the topic should learn. The topic may be a scene (at the hospital) or a subject area (emotions, colours and shapes). For example:',
     ...TOPIC_PASSES.map((example) => `- ${example}`),
     'fail when the sense is general-purpose, usable in many scenes, and merely can appear in this one; when the link is only a loose association; or when the topic fits a different sense of the word, not this one. For example:',
     ...TOPIC_FAILS.map((example) => `- ${example}`),
     'A sense may be core vocabulary of several topics ("ticket" in trains and in buses); judge only this one.',
-    'uncertain: only when you cannot judge the sense or the topic at all. If you doubt whether the sense is core to the topic, fail.',
+    'uncertain: only when you cannot judge the sense or the topic at all. If you doubt whether the sense is typical vocabulary of the topic, fail.',
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
 }
@@ -1453,11 +1481,22 @@ const senseListKey = ({ common, extra }: SenseList) => `${common.join(',')}|${[.
 const numbered = (senses: readonly EntrySense[], from: number) =>
   senses.map(({ pos, gloss }, at) => `${from + at}. (${pos}) ${quote(gloss)}`)
 
-const SENSE_LIST_PASSES = [
-  "Complete: common has every sense a learner's dictionary lists among its main senses of this word for A1 to B1 learners, in every part of speech it has. A missing main sense fails; a sense only an advanced or specialist dictionary lists does not.",
-  'Distinct: no two common senses are duplicates, or one meaning split too finely into several.',
-  'Ordered: common runs in a plausible order from more to less common use for a learner, judged sense by sense across every part of speech, never one part of speech before another. The first common sense is the one a learner most needs: "mobile" starts with the noun meaning a mobile phone, before any adjective sense. Frequency order is approximate: judge only whether the order is plausible, never whether exact frequency can be verified.',
-  'Rare: specialist, technical, legal, archaic, and rare senses, and senses used only in a variety other than British or American English, belong in extra ("stay" meaning to stop legal proceedings, "mobile" meaning changing facial expression, Scottish "stay" meaning to live somewhere), and every sense in extra is one a learner does not meet in general use.',
+/**
+ * The only reasons a sense list fails. Review once also judged the relative order of common senses
+ * and borderline common/extra placements, and successive reviews of "go", "food", and "block" moved
+ * the same senses back and forth: 31% of lists were rejected and A1 entries stalled at stage 1.
+ */
+const SENSE_LIST_FAILS = [
+  "Missing: a common, general-knowledge sense that a learner's dictionary lists among its main senses of this word for A1 to B1 learners, in any part of speech the word has, is in neither list. A sense only an advanced or specialist dictionary lists is never missing.",
+  'Duplicated: two common senses are the same meaning, or one meaning split too finely into several.',
+  'Misplaced as common: a rare, archaic, technical, specialist, or legal sense, or one used only in a variety other than British or American English, is in common ("stay" meaning to stop legal proceedings, "mobile" meaning changing facial expression, Scottish "stay" meaning to live somewhere).',
+  'Wrong part of speech: a sense is given a part of speech its meaning does not have.',
+]
+
+const SENSE_LIST_NEVER_FAILS = [
+  'Never fail for the relative order of the common senses: any order passes. Earlier reviews reordered the same senses of "go", "food", and "block" back and forth on successive passes; order is the producer\'s call.',
+  'Never fail for a borderline placement, a sense a learner may or may not meet in general use, whichever list it is in: earlier reviews moved the same senses of "go", "food", and "block" between common and extra and back. Fail only a sense that is plainly rare, archaic, technical, specialist, or regional placed in common, and never a sense placed in extra.',
+  'A rare, archaic, Old English, technical, or specialist sense missing from both lists is never a failure.',
 ]
 
 /** Entries are case-sensitive: "May" the month is its own entry, never a sense missing from "may". */
@@ -1475,17 +1514,18 @@ function senseListRubric(
 ): string {
   return [
     `Is this the sense inventory a learner's dictionary such as the Oxford Advanced Learner's, Longman, or Cambridge gives for the English word ${quote(lemma)}?`,
-    'Common senses, claimed in order from most to least common:',
+    'Common senses, in the order the producer gives them:',
     ...numbered(common, 1),
-    extra.length === 0 ? 'Extra senses: none.' : 'Extra senses, claimed rare, archaic, technical, or specialist:',
+    extra.length === 0 ? 'Extra senses: none.' : 'Extra senses, claimed rare or not needed in general use:',
     ...numbered(extra, common.length + 1),
     'Each sense was reviewed on its own; judge the list, not the wording of a gloss.',
     ...otherCaseRules(lemma, caseVariants),
-    'pass only when every one of these holds:',
-    ...SENSE_LIST_PASSES.map((rule) => `- ${rule}`),
-    'A rare, archaic, Old English, technical, or specialist sense missing from both lists is never a failure.',
-    'fail when any of them does not hold. The reason then names everything to change, even if that takes more than one sentence: each missing common sense with its part of speech and a short meaning, each pair of duplicates by number, each sense out of order, each specialist sense in common, and each sense in extra that is common.',
-    'uncertain: only when you cannot judge the word at all. Never answer uncertain because the exact frequency order cannot be verified: a plausible order passes.',
+    'fail only when one of these holds:',
+    ...SENSE_LIST_FAILS.map((rule) => `- ${rule}`),
+    'pass otherwise. In particular:',
+    ...SENSE_LIST_NEVER_FAILS.map((rule) => `- ${rule}`),
+    'A fail reason names everything to change, even if that takes more than one sentence: each missing common sense with its part of speech and a short meaning, each pair of duplicates by number, each rare sense in common by number, and each sense under the wrong part of speech by number.',
+    'uncertain: only when you cannot judge the word at all.',
   ].join('\n')
 }
 
@@ -1511,6 +1551,8 @@ interface ClosableGapSpec {
    * null for phrases, whose attempts are entries of their own with nothing rejected to name them.
    */
   attempts: AttemptSource | null
+  /** The slot holds only leaf topics of the fixed taxonomy, so its closure review is shown them. */
+  taxonomy: boolean
 }
 
 /** Each gap a closure may close: the node it is about, what its slot holds, and the kinds that fill it. */
@@ -1519,46 +1561,55 @@ export const closableGaps: Record<ClosableGap, ClosableGapSpec> = {
     subject: 'entry',
     slot: 'inflected forms: the third-person singular, past tense, past participle, and present participle of a verb; the plural of a countable noun; the -er and -est comparative and superlative of an adjective or adverb that compares that way',
     attempts: { of: 'node', kinds: ['form'] },
+    taxonomy: false,
   },
   phrases: {
     subject: 'entry',
     slot: 'three phrasal verbs or verb idioms headed by the word, as entries of their own ("give up", "give in", "give way"); the slot is complete with fewer only when fewer than three common ones exist, and the reason names those',
     attempts: null,
+    taxonomy: false,
   },
   family: {
     subject: 'entry',
     slot: 'the word family: common derivatives built on the word that a learner\'s dictionary lists with it ("happiness", "happily", and "unhappy" for "happy"; "student" for "study")',
     attempts: { of: 'derivatives' },
+    taxonomy: false,
   },
   category: {
     subject: 'sense',
     slot: 'an everyday category: a broader term a learner files this sense under, a real headword ("dog": animal, pet; "eagle": bird; "rose": flower)',
     attempts: { of: 'node', kinds: ['relation'] },
+    taxonomy: false,
   },
   parts: {
     subject: 'sense',
     slot: 'parts: the main parts a learner\'s dictionary names for this thing, each recorded as part_of it ("bird": beak, wing, feather; "car": wheel, engine)',
     attempts: { of: 'node', kinds: ['relation'] },
+    taxonomy: false,
   },
   synonyms: {
     subject: 'sense',
     slot: 'a synonym or an antonym a learner can use in this sense ("big": large, small)',
     attempts: { of: 'node', kinds: ['relation'] },
+    taxonomy: false,
   },
   topics: {
     subject: 'sense',
-    slot: 'a topic: a scene or subject area whose core vocabulary includes this sense ("oven" in household appliances)',
+    slot: 'a topic: a leaf topic of the fixed taxonomy below whose typical vocabulary includes this sense ("oven" in household appliances)',
     attempts: { of: 'node', kinds: ['topic'] },
+    taxonomy: true,
   },
   grammar: {
     subject: 'sense',
     slot: 'grammar: the countability of a noun, the transitivity of a verb, the position, patterns, or prepositions of an adjective, the usual position of an adverb, or what a determiner or pronoun agrees with',
     attempts: { of: 'node', kinds: ['grammar'] },
+    taxonomy: false,
   },
   collocations: {
     subject: 'sense',
     slot: 'collocations: combinations native speakers commonly use with the word in this sense ("make a decision")',
     attempts: { of: 'node', kinds: ['collocation'] },
+    taxonomy: false,
   },
 }
 
@@ -1569,7 +1620,6 @@ const CLOSURE_PASSES = [
   'a sense no learner files under a category word: a very general or abstract sense ("thing", "idea", "way") or a verb of general action ("do", "happen") has no everyday broader term',
   'a thing whose main parts a learner\'s dictionary does not name (a substance, an abstract or uniform thing: "water", "idea", "song"), or whose parts are recorded on the more general whole they belong to ("dog": tail and paw are parts of "animal")',
   'a sense with no synonym or antonym a learner could use in its place ("eagle", "oxygen", "Tuesday")',
-  "a slot whose candidate, named by an earlier review, cannot be recorded here, when the reason says why: the candidate's entry or sense was rejected or retracted, or the two words are already linked by another relation. The slot is complete for this pass; a curator records such a candidate by hand",
   'an uncountable noun ("advice") has no plural',
   'a title used before a name ("Mr", "Mrs", "Ms", "Dr") has no grammar to record: a learner\'s dictionary prints it as used before a name, never [C] or [U], so no countability fits it',
   'a pronoun that governs no agreement has no grammar to record: an object, reflexive, or reciprocal pronoun ("me", "yourself", "each other") is never the subject a verb agrees with, and a relative or interrogative pronoun ("who", "which", "what") takes the verb its antecedent or answer takes, so no fixed agreement fits it',
@@ -1614,9 +1664,40 @@ function rejectedAttemptRules(attempts: readonly RejectedAttempt[]): string[] {
   ]
 }
 
+/**
+ * A topic slot takes only a leaf of the fixed taxonomy. Review once failed topics closures for a
+ * topic the taxonomy lacks ("horse racing", "gambling", "hunting"), so no pass could ever fill or
+ * close the slot.
+ */
+function taxonomyRules(taxonomy: readonly TopicView[]): string[] {
+  if (taxonomy.length === 0) return []
+  return [
+    'The slot takes only a leaf topic of this fixed taxonomy, "topic (category)":',
+    ...taxonomy.map(({ category, topic }) => `- ${topic} (${category})`),
+    'pass when no topic of this taxonomy fits the sense: none is a scene or subject area whose typical vocabulary includes it. A topic outside the taxonomy that would fit ("horse racing", "gambling", "hunting") is never a reason to fail; the slot cannot hold it. A fail reason names a topic of this taxonomy exactly as listed.',
+  ]
+}
+
+/**
+ * A candidate an earlier review named may be one the producer cannot record: its entry was
+ * rejected, or the two words already share another relation. Synonym items looped on this ("computer
+ * program", "office staff"). The stored facts show it, so the rule applies only to the candidates
+ * the data blocks, never to a reason that only claims one is blocked.
+ */
+function blockedCandidateRules(blocked: readonly BlockedCandidate[]): string[] {
+  if (blocked.length === 0) return []
+  return [
+    'Earlier reviews of this slot named these values, and the stored data keeps each from being recorded here:',
+    ...blocked.map(
+      ({ lemma, namedBy, blockedBy }) => `- ${quote(lemma)}: named by the review ${quote(namedBy)}; ${blockedBy}.`,
+    ),
+    'Never fail for one of these values: a curator records it by hand. Pass unless another value, not listed here, plainly fills the slot.',
+  ]
+}
+
 function gapClosureRubric(
   { gap, reason }: FactPayloads['gap_closure'],
-  { subject, attempts }: ReviewContext<'entry' | 'sense'>,
+  { subject, attempts, taxonomy, blocked }: ReviewContext<'entry' | 'sense'>,
 ): ReviewPlan<readonly ['llm']> {
   const about = (described: string, others: string) => [
     `Does a learner's dictionary genuinely have nothing for this slot of ${described}?`,
@@ -1627,7 +1708,9 @@ function gapClosureRubric(
     'fail when the slot plainly applies to this word, so a learner would expect it filled, or the reason is wrong. For example:',
     ...CLOSURE_FAILS.map((rule) => `- ${rule}`),
     "A fail reason names the specific value a learner's dictionary gives for the slot, never only that one exists.",
+    ...taxonomyRules(taxonomy),
     ...rejectedAttemptRules(attempts),
+    ...blockedCandidateRules(blocked),
     'uncertain: only when you cannot judge the word at all.',
     others,
   ]
@@ -1640,6 +1723,45 @@ function gapClosureRubric(
     llm(about(describe(sense), listSenses('Other senses of this entry, for reference', subject.siblings)).join('\n')),
   )
 }
+
+const FORM_LIMITS = [
+  'A periphrastic comparison (with more or most) is never a form; record only an inflected comparative or superlative.',
+  'A form labelled with a part of speech names one its type inflects: a plural a noun, a past a verb, a comparative an adjective or adverb.',
+]
+
+const RELATION_LIMITS = [
+  "A relation links common, current senses: a sense in its entry's extra senses (rare, archaic, technical, or specialist) or labelled dated is refused, except that a domain hypernym's target is checked only for being current.",
+  'A sense relates to another entry by one relation type only, and by a hypernym in one layer only (everyday or one domain): retract the live relation first to change it.',
+  'Two entries are never each a kind of the other.',
+  'A synonym never links two spellings of one word.',
+]
+
+const TOPIC_LIMITS = [
+  `A topic fact names a leaf topic of the taxonomy (GET /v1/topics) on a ${TAGGABLE_POS.join(', ')} sense; a sense holds at most ${MAX_TOPICS_PER_SENSE} live topics.`,
+]
+
+const GRAMMAR_LIMITS = [
+  `A grammar fact names only the fields of its sense's part of speech: ${GRAMMAR_POS.map((pos) => `${pos}: ${inWords(grammarRules[pos].fields)}${grammarRules[pos].requires ? ` (${grammarRules[pos].requires} required)` : ''}`).join('; ')}.`,
+]
+
+const MORPHOLOGY_LIMITS = [
+  ...Object.values(MORPHEME_SPELLING).map((rule) => `${rule.charAt(0).toUpperCase()}${rule.slice(1)}.`),
+  `The parts spell the word: spelling changes only where two parts join, at most ${JOIN_CHANGES} letters a join (happy + -ness gives happiness).`,
+  'Only a base part names a lemma, the live entry it is, never the word itself. A phrase has no word formation.',
+]
+
+const SYLLABLES_LIMITS = ['Joined, the syllables spell the lemma exactly. A phrase has no syllables.']
+
+const COLLOCATION_LIMITS = ['A collocation contains the word itself or one of its live forms.']
+
+const SENSE_LIST_LIMITS = [
+  'A sense list names every live sense of the entry exactly once, in common or in extra, and common is never empty.',
+]
+
+const GAP_CLOSURE_LIMITS = [
+  `A reason is at most ${GAP_CLOSURE_REASON_MAX} characters.`,
+  'A closure is about the node its gap is about: forms, phrases, and family on the entry; every other closable gap on its sense.',
+]
 
 export const factKinds: { [K in FactKind]: KindSpec<K> } = {
   entry: {
@@ -1667,6 +1789,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       ),
   },
   form: {
+    limits: FORM_LIMITS,
     subject: 'entry',
     cardinality: 'many',
     chain: ['jev', 'llm'],
@@ -1696,6 +1819,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     rereviews: ({ form }) => ({ kind: 'entry', lemma: normalizeTerm(form), settledBy: 'jev' }),
   },
   relation: {
+    limits: RELATION_LIMITS,
     subject: 'sense',
     cardinality: 'many',
     chain: ['jev', 'llm'],
@@ -1769,6 +1893,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       withGloss(subject, (sense) => llm(translationRubric(language, text, { ...subject, ...sense }))),
   },
   topic: {
+    limits: TOPIC_LIMITS,
     subject: 'sense',
     cardinality: 'many',
     chain: ['llm'],
@@ -1780,6 +1905,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       withGloss(subject, (sense) => withTopic(topic, (leaf) => llm(topicRubric({ ...subject, ...sense }, leaf)))),
   },
   grammar: {
+    limits: GRAMMAR_LIMITS,
     subject: 'sense',
     cardinality: 'one',
     chain: ['jev', 'llm'],
@@ -1794,6 +1920,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
   // Jev passed etymological splits of opaque words (fact + -ory) and failed simple claims of loans
   // for their Latin roots, so the LLM judges alone by one synchronic rule.
   morphology: {
+    limits: MORPHOLOGY_LIMITS,
     subject: 'entry',
     cardinality: 'one',
     chain: ['llm'],
@@ -1813,6 +1940,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     plan: (morphology, { subject }) => llm(morphologyRubric(subject, morphology)),
   },
   syllables: {
+    limits: SYLLABLES_LIMITS,
     subject: 'entry',
     cardinality: 'one',
     chain: ['llm'],
@@ -1821,6 +1949,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     plan: ({ syllables }, { subject }) => llm(syllablesRubric(subject, syllables)),
   },
   collocation: {
+    limits: COLLOCATION_LIMITS,
     subject: 'sense',
     cardinality: 'many',
     chain: ['llm'],
@@ -1831,6 +1960,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       withGloss(subject, (sense) => llm(collocationRubric(text, pattern, { ...subject, ...sense }))),
   },
   sense_list: {
+    limits: SENSE_LIST_LIMITS,
     subject: 'entry',
     cardinality: 'one',
     chain: ['llm'],
@@ -1839,6 +1969,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     plan: (payload, { subject }) => planSenseList(payload, subject),
   },
   gap_closure: {
+    limits: GAP_CLOSURE_LIMITS,
     subject: ({ gap }) => closableGaps[gap].subject,
     cardinality: 'many',
     chain: ['llm'],
@@ -1846,6 +1977,8 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     contentKey: ({ gap, reason }) => `${gap}|${textKey(reason)}`,
     meaningKey: ({ gap }) => gap,
     attempts: ({ gap }) => closableGaps[gap].attempts,
+    taxonomy: ({ gap }) => closableGaps[gap].taxonomy,
+    blockedCandidates: true,
     plan: gapClosureRubric,
   },
 }
@@ -1919,6 +2052,35 @@ export function orientOf<K extends FactKind>(kind: K, subjectId: string, payload
 /** Where the rejected facts a review of this fact weighs are; null for kinds that weigh none. */
 export function attemptSourceOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): AttemptSource | null {
   return factKinds[kind].attempts?.(payload) ?? null
+}
+
+/** The write rules a submission of the kind must meet; none for a kind without one. */
+export function limitsOf(kind: FactKind): readonly string[] {
+  return factKinds[kind].limits ?? []
+}
+
+/** The write rules every submission meets. */
+export const GENERAL_LIMITS: readonly string[] = [
+  'Only a published fact can be superseded: a correction names, in supersedes_id, a published fact of its kind and subject.',
+  `A subject holds one live fact of ${(Object.keys(factKinds) as FactKind[])
+    .filter((kind) => factKinds[kind].cardinality === 'one')
+    .join(', ')}: change it with a correction that supersedes the published one.`,
+]
+
+/** Whether the review of this fact is shown the blocked candidates of its slot. */
+export function weighsBlockedCandidates(kind: FactKind): boolean {
+  return factKinds[kind].blockedCandidates ?? false
+}
+
+/** The quoted values a review reason names ("computer program"), each once, in order. */
+export function quotedValues(reason: string): string[] {
+  const values = [...reason.matchAll(/"([^"]+)"|“([^”]+)”/g)].map((match) => (match[1] ?? match[2] ?? '').trim())
+  return [...new Set(values)].filter((value) => value.length > 0)
+}
+
+/** Whether the review of this fact is shown the leaf topics of the taxonomy. */
+export function showsTaxonomy<K extends FactKind>(kind: K, payload: FactPayloads[K]): boolean {
+  return factKinds[kind].taxonomy?.(payload) ?? false
 }
 
 export function targetOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): SenseId | null {

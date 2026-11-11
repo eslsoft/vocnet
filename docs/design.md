@@ -157,13 +157,34 @@ them. When the
 attempts were rejected as not fitting, the closure passes unless the reviewer
 names a specific value that plainly fills the slot and differs from every
 rejected one; a value an attempt tried, or an association as loose as theirs,
-is no reason to fail. A closure also passes when the candidate an earlier
-review named cannot be recorded and the reason says why: its entry or sense was
-rejected or retracted, or the two words already share another relation (one
-relation per entry pair). Synonym items looped on this: review named "computer
-program" or "office staff", the producer could not link a rejected entry, and
-review failed the closure for citing an internal restriction. A curator records
-such a candidate by hand. Without this a reviewer that rejects each topic of a
+is no reason to fail. A candidate an earlier review named may be one the
+producer cannot record: synonym items looped on this when review named
+"computer program" or "office staff", the producer could not link a rejected
+entry, and review failed the closure for citing an internal restriction. The
+stored facts decide it, never the closure's reason: a closure kind declares
+`blockedCandidates`, and its review context carries the values quoted in the
+reasons of the latest rejected closures of the same slot on the node
+(`quotedValues`, exact lemmas, no fuzzy match) that an existing entry blocks:
+its entry fact is not live (rejected or retracted), it has no sense with a live
+gloss, or a live relation already links it to the node (a sense relates to
+another entry by one type only; read from the node's entry snapshot and its
+neighbors). A quoted value with no entry is not blocked, since the producer
+creates it. Only then does the rubric list each blocked candidate with the
+review that named it and what blocks it, and never fail for one of them,
+passing unless another value plainly fills the slot; a curator records such a
+candidate by hand. Without that evidence no rule lets a reason claim a
+candidate cannot be recorded, so the closure is judged by the normal rules.
+
+A `topics` closure is judged against the fixed taxonomy (`closableGaps.topics`
+has `taxonomy: true`, so the review context carries every leaf topic with its
+category, `leafViews`): the rubric lists the leaves and passes the closure when
+none of them fits the sense; a topic outside the taxonomy ("horse racing",
+"gambling", "hunting") is never a reason to fail, since the slot cannot hold
+it, and a fail reason names a leaf exactly as listed. Review had failed topics
+closures for topics the taxonomy lacks (46% rejected), so no pass could fill or
+close the slot.
+
+Without this a reviewer that rejects each topic of a
 general sense as too general, then the closure because the sense "has a topic
 association", stalls the entry for good. A rejected closure holds no content
 key (dedupe is against live facts only), so the producer's resubmission after a
@@ -455,8 +476,8 @@ A tag means "a learner meets or needs this sense mainly in this topic", not
 passed loose associations: an audit of 100 published topic tags found about 15
 loose ones ("full" in hotels, "stop" in driving, "event" in news) while review
 had rejected 1.5% of all topic facts. The rubric passes only when the topic is
-where a learner characteristically meets or needs the sense: the sense is core
-vocabulary of the topic, a word a learner studying the topic should learn,
+where a learner characteristically meets or needs the sense: the sense is
+typical vocabulary of that scene or subject area, a word a learner studying the topic should learn,
 whether the topic is a scene (at the hospital) or a subject area (emotions,
 colours and shapes). It fails a general-purpose sense usable in many scenes
 that merely can appear in this one, a loose association, or a topic that fits
@@ -465,7 +486,7 @@ appliances, "credit" in banking, "angry" in emotions) and fails ("full" in
 hotels, "stop" in driving, "event" in news) as examples. A sense may be
 core to several topics ("ticket" in trains and in buses); each tag is judged
 on its own. The rubric keeps uncertain for a sense or topic it cannot judge at
-all and says to fail when it doubts the sense is core; an uncertain verdict
+all and says to fail when it doubts the sense is typical vocabulary of the topic; an uncertain verdict
 still publishes as weak, as in every chain. It sees the entry's other senses.
 Tags published under the earlier Jev-first rubric are judged again: the
 migration `topics_strict_revalidate` marks every published topic fact for
@@ -726,7 +747,9 @@ submits a correction naming the senses as they are. Correcting a gloss does not
 re-review the list.
 
 A rejected list is feedback the producer acts on. Its review reason names each
-missing sense, duplicate pair, misordered sense, and misplaced sense. The
+missing sense, duplicate pair, rare sense placed in common, and sense under the
+wrong part of speech. The order of `common` decides which senses are core (see
+Scores), so it is the producer's claim, and review never fails it. The
 `sense_list` gap names the senses the list must name, so a rejection leaves it
 as the pass's claim found it: the item comes back with one more attempt, its
 context (the whole management view) carries every rejected list with its
@@ -1177,26 +1200,23 @@ but only to choose the message.
   ungrammatical wording, and the wrong pattern.
 - **Sense lists** go to the LLM alone: no Jev question can judge a whole
   inventory. The rubric gives the lemma and every listed sense with its part of
-  speech and gloss, numbered, the common senses in their claimed order and then
-  the extra ones, and passes only when all of these hold: the common senses
-  cover every sense a learner's dictionary (Oxford Advanced Learner's, Longman,
-  Cambridge) lists among its main senses of the word for A1 to B1 learners, in
-  every part of speech, so a missing main sense fails and a sense only an
-  advanced or specialist dictionary lists does not; no two common senses are
-  duplicates or one meaning split too finely; the common senses run in a
-  plausible order from more to less common for a learner, judged sense by sense
-  across every part of speech, never one part of speech before another, with
-  the sense a learner most needs first ("mobile" starts with the noun meaning a
-  mobile phone, before any adjective sense; the audit's list put an adjective
-  first, and the public view orders meanings by their first common sense, so
-  the noun showed after the adjective's seven), frequency order being
-  approximate, so the reviewer judges plausibility and never answers uncertain
-  because exact frequency order cannot be verified; and specialist, technical,
-  legal, archaic, and rare senses, and senses of a variety other than British or
-  American English, belong in extra ("stay" meaning to stop legal proceedings),
-  every extra sense being one a learner does not meet in general use. A rare, archaic, Old English, technical, or specialist sense
-  missing from both lists is never a failure. Uncertain is only for a word the
-  reviewer cannot judge at all: 178 sense lists had published on an uncertain
+  speech and gloss, numbered, the common senses in the producer's order and then
+  the extra ones, and fails only when one of these holds: a common,
+  general-knowledge sense a learner's dictionary (Oxford Advanced Learner's,
+  Longman, Cambridge) lists among its main senses of the word for A1 to B1
+  learners, in any part of speech, is in neither list (a sense only an advanced
+  or specialist dictionary lists is never missing); two common senses duplicate
+  one meaning or split it too finely; a rare, archaic, technical, specialist,
+  legal, or regional-only sense is in common ("stay" meaning to stop legal
+  proceedings); or a sense is under a part of speech its meaning does not have.
+  A listed id that is not a live sense is refused at write and is unreviewable
+  at review. Every other list passes: the rubric says explicitly that the
+  relative order of the common senses never fails, nor does a borderline
+  common/extra placement, because successive reviews of *go*, *food*, and
+  *block* moved the same senses back and forth (31% of producer lists were
+  rejected, and A1 entries stalled at stage 1). A rare, archaic, Old English,
+  technical, or specialist sense missing from both lists is never a failure.
+  Uncertain is only for a word the reviewer cannot judge at all: 178 sense lists had published on an uncertain
   verdict, mostly over unverifiable order, and `completeness_rules` marked them
   for review in place. Entries are case-sensitive, so
   the rubric judges only the exact spelling: a sense that belongs to a spelling
@@ -1341,7 +1361,15 @@ the defaults. It answers `204` when no item is free:
         "sense": { "id": "…", "pos": "noun", "gloss": "A large bird of prey.", "…": "…" },
         "facts": ["Fact, in every status with its review"],
         "related": [{ "sense_id": "…", "lemma": "bird", "pos": "noun", "gloss": "…" }],
-        "view": null
+        "view": null,
+        "criteria": {
+          "fills": [{ "kind": "relation", "claim": "relation hypernym (everyday layer, no domain)",
+                      "jev": { "questions": ["…"], "rule": "Jev scores each question from 0 to 1. …" },
+                      "rubric": "Is this relation between two English word senses correct, …",
+                      "limits": ["A relation links common, current senses: …"] }],
+          "closure": "Does a learner's dictionary genuinely have nothing for this slot of \"<word>\" (noun), …",
+          "limits": ["Only a published fact can be superseded: …"]
+        }
       }
     }
   ]
@@ -1362,6 +1390,35 @@ relation to it fills nothing), and, for the types that read every sense at once 
 `sense_list`, `phrases`, `family`), the entry's whole management view as `GET
 /manage/v1/entries/{lemma}` returns it. A rejected fact in the context carries
 its review reason, so a retry reads why the last attempt failed.
+
+`criteria` (`workCriteria` in `server/domain/work-criteria.ts`) makes the
+server the one source of what passes: producers' prompts were written apart
+from the rubrics and drifted (a topic producer told "a scene where a learner
+meets the sense" met a rubric that fails general vocabulary; 40% rejected).
+For each kind of fact that fills the item's gap (`fills`: senses and the list
+for `senses`; a form per missing form type; a pronunciation per missing
+accent; the phrase's entry and verb sense; the derivative's entry and
+morphology; an everyday hypernym for `category`; a `part_of` for `parts`; a
+synonym and an antonym for `synonyms`; an example with its translation; a
+`zh` translation; a topic; a grammar sample of the sense's part of speech; a
+collocation; a correction of a weak fact's own kind and payload) it gives the
+exact Jev questions and how their scores decide (`JEV_POLICY`: every score at
+0.8 or more passes without the LLM, a score below the kind's floor fails
+without appeal, otherwise the LLM decides), the exact LLM rubric, and the
+kind's write rules (`limits` in the registry: relation ends, one type per
+entry pair, morpheme spellings, the topic limit, and so on). A closable gap
+adds its closure rubric (`closure`), a topics closure with the taxonomy, and
+every item the write rules every submission meets (`GENERAL_LIMITS`: only a
+published fact can be superseded; one live fact of a kind of cardinality one).
+The prompts are the plans the reviews build (`planReview`), rendered for
+placeholder values (`<word>`, `<the gloss of the sense>`, `<your reason>`) and
+the item's part of speech, so they are the standard itself, not a copy that
+can drift and not an answer to echo. They are rendered with no rejected
+attempts and no blocked candidates, so the rules that weigh a slot's history
+never appear as a checklist: those apply only when the review finds the
+history in the data. A rendering is cached per isolate by what it reads (the
+taxonomy changes only by migration), except a weak fact's. A topics item
+renders to about 7 KB, a synonyms item to about 14 KB.
 
 The claim is two statements. The first reads the type of the first free item in
 queue order (`nextTypeStatement`, a walk of `work_items_queue_idx`); the second
@@ -1479,10 +1536,29 @@ inventory slot and two pronunciation slots (a strong `us` and a strong `uk`
 pronunciation); a single word adds one slot per inflection its paradigm needs
 (see Forms), word formation, and syllables; an A1 or A2 single-word verb one
 for a phrase built on it; and one per live irregular form (its
-pronunciation). Each counted sense adds the relation slots (see Relation
-slots), topics, grammar, and collocations its part of speech needs, its examples (two for an A1 or A2
-entry, else one), one `zh` translation, and one example with a `zh`
-translation. A live gap closure fills every slot of the gap it closes (see Gap
+pronunciation). Each counted sense adds the slots of the per-sense rules its
+scope reaches (`SenseRule.scope`, the one table in `server/domain/work.ts`):
+
+| Slot | Scope | Need |
+| ---- | ----- | ---- |
+| `category`, `parts`, `synonyms` (see Relation slots) | core | By part of speech |
+| `topics` | core | `TOPICS_NEEDED` |
+| `collocations` | core | `COLLOCATIONS_NEEDED` |
+| `examples` | common | Two for a core sense of an A1 or A2 entry, else one |
+| `translations` | common | One `zh` translation |
+| `example_translations` | common | One per example it needs or has |
+| `grammar` | common | `GRAMMAR_NEEDED` |
+
+A `common` rule applies to every counted sense, a `core` rule only to a core
+sense. The core senses (`coreSenses`) are the first `CORE_SENSES` (3) senses of
+the current sense list's `common` order that are counted, plus the first common
+sense of each part of speech those three leave out; a counted sense the list
+does not name (added since) is core until a new list places it, and before any
+list exists every counted sense is core, so a new entry still gets full work. A
+learner's dictionary gives a sense beyond the first few its translation, an
+example, and its grammar, never its own relations, topics, and collocations:
+A1 entries averaged 6.9 common senses (up to 44) and about 47% of the open A2
+sense items sat beyond the first three ("clear" had 23 open synonyms items). A live gap closure fills every slot of the gap it closes (see Gap
 closures). A counted sense is one whose gloss is live and
 that the entry's current sense list does not put in `extra`; before a list
 exists, every sense with a live gloss counts. A relation counts, at either end, only
@@ -1518,9 +1594,9 @@ baby). Three slots replace it, each one fact deep and each closable:
 
 | Slot | Senses | Filled by |
 | ---- | ------ | --------- |
-| `category` | Counted noun senses (`CATEGORY_POS`); learner's dictionaries file nouns, not verbs, so no verb sense is asked for a broader verb | A live everyday hypernym (no `domain`) from the sense to a sense that can show; a word may have several (dog: animal, pet), and one fills the slot |
-| `parts` | Counted noun senses with an everyday category (`PARTS_POS`) | A live `part_of` from a sense that can show to this one (bird: beak, wing, feather) |
-| `synonyms` | Counted noun, verb, adjective, and adverb senses (`SYNONYMS_POS`) | A live synonym or antonym at either end, to a sense that can show |
+| `category` | Core noun senses (`CATEGORY_POS`); learner's dictionaries file nouns, not verbs, so no verb sense is asked for a broader verb | A live everyday hypernym (no `domain`) from the sense to a sense that can show; a word may have several (dog: animal, pet), and one fills the slot |
+| `parts` | Core noun senses with an everyday category (`PARTS_POS`) | A live `part_of` from a sense that can show to this one (bird: beak, wing, feather) |
+| `synonyms` | Core noun, verb, adjective, and adverb senses (`SYNONYMS_POS`) | A live synonym or antonym at either end, to a sense that can show |
 
 A domain hypernym fills no slot: the specialist layer is never required. A
 sense's own `part_of` fills nothing here; it is the whole's parts slot. A sense
@@ -1537,7 +1613,7 @@ learner's dictionary, and its closures kept failing over loose candidates ("I"
 for the royal *we*). A pronoun may still carry relations (*everything*:
 nothing).
 
-`TOPICS_NEEDED` is the table of the topics a sense needs: noun and verb 1;
+`TOPICS_NEEDED` is the table of the topics a core sense needs: noun and verb 1;
 every other part of speech 0, which means no topics gap and no topic slot.
 Nouns and verbs name the things and actions a scene is made of. An adjective or
 adverb may carry topics but needs none: most adjectives are general (*big*,
@@ -1892,18 +1968,18 @@ facts close its gap:
 | `{ type: "pronunciation", accents }`     | `us` or `uk` has no live strong pronunciation; `accents` names them |
 | `{ type: "phrases", have, need }`        | An A1 or A2 single-word verb has fewer than `need` (3) live phrasal verbs or verb idioms headed by it; `have` names the ones it has |
 | `{ type: "family" }`                     | An A1 or A2 single word has no live entry whose morphology names it as a base |
-| `{ type: "category", sense_id }`         | A noun sense has no live everyday hypernym to a sense that can show |
-| `{ type: "parts", sense_id }`            | A noun sense with an everyday category has no live `part_of` attached to it from a sense that can show |
-| `{ type: "synonyms", sense_id }`         | A noun, verb, adjective, or adverb sense has no live synonym or antonym to a sense that can show |
-| `{ type: "examples", sense_id, count, need }` | The sense has fewer live examples than `need`: 2 for an A1 or A2 entry, else 1 |
+| `{ type: "category", sense_id }`         | A core noun sense has no live everyday hypernym to a sense that can show |
+| `{ type: "parts", sense_id }`            | A core noun sense with an everyday category has no live `part_of` attached to it from a sense that can show |
+| `{ type: "synonyms", sense_id }`         | A core noun, verb, adjective, or adverb sense has no live synonym or antonym to a sense that can show |
+| `{ type: "examples", sense_id, count, need }` | The sense has fewer live examples than `need`: 2 for a core sense of an A1 or A2 entry, else 1 |
 | `{ type: "translations", sense_id, language: "zh" }` | The sense has no live `zh` translation |
-| `{ type: "topics", sense_id }`           | A noun or verb sense has fewer live topic facts than it needs (`TOPICS_NEEDED`) |
+| `{ type: "topics", sense_id }`           | A core noun or verb sense has fewer live topic facts than it needs (`TOPICS_NEEDED`) |
 | `{ type: "morphology" }`                 | A single-word entry has no live word formation          |
 | `{ type: "syllables" }`                  | A single-word entry has no live syllables fact          |
 | `{ type: "form_pronunciations", forms }` | A live irregular form has no live fact of it with `ipa`; `forms` names them |
 | `{ type: "example_translations", sense_id, language: "zh", examples }` | A current live example of the sense has no `zh` translation, or the sense has fewer translated examples than it needs; `examples` names the untranslated ones |
 | `{ type: "grammar", sense_id }`          | A noun, verb, adjective, adverb, determiner, or pronoun sense has no live grammar fact |
-| `{ type: "collocations", sense_id }`     | A noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation |
+| `{ type: "collocations", sense_id }`     | A core noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation |
 
 A weak fact is open work too, `{ type: "weak_fact", fact_id, kind, reason }`
 (see Scores). A live `gap_closure` on the gap's node closes `forms`, `phrases`,
@@ -1922,7 +1998,8 @@ since, or a listed sense whose gloss left live, reopens the gap. Like every gap,
 a pending list fills it until its review rejects it.
 
 Per-sense gaps apply to each counted sense: a sense whose gloss is live and that
-the current list does not put in `extra`. Rare senses never count toward
+the current list does not put in `extra`, the core-scoped ones only to its core
+senses (see Scores). Rare senses never count toward
 completeness, so an entry is complete without examples, translations, or
 relations for them. Before any list exists every sense with a live gloss
 counts, and a sense the list does not name (added since) counts until a new list
@@ -1932,6 +2009,34 @@ The relation slots (see Relation slots) are one each: a category, the parts,
 a synonym or antonym. A slot is the bar for the gap, not a quota: an agent
 submits every relation a learner's dictionary gives in the pass, and only where
 one holds.
+
+The migration `core_senses` brings stored work to the core-sense rules and the
+new sense list and topics closure rubrics. It returns to the production queue
+(`attempts` and `worked` reset) every curation item of `sense_list` and
+`topics`, whose rubrics changed, and of `category`, `parts`, and `synonyms`,
+which only core senses keep; the rescore keeps the reset, since an item that
+is not worked is judged against the gap it stored, and deletes the items of
+senses that are no longer core. It then bumps every worklist row. On a copy of
+the development database (17,041 entries, 186,351 facts) it ran in under a
+second, and the rescore drain (200 rows a call) took 311 s:
+
+| Items | Before | After |
+| ----- | ------ | ----- |
+| All | 183,290 (292 with the curators) | 172,572 (11) |
+| A1 | 1,199 (190) | 937 (7) |
+| A2 | 31,378 (13) | 26,165 (2) |
+| Other levels | 150,713 (89) | 145,470 (2) |
+| `synonyms` | 14,179 (A1 185, A2 3,782) | 10,985 (A1 105, A2 2,206) |
+| `collocations` | 19,370 (A1 197, A2 4,279) | 15,736 (A1 65, A2 2,497) |
+| `topics` | 15,325 (A1 65, A2 3,206) | 12,454 (A1 21, A2 1,805) |
+| `category` | 4,993 | 4,499 |
+| `parts` | 2,197 | 2,134 |
+| `examples` | 19,154 (A1 127, A2 4,802) | 18,703 (A1 125, A2 4,354) |
+
+The 281 curation items it returned were 116 `synonyms`, 67 `sense_list`, 62
+`topics`, 34 `category`, and 2 `parts`; the 11 left are `family`, `phrases`, and
+`senses`. Complete A1 entries rose from 611 to 692 of 1,056 (mean completeness
+0.972 to 0.973), and A2 mean completeness from 0.320 to 0.334.
 
 ## Reference data
 

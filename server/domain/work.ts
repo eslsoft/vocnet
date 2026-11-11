@@ -13,7 +13,7 @@ import { formMeaning, isIrregularForm, isPeriphrastic } from './fact-kinds'
 import { isLive } from './fact-lifecycle'
 import type { SenseNode } from './nodes'
 import type { PrincipalRef } from './principal'
-import { currentSenseList, listsExactly } from './sense-list'
+import { currentSenseList, listedSenses, listsExactly } from './sense-list'
 import { isMultiword } from './term'
 
 /** What the work rules read about an entry: its senses, its facts in every status, and its open feedback. */
@@ -111,7 +111,7 @@ interface Inflection {
 interface EntryState {
   lemma: string
   /** The entry is at CEFR A1 or A2, where a learner needs more of each sense. */
-  core: boolean
+  elementary: boolean
   /** A CEFR learner list names the lemma as an A1 or A2 verb, which a learner meets in phrasal verbs. */
   coreVerb: boolean
   phrases: readonly string[]
@@ -120,6 +120,8 @@ interface EntryState {
   live: Fact[]
   senses: SenseNode[]
   counted: SenseNode[]
+  /** The core senses among the counted ones, which need every per-sense slot (`coreSenses`). */
+  core: ReadonlySet<SenseId>
   inflections: Inflection[]
   /** The neighbor senses a relation may link to and count. */
   visible: ReadonlySet<string>
@@ -245,7 +247,7 @@ export const PHRASES_NEEDED = 3
 const phrasesNeeded = (state: EntryState) => (needsPhrases(state) ? PHRASES_NEEDED : 0)
 
 /** An A1 or A2 single word, whose common derivatives a learner's dictionary lists with it. */
-const needsFamily = ({ core, lemma }: EntryState) => core && !isMultiword(lemma)
+const needsFamily = ({ elementary, lemma }: EntryState) => elementary && !isMultiword(lemma)
 
 /**
  * The entry's live irregular inflections, once per form type, spelling, and part of speech, each
@@ -430,8 +432,11 @@ const everydayCategoryOf = (fact: Fact, senseId: SenseId, visible: ReadonlySet<s
 const hasEverydayCategory = (sense: SenseNode, state: EntryState) =>
   state.live.some((fact) => everydayCategoryOf(fact, sense.id, state.visible))
 
-/** Examples a counted sense needs: two at CEFR A1 or A2, where a learner meets the word first, else one. */
-const examplesNeeded = ({ core }: EntryState) => (core ? 2 : 1)
+/**
+ * Examples a counted sense needs: two for a core sense at CEFR A1 or A2, where a learner meets the
+ * word first, else one.
+ */
+const examplesNeeded = (senseId: SenseId, { elementary, core }: EntryState) => (elementary && core.has(senseId) ? 2 : 1)
 
 /**
  * The sense's live examples that no live correction supersedes: a pending correction that adds a
@@ -443,6 +448,12 @@ function currentExamples(live: readonly Fact[], senseId: SenseId): FactOf<'examp
 }
 
 interface SenseRule {
+  /**
+   * The counted senses the rule applies to: every common one, or only the core ones. A learner's
+   * dictionary gives a sense beyond the first few its translation, an example, and its grammar,
+   * never its own relations, topics, and collocations.
+   */
+  scope: 'core' | 'common'
   need: (sense: SenseNode, state: EntryState) => number
   fills: (fact: Fact, senseId: SenseId, state: EntryState) => boolean
   gap: (senseId: SenseId, filling: Fact[], state: EntryState) => SenseGap
@@ -456,6 +467,7 @@ const senseGapRules: readonly SenseRule[] = [
   // One everyday category opens the slot's work; a word may have several, and the producer
   // submits every one a learner uses. Narrower terms are never asked of the category word.
   {
+    scope: 'core',
     need: onePer(CATEGORY_POS),
     fills: (fact, senseId, state) => everydayCategoryOf(fact, senseId, state.visible),
     gap: (senseId) => ({ type: 'category', sense_id: senseId }),
@@ -464,6 +476,7 @@ const senseGapRules: readonly SenseRule[] = [
   // A thing placed in an everyday category may have main parts a learner needs; a sense whose
   // category is closed as general or abstract has none to ask for.
   {
+    scope: 'core',
     need: (sense, state) => (PARTS_POS.includes(sense.pos) && hasEverydayCategory(sense, state) ? 1 : 0),
     fills: (fact, senseId, state) =>
       fact.kind === 'relation' &&
@@ -474,6 +487,7 @@ const senseGapRules: readonly SenseRule[] = [
     closable: 'parts',
   },
   {
+    scope: 'core',
     need: onePer(SYNONYMS_POS),
     fills: (fact, senseId, state) =>
       fact.kind === 'relation' &&
@@ -484,16 +498,18 @@ const senseGapRules: readonly SenseRule[] = [
     closable: 'synonyms',
   },
   {
-    need: (_sense, state) => examplesNeeded(state),
+    scope: 'common',
+    need: (sense, state) => examplesNeeded(sense.id, state),
     fills: (fact, senseId) => fact.kind === 'example' && fact.subjectId === senseId,
     gap: (senseId, filling, state) => ({
       type: 'examples',
       sense_id: senseId,
       count: filling.length,
-      need: examplesNeeded(state),
+      need: examplesNeeded(senseId, state),
     }),
   },
   {
+    scope: 'common',
     need: () => 1,
     fills: (fact, senseId) =>
       fact.kind === 'translation' && fact.subjectId === senseId && fact.payload.language === 'zh',
@@ -502,7 +518,8 @@ const senseGapRules: readonly SenseRule[] = [
   // Every example a learner reads needs its translation: one slot per current live example, and
   // one per example the sense still needs, which comes with its translation.
   {
-    need: (sense, state) => Math.max(examplesNeeded(state), currentExamples(state.live, sense.id).length),
+    scope: 'common',
+    need: (sense, state) => Math.max(examplesNeeded(sense.id, state), currentExamples(state.live, sense.id).length),
     fills: (fact, senseId, state) =>
       fact.kind === 'example' &&
       fact.subjectId === senseId &&
@@ -518,18 +535,21 @@ const senseGapRules: readonly SenseRule[] = [
     }),
   },
   {
+    scope: 'core',
     need: (sense) => TOPICS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'topic' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'topics', sense_id: senseId }),
     closable: 'topics',
   },
   {
+    scope: 'common',
     need: (sense) => GRAMMAR_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'grammar' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'grammar', sense_id: senseId }),
     closable: 'grammar',
   },
   {
+    scope: 'core',
     need: (sense) => COLLOCATIONS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'collocation' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'collocations', sense_id: senseId }),
@@ -551,6 +571,34 @@ function countedSenses(live: readonly Fact[], senses: readonly SenseNode[]): Sen
   const extra = new Set(currentSenseList(live)?.payload.extra)
   return senses.filter((sense) => !extra.has(sense.id))
 }
+
+/** How many of the first common senses of the sense list are core, whatever their parts of speech. */
+export const CORE_SENSES = 3
+
+/**
+ * The core senses of the counted ones: the first `CORE_SENSES` of the current sense list's common
+ * order, and the first common sense of each part of speech those leave out. A sense the list does
+ * not name (added since) is core until a new list places it, and before a list exists every
+ * counted sense is.
+ */
+function coreSenses(live: readonly Fact[], counted: readonly SenseNode[]): ReadonlySet<SenseId> {
+  const list = currentSenseList(live)
+  if (list === null) return new Set(counted.map((sense) => sense.id))
+  const byId = new Map(counted.map((sense) => [sense.id, sense]))
+  const common = list.payload.common.flatMap((id) => byId.get(id) ?? [])
+  const first = common.slice(0, CORE_SENSES)
+  const covered = new Set(first.map((sense) => sense.pos))
+  const firstOfPos = common.filter(
+    (sense, at) => !covered.has(sense.pos) && common.findIndex((other) => other.pos === sense.pos) === at,
+  )
+  const listed = new Set(listedSenses(list.payload))
+  const unplaced = counted.filter((sense) => !listed.has(sense.id))
+  return new Set([...first, ...firstOfPos, ...unplaced].map((sense) => sense.id))
+}
+
+/** The per-sense rules that apply to a counted sense: the common ones, and the core ones for a core sense. */
+const rulesFor = (sense: SenseNode, state: EntryState) =>
+  senseGapRules.filter((rule) => rule.scope === 'common' || state.core.has(sense.id))
 
 /** A counted gap_closure fact on the node closes the gap: its slots count as filled. */
 const closedBy = (live: readonly Fact[], gap: string | undefined, subjectId: string) =>
@@ -574,7 +622,7 @@ function openGaps(
   const counted = countedSenses(live, senses)
   const state: EntryState = {
     lemma: snapshot.entry.lemma,
-    core: snapshot.levelRank !== null && snapshot.levelRank <= 2,
+    elementary: snapshot.levelRank !== null && snapshot.levelRank <= 2,
     coreVerb: snapshot.coreVerb,
     phrases: snapshot.phrases,
     family: snapshot.family,
@@ -582,6 +630,7 @@ function openGaps(
     live,
     senses,
     counted,
+    core: coreSenses(live, counted),
     inflections: inflectionsOf(live, counted),
     visible: visibleNeighbors(snapshot.neighbors, counts),
   }
@@ -591,14 +640,14 @@ function openGaps(
   })
   const entrySlots = entryGapRules.reduce((need, rule) => need + rule.need(state), 0)
   const perSense = counted.flatMap((sense) =>
-    senseGapRules.flatMap((rule) => {
+    rulesFor(sense, state).flatMap((rule) => {
       const filling = live.filter((fact) => rule.fills(fact, sense.id, state))
       const missing = closedBy(live, rule.closable, sense.id) ? 0 : rule.need(sense, state) - filling.length
       return missing > 0 ? [{ gap: rule.gap(sense.id, filling, state), missing }] : []
     }),
   )
   const senseSlots = counted.reduce(
-    (sum, sense) => sum + senseGapRules.reduce((need, rule) => need + rule.need(sense, state), 0),
+    (sum, sense) => sum + rulesFor(sense, state).reduce((need, rule) => need + rule.need(sense, state), 0),
     0,
   )
   return { open: [...entry, ...perSense], slots: entrySlots + senseSlots }

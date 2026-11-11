@@ -358,7 +358,7 @@ describe('reviewFact', () => {
     expect(topics).toContain(
       '- topic {"topic_id":"kitchen"} (topic "In the kitchen" (in the category "Home")): rejected because "Too general for the kitchen."',
     )
-    expect(topics).not.toContain('furniture')
+    expect(topics).not.toContain('Too general for furniture.')
     expect(topics).not.toContain('riverside.')
     const relations = await closure('synonyms')
     expect(relations).toContain(
@@ -368,6 +368,127 @@ describe('reviewFact', () => {
       `- relation {"type":"hypernym","target_sense_id":"${sense.id}"} (linking to "shore" (noun), meaning "a riverside"): rejected because "Jev relation=0.05"`,
     )
     expect(relations).not.toContain('kitchen')
+  })
+
+  it('shows a topics closure review every leaf topic of the taxonomy, and no other closure [spec: facts/topics-closure-taxonomy-context]', async () => {
+    const { world, sense } = await bankWorld()
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Nothing fits.' }))
+    const closure = async (gap: 'topics' | 'collocations') => {
+      const { fact } = await submitFact(world.deps, agentA, {
+        kind: 'gap_closure',
+        subject_id: sense.id,
+        payload: { gap, reason: 'Nothing fits.' },
+      })
+      await reviewFact(world.deps, fact.id, 'trace-review')
+      return world.llmCalls.at(-1)?.user ?? ''
+    }
+    expect(await closure('topics')).toContain(
+      [
+        'The slot takes only a leaf topic of this fixed taxonomy, "topic (category)":',
+        '- Parts of the body (Body and health)',
+        '- At the doctor and hospital (Body and health)',
+        '- At the dentist (Body and health)',
+        '- Furniture (Home)',
+        '- In the kitchen (Home)',
+      ].join('\n'),
+    )
+    expect(await closure('collocations')).not.toContain('fixed taxonomy')
+  })
+
+  it('shows a closure review only the candidates earlier reviews named that the stored facts block [spec: facts/gap-closure-blocked-candidates-context]', async () => {
+    const { world, sense } = await bankWorld()
+    const word = async (lemma: string, gloss: string) => {
+      const { entry, fact } = await createEntry(world.deps, agentA, { lemma })
+      const created = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss })
+      return { entryFact: fact, sense: created.sense }
+    }
+    const program = await word('computer program', 'a set of instructions for a computer')
+    const riverside = await word('riverside', 'the land along a river')
+    await word('slope', 'a surface with one end higher')
+    world.failReviews()
+    await expect(reviewFact(world.deps, program.entryFact.id, 'trace-review')).resolves.toBe('rejected')
+    world.passReviews()
+    await drain(world)
+    const { fact: antonym } = await submitFact(world.deps, agentA, {
+      kind: 'relation',
+      subject_id: sense.id,
+      payload: { type: 'antonym', target_sense_id: riverside.sense.id },
+    })
+    await drain(world)
+    const reason = 'Synonyms exist: "computer program", "riverside", "slope", and "office staff".'
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason }))
+    const closure = (text: string) =>
+      submitFact(world.deps, agentA, {
+        kind: 'gap_closure',
+        subject_id: sense.id,
+        payload: { gap: 'synonyms', reason: text },
+      })
+    const first = await closure('None fits.')
+    await expect(reviewFact(world.deps, first.fact.id, 'trace-review')).resolves.toBe('rejected')
+    world.passReviews()
+    const second = await closure('The named candidates cannot be recorded.')
+    await reviewFact(world.deps, second.fact.id, 'trace-review')
+    const prompt = world.llmCalls.at(-1)?.user ?? ''
+    expect(prompt).toContain(
+      `- "computer program": named by the review ${JSON.stringify(reason)}; its entry fact is not live (rejected or retracted).`,
+    )
+    expect(prompt).toContain(
+      `- "riverside": named by the review ${JSON.stringify(reason)}; a live antonym relation (${antonym.id}) already links the two words`,
+    )
+    expect(prompt).not.toContain('- "slope"')
+    expect(prompt).not.toContain('- "office staff"')
+  })
+
+  it('finds blocked candidates of an entry slot and skips other slots, the word itself, and repeats [spec: facts/gap-closure-blocked-candidates-context]', async () => {
+    const { world, entry, sense } = await bankWorld()
+    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
+    const shoreSense = await createSense(world.deps, agentA, {
+      entry_id: shore.id,
+      pos: 'noun',
+      gloss: 'land by the sea',
+    })
+    const banker = await createEntry(world.deps, agentA, { lemma: 'banker' })
+    const bankerSense = await createSense(world.deps, agentA, {
+      entry_id: banker.entry.id,
+      pos: 'noun',
+      gloss: 'a person who runs a bank',
+    })
+    await createEntry(world.deps, agentA, { lemma: 'bankrupt' })
+    await drain(world)
+    // An incoming relation: shore is the subject, so its sense is the other end of the link.
+    await submitFact(world.deps, agentA, {
+      kind: 'relation',
+      subject_id: shoreSense.sense.id,
+      payload: { type: 'hypernym', target_sense_id: sense.id },
+    })
+    await drain(world)
+    await retractFact(world.deps, agentA, bankerSense.fact.id)
+    const reject = async (subjectId: string, gap: 'family' | 'collocations', reason: string) => {
+      world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason }))
+      const { fact } = await submitFact(world.deps, agentA, {
+        kind: 'gap_closure',
+        subject_id: subjectId,
+        payload: { gap, reason: `Closed ${reason}` },
+      })
+      await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
+    }
+    await reject(entry.id, 'family', 'Derivatives: "banker", "bank", and "bankrupt".')
+    await reject(entry.id, 'family', 'Still "banker".')
+    await reject(sense.id, 'collocations', 'Use "shore".')
+    world.passReviews()
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'gap_closure',
+      subject_id: entry.id,
+      payload: { gap: 'family', reason: 'No derivative can be recorded.' },
+    })
+    await reviewFact(world.deps, fact.id, 'trace-review')
+    const prompt = world.llmCalls.at(-1)?.user ?? ''
+    expect(prompt).toContain(
+      '- "banker": named by the review "Still \\"banker\\"."; it has no sense with a live gloss.',
+    )
+    expect(prompt).not.toContain('- "bank":')
+    expect(prompt).not.toContain('- "shore"')
+    expect(prompt).toContain('- "bankrupt": named by the review')
   })
 
   it("shows a family closure review the rejected word formations of the word's derivatives [spec: facts/family-closure-attempts-context]", async () => {

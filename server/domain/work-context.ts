@@ -4,7 +4,9 @@ import { type EntrySnapshot, type ManagedEntryView, managedEntryView } from './c
 import { currentGloss, type Fact, type FactOf, isKind } from './fact'
 import { isLive } from './fact-lifecycle'
 import { currentSenseList, listedSenses } from './sense-list'
+import type { TopicView } from './topics'
 import { WORK_POLICY, type WorkItem } from './work'
+import { type WorkCriteria, workCriteria } from './work-criteria'
 
 /** A sense of the entry as a worker reads it: its current gloss and whether its list calls it rare. */
 export interface ContextSense {
@@ -39,6 +41,8 @@ export interface WorkContext {
   facts: Fact[]
   related: RelatedContextSense[]
   view: ManagedEntryView | null
+  /** The standard the reviewers judge the item's facts and a closure of it by. */
+  criteria: WorkCriteria
 }
 
 /** The current gloss of each sense with a live one. */
@@ -76,6 +80,7 @@ export function workContext(
   item: WorkItem,
   snapshot: EntrySnapshot,
   reference: { cefr: ReadonlyArray<{ pos: Pos; level: CefrLevel }> },
+  taxonomy: readonly TopicView[],
 ): WorkContext {
   const all = [...snapshot.facts, ...snapshot.incoming]
   const glosses = glossesOf(snapshot.facts)
@@ -129,6 +134,9 @@ export function workContext(
       gloss: liveEntries.has(sense.entryId) ? (neighborGlosses.get(id)?.payload.gloss ?? null) : null,
     }
   })
+  const sense = senses.find((candidate) => candidate.id === node) ?? null
+  const { gap } = item
+  const weak = 'fact_id' in gap ? (all.find((fact) => fact.id === gap.fact_id) ?? null) : null
   return {
     entry: {
       id: snapshot.entry.id,
@@ -137,9 +145,10 @@ export function workContext(
       zipf: snapshot.zipf,
       senses,
     },
-    sense: senses.find((sense) => sense.id === node) ?? null,
+    sense,
     facts,
     related,
     view: WORK_POLICY[item.type].context === 'entry' ? managedEntryView(snapshot) : null,
+    criteria: workCriteria(item.gap, sense?.pos ?? null, weak, taxonomy),
   }
 }

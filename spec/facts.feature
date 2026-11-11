@@ -701,8 +701,9 @@ Feature: Facts and review
     Given a sense list of an entry
     When its review is planned
     Then the LLM alone sees the lemma and every listed sense with its part of speech and gloss, numbered, common in order and then extra
-    And it passes only a list whose common senses cover every main sense a learner's dictionary lists for A1 to B1 learners, hold no duplicate or over-split meaning, run in a plausible order from more to less common for a learner sense by sense across parts of speech with the sense a learner most needs first, and whose extra senses are all rare, archaic, technical, legal, specialist, or of a variety other than British or American English, never failing a missing rare sense and never answering uncertain because exact frequency order cannot be verified
-    And its reason names each missing, duplicated, misordered, or misplaced sense
+    And it fails only a list that misses a main general-knowledge sense a learner's dictionary lists for A1 to B1 learners, holds two duplicate or over-split common senses, puts a rare, archaic, technical, legal, specialist, or regional-only sense in common, or gives a sense the wrong part of speech
+    And it passes every other list, never failing for the relative order of common senses or a borderline common or extra placement, which successive reviews of "go", "food", and "block" moved back and forth, nor for a missing rare sense
+    And its reason names each missing, duplicated, misplaced, or mislabelled sense
     And a list naming a sense without a live gloss is unreviewable
 
   @facts/sense-list-capitalization @domain
@@ -825,7 +826,6 @@ Feature: Facts and review
     When its review is planned
     Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
     And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, a relations closure when the recorded relations are the only precise ones, and a grammar closure for a title used before a name ("Mrs"), which a learner's dictionary marks neither [C] nor [U], for a pronoun that governs no agreement (an object, reflexive, or reciprocal pronoun such as "yourself" or "each other", or a relative or interrogative pronoun such as "who"), and for an adverb used only after a number or clock time ("a.m.")
-    And a closure passes when an earlier review named a candidate that cannot be recorded, because its entry or sense was rejected or retracted or the two words already share another relation, and the reason says so
 
   @facts/gap-closure-attempts @domain
   Scenario: A gap closure review weighs the attempts already rejected for its slot
@@ -833,6 +833,32 @@ Feature: Facts and review
     When its review is planned
     Then each closable gap names where its attempts are, the kinds that fill it about the node, the derivatives' word formations for family, and none for phrases, and the rubric lists each rejected attempt with its value, the derivative it is about, its other end or topic, and rejection reason
     And it passes the closure when the attempts were rejected as not fitting, unless the reviewer names a specific value that plainly fills the slot and differs from every rejected one, and a fail reason always names the value
+
+  @facts/gap-closure-blocked-candidates @domain
+  Scenario: A closure is never failed for a candidate the stored data blocks
+    Given a gap closure whose review is shown candidates earlier reviews named, each with the review that named it and the stored facts that block it, and one shown none
+    When its review is planned
+    Then the rubric lists each blocked candidate with that evidence and never fails for one of them, passing unless another value plainly fills the slot
+    And without that evidence no rule lets a reason alone claim a candidate cannot be recorded
+
+  @facts/gap-closure-blocked-candidates-context @usecase
+  Scenario: A closure review finds the blocked candidates from data
+    Given a rejected closure of a sense's synonyms slot whose reason quotes a word whose entry was rejected, a word the sense already relates to, a live unrelated word, and a word with no entry
+    When a new closure of the slot is reviewed
+    Then its review is shown the first two as blocked, with the rejected review's reason and the rejected entry fact or the live relation, and not the other two
+
+  @facts/topics-closure-taxonomy @domain
+  Scenario: A topics closure is judged against the fixed taxonomy
+    Given a topics closure and the leaf topics of the taxonomy
+    When its review is planned
+    Then the rubric lists every leaf topic with its category and passes the closure when none of them fits the sense, never failing for a topic outside the taxonomy such as "horse racing", "gambling", or "hunting"
+    And only the topics gap shows the taxonomy; no other closure or kind sees it
+
+  @facts/topics-closure-taxonomy-context @usecase
+  Scenario: A topics closure review is shown every leaf topic
+    Given the topic taxonomy
+    When a topics closure and a collocations closure are reviewed
+    Then the topics review lists each leaf topic with its category in display order, and the collocations review lists none
 
   @facts/gap-closure-attempts-context @usecase
   Scenario: A closure review sees the rejected facts of the kinds that fill its slot

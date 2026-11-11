@@ -380,6 +380,95 @@ describe('sense list gap', () => {
   })
 })
 
+describe('core senses', () => {
+  const n = [sense(), sense(), sense(), sense()]
+  const [v1, v2] = [sense('verb'), sense('verb')]
+  const adjective = sense('adjective')
+  const rare = sense()
+  const unplaced = sense()
+  const all = [...n, v1, v2, adjective, rare, unplaced]
+  const glosses = all.map((node) => fact('sense', node.id, { gloss: 'a meaning' }))
+  const list = fact('sense_list', entryId, {
+    common: [n[0], n[1], n[2], n[3], v1, v2, adjective].map((node) => node.id),
+    extra: [rare.id],
+  })
+  const gapsBySense = (facts: Fact[], levelRank: number | null) => {
+    const gaps = entryGaps({
+      entry: bank,
+      ...plain,
+      levelRank,
+      senses: all,
+      facts: [fact('entry', entryId, {}), ...glosses, ...facts],
+      incoming: [],
+      neighbors,
+    })
+    return (node: SenseWithLemma) =>
+      gaps.flatMap((gap) =>
+        'sense_id' in gap && gap.sense_id === node.id
+          ? [gap.type === 'examples' ? `examples:${gap.need}` : gap.type]
+          : [],
+      )
+  }
+
+  it('gives the first three common senses and the first of each other part of speech every slot, the rest a translation, one example, and grammar [spec: work/core-senses]', () => {
+    const of = gapsBySense([list], 1)
+    const full = (examples: number, ...relations: string[]) => [
+      ...relations,
+      `examples:${examples}`,
+      'translations',
+      'example_translations',
+      'topics',
+      'grammar',
+      'collocations',
+    ]
+    for (const core of n.slice(0, 3)) expect(of(core)).toEqual(full(2, 'category', 'synonyms'))
+    expect(of(v1)).toEqual(full(2, 'synonyms'))
+    expect(of(adjective)).toEqual([
+      'synonyms',
+      'examples:2',
+      'translations',
+      'example_translations',
+      'grammar',
+      'collocations',
+    ])
+    const lean = ['examples:1', 'translations', 'example_translations', 'grammar']
+    expect(of(n[3])).toEqual(lean)
+    expect(of(v2)).toEqual(lean)
+    expect(of(rare)).toEqual([])
+    // A sense the list does not name yet keeps every slot until a new list places it.
+    expect(of(unplaced)).toEqual(full(2, 'category', 'synonyms'))
+    // Below A2 a core sense needs one example, as every other counted sense does.
+    expect(gapsBySense([list], 3)(n[0])).toEqual(full(1, 'category', 'synonyms'))
+  })
+
+  it('treats every counted sense as core before a sense list exists [spec: work/core-senses]', () => {
+    const of = gapsBySense([], 1)
+    expect(of(n[3])).toContain('collocations')
+    expect(of(v2)).toContain('topics')
+    expect(of(rare)).toContain('synonyms')
+  })
+
+  it('counts only the slots a sense needs by its scope [spec: work/core-senses]', () => {
+    const four = [sense(), sense(), sense(), sense()]
+    const score = (common: SenseId[]) =>
+      assessEntry({
+        entry: bank,
+        ...plain,
+        senses: four,
+        facts: [
+          fact('entry', entryId, {}),
+          ...four.map((node) => fact('sense', node.id, { gloss: 'a meaning' })),
+          fact('sense_list', entryId, { common, extra: [] }),
+        ],
+        incoming: [],
+        flagged: new Set(),
+        neighbors,
+      }).completeness
+    // Five entry slots, the inventory filled; eight per core noun sense and four for the fourth.
+    expect(score(four.map((node) => node.id))).toBe(1 - 32 / 33)
+  })
+})
+
 describe('work lease', () => {
   const lease: WorkLease = {
     id: id<WorkLeaseId>(),
@@ -947,7 +1036,7 @@ describe('completeness rules for a learner dictionary', () => {
     }
   })
 
-  it('needs two examples of each counted sense of an A1 or A2 entry [spec: work/core-examples]', () => {
+  it('needs two examples of each core sense of an A1 or A2 entry [spec: work/core-examples]', () => {
     const noun = sense('noun')
     const facts = [
       fact('sense', noun.id, { gloss: 'A place for money.' }),

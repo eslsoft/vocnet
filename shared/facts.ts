@@ -239,6 +239,9 @@ export type CollocationPattern = z.infer<typeof collocationPatternSchema>
 
 const text = (max: number) => z.string().trim().min(1).max(max)
 
+/** The longest reason a gap closure gives. */
+export const GAP_CLOSURE_REASON_MAX = 300
+
 const GLOSS_START = /^[\p{Lu}\p{N}"'“‘(]/u
 const GLOSS_EXAMPLE_MARKER = /\b(as in|e\.g\.|for example|for instance)(?=\W|$)/i
 const QUOTED_SENTENCE = /(^|[\s(])['‘"“][^'‘"“’”]*[.!?]['’"”](?=$|[\s.,;:)!?])/
@@ -396,7 +399,7 @@ const MORPHEME_FORMS: Record<MorphemeRole, RegExp> = {
   // A base is a word, abbreviations and contractions included: "o'clock", "Mrs", "a.m.".
   base: /^\p{L}+(?:[-'’.]\p{L}+)*\.?$/u,
 }
-const MORPHEME_SPELLING: Record<MorphemeRole, string> = {
+export const MORPHEME_SPELLING: Record<MorphemeRole, string> = {
   prefix: 'a prefix is letters ending in a hyphen ("un-")',
   suffix: 'a suffix is a hyphen followed by letters ("-ness")',
   root: 'a root is letters only ("spect")',
@@ -495,9 +498,8 @@ const gapClosurePayloadSchema = z.strictObject({
     description:
       'The gap this closes: forms, phrases, or family on the entry; category, parts, synonyms, topics, grammar, or collocations on a sense.',
   }),
-  reason: text(300).meta({
-    description:
-      'Why a learner\'s dictionary has nothing for this slot: "A month name has no common collocations beyond the dates it names."',
+  reason: text(GAP_CLOSURE_REASON_MAX).meta({
+    description: `Why a learner's dictionary has nothing for this slot, at most ${GAP_CLOSURE_REASON_MAX} characters: "A month name has no common collocations beyond the dates it names."`,
   }),
 })
 
@@ -526,7 +528,10 @@ export const factPayloadSchemas = {
   form: formPayloadSchema,
   relation: z.strictObject({
     type: relationTypeSchema,
-    target_sense_id: senseIdSchema,
+    target_sense_id: senseIdSchema.meta({
+      description:
+        "A common, current sense of another entry: never one in its entry's extra senses (except as the target of a domain hypernym) or labelled dated. A sense relates to another entry by one type only, and a hypernym to it in one layer only.",
+    }),
     domain: relationDomainSchema.optional().meta({
       description:
         'Only on a hypernym: the specialist taxonomy it belongs to. Absent means the everyday layer, a category word learners use.',
@@ -716,7 +721,10 @@ function submitVariant<K extends FactKind>(kind: K) {
     subject_id: z.uuid().meta({
       description: 'Entry or sense the fact is about; the kind decides which, and for a gap_closure its gap.',
     }),
-    supersedes_id: factIdSchema.optional().meta({ description: 'Published fact this one corrects.' }),
+    supersedes_id: factIdSchema.optional().meta({
+      description:
+        'The published fact this one corrects: only a published fact of the same kind and subject can be superseded.',
+    }),
     payload: submitPayloadSchemas[kind],
     curation: curationSchema.optional(),
   })
