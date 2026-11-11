@@ -112,6 +112,27 @@ migrations_dir = ${quoted(path.join(projectRoot, 'migrations'))}
   )
   if (migrationExit !== 0) throw new Error(`D1 migration command exited with ${migrationExit}.`)
 
+  // The public-site journeys read a fixed slice of real published entries (see e2e/fixtures/export.mjs).
+  const seedExit = await run(
+    'pnpm',
+    [
+      'exec',
+      'wrangler',
+      'd1',
+      'execute',
+      'vocnet-e2e',
+      '--local',
+      '--config',
+      configPath,
+      '--persist-to',
+      stateDir,
+      '--file',
+      path.join(projectRoot, 'e2e/fixtures/dictionary.sql'),
+    ],
+    { CI: 'true' },
+  )
+  if (seedExit !== 0) throw new Error(`D1 seed command exited with ${seedExit}.`)
+
   process.env.CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH = configPath
   process.env.E2E_PERSIST = stateDir
   process.env.E2E_APP_PORT = String(await availablePort())

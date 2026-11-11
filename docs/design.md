@@ -2055,6 +2055,18 @@ a completed sign-in lands on `/console`, and signing out returns to `/`.
   (English, 中文; stored versioned in `localStorage`, else the browser's
   preference) and theme toggles, and a Console link; a footer with the
   sources and licences of `GET /v1/sources`.
+- **Entry** (`/words/{lemma}`): `GET /v1/entries/{lemma}?lang=zh`, typeset as
+  a learner's dictionary: the headword with its syllables, UK and US
+  pronunciations, CEFR levels, and a frequency band from the Zipf value; one
+  section per part of speech with its forms and numbered senses (grammar
+  codes, labels, gloss, translations, examples, collocations, relations, and
+  topics); rare senses behind a summary; then the word family and phrases. A
+  relation links to `/words/{lemma}#sense-{id}`, which opens and highlights
+  that sense. `?domain=biology|medicine` switches the relation layer and is
+  passed to the read. Every block has an API toggle with the exact `curl`
+  request, a `jq` path, and the JSON slice of the response as sent. A 404 says
+  the word is not in Vocnet yet and lists what `GET /v1/search` finds for the
+  same text; the page never retries another spelling.
 
 The browser policy is strict: `script-src 'self'`, fonts and styles bundled
 (`font-src 'self'`), and no third-party origin but the OIDC issuer in

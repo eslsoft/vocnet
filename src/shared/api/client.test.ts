@@ -6,6 +6,7 @@ import {
   ApiClientError,
   ApiProtocolError,
   clearAccessToken,
+  decodeApiPayload,
   decodeApiResponse,
   getAccessToken,
   rpc,
@@ -34,6 +35,16 @@ describe('rpc client', () => {
       headers: { 'content-type': 'application/json' },
     })
     await expect(decodeApiResponse(response, z.object({ value: z.literal('ok') }))).resolves.toEqual({ value: 'ok' })
+  })
+
+  it('keeps the payload as sent beside its decoded reading', async () => {
+    const response = new Response(JSON.stringify({ value: 'ok', extra: 1 }), {
+      headers: { 'content-type': 'application/json' },
+    })
+    await expect(decodeApiPayload(response, z.object({ value: z.literal('ok') }))).resolves.toEqual({
+      data: { value: 'ok' },
+      payload: { value: 'ok', extra: 1 },
+    })
   })
 
   it('surfaces stable API errors and clears credentials on 401', async () => {

@@ -64,7 +64,7 @@ export function PublicLayout({ search }: { search?: ReactNode }) {
           {nav}
         </nav>
       </header>
-      <main id="main" className="flex-1">
+      <main id="main" className="min-h-[calc(100dvh-3.5rem)] flex-1">
         <Outlet />
       </main>
       <footer className="border-t bg-surface">

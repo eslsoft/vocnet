@@ -35,6 +35,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, lazy: page(() => import('@/routes/home')) },
+      { path: 'words/:lemma', lazy: page(() => import('@/routes/word')) },
       { path: '*', lazy: page(() => import('@/routes/not-found')) },
     ],
   },

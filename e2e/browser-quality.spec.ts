@@ -15,12 +15,18 @@ test('the public site and the console are accessible and keyboard operable [spec
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused()
 
+  await page.goto('/words/animal')
+  await expect(page.getByRole('heading', { level: 1, name: 'animal' })).toBeVisible()
+  await page.getByRole('button', { name: 'API' }).nth(2).click()
+  await expect(page.getByRole('region', { name: 'Where this block comes from' })).toBeVisible()
+  expect(await axe(page)).toEqual([])
+
   await signIn(page, { keyboard: true })
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   expect(await axe(page)).toEqual([])
 })
 
-for (const route of ['home'] as const) {
+for (const route of ['home', 'entry'] as const) {
   test(`the ${route} route stays inside its deterministic performance budget`, async ({ page }) => {
     const budget = routeBudget(route)
     await observeLayoutShift(page)
@@ -36,6 +42,11 @@ test('the console route stays inside its deterministic performance budget', asyn
 })
 
 test('critical pages match their reviewed visual baselines', async ({ page }) => {
+  await page.goto('/words/animal')
+  await expect(page.getByRole('heading', { level: 1, name: 'animal' })).toBeVisible()
+  await expect(page.getByText('Very common').or(page.getByText('Common')).first()).toBeVisible()
+  await expect(page).toHaveScreenshot('entry-page.png', { animations: 'disabled', maxDiffPixelRatio: 0.02 })
+
   await signIn(page)
   await page.getByRole('link', { name: 'About' }).click()
   await expect(page.getByRole('heading', { name: 'About' })).toBeVisible()

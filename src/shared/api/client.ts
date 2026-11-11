@@ -47,7 +47,11 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-export async function decodeApiResponse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+/** Decodes a response and keeps the payload as sent, for views that show the wire JSON beside its reading. */
+export async function decodeApiPayload<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+): Promise<{ data: T; payload: unknown }> {
   const payload = await readJson(response)
   if (!response.ok) {
     const parsedError = apiErrorSchema.safeParse(payload)
@@ -64,7 +68,11 @@ export async function decodeApiResponse<T>(response: Response, schema: z.ZodType
       cause: parsed.error,
     })
   }
-  return parsed.data
+  return { data: parsed.data, payload }
+}
+
+export async function decodeApiResponse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+  return (await decodeApiPayload(response, schema)).data
 }
 
 // Hono RPC supplies compile-time route inference. Runtime payloads are decoded
