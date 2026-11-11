@@ -26,6 +26,7 @@ test('an unknown word is not in Vocnet yet [spec: site/entry-missing]', async ({
 
 test('a search from the home page opens the entry [spec: site/home-search]', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await page.keyboard.press('/')
   const search = page.getByRole('combobox', { name: 'Search the dictionary' })
   await expect(search).toBeFocused()

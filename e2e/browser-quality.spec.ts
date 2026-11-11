@@ -29,12 +29,18 @@ test('the public site and the console are accessible and keyboard operable [spec
   await expect(page.getByRole('region', { name: 'Where this block comes from' })).toBeVisible()
   expect(await axe(page)).toEqual([])
 
+  await page.goto('/developers')
+  const sources = page.getByRole('article', { name: 'Data sources' })
+  await sources.getByRole('button', { name: 'Send request' }).click()
+  await expect(sources.getByText('Matches the contract')).toBeVisible()
+  expect(await axe(page)).toEqual([])
+
   await signIn(page, { keyboard: true })
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   expect(await axe(page)).toEqual([])
 })
 
-for (const route of ['home', 'entry', 'browse'] as const) {
+for (const route of ['home', 'entry', 'browse', 'developers'] as const) {
   test(`the ${route} route stays inside its deterministic performance budget`, async ({ page }) => {
     const budget = routeBudget(route)
     await observeLayoutShift(page)

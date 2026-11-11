@@ -59,3 +59,16 @@ Feature: Public site
     Given the topic taxonomy with tagged senses
     When the reader picks a topic or a whole category and loads more
     Then its senses are listed most frequent first, page by page, each linking to its sense
+
+  @site/developer-guide @web
+  Scenario: The developer guide explains the public API
+    Given the developers page
+    When a developer reads it
+    Then it gives the base URL, that reads need no key, the rate limits, ?lang= and ?domain=, cursor pagination, ETag and Cache-Control caching, the error envelope with its stable codes, the feedback endpoint, and links to /docs and /openapi.json
+    And it reads in Chinese or English, switched in place, with a table of contents
+
+  @site/try-it @critical @web
+  Scenario: Try an endpoint from the guide
+    Given an endpoint in the guide
+    When a developer edits its parameters and sends the request
+    Then the browser calls the real API, and the page shows the curl command, the status, time, caching headers, the JSON, and whether it matches the shared contract

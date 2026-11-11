@@ -2069,6 +2069,14 @@ a completed sign-in lands on `/console`, and signing out returns to `/`.
   topics (`?view=topics`, `?topic={id}`): categories and their leaf topics from
   `GET /v1/topics`, a topic's senses from `GET /v1/topics/{id}/senses` most
   frequent first, page by page.
+- **Developers** (`/developers`): the guide to the public API in Chinese or
+  English (the site language, switchable in place) with a table of contents:
+  base URL, no key for reads, rate limits, `?lang=`, `?domain=`, cursor
+  pagination, caching, the error envelope and its stable codes, feedback, and
+  every endpoint with a curl example and Try it, which calls the real API from
+  the browser and shows the status, time, caching headers, and JSON, and
+  whether the body matches the shared schema of that status. `POST
+  /v1/feedback` is shown, not sent. It links to `/docs` and `/openapi.json`.
 - **Entry** (`/words/{lemma}`): `GET /v1/entries/{lemma}?lang=zh`, typeset as
   a learner's dictionary: the headword with its syllables, UK and US
   pronunciations, CEFR levels, and a frequency band from the Zipf value; one
