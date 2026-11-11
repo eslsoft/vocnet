@@ -1491,11 +1491,13 @@ const SENSE_LIST_FAILS = [
   'Duplicated: two common senses are the same meaning, or one meaning split too finely into several.',
   'Misplaced as common: a rare, archaic, technical, specialist, or legal sense, or one used only in a variety other than British or American English, is in common ("stay" meaning to stop legal proceedings, "mobile" meaning changing facial expression, Scottish "stay" meaning to live somewhere).',
   'Wrong part of speech: a sense is given a part of speech its meaning does not have.',
+  "A main sense in extra: a sense every learner's dictionary prints among the main senses of this word is in extra. It counts as missing from common, since extra senses get no further work.",
+  "The main meaning not first: the meaning every learner's dictionary prints first for this word (or first for one of its parts of speech) is not among the first three common senses. The first three common senses get the fullest treatment, so the word's best-known meaning must be among them.",
 ]
 
 const SENSE_LIST_NEVER_FAILS = [
-  'Never fail for the relative order of the common senses: any order passes. Earlier reviews reordered the same senses of "go", "food", and "block" back and forth on successive passes; order is the producer\'s call.',
-  'Never fail for a borderline placement, a sense a learner may or may not meet in general use, whichever list it is in: earlier reviews moved the same senses of "go", "food", and "block" between common and extra and back. Fail only a sense that is plainly rare, archaic, technical, specialist, or regional placed in common, and never a sense placed in extra.',
+  'Never fail for the relative order of the common senses beyond the main-meaning rule above: earlier reviews reordered the same senses of "go", "food", and "block" back and forth on successive passes; within that rule order is the producer\'s call.',
+  'Never fail for a borderline placement, a sense a learner may or may not meet in general use, whichever list it is in: earlier reviews moved the same senses of "go", "food", and "block" between common and extra and back. Fail only a sense that is plainly rare, archaic, technical, specialist, or regional placed in common, or a main sense every learner\'s dictionary prints placed in extra.',
   'A rare, archaic, Old English, technical, or specialist sense missing from both lists is never a failure.',
 ]
 

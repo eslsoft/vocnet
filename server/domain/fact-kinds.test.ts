@@ -1551,7 +1551,11 @@ describe('sense list facts', () => {
     expect(rubric).toContain('"stay" meaning to stop legal proceedings')
     expect(rubric).toContain('Wrong part of speech: a sense is given a part of speech its meaning does not have.')
     expect(rubric).toContain('pass otherwise. In particular:')
-    expect(rubric).toContain('Never fail for the relative order of the common senses: any order passes.')
+    expect(rubric).toContain(
+      'Never fail for the relative order of the common senses beyond the main-meaning rule above',
+    )
+    expect(rubric).toContain('A main sense in extra: a sense every learner')
+    expect(rubric).toContain('The main meaning not first:')
     expect(rubric).toContain('Never fail for a borderline placement')
     expect(rubric).toContain('the same senses of "go", "food", and "block" between common and extra and back')
     expect(rubric).toContain('missing from both lists is never a failure')

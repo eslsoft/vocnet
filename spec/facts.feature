@@ -701,8 +701,8 @@ Feature: Facts and review
     Given a sense list of an entry
     When its review is planned
     Then the LLM alone sees the lemma and every listed sense with its part of speech and gloss, numbered, common in order and then extra
-    And it fails only a list that misses a main general-knowledge sense a learner's dictionary lists for A1 to B1 learners, holds two duplicate or over-split common senses, puts a rare, archaic, technical, legal, specialist, or regional-only sense in common, or gives a sense the wrong part of speech
-    And it passes every other list, never failing for the relative order of common senses or a borderline common or extra placement, which successive reviews of "go", "food", and "block" moved back and forth, nor for a missing rare sense
+    And it fails only a list that misses a main general-knowledge sense a learner's dictionary lists for A1 to B1 learners, holds two duplicate or over-split common senses, puts a rare, archaic, technical, legal, specialist, or regional-only sense in common, gives a sense the wrong part of speech, puts a main sense every learner's dictionary prints in extra, or leaves the word's best-known meaning out of the first three common senses, since placement decides which senses are core
+    And it passes every other list, never failing for any other order of common senses or a borderline common or extra placement, which successive reviews of "go", "food", and "block" moved back and forth, nor for a missing rare sense
     And its reason names each missing, duplicated, misplaced, or mislabelled sense
     And a list naming a sense without a live gloss is unreviewable
 
