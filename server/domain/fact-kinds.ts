@@ -387,12 +387,20 @@ function usageOf(register?: Register, region?: Region): string {
   ].join('')
 }
 
+/**
+ * Which proper nouns belong, stated once for every entry and sense question: learner's dictionaries
+ * print the names learners meet as vocabulary, in the main text or an appendix of geographical
+ * names, and leave out the names of people, brands, organisations, and minor places.
+ */
+const PROPER_NOUNS =
+  'An established proper noun that learner\'s dictionaries such as Oxford, Cambridge, and Longman include in their main text or their appendix of geographical names counts: a country, continent, nationality or demonym, language, people, religion, adherent of a religion, scripture, festival or holiday, day or month, major world city or capital ("London", "Paris", "Beijing", "New York"), or well-known geographical feature ("the Thames", "the Alps", "the Pacific"). A proper noun they leave out does not count: a personal name ("John", "David", "Trump" as a person), a brand or company name ("Facebook", "Google"), an organisation, or a minor place (a small town, a street, a local area).'
+
 /** A number sense is named as a numeral, which reads as a word class where "number sense" would not. */
 const posName = (pos: Pos) => (pos === 'number' ? 'number (numeral)' : pos)
 
 // Jev question texts started as the producer's qualified questions.
 function lexicalQuestion(word: string, pos: Pos, gloss: string, register?: Register, region?: Region): string {
-  return `Does English have AT LEAST ONE established ${posName(pos)} sense of ${quote(word)} meaning ${quote(gloss)}${usageOf(register, region)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ` If the sense is used only in a ${LABELLED_REGISTERS} register, the answer is no, since no register is stated.`} ${region ? 'A region that does not fit where the sense is used is wrong.' : 'If the sense is used only in one variety of English (only British, only American, only Australian, only Scottish English, and so on), the answer is no, since no region is stated.'} ${DATA_NOT_INSTRUCTIONS}`
+  return `Does English have AT LEAST ONE established ${posName(pos)} sense of ${quote(word)} meaning ${quote(gloss)}${usageOf(register, region)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, a proper noun that does not count, an invented description or a newly invented metaphor. ${PROPER_NOUNS} Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ` If the sense is used only in a ${LABELLED_REGISTERS} register, the answer is no, since no register is stated.`} ${region ? 'A region that does not fit where the sense is used is wrong.' : 'If the sense is used only in one variety of English (only British, only American, only Australian, only Scottish English, and so on), the answer is no, since no region is stated.'} ${DATA_NOT_INSTRUCTIONS}`
 }
 
 const DIFFERENT_WORDS = 'Two senses of the same word never stand in this relation.'
@@ -512,13 +520,14 @@ function relationRubric(
 }
 
 function entryQuestion(lemma: string): string {
-  return `Is ${quote(lemma)} an established English word: a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, or invented word? ${DATA_NOT_INSTRUCTIONS}`
+  return `Is ${quote(lemma)} an established English word: a dictionary lemma or conventional vocabulary term, not an ordinary inflection, a proper noun that does not count, or an invented word? ${PROPER_NOUNS} ${DATA_NOT_INSTRUCTIONS}`
 }
 
 const MULTIWORD_PASSES = [
   'Its meaning is not the sum of its parts: an idiom ("bear fruit", "throw shade") or a fixed compound naming one specific thing ("red blood cell", "stainless steel", "chest of drawers").',
   'It is an established phrasal verb or verb idiom, one a learner\'s dictionary (Oxford Advanced Learner\'s, Longman, Cambridge) prints as an entry or sub-entry of its verb, even when its meaning is transparent ("end up", "sit down", "come back", "give up"). Being transparent and well-formed is not enough: the dictionaries must print it.',
   'It is a fixed prepositional or grammatical phrase, even when its meaning is transparent ("at the expense of", "in front of", "have to").',
+  'It is a proper noun that counts under the rule below ("New York", "Good Friday", "American Sign Language").',
   'It is the everyday name of one kind of thing or place that speakers learn as a whole rather than build ("post office", "bus stop", "credit card", "swimming pool"). Being a common or technically correct name for a part, variety, or record of something is not enough.',
 ]
 
@@ -526,7 +535,7 @@ const MULTIWORD_FAILS = [
   'A descriptive phrase built from the plain meanings of its words, even a common or technical one: a part or piece of something, a variety picked out by an ordinary adjective, or an X of Y ("wheat grain", "hair strand", "oven door", "tooth root", "valley floor", "white rice", "camera angle", "browsing history").',
   'A category label coined to group things ("time unit", "writing implement", "plant part", "protective covering", "cleaning implement", "security device").',
   'A phrasal verb or verb idiom that no learner\'s dictionary prints: a coined or ad-hoc combination of a verb with a particle or preposition, however understandable or figurative, often a verb made from a noun with a particle added ("telephone in", "telephone back", "party down", "key up", "map onto", "fish about"). It fails even when another rule above seems to hold.',
-  'A proper name, a misspelling, or an invented phrase.',
+  'A proper noun that does not count under the rule below, a misspelling, or an invented phrase.',
 ]
 
 /**
@@ -541,7 +550,8 @@ function cefrCriteria(lemma: string, cefr: readonly CefrListing[]): string[] {
     'It is a headword of a CEFR learner vocabulary list, which names the vocabulary learners need:',
     ...cefr.map(({ level, pos, source }) => `- ${level} ${pos} in ${source}`),
     'Do not ask whether a phrase is a fixed lexical unit: the list settles that it belongs.',
-    'pass: a headword of the list. fail only when it is nothing but an inflected form of another word (a headword with uses of its own, such as "could", "best" or "left", passes), a proper name, or a misspelling.',
+    'pass: a headword of the list. fail only when it is nothing but an inflected form of another word (a headword with uses of its own, such as "could", "best" or "left", passes), a proper noun that does not count, or a misspelling.',
+    PROPER_NOUNS,
   ]
 }
 
@@ -599,11 +609,13 @@ function entryCriteria(lemma: string, cefr: readonly CefrListing[]): string[] {
         ...MULTIWORD_PASSES.map((rule) => `- ${rule}`),
         'fail when none of the above holds, for example:',
         ...MULTIWORD_FAILS.map((rule) => `- ${rule}`),
+        PROPER_NOUNS,
       ]
     : [
         `Is ${quote(lemma)} an established English word that belongs in a learner's dictionary?`,
         'pass: a dictionary lemma or conventional vocabulary term, including function words and established abbreviations.',
-        'fail: an ordinary inflection of another word, a proper name, a misspelling, or an invented word.',
+        'fail: an ordinary inflection of another word, a proper noun that does not count, a misspelling, or an invented word.',
+        PROPER_NOUNS,
       ]
 }
 
@@ -632,7 +644,8 @@ function senseRubric(sense: SubjectViews['sense'], { gloss, register, region }: 
   return [
     `Does the English word ${quote(sense.lemma)} have an established ${sense.pos} sense meaning ${quote(gloss)}${usageOf(register, region)}?`,
     'pass: a standard dictionary such as Oxford, Cambridge, Merriam-Webster, or Collins records this sense for this part of speech. Rare, informal, figurative, technical, and grammatical senses count, and so do glosses written as usage notes ("Used before … to …"). Minor paraphrase is fine.',
-    `fail: the word has no such meaning in this part of speech, the gloss describes a different word or a proper name, or it is a one-off or invented use${register ? ', or the sense is not used in this register' : ''}.`,
+    `fail: the word has no such meaning in this part of speech, the gloss describes a different word (a proper noun spelled with other capitalization is one: the ocean "the Pacific" is no sense of "pacific") or a proper noun that does not count, or it is a one-off or invented use${register ? ', or the sense is not used in this register' : ''}.`,
+    PROPER_NOUNS,
     ...(sense.pos === 'number' ? [NUMBER_POS] : []),
     ...SENSE_LABELS,
     listSenses('Other senses of this entry, for reference', sense.siblings),

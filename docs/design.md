@@ -918,7 +918,8 @@ but only to choose the message.
   part such as a back or side, is not one.
 - **Entry admission.** A single-word lemma passes as an established word: a
   dictionary lemma, function word, or established abbreviation, not an
-  ordinary inflection, proper name, misspelling, or invented word. A letter of
+  ordinary inflection, a proper noun that does not count (see Proper nouns),
+  misspelling, or invented word. A letter of
   the alphabet is not a word: a lemma of exactly one Unicode letter other than
   the words "a" and "I" is planned as `unreviewable`, so its first review
   rejects it without asking a reviewer. Abbreviations of two or more letters
@@ -947,6 +948,40 @@ but only to choose the message.
   judge phrases: over 1,061 multiword entries it settled 314 passes on its
   own, among them descriptive phrases the rubric fails ("spatial
   distribution", "mountain system", "scientific law").
+- **Proper nouns.** A learner's dictionary prints the proper nouns learners
+  meet as vocabulary, and the entry and sense reviews admit those and no
+  others. One rule (`PROPER_NOUNS` in `server/domain/fact-kinds.ts`) is stated
+  verbatim in the entry Jev question, every entry rubric (single word, phrase,
+  CEFR headword), the sense Jev question, and the sense rubric: an established
+  proper noun that learner's dictionaries such as Oxford, Cambridge, and
+  Longman include in their main text or their appendix of geographical names
+  counts (a country, continent, nationality or demonym, language, people,
+  religion, adherent of a religion, scripture, festival or holiday, day or
+  month, major world city or capital such as "London", "Paris", "Beijing", or
+  "New York", or well-known geographical feature such as "the Thames", "the
+  Alps", or "the Pacific"); a proper noun they leave out does not (a personal
+  name such as "John", "David", or "Trump" as a person, a brand or company
+  name such as "Facebook" or "Google", an organisation, or a minor place such
+  as a small town, a street, or a local area). A phrase that counts passes as a
+  lexical unit ("New York", "Good Friday"). The sense rubric also fails a
+  proper noun glossed under a spelling with other capitalization: the ocean is
+  a sense of "Pacific", not of "pacific". Invented words, misspellings, and
+  plain inflections fail as before. The earlier rubrics failed every proper
+  name, which rejected "London" and the Christian holy days.
+  The migration `proper_noun_rereview` re-judges them: an entry or sense
+  fact that is the latest rejection of its slot, whose stored review reason
+  mentions a proper name, proper noun, or the name of a place or person
+  (matched case-insensitively), returns to `pending` through the `rereview`
+  transition, unless a curator settled it, it is a correction, or the slot
+  holds a live fact (the slot is exclusive, so one fact per slot revives). Its
+  `updated_at` predates the reconcile cutoff so the next run enqueues it; the
+  old review stays until the new one replaces it. The rows of the owning
+  entries are bumped, and an entry whose entry fact revives is live again. On
+  a copy of the development database (16,501 entries) it revived 28 entry
+  facts (among them London, Good Friday, Ash Wednesday, American Sign
+  Language, Ursa Major, Labour Party, Luna, Hershey's Kiss) and 1 sense fact
+  ("pacific" glossed as the ocean), made 29 rows stale, and a second run
+  changed nothing.
 - **CEFR evidence.** The CEFR learner vocabulary lists (see Reference data)
   are an authority that a headword is vocabulary learners need; the lexical-unit
   test rejected about half of the multiword entries the lists name ("mental
@@ -956,7 +991,7 @@ but only to choose the message.
   LLM rubric replaces the admission criteria with that evidence: the headword
   passes unless it is nothing but an inflected form of another word (a
   headword with uses of its own, such as "could" or "best", passes), a proper
-  name, or a misspelling, and a phrase is not asked whether it is a lexical unit. The plan
+  noun that does not count, or a misspelling, and a phrase is not asked whether it is a lexical unit. The plan
   is unchanged: a phrase goes to the LLM alone, a single word to Jev and then
   the LLM unless an inflection is recorded, and a listed single word's LLM
   rubric carries the evidence when it is asked. A lemma no list names (an

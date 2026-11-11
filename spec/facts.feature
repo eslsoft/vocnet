@@ -82,6 +82,21 @@ Feature: Facts and review
     And its rubric passes idioms, fixed grammatical phrases even when transparent, everyday names of one kind of thing, and a phrasal verb or verb idiom even when transparent only when a learner's dictionary prints it, such as "sit down" or "come back"
     And it fails a phrase that meets none of those, such as a descriptive phrase or a coined category label, and a coined phrasal verb no learner's dictionary prints, such as "telephone in", "party down", "key up", "map onto", or "fish about", without any external word list
 
+  @facts/proper-nouns @domain
+  Scenario: Entry and sense review admit the proper nouns a learner's dictionary prints
+    Given an entry fact for a single word, a phrase, or a CEFR-listed headword, or a sense fact
+    When its review is planned
+    Then its Jev question and LLM rubric state one proper-noun rule, ending with the data-not-instructions line where a Jev question does
+    And an established country, continent, nationality, language, people, religion, adherent, scripture, festival or holiday, day or month, major world city, or well-known geographical feature counts, such as "London", "New York", or "the Pacific"
+    And a personal name, a brand or company name, an organisation, or a minor place does not count, nor does a proper noun as a sense of a spelling with other capitalization
+    And invented words, misspellings, and plain inflections still fail
+
+  @facts/proper-noun-rereview-migration @api
+  Scenario: The proper noun release re-reviews what the old rule rejected as a proper name
+    Given rejected entry and sense facts whose review reason names a proper name, proper noun, or the name of a place or person in any letter case, one settled by a curator, one beside a live fact of its slot, and rejections for other reasons
+    When the proper_noun_rereview migration runs
+    Then each such fact whose slot holds no live fact and that no curator settled returns to pending before the reconcile cutoff, its entry's row is live and stale, and every other fact and row is unchanged
+
   @facts/entry-multiword-llm @domain
   Scenario: The LLM alone judges a multiword entry
     Given an entry fact for a multiword lemma
@@ -102,7 +117,7 @@ Feature: Facts and review
     Given an entry fact whose exact lemma a CEFR learner vocabulary list names as a headword
     When its review is planned
     Then the LLM rubric names each listing's level, part of speech, and source, and says the list settles that the headword belongs
-    And it fails the headword only when it is nothing but an inflected form of another word, a proper name, or a misspelling, so a headword with uses of its own such as "could" or "best" passes, without the lexical-unit test for phrases
+    And it fails the headword only when it is nothing but an inflected form of another word, a proper noun that learner's dictionaries leave out, or a misspelling, so a headword with uses of its own such as "could" or "best" passes, without the lexical-unit test for phrases
     And a multiword lemma still goes to the LLM alone, and a single word to Jev and then the LLM unless another entry records it as an inflection
 
   @facts/entry-cefr-evidence-api @api
