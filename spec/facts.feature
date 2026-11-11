@@ -743,6 +743,12 @@ Feature: Facts and review
     When it is keyed and its review is planned
     Then the region is a label of the content key, Jev answers no for a sense used in only one variety with no region and for a formal, literary, dated, or ironic sense with no register, and the rubric fails such a sense and an old-fashioned sense without the dated register
 
+  @facts/number-sense-review @domain
+  Scenario: A number sense is judged against the learner's dictionary number label
+    Given a sense of part of speech number
+    When its review is planned
+    Then Jev asks for an established number (numeral) sense, the rubric says number is the learner's dictionary label of a cardinal or ordinal number that other dictionaries file as a noun, adjective, determiner, or pronoun, and no grammar fact is admitted on it
+
   @facts/sense-revalidation-flag @domain
   Scenario: A gloss that fails its review in place is flagged, not rejected
     Given the review outcome table and a kind that flags a failed revalidation

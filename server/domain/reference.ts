@@ -56,6 +56,7 @@ const lexicalPos = {
   adverb: 'adverb',
   pronoun: 'pronoun',
   determiner: 'determiner',
+  number: 'number',
   preposition: 'preposition',
   conjunction: 'conjunction',
   interjection: 'interjection',
@@ -63,7 +64,8 @@ const lexicalPos = {
 
 /**
  * CEFR-J lists auxiliaries by verb, with every form of be, do, and have ("am", "was", "'s",
- * "done") as a row of its own, and numbers and infinitive "to" as their own classes.
+ * "done") as a row of its own, numbers as our number class, and infinitive "to" as a class of its
+ * own, which is no part of speech.
  */
 export const cefrjPos: PosMap = {
   ...lexicalPos,
@@ -71,7 +73,6 @@ export const cefrjPos: PosMap = {
   'be-verb': { pos: 'auxiliary', lemma: 'be' },
   'do-verb': { pos: 'auxiliary', lemma: 'do' },
   'have-verb': { pos: 'auxiliary', lemma: 'have' },
-  number: null,
   'infinitive-to': null,
 }
 

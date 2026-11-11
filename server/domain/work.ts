@@ -360,6 +360,7 @@ export const TOPICS_NEEDED: Readonly<Record<Pos, number>> = {
   adverb: 0,
   pronoun: 0,
   determiner: 0,
+  number: 0,
   preposition: 0,
   conjunction: 0,
   interjection: 0,
@@ -369,7 +370,8 @@ export const TOPICS_NEEDED: Readonly<Record<Pos, number>> = {
 /**
  * How many grammar facts a sense needs. Countability is what a learner most needs of a noun,
  * transitivity of a verb, position, patterns, or prepositions of an adjective, the usual position
- * of an adverb, and what a determiner or pronoun agrees with ("each" + a singular noun).
+ * of an adverb, and what a determiner or pronoun agrees with ("each" + a singular noun). A number
+ * takes no grammar a learner's dictionary prints.
  */
 export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
   noun: 1,
@@ -378,6 +380,7 @@ export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
   adverb: 1,
   pronoun: 1,
   determiner: 1,
+  number: 0,
   preposition: 0,
   conjunction: 0,
   interjection: 0,
@@ -386,8 +389,8 @@ export const GRAMMAR_NEEDED: Readonly<Record<Pos, number>> = {
 
 /**
  * How many collocations a sense needs: content words, adverbs, and the function words a learner
- * meets in set combinations ("hardly any", "filled with", "both ... and"). A pronoun or
- * interjection combines freely.
+ * meets in set combinations ("hardly any", "filled with", "both ... and"). A pronoun, number, or
+ * interjection combines freely ("two cats", "the first day").
  */
 export const COLLOCATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   noun: 1,
@@ -396,6 +399,7 @@ export const COLLOCATIONS_NEEDED: Readonly<Record<Pos, number>> = {
   adverb: 1,
   pronoun: 0,
   determiner: 1,
+  number: 0,
   preposition: 1,
   conjunction: 1,
   interjection: 0,

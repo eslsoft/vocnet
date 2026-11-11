@@ -8,8 +8,8 @@ Feature: Reference data
   Scenario: Profile parts of speech map onto ours
     Given CEFR-J and Octanove rows labelled with their own parts of speech
     When the import merges them
-    Then lexical labels map one to one, modal, be, do, and have verbs become auxiliary, and "vern" becomes verb
-    And numbers, infinitive "to", and unlabeled rows are dropped, slash variants become separate lemmas
+    Then lexical labels map one to one, numbers become number, modal, be, do, and have verbs become auxiliary, and "vern" becomes verb
+    And infinitive "to" and unlabeled rows are dropped, slash variants become separate lemmas
     And an unknown label or level fails the import
 
   @reference/cefr-inflected-forms @domain

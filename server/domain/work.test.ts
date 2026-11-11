@@ -454,6 +454,7 @@ describe('relation slots by part of speech', () => {
       adverb: { category: false, synonyms: true, completeness: 1 - 10 / 11 },
       pronoun: { category: false, synonyms: false, completeness: 1 - 8 / 9 },
       determiner: { category: false, synonyms: false, completeness: 1 - 9 / 10 },
+      number: { category: false, synonyms: false, completeness: 1 - 7 / 8 },
       preposition: { category: false, synonyms: false, completeness: 1 - 8 / 9 },
       conjunction: { category: false, synonyms: false, completeness: 1 - 8 / 9 },
       interjection: { category: false, synonyms: false, completeness: 1 - 7 / 8 },
@@ -509,6 +510,7 @@ describe('topics by part of speech', () => {
       adverb: false,
       pronoun: false,
       determiner: false,
+      number: false,
       preposition: false,
       conjunction: false,
       interjection: false,
@@ -922,6 +924,23 @@ describe('completeness rules for a learner dictionary', () => {
     ).map((gap) => gap.type)
     expect(closed).not.toContain('grammar')
     expect(closed).not.toContain('collocations')
+  })
+
+  it('asks a number sense for examples and translations only [spec: work/number-senses]', () => {
+    for (const [lemma, gloss] of [
+      ['two', 'The number 2.'],
+      ['first', 'Coming before all others in order.'],
+    ]) {
+      const focus = sense('number')
+      const gaps = gapsOf(lemma, [focus], [fact('sense', focus.id, { gloss })], { levelRank: 1 })
+      expect(gaps.filter((gap) => 'sense_id' in gap && gap.sense_id === focus.id).map((gap) => gap.type)).toEqual([
+        'examples',
+        'translations',
+        'example_translations',
+      ])
+      expect(gaps.find((gap) => gap.type === 'examples')).toMatchObject({ need: 2 })
+      expect(gaps.map((gap) => gap.type)).not.toContain('forms')
+    }
   })
 
   it('needs two examples of each counted sense of an A1 or A2 entry [spec: work/core-examples]', () => {

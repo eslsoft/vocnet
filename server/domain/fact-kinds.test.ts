@@ -1595,6 +1595,22 @@ describe('completeness write rules and rubrics', () => {
     expect(rubric).toContain('in the same register')
   })
 
+  it("judges a number sense against the learner's dictionary number label [spec: facts/number-sense-review]", () => {
+    const two = { lemma: 'two', pos: 'number' as const, gloss: null, siblings: [] }
+    const plan = planReview('sense', { gloss: '2' }, { subject: two, target: null, topic: null, attempts: [] })
+    expect(jevQuestion(plan, 'lexical')).toContain('established number (numeral) sense of "two"')
+    expect(llmPrompt(plan)?.user).toContain(
+      'a dictionary that files the same meaning as a noun, adjective, determiner, or pronoun records it too',
+    )
+    const bankPlan = planReview(
+      'sense',
+      { gloss: 'land beside a river' },
+      { subject: bank, target: null, topic: null, attempts: [] },
+    )
+    expect(llmPrompt(bankPlan)?.user).not.toContain('ordinal number')
+    expect(factKinds.grammar.subjectPos).not.toContain('number')
+  })
+
   it('states a sense region and judges it, with dated as the old-fashioned label [spec: facts/sense-region]', () => {
     expect(contentKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.|british')
     expect(meaningKeyOf('sense', { gloss: 'A large vehicle.', region: 'british' })).toBe('a large vehicle.')

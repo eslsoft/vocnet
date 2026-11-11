@@ -26,12 +26,17 @@ export const posSchema = z
     'adverb',
     'pronoun',
     'determiner',
+    'number',
     'preposition',
     'conjunction',
     'interjection',
     'auxiliary',
   ])
-  .meta({ id: 'PartOfSpeech' })
+  .meta({
+    id: 'PartOfSpeech',
+    description:
+      'The part of speech as a learner\'s dictionary labels it. number: a cardinal or ordinal number word in its number use ("two", "hundred", "first"), which learner\'s dictionaries label number or ordinal number.',
+  })
 export type Pos = z.infer<typeof posSchema>
 
 export const relationTypeSchema = z.enum(['synonym', 'antonym', 'hypernym', 'part_of']).meta({ id: 'RelationType' })

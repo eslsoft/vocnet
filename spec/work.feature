@@ -285,6 +285,12 @@ Feature: Work items
     When the gaps are computed
     Then every adverb needs grammar, a collocation, and a synonym, a determiner grammar and a collocation, a pronoun grammar and no relation, and a preposition or conjunction a collocation, each closable by a gap closure, and an interjection none of them
 
+  @work/number-senses @domain
+  Scenario: A number sense needs what every sense needs and none of the usage slots
+    Given a counted number sense, cardinal ("two") or ordinal ("first")
+    When the gaps are computed
+    Then it needs examples, a translation, and translated examples, and no category, parts, synonyms, topics, grammar, collocations, or forms
+
   @work/core-examples @domain
   Scenario: A1 and A2 senses need two examples
     Given a counted sense with one example of an entry at each CEFR level or none

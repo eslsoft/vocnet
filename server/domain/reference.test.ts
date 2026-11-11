@@ -18,7 +18,7 @@ const cefrj = (rows: Array<[string, string, string]>) => ({
 const octanove = (rows: Array<[string, string, string]>) => ({ ...cefrj(rows), id: 'octanove', pos: octanovePos })
 
 describe('mergeCefr', () => {
-  it('maps profile POS labels onto ours and drops numbers and infinitive "to" [spec: reference/cefr-pos]', () => {
+  it('maps profile POS labels onto ours and drops infinitive "to" [spec: reference/cefr-pos]', () => {
     const { rows } = mergeCefr([
       cefrj([
         ['can', 'modal auxiliary', 'A1'],
@@ -41,6 +41,7 @@ describe('mergeCefr', () => {
       'do/auxiliary/A1',
       'have/auxiliary/A1',
       'run/verb/A1',
+      'seven/number/A1',
       'oh/interjection/A2',
       'remonstrate/verb/C2',
     ])

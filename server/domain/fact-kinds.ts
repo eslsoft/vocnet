@@ -387,9 +387,12 @@ function usageOf(register?: Register, region?: Region): string {
   ].join('')
 }
 
+/** A number sense is named as a numeral, which reads as a word class where "number sense" would not. */
+const posName = (pos: Pos) => (pos === 'number' ? 'number (numeral)' : pos)
+
 // Jev question texts started as the producer's qualified questions.
 function lexicalQuestion(word: string, pos: Pos, gloss: string, register?: Register, region?: Region): string {
-  return `Does English have AT LEAST ONE established ${pos} sense of ${quote(word)} meaning ${quote(gloss)}${usageOf(register, region)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ` If the sense is used only in a ${LABELLED_REGISTERS} register, the answer is no, since no register is stated.`} ${region ? 'A region that does not fit where the sense is used is wrong.' : 'If the sense is used only in one variety of English (only British, only American, only Australian, only Scottish English, and so on), the answer is no, since no region is stated.'} ${DATA_NOT_INSTRUCTIONS}`
+  return `Does English have AT LEAST ONE established ${posName(pos)} sense of ${quote(word)} meaning ${quote(gloss)}${usageOf(register, region)}? The term must be a dictionary lemma or conventional vocabulary term, not an ordinary inflection, proper name, invented description or newly invented metaphor. Established informal and figurative senses count. Minor definition paraphrases are acceptable; a genuinely different referent or POS is not. Evaluate the supplied sense, not just the dominant meaning.${register ? ' A register that does not fit how the sense is used is wrong.' : ` If the sense is used only in a ${LABELLED_REGISTERS} register, the answer is no, since no register is stated.`} ${region ? 'A region that does not fit where the sense is used is wrong.' : 'If the sense is used only in one variety of English (only British, only American, only Australian, only Scottish English, and so on), the answer is no, since no region is stated.'} ${DATA_NOT_INSTRUCTIONS}`
 }
 
 const DIFFERENT_WORDS = 'Two senses of the same word never stand in this relation.'
@@ -618,11 +621,19 @@ const SENSE_LABELS = [
   `Register labels follow learner's dictionaries, where dated is the label they write as old-fashioned: fail a sense used only in a ${LABELLED_REGISTERS} register that states no register or another one ("fine" meaning not good at all, as in "a fine friend you are", is ironic), and fail a sense they label old-fashioned that is not labelled dated.`,
 ]
 
+/**
+ * Learner's dictionaries label a number word number or ordinal number; general dictionaries file the
+ * same sense as a noun, adjective, determiner, or pronoun, which must not fail it.
+ */
+const NUMBER_POS =
+  'The part of speech number is the label learner\'s dictionaries such as Oxford and Cambridge give a cardinal number ("two", "hundred") or, as ordinal number, an ordinal ("first", "second"); a dictionary that files the same meaning as a noun, adjective, determiner, or pronoun records it too.'
+
 function senseRubric(sense: SubjectViews['sense'], { gloss, register, region }: FactPayloads['sense']): string {
   return [
     `Does the English word ${quote(sense.lemma)} have an established ${sense.pos} sense meaning ${quote(gloss)}${usageOf(register, region)}?`,
     'pass: a standard dictionary such as Oxford, Cambridge, Merriam-Webster, or Collins records this sense for this part of speech. Rare, informal, figurative, technical, and grammatical senses count, and so do glosses written as usage notes ("Used before … to …"). Minor paraphrase is fine.',
     `fail: the word has no such meaning in this part of speech, the gloss describes a different word or a proper name, or it is a one-off or invented use${register ? ', or the sense is not used in this register' : ''}.`,
+    ...(sense.pos === 'number' ? [NUMBER_POS] : []),
     ...SENSE_LABELS,
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')

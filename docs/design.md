@@ -619,7 +619,7 @@ payload, live or not, because reads parse the current shape; a fact's review
 still records the claim it judged. On a copy of the development database
 (4,049 grammar facts) it retracted 227 published and 2 pending facts, rewrote 28
 rejected ones, and marked 149 entries stale, in about 70 ms.
-Grammar about any other part of speech (preposition, conjunction,
+Grammar about any other part of speech (number, preposition, conjunction,
 interjection, auxiliary) is refused by the registry's
 `subjectPos`, as a topic on a function word is. A property the part of speech
 does not take, a missing required one, a pattern it does not take, or a
@@ -1454,6 +1454,26 @@ adverb may carry topics but needs none: most adjectives are general (*big*,
 *good*). General-vocabulary noun and verb senses (*get*, *make*, *thing*)
 belong to no topic: a reviewed gap closure closes their topics gap.
 
+### Number senses
+
+`number` is the part of speech learner's dictionaries print for a number word:
+OALD and Cambridge label *two*, *hundred*, and *million* "number" and *first*
+and *second* "ordinal number". One `number` covers cardinals and ordinals; the
+gloss tells them apart, so no second part of speech is needed. A number sense
+needs what every sense needs (examples, two at A1 or A2, a Chinese translation,
+and translated examples) and nothing else: no category (a learner does not
+file *two* under a broader word, as no other function word is), no parts, no
+synonym slot, no topics (a number belongs to every scene), no grammar (a
+learner's dictionary prints none, and the grammar registry refuses it), and no
+collocations (*two cats* combines freely). It has no paradigm either: the plural
+in *hundreds of people* or *in their thousands* is a noun use, recorded as a
+noun sense with its plural when a curator adds one. Other uses of an ordinal
+keep their own part of speech (*first* in "arrive first" is an adverb). The sense
+rubric tells the reviewer that general dictionaries file the same meaning as a
+noun, adjective, determiner, or pronoun, which does not fail it, and Jev's
+question names it a "number (numeral)" sense. No migration was needed: `pos` is
+a TEXT column, and no stored sense had the value.
+
 ### Grammar, collocations, and word formation
 
 `GRAMMAR_NEEDED` and `COLLOCATIONS_NEEDED` in `server/domain/work.ts` are the
@@ -1468,7 +1488,7 @@ Noun, verb, adjective, adverb, determiner, preposition, and conjunction senses
 need one collocation: function words are learnt in set combinations (*hardly
 any*, *any more*, *filled with*, *angry with*, *both … and*, *and so on*), and
 every adverb, not only a manner adverb, has its common ones (*just a minute*,
-*only just*, *work fine*). A pronoun, interjection, or auxiliary needs none.
+*only just*, *work fine*). A pronoun, number, interjection, or auxiliary needs none.
 The audit of 40 A1 entries scored the function words and adverbs 1.00 under the
 earlier tables while a learner's dictionary gave them 0.69 to 0.93. Each gap is
 closable, so a sense with genuinely nothing there (*any* as an adverb before a
@@ -1493,8 +1513,8 @@ A live form fills a slot of its type when it is labelled with the slot's part
 of speech, or unlabelled and shown under it (`formMeaning`, the carrier order
 the public view uses). A periphrastic comparison fills nothing, and is refused
 at write. A phrase inflects in its words' entries, so it has no forms gap;
-neither does an invariable word (*ago*, *ours*), an uncountable noun, or a
-word whose comparisons are periphrastic. A defective word (*beware*) closes
+neither does an invariable word (*ago*, *ours*), an uncountable noun, a word
+whose comparisons are periphrastic, or a number. A defective word (*beware*) closes
 its forms gap with a gap closure. The test for comparison reads the syllables
 fact, so a short adjective's comparison slots open once its syllables are
 recorded, which changes its open work.
@@ -1882,7 +1902,7 @@ with hashes):
 
 The import rules live in `server/domain/reference.ts`. CEFR-J parts of speech
 map one to one, except that modal auxiliaries and the be, do, and have verbs
-become `auxiliary`, and numbers and infinitive "to" are dropped. CEFR-J lists
+become `auxiliary`, numbers become `number`, and infinitive "to" is dropped. CEFR-J lists
 every form of be, do, and have as a row of its own ("'m", "'re", "'s", "am",
 "is", "are", "was", "were", "been", "being", "does", "did", "doing", "done",
 "has", "had", "having"); entries are lemmas and an inflection is a `form` fact
