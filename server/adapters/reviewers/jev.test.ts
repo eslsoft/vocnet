@@ -1,5 +1,6 @@
 import { ReviewerProtocolError, ReviewerTransportError } from '@server/usecases/ports'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { postJson } from './gateway'
 import { createJevReviewer } from './jev'
 
 const jev = createJevReviewer({ baseUrl: 'https://models.test/', apiKey: 'secret', model: 'jev-latest' })
@@ -57,6 +58,30 @@ describe('Jev reviewer', () => {
     vi.restoreAllMocks()
     stubFetch(() => new Response('oops', { status: 502 }))
     await expect(jev.ask({ q: 'x' }, {})).rejects.toBeInstanceOf(ReviewerTransportError)
+  })
+
+  it('times out a gateway call that never answers as a transport error [spec: facts/reviewer-timeout]', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+        }),
+    )
+    await expect(postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', {}, 10)).rejects.toBeInstanceOf(
+      ReviewerTransportError,
+    )
+    // A body that stops arriving times out too, rather than reading as malformed JSON.
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start: (controller) => controller.error(new DOMException('The operation timed out.', 'TimeoutError')),
+        }),
+      ),
+    )
+    await expect(postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', {})).rejects.toBeInstanceOf(
+      ReviewerTransportError,
+    )
   })
 
   it('treats other rejections and non-JSON bodies as protocol errors', async () => {

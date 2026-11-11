@@ -484,6 +484,12 @@ Feature: Facts and review
     When a fact is reviewed
     Then the fact stays pending and the error propagates
 
+  @facts/reviewer-timeout @domain
+  Scenario: A gateway call that never answers times out as a transport failure
+    Given the model gateway accepts a review call and never answers
+    When the call has waited the gateway timeout
+    Then it fails as a transport error, so the queue retries the job instead of the batch stalling
+
   @facts/transport-retry-api @api
   Scenario: The queue retries a job when the gateway is down
     Given the reviewer gateway answers 503

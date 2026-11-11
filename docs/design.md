@@ -1249,6 +1249,7 @@ but only to choose the message.
   publishes, its pending one. That keeps examples, translations, and relations
   from waiting on the gloss. A meaning-dependent fact whose sense has no live
   gloss at all is rejected as unreviewable without calling a reviewer.
+- Every model gateway call is bounded by `GATEWAY_TIMEOUT_MS` (120 s), body included. A review batch waits for its slowest call, and one call that never answered once stalled every review for twenty minutes; past the bound it is a transport failure the queue retries.
 - A transport failure of any reviewer in the chain is not a verdict. The fact
   stays `pending`, and the queue retries the whole chain.
 
@@ -2732,6 +2733,6 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   `revalidate_since` is more than five minutes old, so a lost enqueue cannot
   strand a fact. It keys on `updated_at`, not `created_at`, so a re-reviewed fact counts
   from its reset.
-- A reviewer transport failure (network, 429, 5xx) retries the message with a
+- A reviewer transport failure (network, timeout, 429, 5xx) retries the message with a
   delay; after five attempts it lands in the `vocnet-reviews-dlq` dead letter
   queue, and the cron keeps re-enqueueing the fact until review succeeds.
