@@ -350,10 +350,12 @@ follow:
   and fails a relation when one of them is the better match for the source.
   The rubric then states the layer. An everyday hypernym (`EVERYDAY_LAYER`)
   must be a category word learners use and a learner's dictionary defines the
-  word by ("a dog is an animal", "a dog is a pet", "an eagle is a bird"): it
-  fails a technical taxon or a term a learner would not use for the category
-  ("canine", "passerine", "feline", "rodent", "carnivore", "mammal" for a single
-  animal where the dictionary says "animal"), which belongs in a domain layer,
+  word by ("a dog is an animal", "a dog is a pet", "an eagle is a bird"). The
+  broad classes taught in school science (mammal, bird, fish, insect, reptile,
+  amphibian) are everyday categories too, so "dog" may be an animal, a pet, and
+  a mammal. It fails a technical taxon below them or a term a learner would not
+  use for the category ("canine", "feline", "passerine", "rodent", "primate",
+  "carnivore"), which belongs in a domain layer,
   and a target that is no category a learner files the word under. A domain
   hypernym (`domainLayer`) passes only when the target is a real term of that
   field's taxonomy at the rank the field puts above the source ("dog" a kind of

@@ -471,7 +471,7 @@ const RELATION_TYPE_RULES = [
  * is a real headword a learner files the word under. Technical taxa belong to a domain layer.
  */
 const EVERYDAY_LAYER = [
-  'This hypernym is in the everyday layer: the category words a learner uses and a learner\'s dictionary defines the word by ("a dog is an animal", "a dog is a pet", "an eagle is a bird", "a rose is a flower"). A word may have several everyday categories. Fail a technical taxon or a term a learner would not use for the category, such as "canine", "passerine", "mammal" for a single animal where the dictionary says "animal", "feline", "rodent", "ungulate", "angiosperm", or "carnivore": it belongs in a domain layer (biology), not in the everyday one. Fail a target that is no category a learner would file the word under, even when the kind-of claim is true.',
+  'This hypernym is in the everyday layer: the category words a learner uses and a learner\'s dictionary defines the word by ("a dog is an animal", "a dog is a pet", "an eagle is a bird", "a rose is a flower"). A word may have several everyday categories ("a dog is an animal, a pet, and a mammal"). The broad classes taught in school science are everyday categories too: mammal, bird, fish, insect, reptile, amphibian ("a snake is a reptile", "a whale is a mammal"). Fail a technical taxon below them or a term a learner would not use for the category, such as "canine", "feline", "passerine", "rodent", "primate", "ungulate", "angiosperm", or "carnivore": it belongs in a domain layer (biology), not in the everyday one. Fail a target that is no category a learner would file the word under, even when the kind-of claim is true.',
   SYNONYM_PEERS,
 ]
 

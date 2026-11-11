@@ -149,7 +149,10 @@ describe('relation layers', () => {
     const everyday = rubric({ type: 'hypernym', target_sense_id: animal })
     expect(everyday).toContain('This hypernym is in the everyday layer: the category words a learner uses')
     expect(everyday).toContain(
-      'Fail a technical taxon or a term a learner would not use for the category, such as "canine", "passerine"',
+      'The broad classes taught in school science are everyday categories too: mammal, bird, fish, insect, reptile, amphibian',
+    )
+    expect(everyday).toContain(
+      'Fail a technical taxon below them or a term a learner would not use for the category, such as "canine", "feline"',
     )
     expect(everyday).toContain('The target must be a word an A1 to B2 learner can use')
     const biology = rubric({ type: 'hypernym', target_sense_id: animal, domain: 'biology' })

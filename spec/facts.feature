@@ -198,7 +198,7 @@ Feature: Facts and review
   Scenario: Each layer has its own rubric, and a part attaches to its most general whole
     Given an everyday hypernym, a biology hypernym, and a part_of between two senses
     When their reviews are planned
-    Then the everyday rubric fails a technical taxon and a word a learner would not use as its category, the biology rubric and Jev question pass only a real term of that taxonomy and fail an invented node, and the part_of rubric fails a part attached to a narrower kind of its whole
+    Then the everyday rubric accepts the school-science classes (mammal, bird, fish, insect, reptile, amphibian) beside everyday categories and fails a technical taxon below them and a word a learner would not use as its category, the biology rubric and Jev question pass only a real term of that taxonomy and fail an invented node, and the part_of rubric fails a part attached to a narrower kind of its whole
 
   @facts/relation-no-hypernym-cycle @domain
   Scenario: Two entries are never each a kind of the other
