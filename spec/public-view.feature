@@ -131,18 +131,6 @@ Feature: Public view
     When the members of animal, bird, and carnivore are read, page by page, with and without domain biology, and of an unknown sense
     Then each member comes once at its nearest depth, nearest first then by lemma, pages continue where the last stopped, a domain taxonomy is walked only on request, and an unknown sense is 404
 
-  @public-view/entry-members @usecase
-  Scenario: The members of an entry walk from each of its common senses
-    Given an entry with two common noun senses, a verb sense, and a rare sense, each with kinds below it
-    When the members of the entry are listed a page at a time, by one part of speech, and of an entry that is not public
-    Then the members of every common sense come once at their nearest depth with the senses they descend from, the rare sense's are left out, pos keeps one part of speech, and the missing entry is not found
-
-  @public-view/entry-members-api @api
-  Scenario: An entry lists the members of all its common senses
-    Given an entry "animal" with two noun senses, one with bird and dog below it, the other with dog and cat, and eagle a bird, and a rare sense with a biology kind
-    When the members of animal are read, page by page, with pos, with domain biology, and of an unknown lemma
-    Then each member comes once at its nearest depth naming the senses it came through, ordered by depth, lemma, and sense, the rare sense adds nothing, a pos without senses lists none, and the unknown lemma is 404
-
   @public-view/topic-sort @api
   Scenario: The senses of a topic sort by lemma, frequency, or level
     Given senses of entries with frequencies and levels tagged with topics of one category

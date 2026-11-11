@@ -313,16 +313,6 @@ export function shapeSenseDetail(
   return null
 }
 
-/**
- * The common senses of the document, of one part of speech or of every one, in document order: the
- * senses its sense list does not put in extra.
- */
-export function commonSenseIds(document: StoredEntry, pos: Pos | null): SenseId[] {
-  return document.meanings
-    .filter((meaning) => pos === null || meaning.pos === pos)
-    .flatMap((meaning) => meaning.senses.filter((sense) => !sense.rare).map((sense) => sense.id))
-}
-
 /** The entries a form lookup found, one item per entry with every form of it that matched, in row order. */
 export function formMatches(
   rows: ReadonlyArray<{ summary: StoredSummary; type: FormType; pos: Pos | null }>,

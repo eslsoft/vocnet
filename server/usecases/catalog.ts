@@ -9,7 +9,6 @@ import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
 import {
-  commonSenseIds,
   ENGLISH_SCOPE,
   formMatches,
   type ReadVariant,
@@ -24,7 +23,6 @@ import { isLetterOfTheAlphabet, type Lemma, normalizeTerm } from '@server/domain
 import type {
   CreateEntryInput,
   CreateSenseInput,
-  EntryMember,
   EntrySort,
   FormMatch,
   Member,
@@ -213,38 +211,10 @@ export async function listSenseMembers(
   const found = await readPublicView(deps, () => deps.publicViews.findBySense(id))
   const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant)
   if (!sense) throw new NotFoundError(`Sense ${id} not found.`)
-  const members = await deps.publicViews.listMembers([id], domain, page)
+  const members = await deps.publicViews.listMembers(id, domain, page)
   return {
     ...members,
     items: members.items.map(({ summary, depth }) => ({ ...shapeSenseSummary(summary, variant), depth })),
-  }
-}
-
-/**
- * The members of a public entry taken as a category: the members of every common sense of the
- * exact lemma, of one part of speech or of all, each once at its nearest depth with the senses of
- * the entry it descends from, in the entry's order. An entry that is not public is not found; one
- * without a common sense of the part of speech has no members.
- */
-export async function listEntryMembers(
-  deps: ViewDeps,
-  lemma: string,
-  pos: Pos | null,
-  domain: RelationDomain | null,
-  page: PageRequest,
-  variant: ReadVariant,
-): Promise<Page<EntryMember>> {
-  const found = await readPublicView(deps, () => deps.publicViews.findByLemma(normalizeTerm(lemma)))
-  if (!found) throw new NotFoundError(`No entry for ${JSON.stringify(lemma)}.`)
-  const roots = commonSenseIds(readStored<StoredEntry>(found.view.json), pos)
-  const members = await deps.publicViews.listMembers(roots, domain, page)
-  return {
-    ...members,
-    items: members.items.map(({ summary, depth, via }) => ({
-      ...shapeSenseSummary(summary, variant),
-      depth,
-      via: roots.filter((root) => via.includes(root)),
-    })),
   }
 }
 

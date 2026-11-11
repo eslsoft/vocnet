@@ -23,15 +23,7 @@ import type {
   ViewLookup,
 } from '@server/usecases/ports'
 import type { EntrySort, SenseSort } from '@shared/catalog'
-import {
-  type EntryId,
-  formTypeSchema,
-  posSchema,
-  type RelationDomain,
-  type SenseId,
-  senseIdSchema,
-  type TopicId,
-} from '@shared/facts'
+import { type EntryId, formTypeSchema, posSchema, type RelationDomain, type SenseId, type TopicId } from '@shared/facts'
 import { and, asc, count, eq, exists, gte, inArray, lt, ne, type SQL, sql } from 'drizzle-orm'
 import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
@@ -45,7 +37,6 @@ const senseCursor = z.object({ lemma: z.string(), id: z.string() })
 const rankedSenseCursor = z.object({ order: z.number().int(), lemma: z.string(), id: z.string() })
 const searchCursor = z.object({ tier: z.number().int(), order: z.number().int(), lemma: z.string() })
 const memberCursor = z.object({ depth: z.number().int(), lemma: z.string(), id: z.string() })
-const senseIdsSchema = z.array(senseIdSchema)
 
 /**
  * How deep the members walk goes. The everyday taxonomy is a few levels deep and a domain one under
@@ -249,39 +240,28 @@ export function searchStatement(query: SearchQuery, { limit, cursor }: PageReque
 }
 
 /**
- * The page query of the members reads: a recursive walk down public_hypernyms from the root senses,
- * everyday links and those of the domain asked for, each member at its nearest depth with every
- * root it descends from. Exported so a test can pin it.
+ * The page query of `GET /v1/senses/{id}/members`: a recursive walk down public_hypernyms from the
+ * category, everyday links and those of the domain asked for, each member at its nearest depth.
+ * Exported so a test can pin it.
  */
-export function memberStatement(
-  roots: readonly SenseId[],
-  domain: RelationDomain | null,
-  { limit, cursor }: PageRequest,
-) {
+export function memberStatement(id: SenseId, domain: RelationDomain | null, { limit, cursor }: PageRequest) {
   const last = cursor ? decodeCursor(cursor, memberCursor) : undefined
-  const rootList = sql.join(
-    roots.map((root) => sql`${root}`),
-    sql`, `,
-  )
   return sql`
-    WITH RECURSIVE walk(root, sense_id, depth) AS (
-      SELECT broader_sense_id, sense_id, 1 FROM public_hypernyms AS h
-        WHERE h.broader_sense_id IN (${rootList}) AND (h.domain IS NULL OR h.domain = ${domain})
+    WITH RECURSIVE walk(sense_id, depth) AS (
+      SELECT sense_id, 1 FROM public_hypernyms AS h
+        WHERE h.broader_sense_id = ${id} AND (h.domain IS NULL OR h.domain = ${domain})
       UNION
-      SELECT walk.root, h.sense_id, walk.depth + 1 FROM public_hypernyms AS h JOIN walk ON h.broader_sense_id = walk.sense_id
+      SELECT h.sense_id, walk.depth + 1 FROM public_hypernyms AS h JOIN walk ON h.broader_sense_id = walk.sense_id
         WHERE walk.depth < ${MEMBER_DEPTH} AND (h.domain IS NULL OR h.domain = ${domain})
     ),
-    nearest(sense_id, depth, via) AS (
-      SELECT sense_id, min(depth), json_group_array(DISTINCT root) FROM walk
-        WHERE sense_id NOT IN (${rootList}) GROUP BY sense_id
-    ),
+    nearest(sense_id, depth) AS (SELECT sense_id, min(depth) FROM walk WHERE sense_id <> ${id} GROUP BY sense_id),
     members AS (
-      SELECT nearest.sense_id AS id, nearest.depth AS depth, nearest.via AS via,
+      SELECT nearest.sense_id AS id, nearest.depth AS depth,
         (SELECT lemma FROM public_hypernyms WHERE sense_id = nearest.sense_id LIMIT 1) AS lemma,
         (SELECT summary FROM public_hypernyms WHERE sense_id = nearest.sense_id LIMIT 1) AS summary
       FROM nearest
     )
-    SELECT id, depth, via, lemma, summary FROM members
+    SELECT id, depth, lemma, summary FROM members
     ${last ? sql`WHERE (depth, lemma, id) > (${last.depth}, ${last.lemma}, ${last.id})` : sql``}
     ORDER BY depth, lemma, id
     LIMIT ${limit + 1}
@@ -404,18 +384,14 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       )
     },
 
-    async listMembers(roots, domain, request) {
-      const rows = await db.all<{ id: string; depth: number; via: string; lemma: string; summary: string }>(
-        memberStatement(roots, domain, request),
+    async listMembers(id, domain, request) {
+      const rows = await db.all<{ id: string; depth: number; lemma: string; summary: string }>(
+        memberStatement(id, domain, request),
       )
       return page(
         rows,
         request.limit,
-        (row) => ({
-          summary: readStored<StoredSenseSummary>(row.summary),
-          depth: row.depth,
-          via: senseIdsSchema.parse(JSON.parse(row.via)),
-        }),
+        (row) => ({ summary: readStored<StoredSenseSummary>(row.summary), depth: row.depth }),
         (row) => ({ depth: row.depth, lemma: row.lemma, id: row.id }),
       )
     },

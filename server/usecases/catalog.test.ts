@@ -13,7 +13,6 @@ import {
   getPublicSense,
   getStats,
   importCoreEntries,
-  listEntryMembers,
   listEntrySummaries,
   listPublicEntries,
   listSenseMembers,
@@ -314,71 +313,6 @@ describe('public reads', () => {
     const all = await listSenseMembers(world.deps, animal, 'biology', { limit: 10 }, zh)
     expect(all.items.map((item) => item.lemma)).toEqual(['bird', 'raptor', 'eagle'])
     await expect(listSenseMembers(world.deps, 'missing' as SenseId, null, { limit: 10 }, zh)).rejects.toMatchObject({
-      code: 'not_found',
-    })
-  })
-
-  it('lists the members of every common sense of an entry, each once with the senses it came through [spec: public-view/entry-members]', async () => {
-    const world = fakeWorld()
-    const sense = async (entryId: EntryId, gloss: string, pos: 'noun' | 'verb' = 'noun') =>
-      (await createSense(world.deps, agentA, { entry_id: entryId, pos, gloss })).sense.id
-    const noun = async (lemma: string) => {
-      const { entry } = await createEntry(world.deps, agentA, { lemma })
-      return sense(entry.id, `A ${lemma}.`)
-    }
-    const { entry: animal } = await createEntry(world.deps, agentA, { lemma: 'animal' })
-    const creature = await sense(animal.id, 'A creature other than a human.')
-    const living = await sense(animal.id, 'A living creature that feeds.')
-    const brute = await sense(animal.id, 'To treat like a beast.', 'verb')
-    const rare = await sense(animal.id, 'A specialist sense.')
-    const [bird, cat, dog, eagle, mammal, tame] = [
-      await noun('bird'),
-      await noun('cat'),
-      await noun('dog'),
-      await noun('eagle'),
-      await noun('mammal'),
-      await noun('tame'),
-    ]
-    const relate = (from: SenseId, to: SenseId, domain?: 'biology') =>
-      submitFact(world.deps, agentA, {
-        kind: 'relation',
-        subject_id: from,
-        payload: { type: 'hypernym', target_sense_id: to, ...(domain ? { domain } : {}) },
-      })
-    await submitFact(world.deps, agentA, {
-      kind: 'sense_list',
-      subject_id: animal.id,
-      payload: { common: [creature, living, brute], extra: [rare] },
-    })
-    await relate(bird, creature)
-    await relate(dog, creature)
-    await relate(dog, living)
-    await relate(cat, living)
-    await relate(eagle, bird)
-    await relate(tame, brute)
-    await relate(mammal, rare, 'biology')
-    await reviewAll(world)
-
-    const members = (pos: 'noun' | 'verb' | null, cursor?: string) =>
-      listEntryMembers(world.deps, 'animal', pos, 'biology', { limit: 3, cursor }, zh)
-    const first = await members(null)
-    expect(first.items.map((item) => [item.lemma, item.depth, item.via])).toEqual([
-      ['bird', 1, [creature]],
-      ['cat', 1, [living]],
-      ['dog', 1, [creature, living]],
-    ])
-    expect(first.items[0]).toMatchObject({ sense_id: bird, gloss: 'A bird.' })
-    const rest = await members(null, first.nextCursor ?? undefined)
-    expect([rest.items.map((item) => [item.lemma, item.depth, item.via]), rest.nextCursor]).toEqual([
-      [
-        ['tame', 1, [brute]],
-        ['eagle', 2, [creature]],
-      ],
-      null,
-    ])
-    expect((await members('verb')).items.map((item) => item.lemma)).toEqual(['tame'])
-    expect((await listEntryMembers(world.deps, 'animal', 'adjective', null, { limit: 10 }, zh)).items).toEqual([])
-    await expect(listEntryMembers(world.deps, 'Animals', null, null, { limit: 10 }, zh)).rejects.toMatchObject({
       code: 'not_found',
     })
   })

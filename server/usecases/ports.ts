@@ -216,14 +216,10 @@ export interface FormRow {
   pos: Pos | null
 }
 
-/**
- * A member of a category as the view stores it: its sense summary, how far below the nearest root
- * it is, and every root of the walk it descends from.
- */
+/** A member of a category as the view stores it: its sense summary and how far below the category it is. */
 export interface StoredMember {
   summary: StoredSenseSummary
   depth: number
-  via: SenseId[]
 }
 
 /** Which public entries a list shows. */
@@ -275,11 +271,10 @@ export interface PublicViewRepo {
    */
   search(query: SearchQuery, page: PageRequest): Promise<Page<SearchRow>>
   /**
-   * The public senses a broader-term walk from these root senses reaches through everyday links,
-   * and the links of `domain` when one is given, each once at its nearest depth, by depth, lemma,
-   * and id. A root is never its own member.
+   * The public senses a broader-term walk from this sense reaches through everyday links, and the
+   * links of `domain` when one is given, each once at its nearest depth, by depth, lemma, and id.
    */
-  listMembers(roots: readonly SenseId[], domain: RelationDomain | null, page: PageRequest): Promise<Page<StoredMember>>
+  listMembers(id: SenseId, domain: RelationDomain | null, page: PageRequest): Promise<Page<StoredMember>>
   /** Stale views of the entries that are, or own as a sense, these nodes, or link to them by a relation. */
   listStale(nodeIds: string[]): Promise<StaleView[]>
   /** Up to `limit` stale views of any entry. */

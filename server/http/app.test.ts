@@ -46,7 +46,6 @@ describe('http wiring', () => {
     expect(Object.keys(document.paths).sort()).toEqual([
       '/entries',
       '/entries/{lemma}',
-      '/entries/{lemma}/members',
       '/feedback',
       '/forms/{form}',
       '/search',
