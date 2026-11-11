@@ -454,6 +454,21 @@ export const senseNodeSchema = z
   })
   .meta({ id: 'SenseNode' })
 
+const countSchema = z.number().int().nonnegative()
+
+export const slotCountsSchema = z
+  .object({
+    total: countSchema.meta({ description: 'The slots the gap rules count for the entry.' }),
+    published: countSchema.meta({ description: 'Slots published facts or closures fill.' }),
+    pending: countSchema.meta({ description: 'Slots only pending facts fill.' }),
+  })
+  .meta({ id: 'SlotCounts' })
+export type SlotCounts = z.infer<typeof slotCountsSchema>
+
+export const openWorkCountsSchema = z
+  .object({ total: countSchema, in_progress: countSchema, waiting_on_review: countSchema, stuck: countSchema })
+  .meta({ id: 'OpenWorkCounts', description: "The entry's open work items by where they stand." })
+
 export const managedEntrySchema = z
   .object({
     entry: entryNodeSchema,
@@ -465,6 +480,7 @@ export const managedEntrySchema = z
     quality: z.number().min(0).max(1).meta({
       description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',
     }),
+    slots: slotCountsSchema,
     senses: z.array(senseNodeSchema),
     facts: z
       .array(factSchema)
@@ -475,8 +491,6 @@ export const managedEntrySchema = z
 export const managedEntryDetailSchema = managedEntrySchema
   .extend(lemmaReferenceSchema.shape)
   .meta({ id: 'ManagedEntryDetail' })
-
-const countSchema = z.number().int().nonnegative()
 
 export const entrySummarySchema = z
   .object({
@@ -491,6 +505,11 @@ export const entrySummarySchema = z
       .meta({ description: 'Facts about the entry and its senses, by status.' }),
     last_worked_at: z.iso.datetime().nullable().meta({ description: 'When an agent last completed work on it.' }),
     created_at: z.iso.datetime(),
+    level: cefrLevelSchema.nullable().meta({ description: "The lemma's lowest CEFR level; null without one." }),
+    completeness: z.number().min(0).max(1).meta({ description: 'As of the last rescore; see ManagedEntry.' }),
+    quality: z.number().min(0).max(1).meta({ description: 'As of the last rescore; see ManagedEntry.' }),
+    slots: slotCountsSchema,
+    open_work: openWorkCountsSchema,
   })
   .meta({ id: 'EntrySummary' })
 export type EntrySummary = z.infer<typeof entrySummarySchema>
