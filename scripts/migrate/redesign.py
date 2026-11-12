@@ -14,8 +14,8 @@ It rewrites the store in one transaction:
   5. translations: sense equivalents get `of: sense` and a zh slot; an example's zh becomes its own
      published translation fact;
   6. published gap closures become passes; gap_closure, entry, sense and sense_list facts go;
-  7. work items, leases and the public view are cleared and every entry marked stale, so the
-     rescore and the view rebuild recompute them.
+  7. work items, leases, the work history and the public view are cleared and every entry marked
+     stale, so the rescore and the view rebuild recompute them.
 The report dir gets counts (report.json) and the lemmas that relations lost (next-batch-candidates.csv).
 """
 
@@ -341,7 +341,10 @@ def main(path, report_dir, dry_run):
         for chunk in range(0, len(keep_heads), 500):
             part = keep_heads[chunk : chunk + 500]
             db.execute(f"update worklist set live = 1, batch = 1 where entry_id in ({','.join('?' * len(part))})", part)
-        db.execute("update work_item_log set closed_at = ? where closed_at is null", (NOW,))
+        # The old work history names removed types (sense_list, example_translations, weak_fact) and
+        # gaps in the old shapes, which the new contracts do not parse; the new system starts its own.
+        db.execute('delete from work_attempts')
+        db.execute('delete from work_item_log')
         db.execute('delete from work_items')
         db.execute('delete from work_leases')
         for table in ('public_entries', 'public_meanings', 'public_forms', 'public_sense_topics', 'public_search', 'public_hypernyms', 'public_phrase_words', 'public_morphemes'):
