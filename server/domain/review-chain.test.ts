@@ -27,10 +27,15 @@ const llm: Opinion = {
   detail: {},
 }
 
-const request = (combine: DecisionRequest['combine'], passAt: DecisionRequest['passAt']): DecisionRequest => ({
-  models: ['jev', 'luna'],
+const request = (combine: DecisionRequest['combine'], jevAt: number, lunaAt?: number): DecisionRequest => ({
+  gates:
+    lunaAt === undefined
+      ? [{ model: 'jev', passAt: jevAt }]
+      : [
+          { model: 'jev', passAt: jevAt },
+          { model: 'luna', passAt: lunaAt },
+        ],
   combine,
-  passAt,
   state: {},
   questions: { claim: 'Is it?' },
 })
@@ -69,28 +74,28 @@ describe('decision opinions', () => {
 
 describe('decision settling', () => {
   it('settles min only when every model reaches its threshold [spec: facts/second-opinion]', () => {
-    const min = request('min', { jev: 0.8, luna: 0.9 })
+    const min = request('min', 0.8, 0.9)
     expect(decisionSettles(min, scores(0.8, 0.9))).toBe(true)
     expect(decisionSettles(min, scores(0.99, 0.89))).toBe(false)
   })
 
   it('settles any when one model reaches its threshold [spec: facts/second-opinion]', () => {
-    const any = request('any', { jev: 0.8, luna: 0.8 })
+    const any = request('any', 0.8, 0.8)
     expect(decisionSettles(any, scores(0.1, 0.8))).toBe(true)
     expect(decisionSettles(any, scores(0.79, 0.79))).toBe(false)
   })
 
   it('settles mean when the mean score reaches the mean threshold [spec: facts/second-opinion]', () => {
-    const mean = request('mean', { jev: 0.8, luna: 0.8 })
+    const mean = request('mean', 0.8, 0.8)
     expect(decisionSettles(mean, scores(0.7, 0.9))).toBe(true)
     expect(decisionSettles(mean, scores(0.7, 0.89))).toBe(false)
   })
 
-  it('never settles for a model without a threshold or a score', () => {
-    expect(decisionSettles(request('min', { jev: 0.8 }), scores(0.99, 0.99))).toBe(false)
-    expect(decisionSettles(request('any', { jev: 0.8, luna: 0.8 }), new Map())).toBe(false)
-    expect(decisionSettles(request('mean', { jev: 0.4, luna: 0.4 }), new Map([['jev', 0.8]]))).toBe(true)
-    expect(decisionSettles(request('mean', { jev: 0.4, luna: 0.4 }), new Map([['jev', 0.79]]))).toBe(false)
+  it('counts a model without a score as zero', () => {
+    expect(decisionSettles(request('min', 0.8), scores(0.8, 0))).toBe(true)
+    expect(decisionSettles(request('any', 0.8, 0.8), new Map())).toBe(false)
+    expect(decisionSettles(request('mean', 0.4, 0.4), new Map([['jev', 0.8]]))).toBe(true)
+    expect(decisionSettles(request('mean', 0.4, 0.4), new Map([['jev', 0.79]]))).toBe(false)
   })
 })
 
