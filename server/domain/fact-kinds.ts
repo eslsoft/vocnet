@@ -1197,9 +1197,11 @@ function admitSyllables({ syllables }: FactPayloads['syllables'], { lemma }: Adm
  * a break.
  */
 const SYLLABLE_RULE = [
-  'Syllables follow the careful (citation) pronunciation: one part per vowel sound, including a vowel sound fast speech drops (choc·o·late, com·for·ta·ble) and one spelled by a single letter (e·na·ble, war·ri·or, veg·e·ta·ble).',
-  'A single consonant sound between two vowel sounds starts the next part (ta·ble, e·na·ble, com·for·ta·ble) unless the vowel before it is short and stressed, which keeps it (fam·i·ly, stud·y, cas·u·al); a doubled consonant splits (lit·tle, dif·fer·ent); inside a group of consonants any break a natural pronunciation allows will do.',
-  "Word parts and a dictionary's print hyphenation do not decide a break: com·fort·a·ble and en·able are wrong here, since the word's parts are recorded in its morphology.",
+  'Syllables follow the pronunciation: one part per vowel sound of a careful pronunciation, so a vowel sound fast speech drops still counts (choc·o·late) and a single vowel letter can be a part (e·na·ble, war·ri·or, veg·e·ta·ble). A diphthong, or a vowel with the r after it, is one vowel sound (wire, our·selves).',
+  'Any standard careful pronunciation decides the count: British or American, of any recorded sense or part of speech (des·ert or de·sert, drawer or draw·er, bril·liant or bril·li·ant).',
+  'A consonant between two vowel sounds preferably starts the next part (ta·ble, com·for·ta·ble), but where it goes never fails a division as long as each part can be said on its own and a letter group spelling one sound (sh, ch, th, ng, ck, gh, qu) stays whole: fright·en·ing and fright·e·ning both pass.',
+  'An abbreviation or initialism (Mr, ID, a.m.) is one part.',
+  "Word parts and a dictionary's print hyphenation do not decide the count: en·able (two parts for three vowel sounds) is wrong; the word's parts are recorded in its morphology.",
 ].join(' ')
 
 function syllablesRubric(entry: SubjectViews['entry'], syllables: readonly string[]): string {
@@ -1207,8 +1209,8 @@ function syllablesRubric(entry: SubjectViews['entry'], syllables: readonly strin
     `Does ${quote(syllables.join('·'))} divide the written word ${quote(entry.lemma)} into the syllables of its pronunciation?`,
     SYLLABLE_RULE,
     'A one-syllable word is one part.',
-    'pass: each part is one vowel sound of the careful pronunciation, with its breaks where the rule puts them.',
-    'fail: a part holds two vowel sounds or none, a vowel sound of the careful pronunciation is joined to its neighbour, or a break follows word parts or print hyphenation against the pronunciation.',
+    'pass: each part is one vowel sound of some standard careful pronunciation of the word.',
+    'fail: only when the parts cannot match the vowel sounds of any standard careful pronunciation (a part holds two vowel sounds or none, or two parts split one), or a part cannot be said on its own, or a letter group spelling one sound is split.',
     listSenses('Senses recorded for it so far', entry.senses),
   ].join('\n')
 }
@@ -1279,7 +1281,7 @@ const SYLLABLES_PASS_AT = 0.9
 
 function syllablesQuestion(entry: SubjectViews['entry'], syllables: readonly string[]): string {
   const division = syllables.join('·')
-  return `Does ${quote(division)} divide the written word ${quote(entry.lemma)} into the syllables of its pronunciation? ${SYLLABLE_RULE} Answer no if a part holds two vowel sounds or none, a vowel sound of the careful pronunciation is joined to its neighbour, or a break follows word parts or print hyphenation against the pronunciation. ${DATA}`
+  return `Does ${quote(division)} divide the written word ${quote(entry.lemma)} into the syllables of its pronunciation? ${SYLLABLE_RULE} Answer no only if the parts cannot match the vowel sounds of any standard careful pronunciation, a part cannot be said on its own, or a letter group spelling one sound is split. ${DATA}`
 }
 
 /** A phrase belongs to its headword only when a learner's dictionary would print it there. */

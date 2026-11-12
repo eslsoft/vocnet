@@ -274,11 +274,15 @@ split the Chinese of every example into its own translation fact.
 - **Syllables** divide the written word by its pronunciation, to help a
   learner say it and spell it by sound: one part per vowel sound of the careful
   (citation) pronunciation, a dropped vowel and a single-letter one included
-  (`choc·o·late`, `e·na·ble`, `war·ri·or`). A single consonant between two vowel
-  sounds starts the next part (`ta·ble`, `com·for·ta·ble`) unless a short
-  stressed vowel keeps it (`fam·i·ly`, `stud·y`); a doubled consonant splits
-  (`lit·tle`). Word parts and print hyphenation never decide a break: the word's
-  meaningful parts are its morphology (`comfort` + `-able`). Joined, the syllables spell the lemma exactly, and none has a space; a phrase
+  (`choc·o·late`, `e·na·ble`, `war·ri·or`); a diphthong or a vowel with its r is
+  one (`wire`). Any standard careful pronunciation decides the count, British or
+  American, of any sense (`des·ert` or `de·sert`). A consonant between two vowel
+  sounds preferably starts the next part (`com·for·ta·ble`), but its place never
+  fails a division as long as each part can be said alone and a letter group
+  spelling one sound (`sh`, `th`, `gh`) stays whole. An abbreviation or
+  initialism is one part. Word parts and print hyphenation never decide the
+  count (`en·able` is wrong): the word's meaningful parts are its morphology.
+  Joined, the syllables spell the lemma exactly, and none has a space; a phrase
   has no syllables (its words are their own entries), so a syllables fact about
   a multiword entry, or one that does not spell the lemma, is `422
   invalid_reference`. The content key is the syllables joined with `·`. luna

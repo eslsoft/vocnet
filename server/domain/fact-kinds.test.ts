@@ -1305,7 +1305,7 @@ describe('forms, syllables, and relation ends', () => {
       'Does "a·bil·i·ty" divide the written word "ability" into the syllables of its pronunciation?',
     )
     expect(rubric(plan)).toContain('one part per vowel sound')
-    expect(rubric(plan)).toContain('com·fort·a·ble and en·able are wrong here')
+    expect(rubric(plan)).toContain('en·able (two parts for three vowel sounds) is wrong')
   })
 
   it.each([
