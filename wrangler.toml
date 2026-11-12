@@ -10,7 +10,7 @@ run_worker_first = true
 
 [vars]
 JEV_MODEL = "jev-latest"
-# Calls each gateway model gets at once across all reviews; the gateway rate-limits above these.
+# Calls each gateway model gets at once within one review batch; the gateway rate-limits above these.
 JEV_CONCURRENCY = "10"
 REVIEW_LLM_CONCURRENCY = "5"
 DECISIONS_BASE_URL = "https://api.openai.com"

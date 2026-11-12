@@ -13,7 +13,7 @@ import { createTicketRepo } from '@server/adapters/repos/tickets'
 import { createTopicRepo } from '@server/adapters/repos/topics'
 import { createWorkRepo } from '@server/adapters/repos/work'
 import { createReviewQueue } from '@server/adapters/review-queue'
-import { sharedConcurrencyLimit } from '@server/adapters/reviewers/concurrency'
+import { createConcurrencyLimit } from '@server/adapters/reviewers/concurrency'
 import { createJevReviewer } from '@server/adapters/reviewers/jev'
 import { createLlmReviewer } from '@server/adapters/reviewers/llm'
 import { createLunaReviewer } from '@server/adapters/reviewers/luna'
@@ -29,9 +29,10 @@ export function createDeps(env: Env): Deps {
   const db = createDb(env)
   const review = getReviewConfig(env)
   const jev = createJevReviewer({ ...review.gateway, model: review.jevModel })
-  const jevLimit = sharedConcurrencyLimit('jev', review.concurrency.jev)
+  // Per request: a review batch is one request, and its reviews share these limits.
+  const jevLimit = createConcurrencyLimit(review.concurrency.jev)
   const llm = createLlmReviewer({ ...review.gateway, model: review.llmModel })
-  const llmLimit = sharedConcurrencyLimit('llm', review.concurrency.llm)
+  const llmLimit = createConcurrencyLimit(review.concurrency.llm)
   return {
     nodes: createNodeRepo(db),
     facts: createFactRepo(db),

@@ -86,7 +86,7 @@ export interface ReviewConfig {
   gateway: { baseUrl: string; apiKey: string }
   jevModel: string
   llmModel: string
-  /** The most calls each model on the gateway gets at once, across every request; its rate limits count them. */
+  /** The most calls each gateway model gets at once within one review batch; the gateway rate-limits them. */
   concurrency: { jev: number; llm: number }
   /** OpenAI's Decisions API, which the local gateway does not serve. */
   decisions: { baseUrl: string; apiKey: string; model: string }

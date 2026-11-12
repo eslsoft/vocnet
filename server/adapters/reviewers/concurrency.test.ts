@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createConcurrencyLimit, sharedConcurrencyLimit } from './concurrency'
+import { createConcurrencyLimit } from './concurrency'
 
 const deferred = () => {
   let resolve!: () => void
@@ -46,12 +46,5 @@ describe('createConcurrencyLimit', () => {
     const limit = createConcurrencyLimit(1)
     await expect(limit(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom')
     await expect(limit(async () => 'next')).resolves.toBe('next')
-  })
-})
-
-describe('sharedConcurrencyLimit', () => {
-  it('gives every caller of a name the same limit', () => {
-    expect(sharedConcurrencyLimit('test-a', 1)).toBe(sharedConcurrencyLimit('test-a', 3))
-    expect(sharedConcurrencyLimit('test-a', 1)).not.toBe(sharedConcurrencyLimit('test-b', 1))
   })
 })
