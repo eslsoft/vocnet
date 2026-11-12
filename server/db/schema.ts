@@ -52,13 +52,15 @@ export const facts = sqliteTable(
     contentKey: text('content_key').notNull(),
     payload: text('payload').notNull(),
     status: text('status').notNull(),
-    /** The kind's cardinality is `one`, copied from the registry so the slot indexes can see it. */
-    exclusive: integer('exclusive', { mode: 'boolean' }).notNull(),
+    /**
+     * The slot the fact holds on its subject (`slotOf` in the registry): one live fact per kind,
+     * subject, and slot. The empty string for a kind with one live fact per subject, the language
+     * for a translation, null for a kind without the limit.
+     */
+    slot: text('slot'),
     supersedesId: text('supersedes_id'),
     author: text('author').notNull(),
     review: text('review'),
-    /** When a correction of the gloss this fact was judged against published; null when settled. */
-    revalidateSince: text('revalidate_since'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
@@ -68,14 +70,14 @@ export const facts = sqliteTable(
     uniqueIndex('facts_live_content_idx')
       .on(table.kind, table.contentKey, table.subjectId)
       .where(sql`status in ('pending', 'published')`),
-    // An exclusive slot has one holder (the published fact, or a pending one that corrects
-    // nothing) and at most one pending fact, so a pending correction may sit beside its original.
-    uniqueIndex('facts_exclusive_holder_idx')
-      .on(table.kind, table.subjectId)
-      .where(sql`exclusive = 1 and (status = 'published' or (status = 'pending' and supersedes_id is null))`),
-    uniqueIndex('facts_exclusive_pending_idx')
-      .on(table.kind, table.subjectId)
-      .where(sql`exclusive = 1 and status = 'pending'`),
+    // A slot has one holder (the published fact, or a pending one that corrects nothing) and at
+    // most one pending fact, so a pending correction may sit beside its original.
+    uniqueIndex('facts_slot_holder_idx')
+      .on(table.kind, table.subjectId, table.slot)
+      .where(sql`slot is not null and (status = 'published' or (status = 'pending' and supersedes_id is null))`),
+    uniqueIndex('facts_slot_pending_idx')
+      .on(table.kind, table.subjectId, table.slot)
+      .where(sql`slot is not null and status = 'pending'`),
     // A fact has at most one live correction, so each live correction takes a distinct original's place.
     uniqueIndex('facts_live_correction_idx')
       .on(table.supersedesId)
@@ -84,20 +86,26 @@ export const facts = sqliteTable(
     index('facts_object_idx').on(table.objectId),
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),
     index('facts_status_updated_idx').on(table.status, table.updatedAt),
-    index('facts_revalidate_idx').on(table.revalidateSince).where(sql`revalidate_since is not null`),
+    // Resubmitting rejected content is refused by looking the rejection up.
+    index('facts_rejected_content_idx').on(table.kind, table.subjectId, table.contentKey).where(sql`status = 'rejected'`),
   ],
 )
 
-export const feedback = sqliteTable(
-  'feedback',
+/**
+ * One row per thing a curator handles by hand: a stuck work item, a reader's feedback, an audit
+ * pick, or a missing word. A target has at most one open ticket of each type, so raising it again
+ * finds the open one.
+ */
+export const tickets = sqliteTable(
+  'tickets',
   {
     id: text('id').primaryKey(),
+    type: text('type').notNull(),
     targetType: text('target_type').notNull(),
-    targetId: text('target_id').notNull(),
+    /** The entry, sense, or fact id, or the missing lemma. */
+    target: text('target').notNull(),
     message: text('message').notNull(),
     status: text('status').notNull(),
-    assignee: text('assignee'),
-    claimExpiresAt: text('claim_expires_at'),
     resolutionNote: text('resolution_note'),
     resolutionFactIds: text('resolution_fact_ids').notNull(),
     revision: integer('revision').notNull(),
@@ -105,14 +113,17 @@ export const feedback = sqliteTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
-    index('feedback_status_created_idx').on(table.status, table.createdAt, table.id),
-    index('feedback_target_idx').on(table.targetId, table.status),
+    uniqueIndex('tickets_open_target_idx').on(table.type, table.targetType, table.target).where(sql`status = 'open'`),
+    index('tickets_status_created_idx').on(table.status, table.createdAt, table.id),
+    index('tickets_target_idx').on(table.target, table.status),
   ],
 )
 
 /**
- * One row per entry, created with it. `live` mirrors whether the entry fact is pending or
- * published. `completeness` and `quality` are computed by `assessEntry` in server/domain/work.ts as
+ * One row per entry, created with it. `live` is whether the entry is admitted: an imported
+ * headword, or a phrase a published phrases list names. `batch` is the headword batch it belongs
+ * to (a phrase takes its headword's). `completeness` and `credibility` are computed by
+ * `assessEntry` in server/domain/work.ts as
  * of `scored_revision`, for stats and the console; the work itself is the entry's `work_items`.
  * Every write that can change the entry's work bumps `revision` in its own batch, and the use case
  * that made it rescores, which rewrites the scores and the items together. A stale row
@@ -128,8 +139,8 @@ export const worklist = sqliteTable(
       .references(() => entries.id),
     createdAt: text('created_at').notNull(),
     live: integer('live', { mode: 'boolean' }).notNull(),
-    /** Set when an entry is submitted as part of a seed list; never cleared. */
-    seed: integer('seed', { mode: 'boolean' }).notNull().default(false),
+    /** The headword batch the entry was imported in, or its headword's for a phrase; null while it is not live. */
+    batch: integer('batch'),
     /**
      * `frequencyKey` of the entry's lemma, so SQL reads its frequency under the key the domain
      * defines. Every insert sets it; it is nullable only because SQLite cannot add a NOT NULL
@@ -141,7 +152,7 @@ export const worklist = sqliteTable(
     /** The Zipf frequency of the entry's lemma; null when the frequency list has none. */
     zipf: real('zipf'),
     completeness: real('completeness').notNull().default(0),
-    quality: real('quality').notNull().default(1),
+    credibility: real('credibility').notNull().default(1),
     /** `slots` of the assessment as of `scored_revision`: counted, filled by published facts, filled only by pending ones. */
     slotsTotal: integer('slots_total').notNull().default(0),
     slotsPublished: integer('slots_published').notNull().default(0),
@@ -164,8 +175,8 @@ export const worklist = sqliteTable(
  * rescore of the entry writes them (`reconcileItems` in server/domain/work.ts): it upserts the open
  * ones by `(type, subject_id)` and deletes the rest. `rank` is the priority policy's stage times
  * the band count plus the learner band; `zipf_order` the entry's Zipf frequency, -1 without one.
- * An item is in the production queue while it does not await a review and has fewer than three
- * attempts; at three it is in the curators' queue.
+ * An item is in the production queue while it does not await a review and has fewer than two
+ * attempts (`MAX_PASSES`); at two it is a ticket.
  */
 export const workItems = sqliteTable(
   'work_items',
@@ -187,6 +198,8 @@ export const workItems = sqliteTable(
     attempts: integer('attempts').notNull().default(0),
     /** A completed pass worked the item while it awaited review; the settled gap decides the attempt. */
     worked: integer('worked', { mode: 'boolean' }).notNull().default(false),
+    /** That pass found no value for its optional slot (`found_none`). */
+    foundNone: integer('found_none', { mode: 'boolean' }).notNull().default(false),
     /** The gap when the item was last claimed, as JSON. */
     claimedGap: text('claimed_gap'),
     leaseId: text('lease_id'),
@@ -204,17 +217,48 @@ export const workItems = sqliteTable(
     // The production queue in claim order, across types and within one.
     index('work_items_queue_idx')
       .on(table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
-      .where(sql`awaiting = 0 and attempts < 3`),
+      .where(sql`awaiting = 0 and attempts < 2`),
     index('work_items_type_queue_idx')
       .on(table.type, table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
-      .where(sql`awaiting = 0 and attempts < 3`),
-    index('work_items_curation_idx')
-      .on(table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
-      .where(sql`attempts >= 3`),
+      .where(sql`awaiting = 0 and attempts < 2`),
     check(
       'work_items_lease_whole',
       sql`(${table.leaseId} is null) = (${table.leaseHolder} is null) and (${table.leaseId} is null) = (${table.leaseExpiresAt} is null)`,
     ),
+  ],
+)
+
+/**
+ * One row per optional slot a pass completed without finding a value (`found_none`): the slot
+ * counts as filled. `blocked_on` lists the lemmas that would fill it but were not live entries;
+ * importing one deletes the pass so the slot is worked again.
+ */
+export const workPasses = sqliteTable(
+  'work_passes',
+  {
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => entries.id),
+    type: text('type').notNull(),
+    subjectId: text('subject_id').notNull(),
+    note: text('note').notNull(),
+    holder: text('holder').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.type, table.subjectId] }), index('work_passes_entry_idx').on(table.entryId)],
+)
+
+/** One row per lemma a pass was blocked on, so importing the lemma reopens the slot. */
+export const workPassBlocks = sqliteTable(
+  'work_pass_blocks',
+  {
+    lemma: text('lemma').notNull(),
+    type: text('type').notNull(),
+    subjectId: text('subject_id').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.lemma, table.type, table.subjectId] }),
+    index('work_pass_blocks_slot_idx').on(table.type, table.subjectId),
   ],
 )
 
@@ -299,7 +343,7 @@ export const workAttempts = sqliteTable(
     index('work_attempts_item_idx').on(table.itemId, table.outcome),
     check(
       'work_attempts_outcome',
-      sql`${table.outcome} in ('waiting_on_review', 'closed', 'progressed', 'no_progress', 'stuck')`,
+      sql`${table.outcome} in ('waiting_on_review', 'closed', 'passed', 'progressed', 'no_progress', 'stuck')`,
     ),
   ],
 )
@@ -532,6 +576,6 @@ export const lemmaCefr = sqliteTable(
 )
 
 export type FactRow = typeof facts.$inferSelect
-export type FeedbackRow = typeof feedback.$inferSelect
+export type TicketRow = typeof tickets.$inferSelect
 export type AgentRow = typeof agents.$inferSelect
 export type TopicRow = typeof topics.$inferSelect

@@ -33,7 +33,10 @@ export interface EntryFacts {
   facts: Fact[]
   /** Relation facts whose object is one of the entry's senses. */
   incoming: Fact[]
-  /** The optional slots a pass completed, keyed `type|subject` (`passKey`). */
+  /**
+   * The slots a pass completed without a value, keyed `type|subject` (`passKey`): an optional slot
+   * a worker found nothing for, or any slot a curator settled by hand.
+   */
   passes: ReadonlySet<string>
   /**
    * Senses at the other end of the entry's relations: the inventories of their entries, and the
@@ -284,7 +287,7 @@ const translationRule = (language: ServedLanguage): EntryRule => ({
   filled: (state) => translationTargets(state).filter(translated(state, language)).length,
 })
 
-/** An optional slot a pass completed counts as filled, whether or not the pass found a value. */
+/** A slot a pass completed without a value counts as filled. */
 const passed = (state: EntryState, type: WorkType, subjectId: string) => state.passes.has(passKey(type, subjectId))
 
 // A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
@@ -313,14 +316,13 @@ const entryGapRules: readonly EntryRule[] = [
   {
     gap: () => ({ type: 'phrases' }),
     need: (state) => (needsPhrases(state) ? 1 : 0),
-    filled: (state) =>
-      counting('phrases')(state) > 0 || passed(state, 'phrases', state.entryId) ? 1 : 0,
+    filled: (state) => (counting('phrases')(state) > 0 ? 1 : 0),
   },
   // One live derivative linked by its morphology fills it; the producer adds the common ones.
   {
     gap: () => ({ type: 'family' }),
     need: (state) => (needsFamily(state) ? 1 : 0),
-    filled: (state) => (state.family.length > 0 || passed(state, 'family', state.entryId) ? 1 : 0),
+    filled: (state) => (state.family.length > 0 ? 1 : 0),
   },
   // Word formation analyses one word; a phrase's parts are its own entries.
   {
@@ -591,14 +593,16 @@ function openGaps(
   const rules = inventory === null ? entryGapRules.slice(0, 1) : entryGapRules
   const entry = rules.flatMap((rule) => {
     const missing = rule.need(state) - rule.filled(state)
-    return missing > 0 ? [{ gap: rule.gap(state), missing }] : []
+    if (missing <= 0) return []
+    const gap = rule.gap(state)
+    return passed(state, gap.type, snapshot.entry.id) ? [] : [{ gap, missing }]
   })
   const entrySlots = rules.reduce((need, rule) => need + rule.need(state), 0)
   const perSense = counted.flatMap((sense) =>
     rulesFor(sense, state).flatMap((rule) => {
       const filling = live.filter((fact) => rule.fills(fact, sense.id, state))
       const gap = rule.gap(sense.id, filling, state)
-      const done = isOptionalGap(gap.type) && passed(state, gap.type, sense.id)
+      const done = passed(state, gap.type, sense.id)
       const missing = done ? 0 : rule.need(sense, state) - filling.length
       return missing > 0 ? [{ gap, missing }] : []
     }),

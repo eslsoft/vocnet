@@ -421,6 +421,20 @@
       "when": 1794374557516,
       "tag": "20261111052237_work_history_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1794457160477,
+      "tag": "20261112041920_redesign",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1794457213180,
+      "tag": "20261112042013_redesign_slots",
+      "breakpoints": true
     }
   ]
 }
