@@ -9,7 +9,7 @@ Feature: Public view
   Scenario: The view derives from the public document
     Given an entry's public projection and its reference data
     When its view rows are built
-    Then the document is the public entry with its summary and frequency order, nothing for an entry that is not public, a row per meaning with its level, a form row per published form, shown or not, by its spelling with the part of speech it is shown under, a row per topic tag of a public sense with its summary and level order, a row per word of a multiword lemma, a row per word formation part, and a search row per distinct gloss, translation, and example
+    Then the document is the public entry with its summary and frequency order, nothing for an entry that is not public, a row per meaning with its level, a form row per published form, shown or not, by its spelling with the part of speech it is shown under, a row per topic tag of a public sense with its summary and level order, a row per word formation part, and a search row per distinct gloss, translation, and example
 
   @public-view/refresh @usecase
   Scenario: Writes and reads keep the view current
@@ -19,14 +19,14 @@ Feature: Public view
 
   @public-view/publish @api
   Scenario: Publishing and retracting move the entry in and out of every public read
-    Given an entry with a form and a topic tag under review
-    When its facts are published and later its entry fact is retracted
-    Then the entry, sense, form, list, and topic reads show it once published, and all of them drop it once retracted
+    Given a phrase entry a published phrases list admitted, with its inventory, a form, and a topic tag under review
+    When its facts are published, and later a curator's correction of the headword's list drops the phrase
+    Then the entry, sense, form, list, and topic reads show it once published, and all of them drop it once it is no longer live
 
   @public-view/linked @api
   Scenario: A change at the other end of a relation updates the linked entry
     Given two published entries linked by a relation
-    When the gloss of the other sense is corrected and the other entry is later retracted
+    When a curator corrects the other entry's inventory to reword the linked sense's gloss, and later to drop that sense
     Then the linked entry's document shows the corrected gloss and then drops the relation
 
   @public-view/reference @api
@@ -49,7 +49,7 @@ Feature: Public view
 
   @public-view/parity @api
   Scenario: The view serves exactly what the live projection builds
-    Given entries with senses, forms, relations, topics, and reference data
+    Given entries with inventories, forms, relations, translations, topics, phrases, and reference data
     When the view serves them
     Then each entry and sense body, in every variant, equals the live projection of the same facts
 
@@ -66,10 +66,10 @@ Feature: Public view
     Then they find nothing of the entry before the drain and find it after
 
   @public-view/phrases @api
-  Scenario: A multiword entry appears among the phrases of each of its words
-    Given published entries "give" and "up"
-    When a multiword entry "give up" is published, and later retracted
-    Then reading "give" or "up" lists "give up" as a phrase summary and then no longer does, with a new ETag each time, though nothing rebuilt their views
+  Scenario: A headword lists the public phrases its phrases list names
+    Given a public headword "give" whose published phrases list names "give up" and "give in"
+    When "give up" becomes public, and later stops being live
+    Then reading "give" lists "give up" as a phrase summary in the list's order and leaves out "give in" until it is public, and then no longer lists "give up", with a new ETag each time
 
   @public-view/family @api
   Scenario: Entries sharing a base list each other as word family
@@ -109,7 +109,7 @@ Feature: Public view
 
   @public-view/topic-common-senses @api
   Scenario: A topic lists an entry only for a common sense
-    Given an entry whose rare sense, in the extra of its sense list, is tagged with a topic
+    Given an entry whose rare sense, ranked extra in its inventory, is tagged with a topic
     When the entry list is read by that topic, and again once a common sense is tagged
     Then the entry is listed only after the common sense is tagged, while the topic's senses list the rare sense itself
 

@@ -1,17 +1,14 @@
-import { createEntryResultSchema, createSenseResultSchema, publicEntrySchema } from '@shared/catalog'
+import { publicEntrySchema } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
+import { call, deliverPendingReviews, headword, issueAgentKey, stubReviewers } from './helpers'
 
 const post = async (token: string, path: string, json: unknown) => call(path, { method: 'POST', token, json })
 
-async function nounEntry(token: string, lemma: string, gloss: string) {
-  const { entry } = createEntryResultSchema.parse((await post(token, '/manage/v1/entries', { lemma })).body)
-  const { sense } = createSenseResultSchema.parse(
-    (await post(token, '/manage/v1/senses', { entry_id: entry.id, pos: 'noun', gloss })).body,
-  )
-  return { entry, sense }
+async function nounEntry(lemma: string, gloss: string) {
+  const { entryId, senses } = await headword(lemma, [{ pos: 'noun', gloss }])
+  return { entry: { id: entryId }, sense: { id: senses[0] as string } }
 }
 
 describe('plural-only nouns and shortened words', () => {
@@ -19,8 +16,8 @@ describe('plural-only nouns and shortened words', () => {
 
   it('publishes a plural-only noun without countability and a shortened word with its source [spec: facts/plural-only-shortened-api]', async () => {
     const token = await issueAgentKey()
-    const jeans = await nounEntry(token, 'jeans', 'Trousers made of denim.')
-    const mrs = await nounEntry(token, 'Mrs', 'A title used before the name of a married woman.')
+    const jeans = await nounEntry('jeans', 'Trousers made of denim.')
+    const mrs = await nounEntry('Mrs', 'A title used before the name of a married woman.')
     const submit = (json: unknown) => post(token, '/manage/v1/facts', json)
 
     const refused = await submit({

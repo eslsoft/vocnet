@@ -1,7 +1,8 @@
 Feature: Facts and review
-  Every claim is one fact. Each fact is reviewed and published on its own, by Jev
-  when it is a checkable proposition and by a general LLM otherwise. When Jev does
-  not pass a proposition, the LLM gives a second opinion that decides.
+  Every claim is one fact. Each fact is reviewed once and published on its own: the decision
+  models a kind names (Jev, luna) settle a pass when their scores reach its thresholds, and the
+  LLM decides everything they do not settle. A sense inventory, a phrases list, and one
+  translation per translated item and language are facts like any other.
 
   @facts/review-flow @api
   Scenario: A submitted fact is reviewed through the queue and published
@@ -12,166 +13,71 @@ Feature: Facts and review
   @facts/review-publish @usecase
   Scenario: A passing review publishes the fact and records what was judged
     Given a pending fact
-    When Jev passes it
+    When its decision model passes it
     Then the fact is published with the reviewer, model, verdict, confidence, and context
 
   @facts/publish-with-flaws @domain
   Scenario: Uncertain reviews publish; only failures reject
     Given a review verdict
     When the decision is made
-    Then pass and uncertain publish the fact and fail rejects it
+    Then pass and uncertain publish the fact, and fail or a context with nothing to judge rejects it
 
   @facts/jev-policy @domain
-  Scenario: Jev probabilities map to a verdict
-    Given Jev answers for every question
-    When all are at least 0.8, any is below 0.5, or neither
-    Then the verdict is pass, fail, or uncertain, with the minimum answer as confidence
+  Scenario: A decision model's scores map to a verdict
+    Given a decision model's answers to every question and its pass threshold
+    When its opinion is recorded
+    Then its score is its lowest answer, at the threshold it reads pass, below 0.5 fail, and uncertain between
 
   @facts/reviewer-routing @domain
-  Scenario: Each kind has one reviewer chain
+  Scenario: Each kind names the decision models that judge it first
     Given the fact-kind registry
-    Then entry, sense, form, relation, and grammar go to Jev and then the LLM, and pronunciation, example, translation, topic, morphology, collocation, sense list, syllables, and gap closure go to the LLM
-    And a plan may skip straight to the LLM, which ends every chain, but never past it
+    Then senses, form, relation, grammar, morphology, and phrases ask Jev, translation and topic ask Jev and luna, syllables asks luna, and pronunciation, example, and collocation go to the LLM alone
+    And a plan may skip straight to the LLM, which ends every chain
 
   @facts/second-opinion @domain
-  Scenario: Only a Jev pass settles a proposition
-    Given a reviewer in a chain
-    When it answers pass, uncertain, or fail
-    Then Jev settles only a pass, and the LLM settles every verdict
+  Scenario: The decision models settle only a pass
+    Given a decision request with its models, how they combine, and their thresholds
+    When the models answer
+    Then min settles when every model reaches its threshold, any when one does, and mean when the mean score reaches the mean threshold
+    And whatever they do not settle goes to the LLM, whose verdict is final, the review naming every reviewer asked and keeping each opinion
 
-  @facts/relation-jev-floor @domain
-  Scenario: The LLM never overrules a Jev fail on a relation
-    Given a relation fact of any type
-    When Jev answers below the relation floor of 0.5, its fail line
-    Then the fail settles the fact without asking the LLM
-    And only Jev's uncertain band goes to the LLM, while other kinds keep no floor
-
-  @facts/relation-jev-gate @domain
-  Scenario: Jev only gates a hypernym or part_of
-    Given a hypernym of either layer, a part_of, and a synonym
-    When their reviews are planned and Jev answers
-    Then a Jev pass of the hypernym or part_of goes on to the LLM, whose rubric holds the layer and whole rules, while its fail under the floor still settles
-    And a Jev pass still settles the synonym
-
-  @facts/second-opinion-chain @usecase
-  Scenario: The LLM second opinion decides what Jev does not pass
-    Given a pending proposition fact
-    When Jev passes it, or Jev fails or is unsure and the LLM passes, fails, or is unsure
-    Then a Jev pass publishes without asking the LLM, and otherwise the LLM verdict decides with its confidence
-    And the review names both reviewers and records both opinions
-    And an unreachable LLM leaves the fact pending for a retry
+  @facts/one-shot-review @usecase
+  Scenario: A fact is reviewed once by the decision models and then the LLM
+    Given a pending fact whose kind names decision models
+    When the decision models settle a pass, or do not and the LLM passes, fails, or is unsure
+    Then a settled pass publishes without asking the LLM, and otherwise the LLM verdict decides with its confidence
+    And an unreachable reviewer leaves the fact pending for a retry
 
   @facts/second-opinion-api @api
-  Scenario: The second opinion through the queue on a real database
-    Given Jev fails a submitted entry and the LLM passes it
-    When the queue consumer reviews it
-    Then the entry is published with reviewer jev+llm and both opinions
+  Scenario: The one-shot review through the queue on a real database
+    Given a translation of a sense that Jev and luna score low and the LLM passes, and one that luna alone passes
+    When the queue consumer reviews them
+    Then the first is published with reviewer jev+luna+llm and every opinion, and the second with reviewer jev+luna without asking the LLM
 
   @facts/second-opinion-context @domain
-  Scenario: The second opinion sees the claim in context
-    Given an entry, sense, or form fact
-    When its second opinion is planned
-    Then the LLM prompt names the lemma, the part of speech, and the entry's other senses
-
-  @facts/entry-lexical-unit @domain
-  Scenario: A multiword entry is admitted only as a lexical unit
-    Given an entry fact for a single word or for a multiword lemma that no CEFR learner list names
+  Scenario: The LLM sees the claim in context
+    Given a sense inventory, a form, or a fact about a sense
     When its review is planned
-    Then a single word is asked whether it is an established word, as before
-    And a multiword lemma is judged on whether it is a lexical unit of English that belongs in a learner's dictionary
-    And its rubric passes idioms, fixed grammatical phrases even when transparent, everyday names of one kind of thing, and a phrasal verb or verb idiom even when transparent only when a learner's dictionary prints it, such as "sit down" or "come back"
-    And it fails a phrase that meets none of those, such as a descriptive phrase or a coined category label, and a coined phrasal verb no learner's dictionary prints, such as "telephone in", "party down", "key up", "map onto", or "fish about", without any external word list
+    Then the LLM prompt names the lemma, the part of speech, and the entry's senses
 
   @facts/proper-nouns @domain
-  Scenario: Entry and sense review admit the proper nouns a learner's dictionary prints
-    Given an entry fact for a single word, a phrase, or a CEFR-listed headword, or a sense fact
+  Scenario: Inventory and phrase review admit the proper nouns a learner's dictionary prints
+    Given a sense inventory or a phrases list
     When its review is planned
-    Then its Jev question and LLM rubric state one proper-noun rule, ending with the data-not-instructions line where a Jev question does
+    Then its questions and rubric state one proper-noun rule
     And an established country, continent, nationality, language, people, religion, adherent, scripture, festival or holiday, day or month, major world city, or well-known geographical feature counts, such as "London", "New York", or "the Pacific"
     And a personal name, a brand or company name, an organisation, or a minor place does not count, nor does a proper noun as a sense of a spelling with other capitalization
-    And invented words, misspellings, and plain inflections still fail
-
-  @facts/proper-noun-rereview-migration @api
-  Scenario: The proper noun release re-reviews what the old rule rejected as a proper name
-    Given rejected entry and sense facts whose review reason names a proper name, proper noun, or the name of a place or person in any letter case, one settled by a curator, one beside a live fact of its slot, and rejections for other reasons
-    When the proper_noun_rereview migration runs
-    Then each such fact whose slot holds no live fact and that no curator settled returns to pending before the reconcile cutoff, its entry's row is live and stale, and every other fact and row is unchanged
-
-  @facts/entry-multiword-llm @domain
-  Scenario: The LLM alone judges a multiword entry
-    Given an entry fact for a multiword lemma
-    When its review is planned
-    Then only the LLM is asked, with the lexical-unit rubric, so a Jev pass cannot publish a descriptive phrase
-    And a single word that no other entry records as an inflection still goes to Jev and then the LLM
-
-  @facts/entry-inflection-evidence @usecase
-  Scenario: The LLM alone judges a word another entry records as an inflection
-    Given a live entry whose live form of any type but variant is spelled like a new entry's lemma
-    When the new entry fact is reviewed
-    Then only the LLM is asked, and its rubric names each entry that records the spelling and the form type
-    And it passes the word only when it also has uses of its own as a lemma, such as "saw", "left", "could" or "best", and fails a bare inflection such as "is"
-    And a form the entry records of itself, a variant, and a form of an entry whose entry fact is not live are no evidence
-
-  @facts/entry-cefr-evidence @domain
-  Scenario: A CEFR learner list is evidence that a headword belongs
-    Given an entry fact whose exact lemma a CEFR learner vocabulary list names as a headword
-    When its review is planned
-    Then the LLM rubric names each listing's level, part of speech, and source, and says the list settles that the headword belongs
-    And it fails the headword only when it is nothing but an inflected form of another word, a proper noun that learner's dictionaries leave out, or a misspelling, so a headword with uses of its own such as "could" or "best" passes, without the lexical-unit test for phrases
-    And a multiword lemma still goes to the LLM alone, and a single word to Jev and then the LLM unless another entry records it as an inflection
-
-  @facts/entry-cefr-evidence-api @api
-  Scenario: A CEFR-listed compound passes the review the lexical-unit test fails
-    Given CEFR listings for "mental health" and an LLM that fails a phrase unless the CEFR evidence is in its rubric
-    When the entries "mental health" and "mountain system" are reviewed
-    Then "mental health" is published and records its CEFR listing in the review context
-    And "mountain system" is rejected
-
-  @facts/entry-variant-evidence @usecase
-  Scenario: A spelling variant is not an entry
-    Given the entry "colour" with the published variant form "color"
-    When the entry "color" is reviewed
-    Then the LLM alone judges it with the evidence that "color" is a spelling variant of "colour"
-    And it fails unless the word has meanings of its own beyond that spelling, or is the British spelling of the pair
 
   @facts/variant-british-main @domain
   Scenario: Spelling variants are recorded on the British entry
     Given a variant form fact
     When its review is planned
     Then the LLM alone judges it, failing a British spelling recorded as a variant of an American one
-    And an entry review with variant evidence passes only a word of its own or the British spelling
-
-  @facts/variant-spelling-merge @api
-  Scenario: Existing spelling-variant entries merge into the British entry
-    Given live entries "colour" and "color", and "theater" and "theatre" with "theatre" already holding the variant "theater"
-    When the variant_spelling_merge migration runs
-    Then the entry facts of "color" and "theater" are retracted and their worklist rows stop being live and go stale
-    And "colour" gets one pending variant form "color", "theatre" keeps its one variant, and "story" and "storey" stay entries
-
-  @facts/entry-inflection-rereview @usecase
-  Scenario: Publishing an inflection re-reviews an entry Jev passed without it
-    Given an entry whose entry fact Jev alone published
-    When another entry's form of any type, spelled like that entry's lemma, is published
-    Then that entry fact is marked for a review in place and enqueued, and the LLM alone judges it with the inflection or variant evidence
-    And an entry the LLM judged, a form an entry records of itself, and a duplicate delivery of the form's review queue nothing
-
-  @facts/entry-inflection-rereview-api @api
-  Scenario: A recorded inflection re-reviews an entry on a real database
-    Given the entries "be" and "is", with "is" published on a Jev pass
-    When the form "is" of "be" is published
-    Then the entry fact of "is" is enqueued, and its review in place by the LLM alone rejects it
-
-  @facts/entry-llm-only-api @api
-  Scenario: Phrases and recorded inflections reach the LLM alone on a real database
-    Given a published form "is" of the entry "be"
-    When the entries "is", "mountain system", and "lake" are reviewed with a Jev that passes everything and an LLM that fails everything
-    Then "is" and "mountain system" are rejected by the LLM alone, and "is" records the evidence it was judged with
-    And "lake" is published on the Jev pass
 
   @facts/second-opinion-relation-type @domain
-  Scenario: The second opinion fails a relation of the wrong type
+  Scenario: The relation rubric fails a relation of the wrong type
     Given a relation fact
-    When its second opinion is planned
+    When its review is planned
     Then the LLM is asked whether the claim holds and its type is the most accurate one
     And the rubric says substitutable senses are synonyms, hypernyms are strict kind-of links between nouns or verbs with informative heads, and part_of is a distinct component, not a material, ingredient, or generic part
     And it judges the relation between the words, not a detail one gloss mentions and the other omits
@@ -179,9 +85,16 @@ Feature: Facts and review
   @facts/relation-rubric-audit @domain
   Scenario: The relation rubric names the failures an audit found
     Given a relation fact
-    When its second opinion is planned
+    When its review is planned
     Then the rubric fails a body part as part of a person-type noun, a hypernym the substitution test shows is a synonym, a hypernym without a named distinguishing feature, and a near-generic head
     And it fails co-hyponyms of one set as antonyms, and a light verb as a synonym of a full verb
+
+  @facts/relation-decision @domain
+  Scenario: Jev judges an everyday relation against its type's threshold
+    Given an everyday synonym, antonym, hypernym, and part_of, and a domain hypernym
+    When their reviews are planned
+    Then Jev is asked about each everyday relation with the rules of its type in the question, passing a synonym at 0.7, an antonym at 0.9, and a hypernym or part_of at 0.8, and the LLM decides the rest
+    And a domain hypernym goes to the LLM alone
 
   @facts/relation-target-senses @usecase
   Scenario: The relation reviewer sees the target's other senses
@@ -213,7 +126,7 @@ Feature: Facts and review
   Scenario: Each layer has its own rubric, and a part attaches to its most general whole
     Given an everyday hypernym, a biology hypernym, and a part_of between two senses
     When their reviews are planned
-    Then the everyday rubric accepts the school-science classes (mammal, bird, fish, insect, reptile, amphibian) beside everyday categories and fails a technical taxon below them and a word a learner would not use as its category, the biology rubric and Jev question pass only a real term of that taxonomy and fail an invented node, and the part_of rubric fails a part attached to a narrower kind of its whole
+    Then the everyday rubric accepts the school-science classes (mammal, bird, fish, insect, reptile, amphibian) beside everyday categories and fails a technical taxon below them and a word a learner would not use as its category, the biology rubric passes only a real term of that taxonomy and fails an invented node, and the part_of rubric fails a part attached to a narrower kind of its whole
 
   @facts/relation-no-hypernym-cycle @domain
   Scenario: Two entries are never each a kind of the other
@@ -227,26 +140,45 @@ Feature: Facts and review
     When an agent submits a hypernym between the same sense and the other entry, or a hypernym that closes a 2-cycle
     Then the API answers 422 invalid_reference naming the rule and the live relation
 
-  @facts/relations-strict-revalidate @api
-  Scenario: Relations published under the lenient rules are judged again
-    Given published relations: part_of to person-type nouns, LLM passes over a Jev answer under the floor, and structural conflicts
-    When the relations_strict_revalidate migration runs
-    Then each of them is marked for revalidation and stays public
-    And a relation Jev passed with no conflict, and a body part as part of "person" itself, are left alone
+  @facts/relation-shown-ends @usecase
+  Scenario: A relation links only senses a published inventory of a live entry lists
+    Given a sense of a live entry with a published inventory, a sense listed only by a pending inventory, and a sense of an entry that is not live
+    When an agent submits a relation to each, or a fact about a sense no published inventory lists
+    Then only the first is accepted, and the others are invalid references that say to name the word in blocked_on
+
+  @facts/relation-shown-ends-api @api
+  Scenario: A relation to a word without a published inventory is refused over HTTP
+    Given an entry whose inventory is published and one whose inventory is still pending
+    When an agent submits a synonym between their senses, and again once the second inventory publishes
+    Then the first is 422 invalid_reference naming blocked_on, and the second is 201
 
   @facts/hypernym-question @domain
   Scenario: Jev's hypernym question rules out synonymy and generic heads
     Given a hypernym relation fact
-    When its Jev question is planned
+    When its decision question is planned
     Then the question says mutual substitutability is synonymy, hypernymy holds only between nouns or verbs, and a generic head does not count
 
   @facts/translation-rubric @domain
   Scenario: Translations are judged as a bilingual dictionary would
-    Given a translation fact
-    When its review is planned
-    Then the rubric accepts verb-like or descriptive renderings of function words and bracketed usage notes
-    And accepts, for a noun sense, an equivalent that also reads as a verb or adjective, since Chinese does not mark part of speech
-    And rejects a wrong meaning, a different sense, a noun-only equivalent of a verb sense, unnatural wording, or equivalents of unrelated senses
+    Given a translation of a sense, of an example, and of a collocation
+    When their reviews are planned
+    Then a sense equivalent asks Jev at 0.9 and luna at 0.8, either settling a pass, and the LLM decides otherwise with a rubric that accepts verb-like or descriptive renderings of function words, bracketed usage notes, and for a noun sense an equivalent that also reads as a verb or adjective, and rejects a wrong meaning, a different sense, a noun-only equivalent of a verb sense, unnatural wording, or equivalents of unrelated senses
+    And an example or collocation translation goes to the LLM alone, which fails a rendering that is unfaithful to the text or unnatural
+    And a translation whose subject is not what it claims to translate is unreviewable
+
+  @facts/translation-of @domain
+  Scenario: A translation names what it translates and is about it
+    Given translations of a sense, an example, and a collocation
+    When they are submitted
+    Then each names what it translates in of, a sense equivalent is about the sense and at most 200 characters, an example or collocation translation is about that fact, and any other subject is an invalid reference
+    And an example is its text alone, and a translation is keyed by its language, what it translates, and its text, one live per subject and language
+
+  @facts/translation-per-item-api @api
+  Scenario: Each translated item has its own translation fact
+    Given a sense with a published example and a published collocation
+    When an agent submits a zh translation of the sense, of the example, and of the collocation, a second zh translation of the sense, and one about the wrong subject
+    Then the three are created and reviewed on their own, the second is 409 conflict, the wrong subject is 422, and the public entry shows the sense equivalent, the example translation, and the collocation translation in zh
+    And once the example is superseded its translation no longer shows and the entry's translations item names the new example
 
   @facts/example-offensive-sense @domain
   Scenario: An example of an offensive sense is judged as an illustration of that sense
@@ -255,42 +187,41 @@ Feature: Facts and review
     Then the rubric accepts a sentence that shows the sense in ordinary use
     And rejects one that uses another sense, is ungrammatical, or adds offence the sense does not need
 
-  @facts/form-relabel @usecase
-  Scenario: A labelled form is its own claim and replaces the unlabelled one by a correction
-    Given a published unlabelled form "would" of "will", which has verb and auxiliary meanings
-    When an agent submits "would" labelled auxiliary that supersedes it, or a form labelled with a part of speech its type is never shown under
-    Then the labelled form is a new fact keyed with its part of speech, and once published it replaces the unlabelled one and shows under the auxiliary meaning; the mislabelled one is refused
-
   @facts/form-word-class @domain
   Scenario: A form is judged in the word class it inflects
     Given a form fact such as the past tense "breaded" of "bread"
     When its review is planned
     Then the Jev question names the word class that form type belongs to, such as verb for tenses, noun for plurals, and adjective or adverb for comparison
 
-  @facts/entry-no-letters @domain
-  Scenario: A letter of the alphabet is not an entry
-    Given an entry fact whose lemma is a single letter
-    When its review is planned
-    Then a single letter other than the words "a" and "I" is rejected as unreviewable without asking a reviewer
-    And "a", "I", and abbreviations of two or more letters are reviewed as established words
-
   @facts/unreviewable @domain
   Scenario: A meaning-dependent fact cannot be judged without a gloss
-    Given an example, translation, or relation whose sense has no live gloss
+    Given an example, translation, or relation whose sense no live inventory lists
     When its review is planned
     Then it is rejected as unreviewable without asking a reviewer
 
   @facts/independent @usecase
   Scenario: A fact never waits for another fact
-    Given an example whose sense gloss is still pending
+    Given an example of a sense whose inventory is still pending
     When the example is reviewed
-    Then it is judged against the pending gloss and decided on its own
+    Then it is judged against the pending inventory's gloss and decided on its own
 
   @facts/dedupe @usecase
   Scenario: Resubmitting a live fact returns it
     Given a pending or published fact
     When an agent submits the same content again
     Then the existing fact is returned with created=false and nothing is enqueued
+
+  @facts/rejected-before @usecase
+  Scenario: Content a review rejected is refused without a new review
+    Given a fact review rejected
+    When an agent submits the same kind, subject, and content again
+    Then it is refused as rejected_before with the earlier fact and its reason, nothing is enqueued, and a curator may still submit it
+
+  @facts/rejected-before-api @api
+  Scenario: Resubmitting rejected content answers 409 rejected_before
+    Given syllables a review rejected
+    When an agent submits them again, and then a different division
+    Then the first is 409 rejected_before naming the rejected fact and its reason with no reviewer asked, and the second is 201
 
   @facts/submit-api @api
   Scenario: Submission over HTTP
@@ -313,10 +244,97 @@ Feature: Facts and review
 
   @facts/gloss-format @domain
   Scenario: A gloss is written in dictionary style
-    Given a sense gloss to submit
-    When it starts in lowercase, has no final period, is too short or too long, or embeds an example
+    Given a sense of an inventory to submit
+    When its gloss starts in lowercase, has no final period, is too short or too long, or embeds an example
     Then the submission is invalid and the message names each rule to fix
-    And glosses stored before the rule still read
+    And inventories stored before the rule still read
+
+  @facts/inventory-format @domain
+  Scenario: An inventory lists every sense once, the common ones first
+    Given a sense inventory to submit
+    When it has no common sense, puts a common sense after an extra one, or names an existing sense twice
+    Then the submission is invalid naming the rule, and a stored inventory names every sense by id
+
+  @facts/inventory-admission @domain
+  Scenario: An inventory keeps only senses of its entry
+    Given an entry with senses and an inventory naming sense ids
+    When the inventory is admitted
+    Then an id that is not a sense of the entry is an invalid reference naming it, and new senses without ids are admitted
+
+  @facts/inventory-current @domain
+  Scenario: An entry's current inventory is the live one no live correction supersedes
+    Given an entry's inventories in every status, a pending correction of a published one, and a filter of published only
+    When its current inventory and its senses are read
+    Then the pending correction stands for its original, the published-only read keeps the original, and an entry with no live inventory has none and no senses
+
+  @facts/inventory-assigns-ids @usecase
+  Scenario: Submitting an inventory creates its new senses
+    Given an entry with an existing sense
+    When an agent submits an inventory that keeps it by id and adds senses without ids
+    Then each new sense gets a sense row of its part of speech and the stored inventory names every sense by id, the kept one by its own
+
+  @facts/inventory-settled @usecase
+  Scenario: A published inventory is decided once
+    Given an entry whose sense inventory is published
+    When a producer agent submits another inventory, as a correction or not
+    Then it is refused as inventory_settled, while a curator may submit a correction that supersedes it
+
+  @facts/inventory-api @api
+  Scenario: An inventory is reviewed, published, and settled on a real database
+    Given an entry with no inventory
+    When an agent submits an inventory of new senses and the queue reviews it, then another inventory, then a curator corrects it dropping a sense
+    Then Jev is asked one question per gloss and the LLM judges the whole inventory unless Jev settles it, the published inventory gives the entry its senses with ids in the public entry, the second submission is 403 inventory_settled, and the curator's correction removes the dropped sense from the public entry
+
+  @facts/inventory-rubric @domain
+  Scenario: An inventory is judged as a learner's dictionary's sense inventory
+    Given a sense inventory of an entry
+    When its review is planned
+    Then Jev is asked one question per sense about its gloss and labels, and the LLM rubric numbers every sense with its part of speech and gloss, common in order and then extra
+    And it fails only a list that misses a main general-knowledge sense a learner's dictionary lists for A1 to B1 learners, holds two duplicate or over-split common senses, puts a rare, archaic, technical, legal, specialist, or regional-only sense in common, gives a sense the wrong part of speech, puts a main sense in extra, leaves the word's best-known meaning out of the first three common senses, or has a wrong gloss or label
+    And it passes every other list, never failing for another order of common senses, a borderline placement, or a missing rare sense, and its reason names each sense to change
+
+  @facts/sense-list-capitalization @domain
+  Scenario: An inventory is never failed for the senses of a differently capitalized entry
+    Given an inventory of an entry, and the other live entries spelled like its lemma but for letter case
+    When its review is planned
+    Then the rubric judges only the exact spelling, says a sense of a differently capitalized spelling belongs to that other entry and is never missing, and names each such entry as separate
+
+  @facts/sense-list-capitalization-api @api
+  Scenario: The review of an inventory loads the live entries that differ only in letter case
+    Given live entries "may" and "May", and an entry "MAY" that is not live
+    When the queue consumer reviews an inventory of "may"
+    Then its review context carries "May" alone as a case variant, and the rubric names "May" as a separate entry
+
+  @facts/phrases-format @domain
+  Scenario: A phrases list names multiword phrases, each once
+    Given a phrases list to submit
+    When a phrase is one word or a phrase is named twice in any letter case
+    Then the submission is invalid naming the rule
+
+  @facts/phrases-admission @domain
+  Scenario: A phrases list belongs to a single-word headword and names phrases containing it
+    Given a phrases list on a headword
+    When it is admitted
+    Then a list on a multiword entry, or naming a phrase that does not contain the headword, is an invalid reference naming the phrases
+
+  @facts/phrases-rubric @domain
+  Scenario: A phrases list is judged phrase by phrase
+    Given a phrases list of a headword
+    When its review is planned
+    Then Jev is asked one question per phrase whether a learner's dictionary prints it as a phrase, phrasal verb, or idiom of the headword or its meaning is not the sum of its words
+    And the LLM rubric numbers each phrase, passes idioms, fixed phrases, and phrasal verbs a learner's dictionary prints, fails a plain description ("white rice") or a coined combination ("telephone in"), never fails for a missing phrase, and names each wrong phrase by number
+
+  @facts/phrases-admit @usecase
+  Scenario: A published phrases list admits its phrases as entries
+    Given a headword of a batch
+    When its phrases list publishes, and later a correction that drops one phrase publishes
+    Then each listed phrase is a live entry of the headword's batch, created when it had none, and the dropped phrase stops being live unless another published list still names it
+
+  @facts/phrases-api @api
+  Scenario: A phrases list admits its phrases on a real database
+    Given live headwords "give" and "front", and "give up" listed under "give"
+    When phrases lists of "give" and "front" publish through the queue, one naming "in front of", and a curator corrects the list of "give" to drop "give up"
+    Then "give up" and "in front of" are live entries in their headword's batch with items of their own and are listed among the headword's phrases, a phrases list on a phrase is 422, and once dropped "give up" is no longer live and has no items
 
   @facts/ipa-format @domain
   Scenario: A pronunciation holds one broad IPA transcription
@@ -328,25 +346,19 @@ Feature: Facts and review
   Scenario: A translation is submitted in a served language
     Given a translation to submit
     When its language is zh, or another tag such as zh-Hans, zh-Hant, or fr
-    Then zh is accepted, any other tag is invalid and the message names the served languages, and translations stored before the rule still read
+    Then zh is accepted, any other tag is invalid and the message names the served languages
 
   @facts/write-labels @domain
   Scenario: Facts carry optional usage labels
-    Given a sense register or region, a form part of speech, or a pronunciation strength and part of speech
+    Given a sense register or region in an inventory, a form part of speech, or a pronunciation strength and part of speech
     When the fact is reviewed and published
     Then the reviewer is asked about the labelled form, and the public entry shows each label
 
   @facts/write-rules-api @api
   Scenario: Write rules over HTTP
     Given an agent key and senses of different entries
-    When it submits a mirrored antonym, a relation inside one entry, a malformed gloss, two packed transcriptions, and a translation in an unserved language
+    When it submits a mirrored antonym, a relation inside one entry, an inventory with a malformed gloss, two packed transcriptions, and a translation in an unserved language
     Then the API answers 200 with the first fact, 422 invalid_reference, and 400 invalid_request with the rules to fix
-
-  @facts/orient-stored-relations @api
-  Scenario: Stored symmetric relations take the stored orientation
-    Given synonyms and antonyms stored before orientation, including a live mirrored pair
-    When the orientation migration runs
-    Then each keeps its review with the smaller sense id as subject, and a live duplicate stays for an agent to retract
 
   @facts/subject-validation @usecase
   Scenario: A fact must be about the right kind of node
@@ -362,10 +374,9 @@ Feature: Facts and review
 
   @facts/correction-needs-published @usecase
   Scenario: A correction goes live only while its original is published
-    Given a published fact and a correction of it, submitted or rejected and re-reviewed
-    When an admin re-reviews the original after the correction's checks read it but before its write
+    Given a published fact and a correction of it
+    When the original leaves published after the correction's checks read it but before its write
     Then the correction's write, which checks the original is published in the same statement, is refused as 409 conflict
-    And no correction is live while its original is pending
 
   @facts/one-live-correction @usecase
   Scenario: A fact has at most one live correction
@@ -373,104 +384,23 @@ Feature: Facts and review
     When an agent submits another correction of it, or an admin re-reviews a rejected correction of it
     Then it answers 409 conflict saying the fact already has a live correction
 
-  @facts/single-gloss @usecase
-  Scenario: A sense has one gloss
-    Given a sense with a live gloss
-    When an agent submits another gloss without superseding it, or a second correction
-    Then the submission conflicts
-
   @facts/exclusive-slot-race @api
   Scenario: Concurrent corrections cannot both go live
-    Given a sense with a published gloss
+    Given a sense with a published grammar fact
     When two agents submit different corrections of it at the same time
-    Then one is pending and the other conflicts, so the sense holds one published and one pending gloss
+    Then one is pending and the other conflicts, so the sense holds one published and one pending grammar fact
 
   @facts/correction @usecase
   Scenario: A published correction supersedes the original in the same write
-    Given a published gloss and a pending correction of it
+    Given a published fact and a pending correction of it
     When the correction is published
     Then the original is superseded; a rejected correction leaves the original published
 
   @facts/supersede-api @api
   Scenario: A correction replaces the original atomically on a real database
-    Given a published gloss and a pending correction of it
+    Given a published example and a pending correction of it
     When the review queue publishes the correction
     Then the original is superseded and the public entry shows only the correction
-
-  @facts/revalidate-dependents @usecase
-  Scenario: Facts judged against a corrected gloss are re-reviewed in place
-    Given a sense with published examples, translations, and relations in both directions
-    When a correction of its gloss publishes
-    Then each of those facts is marked and enqueued for revalidation, stays published and public meanwhile, and is reviewed against the new gloss
-
-  @facts/pending-dependent-current-gloss @usecase
-  Scenario: A pending dependent cannot publish against a replaced gloss
-    Given a pending example whose review read a gloss
-    When a correction of that gloss publishes before the example's review is written
-    Then the example's review is discarded, the example stays pending, marked, and enqueued
-    And its next review reads the corrected gloss
-
-  @facts/pending-dependent-api @api
-  Scenario: A pending dependent is re-reviewed against the corrected gloss on a real database
-    Given a pending example and a pending correction of its gloss
-    When the correction publishes while the example is under review
-    Then the example stays pending, and the next delivery publishes it judged against the corrected gloss
-
-  @facts/relabel-no-revalidate @usecase
-  Scenario: A register-only correction does not re-review dependents
-    Given a sense with published examples, translations, and relations
-    When a correction that keeps the gloss text and changes only its register publishes
-    Then it supersedes the gloss, and nothing is marked or enqueued for revalidation
-
-  @facts/correction-marks-live-dependents @usecase
-  Scenario: Only a correction that changes the gloss marks pending and published dependents
-    Given a sense with a published example and a pending example
-    When a correction of the sense publishes
-    Then a new gloss text marks and enqueues both examples, and a register-only correction marks and enqueues neither
-
-  @facts/relabel-api @api
-  Scenario: A register-only correction on a real database
-    Given a published gloss with a published example and incoming relation
-    When the queue publishes a correction that only adds a register
-    Then the original is superseded, the public sense shows the register, and its dependents stay unmarked
-
-  @facts/revalidation-outcome @domain
-  Scenario: Revalidation unpublishes only on failure
-    Given a published fact under revalidation
-    When its new review is pass, uncertain, or fail
-    Then it stays published with the new review, or moves to rejected
-    And with no live gloss to judge against, it stays published with its standing review and loses only the mark
-
-  @facts/revalidate-gloss-retracted @api
-  Scenario: A retracted correction does not reject the facts waiting to revalidate against it
-    Given a published gloss correction whose example and incoming relation are marked for revalidation
-    When the correction is retracted before the queue delivers their jobs
-    Then the example stays published with its standing review, unmarked, the relation is retracted because its sense no longer shows, and no reviewer is asked
-
-  @facts/revalidate-api @api
-  Scenario: Revalidation through the queue on a real database
-    Given a corrected gloss whose example and incoming relation were published
-    When the queue delivers their revalidation jobs
-    Then they stay published with reviews of the new gloss, and a fact about another sense is untouched
-
-  @facts/dead-sense-retires-links @usecase
-  Scenario: A sense that stops showing retires its relations and nothing else
-    Given a sense with an example, a translation, an outgoing relation a curator passed, and an incoming relation
-    When its last live gloss is retracted, or the entry fact of the other end's entry leaves live
-    Then the relations at the sense that cannot show are retracted, the curated one too, while its other facts stay as they were, unmarked, and nothing is enqueued
-    And once the sense has a live gloss again, the same relation submits as a new pending fact
-
-  @facts/dead-sense-retires-links-api @api
-  Scenario: Relations at a sense that stops showing leave live in the status write's batch
-    Given published relations into, out of, and away from a sense, and a relation into a sense of another entry
-    When the sense's gloss is retracted, and then that other entry's entry fact
-    Then each relation at a sense that cannot show is retracted, the relation away from it only once its own end stops showing, the entries at the other end go stale, and the public entry shows none of them
-
-  @facts/dead-end-relations-migration @api
-  Scenario: The dead_end_relations migration retires the relations stored before the rule
-    Given a published relation into a sense whose gloss was retracted, a relation between showing senses, and synonyms and topics items in curation
-    When the migration runs
-    Then the relation at the dead sense is retracted, the other stays published, the synonyms item at its live end returns to the production queue with no attempts, the topics item and the item away from it stay in curation, and the entries at both ends go stale
 
   @facts/review-idempotent @usecase
   Scenario: Duplicate deliveries change nothing
@@ -480,7 +410,7 @@ Feature: Facts and review
 
   @facts/transport-retry @usecase
   Scenario: A reviewer outage is not a verdict
-    Given the reviewer gateway is unreachable
+    Given a decision model or the LLM is unreachable
     When a fact is reviewed
     Then the fact stays pending and the error propagates
 
@@ -491,8 +421,8 @@ Feature: Facts and review
     Then it fails as a transport error, so the queue retries the job instead of the batch stalling
 
   @facts/transport-retry-api @api
-  Scenario: The queue retries a job when the gateway is down
-    Given the reviewer gateway answers 503
+  Scenario: The queue retries a job when a reviewer is down
+    Given the reviewer gateway or the Decisions API answers 503
     When the queue consumer processes the job
     Then the message is retried and the fact stays pending
 
@@ -508,17 +438,11 @@ Feature: Facts and review
     When the reconciler runs
     Then their review jobs are enqueued again
 
-  @facts/reconcile-revalidation @usecase
-  Scenario: Stuck revalidations are re-enqueued
-    Given published facts marked for revalidation more than five minutes ago
-    When the reconciler runs
-    Then their review jobs are enqueued again
-
-  @facts/reconcile-pending-first @api
-  Scenario: A revalidation backlog never starves pending facts
-    Given more stuck revalidations than one reconcile run takes, all older than a stuck pending fact
-    When the reconciler runs
-    Then the pending fact is enqueued in that run, ahead of the revalidations
+  @facts/reconcile-api @api
+  Scenario: The cron re-enqueues a stuck pending fact
+    Given a fact pending for more than five minutes and one submitted just now
+    When the scheduled handler runs
+    Then the stuck fact's review job is enqueued and the fresh one's is not
 
   @facts/retract @usecase
   Scenario: Retract a fact
@@ -527,14 +451,14 @@ Feature: Facts and review
     Then the fact is retracted; another agent may not, and retracting twice is a no-op
 
   @facts/rereview @usecase
-  Scenario: Admins send a decided fact back through review
-    Given a published or rejected fact
+  Scenario: Admins send a rejected fact back through review
+    Given a rejected fact, and a published one
     When an admin re-reviews it
-    Then it is pending again and enqueued, unless another live fact took its place
+    Then the rejected fact is pending again and enqueued, unless another live fact took its place, and a published fact is a conflict
 
   @facts/rereview-under-correction @usecase
   Scenario: A fact under correction is not revived
-    Given a fact that a pending or published correction supersedes
+    Given a rejected fact that a pending or published correction supersedes
     When an admin re-reviews the fact
     Then it answers 409 conflict pointing at the correction, and the fact keeps its status
 
@@ -542,19 +466,19 @@ Feature: Facts and review
   Scenario: A rejected fact goes back through review and publishes
     Given a fact the reviewer rejected
     When an admin re-reviews it and the reviewer then passes it
-    Then it moves from rejected to pending to published and is publicly visible
+    Then it moves from rejected to pending to published and is publicly visible, and re-reviewing the published fact is 409
 
   @facts/rereview-conflict @api
   Scenario: A re-review never makes a second live fact
-    Given a published gloss with a pending correction, and a rejected example whose text is live again
-    When an admin re-reviews the gloss or the rejected example
-    Then each answers 409 conflict and nothing changes
+    Given a rejected example whose text a curator resubmitted, so it is live again
+    When an admin re-reviews the rejected example
+    Then it answers 409 conflict and nothing changes
 
-  @facts/rereview-orphaned-correction @api
-  Scenario: A rejected correction cannot come back once its original is gone
-    Given a published gloss, a rejected correction of it, and a second correction that published
-    When an admin re-reviews the rejected correction
-    Then it answers 409 conflict, the correction stays rejected, and the live gloss can still be corrected
+  @facts/rereview-admits @usecase
+  Scenario: A revived fact must still fit its subject
+    Given a rejected fact whose subject has since changed so that the payload no longer fits it, such as a collocation whose form was retracted
+    When an admin re-reviews it
+    Then it answers 422 invalid reference with the same reason a submission gets, and the fact stays rejected
 
   @facts/manage-api @api
   Scenario: Fact management over HTTP
@@ -572,7 +496,7 @@ Feature: Facts and review
   Scenario: Grammar fits the part of speech of its sense
     Given a grammar fact about a sense
     When it is submitted
-    Then a noun sense always takes its countability (or number plural_only in its place) and optionally its number, article, noun patterns, and prepositions, a verb sense always its transitivity and optionally verb patterns and prepositions, an adjective sense its position (attributive only, predicative only, or both), adjective patterns, or prepositions, an adverb sense its usual position (front, mid, or end) or prepositions, and a determiner or pronoun sense always its agreement
+    Then a noun sense always takes its countability (or number plural_only in its place) and optionally its number, article, noun patterns, and prepositions, a verb sense always its transitivity and optionally verb patterns and prepositions, an adjective sense its position, adjective patterns, or prepositions, an adverb sense its usual position or prepositions, and a determiner or pronoun sense always its agreement
     And grammar of any other part of speech is refused by the kind's parts of speech, and a property or pattern that does not fit is an invalid reference that names what to remove
 
   @facts/grammar-plural-only @domain
@@ -580,21 +504,14 @@ Feature: Facts and review
     Given grammar of a plural-only noun such as "jeans"
     When it is submitted and its review is planned
     Then number plural_only stands in place of countability, so grammar naming it needs no countability and grammar naming both is an invalid reference that says to remove countability
-    And Jev and the rubric claim it is used only in the plural, with a plural verb and never with "a" or "an", as a learner's dictionary marks [plural], and the rubric does not count the missing countability as an omission
+    And the questions and the rubric claim it is used only in the plural, with a plural verb and never with "a" or "an"
 
   @facts/grammar-review @domain
   Scenario: Grammar is reviewed one property at a time
     Given a grammar fact about a glossed sense
     When its review is planned
     Then Jev is asked one yes/no question per property, pattern, and named preposition, about that sense only
-    And the LLM second opinion lists every claim, passes when each holds, does not fail a pattern or preposition left out, and fails a named preposition that is wrong or rare with the sense
-
-  @facts/grammar-prepositions-migration @api
-  Scenario: Stored grammar with the bare preposition pattern is retracted so it is resubmitted with named prepositions
-    Given published, pending, and rejected grammar facts stored with the bare preposition pattern
-    When the grammar prepositions migration runs
-    Then the live ones are retracted and the rejected ones stay rejected, each without the pattern, keeping its review, and keyed as its payload now keys
-    And the entries of the retracted facts are marked stale for the rescore, and the sense takes grammar that names its prepositions
+    And the LLM rubric lists every claim, passes when each holds, does not fail a pattern or preposition left out, and fails a named preposition that is wrong or rare with the sense
 
   @facts/morphology-parts @domain
   Scenario: A word formation spells its single word
@@ -609,7 +526,7 @@ Feature: Facts and review
     Given a word formation of an abbreviation, contraction, clipping, or blend
     When it is submitted, keyed, and its review is planned
     Then it gives shortened with its type and the words it shortens, its parts are one base part without a lemma or the submission is invalid, and what it shortens is part of the content key
-    And the rubric claims a shortened word of that type and source, passes a right source of a type a dictionary gives it, and fails a wrong source or type and a shortened word claimed as a plain simple word
+    And the rubric claims a shortened word of that type and source, and fails a wrong source or type and a shortened word claimed as a plain simple word
 
   @facts/plural-only-shortened-api @api
   Scenario: Plural-only grammar and a shortened word's source are published through the queue
@@ -621,7 +538,7 @@ Feature: Facts and review
   Scenario: Adverbs state their usual position and determiners and pronouns what they agree with
     Given grammar of an adverb, a determiner, a pronoun, and an adjective
     When it is submitted and its review is planned
-    Then an adverb takes front, mid, or end and never an adjective position, an adjective never an adverb position, a determiner or pronoun its agreement (singular_noun, plural_noun, uncountable_noun, of_plural, singular_verb, plural_verb) keyed in a stable order, and Jev and the rubric are asked about each claim
+    Then an adverb takes front, mid, or end and never an adjective position, an adjective never an adverb position, a determiner or pronoun its agreement keyed in a stable order, and the questions and rubric ask about each claim
 
   @facts/morphology-base-lemma @domain
   Scenario: A base part names the entry it is
@@ -632,15 +549,15 @@ Feature: Facts and review
   @facts/morphology-base-lemma-usecase @usecase
   Scenario: A base lemma must be a live entry
     Given a derivative entry
-    When its formation names a base lemma with no entry, the base entry is created, the formation is retracted, and the base's entry fact is retracted
-    Then the first and last submissions are invalid references, and the base lists the derivative in its family only while the formation is live
+    When its formation names a base lemma that is not a live entry, then the base is admitted, and the formation is retracted
+    Then the first submission is an invalid reference that says to name the word in blocked_on, and the base lists the derivative in its family only while the formation is live
 
   @facts/morphology-review @domain
   Scenario: A word formation is judged as a learner's dictionary analyses the word
     Given a morphology fact
     When its review is planned
-    Then the LLM alone is asked whether the word is formed from exactly these parts with these meanings by one synchronic rule: a word has parts only when it is built on a present-day English word whose meaning it takes, and every other word is a simple word, one base ("important", "factory", "business"), whose simple claim passes and is never failed for its etymology, and a shortened word is one base with what it shortens
-    And the rubric fails a Latin or Greek root part, a wrong, missing, or extra part, a wrong meaning, etymology or folk etymology, letters that only look like an affix, and a transparent derivative ("teacher") claimed as simple
+    Then Jev is asked whether the word is formed from exactly these parts by one synchronic rule, with the word's first senses in the state, and its pass settles
+    And the rubric passes a simple word for a word not built on a present-day English word, and fails a Latin or Greek root part, a wrong, missing, or extra part, a wrong meaning, etymology or folk etymology, letters that only look like an affix, and a transparent derivative ("teacher") claimed as simple
 
   @facts/morphology-synchronic @domain
   Scenario: A word formation names no Latin or Greek root
@@ -652,22 +569,14 @@ Feature: Facts and review
   Scenario: A word made from another without an affix names that word
     Given a word formation of one base part, the word itself, naming another entry's lemma ("shelve" naming "shelf")
     When it is admitted and its review is planned
-    Then it is admitted with that lemma as its reference, and the rubric claims the word is made from that word without a prefix or suffix, as a conversion with a spelling change or a back-formation, never a simple word, and passes it when that word is the one the meaning comes from
+    Then it is admitted with that lemma as its reference, and the rubric claims the word is made from that word without a prefix or suffix, never a simple word
 
   @facts/collocation-contains-word @domain
   Scenario: A collocation contains its word
     Given a collocation fact about a sense
     When it is submitted
     Then its text must contain the lemma or one of the entry's live forms as whole words, or it is an invalid reference
-    And a typographic apostrophe matches a straight one
-    And a word with a fused clitic ('s, 're, 've, 'll, 'd, n't) also reads as the word it is fused to, so "let's see" contains let and "can't" contains can
-    And the closed-class forms of be, have, and do count as forms of their lemma whether or not they are recorded
-
-  @facts/rereview-admits @usecase
-  Scenario: A revived fact must still fit its subject
-    Given a rejected fact whose subject has since changed so that the payload no longer fits it, such as a collocation whose form was retracted
-    When an admin re-reviews it
-    Then it answers 422 invalid reference with the same reason a submission gets, and the fact stays rejected
+    And a typographic apostrophe matches a straight one, a word with a fused clitic also reads as the word it is fused to, and the closed-class forms of be, have, and do count as forms of their lemma
 
   @facts/collocation-cap @usecase
   Scenario: A sense holds at most five live collocations
@@ -679,7 +588,7 @@ Feature: Facts and review
   Scenario: A collocation is a combination natives commonly use with this sense
     Given a collocation fact about a glossed sense
     When its review is planned
-    Then the LLM is asked whether natives commonly use it with this sense in the claimed pattern
+    Then the LLM alone is asked whether natives commonly use it with this sense in the claimed pattern
     And it fails free combinations, another sense, rare or unnatural wording, and the wrong pattern
 
   @facts/usage-admission-api @api
@@ -695,46 +604,11 @@ Feature: Facts and review
     Then each first correction is accepted, the collocation's although the sense is at its limit, and each second one is 409 conflict naming the live correction
     And once reviewed, each correction is published, its original superseded, and the sense still holds five live collocations
 
-  @facts/sense-list-write @usecase
-  Scenario: A sense list names exactly the entry's live senses, each once
-    Given an entry with senses, one of whose glosses may no longer be live
-    When an agent submits a sense list of common senses in order and extra senses
-    Then a list with no common sense or a sense named twice is invalid, a list that names a sense that is not a live sense of the entry or leaves out a live one is an invalid reference naming those senses
-    And a resubmission of the same common order and extra set returns the live list, a second list is a conflict, and a correction supersedes the published list
-
-  @facts/sense-list-rubric @domain
-  Scenario: A sense list is judged as a learner's dictionary's sense inventory
-    Given a sense list of an entry
-    When its review is planned
-    Then the LLM alone sees the lemma and every listed sense with its part of speech and gloss, numbered, common in order and then extra
-    And it fails only a list that misses a main general-knowledge sense a learner's dictionary lists for A1 to B1 learners, holds two duplicate or over-split common senses, puts a rare, archaic, technical, legal, specialist, or regional-only sense in common, gives a sense the wrong part of speech, puts a main sense every learner's dictionary prints in extra, or leaves the word's best-known meaning out of the first three common senses, since placement decides which senses are core
-    And it passes every other list, never failing for any other order of common senses or a borderline common or extra placement, which successive reviews of "go", "food", and "block" moved back and forth, nor for a missing rare sense
-    And its reason names each missing, duplicated, misplaced, or mislabelled sense
-    And a list naming a sense without a live gloss is unreviewable
-
-  @facts/sense-list-capitalization @domain
-  Scenario: A sense list is never failed for the senses of a differently capitalized entry
-    Given a sense list of an entry, and the other live entries spelled like its lemma but for letter case
-    When its review is planned
-    Then the rubric judges only the exact spelling, says a sense of a differently capitalized spelling or of a proper name spelled otherwise belongs to that other entry and is never missing, and names each such entry as separate
-
-  @facts/sense-list-capitalization-api @api
-  Scenario: The review of a sense list loads the entries that differ only in letter case
-    Given entries "may" and "May" whose entry facts are live, and "MAY" whose entry fact is retracted
-    When the queue consumer reviews a sense list of "may"
-    Then its review context carries "May" alone as a case variant, and the rubric names "May" as a separate entry
-
-  @facts/sense-list-review @api
-  Scenario: A sense list is reviewed, published, and reopened through the queue
-    Given an agent submits a sense list for an entry's senses
-    When the queue consumer reviews it, and the entry then gains a sense or loses a listed one
-    Then the LLM judges the list with every listed gloss, the published list closes the sense list gap, and the change reopens it until a correction lists the senses again
-
   @facts/syllables @domain
   Scenario: Syllables divide a single written word
     Given a syllables fact on an entry
     When it is submitted and reviewed
-    Then its syllables must spell the lemma exactly and a phrase is refused, and the LLM alone judges the division against a learner's dictionary
+    Then its syllables must spell the lemma exactly and a phrase is refused, and luna judges the division against a learner's dictionary at 0.9, the LLM deciding otherwise
 
   @facts/form-irregular @domain
   Scenario: An irregular form is one no regular spelling rule gives
@@ -748,47 +622,29 @@ Feature: Facts and review
     When it is submitted and reviewed
     Then the pronunciation is part of its content key, so adding one is a correction, and the LLM alone judges the form with its transcription in that accent
 
-  @facts/example-translation @domain
-  Scenario: An example may carry its translation
-    Given an example fact with a translation in a served language
-    When it is submitted and reviewed
-    Then the translation is part of its content key, and the LLM fails the example when the translation is unfaithful or unnatural
-
   @facts/periphrastic-forms @domain
   Scenario: A periphrastic comparison is never a form
     Given a comparative spelled "more …" or a superlative spelled "most …"
     When it is submitted, or its entry is shown
     Then the submission is an invalid reference that names the inflected forms to record instead, and such a form is never irregular
 
-  @facts/antonym-llm @domain
-  Scenario: Antonyms are judged by the LLM alone
-    Given an antonym relation between two glossed senses
-    When its review is planned
-    Then the LLM alone is asked, and its rubric fails a converse role pair such as teacher and student, and a target that is archaic or old-fashioned in its sense
-
   @facts/relation-ends @domain
   Scenario: A relation links common, current senses
-    Given a relation whose target, or for a symmetric type either end, is in its entry's sense list extra or is labelled dated
+    Given a relation whose target, or for a symmetric type either end, is ranked extra in its entry's inventory or is labelled dated
     When it is submitted, or a rejected one is re-reviewed back to life
     Then it is an invalid reference that names the sense, and a directed relation from a rare sense is admitted
 
   @facts/sense-region @domain
   Scenario: A sense states its region and register, and review enforces them
-    Given a sense with or without a region (british, american, australian, new_zealand, canadian, irish, scottish, south_african, indian) or a register
+    Given an inventory sense with or without a region or a register
     When it is keyed and its review is planned
-    Then the region is a label of the content key, Jev answers no for a sense used in only one variety with no region and for a formal, literary, dated, or ironic sense with no register, and the rubric fails such a sense and an old-fashioned sense without the dated register
+    Then the region is a label of the content key, the gloss question answers no for a sense used in only one variety with no region and for a formal, literary, dated, or ironic sense with no register, and the rubric fails such a sense
 
   @facts/number-sense-review @domain
   Scenario: A number sense is judged against the learner's dictionary number label
-    Given a sense of part of speech number
+    Given an inventory sense of part of speech number
     When its review is planned
-    Then Jev asks for an established number (numeral) sense, the rubric says number is the learner's dictionary label of a cardinal or ordinal number that other dictionaries file as a noun, adjective, determiner, or pronoun, and no grammar fact is admitted on it
-
-  @facts/sense-revalidation-flag @domain
-  Scenario: A gloss that fails its review in place is flagged, not rejected
-    Given the review outcome table and a kind that flags a failed revalidation
-    When a published fact of that kind fails its review in place
-    Then it stays published with the failing review recorded, while a first review still rejects and every other kind is still invalidated
+    Then its question asks for an established number (numeral) sense, the rubric says number is the learner's dictionary label of a cardinal or ordinal number, and no grammar fact is admitted on it
 
   @facts/relation-padding @domain
   Scenario: Relations do not pad a sense
@@ -810,91 +666,9 @@ Feature: Facts and review
 
   @facts/zh-translation-format @domain
   Scenario: A zh text uses fullwidth punctuation and lists each alternative once
-    Given a zh translation or a zh example translation
-    When it carries ASCII ; , ( or ), or a translation repeats an alternative such as 建造；建造
-    Then the submission is invalid and the message names the fullwidth marks or the repeat
-
-  @facts/gap-closure-format @domain
-  Scenario: A gap closure names a closable gap and a reason
-    Given a gap closure to submit
-    When its gap is forms, phrases, relations, topics, grammar, or collocations and it gives a reason
-    Then it is accepted, and any other gap or an empty reason is invalid
-
-  @facts/gap-closure-subject @usecase
-  Scenario: A gap closure is about the node its gap is about
-    Given a forms or phrases closure, or a relations, topics, grammar, or collocations closure
-    When it is submitted on an entry or a sense
-    Then an entry gap closes on the entry and a sense gap on a sense, the other node is an invalid reference, and the closure is keyed by its gap and reason
-
-  @facts/gap-closure-review @domain
-  Scenario: A gap closure passes only when a learner's dictionary has nothing for the slot
-    Given a gap closure with its reason
-    When its review is planned
-    Then the LLM alone sees the word or sense, the slot, and the reason, and passes only when a learner's dictionary would genuinely have nothing there, failing a slot that plainly applies
-    And a phrases closure passes only when fewer than three common phrasal verbs exist and the reason names them, a family closure only for a word with no common derivatives, a relations closure when the recorded relations are the only precise ones, and a grammar closure for a title used before a name ("Mrs"), which a learner's dictionary marks neither [C] nor [U], for a pronoun that governs no agreement (an object, reflexive, or reciprocal pronoun such as "yourself" or "each other", or a relative or interrogative pronoun such as "who"), and for an adverb used only after a number or clock time ("a.m.")
-
-  @facts/gap-closure-attempts @domain
-  Scenario: A gap closure review weighs the attempts already rejected for its slot
-    Given a gap closure whose slot has rejected attempts, and one whose slot has none
-    When its review is planned
-    Then each closable gap names where its attempts are, the kinds that fill it about the node, the derivatives' word formations for family, and none for phrases, and the rubric lists each rejected attempt with its value, the derivative it is about, its other end or topic, and rejection reason
-    And it passes the closure when the attempts were rejected as not fitting, unless the reviewer names a specific value that plainly fills the slot and differs from every rejected one, and a fail reason always names the value
-
-  @facts/gap-closure-blocked-candidates @domain
-  Scenario: A closure is never failed for a candidate the stored data blocks
-    Given a gap closure whose review is shown candidates earlier reviews named, each with the review that named it and the stored facts that block it, and one shown none
-    When its review is planned
-    Then the rubric lists each blocked candidate with that evidence and never fails for one of them, passing unless another value plainly fills the slot
-    And without that evidence no rule lets a reason alone claim a candidate cannot be recorded
-
-  @facts/gap-closure-blocked-candidates-context @usecase
-  Scenario: A closure review finds the blocked candidates from data
-    Given a rejected closure of a sense's synonyms slot whose reason quotes a word whose entry was rejected, a word the sense already relates to, a live unrelated word, and a word with no entry
-    When a new closure of the slot is reviewed
-    Then its review is shown the first two as blocked, with the rejected review's reason and the rejected entry fact or the live relation, and not the other two
-
-  @facts/topics-closure-taxonomy @domain
-  Scenario: A topics closure is judged against the fixed taxonomy
-    Given a topics closure and the leaf topics of the taxonomy
-    When its review is planned
-    Then the rubric lists every leaf topic with its category and passes the closure when none of them fits the sense, never failing for a topic outside the taxonomy such as "horse racing", "gambling", or "hunting"
-    And only the topics gap shows the taxonomy; no other closure or kind sees it
-
-  @facts/topics-closure-taxonomy-context @usecase
-  Scenario: A topics closure review is shown every leaf topic
-    Given the topic taxonomy
-    When a topics closure and a collocations closure are reviewed
-    Then the topics review lists each leaf topic with its category in display order, and the collocations review lists none
-
-  @facts/gap-closure-attempts-context @usecase
-  Scenario: A closure review sees the rejected facts of the kinds that fill its slot
-    Given a sense with rejected topics, one of them since published, and rejected relations into and out of it
-    When a topics closure and a relations closure on it are reviewed
-    Then the topics review lists only the rejected topic still not live, with its topic name and reason, and the relations review lists both relations with the sense at their other end
-
-  @facts/family-closure-attempts-context @usecase
-  Scenario: A family closure review sees the rejected word formations of the word's derivatives
-    Given a word with derivatives whose word formations naming it as a base were rejected, one since submitted again and live
-    When a family closure on the word is reviewed
-    Then the review lists the rejected formation still not live with the derivative it is about and its reason, and leaves out the one live again
-
-  @facts/rejected-derivations-query @api
-  Scenario: Rejected derivations are the latest rejected word formations built on a lemma
-    Given rejected, pending, and published word formations of other entries, some with a base naming the lemma
-    When the rejected derivations of the lemma are listed with a limit
-    Then they are the rejected formations with a base part naming the lemma, each with its entry's lemma, most recently rejected first, up to the limit, leaving out one whose content a live fact holds
-
-  @facts/rejected-attempts-query @api
-  Scenario: Rejected attempts are the latest rejected facts of the filling kinds about the node
-    Given rejected, published, and retracted facts of several kinds about a node and another node
-    When the rejected attempts of some kinds are listed with a limit
-    Then they are the rejected facts of those kinds with the node as subject or object, most recently rejected first, up to the limit, leaving out one whose content a live fact holds
-
-  @facts/gap-closure-api @api
-  Scenario: A reviewed closure closes its gap and shows in the review metadata
-    Given a sense with a collocations gap
-    When a closure on the entry is refused and one on the sense is reviewed and published
-    Then the gap is gone from the claim, completeness rises, and the public entry lists the closure under its review metadata only
+    Given a zh translation
+    When it carries ASCII ; , ( or ), or a sense equivalent repeats an alternative such as 建造；建造
+    Then the submission is invalid and the message names the fullwidth marks or the repeat, and translations stored before the rule still read
 
   @facts/completeness-write-rules-api @api
   Scenario: The completeness write rules refuse what the rules would not count

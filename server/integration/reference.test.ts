@@ -2,10 +2,10 @@ import { env } from 'cloudflare:test'
 import { referenceImportSql } from '@server/adapters/reference-sql'
 import type { CefrRow } from '@server/domain/reference'
 import type { Lemma } from '@server/domain/term'
-import { createEntryResultSchema, entryPageSchema, managedEntryDetailSchema, publicEntrySchema } from '@shared/catalog'
+import { entryPageSchema, managedEntryDetailSchema, publicEntrySchema } from '@shared/catalog'
 import { type ReferenceSource, referenceSourceListSchema } from '@shared/reference'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { adminToken, call, deliverPendingReviews, importReference, issueAgentKey, stubReviewers } from './helpers'
+import { describe, expect, it } from 'vitest'
+import { adminToken, call, headword, importReference } from './helpers'
 
 const source = (id: string, name: string): ReferenceSource => ({
   id,
@@ -42,24 +42,16 @@ const fixture = {
 
 /** Publishes each entry with a sense of each part of speech, so its meanings show their CEFR levels. */
 async function publishEntries(entries: Record<string, Array<CefrRow['pos']>>) {
-  const token = await issueAgentKey()
   for (const [value, kinds] of Object.entries(entries)) {
-    const { entry } = createEntryResultSchema.parse(
-      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: value } })).body,
+    await headword(
+      value,
+      kinds.map((pos) => ({ pos, gloss: `A ${pos} sense of ${value}.` })),
     )
-    for (const pos of kinds) {
-      const gloss = `A ${pos} sense of ${value}.`
-      await call('/manage/v1/senses', { method: 'POST', token, json: { entry_id: entry.id, pos, gloss } })
-    }
   }
-  stubReviewers()
-  await deliverPendingReviews()
-  return token
+  return adminToken()
 }
 
 describe('reference data', () => {
-  afterEach(() => vi.restoreAllMocks())
-
   it('joins CEFR by exact lemma and frequency by word form into entries [spec: reference/entry-read]', async () => {
     await importReference(fixture)
     const token = await publishEntries({ bank: ['noun', 'verb'], Bank: ['noun'], shore: ['noun'] })

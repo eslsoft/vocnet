@@ -1,13 +1,7 @@
-import {
-  createEntryResultSchema,
-  createSenseResultSchema,
-  entryPageSchema,
-  memberPageSchema,
-  publicEntrySchema,
-} from '@shared/catalog'
+import { entryPageSchema, memberPageSchema, publicEntrySchema } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { call, deliverPendingReviews, issueAgentKey, request, stubReviewers } from './helpers'
+import { call, deliverPendingReviews, headword, issueAgentKey, request, stubReviewers } from './helpers'
 
 const settle = async () => {
   const reviewers = stubReviewers()
@@ -15,15 +9,10 @@ const settle = async () => {
   reviewers.mockRestore()
 }
 
-/** Creates the entry with one noun sense and returns the sense id. */
-async function noun(token: string, lemma: string, gloss = `A ${lemma}.`) {
-  const { entry } = createEntryResultSchema.parse(
-    (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })).body,
-  )
-  const { sense } = createSenseResultSchema.parse(
-    (await call('/manage/v1/senses', { method: 'POST', token, json: { entry_id: entry.id, pos: 'noun', gloss } })).body,
-  )
-  return { entryId: entry.id, senseId: sense.id }
+/** A live headword with one published noun sense: its entry and sense ids. */
+async function noun(_token: string, lemma: string, gloss = `A kind of thing called ${lemma}.`) {
+  const { entryId, senses } = await headword(lemma, [{ pos: 'noun', gloss }])
+  return { entryId, senseId: senses[0] as string }
 }
 
 async function relate(token: string, from: string, type: string, to: string, domain?: string) {
@@ -105,7 +94,7 @@ describe('relation layers', () => {
       ['dog', 1],
       ['eagle', 1],
     ])
-    expect(all.items[0]).toMatchObject({ sense_id: bird.senseId, pos: 'noun', gloss: 'A bird.' })
+    expect(all.items[0]).toMatchObject({ sense_id: bird.senseId, pos: 'noun', gloss: 'A kind of thing called bird.' })
     expect((await membersOf(bird.senseId)).items.map((member) => member.lemma)).toEqual(['eagle'])
     const first = await membersOf(animal.senseId, '?limit=2')
     expect(first.items.map((member) => member.lemma)).toEqual(['bird', 'dog'])
@@ -124,35 +113,25 @@ describe('relation layers', () => {
 
   it('lists an entry under a topic only when the topic tags one of its common senses [spec: public-view/topic-common-senses]', async () => {
     const token = await issueAgentKey()
-    const { entryId, senseId: common } = await noun(token, 'theatre', 'A building where plays are performed.')
-    const { sense } = createSenseResultSchema.parse(
-      (
-        await call('/manage/v1/senses', {
-          method: 'POST',
-          token,
-          json: { entry_id: entryId, pos: 'noun', gloss: 'A room where surgery is done.' },
-        })
-      ).body,
-    )
-    await call('/manage/v1/facts', {
-      method: 'POST',
-      token,
-      json: { kind: 'sense_list', subject_id: entryId, payload: { common: [common], extra: [sense.id] } },
-    })
+    const theatre = await headword('theatre', [
+      { pos: 'noun', gloss: 'A building where plays are performed.' },
+      { pos: 'noun', gloss: 'A room where surgery is done.', rank: 'extra' },
+    ])
+    const [common = '', rare = ''] = theatre.senses
     const tag = (senseId: string) =>
       call('/manage/v1/facts', {
         method: 'POST',
         token,
         json: { kind: 'topic', subject_id: senseId, payload: { topic_id: 'hospital-doctor' } },
       })
-    expect((await tag(sense.id)).status).toBe(201)
+    expect((await tag(rare)).status).toBe(201)
     await settle()
     const listed = async () =>
       entryPageSchema.parse((await call('/v1/entries?topic=hospital-doctor')).body).items.map((item) => item.lemma)
     expect(await listed()).toEqual([])
     // The topic's senses still list the rare sense itself.
     const senses = (await call('/v1/topics/hospital-doctor/senses')).body as { items: Array<{ sense_id: string }> }
-    expect(senses.items.map((item) => item.sense_id)).toEqual([sense.id])
+    expect(senses.items.map((item) => item.sense_id)).toEqual([rare])
     expect((await tag(common)).status).toBe(201)
     await settle()
     expect(await listed()).toEqual(['theatre'])

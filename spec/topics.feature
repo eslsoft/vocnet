@@ -7,7 +7,8 @@ Feature: Topics
   Scenario: A topic fact asks whether this sense is core vocabulary of that topic
     Given a topic fact on a glossed sense and the leaf topic it names
     When its review is planned
-    Then the LLM alone is asked, with the lemma, part of speech, gloss, topic, category, and the entry's other senses
+    Then Jev and luna are asked one question with the lemma, part of speech, gloss, topic, category, and the entry's other senses, and their mean score against the mean threshold settles a pass
+    And otherwise the LLM decides, with the same context
     And its rubric passes only a sense a learner characteristically meets or needs in the topic, typical vocabulary of that scene or subject area
     And fails a general-purpose sense that merely can appear in the topic, a loose association, or a topic that fits a different sense of the word
     And it gives audited passes and fails as examples and says to fail when in doubt
@@ -41,12 +42,6 @@ Feature: Topics
     And a second correction of the same original is refused while the first is live, naming the live correction
     And a plain fourth topic fact is still refused as a conflict naming the limit of three
 
-  @topics/revalidate @usecase
-  Scenario: Topics are re-reviewed when the gloss changes meaning
-    Given a published topic fact on a sense
-    When a correction that changes the gloss's meaning publishes
-    Then the topic fact is re-reviewed against the new gloss
-
   @topics/tree @usecase
   Scenario: The taxonomy is served as categories with their leaf topics
     Given the topic taxonomy
@@ -76,9 +71,9 @@ Feature: Topics
 
   @topics/visibility @api
   Scenario: A tagged sense is listed only while everything it shows is published
-    Given a published topic fact whose sense gloss and entry are still pending
-    When the topic's senses are listed before and after the gloss and entry publish, and after the topic is retracted
-    Then the sense is listed only while its topic fact, gloss, and entry are all published
+    Given published topic facts on two senses of an entry's published inventory
+    When a curator's correction of the inventory drops one sense, and the other sense's topic is retracted
+    Then each sense is listed only while its topic fact is published and its entry's published inventory lists it
 
   @topics/write-rules-api @api
   Scenario: The write rules hold on a real database
@@ -89,38 +84,16 @@ Feature: Topics
   @topics/correct-at-limit-api @api
   Scenario: A correction replaces a topic on a full sense on a real database
     Given a sense with three published topic facts
-    When a correction supersedes one of them, a second correction of the same one and a fourth topic are submitted, and a rejected correction is re-reviewed
+    When a correction supersedes one of them, and a second correction of the same one and a fourth topic are submitted
     Then the first correction is accepted, the second is 409 naming the live correction, and the fourth is 409 naming the limit
-    And the re-review is 409 while another correction holds the place and is accepted once it does not
     And once the correction publishes the sense holds three published topics and the original is superseded
-
-  @topics/rereview-under-correction-api @api
-  Scenario: Re-reviewing a topic under correction cannot push a sense past three topics
-    Given a sense with three published topic facts and a pending correction of one of them
-    When an admin re-reviews the original and both are then reviewed
-    Then the re-review is 409 conflict pointing at the correction and the original stays published
-    And the correction publishes, the original is superseded, and the sense holds three published topics
-
-  @topics/correction-race-api @api
-  Scenario: A correction racing a re-review of its original cannot push a sense past three topics
-    Given a sense with three published topic facts
-    When an admin re-reviews one of them right after a correction's submission or a rejected correction's re-review read it published
-    Then the correction is 409 conflict because its original is not published, and nothing of it is live
-    And once the original is reviewed again the sense holds exactly three published topics
 
   @topics/one-live-correction-api @api
   Scenario: One original has one live correction, below the limit too, on a real database
     Given a sense with one published topic fact
-    When four corrections of it are submitted at once, and a rejected one is re-reviewed beside a live one
+    When four corrections of it are submitted at once
     Then one correction is accepted and the rest are 409 conflict naming the live correction
     And once the live correction publishes the sense holds one published topic, the original is superseded and cannot be corrected again
-
-  @topics/stale-correction-review-api @api
-  Scenario: A correction's review overtaken by a revalidation leaves its original in place
-    Given a sense with three published topic facts and a pending correction of one of them
-    When the sense's gloss changes meaning while the correction's review is running, and that review later rejects the correction
-    Then the overtaken review changes nothing, so the original stays published
-    And the sense still holds three published topics
 
   @topics/not-found @api
   Scenario: An unknown topic has no senses to list

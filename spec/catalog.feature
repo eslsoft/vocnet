@@ -1,18 +1,19 @@
 Feature: Catalog
-  The public dictionary: entries, senses, forms, and relations, shown only as far
-  as their facts are published, in a learner's shape. Lookups are exact; there
-  are no fallbacks.
+  The public dictionary: live entries, the senses of their published inventories, forms,
+  relations, phrases, and translations, shown only as far as their facts are published, in a
+  learner's shape. Entries are admitted, never created by workers. Lookups are exact; there are
+  no fallbacks.
 
   @catalog/entry-read @api
   Scenario: Read a reviewed entry
-    Given an entry whose entry, sense, form, example, and relation facts are published
+    Given a live entry whose inventory, form, example, translation, and relation facts are published
     When anyone requests the entry by its lemma
     Then the API returns the entry with its senses grouped into meanings and no review metadata
     And with include=review each published claim carries its fact id, confidence, and verdict
 
   @catalog/entry-not-found @api
   Scenario: Unknown or unpublished items are not found
-    Given a lemma, form, or sense that does not exist or is not yet published
+    Given a lemma, form, or sense that does not exist, an entry that is not live, or a sense no published inventory lists
     When anyone requests it
     Then the API responds 404 with the not_found code
 
@@ -35,10 +36,10 @@ Feature: Catalog
     Then Jev answers one question per grammar property, pattern, and named preposition, the LLM judges the collocation, and the public entry and sense show all three
 
   @catalog/sense-order @domain
-  Scenario: Senses come in the order of the published sense list
-    Given an entry with a published sense list, a pending correction, and a sense the list does not name
+  Scenario: Senses come in the order of the published inventory
+    Given an entry with a published inventory, a pending correction of it, and a sense no published inventory lists
     When the public view is built
-    Then each part of speech is a meaning, in the order of its first sense, and its senses come common in list order, then extra marked rare, then the unnamed ones, and the entry's review carries the published list
+    Then each part of speech is a meaning, in the order of its first sense, its senses come common in inventory order and then extra marked rare, with the gloss and labels the inventory gives, the unlisted sense is not shown, and the entry's review carries the published inventory
 
   @catalog/meaning-shape @domain
   Scenario: An entry reads as a learner's dictionary entry
@@ -131,66 +132,42 @@ Feature: Catalog
     Then every matching entry is returned exactly once in lemma order as a summary, and a broken cursor is rejected
 
   @catalog/create-entry @usecase
-  Scenario: Creating an entry is idempotent by lemma
-    Given an agent creates the entry "ice cream"
-    When it creates the same lemma again
-    Then the existing entry and its live entry fact are returned and nothing new is enqueued
-
-  @catalog/create-entry-seed @usecase
-  Scenario: Creating an entry with seed marks it as a seed entry
-    Given entries created without seed
-    When an agent creates a new entry with seed true, creates an existing entry with seed true, and creates a seed entry again with seed false or without seed
-    Then both entries are seed entries and the repeated creates leave the mark as it was
+  Scenario: A curator admits a headword in a batch, idempotently
+    Given a curator admits the headword "house" in batch 2
+    When it admits the same lemma again in another batch, admits an existing entry that is not live, or a producer agent tries to admit one
+    Then the first call creates the live entry in batch 2, the repeat returns it keeping batch 2, the existing entry becomes live in the batch, and the producer is forbidden
 
   @catalog/import-core @usecase
-  Scenario: The core import creates entries for the CEFR headwords that have none
+  Scenario: The core import admits the CEFR headwords that have no entry as batch 1
     Given CEFR headwords of several levels, one of them already an entry, and the single letters "a", "I", and "x"
     When an admin runs the core import a few entries at a time until nothing remains, and once more
-    Then each headword without an entry becomes a seed entry the admin created, lowest level first, its entry fact pending and queued for review
+    Then each headword without an entry becomes a live batch 1 entry the admin created, lowest level first, nothing is queued for review, and the reopened blocked slots are those of the admitted words
     And "x" is skipped and reported, the existing entry is left as it was, and the last run creates nothing
 
   @catalog/import-core-api @api
   Scenario: Only an admin runs the core import over HTTP
-    Given imported CEFR levels and an entry an agent created for one of the headwords
+    Given imported CEFR levels and an entry a curator admitted for one of the headwords in batch 2
     When an agent and then an admin call the core import, one entry per call
     Then the agent gets 403, the admin's calls create the missing entries and report the skipped single letter and what remains
-    And the created entries are seed entries, and the worklist orders them with the agent's entry by level and frequency, not by the seed mark
+    And the created entries are live in batch 1 with their senses items first in the queue, while the earlier entry keeps batch 2
 
-  @catalog/create-sense @usecase
-  Scenario: Creating a sense submits its gloss as a fact
-    Given an entry
-    When an agent creates a sense with a POS and gloss
-    Then the sense and a pending sense fact exist, and repeating the call returns them
-
-  @catalog/create-sense-register @usecase
-  Scenario: A register does not make a second sense
-    Given a sense with a gloss
-    When an agent creates a sense of the same entry and POS with that gloss and a register
-    Then it returns the existing sense unchanged, and a register goes on an existing sense through a correction
-
-  @catalog/create-sense-register-api @api
-  Scenario: Creating a known gloss with a register over HTTP
-    Given an entry
-    When an agent creates the same gloss with and without a register at once, then again with another register
-    Then every call returns one sense, and the public entry lists that gloss once
-
-  @catalog/create-sense-race @api
-  Scenario: Concurrent identical sense creations make one sense
-    Given an entry
-    When two identical create-sense requests arrive at the same time
-    Then both return the same sense and gloss fact, and the entry has one sense
+  @catalog/create-entry-api @api
+  Scenario: Only a curator admits entries over HTTP
+    Given a producer key, a curator key, and an admin token
+    When each posts the lemma "house" in batch 2, and the curator posts it again
+    Then the producer gets 403, the first curator call is 201 with the entry and the second 200, the management view says live in batch 2, and its senses item is claimable
 
   @catalog/manage-entry @api
   Scenario: Management sees every fact in every status
-    Given an entry with pending facts
+    Given a live entry with a pending inventory and pending facts
     When an agent requests the entry through the management API
-    Then every fact about the entry and its senses is returned with its status
+    Then every fact about the entry, its senses, and their examples and collocations is returned with its status, with whether the entry is live, its batch, its completeness, credibility, and slot counts
 
   @catalog/manage-entry-list @api
   Scenario: Management lists entries in every status with their progress
-    Given entries with pending, published, and retracted facts, one of them worked by an agent
+    Given live and unlisted entries with pending, published, and retracted facts, one of them worked by an agent
     When an agent pages through the entries by prefix
-    Then each page lists entries in lemma order with the entry status, live sense count, fact counts by status, and last worked time
+    Then each page lists entries in lemma order with whether each is live, its inventory size, fact counts by status, and last worked time
 
   @catalog/manage-entry-list-index @api
   Scenario: Listing entries reads only the page
@@ -205,19 +182,13 @@ Feature: Catalog
     Then it gets the owning entry's id and lemma for both, and 404 for the unknown id
 
   @catalog/new-fields @domain
-  Scenario: The entry document shows syllables, form objects, and example translations
-    Given an entry with published syllables, a form with a pronunciation, and a translated example
+  Scenario: The entry document shows syllables, form objects, and the translations of each item
+    Given an entry with published syllables, a form with a pronunciation, and published translations of a sense, an example, and a collocation, and a translation of a superseded example
     When its document is projected and read
-    Then the entry has its syllables, each form is an object with irregular and its pronunciation, and an example shows its translation in the read's language, every one with lang=all, and none without a language
+    Then the entry has its syllables, each form is an object with irregular and its pronunciation, and each sense, example, and collocation shows its own translation in the read's language, every one with lang=all, none without a language, and the superseded example's translation nowhere
 
   @catalog/new-fields-api @api
   Scenario: The new fields are validated and served through the API
-    Given an agent submits syllables, a form with a pronunciation, and a translated example
+    Given an agent submits syllables, a form with a pronunciation, and a translation of an example
     When the payloads break a rule, or once they are reviewed and published
     Then a malformed ipa, an ipa without an accent, or an unserved language is 400, syllables that do not spell the lemma are 422, and the public entry serves the published fields
-
-  @catalog/region-and-closures @domain
-  Scenario: The public entry shows a sense region and the gap closures
-    Given an entry with a region-labelled sense and published, pending, and hidden-sense gap closures
-    When its public document is projected
-    Then the sense shows its region (null when both varieties use it), and the review metadata lists the published closures of the entry and its shown senses with their gap and reason

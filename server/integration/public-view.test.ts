@@ -10,26 +10,24 @@ import {
 } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
 import { topicNamesOf } from '@server/usecases/public-view'
-import {
-  createEntryResultSchema,
-  createSenseResultSchema,
-  entryPageSchema,
-  formLookupSchema,
-  publicEntrySchema,
-  publicSenseDetailSchema,
-} from '@shared/catalog'
-import { factWriteResultSchema, type SenseId } from '@shared/facts'
+import { entryPageSchema, formLookupSchema, publicEntrySchema, publicSenseDetailSchema } from '@shared/catalog'
+import type { SenseId } from '@shared/facts'
 import { publicRebuildResultSchema } from '@shared/public-view'
 import { topicSensePageSchema } from '@shared/topics'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   adminToken,
   call,
+  curated,
   deliverPendingReviews,
+  headword,
   importLearnerData,
   issueAgentKey,
+  managed,
+  publishInventory,
   request,
   stubReviewers,
+  submitOk,
 } from './helpers'
 
 const DOCUMENT_CACHE = 'public, no-cache'
@@ -38,26 +36,18 @@ const LIST_CACHE = 'public, max-age=5'
 /** "bank" with a plural form and a topic-tagged river sense, linked by a synonym to "shore"; all published. */
 async function seedBank() {
   const token = await issueAgentKey()
-  const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
-  const bank = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'bank' }))
-  const shore = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'shore' }))
-  const river = createSenseResultSchema.parse(
-    await post('/manage/v1/senses', { entry_id: bank.entry.id, pos: 'noun', gloss: 'Land beside a river.' }),
-  )
-  const coast = createSenseResultSchema.parse(
-    await post('/manage/v1/senses', { entry_id: shore.entry.id, pos: 'noun', gloss: 'Land along water.' }),
-  )
-  const submit = async (json: unknown) => factWriteResultSchema.parse(await post('/manage/v1/facts', json)).fact
-  await submit({ kind: 'form', subject_id: bank.entry.id, payload: { form: 'banks', type: 'plural' } })
-  await submit({ kind: 'topic', subject_id: river.sense.id, payload: { topic_id: 'family' } })
-  await submit({
-    kind: 'relation',
-    subject_id: river.sense.id,
-    payload: { type: 'synonym', target_sense_id: coast.sense.id },
-  })
+  const bank = await headword('bank', [{ pos: 'noun', gloss: 'Land beside a river.' }])
+  const shore = await headword('shore', [{ pos: 'noun', gloss: 'Land along water.' }])
+  const river = bank.senses[0] as SenseId
+  const coast = shore.senses[0] as SenseId
+  const submit = (kind: string, subjectId: string, payload: unknown, supersedesId?: string) =>
+    submitOk(token, kind, subjectId, payload, supersedesId ? { supersedes_id: supersedesId } : {})
+  const form = await submit('form', bank.entryId, { form: 'banks', type: 'plural' })
+  await submit('topic', river, { topic_id: 'family' })
+  await submit('relation', river, { type: 'synonym', target_sense_id: coast })
   stubReviewers()
   await deliverPendingReviews()
-  return { token, bank, shore, river, coast, submit }
+  return { token, bank, shore, river, coast, form, submit }
 }
 
 const entryOf = async (lemma: string) => publicEntrySchema.parse((await call(`/v1/entries/${lemma}`)).body)
@@ -72,7 +62,6 @@ const viewRowsOf = (entryId: string) =>
       'SELECT pos, cefr FROM public_meanings WHERE entry_id = ?1 ORDER BY pos',
       'SELECT form, type, pos FROM public_forms WHERE entry_id = ?1 ORDER BY form, type, pos',
       'SELECT topic_id, sense_id, pos, cefr, level_order, frequency_order, summary FROM public_sense_topics WHERE entry_id = ?1 ORDER BY topic_id, sense_id',
-      'SELECT word FROM public_phrase_words WHERE entry_id = ?1 ORDER BY word',
       'SELECT form, role FROM public_morphemes WHERE entry_id = ?1 ORDER BY form, role',
       'SELECT field, scope, body FROM public_search WHERE entry_id = ?1 ORDER BY field, scope, body',
       'SELECT revision, view_revision FROM worklist WHERE entry_id = ?1',
@@ -84,50 +73,62 @@ const staleViews = async () =>
 describe('public view', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('moves an entry in and out of every public read as it is published and retracted [spec: public-view/publish]', async () => {
-    const { token, bank, river } = await seedBank()
-    expect((await call('/v1/entries/bank')).status).toBe(200)
-    expect((await call(`/v1/senses/${river.sense.id}`)).status).toBe(200)
-    expect(formLookupSchema.parse((await call('/v1/forms/banks')).body).items).toEqual([
-      expect.objectContaining({ lemma: 'bank', matches: [{ type: 'plural', pos: 'noun' }] }),
-    ])
-    expect(await listed()).toEqual(['bank', 'shore'])
-    expect(await tagged()).toEqual([river.sense.id])
-    expect(await staleViews()).toBe(0)
-    expect(bank.entry.lemma).toBe('bank')
+  it('moves a phrase in and out of every public read as its headword lists and drops it [spec: public-view/publish]', async () => {
+    const token = await issueAgentKey()
+    const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
+    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give in'] })
+    const giveUp = (await managed('give up')).entry.id
+    const { senses } = await publishInventory(giveUp, [{ pos: 'verb', gloss: 'To stop trying to do something.' }])
+    const sense = senses[0] as SenseId
+    await submitOk(token, 'form', giveUp, { form: 'gave up', type: 'past' })
+    await submitOk(token, 'topic', sense, { topic_id: 'family' })
+    expect(await tagged()).toEqual([])
+    stubReviewers()
+    await deliverPendingReviews()
 
-    await call(`/manage/v1/facts/${bank.fact.id}/retract`, { method: 'POST', token })
-    expect((await call('/v1/entries/bank')).status).toBe(404)
-    expect((await call(`/v1/senses/${river.sense.id}`)).status).toBe(404)
-    expect((await call('/v1/forms/banks')).status).toBe(404)
-    expect(await listed()).toEqual(['shore'])
+    expect((await call('/v1/entries/give%20up')).status).toBe(200)
+    expect((await call(`/v1/senses/${sense}`)).status).toBe(200)
+    expect(formLookupSchema.parse((await call('/v1/forms/gave%20up')).body).items).toEqual([
+      expect.objectContaining({ lemma: 'give up', matches: [{ type: 'past', pos: 'verb' }] }),
+    ])
+    expect(await listed()).toEqual(['give', 'give up'])
+    expect(await tagged()).toEqual([sense])
+    expect(await staleViews()).toBe(0)
+
+    await curated('phrases', give.entryId, { phrases: ['give in'] }, list.id)
+    expect((await call('/v1/entries/give%20up')).status).toBe(404)
+    expect((await call(`/v1/senses/${sense}`)).status).toBe(404)
+    expect((await call('/v1/forms/gave%20up')).status).toBe(404)
+    expect(await listed()).toEqual(['give'])
     expect(await tagged()).toEqual([])
     const rows = await env.DB.prepare(
-      "SELECT (SELECT count(*) FROM public_entries WHERE entry_id = ?1) + (SELECT count(*) FROM public_forms WHERE entry_id = ?1) + (SELECT count(*) FROM public_sense_topics WHERE entry_id = ?1) + (SELECT count(*) FROM public_phrase_words WHERE entry_id = ?1) + (SELECT count(*) FROM public_morphemes WHERE entry_id = ?1) + (SELECT count(*) FROM public_meanings WHERE entry_id = ?1) + (SELECT count(*) FROM public_search WHERE entry_id = ?1) + (SELECT count(*) FROM public_search_fts WHERE public_search_fts MATCH 'river') AS n",
+      "SELECT (SELECT count(*) FROM public_entries WHERE entry_id = ?1) + (SELECT count(*) FROM public_forms WHERE entry_id = ?1) + (SELECT count(*) FROM public_sense_topics WHERE entry_id = ?1) + (SELECT count(*) FROM public_morphemes WHERE entry_id = ?1) + (SELECT count(*) FROM public_meanings WHERE entry_id = ?1) + (SELECT count(*) FROM public_search WHERE entry_id = ?1) + (SELECT count(*) FROM public_search_fts WHERE public_search_fts MATCH 'trying') AS n",
     )
-      .bind(bank.entry.id)
+      .bind(giveUp)
       .first<{ n: number }>()
     expect(rows?.n).toBe(0)
   })
 
   it('updates the linked entry when the other end of its relation changes [spec: public-view/linked]', async () => {
-    const { token, shore, coast, submit } = await seedBank()
+    const { shore, coast } = await seedBank()
     const relatedGloss = async () =>
       (await entryOf('bank')).meanings[0]?.senses[0]?.relations.synonyms.map((related) => related.gloss)
     expect(await relatedGloss()).toEqual(['Land along water.'])
 
-    await submit({
-      kind: 'sense',
-      subject_id: coast.sense.id,
-      supersedes_id: coast.fact.id,
-      payload: { gloss: 'The land along the edge of the sea.' },
-    })
-    await deliverPendingReviews()
-    // No read has rebuilt it: the review's own refresh did.
+    const reworded = await publishInventory(
+      shore.entryId,
+      [{ id: coast, pos: 'noun', gloss: 'The land along the edge of the sea.' }],
+      shore.inventory.id,
+    )
+    // No read has rebuilt it: the write's own refresh did.
     expect(await staleViews()).toBe(0)
     expect(await relatedGloss()).toEqual(['The land along the edge of the sea.'])
 
-    await call(`/manage/v1/facts/${shore.fact.id}/retract`, { method: 'POST', token })
+    await publishInventory(
+      shore.entryId,
+      [{ pos: 'verb', gloss: 'To support something with props.' }],
+      reworded.fact.id,
+    )
     expect(await staleViews()).toBe(0)
     expect(await relatedGloss()).toEqual([])
   })
@@ -148,8 +149,8 @@ describe('public view', () => {
   })
 
   it('serves documents with an ETag and Cache-Control and answers 304 while unchanged [spec: public-view/http-cache]', async () => {
-    const { river, submit } = await seedBank()
-    for (const path of ['/v1/entries/bank', `/v1/senses/${river.sense.id}`, '/v1/forms/banks']) {
+    const { bank, river, form, submit } = await seedBank()
+    for (const path of ['/v1/entries/bank', `/v1/senses/${river}`, '/v1/forms/banks']) {
       const first = await request(path)
       const etag = first.headers.get('etag')
       expect(etag).toMatch(/^"[0-9a-f]{32}"$/)
@@ -174,14 +175,14 @@ describe('public view', () => {
     await call('/v1/feedback', {
       method: 'POST',
       headers: { 'cf-connecting-ip': '203.0.113.9' },
-      json: { target_type: 'fact', target_id: river.fact.id, message: 'Too vague.' },
+      json: { target_type: 'fact', target_id: form.id, message: 'Too vague.' },
     })
     const revision = await env.DB.prepare('SELECT revision, view_revision FROM worklist WHERE entry_id = ?')
-      .bind(river.sense.entry_id)
+      .bind(bank.entryId)
       .first<{ revision: number; view_revision: number }>()
     expect(revision?.view_revision).toBe(revision?.revision)
     expect(await etag()).toBe(before)
-    await submit({ kind: 'example', subject_id: river.sense.id, payload: { text: 'We sat on the bank.' } })
+    await submit('example', river, { text: 'We sat on the bank.' })
     await deliverPendingReviews()
     expect(await etag()).not.toBe(before)
   })
@@ -194,7 +195,6 @@ describe('public view', () => {
         'UPDATE worklist SET view_revision = revision - 1',
         'DELETE FROM public_forms',
         'DELETE FROM public_sense_topics',
-        'DELETE FROM public_phrase_words',
         'DELETE FROM public_morphemes',
         'DELETE FROM public_meanings',
         'DELETE FROM public_search',
@@ -217,39 +217,34 @@ describe('public view', () => {
 
   it('stores nothing from a rebuild whose revision moved before it saved [spec: public-view/lost-update]', async () => {
     const { bank, submit } = await seedBank()
-    await submit({
-      kind: 'morphology',
-      subject_id: bank.entry.id,
-      payload: { parts: [{ form: 'bank', role: 'base' }] },
-    })
+    await submit('morphology', bank.entryId, { parts: [{ form: 'bank', role: 'base' }] })
     await deliverPendingReviews()
     const { publicViews } = createDeps(env)
-    const built = await viewRowsOf(bank.entry.id)
+    const built = await viewRowsOf(bank.entryId)
     const [documentRow] = built[0] as Array<{ document: string }>
     if (!documentRow) throw new Error('bank has no stored document.')
     const document = readStored<StoredEntry>(documentRow.document)
     expect(built[1]).toHaveLength(1)
     expect(built[2]).toHaveLength(1)
     expect(built[3]).toHaveLength(1)
-    expect(built[4]).toHaveLength(0)
+    expect(built[4]).toHaveLength(1)
     expect(built[5]).toHaveLength(1)
-    expect(built[6]).toHaveLength(1)
 
     // A rebuild loads the stale revision, then another write bumps it before the rebuild saves.
-    await env.DB.prepare('UPDATE worklist SET revision = revision + 1 WHERE entry_id = ?').bind(bank.entry.id).run()
-    const [stale] = await publicViews.listStale([bank.entry.id])
+    await env.DB.prepare('UPDATE worklist SET revision = revision + 1 WHERE entry_id = ?').bind(bank.entryId).run()
+    const [stale] = await publicViews.listStale([bank.entryId])
     if (!stale) throw new Error('bank is not stale.')
-    await env.DB.prepare('UPDATE worklist SET revision = revision + 1 WHERE entry_id = ?').bind(bank.entry.id).run()
-    const moved = await viewRowsOf(bank.entry.id)
+    await env.DB.prepare('UPDATE worklist SET revision = revision + 1 WHERE entry_id = ?').bind(bank.entryId).run()
+    const moved = await viewRowsOf(bank.entryId)
 
     await publicViews.save(
       stale,
       publicViewRecord({ ...document, lemma: 'bank up', meanings: [], morphology: null, frequency: null }),
     )
-    expect(await viewRowsOf(bank.entry.id)).toEqual(moved)
+    expect(await viewRowsOf(bank.entryId)).toEqual(moved)
     await publicViews.save(stale, null)
-    expect(await viewRowsOf(bank.entry.id)).toEqual(moved)
-    expect(moved.slice(0, 7)).toEqual(built.slice(0, 7))
+    expect(await viewRowsOf(bank.entryId)).toEqual(moved)
+    expect(moved.slice(0, 6)).toEqual(built.slice(0, 6))
   })
 
   it('finds forms and list rows only once the drain has built them [spec: public-view/drain]', async () => {
@@ -260,7 +255,6 @@ describe('public view', () => {
         'UPDATE worklist SET view_revision = revision - 1',
         'DELETE FROM public_forms',
         'DELETE FROM public_sense_topics',
-        'DELETE FROM public_phrase_words',
         'DELETE FROM public_morphemes',
         'DELETE FROM public_entries',
       ].map((statement) => env.DB.prepare(statement)),
@@ -280,14 +274,14 @@ describe('public view', () => {
       }),
     ])
     expect(await listed()).toEqual(['bank', 'shore'])
-    expect(await tagged()).toEqual([river.sense.id])
-    expect(bank.entry.lemma).toBe('bank')
+    expect(await tagged()).toEqual([river])
+    expect(bank.senses).toEqual([river])
   })
 
   it('serves every variant as the live projection builds it [spec: public-view/parity]', async () => {
     await importLearnerData({ zipf: { bank: 5.1, shore: 4 }, levels: { bank: 'A1' } })
     const { river, coast, submit } = await seedBank()
-    await submit({ kind: 'translation', subject_id: river.sense.id, payload: { language: 'zh', text: '河岸' } })
+    await submit('translation', river, { language: 'zh', of: 'sense', text: '河岸' })
     await deliverPendingReviews()
     const deps = createDeps(env)
     const topicNames = await topicNamesOf(deps)
@@ -297,8 +291,8 @@ describe('public view', () => {
       ['?lang=all&include=review', { lang: 'all', review: true }],
     ]
     for (const [lemma, senseId] of [
-      ['bank', river.sense.id],
-      ['shore', coast.sense.id],
+      ['bank', river],
+      ['shore', coast],
     ] as Array<[Lemma, SenseId]>) {
       const entry = await deps.nodes.findEntryByLemma(lemma)
       if (!entry) throw new Error(`No entry ${lemma}.`)
@@ -320,18 +314,10 @@ describe('public view', () => {
   it('resolves every published form of a public entry through the form lookup, shown or not [spec: public-view/form-parity]', async () => {
     const { bank, submit } = await seedBank()
     // bank has only a noun sense: the verb forms and the pronoun plural have no meaning to show them.
-    await submit({ kind: 'form', subject_id: bank.entry.id, payload: { form: 'banked', type: 'past' } })
-    await submit({
-      kind: 'form',
-      subject_id: bank.entry.id,
-      payload: { form: 'banking', type: 'present_participle', pos: 'verb' },
-    })
-    await submit({
-      kind: 'form',
-      subject_id: bank.entry.id,
-      payload: { form: 'banken', type: 'plural', pos: 'pronoun' },
-    })
-    await submit({ kind: 'form', subject_id: bank.entry.id, payload: { form: 'banc', type: 'variant' } })
+    await submit('form', bank.entryId, { form: 'banked', type: 'past' })
+    await submit('form', bank.entryId, { form: 'banking', type: 'present_participle', pos: 'verb' })
+    await submit('form', bank.entryId, { form: 'banken', type: 'plural', pos: 'pronoun' })
+    await submit('form', bank.entryId, { form: 'banc', type: 'variant' })
     await deliverPendingReviews()
 
     const shown = (await entryOf('bank')).meanings.flatMap((meaning) => Object.values(meaning.forms).flat())
@@ -354,71 +340,43 @@ describe('public view', () => {
     expect(formLookupSchema.parse((await call('/v1/forms/banked')).body).items[0]?.matches).toEqual([{ type: 'past' }])
   })
 
-  it('lists a multiword entry among the phrases of each of its words, joined on read [spec: public-view/phrases]', async () => {
-    const { token } = await seedBank()
-    const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
-    const publish = async (lemma: string, gloss: string, pos = 'verb') => {
-      const created = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma }))
-      await post('/manage/v1/senses', { entry_id: created.entry.id, pos, gloss })
-      await deliverPendingReviews()
-      return created
-    }
-    await publish('give', 'To hand something to someone.')
-    await publish('up', 'Towards a higher place.', 'adverb')
+  it('lists the public phrases a headword names, in its list order, joined on read [spec: public-view/phrases]', async () => {
+    const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
     const etagOf = async (lemma: string) => (await request(`/v1/entries/${lemma}`)).headers.get('etag')
-    const builtAt = () =>
-      env.DB.prepare(
-        "SELECT built_at FROM public_entries JOIN entries ON entries.id = public_entries.entry_id WHERE entries.lemma = 'give'",
-      ).first<{ built_at: string }>()
-    const before = await etagOf('give')
-    const built = await builtAt()
     expect((await entryOf('give')).phrases).toEqual([])
-
-    const giveUp = await publish('give up', 'To stop trying.')
-    for (const lemma of ['give', 'up']) {
-      expect((await entryOf(lemma)).phrases).toEqual([
-        { lemma: 'give up', pos: ['verb'], cefr: null, gloss: 'To stop trying.' },
-      ])
-    }
+    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give in'] })
     const listedEtag = await etagOf('give')
-    expect(listedEtag).not.toBe(before)
-    // Nothing rebuilt "give": the phrase comes from the view rows of "give up".
-    expect(await staleViews()).toBe(0)
-    expect(await builtAt()).toEqual(built)
-
-    await call(`/manage/v1/facts/${giveUp.fact.id}/retract`, { method: 'POST', token })
+    // Neither phrase is public before its inventory publishes.
     expect((await entryOf('give')).phrases).toEqual([])
-    expect((await entryOf('up')).phrases).toEqual([])
-    const after = await etagOf('give')
-    expect(after).not.toBe(listedEtag)
-    expect(await builtAt()).toEqual(built)
+
+    await publishInventory((await managed('give up')).entry.id, [{ pos: 'verb', gloss: 'To stop trying.' }])
+    expect((await entryOf('give')).phrases).toEqual([
+      { lemma: 'give up', pos: ['verb'], cefr: null, gloss: 'To stop trying.' },
+    ])
+    const shownEtag = await etagOf('give')
+    expect(shownEtag).not.toBe(listedEtag)
+    expect(await staleViews()).toBe(0)
+
+    await publishInventory((await managed('give in')).entry.id, [{ pos: 'verb', gloss: 'To accept defeat.' }])
+    // A public phrase containing the word that the list does not name is not one of its phrases.
+    await headword('give way', [{ pos: 'verb', gloss: 'To break under pressure.' }])
+    expect((await entryOf('give')).phrases.map((phrase) => phrase.lemma)).toEqual(['give up', 'give in'])
+
+    await curated('phrases', give.entryId, { phrases: ['give in'] }, list.id)
+    expect((await entryOf('give')).phrases.map((phrase) => phrase.lemma)).toEqual(['give in'])
+    expect(await etagOf('give')).not.toBe(shownEtag)
   })
 
   it('lists the entries sharing a base as word family and links the public parts [spec: public-view/family]', async () => {
-    const { token } = await seedBank()
-    const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
-    const submit = async (json: unknown) => factWriteResultSchema.parse(await post('/manage/v1/facts', json)).fact
-    const create = async (lemma: string, gloss: string) => {
-      const created = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma }))
-      await post('/manage/v1/senses', { entry_id: created.entry.id, pos: 'noun', gloss })
-      return created
-    }
-    const happy = await create('happy', 'Feeling or showing pleasure.')
-    const happiness = await create('happiness', 'The state of being happy.')
-    await submit({
-      kind: 'morphology',
-      subject_id: happy.entry.id,
-      payload: { parts: [{ form: 'happy', role: 'base' }] },
-    })
-    const formation = await submit({
-      kind: 'morphology',
-      subject_id: happiness.entry.id,
-      payload: {
-        parts: [
-          { form: 'happy', role: 'base' },
-          { form: '-ness', role: 'suffix' },
-        ],
-      },
+    const { submit } = await seedBank()
+    const happy = await headword('happy', [{ pos: 'noun', gloss: 'Feeling or showing pleasure.' }])
+    const happiness = await headword('happiness', [{ pos: 'noun', gloss: 'The state of being happy.' }])
+    await submit('morphology', happy.entryId, { parts: [{ form: 'happy', role: 'base' }] })
+    const formation = await submit('morphology', happiness.entryId, {
+      parts: [
+        { form: 'happy', role: 'base' },
+        { form: '-ness', role: 'suffix' },
+      ],
     })
     await deliverPendingReviews()
 
@@ -432,25 +390,25 @@ describe('public view', () => {
     })
     expect((await morphologyOf('happy'))?.family.map((member) => member.lemma)).toEqual(['happiness'])
 
-    await submit({
-      kind: 'morphology',
-      subject_id: happiness.entry.id,
-      supersedes_id: formation.id,
-      payload: {
+    await submit(
+      'morphology',
+      happiness.entryId,
+      {
         parts: [
           { form: 'happi', role: 'base' },
           { form: '-ness', role: 'suffix' },
         ],
       },
-    })
+      formation.id,
+    )
     await deliverPendingReviews()
     expect((await morphologyOf('happiness'))?.family).toEqual([])
     expect((await morphologyOf('happy'))?.family).toEqual([])
   })
 
   it('reads translations and topic names in the language asked for, with an ETag per language [spec: public-view/language]', async () => {
-    const { river, submit } = await seedBank()
-    await submit({ kind: 'translation', subject_id: river.sense.id, payload: { language: 'zh', text: '河岸' } })
+    const { bank, river, submit } = await seedBank()
+    await submit('translation', river, { language: 'zh', of: 'sense', text: '河岸' })
     await deliverPendingReviews()
     const read = async (query: string, headers: Record<string, string> = {}) => {
       const response = await request(`/v1/entries/bank${query}`, { headers })
@@ -492,8 +450,8 @@ describe('public view', () => {
     expect(plain).not.toContain('"review"')
     expect(plain).not.toContain('fact_id')
     const reviewed = await read('?include=review')
-    expect(reviewed.body.review?.entry.fact_id).toEqual(expect.any(String))
-    expect(reviewed.sense?.review?.gloss.fact_id).toBe(river.fact.id)
+    expect(reviewed.body.review?.inventory.fact_id).toBe(bank.inventory.id)
+    expect(reviewed.sense?.review?.gloss.fact_id).toBe(bank.inventory.id)
     expect(reviewed.etag).not.toBe(none.etag)
 
     const summary = entryPageSchema.parse((await call('/v1/entries?lang=zh')).body)
@@ -505,9 +463,9 @@ describe('public view', () => {
       gloss: 'Land beside a river.',
       translation: '河岸',
     })
-    const sense = publicSenseDetailSchema.parse((await call(`/v1/senses/${river.sense.id}?lang=zh`)).body)
+    const sense = publicSenseDetailSchema.parse((await call(`/v1/senses/${river}?lang=zh`)).body)
     expect(sense).toMatchObject({ lang: 'zh', pos: 'noun', translations: ['河岸'], entry: { translation: '河岸' } })
-    for (const path of [`/v1/senses/${river.sense.id}`, '/v1/forms/banks']) {
+    for (const path of [`/v1/senses/${river}`, '/v1/forms/banks']) {
       expect((await request(path)).headers.get('vary')).toBe('Accept-Language')
     }
     const invalid = await call('/v1/entries/bank?lang=not_a_tag')

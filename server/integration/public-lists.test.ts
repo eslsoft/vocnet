@@ -1,13 +1,22 @@
 import { env } from 'cloudflare:test'
 import { entryListStatement, searchStatement, taggedSenseStatement } from '@server/adapters/repos/public-view'
 import { createDb } from '@server/db/client'
-import { createEntryResultSchema, createSenseResultSchema, entryPageSchema, searchPageSchema } from '@shared/catalog'
-import { factWriteResultSchema, type TopicId } from '@shared/facts'
+import { entryPageSchema, searchPageSchema } from '@shared/catalog'
+import type { TopicId } from '@shared/facts'
 import { topicSensePageSchema } from '@shared/topics'
 import type { SQL } from 'drizzle-orm'
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { call, deliverPendingReviews, importLearnerData, issueAgentKey, request, stubReviewers } from './helpers'
+import {
+  call,
+  deliverPendingReviews,
+  headword,
+  importLearnerData,
+  issueAgentKey,
+  request,
+  stubReviewers,
+  submitOk,
+} from './helpers'
 
 /**
  * bank (A1 noun, also a verb), river (A1 noun), banker (B2 noun), and money (no level or
@@ -19,23 +28,27 @@ async function seedWords() {
     levels: { bank: 'A1', river: 'A1', banker: 'B2' },
   })
   const token = await issueAgentKey()
-  const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
   const senses: Record<string, string> = {}
-  for (const [lemma, pos, gloss, translation, example] of [
+  const words = [
     ['bank', 'noun', 'An organization that keeps money for its customers.', '银行', 'She works at the bank.'],
     ['bank', 'verb', 'To put money into an account.', '存钱', null],
     ['river', 'noun', 'A large natural stream of water.', '河流', 'We sat on the bank of the river.'],
     ['banker', 'noun', 'A person who runs a bank.', '银行家', null],
     ['money', 'noun', 'What people earn and keep in a bank.', '钱', null],
-  ] as const) {
-    const entry = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma })).entry
-    const { sense } = createSenseResultSchema.parse(await post('/manage/v1/senses', { entry_id: entry.id, pos, gloss }))
-    senses[`${lemma} ${pos}`] = sense.id
-    const submit = (kind: string, payload: unknown) =>
-      post('/manage/v1/facts', { kind, subject_id: sense.id, payload }).then(factWriteResultSchema.parse)
-    await submit('translation', { language: 'zh', text: translation })
-    if (example) await submit('example', { text: example })
-    if (pos === 'noun' && lemma !== 'money') await submit('topic', { topic_id: 'family' })
+  ] as const
+  for (const lemma of new Set(words.map(([word]) => word))) {
+    const own = words.filter(([word]) => word === lemma)
+    const { senses: ids } = await headword(
+      lemma,
+      own.map(([, pos, gloss]) => ({ pos, gloss })),
+    )
+    for (const [at, [, pos, , translation, example]] of own.entries()) {
+      const sense = ids[at] as string
+      senses[`${lemma} ${pos}`] = sense
+      await submitOk(token, 'translation', sense, { language: 'zh', of: 'sense', text: translation })
+      if (example) await submitOk(token, 'example', sense, { text: example })
+      if (pos === 'noun' && lemma !== 'money') await submitOk(token, 'topic', sense, { topic_id: 'family' })
+    }
   }
   stubReviewers()
   await deliverPendingReviews()
@@ -147,10 +160,8 @@ describe('public lists and search', () => {
 
   it('finds the main entry by its spelling variant, as the exact lemma [spec: search/variant]', async () => {
     const token = await issueAgentKey()
-    const post = async (path: string, json: unknown) => (await call(path, { method: 'POST', token, json })).body
-    const colour = createEntryResultSchema.parse(await post('/manage/v1/entries', { lemma: 'colour' })).entry
-    await post('/manage/v1/senses', { entry_id: colour.id, pos: 'noun', gloss: 'The quality of red, blue, or green.' })
-    await post('/manage/v1/facts', { kind: 'form', subject_id: colour.id, payload: { form: 'color', type: 'variant' } })
+    const colour = await headword('colour', [{ pos: 'noun', gloss: 'The quality of red, blue, or green.' }])
+    await submitOk(token, 'form', colour.entryId, { form: 'color', type: 'variant' })
     stubReviewers()
     await deliverPendingReviews()
     const found = searchPageSchema.parse((await call('/v1/search?q=color')).body)

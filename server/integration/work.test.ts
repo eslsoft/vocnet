@@ -2,60 +2,32 @@ import { env } from 'cloudflare:test'
 import { leaseStatement, nextTypeStatement } from '@server/adapters/repos/work'
 import { createDb } from '@server/db/client'
 import type { PrincipalRef } from '@server/domain/principal'
-import {
-  coreImportResultSchema,
-  createEntryResultSchema,
-  createSenseResultSchema,
-  managedEntrySchema,
-} from '@shared/catalog'
-import { factWriteResultSchema } from '@shared/facts'
+import { coreImportResultSchema, createEntryResultSchema, managedEntrySchema } from '@shared/catalog'
 import { apiErrorSchema } from '@shared/types'
-import {
-  curationPageSchema,
-  type WorkLeaseId,
-  type WorkType,
-  workClaimSchema,
-  workCompletionSchema,
-} from '@shared/work'
+import { type WorkLeaseId, type WorkType, workClaimSchema } from '@shared/work'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   adminToken,
+  admit,
   call,
-  deliverPendingReviews,
-  deliverReviews,
+  claim,
+  complete,
+  curated,
+  headword,
   importLearnerData,
   issueAgentKey,
-  stubReviewers,
+  managed,
+  publishInventory,
+  reviewPending,
+  submitOk,
 } from './helpers'
 
-const postEntry = (token: string, json: { lemma: string; seed?: boolean }) =>
-  call('/manage/v1/entries', { method: 'POST', token, json })
-const createEntry = async (token: string, lemma: string) =>
-  createEntryResultSchema.parse((await postEntry(token, { lemma })).body)
-
-const claim = (token: string, json?: unknown) => call('/manage/v1/work/claim', { method: 'POST', token, json })
-const complete = (token: string, leaseId: string, json: unknown = { items: [] }) =>
-  call(`/manage/v1/work/${leaseId}/complete`, { method: 'POST', token, json })
 const codeOf = (body: unknown) => apiErrorSchema.parse(body).error.code
-/** The claim of the next items of these types; null when none is free. */
-const claimOf = async (token: string, types?: WorkType[], limit = 10) => {
-  const result = await claim(token, { ...(types ? { types } : {}), limit })
-  return result.status === 204 ? null : workClaimSchema.parse(result.body)
-}
+const claimRaw = (token: string, json?: unknown) => call('/manage/v1/work/claim', { method: 'POST', token, json })
+const completeRaw = (token: string, leaseId: string, json: unknown = { items: [] }) =>
+  call(`/manage/v1/work/${leaseId}/complete`, { method: 'POST', token, json })
 const lemmasOf = async (token: string, types: WorkType[], limit = 10) =>
-  (await claimOf(token, types, limit))?.items.map((item) => item.lemma) ?? null
-const postSense = async (token: string, entryId: string, gloss: string) =>
-  createSenseResultSchema.parse(
-    (await call('/manage/v1/senses', { method: 'POST', token, json: { entry_id: entryId, pos: 'noun', gloss } })).body,
-  )
-const submitFact = async (token: string, json: unknown) =>
-  factWriteResultSchema.parse((await call('/manage/v1/facts', { method: 'POST', token, json })).body).fact
-/** Lets every pending review land with passing reviewers, as the queue does within seconds. */
-const settle = async () => {
-  const reviewers = stubReviewers()
-  await deliverPendingReviews()
-  reviewers.mockRestore()
-}
+  (await claim(token, { types, limit }))?.items.map((item) => item.lemma) ?? null
 const expireLeases = () =>
   Promise.all([
     env.DB.prepare('update work_items set lease_expires_at = ? where lease_id is not null')
@@ -65,103 +37,101 @@ const expireLeases = () =>
       .bind(new Date(Date.now() - 1000).toISOString())
       .run(),
   ])
-/** Claims the item of this type and completes the pass over it, running `during` while the lease is held. */
-const pass = async (token: string, type: WorkType, during?: () => Promise<unknown>) => {
-  const work = await claimOf(token, [type], 1)
-  if (!work) throw new Error(`No ${type} item is free.`)
-  await during?.()
-  const items = work.items.map((item) => ({ id: item.id, note: 'Tried.' }))
-  return workCompletionSchema.parse((await complete(token, work.lease.id, { items })).body).items
-}
+/** The stored work items of an entry, as its last rescore wrote them: type and node. */
+const itemsOf = async (entryId: string) =>
+  (
+    await env.DB.prepare(
+      'select type, subject_id, attempts from work_items where entry_id = ? order by type, subject_id',
+    )
+      .bind(entryId)
+      .all<{ type: string; subject_id: string; attempts: number }>()
+  ).results
+const typesAt = async (entryId: string, subjectId: string) =>
+  (await itemsOf(entryId)).filter((item) => item.subject_id === subjectId).map((item) => item.type)
+const rowOf = (entryId: string) =>
+  env.DB.prepare('select revision = scored_revision as fresh, completeness from worklist where entry_id = ?')
+    .bind(entryId)
+    .first<{ fresh: number; completeness: number }>()
+
+const NOUN = { pos: 'noun', gloss: 'The regular rise and fall of the sea.' } as const
 
 describe('work items', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
+  afterEach(() => vi.restoreAllMocks())
 
   it('claims items of one type with their context and completes them [spec: work/claim-api]', async () => {
     const holder = await issueAgentKey('holder')
     const other = await issueAgentKey('other')
-    const { entry } = await createEntry(holder, 'tide')
+    const tide = await admit('tide')
     expect((await call('/manage/v1/work/claim', { method: 'POST' })).status).toBe(401)
-    // The entry fact is pending, so every item waits for its review.
-    expect((await claim(holder)).status).toBe(204)
-    await settle()
 
-    const claimed = await claim(holder, { lease_seconds: 600 })
-    expect(claimed.status).toBe(200)
-    const work = workClaimSchema.parse(claimed.body)
-    expect(work.lease).toMatchObject({ type: 'senses', holder: expect.stringMatching(/^agent:/) })
-    expect(Date.parse(work.lease.expires_at) - Date.now()).toBeGreaterThan(590_000)
-    expect(work.items).toHaveLength(1)
-    const [item] = work.items
+    const work = await claim(holder, { lease_seconds: 600 })
+    expect(work?.lease).toMatchObject({ type: 'senses', holder: expect.stringMatching(/^agent:/) })
+    expect(Date.parse(work?.lease.expires_at ?? '') - Date.now()).toBeGreaterThan(590_000)
+    expect(work?.items).toHaveLength(1)
+    const [item] = work?.items ?? []
     expect(item).toMatchObject({
       type: 'senses',
-      entry_id: entry.id,
+      entry_id: tide,
       lemma: 'tide',
-      subject_id: entry.id,
+      subject_id: tide,
       stage: 1,
       attempts: 0,
       gap: { type: 'senses' },
-      context: { entry: { id: entry.id, lemma: 'tide', cefr: [], zipf: null, senses: [] }, sense: null, related: [] },
+      context: {
+        entry: { id: tide, lemma: 'tide', cefr: [], zipf: null, senses: [] },
+        sense: null,
+        related: [],
+        rejections: [],
+      },
     })
     const view = managedEntrySchema.parse((await call('/manage/v1/entries/tide', { token: holder })).body)
     expect(item?.context.view).toEqual(view)
-    expect(item?.context.facts.map((fact) => fact.kind)).toEqual(['entry'])
 
-    // The other agent gets the next type, then nothing; it cannot complete the holder's lease.
-    const next = workClaimSchema.parse((await claim(other, { limit: 50 })).body)
-    expect(next.items.map((other) => [other.lemma, other.stage])).toEqual([['tide', 4]])
-    const stolen = await complete(other, work.lease.id)
+    // The only item is leased: the other agent gets nothing and cannot complete the holder's lease.
+    expect(await claim(other)).toBeNull()
+    const stolen = await completeRaw(other, work?.lease.id as string)
     expect([stolen.status, codeOf(stolen.body)]).toEqual([409, 'conflict'])
-    const foreign = await complete(holder, work.lease.id, { items: [{ id: next.items[0]?.id }] })
+    await admit('cove')
+    const next = await claim(other)
+    const foreign = await completeRaw(holder, work?.lease.id as string, { items: [{ id: next?.items[0]?.id }] })
     expect([foreign.status, codeOf(foreign.body)]).toEqual([422, 'invalid_reference'])
 
-    await postSense(holder, entry.id, 'The rise and fall of the sea.')
-    const done = await complete(holder, work.lease.id, { items: [{ id: item?.id, note: 'Added a sense.' }] })
-    expect(done.status).toBe(200)
-    expect(workCompletionSchema.parse(done.body)).toEqual({
-      lease_id: work.lease.id,
-      items: [{ id: item?.id, state: 'awaiting_review', attempts: 0 }],
-    })
-    const again = await complete(holder, work.lease.id)
+    const done = await complete(holder, work?.lease.id as string, [{ id: item?.id as string, note: 'Looked.' }])
+    expect(done).toEqual({ lease_id: work?.lease.id, items: [{ id: item?.id, state: 'open', attempts: 1 }] })
+    const again = await completeRaw(holder, work?.lease.id as string)
     expect([again.status, codeOf(again.body)]).toEqual([404, 'not_found'])
-    // Once the sense publishes, the senses item is closed and the sense list is the identity work.
-    await settle()
-    expect(await claimOf(holder, ['senses'])).toBeNull()
-    expect((await claimOf(holder, ['sense_list']))?.items[0]?.gap.type).toBe('sense_list')
-  })
-
-  it('carries in each claimed item the standard its facts and closure are reviewed by [spec: work/claim-criteria-api]', async () => {
-    const token = await issueAgentKey()
-    const { entry } = await createEntry(token, 'oven')
-    await postSense(token, entry.id, 'A box for cooking food.')
-    await settle()
-    const topics = await claimOf(token, ['topics'])
-    const criteria = topics?.items[0]?.context.criteria
-    expect(criteria?.fills.map((fill) => [fill.kind, fill.claim, fill.jev])).toEqual([['topic', 'topic', null]])
-    expect(criteria?.fills[0]?.rubric).toContain('Topic: "<topic>" (in the category "<category>").')
-    expect(criteria?.closure).toContain('- House and rooms (Home)\n- Furniture (Home)')
-    expect(criteria?.limits).toContainEqual(expect.stringContaining('Only a published fact can be superseded'))
-    const synonyms = await claimOf(token, ['synonyms'])
-    const [synonym] = synonyms?.items[0]?.context.criteria.fills ?? []
-    expect(synonym?.jev?.rule).toContain('A Jev score below 0.5 fails without appeal.')
   })
 
   it('rejects a claim body outside its bounds', async () => {
     const token = await issueAgentKey()
-    for (const json of [{ lease_seconds: 59 }, { limit: 0 }, { limit: 51 }, { types: ['relations'] }, { types: [] }]) {
-      const result = await claim(token, json)
+    for (const json of [{ lease_seconds: 59 }, { limit: 0 }, { limit: 51 }, { types: ['sense_list'] }, { types: [] }]) {
+      const result = await claimRaw(token, json)
       expect([result.status, codeOf(result.body)]).toEqual([400, 'invalid_request'])
     }
+  })
+
+  it('carries in each claimed item the standard its facts are reviewed by [spec: work/claim-criteria-api]', async () => {
+    const token = await issueAgentKey()
+    await headword('oven', [{ pos: 'noun', gloss: 'A box for cooking food in.' }])
+    const topics = await claim(token, { types: ['topics'] })
+    const criteria = topics?.items[0]?.context.criteria
+    expect(criteria?.fills.map((fill) => [fill.kind, fill.decision?.models])).toEqual([['topic', ['jev', 'luna']]])
+    expect(criteria?.fills[0]?.decision?.rule).toContain('mean score of jev and luna')
+    expect(criteria?.fills[0]?.rubric).toContain('Topic: "<topic>" (in the category "<category>").')
+    expect(JSON.stringify(criteria)).toContain('House and rooms')
+    expect(criteria?.limits).toContainEqual(expect.stringContaining('Only a published fact can be superseded'))
+    const synonyms = await claim(token, { types: ['synonyms'] })
+    const [synonym] = synonyms?.items[0]?.context.criteria.fills ?? []
+    expect(synonym?.kind).toBe('relation')
+    expect(synonym?.decision?.models).toEqual(['jev'])
+    expect(synonym?.decision?.rule).toContain('jev 0.70')
   })
 
   it('gives concurrent claims distinct items [spec: work/claim-race]', async () => {
     const tokens = await Promise.all(['a', 'b', 'c', 'd', 'e'].map((name) => issueAgentKey(name)))
     const lemmas = ['bay', 'cove', 'fjord']
-    for (const lemma of lemmas) await createEntry(tokens[0], lemma)
-    await settle()
-    const results = await Promise.all(tokens.map((token) => claim(token, { types: ['syllables'], limit: 1 })))
+    for (const lemma of lemmas) await headword(lemma, [NOUN])
+    const results = await Promise.all(tokens.map((token) => claimRaw(token, { types: ['syllables'], limit: 1 })))
     const won = results.filter((result) => result.status === 200).map((result) => workClaimSchema.parse(result.body))
     expect(won.flatMap((work) => work.items.map((item) => item.lemma)).sort()).toEqual(lemmas)
     expect(results.filter((result) => result.status === 204)).toHaveLength(2)
@@ -169,12 +139,11 @@ describe('work items', () => {
 
   it('hands each expired lease to exactly one of the claims racing for it [spec: work/claim-expired-race]', async () => {
     const tokens = await Promise.all(['a', 'b', 'c', 'd', 'e', 'f'].map((name) => issueAgentKey(name)))
-    for (const lemma of ['bay', 'cove', 'fjord']) await createEntry(tokens[0], lemma)
-    await settle()
+    for (const lemma of ['bay', 'cove', 'fjord']) await headword(lemma, [NOUN])
     for (const token of tokens.slice(0, 3)) expect(await lemmasOf(token, ['syllables'], 1)).toHaveLength(1)
-    expect(await claimOf(tokens[3] as string, ['syllables'], 1)).toBeNull()
+    expect(await claim(tokens[3] as string, { types: ['syllables'], limit: 1 })).toBeNull()
     await expireLeases()
-    const results = await Promise.all(tokens.map((token) => claim(token, { types: ['syllables'], limit: 1 })))
+    const results = await Promise.all(tokens.map((token) => claimRaw(token, { types: ['syllables'], limit: 1 })))
     const won = results.filter((result) => result.status === 200).map((result) => workClaimSchema.parse(result.body))
     expect(won.flatMap((work) => work.items.map((item) => item.lemma)).sort()).toEqual(['bay', 'cove', 'fjord'])
     expect(new Set(won.map((work) => work.lease.holder)).size).toBe(3)
@@ -183,298 +152,80 @@ describe('work items', () => {
   it('lets another agent claim an expired lease, which its holder can no longer complete [spec: work/lease-expiry-api]', async () => {
     const first = await issueAgentKey('first')
     const second = await issueAgentKey('second')
-    await createEntry(first, 'tide')
-    await settle()
-    const lapsed = await claimOf(first, ['syllables'])
+    await headword('tide', [NOUN])
+    const lapsed = await claim(first, { types: ['syllables'] })
     await expireLeases()
-    const late = await complete(first, lapsed?.lease.id as string)
+    const late = await completeRaw(first, lapsed?.lease.id as string)
     expect([late.status, codeOf(late.body)]).toEqual([409, 'conflict'])
-    const taken = await claimOf(second, ['syllables'])
+    const taken = await claim(second, { types: ['syllables'] })
     expect(taken?.items.map((item) => item.id)).toEqual(lapsed?.items.map((item) => item.id))
-    expect((await complete(second, taken?.lease.id as string)).status).toBe(200)
+    expect((await completeRaw(second, taken?.lease.id as string)).status).toBe(200)
   })
 
-  it('orders items by stage, then A1 to C2, then frequency without a level, then the rest, re-ranked by every import [spec: work/claim-priority]', async () => {
+  it('orders items by batch, then A1 to C2, then frequency without a level, then the rest, re-ranked by every import [spec: work/claim-priority]', async () => {
     const token = await issueAgentKey()
-    for (const lemma of ['reef', 'wave', 'tide', 'cove', 'Bank', 'sea']) await createEntry(token, lemma)
+    for (const lemma of ['reef', 'wave', 'tide', 'cove', 'Bank', 'sea']) await admit(lemma, 1)
     const data = {
-      zipf: { bank: 5, cove: 3, tide: 4, wave: 4.5, shore: 6 },
-      levels: { Bank: 'A1', cove: 'A1', sea: 'A1', tide: 'B2', shore: 'B1' } as const,
+      zipf: { bank: 5, cove: 3, tide: 4, wave: 4.5, shore: 6, dune: 7 },
+      levels: { Bank: 'A1', cove: 'A1', sea: 'A1', tide: 'B2', shore: 'B1', dune: 'A1' } as const,
     }
-    // The import re-ranks the items that exist; shore's items read the row its creation wrote.
+    // The import re-ranks the items that exist; the later admissions read the rows their creation wrote.
     await importLearnerData(data)
-    await createEntry(token, 'shore')
-    await settle()
-    // Bank has the frequency of its word form, "bank"; sea has a level but no frequency.
-    expect(await lemmasOf(token, ['syllables'])).toEqual(['Bank', 'cove', 'sea', 'shore', 'tide', 'wave', 'reef'])
-    // Identity outranks every later stage, whatever the band: senses before any syllables.
-    expect((await claimOf(token, undefined, 1))?.lease.type).toBe('senses')
-    // A reimport re-ranks: reef becomes the one A1 entry and comes first once the leases lapse.
-    await importLearnerData({ zipf: data.zipf, levels: { reef: 'A1' } })
+    await admit('shore', 1)
+    await admit('dune', 2)
+    // Bank has the frequency of its word form, "bank"; sea has a level but no frequency; dune waits for batch 2.
+    expect(await lemmasOf(token, ['senses'])).toEqual(['Bank', 'cove', 'sea', 'shore', 'tide', 'wave', 'reef', 'dune'])
+    // A reimport re-ranks: reef becomes batch 1's one A1 entry and comes first once the leases lapse, then
+    // the most frequent entry without a level; dune, A1 too, still waits for batch 2.
+    await importLearnerData({ zipf: data.zipf, levels: { reef: 'A1', dune: 'A1' } })
     await expireLeases()
-    expect((await lemmasOf(token, ['syllables'], 1))?.[0]).toBe('reef')
+    expect(await lemmasOf(token, ['senses'], 2)).toEqual(['reef', 'shore'])
   })
 
-  it('counts an attempt for each pass that leaves a gap as claimed and hands it to the curators after three [spec: work/item-attempts-api]', async () => {
-    const producer = await issueAgentKey('producer')
-    const { entry } = await createEntry(producer, 'dawn')
-    await settle()
-    expect(await pass(producer, 'syllables')).toEqual([{ id: expect.any(String), state: 'open', attempts: 1 }])
-    expect((await pass(producer, 'syllables'))[0]).toMatchObject({ state: 'open', attempts: 2 })
-    expect((await pass(producer, 'syllables'))[0]).toMatchObject({ state: 'curation', attempts: 3 })
-    expect(await claimOf(producer, ['syllables'])).toBeNull()
-
-    const denied = await call('/manage/v1/work/curation', { token: producer })
-    expect([denied.status, codeOf(denied.body)]).toEqual([403, 'forbidden'])
-    const admin = await adminToken()
-    const issued = await call('/manage/v1/agents', {
-      method: 'POST',
-      token: admin,
-      json: { name: 'Curator', curator: true },
-    })
-    const curator = (issued.body as { key: string }).key
-    const queue = curationPageSchema.parse(
-      (await call('/manage/v1/work/curation?type=syllables', { token: curator })).body,
-    )
-    expect(queue).toMatchObject({
-      items: [{ type: 'syllables', lemma: 'dawn', attempts: 3, last_note: 'Tried.', gap: { type: 'syllables' } }],
-      next_cursor: null,
-    })
-    expect(
-      curationPageSchema.parse((await call('/manage/v1/work/curation?type=senses', { token: admin })).body).items,
-    ).toEqual([])
-    // A curated fact fills the slot, which closes the item.
-    await submitFact(curator, {
-      kind: 'syllables',
-      subject_id: entry.id,
-      payload: { syllables: ['dawn'] },
-      curation: { reason: 'One syllable.' },
-    })
-    expect(curationPageSchema.parse((await call('/manage/v1/work/curation', { token: curator })).body).items).toEqual(
-      [],
-    )
-  })
-
-  it('judges a worked item once its facts are reviewed, so a rejection after the lease counts the attempt [spec: work/item-review-api]', async () => {
+  it('leases no item of an entry until it is live [spec: work/claim-live]', async () => {
     const token = await issueAgentKey()
-    const { entry } = await createEntry(token, 'dawn')
-    await settle()
-    const states = await pass(token, 'syllables', () =>
-      submitFact(token, { kind: 'syllables', subject_id: entry.id, payload: { syllables: ['da', 'wn'] } }),
-    )
-    expect(states).toEqual([{ id: expect.any(String), state: 'awaiting_review', attempts: 0 }])
-    expect(await claimOf(token, ['syllables'])).toBeNull()
-    stubReviewers(0.05, 'fail')
-    await deliverPendingReviews()
-    vi.restoreAllMocks()
-    const back = await claimOf(token, ['syllables'])
-    expect(back?.items[0]).toMatchObject({ attempts: 1, gap: { type: 'syllables' } })
-    expect(back?.items[0]?.context.facts.find((fact) => fact.kind === 'syllables')).toMatchObject({
-      status: 'rejected',
-      review: { verdict: 'fail' },
-    })
-  })
-
-  it('drops the items of an entry whose entry fact leaves live, and builds them again when it returns [spec: work/claim-live]', async () => {
-    const admin = await adminToken()
-    const { fact } = await createEntry(admin, 'tide')
-    await settle()
-    expect(await lemmasOf(admin, ['syllables'])).toEqual(['tide'])
+    const { entryId: give } = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
+    const list = await curated('phrases', give, { phrases: ['give up', 'give in'] })
+    expect((await managed('give up')).live).toBe(true)
+    // The correction drops "give up": its entry stays, but it is no longer live and has no items.
+    await curated('phrases', give, { phrases: ['give in'] }, list.id)
+    const dropped = await managed('give up')
+    expect([dropped.live, dropped.batch]).toEqual([false, 1])
+    expect(await itemsOf(dropped.entry.id)).toEqual([])
+    expect(await lemmasOf(token, ['senses'])).toEqual(['give in'])
     await expireLeases()
-    expect((await call(`/manage/v1/facts/${fact.id}/retract`, { method: 'POST', token: admin })).status).toBe(200)
-    expect(await claimOf(admin)).toBeNull()
-    await createEntry(admin, 'tide')
-    expect(await claimOf(admin)).toBeNull()
-    await settle()
-    expect(await lemmasOf(admin, ['syllables'])).toEqual(['tide'])
+    // Admitted as a headword, it is live again and its senses item is claimable.
+    await admit('give up', 1)
+    expect((await lemmasOf(token, ['senses']))?.sort()).toEqual(['give in', 'give up'])
   })
 
-  it('answers 204 once every gap is filled and no fact is weak, until a rejection reopens one [spec: work/claim-empty]', async () => {
+  it('answers 204 once every slot is filled or passed, until a retraction reopens one [spec: work/claim-empty]', async () => {
     const token = await issueAgentKey()
-    const { entry } = await createEntry(token, 'by')
-    const { sense } = createSenseResultSchema.parse(
-      (
-        await call('/manage/v1/senses', {
-          method: 'POST',
-          token,
-          json: { entry_id: entry.id, pos: 'preposition', gloss: 'Near to.' },
-        })
-      ).body,
-    )
-    const translation = await submitFact(token, {
-      kind: 'translation',
-      subject_id: sense.id,
-      payload: { language: 'zh', text: '在旁边' },
-    })
-    for (const json of [
-      { kind: 'morphology', subject_id: entry.id, payload: { parts: [{ form: 'by', role: 'base' }] } },
-      { kind: 'pronunciation', subject_id: entry.id, payload: { ipa: 'baɪ', accent: 'us' } },
-      { kind: 'pronunciation', subject_id: entry.id, payload: { ipa: 'baɪ', accent: 'uk' } },
-      { kind: 'example', subject_id: sense.id, payload: { text: 'Sit by me.', translations: { zh: '坐在我旁边。' } } },
-      { kind: 'collocation', subject_id: sense.id, payload: { text: 'by the river', pattern: 'phrase' } },
-      { kind: 'sense_list', subject_id: entry.id, payload: { common: [sense.id], extra: [] } },
-      { kind: 'syllables', subject_id: entry.id, payload: { syllables: ['by'] } },
-    ]) {
-      await submitFact(token, json)
-    }
-    await settle()
-    expect(managedEntrySchema.parse((await call('/manage/v1/entries/by', { token })).body)).toMatchObject({
-      completeness: 1,
-      quality: 1,
-    })
-    expect((await claim(token)).status).toBe(204)
-    // A rejection in place reopens the translation slot.
-    expect(
-      (await call(`/manage/v1/facts/${translation.id}/rereview`, { method: 'POST', token: await adminToken() })).status,
-    ).toBe(200)
-    stubReviewers(0.05, 'fail')
-    await deliverReviews([translation.id])
-    vi.restoreAllMocks()
-    expect(await lemmasOf(token, ['translations'])).toEqual(['by'])
-  })
-
-  it('counts each relation slot once, and only while the sense at the other end can show [spec: work/relations-visible-ends-api]', async () => {
-    const token = await issueAgentKey()
-    const cove = await createEntry(token, 'cove')
-    const nook = await postSense(token, cove.entry.id, 'A small sheltered bay.')
-    const ends = await Promise.all(
-      ['bay', 'inlet'].map(async (lemma) => {
-        const { entry, fact } = await createEntry(token, lemma)
-        const { sense, fact: gloss } = await postSense(token, entry.id, `A ${lemma} of the sea.`)
-        await submitFact(token, {
-          kind: 'relation',
-          subject_id: nook.sense.id,
-          payload: { type: 'hypernym', target_sense_id: sense.id },
-        })
-        return { entryFact: fact, gloss }
-      }),
-    )
-    await submitFact(token, {
-      kind: 'sense_list',
-      subject_id: cove.entry.id,
-      payload: { common: [nook.sense.id], extra: [] },
-    })
-    await settle()
-    const stored = () =>
-      env.DB.prepare('select completeness, revision = scored_revision as fresh from worklist where entry_id = ?')
-        .bind(cove.entry.id)
-        .first<{ completeness: number; fresh: number }>()
-    // Fourteen slots: the sense inventory, pronunciation, word formation, syllables, and the noun
-    // sense's category, parts (asked once it has a category), synonym, example, translation,
-    // translated example, topic, grammar, and collocation. Two categories fill the one slot.
-    expect(await stored()).toEqual({ completeness: 1 - 12 / 14, fresh: 1 })
-    const [bay, inlet] = ends
-    expect(
-      (await call(`/manage/v1/facts/${inlet?.entryFact.id}/rereview`, { method: 'POST', token: await adminToken() }))
-        .status,
-    ).toBe(200)
-    stubReviewers(0.05, 'fail')
-    await deliverReviews([inlet?.entryFact.id as string])
-    vi.restoreAllMocks()
-    expect(await stored()).toEqual({ completeness: 1 - 12 / 14, fresh: 1 })
-    // With no category left, the category slot opens and the parts slot goes.
-    expect((await call(`/manage/v1/facts/${bay?.gloss.id}/retract`, { method: 'POST', token })).status).toBe(200)
-    expect(await stored()).toEqual({ completeness: 1 - 12 / 13, fresh: 1 })
-    expect(await lemmasOf(token, ['category'])).toEqual(['cove'])
-  })
-
-  it('lists a weak fact as an item of its own until a pass replaces it, and open feedback as another [spec: work/weak-facts-api]', async () => {
-    const token = await issueAgentKey()
-    const { entry } = await createEntry(token, 'by')
-    const form = await submitFact(token, {
-      kind: 'form',
-      subject_id: entry.id,
-      payload: { form: 'bye', type: 'variant' },
-    })
-    stubReviewers(0.6, 'uncertain')
-    await deliverPendingReviews()
-    vi.restoreAllMocks()
-    const weak = await claimOf(token, ['weak_fact'], 50)
-    expect(weak?.items.map((item) => item.gap)).toContainEqual({
-      type: 'weak_fact',
-      fact_id: form.id,
-      kind: 'form',
-      reason: 'uncertain',
-    })
-    expect(weak?.items[0]?.stage).toBe(5)
-  })
-
-  it('creates seed entries for the CEFR headwords without one, for admins only, each with its identity item first [spec: catalog/import-core-api]', async () => {
-    await importLearnerData({
-      zipf: { bank: 5, the: 7 },
-      levels: { bank: 'A1', 'according to': 'B1', x: 'A1', the: 'A1' },
-    })
-    const agent = await issueAgentKey()
-    await createEntry(agent, 'the')
     const admin = await adminToken()
-    const importCore = (token: string, json: unknown) =>
-      call('/manage/v1/entries/core', { method: 'POST', token, json })
-    const denied = await importCore(agent, {})
-    expect([denied.status, codeOf(denied.body)]).toEqual([403, 'forbidden'])
-    const results = []
-    for (let step = 0; step < 3; step++) {
-      const result = await importCore(admin, { limit: 1 })
-      expect(result.status).toBe(200)
-      results.push(coreImportResultSchema.parse(result.body))
+    const { entryId, senses } = await headword('ice cream', [
+      { pos: 'noun', gloss: 'A frozen sweet food made from milk.' },
+    ])
+    const sense = senses[0] as string
+    await curated('pronunciation', entryId, { ipa: 'aɪs ˈkriːm', accent: 'uk' })
+    await curated('pronunciation', entryId, { ipa: 'ˈaɪs kriːm', accent: 'us' })
+    const example = await curated('example', sense, { text: 'The children ate ice cream.' })
+    await curated('translation', sense, { language: 'zh', of: 'sense', text: '冰淇淋' })
+    await curated('translation', example.id, { language: 'zh', of: 'example', text: '孩子们吃了冰淇淋。' })
+    for (const type of ['category', 'synonyms', 'topics', 'grammar', 'collocations']) {
+      const passed = await call(`/manage/v1/entries/${entryId}/passes`, {
+        method: 'POST',
+        token: admin,
+        json: { type, subject_id: sense, note: 'Settled for the test.' },
+      })
+      expect(passed.status).toBe(204)
     }
-    expect(results).toEqual([
-      { created: ['bank'], skipped: ['x'], remaining: 1 },
-      { created: ['according to'], skipped: ['x'], remaining: 0 },
-      { created: [], skipped: ['x'], remaining: 0 },
-    ])
-    const view = async (lemma: string) =>
-      managedEntrySchema.parse((await call(`/manage/v1/entries/${encodeURIComponent(lemma)}`, { token: agent })).body)
-    expect([(await view('bank')).seed, (await view('according to')).seed, (await view('the')).seed]).toEqual([
-      true,
-      true,
-      false,
-    ])
-    expect((await call('/manage/v1/entries/x', { token: agent })).status).toBe(404)
-    // The agent's "the" is not a seed entry but is A1 and more frequent, so it comes first.
-    await settle()
-    expect(await lemmasOf(agent, ['senses'])).toEqual(['the', 'bank', 'according to'])
-  })
+    expect(await itemsOf(entryId)).toEqual([])
+    expect(await claim(token)).toBeNull()
+    expect((await managed('ice cream')).completeness).toBe(1)
 
-  it('says in the entry view and in a whole-entry context whether an entry is a seed entry [spec: work/entry-seed]', async () => {
-    const token = await issueAgentKey()
-    await postEntry(token, { lemma: 'cove', seed: true })
-    await createEntry(token, 'bay')
-    const seedOf = async (lemma: string) =>
-      managedEntrySchema.parse((await call(`/manage/v1/entries/${lemma}`, { token })).body).seed
-    expect([await seedOf('cove'), await seedOf('bay')]).toEqual([true, false])
-    await settle()
-    const work = await claimOf(token, ['senses'])
-    const seeds = work?.items.map((item) => [item.lemma, item.context.view?.seed])
-    expect(seeds?.sort()).toEqual([
-      ['bay', false],
-      ['cove', true],
-    ])
-  })
-
-  it('backfills the learner priority that creation and the import store [spec: work/priority-backfill]', async () => {
-    await importLearnerData({ zipf: { bank: 5, café: 2 }, levels: { Bank: 'B1', bank: 'A2', café: 'A1' } })
-    const token = await issueAgentKey()
-    for (const lemma of ['Bank', 'bank', 'café', 'according to', 'reef']) await createEntry(token, lemma)
-    const priority = async () =>
-      (
-        await env.DB.prepare(
-          'select lemma, frequency_key, level_rank, zipf from worklist join entries on entries.id = worklist.entry_id order by lemma',
-        ).all()
-      ).results
-    const stored = await priority()
-    expect(stored).toEqual([
-      { lemma: 'Bank', frequency_key: 'bank', level_rank: 3, zipf: 5 },
-      { lemma: 'according to', frequency_key: 'according to', level_rank: null, zipf: null },
-      { lemma: 'bank', frequency_key: 'bank', level_rank: 2, zipf: 5 },
-      { lemma: 'café', frequency_key: 'café', level_rank: 1, zipf: 2 },
-      { lemma: 'reef', frequency_key: 'reef', level_rank: null, zipf: null },
-    ])
-    await env.DB.prepare('update worklist set frequency_key = null, level_rank = 9, zipf = 0').run()
-    const [backfill] = env.TEST_MIGRATIONS.filter((migration) =>
-      migration.name.endsWith('_worklist_learner_priority_backfill.sql'),
-    )
-    for (const query of backfill?.queries ?? []) await env.DB.prepare(query).run()
-    expect(await priority()).toEqual(stored)
+    expect((await call(`/manage/v1/facts/${example.id}/retract`, { method: 'POST', token: admin })).status).toBe(200)
+    const reopened = await claim(token)
+    expect(reopened?.items.map((item) => item.gap)).toEqual([{ type: 'examples', sense_id: sense, count: 0, need: 1 }])
   })
 
   it('reads the claim order from the queue indexes, without sorting the items [spec: work/claim-index]', async () => {
@@ -502,106 +253,367 @@ describe('work items', () => {
     expect(leased.some((step) => step.includes('TEMP B-TREE'))).toBe(false)
   })
 
-  it('turns relations closures into synonyms closures, marks the published relations it re-judges, and leaves every row stale [spec: work/items-migration]', async () => {
+  it('drains stale scores through the admin rescore [spec: work/rescore-api]', async () => {
     const token = await issueAgentKey()
-    const { entry } = await createEntry(token, 'dog')
-    const dog = await postSense(token, entry.id, 'An animal kept as a pet.')
-    const animal = await postSense(token, (await createEntry(token, 'animal')).entry.id, 'A living creature.')
-    const tail = await postSense(token, (await createEntry(token, 'tail')).entry.id, 'The part at the back.')
-    const hypernym = await submitFact(token, {
-      kind: 'relation',
-      subject_id: dog.sense.id,
-      payload: { type: 'hypernym', target_sense_id: animal.sense.id },
-    })
-    const partOf = await submitFact(token, {
-      kind: 'relation',
-      subject_id: tail.sense.id,
-      payload: { type: 'part_of', target_sense_id: dog.sense.id },
-    })
-    const closure = await submitFact(token, {
-      kind: 'gap_closure',
-      subject_id: animal.sense.id,
-      payload: { gap: 'synonyms', reason: 'Nothing else fits.' },
-    })
-    await settle()
-    // The closure as the earlier release stored it, and one the curator settled.
-    await env.DB.prepare(
-      `update facts set payload = json_set(payload, '$.gap', 'relations'), content_key = 'relations|nothing else fits.' where id = ?`,
-    )
-      .bind(closure.id)
-      .run()
-    await env.DB.prepare(`update facts set review = json_set(review, '$.reviewer', 'curator') where id = ?`)
-      .bind(partOf.id)
-      .run()
-    await env.DB.prepare('update worklist set scored_revision = revision').run()
-    const migration = env.TEST_MIGRATIONS.find((candidate) =>
-      candidate.name.endsWith('_work_items_relation_layers.sql'),
-    )
-    if (!migration) throw new Error('The work_items_relation_layers migration is missing.')
-    for (const query of migration.queries) await env.DB.prepare(query).run()
-    const row = (id: string) =>
-      env.DB.prepare(
-        'select content_key, json_extract(payload, "$.gap") as gap, revalidate_since is not null as marked from facts where id = ?',
-      )
-        .bind(id)
-        .first()
-    expect(await row(closure.id)).toEqual({ content_key: 'synonyms|nothing else fits.', gap: 'synonyms', marked: 1 })
-    expect(await row(hypernym.id)).toMatchObject({ marked: 1 })
-    expect(await row(partOf.id)).toMatchObject({ marked: 0 })
-    const fresh = await env.DB.prepare(
-      'select count(*) as n, sum(revision = scored_revision) as fresh from worklist',
-    ).first()
-    expect(fresh).toEqual({ n: 3, fresh: 0 })
+    const admin = await adminToken()
+    for (const lemma of ['bay', 'cove', 'fjord']) await admit(lemma)
+    await env.DB.prepare('update worklist set revision = revision + 1').run()
+    const rescore = (json: unknown, as = token) => call('/manage/v1/work/rescore', { method: 'POST', token: as, json })
+    expect((await rescore({ limit: 2 })).status).toBe(403)
+    expect((await rescore({ limit: 0 }, admin)).status).toBe(400)
+    expect((await rescore({ limit: 2 }, admin)).body).toEqual({ rescored: 2, remaining: 1 })
+    expect((await rescore({}, admin)).body).toEqual({ rescored: 1, remaining: 0 })
   })
 
-  it('moves everyday hypernyms to a technical taxon into biology and marks the other hypernyms and parts [spec: work/layer-review-migration]', async () => {
-    const token = await issueAgentKey()
-    const sense = async (lemma: string, gloss: string) =>
-      (await postSense(token, (await createEntry(token, lemma)).entry.id, gloss)).sense.id
-    const [dog, canine, animal, head] = [
-      await sense('dog', 'An animal kept as a pet.'),
-      await sense('canine', 'An animal of the dog family.'),
-      await sense('animal', 'A living creature.'),
-      await sense('head', 'The top part of the body.'),
-    ]
-    const relation = (subject: string, type: string, target: string) =>
-      submitFact(token, { kind: 'relation', subject_id: subject, payload: { type, target_sense_id: target } })
-    const taxon = await relation(dog, 'hypernym', canine)
-    const category = await relation(dog, 'hypernym', animal)
-    const part = await relation(head, 'part_of', animal)
-    const curated = await relation(canine, 'hypernym', animal)
-    await settle()
-    await env.DB.prepare(`update facts set review = json_set(review, '$.reviewer', 'curator') where id = ?`)
-      .bind(curated.id)
-      .run()
-    await env.DB.prepare('update worklist set scored_revision = revision').run()
-    const migration = env.TEST_MIGRATIONS.find((candidate) => candidate.name.endsWith('_relation_layer_review.sql'))
-    if (!migration) throw new Error('The relation_layer_review migration is missing.')
-    for (const query of migration.queries) await env.DB.prepare(query).run()
-    const marked = (id: string) =>
-      env.DB.prepare('select status, revalidate_since is not null as marked from facts where id = ?').bind(id).first()
-    expect(await marked(taxon.id)).toEqual({ status: 'published', marked: 0 })
-    expect(await marked(category.id)).toEqual({ status: 'published', marked: 1 })
-    expect(await marked(part.id)).toEqual({ status: 'published', marked: 1 })
-    expect(await marked(curated.id)).toEqual({ status: 'published', marked: 0 })
-    const corrections = await env.DB.prepare(
-      'select subject_id, object_id, content_key, payload, status, author from facts where supersedes_id is not null',
-    ).all()
-    expect(corrections.results).toEqual([
-      {
-        subject_id: dog,
-        object_id: canine,
-        content_key: `hypernym|${canine}|biology`,
-        payload: JSON.stringify({ type: 'hypernym', target_sense_id: canine, domain: 'biology' }),
-        status: 'pending',
-        author: 'admin:migration',
-      },
+  it('keeps the network, topic, and collocation items for the core senses only [spec: work/core-senses-api]', async () => {
+    const adjective = (gloss: string) => ({ pos: 'adjective', gloss }) as const
+    const verb = (gloss: string) => ({ pos: 'verb', gloss }) as const
+    const entryId = await admit('clear')
+    const { senses } = await publishInventory(entryId, [
+      adjective('Easy to understand.'),
+      adjective('Easy to see through.'),
+      adjective('Free from anything that blocks the way.'),
+      adjective('Without any doubt in the mind.'),
+      verb('To remove things from a place.'),
+      verb('To become free of clouds.'),
     ])
-    const supersedes = await env.DB.prepare('select supersedes_id from facts where supersedes_id is not null').first()
-    expect(supersedes).toEqual({ supersedes_id: taxon.id })
-    const fresh = await env.DB.prepare(
-      'select count(*) as n, sum(revision = scored_revision) as fresh from worklist',
-    ).first()
-    expect(fresh).toEqual({ n: 4, fresh: 0 })
+    const [first, second, third, fourth, firstVerb, secondVerb] = senses
+    for (const core of [first, second, third]) {
+      expect(await typesAt(entryId, core as string)).toEqual(['collocations', 'examples', 'grammar', 'synonyms'])
+    }
+    // A core verb also needs a topic; an adjective needs none.
+    expect(await typesAt(entryId, firstVerb as string)).toEqual([
+      'collocations',
+      'examples',
+      'grammar',
+      'synonyms',
+      'topics',
+    ])
+    for (const rest of [fourth, secondVerb])
+      expect(await typesAt(entryId, rest as string)).toEqual(['examples', 'grammar'])
+  })
+
+  it('reopens a category slot only once no hypernym leads to a sense that can show [spec: work/relations-visible-ends-api]', async () => {
+    const dogGloss = 'An animal kept as a pet or for guarding.'
+    const {
+      entryId: dog,
+      senses: [dogSense],
+    } = await headword('dog', [{ pos: 'noun', gloss: dogGloss }])
+    const {
+      entryId: animal,
+      inventory,
+      senses: [animalSense],
+    } = await headword('animal', [{ pos: 'noun', gloss: 'A living thing that can move and feel.' }])
+    const { entryId: domestic } = await headword('domestic', [{ pos: 'adjective', gloss: 'Kept by people at home.' }])
+    const list = await curated('phrases', domestic, { phrases: ['domestic animal'] })
+    const pet = await admit('domestic animal')
+    const {
+      senses: [petSense],
+    } = await publishInventory(pet, [{ pos: 'noun', gloss: 'An animal that lives with people.' }])
+    await curated('relation', dogSense as string, { type: 'hypernym', target_sense_id: animalSense })
+    await curated('relation', dogSense as string, { type: 'hypernym', target_sense_id: petSense })
+    expect(await typesAt(dog, dogSense as string)).not.toContain('category')
+    expect(await typesAt(dog, dogSense as string)).toContain('parts')
+
+    // A curator's correction of "animal" drops the target sense; the other hypernym still shows.
+    await publishInventory(
+      animal,
+      [{ pos: 'noun', gloss: 'A creature that is not a bird, fish, or insect.' }],
+      inventory.id,
+    )
+    expect((await rowOf(dog))?.fresh).toBe(1)
+    expect(await typesAt(dog, dogSense as string)).not.toContain('category')
+    // "domestic animal" leaves the dictionary: no hypernym can show, so the category opens and the parts close.
+    await curated('phrases', domestic, { phrases: ['domestic help'] }, list.id)
+    expect((await managed('domestic animal')).live).toBe(false)
+    expect((await rowOf(dog))?.fresh).toBe(1)
+    const types = await typesAt(dog, dogSense as string)
+    expect(types).toContain('category')
+    expect(types).not.toContain('parts')
+  })
+
+  it('names every item of the entry in one language and reopens a rejected one [spec: work/translations-api]', async () => {
+    const token = await issueAgentKey()
+    const { entryId, senses } = await headword('tide', [NOUN])
+    const sense = senses[0] as string
+    const example = await curated('example', sense, { text: 'The tide came in fast.' })
+    const collocation = await curated('collocation', sense, { text: 'high tide', pattern: 'adjective_noun' })
+    const work = await claim(token, { types: ['translations'] })
+    const [item] = work?.items ?? []
+    expect(item?.gap).toEqual({
+      type: 'translations',
+      language: 'zh',
+      missing: [
+        { of: 'sense', id: sense },
+        { of: 'example', id: example.id },
+        { of: 'collocation', id: collocation.id },
+      ],
+    })
+    expect(item?.context.view?.entry.id).toBe(entryId)
+    const translations = [
+      await submitOk(token, 'translation', sense, { language: 'zh', of: 'sense', text: '潮汐' }),
+      await submitOk(token, 'translation', example.id, { language: 'zh', of: 'example', text: '潮水涨得很快。' }),
+      await submitOk(token, 'translation', collocation.id, { language: 'zh', of: 'collocation', text: '满潮' }),
+    ]
+    expect((await complete(token, work?.lease.id as string, [{ id: item?.id as string }])).items[0]?.state).toBe(
+      'awaiting_review',
+    )
+    // The LLM alone judges the collocation translation and fails it; Jev and luna pass the equivalent.
+    await reviewPending({ verdict: 'fail' })
+    const statuses = await Promise.all(
+      translations.map(
+        async (fact) => ((await call(`/manage/v1/facts/${fact.id}`, { token })).body as { status: string }).status,
+      ),
+    )
+    expect(statuses).toEqual(['published', 'rejected', 'rejected'])
+    const retry = await claim(token, { types: ['translations'] })
+    expect(retry?.items[0]).toMatchObject({
+      attempts: 0,
+      gap: {
+        missing: [
+          { of: 'example', id: example.id },
+          { of: 'collocation', id: collocation.id },
+        ],
+      },
+    })
+    await submitOk(token, 'translation', example.id, { language: 'zh', of: 'example', text: '潮水来得很快。' })
+    await submitOk(token, 'translation', collocation.id, { language: 'zh', of: 'collocation', text: '高潮位' })
+    await complete(token, retry?.lease.id as string, [{ id: retry?.items[0]?.id as string }])
+    await reviewPending()
+    expect((await itemsOf(entryId)).map((row) => row.type)).not.toContain('translations')
+  })
+
+  it('brings a rejected inventory back once with its review, then hands the item to a curator [spec: work/inventory-retry]', async () => {
+    const token = await issueAgentKey()
+    const entryId = await admit('tide')
+    const first = await claim(token, { types: ['senses'] })
+    const rejected = await submitOk(token, 'senses', entryId, {
+      senses: [{ pos: 'noun', gloss: 'A wave of the sea.', rank: 'common' }],
+    })
+    expect(
+      (await complete(token, first?.lease.id as string, [{ id: first?.items[0]?.id as string }])).items[0]?.state,
+    ).toBe('awaiting_review')
+    await reviewPending({ jev: 0.2, verdict: 'fail' })
+    const second = await claim(token, { types: ['senses'] })
+    expect(second?.items[0]?.attempts).toBe(1)
+    expect(second?.items[0]?.context.rejections).toMatchObject([
+      { id: rejected.id, status: 'rejected', review: { verdict: 'fail', reason: expect.any(String) } },
+    ])
+    await submitOk(token, 'senses', entryId, {
+      senses: [{ pos: 'noun', gloss: 'A current of the sea.', rank: 'common' }],
+    })
+    await complete(token, second?.lease.id as string, [{ id: second?.items[0]?.id as string, note: 'Reworded.' }])
+    await reviewPending({ jev: 0.2, verdict: 'fail' })
+    expect(await claim(token, { types: ['senses'] })).toBeNull()
+    const tickets = (await call('/manage/v1/tickets?status=open&type=stuck_work', { token: await adminToken() }))
+      .body as {
+      items: Array<{ target: string; message: string }>
+    }
+    expect(tickets.items).toEqual([expect.objectContaining({ target: entryId, message: 'senses: Reworded.' })])
+  })
+
+  it('judges a worked item once its facts are reviewed, so a rejection after the lease counts the attempt [spec: work/item-review-api]', async () => {
+    const token = await issueAgentKey()
+    const { entryId } = await headword('tide', [NOUN])
+    const work = await claim(token, { types: ['syllables'] })
+    const syllables = await submitOk(token, 'syllables', entryId, { syllables: ['tide'] })
+    expect((await complete(token, work?.lease.id as string, [{ id: work?.items[0]?.id as string }])).items).toEqual([
+      { id: work?.items[0]?.id, state: 'awaiting_review', attempts: 0 },
+    ])
+    expect(await claim(token, { types: ['syllables'] })).toBeNull()
+    await reviewPending({ luna: 0.2, verdict: 'fail' })
+    const back = await claim(token, { types: ['syllables'] })
+    expect(back?.items[0]?.attempts).toBe(1)
+    expect(back?.items[0]?.context.rejections.map((fact) => [fact.id, fact.status])).toEqual([
+      [syllables.id, 'rejected'],
+    ])
+  })
+
+  it('passes optional slots with found_none and a note, recording the words they were blocked on [spec: work/found-none-api]', async () => {
+    const token = await issueAgentKey()
+    const { entryId, senses } = await headword('tide', [NOUN])
+    const before = (await managed('tide')).completeness
+    const phrases = await claim(token, { types: ['phrases'] })
+    const item = phrases?.items[0]?.id as string
+    const bare = await completeRaw(token, phrases?.lease.id as string, { items: [{ id: item, found_none: true }] })
+    expect([bare.status, codeOf(bare.body)]).toEqual([400, 'invalid_request'])
+    const done = await complete(token, phrases?.lease.id as string, [
+      { id: item, found_none: true, note: 'No learner dictionary prints a phrase of tide.' },
+    ])
+    expect(done.items).toEqual([{ id: item, state: 'closed', attempts: 0 }])
+    expect((await managed('tide')).completeness).toBeGreaterThan(before)
+
+    const synonyms = await claim(token, { types: ['synonyms'] })
+    const synonym = synonyms?.items[0]?.id as string
+    const passed = await complete(token, synonyms?.lease.id as string, [
+      { id: synonym, found_none: true, note: 'Only "flow" fits, and it is no entry.', blocked_on: ['flow'] },
+    ])
+    expect(passed.items[0]?.state).toBe('closed')
+    expect(await typesAt(entryId, senses[0] as string)).not.toContain('synonyms')
+    const blocks = await env.DB.prepare('select lemma, type, subject_id from work_pass_blocks').all()
+    expect(blocks.results).toEqual([{ lemma: 'flow', type: 'synonyms', subject_id: senses[0] }])
+  })
+
+  it('refuses found_none and blocked_on on a required slot [spec: work/required-slot-api]', async () => {
+    const token = await issueAgentKey()
+    await headword('tide', [NOUN])
+    const work = await claim(token, { types: ['syllables'] })
+    const id = work?.items[0]?.id as string
+    for (const item of [
+      { id, found_none: true, note: 'Nothing.' },
+      { id, blocked_on: ['tides'] },
+    ]) {
+      const refused = await completeRaw(token, work?.lease.id as string, { items: [item] })
+      expect([refused.status, codeOf(refused.body)]).toEqual([400, 'invalid_request'])
+    }
+    expect(
+      (await complete(token, work?.lease.id as string, [{ id, note: 'Could not divide it.' }])).items[0]?.state,
+    ).toBe('open')
+  })
+
+  it('reopens a passed slot when a curator admits a word it was blocked on [spec: work/blocked-reopen-api]', async () => {
+    const token = await issueAgentKey()
+    const { entryId, senses } = await headword('huge', [{ pos: 'adjective', gloss: 'Very large in size.' }])
+    const sense = senses[0] as string
+    const work = await claim(token, { types: ['synonyms'] })
+    await complete(token, work?.lease.id as string, [
+      { id: work?.items[0]?.id as string, found_none: true, note: 'Only "enormous" fits.', blocked_on: ['enormous'] },
+    ])
+    expect(await typesAt(entryId, sense)).not.toContain('synonyms')
+    await admit('vast')
+    expect(await typesAt(entryId, sense)).not.toContain('synonyms')
+    await admit('enormous')
+    expect((await itemsOf(entryId)).filter((item) => item.type === 'synonyms')).toEqual([
+      { type: 'synonyms', subject_id: sense, attempts: 0 },
+    ])
+    expect((await claim(token, { types: ['synonyms'] }))?.items.map((item) => item.subject_id)).toContain(sense)
+  })
+
+  it('opens a stuck_work ticket after two passes leave an item unfilled, which a curator settles [spec: work/stuck-ticket-api]', async () => {
+    const producer = await issueAgentKey('producer')
+    const curator = await issueAgentKey('curator', true)
+    const { entryId } = await headword('tide', [NOUN])
+    for (const attempts of [1, 2]) {
+      const work = await claim(producer, { types: ['syllables'] })
+      const done = await complete(producer, work?.lease.id as string, [
+        { id: work?.items[0]?.id as string, note: 'Unsure.' },
+      ])
+      expect(done.items[0]).toMatchObject({ state: attempts === 2 ? 'ticket' : 'open', attempts })
+    }
+    expect(await claim(producer, { types: ['syllables'] })).toBeNull()
+    const listed = (await call('/manage/v1/tickets?type=stuck_work', { token: curator })).body as {
+      items: Array<{ type: string; target_type: string; target: string; message: string; status: string }>
+    }
+    expect(listed.items).toEqual([
+      expect.objectContaining({
+        type: 'stuck_work',
+        target_type: 'entry',
+        target: entryId,
+        message: 'syllables: Unsure.',
+        status: 'open',
+      }),
+    ])
+    const settle = (token: string) =>
+      call(`/manage/v1/entries/${entryId}/passes`, {
+        method: 'POST',
+        token,
+        json: { type: 'syllables', subject_id: entryId, note: 'One syllable; nothing to divide.' },
+      })
+    expect((await settle(producer)).status).toBe(403)
+    expect((await settle(curator)).status).toBe(204)
+    expect((await itemsOf(entryId)).map((item) => item.type)).not.toContain('syllables')
+  })
+
+  it('opens a family gap on an A1 word that a derivative naming it as a base fills in the same request [spec: work/family-api]', async () => {
+    const token = await issueAgentKey()
+    await importLearnerData({ levels: { happy: 'A1' } })
+    const { entryId: happy } = await headword('happy', [{ pos: 'adjective', gloss: 'Feeling pleasure.' }])
+    const work = await claim(token, { types: ['family'] })
+    expect(work?.items.map((item) => [item.lemma, item.gap])).toEqual([['happy', { type: 'family' }]])
+    await complete(token, work?.lease.id as string, [])
+    const open = await rowOf(happy)
+    const { entryId: happiness } = await headword('happiness', [{ pos: 'noun', gloss: 'The state of feeling happy.' }])
+    const parts = [
+      { form: 'happy', role: 'base', lemma: 'happy' },
+      { form: '-ness', role: 'suffix' },
+    ]
+    const submit = (payload: unknown) =>
+      call('/manage/v1/facts', { method: 'POST', token, json: { kind: 'morphology', subject_id: happiness, payload } })
+    const unknown = await submit({ parts: [{ form: 'happy', role: 'base', lemma: 'Happy' }, parts[1]] })
+    expect(unknown.status).toBe(422)
+    expect(apiErrorSchema.parse(unknown.body).error.message).toContain('blocked_on')
+    expect((await submit({ parts: [parts[0], { form: '-ness', role: 'suffix', lemma: 'happy' }] })).status).toBe(400)
+    const formation = await submit({ parts })
+    expect(formation.status).toBe(201)
+    const filled = await rowOf(happy)
+    expect(filled?.fresh).toBe(1)
+    expect(filled?.completeness).toBeGreaterThan(open?.completeness ?? 1)
+    await reviewPending()
+    const view = (await call('/v1/entries/happiness')).body as { morphology: { parts: unknown[] } | null }
+    expect(view.morphology?.parts[0]).toEqual({ form: 'happy', role: 'base', lemma: 'happy' })
+    // Retracting the derivative's formation reopens the base's gap.
+    const id = (formation.body as { fact: { id: string } }).fact.id
+    expect((await call(`/manage/v1/facts/${id}/retract`, { method: 'POST', token })).status).toBe(200)
+    expect((await rowOf(happy))?.completeness).toBe(open?.completeness)
+  })
+})
+
+describe('headword admission', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('admits the CEFR headwords without an entry as batch 1, for admins only, their senses items first [spec: catalog/import-core-api]', async () => {
+    await importLearnerData({
+      zipf: { bank: 5, the: 7 },
+      levels: { bank: 'A1', 'according to': 'B1', x: 'A1', the: 'A1' },
+    })
+    await admit('the', 2)
+    const agent = await issueAgentKey()
+    const admin = await adminToken()
+    const importCore = (token: string, json: unknown) =>
+      call('/manage/v1/entries/core', { method: 'POST', token, json })
+    const denied = await importCore(agent, {})
+    expect([denied.status, codeOf(denied.body)]).toEqual([403, 'forbidden'])
+    const results = []
+    for (let step = 0; step < 3; step++) {
+      const result = await importCore(admin, { limit: 1 })
+      expect(result.status).toBe(200)
+      results.push(coreImportResultSchema.parse(result.body))
+    }
+    expect(results).toEqual([
+      { created: ['bank'], skipped: ['x'], remaining: 1 },
+      { created: ['according to'], skipped: ['x'], remaining: 0 },
+      { created: [], skipped: ['x'], remaining: 0 },
+    ])
+    const batches = await Promise.all(
+      ['bank', 'according to', 'the'].map(async (lemma) => (await managed(lemma)).batch),
+    )
+    expect(batches).toEqual([1, 1, 2])
+    expect((await managed('bank')).live).toBe(true)
+    expect((await call('/manage/v1/entries/x', { token: agent })).status).toBe(404)
+    // Nothing is queued for review: an admitted headword has no fact.
+    expect(
+      ((await call('/manage/v1/facts?status=pending', { token: admin })).body as { items: unknown[] }).items,
+    ).toEqual([])
+    // "the" is A1 and more frequent but batch 2, so the batch 1 headwords come first.
+    expect(await lemmasOf(agent, ['senses'])).toEqual(['bank', 'according to', 'the'])
+  })
+
+  it('admits a headword only for a curator, idempotently by lemma [spec: catalog/create-entry-api]', async () => {
+    const producer = await issueAgentKey('producer')
+    const curator = await issueAgentKey('curator', true)
+    const post = (token: string) =>
+      call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'house', batch: 2 } })
+    const refused = await post(producer)
+    expect([refused.status, codeOf(refused.body)]).toEqual([403, 'forbidden'])
+    const created = await post(curator)
+    expect(created.status).toBe(201)
+    const { entry, created: fresh } = createEntryResultSchema.parse(created.body)
+    expect([entry.lemma, fresh]).toEqual(['house', true])
+    const again = await post(curator)
+    expect([again.status, createEntryResultSchema.parse(again.body).entry.id]).toEqual([200, entry.id])
+    expect((await post(await adminToken())).status).toBe(200)
+    const view = await managed('house')
+    expect([view.live, view.batch]).toEqual([true, 2])
+    expect((await claim(producer))?.items.map((item) => [item.lemma, item.type])).toEqual([['house', 'senses']])
   })
 })

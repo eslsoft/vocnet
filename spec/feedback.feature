@@ -1,11 +1,12 @@
 Feature: Feedback
-  Anyone reports a problem; agents work through reports one at a time.
+  Anyone reports a problem with what the public API shows; each report becomes a feedback ticket
+  for a curator.
 
   @feedback/submit @usecase
   Scenario: Report a problem with an entry, a sense, or a fact
     Given a publicly visible entry, sense, or fact
     When anyone submits feedback about it
-    Then the feedback is open
+    Then an open feedback ticket names the target and the message
 
   @feedback/public-target @usecase
   Scenario: Only what the public API shows can be reported
@@ -19,20 +20,8 @@ Feature: Feedback
     When it sends another
     Then the API answers 429 rate_limited, while another address is still served
 
-  @feedback/claim-lease @usecase
-  Scenario: A claim is a one-hour lease
-    Given open feedback
-    When an agent claims it
-    Then no other agent can claim it until the lease expires, and the holder may renew it
-
-  @feedback/lease-api @api
-  Scenario: Claim and resolve over HTTP
-    Given a public report
-    When one agent claims it and another tries to claim or resolve it
-    Then the second agent is refused and the holder resolves it with the correcting fact ids
-
-  @feedback/resolve @usecase
-  Scenario: The holder resolves or dismisses claimed feedback
-    Given feedback claimed by an agent
-    When the agent resolves it with fact ids or dismisses it with a note
-    Then it is closed, and closing it again returns the same result
+  @feedback/ticket-api @api
+  Scenario: A public report opens a feedback ticket on a real database
+    Given a public entry, its sense, and a published fact
+    When anyone reports each of them, reports the entry again, and reports a pending fact
+    Then each report answers 201 with an open ticket, the curator's ticket list shows them as feedback tickets with their entry, the repeat on the entry keeps one open ticket, and the pending fact is 404

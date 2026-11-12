@@ -3,8 +3,6 @@ import { entrySummaryStatements } from '@server/adapters/repos/nodes'
 import { encodeCursor } from '@server/adapters/repos/rows'
 import { createDb } from '@server/db/client'
 import {
-  createEntryResultSchema,
-  createSenseResultSchema,
   entryPageSchema,
   entrySummaryPageSchema,
   formLookupSchema,
@@ -13,61 +11,49 @@ import {
   publicEntrySchema,
   publicSenseDetailSchema,
 } from '@shared/catalog'
-import { factWriteResultSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { adminToken, call, deliverPendingReviews, deliverReviews, issueAgentKey, stubReviewers } from './helpers'
+import {
+  adminToken,
+  admit,
+  call,
+  curated,
+  headword,
+  issueAgentKey,
+  managed,
+  publishInventory,
+  reviewPending,
+  submitInventory,
+  submitOk,
+} from './helpers'
 
+/** "bank" and "shore", each with a published inventory, and a form, example, translations, and synonym under review. */
 async function seedBank() {
   const token = await issueAgentKey()
-  const entry = createEntryResultSchema.parse(
-    (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'bank' } })).body,
-  )
-  const shoreEntry = createEntryResultSchema.parse(
-    (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'shore' } })).body,
-  )
-  const river = createSenseResultSchema.parse(
-    (
-      await call('/manage/v1/senses', {
-        method: 'POST',
-        token,
-        json: { entry_id: entry.entry.id, pos: 'noun', gloss: 'Land beside a river.' },
-      })
-    ).body,
-  )
-  const shore = createSenseResultSchema.parse(
-    (
-      await call('/manage/v1/senses', {
-        method: 'POST',
-        token,
-        json: { entry_id: shoreEntry.entry.id, pos: 'noun', gloss: 'Land along water.' },
-      })
-    ).body,
-  )
-  const submit = (json: unknown) => call('/manage/v1/facts', { method: 'POST', token, json })
-  await submit({ kind: 'form', subject_id: entry.entry.id, payload: { form: 'banks', type: 'plural' } })
-  await submit({ kind: 'example', subject_id: river.sense.id, payload: { text: 'We sat on the bank.' } })
-  const relation = factWriteResultSchema.parse(
-    (
-      await submit({
-        kind: 'relation',
-        subject_id: river.sense.id,
-        payload: { type: 'synonym', target_sense_id: shore.sense.id },
-      })
-    ).body,
-  )
-  return { token, entry, river, shore, relation }
+  const bank = await headword('bank', [{ pos: 'noun', gloss: 'Land beside a river.' }])
+  const shore = await headword('shore', [{ pos: 'noun', gloss: 'Land along water.' }])
+  const river = bank.senses[0] as string
+  const coast = shore.senses[0] as string
+  const form = await submitOk(token, 'form', bank.entryId, { form: 'banks', type: 'plural' })
+  const example = await submitOk(token, 'example', river, { text: 'We sat on the bank.' })
+  const equivalent = await submitOk(token, 'translation', river, { language: 'zh', of: 'sense', text: '河岸' })
+  const sentence = await submitOk(token, 'translation', example.id, {
+    language: 'zh',
+    of: 'example',
+    text: '我们坐在河岸上。',
+  })
+  const relation = await submitOk(token, 'relation', river, { type: 'synonym', target_sense_id: coast })
+  return { token, bank, river, coast, form, example, equivalent, sentence, relation }
 }
 
 describe('public catalog', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('serves a reviewed entry with forms, senses, examples, and relations [spec: catalog/entry-read]', async () => {
-    const { river, shore } = await seedBank()
-    stubReviewers()
-    await deliverPendingReviews()
+  it('serves a reviewed entry with forms, senses, examples, translations, and relations [spec: catalog/entry-read]', async () => {
+    const { river, coast, bank } = await seedBank()
+    await reviewPending()
 
-    const { status, body } = await call('/v1/entries/bank')
+    const { status, body } = await call('/v1/entries/bank?lang=zh')
     expect(status).toBe(200)
     const entry = publicEntrySchema.parse(body)
     // A synonym is stored once, from the smaller sense id; both senses list it.
@@ -79,13 +65,14 @@ describe('public catalog', () => {
         forms: { plural: [{ form: 'banks', irregular: false }] },
         senses: [
           expect.objectContaining({
-            id: river.sense.id,
+            id: river,
             gloss: 'Land beside a river.',
             labels: [],
             rare: false,
-            examples: [{ text: 'We sat on the bank.' }],
+            translations: ['河岸'],
+            examples: [{ text: 'We sat on the bank.', translation: '我们坐在河岸上。' }],
             relations: expect.objectContaining({
-              synonyms: [{ lemma: 'shore', sense_id: shore.sense.id, gloss: 'Land along water.' }],
+              synonyms: [{ lemma: 'shore', sense_id: coast, gloss: 'Land along water.' }],
             }),
           }),
         ],
@@ -94,6 +81,9 @@ describe('public catalog', () => {
     expect(JSON.stringify(entry)).not.toContain('confidence')
 
     const reviewed = publicEntrySchema.parse((await call('/v1/entries/bank?include=review')).body)
+    expect(reviewed.review?.inventory).toEqual(
+      expect.objectContaining({ fact_id: bank.inventory.id, verdict: 'pass', confidence: 1 }),
+    )
     const [meaning] = reviewed.meanings
     expect(meaning?.review?.forms.plural).toEqual([expect.objectContaining({ verdict: 'pass', confidence: 0.93 })])
     expect(meaning?.senses[0]?.examples).toEqual([
@@ -101,27 +91,47 @@ describe('public catalog', () => {
     ])
     expect(meaning?.senses[0]?.relations.synonyms[0]?.review).toEqual(expect.objectContaining({ verdict: 'pass' }))
 
-    const sense = publicSenseDetailSchema.parse((await call(`/v1/senses/${river.sense.id}`)).body)
-    expect(sense).toMatchObject({ id: river.sense.id, pos: 'noun', entry: { lemma: 'bank', pos: ['noun'] } })
+    const sense = publicSenseDetailSchema.parse((await call(`/v1/senses/${river}`)).body)
+    expect(sense).toMatchObject({ id: river, pos: 'noun', entry: { lemma: 'bank', pos: ['noun'] } })
     const incoming = publicEntrySchema.parse((await call('/v1/entries/shore')).body)
     expect(incoming.meanings[0]?.senses[0]?.relations.synonyms).toEqual([
-      { lemma: 'bank', sense_id: river.sense.id, gloss: 'Land beside a river.' },
+      { lemma: 'bank', sense_id: river, gloss: 'Land beside a river.' },
     ])
   })
 
-  it('404s unknown and unpublished lemmas, forms, and senses with no fallback [spec: catalog/entry-not-found]', async () => {
-    const { river } = await seedBank()
-    for (const path of ['/v1/entries/bank', '/v1/entries/banks', '/v1/forms/banks', `/v1/senses/${river.sense.id}`]) {
+  it('404s unknown, unlisted, and not-live lemmas, forms, and senses with no fallback [spec: catalog/entry-not-found]', async () => {
+    const token = await issueAgentKey()
+    const pending = await admit('bank')
+    const inventory = await submitInventory(token, pending, [{ pos: 'noun', gloss: 'Land beside a river.' }])
+    const [unlisted] = inventory.kind === 'senses' ? inventory.payload.senses : []
+    await submitOk(token, 'form', pending, { form: 'banks', type: 'plural' })
+    // "give in" is live while a published phrases list names it, and not once the list drops it.
+    const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
+    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give in'] })
+    const dropped = (await managed('give in')).entry.id
+    await publishInventory(dropped, [{ pos: 'verb', gloss: 'To stop arguing and accept defeat.' }])
+    expect((await call('/v1/entries/give%20in')).status).toBe(200)
+    await curated('phrases', give.entryId, { phrases: ['give up'] }, list.id)
+
+    for (const path of [
+      '/v1/entries/bank',
+      '/v1/entries/banks',
+      '/v1/entries/Bank',
+      '/v1/entries/nothing',
+      '/v1/forms/banks',
+      `/v1/senses/${unlisted?.id}`,
+      `/v1/senses/${crypto.randomUUID()}`,
+      '/v1/entries/give%20in',
+    ]) {
       const { status, body } = await call(path)
-      expect(status).toBe(404)
+      expect([path, status]).toEqual([path, 404])
       expect(apiErrorSchema.parse(body).error.code).toBe('not_found')
     }
   })
 
   it('looks up the entry an inflected form belongs to [spec: catalog/form-lookup-api]', async () => {
     await seedBank()
-    stubReviewers()
-    await deliverPendingReviews()
+    await reviewPending()
     const lookup = formLookupSchema.parse((await call('/v1/forms/banks')).body)
     expect(lookup).toEqual({
       lang: null,
@@ -139,11 +149,10 @@ describe('public catalog', () => {
   })
 
   it('pages through published entries by prefix and rejects a broken cursor [spec: catalog/search]', async () => {
-    const token = await issueAgentKey()
-    for (const lemma of ['band', 'bank', 'bar', 'cat'])
-      await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })
-    stubReviewers()
-    await deliverPendingReviews()
+    for (const lemma of ['band', 'bank', 'bar', 'cat']) {
+      await headword(lemma, [{ pos: 'noun', gloss: `A thing called ${lemma}.` }])
+    }
+    await admit('bat')
 
     const seen: string[] = []
     let cursor: string | null = null
@@ -160,32 +169,56 @@ describe('public catalog', () => {
     expect(apiErrorSchema.parse(broken.body).error.code).toBe('invalid_cursor')
   })
 
-  it('shows management every fact in every status [spec: catalog/manage-entry]', async () => {
-    const { token } = await seedBank()
+  it('shows management every fact in every status with its liveness and scores [spec: catalog/manage-entry]', async () => {
+    const token = await issueAgentKey()
+    const entryId = await admit('bank', 2)
+    const inventory = await submitInventory(token, entryId, [{ pos: 'noun', gloss: 'Land beside a river.' }])
+    await submitOk(token, 'form', entryId, { form: 'banks', type: 'plural' })
+    await submitOk(token, 'syllables', entryId, { syllables: ['bank'] })
+
+    const pending = managedEntrySchema.parse((await call('/manage/v1/entries/bank', { token })).body)
+    expect(pending.facts.map((fact) => [fact.kind, fact.status]).sort()).toEqual([
+      ['form', 'pending'],
+      ['senses', 'pending'],
+      ['syllables', 'pending'],
+    ])
+    expect(pending).toMatchObject({ live: true, batch: 2 })
+    expect(pending.senses.map((sense) => sense.id)).toEqual(
+      inventory.kind === 'senses' ? inventory.payload.senses.map((sense) => sense.id) : [],
+    )
+
+    await reviewPending()
+    const [sense] = pending.senses
+    const example = await submitOk(token, 'example', sense!.id, { text: 'We sat on the bank.' })
+    await submitOk(token, 'translation', example.id, { language: 'zh', of: 'example', text: '我们坐在河岸上。' })
     const view = managedEntrySchema.parse((await call('/manage/v1/entries/bank', { token })).body)
-    expect(view.facts.map((fact) => fact.status)).toEqual(view.facts.map(() => 'pending'))
-    expect(view.facts.map((fact) => fact.kind).sort()).toEqual(['entry', 'example', 'form', 'relation', 'sense'])
+    expect(view.facts.map((fact) => [fact.kind, fact.status]).sort()).toEqual([
+      ['example', 'pending'],
+      ['form', 'published'],
+      ['senses', 'published'],
+      ['syllables', 'published'],
+      ['translation', 'pending'],
+    ])
+    expect(view.completeness).toBeGreaterThan(0)
+    expect(view.completeness).toBeLessThan(1)
+    expect(view.credibility).toBeGreaterThan(0)
+    expect(view.slots.total).toBeGreaterThan(view.slots.published)
+    expect(view.slots.pending).toBeGreaterThan(0)
   })
 
   it('lists entries in every status with their counts, page by page [spec: catalog/manage-entry-list]', async () => {
-    const { token, entry, river, relation } = await seedBank()
-    for (const lemma of ['band', 'bar', 'cat'])
-      await call('/manage/v1/entries', { method: 'POST', token, json: { lemma } })
-    stubReviewers()
-    await deliverReviews([river.fact.id])
-    const example = factWriteResultSchema.parse(
-      (
-        await call('/manage/v1/facts', {
-          method: 'POST',
-          token,
-          json: { kind: 'example', subject_id: river.sense.id, payload: { text: 'The bank flooded.' } },
-        })
-      ).body,
-    )
-    await call(`/manage/v1/facts/${example.fact.id}/retract`, { method: 'POST', token })
-    // Bank's facts await review, so no claim takes it; stamp the completed pass the list reports.
+    const { token, bank, river, relation, form } = await seedBank()
+    for (const lemma of ['band', 'bar', 'cat']) await admit(lemma)
+    // "give back" exists but is not live: the phrases list that admitted it dropped it.
+    const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
+    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give back'] })
+    await curated('phrases', give.entryId, { phrases: ['give up'] }, list.id)
+    await reviewPending()
+    const example = await submitOk(token, 'example', river, { text: 'The bank flooded.' })
+    await call(`/manage/v1/facts/${example.id}/retract`, { method: 'POST', token })
+    await submitOk(token, 'example', river, { text: 'They walked along the bank.' })
     await env.DB.prepare('update worklist set last_worked_at = ? where entry_id = ?')
-      .bind(new Date().toISOString(), entry.entry.id)
+      .bind(new Date().toISOString(), bank.entryId)
       .run()
 
     expect((await call('/manage/v1/entries')).status).toBe(401)
@@ -201,42 +234,38 @@ describe('public catalog', () => {
     } while (cursor)
     expect(pages).toEqual([['band', 'bank'], ['bar']])
 
-    const [, bank] = entrySummaryPageSchema.parse((await call('/manage/v1/entries?prefix=ba', { token })).body).items
-    expect(bank).toMatchObject({
+    const [, summary] = entrySummaryPageSchema.parse((await call('/manage/v1/entries?prefix=ba', { token })).body).items
+    // The synonym counts under whichever entry owns its subject sense; an example's translation is about the example.
+    const own = relation.subject_id === river ? 1 : 0
+    expect(form.status).toBe('pending')
+    expect(summary).toMatchObject({
       lemma: 'bank',
-      entry_status: 'pending',
+      live: true,
       sense_count: 1,
-      // The synonym counts under whichever entry owns its subject sense.
-      fact_counts: {
-        pending: relation.fact.subject_id === river.sense.id ? 4 : 3,
-        published: 1,
-        rejected: 0,
-        superseded: 0,
-        retracted: 1,
-      },
+      fact_counts: { pending: 1, published: 4 + own, rejected: 0, superseded: 0, retracted: 1 },
       last_worked_at: expect.any(String),
     })
     const all = entrySummaryPageSchema.parse((await call('/manage/v1/entries', { token: await adminToken() })).body)
-    expect(all.items.map((item) => [item.lemma, item.entry_status, item.last_worked_at])).toEqual([
-      ['band', 'pending', null],
-      ['bank', 'pending', bank?.last_worked_at],
-      ['bar', 'pending', null],
-      ['cat', 'pending', null],
-      ['shore', 'pending', null],
+    expect(all.items.map((item) => [item.lemma, item.live, item.sense_count])).toEqual([
+      ['band', true, 0],
+      ['bank', true, 1],
+      ['bar', true, 0],
+      ['cat', true, 0],
+      ['give', true, 1],
+      ['give back', false, 0],
+      ['give up', true, 0],
+      ['shore', true, 1],
     ])
-    expect((await call('/manage/v1/entries/bank', { token })).status).toBe(200)
     const broken = await call('/manage/v1/entries?cursor=broken', { token })
     expect([broken.status, apiErrorSchema.parse(broken.body).error.code]).toEqual([400, 'invalid_cursor'])
   })
 
   it('reads only the page when it lists entries [spec: catalog/manage-entry-list-index]', async () => {
     const cursor = encodeCursor({ lemma: 'ba' })
-    const unfiltered = { prefix: 'b', level: null, flagged: false, stuck: false }
-    const filtered = { prefix: 'b', level: 'A1', flagged: true, stuck: true } as const
     const now = new Date().toISOString()
     const statements = [
-      ...entrySummaryStatements(createDb(env), unfiltered, { limit: 50, cursor }, now),
-      ...entrySummaryStatements(createDb(env), filtered, { limit: 50, cursor }, now),
+      ...entrySummaryStatements(createDb(env), { prefix: 'b', level: null, stuck: false }, { limit: 50, cursor }, now),
+      ...entrySummaryStatements(createDb(env), { prefix: 'b', level: 'A1', stuck: true }, { limit: 50, cursor }, now),
     ]
     const plans = await Promise.all(
       statements.map(async (statement) => {
@@ -252,17 +281,14 @@ describe('public catalog', () => {
       expect(plan.filter((step) => step.startsWith('SCAN'))).toEqual([])
       expect(plan.some((step) => step.includes('facts_live_content_idx'))).toBe(false)
     }
-    const [, , , glossed] = plans
-    expect(glossed[0]).toBe('SEARCH senses USING INDEX senses_creation_idx (entry_id=?)')
-    expect(glossed).toContain('SEARCH facts USING INDEX facts_subject_idx (subject_id=? AND status=?)')
   })
 
   it('resolves an entry or sense id to its entry [spec: catalog/locate-node]', async () => {
-    const { token } = await seedBank()
-    const view = managedEntrySchema.parse((await call('/manage/v1/entries/bank', { token })).body)
-    const owner = { id: view.entry.id, lemma: 'bank' }
-    const ofEntry = nodeLocationSchema.parse((await call(`/manage/v1/nodes/${view.entry.id}`, { token })).body)
-    const ofSense = nodeLocationSchema.parse((await call(`/manage/v1/nodes/${view.senses[0].id}`, { token })).body)
+    const { bank, river } = await seedBank()
+    const token = await adminToken()
+    const owner = { id: bank.entryId, lemma: 'bank' }
+    const ofEntry = nodeLocationSchema.parse((await call(`/manage/v1/nodes/${bank.entryId}`, { token })).body)
+    const ofSense = nodeLocationSchema.parse((await call(`/manage/v1/nodes/${river}`, { token })).body)
     expect(ofEntry).toEqual({ node_type: 'entry', entry: owner })
     expect(ofSense).toEqual({ node_type: 'sense', entry: owner })
     const missing = await call(`/manage/v1/nodes/${crypto.randomUUID()}`, { token })

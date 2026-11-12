@@ -1,213 +1,90 @@
-import {
-  createEntryResultSchema,
-  createSenseResultSchema,
-  managedEntrySchema,
-  publicEntrySchema,
-} from '@shared/catalog'
-import { type FactDto, factSchema, factWriteResultSchema } from '@shared/facts'
+import { publicEntrySchema } from '@shared/catalog'
+import { factSchema } from '@shared/facts'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { adminToken, call, deliverPendingReviews, issueAgentKey, stubReviewers } from './helpers'
-
-async function publishedRiverBank() {
-  const token = await issueAgentKey()
-  const { entry } = createEntryResultSchema.parse(
-    (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'bank' } })).body,
-  )
-  const { sense, fact: gloss } = createSenseResultSchema.parse(
-    (
-      await call('/manage/v1/senses', {
-        method: 'POST',
-        token,
-        json: { entry_id: entry.id, pos: 'noun', gloss: 'Land beside a river.' },
-      })
-    ).body,
-  )
-  stubReviewers()
-  await deliverPendingReviews()
-  vi.restoreAllMocks()
-  const correct = (text: string) =>
-    call('/manage/v1/facts', {
-      method: 'POST',
-      token,
-      json: { kind: 'sense', subject_id: sense.id, supersedes_id: gloss.id, payload: { gloss: text } },
-    })
-  return { token, entry, sense, gloss, correct }
-}
-
-async function factOf(id: string): Promise<FactDto> {
-  return factSchema.parse((await call(`/manage/v1/facts/${id}`, { token: await adminToken() })).body)
-}
+import {
+  adminToken,
+  call,
+  headword,
+  issueAgentKey,
+  managed,
+  readFact,
+  reviewPending,
+  submit,
+  submitOk,
+} from './helpers'
 
 const codeOf = (body: unknown) => apiErrorSchema.parse(body).error.code
 
-describe('exclusive fact slots', () => {
+async function riverBank() {
+  const { senses } = await headword('bank', [{ pos: 'noun', gloss: 'Land beside a river.' }])
+  return { token: await issueAgentKey(), sense: senses[0] as string }
+}
+
+describe('fact slots and corrections', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('publishes a correction and supersedes the original in one write [spec: facts/supersede-api]', async () => {
-    const { gloss, correct } = await publishedRiverBank()
-    const correction = factWriteResultSchema.parse((await correct('Sloping land beside a river.')).body).fact
-
-    stubReviewers()
-    await deliverPendingReviews()
-
-    expect((await factOf(correction.id)).status).toBe('published')
-    expect((await factOf(gloss.id)).status).toBe('superseded')
+    const { token, sense } = await riverBank()
+    const original = await submitOk(token, 'example', sense, { text: 'We sat on the bank.' })
+    await reviewPending()
+    const correction = await submitOk(
+      token,
+      'example',
+      sense,
+      { text: 'We sat on the river bank.' },
+      { supersedes_id: original.id },
+    )
+    await reviewPending()
+    expect((await readFact(correction.id)).status).toBe('published')
+    expect((await readFact(original.id)).status).toBe('superseded')
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
-    expect(entry.meanings.flatMap((meaning) => meaning.senses).map((sense) => sense.gloss)).toEqual([
-      'Sloping land beside a river.',
-    ])
+    expect(entry.meanings[0]?.senses[0]?.examples.map((example) => example.text)).toEqual(['We sat on the river bank.'])
   })
 
   it('sends a rejected fact back through review until it publishes [spec: facts/rereview-api]', async () => {
-    const token = await issueAgentKey()
-    const { fact } = createEntryResultSchema.parse(
-      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'lake' } })).body,
-    )
-    stubReviewers(0.1, 'fail')
-    await deliverPendingReviews()
-    expect((await factOf(fact.id)).status).toBe('rejected')
-
-    const reset = await call(`/manage/v1/facts/${fact.id}/rereview`, { method: 'POST', token: await adminToken() })
+    const { token, sense } = await riverBank()
+    const fact = await submitOk(token, 'example', sense, { text: 'Children played on the bank.' })
+    await reviewPending({ verdict: 'fail' })
+    expect((await readFact(fact.id)).status).toBe('rejected')
+    const admin = await adminToken()
+    const reset = await call(`/manage/v1/facts/${fact.id}/rereview`, { method: 'POST', token: admin })
     expect(factSchema.parse(reset.body).status).toBe('pending')
-
-    vi.restoreAllMocks()
-    stubReviewers()
-    await deliverPendingReviews()
-    expect(await factOf(fact.id)).toMatchObject({ status: 'published', review: { verdict: 'pass' } })
-    expect((await call('/v1/entries/lake')).status).toBe(200)
+    await reviewPending()
+    expect(await readFact(fact.id)).toMatchObject({ status: 'published', review: { verdict: 'pass' } })
+    const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
+    expect(entry.meanings[0]?.senses[0]?.examples.map((example) => example.text)).toEqual([
+      'Children played on the bank.',
+    ])
+    const published = await call(`/manage/v1/facts/${fact.id}/rereview`, { method: 'POST', token: admin })
+    expect([published.status, codeOf(published.body)]).toEqual([409, 'conflict'])
   })
 
   it('admits one of two concurrent corrections [spec: facts/exclusive-slot-race]', async () => {
-    const { entry, correct } = await publishedRiverBank()
-    const results = await Promise.all([correct('Sloping land beside a river.'), correct('The edge of a river.')])
+    const { token, sense } = await riverBank()
+    const grammar = await submitOk(token, 'grammar', sense, { countability: 'countable' })
+    await reviewPending()
+    const correct = (countability: string) =>
+      submit(token, 'grammar', sense, { countability }, { supersedes_id: grammar.id })
+    const results = await Promise.all([correct('uncountable'), correct('both')])
     expect(results.map(({ status }) => status).sort()).toEqual([201, 409])
     expect(codeOf(results.find(({ status }) => status === 409)?.body)).toBe('conflict')
-
-    const managed = managedEntrySchema.parse(
-      (await call(`/manage/v1/entries/${entry.lemma}`, { token: await adminToken() })).body,
-    )
-    const glosses = managed.facts.filter((fact) => fact.kind === 'sense')
-    expect(glosses.map((fact) => fact.status).sort()).toEqual(['pending', 'published'])
-  })
-
-  it('lets a re-review race a correction without two pending glosses', async () => {
-    const { gloss, correct } = await publishedRiverBank()
-    const admin = await adminToken()
-    const results = await Promise.all([
-      call(`/manage/v1/facts/${gloss.id}/rereview`, { method: 'POST', token: admin }),
-      correct('Sloping land beside a river.'),
-    ])
-    expect(results.filter(({ status }) => status === 409)).toHaveLength(1)
+    const view = await managed('bank')
+    const grammars = view.facts.filter((fact) => fact.kind === 'grammar')
+    expect(grammars.map((fact) => fact.status).sort()).toEqual(['pending', 'published'])
   })
 
   it('refuses a re-review that would put a second live fact in the slot [spec: facts/rereview-conflict]', async () => {
-    const { token, sense, gloss, correct } = await publishedRiverBank()
-    const admin = await adminToken()
-    const correction = factWriteResultSchema.parse((await correct('Sloping land beside a river.')).body).fact
-    const whilePending = await call(`/manage/v1/facts/${gloss.id}/rereview`, { method: 'POST', token: admin })
-    expect([whilePending.status, codeOf(whilePending.body)]).toEqual([409, 'conflict'])
-
-    stubReviewers(0.1, 'fail')
-    await deliverPendingReviews()
-    vi.restoreAllMocks()
-    expect((await factOf(correction.id)).status).toBe('rejected')
-    const example = { kind: 'example', subject_id: sense.id, payload: { text: 'We sat on the bank.' } }
-    const rejected = factWriteResultSchema.parse(
-      (await call('/manage/v1/facts', { method: 'POST', token, json: example })).body,
-    ).fact
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
-      Response.json({
-        model: 'llm-test',
-        choices: [{ message: { content: JSON.stringify({ verdict: 'fail', confidence: 0.9, reason: 'No.' }) } }],
-      }),
-    )
-    await deliverPendingReviews()
-    vi.restoreAllMocks()
-    expect((await factOf(rejected.id)).status).toBe('rejected')
-    await call('/manage/v1/facts', { method: 'POST', token, json: example })
-
-    const contentTaken = await call(`/manage/v1/facts/${rejected.id}/rereview`, { method: 'POST', token: admin })
-    expect([contentTaken.status, codeOf(contentTaken.body)]).toEqual([409, 'conflict'])
-    expect((await factOf(rejected.id)).status).toBe('rejected')
-  })
-
-  it('refuses to re-review a rejected correction whose original another correction superseded [spec: facts/rereview-orphaned-correction]', async () => {
-    const { token, sense, gloss, correct } = await publishedRiverBank()
-    const rejected = factWriteResultSchema.parse((await correct('A kind of fish.')).body).fact
-    stubReviewers(0.1, 'fail')
-    await deliverPendingReviews()
-    vi.restoreAllMocks()
-    const winner = factWriteResultSchema.parse((await correct('Sloping land beside a river.')).body).fact
-    stubReviewers()
-    await deliverPendingReviews()
-    vi.restoreAllMocks()
-    expect((await factOf(gloss.id)).status).toBe('superseded')
+    const { token, sense } = await riverBank()
+    const example = { text: 'The bank was muddy.' }
+    const rejected = await submitOk(token, 'example', sense, example)
+    await reviewPending({ verdict: 'fail' })
+    expect((await readFact(rejected.id)).status).toBe('rejected')
+    const curator = await issueAgentKey('Curator', true)
+    expect((await submit(curator, 'example', sense, example)).status).toBe(201)
 
     const reset = await call(`/manage/v1/facts/${rejected.id}/rereview`, { method: 'POST', token: await adminToken() })
     expect([reset.status, codeOf(reset.body)]).toEqual([409, 'conflict'])
-    expect((await factOf(rejected.id)).status).toBe('rejected')
-
-    const next = await call('/manage/v1/facts', {
-      method: 'POST',
-      token,
-      json: {
-        kind: 'sense',
-        subject_id: sense.id,
-        supersedes_id: winner.id,
-        payload: { gloss: 'The edge of a river.' },
-      },
-    })
-    expect(next.status).toBe(201)
-  })
-
-  it('creates one sense from two concurrent identical requests [spec: catalog/create-sense-race]', async () => {
-    const token = await issueAgentKey()
-    const { entry } = createEntryResultSchema.parse(
-      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'bank' } })).body,
-    )
-    const create = () =>
-      call('/manage/v1/senses', {
-        method: 'POST',
-        token,
-        json: { entry_id: entry.id, pos: 'noun', gloss: 'Land beside a river.' },
-      })
-    const results = await Promise.all([create(), create()])
-    expect(results.map(({ status }) => status).sort()).toEqual([200, 201])
-    const [first, second] = results.map(({ body }) => createSenseResultSchema.parse(body))
-    expect(second?.sense.id).toBe(first?.sense.id)
-    expect(second?.fact.id).toBe(first?.fact.id)
-
-    const managed = managedEntrySchema.parse(
-      (await call('/manage/v1/entries/bank', { token: await adminToken() })).body,
-    )
-    expect(managed.senses).toHaveLength(1)
-    expect(managed.facts.filter((fact) => fact.kind === 'sense')).toHaveLength(1)
-  })
-
-  it('returns the existing sense for its gloss with a register, alone or racing [spec: catalog/create-sense-register-api]', async () => {
-    const token = await issueAgentKey()
-    const { entry } = createEntryResultSchema.parse(
-      (await call('/manage/v1/entries', { method: 'POST', token, json: { lemma: 'odd' } })).body,
-    )
-    const gloss = 'Not divisible by two without a remainder.'
-    const create = (register?: string) =>
-      call('/manage/v1/senses', {
-        method: 'POST',
-        token,
-        json: { entry_id: entry.id, pos: 'adjective', gloss, register },
-      })
-    const [plain, raced] = await Promise.all([create(), create('informal')])
-    stubReviewers()
-    await deliverPendingReviews()
-    const formal = await create('formal')
-
-    expect([plain, raced].map(({ status }) => status).sort()).toEqual([200, 201])
-    expect(formal.status).toBe(200)
-    const results = [plain, raced, formal].map(({ body }) => createSenseResultSchema.parse(body))
-    expect(new Set(results.map((result) => result.sense.id)).size).toBe(1)
-    expect(results.map((result) => result.created).filter(Boolean)).toHaveLength(1)
-    const entryView = publicEntrySchema.parse((await call('/v1/entries/odd')).body)
-    expect(entryView.meanings.flatMap((meaning) => meaning.senses).map((sense) => sense.gloss)).toEqual([gloss])
+    expect((await readFact(rejected.id)).status).toBe('rejected')
   })
 })
