@@ -241,7 +241,10 @@ function shapeSense(sense: StoredSense, variant: ReadVariant): PublicSense {
       const translation = exampleTranslationIn(translations, variant.lang)
       return withReview({ ...item, ...(translation === undefined ? {} : { translation }) }, variant)
     }),
-    collocations: sense.collocations.map((item) => withReview(item, variant)),
+    collocations: sense.collocations.map(({ translations, ...item }) => {
+      const translation = exampleTranslationIn(translations, variant.lang)
+      return withReview({ ...item, ...(translation === undefined ? {} : { translation }) }, variant)
+    }),
     topics: sense.topics.map((topic) => ({
       id: topic.id,
       name: nameIn(topic.name, variant.lang),
