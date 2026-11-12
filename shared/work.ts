@@ -11,6 +11,8 @@ import {
   regionSchema,
   registerSchema,
   senseIdSchema,
+  servedLanguageSchema,
+  translatedSchema,
 } from './facts'
 import { cefrLevelSchema } from './reference'
 
@@ -22,35 +24,34 @@ export type WorkItemId = z.infer<typeof workItemIdSchema>
 
 export const DEFAULT_LEASE_SECONDS = 900
 
+/** How many passes an item gets: the first, and one retry that sees the review reasons. */
+export const MAX_PASSES = 2
+
 /** The most items one claim leases, so building their context stays inside one request's budget. */
 export const MAX_CLAIM_ITEMS = 50
 export const DEFAULT_CLAIM_ITEMS = 10
 
 const senseGap = { sense_id: senseIdSchema }
 
-const CLOSABLE =
-  "When a learner's dictionary genuinely has nothing for this slot, submit a gap_closure fact naming this gap with the reason instead; review fails a closure of a slot that plainly applies."
+/** An optional slot is complete after one honest pass, which states what it considered when it finds nothing. */
+const OPTIONAL =
+  'This slot is optional: submit every value a learner\'s dictionary gives. When none fits, complete the item with a note naming what you considered and why none fits, and list in blocked_on any fitting word that is not an entry yet or has no published sense inventory; the item reopens once such a word goes live.'
 
 const formSlotSchema = z.object({ type: formTypeSchema, pos: posSchema }).meta({ id: 'FormSlot' })
+
+const translationTargetSchema = z
+  .object({
+    of: translatedSchema,
+    id: z.uuid().meta({ description: 'The sense id, or the example or collocation fact id.' }),
+  })
+  .meta({ id: 'TranslationTarget' })
 
 export const gapSchema = z
   .discriminatedUnion('type', [
     z.object({ type: z.literal('senses') }).meta({
       description:
-        "The entry has no sense with a live gloss. Create every common sense a learner's dictionary gives the word (POST /manage/v1/senses), then its sense list.",
+        "The entry has no live sense inventory. Submit one senses fact listing every sense a learner's dictionary gives the word, common senses first, keeping the id of each existing sense you keep. Once it publishes, its senses are fixed.",
     }),
-    z
-      .object({
-        type: z.literal('sense_list'),
-        senses: z.array(senseIdSchema).meta({
-          description:
-            'The senses with a live gloss, oldest first: the list names each exactly once, in common or in extra.',
-        }),
-      })
-      .meta({
-        description:
-          "The entry has senses but no live sense_list naming exactly them: none was submitted, it was rejected, or it is stale because a sense was added or a listed sense's gloss is no longer live. Complete the common senses, then submit a list (superseding a published one). Read the review reason of any rejected sense_list among the entry's facts and fix exactly what it names.",
-      }),
     z
       .object({
         type: z.literal('forms'),
@@ -60,7 +61,8 @@ export const gapSchema = z
         }),
       })
       .meta({
-        description: `The paradigm of a single word lacks inflections: a verb needs its third_person_singular, past, past_participle, and present_participle; a noun with a countable sense its plural; an adjective that compares with -er and -est (one syllable, two ending in y, or one already recorded) its comparative and superlative, and so does an adverb with one recorded. A form fills a slot when it is labelled with that part of speech, or unlabelled and shown under it. Periphrastic comparisons (more beautiful) are never forms. ${CLOSABLE}`,
+        description:
+          'The paradigm of a single word lacks inflections: a verb needs its third_person_singular, past, past_participle, and present_participle; a noun with a countable sense its plural; an adjective that compares with -er and -est (one syllable, two ending in y, or one already recorded) its comparative and superlative, and so does an adverb with one recorded. A form fills a slot when it is labelled with that part of speech, or unlabelled and shown under it. Periphrastic comparisons (more beautiful) are never forms.',
       }),
     z
       .object({
@@ -68,19 +70,11 @@ export const gapSchema = z
         accents: z.array(accentSchema).meta({ description: 'The accents with no live strong pronunciation.' }),
       })
       .meta({ description: 'The entry needs a strong (citation) pronunciation in both us and uk.' }),
-    z
-      .object({
-        type: z.literal('phrases'),
-        have: z.array(z.string()).meta({
-          description: 'The live phrases headed by the word that already count, in lemma order.',
-        }),
-        need: z.number().int().positive().meta({ description: 'How many headed phrases the verb needs: three.' }),
-      })
-      .meta({
-        description: `A core verb (a single word a CEFR learner list names as an A1 or A2 verb) has fewer than three live phrasal verbs or verb idioms headed by it: multiword entries whose first word is the verb and that have a live verb sense ("give up", "give way"). A phrase that only contains the word ("ordinary share") or is not a verb ("help desk") does not count. Add only phrases a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) prints; never coin one to fill the gap ("telephone in", "party down"): the entry review fails it. Create each phrase as its own entry (POST /manage/v1/entries) with its entry fact, a verb sense with its gloss, and the facts a phrase needs; the head's gap updates once the phrase entry and its verb sense are live. When fewer than three common phrasal verbs or verb idioms exist, create the ones that do and submit a gap_closure naming this gap whose reason names them; review fails it when a common one is missing.`,
-      }),
+    z.object({ type: z.literal('phrases') }).meta({
+      description: `The headword has no live phrases list. Submit one phrases fact listing every phrase of the headword that a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) prints as its phrase, phrasal verb, or idiom, or whose meaning is not the sum of its words ("give up", "in front of"); never coin one, and never list a plain description built from the words' ordinary meanings ("white rice"). There is no limit on how many. Each listed phrase becomes an entry of its own once the list publishes. ${OPTIONAL}`,
+    }),
     z.object({ type: z.literal('family') }).meta({
-      description: `An A1 or A2 single word has no live word-family member: no live entry has a live morphology fact with a base part whose lemma is this word. Find the common derivatives a learner's dictionary lists with it (happy: happiness, happily, unhappy; study: student, studious). For each, create the derivative's entry if it is missing (POST /manage/v1/entries with its entry fact and senses), then submit its morphology with the base part naming this word as its lemma ({"form": "study", "role": "base", "lemma": "study"}), or correct its published morphology to add the lemma. ${CLOSABLE}`,
+      description: `An A1 or A2 single word has no live word-family member: no live entry has a live morphology fact with a base part whose lemma is this word. Its common derivatives a learner's dictionary lists with it (happy: happiness, happily, unhappy; study: student, studious) that are entries get a morphology whose base part names this word as its lemma ({"form": "study", "role": "base", "lemma": "study"}). ${OPTIONAL}`,
     }),
     z
       .object({ type: z.literal('morphology') })
@@ -98,13 +92,13 @@ export const gapSchema = z
           'An irregular inflection (one no regular spelling rule gives, such as "went") has no live pronunciation: submit a correction of the form that adds ipa and accent.',
       }),
     z.object({ type: z.literal('category'), ...senseGap }).meta({
-      description: `A core noun sense has no live everyday hypernym: no broader term a learner files it under. Submit a hypernym relation (no domain) from this sense to each category word a learner's dictionary uses for it: "dog" to animal and to pet, "eagle" to bird, "stroll" to walk. Every target is a real headword; never a technical taxon ("canine", "passerine"), which goes in a domain layer (domain: "biology"). Narrower terms are never needed on the category word: its members are the words that name it as their category. ${CLOSABLE}`,
+      description: `A core noun sense has no live everyday hypernym: no broader term a learner files it under. Submit a hypernym relation (no domain) from this sense to each category word a learner's dictionary uses for it: "dog" to animal and to pet, "eagle" to bird, "stroll" to walk. Every target is a real headword; never a technical taxon ("canine", "passerine"), which goes in a domain layer (domain: "biology"). ${OPTIONAL}`,
     }),
     z.object({ type: z.literal('parts'), ...senseGap }).meta({
-      description: `A core noun sense with an everyday category has no live part attached to it: no live part_of relation names this sense as the whole. Submit, in one pass, a part_of relation from each main part a learner's dictionary names for this thing to this sense ("beak", "wing", "feather" to "bird"; "wheel", "engine" to "car"). A part attaches to the most general common whole it belongs to: a tail to "animal", not to "dog". ${CLOSABLE}`,
+      description: `A core noun sense with an everyday category has no live part attached to it. Submit a part_of relation from each main part a learner's dictionary names for this thing to this sense ("beak", "wing", "feather" to "bird"; "wheel", "engine" to "car"). A part attaches to the most general common whole it belongs to: a tail to "animal", not to "dog". ${OPTIONAL}`,
     }),
     z.object({ type: z.literal('synonyms'), ...senseGap }).meta({
-      description: `A core content-word sense has no live synonym or antonym. Submit the synonyms and antonyms a learner can use in this sense ("big": large; small). ${CLOSABLE}`,
+      description: `A core content-word sense has no live synonym or antonym. Submit the synonyms and antonyms a learner can use in this sense ("big": large; small). ${OPTIONAL}`,
     }),
     z
       .object({
@@ -116,57 +110,43 @@ export const gapSchema = z
         }),
       })
       .meta({ description: 'The sense has fewer live examples than it needs.' }),
-    z.object({ type: z.literal('translations'), ...senseGap, language: z.literal('zh') }),
     z
       .object({
-        type: z.literal('example_translations'),
-        ...senseGap,
-        language: z.literal('zh'),
-        examples: z.array(factIdSchema).meta({
-          description: 'The live examples of the sense with no translation in the language.',
+        type: z.literal('translations'),
+        language: servedLanguageSchema,
+        missing: z.array(translationTargetSchema).meta({
+          description: 'Each live sense, example, and collocation of the entry with no live translation in the language.',
         }),
       })
       .meta({
         description:
-          'Every live example of the sense needs a translation in the language: submit a correction of each example named that adds it (supersedes_id set to the example).',
+          'Translate every listed item of the entry into the language, one translation fact each (of: what it translates; subject_id: the sense id or the example or collocation fact id). The context view carries every sense, example, and collocation with its text.',
       }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
-      description: `The core sense has no live topic fact. Core nouns and verbs need one; other parts of speech have no topics gap. Tag only a leaf topic of the taxonomy (GET /v1/topics); when none fits, close the gap. ${CLOSABLE}`,
+      description: `The core sense has no live topic fact. Core nouns and verbs have a topics slot; tag only a leaf topic of the taxonomy (GET /v1/topics). ${OPTIONAL}`,
     }),
     z.object({ type: z.literal('grammar'), ...senseGap }).meta({
-      description: `A noun, verb, adjective, adverb, determiner, or pronoun sense has no live grammar fact: countability for a noun, transitivity for a verb, position, patterns, or prepositions for an adjective, the usual position (front, mid, end) or prepositions for an adverb, and agreement for a determiner or pronoun (singular_noun, plural_noun, uncountable_noun, of_plural, singular_verb, plural_verb). ${CLOSABLE}`,
+      description: `A noun, verb, adjective, adverb, determiner, or pronoun sense has no live grammar fact: countability for a noun, transitivity for a verb, position, patterns, or prepositions for an adjective, the usual position (front, mid, end) or prepositions for an adverb, and agreement for a determiner or pronoun. ${OPTIONAL}`,
     }),
     z.object({ type: z.literal('collocations'), ...senseGap }).meta({
-      description: `A core noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation: a combination native speakers commonly use with the word in this sense ("make a decision", "work hard", "hardly any", "filled with", "both ... and"). ${CLOSABLE}`,
+      description: `A core noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation: a combination native speakers commonly use with the word in this sense ("make a decision", "work hard", "both ... and"). ${OPTIONAL}`,
     }),
-    z
-      .object({
-        type: z.literal('weak_fact'),
-        fact_id: factIdSchema,
-        kind: factKindSchema,
-        reason: z.enum(['feedback', 'uncertain', 'failed']).meta({
-          description:
-            'feedback: an open or claimed feedback item targets the fact. uncertain: the fact published on an uncertain review verdict. failed: the fact stays published although a review in place failed it (a gloss that lacks the region or register label its sense needs).',
-        }),
-      })
-      .meta({
-        description:
-          'A live fact worth replacing: read its review reason (in the context facts) and submit a correction that supersedes it, or retract it.',
-      }),
   ])
   .meta({
     id: 'Gap',
-    description:
-      'One piece of open work: a slot the entry has too few live (pending or published) facts for, or a weak fact.',
+    description: 'One piece of open work: a slot the entry has too few live (pending or published) facts for.',
   })
 export type Gap = z.infer<typeof gapSchema>
 
 export const workTypeSchema = z
   .enum(gapSchema.options.map((option) => option.shape.type.value) as [Gap['type'], ...Gap['type'][]])
-  .meta({ id: 'WorkType', description: 'The type of a work item: the gap it is, or weak_fact.' })
+  .meta({ id: 'WorkType', description: 'The type of a work item: the gap it is.' })
 export type WorkType = z.infer<typeof workTypeSchema>
 
-export type WeakFact = Extract<Gap, { type: 'weak_fact' }>
+/** The optional slots: one honest pass completes them, whether or not it finds a value. */
+export const OPTIONAL_GAPS = ['phrases', 'family', 'category', 'parts', 'synonyms', 'topics', 'grammar', 'collocations'] as const satisfies readonly WorkType[]
+export type OptionalGap = (typeof OPTIONAL_GAPS)[number]
+export const isOptionalGap = (type: WorkType): type is OptionalGap => (OPTIONAL_GAPS as readonly WorkType[]).includes(type)
 
 export const claimWorkInputSchema = z
   .object({
@@ -210,8 +190,8 @@ const contextSenseSchema = z
     gloss: z.string(),
     register: registerSchema.nullable(),
     region: regionSchema.nullable(),
-    rare: z.boolean().meta({ description: "In the extra senses of the entry's current sense list." }),
-    status: z.enum(['pending', 'published']).meta({ description: 'The status of the gloss.' }),
+    rare: z.boolean().meta({ description: "Ranked extra in the entry's inventory." }),
+    status: z.enum(['pending', 'published']).meta({ description: 'The status of the inventory that lists it.' }),
   })
   .meta({ id: 'WorkSense' })
 
@@ -252,16 +232,12 @@ export const workCriteriaSchema = z
     fills: z.array(fillCriteriaSchema).meta({
       description: "Each kind of fact that fills the item's gap, with the review that judges it.",
     }),
-    closure: z.string().nullable().meta({
-      description:
-        "The LLM reviewer's prompt for a gap_closure of the item's gap, with the reason as a placeholder; null when no closure may close it.",
-    }),
     limits: z.array(z.string()).meta({ description: 'The write rules every submission meets.' }),
   })
   .meta({
     id: 'WorkCriteria',
     description:
-      'The standard the reviewers apply to the facts that fill this item and to a closure of it: the same prompts their reviews receive, rendered for placeholder values. Work to the standard, not to its wording: a value or reason that echoes it without the facts behind it fails.',
+      'The standard the reviewers apply to the facts that fill this item: the same prompts their reviews receive, rendered for placeholder values. Work to the standard, not to its wording: a value that echoes it without the facts behind it fails.',
   })
 
 export const workContextSchema = z
@@ -273,19 +249,23 @@ export const workContextSchema = z
         cefr: z.array(z.object({ pos: posSchema, level: cefrLevelSchema })),
         zipf: z.number().nullable(),
         senses: z.array(contextSenseSchema).meta({
-          description: 'The senses with a live gloss, common senses first in the order of the current sense list.',
+          description: 'The senses of the live inventory, in its order: common senses first.',
         }),
       })
       .meta({ description: 'The entry the item belongs to.' }),
     sense: contextSenseSchema.nullable().meta({ description: 'The sense the item is about; null for an entry item.' }),
     facts: z.array(factSchema).meta({
       description:
-        "Every fact about the item's node, in every status with its review: an entry's own facts, or a sense's facts and the relations pointing at it. For a weak fact, the node the fact is about.",
+        "Every fact about the item's node, in every status with its review: an entry's own facts, or a sense's facts and the relations pointing at it.",
+    }),
+    rejections: z.array(factSchema).meta({
+      description:
+        'The facts earlier passes at this item submitted that review rejected, with their reviews: address each reason, and never resubmit rejected content.',
     }),
     related: z.array(relatedSenseSchema),
     view: managedEntrySchema.nullable().meta({
       description:
-        'The whole management view of the entry, for the types that need every sense and fact at once (senses, sense_list, phrases, family); null for the others.',
+        'The whole management view of the entry, for the types that need every sense and fact at once (senses, phrases, family, translations); null for the others.',
     }),
     criteria: workCriteriaSchema,
   })
@@ -297,13 +277,12 @@ export const workItemSchema = z
     type: workTypeSchema,
     entry_id: entryIdSchema,
     lemma: z.string(),
-    subject_id: z.uuid().meta({ description: 'The node the item is about: the entry, a sense, or the weak fact.' }),
+    subject_id: z.uuid().meta({ description: 'The node the item is about: the entry or a sense.' }),
     stage: z.number().int().positive().meta({
-      description: '1 identity, 2 meaning, 3 usage, 4 network, 5 weak facts: the priority policy stage of the type.',
+      description: '1 identity, 2 meaning, 3 usage, 4 network: the priority policy stage of the type.',
     }),
     attempts: z.number().int().nonnegative().meta({
-      description:
-        'Completed passes that left this gap as their claim found it. At three the item leaves the production queue for curators.',
+      description: `Completed passes that did not fill the gap. At ${MAX_PASSES} the item leaves the production queue as a ticket for a curator.`,
     }),
     gap: gapSchema,
   })
@@ -317,29 +296,42 @@ export const workClaimSchema = z
   .object({ lease: workLeaseSchema, items: z.array(claimedWorkItemSchema) })
   .meta({ id: 'WorkClaim' })
 
+/** The longest note a pass leaves. */
+export const PASS_NOTE_MAX = 500
+
 export const completeWorkInputSchema = z
   .object({
     items: z
       .array(
         z.object({
           id: workItemIdSchema,
-          note: z.string().trim().min(1).max(500).optional(),
+          note: z.string().trim().min(1).max(PASS_NOTE_MAX).optional().meta({
+            description:
+              'What the pass did. Required for an optional slot completed without a value: what was considered and why none fits.',
+          }),
+          blocked_on: z
+            .array(z.string().trim().min(1).max(100))
+            .max(20)
+            .optional()
+            .meta({
+              description:
+                'Optional slots only: lemmas that would fill the slot but are not live entries or have no published inventory yet. The item reopens when one goes live.',
+            }),
         }),
       )
       .max(MAX_CLAIM_ITEMS)
       .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Each item is listed once.')
       .meta({
         description:
-          'The leased items this pass worked. Each is judged against the gap its claim found: unchanged once its reviews settle, it counts an attempt. Leased items left out are released without one.',
+          'The leased items this pass worked. Each is judged once its reviews settle: a pass that did not fill a required gap counts an attempt; an optional slot is complete after one pass. Leased items left out are released without one.',
       }),
   })
   .meta({ id: 'CompleteWorkInput' })
 export type CompleteWorkInput = z.infer<typeof completeWorkInputSchema>
 
-export const workItemStateSchema = z.enum(['closed', 'open', 'awaiting_review', 'curation']).meta({
+export const workItemStateSchema = z.enum(['closed', 'open', 'awaiting_review', 'ticket']).meta({
   id: 'WorkItemState',
-  description:
-    'closed: the gap is gone. open: back in the production queue. awaiting_review: facts that may fill it are pending, so it waits for their verdicts before it is judged. curation: three passes left it unchanged, so it waits for a curator.',
+  description: `closed: the gap is gone, or an optional slot had its pass. open: back in the production queue. awaiting_review: facts that may fill it are pending, so it waits for their verdicts before it is judged. ticket: ${MAX_PASSES} passes did not fill it, so a curator handles it.`,
 })
 export type WorkItemState = z.infer<typeof workItemStateSchema>
 
@@ -355,18 +347,6 @@ export const workCompletionSchema = z
     ),
   })
   .meta({ id: 'WorkCompletion' })
-
-export const curationItemSchema = workItemSchema
-  .extend({
-    last_worked_at: z.iso.datetime().nullable(),
-    last_worked_by: z.string().nullable(),
-    last_note: z.string().nullable(),
-  })
-  .meta({ id: 'CurationItem' })
-
-export const curationPageSchema = z
-  .object({ items: z.array(curationItemSchema), next_cursor: z.string().nullable() })
-  .meta({ id: 'CurationPage' })
 
 /**
  * At most this many rows per rescore call. A rescore costs three D1 calls (the entry, its snapshot

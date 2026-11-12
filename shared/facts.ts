@@ -242,9 +242,6 @@ export type CollocationPattern = z.infer<typeof collocationPatternSchema>
 
 const text = (max: number) => z.string().trim().min(1).max(max)
 
-/** The longest reason a gap closure gives. */
-export const GAP_CLOSURE_REASON_MAX = 300
-
 const GLOSS_START = /^[\p{Lu}\p{N}"'“‘(]/u
 const GLOSS_EXAMPLE_MARKER = /\b(as in|e\.g\.|for example|for instance)(?=\W|$)/i
 const QUOTED_SENTENCE = /(^|[\s(])['‘"“][^'‘"“’”]*[.!?]['’"”](?=$|[\s.,;:)!?])/
@@ -449,17 +446,50 @@ function morphologyIssues({
   return issues
 }
 
-const senseIdsSchema = z.array(senseIdSchema).max(100)
+/** The most senses one inventory lists. */
+export const MAX_INVENTORY_SENSES = 100
 
-const senseListPayloadSchema = z.strictObject({
-  common: senseIdsSchema.min(1).meta({
+export const senseRankSchema = z.enum(['common', 'extra']).meta({
+  id: 'SenseRank',
+  description:
+    "common: a general-knowledge sense a learner's dictionary lists; the common senses come first, most common first across parts of speech. extra: a rare, archaic, technical, or specialist sense; extras never count toward completeness.",
+})
+export type SenseRank = z.infer<typeof senseRankSchema>
+
+const inventorySenseSchema = z
+  .strictObject({
+    id: senseIdSchema.optional().meta({
+      description:
+        'An existing sense of the entry, kept with everything attached to it. Omit it for a new sense: publishing the inventory creates the sense.',
+    }),
+    pos: posSchema,
+    gloss: text(500),
+    register: registerSchema.optional(),
+    region: regionSchema.optional(),
+    rank: senseRankSchema,
+  })
+  .meta({ id: 'InventorySense' })
+export type InventorySense = z.infer<typeof inventorySenseSchema>
+
+const sensesPayloadSchema = z.strictObject({
+  senses: z.array(inventorySenseSchema).min(1).max(MAX_INVENTORY_SENSES).meta({
     description:
-      "The entry's common, general-knowledge senses, those a learner's dictionary lists, most common first across parts of speech.",
+      'Every sense of the entry in display order: the common senses first, most common first across parts of speech, then the extra ones.',
   }),
-  extra: senseIdsSchema.meta({
-    description:
-      "The entry's other live senses: rare, archaic, technical, or specialist. They are not ordered and never count toward completeness.",
-  }),
+})
+
+/** The most phrases one headword lists. */
+export const MAX_HEADWORD_PHRASES = 200
+
+const phrasesPayloadSchema = z.strictObject({
+  phrases: z
+    .array(text(100))
+    .min(1)
+    .max(MAX_HEADWORD_PHRASES)
+    .meta({
+      description:
+        "Every phrase of the headword a learner's dictionary prints as its phrase, phrasal verb, or idiom, or whose meaning is not the sum of its words: multiword lemmas, each its own entry once this list publishes.",
+    }),
 })
 
 /**
@@ -467,10 +497,20 @@ const senseListPayloadSchema = z.strictObject({
  * submitted in and a read serves. `zh` is Simplified Chinese.
  */
 export const SERVED_LANGUAGES = ['zh'] as const
+export type ServedLanguage = (typeof SERVED_LANGUAGES)[number]
 
-const servedLanguageSchema = z.enum(SERVED_LANGUAGES, {
-  error: `A translation is in a served language: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`,
+export const servedLanguageSchema = z
+  .enum(SERVED_LANGUAGES, {
+    error: `A translation is in a served language: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`,
+  })
+  .meta({ id: 'ServedLanguage' })
+
+export const translatedSchema = z.enum(['sense', 'example', 'collocation']).meta({
+  id: 'Translated',
+  description:
+    "What a translation translates: a sense (its learner's-dictionary equivalent; subject_id is the sense), an example, or a collocation (subject_id is that fact).",
 })
+export type Translated = z.infer<typeof translatedSchema>
 
 const formPayloadSchema = z.strictObject({
   form: text(100),
@@ -485,33 +525,12 @@ const formPayloadSchema = z.strictObject({
   accent: accentSchema.optional().meta({ description: 'The accent of `ipa`; given with it, never alone.' }),
 })
 
-/**
- * The gaps a gap closure may close: slots a word can genuinely lack (a month name has no common
- * collocations, an uncountable noun no plural), each about the entry or a sense as its gap is.
- * Senses, translations, pronunciations, examples, and syllables apply to every word, so they are
- * never closed.
- */
-export const closableGapSchema = z
-  .enum(['forms', 'phrases', 'family', 'category', 'parts', 'synonyms', 'topics', 'grammar', 'collocations'])
-  .meta({ id: 'ClosableGap', description: 'A gap type a gap_closure fact may close.' })
-export type ClosableGap = z.infer<typeof closableGapSchema>
+const examplePayloadSchema = z.strictObject({ text: text(500) })
 
-const gapClosurePayloadSchema = z.strictObject({
-  gap: closableGapSchema.meta({
-    description:
-      'The gap this closes: forms, phrases, or family on the entry; category, parts, synonyms, topics, grammar, or collocations on a sense.',
-  }),
-  reason: text(GAP_CLOSURE_REASON_MAX).meta({
-    description: `Why a learner's dictionary has nothing for this slot, at most ${GAP_CLOSURE_REASON_MAX} characters: "A month name has no common collocations beyond the dates it names."`,
-  }),
-})
-
-const examplePayloadSchema = z.strictObject({
+const translationPayloadSchema = z.strictObject({
+  language: servedLanguageSchema,
+  of: translatedSchema,
   text: text(500),
-  translations: z
-    .partialRecord(z.string(), text(500))
-    .optional()
-    .meta({ description: 'The example translated, by served language: { "zh": "她在银行工作。" }.' }),
 })
 
 const syllablesPayloadSchema = z.strictObject({
@@ -522,12 +541,7 @@ const syllablesPayloadSchema = z.strictObject({
 })
 
 export const factPayloadSchemas = {
-  entry: z.strictObject({}),
-  sense: z.strictObject({
-    gloss: text(500),
-    register: registerSchema.optional(),
-    region: regionSchema.optional(),
-  }),
+  senses: sensesPayloadSchema,
   form: formPayloadSchema,
   relation: z.strictObject({
     type: relationTypeSchema,
@@ -549,13 +563,7 @@ export const factPayloadSchemas = {
       .meta({ description: 'The part of speech this pronunciation belongs to, when it differs by POS.' }),
   }),
   example: examplePayloadSchema,
-  translation: z.strictObject({
-    language: z
-      .string()
-      .regex(/^[a-z]{2,3}(-[A-Z][A-Za-z]{1,3})?$/)
-      .meta({ description: 'BCP 47 language tag, e.g. zh.' }),
-    text: text(200),
-  }),
+  translation: translationPayloadSchema,
   topic: z.strictObject({
     topic_id: topicIdSchema.meta({ description: 'A leaf topic of the taxonomy (GET /v1/topics), never a category.' }),
   }),
@@ -565,9 +573,8 @@ export const factPayloadSchemas = {
     text: text(80).meta({ description: 'The combination with the word in it, such as "make a decision".' }),
     pattern: collocationPatternSchema,
   }),
-  sense_list: senseListPayloadSchema,
   syllables: syllablesPayloadSchema,
-  gap_closure: gapClosurePayloadSchema,
+  phrases: phrasesPayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -575,7 +582,36 @@ export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas
 // enforce the format rules.
 const submitPayloadSchemas = {
   ...factPayloadSchemas,
-  sense: factPayloadSchemas.sense.extend({ gloss: glossSchema }),
+  senses: z
+    .strictObject({
+      senses: z
+        .array(inventorySenseSchema.extend({ gloss: glossSchema }))
+        .min(1)
+        .max(MAX_INVENTORY_SENSES),
+    })
+    .refine(
+      ({ senses }) => senses.some((sense) => sense.rank === 'common'),
+      'An inventory has at least one common sense.',
+    )
+    .refine(({ senses }) => {
+      const firstExtra = senses.findIndex((sense) => sense.rank === 'extra')
+      return firstExtra === -1 || senses.slice(firstExtra).every((sense) => sense.rank === 'extra')
+    }, 'The common senses come first, then the extra ones.')
+    .refine(({ senses }) => {
+      const ids = senses.flatMap((sense) => (sense.id ? [sense.id] : []))
+      return new Set(ids).size === ids.length
+    }, 'An inventory names each existing sense once.'),
+  phrases: z
+    .strictObject({
+      phrases: z
+        .array(text(100).refine((lemma) => /\s/.test(lemma), 'A phrase has at least two words.'))
+        .min(1)
+        .max(MAX_HEADWORD_PHRASES),
+    })
+    .refine(
+      ({ phrases }) => new Set(phrases.map((phrase) => phrase.toLowerCase())).size === phrases.length,
+      'A phrase list names each phrase once.',
+    ),
   pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }).refine(usIpaFits, US_IPA_ISSUE),
   form: formPayloadSchema
     .extend({ ipa: ipaSchema.optional() })
@@ -588,28 +624,21 @@ const submitPayloadSchemas = {
     ({ type, domain }) => domain === undefined || type === 'hypernym',
     'Only a hypernym carries a domain: a specialist taxonomy layers broader terms, never synonyms, antonyms, or parts.',
   ),
-  example: examplePayloadSchema.extend({
-    translations: z
-      .strictObject({ zh: zhText(500).optional() } satisfies Record<(typeof SERVED_LANGUAGES)[number], z.ZodType>, {
-        error: (issue) =>
-          issue.code === 'unrecognized_keys'
-            ? `An example is translated into served languages only: ${SERVED_LANGUAGES.join(', ')} (zh is Simplified Chinese).`
-            : undefined,
-      })
-      .optional()
-      .meta({ description: `The example translated, by served language: ${SERVED_LANGUAGES.join(', ')}.` }),
-  }),
-  translation: factPayloadSchemas.translation.extend({
-    language: servedLanguageSchema.meta({
-      description: `A served language: ${SERVED_LANGUAGES.join(', ')}. zh is Simplified Chinese.`,
-    }),
-    text: zhText(200)
-      .refine(
-        (value) => new Set(alternativesOf(value)).size === alternativesOf(value).length,
-        'A translation lists each alternative once: "建造；建造" repeats one.',
-      )
-      .meta({ description: 'Alternatives are separated by fullwidth semicolons: "银行；河岸".' }),
-  }),
+  translation: translationPayloadSchema
+    .extend({
+      text: zhText(500).meta({
+        description:
+          'The translation in the language. A sense equivalent separates alternatives with fullwidth semicolons: "银行；河岸".',
+      }),
+    })
+    .refine(
+      ({ of, text }) => of !== 'sense' || new Set(alternativesOf(text)).size === alternativesOf(text).length,
+      'A translation lists each alternative once: "建造；建造" repeats one.',
+    )
+    .refine(
+      ({ of, text }) => of !== 'sense' || text.length <= 200,
+      'A sense equivalent is at most 200 characters.',
+    ),
   grammar: grammarPayloadSchema
     .refine((grammar) => Object.keys(grammar).length > 0, 'A grammar fact names at least one property.')
     .refine(
@@ -630,10 +659,6 @@ const submitPayloadSchemas = {
   collocation: factPayloadSchemas.collocation.extend({
     text: text(80).refine((value) => /\s/.test(value), 'A collocation has at least two words.'),
   }),
-  sense_list: senseListPayloadSchema.refine(
-    ({ common, extra }) => new Set([...common, ...extra]).size === common.length + extra.length,
-    'A sense list names each sense once, in common or in extra.',
-  ),
   syllables: syllablesPayloadSchema.extend({
     syllables: syllablesPayloadSchema.shape.syllables.refine(
       (syllables) => syllables.every((syllable) => !/\s/.test(syllable)),
@@ -644,8 +669,7 @@ const submitPayloadSchemas = {
 
 export const factKindSchema = z
   .enum([
-    'entry',
-    'sense',
+    'senses',
     'form',
     'relation',
     'pronunciation',
@@ -655,9 +679,8 @@ export const factKindSchema = z
     'grammar',
     'morphology',
     'collocation',
-    'sense_list',
     'syllables',
-    'gap_closure',
+    'phrases',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -670,11 +693,15 @@ export type FactStatus = z.infer<typeof factStatusSchema>
 export const verdictSchema = z.enum(['pass', 'uncertain', 'fail']).meta({ id: 'Verdict' })
 export type Verdict = z.infer<typeof verdictSchema>
 
-export const reviewerKindSchema = z.enum(['jev', 'llm']).meta({ id: 'ReviewerKind' })
+/**
+ * jev: TypeSafe's decision model. luna: OpenAI's Decisions API (gpt-6-luna). llm: the general model
+ * that judges a rubric and ends every chain.
+ */
+export const reviewerKindSchema = z.enum(['jev', 'luna', 'llm']).meta({ id: 'ReviewerKind' })
 export type ReviewerKind = z.infer<typeof reviewerKindSchema>
 
 export const reviewerChainSchema = z
-  .enum(['jev', 'llm', 'jev+llm'])
+  .enum(['jev', 'luna', 'llm', 'jev+llm', 'luna+llm', 'jev+luna', 'jev+luna+llm'])
   .meta({ id: 'ReviewerChain', description: 'The reviewers consulted, in order.' })
 export type ReviewerChain = z.infer<typeof reviewerChainSchema>
 
@@ -722,7 +749,8 @@ function submitVariant<K extends FactKind>(kind: K) {
   return z.object({
     kind: z.literal(kind),
     subject_id: z.uuid().meta({
-      description: 'Entry or sense the fact is about; the kind decides which, and for a gap_closure its gap.',
+      description:
+        'The node the fact is about: the entry, a sense, or for a translation of an example or collocation that fact; the kind decides which.',
     }),
     supersedes_id: factIdSchema.optional().meta({
       description:
@@ -735,8 +763,7 @@ function submitVariant<K extends FactKind>(kind: K) {
 
 export const submitFactInputSchema = z
   .discriminatedUnion('kind', [
-    submitVariant('entry'),
-    submitVariant('sense'),
+    submitVariant('senses'),
     submitVariant('form'),
     submitVariant('relation'),
     submitVariant('pronunciation'),
@@ -746,9 +773,8 @@ export const submitFactInputSchema = z
     submitVariant('grammar'),
     submitVariant('morphology'),
     submitVariant('collocation'),
-    submitVariant('sense_list'),
     submitVariant('syllables'),
-    submitVariant('gap_closure'),
+    submitVariant('phrases'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -771,8 +797,7 @@ function factVariant<K extends FactKind>(kind: K) {
 
 export const factSchema = z
   .discriminatedUnion('kind', [
-    factVariant('entry'),
-    factVariant('sense'),
+    factVariant('senses'),
     factVariant('form'),
     factVariant('relation'),
     factVariant('pronunciation'),
@@ -782,9 +807,8 @@ export const factSchema = z
     factVariant('grammar'),
     factVariant('morphology'),
     factVariant('collocation'),
-    factVariant('sense_list'),
     factVariant('syllables'),
-    factVariant('gap_closure'),
+    factVariant('phrases'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>
