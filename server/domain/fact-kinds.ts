@@ -650,10 +650,19 @@ const VARIANT_DIRECTION =
 
 const accentLabel = { us: 'American', uk: 'British' } as const
 
+/**
+ * The house spelling submissions must use, so the reviewer never fails what the write rules require:
+ * an American transcription writes the DRESS vowel e (US_IPA_ISSUE in shared/facts.ts).
+ */
+const houseStyle = (accent: string) =>
+  accent === 'us'
+    ? ' American transcriptions follow the learner\'s dictionaries\' house style: the vowel of "bed" is written e, not ɛ ("bed" is bed, "care" is ker); never fail e for that vowel.'
+    : ''
+
 function formPronunciation({ ipa, accent }: FactPayloads['form']): string[] {
   if (!ipa || !accent) return []
   return [
-    `It also claims the form is pronounced /${ipa}/ in ${accentLabel[accent]} English, in broad IPA. fail when that transcription is wrong for this form in that accent ("read" as a past is /red/, not /riːd/).`,
+    `It also claims the form is pronounced /${ipa}/ in ${accentLabel[accent]} English, in broad IPA. fail when that transcription is wrong for this form in that accent ("read" as a past is /red/, not /riːd/).${houseStyle(accent)}`,
   ]
 }
 
@@ -1636,7 +1645,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     contentKey: ({ ipa, accent }) => `${accent}|${ipa.normalize('NFC').trim()}`,
     plan: ({ ipa, accent, strength, pos }, { subject }) =>
       llm(
-        `Is /${ipa}/ a correct broad IPA transcription of the ${accentNames[accent]} ${strength === 'weak' ? 'weak (unstressed) form' : 'strong (citation) pronunciation'} of the English word ${quote(subject.lemma)}${pos ? ` as ${article(pos)} ${pos}` : ''}? Reject wrong phonemes, wrong stress, ${strength === 'weak' ? 'a strong form' : 'a weak form'}, or a transcription of the other accent.`,
+        `Is /${ipa}/ a correct broad IPA transcription of the ${accentNames[accent]} ${strength === 'weak' ? 'weak (unstressed) form' : 'strong (citation) pronunciation'} of the English word ${quote(subject.lemma)}${pos ? ` as ${article(pos)} ${pos}` : ''}? Reject wrong phonemes, wrong stress, ${strength === 'weak' ? 'a strong form' : 'a weak form'}, or a transcription of the other accent.${houseStyle(accent)}`,
       ),
   },
   example: {

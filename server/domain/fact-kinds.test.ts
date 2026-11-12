@@ -465,6 +465,9 @@ describe('fact-kind registry', () => {
     expect(prompt({ ipa: 'tuː', accent: 'us' })).toContain('strong (citation) pronunciation of the English word "to"?')
     expect(prompt({ ipa: 'tuː', accent: 'uk' })).toContain('British Received Pronunciation')
     expect(prompt({ ipa: 'duː', accent: 'us', pos: 'verb' })).toContain('"to" as a verb?')
+    // The write rules require an American e for the DRESS vowel, so the reviewer is told to accept it.
+    expect(prompt({ ipa: 'tuː', accent: 'us' })).toContain('the vowel of "bed" is written e, not ɛ')
+    expect(prompt({ ipa: 'tuː', accent: 'uk' })).not.toContain('the vowel of "bed"')
   })
 
   it('asks the LLM alone about a spelling variant, recorded on the British entry [spec: facts/variant-british-main]', () => {
