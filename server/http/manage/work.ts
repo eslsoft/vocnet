@@ -209,6 +209,7 @@ const contextDto = (context: WorkContext) => ({
   entry: { ...context.entry, senses: context.entry.senses.map(contextSenseDto) },
   sense: context.sense && contextSenseDto(context.sense),
   facts: context.facts.map(factDto),
+  rejections: context.rejections.map(factDto),
   related: context.related.map((sense) => ({
     sense_id: sense.senseId,
     lemma: sense.lemma,
