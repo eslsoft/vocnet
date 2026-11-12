@@ -63,6 +63,8 @@ export interface ReviewEnv {
   MODEL_API_KEY: string
   JEV_MODEL: string
   REVIEW_LLM_MODEL: string
+  JEV_CONCURRENCY: string
+  REVIEW_LLM_CONCURRENCY: string
   DECISIONS_BASE_URL: string
   DECISIONS_MODEL: string
   OPENAI_API_KEY: string
@@ -73,6 +75,8 @@ const reviewConfigSchema = z.object({
   MODEL_API_KEY: z.string().min(1),
   JEV_MODEL: z.string().min(1),
   REVIEW_LLM_MODEL: z.string().min(1),
+  JEV_CONCURRENCY: z.coerce.number().int().positive(),
+  REVIEW_LLM_CONCURRENCY: z.coerce.number().int().positive(),
   DECISIONS_BASE_URL: z.url(),
   DECISIONS_MODEL: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1),
@@ -82,6 +86,8 @@ export interface ReviewConfig {
   gateway: { baseUrl: string; apiKey: string }
   jevModel: string
   llmModel: string
+  /** The most calls each model on the gateway gets at once, across every request; its rate limits count them. */
+  concurrency: { jev: number; llm: number }
   /** OpenAI's Decisions API, which the local gateway does not serve. */
   decisions: { baseUrl: string; apiKey: string; model: string }
 }
@@ -92,6 +98,7 @@ export function getReviewConfig(env: ReviewEnv): ReviewConfig {
     gateway: { baseUrl: config.MODEL_BASE_URL, apiKey: config.MODEL_API_KEY },
     jevModel: config.JEV_MODEL,
     llmModel: config.REVIEW_LLM_MODEL,
+    concurrency: { jev: config.JEV_CONCURRENCY, llm: config.REVIEW_LLM_CONCURRENCY },
     decisions: { baseUrl: config.DECISIONS_BASE_URL, apiKey: config.OPENAI_API_KEY, model: config.DECISIONS_MODEL },
   }
 }
