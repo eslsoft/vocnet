@@ -2071,9 +2071,11 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
 - D1 stores nodes, facts, the topic taxonomy, tickets, agents, the worklist and work items, the public view, and
   imported reference data.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
-  takes batches of up to 100, reviews them concurrently, and logs the trace ID.
-  A batch waits for its slowest review, so the batch size is what bounds review
-  throughput when producers enqueue thousands of facts.
+  takes batches of up to 16, reviews them concurrently, and logs the trace ID.
+  A batch waits for its slowest review, so the batch size bounds both review
+  throughput and the concurrent calls on the model gateway: 100 at once tripped
+  the gateway's rate limits, and 16 still reviews more facts an hour than the
+  producers submit.
 - A cron trigger runs every five minutes, rescores up to 100 stale worklist
   rows, rebuilds up to 100 stale public views, and re-enqueues facts whose last
   status change is more than five minutes old and that are still `pending`, so

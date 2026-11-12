@@ -25,7 +25,10 @@ queue = "vocnet-reviews"
 
 [[queues.consumers]]
 queue = "vocnet-reviews"
-max_batch_size = 100
+# Each batch's reviews run at once, so the batch size caps concurrent reviewer calls on the model
+# gateway: 100 at once tripped its rate limits, and 16 still reviews far more facts an hour than
+# producers submit.
+max_batch_size = 16
 max_retries = 5
 dead_letter_queue = "vocnet-reviews-dlq"
 
