@@ -17,16 +17,28 @@ const isTimeout = (cause: unknown) =>
 
 /**
  * POSTs JSON to the model gateway. Network failures, timeouts, 429, and 5xx are transport errors;
- * other non-2xx are protocol errors.
+ * other non-2xx are protocol errors. Every call logs its model, status, and duration, body
+ * included: the gateway queues a call that its upstream rate-limits, so a limit shows as latency.
  */
 export async function postJson(
   config: ModelGatewayConfig,
   path: string,
-  body: unknown,
+  body: { model: string; [field: string]: unknown },
   timeoutMs = GATEWAY_TIMEOUT_MS,
 ): Promise<unknown> {
   const url = new URL(path, `${config.baseUrl.replace(/\/$/, '')}/`)
   const signal = AbortSignal.timeout(timeoutMs)
+  const started = Date.now()
+  const logCall = (status: number | 'network') =>
+    console.info(
+      JSON.stringify({
+        event: 'gateway_call',
+        path: url.pathname,
+        model: body.model,
+        status,
+        durationMs: Date.now() - started,
+      }),
+    )
   let response: Response
   try {
     response = await fetch(url, {
@@ -36,8 +48,10 @@ export async function postJson(
       signal,
     })
   } catch (cause) {
+    logCall('network')
     throw new ReviewerTransportError(`Model gateway request to ${url.pathname} failed.`, { cause })
   }
+  if (!response.ok) logCall(response.status)
   if (response.status === 429 || response.status >= 500) {
     throw new ReviewerTransportError(`Model gateway ${url.pathname} answered ${response.status}.`)
   }
@@ -45,8 +59,11 @@ export async function postJson(
     throw new ReviewerProtocolError(`Model gateway ${url.pathname} rejected the request with ${response.status}.`)
   }
   try {
-    return await response.json()
+    const json = await response.json()
+    logCall(response.status)
+    return json
   } catch (cause) {
+    logCall(response.status)
     if (isTimeout(cause)) throw new ReviewerTransportError(`Model gateway ${url.pathname} timed out.`, { cause })
     throw new ReviewerProtocolError(`Model gateway ${url.pathname} returned malformed JSON.`, { cause })
   }

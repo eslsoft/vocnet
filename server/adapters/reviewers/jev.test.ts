@@ -67,9 +67,9 @@ describe('Jev reviewer', () => {
           init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
         }),
     )
-    await expect(postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', {}, 10)).rejects.toBeInstanceOf(
-      ReviewerTransportError,
-    )
+    await expect(
+      postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', { model: 'm' }, 10),
+    ).rejects.toBeInstanceOf(ReviewerTransportError)
     // A body that stops arriving times out too, rather than reading as malformed JSON.
     vi.restoreAllMocks()
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -79,7 +79,7 @@ describe('Jev reviewer', () => {
         }),
       ),
     )
-    await expect(postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', {})).rejects.toBeInstanceOf(
+    await expect(postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', { model: 'm' })).rejects.toBeInstanceOf(
       ReviewerTransportError,
     )
   })
