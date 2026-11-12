@@ -258,6 +258,37 @@ describe('public read variants', () => {
     expect(collocationOf(null)).toEqual({ text: 'river s1', pattern: 'noun_noun' })
   })
 
+  it('shows a domain hypernym only in the layer a read asks for, and indexes its layer [spec: catalog/relation-groups]', () => {
+    const sense = bank.meanings[0]?.senses[0] as StoredSense
+    const broader = (domain?: 'biology') => ({
+      lemma: domain ? 'mammal' : 'place',
+      sense_id: (domain ? 's7' : 's8') as SenseId,
+      gloss: 'A broader term.',
+      ...(domain ? { domain } : {}),
+      review: review(`b-${domain ?? 'everyday'}`),
+    })
+    const layered: StoredEntry = {
+      ...bank,
+      meanings: [
+        {
+          ...(bank.meanings[0] as StoredMeaning),
+          senses: [{ ...sense, relations: { ...sense.relations, broader: [broader(), broader('biology')] } }],
+        },
+      ],
+    }
+    const lemmas = (domain?: 'biology') =>
+      shapeEntry(layered, links, {
+        ...none,
+        ...(domain ? { domain } : {}),
+      }).meanings[0]?.senses[0]?.relations.broader.map((item) => item.lemma)
+    expect(lemmas()).toEqual(['place'])
+    expect(lemmas('biology')).toEqual(['place', 'mammal'])
+    expect(publicViewRecord(layered).hypernyms.map((item) => [item.broaderSenseId, item.domain])).toEqual([
+      ['s8', null],
+      ['s7', 'biology'],
+    ])
+  })
+
   it('links each word formation part with a public entry of that spelling', () => {
     const parts = (publicParts: string[]) => shapeEntry(bank, { ...links, publicParts }, none).morphology?.parts
     expect(parts(['bank'])).toEqual([{ form: 'bank', role: 'base', lemma: 'bank' }])

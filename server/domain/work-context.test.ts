@@ -3,10 +3,10 @@ import type { Gap, WorkItemId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import type { EntrySnapshot } from './catalog-view'
 import type { Fact, FactOf } from './fact'
-import type { EntryNode, SenseWithLemma } from './nodes'
+import type { EntryNode, SenseNode } from './nodes'
 import type { Lemma } from './term'
-import { type WorkItem, workPriority } from './work'
-import { workContext } from './work-context'
+import { subjectOf, type WorkItem, workPriority } from './work'
+import { REJECTIONS_SHOWN, workContext } from './work-context'
 
 let counter = 0
 const id = <T>() => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}` as T
@@ -18,11 +18,10 @@ const entry = (lemma: string): EntryNode => ({
   createdBy: 'agent:a',
   createdAt: at,
 })
-const sense = (of: EntryNode, pos: Pos = 'noun'): SenseWithLemma => ({
+const senseOf = (of: EntryNode, pos: Pos = 'noun'): SenseNode => ({
   id: id<SenseId>(),
   entryId: of.id,
   pos,
-  lemma: of.lemma,
   createdBy: 'agent:a',
   createdAt: at,
 })
@@ -31,6 +30,7 @@ function fact<K extends FactKind>(
   subjectId: string,
   payload: FactPayloads[K],
   status: FactStatus = 'published',
+  extra: Partial<Pick<Fact, 'supersedesId' | 'updatedAt'>> = {},
 ): FactOf<K> {
   return {
     id: id<FactId>(),
@@ -43,21 +43,32 @@ function fact<K extends FactKind>(
     supersedesId: null,
     author: 'agent:a',
     review: null,
-    revalidateSince: null,
     createdAt: at,
     updatedAt: at,
-  }
+    ...extra,
+  } as FactOf<K>
 }
-const item = (of: EntryNode, gap: Gap, subjectId: string): WorkItem => ({
+type Listed = FactPayloads['senses']['senses'][number]
+const inventory = (of: EntryNode, senses: Listed[], status: FactStatus = 'published') =>
+  fact('senses', of.id, { senses }, status)
+const listed = (node: SenseNode, gloss: string, extra: Partial<Listed> = {}): Listed => ({
+  id: node.id,
+  pos: node.pos,
+  gloss,
+  rank: 'common',
+  ...extra,
+})
+const item = (of: EntryNode, gap: Gap): WorkItem => ({
   id: id<WorkItemId>(),
   entryId: of.id,
   type: gap.type,
-  subjectId,
+  subjectId: subjectOf(gap, of.id),
   gap,
-  ...workPriority(gap.type, { levelRank: null, zipf: null }),
+  ...workPriority(gap.type, { batch: 1, levelRank: null, zipf: null }),
   awaiting: false,
   attempts: 0,
   worked: false,
+  foundNone: false,
   claimedGap: null,
   lease: null,
   lastWorkedAt: null,
@@ -66,47 +77,72 @@ const item = (of: EntryNode, gap: Gap, subjectId: string): WorkItem => ({
 })
 
 const dog = entry('dog')
-const [pet, hound] = [sense(dog), sense(dog)]
+const [hound, pet] = [senseOf(dog), senseOf(dog)]
 const animal = entry('animal')
 const tail = entry('tail')
-const [creature, part] = [sense(animal), sense(tail)]
-const facts: Fact[] = [
-  fact('entry', dog.id, {}),
-  fact('sense', pet.id, { gloss: 'An animal kept at home.' }),
-  fact('sense', hound.id, { gloss: 'A dog used for hunting.', register: 'dated' }, 'pending'),
-  fact('sense_list', dog.id, { common: [hound.id], extra: [pet.id] }),
-  fact('relation', pet.id, { type: 'hypernym', target_sense_id: creature.id }),
-  fact('grammar', hound.id, { countability: 'countable' }),
+const nation = entry('nation')
+const nameless = entry('nameless')
+const [creature, part, country, people, lost] = [
+  senseOf(animal),
+  senseOf(tail),
+  senseOf(nation),
+  senseOf(nation),
+  senseOf(nameless),
 ]
+const dogInventory = inventory(dog, [
+  listed(hound, 'A dog used for hunting.', { register: 'dated' }),
+  listed(pet, 'An animal kept at home.', { rank: 'extra', region: 'british' }),
+])
+const hypernym = fact('relation', pet.id, { type: 'hypernym', target_sense_id: creature.id })
+const synonyms = [country, people, lost].map((target) =>
+  fact('relation', pet.id, { type: 'synonym', target_sense_id: target.id }, 'retracted'),
+)
+const stranger = fact('relation', pet.id, { type: 'synonym', target_sense_id: id<SenseId>() }, 'rejected', {
+  updatedAt: '2026-01-02T00:00:00.000Z',
+})
+const grammar = fact('grammar', hound.id, { countability: 'countable' })
 const incoming = [fact('relation', part.id, { type: 'part_of', target_sense_id: pet.id }, 'rejected')]
+const nationPublished = inventory(nation, [listed(country, 'A country.')])
 const snapshot: EntrySnapshot = {
-  entry: dog,
-  seed: true,
+  entry: { ...dog, live: true },
+  batch: 1,
   levelRank: 1,
   zipf: 5.1,
-  coreVerb: false,
-  phrases: [],
   family: [],
-  senses: [pet, hound],
-  facts,
+  senses: [hound, pet],
+  facts: [dogInventory, hypernym, ...synonyms, stranger, grammar],
   incoming,
-  flagged: new Set(),
+  passes: new Set(),
   neighbors: {
-    senses: [creature, part],
-    facts: [fact('entry', animal.id, {}), fact('sense', creature.id, { gloss: 'A living creature.' })],
+    inventories: [
+      inventory(animal, [listed(creature, 'A living creature.')]),
+      inventory(tail, [listed(part, 'The end of an animal.')]),
+      nationPublished,
+      {
+        ...inventory(nation, [listed(country, 'A country.'), listed(people, 'A people.')], 'pending'),
+        supersedesId: nationPublished.id,
+      },
+      inventory(nameless, [listed(lost, 'Lost.')]),
+    ],
+    lemmas: new Map([
+      [animal.id, 'animal'],
+      [tail.id, 'tail'],
+      [nation.id, 'nation'],
+    ]),
+    liveEntries: new Set([animal.id, nation.id, nameless.id]),
   },
 }
 const reference = { cefr: [{ pos: 'noun' as const, level: 'A1' as const }] }
 
 describe('work context', () => {
   it('gives a sense item its entry, its sense, the facts about it, and the senses at the other end of its relations [spec: work/claim-context]', () => {
-    const context = workContext(item(dog, { type: 'parts', sense_id: pet.id }, pet.id), snapshot, reference, [])
+    const context = workContext(item(dog, { type: 'parts', sense_id: pet.id }), snapshot, reference, [])
     expect(context.entry).toEqual({
       id: dog.id,
       lemma: 'dog',
       cefr: [{ pos: 'noun', level: 'A1' }],
       zipf: 5.1,
-      // Common senses first, in the list's order; the extra one is rare.
+      // The inventory's order; an extra sense is rare.
       senses: [
         {
           id: hound.id,
@@ -115,118 +151,68 @@ describe('work context', () => {
           register: 'dated',
           region: null,
           rare: false,
-          status: 'pending',
+          status: 'published',
         },
         {
           id: pet.id,
           pos: 'noun',
           gloss: 'An animal kept at home.',
           register: null,
-          region: null,
+          region: 'british',
           rare: true,
           status: 'published',
         },
       ],
     })
     expect(context.sense?.id).toBe(pet.id)
-    expect(context.facts.map((candidate) => candidate.kind)).toEqual(['sense', 'relation', 'relation'])
+    expect(context.facts).toEqual([hypernym, ...synonyms, stranger, ...incoming])
+    expect(context.view).toBeNull()
+    expect(context.criteria.fills.map((fill) => fill.kind)).toEqual(['relation'])
+    // The rejected relations at this node, newest first.
+    expect(context.rejections).toEqual([stranger, ...incoming])
+  })
+
+  it('gives no gloss for a related sense that cannot show, and leaves out an end no inventory lists [spec: work/claim-context-dead-ends]', () => {
+    const context = workContext(item(dog, { type: 'synonyms', sense_id: pet.id }), snapshot, reference, [])
     expect(context.related).toEqual([
       { senseId: creature.id, lemma: 'animal', pos: 'noun', gloss: 'A living creature.' },
+      { senseId: country.id, lemma: 'nation', pos: 'noun', gloss: 'A country.' },
+      // Listed only by a pending correction: it cannot show yet.
+      { senseId: people.id, lemma: 'nation', pos: 'noun', gloss: null },
+      { senseId: lost.id, lemma: '', pos: 'noun', gloss: 'Lost.' },
+      // Its entry is not live.
       { senseId: part.id, lemma: 'tail', pos: 'noun', gloss: null },
     ])
-    expect(context.view).toBeNull()
   })
 
-  it('gives no gloss for a related sense that cannot show [spec: work/claim-context-dead-ends]', () => {
-    const nation = entry('nation')
-    const [country, people] = [sense(nation), sense(nation)]
-    const deadEntry = entry('folk')
-    const kin = sense(deadEntry)
-    const dangling = {
-      ...snapshot,
-      facts: [
-        ...facts,
-        fact('relation', pet.id, { type: 'synonym', target_sense_id: country.id }, 'retracted'),
-        fact('relation', pet.id, { type: 'synonym', target_sense_id: people.id }, 'retracted'),
-        fact('relation', pet.id, { type: 'synonym', target_sense_id: kin.id }, 'retracted'),
-      ],
-      neighbors: {
-        senses: [creature, part, country, people, kin],
-        facts: [
-          ...snapshot.neighbors.facts,
-          fact('entry', nation.id, {}),
-          fact('sense', country.id, { gloss: 'A country.' }),
-          fact('sense', people.id, { gloss: 'A people.' }, 'retracted'),
-          fact('entry', deadEntry.id, {}, 'rejected'),
-          fact('sense', kin.id, { gloss: 'Relatives.' }),
-        ],
-      },
-    }
-    const context = workContext(item(dog, { type: 'synonyms', sense_id: pet.id }, pet.id), dangling, reference, [])
-    expect(context.related.map(({ senseId, gloss }) => [senseId, gloss])).toEqual([
-      [creature.id, 'A living creature.'],
-      [country.id, 'A country.'],
-      [people.id, null],
-      [kin.id, null],
-      [part.id, null],
-    ])
-  })
-
-  it('gives an entry item the whole view where the policy asks for it, and a weak fact the node it is about', () => {
-    const list = workContext(
-      item(dog, { type: 'sense_list', senses: [pet.id, hound.id] }, dog.id),
-      snapshot,
+  it('gives an entry item the whole view where the policy asks for it, and every rejection of its fill kinds [spec: work/claim-context]', () => {
+    const rejected = Array.from({ length: REJECTIONS_SHOWN + 2 }, (_, at) =>
+      fact('morphology', id<EntryId>(), { parts: [{ form: 'dog', role: 'base', lemma: 'dog' }] }, 'rejected', {
+        updatedAt: `2026-01-01T00:00:${String(at).padStart(2, '0')}.000Z`,
+      }),
+    )
+    const family = workContext(
+      item(dog, { type: 'family' }),
+      { ...snapshot, facts: [...snapshot.facts, ...rejected] },
       reference,
       [],
     )
-    expect([list.sense, list.view?.seed, list.facts.map((candidate) => candidate.kind)]).toEqual([
-      null,
-      true,
-      ['entry', 'sense_list'],
-    ])
-    const grammar = facts[5] as Fact
-    const weak = workContext(
-      item(dog, { type: 'weak_fact', fact_id: grammar.id, kind: 'grammar', reason: 'uncertain' }, grammar.id),
-      snapshot,
+    expect(family.sense).toBeNull()
+    expect(family.view?.entry.id).toBe(dog.id)
+    expect(family.facts).toEqual([dogInventory])
+    expect(family.rejections).toEqual(rejected.slice(2).reverse())
+    expect(workContext(item(dog, { type: 'syllables' }), snapshot, reference, []).view).toBeNull()
+  })
+
+  it('gives an entry without an inventory no senses, and a pending inventory its status', () => {
+    const bare = workContext(item(dog, { type: 'senses' }), { ...snapshot, facts: [] }, reference, [])
+    expect([bare.entry.senses, bare.sense, bare.view?.facts]).toEqual([[], null, incoming])
+    const pending = workContext(
+      item(dog, { type: 'senses' }),
+      { ...snapshot, facts: [{ ...dogInventory, status: 'pending' }] },
       reference,
       [],
     )
-    expect([weak.sense?.id, weak.facts.map((candidate) => candidate.kind), weak.view]).toEqual([
-      hound.id,
-      ['sense', 'grammar'],
-      null,
-    ])
-    // Without a list the senses keep their order; a sense without a live gloss is left out.
-    const unlisted = sense(dog)
-    const bare = {
-      ...snapshot,
-      senses: [pet, hound, unlisted],
-      facts: [
-        ...facts.filter((candidate) => candidate.kind !== 'sense_list'),
-        fact('sense', unlisted.id, { gloss: 'Gone.' }, 'rejected'),
-      ],
-    }
-    const order = workContext(item(dog, { type: 'syllables' }, dog.id), bare, reference, []).entry.senses
-    expect(order.map((candidate) => [candidate.id, candidate.rare])).toEqual([
-      [pet.id, false],
-      [hound.id, false],
-    ])
-    const gone = id<FactId>()
-    expect(() =>
-      workContext(
-        item(dog, { type: 'weak_fact', fact_id: gone, kind: 'grammar', reason: 'uncertain' }, gone),
-        snapshot,
-        reference,
-        [],
-      ),
-    ).toThrow(`Weak fact ${gone}`)
-    const stranger = sense(entry('stranger'))
-    const unknownEnd = {
-      ...snapshot,
-      facts: [...facts, fact('relation', pet.id, { type: 'synonym', target_sense_id: stranger.id })],
-    }
-    expect(() =>
-      workContext(item(dog, { type: 'synonyms', sense_id: pet.id }, pet.id), unknownEnd, reference, []),
-    ).toThrow(`Relation end ${stranger.id}`)
+    expect(pending.entry.senses.map((sense) => sense.status)).toEqual(['pending', 'pending'])
   })
 })

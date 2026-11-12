@@ -9,7 +9,11 @@ const issues = (input: unknown) => {
   return result.success ? [] : result.error.issues.map((issue) => issue.message)
 }
 const gloss = (text: string, extra = {}) =>
-  issues({ kind: 'sense', subject_id: sense, payload: { gloss: text, ...extra } })
+  issues({
+    kind: 'senses',
+    subject_id: entry,
+    payload: { senses: [{ pos: 'noun', gloss: text, rank: 'common', ...extra }] },
+  })
 const ipa = (text: string, extra = {}) =>
   issues({ kind: 'pronunciation', subject_id: entry, payload: { ipa: text, accent: 'us', ...extra } })
 
@@ -38,8 +42,12 @@ describe('gloss format', () => {
     expect(gloss(text)).toEqual(expected.map((fragment) => expect.stringContaining(fragment)))
   })
 
-  it('applies to sense creation too, and only to writes: stored glosses still parse [spec: facts/gloss-format]', () => {
-    expect(factPayloadSchemas.sense.safeParse({ gloss: 'on top of a surface' }).success).toBe(true)
+  it('applies only to writes: stored inventories still parse [spec: facts/gloss-format]', () => {
+    expect(
+      factPayloadSchemas.senses.safeParse({
+        senses: [{ id: sense, pos: 'noun', gloss: 'on top of a surface', rank: 'common' }],
+      }).success,
+    ).toBe(true)
   })
 })
 
@@ -90,7 +98,7 @@ describe('ipa format', () => {
 
 describe('translation language', () => {
   const translation = (language: string) =>
-    issues({ kind: 'translation', subject_id: sense, payload: { language, text: '河岸' } })
+    issues({ kind: 'translation', subject_id: sense, payload: { language, of: 'sense', text: '河岸' } })
 
   it('accepts a served language [spec: facts/translation-language]', () => {
     expect(translation('zh')).toEqual([])
@@ -105,26 +113,36 @@ describe('translation language', () => {
     expect(translation(language)).toEqual([expect.stringContaining('served language: zh')])
   })
 
-  it('writes zh with fullwidth punctuation and each alternative once [spec: facts/zh-translation-format]', () => {
-    const zh = (text: string) => issues({ kind: 'translation', subject_id: sense, payload: { language: 'zh', text } })
+  it('writes zh with fullwidth punctuation and each alternative of an equivalent once [spec: facts/zh-translation-format]', () => {
+    const zh = (text: string, of = 'sense') =>
+      issues({ kind: 'translation', subject_id: sense, payload: { language: 'zh', of, text } })
     expect(zh('银行；河岸')).toEqual([])
     expect(zh('建造；建造')).toEqual(['A translation lists each alternative once: "建造；建造" repeats one.'])
     expect(zh('建造； 建造')).toEqual(['A translation lists each alternative once: "建造；建造" repeats one.'])
     for (const text of ['银行;河岸', '银行,河岸', '银行(机构)']) {
       expect(zh(text)).toEqual(['A zh text uses fullwidth punctuation: write ； ， （ ） in place of ASCII ; , ( ).'])
     }
-    const example = (translation: string) =>
-      issues({
-        kind: 'example',
-        subject_id: sense,
-        payload: { text: 'We go home.', translations: { zh: translation } },
-      })
-    expect(example('我们回家，好吗？')).toEqual([])
-    expect(example('我们回家,好吗？')).toEqual([expect.stringContaining('fullwidth punctuation')])
+    expect(zh('我们回家，好吗？', 'example')).toEqual([])
+    expect(zh('我们回家,好吗？', 'example')).toEqual([expect.stringContaining('fullwidth punctuation')])
+    // A sentence may repeat a phrase between semicolons; only an equivalent lists alternatives.
+    expect(zh('走吧；走吧', 'example')).toEqual([])
   })
 
-  it('applies only to writes: stored translations still parse [spec: facts/translation-language]', () => {
-    expect(factPayloadSchemas.translation.safeParse({ language: 'zh-Hans', text: '河岸' }).success).toBe(true)
+  it('names what it translates and keeps a sense equivalent short [spec: facts/translation-of]', () => {
+    const translation = (payload: object) => issues({ kind: 'translation', subject_id: sense, payload })
+    expect(translation({ language: 'zh', text: '河岸' })).toHaveLength(1)
+    expect(translation({ language: 'zh', of: 'gloss', text: '河岸' })).toHaveLength(1)
+    expect(translation({ language: 'zh', of: 'collocation', text: '大雨' })).toEqual([])
+    expect(translation({ language: 'zh', of: 'sense', text: '河'.repeat(201) })).toEqual([
+      'A sense equivalent is at most 200 characters.',
+    ])
+    expect(translation({ language: 'zh', of: 'example', text: '河'.repeat(201) })).toEqual([])
+  })
+
+  it('applies only to writes: stored translations still parse [spec: facts/zh-translation-format]', () => {
+    expect(factPayloadSchemas.translation.safeParse({ language: 'zh', of: 'sense', text: '银行;河岸' }).success).toBe(
+      true,
+    )
   })
 })
 
@@ -234,29 +252,45 @@ describe('grammar, word formation, and collocation formats', () => {
   })
 })
 
-describe('gap closure format', () => {
-  const closure = (payload: unknown) => issues({ kind: 'gap_closure', subject_id: sense, payload })
+describe('sense inventory format', () => {
+  const submit = (senses: unknown[]) => issues({ kind: 'senses', subject_id: entry, payload: { senses } })
+  const common = { pos: 'noun', gloss: 'A written work.', rank: 'common' }
+  const extra = { pos: 'noun', gloss: "A bookmaker's record of bets.", rank: 'extra' }
 
-  it('names a closable gap and a reason [spec: facts/gap-closure-format]', () => {
-    expect(closure({ gap: 'collocations', reason: 'A month name has no common collocations.' })).toEqual([])
-    expect(closure({ gap: 'examples', reason: 'None.' })).toHaveLength(1)
-    expect(closure({ gap: 'collocations', reason: ' ' })).toHaveLength(1)
-    expect(closure({ gap: 'collocations' })).toHaveLength(1)
+  it('lists at least one common sense, the common ones first, and each existing sense once [spec: facts/inventory-format]', () => {
+    expect(submit([common, extra])).toEqual([])
+    expect(
+      submit([
+        { ...common, id: sense },
+        { ...extra, id: entry },
+      ]),
+    ).toEqual([])
+    expect(submit([extra])).toEqual(['An inventory has at least one common sense.'])
+    expect(submit([common, extra, common])).toEqual(['The common senses come first, then the extra ones.'])
+    expect(
+      submit([
+        { ...common, id: sense },
+        { ...extra, id: sense },
+      ]),
+    ).toEqual(['An inventory names each existing sense once.'])
+    expect(submit([])).toContain('An inventory has at least one common sense.')
+    expect(submit([{ ...common, rank: 'main' }])).not.toEqual([])
+  })
+
+  it('stores every sense by id [spec: facts/inventory-format]', () => {
+    expect(factPayloadSchemas.senses.safeParse({ senses: [common] }).success).toBe(false)
+    expect(factPayloadSchemas.senses.safeParse({ senses: [{ ...common, id: sense }] }).success).toBe(true)
   })
 })
 
-describe('sense list format', () => {
-  const submit = (payload: unknown) => issues({ kind: 'sense_list', subject_id: entry, payload })
+describe('phrases format', () => {
+  const submit = (phrases: unknown[]) => issues({ kind: 'phrases', subject_id: entry, payload: { phrases } })
 
-  it('names at least one common sense and each sense once [spec: facts/sense-list-write]', () => {
-    expect(submit({ common: [sense], extra: [] })).toEqual([])
-    expect(submit({ common: [], extra: [sense] })).toHaveLength(1)
-    expect(submit({ common: [sense], extra: [sense] })).toEqual([
-      'A sense list names each sense once, in common or in extra.',
-    ])
-    expect(submit({ common: [sense, sense], extra: [] })).toEqual([
-      'A sense list names each sense once, in common or in extra.',
-    ])
+  it('lists multiword phrases, each once [spec: facts/phrases-format]', () => {
+    expect(submit(['give up', 'give in'])).toEqual([])
+    expect(submit(['give'])).toEqual(['A phrase has at least two words.'])
+    expect(submit(['give up', 'Give up'])).toEqual(['A phrase list names each phrase once.'])
+    expect(submit([])).toHaveLength(1)
   })
 })
 
@@ -271,11 +305,10 @@ describe('new data field formats', () => {
     expect(form({ ipa: '/went/', accent: 'us' })).toEqual([expect.stringContaining('without slashes')])
   })
 
-  it('takes example translations in served languages only [spec: facts/example-translation]', () => {
-    const example = (translations: object) =>
-      issues({ kind: 'example', subject_id: sense, payload: { text: 'We go home.', translations } })
-    expect(example({ zh: '我们回家。' })).toEqual([])
-    expect(example({ fr: 'Nous rentrons.' })).toEqual([expect.stringContaining('served language')])
+  it('takes an example as its text alone: translations are their own facts [spec: facts/translation-of]', () => {
+    const example = (payload: object) => issues({ kind: 'example', subject_id: sense, payload })
+    expect(example({ text: 'We go home.' })).toEqual([])
+    expect(example({ text: 'We go home.', translations: { zh: '我们回家。' } })).toHaveLength(1)
   })
 
   it('takes syllables without spaces [spec: facts/syllables]', () => {

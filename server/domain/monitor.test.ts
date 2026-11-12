@@ -1,3 +1,4 @@
+import { MAX_PASSES } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import {
   before,
@@ -10,15 +11,14 @@ import {
   secondsBetween,
   windowBuckets,
 } from './monitor'
-import { MAX_ATTEMPTS } from './work'
 
 describe('open item status', () => {
-  it('puts an item at the attempt bound with the curators, then a leased one in progress, then one awaiting review [spec: monitor/item-status]', () => {
+  it('puts an item at the pass bound in a ticket, then a leased one in progress, then one awaiting review [spec: monitor/item-status]', () => {
     const item = { attempts: 0, awaiting: false, leased: false }
     expect(openItemStatus(item)).toBe('queued')
     expect(openItemStatus({ ...item, awaiting: true })).toBe('waiting_on_review')
     expect(openItemStatus({ ...item, awaiting: true, leased: true })).toBe('in_progress')
-    expect(openItemStatus({ ...item, attempts: MAX_ATTEMPTS, leased: true })).toBe('stuck')
+    expect(openItemStatus({ ...item, attempts: MAX_PASSES, leased: true })).toBe('stuck')
   })
 })
 
