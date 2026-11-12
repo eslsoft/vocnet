@@ -211,12 +211,13 @@ const fillCriteriaSchema = z
   .object({
     kind: factKindSchema,
     claim: z.string().meta({ description: 'What the judged fact claims, such as "relation synonym".' }),
-    jev: z
+    decision: z
       .object({
+        models: z.array(z.enum(['jev', 'luna'])).meta({ description: 'The decision models asked.' }),
         questions: z
           .array(z.string())
-          .meta({ description: 'The questions Jev scores from 0 to 1, as Jev receives them.' }),
-        rule: z.string().meta({ description: "How Jev's scores decide the fact, and when the LLM rubric does." }),
+          .meta({ description: 'The questions the decision models score from 0 to 1, as they receive them.' }),
+        rule: z.string().meta({ description: 'How their scores settle a pass, and when the LLM rubric decides.' }),
       })
       .nullable()
       .meta({ description: 'Null when the LLM judges the kind alone.' }),

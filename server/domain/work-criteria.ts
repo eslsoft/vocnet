@@ -1,17 +1,15 @@
 import type { FactKind, FactPayloads, Pos, SenseId, TopicId } from '@shared/facts'
 import type { Gap } from '@shared/work'
-import type { Fact } from './fact'
 import {
-  closableGaps,
+  type DecisionModel,
+  type DecisionRequest,
   GENERAL_LIMITS,
   limitsOf,
   planReview,
   type ReviewContext,
-  type ReviewRequest,
   type SubjectViews,
   subjectTypeOf,
 } from './fact-kinds'
-import { JEV_POLICY } from './fact-lifecycle'
 import type { TopicView } from './topics'
 
 /** How the reviewers judge one kind of fact that fills an item: the prompts they receive and the write rules. */
@@ -19,19 +17,17 @@ export interface FillCriteria {
   kind: FactKind
   /** What the sample claims, such as "relation synonym". */
   claim: string
-  /** The questions Jev scores and how its scores decide; null when the LLM judges alone. */
-  jev: { questions: string[]; rule: string } | null
+  /** The questions the decision models score and how their scores settle; null when the LLM judges alone. */
+  decision: { models: DecisionModel[]; questions: string[]; rule: string } | null
   /** The LLM rubric, the exact prompt of its review with the item's values as placeholders. */
   rubric: string
   /** The write rules a submission must meet before it is reviewed. */
   limits: readonly string[]
 }
 
-/** The standard every fact that fills an item, and a closure of it, is judged by. */
+/** The standard every fact that fills an item is judged by. */
 export interface WorkCriteria {
   fills: FillCriteria[]
-  /** The rubric of a gap_closure of the item's gap; null for a gap no closure may close. */
-  closure: string | null
   /** The write rules every submission meets. */
   limits: readonly string[]
 }
@@ -44,19 +40,17 @@ const sample = <K extends FactKind>(kind: K, claim: string, payload: FactPayload
 // for every word, and a rendered value would read as the expected answer.
 const WORD = '<word>'
 const TARGET = '00000000-0000-4000-8000-000000000000' as SenseId
-const entryView: SubjectViews['entry'] = {
-  lemma: WORD,
-  senses: [],
-  inflectionOf: [],
-  variantOf: [],
-  cefr: [],
-  caseVariants: [],
-}
+const entryView: SubjectViews['entry'] = { lemma: WORD, senses: [], caseVariants: [] }
 const senseView = (pos: Pos): SubjectViews['sense'] => ({
   lemma: WORD,
   pos,
   gloss: '<the gloss of the sense>',
   siblings: [],
+})
+const factView = (kind: 'example' | 'collocation', pos: Pos): SubjectViews['fact'] => ({
+  kind,
+  text: kind === 'example' ? '<sentence>' : '<collocation>',
+  sense: senseView(pos),
 })
 const targetView = (pos: Pos): SubjectViews['sense'] => ({
   lemma: '<other word>',
@@ -79,19 +73,15 @@ const GRAMMAR_SAMPLES: Partial<Record<Pos, FactPayloads['grammar']>> = {
   pronoun: { agreement: ['singular_verb'] },
 }
 
-/**
- * The facts that fill each type of item, as samples whose values are placeholders. A weak fact is
- * filled by a correction of its own kind, judged with its own payload.
- */
-function samplesOf(gap: Gap, pos: Pos, weak: Fact | null): Sample[] {
+const INVENTORY_SAMPLE: FactPayloads['senses'] = {
+  senses: [{ id: TARGET, pos: 'noun', gloss: '<gloss>', rank: 'common' }],
+}
+
+/** The facts that fill each type of item, as samples whose values are placeholders. */
+function samplesOf(gap: Gap, pos: Pos): Sample[] {
   switch (gap.type) {
     case 'senses':
-      return [
-        sample('sense', 'sense', { gloss: '<gloss>' }),
-        sample('sense_list', 'sense_list', { common: [], extra: [] }),
-      ]
-    case 'sense_list':
-      return [sample('sense_list', 'sense_list', { common: [], extra: [] })]
+      return [sample('senses', 'senses (the whole inventory)', INVENTORY_SAMPLE)]
     case 'forms':
       return [...new Set(gap.missing.map((slot) => slot.type))].map((type) =>
         sample('form', `form ${type}`, { form: '<form>', type }),
@@ -99,13 +89,9 @@ function samplesOf(gap: Gap, pos: Pos, weak: Fact | null): Sample[] {
     case 'pronunciation':
       return gap.accents.map((accent) => sample('pronunciation', `pronunciation ${accent}`, { ipa: '<ipa>', accent }))
     case 'phrases':
-      return [
-        sample('entry', 'entry of the phrase', {}),
-        sample('sense', 'verb sense of the phrase', { gloss: '<gloss>' }),
-      ]
+      return [sample('phrases', 'phrases (every phrase of the headword)', { phrases: ['<phrase>'] })]
     case 'family':
       return [
-        sample('entry', 'entry of the derivative', {}),
         sample('morphology', 'morphology of the derivative', {
           parts: [
             { form: WORD, role: 'base', lemma: WORD },
@@ -128,14 +114,23 @@ function samplesOf(gap: Gap, pos: Pos, weak: Fact | null): Sample[] {
     case 'synonyms':
       return [relation('synonym', 'relation synonym'), relation('antonym', 'relation antonym')]
     case 'examples':
-      return [sample('example', 'example', { text: '<sentence>', translations: { zh: '<translation>' } })]
+      return [sample('example', 'example', { text: '<sentence>' })]
     case 'translations':
-      return [sample('translation', 'translation zh', { language: 'zh', text: '<translation>' })]
-    case 'example_translations':
       return [
-        sample('example', 'example with its zh translation', {
-          text: '<sentence>',
-          translations: { zh: '<translation>' },
+        sample('translation', `translation ${gap.language} of a sense`, {
+          language: gap.language,
+          of: 'sense',
+          text: '<translation>',
+        }),
+        sample('translation', `translation ${gap.language} of an example`, {
+          language: gap.language,
+          of: 'example',
+          text: '<translation>',
+        }),
+        sample('translation', `translation ${gap.language} of a collocation`, {
+          language: gap.language,
+          of: 'collocation',
+          text: '<translation>',
         }),
       ]
     case 'topics':
@@ -146,90 +141,70 @@ function samplesOf(gap: Gap, pos: Pos, weak: Fact | null): Sample[] {
     }
     case 'collocations':
       return [sample('collocation', 'collocation', { text: '<collocation>', pattern: 'phrase' })]
-    case 'weak_fact':
-      return weak ? [{ kind: weak.kind, claim: `correction of the ${weak.kind}`, payload: weak.payload } as Sample] : []
   }
 }
 
-function contextFor(kind: FactKind, payload: Sample['payload'], pos: Pos, taxonomy: readonly TopicView[]) {
-  const subject = subjectTypeOf(kind, payload as never) === 'entry' ? entryView : senseView(pos)
+function contextFor({ kind, payload }: Sample, pos: Pos): ReviewContext {
+  const subjectType = subjectTypeOf(kind, payload as never)
+  const subject =
+    subjectType === 'entry'
+      ? entryView
+      : subjectType === 'fact'
+        ? factView((payload as FactPayloads['translation']).of === 'collocation' ? 'collocation' : 'example', pos)
+        : senseView(pos)
   return {
     subject,
     target: kind === 'relation' ? targetView(pos) : null,
     topic: kind === 'topic' ? topicView : null,
-    attempts: [],
-    taxonomy,
-    blocked: [],
   } as ReviewContext
 }
 
-/** How Jev's scores decide, stated plainly from the request and the Jev policy. */
-function jevRule(request: ReviewRequest<'jev'>): string {
-  return [
-    'Jev scores each question from 0 to 1.',
-    request.settlesPass === false
-      ? 'A Jev pass still goes to the LLM rubric.'
-      : `When every score is ${JEV_POLICY.passAt} or more the fact passes without the LLM.`,
-    request.settlesFailBelow === undefined ? '' : `A Jev score below ${request.settlesFailBelow} fails without appeal.`,
-    'Otherwise the LLM rubric decides.',
-  ]
-    .filter((part) => part.length > 0)
-    .join(' ')
+const percent = (score: number) => score.toFixed(2)
+
+/** How the decision models' scores settle, stated plainly from the request. */
+function decisionRule({ models, combine, passAt }: DecisionRequest): string {
+  const threshold = (model: DecisionModel) => `${model} ${percent(passAt[model] ?? 1)}`
+  const settle =
+    combine === 'any'
+      ? `A pass settles when any of ${models.map(threshold).join(' or ')} is reached.`
+      : combine === 'mean'
+        ? `A pass settles when the mean score of ${models.join(' and ')} reaches ${percent(passAt[models[0]] ?? 1)}.`
+        : `A pass settles when ${models.map(threshold).join(' and ')} ${models.length === 1 ? 'is' : 'are'} reached.`
+  return `Each model scores every question from 0 to 1, and its score is the lowest answer. ${settle} Otherwise the LLM rubric decides, and its verdict is final.`
 }
 
-/** The requests of a plan for a placeholder sample: every sample is reviewable, so another plan is a bug. */
-function requestsOf(kind: FactKind, plan: ReturnType<typeof planReview>) {
-  if (plan.kind === 'unreviewable') throw new Error(`The ${kind} criteria sample is unreviewable: ${plan.reason}`)
-  const requests: readonly ReviewRequest[] = plan.requests
-  const jev = requests.find((request): request is ReviewRequest<'jev'> => request.reviewer === 'jev')
-  const llm = requests.find((request): request is ReviewRequest<'llm'> => request.reviewer === 'llm')
-  if (!llm) throw new Error(`The review plan of ${kind} has no LLM request.`)
-  return { jev, llm }
-}
-
-function fillCriteria({ kind, claim, payload }: Sample, pos: Pos): FillCriteria {
-  const { jev, llm } = requestsOf(kind, planReview(kind, payload as never, contextFor(kind, payload, pos, [])))
+function fillCriteria(one: Sample, pos: Pos): FillCriteria {
+  const plan = planReview(one.kind, one.payload as never, contextFor(one, pos))
+  if (plan.kind === 'unreviewable') throw new Error(`The ${one.kind} criteria sample is unreviewable: ${plan.reason}`)
   return {
-    kind,
-    claim,
-    jev: jev ? { questions: Object.values(jev.questions), rule: jevRule(jev) } : null,
-    rubric: llm.prompt.user,
-    limits: limitsOf(kind),
+    kind: one.kind,
+    claim: one.claim,
+    decision: plan.decision
+      ? {
+          models: [...plan.decision.models],
+          questions: Object.values(plan.decision.questions),
+          rule: decisionRule(plan.decision),
+        }
+      : null,
+    rubric: plan.prompt.user,
+    limits: limitsOf(one.kind),
   }
-}
-
-function closureCriteria(gap: Gap, pos: Pos, taxonomy: readonly TopicView[]): string | null {
-  if (!(gap.type in closableGaps)) return null
-  const payload = { gap: gap.type as FactPayloads['gap_closure']['gap'], reason: '<your reason>' }
-  const shown = closableGaps[payload.gap].taxonomy ? taxonomy : []
-  return requestsOf('gap_closure', planReview('gap_closure', payload, contextFor('gap_closure', payload, pos, shown)))
-    .llm.prompt.user
 }
 
 const cache = new Map<string, WorkCriteria>()
 
 /**
- * The standard the reviewers apply to the facts that fill an item and to a closure of it: the same
- * plans the reviews build, rendered for placeholder values. A sense item is rendered for its part
- * of speech, an entry item for none of the senses. The taxonomy changes only by migration, so the
- * rendering is cached by what it reads, except a weak fact's, which carries its own payload.
+ * The standard the reviewers apply to the facts that fill an item: the same plans the reviews
+ * build, rendered for placeholder values. A sense item is rendered for its part of speech, an
+ * entry item for none of the senses. The rendering is cached by what it reads.
  */
-export function workCriteria(
-  gap: Gap,
-  pos: Pos | null,
-  weak: Fact | null,
-  taxonomy: readonly TopicView[],
-): WorkCriteria {
+export function workCriteria(gap: Gap, pos: Pos | null, _taxonomy: readonly TopicView[]): WorkCriteria {
   const asPos = pos ?? 'noun'
-  const samples = samplesOf(gap, asPos, weak)
-  const key = gap.type === 'weak_fact' ? null : `${asPos}|${JSON.stringify(samples)}`
-  const cached = key === null ? undefined : cache.get(key)
+  const samples = samplesOf(gap, asPos)
+  const key = `${asPos}|${JSON.stringify(samples)}`
+  const cached = cache.get(key)
   if (cached) return cached
-  const criteria = {
-    fills: samples.map((one) => fillCriteria(one, asPos)),
-    closure: closureCriteria(gap, asPos, taxonomy),
-    limits: GENERAL_LIMITS,
-  }
-  if (key !== null) cache.set(key, criteria)
+  const criteria = { fills: samples.map((one) => fillCriteria(one, asPos)), limits: GENERAL_LIMITS }
+  cache.set(key, criteria)
   return criteria
 }

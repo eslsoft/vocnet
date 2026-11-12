@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import {
   accentSchema,
-  closableGapSchema,
   collocationPatternSchema,
   dependentPrepositionSchema,
   entryIdSchema,
@@ -10,7 +9,6 @@ import {
   factSchema,
   factStatusSchema,
   formTypeSchema,
-  glossSchema,
   grammarPatternSchema,
   grammarPayloadSchema,
   morphemeSchema,
@@ -243,12 +241,25 @@ export const publicExampleSchema = z
   .meta({ id: 'Example' })
 export type PublicExample = z.infer<typeof publicExampleSchema>
 export const publicCollocationSchema = z
-  .object({ text: z.string(), pattern: collocationPatternSchema, ...review })
+  .object({
+    text: z.string(),
+    pattern: collocationPatternSchema,
+    translation: z
+      .union([z.string(), byLanguage(z.string())])
+      .optional()
+      .meta({
+        description:
+          "The collocation in the response's language, when one is published; by language tag with lang=all; absent without a language.",
+      }),
+    ...review,
+  })
   .meta({ id: 'Collocation' })
 
 export const senseReviewSchema = z
   .object({
-    gloss: reviewMetaSchema.meta({ description: 'The gloss fact, which also carries the labels.' }),
+    gloss: reviewMetaSchema.meta({
+      description: "The entry's sense inventory, which states the gloss, its labels, and its rank.",
+    }),
     translations: z
       .union([z.array(reviewMetaSchema), byLanguage(z.array(reviewMetaSchema))])
       .optional()
@@ -266,7 +277,7 @@ export const publicSenseSchema = z
       .meta({ description: 'british or american for a sense used in only that variety; null when both use it.' }),
     rare: z.boolean().meta({
       description:
-        "true: a rare, archaic, technical, or specialist sense the entry's sense list puts after its common ones. Common senses come first, most common first; senses the list does not name yet come last with false.",
+        "true: a rare, archaic, technical, or specialist sense the entry's inventory ranks extra, after its common ones. Common senses come first, most common first.",
     }),
     translations: translationsSchema.optional(),
     grammar: publicGrammarSchema.nullable(),
@@ -298,20 +309,6 @@ export const meaningSchema = z
   .meta({ id: 'Meaning', description: 'The senses of one part of speech.' })
 export type Meaning = z.infer<typeof meaningSchema>
 
-export const gapClosureReviewSchema = reviewMetaSchema
-  .extend({
-    gap: closableGapSchema,
-    sense_id: senseIdSchema
-      .nullable()
-      .meta({ description: 'The sense a sense gap is closed for; null for the entry.' }),
-    reason: z.string(),
-  })
-  .meta({
-    id: 'GapClosureReview',
-    description: 'A reviewed claim that a slot is genuinely empty for this word, such as collocations of a month name.',
-  })
-export type GapClosureReview = z.infer<typeof gapClosureReviewSchema>
-
 export const publicEntrySchema = z
   .object({
     lang: responseLangSchema,
@@ -329,25 +326,21 @@ export const publicEntrySchema = z
     morphology: publicMorphologySchema.nullable(),
     meanings: z.array(meaningSchema).meta({
       description:
-        "One per part of speech, in the order of each one's first sense; senses follow the entry's sense list.",
+        "One per part of speech, in the order of each one's first sense; senses follow the entry's inventory.",
     }),
     phrases: z
       .array(wordSummarySchema)
-      .meta({ description: 'Public multiword entries with this lemma as one of their words, in lemma order.' }),
+      .meta({ description: "The public phrases the headword's published phrases list names, in its order." }),
     review: z
       .object({
-        entry: reviewMetaSchema,
-        sense_list: reviewMetaSchema.nullable(),
+        inventory: reviewMetaSchema,
         syllables: reviewMetaSchema.nullable(),
-        closures: z.array(gapClosureReviewSchema).meta({
-          description:
-            "The published gap closures of the entry and its shown senses: slots a learner's dictionary has nothing for.",
-        }),
+        phrases: reviewMetaSchema.nullable(),
       })
       .optional()
       .meta({
         description:
-          'The entry fact, the sense list that orders the senses, the syllables (null when none is published), and the gap closures.',
+          'The sense inventory that gives the senses, the syllables, and the phrases list (null when none is published).',
       }),
   })
   .meta({ id: 'Entry' })
@@ -456,7 +449,7 @@ const countSchema = z.number().int().nonnegative()
 export const slotCountsSchema = z
   .object({
     total: countSchema.meta({ description: 'The slots the gap rules count for the entry.' }),
-    published: countSchema.meta({ description: 'Slots published facts or closures fill.' }),
+    published: countSchema.meta({ description: 'Slots published facts fill, or a pass completed.' }),
     pending: countSchema.meta({ description: 'Slots only pending facts fill.' }),
   })
   .meta({ id: 'SlotCounts' })
@@ -469,13 +462,16 @@ export const openWorkCountsSchema = z
 export const managedEntrySchema = z
   .object({
     entry: entryNodeSchema,
-    seed: z.boolean().meta({ description: 'The entry was submitted as part of a seed list.' }),
+    batch: z.number().int().nonnegative().nullable().meta({
+      description: "The headword batch the entry was imported in, or its headword's for a phrase; null for an entry that is not live.",
+    }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        "Share of the slots the gaps count (the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, and a pronunciation per irregular form, three phrases for a core verb (one a CEFR list names as an A1-A2 verb), and per sense outside the sense list's extra the category, parts, and synonym slots, topic, grammar, and collocation its part of speech needs, its examples, a zh translation, and a translated example) that live facts fill or a live gap closure closes; 1 means no gaps. Computed from the facts on read, never stored.",
+        "Share of the slots the gaps count that live facts fill or a pass completed: the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, a pronunciation per irregular form, and its phrases list; per common sense the category, parts, and synonym slots, topic, grammar, and collocation its part of speech needs, and its examples; and a translation per served language of every common sense, example, and collocation. Optional slots (phrases, family, category, parts, synonyms, topics, grammar, collocations) are complete after one pass. 1 means no gaps. Computed from the facts on read, never stored.",
     }),
-    quality: z.number().min(0).max(1).meta({
-      description: 'One minus the share of the live facts about the entry and its senses that are weak (see WeakFact).',
+    credibility: z.number().min(0).max(1).meta({
+      description:
+        "The lowest credibility of the entry's published facts and of its optional slots a pass left empty: how often facts of that kind, settled by that review path, are right. Audits rank by it.",
     }),
     slots: slotCountsSchema,
     senses: z.array(senseNodeSchema),
@@ -493,10 +489,8 @@ export const entrySummarySchema = z
   .object({
     id: entryIdSchema,
     lemma: z.string(),
-    entry_status: factStatusSchema
-      .nullable()
-      .meta({ description: 'Status of the live entry fact, else of the most recent one; null when none exists.' }),
-    sense_count: countSchema.meta({ description: 'Senses whose gloss is live (pending or published).' }),
+    live: z.boolean().meta({ description: 'An imported headword, or a phrase a published phrases list names.' }),
+    sense_count: countSchema.meta({ description: "Senses of the entry's live inventory." }),
     fact_counts: z
       .record(factStatusSchema, countSchema)
       .meta({ description: 'Facts about the entry and its senses, by status.' }),
@@ -504,7 +498,7 @@ export const entrySummarySchema = z
     created_at: z.iso.datetime(),
     level: cefrLevelSchema.nullable().meta({ description: "The lemma's lowest CEFR level; null without one." }),
     completeness: z.number().min(0).max(1).meta({ description: 'As of the last rescore; see ManagedEntry.' }),
-    quality: z.number().min(0).max(1).meta({ description: 'As of the last rescore; see ManagedEntry.' }),
+    credibility: z.number().min(0).max(1).meta({ description: 'As of the last rescore; see ManagedEntry.' }),
     slots: slotCountsSchema,
     open_work: openWorkCountsSchema,
   })
@@ -523,9 +517,8 @@ export type NodeLocation = z.infer<typeof nodeLocationSchema>
 export const createEntryInputSchema = z
   .object({
     lemma: lemmaInputSchema,
-    seed: z.boolean().optional().meta({
-      description:
-        'Marks the entry as part of a seed list, a curated word list rather than a neighbor an agent found. The mark is shown in the management view and does not change the claim order. Once set it stays set; false or absent changes nothing.',
+    batch: z.number().int().nonnegative().meta({
+      description: 'The headword batch to admit the lemma in. Curators only: agents never create entries.',
     }),
   })
   .meta({ id: 'CreateEntryInput' })
@@ -553,19 +546,5 @@ export const coreImportResultSchema = z
 export type CoreImportResult = z.infer<typeof coreImportResultSchema>
 
 export const createEntryResultSchema = z
-  .object({ entry: entryNodeSchema, fact: factSchema, created: z.boolean() })
+  .object({ entry: entryNodeSchema, created: z.boolean() })
   .meta({ id: 'CreateEntryResult' })
-
-export const createSenseInputSchema = z
-  .object({
-    entry_id: entryIdSchema,
-    pos: posSchema,
-    gloss: glossSchema,
-    register: registerSchema.optional(),
-    region: regionSchema.optional(),
-  })
-  .meta({ id: 'CreateSenseInput' })
-export type CreateSenseInput = z.infer<typeof createSenseInputSchema>
-export const createSenseResultSchema = z
-  .object({ sense: senseNodeSchema, fact: factSchema, created: z.boolean() })
-  .meta({ id: 'CreateSenseResult' })

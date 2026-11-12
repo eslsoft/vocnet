@@ -1,14 +1,13 @@
 import type { EntryId, Pos, Region, Register, SenseId } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
 import { type EntrySnapshot, type ManagedEntryView, managedEntryView } from './catalog-view'
-import { currentGloss, type Fact, type FactOf, isKind } from './fact'
-import { isLive } from './fact-lifecycle'
-import { currentSenseList, listedSenses } from './sense-list'
+import { type Fact, isKind } from './fact'
+import { currentInventory, inventorySenses } from './inventory'
 import type { TopicView } from './topics'
 import { WORK_POLICY, type WorkItem } from './work'
 import { type WorkCriteria, workCriteria } from './work-criteria'
 
-/** A sense of the entry as a worker reads it: its current gloss and whether its list calls it rare. */
+/** A sense of the entry as a worker reads it: its gloss in the live inventory and whether it ranks extra. */
 export interface ContextSense {
   id: SenseId
   pos: Pos
@@ -24,7 +23,7 @@ export interface RelatedContextSense {
   senseId: SenseId
   lemma: string
   pos: Pos
-  /** Its current gloss while it can show (a live gloss and a live entry fact); null when it cannot. */
+  /** Its gloss while it can show (a live entry's published inventory lists it); null when it cannot. */
   gloss: string | null
 }
 
@@ -39,42 +38,23 @@ export interface WorkContext {
   }
   sense: ContextSense | null
   facts: Fact[]
+  /** The facts earlier passes submitted for the item that review rejected, newest first. */
+  rejections: Fact[]
   related: RelatedContextSense[]
   view: ManagedEntryView | null
-  /** The standard the reviewers judge the item's facts and a closure of it by. */
+  /** The standard the reviewers judge the item's facts by. */
   criteria: WorkCriteria
 }
 
-/** The current gloss of each sense with a live one. */
-function glossesOf(facts: readonly Fact[]): Map<string, FactOf<'sense'>> {
-  const live = facts.filter(isKind('sense')).filter((fact) => isLive(fact.status))
-  const senses = new Set(live.map((fact) => fact.subjectId))
-  // Each sense here has at least the live gloss that put it in the set.
-  return new Map(
-    [...senses].map((id) => {
-      const [first, ...rest] = live.filter((fact) => fact.subjectId === id) as [FactOf<'sense'>, ...FactOf<'sense'>[]]
-      return [id, currentGloss([first, ...rest])] as const
-    }),
-  )
-}
+/** How many rejected facts a retry reads: enough to see every reason of the last passes. */
+export const REJECTIONS_SHOWN = 10
 
 /**
- * The node an item's facts are about: the sense or entry it names, or for a weak fact the node that
- * fact is about.
- */
-function nodeOf(item: WorkItem, facts: readonly Fact[]): string {
-  if (!('fact_id' in item.gap)) return item.subjectId
-  const { fact_id: id } = item.gap
-  const fact = facts.find((candidate) => candidate.id === id)
-  if (!fact) throw new Error(`Weak fact ${id} of item ${item.id} is not in its entry's snapshot.`)
-  return fact.subjectId
-}
-
-/**
- * The context of a claimed item, cut from its entry's snapshot: the entry and its senses with
- * their current glosses (common senses first, in the list's order), the sense the item is about,
- * every fact about the item's node in every status with the senses at the other end of its
- * relations, and the whole management view for the types the policy gives whole-entry context.
+ * The context of a claimed item, cut from its entry's snapshot: the entry and the senses of its
+ * live inventory in its order, the sense the item is about, every fact about the item's node in
+ * every status with the senses at the other end of its relations, the rejected facts an earlier
+ * pass submitted for it, and the whole management view for the types the policy gives whole-entry
+ * context.
  */
 export function workContext(
   item: WorkItem,
@@ -83,60 +63,60 @@ export function workContext(
   taxonomy: readonly TopicView[],
 ): WorkContext {
   const all = [...snapshot.facts, ...snapshot.incoming]
-  const glosses = glossesOf(snapshot.facts)
-  const list = currentSenseList(snapshot.facts)
-  const extra = new Set(list?.payload.extra)
-  const listed = list ? listedSenses(list.payload) : []
-  const order = (id: SenseId) => (listed.includes(id) ? listed.indexOf(id) : listed.length)
-  const senses = snapshot.senses
-    .flatMap((sense): ContextSense[] => {
-      const gloss = glosses.get(sense.id)
-      if (!gloss) return []
-      const status = gloss.status === 'published' ? 'published' : 'pending'
-      return [
-        {
-          id: sense.id,
-          pos: sense.pos,
-          gloss: gloss.payload.gloss,
-          register: gloss.payload.register ?? null,
-          region: gloss.payload.region ?? null,
-          rare: extra.has(sense.id),
-          status,
-        },
-      ]
-    })
-    .sort((a, b) => order(a.id) - order(b.id))
-  const node = nodeOf(item, all)
-  const facts = all.filter((fact) => fact.subjectId === node || fact.objectId === node)
-  // A relation links senses of two entries, so its other end is always among the neighbors.
-  const neighborGlosses = glossesOf(snapshot.neighbors.facts)
-  const liveEntries = new Set(
-    snapshot.neighbors.facts
-      .filter(isKind('entry'))
-      .filter((fact) => isLive(fact.status))
-      .map((fact) => fact.subjectId),
+  const inventory = currentInventory(snapshot.facts)
+  const status = inventory?.status === 'published' ? 'published' : 'pending'
+  const senses = inventorySenses(inventory).map(
+    (sense): ContextSense => ({
+      id: sense.id,
+      pos: sense.pos,
+      gloss: sense.gloss,
+      register: sense.register ?? null,
+      region: sense.region ?? null,
+      rare: sense.rank === 'extra',
+      status,
+    }),
   )
-  const neighbors = new Map(snapshot.neighbors.senses.map((sense) => [sense.id, sense]))
+  const node = item.subjectId
+  const entryWide = node === snapshot.entry.id
+  const facts = all.filter((fact) => fact.subjectId === node || fact.objectId === node)
+
+  // A relation links senses of two entries, so its other end is always among the neighbors.
+  const neighborSenses = new Map<SenseId, { lemma: string; pos: Pos; gloss: string | null }>()
+  const byEntry = new Map<EntryId, Fact[]>()
+  for (const fact of snapshot.neighbors.inventories) {
+    byEntry.set(fact.subjectId as EntryId, [...(byEntry.get(fact.subjectId as EntryId) ?? []), fact])
+  }
+  for (const [entryId, inventories] of byEntry) {
+    const lemma = snapshot.neighbors.lemmas.get(entryId) ?? ''
+    const shown = new Set(
+      snapshot.neighbors.liveEntries.has(entryId)
+        ? inventorySenses(currentInventory(inventories, (fact) => fact === 'published')).map((sense) => sense.id)
+        : [],
+    )
+    for (const sense of inventorySenses(currentInventory(inventories))) {
+      neighborSenses.set(sense.id, { lemma, pos: sense.pos, gloss: shown.has(sense.id) ? sense.gloss : null })
+    }
+  }
+  for (const sense of senses) neighborSenses.set(sense.id, { lemma: snapshot.entry.lemma, pos: sense.pos, gloss: sense.gloss })
   const ends = new Set(
     facts
       .filter(isKind('relation'))
       .flatMap((fact) => [fact.subjectId, fact.payload.target_sense_id])
       .filter((id) => id !== node),
   )
-  const related = [...ends].map((id): RelatedContextSense => {
-    const sense = neighbors.get(id)
-    if (!sense) throw new Error(`Relation end ${id} of item ${item.id} is not among its entry's neighbors.`)
-    return {
-      senseId: sense.id,
-      lemma: sense.lemma,
-      pos: sense.pos,
-      // A sense that cannot show fills no gap, so a worker never reads it as a live end.
-      gloss: liveEntries.has(sense.entryId) ? (neighborGlosses.get(id)?.payload.gloss ?? null) : null,
-    }
+  const related = [...ends].flatMap((id): RelatedContextSense[] => {
+    const sense = neighborSenses.get(id)
+    return sense ? [{ senseId: id, lemma: sense.lemma, pos: sense.pos, gloss: sense.gloss }] : []
   })
+
   const sense = senses.find((candidate) => candidate.id === node) ?? null
-  const { gap } = item
-  const weak = 'fact_id' in gap ? (all.find((fact) => fact.id === gap.fact_id) ?? null) : null
+  const criteria = workCriteria(item.gap, sense?.pos ?? null, taxonomy)
+  const fillKinds = new Set(criteria.fills.map((fill) => fill.kind))
+  const rejections = all
+    .filter((fact) => fact.status === 'rejected' && fillKinds.has(fact.kind))
+    .filter((fact) => entryWide || fact.subjectId === node || fact.objectId === node)
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+    .slice(0, REJECTIONS_SHOWN)
   return {
     entry: {
       id: snapshot.entry.id,
@@ -147,8 +127,9 @@ export function workContext(
     },
     sense,
     facts,
+    rejections,
     related,
     view: WORK_POLICY[item.type].context === 'entry' ? managedEntryView(snapshot) : null,
-    criteria: workCriteria(item.gap, sense?.pos ?? null, weak, taxonomy),
+    criteria,
   }
 }

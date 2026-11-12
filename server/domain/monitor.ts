@@ -1,7 +1,7 @@
 import type { WorkWindow } from '@shared/monitor'
+import { MAX_PASSES } from '@shared/work'
 import { type CefrLevel, cefrLevelSchema } from '@shared/reference'
 import { levelRank } from './reference'
-import { MAX_ATTEMPTS } from './work'
 
 // The console's read-only view of the work: where each open item stands, and how the item history
 // is bucketed and projected. Pure functions over stored rows.
@@ -10,11 +10,11 @@ import { MAX_ATTEMPTS } from './work'
 export type OpenItemStatus = 'queued' | 'in_progress' | 'waiting_on_review' | 'stuck'
 
 /**
- * An item at the attempt bound is stuck (with the curators); else one under an unexpired lease is
+ * An item at the pass bound is stuck (a ticket); else one under an unexpired lease is
  * in progress, one a pending fact may change waits on review, and the rest are queued.
  */
 export function openItemStatus(item: { attempts: number; awaiting: boolean; leased: boolean }): OpenItemStatus {
-  if (item.attempts >= MAX_ATTEMPTS) return 'stuck'
+  if (item.attempts >= MAX_PASSES) return 'stuck'
   if (item.leased) return 'in_progress'
   return item.awaiting ? 'waiting_on_review' : 'queued'
 }

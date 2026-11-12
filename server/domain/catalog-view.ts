@@ -1,5 +1,4 @@
 import type {
-  GapClosureReview,
   InflectionType,
   Meaning,
   PublicPronunciation,
@@ -20,49 +19,49 @@ import type {
   RelationType,
   SenseId,
   Shortening,
+  StoredInventorySense,
   TopicId,
 } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
 import { formMeaning, isIrregularForm } from './fact-kinds'
-import type { EntryNode, SenseNode, SenseWithLemma } from './nodes'
+import { currentInventory, inventorySenses } from './inventory'
+import type { EntryNode, SenseNode } from './nodes'
 import { levelRank } from './reference'
-import { listedSenses } from './sense-list'
 import { assessEntry, type SlotCounts } from './work'
+
 /** Everything the read model needs about one entry, in every status. */
 export interface EntrySnapshot {
-  entry: EntryNode
-  /** The entry was submitted as part of a seed list. */
-  seed: boolean
+  /** `live`: an imported headword, or a phrase a published phrases list names. */
+  entry: EntryNode & { live: boolean }
+  /** The headword batch the entry belongs to; null for an entry that is not live. */
+  batch: number | null
   /** The entry's learner level: 1 for A1 to 6 for C2 (`levelRank`); null without a CEFR level. */
   levelRank: number | null
   /** The Zipf frequency of the entry's lemma, as its worklist row stores it; null without one. */
   zipf: number | null
-  /** A CEFR learner list names the exact lemma as an A1 or A2 verb. */
-  coreVerb: boolean
-  /**
-   * The lemmas of the live multiword entries headed by this lemma (its first word) with a live
-   * verb sense: its phrasal verbs and verb idioms.
-   */
-  phrases: string[]
   /** The lemmas of the other live entries whose live morphology names this lemma as a base. */
   family: string[]
-  senses: SenseWithLemma[]
-  /** Facts whose subject is the entry or one of its senses. */
+  /** The sense rows of the entry: every sense any of its inventories ever named. */
+  senses: SenseNode[]
+  /** Facts whose subject is the entry, one of its senses, or one of their examples and collocations. */
   facts: Fact[]
   /** Relation facts whose object is one of the entry's senses. */
   incoming: Fact[]
-  /** Facts about the entry or its senses that an open or claimed feedback item targets. */
-  flagged: ReadonlySet<FactId>
-  /** Senses at the other end of the entry's relations, with their `entry` and `sense` facts. */
-  neighbors: { senses: SenseWithLemma[]; facts: Fact[] }
+  /** The optional slots a pass completed, keyed `type|subject`. */
+  passes: ReadonlySet<string>
+  /**
+   * The entries at the other end of the entry's relations: their inventories, their lemmas, and
+   * which of them are live.
+   */
+  neighbors: { inventories: Fact[]; lemmas: ReadonlyMap<EntryId, string>; liveEntries: ReadonlySet<EntryId> }
 }
 
 export interface ManagedEntryView {
-  entry: EntryNode
-  seed: boolean
+  entry: EntryNode & { live: boolean }
+  batch: number | null
   completeness: number
-  quality: number
+  credibility: number
   slots: SlotCounts
   senses: SenseNode[]
   facts: Fact[]
@@ -71,12 +70,12 @@ export interface ManagedEntryView {
 /** The management view: the entry with every fact in every status, including relations pointing at it. */
 export function managedEntryView(snapshot: EntrySnapshot): ManagedEntryView {
   const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, fact]))
-  const { completeness, quality, slots } = assessEntry(snapshot)
+  const { completeness, credibility, slots } = assessEntry(snapshot)
   return {
     entry: snapshot.entry,
-    seed: snapshot.seed,
+    batch: snapshot.batch,
     completeness,
-    quality,
+    credibility,
     slots,
     senses: snapshot.senses,
     facts: [...facts.values()],
@@ -90,9 +89,16 @@ export type ByLanguage<T> = Record<string, T>
 // review, so one document serves each language and include variant. Reads cut the variant out of
 // it (server/domain/public-view.ts); fields other entries supply are joined on read.
 
-export interface StoredSense extends Omit<PublicSense, 'translations' | 'topics' | 'review' | 'examples'> {
+export interface StoredSense
+  extends Omit<PublicSense, 'translations' | 'topics' | 'review' | 'examples' | 'collocations'> {
   translations: ByLanguage<string[]>
   examples: Array<{ text: string; translations: ByLanguage<string>; review: ReviewMeta }>
+  collocations: Array<{
+    text: string
+    pattern: PublicSense['collocations'][number]['pattern']
+    translations: ByLanguage<string>
+    review: ReviewMeta
+  }>
   topics: Array<{ id: TopicId; name: ByLanguage<string>; review: ReviewMeta }>
   review: { gloss: ReviewMeta; translations: ByLanguage<ReviewMeta[]> }
 }
@@ -139,11 +145,12 @@ export interface StoredEntry {
   morphology: { parts: Morpheme[]; shortened?: Shortening; review: ReviewMeta } | null
   meanings: StoredMeaning[]
   summary: StoredSummary
+  /** The lemmas the headword's published phrases list names, in its order; reads join their summaries. */
+  phrases: string[]
   review: {
-    entry: ReviewMeta
-    sense_list: ReviewMeta | null
+    inventory: ReviewMeta
     syllables: ReviewMeta | null
-    closures: GapClosureReview[]
+    phrases: ReviewMeta | null
   }
   /**
    * Every published form, independent of display: a lookup never depends on presentation. Reads
@@ -187,10 +194,6 @@ export const firstOfEach = (values: ByLanguage<string[]>): ByLanguage<string> =>
     Object.entries(values).flatMap(([language, texts]) => texts.slice(0, 1).map((first) => [language, first])),
   )
 
-/** The entries of a partial record that have a value. */
-const definedValues = (values: Partial<Record<string, string>>): ByLanguage<string> =>
-  Object.fromEntries(Object.entries(values).filter((entry): entry is [string, string] => entry[1] !== undefined))
-
 function pushTo<K extends string, T>(groups: Partial<Record<K, T[]>>, key: K, value: T) {
   groups[key] = [...(groups[key] ?? []), value]
 }
@@ -202,29 +205,45 @@ const lowestLevel = (levels: CefrLevel[]): CefrLevel | null =>
   )
 
 // Visibility is derived on read: a fact shows only when it and every node it references are
-// published. A node is published when its defining fact is. A form or pronunciation is shown under
-// a meaning, so one with no meaning to show it is shown once a sense of a part of speech that can
-// carry it is published; the form lookup indexes every published form regardless.
+// published. An entry shows when it is live and its inventory is published; a sense when that
+// inventory lists it; a relation when the other end's live entry lists it in its published
+// inventory; a translation with the sense, example, or collocation it translates. A form or
+// pronunciation is shown under a meaning, so one with no meaning to show it is shown once a sense
+// of a part of speech that can carry it is published; the form lookup indexes every published form
+// regardless.
 export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionContext): StoredEntry | null {
-  const byId = new Map([...snapshot.facts, ...snapshot.incoming, ...snapshot.neighbors.facts].map((f) => [f.id, f]))
-  const published = [...byId.values()].filter((fact) => fact.status === 'published')
-  const about = <K extends FactKind>(kind: K, subjectId: EntryId | SenseId) =>
+  if (!snapshot.entry.live) return null
+  const isPublished = (fact: Fact) => fact.status === 'published'
+  const published = [...snapshot.facts, ...snapshot.incoming].filter(isPublished)
+  const about = <K extends FactKind>(kind: K, subjectId: string) =>
     published.filter(isKind(kind)).filter((fact) => fact.subjectId === subjectId)
 
-  const entryFact = about('entry', snapshot.entry.id)[0]
-  if (!entryFact) return null
+  const inventory = currentInventory(snapshot.facts, (status) => status === 'published')
+  if (!inventory) return null
 
-  const senses = new Map([...snapshot.senses, ...snapshot.neighbors.senses].map((sense) => [sense.id, sense]))
+  // The senses a relation may show at its other end: listed by a live entry's published inventory.
+  const shownSenses = new Map<SenseId, { lemma: string; gloss: string }>()
+  const byEntry = new Map<EntryId, Fact[]>()
+  for (const fact of snapshot.neighbors.inventories) {
+    byEntry.set(fact.subjectId as EntryId, [...(byEntry.get(fact.subjectId as EntryId) ?? []), fact])
+  }
+  for (const [entryId, facts] of byEntry) {
+    const lemma = snapshot.neighbors.lemmas.get(entryId)
+    if (!lemma || !snapshot.neighbors.liveEntries.has(entryId)) continue
+    for (const sense of inventorySenses(currentInventory(facts, (status) => status === 'published'))) {
+      shownSenses.set(sense.id, { lemma, gloss: sense.gloss })
+    }
+  }
+  for (const sense of inventory.payload.senses) shownSenses.set(sense.id, { lemma: snapshot.entry.lemma, gloss: sense.gloss })
+
   const relatedSense = (id: SenseId, fact: FactOf<'relation'>): RelatedSense[] => {
-    const sense = senses.get(id)
-    if (!sense || about('entry', sense.entryId).length === 0) return []
-    const glossFact = about('sense', id)[0]
-    return glossFact
+    const shown = shownSenses.get(id)
+    return shown
       ? [
           {
-            lemma: sense.lemma,
-            sense_id: sense.id,
-            gloss: glossFact.payload.gloss,
+            lemma: shown.lemma,
+            sense_id: id,
+            gloss: shown.gloss,
             ...(fact.payload.domain ? { domain: fact.payload.domain } : {}),
             review: reviewOf(fact),
           },
@@ -249,7 +268,11 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     return name
   }
 
-  const storedSense = (sense: SenseNode, glossFact: FactOf<'sense'>, rare: boolean): StoredSense => {
+  /** The published translations of a node, by language. */
+  const translationsOf = (subjectId: string): ByLanguage<string> =>
+    Object.fromEntries(about('translation', subjectId).map((fact) => [fact.payload.language, fact.payload.text]))
+
+  const storedSense = (sense: StoredInventorySense): StoredSense => {
     const translations: ByLanguage<string[]> = {}
     const translationReviews: ByLanguage<ReviewMeta[]> = {}
     for (const fact of about('translation', sense.id)) {
@@ -259,10 +282,10 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     const [grammar] = about('grammar', sense.id)
     return {
       id: sense.id,
-      gloss: glossFact.payload.gloss,
-      labels: glossFact.payload.register ? [glossFact.payload.register] : [],
-      region: glossFact.payload.region ?? null,
-      rare,
+      gloss: sense.gloss,
+      labels: sense.register ? [sense.register] : [],
+      region: sense.region ?? null,
+      rare: sense.rank === 'extra',
       translations,
       grammar: grammar
         ? {
@@ -274,35 +297,28 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
         : null,
       examples: about('example', sense.id).map((fact) => ({
         text: fact.payload.text,
-        translations: definedValues(fact.payload.translations ?? {}),
+        translations: translationsOf(fact.id),
         review: reviewOf(fact),
       })),
-      collocations: about('collocation', sense.id).map((fact) => ({ ...fact.payload, review: reviewOf(fact) })),
+      collocations: about('collocation', sense.id).map((fact) => ({
+        text: fact.payload.text,
+        pattern: fact.payload.pattern,
+        translations: translationsOf(fact.id),
+        review: reviewOf(fact),
+      })),
       topics: about('topic', sense.id).map((fact) => ({
         id: fact.payload.topic_id,
         name: topicName(fact.payload.topic_id),
         review: reviewOf(fact),
       })),
       relations: relations(sense.id),
-      review: { gloss: reviewOf(glossFact), translations: translationReviews },
+      review: { gloss: reviewOf(inventory), translations: translationReviews },
     }
   }
 
-  // Senses in the published list's order: common, then extra (rare), then those it does not name.
-  const senseList = about('sense_list', snapshot.entry.id)[0]
-  const listed = senseList ? listedSenses(senseList.payload) : []
-  const extra = new Set(senseList?.payload.extra)
-  const ownSenses = new Map(snapshot.senses.map((sense) => [sense.id, sense]))
-  const inOrder = [
-    ...listed.flatMap((id) => ownSenses.get(id) ?? []),
-    ...snapshot.senses.filter((sense) => !listed.includes(sense.id)),
-  ]
-
-  // One meaning per part of speech, in the order of its first sense.
+  // One meaning per part of speech, in the order of its first sense in the inventory.
   const meanings = new Map<Pos, StoredMeaning>()
-  for (const sense of inOrder) {
-    const glossFact = about('sense', sense.id)[0]
-    if (!glossFact) continue
+  for (const sense of inventory.payload.senses) {
     const meaning = meanings.get(sense.pos) ?? {
       pos: sense.pos,
       cefr: context.reference.cefr.find((row) => row.pos === sense.pos)?.level ?? null,
@@ -311,7 +327,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       senses: [],
       review: { forms: {} },
     }
-    meaning.senses.push(storedSense(sense, glossFact, extra.has(sense.id)))
+    meaning.senses.push(storedSense(sense))
     meanings.set(sense.pos, meaning)
   }
 
@@ -343,22 +359,9 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     forms.push({ form, type, pos: meaning?.pos ?? pos ?? null })
   }
 
-  // A sense's closure shows with its sense; the entry's own with the entry.
-  const shown = new Set(ordered.flatMap((meaning) => meaning.senses.map((sense) => sense.id)))
-  const closures = published
-    .filter(isKind('gap_closure'))
-    .filter((fact) => fact.subjectId === snapshot.entry.id || shown.has(fact.subjectId as SenseId))
-    .map(
-      (fact): GapClosureReview => ({
-        gap: fact.payload.gap,
-        sense_id: fact.subjectId === snapshot.entry.id ? null : (fact.subjectId as SenseId),
-        reason: fact.payload.reason,
-        ...reviewOf(fact),
-      }),
-    )
-
   const [morphology] = about('morphology', snapshot.entry.id)
   const [syllables] = about('syllables', snapshot.entry.id)
+  const [phrases] = about('phrases', snapshot.entry.id)
   const first = ordered[0]?.senses[0]
   return {
     id: snapshot.entry.id,
@@ -379,11 +382,11 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       gloss: first?.gloss ?? null,
       translations: first ? firstOfEach(first.translations) : {},
     },
+    phrases: phrases ? phrases.payload.phrases : [],
     review: {
-      entry: reviewOf(entryFact),
-      sense_list: senseList ? reviewOf(senseList) : null,
+      inventory: reviewOf(inventory),
       syllables: syllables ? reviewOf(syllables) : null,
-      closures,
+      phrases: phrases ? reviewOf(phrases) : null,
     },
     forms,
   }
