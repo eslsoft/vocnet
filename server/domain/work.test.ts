@@ -8,6 +8,7 @@ import {
   completeDecision,
   type EntryFacts,
   entryGaps,
+  filledSince,
   GRAMMAR_NEEDED,
   gapText,
   itemState,
@@ -679,6 +680,21 @@ describe('work items', () => {
       [stalled.id, 'no_progress'],
       [unclaimed.id, 'progressed'],
     ])
+  })
+
+  it('counts a pass as progress when it filled a slot its claim found, even if others opened new ones [spec: work/item-attempts]', () => {
+    const target = (id: string) => ({ of: 'example' as const, id: id as FactId })
+    const translations = (...ids: string[]) => ({
+      type: 'translations' as const,
+      language: 'zh' as const,
+      missing: ids.map(target),
+    })
+    // The pass translated a while other passes added c and d: more missing, yet a slot it was given is filled.
+    expect(filledSince(translations('a', 'b'), translations('b', 'c', 'd'))).toBe(true)
+    expect(filledSince(translations('a', 'b'), translations('a', 'b', 'c'))).toBe(false)
+    expect(filledSince(examples(0), examples(1))).toBe(true)
+    expect(filledSince(examples(1), examples(1))).toBe(false)
+    expect(filledSince({ type: 'syllables' }, { type: 'syllables' })).toBe(false)
   })
 
   it('makes an item a ticket once its passes reach the bound [spec: work/item-curation]', () => {

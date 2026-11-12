@@ -654,6 +654,39 @@ export function missingOf(gap: Gap): number {
   }
 }
 
+/** The slots a gap lists one by one, keyed so two gaps can be compared slot by slot. */
+function listedSlots(gap: Gap): string[] | null {
+  switch (gap.type) {
+    case 'forms':
+      return gap.missing.map((slot) => JSON.stringify(slot))
+    case 'pronunciation':
+      return gap.accents
+    case 'form_pronunciations':
+      return gap.forms
+    case 'translations':
+      return gap.missing.map((target) => `${target.of}:${target.id}`)
+    default:
+      return null
+  }
+}
+
+/**
+ * Whether a pass filled any slot its claim found missing. Other workers add facts while a pass
+ * runs, and a new example or collocation opens a new translation slot: comparing counts would call
+ * a pass that filled every slot it was given no progress. A gap that lists its slots compares them
+ * one by one; an examples gap compares the examples it has; any other gap, the number missing.
+ */
+export function filledSince(claimed: Gap, now: Gap): boolean {
+  const before = listedSlots(claimed)
+  const after = listedSlots(now)
+  if (before && after) {
+    const remaining = new Set(after)
+    return before.some((slot) => !remaining.has(slot))
+  }
+  if (claimed.type === 'examples' && now.type === 'examples') return now.count > claimed.count
+  return missingOf(now) < missingOf(claimed)
+}
+
 /**
  * One piece of open work as the rescore finds it. `awaiting`: a pending fact changes it, so it is
  * judged once that fact's review settles; `gap` is then the live view of it, or the settled one
@@ -861,7 +894,7 @@ export type WorkItemWrite = Pick<
 /**
  * The verdict a rescore draws on the completed pass at a worked item: `closed` when its gap is
  * gone, `passed` when it is an optional slot whose pass found none (it closes with the pass),
- * `progressed` when fewer facts are missing than its claim found, `no_progress` otherwise, and
+ * `progressed` when it filled a slot its claim found missing, `no_progress` otherwise, and
  * `stuck` when that pass reached `MAX_PASSES`: the item becomes a ticket.
  */
 export type AttemptVerdict = 'closed' | 'passed' | 'progressed' | 'no_progress' | 'stuck'
@@ -877,9 +910,9 @@ export interface ReconciledItems {
  * Brings an entry's stored items to its open work: one item per piece, the rest deleted. A write
  * keeps the id of the stored item it updates; a new piece has none yet. While a piece awaits
  * review its attempts and pending verdict are kept. Once settled, a worked item is judged: an
- * optional slot whose pass found none is complete; otherwise the pass made progress only if fewer
- * facts are missing than its claim found, which resets its attempts, and else counts an attempt. A
- * change that only reshuffles the gap (a fact retracted and resubmitted) is no progress.
+ * optional slot whose pass found none is complete; otherwise the pass made progress only if it
+ * filled a slot its claim found missing (`filledSince`), which resets its attempts, and else counts
+ * an attempt. Slots other passes opened meanwhile do not count against it.
  */
 export function reconcileItems(
   stored: readonly WorkItem[],
@@ -907,8 +940,7 @@ export function reconcileItems(
       judged(item, 'passed')
       return []
     }
-    const before = item.claimedGap ? missingOf(item.claimedGap) : Number.POSITIVE_INFINITY
-    if (missingOf(work.gap) < before) {
+    if (!item.claimedGap || filledSince(item.claimedGap, work.gap)) {
       judged(item, 'progressed')
       return [{ ...base, attempts: 0, worked: false, foundNone: false }]
     }
