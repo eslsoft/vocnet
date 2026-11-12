@@ -1396,6 +1396,7 @@ const SENSE_LIST_FAILS = [
   'Duplicated: two common senses are the same meaning, or one meaning split too finely into several.',
   'Misplaced as common: a rare, archaic, technical, specialist, or legal sense, or one used only in a variety other than British or American English, is in common ("stay" meaning to stop legal proceedings, "mobile" meaning changing facial expression, Scottish "stay" meaning to live somewhere).',
   'Wrong part of speech: a sense is given a part of speech its meaning does not have.',
+  'An inflection as a sense: a sense that only names an inflected form of another word (the past tense or past participle of a verb, a plural, a comparative or superlative, or a person or tense form of be, do, or have) is not a sense of this word; its base word lists that form. Its own meanings stay: "broken" meaning damaged is a sense, "past participle of break" is not.',
   "A main sense in extra: a sense every learner's dictionary prints among the main senses of this word is in extra. It counts as missing from common, since extra senses get no further work.",
   "The main meaning not first: the meaning every learner's dictionary prints first for this word (or first for one of its parts of speech) is not among the first three common senses. The first three common senses get the fullest treatment, so the word's best-known meaning must be among them.",
 ]

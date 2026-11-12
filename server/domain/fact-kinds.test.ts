@@ -759,6 +759,8 @@ describe('sense inventories', () => {
     expect(text).toContain('the same meaning, or one meaning split too finely into several')
     expect(text).toContain('"stay" meaning to stop legal proceedings')
     expect(text).toContain('Wrong part of speech: a sense is given a part of speech its meaning does not have.')
+    // An inflection of another word is never a sense: its base word lists the form.
+    expect(text).toContain('An inflection as a sense: a sense that only names an inflected form of another word')
     expect(text).toContain('- A gloss is wrong: the word has no such meaning in that part of speech')
     expect(text).toContain('pass otherwise. In particular:')
     expect(text).toContain('Never fail for the relative order of the common senses beyond the main-meaning rule above')
