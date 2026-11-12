@@ -20,8 +20,7 @@ import type {
   TopicId,
 } from '@shared/facts'
 import { MORPHEME_SPELLING } from '@shared/facts'
-import type { CefrLevel } from '@shared/reference'
-import { editDistance, isLetterOfTheAlphabet, isMultiword, type Lemma, normalizeTerm, textKey } from './term'
+import { editDistance, isMultiword, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
 // The single source of truth for fact kinds. Wire payload schemas live in
@@ -256,7 +255,11 @@ function decide(
     models = ['jev'],
     combine = 'min',
     passAt = DEFAULT_PASS_AT,
-  }: { models?: DecisionRequest['models']; combine?: DecisionCombine; passAt?: number | DecisionRequest['passAt'] } = {},
+  }: {
+    models?: DecisionRequest['models']
+    combine?: DecisionCombine
+    passAt?: number | DecisionRequest['passAt']
+  } = {},
 ): ReviewPlan {
   const thresholds = typeof passAt === 'number' ? Object.fromEntries(models.map((model) => [model, passAt])) : passAt
   return { kind: 'review', decision: { models, combine, passAt: thresholds, state, questions }, prompt: prompt(rubric) }
@@ -731,7 +734,8 @@ function planTranslation(
     if (of === 'sense') return { kind: 'unreviewable', reason: 'A sense equivalent is about a sense, not a fact.' }
     return withGloss(subject.sense, (sense) => llm(textTranslationRubric(language, text, { ...subject, sense })))
   }
-  if (of !== 'sense') return { kind: 'unreviewable', reason: `A translation of ${article(of)} ${of} is about that fact, not a sense.` }
+  if (of !== 'sense')
+    return { kind: 'unreviewable', reason: `A translation of ${article(of)} ${of} is about that fact, not a sense.` }
   return withGloss(subject, (sense) =>
     decide(
       {
@@ -1364,12 +1368,12 @@ function inventoryKey({ senses }: Inventory): string {
   const key = (sense: Inventory['senses'][number]) =>
     labelled(`${sense.pos}:${textKey(sense.gloss)}`, sense.register, sense.region)
   const common = senses.filter((sense) => sense.rank === 'common').map(key)
-  const extra = senses.filter((sense) => sense.rank === 'extra').map(key).sort()
+  const extra = senses
+    .filter((sense) => sense.rank === 'extra')
+    .map(key)
+    .sort()
   return `${common.join(',')}|${extra.join(',')}`
 }
-
-const numbered = (senses: readonly EntrySense[], from: number) =>
-  senses.map(({ pos, gloss }, at) => `${from + at}. (${pos}) ${quote(gloss)}`)
 
 /**
  * The only reasons a sense list fails. Review once also judged the relative order of common senses
@@ -1419,6 +1423,7 @@ function inventoryRubric(
     ...SENSE_LABELS.map((rule) => `- ${rule}`),
     'pass otherwise. In particular:',
     ...SENSE_LIST_NEVER_FAILS.map((rule) => `- ${rule}`),
+    ...([...common, ...extra].some((sense) => sense.pos === 'number') ? [`- ${NUMBER_POS}`] : []),
     'A fail reason names everything to change, even if that takes more than one sentence: each missing common sense with its part of speech and a short meaning, each pair of duplicates by number, each rare sense in common by number, each sense under the wrong part of speech by number, and each wrong gloss or label by number.',
     'uncertain: only when you cannot judge the word at all.',
   ].join('\n')
@@ -1450,10 +1455,17 @@ const TRANSLATION_LIMITS = [
 ]
 
 /** A translation of a fact translates an example or a collocation, and says which. */
-function admitTranslation({ of }: FactPayloads['translation'], subject: AdmissionViews['sense'] | AdmissionViews['fact']): string | null {
-  if (!('kind' in subject)) return of === 'sense' ? null : `A translation of ${article(of)} ${of} is about that fact; its subject_id is the ${of} fact id.`
+function admitTranslation(
+  { of }: FactPayloads['translation'],
+  subject: AdmissionViews['sense'] | AdmissionViews['fact'],
+): string | null {
+  if (!('kind' in subject))
+    return of === 'sense'
+      ? null
+      : `A translation of ${article(of)} ${of} is about that fact; its subject_id is the ${of} fact id.`
   if (of === 'sense') return 'A sense equivalent is about the sense; its subject_id is the sense id.'
-  if (subject.kind !== of) return `The subject is ${article(subject.kind)} ${subject.kind} fact, but the translation claims to translate ${article(of)} ${of}.`
+  if (subject.kind !== of)
+    return `The subject is ${article(subject.kind)} ${subject.kind} fact, but the translation claims to translate ${article(of)} ${of}.`
   return null
 }
 
@@ -1461,7 +1473,13 @@ function admitTranslation({ of }: FactPayloads['translation'], subject: Admissio
 function admitPhrases({ phrases }: FactPayloads['phrases'], { lemma }: AdmissionViews['entry']): string | null {
   if (isMultiword(lemma)) return `${quote(lemma)} is a phrase; phrases are listed on a single-word headword.`
   const head = normalizeTerm(lemma).toLowerCase()
-  const without = phrases.filter((phrase) => !normalizeTerm(phrase).toLowerCase().split(/\s+/).some((word) => word.startsWith(head.slice(0, Math.max(2, head.length - 2)))))
+  const without = phrases.filter(
+    (phrase) =>
+      !normalizeTerm(phrase)
+        .toLowerCase()
+        .split(/\s+/)
+        .some((word) => word.startsWith(head.slice(0, Math.max(2, head.length - 2)))),
+  )
   if (without.length === 0) return null
   return `A phrase of ${quote(lemma)} contains the word; ${without.map(quote).join(', ')} ${without.length === 1 ? 'does' : 'do'} not.`
 }
@@ -1498,7 +1516,7 @@ const COLLOCATION_LIMITS = ['A collocation contains the word itself or one of it
 
 const INVENTORY_LIMITS = [
   'An inventory lists every sense of the entry, the common ones first; at least one is common.',
-  "It keeps an existing sense by naming its id; a sense of the entry it leaves out is gone, with everything attached to it. Once it publishes, only a curator changes it.",
+  'It keeps an existing sense by naming its id; a sense of the entry it leaves out is gone, with everything attached to it. Once it publishes, only a curator changes it.',
 ]
 
 const PHRASES_LIMITS = [
@@ -1551,7 +1569,11 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       const spec = formTypes[type]
       const rubric = formRubric(payload, subject)
       if (!spec.wordClass || ipa) return llm(rubric)
-      return decide({ word: subject.lemma }, { form: formQuestion({ ...spec, wordClass: spec.wordClass }, form, subject.lemma, pos) }, rubric)
+      return decide(
+        { word: subject.lemma },
+        { form: formQuestion({ ...spec, wordClass: spec.wordClass }, form, subject.lemma, pos) },
+        rubric,
+      )
     },
   },
   relation: {
@@ -1655,7 +1677,11 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     admit: admitGrammar,
     plan: (payload, { subject }) =>
       withGloss(subject, (sense) =>
-        decide(senseState({ ...subject, ...sense }), grammarQuestions(payload, sense), grammarRubric(payload, subject, sense)),
+        decide(
+          senseState({ ...subject, ...sense }),
+          grammarQuestions(payload, sense),
+          grammarRubric(payload, subject, sense),
+        ),
       ),
   },
   // With the synchronic rule in its question Jev passed every correct formation and failed the
@@ -1727,7 +1753,11 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     subject: 'entry',
     cardinality: 'one',
     models: ['jev'],
-    contentKey: ({ phrases }) => phrases.map((phrase) => normalizeTerm(phrase)).sort().join('|'),
+    contentKey: ({ phrases }) =>
+      phrases
+        .map((phrase) => normalizeTerm(phrase))
+        .sort()
+        .join('|'),
     admit: admitPhrases,
     plan: ({ phrases }, { subject }) =>
       decide(
@@ -1799,7 +1829,9 @@ export const GENERAL_LIMITS: readonly string[] = [
   'Only a published fact can be superseded: a correction names, in supersedes_id, a published fact of its kind and subject.',
   `A subject holds one live fact of ${(Object.keys(factKinds) as FactKind[])
     .filter((kind) => factKinds[kind].cardinality === 'one')
-    .join(', ')}, and one live translation per language: change it with a correction that supersedes the published one.`,
+    .join(
+      ', ',
+    )}, and one live translation per language: change it with a correction that supersedes the published one.`,
   'Content a review already rejected for the same subject is refused (409 rejected_before): fix what the review named instead of resending it.',
 ]
 
