@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 
 const LEMMAS = [
-  'animal', 'bird', 'fish', 'pet', 'creature', 'dog', 'cat', 'canine', 'mammal', 'eagle', 'owl',
+  'animal', 'bird', 'fish', 'pet', 'creature', 'dog', 'cat', 'eagle', 'owl',
   'sparrow', 'wing', 'beak', 'feather', 'hot', 'cold',
 ]
 
@@ -27,9 +27,15 @@ const entryIds = entries.map((entry) => entry.id)
 const senses = rows(`select * from senses where entry_id in (${list(entryIds)}) order by id`, ...entryIds)
 const nodeIds = [...entryIds, ...senses.map((sense) => sense.id)]
 const nodes = new Set(nodeIds)
-const facts = rows(`select * from facts where subject_id in (${list(nodeIds)}) order by id`, ...nodeIds).filter(
+const nodeFacts = rows(`select * from facts where subject_id in (${list(nodeIds)}) order by id`, ...nodeIds).filter(
   (fact) => fact.object_id === null || nodes.has(fact.object_id),
 )
+// A translation of an example or collocation is about that fact, not a node.
+const factIds = nodeFacts.map((fact) => fact.id)
+const facts = [
+  ...nodeFacts,
+  ...rows(`select * from facts where subject_id in (${list(factIds)}) order by id`, ...factIds),
+]
 const byEntry = (table) => rows(`select * from ${table} where entry_id in (${list(entryIds)})`, ...entryIds)
 const worklist = byEntry('worklist').map((row) => ({ ...row, view_revision: row.revision }))
 const words = entries.map((entry) => entry.lemma.toLowerCase())
@@ -42,13 +48,13 @@ const tables = [
   ['senses', senses],
   ['facts', facts],
   ['worklist', worklist],
+  ['work_passes', byEntry('work_passes')],
   ['public_entries', byEntry('public_entries')],
   ['public_meanings', byEntry('public_meanings')],
   ['public_forms', byEntry('public_forms')],
   ['public_hypernyms', byEntry('public_hypernyms')],
   ['public_sense_topics', byEntry('public_sense_topics')],
   ['public_morphemes', byEntry('public_morphemes')],
-  ['public_phrase_words', byEntry('public_phrase_words')],
   ['public_search', byEntry('public_search')],
 ]
 

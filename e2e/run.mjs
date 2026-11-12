@@ -66,6 +66,9 @@ MODEL_BASE_URL = "http://127.0.0.1:9"
 MODEL_API_KEY = "e2e"
 JEV_MODEL = "jev-latest"
 REVIEW_LLM_MODEL = "e2e-llm"
+DECISIONS_BASE_URL = "http://127.0.0.1:9"
+DECISIONS_MODEL = "e2e-luna"
+OPENAI_API_KEY = "e2e"
 
 [[queues.producers]]
 binding = "REVIEW_QUEUE"
