@@ -1,7 +1,18 @@
-import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Pos, SenseId, TopicId } from '@shared/facts'
+import type {
+  EntryId,
+  FactId,
+  FactKind,
+  FactPayloads,
+  FactStatus,
+  Pos,
+  SenseId,
+  StoredInventorySense,
+  TopicId,
+} from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
   type EntrySnapshot,
+  managedEntryView,
   type ProjectionContext,
   projectPublicEntry,
   publicFactIds,
@@ -10,27 +21,33 @@ import {
 } from './catalog-view'
 import type { Fact, FactOf } from './fact'
 import { formMeaning } from './fact-kinds'
-import type { EntryNode, SenseWithLemma } from './nodes'
+import type { EntryNode, SenseNode } from './nodes'
 import type { Lemma } from './term'
 
 let counter = 0
 const id = <T>() => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}` as T
 const at = '2026-01-01T00:00:00.000Z'
 
-const entry = (lemma: string): EntryNode => ({
+const entry = (lemma: string): EntryNode & { live: boolean } => ({
   id: id<EntryId>(),
   lemma: lemma as Lemma,
   createdBy: 'agent:a',
   createdAt: at,
+  live: true,
 })
-const sense = (of: EntryNode, pos: Pos = 'noun'): SenseWithLemma => ({
-  id: id<SenseId>(),
+const senseNode = (of: EntryNode, sense: StoredInventorySense): SenseNode => ({
+  id: sense.id,
   entryId: of.id,
-  pos,
-  lemma: of.lemma,
+  pos: sense.pos,
   createdBy: 'agent:a',
   createdAt: at,
 })
+const inventorySense = (
+  gloss: string,
+  pos: Pos = 'noun',
+  extra: Partial<StoredInventorySense> = {},
+): StoredInventorySense => ({ id: id<SenseId>(), pos, gloss, rank: 'common', ...extra })
+
 function fact<K extends FactKind>(
   kind: K,
   subjectId: string,
@@ -60,47 +77,70 @@ function fact<K extends FactKind>(
             reviewed_at: at,
           }
         : null,
-    revalidateSince: null,
     createdAt: at,
     updatedAt: at,
+  }
+}
+const inventory = (of: EntryNode, senses: StoredInventorySense[], status: FactStatus = 'published') =>
+  fact('senses', of.id, { senses }, status)
+
+/** Another live entry with one published noun sense, for relations. */
+function neighbor(lemma: string, gloss: string) {
+  const node = entry(lemma)
+  const sense = inventorySense(gloss)
+  return { node, sense, inventory: inventory(node, [sense]) }
+}
+type Neighbor = ReturnType<typeof neighbor>
+const neighborsOf = (...others: Neighbor[]): EntrySnapshot['neighbors'] => ({
+  inventories: others.map((other) => other.inventory),
+  lemmas: new Map(others.map((other) => [other.node.id, other.node.lemma])),
+  liveEntries: new Set(others.map((other) => other.node.id)),
+})
+
+function snapshotOf(
+  node: EntryNode & { live: boolean },
+  facts: Fact[],
+  more: Partial<EntrySnapshot> = {},
+): EntrySnapshot {
+  const senses = facts
+    .filter((one): one is FactOf<'senses'> => one.kind === 'senses')
+    .flatMap((one) => one.payload.senses.map((sense) => senseNode(node, sense)))
+  return {
+    entry: node,
+    batch: 1,
+    levelRank: null,
+    zipf: null,
+    family: [],
+    senses,
+    facts,
+    incoming: [],
+    passes: new Set(),
+    neighbors: neighborsOf(),
+    ...more,
   }
 }
 
 function bankWorld() {
   const bank = entry('bank')
-  const shore = entry('shore')
-  const bankSense = sense(bank)
-  const shoreSense = sense(shore)
+  const shore = neighbor('shore', 'land along water')
+  const river = inventorySense('land beside a river')
+  const bankInventory = inventory(bank, [river])
+  const example = fact('example', river.id, { text: 'We sat on the bank.' })
   const facts: Fact[] = [
-    fact('entry', bank.id, {}),
-    fact('sense', bankSense.id, { gloss: 'land beside a river' }),
+    bankInventory,
+    inventory(bank, [inventorySense('a pending replacement')], 'pending'),
     fact('form', bank.id, { form: 'banks', type: 'plural' }),
     fact('form', bank.id, { form: 'bankes', type: 'variant' }, 'rejected'),
     fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'us' }),
-    fact('example', bankSense.id, { text: 'We sat on the bank.' }),
-    fact('example', bankSense.id, { text: 'Pending example.' }, 'pending'),
-    fact('translation', bankSense.id, { language: 'fr', text: 'rive' }),
-    fact('relation', bankSense.id, { type: 'synonym', target_sense_id: shoreSense.id }),
+    example,
+    fact('example', river.id, { text: 'Pending example.' }, 'pending'),
+    fact('translation', river.id, { language: 'zh', of: 'sense', text: '河岸' }),
+    fact('translation', river.id, { language: 'zh', of: 'sense', text: '岸边' }, 'pending'),
+    fact('translation', example.id, { language: 'zh', of: 'example', text: '我们坐在河岸上。' }),
+    fact('relation', river.id, { type: 'synonym', target_sense_id: shore.sense.id }),
   ]
-  const neighborFacts: Fact[] = [
-    fact('entry', shore.id, {}),
-    fact('sense', shoreSense.id, { gloss: 'land along water' }),
-  ]
-  const snapshot: EntrySnapshot = {
-    entry: bank,
-    flagged: new Set(),
-    seed: false,
-    levelRank: null,
-    zipf: null,
-    coreVerb: false,
-    phrases: [],
-    family: [],
-    senses: [bankSense],
-    facts,
-    incoming: [],
-    neighbors: { senses: [shoreSense], facts: neighborFacts },
-  }
-  return { bank, shore, bankSense, shoreSense, snapshot, neighborFacts }
+  const snapshot = snapshotOf(bank, facts, { neighbors: neighborsOf(shore) })
+  return { bank, shore, river, bankInventory, example, snapshot }
 }
 
 const context: ProjectionContext = {
@@ -113,28 +153,84 @@ const review = (of: Fact) => ({ fact_id: of.id, confidence: 0.6, verdict: 'uncer
 const senses = (view: StoredEntry | null) => view?.meanings.flatMap((meaning) => meaning.senses) ?? []
 const firstSense = (view: StoredEntry | null) => senses(view)[0]
 
-/** Another entry with one published noun sense, for relations. */
-function neighbor(lemma: string, gloss: string, pos: Pos = 'noun') {
-  const node = entry(lemma)
-  const one = sense(node, pos)
-  return { node, sense: one, facts: [fact('entry', node.id, {}), fact('sense', one.id, { gloss })] }
-}
-
 describe('public read model', () => {
-  it('shows published grammar, word formation, and collocations [spec: catalog/usage-facts]', () => {
-    const { snapshot, bank, bankSense } = bankWorld()
+  it('shows only published facts, each with its review [spec: catalog/visibility]', () => {
+    const { snapshot, bank, river, shore, bankInventory } = bankWorld()
+    const view = project(snapshot)
+    expect(view?.id).toBe(bank.id)
+    expect(view?.meanings[0]?.forms).toEqual({ plural: [{ form: 'banks', irregular: false }] })
+    expect(view?.variants).toEqual([])
+    expect(view?.pronunciations).toEqual([
+      { ipa: 'bæŋk', accent: 'us', review: expect.objectContaining({ verdict: 'uncertain' }) },
+    ])
+    expect(senses(view)).toHaveLength(1)
+    const only = firstSense(view)
+    expect(only).toMatchObject({ id: river.id, gloss: 'land beside a river', labels: [], region: null, rare: false })
+    expect(only?.review.gloss).toEqual(review(bankInventory))
+    expect(only?.examples.map((example) => example.text)).toEqual(['We sat on the bank.'])
+    expect(only?.translations).toEqual({ zh: ['河岸'] })
+    expect(only?.relations.synonyms).toEqual([
+      expect.objectContaining({ lemma: 'shore', sense_id: shore.sense.id, gloss: 'land along water' }),
+    ])
+    expect(view?.review).toEqual({ inventory: review(bankInventory), syllables: null, phrases: null })
+  })
+
+  it('hides an entry that is not live or has no published inventory', () => {
+    const { snapshot, bank } = bankWorld()
+    expect(project({ ...snapshot, entry: { ...bank, live: false } })).toBeNull()
+    expect(
+      project({
+        ...snapshot,
+        facts: snapshot.facts.filter((one) => one.kind !== 'senses' || one.status !== 'published'),
+      }),
+    ).toBeNull()
+  })
+
+  it('groups senses into meanings in inventory order, extras marked rare [spec: catalog/sense-order]', () => {
+    const bank = entry('bank')
+    const rely = inventorySense('To rely on.', 'verb')
+    const money = inventorySense('An institution that keeps money.')
+    const neat = inventorySense('Of a bank.', 'adjective')
+    const oars = inventorySense('A row of oars.', 'noun', { rank: 'extra' })
+    const published = inventory(bank, [rely, money, neat, oars])
+    const view = project(snapshotOf(bank, [published]))
+    expect(view?.meanings.map((meaning) => [meaning.pos, meaning.senses.map((one) => [one.id, one.rare])])).toEqual([
+      ['verb', [[rely.id, false]]],
+      [
+        'noun',
+        [
+          [money.id, false],
+          [oars.id, true],
+        ],
+      ],
+      ['adjective', [[neat.id, false]]],
+    ])
+    expect(view ? publicFactIds(view).has(published.id) : false).toBe(true)
+  })
+
+  it('shows the published inventory while a correction of it is pending', () => {
+    const bank = entry('bank')
+    const old = inventorySense('Old gloss.')
+    const published = inventory(bank, [old])
+    const correction = { ...inventory(bank, [inventorySense('New gloss.')], 'pending'), supersedesId: published.id }
+    expect(senses(project(snapshotOf(bank, [published, correction]))).map((one) => one.gloss)).toEqual(['Old gloss.'])
+  })
+
+  it('shows published grammar, word formation, and collocations with their translations [spec: catalog/usage-facts]', () => {
+    const { snapshot, bank, river } = bankWorld()
     const morphology = fact('morphology', bank.id, { parts: [{ form: 'bank', role: 'base' }] })
-    const grammar = fact('grammar', bankSense.id, { countability: 'countable' })
-    const collocation = fact('collocation', bankSense.id, { text: 'river bank', pattern: 'noun_noun' })
+    const grammar = fact('grammar', river.id, { countability: 'countable' })
+    const collocation = fact('collocation', river.id, { text: 'river bank', pattern: 'noun_noun' })
     const usage: EntrySnapshot = {
       ...snapshot,
       facts: [
         ...snapshot.facts,
         morphology,
         grammar,
-        fact('grammar', bankSense.id, { countability: 'both' }, 'pending'),
+        fact('grammar', river.id, { countability: 'both' }, 'pending'),
         collocation,
-        fact('collocation', bankSense.id, { text: 'steep bank', pattern: 'adjective_noun' }, 'rejected'),
+        fact('translation', collocation.id, { language: 'zh', of: 'collocation', text: '河岸' }),
+        fact('collocation', river.id, { text: 'steep bank', pattern: 'adjective_noun' }, 'rejected'),
       ],
     }
     const view = project(usage)
@@ -146,7 +242,7 @@ describe('public read model', () => {
       review: review(grammar),
     })
     expect(firstSense(view)?.collocations).toEqual([
-      { text: 'river bank', pattern: 'noun_noun', review: review(collocation) },
+      { text: 'river bank', pattern: 'noun_noun', translations: { zh: '河岸' }, review: review(collocation) },
     ])
     const ids = view ? publicFactIds(view) : new Set()
     expect([morphology.id, grammar.id, collocation.id].every((factId) => ids.has(factId))).toBe(true)
@@ -159,78 +255,20 @@ describe('public read model', () => {
       shortened,
       review: review(mrs),
     })
-  })
-
-  it('groups senses into meanings in sense-list order, rare after common [spec: catalog/sense-order]', () => {
-    const { snapshot, bank, bankSense } = bankWorld()
-    const [money, rely, oars, added] = [sense(bank), sense(bank, 'verb'), sense(bank), sense(bank, 'adjective')]
-    const glossed = [
-      fact('sense', money.id, { gloss: 'An institution that keeps money.' }),
-      fact('sense', rely.id, { gloss: 'To rely on.' }),
-      fact('sense', oars.id, { gloss: 'A row of oars.' }),
-      fact('sense', added.id, { gloss: 'Of a bank.' }),
-    ]
-    // A list may still name a sense whose gloss was since retracted: it is not shown.
-    const gone = id<SenseId>()
-    const published = fact('sense_list', bank.id, { common: [rely.id, money.id, gone, bankSense.id], extra: [oars.id] })
-    const pending = fact('sense_list', bank.id, { common: [bankSense.id], extra: [] }, 'pending')
-    const listed: EntrySnapshot = {
-      ...snapshot,
-      senses: [bankSense, added, oars, money, rely],
-      facts: [...snapshot.facts, ...glossed, published, pending],
-    }
-    const view = project(listed)
-    expect(view?.meanings.map((meaning) => [meaning.pos, meaning.senses.map((one) => [one.id, one.rare])])).toEqual([
-      ['verb', [[rely.id, false]]],
-      [
-        'noun',
-        [
-          [money.id, false],
-          [bankSense.id, false],
-          [oars.id, true],
-        ],
-      ],
-      ['adjective', [[added.id, false]]],
-    ])
-    expect(view?.review.sense_list).toEqual(review(published))
-    expect(view ? publicFactIds(view).has(published.id) : false).toBe(true)
-    const unlisted = project({ ...listed, facts: [...snapshot.facts, ...glossed, pending] })
-    expect(unlisted?.review.sense_list).toBeNull()
-    expect(unlisted?.meanings.map((meaning) => meaning.pos)).toEqual(['noun', 'adjective', 'verb'])
-    expect(senses(unlisted).map((one) => one.rare)).toEqual([false, false, false, false, false])
-  })
-
-  it('shows only published facts, each with its review [spec: catalog/visibility]', () => {
-    const { snapshot, bank, bankSense, shoreSense } = bankWorld()
-    const view = project(snapshot)
-    expect(view?.meanings[0]?.forms).toEqual({ plural: [{ form: 'banks', irregular: false }] })
-    expect(view?.variants).toEqual([])
-    expect(view?.pronunciations).toEqual([
-      { ipa: 'bæŋk', accent: 'us', review: expect.objectContaining({ verdict: 'uncertain' }) },
-    ])
-    expect(senses(view)).toHaveLength(1)
-    const only = firstSense(view)
-    expect(only).toMatchObject({ id: bankSense.id, gloss: 'land beside a river', labels: [], rare: false })
-    expect(only?.review.gloss).toMatchObject({ verdict: 'uncertain', confidence: 0.6 })
-    expect(only?.examples.map((example) => example.text)).toEqual(['We sat on the bank.'])
-    expect(only?.translations).toEqual({ fr: ['rive'] })
-    expect(only?.relations.synonyms).toEqual([
-      expect.objectContaining({ lemma: 'shore', sense_id: shoreSense.id, gloss: 'land along water' }),
-    ])
-    const entryFact = snapshot.facts.find((one) => one.kind === 'entry') as Fact
-    expect(view?.review.entry).toEqual(review(entryFact))
-    expect(view?.id).toBe(bank.id)
+    const patterned = fact('grammar', river.id, { patterns: ['ing_form'], prepositions: ['on'] })
+    expect(firstSense(project({ ...snapshot, facts: [...snapshot.facts, patterned] }))?.grammar).toMatchObject({
+      patterns: ['ing_form'],
+      prepositions: ['on'],
+    })
   })
 
   it('splits pronunciations, forms, variants, and labels the way a learner reads them [spec: catalog/meaning-shape] [spec: facts/write-labels]', () => {
-    const { snapshot, bank, bankSense } = bankWorld()
-    const tilt = sense(bank, 'verb')
-    const neat = sense(bank, 'adjective')
+    const bank = entry('bank')
+    const river = inventorySense('Land beside a river.')
+    const tilt = inventorySense('To tilt an aircraft.', 'verb', { register: 'technical' })
+    const neat = inventorySense('Neat.', 'adjective', { register: 'informal', region: 'british' })
     const facts = [
-      fact('entry', bank.id, {}),
-      fact('sense', bankSense.id, { gloss: 'Land beside a river.' }),
-      fact('sense', tilt.id, { gloss: 'To tilt an aircraft.', register: 'technical' }),
-      fact('sense', neat.id, { gloss: 'Neat.', register: 'informal' }),
+      inventory(bank, [river, tilt, neat]),
       fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'us' }),
       fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'uk', strength: 'weak' }),
       fact('pronunciation', bank.id, { ipa: 'bɛŋk', accent: 'us', pos: 'verb' }),
@@ -244,7 +282,7 @@ describe('public read model', () => {
       fact('form', bank.id, { form: 'banque', type: 'variant' }),
       fact('form', bank.id, { form: 'bancque', type: 'variant', pos: 'noun' }),
     ]
-    const view = project({ ...snapshot, senses: [bankSense, tilt, neat], facts })
+    const view = project(snapshotOf(bank, facts))
     expect(view?.pronunciations.map(({ ipa, accent, strength }) => ({ ipa, accent, strength }))).toEqual([
       { ipa: 'bæŋk', accent: 'us', strength: undefined },
       { ipa: 'bæŋk', accent: 'uk', strength: 'weak' },
@@ -267,7 +305,11 @@ describe('public read model', () => {
       { form: 'banque', pos: undefined },
       { form: 'bancque', pos: 'noun' },
     ])
-    expect(senses(view).map((one) => one.labels)).toEqual([[], ['technical'], ['informal']])
+    expect(senses(view).map((one) => [one.labels, one.region])).toEqual([
+      [[], null],
+      [['technical'], null],
+      [['informal'], 'british'],
+    ])
     // A form or pronunciation with no meaning to show it is not shown, nor public, but its form is indexed.
     expect(view?.forms.filter((one) => ['banka', 'bankest'].includes(one.form))).toEqual([
       { form: 'banka', type: 'plural', pos: 'pronoun' },
@@ -283,36 +325,36 @@ describe('public read model', () => {
   })
 
   it('groups relations by what they say about each end [spec: catalog/relation-groups]', () => {
-    const { snapshot, bank, bankSense } = bankWorld()
+    const bank = entry('bank')
+    const river = inventorySense('Land beside a river.')
     const others = {
       shore: neighbor('shore', 'Land along water.'),
       sea: neighbor('sea', 'Open water.'),
       land: neighbor('land', 'Ground.'),
       edge: neighbor('edge', 'A border.'),
-      river: neighbor('river', 'Flowing water.'),
+      stream: neighbor('river', 'Flowing water.'),
       mud: neighbor('mud', 'Wet earth.'),
       dune: neighbor('dune', 'A hill of sand.'),
     }
-    const relation = (type: FactPayloads['relation']['type'], from: SenseId, to: SenseId) =>
-      fact('relation', from, { type, target_sense_id: to })
+    const relation = (type: FactPayloads['relation']['type'], from: SenseId, to: SenseId, domain?: 'biology') =>
+      fact('relation', from, { type, target_sense_id: to, ...(domain ? { domain } : {}) })
     const outgoing = [
-      relation('synonym', bankSense.id, others.shore.sense.id),
-      relation('hypernym', bankSense.id, others.land.sense.id),
-      relation('part_of', bankSense.id, others.river.sense.id),
+      relation('synonym', river.id, others.shore.sense.id),
+      relation('hypernym', river.id, others.land.sense.id, 'biology'),
+      relation('part_of', river.id, others.stream.sense.id),
     ]
     const incoming = [
-      relation('antonym', others.sea.sense.id, bankSense.id),
-      relation('hypernym', others.dune.sense.id, bankSense.id),
-      relation('part_of', others.edge.sense.id, bankSense.id),
-      relation('synonym', others.mud.sense.id, bankSense.id),
+      relation('antonym', others.sea.sense.id, river.id),
+      relation('hypernym', others.dune.sense.id, river.id),
+      relation('part_of', others.edge.sense.id, river.id),
+      relation('synonym', others.mud.sense.id, river.id),
     ]
-    const all = Object.values(others)
-    const view = project({
-      ...snapshot,
-      facts: [fact('entry', bank.id, {}), fact('sense', bankSense.id, { gloss: 'Land beside a river.' }), ...outgoing],
-      incoming,
-      neighbors: { senses: all.map((one) => one.sense), facts: all.flatMap((one) => one.facts) },
-    })
+    const view = project(
+      snapshotOf(bank, [inventory(bank, [river]), ...outgoing], {
+        incoming,
+        neighbors: neighborsOf(...Object.values(others)),
+      }),
+    )
     const lemmas = Object.fromEntries(
       Object.entries(firstSense(view)?.relations ?? {}).map(([group, related]) => [
         group,
@@ -328,17 +370,46 @@ describe('public read model', () => {
       parts: ['edge'],
     })
     expect(firstSense(view)?.relations.broader).toEqual([
-      { lemma: 'land', sense_id: others.land.sense.id, gloss: 'Ground.', review: review(outgoing[1] as Fact) },
+      {
+        lemma: 'land',
+        sense_id: others.land.sense.id,
+        gloss: 'Ground.',
+        domain: 'biology',
+        review: review(outgoing[1] as Fact),
+      },
     ])
   })
 
-  it('keeps every language and names each topic, with the first translation in the summary', () => {
-    const { snapshot, bankSense } = bankWorld()
+  it('hides a relation until its other end is listed by a live entry with a published inventory [spec: catalog/relation-visibility]', () => {
+    const { snapshot, shore } = bankWorld()
+    const synonyms = (neighbors: EntrySnapshot['neighbors']) =>
+      firstSense(project({ ...snapshot, neighbors }))?.relations.synonyms
+    expect(synonyms({ ...neighborsOf(shore), liveEntries: new Set() })).toEqual([])
+    expect(synonyms({ ...neighborsOf(shore), lemmas: new Map() })).toEqual([])
+    expect(synonyms(neighborsOf({ ...shore, inventory: { ...shore.inventory, status: 'pending' } }))).toEqual([])
+    expect(synonyms(neighborsOf())).toEqual([])
+  })
+
+  it('shows a relation pointing at a sense from its other end', () => {
+    const { bank, river, shore, snapshot, bankInventory } = bankWorld()
+    const relation = snapshot.facts.find((one) => one.kind === 'relation') as Fact
+    const bankAsNeighbor: Neighbor = { node: bank, sense: river, inventory: bankInventory }
+    const fromShore = snapshotOf(shore.node, [shore.inventory], {
+      incoming: [relation],
+      neighbors: neighborsOf(bankAsNeighbor),
+    })
+    expect(firstSense(project(fromShore))?.relations.synonyms).toEqual([
+      expect.objectContaining({ lemma: 'bank', sense_id: river.id }),
+    ])
+    expect(firstSense(project({ ...fromShore, neighbors: neighborsOf() }))?.relations.synonyms).toEqual([])
+  })
+
+  it('keeps every translation and names each topic, with the first translation in the summary [spec: catalog/language]', () => {
+    const { snapshot, river } = bankWorld()
     const facts = [
       ...snapshot.facts,
-      fact('translation', bankSense.id, { language: 'zh', text: '河岸' }),
-      fact('translation', bankSense.id, { language: 'zh', text: '岸' }),
-      fact('topic', bankSense.id, { topic_id: 'kitchen' as TopicId }),
+      fact('translation', river.id, { language: 'zh', of: 'sense', text: '岸' }),
+      fact('topic', river.id, { topic_id: 'kitchen' as TopicId }),
     ]
     const view = project(
       { ...snapshot, facts },
@@ -353,7 +424,7 @@ describe('public read model', () => {
         },
       },
     )
-    expect(firstSense(view)?.translations).toEqual({ fr: ['rive'], zh: ['河岸', '岸'] })
+    expect(firstSense(view)?.translations).toEqual({ zh: ['河岸', '岸'] })
     expect(firstSense(view)?.review.translations.zh).toHaveLength(2)
     expect(firstSense(view)?.topics).toEqual([
       { id: 'kitchen', name: { en: 'In the kitchen', zh: '厨房' }, review: expect.anything() },
@@ -365,80 +436,16 @@ describe('public read model', () => {
       pos: ['noun'],
       cefr: 'A2',
       gloss: 'land beside a river',
-      translations: { fr: 'rive', zh: '河岸' },
+      translations: { zh: '河岸' },
     })
     expect(() => project({ ...snapshot, facts }, { topicNames: new Map() })).toThrow('does not exist')
   })
 
-  it('summarizes an entry without public senses', () => {
-    const { bank } = bankWorld()
-    const view = project({
-      entry: bank,
-      flagged: new Set(),
-      seed: false,
-      levelRank: null,
-      zipf: null,
-      coreVerb: false,
-      phrases: [],
-      family: [],
-      senses: [],
-      facts: [fact('entry', bank.id, {})],
-      incoming: [],
-      neighbors: { senses: [], facts: [] },
-    })
+  it('summarizes an inventory with no senses', () => {
+    const bank = entry('bank')
+    const view = project(snapshotOf(bank, [inventory(bank, [])]))
     expect(view?.meanings).toEqual([])
     expect(view?.summary).toEqual({ lemma: 'bank', pos: [], cefr: null, gloss: null, translations: {} })
-  })
-
-  it('hides an entry whose entry fact is not published', () => {
-    const { snapshot } = bankWorld()
-    const hidden = {
-      ...snapshot,
-      facts: snapshot.facts.map((f) => (f.kind === 'entry' ? { ...f, status: 'pending' as const } : f)),
-    }
-    expect(project(hidden)).toBeNull()
-  })
-
-  it('hides a relation until both endpoint senses and their entries are published [spec: catalog/relation-visibility]', () => {
-    const { snapshot, neighborFacts } = bankWorld()
-    const unpublish = (kind: FactKind) => ({
-      ...snapshot,
-      neighbors: {
-        ...snapshot.neighbors,
-        facts: neighborFacts.map((f) => (f.kind === kind ? { ...f, status: 'pending' as const } : f)),
-      },
-    })
-    expect(firstSense(project(unpublish('entry')))?.relations.synonyms).toEqual([])
-    expect(firstSense(project(unpublish('sense')))?.relations.synonyms).toEqual([])
-    const unknownTarget = { ...snapshot, neighbors: { senses: [], facts: [] } }
-    expect(firstSense(project(unknownTarget))?.relations.synonyms).toEqual([])
-  })
-
-  it('shows a relation pointing at a sense from its other end', () => {
-    const { shore, shoreSense, bankSense, snapshot } = bankWorld()
-    const relation = snapshot.facts.find((f) => f.kind === 'relation') as Fact
-    const fromShore: EntrySnapshot = {
-      entry: shore,
-      flagged: new Set(),
-      seed: false,
-      levelRank: null,
-      zipf: null,
-      coreVerb: false,
-      phrases: [],
-      family: [],
-      senses: [shoreSense],
-      facts: [fact('entry', shore.id, {}), fact('sense', shoreSense.id, { gloss: 'land along water' })],
-      incoming: [relation],
-      neighbors: {
-        senses: [bankSense],
-        facts: snapshot.facts.filter((f) => f.kind === 'entry' || f.kind === 'sense'),
-      },
-    }
-    expect(firstSense(project(fromShore))?.relations.synonyms).toEqual([
-      expect.objectContaining({ lemma: 'bank', sense_id: bankSense.id }),
-    ])
-    const hiddenSource = { ...fromShore, neighbors: { senses: [bankSense], facts: [] } }
-    expect(firstSense(project(hiddenSource))?.relations.synonyms).toEqual([])
   })
 
   it('places a form under its labelled part of speech, else the first carrier of its type the entry has [spec: catalog/form-placement]', () => {
@@ -456,69 +463,46 @@ describe('public read model', () => {
     expect(formMeaning('variant', undefined, meanings('noun'))).toBeUndefined()
   })
 
-  it('projects syllables, a form pronunciation, and example translations [spec: catalog/new-fields]', () => {
+  it('projects syllables, a form pronunciation, example translations, and the phrases list [spec: catalog/new-fields]', () => {
     const go = entry('go')
-    const move = sense(go, 'verb')
+    const move = inventorySense('To move.', 'verb')
+    const example = fact('example', move.id, { text: 'We go home.' })
+    const syllables = fact('syllables', go.id, { syllables: ['go'] })
+    const phrases = fact('phrases', go.id, { phrases: ['go on', 'go out'] })
     const facts = [
-      fact('entry', go.id, {}),
-      fact('sense', move.id, { gloss: 'To move.' }),
+      inventory(go, [move]),
       fact('form', go.id, { form: 'went', type: 'past', ipa: 'went', accent: 'uk' }),
-      fact('syllables', go.id, { syllables: ['go'] }),
-      fact('example', move.id, { text: 'We go home.', translations: { zh: '我们回家。' } }),
+      syllables,
+      phrases,
+      example,
+      fact('translation', example.id, { language: 'zh', of: 'example', text: '我们回家。' }),
     ]
-    const view = project({ ...bankWorld().snapshot, entry: go, senses: [move], facts })
+    const view = project(snapshotOf(go, facts))
     expect(view?.meanings[0]?.forms).toEqual({ past: [{ form: 'went', irregular: true, ipa: 'went', accent: 'uk' }] })
     expect(view?.syllables).toEqual(['go'])
-    expect(view?.review.syllables).toEqual(expect.objectContaining({ fact_id: expect.any(String) }))
+    expect(view?.phrases).toEqual(['go on', 'go out'])
+    expect(view?.review.syllables).toEqual(review(syllables))
+    expect(view?.review.phrases).toEqual(review(phrases))
     expect(view?.meanings[0]?.senses[0]?.examples[0]).toMatchObject({
       text: 'We go home.',
       translations: { zh: '我们回家。' },
     })
   })
 
-  it('shows a sense region and the published gap closures of the entry and its shown senses [spec: catalog/region-and-closures]', () => {
-    const may = entry('May')
-    const month = sense(may)
-    const hidden = sense(may)
-    const entryClosure = fact('gap_closure', may.id, {
-      gap: 'phrases',
-      reason: 'A month name builds no phrasal verbs.',
-    })
-    const senseClosure = fact('gap_closure', month.id, { gap: 'collocations', reason: 'No common collocations.' })
-    const facts = [
-      fact('entry', may.id, {}),
-      fact('sense', month.id, { gloss: 'The fifth month.', region: 'british' }),
-      fact('sense', hidden.id, { gloss: 'A pending sense.' }, 'pending'),
-      entryClosure,
-      senseClosure,
-      fact('gap_closure', hidden.id, { gap: 'topics', reason: 'Hidden.' }),
-      fact('gap_closure', month.id, { gap: 'topics', reason: 'Pending.' }, 'pending'),
-    ]
-    const view = project({ ...bankWorld().snapshot, entry: may, senses: [month, hidden], facts })
-    expect(firstSense(view)).toMatchObject({ region: 'british', labels: [] })
-    expect(view?.review.closures).toEqual([
-      { gap: 'phrases', sense_id: null, reason: 'A month name builds no phrasal verbs.', ...review(entryClosure) },
-      { gap: 'collocations', sense_id: month.id, reason: 'No common collocations.', ...review(senseClosure) },
-    ])
-    expect(publicFactIds(view as StoredEntry)).toContain(senseClosure.id)
-    expect(firstSense(project(bankWorld().snapshot))?.region).toBeNull()
-  })
-
   it('indexes every published form for lookup, shown or not [spec: catalog/form-index]', () => {
     const will = entry('will')
-    const modal = sense(will, 'auxiliary')
-    const testament = sense(will, 'noun')
+    const modal = inventorySense('Expressing the future.', 'auxiliary')
+    const testament = inventorySense('A legal document.')
     const facts = [
-      fact('entry', will.id, {}),
-      fact('sense', modal.id, { gloss: 'Expressing the future.' }),
-      fact('sense', testament.id, { gloss: 'A legal document.' }),
+      inventory(will, [modal, testament]),
       fact('form', will.id, { form: 'would', type: 'past' }),
       fact('form', will.id, { form: 'wills', type: 'plural' }),
       fact('form', will.id, { form: 'willed', type: 'past', pos: 'verb' }),
       fact('form', will.id, { form: 'willing', type: 'present_participle', pos: 'verb' }, 'pending'),
       fact('form', will.id, { form: 'wil', type: 'variant' }),
+      fact('form', will.id, { form: 'willer', type: 'comparative' }),
     ]
-    const view = project({ ...bankWorld().snapshot, entry: will, senses: [modal, testament], facts })
+    const view = project(snapshotOf(will, facts))
     expect(view?.meanings.map(({ pos, forms }) => ({ pos, forms }))).toEqual([
       { pos: 'auxiliary', forms: { past: [{ form: 'would', irregular: true }] } },
       { pos: 'noun', forms: { plural: [{ form: 'wills', irregular: false }] } },
@@ -528,11 +512,32 @@ describe('public read model', () => {
       { form: 'wills', type: 'plural', pos: 'noun' },
       { form: 'willed', type: 'past', pos: 'verb' },
       { form: 'wil', type: 'variant', pos: null },
+      { form: 'willer', type: 'comparative', pos: null },
     ])
   })
 
   it('refuses the review of unreviewed facts', () => {
     const { bank } = bankWorld()
     expect(() => reviewOf(fact('form', bank.id, { form: 'x', type: 'plural' }, 'pending'))).toThrow('not a reviewed')
+    expect(() => reviewOf({ ...fact('form', bank.id, { form: 'x', type: 'plural' }), review: null })).toThrow(
+      'not a reviewed',
+    )
+  })
+})
+
+describe('management view', () => {
+  it('shows every fact once, with relations pointing at the entry, and the entry scores', () => {
+    const { snapshot, river } = bankWorld()
+    const incoming = fact('relation', id<SenseId>(), { type: 'antonym', target_sense_id: river.id })
+    const repeated = snapshot.facts[0] as Fact
+    const view = managedEntryView({ ...snapshot, incoming: [incoming, repeated] })
+    expect(view.entry).toBe(snapshot.entry)
+    expect(view.batch).toBe(1)
+    expect(view.senses).toBe(snapshot.senses)
+    expect(view.facts.map((one) => one.id)).toEqual([...snapshot.facts, incoming].map((one) => one.id))
+    expect(view.completeness).toBeGreaterThan(0)
+    expect(view.completeness).toBeLessThan(1)
+    expect(view.credibility).toBeGreaterThan(0)
+    expect(view.slots.total).toBeGreaterThan(0)
   })
 })

@@ -26,7 +26,9 @@ const storedSense = (id: string, topics: string[], translations: Record<string, 
   translations,
   grammar: { countability: 'countable', patterns: [], prepositions: [], review: review(`g-${id}`) },
   examples: [{ text: `An example of ${id}.`, translations: { zh: `${id} 的例句。` }, review: review(`x-${id}`) }],
-  collocations: [{ text: `river ${id}`, pattern: 'noun_noun', review: review(`c-${id}`) }],
+  collocations: [
+    { text: `river ${id}`, pattern: 'noun_noun', translations: { zh: `${id} 的搭配` }, review: review(`c-${id}`) },
+  ],
   topics: topics.map((topic) => ({
     id: topic as TopicId,
     name: { en: `Topic ${topic}`, zh: `话题 ${topic}` },
@@ -89,7 +91,8 @@ const bank: StoredEntry = {
     },
   ],
   summary,
-  review: { entry: review('e1'), sense_list: null, syllables: review('y1'), closures: [] },
+  phrases: ['bank on'],
+  review: { inventory: review('e1'), syllables: review('y1'), phrases: review('h1') },
   forms: [
     { form: 'banks', type: 'plural', pos: 'noun' },
     { form: 'banked', type: 'past', pos: 'verb' },
@@ -219,7 +222,7 @@ describe('public read variants', () => {
     expect(plain).not.toContain('fact_id')
 
     const reviewed = shapeEntry(bank, links, { lang: 'zh', review: true })
-    expect(reviewed.review).toEqual({ entry: review('e1'), sense_list: null, syllables: review('y1'), closures: [] })
+    expect(reviewed.review).toEqual({ inventory: review('e1'), syllables: review('y1'), phrases: review('h1') })
     expect(reviewed.pronunciations[0]?.review).toEqual(review('p1'))
     expect(reviewed.variants[0]?.review).toEqual(review('v1'))
     expect(reviewed.morphology?.review).toEqual(review('m1'))
@@ -245,6 +248,14 @@ describe('public read variants', () => {
     const entry = shapeEntry(bank, links, { lang: null, review: false })
     expect(entry.syllables).toEqual(['bank'])
     expect(entry.meanings[0]?.forms).toEqual({ plural: [{ form: 'banks', irregular: false }] })
+  })
+
+  it('shows a collocation translation in the read language, like an example [spec: catalog/new-fields]', () => {
+    const collocationOf = (lang: string | null) =>
+      shapeEntry(bank, links, { lang, review: false }).meanings[0]?.senses[0]?.collocations[0]
+    expect(collocationOf('zh')).toEqual({ text: 'river s1', pattern: 'noun_noun', translation: 's1 的搭配' })
+    expect(collocationOf('all')).toEqual({ text: 'river s1', pattern: 'noun_noun', translation: { zh: 's1 的搭配' } })
+    expect(collocationOf(null)).toEqual({ text: 'river s1', pattern: 'noun_noun' })
   })
 
   it('links each word formation part with a public entry of that spelling', () => {

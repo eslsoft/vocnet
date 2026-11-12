@@ -1,44 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { canApply, decide, isLive, jevVerdict, reviewEffects, reviewModeOf } from './fact-lifecycle'
+import { canApply, decide, isLive } from './fact-lifecycle'
 
 describe('fact lifecycle', () => {
   it('publishes passing and uncertain reviews and rejects only failures [spec: facts/publish-with-flaws]', () => {
-    expect(decide('review', 'pass')).toBe('publish')
-    expect(decide('review', 'uncertain')).toBe('publish')
-    expect(decide('review', 'fail')).toBe('reject')
+    expect(decide('pass')).toBe('publish')
+    expect(decide('uncertain')).toBe('publish')
+    expect(decide('fail')).toBe('reject')
   })
 
-  it('keeps a revalidated fact published unless its new review fails [spec: facts/revalidation-outcome]', () => {
-    expect(['pass', 'uncertain', 'fail'].map((verdict) => decide('revalidation', verdict as never))).toEqual([
-      'reconfirm',
-      'reconfirm',
-      'invalidate',
-    ])
-    expect(decide('revalidation', 'unreviewable')).toBe('release')
-    expect(decide('review', 'unreviewable')).toBe('reject')
-    expect(reviewEffects.release).toEqual({ outcome: 'published', records: false })
-    expect(canApply('release', 'published')).toBe(true)
-    expect(canApply('reconfirm', 'published')).toBe(true)
-    expect(canApply('invalidate', 'published')).toBe(true)
-    expect(canApply('invalidate', 'pending')).toBe(false)
-  })
-
-  it('keeps a fact of a flagging kind published with its failed revalidation [spec: facts/sense-revalidation-flag]', () => {
-    expect(decide('revalidation', 'fail', 'flag')).toBe('flag')
-    expect(decide('revalidation', 'fail', 'invalidate')).toBe('invalidate')
-    expect(decide('revalidation', 'pass', 'flag')).toBe('reconfirm')
-    expect(decide('review', 'fail', 'flag')).toBe('reject')
-    expect(reviewEffects.flag).toEqual({ outcome: 'published', records: true })
-    expect(canApply('flag', 'published')).toBe(true)
-    expect(canApply('flag', 'pending')).toBe(false)
-  })
-
-  it('reviews pending facts and published facts marked for revalidation, nothing else', () => {
-    const at = '2026-01-01T00:00:00.000Z'
-    expect(reviewModeOf({ status: 'pending', revalidateSince: null })).toBe('review')
-    expect(reviewModeOf({ status: 'published', revalidateSince: at })).toBe('revalidation')
-    expect(reviewModeOf({ status: 'published', revalidateSince: null })).toBeNull()
-    expect(reviewModeOf({ status: 'rejected', revalidateSince: at })).toBeNull()
+  it('rejects a fact whose context leaves nothing to judge', () => {
+    expect(decide('unreviewable')).toBe('reject')
   })
 
   it('allows only the transitions in the state machine', () => {
@@ -51,6 +22,8 @@ describe('fact lifecycle', () => {
     expect(canApply('retract', 'superseded')).toBe(false)
     expect(canApply('rereview', 'rejected')).toBe(true)
     expect(canApply('rereview', 'retracted')).toBe(false)
+    expect(canApply('curate_pass', 'published')).toBe(true)
+    expect(canApply('curate_fail', 'rejected')).toBe(false)
   })
 
   it('treats pending and published facts as live', () => {
@@ -58,20 +31,5 @@ describe('fact lifecycle', () => {
       'pending',
       'published',
     ])
-  })
-})
-
-describe('Jev verdict policy', () => {
-  it('passes when every answer is at least 0.8, with the weakest answer as confidence [spec: facts/jev-policy]', () => {
-    expect(jevVerdict({ a: 0.8, b: 0.97 })).toEqual({ verdict: 'pass', confidence: 0.8 })
-  })
-
-  it('fails when any answer is below 0.5 [spec: facts/jev-policy]', () => {
-    expect(jevVerdict({ a: 0.99, b: 0.44 })).toEqual({ verdict: 'fail', confidence: 0.44 })
-  })
-
-  it('is uncertain from 0.5 up to 0.8 [spec: facts/jev-policy]', () => {
-    expect(jevVerdict({ a: 0.99, b: 0.5 })).toEqual({ verdict: 'uncertain', confidence: 0.5 })
-    expect(jevVerdict({ a: 0.79 })).toEqual({ verdict: 'uncertain', confidence: 0.79 })
   })
 })
