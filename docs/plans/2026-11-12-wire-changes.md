@@ -1,0 +1,99 @@
+# Wire changes for the production redesign (2026-11-12)
+
+Companion to `2026-11-12-production-redesign.md`. This is the contract the producer adapts to. The
+authoritative schemas are `shared/*.ts` and `GET /manage/openapi.json` once the server ships them;
+this note fixes the shape and the semantics in advance. Field names are snake_case on the wire.
+
+## Simplifications on top of the plan
+- **No provisional senses.** Workers never create entries, and the queue runs a whole batch's stage 1
+  (sense inventories) before its relation stages, so every relation target in an admitted entry has
+  a published inventory by then. A relation to an entry without one is not submitted: the pass
+  records the target as `blocked_on` (below), and the item reopens when that inventory publishes.
+- **No `entry` fact kind.** Headwords are admitted by import; phrase entries by their headword's
+  published `phrases` fact. An entry is live when it is an imported headword or a phrase listed in a
+  published `phrases` fact.
+
+## Fact kinds
+
+| kind | subject | cardinality | payload | review |
+|---|---|---|---|---|
+| `senses` (new, replaces `sense` + `sense_list`) | entry | one | `{ senses: [{ id?, pos, gloss, register?, region?, rank: "common" \| "extra" }] }` in display order (common first) | Jev per gloss, then LLM on the whole inventory |
+| `form` | entry | many | unchanged | Jev → LLM |
+| `relation` | sense | many | unchanged | Jev → LLM (antonym pass ≥ 0.9) |
+| `pronunciation` | entry | many | unchanged | LLM |
+| `syllables` | entry | one | unchanged | luna → LLM |
+| `morphology` | entry | one | unchanged | Jev → LLM |
+| `grammar` | sense | one | unchanged | Jev → LLM |
+| `topic` | sense | many (≤ 3) | unchanged | mean(Jev, luna) → LLM |
+| `collocation` | sense | many (≤ 5) | unchanged | LLM |
+| `example` | sense | many | `{ text }` (no `translations`) | LLM |
+| `translation` (reshaped) | the translated node: a sense, an example fact, or a collocation fact | one per subject and language | `{ language: "zh", text }` | Jev or luna → LLM |
+| `phrases` (new) | entry | one | `{ phrases: [lemma] }` (multiword lemmas, no cap) | Jev per phrase, then LLM |
+
+Removed kinds: `entry`, `sense`, `sense_list`, `gap_closure`.
+
+### `senses` inventory
+- `id` names an existing sense of the entry to keep it (its relations, examples, translations stay
+  attached). Omit `id` for a new sense: publishing the inventory creates the sense and returns its id.
+  A sense of the entry missing from the published inventory is gone, and so is everything attached
+  to it.
+- Only items of type `senses` submit it. After it publishes, workers cannot change it; a correction
+  is curator-only (403 `curated_fact` otherwise).
+- `POST /manage/v1/senses` is removed.
+
+### `translation`
+- `subject_id` is a sense id (its learner equivalent), an example fact id, or a collocation fact id.
+  When the example or collocation is superseded, its translation stops showing and the entry's
+  translations item reopens for the new fact.
+
+### `phrases`
+- Lists every phrase of the headword that meets the admission rule. Publishing it creates any missing
+  phrase entry (seeded at the headword's batch) and makes it live; the phrase entries then get their
+  own items. A phrase may be listed by several headwords.
+- `POST /manage/v1/entries` is removed for agents (curator and import only).
+
+## Work items
+
+### Gap types
+Required (an item stays open until filled):
+`senses` (entry has no live inventory), `forms`, `pronunciation`, `form_pronunciations`,
+`morphology`, `syllables`, `examples`, `translations`.
+
+Optional (one honest pass completes them):
+`phrases`, `family`, `category`, `parts`, `synonyms`, `topics`, `grammar`, `collocations`.
+
+Changes:
+- `senses` replaces `senses` + `sense_list`; its context carries the entry view.
+- `translations` is per entry and language: `{ type: "translations", language: "zh", missing: [{ target: "sense" | "example" | "collocation", id }] }`. Replaces `translations` (per sense) and `example_translations`.
+- `weak_fact` is removed (weak facts become curator tickets).
+- No gap descriptions mention `gap_closure` any more.
+
+### Passes and attempts
+- `POST /manage/v1/work/{lease}/complete` items: `{ id, note?, blocked_on?: [lemma] }`.
+  - For an optional gap, a pass that submits nothing must give `note` (what was considered and why
+    none fits, ≤ 500 chars); `blocked_on` lists lemmas that would fit but are not entries or have no
+    published inventory yet. The item closes; it reopens when a `blocked_on` lemma becomes live.
+  - `note` stays optional for other passes.
+- An item gets **at most 2 passes**. A pass makes progress only if the item's filled count grew once
+  its reviews settled. After the second pass without the gap filled, the item leaves the queue as a
+  ticket. `attempts` and `WorkItemState` change accordingly: `curation` becomes `ticket`.
+- The claim context gains `rejections`: the item's rejected facts from earlier passes with their
+  review reasons, so the retry addresses them.
+
+### Submissions
+- Submitting content (kind, subject, content key) that was already rejected returns
+  **409 `rejected_before`** with the earlier review, without a new review. Treat it like any other
+  409: fix the content, do not resend it.
+
+## Tickets (replace curation and feedback)
+- `GET /manage/v1/tickets` (curators): `{ items: [{ id, type: "stuck_work" | "feedback" | "audit" | "missing_word", entry_id?, subject_id?, reason, status, created_at }], next_cursor }`.
+- `POST /manage/v1/tickets/{id}/resolve` (curators): `{ resolution }`.
+- `GET /manage/v1/work/curation` and the `/manage/v1/feedback` queue endpoints are removed. The public
+  `POST /v1/feedback` stays and opens a `feedback` ticket.
+
+## Producer impact summary
+- Delete the feedback loop.
+- Never call `POST /entries` or `POST /senses`; the `senses` item submits one inventory.
+- Translation items translate every listed target in one language.
+- Optional items: submit what exists; otherwise complete with `note` (+ `blocked_on`).
+- Use `rejections` on a retry; handle 409 `rejected_before`.
