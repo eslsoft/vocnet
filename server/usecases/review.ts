@@ -213,6 +213,25 @@ export async function recordDecision(
   return true
 }
 
+const PHRASE_LISTS_BATCH = 20
+
+/**
+ * Finishes the admission of published phrases lists that name a phrase with no live entry: the
+ * publish wrote the list's status first, so an admission that failed after it is not retried by the
+ * review queue. Admission is idempotent. Returns how many lists it finished.
+ */
+export async function reconcilePhraseLists(deps: DecisionDeps): Promise<number> {
+  const ids = await deps.nodes.listUnadmittedPhraseLists(PHRASE_LISTS_BATCH)
+  const at = deps.clock.now().toISOString()
+  for (const id of ids) {
+    const list = (await deps.facts.find(id)) as FactOf<'phrases'> | null
+    if (!list) throw new Error(`Phrases list ${id} vanished while it was being admitted.`)
+    const phrases = await admitPhrases(deps, list, at)
+    await refreshEntries(deps, [list.subjectId, ...phrases])
+  }
+  return ids.length
+}
+
 const RECONCILE_AFTER_MS = 5 * 60 * 1000
 const RECONCILE_BATCH = 500
 

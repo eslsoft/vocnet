@@ -441,6 +441,20 @@ export function fakeWorld(): FakeWorld {
         row.revision += 1
       }
     },
+    listUnadmittedPhraseLists: async (limit) =>
+      world.facts
+        .filter(isKind('phrases'))
+        .filter(
+          (fact) =>
+            fact.status === 'published' &&
+            fact.payload.phrases.some((phrase) => {
+              const entry = world.entries.find((candidate) => candidate.lemma === phrase)
+              return !entry || !rowOf(entry.id).live
+            }),
+        )
+        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+        .slice(0, limit)
+        .map((fact) => fact.id),
     loadEntrySnapshot: async (entry) => {
       const own = world.senses.filter((sense) => sense.entryId === entry.id)
       const ownIds = new Set<string>(own.map((sense) => sense.id))

@@ -45,7 +45,7 @@ import {
 } from 'drizzle-orm'
 import { z } from 'zod'
 import { levelRankSql } from '../reference-sql'
-import { type Db, inIds } from './rows'
+import { type Db, idSet, inIds } from './rows'
 
 /**
  * Creates the entry's worklist row once the entry row exists, with the learner priority of its
@@ -91,18 +91,19 @@ const bumpRevision = { revision: sql`${worklist.revision} + 1` }
  * with every write that can change an entry's gaps or weak facts, so a rescore the write's use case
  * never got to still leaves the row claimable and listed as stale.
  */
-export function touchWorkOf(db: Db, nodeIds: string[] | SQLWrapper) {
+export function touchWorkOf(db: Db, nodeIds: readonly string[]) {
+  const ids = idSet(nodeIds)
   return db
     .update(worklist)
     .set(bumpRevision)
-    .where(or(inArray(worklist.entryId, nodeIds), inArray(worklist.entryId, ownersOf(db, nodeIds))))
+    .where(or(inArray(worklist.entryId, ids), inArray(worklist.entryId, ownersOf(db, ids))))
 }
 
 /**
  * The entries that own these nodes: a sense's entry, and for an example or collocation fact (what a
  * translation is about) the entry of its sense.
  */
-function ownersOf(db: Db, nodeIds: string[] | SQLWrapper) {
+function ownersOf(db: Db, nodeIds: SQLWrapper) {
   const factSenses = db.select({ id: facts.subjectId }).from(facts).where(inArray(facts.id, nodeIds))
   return db
     .select({ id: senses.entryId })
@@ -134,7 +135,7 @@ export function touchWorkOfFact(db: Db, factId: string) {
  * nodes. A relation fills a gap only while a live entry's published inventory lists the sense at
  * its other end, so that inventory changing changes the linked entries' gaps.
  */
-function linkedEntriesOf(db: Db, nodeIds: string[] | SQLWrapper) {
+function linkedEntriesOf(db: Db, nodeIds: SQLWrapper) {
   const nodeSenses = db
     .select({ id: senses.id })
     .from(senses)
@@ -171,7 +172,7 @@ export function touchLinkedWorkOfEntries(db: Db, entryIds: readonly string[]) {
   return db
     .update(worklist)
     .set(bumpRevision)
-    .where(inArray(worklist.entryId, linkedEntriesOf(db, [...entryIds])))
+    .where(inArray(worklist.entryId, linkedEntriesOf(db, idSet(entryIds))))
 }
 
 /** The entries a base part names in this fact, when it is a morphology fact: their family gap changes with it. */
@@ -200,12 +201,13 @@ export function touchLinkedWorkOfFact(db: Db, factId: string) {
  * relations link to a sense that is or belongs to one of them, of the head of a phrase among them,
  * and of the bases their word formations name: every row a write about the nodes can make stale.
  */
-export function relatedWorklistRows(db: Db, nodeIds: string[]) {
+export function relatedWorklistRows(db: Db, nodeIds: readonly string[]) {
+  const ids = idSet(nodeIds)
   return or(
-    inArray(worklist.entryId, nodeIds),
-    inArray(worklist.entryId, ownersOf(db, nodeIds)),
-    inArray(worklist.entryId, linkedEntriesOf(db, nodeIds)),
-    inArray(worklist.entryId, namedBases(db, inArray(sql`named.subject_id`, nodeIds))),
+    inArray(worklist.entryId, ids),
+    inArray(worklist.entryId, ownersOf(db, ids)),
+    inArray(worklist.entryId, linkedEntriesOf(db, ids)),
+    inArray(worklist.entryId, namedBases(db, inArray(sql`named.subject_id`, ids))),
   )
 }
 
@@ -333,10 +335,7 @@ export function createWorkRepo(db: Db): WorkRepo {
 
     async findItems(itemIds) {
       if (itemIds.length === 0) return []
-      const rows = await db
-        .select()
-        .from(workItems)
-        .where(inArray(workItems.id, [...itemIds]))
+      const rows = await db.select().from(workItems).where(inIds(workItems.id, itemIds))
       return rows.map(toWorkItem)
     },
 
@@ -471,7 +470,7 @@ export function createWorkRepo(db: Db): WorkRepo {
             .where(current),
         )
         .onConflictDoNothing()
-      const remove = db.delete(workItems).where(and(inArray(workItems.id, [...deletes]), current))
+      const remove = db.delete(workItems).where(and(inIds(workItems.id, deletes), current))
       const close = db
         .update(workItemLog)
         .set({ closedAt: now })
@@ -629,7 +628,7 @@ export function createWorkRepo(db: Db): WorkRepo {
       const bump = db
         .update(worklist)
         .set({ ...bumpRevision, lastWorkedAt: at })
-        .where(and(inArray(worklist.entryId, [...lease.entryIds]), stillHeld))
+        .where(and(inIds(worklist.entryId, lease.entryIds), stillHeld))
       const remove = db.delete(workLeases).where(held).returning({ id: workLeases.id })
       const [, , , , , removed] = await db.batch([attempts, markWorked, block, release, bump, remove])
       return removed.length > 0

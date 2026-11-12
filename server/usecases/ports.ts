@@ -66,6 +66,8 @@ export interface NodeRepo {
    * names it. `batch` is the batch the live ones join. Bumps the revision of every entry it changes.
    */
   setPhrasesLive(live: readonly EntryId[], dead: readonly EntryId[], batch: number | null): Promise<void>
+  /** Published phrases lists that name a phrase with no live entry, oldest first: their admission did not finish. */
+  listUnadmittedPhraseLists(limit: number): Promise<FactId[]>
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
   /** Every entry whose lemma starts with prefix and that the filter admits, in any status, in lemma order. */
   listEntrySummaries(filter: EntrySummaryFilter, page: PageRequest, now: string): Promise<Page<EntrySummary>>

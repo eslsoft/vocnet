@@ -6,7 +6,7 @@ import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { getFact, submitFact } from './facts'
 import { ReviewerTransportError } from './ports'
-import { reconcileReviews, reviewFact } from './review'
+import { reconcilePhraseLists, reconcileReviews, reviewFact } from './review'
 
 const scores = (score: number, model: string) => (questions: Record<string, string>) => ({
   model,
@@ -394,6 +394,25 @@ describe('a published phrases list', () => {
     await expect(reviewFact(world.deps, correction.id, 't')).resolves.toBe('published')
     expect(admission(world, 'take over')).toMatchObject({ live: true, batch: 0 })
     expect(admission(world, 'take off')).toBeUndefined()
+  })
+
+  it('finishes the admission of a published list that names phrases with no live entry [spec: facts/phrases-admit]', async () => {
+    const world = fakeWorld()
+    const give = await headword(world, 'give', [{ pos: 'verb', gloss: 'to hand something to someone' }])
+    // Published, but its admission never ran: the list's status was written before it failed.
+    rawFact(world, {
+      kind: 'phrases',
+      subjectId: give.entry.id,
+      status: 'published',
+      payload: { phrases: ['give up', 'give in'] },
+    })
+    expect(admission(world, 'give up')).toBeUndefined()
+
+    await expect(reconcilePhraseLists(world.deps)).resolves.toBe(1)
+    expect(admission(world, 'give up')).toMatchObject({ live: true, batch: 1 })
+    expect(admission(world, 'give in')).toMatchObject({ live: true, batch: 1 })
+    expect(await world.deps.work.countStale()).toBe(0)
+    await expect(reconcilePhraseLists(world.deps)).resolves.toBe(0)
   })
 })
 

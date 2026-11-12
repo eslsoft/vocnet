@@ -7,7 +7,7 @@ import { levelRank } from '@server/domain/reference'
 import type { Lemma } from '@server/domain/term'
 import { passKey } from '@server/domain/work'
 import type { EntrySummaryFilter, NodeRepo, PageRequest } from '@server/usecases/ports'
-import { type EntryId, type FactStatus, factStatusSchema } from '@shared/facts'
+import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
 import { MAX_PASSES, workTypeSchema } from '@shared/work'
 import { and, asc, count, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
@@ -250,8 +250,25 @@ export function createNodeRepo(db: Db): NodeRepo {
         createdBy: createdBy as PrincipalRef,
         createdAt: now,
       }))
+      // One JSON parameter for every row: a phrases list has no size cap, and D1 binds at most 100
+      // parameters per statement.
+      const field = (name: string) => sql`json_extract(value, ${`$.${name}`})`
       await db.batch([
-        db.insert(entries).values(fresh).onConflictDoNothing(),
+        db
+          .insert(entries)
+          .select(
+            db
+              .select({
+                id: field('id').as('id'),
+                lemma: field('lemma').as('lemma'),
+                createdBy: field('createdBy').as('created_by'),
+                createdAt: field('createdAt').as('created_at'),
+              })
+              .from(sql`json_each(${JSON.stringify(fresh)})`)
+              // SQLite reads ON CONFLICT after a bare FROM as a join constraint; a WHERE ends the select.
+              .where(sql`true`),
+          )
+          .onConflictDoNothing(),
         ...fresh.map((entry) => insertWorklistRow(db, entry)),
       ])
       const rows = await db
@@ -284,6 +301,22 @@ export function createNodeRepo(db: Db): NodeRepo {
           .where(and(inIds(worklist.entryId, [...dead]), sql`${worklist.entryId} not in (${stillNamed})`)),
         touchLinkedWorkOfEntries(db, [...live, ...dead]),
       ])
+    },
+
+    async listUnadmittedPhraseLists(limit) {
+      const rows = await db
+        .select({ id: facts.id })
+        .from(facts)
+        .where(
+          and(
+            eq(facts.kind, 'phrases'),
+            eq(facts.status, 'published'),
+            sql`exists (select 1 from json_each(${facts.payload}, '$.phrases') as phrase where not exists (select 1 from entries join worklist on worklist.entry_id = entries.id where entries.lemma = phrase.value and worklist.live = 1))`,
+          ),
+        )
+        .orderBy(asc(facts.updatedAt))
+        .limit(limit)
+      return rows.map((row) => row.id as FactId)
     },
 
     async loadEntrySnapshot(entry) {

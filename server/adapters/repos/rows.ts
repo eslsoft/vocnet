@@ -163,5 +163,11 @@ export function page<T, R>(
 }
 
 /** Membership in one bound JSON array, so a list of any length stays inside D1's 100 bound parameters a statement. */
+/**
+ * A list of ids as one bound parameter, to use in place of the list: D1 binds at most 100 parameters
+ * per statement, and a statement that tests one list in several subqueries would bind it each time.
+ */
+export const idSet = (ids: readonly string[]) => sql`(select value from json_each(${JSON.stringify(ids)}))`
+
 export const inIds = (column: SQLWrapper, ids: readonly string[]) =>
   sql`${column} in (select value from json_each(${JSON.stringify(ids)}))`

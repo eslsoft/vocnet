@@ -12,7 +12,7 @@ import { auditBoundary, requestBoundary } from './http/observability'
 import { publicReadBoundary } from './http/public-reads'
 import { ReviewerTransportError } from './usecases/ports'
 import { rebuildStalePublicViews } from './usecases/public-view'
-import { reconcileReviews, reviewFact } from './usecases/review'
+import { reconcilePhraseLists, reconcileReviews, reviewFact } from './usecases/review'
 import { purgeExpiredLeases } from './usecases/work'
 import { refreshStaleWork } from './usecases/work-scores'
 
@@ -91,6 +91,11 @@ export async function handleScheduled(env: Env): Promise<void> {
     'refresh_stale_work',
     () => refreshStaleWork(deps),
     (rescored) => ({ rescored }),
+  )
+  await timed(
+    'reconcile_phrase_lists',
+    () => reconcilePhraseLists(deps),
+    (admitted) => ({ admitted }),
   )
   await timed(
     'purge_expired_leases',
