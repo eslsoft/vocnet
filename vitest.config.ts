@@ -122,8 +122,6 @@ export default defineConfig({
                 MODEL_BASE_URL: 'https://models.test',
                 MODEL_API_KEY: 'test-model-key',
                 JEV_MODEL: 'jev-latest',
-                JEV_CONCURRENCY: '10',
-                REVIEW_LLM_CONCURRENCY: '5',
                 REVIEW_LLM_MODEL: 'llm-test',
                 DECISIONS_BASE_URL: 'https://decisions.test',
                 DECISIONS_MODEL: 'luna-test',

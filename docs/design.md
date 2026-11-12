@@ -2076,10 +2076,6 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   throughput and the concurrent calls on the model gateway: 100 at once tripped
   the gateway's rate limits, and 16 still reviews more facts an hour than the
   producers submit.
-  Each gateway model also has its own cap across every request the Worker
-  serves, `JEV_CONCURRENCY` and `REVIEW_LLM_CONCURRENCY` (10 and 5): a review
-  waits its turn for a slot before its call starts, so the wait never counts
-  against the call's timeout.
 - A cron trigger runs every five minutes, rescores up to 100 stale worklist
   rows, rebuilds up to 100 stale public views, and re-enqueues facts whose last
   status change is more than five minutes old and that are still `pending`, so
