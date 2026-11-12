@@ -387,6 +387,17 @@ describe('submitting a sense inventory', () => {
     )
     expect((next as FactOf<'senses'>).payload.senses.map((sense) => sense.id)).toEqual(senses.map((sense) => sense.id))
     expect(world.senses).toHaveLength(2)
+    // With no live inventory left, a resubmission may still name the entry's senses by id.
+    world.failReviews()
+    await drainReviews(world)
+    const { fact: byId } = await submit(
+      world,
+      inventory(entry.id, [
+        { id: senses[0]?.id, pos: 'verb', gloss: 'to move fast on foot', rank: 'common' },
+        { id: senses[1]?.id, pos: 'noun', gloss: 'a run: an act of running', rank: 'extra' },
+      ]),
+    )
+    expect(byId.status).toBe('pending')
   })
 
   it('keeps only senses of the entry', async () => {

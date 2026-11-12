@@ -81,7 +81,8 @@ const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Prom
         pos: null,
         admission: async () => ({
           lemma: entry.lemma,
-          senses: (await inventoryOf(deps, entry.id)).map(({ id: sense }) => sense),
+          // Every sense row of the entry, so a new inventory can keep a sense a rejected one named.
+          senses: (await deps.nodes.listSenses(entry.id)).map(({ id: sense }) => sense),
         }),
       }
     )
