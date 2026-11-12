@@ -3,7 +3,6 @@ import { managedEntrySchema } from './catalog'
 import {
   accentSchema,
   entryIdSchema,
-  factIdSchema,
   factKindSchema,
   factSchema,
   formTypeSchema,
@@ -35,7 +34,7 @@ const senseGap = { sense_id: senseIdSchema }
 
 /** An optional slot is complete after one honest pass, which states what it considered when it finds nothing. */
 const OPTIONAL =
-  'This slot is optional: submit every value a learner\'s dictionary gives. When none fits, complete the item with a note naming what you considered and why none fits, and list in blocked_on any fitting word that is not an entry yet or has no published sense inventory; the item reopens once such a word goes live.'
+  "This slot is optional: submit every value a learner's dictionary gives. When none fits, complete the item with a note naming what you considered and why none fits, and list in blocked_on any fitting word that is not an entry yet or has no published sense inventory; the item reopens once such a word goes live."
 
 const formSlotSchema = z.object({ type: formTypeSchema, pos: posSchema }).meta({ id: 'FormSlot' })
 
@@ -115,7 +114,8 @@ export const gapSchema = z
         type: z.literal('translations'),
         language: servedLanguageSchema,
         missing: z.array(translationTargetSchema).meta({
-          description: 'Each live sense, example, and collocation of the entry with no live translation in the language.',
+          description:
+            'Each live sense, example, and collocation of the entry with no live translation in the language.',
         }),
       })
       .meta({
@@ -144,9 +144,19 @@ export const workTypeSchema = z
 export type WorkType = z.infer<typeof workTypeSchema>
 
 /** The optional slots: one honest pass completes them, whether or not it finds a value. */
-export const OPTIONAL_GAPS = ['phrases', 'family', 'category', 'parts', 'synonyms', 'topics', 'grammar', 'collocations'] as const satisfies readonly WorkType[]
+export const OPTIONAL_GAPS = [
+  'phrases',
+  'family',
+  'category',
+  'parts',
+  'synonyms',
+  'topics',
+  'grammar',
+  'collocations',
+] as const satisfies readonly WorkType[]
 export type OptionalGap = (typeof OPTIONAL_GAPS)[number]
-export const isOptionalGap = (type: WorkType): type is OptionalGap => (OPTIONAL_GAPS as readonly WorkType[]).includes(type)
+export const isOptionalGap = (type: WorkType): type is OptionalGap =>
+  (OPTIONAL_GAPS as readonly WorkType[]).includes(type)
 
 export const claimWorkInputSchema = z
   .object({
@@ -282,9 +292,13 @@ export const workItemSchema = z
     stage: z.number().int().positive().meta({
       description: '1 identity, 2 meaning, 3 usage, 4 network: the priority policy stage of the type.',
     }),
-    attempts: z.number().int().nonnegative().meta({
-      description: `Completed passes that did not fill the gap. At ${MAX_PASSES} the item leaves the production queue as a ticket for a curator.`,
-    }),
+    attempts: z
+      .number()
+      .int()
+      .nonnegative()
+      .meta({
+        description: `Completed passes that did not fill the gap. At ${MAX_PASSES} the item leaves the production queue as a ticket for a curator.`,
+      }),
     gap: gapSchema,
   })
   .meta({ id: 'WorkItem' })
@@ -300,6 +314,19 @@ export const workClaimSchema = z
 /** The longest note a pass leaves. */
 export const PASS_NOTE_MAX = 500
 
+export const settleSlotInputSchema = z
+  .object({
+    type: workTypeSchema,
+    subject_id: z.uuid().meta({ description: 'The entry or sense the slot is on, as its work item names it.' }),
+    note: z.string().trim().min(1).max(PASS_NOTE_MAX).meta({ description: 'Why nothing fills the slot.' }),
+  })
+  .meta({
+    id: 'SettleSlotInput',
+    description:
+      'A curator records a pass on a slot nothing can fill (a required one included): the slot counts as filled and its item closes.',
+  })
+export type SettleSlotInput = z.infer<typeof settleSlotInputSchema>
+
 export const completeWorkInputSchema = z
   .object({
     items: z
@@ -307,21 +334,16 @@ export const completeWorkInputSchema = z
         z.object({
           id: workItemIdSchema,
           note: z.string().trim().min(1).max(PASS_NOTE_MAX).optional().meta({
-            description:
-              'What the pass did. Required with found_none: what was considered and why none fits.',
+            description: 'What the pass did. Required with found_none: what was considered and why none fits.',
           }),
           found_none: z.boolean().optional().meta({
             description:
-              'Optional slots only: the pass looked and found no value a learner\'s dictionary gives, so it submitted none. The slot is then complete.',
+              "Optional slots only: the pass looked and found no value a learner's dictionary gives, so it submitted none. The slot is then complete.",
           }),
-          blocked_on: z
-            .array(z.string().trim().min(1).max(100))
-            .max(20)
-            .optional()
-            .meta({
-              description:
-                'Optional slots only: lemmas that would fill the slot but are not live entries or have no published inventory yet. The item reopens when one goes live.',
-            }),
+          blocked_on: z.array(z.string().trim().min(1).max(100)).max(20).optional().meta({
+            description:
+              'Optional slots only: lemmas that would fill the slot but are not live entries or have no published inventory yet. The item reopens when one goes live.',
+          }),
         }),
       )
       .max(MAX_CLAIM_ITEMS)

@@ -462,12 +462,14 @@ export const openWorkCountsSchema = z
 export const managedEntrySchema = z
   .object({
     entry: entryNodeSchema,
+    live: z.boolean().meta({ description: 'An imported headword, or a phrase a published phrases list names.' }),
     batch: z.number().int().nonnegative().nullable().meta({
-      description: "The headword batch the entry was imported in, or its headword's for a phrase; null for an entry that is not live.",
+      description:
+        "The headword batch the entry was imported in, or its headword's for a phrase; null for an entry that is not live.",
     }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        "Share of the slots the gaps count that live facts fill or a pass completed: the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, a pronunciation per irregular form, and its phrases list; per common sense the category, parts, and synonym slots, topic, grammar, and collocation its part of speech needs, and its examples; and a translation per served language of every common sense, example, and collocation. Optional slots (phrases, family, category, parts, synonyms, topics, grammar, collocations) are complete after one pass. 1 means no gaps. Computed from the facts on read, never stored.",
+        'Share of the slots the gaps count that live facts fill or a pass completed: the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, a pronunciation per irregular form, and its phrases list; per common sense the category, parts, and synonym slots, topic, grammar, and collocation its part of speech needs, and its examples; and a translation per served language of every common sense, example, and collocation. Optional slots (phrases, family, category, parts, synonyms, topics, grammar, collocations) are complete after one pass. 1 means no gaps. Computed from the facts on read, never stored.',
     }),
     credibility: z.number().min(0).max(1).meta({
       description:

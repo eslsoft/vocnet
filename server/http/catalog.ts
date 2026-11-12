@@ -7,8 +7,8 @@ import {
   lookupForm,
   searchPublicEntries,
 } from '@server/usecases/catalog'
-import { submitFeedback } from '@server/usecases/feedback'
 import { listReferenceSources } from '@server/usecases/reference'
+import { submitFeedback } from '@server/usecases/tickets'
 import {
   entryPageSchema,
   entrySortSchema,
@@ -25,8 +25,8 @@ import {
   searchQueryTextSchema,
 } from '@shared/catalog'
 import { posSchema, relationDomainSchema, senseIdSchema, topicIdSchema } from '@shared/facts'
-import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/feedback'
 import { referenceSourceListSchema } from '@shared/reference'
+import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/tickets'
 import { z } from 'zod'
 import { etagOf, LIST_CACHE, notModified } from './caching'
 import { readVariant } from './language'

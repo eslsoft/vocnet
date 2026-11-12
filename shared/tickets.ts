@@ -44,7 +44,9 @@ export const ticketSchema = z
     type: ticketTypeSchema,
     target_type: ticketTargetTypeSchema,
     target: z.string().meta({ description: 'The entry, sense, or fact id, or the missing lemma.' }),
-    message: z.string().meta({ description: 'Why it needs a curator: the report, the last pass note, or the audit reason.' }),
+    message: z
+      .string()
+      .meta({ description: 'Why it needs a curator: the report, the last pass note, or the audit reason.' }),
     status: ticketStatusSchema,
     resolution_note: z.string().nullable(),
     resolution_fact_ids: z.array(factIdSchema),
@@ -55,7 +57,11 @@ export const ticketSchema = z
 export type TicketDto = z.infer<typeof ticketSchema>
 
 export const listedTicketSchema = ticketSchema
-  .extend({ entry: entryRefSchema.nullable().meta({ description: 'The entry its target is or belongs to; null for a missing word.' }) })
+  .extend({
+    entry: entryRefSchema
+      .nullable()
+      .meta({ description: 'The entry its target is or belongs to; null for a missing word.' }),
+  })
   .meta({ id: 'ListedTicket' })
 export type ListedTicketDto = z.infer<typeof listedTicketSchema>
 

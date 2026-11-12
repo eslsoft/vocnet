@@ -486,14 +486,10 @@ const sensesPayloadSchema = z.strictObject({
 export const MAX_HEADWORD_PHRASES = 200
 
 const phrasesPayloadSchema = z.strictObject({
-  phrases: z
-    .array(text(100))
-    .min(1)
-    .max(MAX_HEADWORD_PHRASES)
-    .meta({
-      description:
-        "Every phrase of the headword a learner's dictionary prints as its phrase, phrasal verb, or idiom, or whose meaning is not the sum of its words: multiword lemmas, each its own entry once this list publishes.",
-    }),
+  phrases: z.array(text(100)).min(1).max(MAX_HEADWORD_PHRASES).meta({
+    description:
+      "Every phrase of the headword a learner's dictionary prints as its phrase, phrasal verb, or idiom, or whose meaning is not the sum of its words: multiword lemmas, each its own entry once this list publishes.",
+  }),
 })
 
 /**
@@ -639,10 +635,7 @@ const submitPayloadSchemas = {
       ({ of, text }) => of !== 'sense' || new Set(alternativesOf(text)).size === alternativesOf(text).length,
       'A translation lists each alternative once: "建造；建造" repeats one.',
     )
-    .refine(
-      ({ of, text }) => of !== 'sense' || text.length <= 200,
-      'A sense equivalent is at most 200 characters.',
-    ),
+    .refine(({ of, text }) => of !== 'sense' || text.length <= 200, 'A sense equivalent is at most 200 characters.'),
   grammar: grammarPayloadSchema
     .refine((grammar) => Object.keys(grammar).length > 0, 'A grammar fact names at least one property.')
     .refine(

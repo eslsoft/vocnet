@@ -7,8 +7,8 @@ import { onError, onNotFound } from './http/errors'
 import { agentRoutes } from './http/manage/agents'
 import { manageCatalogRoutes } from './http/manage/catalog'
 import { manageFactRoutes } from './http/manage/facts'
-import { manageFeedbackRoutes } from './http/manage/feedback'
 import { managePublicViewRoutes } from './http/manage/public-view'
+import { manageTicketRoutes } from './http/manage/tickets'
 import { manageWorkRoutes } from './http/manage/work'
 import { createRouter } from './http/router'
 import { topicRoutes } from './http/topics'
@@ -21,7 +21,7 @@ const publicV1 = createRouter().route('/', publicRoutes).route('/', topicRoutes)
 const manageV1 = createRouter()
   .route('/', manageCatalogRoutes)
   .route('/', manageFactRoutes)
-  .route('/', manageFeedbackRoutes)
+  .route('/', manageTicketRoutes)
   .route('/', manageWorkRoutes)
   .route('/', managePublicViewRoutes)
   .route('/', agentRoutes)

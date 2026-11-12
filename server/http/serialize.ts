@@ -1,11 +1,11 @@
 import type { ManagedEntryView } from '@server/domain/catalog-view'
 import type { Fact } from '@server/domain/fact'
-import type { FeedbackRecord } from '@server/domain/feedback'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { TicketRecord } from '@server/domain/tickets'
 import type { AgentRecord, Page, WithEntry } from '@server/usecases/ports'
 import type { AgentDto } from '@shared/agents'
 import type { FactDto, ListedFactDto } from '@shared/facts'
-import type { FeedbackDto, ListedFeedbackDto } from '@shared/feedback'
+import type { ListedTicketDto, TicketDto } from '@shared/tickets'
 
 // Domain records to the snake_case wire DTOs in shared/.
 
@@ -43,31 +43,33 @@ export const listedFactDto = (fact: WithEntry<Fact>): ListedFactDto => ({ ...fac
 
 export const managedEntryDto = (view: ManagedEntryView) => ({
   entry: entryDto(view.entry),
-  seed: view.seed,
+  live: view.entry.live,
+  batch: view.batch,
   completeness: view.completeness,
-  quality: view.quality,
+  credibility: view.credibility,
   slots: view.slots,
   senses: view.senses.map(senseDto),
   facts: view.facts.map(factDto),
 })
 
-export const feedbackDto = (item: FeedbackRecord): FeedbackDto => ({
-  id: item.id,
-  target_type: item.targetType,
-  target_id: item.targetId,
-  message: item.message,
-  status: item.status,
-  assignee: item.assignee,
-  claim_expires_at: item.claimExpiresAt,
-  resolution_note: item.resolutionNote,
-  resolution_fact_ids: item.resolutionFactIds,
-  created_at: item.createdAt,
-  updated_at: item.updatedAt,
+export const ticketDto = (ticket: TicketRecord): TicketDto => ({
+  id: ticket.id,
+  type: ticket.type,
+  target_type: ticket.targetType,
+  target: ticket.target,
+  message: ticket.message,
+  status: ticket.status,
+  resolution_note: ticket.resolutionNote,
+  resolution_fact_ids: ticket.resolutionFactIds,
+  created_at: ticket.createdAt,
+  updated_at: ticket.updatedAt,
 })
 
-export const listedFeedbackDto = (item: WithEntry<FeedbackRecord>): ListedFeedbackDto => ({
-  ...feedbackDto(item),
-  entry: item.entry,
+export const listedTicketDto = (
+  ticket: TicketRecord & { entry: WithEntry<TicketRecord>['entry'] | null },
+): ListedTicketDto => ({
+  ...ticketDto(ticket),
+  entry: ticket.entry,
 })
 
 export const agentDto = (agent: AgentRecord): AgentDto => ({

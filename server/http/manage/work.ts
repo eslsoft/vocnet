@@ -4,7 +4,7 @@ import type { Lemma } from '@server/domain/term'
 import type { WorkItem } from '@server/domain/work'
 import type { WorkContext } from '@server/domain/work-context'
 import { getWorkItem, getWorkSummary, listOpenWorkItems, listWorkAttempts } from '@server/usecases/monitor'
-import { claimWork, completeWork, listCurationItems } from '@server/usecases/work'
+import { claimWork, completeWork } from '@server/usecases/work'
 import { rescoreStaleWork } from '@server/usecases/work-scores'
 import { lemmaInputSchema } from '@shared/catalog'
 import { entryIdSchema } from '@shared/facts'
@@ -19,7 +19,6 @@ import {
 import {
   claimWorkInputSchema,
   completeWorkInputSchema,
-  curationPageSchema,
   workClaimSchema,
   workCompletionSchema,
   workItemIdSchema,
@@ -48,10 +47,11 @@ const claimRoute = createRoute({
   summary: 'Lease the next work items of one type',
   description:
     'Leases up to `limit` items, all of one type: the type of the highest-priority free item of the production ' +
-    'queue (within `types` when given), then the next free items of that type. Priority is the policy stage of ' +
-    'the type (1 identity, 2 meaning, 3 usage, 4 network, 5 weak facts), then the learner band of the entry ' +
-    '(CEFR A1 to C2, then a frequency without a level, then the rest), then the higher frequency. An item is ' +
-    'in the queue while no pending fact can change it and fewer than three passes left it unchanged. Each item ' +
+    'queue (within `types` when given), then the next free items of that type. Priority is the headword batch, ' +
+    'then the learner band of the entry (CEFR A1 to C2, then a frequency without a level, then the rest), then ' +
+    'the policy stage of the type (1 identity, 2 meaning, 3 usage and translation, 4 network), then the higher ' +
+    'frequency. An item is in the queue while no pending fact can change it and fewer than two passes left it ' +
+    'unfilled. Each item ' +
     'comes with its gap and the context its type needs. Two concurrent claims never lease the same item. 204 ' +
     'means no item is free.',
   request: { body: optionalBody(claimWorkInputSchema) },
@@ -70,8 +70,9 @@ const completeRoute = createRoute({
   description:
     'Only the holder, before the lease expires. The items named were worked; the rest of the lease is released ' +
     'without an attempt. Rescores the entries of the lease and reports where each named item stands: closed, ' +
-    'open, awaiting_review (judged once its pending facts are reviewed), or curation (three passes left it ' +
-    'unchanged). Completing the same lease again answers 404; an item the lease did not claim is 422.',
+    'open, awaiting_review (judged once its pending facts are reviewed), or ticket (two passes left it unfilled, so ' +
+    'a curator handles it). Completing the same lease again answers 404; an item the lease did not claim is 422; ' +
+    '`found_none` or `blocked_on` on an item of a required gap is 400.',
   request: { params: z.object({ lease_id: workLeaseIdSchema }), body: jsonBody(completeWorkInputSchema) },
   responses: {
     200: json(workCompletionSchema, 'Where each worked item stands.'),
@@ -79,22 +80,6 @@ const completeRoute = createRoute({
     404: errorResponse,
     409: errorResponse,
     422: errorResponse,
-  },
-})
-
-const curationRoute = createRoute({
-  method: 'get',
-  path: '/work/curation',
-  tags,
-  summary: 'List the items the producers could not fill (curators)',
-  description:
-    'Items that three completed passes left as their claims found them, in queue order. A curator fills or ' +
-    'settles them with curated facts (see Curation); any change to an item puts it back in the production queue.',
-  request: { query: pageQuery.extend({ type: workTypeSchema.optional() }) },
-  responses: {
-    200: json(curationPageSchema, 'A page of items.'),
-    400: errorResponse,
-    403: errorResponse,
   },
 })
 
@@ -169,7 +154,7 @@ const itemsRoute = createRoute({
   middleware: requireAdmin,
   summary: "List an entry's or a node's open work items (admins)",
   description:
-    'Exactly one of `entry_id` (every open item of the entry) and `subject_id` (the open items about one entry, sense, or weak fact), in queue order.',
+    'Exactly one of `entry_id` (every open item of the entry) and `subject_id` (the open items about one entry or sense), in queue order.',
   request: {
     query: z
       .object({ entry_id: entryIdSchema.optional(), subject_id: z.uuid().optional() })
@@ -267,20 +252,4 @@ export const manageWorkRoutes = createRouter()
   .openapi(completeRoute, async (c) => {
     const done = await completeWork(c.get('deps'), actorOf(c), c.req.valid('param').lease_id, c.req.valid('json'))
     return c.json({ lease_id: done.leaseId, items: done.items }, 200)
-  })
-  .openapi(curationRoute, async (c) => {
-    const { type, limit, cursor } = c.req.valid('query')
-    const page = await listCurationItems(c.get('deps'), actorOf(c), type ?? null, { limit, cursor })
-    return c.json(
-      {
-        items: page.items.map((item) => ({
-          ...itemDto(item, item.lemma),
-          last_worked_at: item.lastWorkedAt,
-          last_worked_by: item.lastWorkedBy,
-          last_note: item.lastNote,
-        })),
-        next_cursor: page.nextCursor,
-      },
-      200,
-    )
   })

@@ -30,7 +30,9 @@ const postFact = createRoute({
   description:
     'Idempotent by content key: resubmitting a live fact returns it with 200. A correction names the published fact it supersedes. ' +
     'A curator may add `curation` to publish the fact at once with a curator review instead of sending it to the reviewer chain (403 forbidden for anyone else). ' +
-    'Only a curator may supersede a curated fact or resubmit content a curator rejected (403 curated_fact).',
+    'Only a curator may supersede a curated fact or resubmit content a curator rejected (403 curated_fact). ' +
+    'Content a review already rejected about the same subject is 409 rejected_before: change the claim instead. ' +
+    'Once an entry has a published sense inventory only a curator may submit another (403 inventory_settled).',
   request: { body: jsonBody(submitFactInputSchema) },
   responses: {
     200: json(factWriteResultSchema, 'The existing live fact.'),
@@ -52,10 +54,6 @@ const listRoute = createRoute({
     query: pageQuery.extend({
       status: factStatusSchema.optional(),
       kind: factKindSchema.optional(),
-      weak: z
-        .enum(['true'])
-        .optional()
-        .meta({ description: 'Only published facts whose standing review is uncertain or failed.' }),
       level: cefrLevelSchema.optional().meta({
         description: "Only facts about an entry, or a sense of an entry, whose lemma's lowest CEFR level is this.",
       }),
@@ -119,8 +117,8 @@ const curateRoute = createRoute({
   tags,
   summary: 'Settle a fact by hand (curators)',
   description:
-    'pass publishes a pending, published, or rejected fact with a curator review (confidence 1), so it is no longer weak; fail rejects a pending or published one. ' +
-    'No reviewer is asked, and no rule change or gloss correction marks the fact for revalidation afterwards. ' +
+    'pass publishes a pending, published, or rejected fact with a curator review (confidence 1, credibility 1); fail rejects a pending or published one. ' +
+    'No reviewer is asked. ' +
     'Passing a rejected fact conflicts (409) when another live fact holds its content or slot, a live correction supersedes it, or the original it corrects is no longer published.',
   request: { params: idParams, body: jsonBody(curateFactInputSchema) },
   responses: {
@@ -140,8 +138,8 @@ export const manageFactRoutes = createRouter()
     return created ? c.json(body, 201) : c.json(body, 200)
   })
   .openapi(listRoute, async (c) => {
-    const { status, kind, author, lemma, weak, level, limit, cursor } = c.req.valid('query')
-    const filter = { status, kind, author, lemma, weak: weak === 'true', level }
+    const { status, kind, author, lemma, level, limit, cursor } = c.req.valid('query')
+    const filter = { status, kind, author, lemma, level }
     return c.json(pageDto(await listFacts(c.get('deps'), filter, { limit, cursor }), listedFactDto), 200)
   })
   .openapi(getRoute, async (c) =>
