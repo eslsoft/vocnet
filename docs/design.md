@@ -271,14 +271,19 @@ split the Chinese of every example into its own translation fact.
 
 #### Syllables and form pronunciations
 
-- **Syllables** divide the written word as a learner's dictionary shows the
-  headword (`a·bil·i·ty`): written breaks, not a phonetic transcription.
-  Joined, the syllables spell the lemma exactly, and none has a space; a phrase
+- **Syllables** divide the written word by its pronunciation, to help a
+  learner say it and spell it by sound: one part per vowel sound of the careful
+  (citation) pronunciation, a dropped vowel and a single-letter one included
+  (`choc·o·late`, `e·na·ble`, `war·ri·or`). A single consonant between two vowel
+  sounds starts the next part (`ta·ble`, `com·for·ta·ble`) unless a short
+  stressed vowel keeps it (`fam·i·ly`, `stud·y`); a doubled consonant splits
+  (`lit·tle`). Word parts and print hyphenation never decide a break: the word's
+  meaningful parts are its morphology (`comfort` + `-able`). Joined, the syllables spell the lemma exactly, and none has a space; a phrase
   has no syllables (its words are their own entries), so a syllables fact about
   a multiword entry, or one that does not spell the lemma, is `422
   invalid_reference`. The content key is the syllables joined with `·`. luna
   judges the division first and settles a pass at 0.9; otherwise the LLM judges
-  it against the Oxford Advanced Learner's, Cambridge, or Merriam-Webster. A single-word entry has a `syllables` gap until it has
+  it by the same rule. A single-word entry has a `syllables` gap until it has
   one live syllables fact, and the entry document shows them as `syllables`
   (null when none is published).
 - **Form pronunciation.** A form may give `ipa` and `accent` together (one

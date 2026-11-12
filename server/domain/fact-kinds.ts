@@ -1191,12 +1191,24 @@ function admitSyllables({ syllables }: FactPayloads['syllables'], { lemma }: Adm
   return `The syllables ${syllables.join('·')} do not spell ${quote(lemma)}; joined, they spell the lemma exactly.`
 }
 
+/**
+ * Syllables help a learner say a word and spell it by its sound, so they follow the pronunciation;
+ * the word's meaningful parts are its morphology. Neither print hyphenation nor word parts decide
+ * a break.
+ */
+const SYLLABLE_RULE = [
+  'Syllables follow the careful (citation) pronunciation: one part per vowel sound, including a vowel sound fast speech drops (choc·o·late, com·for·ta·ble) and one spelled by a single letter (e·na·ble, war·ri·or, veg·e·ta·ble).',
+  'A single consonant sound between two vowel sounds starts the next part (ta·ble, e·na·ble, com·for·ta·ble) unless the vowel before it is short and stressed, which keeps it (fam·i·ly, stud·y, cas·u·al); a doubled consonant splits (lit·tle, dif·fer·ent); inside a group of consonants any break a natural pronunciation allows will do.',
+  "Word parts and a dictionary's print hyphenation do not decide a break: com·fort·a·ble and en·able are wrong here, since the word's parts are recorded in its morphology.",
+].join(' ')
+
 function syllablesRubric(entry: SubjectViews['entry'], syllables: readonly string[]): string {
   return [
-    `Is ${quote(syllables.join('·'))} how a learner's dictionary such as the Oxford Advanced Learner's, Cambridge, or Merriam-Webster divides the written word ${quote(entry.lemma)} into syllables?`,
-    'Judge the written syllable breaks (the dots a dictionary shows in the headword), not a phonetic transcription. A one-syllable word is one part.',
-    'pass: the division matches a standard dictionary, or differs from one only where dictionaries themselves differ.',
-    'fail: a break falls inside a syllable, two syllables are joined, or the parts are not the syllables of this word.',
+    `Does ${quote(syllables.join('·'))} divide the written word ${quote(entry.lemma)} into the syllables of its pronunciation?`,
+    SYLLABLE_RULE,
+    'A one-syllable word is one part.',
+    'pass: each part is one vowel sound of the careful pronunciation, with its breaks where the rule puts them.',
+    'fail: a part holds two vowel sounds or none, a vowel sound of the careful pronunciation is joined to its neighbour, or a break follows word parts or print hyphenation against the pronunciation.',
     listSenses('Senses recorded for it so far', entry.senses),
   ].join('\n')
 }
@@ -1267,7 +1279,7 @@ const SYLLABLES_PASS_AT = 0.9
 
 function syllablesQuestion(entry: SubjectViews['entry'], syllables: readonly string[]): string {
   const division = syllables.join('·')
-  return `Is ${quote(division)} how a learner's dictionary such as Oxford, Cambridge, or Merriam-Webster divides the written word ${quote(entry.lemma)} into syllables (the dots shown in the headword)? It passes if it matches a standard dictionary or differs only where dictionaries differ. Answer no if a break falls inside a syllable, two syllables are joined, or the parts are not syllables of this word. ${DATA}`
+  return `Does ${quote(division)} divide the written word ${quote(entry.lemma)} into the syllables of its pronunciation? ${SYLLABLE_RULE} Answer no if a part holds two vowel sounds or none, a vowel sound of the careful pronunciation is joined to its neighbour, or a break follows word parts or print hyphenation against the pronunciation. ${DATA}`
 }
 
 /** A phrase belongs to its headword only when a learner's dictionary would print it there. */
@@ -1549,7 +1561,7 @@ const MORPHOLOGY_LIMITS = [
   'Only a base part names a lemma, the live entry it is, never the word itself. A phrase has no word formation.',
 ]
 
-const SYLLABLES_LIMITS = ['Joined, the syllables spell the lemma exactly. A phrase has no syllables.']
+const SYLLABLES_LIMITS = [SYLLABLE_RULE, 'Joined, the syllables spell the lemma exactly. A phrase has no syllables.']
 
 const COLLOCATION_LIMITS = ['A collocation contains the word itself or one of its live forms.']
 

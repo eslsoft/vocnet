@@ -536,7 +536,7 @@ const translationPayloadSchema = z.strictObject({
 const syllablesPayloadSchema = z.strictObject({
   syllables: z.array(text(30)).min(1).max(20).meta({
     description:
-      'The written word divided into syllables as a learner\'s dictionary breaks it: ["a", "bil", "i", "ty"]. Joined, they spell the lemma exactly.',
+      'The written word divided by its careful pronunciation, one part per vowel sound: ["a", "bil", "i", "ty"], ["e", "na", "ble"], ["com", "for", "ta", "ble"]. Joined, they spell the lemma exactly.',
   }),
 })
 

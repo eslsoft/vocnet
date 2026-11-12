@@ -1291,7 +1291,7 @@ describe('collocation facts', () => {
 describe('forms, syllables, and relation ends', () => {
   const entry = (lemma: string) => ({ lemma, senses: [] as SenseId[] })
 
-  it('admits syllables that spell a single-word lemma and lets luna settle how a dictionary divides it [spec: facts/syllables]', () => {
+  it('admits syllables that spell a single-word lemma and lets luna settle whether it follows the pronunciation [spec: facts/syllables]', () => {
     expect(admissionOf('syllables', { syllables: ['a', 'bil', 'i', 'ty'] }, entry('ability'))).toBeNull()
     expect(admissionOf('syllables', { syllables: ['a', 'bil', 'ity', 'y'] }, entry('ability'))).toBe(
       'The syllables a·bil·ity·y do not spell "ability"; joined, they spell the lemma exactly.',
@@ -1301,9 +1301,11 @@ describe('forms, syllables, and relation ends', () => {
     expect(contentKeyOf('syllables', { syllables: ['a', 'bil', 'i', 'ty'] })).toBe('a·bil·i·ty')
     const plan = planReview('syllables', { syllables: ['a', 'bil', 'i', 'ty'] }, on(entryView('ability')))
     expect(decision(plan)?.state).toEqual({ word: 'ability', 'proposed syllable division': 'a·bil·i·ty' })
-    expect(question(plan, 'syllables')).toContain('Is "a·bil·i·ty" how a learner\'s dictionary')
-    expect(rubric(plan)).toContain('Is "a·bil·i·ty" how a learner\'s dictionary')
-    expect(rubric(plan)).toContain('not a phonetic transcription')
+    expect(question(plan, 'syllables')).toContain(
+      'Does "a·bil·i·ty" divide the written word "ability" into the syllables of its pronunciation?',
+    )
+    expect(rubric(plan)).toContain('one part per vowel sound')
+    expect(rubric(plan)).toContain('com·fort·a·ble and en·able are wrong here')
   })
 
   it.each([

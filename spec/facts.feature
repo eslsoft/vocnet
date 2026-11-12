@@ -608,7 +608,7 @@ Feature: Facts and review
   Scenario: Syllables divide a single written word
     Given a syllables fact on an entry
     When it is submitted and reviewed
-    Then its syllables must spell the lemma exactly and a phrase is refused, and luna judges the division against a learner's dictionary at 0.9, the LLM deciding otherwise
+    Then its syllables must spell the lemma exactly and a phrase is refused, and luna judges the division against the word's careful pronunciation, one part per vowel sound and not its word parts, at 0.9, the LLM deciding otherwise
 
   @facts/form-irregular @domain
   Scenario: An irregular form is one no regular spelling rule gives
