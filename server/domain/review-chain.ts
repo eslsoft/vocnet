@@ -1,5 +1,5 @@
 import type { ReviewerChain, ReviewerKind, Verdict } from '@shared/facts'
-import type { DecisionModel, DecisionRequest } from './fact-kinds'
+import type { DecisionGate, DecisionModel, DecisionRequest } from './fact-kinds'
 
 /** What one reviewer said about a fact. */
 export interface Opinion {
@@ -49,12 +49,12 @@ export function decisionOpinion(reviewer: DecisionModel, passAt: number, answers
  * left to the LLM.
  */
 export function decisionSettles(request: DecisionRequest, scores: ReadonlyMap<DecisionModel, number>): boolean {
-  const passAt = (model: DecisionModel) => request.passAt[model] ?? 1
-  const reached = request.models.map((model) => (scores.get(model) ?? 0) >= passAt(model))
+  const scoreOfGate = (gate: DecisionGate) => scores.get(gate.model) ?? 0
+  const reached = request.gates.map((gate) => scoreOfGate(gate) >= gate.passAt)
   if (request.combine === 'any') return reached.some(Boolean)
   if (request.combine === 'min') return reached.every(Boolean)
   const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
-  return mean(request.models.map((model) => scores.get(model) ?? 0)) >= mean(request.models.map(passAt))
+  return mean(request.gates.map(scoreOfGate)) >= mean(request.gates.map((gate) => gate.passAt))
 }
 
 /**

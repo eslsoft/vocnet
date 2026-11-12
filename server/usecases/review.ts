@@ -53,8 +53,15 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    const [senses, caseVariants] = await Promise.all([entrySenses(deps, entry.id), deps.nodes.listLiveCaseVariants(entry)])
-    return { lemma: entry.lemma, senses: senses.map(({ id: senseId, pos, gloss }) => ({ id: senseId, pos, gloss })), caseVariants }
+    const [senses, caseVariants] = await Promise.all([
+      entrySenses(deps, entry.id),
+      deps.nodes.listLiveCaseVariants(entry),
+    ])
+    return {
+      lemma: entry.lemma,
+      senses: senses.map(({ id: senseId, pos, gloss }) => ({ id: senseId, pos, gloss })),
+      caseVariants,
+    }
   },
   sense: (deps, id) => senseContext(deps, id as SenseId),
   fact: async (deps, id) => {
@@ -96,10 +103,12 @@ async function askDecision(
   request: DecisionRequest,
 ): Promise<{ opinions: Opinion[]; settled: number | null }> {
   const answered = await Promise.all(
-    request.models.map(async (model) => [model, await deps.decision[model].ask(request.questions, request.state)] as const),
+    request.gates.map(
+      async (gate) => [gate, await deps.decision[gate.model].ask(request.questions, request.state)] as const,
+    ),
   )
-  const scores = new Map<DecisionModel, number>(answered.map(([model, answers]) => [model, scoreOf(answers)]))
-  const opinions = answered.map(([model, answers]) => decisionOpinion(model, request.passAt[model] ?? 1, answers))
+  const scores = new Map<DecisionModel, number>(answered.map(([gate, answers]) => [gate.model, scoreOf(answers)]))
+  const opinions = answered.map(([gate, answers]) => decisionOpinion(gate.model, gate.passAt, answers))
   if (!decisionSettles(request, scores)) return { opinions, settled: null }
   return { opinions, settled: Math.max(...scores.values()) }
 }
@@ -174,9 +183,9 @@ async function admitPhrases(deps: DecisionDeps, list: FactOf<'phrases'>, at: str
   const original = list.supersedesId ? ((await deps.facts.find(list.supersedesId)) as FactOf<'phrases'> | null) : null
   const kept = new Set(list.payload.phrases)
   const dropped = (original?.payload.phrases ?? []).filter((phrase) => !kept.has(phrase))
-  const droppedEntries = (await Promise.all(dropped.map((lemma) => deps.nodes.findEntryByLemma(lemma as Lemma)))).flatMap(
-    (entry) => (entry ? [entry.id] : []),
-  )
+  const droppedEntries = (
+    await Promise.all(dropped.map((lemma) => deps.nodes.findEntryByLemma(lemma as Lemma)))
+  ).flatMap((entry) => (entry ? [entry.id] : []))
   await deps.nodes.setPhrasesLive(
     admitted.map((entry) => entry.id),
     droppedEntries,

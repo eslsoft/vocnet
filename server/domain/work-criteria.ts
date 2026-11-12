@@ -162,14 +162,15 @@ function contextFor({ kind, payload }: Sample, pos: Pos): ReviewContext {
 const percent = (score: number) => score.toFixed(2)
 
 /** How the decision models' scores settle, stated plainly from the request. */
-function decisionRule({ models, combine, passAt }: DecisionRequest): string {
-  const threshold = (model: DecisionModel) => `${model} ${percent(passAt[model] ?? 1)}`
+function decisionRule({ gates, combine }: DecisionRequest): string {
+  const thresholds = gates.map((gate) => `${gate.model} ${percent(gate.passAt)}`).join(', ')
+  const meanPassAt = gates.reduce((sum, gate) => sum + gate.passAt, 0) / gates.length
   const settle =
     combine === 'any'
-      ? `A pass settles when any of ${models.map(threshold).join(' or ')} is reached.`
+      ? `A pass settles when any one of these scores is reached: ${thresholds}.`
       : combine === 'mean'
-        ? `A pass settles when the mean score of ${models.join(' and ')} reaches ${percent(passAt[models[0]] ?? 1)}.`
-        : `A pass settles when ${models.map(threshold).join(' and ')} ${models.length === 1 ? 'is' : 'are'} reached.`
+        ? `A pass settles when the mean score of ${gates.map((gate) => gate.model).join(' and ')} reaches ${percent(meanPassAt)}.`
+        : `A pass settles when every one of these scores is reached: ${thresholds}.`
   return `Each model scores every question from 0 to 1, and its score is the lowest answer. ${settle} Otherwise the LLM rubric decides, and its verdict is final.`
 }
 
@@ -181,7 +182,7 @@ function fillCriteria(one: Sample, pos: Pos): FillCriteria {
     claim: one.claim,
     decision: plan.decision
       ? {
-          models: [...plan.decision.models],
+          models: plan.decision.gates.map((gate) => gate.model),
           questions: Object.values(plan.decision.questions),
           rule: decisionRule(plan.decision),
         }

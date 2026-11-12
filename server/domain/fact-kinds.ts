@@ -114,11 +114,15 @@ export type DecisionModel = Exclude<ReviewerKind, 'llm'>
  */
 export type DecisionCombine = 'min' | 'any' | 'mean'
 
+export interface DecisionGate {
+  model: DecisionModel
+  passAt: number
+}
+
 export interface DecisionRequest {
-  models: readonly [DecisionModel, ...DecisionModel[]]
+  /** The models asked, each with the score it must reach to settle a pass with no second opinion. */
+  gates: readonly [DecisionGate, ...DecisionGate[]]
   combine: DecisionCombine
-  /** The score each model must reach to settle a pass with no second opinion. */
-  passAt: Readonly<Partial<Record<DecisionModel, number>>>
   /** The fact's data the questions judge, labelled for the model. */
   state: Readonly<Record<string, string | readonly string[]>>
   questions: JevQuestions
@@ -256,13 +260,20 @@ function decide(
     combine = 'min',
     passAt = DEFAULT_PASS_AT,
   }: {
-    models?: DecisionRequest['models']
+    models?: readonly [DecisionModel, ...DecisionModel[]]
     combine?: DecisionCombine
-    passAt?: number | DecisionRequest['passAt']
+    passAt?: number | Readonly<Record<DecisionModel, number>>
   } = {},
 ): ReviewPlan {
-  const thresholds = typeof passAt === 'number' ? Object.fromEntries(models.map((model) => [model, passAt])) : passAt
-  return { kind: 'review', decision: { models, combine, passAt: thresholds, state, questions }, prompt: prompt(rubric) }
+  const [first, ...rest] = models.map((model) => ({
+    model,
+    passAt: typeof passAt === 'number' ? passAt : passAt[model],
+  }))
+  return {
+    kind: 'review',
+    decision: { gates: [first as DecisionGate, ...rest], combine, state, questions },
+    prompt: prompt(rubric),
+  }
 }
 
 /** A decision question says the data it judges is data; luna's adapter names it the input. */
