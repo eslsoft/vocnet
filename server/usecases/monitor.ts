@@ -1,3 +1,4 @@
+import { factCredibility } from '@server/domain/credibility'
 import { summarizeFact } from '@server/domain/fact-kinds'
 import {
   before,
@@ -13,7 +14,6 @@ import {
   secondsBetween,
   windowBuckets,
 } from '@server/domain/monitor'
-import { factCredibility } from '@server/domain/credibility'
 import { WORK_POLICY } from '@server/domain/work'
 import type { EntryId } from '@shared/facts'
 import type {

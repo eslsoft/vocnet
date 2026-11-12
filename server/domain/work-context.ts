@@ -97,7 +97,8 @@ export function workContext(
       neighborSenses.set(sense.id, { lemma, pos: sense.pos, gloss: shown.has(sense.id) ? sense.gloss : null })
     }
   }
-  for (const sense of senses) neighborSenses.set(sense.id, { lemma: snapshot.entry.lemma, pos: sense.pos, gloss: sense.gloss })
+  for (const sense of senses)
+    neighborSenses.set(sense.id, { lemma: snapshot.entry.lemma, pos: sense.pos, gloss: sense.gloss })
   const ends = new Set(
     facts
       .filter(isKind('relation'))

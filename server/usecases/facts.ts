@@ -1,5 +1,5 @@
 import { curatorReview, isCurated } from '@server/domain/curation'
-import { type Fact, type FactOf, isKind } from '@server/domain/fact'
+import { type Fact, isKind } from '@server/domain/fact'
 import {
   type AdmissionViews,
   admissionOf,
@@ -19,8 +19,8 @@ import {
   topicOf,
 } from '@server/domain/fact-kinds'
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
-import { mayActOn, mayCurate, type Principal, principalRef } from '@server/domain/principal'
 import { currentInventory, inventorySenses } from '@server/domain/inventory'
+import { mayActOn, mayCurate, type Principal, principalRef } from '@server/domain/principal'
 import { type Lemma, normalizeTerm, textKey } from '@server/domain/term'
 import { isLeaf } from '@server/domain/topics'
 import type { EntryId, FactId, FactKind, FactPayloads, Pos, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
@@ -79,7 +79,10 @@ const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Prom
       entry && {
         entryId: entry.id,
         pos: null,
-        admission: async () => ({ lemma: entry.lemma, senses: (await inventoryOf(deps, entry.id)).map(({ id: sense }) => sense) }),
+        admission: async () => ({
+          lemma: entry.lemma,
+          senses: (await inventoryOf(deps, entry.id)).map(({ id: sense }) => sense),
+        }),
       }
     )
   },
@@ -176,7 +179,10 @@ export async function submitFact(
         `Review already rejected this content (${rejected.id}): ${rejected.review?.reason ?? 'no reason recorded'} Fix what it names instead of resending it.`,
       )
     }
-    if (kind === 'senses' && (await deps.facts.listLive('senses', entryId)).some((fact) => fact.status === 'published')) {
+    if (
+      kind === 'senses' &&
+      (await deps.facts.listLive('senses', entryId)).some((fact) => fact.status === 'published')
+    ) {
       throw new InventorySettledError(
         "This entry's sense inventory is published, so its senses are fixed; reference them, or leave a note for a curator.",
       )
@@ -207,7 +213,8 @@ export async function submitFact(
   }
 
   const now = deps.clock.now().toISOString()
-  const stored = kind === 'senses' ? await assignSenseIds(deps, entryId, payload as FactPayloads['senses'], actor, now) : payload
+  const stored =
+    kind === 'senses' ? await assignSenseIds(deps, entryId, payload as FactPayloads['senses'], actor, now) : payload
   const draft = {
     id: factId,
     kind,

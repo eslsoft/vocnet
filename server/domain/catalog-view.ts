@@ -234,7 +234,8 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       shownSenses.set(sense.id, { lemma, gloss: sense.gloss })
     }
   }
-  for (const sense of inventory.payload.senses) shownSenses.set(sense.id, { lemma: snapshot.entry.lemma, gloss: sense.gloss })
+  for (const sense of inventory.payload.senses)
+    shownSenses.set(sense.id, { lemma: snapshot.entry.lemma, gloss: sense.gloss })
 
   const relatedSense = (id: SenseId, fact: FactOf<'relation'>): RelatedSense[] => {
     const shown = shownSenses.get(id)

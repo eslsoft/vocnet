@@ -1,6 +1,6 @@
 import type { WorkWindow } from '@shared/monitor'
-import { MAX_PASSES } from '@shared/work'
 import { type CefrLevel, cefrLevelSchema } from '@shared/reference'
+import { MAX_PASSES } from '@shared/work'
 import { levelRank } from './reference'
 
 // The console's read-only view of the work: where each open item stands, and how the item history

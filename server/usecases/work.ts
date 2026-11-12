@@ -12,9 +12,7 @@ import {
   type WorkItemId,
   type WorkItemState,
   type WorkLeaseId,
-  type WorkType,
 } from '@shared/work'
-import { requireCurator } from './access'
 import type { Deps } from './deps'
 import { ConflictError, InvalidReferenceError, InvalidRequestError, NotFoundError } from './errors'
 import type { Actor } from './facts'
