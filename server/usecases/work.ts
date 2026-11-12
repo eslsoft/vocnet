@@ -8,6 +8,7 @@ import {
   type ClaimWorkInput,
   type CompleteWorkInput,
   DEFAULT_LEASE_SECONDS,
+  isOptionalGap,
   type WorkItemId,
   type WorkItemState,
   type WorkLeaseId,
@@ -15,9 +16,8 @@ import {
 } from '@shared/work'
 import { requireCurator } from './access'
 import type { Deps } from './deps'
-import { ConflictError, InvalidReferenceError, NotFoundError } from './errors'
+import { ConflictError, InvalidReferenceError, InvalidRequestError, NotFoundError } from './errors'
 import type { Actor } from './facts'
-import type { Page, PageRequest, WorkItemWithLemma } from './ports'
 import { refreshEntries } from './refresh'
 
 export interface ClaimedItem {
@@ -108,7 +108,18 @@ export async function completeWork(
       `Work lease ${id} did not lease ${foreign.map((item) => item.id).join(', ')}; complete only the items it claimed.`,
     )
   }
-  if (!(await deps.work.complete(lease, input.items, now.toISOString()))) {
+  if (!isOptionalGap(lease.type) && input.items.some((item) => item.found_none || item.blocked_on?.length)) {
+    throw new InvalidRequestError(
+      `A ${lease.type} item is a required slot: found_none and blocked_on are for optional slots only. Fill it, or leave a note.`,
+    )
+  }
+  const worked = input.items.map((item) => ({
+    id: item.id,
+    note: item.note,
+    foundNone: item.found_none ?? false,
+    blockedOn: item.blocked_on ?? [],
+  }))
+  if (!(await deps.work.complete(lease, worked, now.toISOString()))) {
     throw new ConflictError(`Work lease ${id} expired while it was being completed; claim again.`)
   }
   await refreshEntries(deps, [...lease.entryIds])
@@ -122,17 +133,6 @@ export async function completeWork(
         : { id: itemId, state: 'closed', attempts: 0 }
     }),
   }
-}
-
-/** The curators' queue: items three passes left unchanged, in queue order, of one type when given. */
-export async function listCurationItems(
-  deps: Pick<Deps, 'work'>,
-  actor: Actor,
-  type: WorkType | null,
-  page: PageRequest,
-): Promise<Page<WorkItemWithLemma>> {
-  requireCurator(actor.principal)
-  return deps.work.listCuration(type, page)
 }
 
 /**

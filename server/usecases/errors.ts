@@ -62,6 +62,20 @@ export class CuratedFactError extends ExpectedError {
   }
 }
 
+/** Review already rejected this content for this subject; resending it never passes. */
+export class RejectedBeforeError extends ExpectedError {
+  constructor(message: string) {
+    super('rejected_before', 409, message)
+  }
+}
+
+/** The entry's sense inventory is published, so its senses are fixed; only a curator changes them. */
+export class InventorySettledError extends ExpectedError {
+  constructor(message: string) {
+    super('inventory_settled', 403, message)
+  }
+}
+
 /** The request body names something that does not exist or cannot be used that way. */
 export class InvalidReferenceError extends ExpectedError {
   constructor(message: string) {

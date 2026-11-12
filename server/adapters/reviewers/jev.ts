@@ -1,4 +1,4 @@
-import type { JevReviewer } from '@server/usecases/ports'
+import type { DecisionReviewer } from '@server/usecases/ports'
 import { ReviewerProtocolError } from '@server/usecases/ports'
 import { z } from 'zod'
 import { type ModelGatewayConfig, postJson } from './gateway'
@@ -10,7 +10,7 @@ const responseSchema = z.object({
 
 const sameKeys = (left: string[], right: string[]) => JSON.stringify(left.sort()) === JSON.stringify(right.sort())
 
-export function createJevReviewer(config: ModelGatewayConfig & { model: string }): JevReviewer {
+export function createJevReviewer(config: ModelGatewayConfig & { model: string }): DecisionReviewer {
   return {
     async ask(questions, state) {
       const raw = await postJson(config, 'v1/systemone', {

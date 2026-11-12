@@ -4,9 +4,7 @@ import {
   managedEntryView,
   type StoredEntry,
 } from '@server/domain/catalog-view'
-import type { Fact, FactOf } from '@server/domain/fact'
-import { contentKeyOf, meaningKeyOf } from '@server/domain/fact-kinds'
-import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { EntryNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
 import {
   ENGLISH_SCOPE,
@@ -22,7 +20,6 @@ import { searchTerms } from '@server/domain/search'
 import { isLetterOfTheAlphabet, type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
-  CreateSenseInput,
   EntrySort,
   FormMatch,
   Member,
@@ -35,8 +32,9 @@ import type {
 import type { EntryId, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import type { Deps } from './deps'
-import { InvalidReferenceError, NotFoundError } from './errors'
-import { type Actor, submitFact } from './facts'
+import { requireCurator } from './access'
+import { NotFoundError } from './errors'
+import type { Actor } from './facts'
 import type { EntrySummaryFilter, Page, PageRequest } from './ports'
 import { readPublicView, type ViewDeps } from './public-view'
 import { refreshEntries } from './refresh'
@@ -48,101 +46,59 @@ type WriteDeps = Pick<
 >
 
 /**
- * Ensures the entry node exists, is marked as a seed entry when asked, and its `entry` fact is
- * live. The mark comes before the fact, so a new seed entry is never claimable unmarked. Converges
- * on retry.
+ * Admits one lemma as a headword of the batch: its entry exists and is live from now on. Curators
+ * only; agents never create entries. Importing a word reopens the slots passes were blocked on it.
  */
 export async function createEntry(
   deps: WriteDeps,
   actor: Actor,
   input: CreateEntryInput,
-): Promise<{ entry: EntryNode; fact: Fact; created: boolean }> {
+): Promise<{ entry: EntryNode; created: boolean }> {
+  requireCurator(actor.principal)
   const lemma = normalizeTerm(input.lemma)
-  const draft: EntryNode = {
-    id: deps.ids.entry(),
-    lemma,
-    createdBy: principalRef(actor.principal),
-    createdAt: deps.clock.now().toISOString(),
-  }
-  const entry = (await deps.nodes.findEntryByLemma(lemma)) ?? (await deps.nodes.insertEntry(draft))
-  if (input.seed) await deps.work.markSeed(entry.id)
-  const { fact } = await submitFact(deps, actor, { kind: 'entry', subject_id: entry.id, payload: {} })
-  return { entry, fact, created: entry.id === draft.id }
+  const existing = await deps.nodes.findEntryByLemma(lemma)
+  const [entry] = await admitHeadwords(deps, actor, [lemma], input.batch)
+  if (!entry) throw new Error(`Admitting ${JSON.stringify(lemma)} stored no entry.`)
+  return { entry, created: existing === null }
+}
+
+/** Admits the lemmas as headwords of the batch and reopens the slots passes were blocked on them. */
+async function admitHeadwords(
+  deps: WriteDeps,
+  actor: Actor,
+  lemmas: readonly Lemma[],
+  batch: number,
+): Promise<EntryNode[]> {
+  const now = deps.clock.now().toISOString()
+  const entries = await deps.nodes.admit(lemmas, batch, principalRef(actor.principal), now)
+  await deps.work.reopenBlocked(lemmas)
+  await refreshEntries(
+    deps,
+    entries.map((entry) => entry.id),
+  )
+  return entries
 }
 
 /**
- * Creates entries for the next `limit` headwords of the CEFR profiles that no entry has yet,
- * lowest level first, as seed entries the actor creates. Each goes through `createEntry`, so its
- * entry fact is reviewed like any other. Single letters other than "a" and "I" are skipped and
- * listed. Repeating it continues where the last call stopped and creates nothing once done.
+ * Admits the next `limit` headwords of the CEFR profiles that no entry has yet, lowest level
+ * first, as batch 1. Single letters other than "a" and "I" are skipped and listed. Repeating it
+ * continues where the last call stopped and admits nothing once done.
  */
 export async function importCoreEntries(
   deps: WriteDeps,
   actor: Actor,
   limit: number,
 ): Promise<{ created: Lemma[]; skipped: Lemma[]; remaining: number }> {
+  requireCurator(actor.principal)
   const missing = await deps.reference.listCefrLemmasWithoutEntry()
   const core = missing.filter((lemma) => !isLetterOfTheAlphabet(lemma))
   const next = core.slice(0, limit)
-  const created: Lemma[] = []
-  for (const lemma of next) {
-    if ((await createEntry(deps, actor, { lemma, seed: true })).created) created.push(lemma)
-  }
-  return {
-    created,
-    skipped: missing.filter(isLetterOfTheAlphabet),
-    remaining: core.length - next.length,
-  }
+  await admitHeadwords(deps, actor, next, CORE_BATCH)
+  return { created: next, skipped: missing.filter(isLetterOfTheAlphabet), remaining: core.length - next.length }
 }
 
-/**
- * Creates a sense with its gloss fact atomically. Idempotent by (entry, POS, gloss): the register
- * and region are labels, not part of the sense's identity, so the same gloss with any labels
- * returns the existing sense unchanged. A label for an existing sense goes in a correction of its
- * gloss.
- */
-export async function createSense(
-  deps: WriteDeps,
-  actor: Actor,
-  input: CreateSenseInput,
-): Promise<{ sense: SenseNode; fact: Fact; created: boolean }> {
-  const entry = await deps.nodes.findEntry(input.entry_id)
-  if (!entry) throw new InvalidReferenceError(`Entry ${input.entry_id} does not exist.`)
-
-  const payload = { gloss: input.gloss, register: input.register, region: input.region }
-  const existing = await deps.nodes.findSenseByGloss(entry.id, input.pos, meaningKeyOf('sense', payload))
-  if (existing) return { ...existing, created: false }
-
-  const now = deps.clock.now().toISOString()
-  const author = principalRef(actor.principal)
-  const sense: SenseNode = {
-    id: deps.ids.sense(),
-    entryId: entry.id,
-    pos: input.pos,
-    createdBy: author,
-    createdAt: now,
-  }
-  const fact: FactOf<'sense'> = {
-    id: deps.ids.fact(),
-    kind: 'sense',
-    subjectId: sense.id,
-    objectId: null,
-    contentKey: contentKeyOf('sense', payload),
-    payload,
-    status: 'pending',
-    supersedesId: null,
-    author,
-    review: null,
-    revalidateSince: null,
-    createdAt: now,
-    updatedAt: now,
-  }
-  const stored = await deps.nodes.insertSenseWithFact(sense, fact, meaningKeyOf('sense', payload))
-  const created = stored.sense.id === sense.id
-  await refreshEntries(deps, [entry.id])
-  if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
-  return { ...stored, created }
-}
+/** The headword batch the CEFR profiles are. */
+export const CORE_BATCH = 1
 
 /** The entry with its imported reference data, which is keyed by the entry's exact lemma. */
 async function snapshotOf(

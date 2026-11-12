@@ -1,10 +1,10 @@
 import type { EntrySnapshot, StoredSenseSummary, StoredSummary } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
-import type { CefrListing, JevQuestions, Link, LlmPrompt, Rereview } from '@server/domain/fact-kinds'
-import type { FeedbackRecord } from '@server/domain/feedback'
+import type { DecisionModel, JevQuestions, Link, LlmPrompt } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { EntryLinks, PublicViewRecord } from '@server/domain/public-view'
+import type { TicketRecord } from '@server/domain/tickets'
 import type { Lemma } from '@server/domain/term'
 import type { TopicNode } from '@server/domain/topics'
 import type { ReconciledItems, SlotCounts, WorkItem, WorkLease } from '@server/domain/work'
@@ -23,9 +23,9 @@ import type {
   TopicId,
   Verdict,
 } from '@shared/facts'
-import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
 import type { WorkAttemptOutcome } from '@shared/monitor'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
+import type { TicketId, TicketStatus, TicketType } from '@shared/tickets'
 import type { Gap, WorkItemId, WorkLeaseId, WorkType } from '@shared/work'
 
 // Interfaces for everything beyond the process boundary. Implemented in adapters/.
@@ -50,23 +50,22 @@ export interface NodeRepo {
   /** Inserts unless the lemma exists; returns the stored entry either way. */
   insertEntry(entry: EntryNode): Promise<EntryNode>
   findSense(id: SenseId): Promise<SenseWithLemma | null>
+  /** The sense rows of the entry, oldest first. */
+  listSenses(entryId: EntryId): Promise<SenseNode[]>
+  /** Inserts these senses of one entry (each with its creation key) unless one with its key exists; returns the stored rows in order. */
+  insertSenses(senses: ReadonlyArray<{ sense: SenseNode; creationKey: string }>): Promise<SenseNode[]>
+  /** Whether the entry is admitted (an imported headword or a listed phrase), and its batch. */
+  admission(entryId: EntryId): Promise<{ live: boolean; batch: number | null }>
   /**
-   * The sense of this entry and POS whose live `sense` fact means this gloss: its meaning key is
-   * `meaningKey`, whatever its labels.
+   * Admits the entries with these lemmas in the batch: creates the missing ones, marks every one
+   * live with the batch (an admitted entry keeps its earlier batch), and bumps their revisions.
    */
-  findSenseByGloss(entryId: EntryId, pos: Pos, meaningKey: string): Promise<{ sense: SenseNode; fact: Fact } | null>
+  admit(lemmas: readonly Lemma[], batch: number, createdBy: PrincipalRef, now: string): Promise<EntryNode[]>
   /**
-   * Atomically creates a sense together with its defining fact, unless the entry already has a
-   * sense of this POS with the same creation key; returns the stored sense and its defining fact,
-   * the sense's first `sense` fact.
+   * Sets which of these phrase entries are live: a phrase is live while a published phrases list
+   * names it. `batch` is the batch the live ones join. Bumps the revision of every entry it changes.
    */
-  insertSenseWithFact(
-    sense: SenseNode,
-    fact: FactOf<'sense'>,
-    creationKey: string,
-  ): Promise<{ sense: SenseNode; fact: Fact }>
-  /** The live `sense` facts of every sense of this entry, oldest sense and oldest fact first. */
-  listLiveGlosses(entryId: EntryId): Promise<Array<{ sense: SenseNode; fact: FactOf<'sense'> }>>
+  setPhrasesLive(live: readonly EntryId[], dead: readonly EntryId[], batch: number | null): Promise<void>
   loadEntrySnapshot(entry: EntryNode): Promise<EntrySnapshot>
   /** Every entry whose lemma starts with prefix and that the filter admits, in any status, in lemma order. */
   listEntrySummaries(filter: EntrySummaryFilter, page: PageRequest, now: string): Promise<Page<EntrySummary>>
@@ -88,17 +87,13 @@ export interface EntrySummaryFilter {
   prefix: string
   /** The lemma's lowest CEFR level is this; null for any. */
   level: CefrLevel | null
-  /** Only entries with a weak fact about them or their senses. */
-  flagged: boolean
-  /** Only entries with an item at the attempt bound. */
+  /** Only entries with an item that became a ticket. */
   stuck: boolean
 }
 
 /** Imported reference data, read by exact lemma spelling. */
 export interface ReferenceRepo {
   forLemma(lemma: Lemma): Promise<LemmaReference>
-  /** The CEFR listings of the exact lemma with their source names, lowest level first. */
-  listCefrListings(lemma: Lemma): Promise<CefrListing[]>
   listSources(): Promise<ReferenceSource[]>
   /** Every lemma the CEFR profiles list that no entry has, lowest level first, then by lemma. */
   listCefrLemmasWithoutEntry(): Promise<Lemma[]>
@@ -111,8 +106,6 @@ export interface FactFilter {
   author?: string
   /** Only facts about the entry with exactly this lemma or one of its senses. */
   lemma?: string
-  /** Only weak facts: published on an uncertain review, or kept published by a failed one. */
-  weak?: boolean
   /** Only facts about an entry, or a sense of an entry, whose lowest CEFR level is this. */
   level?: CefrLevel
 }
@@ -126,14 +119,6 @@ export interface FactTransitionWrite {
   /** Published fact to mark superseded in the same batch, if this write publishes a correction. */
   supersede?: FactId
   /**
-   * With `supersede`: mark the live facts of these kinds about this node, so each one's next
-   * review reads the new version. Pending ones are marked too, or a first review that read the
-   * old version could still publish. Curated facts are never marked.
-   */
-  revalidate?: { nodeId: EntryId | SenseId; kinds: readonly FactKind[] }
-  /** A review applies only while the fact still carries the mark it read, none included. Omitted: no condition. */
-  revalidateSince?: string | null
-  /**
    * The write applies only while the fact's subject holds fewer than `max` live facts of its kind,
    * not counting `excluding` (the fact a correction supersedes), counted in the same statement.
    */
@@ -142,55 +127,35 @@ export interface FactTransitionWrite {
   unsuperseded?: boolean
   /** The write applies only while this fact (the original a correction supersedes) is published, checked in the same statement. */
   originalPublished?: FactId
-  /**
-   * When the write applies, mark these facts of the other entry for a review in place, in the same
-   * batch; facts already marked keep their mark, and curated facts are never marked.
-   */
-  rereview?: Rereview
 }
 
 export interface FactRepo {
   find(id: FactId): Promise<Fact | null>
-  findLive(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
+  findLive(kind: FactKind, subjectId: string, contentKey: string): Promise<Fact | null>
+  /** A rejected fact of this kind about this subject with this content; the latest one. */
+  findRejected(kind: FactKind, subjectId: string, contentKey: string): Promise<Fact | null>
   /** The live facts of a kind about a subject, oldest first. */
-  listLive(kind: FactKind, subjectId: EntryId | SenseId): Promise<Fact[]>
+  listLive(kind: FactKind, subjectId: string): Promise<Fact[]>
   /** The live facts of a linking kind whose subject and target senses belong one to each of the two entries. */
   listLiveLinks<K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]): Promise<Link<K>[]>
   /** The live (pending or published) correction that supersedes this fact, if any. */
   findLiveCorrection(id: FactId): Promise<Fact | null>
   /**
    * Inserts unless a live fact holds the same (kind, subject, content key) and returns the live
-   * fact either way; null when another live fact holds the kind's exclusive slot, the subject
+   * fact either way; null when another live fact holds the fact's slot, the subject
    * already holds the kind's `maxLive` live facts (not counting the fact this one supersedes), or
    * this correction's original is not published or already has a live correction.
    */
   insert(fact: Fact): Promise<Fact | null>
   /**
-   * Conditional status write that also clears the fact's revalidation mark; false when the fact
-   * was not in `from`. Throws ConflictError when the slot is taken or the
-   * original already has another live correction.
+   * Conditional status write; false when the fact was not in `from`. Throws ConflictError when the
+   * slot is taken or the original already has another live correction.
    */
   transition(write: FactTransitionWrite): Promise<boolean>
-  /**
-   * The latest rejected facts of these kinds about this node (as subject or object), most recently
-   * rejected first, leaving out any whose content a live fact of its kind about the same subject holds.
-   */
-  listRejected(nodeId: EntryId | SenseId, kinds: readonly FactKind[], limit: number): Promise<Fact[]>
-  /**
-   * The latest rejected word formations of other entries with a base part naming this lemma, each
-   * with its entry's lemma, most recently rejected first, leaving out any whose content a live
-   * fact of its kind about the same entry holds.
-   */
-  listRejectedDerivations(
-    baseLemma: string,
-    limit: number,
-  ): Promise<Array<{ word: string; fact: FactOf<'morphology'> }>>
-  /** Live facts about this node (as subject or object) marked for a review against its new version. */
-  listRevalidating(nodeId: EntryId | SenseId): Promise<FactId[]>
-  /** Facts pending since before cutoff, then facts awaiting revalidation since before it, pending first. */
+  /** Facts pending since before cutoff, oldest first. */
   listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
   /** A rejected fact of this kind about this subject with this content that a curator rejected. */
-  findCuratedRejection(kind: FactKind, subjectId: EntryId | SenseId, contentKey: string): Promise<Fact | null>
+  findCuratedRejection(kind: FactKind, subjectId: string, contentKey: string): Promise<Fact | null>
   /** The fact with the entry its subject is or belongs to. */
   findWithEntry(id: FactId): Promise<WithEntry<Fact> | null>
   /** Facts the filter admits, newest first, each with the entry its subject is or belongs to. */
@@ -310,16 +275,20 @@ export interface PublicViewRepo {
   save(stale: StaleView, record: PublicViewRecord | null): Promise<void>
 }
 
-export interface FeedbackRepo {
-  insert(item: FeedbackRecord): Promise<void>
-  find(id: FeedbackId): Promise<FeedbackRecord | null>
+export interface TicketRepo {
+  /** Inserts unless the target already has an open ticket of the type; returns the stored open ticket either way. */
+  open(ticket: TicketRecord): Promise<TicketRecord>
+  find(id: TicketId): Promise<TicketRecord | null>
   /** Compare-and-set on revision; false when someone else wrote first. */
-  update(next: FeedbackRecord, expectedRevision: number): Promise<boolean>
-  /** The item with the entry its target is or belongs to. */
-  findWithEntry(id: FeedbackId): Promise<WithEntry<FeedbackRecord> | null>
-  /** Items with the status, newest first, each with the entry its target is or belongs to. */
-  list(filter: { status?: FeedbackStatus }, page: PageRequest): Promise<Page<WithEntry<FeedbackRecord>>>
-  countByStatus(): Promise<Record<FeedbackStatus, number>>
+  update(next: TicketRecord, expectedRevision: number): Promise<boolean>
+  /** The ticket with the entry its target is or belongs to; null entry for a missing word. */
+  findWithEntry(id: TicketId): Promise<(TicketRecord & { entry: { id: EntryId; lemma: Lemma } | null }) | null>
+  /** Tickets the filter admits, oldest open first, each with the entry its target is or belongs to. */
+  list(
+    filter: { status?: TicketStatus; type?: TicketType },
+    page: PageRequest,
+  ): Promise<Page<TicketRecord & { entry: { id: EntryId; lemma: Lemma } | null }>>
+  countByStatus(): Promise<Record<TicketStatus, number>>
 }
 
 /** A worklist row whose stored scores and items no longer describe the entry. */
@@ -331,7 +300,7 @@ export interface StaleWork {
 
 export interface WorkScores {
   completeness: number
-  quality: number
+  credibility: number
   slots: SlotCounts
 }
 
@@ -339,8 +308,6 @@ export interface WorkScores {
 export type WorkItemWithLemma = WorkItem & { lemma: Lemma }
 
 export interface WorkRepo {
-  /** Marks the entry as a seed entry; a repeat is a no-op. */
-  markSeed(entryId: EntryId): Promise<void>
   /**
    * Stale rows of the entries that are, or own as a sense, these nodes, and of the entries whose
    * relations link to a sense that is or belongs to one of them.
@@ -359,7 +326,9 @@ export interface WorkRepo {
    * batch: each write upserts by type and node, keeping a stored item's id, lease, and claim and
    * work records, and a new item gets a fresh id; each item's history row is inserted with it, its
    * gap refreshed, and stamped closed when the item is deleted; and each verdict settles the
-   * attempts at its item still waiting on review. A no-op when another write bumped the revision since.
+   * attempts at its item still waiting on review. A `passed` verdict records the item's pass (its
+   * last note and holder) so the slot counts as filled; a `stuck` one opens a stuck_work ticket on
+   * the item's node. A no-op when another write bumped the revision since.
    */
   saveAssessment(stale: StaleWork, scores: WorkScores, items: ReconciledItems): Promise<void>
   /**
@@ -377,12 +346,22 @@ export interface WorkRepo {
   /**
    * While the lease is still held at `at`: records an attempt at each `worked` item (waiting on
    * review, or closed when the item is already gone) with the lease's time shared among them,
-   * marks them worked with their notes, releases every item it holds, bumps the revision of its
-   * entries, and deletes it; false when it is no longer held, changing nothing.
+   * marks them worked with their notes and whether they found none, records the lemmas a pass was
+   * blocked on, releases every item it holds, bumps the revision of its entries, and deletes it;
+   * false when it is no longer held, changing nothing.
    */
-  complete(lease: WorkLease, worked: ReadonlyArray<{ id: WorkItemId; note?: string }>, at: string): Promise<boolean>
-  /** The curators' queue: items at the attempt bound, of `type` when given, in queue order. */
-  listCuration(type: WorkType | null, page: PageRequest): Promise<Page<WorkItemWithLemma>>
+  complete(
+    lease: WorkLease,
+    worked: ReadonlyArray<{ id: WorkItemId; note?: string; foundNone: boolean; blockedOn: readonly string[] }>,
+    at: string,
+  ): Promise<boolean>
+  /**
+   * A curator settles a slot by hand: records a pass on it (any gap type) and bumps the entry's
+   * revision so its rescore counts the slot filled.
+   */
+  recordPass(pass: { entryId: EntryId; type: WorkType; subjectId: string; note: string; holder: PrincipalRef; at: string }): Promise<void>
+  /** Deletes the passes blocked on these lemmas and bumps their entries' revisions, so their slots are worked again. */
+  reopenBlocked(lemmas: readonly Lemma[]): Promise<number>
   /** Deletes the leases that expired at or before `before`; returns how many. */
   purgeLeases(before: string): Promise<number>
 }
@@ -447,8 +426,8 @@ export interface ItemFlow {
 
 /** Read-only aggregates over the facts, the worklist, and the work tables, for the console. */
 export interface MonitorRepo {
-  /** Weak facts by kind, as the facts list `weak` filter selects them. */
-  countWeakByKind(): Promise<Array<{ kind: FactKind; count: number }>>
+  /** Published facts by kind and the credibility of their review path, for the console's audit view. */
+  countByCredibility(): Promise<Array<{ kind: FactKind; reviewer: string | null; count: number }>>
   countLiveFacts(): Promise<number>
   /** The worklist rows of live entries by `level_rank`: how many, how many complete, and their completeness summed. */
   completenessByLevel(): Promise<Array<{ levelRank: number | null; entries: number; complete: number; sum: number }>>
@@ -511,15 +490,18 @@ export interface AgentRepo {
   revoke(id: AgentId, at: string): Promise<void>
 }
 
-export interface JevAnswers {
+export interface DecisionAnswers {
   model: string
   /** Probability per question key, in [0, 1]. */
   answers: Record<string, number>
 }
 
-export interface JevReviewer {
-  ask(questions: JevQuestions, state: Record<string, unknown>): Promise<JevAnswers>
+/** A decision model (Jev, luna) scores yes/no questions about labelled data. */
+export interface DecisionReviewer {
+  ask(questions: JevQuestions, state: Readonly<Record<string, string | readonly string[]>>): Promise<DecisionAnswers>
 }
+
+export type DecisionReviewers = Readonly<Record<DecisionModel, DecisionReviewer>>
 
 export interface LlmJudgement {
   model: string
@@ -592,7 +574,7 @@ export interface IdGenerator {
   entry(): EntryId
   sense(): SenseId
   fact(): FactId
-  feedback(): FeedbackId
+  ticket(): TicketId
   agent(): AgentId
   lease(): WorkLeaseId
 }

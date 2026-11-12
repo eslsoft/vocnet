@@ -63,6 +63,9 @@ export interface ReviewEnv {
   MODEL_API_KEY: string
   JEV_MODEL: string
   REVIEW_LLM_MODEL: string
+  DECISIONS_BASE_URL: string
+  DECISIONS_MODEL: string
+  OPENAI_API_KEY: string
 }
 
 const reviewConfigSchema = z.object({
@@ -70,12 +73,17 @@ const reviewConfigSchema = z.object({
   MODEL_API_KEY: z.string().min(1),
   JEV_MODEL: z.string().min(1),
   REVIEW_LLM_MODEL: z.string().min(1),
+  DECISIONS_BASE_URL: z.url(),
+  DECISIONS_MODEL: z.string().min(1),
+  OPENAI_API_KEY: z.string().min(1),
 })
 
 export interface ReviewConfig {
   gateway: { baseUrl: string; apiKey: string }
   jevModel: string
   llmModel: string
+  /** OpenAI's Decisions API, which the local gateway does not serve. */
+  decisions: { baseUrl: string; apiKey: string; model: string }
 }
 
 export function getReviewConfig(env: ReviewEnv): ReviewConfig {
@@ -84,5 +92,6 @@ export function getReviewConfig(env: ReviewEnv): ReviewConfig {
     gateway: { baseUrl: config.MODEL_BASE_URL, apiKey: config.MODEL_API_KEY },
     jevModel: config.JEV_MODEL,
     llmModel: config.REVIEW_LLM_MODEL,
+    decisions: { baseUrl: config.DECISIONS_BASE_URL, apiKey: config.OPENAI_API_KEY, model: config.DECISIONS_MODEL },
   }
 }

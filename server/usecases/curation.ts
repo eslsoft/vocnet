@@ -9,11 +9,11 @@ import { type DecisionDeps, recordDecision } from './review'
 
 /**
  * Settles a fact with a curator's verdict instead of the reviewer chain's. Pass publishes a
- * pending, published (weak or not), or rejected fact and records the curator's review, so it is no
- * longer weak; fail rejects a pending or published one. A rejected fact is first revived through the
- * re-review reset, so passing it conflicts exactly when re-reviewing it would: another live fact
- * holds its content or slot, a live correction supersedes it, or its original is gone. Publishing a
- * pending correction retires its original and revalidates the dependents, as a passing review does.
+ * pending, published, or rejected fact and records the curator's review; fail rejects a pending or
+ * published one. A rejected fact is first revived through the re-review reset, so passing it
+ * conflicts exactly when re-reviewing it would: another live fact holds its content or slot, a live
+ * correction supersedes it, or its original is gone. Publishing a pending correction retires its
+ * original, as a passing review does.
  */
 export async function curateFact(
   deps: DecisionDeps,

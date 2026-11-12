@@ -188,8 +188,9 @@ export const levelCompletenessSchema = z
 export const consoleStatsSchema = z
   .object({
     facts: z.array(z.object({ kind: factKindSchema, status: factStatusSchema, count })),
-    flagged: z.array(z.object({ kind: factKindSchema, count })).meta({
-      description: 'Weak facts by kind: published on an uncertain or failed review (the facts list `weak` filter).',
+    low_credibility: z.array(z.object({ kind: factKindSchema, count })).meta({
+      description:
+        'Published facts by kind whose review path is right less than nine times in ten (see EntrySummary credibility): what audits sample first.',
     }),
     live_facts: count,
     completeness: z.object({ average: ratio, by_level: z.array(levelCompletenessSchema) }),
@@ -198,9 +199,9 @@ export const consoleStatsSchema = z
       oldest_at: z.iso.datetime().nullable(),
       over_one_hour: count,
     }),
-    feedback: z
-      .object({ open: count, claimed: count, resolved: count, dismissed: count })
-      .meta({ description: 'Feedback by status.' }),
+    tickets: z
+      .object({ open: count, resolved: count, dismissed: count })
+      .meta({ description: 'Tickets by status: stuck work, feedback, audit picks, and missing words.' }),
     work: z.object({ open: count, stuck: count, timed_out_24h: count }),
   })
   .meta({ id: 'ConsoleStats' })

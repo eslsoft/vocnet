@@ -4,9 +4,8 @@ import type {
   AuthVerifier,
   Clock,
   FactRepo,
-  FeedbackRepo,
   IdGenerator,
-  JevReviewer,
+  DecisionReviewers,
   LlmReviewer,
   MonitorRepo,
   NodeRepo,
@@ -15,6 +14,7 @@ import type {
   ReferenceRepo,
   ResponseCache,
   ReviewQueue,
+  TicketRepo,
   TopicRepo,
   WorkRepo,
 } from './ports'
@@ -24,13 +24,14 @@ export interface Deps {
   nodes: NodeRepo
   facts: FactRepo
   topics: TopicRepo
-  feedback: FeedbackRepo
+  tickets: TicketRepo
   agents: AgentRepo
   work: WorkRepo
   monitor: MonitorRepo
   reference: ReferenceRepo
   publicViews: PublicViewRepo
-  jev: JevReviewer
+  /** The decision models: Jev and OpenAI's Decisions API (luna). */
+  decision: DecisionReviewers
   llm: LlmReviewer
   reviewQueue: ReviewQueue
   /** Caps public feedback per client address. */

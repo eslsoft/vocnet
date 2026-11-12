@@ -1,161 +1,69 @@
-import { currentGloss, type Fact, type FactOf, isKind } from '@server/domain/fact'
+import type { Fact, FactOf } from '@server/domain/fact'
 import {
-  ATTEMPTS_WEIGHED,
-  attemptSourceOf,
-  type BlockedCandidate,
-  factKinds,
-  type InflectionOf,
-  inflectionKeysOf,
-  meaningKeyOf,
+  type DecisionModel,
+  type DecisionRequest,
   planReview,
-  quotedValues,
-  type RejectedAttempt,
-  type Rereview,
   type ReviewContext,
-  type ReviewRequest,
-  rereviewOf,
-  revalidatedBy,
-  type SenseGloss,
   type SubjectTypeOf,
   type SubjectViews,
-  showsTaxonomy,
   subjectTypeOf,
   targetOf,
   topicOf,
-  variantKeysOf,
-  weighsBlockedCandidates,
 } from '@server/domain/fact-kinds'
+import { decide, type FactEvent, factTransitions, type ReviewFinding } from '@server/domain/fact-lifecycle'
+import { currentInventory, inventorySenses } from '@server/domain/inventory'
 import {
-  decide,
-  type FactEvent,
-  factTransitions,
-  isLive,
-  JEV_POLICY,
-  jevVerdict,
-  type ReviewFinding,
-  reviewEffects,
-  reviewModeOf,
-} from '@server/domain/fact-lifecycle'
-import type { EntryNode, SenseNode } from '@server/domain/nodes'
-import { type ChainVerdict, chainVerdict, type Opinion, settles } from '@server/domain/review-chain'
+  type ChainVerdict,
+  chainVerdict,
+  decisionOpinion,
+  decisionSettles,
+  type Opinion,
+  scoreOf,
+} from '@server/domain/review-chain'
 import type { Lemma } from '@server/domain/term'
-import { leafViews, type TopicView } from '@server/domain/topics'
-import type { EntryId, FactId, FactKind, FactStatus, Review, ReviewerKind, SenseId, TopicId } from '@shared/facts'
+import type { TopicView } from '@server/domain/topics'
+import type { EntryId, FactId, FactKind, FactStatus, Review, SenseId, TopicId } from '@shared/facts'
 import type { Deps } from './deps'
 import { refreshEntries } from './refresh'
 
 type ReviewDeps = Pick<
   Deps,
-  'nodes' | 'facts' | 'topics' | 'reference' | 'publicViews' | 'work' | 'jev' | 'llm' | 'reviewQueue' | 'clock'
+  'nodes' | 'facts' | 'topics' | 'reference' | 'publicViews' | 'work' | 'decision' | 'llm' | 'reviewQueue' | 'clock'
 >
 
-const reviewers: {
-  [R in ReviewerKind]: (deps: ReviewDeps, request: ReviewRequest<R>, state: Record<string, unknown>) => Promise<Opinion>
-} = {
-  jev: async (deps, { questions }, state) => {
-    const { model, answers } = await deps.jev.ask(questions, state)
-    const { verdict, confidence } = jevVerdict(answers)
-    const scores = Object.entries(answers).map(([key, value]) => `${key}=${value}`)
-    return {
-      reviewer: 'jev',
-      model,
-      verdict,
-      confidence,
-      reason: `Jev ${scores.join(', ')}`,
-      detail: { answers, policy: JEV_POLICY },
-    }
-  },
-  llm: async (deps, { prompt }) => {
-    const judgement = await deps.llm.judge(prompt)
-    return { reviewer: 'llm', ...judgement, detail: { prompt } }
-  },
+/** The senses of the entry's live inventory, in its order. */
+async function entrySenses(deps: Pick<Deps, 'facts'>, entryId: EntryId) {
+  return inventorySenses(currentInventory(await deps.facts.listLive('senses', entryId)))
 }
 
-function runReviewer<R extends ReviewerKind>(
-  deps: ReviewDeps,
-  request: ReviewRequest<R>,
-  state: Record<string, unknown>,
-): Promise<Opinion> {
-  return reviewers[request.reviewer](deps, request, state)
-}
-
-/** Asks each reviewer of the chain in turn until one settles the fact. */
-async function runChain(
-  deps: ReviewDeps,
-  requests: readonly ReviewRequest[],
-  state: Record<string, unknown>,
-): Promise<ChainVerdict> {
-  const opinions: Opinion[] = []
-  for (const request of requests) {
-    const opinion = await runReviewer(deps, request, state)
-    opinions.push(opinion)
-    if (settles(request, opinion)) break
-  }
-  return chainVerdict(opinions as [Opinion, ...Opinion[]])
-}
-
-/** A sense with its current gloss and the current glosses of its entry's other senses. */
+/** A sense with its gloss in its entry's live inventory and the glosses of the entry's other senses. */
 async function senseContext(deps: ReviewDeps, id: SenseId): Promise<SubjectViews['sense']> {
   const sense = await deps.nodes.findSense(id)
   if (!sense) throw new Error(`Sense ${id} referenced by a fact does not exist.`)
-  const senses = await entryGlosses(deps, sense.entryId)
+  const senses = await entrySenses(deps, sense.entryId)
   return {
     lemma: sense.lemma,
     pos: sense.pos,
-    gloss: senses.find(({ senseId }) => senseId === id)?.gloss ?? null,
-    siblings: senses.filter(({ senseId }) => senseId !== id).map(({ pos, gloss }) => ({ pos, gloss })),
+    gloss: senses.find((candidate) => candidate.id === id)?.gloss ?? null,
+    siblings: senses.filter((candidate) => candidate.id !== id).map(({ pos, gloss }) => ({ pos, gloss })),
   }
-}
-
-/** The current gloss of each glossed sense of an entry, in sense order. */
-async function entryGlosses(deps: ReviewDeps, entryId: EntryId): Promise<Array<SenseGloss & { senseId: SenseId }>> {
-  const bySense = new Map<SenseId, { sense: SenseNode; glosses: [FactOf<'sense'>, ...FactOf<'sense'>[]] }>()
-  for (const { sense, fact } of await deps.nodes.listLiveGlosses(entryId)) {
-    const group = bySense.get(sense.id)
-    bySense.set(sense.id, { sense, glosses: group ? [...group.glosses, fact] : [fact] })
-  }
-  return [...bySense.values()].map(({ sense, glosses }) => ({
-    senseId: sense.id,
-    pos: sense.pos,
-    gloss: currentGloss(glosses).payload.gloss,
-  }))
-}
-
-/** The other live entries whose live inflections spell this entry's lemma. */
-async function inflectionOf(deps: ReviewDeps, entry: EntryNode): Promise<InflectionOf[]> {
-  const forms = await deps.nodes.findLiveForms(inflectionKeysOf(entry.lemma))
-  return forms
-    .filter((form) => form.entry.id !== entry.id)
-    .map((form) => ({ lemma: form.entry.lemma, type: form.fact.payload.type }))
-}
-
-/** The lemmas of the other live entries that record this entry's lemma as a live spelling variant. */
-async function variantOf(deps: ReviewDeps, entry: EntryNode): Promise<string[]> {
-  const forms = await deps.nodes.findLiveForms(variantKeysOf(entry.lemma))
-  return forms.filter((form) => form.entry.id !== entry.id).map((form) => form.entry.lemma)
 }
 
 const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    const [senses, inflections, variants, cefr, caseVariants] = await Promise.all([
-      entryGlosses(deps, entry.id),
-      inflectionOf(deps, entry),
-      variantOf(deps, entry),
-      deps.reference.listCefrListings(entry.lemma),
-      deps.nodes.listLiveCaseVariants(entry),
-    ])
-    return {
-      lemma: entry.lemma,
-      senses: senses.map(({ senseId, pos, gloss }) => ({ id: senseId, pos, gloss })),
-      inflectionOf: inflections,
-      variantOf: variants,
-      cefr,
-      caseVariants,
-    }
+    const [senses, caseVariants] = await Promise.all([entrySenses(deps, entry.id), deps.nodes.listLiveCaseVariants(entry)])
+    return { lemma: entry.lemma, senses: senses.map(({ id: senseId, pos, gloss }) => ({ id: senseId, pos, gloss })), caseVariants }
   },
   sense: (deps, id) => senseContext(deps, id as SenseId),
+  fact: async (deps, id) => {
+    const fact = await deps.facts.find(id as FactId)
+    if (!fact || (fact.kind !== 'example' && fact.kind !== 'collocation')) {
+      throw new Error(`Fact ${id} a translation translates is not an example or a collocation.`)
+    }
+    return { kind: fact.kind, text: fact.payload.text, sense: await senseContext(deps, fact.subjectId as SenseId) }
+  },
 }
 
 /** A leaf topic with its category's name; null when the id names no leaf topic. */
@@ -165,117 +73,6 @@ async function topicView(deps: ReviewDeps, id: TopicId): Promise<TopicView | nul
   const category = await deps.topics.find(topic.parentId)
   if (!category) throw new Error(`Topic ${id} belongs to category ${topic.parentId}, which does not exist.`)
   return { category: category.nameEn, topic: topic.nameEn }
-}
-
-/**
- * A rejected fact with the entry it is about when that is another entry, the sense at its other
- * end, the topic it names, and why it was rejected.
- */
-async function rejectedAttempt(
-  deps: ReviewDeps,
-  nodeId: string,
-  fact: Fact,
-  word: string | null,
-): Promise<RejectedAttempt> {
-  if (!fact.review) throw new Error(`Rejected fact ${fact.id} has no review.`)
-  const other = fact.objectId && (fact.objectId === nodeId ? (fact.subjectId as SenseId) : fact.objectId)
-  const topic = topicOf(fact.kind, fact.payload)
-  const end = other && (await senseContext(deps, other))
-  return {
-    kind: fact.kind,
-    payload: fact.payload,
-    word,
-    other: end ? { lemma: end.lemma, pos: end.pos, gloss: end.gloss } : null,
-    topic: topic ? await topicView(deps, topic) : null,
-    reason: fact.review.reason,
-  }
-}
-
-/**
- * The latest rejected facts the fact's review weighs: of the kinds that fill its slot about its
- * subject, or the rejected word formations of other entries built on the subject's lemma.
- */
-async function rejectedAttempts<K extends FactKind>(
-  deps: ReviewDeps,
-  fact: FactOf<K>,
-  lemma: string,
-): Promise<RejectedAttempt[]> {
-  const source = attemptSourceOf(fact.kind, fact.payload)
-  if (!source) return []
-  if (source.of === 'derivatives') {
-    const derivations = await deps.facts.listRejectedDerivations(lemma, ATTEMPTS_WEIGHED)
-    return Promise.all(
-      derivations.map(({ word, fact: attempt }) => rejectedAttempt(deps, fact.subjectId, attempt, word)),
-    )
-  }
-  const rejected = await deps.facts.listRejected(fact.subjectId, source.kinds, ATTEMPTS_WEIGHED)
-  return Promise.all(rejected.map((attempt) => rejectedAttempt(deps, fact.subjectId, attempt, null)))
-}
-
-/** The entries the node's live relations link it to, each with one such relation, from its entry's snapshot. */
-async function linkedEntries(deps: ReviewDeps, nodeId: string): Promise<Map<EntryId, FactOf<'relation'>>> {
-  const sense = await deps.nodes.findSense(nodeId as SenseId)
-  const entry = await deps.nodes.findEntry(sense ? sense.entryId : (nodeId as EntryId))
-  if (!entry) throw new Error(`Node ${nodeId} of a reviewed fact has no entry.`)
-  const snapshot = await deps.nodes.loadEntrySnapshot(entry)
-  const ends = new Map<string, EntryId>(snapshot.neighbors.senses.map((end) => [end.id, end.entryId]))
-  const links = [...snapshot.facts, ...snapshot.incoming]
-    .filter(isKind('relation'))
-    .filter((fact) => isLive(fact.status) && (!sense || fact.subjectId === nodeId || fact.objectId === nodeId))
-  return new Map(
-    links.map((fact) => {
-      const other = ends.has(fact.subjectId) ? fact.subjectId : fact.payload.target_sense_id
-      // A relation's other end is always among the entry's neighbors.
-      return [ends.get(other) as EntryId, fact] as const
-    }),
-  )
-}
-
-/** What keeps an existing entry from being recorded at the node, by its stored facts; null when nothing does. */
-async function blockOf(
-  deps: ReviewDeps,
-  entryId: EntryId,
-  link: FactOf<'relation'> | undefined,
-): Promise<string | null> {
-  if ((await deps.facts.listLive('entry', entryId)).length === 0)
-    return 'its entry fact is not live (rejected or retracted)'
-  if ((await deps.nodes.listLiveGlosses(entryId)).length === 0) return 'it has no sense with a live gloss'
-  if (link)
-    return `a live ${link.payload.type} relation (${link.id}) already links the two words, and a sense relates to another entry by one type only`
-  return null
-}
-
-/**
- * The values earlier rejected reviews of the same slot named (quoted in their reasons) that the
- * stored facts keep from being recorded: an existing entry whose entry fact is not live, one with
- * no sense with a live gloss, or one the node already relates to. A named value with no entry is
- * not blocked: the producer creates it.
- */
-async function blockedCandidates<K extends FactKind>(
-  deps: ReviewDeps,
-  fact: FactOf<K>,
-  lemma: string,
-): Promise<BlockedCandidate[]> {
-  if (!weighsBlockedCandidates(fact.kind)) return []
-  const slot = meaningKeyOf(fact.kind, fact.payload)
-  const rejected = await deps.facts.listRejected(fact.subjectId, [fact.kind], ATTEMPTS_WEIGHED)
-  const named = new Map<string, string>()
-  for (const other of rejected) {
-    if (meaningKeyOf(other.kind, other.payload) !== slot || !other.review) continue
-    for (const value of quotedValues(other.review.reason)) {
-      if (value !== lemma && !named.has(value)) named.set(value, other.review.reason)
-    }
-  }
-  if (named.size === 0) return []
-  const linked = await linkedEntries(deps, fact.subjectId)
-  const blocked = await Promise.all(
-    [...named].map(async ([value, namedBy]): Promise<BlockedCandidate[]> => {
-      const entry = await deps.nodes.findEntryByLemma(value as Lemma)
-      const blockedBy = entry && (await blockOf(deps, entry.id, linked.get(entry.id)))
-      return blockedBy ? [{ lemma: value, namedBy, blockedBy }] : []
-    }),
-  )
-  return blocked.flat()
 }
 
 async function loadContext<K extends FactKind>(
@@ -290,10 +87,21 @@ async function loadContext<K extends FactKind>(
     subject: subject as SubjectViews[SubjectTypeOf[K]],
     target: target ? await senseContext(deps, target) : null,
     topic: topic ? await topicView(deps, topic) : null,
-    attempts: await rejectedAttempts(deps, fact, subject.lemma),
-    taxonomy: showsTaxonomy(fact.kind, fact.payload) ? leafViews(await deps.topics.list()) : [],
-    blocked: await blockedCandidates(deps, fact, subject.lemma),
   }
+}
+
+/** Asks every decision model of the request at once; their combined scores settle a pass or not. */
+async function askDecision(
+  deps: ReviewDeps,
+  request: DecisionRequest,
+): Promise<{ opinions: Opinion[]; settled: number | null }> {
+  const answered = await Promise.all(
+    request.models.map(async (model) => [model, await deps.decision[model].ask(request.questions, request.state)] as const),
+  )
+  const scores = new Map<DecisionModel, number>(answered.map(([model, answers]) => [model, scoreOf(answers)]))
+  const opinions = answered.map(([model, answers]) => decisionOpinion(model, request.passAt[model] ?? 1, answers))
+  if (!decisionSettles(request, scores)) return { opinions, settled: null }
+  return { opinions, settled: Math.max(...scores.values()) }
 }
 
 async function judge<K extends FactKind>(
@@ -303,75 +111,44 @@ async function judge<K extends FactKind>(
   const context = await loadContext(deps, fact)
   const plan = planReview(fact.kind, fact.payload, context)
   if (plan.kind === 'unreviewable') {
-    const [reviewer] = factKinds[fact.kind].chain
     return {
       context,
       finding: 'unreviewable',
-      verdict: { reviewer, model: 'none', verdict: 'fail', confidence: 1, reason: plan.reason, detail: {} },
+      verdict: { reviewer: 'llm', model: 'none', verdict: 'fail', confidence: 1, reason: plan.reason, detail: {} },
     }
   }
-  const state = { fact: { id: fact.id, kind: fact.kind, payload: fact.payload }, context }
-  const verdict = await runChain(deps, plan.requests, state)
+  const decided = plan.decision ? await askDecision(deps, plan.decision) : { opinions: [], settled: null }
+  if (decided.settled !== null) {
+    const verdict = chainVerdict(decided.opinions as [Opinion, ...Opinion[]], decided.settled)
+    return { context, finding: 'pass', verdict }
+  }
+  const judgement = await deps.llm.judge(plan.prompt)
+  const final: Opinion = { reviewer: 'llm', ...judgement, detail: { prompt: plan.prompt } }
+  const verdict = chainVerdict([...decided.opinions, final] as unknown as [Opinion, ...Opinion[]])
   return { context, finding: verdict.verdict, verdict }
-}
-
-async function revalidatedByCorrection<K extends FactKind>(
-  deps: Pick<Deps, 'facts'>,
-  correction: FactOf<K>,
-  originalId: FactId,
-): Promise<readonly FactKind[] | undefined> {
-  if (!factKinds[correction.kind].revalidates) return undefined
-  const original = (await deps.facts.find(originalId)) as FactOf<K> | null
-  if (!original) throw new Error(`Fact ${originalId} superseded by ${correction.id} does not exist.`)
-  return revalidatedBy(correction.kind, original.payload, correction.payload)
-}
-
-/** Enqueues the facts a publish marked for a review in place: the live marked facts of the other entry. */
-async function enqueueRereviews(
-  deps: Pick<Deps, 'nodes' | 'facts' | 'reviewQueue'>,
-  { lemma }: Rereview,
-  traceId: string,
-): Promise<void> {
-  const entry = await deps.nodes.findEntryByLemma(lemma)
-  if (!entry) return
-  const ids = await deps.facts.listRevalidating(entry.id)
-  if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
 }
 
 export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
 
 /**
- * Reviews one pending fact, or revalidates one published fact whose gloss was corrected, and
- * records the decision. Idempotent: any other fact is skipped, and the status write is
- * conditional on the status and revalidation mark the review read, so a duplicate delivery
- * cannot change a decided fact and a review that read a superseded gloss cannot land. When a
- * correction publishes, the live facts judged or about to be judged against the old version are
- * marked and enqueued, and when a fact publishes that another entry's review lacked as evidence
- * (an inflection spelled like that entry's lemma), the facts it names are marked and enqueued too.
- * Reviewer transport errors propagate so the queue retries.
+ * Reviews one pending fact once and records the decision. Idempotent: any other fact is skipped,
+ * and the status write is conditional on the status the review read, so a duplicate delivery
+ * cannot change a decided fact. Reviewer transport errors propagate so the queue retries.
  */
 export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string): Promise<ReviewOutcome> {
   const fact = await deps.facts.find(id)
-  const mode = fact && reviewModeOf(fact)
-  if (!fact || !mode) return 'skipped'
-
+  if (!fact || fact.status !== 'pending') return 'skipped'
   const { finding, verdict, context } = await judge(deps, fact)
-  const event = decide(mode, finding, factKinds[fact.kind].revalidationFailure)
-  const { outcome, records } = reviewEffects[event]
+  const event = decide(finding)
   const at = deps.clock.now().toISOString()
   const applied = await recordDecision(
     deps,
     fact,
-    {
-      event,
-      from: factTransitions[event].from,
-      at,
-      review: records ? { ...verdict, context: { ...context }, reviewed_at: at } : undefined,
-      revalidateSince: fact.revalidateSince,
-    },
+    { event, from: factTransitions[event].from, at, review: { ...verdict, context: { ...context }, reviewed_at: at } },
     traceId,
   )
-  return applied ? outcome : 'skipped'
+  if (!applied) return 'skipped'
+  return event === 'publish' ? 'published' : 'rejected'
 }
 
 export type DecisionDeps = Pick<
@@ -385,55 +162,53 @@ export interface Decision {
   from: readonly FactStatus[]
   at: string
   review?: Review
-  /** The revalidation mark the decision read, as `FactTransitionWrite.revalidateSince`. */
-  revalidateSince?: string | null
+}
+
+/**
+ * Admits the phrases a published phrases list names, in its headword's batch, and lets the phrases
+ * the list it replaces dropped go, unless another published list still names them.
+ */
+async function admitPhrases(deps: DecisionDeps, list: FactOf<'phrases'>, at: string): Promise<void> {
+  const head = await deps.nodes.admission(list.subjectId)
+  const admitted = await deps.nodes.admit(list.payload.phrases as Lemma[], head.batch ?? 0, list.author, at)
+  const original = list.supersedesId ? ((await deps.facts.find(list.supersedesId)) as FactOf<'phrases'> | null) : null
+  const kept = new Set(list.payload.phrases)
+  const dropped = (original?.payload.phrases ?? []).filter((phrase) => !kept.has(phrase))
+  const droppedEntries = (await Promise.all(dropped.map((lemma) => deps.nodes.findEntryByLemma(lemma as Lemma)))).flatMap(
+    (entry) => (entry ? [entry.id] : []),
+  )
+  await deps.nodes.setPhrasesLive(
+    admitted.map((entry) => entry.id),
+    droppedEntries,
+    head.batch,
+  )
 }
 
 /**
  * Writes a decision on a fact, a reviewer's or a curator's. A pending fact that publishes retires
- * the original it corrects in the same batch and marks the live facts judged against the old
- * version; a fact that publishes evidence another entry's review lacked marks the facts it names.
- * The marked facts are enqueued. False when the fact left `from` or changed its mark first.
+ * the original it corrects in the same batch. A published phrases list admits its phrases as
+ * entries. False when the fact left `from` first.
  */
 export async function recordDecision(
   deps: DecisionDeps,
   fact: Fact,
-  { event, from, at, review, revalidateSince }: Decision,
-  traceId: string,
+  { event, from, at, review }: Decision,
+  _traceId: string,
 ): Promise<boolean> {
   const { to } = factTransitions[event]
-  const publishes = fact.status === 'pending' && to === 'published'
+  const publishes = fact.status !== 'published' && to === 'published'
   const supersede = publishes ? (fact.supersedesId ?? undefined) : undefined
-  const dependents = supersede && (await revalidatedByCorrection(deps, fact, supersede))
-  const rereview = publishes ? rereviewOf(fact.kind, fact.payload) : null
-  const applied = await deps.facts.transition({
-    id: fact.id,
-    from,
-    to,
-    at,
-    review,
-    supersede,
-    revalidate: dependents ? { nodeId: fact.subjectId, kinds: dependents } : undefined,
-    revalidateSince,
-    rereview: rereview ?? undefined,
-  })
+  const applied = await deps.facts.transition({ id: fact.id, from, to, at, review, supersede })
   if (!applied) return false
+  if (publishes && fact.kind === 'phrases') await admitPhrases(deps, fact, at)
   await refreshEntries(deps, [fact.subjectId, fact.objectId])
-  if (dependents) {
-    const ids = await deps.facts.listRevalidating(fact.subjectId)
-    if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
-  }
-  if (rereview) await enqueueRereviews(deps, rereview, traceId)
   return true
 }
 
 const RECONCILE_AFTER_MS = 5 * 60 * 1000
 const RECONCILE_BATCH = 500
 
-/**
- * Re-enqueues facts pending, or awaiting revalidation, for too long, so a lost enqueue cannot
- * strand a fact.
- */
+/** Re-enqueues facts pending for too long, so a lost enqueue cannot strand a fact. */
 export async function reconcileReviews(
   deps: Pick<Deps, 'facts' | 'reviewQueue' | 'clock'>,
   traceId: string,

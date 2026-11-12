@@ -1,5 +1,5 @@
 import { curatorReview, isCurated } from '@server/domain/curation'
-import { currentGloss, type Fact, isKind } from '@server/domain/fact'
+import { type Fact, type FactOf, isKind } from '@server/domain/fact'
 import {
   type AdmissionViews,
   admissionOf,
@@ -20,13 +20,21 @@ import {
 } from '@server/domain/fact-kinds'
 import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
 import { mayActOn, mayCurate, type Principal, principalRef } from '@server/domain/principal'
-import { currentSenseList } from '@server/domain/sense-list'
-import { type Lemma, normalizeTerm } from '@server/domain/term'
+import { currentInventory, inventorySenses } from '@server/domain/inventory'
+import { type Lemma, normalizeTerm, textKey } from '@server/domain/term'
 import { isLeaf } from '@server/domain/topics'
 import type { EntryId, FactId, FactKind, FactPayloads, Pos, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
 import { requireCurator } from './access'
 import type { Deps } from './deps'
-import { ConflictError, CuratedFactError, ForbiddenError, InvalidReferenceError, NotFoundError } from './errors'
+import {
+  ConflictError,
+  CuratedFactError,
+  ForbiddenError,
+  InvalidReferenceError,
+  InventorySettledError,
+  NotFoundError,
+  RejectedBeforeError,
+} from './errors'
 import type { FactFilter, PageRequest, WithEntry } from './ports'
 import { refreshEntries } from './refresh'
 import { recordDecision } from './review'
@@ -55,10 +63,13 @@ type SubjectDeps = Pick<Deps, 'nodes' | 'facts'>
 const liveForms = async (deps: SubjectDeps, entryId: EntryId) =>
   (await deps.facts.listLive('form', entryId)).filter(isKind('form')).map((fact) => fact.payload.form)
 
-/** The entry's senses whose gloss is live, each once. */
-const liveSenses = async (deps: SubjectDeps, entryId: EntryId) => [
-  ...new Set((await deps.nodes.listLiveGlosses(entryId)).map(({ sense }) => sense.id)),
-]
+/** The senses of the entry's live inventory. */
+const inventoryOf = async (deps: SubjectDeps, entryId: EntryId) =>
+  inventorySenses(currentInventory(await deps.facts.listLive('senses', entryId)))
+
+/** The senses of the entry's published inventory: only these can be referenced once it publishes. */
+const publishedSenses = async (deps: SubjectDeps, entryId: EntryId) =>
+  inventorySenses(currentInventory(await deps.facts.listLive('senses', entryId), (status) => status === 'published'))
 
 /** The subject node, or null when it does not exist. */
 const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Promise<SubjectNode<S> | null> } = {
@@ -68,7 +79,7 @@ const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Prom
       entry && {
         entryId: entry.id,
         pos: null,
-        admission: async () => ({ lemma: entry.lemma, senses: await liveSenses(deps, entry.id) }),
+        admission: async () => ({ lemma: entry.lemma, senses: (await inventoryOf(deps, entry.id)).map(({ id: sense }) => sense) }),
       }
     )
   },
@@ -81,6 +92,13 @@ const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Prom
         admission: async () => ({ lemma: sense.lemma, pos: sense.pos, forms: await liveForms(deps, sense.entryId) }),
       }
     )
+  },
+  fact: async (deps, id) => {
+    const fact = await deps.facts.find(id as FactId)
+    if (!fact || (fact.kind !== 'example' && fact.kind !== 'collocation')) return null
+    const sense = await deps.nodes.findSense(fact.subjectId as SenseId)
+    if (!sense) throw new Error(`The ${fact.kind} ${fact.id} is about sense ${fact.subjectId}, which does not exist.`)
+    return { entryId: sense.entryId, pos: sense.pos, admission: async () => ({ kind: fact.kind }) }
   },
 }
 
@@ -119,8 +137,9 @@ export async function submitFact(
   const { kind, curation } = input
   if (curation) requireCurator(actor.principal)
   const spec = factKinds[kind]
-  const oriented = orientOf(kind, input.subject_id, input.payload)
-  const subjectId = oriented.subjectId as EntryId | SenseId
+  // A submitted inventory may name new senses without ids; assignSenseIds gives them theirs.
+  const oriented = orientOf(kind, input.subject_id, input.payload as FactPayloads[typeof kind])
+  const subjectId = oriented.subjectId
   const payload = oriented.payload
   const subjectType = subjectTypeOf(kind, payload)
   const subject = await subjectNode[subjectType](deps, subjectId)
@@ -147,9 +166,24 @@ export async function submitFact(
   const contentKey = contentKeyOf(kind, payload)
   const existing = await deps.facts.findLive(kind, subjectId, contentKey)
   if (existing) return { fact: existing, created: false }
-  if (!mayCurate(actor.principal) && (await deps.facts.findCuratedRejection(kind, subjectId, contentKey))) {
-    throw new CuratedFactError('A curator rejected this fact; only a curator may submit it again.')
+  if (!mayCurate(actor.principal)) {
+    if (await deps.facts.findCuratedRejection(kind, subjectId, contentKey)) {
+      throw new CuratedFactError('A curator rejected this fact; only a curator may submit it again.')
+    }
+    const rejected = await deps.facts.findRejected(kind, subjectId, contentKey)
+    if (rejected) {
+      throw new RejectedBeforeError(
+        `Review already rejected this content (${rejected.id}): ${rejected.review?.reason ?? 'no reason recorded'} Fix what it names instead of resending it.`,
+      )
+    }
+    if (kind === 'senses' && (await deps.facts.listLive('senses', entryId)).some((fact) => fact.status === 'published')) {
+      throw new InventorySettledError(
+        "This entry's sense inventory is published, so its senses are fixed; reference them, or leave a note for a curator.",
+      )
+    }
   }
+  if (targetSense) await assertTargetShown(deps, targetSense.id, targetSense.entryId)
+  if (subjectType === 'sense') await assertTargetShown(deps, subjectId as SenseId, entryId)
 
   if (spec.admit) await assertAdmitted(kind, payload, subject)
   await assertReferencesLive(deps, referencesOf(kind, payload))
@@ -173,18 +207,18 @@ export async function submitFact(
   }
 
   const now = deps.clock.now().toISOString()
+  const stored = kind === 'senses' ? await assignSenseIds(deps, entryId, payload as FactPayloads['senses'], actor, now) : payload
   const draft = {
     id: factId,
     kind,
     subjectId,
     objectId: target,
     contentKey,
-    payload,
+    payload: stored,
     status: 'pending',
     supersedesId,
     author: principalRef(actor.principal),
     review: null,
-    revalidateSince: null,
     createdAt: now,
     updatedAt: now,
   } as Fact
@@ -199,6 +233,49 @@ export async function submitFact(
   await refreshEntries(deps, [subjectId, target])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { fact, created }
+}
+
+/**
+ * Names every sense of a submitted inventory by id: a kept sense keeps its own, and a new one gets
+ * the sense row of its part of speech and gloss, created now (an inventory review that rejects it
+ * leaves the row unlisted, so it never shows).
+ */
+async function assignSenseIds(
+  deps: Pick<Deps, 'nodes' | 'ids'>,
+  entryId: EntryId,
+  { senses }: FactPayloads['senses'],
+  actor: Actor,
+  at: string,
+): Promise<FactPayloads['senses']> {
+  const fresh = senses.filter((sense) => !sense.id)
+  const created = await deps.nodes.insertSenses(
+    fresh.map((sense) => ({
+      sense: { id: deps.ids.sense(), entryId, pos: sense.pos, createdBy: principalRef(actor.principal), createdAt: at },
+      creationKey: textKey(sense.gloss),
+    })),
+  )
+  let next = 0
+  return {
+    senses: senses.map((sense) => {
+      if (sense.id) return { ...sense, id: sense.id }
+      const row = created[next++]
+      if (!row) throw new Error(`No sense row was stored for a new sense of entry ${entryId}.`)
+      return { ...sense, id: row.id }
+    }),
+  }
+}
+
+/**
+ * A relation's end is a sense its entry's published inventory lists, on a live entry: anything
+ * else never shows, so the pass names the word in blocked_on instead.
+ */
+async function assertTargetShown(deps: SubjectDeps, sense: SenseId, entryId: EntryId): Promise<void> {
+  const [admission, listed] = await Promise.all([deps.nodes.admission(entryId), publishedSenses(deps, entryId)])
+  if (!admission.live || !listed.some((candidate) => candidate.id === sense)) {
+    throw new InvalidReferenceError(
+      `Sense ${sense} is not listed by a published inventory of a live entry, so nothing can link to it yet; name the word in blocked_on and complete the item.`,
+    )
+  }
 }
 
 /** Publishes a curator's new pending fact with the curator's review, as a passing review would. */
@@ -229,33 +306,31 @@ async function assertAdmitted<K extends FactKind>(
 async function assertReferencesLive(deps: SubjectDeps, lemmas: readonly string[]): Promise<void> {
   for (const lemma of lemmas) {
     const entry = await deps.nodes.findEntryByLemma(lemma as Lemma)
-    const live = entry && (await deps.facts.listLive('entry', entry.id)).length > 0
+    const live = entry && (await deps.nodes.admission(entry.id)).live
     if (!live) {
       throw new InvalidReferenceError(
-        `${JSON.stringify(lemma)} is not the lemma of a live entry; a base names an entry exactly as it is spelled. Create that entry first, or leave the lemma out.`,
+        `${JSON.stringify(lemma)} is not the lemma of a live entry; a base names an entry exactly as it is spelled. Leave the lemma out, or name the word in blocked_on.`,
       )
     }
   }
 }
 
 /**
- * What a link's end rule sees of a sense: whether its entry's current list puts it in extra, its
- * gloss's register, and its entry's lemma and live spelling variants.
+ * What a link's end rule sees of a sense: whether its entry's inventory ranks it extra, its
+ * register, and its entry's lemma and live spelling variants.
  */
 async function linkEnd(deps: SubjectDeps, { sense, entry }: SenseEnd): Promise<LinkEnd> {
-  const [node, glosses, lists, forms] = await Promise.all([
+  const [node, senses, forms] = await Promise.all([
     deps.nodes.findEntry(entry),
-    deps.nodes.listLiveGlosses(entry),
-    deps.facts.listLive('sense_list', entry),
+    inventoryOf(deps, entry),
     deps.facts.listLive('form', entry),
   ])
   if (!node) throw new Error(`Sense ${sense} belongs to entry ${entry}, which does not exist.`)
-  const [first, ...rest] = glosses.filter((gloss) => gloss.sense.id === sense).map(({ fact }) => fact)
-  const gloss = first && currentGloss([first, ...rest])
+  const listed = senses.find((candidate) => candidate.id === sense)
   return {
     sense,
-    rare: currentSenseList(lists)?.payload.extra.includes(sense) ?? false,
-    register: gloss?.payload.register ?? null,
+    rare: listed?.rank === 'extra',
+    register: listed?.register ?? null,
     lemma: node.lemma,
     variants: forms
       .filter(isKind('form'))
@@ -316,7 +391,7 @@ async function assertSupersedable(
   deps: Pick<Deps, 'facts'>,
   supersedesId: FactId,
   kind: FactKind,
-  subjectId: EntryId | SenseId,
+  subjectId: string,
 ): Promise<Fact> {
   const old = await deps.facts.find(supersedesId)
   if (!old) throw new InvalidReferenceError(`Superseded fact ${supersedesId} does not exist.`)
@@ -333,7 +408,7 @@ async function assertCorrectable(
   deps: Pick<Deps, 'facts'>,
   supersedesId: FactId,
   kind: FactKind,
-  subjectId: EntryId | SenseId,
+  subjectId: string,
 ): Promise<void> {
   await assertSupersedable(deps, supersedesId, kind, subjectId)
   if (await deps.facts.findLiveCorrection(supersedesId)) throw new ConflictError(ALREADY_CORRECTED)

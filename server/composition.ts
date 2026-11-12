@@ -5,16 +5,17 @@ import { createEdgeCache } from '@server/adapters/edge-cache'
 import { createRateLimiter } from '@server/adapters/rate-limiter'
 import { createAgentRepo } from '@server/adapters/repos/agents'
 import { createFactRepo } from '@server/adapters/repos/facts'
-import { createFeedbackRepo } from '@server/adapters/repos/feedback'
 import { createMonitorRepo } from '@server/adapters/repos/monitor'
 import { createNodeRepo } from '@server/adapters/repos/nodes'
 import { createPublicViewRepo } from '@server/adapters/repos/public-view'
 import { createReferenceRepo } from '@server/adapters/repos/reference'
+import { createTicketRepo } from '@server/adapters/repos/tickets'
 import { createTopicRepo } from '@server/adapters/repos/topics'
 import { createWorkRepo } from '@server/adapters/repos/work'
 import { createReviewQueue } from '@server/adapters/review-queue'
 import { createJevReviewer } from '@server/adapters/reviewers/jev'
 import { createLlmReviewer } from '@server/adapters/reviewers/llm'
+import { createLunaReviewer } from '@server/adapters/reviewers/luna'
 import { systemClock, uuidGenerator } from '@server/adapters/system'
 import { getAdminSubjects, getAuthConfig, getReviewConfig } from '@server/config'
 import { createDb } from '@server/db/client'
@@ -30,13 +31,16 @@ export function createDeps(env: Env): Deps {
     nodes: createNodeRepo(db),
     facts: createFactRepo(db),
     topics: createTopicRepo(db),
-    feedback: createFeedbackRepo(db),
+    tickets: createTicketRepo(db),
     agents: createAgentRepo(db),
     work: createWorkRepo(db),
     monitor: createMonitorRepo(db),
     reference: createReferenceRepo(db),
     publicViews: createPublicViewRepo(db),
-    jev: createJevReviewer({ ...review.gateway, model: review.jevModel }),
+    decision: {
+      jev: createJevReviewer({ ...review.gateway, model: review.jevModel }),
+      luna: createLunaReviewer(review.decisions),
+    },
     llm: createLlmReviewer({ ...review.gateway, model: review.llmModel }),
     reviewQueue: createReviewQueue(env.REVIEW_QUEUE),
     feedbackLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),

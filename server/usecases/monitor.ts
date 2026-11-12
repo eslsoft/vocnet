@@ -13,7 +13,8 @@ import {
   secondsBetween,
   windowBuckets,
 } from '@server/domain/monitor'
-import { MAX_ATTEMPTS, WORK_POLICY } from '@server/domain/work'
+import { factCredibility } from '@server/domain/credibility'
+import { WORK_POLICY } from '@server/domain/work'
 import type { EntryId } from '@shared/facts'
 import type {
   ConsoleStats,
@@ -24,7 +25,7 @@ import type {
   WorkSummary,
   WorkWindow,
 } from '@shared/monitor'
-import type { WorkItemId, WorkType } from '@shared/work'
+import { MAX_PASSES, type WorkItemId, type WorkType } from '@shared/work'
 import type { Deps } from './deps'
 import { NotFoundError } from './errors'
 import type { Page, PageRequest, WorkAttemptFilter, WorkAttemptRecord, WorkItemRecord } from './ports'
@@ -35,18 +36,21 @@ import type { Page, PageRequest, WorkAttemptFilter, WorkAttemptRecord, WorkItemR
 /** How many leases the work summary lists at most. */
 export const SUMMARY_LEASES = 100
 
-/** Fact, completeness, review, feedback, and work counts for the console's overview. */
+/** Below this credibility a published fact is an audit candidate. */
+export const AUDIT_BELOW = 0.9
+
+/** Fact, completeness, review, ticket, and work counts for the console's overview. */
 export async function getConsoleStats(
-  deps: Pick<Deps, 'facts' | 'feedback' | 'monitor' | 'clock'>,
+  deps: Pick<Deps, 'facts' | 'tickets' | 'monitor' | 'clock'>,
 ): Promise<ConsoleStats> {
   const now = deps.clock.now()
-  const [facts, flagged, liveFacts, levels, pending, feedback, open, timedOut] = await Promise.all([
+  const [facts, byPath, liveFacts, levels, pending, tickets, open, timedOut] = await Promise.all([
     deps.facts.countByKindAndStatus(),
-    deps.monitor.countWeakByKind(),
+    deps.monitor.countByCredibility(),
     deps.monitor.countLiveFacts(),
     deps.monitor.completenessByLevel(),
     deps.monitor.pendingReview(before(now, ONE_HOUR_MS)),
-    deps.feedback.countByStatus(),
+    deps.tickets.countByStatus(),
     deps.monitor.countOpenItems(now.toISOString()),
     deps.monitor.countTimedOutLeases(before(now, ONE_DAY_MS), now.toISOString()),
   ])
@@ -55,18 +59,26 @@ export async function getConsoleStats(
     const entries = row?.entries ?? 0
     return { level, entries, complete: row?.complete ?? 0, average: entries === 0 ? 0 : (row?.sum ?? 0) / entries }
   })
+  const low = new Map<ConsoleStats['facts'][number]['kind'], number>()
+  for (const { kind, reviewer, count } of byPath) {
+    const credibility = factCredibility({
+      kind,
+      review: reviewer === null ? null : ({ reviewer } as NonNullable<Parameters<typeof factCredibility>[0]['review']>),
+    })
+    if (credibility !== null && credibility < AUDIT_BELOW) low.set(kind, (low.get(kind) ?? 0) + count)
+  }
   const entries = byLevel.reduce((sum, level) => sum + level.entries, 0)
   const sum = levels.reduce((total, level) => total + level.sum, 0)
   return {
     facts,
-    flagged,
+    low_credibility: [...low].map(([kind, count]) => ({ kind, count })),
     live_facts: liveFacts,
     completeness: { average: entries === 0 ? 0 : sum / entries, by_level: byLevel },
     pending_review: { count: pending.count, oldest_at: pending.oldestAt, over_one_hour: pending.olderThan },
-    feedback,
+    tickets,
     work: {
       open: open.reduce((total, row) => total + row.count, 0),
-      stuck: open.filter((row) => row.attempts >= MAX_ATTEMPTS).reduce((total, row) => total + row.count, 0),
+      stuck: open.filter((row) => row.attempts >= MAX_PASSES).reduce((total, row) => total + row.count, 0),
       timed_out_24h: timedOut,
     },
   }
