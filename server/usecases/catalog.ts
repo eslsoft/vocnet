@@ -31,8 +31,8 @@ import type {
 } from '@shared/catalog'
 import type { EntryId, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
-import type { Deps } from './deps'
 import { requireCurator } from './access'
+import type { Deps } from './deps'
 import { NotFoundError } from './errors'
 import type { Actor } from './facts'
 import type { EntrySummaryFilter, Page, PageRequest } from './ports'
@@ -71,11 +71,8 @@ async function admitHeadwords(
 ): Promise<EntryNode[]> {
   const now = deps.clock.now().toISOString()
   const entries = await deps.nodes.admit(lemmas, batch, principalRef(actor.principal), now)
-  await deps.work.reopenBlocked(lemmas)
-  await refreshEntries(
-    deps,
-    entries.map((entry) => entry.id),
-  )
+  const reopened = await deps.work.reopenBlocked(lemmas)
+  await refreshEntries(deps, [...entries.map((entry) => entry.id), ...reopened])
   return entries
 }
 

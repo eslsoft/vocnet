@@ -20,7 +20,7 @@ import {
 } from './catalog-view'
 import { levelRank } from './reference'
 import { type SearchField, searchBody } from './search'
-import { isMultiword, normalizeTerm } from './term'
+import { normalizeTerm } from './term'
 
 // The public view stores each entry's public document, built by the same projection that defines
 // visibility, plus the lookup rows the other public reads need. Everything here derives from the
@@ -43,8 +43,6 @@ export interface PublicViewRecord {
   hypernyms: Array<{ broaderSenseId: SenseId; domain: RelationDomain | null; summary: StoredSenseSummary }>
   /** One per distinct gloss, translation, and example of a public sense, as the search index stores it. */
   searchTexts: Array<{ field: SearchField; scope: string; body: string }>
-  /** The words of a multiword lemma, so each word's entry finds it as a phrase. */
-  phraseWords: string[]
   /** The parts of the entry's word formation, so entries sharing a base or root find each other. */
   morphemes: Array<{ form: string; role: MorphemeRole }>
 }
@@ -145,7 +143,6 @@ export function publicViewRecord(document: StoredEntry): PublicViewRecord {
         })),
       ),
     ),
-    phraseWords: isMultiword(document.lemma) ? [...new Set(document.lemma.split(' '))] : [],
     morphemes: [
       ...new Map(
         parts.map((part) => [`${part.role}:${partWord(part)}`, { form: partWord(part), role: part.role }]),

@@ -146,7 +146,7 @@ export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
  */
 export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string): Promise<ReviewOutcome> {
   const fact = await deps.facts.find(id)
-  if (!fact || fact.status !== 'pending') return 'skipped'
+  if (fact?.status !== 'pending') return 'skipped'
   const { finding, verdict, context } = await judge(deps, fact)
   const event = decide(finding)
   const at = deps.clock.now().toISOString()
@@ -177,7 +177,7 @@ export interface Decision {
  * Admits the phrases a published phrases list names, in its headword's batch, and lets the phrases
  * the list it replaces dropped go, unless another published list still names them.
  */
-async function admitPhrases(deps: DecisionDeps, list: FactOf<'phrases'>, at: string): Promise<void> {
+async function admitPhrases(deps: DecisionDeps, list: FactOf<'phrases'>, at: string): Promise<EntryId[]> {
   const head = await deps.nodes.admission(list.subjectId)
   const admitted = await deps.nodes.admit(list.payload.phrases as Lemma[], head.batch ?? 0, list.author, at)
   const original = list.supersedesId ? ((await deps.facts.find(list.supersedesId)) as FactOf<'phrases'> | null) : null
@@ -186,11 +186,9 @@ async function admitPhrases(deps: DecisionDeps, list: FactOf<'phrases'>, at: str
   const droppedEntries = (
     await Promise.all(dropped.map((lemma) => deps.nodes.findEntryByLemma(lemma as Lemma)))
   ).flatMap((entry) => (entry ? [entry.id] : []))
-  await deps.nodes.setPhrasesLive(
-    admitted.map((entry) => entry.id),
-    droppedEntries,
-    head.batch,
-  )
+  const live = admitted.map((entry) => entry.id)
+  await deps.nodes.setPhrasesLive(live, droppedEntries, head.batch)
+  return [...live, ...droppedEntries]
 }
 
 /**
@@ -209,8 +207,9 @@ export async function recordDecision(
   const supersede = publishes ? (fact.supersedesId ?? undefined) : undefined
   const applied = await deps.facts.transition({ id: fact.id, from, to, at, review, supersede })
   if (!applied) return false
-  if (publishes && fact.kind === 'phrases') await admitPhrases(deps, fact, at)
-  await refreshEntries(deps, [fact.subjectId, fact.objectId])
+  // The phrases a published list admits or drops get or lose their items in this request.
+  const phrases = publishes && fact.kind === 'phrases' ? await admitPhrases(deps, fact, at) : []
+  await refreshEntries(deps, [fact.subjectId, fact.objectId, ...phrases])
   return true
 }
 

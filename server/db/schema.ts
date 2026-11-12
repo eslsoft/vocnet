@@ -87,7 +87,9 @@ export const facts = sqliteTable(
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),
     index('facts_status_updated_idx').on(table.status, table.updatedAt),
     // Resubmitting rejected content is refused by looking the rejection up.
-    index('facts_rejected_content_idx').on(table.kind, table.subjectId, table.contentKey).where(sql`status = 'rejected'`),
+    index('facts_rejected_content_idx')
+      .on(table.kind, table.subjectId, table.contentKey)
+      .where(sql`status = 'rejected'`),
   ],
 )
 
@@ -472,21 +474,6 @@ export const publicHypernyms = sqliteTable(
     primaryKey({ columns: [table.broaderSenseId, table.senseId] }),
     index('public_hypernyms_sense_idx').on(table.senseId),
     index('public_hypernyms_entry_idx').on(table.entryId),
-  ],
-)
-
-/** One row per word of a public multiword entry, so the entry of each word lists it as a phrase. */
-export const publicPhraseWords = sqliteTable(
-  'public_phrase_words',
-  {
-    word: text('word').notNull(),
-    entryId: text('entry_id')
-      .notNull()
-      .references(() => entries.id),
-  },
-  (table) => [
-    primaryKey({ columns: [table.word, table.entryId] }),
-    index('public_phrase_words_entry_idx').on(table.entryId),
   ],
 )
 

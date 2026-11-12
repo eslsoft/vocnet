@@ -17,16 +17,16 @@ export type WorkWindow = z.infer<typeof workWindowSchema>
 export const workItemStatusSchema = z.enum(['queued', 'in_progress', 'waiting_on_review', 'stuck', 'closed']).meta({
   id: 'WorkItemStatus',
   description:
-    'queued: in the production queue. in_progress: leased by an agent. waiting_on_review: facts that may fill it are pending. stuck: three attempts made no progress, so it waits for a curator. closed: the gap is gone.',
+    'queued: in the production queue. in_progress: leased by an agent. waiting_on_review: facts that may fill it are pending. stuck: two passes left it unfilled, so it is a stuck_work ticket for a curator. closed: the gap is gone.',
 })
 export type WorkItemStatus = z.infer<typeof workItemStatusSchema>
 
 export const workAttemptOutcomeSchema = z
-  .enum(['waiting_on_review', 'closed', 'progressed', 'no_progress', 'stuck'])
+  .enum(['waiting_on_review', 'closed', 'passed', 'progressed', 'no_progress', 'stuck'])
   .meta({
     id: 'WorkAttemptOutcome',
     description:
-      'The verdict on one completed attempt at one item. waiting_on_review: its facts are pending, so the verdict waits for their reviews. closed: the gap is gone. progressed: the gap changed but stays open. no_progress: the gap is as the claim found it. stuck: no progress, and that was the third attempt in a row.',
+      'The verdict on one completed attempt at one item. waiting_on_review: its facts are pending, so the verdict waits for their reviews. closed: the gap is gone. passed: an optional slot the pass found nothing for (found_none), now complete. progressed: fewer slots are missing, but the gap stays open. no_progress: as many slots are missing as the claim found. stuck: no progress on the last of the two passes, so the item became a stuck_work ticket.',
   })
 export type WorkAttemptOutcome = z.infer<typeof workAttemptOutcomeSchema>
 

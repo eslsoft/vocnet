@@ -4,8 +4,8 @@ import {
   type FactStatus,
   type FormType,
   type Pos,
-  type SenseId,
   SERVED_LANGUAGES,
+  type SenseId,
   type ServedLanguage,
   type Translated,
 } from '@shared/facts'
@@ -272,10 +272,14 @@ function translationTargets({ live, counted }: EntryState): TranslationTarget[] 
   ])
 }
 
-const translated = ({ live }: EntryState, language: ServedLanguage) => (target: TranslationTarget) =>
-  live
-    .filter(isKind('translation'))
-    .some((fact) => fact.subjectId === target.id && fact.payload.of === target.of && fact.payload.language === language)
+const translated =
+  ({ live }: EntryState, language: ServedLanguage) =>
+  (target: TranslationTarget) =>
+    live
+      .filter(isKind('translation'))
+      .some(
+        (fact) => fact.subjectId === target.id && fact.payload.of === target.of && fact.payload.language === language,
+      )
 
 const translationRule = (language: ServedLanguage): EntryRule => ({
   gap: (state) => ({
@@ -809,7 +813,7 @@ export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'e
 }
 
 /** The ranks one batch spans: two tiers of every stage of every band. */
-const BATCH_SPAN = 2 * (STAGES + 1) * BANDS
+export const BATCH_SPAN = 2 * (STAGES + 1) * BANDS
 
 /**
  * Where an item sorts, lowest first: its entry's batch, then its tier (the core bands A1 and A2

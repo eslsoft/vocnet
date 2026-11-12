@@ -1,5 +1,5 @@
 import { type CefrRow, type FrequencyRow, levelRank } from '@server/domain/reference'
-import { BANDS, CORE_BANDS, STAGES } from '@server/domain/work'
+import { BANDS, BATCH_SPAN, CORE_BANDS, STAGES } from '@server/domain/work'
 import { cefrLevelSchema, type ReferenceSource } from '@shared/reference'
 
 // Renders one reference import as SQL statements for D1 (`wrangler d1 execute --file`). An
@@ -49,13 +49,15 @@ export const rankWorklistSql = `UPDATE worklist SET level_rank = ${levelRankSql(
 
 /**
  * Re-ranks every work item from its entry's reread learner priority: `workPriority` in
- * server/domain/work.ts: the tier (core bands first), the stage times the band count plus `learnerBand`, and the Zipf frequency
+ * server/domain/work.ts: the headword batch (0 for none), the tier (core bands first), the stage times the band count plus `learnerBand`, and the Zipf frequency
  * with -1 for none. It follows `rankWorklistSql` in every import, so a reimport moves the queue.
  */
 const bandSql =
   '(select case when level_rank is not null then level_rank - 1 when zipf is null then 7 else 6 end from worklist where worklist.entry_id = work_items.entry_id)'
 
-export const rankWorkItemsSql = `UPDATE work_items SET rank = (case when ${bandSql} < ${CORE_BANDS} then 0 else ${(STAGES + 1) * BANDS} end) + stage * ${BANDS} + ${bandSql}, zipf_order = coalesce((select zipf from worklist where worklist.entry_id = work_items.entry_id), -1);`
+const batchSql = '(select coalesce(batch, 0) from worklist where worklist.entry_id = work_items.entry_id)'
+
+export const rankWorkItemsSql = `UPDATE work_items SET rank = ${batchSql} * ${BATCH_SPAN} + (case when ${bandSql} < ${CORE_BANDS} then 0 else ${(STAGES + 1) * BANDS} end) + stage * ${BANDS} + ${bandSql}, zipf_order = coalesce((select zipf from worklist where worklist.entry_id = work_items.entry_id), -1);`
 
 /**
  * Marks every entry's public view stale, since its document carries the frequency and CEFR levels

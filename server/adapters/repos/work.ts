@@ -163,6 +163,17 @@ function namedBases(db: Db, which: SQL) {
     )
 }
 
+/**
+ * Marks stale the entries whose relations link to a sense of these entries: an entry entering or
+ * leaving the dictionary changes whether those relations fill a gap.
+ */
+export function touchLinkedWorkOfEntries(db: Db, entryIds: readonly string[]) {
+  return db
+    .update(worklist)
+    .set(bumpRevision)
+    .where(inArray(worklist.entryId, linkedEntriesOf(db, [...entryIds])))
+}
+
 /** The entries a base part names in this fact, when it is a morphology fact: their family gap changes with it. */
 const familyBasesOf = (db: Db, factId: string) => namedBases(db, sql`named.id = ${factId}`)
 
@@ -638,7 +649,7 @@ export function createWorkRepo(db: Db): WorkRepo {
     },
 
     async reopenBlocked(lemmas) {
-      if (lemmas.length === 0) return 0
+      if (lemmas.length === 0) return []
       const blocked = db
         .select({ key: sql`${workPassBlocks.type} || '|' || ${workPassBlocks.subjectId}` })
         .from(workPassBlocks)
@@ -648,21 +659,14 @@ export function createWorkRepo(db: Db): WorkRepo {
         .select({ entryId: workPasses.entryId })
         .from(workPasses)
         .where(inArray(passKey, blocked))
-      if (reopened.length === 0) return 0
+      const entryIds = [...new Set(reopened.map((row) => row.entryId as EntryId))]
+      if (entryIds.length === 0) return []
       await db.batch([
         db.delete(workPasses).where(inArray(passKey, blocked)),
         db.delete(workPassBlocks).where(inIds(workPassBlocks.lemma, lemmas)),
-        db
-          .update(worklist)
-          .set(bumpRevision)
-          .where(
-            inIds(
-              worklist.entryId,
-              reopened.map((row) => row.entryId),
-            ),
-          ),
+        db.update(worklist).set(bumpRevision).where(inIds(worklist.entryId, entryIds)),
       ])
-      return reopened.length
+      return entryIds
     },
 
     async purgeLeases(before) {

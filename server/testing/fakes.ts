@@ -726,15 +726,16 @@ export function fakeWorld(): FakeWorld {
           .map((block) => passKey(block.type, block.subjectId)),
       )
       const reopened = world.passes.filter((pass) => keys.has(passKey(pass.type, pass.subjectId)))
-      if (reopened.length === 0) return 0
+      if (reopened.length === 0) return []
       world.passes.splice(0, world.passes.length, ...world.passes.filter((pass) => !reopened.includes(pass)))
       world.blocks.splice(
         0,
         world.blocks.length,
         ...world.blocks.filter((block) => !lemmas.includes(block.lemma as Lemma)),
       )
-      bump(reopened.map((pass) => pass.entryId))
-      return reopened.length
+      const entryIds = [...new Set(reopened.map((pass) => pass.entryId))]
+      bump(entryIds)
+      return entryIds
     },
     purgeLeases: async (before) => {
       const expired = world.leases.filter((lease) => lease.expiresAt <= before)
@@ -905,9 +906,9 @@ export function fakeWorld(): FakeWorld {
         return {
           ...viewLookup(entry.id),
           links: {
-            phrases: built
-              .filter(([, record]) => record.phraseWords.includes(lemma))
-              .map(([, r]) => r.document.summary),
+            phrases: (built.find(([entryId]) => entryId === entry.id)?.[1].document.phrases ?? []).flatMap((phrase) =>
+              built.filter(([, record]) => record.document.lemma === phrase).map(([, r]) => r.document.summary),
+            ),
             family: built
               .filter(([entryId, record]) => entryId !== entry.id && shares(record))
               .map(([, record]) => record.document.summary),

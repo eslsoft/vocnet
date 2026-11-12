@@ -76,14 +76,32 @@ const STALE_VIEW_BATCH = 100
 export async function handleScheduled(env: Env): Promise<void> {
   const traceId = crypto.randomUUID()
   const deps = createDeps(env)
-  const count = await reconcileReviews(deps, traceId)
-  console.info(JSON.stringify({ event: 'reconcile_reviews', traceId, reenqueued: count }))
-  const rescored = await refreshStaleWork(deps)
-  console.info(JSON.stringify({ event: 'refresh_stale_work', traceId, rescored }))
-  const purged = await purgeExpiredLeases(deps)
-  console.info(JSON.stringify({ event: 'purge_expired_leases', traceId, purged }))
-  const views = await rebuildStalePublicViews(deps, STALE_VIEW_BATCH)
-  console.info(JSON.stringify({ event: 'rebuild_public_views', traceId, ...views }))
+  // Each step logs how long it took, so a slow sweep shows which step holds the database.
+  const timed = async <T>(event: string, step: () => Promise<T>, fields: (result: T) => object) => {
+    const started = Date.now()
+    const result = await step()
+    console.info(JSON.stringify({ event, traceId, durationMs: Date.now() - started, ...fields(result) }))
+  }
+  await timed(
+    'reconcile_reviews',
+    () => reconcileReviews(deps, traceId),
+    (reenqueued) => ({ reenqueued }),
+  )
+  await timed(
+    'refresh_stale_work',
+    () => refreshStaleWork(deps),
+    (rescored) => ({ rescored }),
+  )
+  await timed(
+    'purge_expired_leases',
+    () => purgeExpiredLeases(deps),
+    (purged) => ({ purged }),
+  )
+  await timed(
+    'rebuild_public_views',
+    () => rebuildStalePublicViews(deps, STALE_VIEW_BATCH),
+    (views) => views,
+  )
 }
 
 export default {

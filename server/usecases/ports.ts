@@ -4,8 +4,8 @@ import type { DecisionModel, JevQuestions, Link, LlmPrompt } from '@server/domai
 import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { EntryLinks, PublicViewRecord } from '@server/domain/public-view'
-import type { TicketRecord } from '@server/domain/tickets'
 import type { Lemma } from '@server/domain/term'
+import type { TicketRecord } from '@server/domain/tickets'
 import type { TopicNode } from '@server/domain/topics'
 import type { ReconciledItems, SlotCounts, WorkItem, WorkLease } from '@server/domain/work'
 import type { AgentId } from '@shared/agents'
@@ -359,9 +359,16 @@ export interface WorkRepo {
    * A curator settles a slot by hand: records a pass on it (any gap type) and bumps the entry's
    * revision so its rescore counts the slot filled.
    */
-  recordPass(pass: { entryId: EntryId; type: WorkType; subjectId: string; note: string; holder: PrincipalRef; at: string }): Promise<void>
+  recordPass(pass: {
+    entryId: EntryId
+    type: WorkType
+    subjectId: string
+    note: string
+    holder: PrincipalRef
+    at: string
+  }): Promise<void>
   /** Deletes the passes blocked on these lemmas and bumps their entries' revisions, so their slots are worked again. */
-  reopenBlocked(lemmas: readonly Lemma[]): Promise<number>
+  reopenBlocked(lemmas: readonly Lemma[]): Promise<EntryId[]>
   /** Deletes the leases that expired at or before `before`; returns how many. */
   purgeLeases(before: string): Promise<number>
 }

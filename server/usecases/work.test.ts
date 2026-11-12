@@ -236,9 +236,8 @@ describe('completeWork', () => {
     expect(itemOf(world, 'synonyms', sense)).toBeUndefined()
     await createEntry(world.deps, curatorAgent, { lemma: 'moggy', batch: 2 })
     expect(world.passes).toEqual([])
-    // The reopened entry is stale; the cron's rescore brings its item back.
-    expect(await world.deps.work.countStale()).toBe(1)
-    await refreshStaleWork(world.deps)
+    // The admission rescores the reopened entry, so its item is back in the same request.
+    expect(await world.deps.work.countStale()).toBe(0)
     expect(itemOf(world, 'synonyms', sense)).toMatchObject({ attempts: 0, worked: false })
   })
 })

@@ -28,7 +28,11 @@ async function publicEntryOf(deps: LookupDeps, id: EntryId) {
   return entry && projectEntry(deps, entry, await topicNamesOf(deps))
 }
 
-async function entryIdOf(deps: LookupDeps, subjectType: 'entry' | 'sense' | 'fact', subjectId: string): Promise<EntryId | null> {
+async function entryIdOf(
+  deps: LookupDeps,
+  subjectType: 'entry' | 'sense' | 'fact',
+  subjectId: string,
+): Promise<EntryId | null> {
   if (subjectType === 'entry') return subjectId as EntryId
   if (subjectType === 'sense') return (await deps.nodes.findSense(subjectId as SenseId))?.entryId ?? null
   const fact = await deps.facts.find(subjectId as FactId)
@@ -87,7 +91,12 @@ export async function submitFeedback(
     throw new NotFoundError(`No public ${input.target_type} ${input.target_id}.`)
   }
   return deps.tickets.open(
-    newTicket(deps, { type: 'feedback', targetType: input.target_type, target: input.target_id, message: input.message }),
+    newTicket(deps, {
+      type: 'feedback',
+      targetType: input.target_type,
+      target: input.target_id,
+      message: input.message,
+    }),
   )
 }
 
@@ -144,4 +153,3 @@ export async function settleSlot(
   await deps.work.recordPass({ ...slot, holder: principalRef(actor.principal), at: deps.clock.now().toISOString() })
   await refreshEntries(deps, [slot.subjectId])
 }
-

@@ -5,7 +5,6 @@ import {
   publicHypernyms,
   publicMeanings,
   publicMorphemes,
-  publicPhraseWords,
   publicSearch,
   publicSenseTopics,
   senses,
@@ -292,12 +291,14 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       // One batch: the view, and what the built views of other entries supply to it.
       const [rows, phrases, family, parts] = await db.batch([
         lookup(entries, eq(entries.lemma, lemma), entries.id),
+        // The phrases the headword's published list names, in its order, that have a public view.
         db
-          .select({ summary: publicEntries.summary })
-          .from(publicPhraseWords)
-          .innerJoin(publicEntries, eq(publicEntries.entryId, publicPhraseWords.entryId))
-          .where(eq(publicPhraseWords.word, lemma))
-          .orderBy(asc(publicEntries.lemma)),
+          .select({ summary: sql<string>`listed_entry.summary` })
+          .from(
+            sql`public_entries as head join json_each(head.document, '$.phrases') as listed join public_entries as listed_entry on listed_entry.lemma = listed.value`,
+          )
+          .where(sql`head.lemma = ${lemma}`)
+          .orderBy(sql`listed.key`),
         db
           .selectDistinct({ lemma: publicEntries.lemma, summary: publicEntries.summary })
           .from(own)
@@ -434,7 +435,6 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         db.delete(publicForms).where(ofEntry(publicForms.entryId)),
         db.delete(publicSenseTopics).where(ofEntry(publicSenseTopics.entryId)),
         db.delete(publicHypernyms).where(ofEntry(publicHypernyms.entryId)),
-        db.delete(publicPhraseWords).where(ofEntry(publicPhraseWords.entryId)),
         db.delete(publicMorphemes).where(ofEntry(publicMorphemes.entryId)),
         db.delete(publicSearch).where(ofEntry(publicSearch.entryId)),
       ] as const
@@ -541,12 +541,6 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         // The one-layer rule is a read before the write, so two concurrent submissions can give one
         // pair a hypernym in each layer; the walk lists the pair once.
         .onConflictDoNothing()
-      const insertPhraseWords = db.insert(publicPhraseWords).select(
-        db
-          .select({ word: sql<string>`value`.as('word'), entryId: sql`${stale.entryId}`.as('entry_id') })
-          .from(rows(record.phraseWords))
-          .where(current),
-      )
       const insertMorphemes = db.insert(publicMorphemes).select(
         db
           .select({
@@ -577,7 +571,6 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
         insertForms,
         insertTopics,
         insertHypernyms,
-        insertPhraseWords,
         insertMorphemes,
         insertSearch,
         markBuilt,

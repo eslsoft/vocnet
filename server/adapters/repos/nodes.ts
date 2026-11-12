@@ -13,7 +13,7 @@ import { MAX_PASSES, workTypeSchema } from '@shared/work'
 import { and, asc, count, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { type Db, decodeCursor, inIds, page, toEntry, toFact, toSense } from './rows'
-import { insertWorklistRow } from './work'
+import { insertWorklistRow, touchLinkedWorkOfEntries } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
 const entryCursor = z.object({ lemma: z.string() })
@@ -282,6 +282,7 @@ export function createNodeRepo(db: Db): NodeRepo {
           .update(worklist)
           .set({ live: false, ...bumpRevision })
           .where(and(inIds(worklist.entryId, [...dead]), sql`${worklist.entryId} not in (${stillNamed})`)),
+        touchLinkedWorkOfEntries(db, [...live, ...dead]),
       ])
     },
 
