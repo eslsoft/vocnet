@@ -449,6 +449,13 @@
       "when": 1794462187976,
       "tag": "20261112054307_facts_kind_payload_index",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "6",
+      "when": 1794462619503,
+      "tag": "20261112055019_planner_statistics",
+      "breakpoints": true
     }
   ]
 }
