@@ -108,13 +108,19 @@ describe('tickets', () => {
     return { ...fixture, ticket }
   }
 
-  it('lists tickets by status and type with their entries, and reads one', async () => {
+  it('lists tickets by status and type with their entries, and reads one, for curators only', async () => {
     const { world, entry, ticket } = await ticketed()
-    const page = await listTickets(world.deps, { status: 'open', type: 'feedback' }, { limit: 10 })
+    const page = await listTickets(world.deps, curatorAgent, { status: 'open', type: 'feedback' }, { limit: 10 })
     expect(page).toEqual({ items: [{ ...ticket, entry: { id: entry.id, lemma: 'cat' } }], nextCursor: null })
-    expect((await listTickets(world.deps, { type: 'stuck_work' }, { limit: 10 })).items).toEqual([])
-    await expect(getTicketWithEntry(world.deps, ticket.id)).resolves.toMatchObject({ entry: { id: entry.id } })
-    await expect(getTicketWithEntry(world.deps, missing as TicketId)).rejects.toMatchObject({ code: 'not_found' })
+    expect((await listTickets(world.deps, admin, { type: 'stuck_work' }, { limit: 10 })).items).toEqual([])
+    await expect(getTicketWithEntry(world.deps, curatorAgent, ticket.id)).resolves.toMatchObject({
+      entry: { id: entry.id },
+    })
+    await expect(getTicketWithEntry(world.deps, curatorAgent, missing as TicketId)).rejects.toMatchObject({
+      code: 'not_found',
+    })
+    await expect(listTickets(world.deps, agentA, {}, { limit: 10 })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(getTicketWithEntry(world.deps, agentA, ticket.id)).rejects.toMatchObject({ code: 'forbidden' })
   })
 
   it('lets a curator resolve a ticket with the facts that fixed it, or dismiss it, once [spec: tickets/resolve]', async () => {

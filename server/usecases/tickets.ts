@@ -100,15 +100,19 @@ export async function submitFeedback(
   )
 }
 
-export function listTickets(
+/** Tickets are the curators' queue: only curators read them. */
+export async function listTickets(
   deps: Pick<Deps, 'tickets'>,
+  actor: Actor,
   filter: { status?: TicketStatus; type?: TicketType },
   page: PageRequest,
 ) {
+  requireCurator(actor.principal)
   return deps.tickets.list(filter, page)
 }
 
-export async function getTicketWithEntry(deps: Pick<Deps, 'tickets'>, id: TicketId) {
+export async function getTicketWithEntry(deps: Pick<Deps, 'tickets'>, actor: Actor, id: TicketId) {
+  requireCurator(actor.principal)
   const ticket = await deps.tickets.findWithEntry(id)
   if (!ticket) throw new NotFoundError(`Ticket ${id} not found.`)
   return ticket

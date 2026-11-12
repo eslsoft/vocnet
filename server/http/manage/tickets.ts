@@ -23,21 +23,21 @@ const listRoute = createRoute({
   method: 'get',
   path: '/tickets',
   tags,
-  summary: 'List tickets, oldest first',
+  summary: 'List tickets, oldest first (curators)',
   description: 'The manual exit: stuck work, reader feedback, audits, and missing words. Each carries its entry.',
   request: {
     query: pageQuery.extend({ status: ticketStatusSchema.optional(), type: ticketTypeSchema.optional() }),
   },
-  responses: { 200: json(ticketPageSchema, 'A page of tickets.'), 400: errorResponse },
+  responses: { 200: json(ticketPageSchema, 'A page of tickets.'), 400: errorResponse, 403: errorResponse },
 })
 
 const getRoute = createRoute({
   method: 'get',
   path: '/tickets/{id}',
   tags,
-  summary: 'Get one ticket with the entry its target is or belongs to',
+  summary: 'Get one ticket with the entry its target is or belongs to (curators)',
   request: { params: idParams },
-  responses: { 200: json(listedTicketSchema, 'The ticket.'), 404: errorResponse },
+  responses: { 200: json(listedTicketSchema, 'The ticket.'), 403: errorResponse, 404: errorResponse },
 })
 
 const resolveRoute = createRoute({
@@ -69,10 +69,13 @@ const settleRoute = createRoute({
 export const manageTicketRoutes = createRouter()
   .openapi(listRoute, async (c) => {
     const { status, type, limit, cursor } = c.req.valid('query')
-    return c.json(pageDto(await listTickets(c.get('deps'), { status, type }, { limit, cursor }), listedTicketDto), 200)
+    return c.json(
+      pageDto(await listTickets(c.get('deps'), actorOf(c), { status, type }, { limit, cursor }), listedTicketDto),
+      200,
+    )
   })
   .openapi(getRoute, async (c) =>
-    c.json(listedTicketDto(await getTicketWithEntry(c.get('deps'), c.req.valid('param').id)), 200),
+    c.json(listedTicketDto(await getTicketWithEntry(c.get('deps'), actorOf(c), c.req.valid('param').id)), 200),
   )
   .openapi(resolveRoute, async (c) => {
     const ticket = await resolveTicket(c.get('deps'), actorOf(c), c.req.valid('param').id, c.req.valid('json'))
