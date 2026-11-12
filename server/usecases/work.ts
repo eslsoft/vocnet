@@ -12,6 +12,8 @@ import {
   type WorkItemId,
   type WorkItemState,
   type WorkLeaseId,
+  type WorkType,
+  workTypeSchema,
 } from '@shared/work'
 import type { Deps } from './deps'
 import { ConflictError, InvalidReferenceError, InvalidRequestError, NotFoundError } from './errors'
@@ -34,6 +36,9 @@ export interface WorkClaim {
  * production queue (among `types` when given), then that type's next items in queue order, each
  * with the context its type needs. Null when no item is free.
  */
+/** Work types not handed out for now; their items stay in the queue. Grammar: paused by the owner 2026-11-12. */
+const PAUSED_TYPES: readonly WorkType[] = ['grammar']
+
 export async function claimWork(
   deps: Pick<Deps, 'work' | 'nodes' | 'reference' | 'topics' | 'clock' | 'ids'>,
   actor: Actor,
@@ -46,7 +51,7 @@ export async function claimWork(
       holder: principalRef(actor.principal),
       expiresAt: leaseExpiry(now, input.lease_seconds ?? DEFAULT_LEASE_SECONDS),
     },
-    input.types,
+    (input.types ?? workTypeSchema.options).filter((type) => !PAUSED_TYPES.includes(type)),
     input.limit,
     now.toISOString(),
   )

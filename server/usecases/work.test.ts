@@ -77,7 +77,7 @@ describe('claimWork', () => {
     await submitFact(world.deps, agentB, { kind: 'example', subject_id: sense, payload: { text: 'The cat slept.' } })
     expect(itemOf(world, 'examples')?.awaiting).toBe(true)
     expect(await claim(world, { types: ['examples'] })).toBeNull()
-    expect((await claim(world, { types: ['grammar'] }))?.items).toHaveLength(1)
+    expect((await claim(world, { types: ['collocations'] }))?.items).toHaveLength(1)
   })
 
   it('fails loudly when a leased item belongs to an entry that is gone', async () => {
