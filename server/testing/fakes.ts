@@ -1,40 +1,78 @@
-import type { EntrySnapshot, StoredSenseSummary } from '@server/domain/catalog-view'
+import type { StoredSenseSummary } from '@server/domain/catalog-view'
 import { isCurated } from '@server/domain/curation'
 import { type Fact, type FactOf, isKind } from '@server/domain/fact'
-import { factKinds, type Link, meaningKeyOf } from '@server/domain/fact-kinds'
-import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle'
-import type { FeedbackRecord } from '@server/domain/feedback'
+import { factKinds, type JevQuestions, type Link, type LlmPrompt } from '@server/domain/fact-kinds'
+import { isLive } from '@server/domain/fact-lifecycle'
 import { levelOfRank, openItemStatus } from '@server/domain/monitor'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { PrincipalRef } from '@server/domain/principal'
 import { type PublicViewRecord, STEM_ROLES } from '@server/domain/public-view'
 import { levelRank } from '@server/domain/reference'
 import { EXACT_LEMMA_TIER, fieldTier, LEMMA_PREFIX_TIER, SEARCH_TIERS } from '@server/domain/search'
-import { isMultiword, type Lemma } from '@server/domain/term'
+import type { Lemma } from '@server/domain/term'
+import type { TicketRecord } from '@server/domain/tickets'
 import type { TopicNode } from '@server/domain/topics'
-import { MAX_ATTEMPTS, type WorkItem, type WorkLease } from '@server/domain/work'
+import { passKey, type WorkItem, type WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
 import { ConflictError } from '@server/usecases/errors'
 import type {
   AgentRecord,
-  JevAnswers,
+  DecisionAnswers,
   LlmJudgement,
   NodeRepo,
   ReviewJob,
   StaleWork,
   StoredMember,
+  TicketRepo,
   ViewLookup,
   WithEntry,
+  WorkRepo,
   WorkScores,
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
-import type { EntryId, FactId, FactKind, Pos, SenseId, TopicId } from '@shared/facts'
-import type { FeedbackId } from '@shared/feedback'
+import type { EntryId, FactId, FactKind, FactStatus, Pos, SenseId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
-import type { WorkItemId, WorkLeaseId } from '@shared/work'
+import type { TicketId } from '@shared/tickets'
+import { MAX_PASSES, type WorkItemId, type WorkLeaseId, type WorkType } from '@shared/work'
 
-// In-memory stand-ins for every port, shared by the use-case tests. They model
-// the persistence guarantees the real repos give (live uniqueness, conditional
-// writes, compare-and-set) so tests exercise the use cases, not the fakes.
+// In-memory stand-ins for every port, shared by the use-case tests. They model the persistence
+// guarantees the real repos give (live uniqueness, conditional writes, compare-and-set, revision
+// bumps) so tests exercise the use cases, not the fakes.
+
+type DecisionModelName = keyof Deps['decision']
+
+/** An entry's worklist row: its admission, its stored scores, and the revisions its rescore and view describe. */
+export interface FakeWorklistRow extends WorkScores {
+  live: boolean
+  batch: number | null
+  revision: number
+  scoredRevision: number
+  viewRevision: number
+  lastWorkedAt: string | null
+}
+
+/** A completed pass on a slot, as `work_passes` stores it. */
+export interface FakePass {
+  entryId: EntryId
+  type: WorkType
+  subjectId: string
+  note: string
+  holder: PrincipalRef
+  at: string
+}
+
+/** An attempt a completed lease recorded at an item, as `work_attempts` stores it. */
+export interface FakeAttempt {
+  itemId: WorkItemId
+  holder: PrincipalRef
+  note: string | null
+  outcome: string
+}
+
+export type DecisionAnswer = (
+  questions: JevQuestions,
+  state: Readonly<Record<string, string | readonly string[]>>,
+) => DecisionAnswers | Promise<DecisionAnswers>
 
 export interface FakeWorld {
   deps: Deps
@@ -43,17 +81,17 @@ export interface FakeWorld {
   facts: Fact[]
   /** A slice of the seeded taxonomy: two categories and some of their leaf topics. */
   topics: TopicNode[]
-  feedback: FeedbackRecord[]
+  tickets: TicketRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
   leases: WorkLease[]
   /** The work items, as the work_items table stores them. */
   items: WorkItem[]
-  seeds: Set<EntryId>
-  /** Each entry's worklist scores, as the worklist table stores them. */
-  work: Map<
-    EntryId,
-    WorkScores & { revision: number; scoredRevision: number; viewRevision: number; lastWorkedAt: string | null }
-  >
+  attempts: FakeAttempt[]
+  passes: FakePass[]
+  /** The lemmas passes were blocked on, by slot. */
+  blocks: Array<{ lemma: string; type: WorkType; subjectId: string }>
+  /** Each entry's worklist row. */
+  work: Map<EntryId, FakeWorklistRow>
   /** Each entry's stored public view rows, as the public view tables hold them. */
   views: Map<EntryId, PublicViewRecord>
   queued: ReviewJob[]
@@ -64,12 +102,12 @@ export interface FakeWorld {
   limitedClients: Set<string>
   /** What the edge cache holds, by key. */
   cachedResponses: Map<string, Response>
-  jevCalls: Array<{ questions: Record<string, string>; state: Record<string, unknown> }>
-  llmCalls: Array<{ system: string; user: string }>
+  decisionCalls: Array<{ model: DecisionModelName; questions: JevQuestions; state: Readonly<Record<string, unknown>> }>
+  llmCalls: LlmPrompt[]
   setNow(iso: string): void
-  answerJev(answer: (questions: Record<string, string>) => JevAnswers | Promise<JevAnswers>): void
-  answerLlm(answer: () => LlmJudgement | Promise<LlmJudgement>): void
-  /** Every reviewer of every chain fails what it is asked. */
+  answerDecision(model: DecisionModelName, answer: DecisionAnswer): void
+  answerLlm(answer: (prompt: LlmPrompt) => LlmJudgement | Promise<LlmJudgement>): void
+  /** Every decision model scores every question this low (and the LLM fails) until passReviews. */
   failReviews(): void
   /** Every reviewer passes what it is asked, as it does by default. */
   passReviews(): void
@@ -103,189 +141,124 @@ function fakeDigest(json: string): string {
   return (hash >>> 0).toString(16)
 }
 
+const scoring = (questions: JevQuestions, score: number, model: string): DecisionAnswers => ({
+  model,
+  answers: Object.fromEntries(Object.keys(questions).map((key) => [key, score])),
+})
+const passingDecision =
+  (model: string): DecisionAnswer =>
+  (questions) =>
+    scoring(questions, 0.95, model)
+const passingLlm = (): LlmJudgement => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Looks right.' })
+
 export function fakeWorld(): FakeWorld {
   let now = new Date('2026-01-01T00:00:00.000Z')
   let counter = 0
-  const nextId = <T extends string>() => {
+  const nextId = <T extends string>(group = '8000') => {
     counter += 1
-    return `00000000-0000-4000-8000-${String(counter).padStart(12, '0')}` as T
+    return `00000000-0000-4000-${group}-${String(counter).padStart(12, '0')}` as T
   }
-  const passingJev = (questions: Record<string, string>): JevAnswers => ({
-    model: 'jev-test',
-    answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.95])),
-  })
-  const passingLlm = (): LlmJudgement => ({
-    model: 'llm-test',
-    verdict: 'pass',
-    confidence: 0.9,
-    reason: 'Looks right.',
-  })
-  let jevAnswer: (questions: Record<string, string>) => JevAnswers | Promise<JevAnswers> = passingJev
-  let llmAnswer: () => LlmJudgement | Promise<LlmJudgement> = passingLlm
+  const decisionAnswers: Record<DecisionModelName, DecisionAnswer> = {
+    jev: passingDecision('jev-test'),
+    luna: passingDecision('luna-test'),
+  }
+  let llmAnswer: (prompt: LlmPrompt) => LlmJudgement | Promise<LlmJudgement> = passingLlm
 
   const world: Omit<FakeWorld, 'deps'> = {
     entries: [],
     senses: [],
     facts: [],
     topics: [...fakeTopics],
-    feedback: [],
+    tickets: [],
     references: new Map(),
     referenceSources: [],
     agents: [],
     leases: [],
     items: [],
-    seeds: new Set(),
+    attempts: [],
+    passes: [],
+    blocks: [],
     work: new Map(),
     views: new Map(),
     queued: [],
     limitedClients: new Set(),
     cachedResponses: new Map(),
-    jevCalls: [],
+    decisionCalls: [],
     llmCalls: [],
     setNow: (iso) => {
       now = new Date(iso)
     },
-    answerJev: (answer) => {
-      jevAnswer = answer
+    answerDecision: (model, answer) => {
+      decisionAnswers[model] = answer
     },
     answerLlm: (answer) => {
       llmAnswer = answer
     },
     failReviews: () => {
-      jevAnswer = (questions) => ({
-        model: 'jev-test',
-        answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.05])),
-      })
+      decisionAnswers.jev = (questions) => scoring(questions, 0.05, 'jev-test')
+      decisionAnswers.luna = (questions) => scoring(questions, 0.05, 'luna-test')
       llmAnswer = () => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'Wrong.' })
     },
     passReviews: () => {
-      jevAnswer = passingJev
+      decisionAnswers.jev = passingDecision('jev-test')
+      decisionAnswers.luna = passingDecision('luna-test')
       llmAnswer = passingLlm
     },
   }
 
-  const lemmaOf = (entryId: EntryId) => world.entries.find((entry) => entry.id === entryId)?.lemma
-  const withLemma = (sense: SenseNode) => ({ ...sense, lemma: lemmaOf(sense.entryId) ?? ('' as never) })
   const live = (fact: Fact) => isLive(fact.status)
-  /** The rejected facts among these whose content no live fact holds again, most recently rejected first. */
-  const latestRejected = <F extends Fact>(candidates: F[], limit: number) =>
-    candidates
-      .filter((fact) => fact.status === 'rejected')
-      .filter(
-        (fact) =>
-          !world.facts.some(
-            (other) =>
-              live(other) &&
-              other.kind === fact.kind &&
-              other.subjectId === fact.subjectId &&
-              other.contentKey === fact.contentKey,
-          ),
-      )
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id))
-      .slice(0, limit)
+  const entryById = (id: string) => world.entries.find((entry) => entry.id === id)
+  const senseById = (id: string | null) => world.senses.find((sense) => sense.id === id)
+  const withLemma = (sense: SenseNode) => {
+    const entry = entryById(sense.entryId)
+    if (!entry) throw new Error(`Sense ${sense.id} belongs to no entry.`)
+    return { ...sense, lemma: entry.lemma }
+  }
+  const rowOf = (entryId: EntryId): FakeWorklistRow => {
+    const row = world.work.get(entryId)
+    if (!row) throw new Error(`Entry ${entryId} has no worklist row.`)
+    return row
+  }
+  const newRow = (entryId: EntryId) => {
+    if (world.work.has(entryId)) return
+    world.work.set(entryId, {
+      live: false,
+      batch: null,
+      completeness: 0,
+      credibility: 1,
+      slots: { total: 0, published: 0, pending: 0 },
+      revision: 0,
+      scoredRevision: 0,
+      viewRevision: 0,
+      lastWorkedAt: null,
+    })
+  }
+  const bump = (entryIds: Iterable<EntryId>) => {
+    for (const entryId of new Set(entryIds)) {
+      const row = world.work.get(entryId)
+      if (row) row.revision += 1
+    }
+  }
   /** The learner priority of the entry's lemma, as the worklist row stores it. */
   const priorityOf = (entry: EntryNode) => {
     const reference = world.references.get(entry.lemma)
     const levels = reference?.cefr.map((cefr) => levelRank(cefr.level)) ?? []
     return { levelRank: levels.length > 0 ? Math.min(...levels) : null, zipf: reference?.frequency?.zipf ?? null }
   }
-  /** The worklist level rank of the entry a fact's subject is or belongs to. */
-  const levelOfSubject = (subjectId: string) => {
-    const entryId = world.senses.find((sense) => sense.id === subjectId)?.entryId ?? subjectId
-    const entry = world.entries.find((candidate) => candidate.id === entryId)
-    return entry ? priorityOf(entry).levelRank : null
+  /**
+   * The entry a node is or belongs to: an entry, a sense's entry, or for an example or collocation
+   * fact (what a translation is about) the entry of its sense.
+   */
+  const entryIdOfNode = (nodeId: string): EntryId | undefined => {
+    if (entryById(nodeId)) return nodeId as EntryId
+    const sense = senseById(nodeId)
+    if (sense) return sense.entryId
+    const fact = world.facts.find((candidate) => candidate.id === nodeId)
+    return fact ? senseById(fact.subjectId)?.entryId : undefined
   }
-  /** The entry's open items by where they stand, as the entry list counts them. */
-  const openWorkOf = (items: readonly WorkItem[], now: string) => {
-    const counts = { total: items.length, in_progress: 0, waiting_on_review: 0, stuck: 0 }
-    for (const item of items) {
-      const status = openItemStatus({ ...item, leased: item.lease !== null && item.lease.expiresAt > now })
-      if (status !== 'queued') counts[status] += 1
-    }
-    return counts
-  }
-  /** The entry a node is or belongs to. */
-  const entryOfNode = (nodeId: string) => {
-    const entryId = world.senses.find((sense) => sense.id === nodeId)?.entryId ?? nodeId
-    return world.entries.find((candidate) => candidate.id === entryId)
-  }
-  /** The lemma of the entry a fact's subject is or belongs to. */
-  const lemmaOfSubject = (subjectId: string) => entryOfNode(subjectId)?.lemma
-  const withEntry = <T>(record: T, nodeId: string): WithEntry<T> => {
-    const entry = entryOfNode(nodeId)
-    if (!entry) throw new Error(`Node ${nodeId} belongs to no entry.`)
-    return { ...record, entry: { id: entry.id, lemma: entry.lemma } }
-  }
-  const factWithEntry = (fact: Fact) => withEntry(fact, fact.subjectId)
-  const feedbackWithEntry = (item: FeedbackRecord) => {
-    const fact = item.targetType === 'fact' ? world.facts.find((candidate) => candidate.id === item.targetId) : null
-    return withEntry(item, fact?.subjectId ?? item.targetId)
-  }
-  /** Published on an uncertain or failed review, as the facts list `weak` filter selects. */
-  const isWeak = (fact: Fact) =>
-    fact.status === 'published' && ['uncertain', 'fail'].includes(fact.review?.verdict ?? '')
-  const liveEntry = (entryId: string) =>
-    world.facts.some((fact) => fact.kind === 'entry' && fact.subjectId === entryId && live(fact))
-  /** A sense of the entry that is a verb with a live gloss. */
-  const hasLiveVerb = (entryId: string) =>
-    world.senses.some(
-      (sense) =>
-        sense.entryId === entryId &&
-        sense.pos === 'verb' &&
-        world.facts.some((fact) => fact.kind === 'sense' && fact.subjectId === sense.id && live(fact)),
-    )
-  /** The live multiword entries headed by this lemma, its first word, with a live verb sense. */
-  const phrasesOf = (lemma: string) =>
-    isMultiword(lemma)
-      ? []
-      : world.entries
-          .filter(
-            (other) =>
-              isMultiword(other.lemma) &&
-              other.lemma.split(' ')[0] === lemma &&
-              liveEntry(other.id) &&
-              hasLiveVerb(other.id),
-          )
-          .map((other) => other.lemma)
-          .sort()
-  /** The other live entries with a live morphology fact naming this lemma as a base. */
-  const familyOf = (entry: EntryNode) =>
-    [
-      ...new Set(
-        world.facts
-          .filter(isKind('morphology'))
-          .filter(
-            (fact) =>
-              live(fact) &&
-              fact.subjectId !== entry.id &&
-              liveEntry(fact.subjectId) &&
-              fact.payload.parts.some((part) => part.role === 'base' && part.lemma === entry.lemma),
-          )
-          .flatMap((fact) => lemmaOf(fact.subjectId as EntryId) ?? []),
-      ),
-    ].sort()
-  const workOf = (entryId: EntryId) => {
-    const row = world.work.get(entryId) ?? {
-      completeness: 0,
-      quality: 1,
-      slots: { total: 0, published: 0, pending: 0 },
-      revision: 0,
-      scoredRevision: 0,
-      viewRevision: 0,
-      lastWorkedAt: null,
-    }
-    world.work.set(entryId, row)
-    return row
-  }
-  /** Marks stale the entries that are, or own as a sense, these nodes, as the real batches do. */
-  const touch = (nodeIds: Array<string | null>) => {
-    const owners = new Set<EntryId>()
-    for (const entry of world.entries.filter((candidate) => nodeIds.includes(candidate.id))) owners.add(entry.id)
-    for (const sense of world.senses.filter((candidate) => nodeIds.includes(candidate.id))) owners.add(sense.entryId)
-    for (const entryId of owners) workOf(entryId).revision += 1
-  }
-  /** The entries whose relations link to a sense that is, or belongs to, one of these nodes, and the words of a phrase among them. */
-  const linkedEntries = (nodeIds: Array<string | null>) => {
+  const isLiveEntry = (entryId: string) => world.work.get(entryId as EntryId)?.live === true
+  /** The entries whose relations link to a sense that is, or belongs to, one of these nodes. */
+  const linkedEntries = (nodeIds: readonly string[]) => {
     const nodeSenses = new Set<string>(
       world.senses
         .filter((sense) => nodeIds.includes(sense.id) || nodeIds.includes(sense.entryId))
@@ -297,66 +270,33 @@ export function fakeWorld(): FakeWorld {
         ...(nodeSenses.has(fact.subjectId) ? [fact.objectId] : []),
         ...(nodeSenses.has(fact.objectId ?? '') ? [fact.subjectId] : []),
       ])
-    const phraseHeads = world.entries
-      .filter(
-        (entry) =>
-          isMultiword(entry.lemma) &&
-          (nodeIds.includes(entry.id) ||
-            world.senses.some((sense) => sense.entryId === entry.id && nodeIds.includes(sense.id))),
-      )
-      .map((entry) => entry.lemma.split(' ')[0])
-    return new Set([
-      ...world.senses.filter((sense) => ends.includes(sense.id)).map((sense) => sense.entryId),
-      ...world.entries.filter((entry) => phraseHeads.includes(entry.lemma)).map((entry) => entry.id),
-    ])
+    return world.senses.filter((sense) => ends.includes(sense.id)).map((sense) => sense.entryId)
   }
-  /** The entries a morphology fact, or the morphology of the entry an entry fact defines, names as a base. */
-  const familyBases = (fact: Fact) => {
-    const named = world.facts
+  /** The entries a base part names in these morphology facts. */
+  const namedBases = (named: readonly Fact[]) => {
+    const lemmas = named
       .filter(isKind('morphology'))
-      .filter(
-        (candidate) => candidate.id === fact.id || (fact.kind === 'entry' && candidate.subjectId === fact.subjectId),
-      )
-      .flatMap((candidate) =>
-        candidate.payload.parts.flatMap((part) => (part.role === 'base' && part.lemma ? [part.lemma] : [])),
-      )
-    return world.entries.filter((entry) => named.includes(entry.lemma)).map((entry) => entry.id)
+      .flatMap((fact) => fact.payload.parts.flatMap((part) => (part.role === 'base' && part.lemma ? [part.lemma] : [])))
+    return world.entries.filter((entry) => lemmas.includes(entry.lemma)).map((entry) => entry.id)
   }
-  /** Marks stale the entries linked to the node an entry or sense fact defines, and the bases a morphology names, as the real batches do. */
-  const touchLinked = (fact: Fact) => {
-    for (const entryId of familyBases(fact)) workOf(entryId).revision += 1
-    if (fact.kind !== 'entry' && fact.kind !== 'sense') return
-    for (const entryId of linkedEntries([fact.subjectId])) workOf(entryId).revision += 1
+  /** Every row a write about these nodes can make stale, as `relatedWorklistRows` selects them. */
+  const relatedRows = (nodeIds: readonly string[]) =>
+    new Set<EntryId>([
+      ...nodeIds.flatMap((id) => entryIdOfNode(id) ?? []),
+      ...linkedEntries(nodeIds),
+      ...namedBases(world.facts.filter((fact) => nodeIds.includes(fact.subjectId))),
+    ])
+  /** What the real fact writes batch with them: the nodes' entries, and the linked entries and bases of the fact. */
+  const touchFact = (fact: Fact) => {
+    const nodes = [fact.subjectId, ...(fact.objectId ? [fact.objectId] : [])]
+    bump(nodes.flatMap((id) => entryIdOfNode(id) ?? []))
+    if (fact.kind === 'senses') bump(linkedEntries([fact.subjectId]))
+    bump(namedBases([fact]))
   }
-  const definedLive = (kind: 'entry' | 'sense', nodeId: string) =>
-    world.facts.some((fact) => fact.kind === kind && fact.subjectId === nodeId && live(fact))
-  /** Retracts the live links at a sense the written entry or sense fact defines that can no longer show, as the real batch does. */
-  const retireDeadLinks = (written: Fact, at: string) => {
-    if (written.kind !== 'entry' && written.kind !== 'sense') return
-    const dead = new Set<string>(
-      world.senses
-        .filter((sense) => sense.id === written.subjectId || sense.entryId === written.subjectId)
-        .filter((sense) => !definedLive('sense', sense.id) || !definedLive('entry', sense.entryId))
-        .map((sense) => sense.id),
-    )
-    world.facts.forEach((fact, index) => {
-      if (fact.objectId === null || !canApply('retract', fact.status)) return
-      if (!dead.has(fact.subjectId) && !dead.has(fact.objectId)) return
-      world.facts[index] = { ...fact, status: factTransitions.retract.to, updatedAt: at, revalidateSince: null } as Fact
-    })
-  }
-  const touchFact = (factId: string) => {
-    const fact = world.facts.find((candidate) => candidate.id === factId)
-    if (fact) touch([fact.subjectId, fact.objectId])
-  }
-  const staleOf = (entryId: EntryId): StaleWork => ({ entryId, revision: workOf(entryId).revision })
-  /** In the production queue, and free at `now`. */
-  const claimable = (item: WorkItem, now: string) =>
-    !item.awaiting && item.attempts < MAX_ATTEMPTS && (item.lease === null || item.lease.expiresAt <= now)
-  const queueOrder = (a: WorkItem, b: WorkItem) =>
-    a.rank - b.rank || b.zipfOrder - a.zipfOrder || a.id.localeCompare(b.id)
-  let itemCount = 0
-  const isStale = (entryId: EntryId) => workOf(entryId).revision !== workOf(entryId).scoredRevision
+  const staleOf = (entryId: EntryId): StaleWork => ({ entryId, revision: rowOf(entryId).revision })
+  const isStale = (entryId: EntryId) => rowOf(entryId).revision !== rowOf(entryId).scoredRevision
+  const isViewStale = (entryId: EntryId) => rowOf(entryId).revision !== rowOf(entryId).viewRevision
+
   const findLive = (kind: string, subjectId: string, contentKey: string) =>
     world.facts.find(
       (fact) => fact.kind === kind && fact.subjectId === subjectId && fact.contentKey === contentKey && live(fact),
@@ -392,156 +332,205 @@ export function fakeWorld(): FakeWorld {
     const slice = items.slice(start, start + limit)
     return { items: slice, nextCursor: start + limit < items.length ? String(start + limit) : null }
   }
+  const withEntry = <T>(record: T, nodeId: string): WithEntry<T> => {
+    const entry = entryById(entryIdOfNode(nodeId) ?? '')
+    if (!entry) throw new Error(`Node ${nodeId} belongs to no entry.`)
+    return { ...record, entry: { id: entry.id, lemma: entry.lemma } }
+  }
+  const factWithEntry = (fact: Fact) => withEntry(fact, fact.subjectId)
+  const ticketWithEntry = (ticket: TicketRecord) => {
+    if (ticket.targetType === 'lemma') return { ...ticket, entry: null }
+    const fact = ticket.targetType === 'fact' ? world.facts.find((candidate) => candidate.id === ticket.target) : null
+    const entry = entryById(entryIdOfNode(fact?.subjectId ?? ticket.target) ?? '')
+    return { ...ticket, entry: entry ? { id: entry.id, lemma: entry.lemma } : null }
+  }
+  const openTicket = (ticket: TicketRecord) => {
+    const open = world.tickets.find(
+      (candidate) =>
+        candidate.status === 'open' &&
+        candidate.type === ticket.type &&
+        candidate.targetType === ticket.targetType &&
+        candidate.target === ticket.target,
+    )
+    if (open) return open
+    world.tickets.push(ticket)
+    return ticket
+  }
 
   /** Built views in lemma order, as the view's lemma index reads them. */
   const builtViews = () => [...world.views.values()].sort((a, b) => a.document.lemma.localeCompare(b.document.lemma))
-  const isViewStale = (entryId: EntryId) => workOf(entryId).revision !== workOf(entryId).viewRevision
   const viewLookup = (entryId: EntryId): ViewLookup => {
     const record = world.views.get(entryId)
     const json = record && JSON.stringify(record.document)
     return {
-      stale: isViewStale(entryId) ? { entryId, revision: workOf(entryId).revision } : null,
+      stale: isViewStale(entryId) ? { entryId, revision: rowOf(entryId).revision } : null,
       view: json ? { json, digest: fakeDigest(json) } : null,
     }
   }
 
-  const creationKeys = new Map<string, string>()
+  const creationKeys = new Map<SenseId, string>()
+  const admitEntries = (lemmas: readonly Lemma[], createdBy: PrincipalRef, at: string) =>
+    lemmas.map((lemma) => {
+      const existing = world.entries.find((entry) => entry.lemma === lemma)
+      if (existing) return existing
+      const entry: EntryNode = { id: nextId<EntryId>(), lemma, createdBy, createdAt: at }
+      world.entries.push(entry)
+      newRow(entry.id)
+      return entry
+    })
+  const goLive = (entryIds: readonly EntryId[], batch: number | null) => {
+    for (const entryId of entryIds) {
+      const row = rowOf(entryId)
+      row.live = true
+      row.batch = row.batch ?? batch
+      row.revision += 1
+    }
+  }
+
   const nodes: NodeRepo = {
     findEntryByLemma: async (lemma) => world.entries.find((entry) => entry.lemma === lemma) ?? null,
-    findEntry: async (id) => world.entries.find((entry) => entry.id === id) ?? null,
+    findEntry: async (id) => entryById(id) ?? null,
     insertEntry: async (entry) => {
       const existing = world.entries.find((candidate) => candidate.lemma === entry.lemma)
       if (existing) return existing
       world.entries.push(entry)
-      workOf(entry.id)
+      newRow(entry.id)
       return entry
     },
     findSense: async (id) => {
-      const sense = world.senses.find((candidate) => candidate.id === id)
+      const sense = senseById(id)
       return sense ? withLemma(sense) : null
     },
-    findSenseByGloss: async (entryId, pos, meaningKey) => {
-      for (const sense of world.senses.filter((s) => s.entryId === entryId && s.pos === pos)) {
-        const fact = world.facts.find(
+    listSenses: async (entryId) => world.senses.filter((sense) => sense.entryId === entryId),
+    insertSenses: async (rows) =>
+      rows.map(({ sense, creationKey }) => {
+        const existing = world.senses.find(
           (candidate) =>
-            candidate.kind === 'sense' &&
-            candidate.subjectId === sense.id &&
-            live(candidate) &&
-            meaningKeyOf('sense', candidate.payload as FactOf<'sense'>['payload']) === meaningKey,
+            candidate.entryId === sense.entryId &&
+            candidate.pos === sense.pos &&
+            creationKeys.get(candidate.id) === creationKey,
         )
-        if (fact) return { sense, fact }
-      }
-      return null
+        if (existing) return existing
+        world.senses.push(sense)
+        creationKeys.set(sense.id, creationKey)
+        return sense
+      }),
+    admission: async (entryId) => {
+      const { live: admitted, batch } = rowOf(entryId)
+      return { live: admitted, batch }
     },
-    listLiveGlosses: async (entryId) =>
-      world.senses
-        .filter((sense) => sense.entryId === entryId)
-        .flatMap((sense) =>
-          world.facts
-            .filter(
-              (fact): fact is FactOf<'sense'> => fact.kind === 'sense' && fact.subjectId === sense.id && live(fact),
-            )
-            .map((fact) => ({ sense, fact })),
-        ),
-    insertSenseWithFact: async (sense, fact, creationKey) => {
-      const existing = world.senses.find(
-        (candidate) =>
-          candidate.entryId === sense.entryId &&
-          candidate.pos === sense.pos &&
-          creationKeys.get(candidate.id) === creationKey,
+    admit: async (lemmas, batch, createdBy, at) => {
+      const admitted = admitEntries(lemmas, createdBy, at)
+      goLive(
+        admitted.map((entry) => entry.id),
+        batch,
       )
-      if (existing) {
-        const defining = world.facts.find(
-          (candidate) => candidate.kind === 'sense' && candidate.subjectId === existing.id,
-        )
-        if (!defining) throw new Error(`Sense ${existing.id} has no defining fact.`)
-        return { sense: existing, fact: defining }
-      }
-      world.senses.push(sense)
-      creationKeys.set(sense.id, creationKey)
-      world.facts.push(fact)
-      touch([sense.entryId])
-      touchLinked(fact)
-      return { sense, fact }
+      return admitted
     },
-    loadEntrySnapshot: async (entry): Promise<EntrySnapshot> => {
+    setPhrasesLive: async (alive, dead, batch) => {
+      goLive(alive, batch)
+      const named = (lemma: string) =>
+        world.facts
+          .filter(isKind('phrases'))
+          .some((fact) => fact.status === 'published' && fact.payload.phrases.includes(lemma))
+      for (const entryId of dead) {
+        const entry = entryById(entryId)
+        if (!entry || named(entry.lemma)) continue
+        const row = rowOf(entryId)
+        row.live = false
+        row.revision += 1
+      }
+    },
+    loadEntrySnapshot: async (entry) => {
       const own = world.senses.filter((sense) => sense.entryId === entry.id)
       const ownIds = new Set<string>(own.map((sense) => sense.id))
-      const facts = world.facts.filter((fact) => fact.subjectId === entry.id || ownIds.has(fact.subjectId))
+      const senseFacts = new Set<string>(
+        world.facts.filter((fact) => ownIds.has(fact.subjectId)).map((fact) => fact.id),
+      )
+      const facts = world.facts.filter(
+        (fact) => fact.subjectId === entry.id || ownIds.has(fact.subjectId) || senseFacts.has(fact.subjectId),
+      )
+      const outgoing = facts.filter((fact) => fact.kind === 'relation').map((fact) => fact.objectId)
       const incoming = world.facts.filter((fact) => fact.kind === 'relation' && ownIds.has(fact.objectId ?? ''))
-      const neighborIds = new Set<string>([
-        ...facts.filter((fact) => fact.kind === 'relation').map((fact) => fact.objectId ?? ''),
-        ...incoming.map((fact) => fact.subjectId),
-      ])
-      const neighbors = world.senses.filter((sense) => neighborIds.has(sense.id))
-      const neighborEntries = new Set<string>(neighbors.map((sense) => sense.entryId))
+      const neighborEntries = new Set<EntryId>(
+        world.senses
+          .filter((sense) => outgoing.includes(sense.id) || incoming.some((fact) => fact.subjectId === sense.id))
+          .map((sense) => sense.entryId)
+          .filter((entryId) => entryId !== entry.id),
+      )
+      const row = rowOf(entry.id)
+      const family = [
+        ...new Set(
+          world.facts
+            .filter(isKind('morphology'))
+            .filter(
+              (fact) =>
+                live(fact) &&
+                fact.subjectId !== entry.id &&
+                isLiveEntry(fact.subjectId) &&
+                fact.payload.parts.some((part) => part.role === 'base' && part.lemma === entry.lemma),
+            )
+            .flatMap((fact) => entryById(fact.subjectId)?.lemma ?? []),
+        ),
+      ].sort()
       return {
-        entry,
-        seed: world.seeds.has(entry.id),
+        entry: { ...entry, live: row.live },
+        batch: row.batch,
         levelRank: priorityOf(entry).levelRank,
         zipf: priorityOf(entry).zipf,
-        coreVerb:
-          world.references.get(entry.lemma)?.cefr.some((cefr) => cefr.pos === 'verb' && levelRank(cefr.level) <= 2) ??
-          false,
-        phrases: phrasesOf(entry.lemma),
-        family: familyOf(entry),
-        senses: own.map(withLemma),
+        family,
+        senses: own,
         facts,
         incoming,
-        flagged: new Set(
-          world.feedback
-            .filter((item) => item.targetType === 'fact' && (item.status === 'open' || item.status === 'claimed'))
-            .map((item) => item.targetId as FactId)
-            .filter((targetId) => facts.some((fact) => fact.id === targetId)),
+        passes: new Set(
+          world.passes.filter((pass) => pass.entryId === entry.id).map((pass) => passKey(pass.type, pass.subjectId)),
         ),
         neighbors: {
-          senses: neighbors.map(withLemma),
-          facts: world.facts.filter(
-            (fact) =>
-              (fact.kind === 'sense' && neighborIds.has(fact.subjectId)) ||
-              (fact.kind === 'entry' && neighborEntries.has(fact.subjectId)),
+          inventories: world.facts.filter(
+            (fact) => fact.kind === 'senses' && neighborEntries.has(fact.subjectId as EntryId),
           ),
+          lemmas: new Map([...neighborEntries].map((id) => [id, entryById(id)?.lemma ?? ''])),
+          liveEntries: new Set([...neighborEntries].filter(isLiveEntry)),
         },
       }
     },
-    listEntrySummaries: async ({ prefix, level, flagged, stuck }, page, now) => {
-      const ownFacts = (entry: EntryNode) => {
-        const own = new Set<string>(world.senses.filter((sense) => sense.entryId === entry.id).map(({ id }) => id))
-        return world.facts.filter((fact) => fact.subjectId === entry.id || own.has(fact.subjectId))
-      }
+    listEntrySummaries: async ({ prefix, level, stuck }, page, at) => {
       const itemsOf = (entry: EntryNode) => world.items.filter((item) => item.entryId === entry.id)
       const summaries = world.entries
         .filter((entry) => entry.lemma.startsWith(prefix))
         .filter((entry) => !level || priorityOf(entry).levelRank === levelRank(level))
-        .filter((entry) => !flagged || ownFacts(entry).some(isWeak))
-        .filter((entry) => !stuck || itemsOf(entry).some((item) => item.attempts >= MAX_ATTEMPTS))
+        .filter((entry) => !stuck || itemsOf(entry).some((item) => item.attempts >= MAX_PASSES))
         .sort((a, b) => a.lemma.localeCompare(b.lemma))
         .map((entry) => {
-          const facts = ownFacts(entry)
-          const [entryFact] = facts
-            .filter((fact) => fact.kind === 'entry')
-            .sort((a, b) => Number(live(b)) - Number(live(a)) || b.updatedAt.localeCompare(a.updatedAt))
-          const glossed = new Set(facts.filter((fact) => fact.kind === 'sense' && live(fact)).map((f) => f.subjectId))
-          const statusCount = (status: Fact['status']) => facts.filter((fact) => fact.status === status).length
+          const own = new Set<string>(world.senses.filter((sense) => sense.entryId === entry.id).map(({ id }) => id))
+          const facts = world.facts.filter((fact) => fact.subjectId === entry.id || own.has(fact.subjectId))
+          const counts = Object.fromEntries(
+            (['pending', 'published', 'rejected', 'superseded', 'retracted'] as FactStatus[]).map((status) => [
+              status,
+              facts.filter((fact) => fact.status === status).length,
+            ]),
+          ) as Record<FactStatus, number>
+          const published = facts.filter(isKind('senses')).find((fact) => fact.status === 'published')
+          const openWork = { total: 0, in_progress: 0, waiting_on_review: 0, stuck: 0 }
+          for (const item of itemsOf(entry)) {
+            const status = openItemStatus({ ...item, leased: item.lease !== null && item.lease.expiresAt > at })
+            if (status !== 'queued') openWork[status] += 1
+            openWork.total += 1
+          }
+          const row = rowOf(entry.id)
           return {
             id: entry.id,
             lemma: entry.lemma,
-            entry_status: entryFact?.status ?? null,
-            sense_count: glossed.size,
-            fact_counts: {
-              pending: statusCount('pending'),
-              published: statusCount('published'),
-              rejected: statusCount('rejected'),
-              superseded: statusCount('superseded'),
-              retracted: statusCount('retracted'),
-            },
-            last_worked_at: world.work.get(entry.id)?.lastWorkedAt ?? null,
+            live: row.live,
+            sense_count: published?.payload.senses.length ?? 0,
+            fact_counts: counts,
+            last_worked_at: row.lastWorkedAt,
             created_at: entry.createdAt,
             level: levelOfRank(priorityOf(entry).levelRank),
-            completeness: workOf(entry.id).completeness,
-            quality: workOf(entry.id).quality,
-            slots: workOf(entry.id).slots,
-            open_work: openWorkOf(itemsOf(entry), now),
+            completeness: row.completeness,
+            credibility: row.credibility,
+            slots: row.slots,
+            open_work: openWork,
           }
         })
       return paged(summaries, page.limit, page.cursor)
@@ -551,20 +540,213 @@ export function fakeWorld(): FakeWorld {
         .filter((fact): fact is FactOf<'form'> => fact.kind === 'form' && live(fact))
         .filter((fact) => contentKeys.some((key) => fact.contentKey === key || fact.contentKey.startsWith(`${key}|`)))
         .flatMap((fact) => {
-          const entry = world.entries.find((candidate) => candidate.id === fact.subjectId)
-          const entryLive = world.facts.some((f) => f.kind === 'entry' && f.subjectId === fact.subjectId && live(f))
-          return entry && entryLive ? [{ entry, fact }] : []
+          const entry = entryById(fact.subjectId)
+          return entry && isLiveEntry(entry.id) ? [{ entry, fact }] : []
         }),
     listLiveCaseVariants: async ({ id, lemma }) =>
       world.entries
         .filter((entry) => entry.id !== id && entry.lemma.toLowerCase() === lemma.toLowerCase())
-        .filter((entry) => world.facts.some((f) => f.kind === 'entry' && f.subjectId === entry.id && live(f)))
+        .filter((entry) => isLiveEntry(entry.id))
         .map((entry) => entry.lemma)
         .sort(),
   }
 
+  const tickets: TicketRepo = {
+    open: async (ticket) => openTicket(ticket),
+    find: async (id) => world.tickets.find((ticket) => ticket.id === id) ?? null,
+    update: async (next, expectedRevision) => {
+      const index = world.tickets.findIndex((ticket) => ticket.id === next.id)
+      if (world.tickets[index]?.revision !== expectedRevision) return false
+      world.tickets[index] = next
+      return true
+    },
+    findWithEntry: async (id) => {
+      const ticket = world.tickets.find((candidate) => candidate.id === id)
+      return ticket ? ticketWithEntry(ticket) : null
+    },
+    list: async ({ status, type }, page) =>
+      paged(
+        world.tickets
+          .filter((ticket) => (!status || ticket.status === status) && (!type || ticket.type === type))
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+          .map(ticketWithEntry),
+        page.limit,
+        page.cursor,
+      ),
+    countByStatus: async () => {
+      const counts = { open: 0, resolved: 0, dismissed: 0 }
+      for (const ticket of world.tickets) counts[ticket.status] += 1
+      return counts
+    },
+  }
+
+  /** In the production queue, and free at `at`. */
+  const claimable = (item: WorkItem, at: string) =>
+    !item.awaiting && item.attempts < MAX_PASSES && (item.lease === null || item.lease.expiresAt <= at)
+  const queueOrder = (a: WorkItem, b: WorkItem) =>
+    a.rank - b.rank || b.zipfOrder - a.zipfOrder || a.id.localeCompare(b.id)
+
+  const work: WorkRepo = {
+    listStale: async (nodeIds) => [...relatedRows(nodeIds)].filter(isStale).map(staleOf),
+    listAnyStale: async (limit) => [...world.work.keys()].filter(isStale).sort().slice(0, limit).map(staleOf),
+    countStale: async () => [...world.work.keys()].filter(isStale).length,
+    listItems: async (entryId) => world.items.filter((item) => item.entryId === entryId).map((item) => ({ ...item })),
+    findItems: async (ids) => world.items.filter((item) => ids.includes(item.id)).map((item) => ({ ...item })),
+    saveAssessment: async (stale, scores, { writes, deletes, verdicts }) => {
+      const row = rowOf(stale.entryId)
+      if (row.revision !== stale.revision) return
+      const at = now.toISOString()
+      Object.assign(row, scores, { scoredRevision: stale.revision })
+      for (const verdict of verdicts) {
+        const item = world.items.find((candidate) => candidate.id === verdict.id)
+        if (!item) continue
+        if (
+          verdict.verdict === 'passed' &&
+          !world.passes.some((pass) => passKey(pass.type, pass.subjectId) === passKey(item.type, item.subjectId))
+        ) {
+          world.passes.push({
+            entryId: item.entryId,
+            type: item.type,
+            subjectId: item.subjectId,
+            note: item.lastNote ?? 'found none',
+            holder: item.lastWorkedBy ?? ('unknown' as PrincipalRef),
+            at,
+          })
+        }
+        if (verdict.verdict === 'stuck') {
+          openTicket({
+            id: nextId<TicketId>('a000'),
+            type: 'stuck_work',
+            targetType: item.subjectId === item.entryId ? 'entry' : 'sense',
+            target: item.subjectId,
+            message: `${item.type}: ${item.lastNote ?? 'no note'}`,
+            status: 'open',
+            resolutionNote: null,
+            resolutionFactIds: [],
+            revision: 0,
+            createdAt: at,
+            updatedAt: at,
+          })
+        }
+        for (const attempt of world.attempts) {
+          if (attempt.itemId === verdict.id && attempt.outcome === 'waiting_on_review')
+            attempt.outcome = verdict.verdict
+        }
+      }
+      const kept = world.items.filter((item) => !deletes.includes(item.id))
+      for (const write of writes) {
+        const { id, ...values } = write
+        const stored = kept.find((item) => item.type === write.type && item.subjectId === write.subjectId)
+        if (stored) Object.assign(stored, values)
+        else
+          kept.push({
+            ...values,
+            id: id ?? nextId<WorkItemId>('9000'),
+            entryId: stale.entryId,
+            claimedGap: null,
+            lease: null,
+            lastWorkedAt: null,
+            lastWorkedBy: null,
+            lastNote: null,
+          })
+      }
+      world.items.splice(0, world.items.length, ...kept)
+    },
+    claim: async (draft, types, limit, at) => {
+      const queue = world.items.filter((item) => claimable(item, at)).sort(queueOrder)
+      const first = queue.find((item) => !types || types.includes(item.type))
+      if (!first) return null
+      const leased = queue.filter((item) => item.type === first.type).slice(0, limit)
+      for (const item of leased) {
+        item.lease = { id: draft.id, holder: draft.holder, expiresAt: draft.expiresAt }
+        item.claimedGap = item.gap
+      }
+      const lease: WorkLease = {
+        ...draft,
+        type: first.type,
+        entryIds: [...new Set(leased.map((item) => item.entryId))],
+        itemIds: leased.map((item) => item.id),
+        claimedAt: at,
+      }
+      world.leases.push(lease)
+      return { lease, items: leased.map((item) => ({ ...item })) }
+    },
+    findLease: async (id) => world.leases.find((lease) => lease.id === id) ?? null,
+    complete: async (lease, worked, at) => {
+      const index = world.leases.findIndex(
+        (held) => held.id === lease.id && held.holder === lease.holder && held.expiresAt > at,
+      )
+      if (index < 0) return false
+      world.leases.splice(index, 1)
+      for (const pass of worked) {
+        const item = world.items.find((candidate) => candidate.id === pass.id)
+        world.attempts.push({
+          itemId: pass.id,
+          holder: lease.holder,
+          note: pass.note ?? null,
+          outcome: item ? 'waiting_on_review' : 'closed',
+        })
+        if (!item) continue
+        if (item.lease?.id === lease.id) {
+          Object.assign(item, {
+            worked: true,
+            foundNone: pass.foundNone,
+            lastWorkedAt: at,
+            lastWorkedBy: lease.holder,
+            lastNote: pass.note ?? null,
+          })
+        }
+        for (const lemma of pass.blockedOn) {
+          if (
+            !world.blocks.some(
+              (block) => block.lemma === lemma && block.subjectId === item.subjectId && block.type === item.type,
+            )
+          ) {
+            world.blocks.push({ lemma, type: item.type, subjectId: item.subjectId })
+          }
+        }
+      }
+      for (const item of world.items.filter((candidate) => candidate.lease?.id === lease.id)) item.lease = null
+      for (const entryId of lease.entryIds) {
+        rowOf(entryId).revision += 1
+        rowOf(entryId).lastWorkedAt = at
+      }
+      return true
+    },
+    recordPass: async (pass) => {
+      const index = world.passes.findIndex((stored) => stored.type === pass.type && stored.subjectId === pass.subjectId)
+      if (index >= 0) world.passes[index] = pass
+      else world.passes.push(pass)
+      bump([pass.entryId])
+    },
+    reopenBlocked: async (lemmas) => {
+      const keys = new Set(
+        world.blocks
+          .filter((block) => lemmas.includes(block.lemma as Lemma))
+          .map((block) => passKey(block.type, block.subjectId)),
+      )
+      const reopened = world.passes.filter((pass) => keys.has(passKey(pass.type, pass.subjectId)))
+      if (reopened.length === 0) return 0
+      world.passes.splice(0, world.passes.length, ...world.passes.filter((pass) => !reopened.includes(pass)))
+      world.blocks.splice(
+        0,
+        world.blocks.length,
+        ...world.blocks.filter((block) => !lemmas.includes(block.lemma as Lemma)),
+      )
+      bump(reopened.map((pass) => pass.entryId))
+      return reopened.length
+    },
+    purgeLeases: async (before) => {
+      const expired = world.leases.filter((lease) => lease.expiresAt <= before)
+      world.leases.splice(0, world.leases.length, ...world.leases.filter((lease) => lease.expiresAt > before))
+      return expired.length
+    },
+  }
+
   const deps: Deps = {
     nodes,
+    tickets,
+    work,
     // The console's aggregates are SQL over the work tables, proven by the integration suite; a
     // use-case test of them passes its own fake.
     monitor: new Proxy({} as Deps['monitor'], {
@@ -575,25 +757,34 @@ export function fakeWorld(): FakeWorld {
     facts: {
       find: async (id) => world.facts.find((fact) => fact.id === id) ?? null,
       findLive: async (kind, subjectId, contentKey) => findLive(kind, subjectId, contentKey),
+      findRejected: async (kind, subjectId, contentKey) =>
+        world.facts
+          .filter(
+            (fact) =>
+              fact.kind === kind &&
+              fact.subjectId === subjectId &&
+              fact.contentKey === contentKey &&
+              fact.status === 'rejected',
+          )
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null,
       listLive: async (kind, subjectId) =>
         world.facts.filter((fact) => fact.kind === kind && fact.subjectId === subjectId && live(fact)),
       insert: async (fact) => {
         const existing = findLive(fact.kind, fact.subjectId, fact.contentKey)
         if (existing) return existing
-        if (violatedIndex(world.facts, fact)) return null
         const { maxLive } = factKinds[fact.kind]
-        if (maxLive !== undefined && heldLive(fact, fact.supersedesId) >= maxLive) return null
-        if (fact.supersedesId && !isPublished(fact.supersedesId)) return null
-        world.facts.push(fact)
-        touch([fact.subjectId, fact.objectId])
-        touchLinked(fact)
-        return fact
+        const refused =
+          violatedIndex(world.facts, fact) !== null ||
+          (maxLive !== undefined && heldLive(fact, fact.supersedesId) >= maxLive) ||
+          (fact.supersedesId !== null && !isPublished(fact.supersedesId))
+        if (!refused) world.facts.push(fact)
+        touchFact(fact)
+        return refused ? null : fact
       },
-      listLiveLinks: async <K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]) => {
-        const entryOf = (id: string | null) => world.senses.find((sense) => sense.id === id)?.entryId
-        return world.facts.flatMap((fact): Link<K>[] => {
-          const subject = entryOf(fact.subjectId)
-          const target = entryOf(fact.objectId)
+      listLiveLinks: async <K extends FactKind>(kind: K, between: readonly [EntryId, EntryId]) =>
+        world.facts.flatMap((fact): Link<K>[] => {
+          const subject = senseById(fact.subjectId)?.entryId
+          const target = senseById(fact.objectId)?.entryId
           if (fact.kind !== kind || !live(fact) || !subject || !target || subject === target) return []
           if (!between.includes(subject) || !between.includes(target)) return []
           const { id, payload, subjectId, objectId } = fact as FactOf<K>
@@ -605,58 +796,24 @@ export function fakeWorld(): FakeWorld {
               target: { sense: objectId as SenseId, entry: target },
             },
           ]
-        })
-      },
+        }),
       findLiveCorrection: async (id) => world.facts.find((fact) => fact.supersedesId === id && live(fact)) ?? null,
-      transition: async ({
-        id,
-        from,
-        to,
-        at,
-        review,
-        supersede,
-        revalidate,
-        revalidateSince,
-        liveBelow,
-        unsuperseded,
-        originalPublished,
-        rereview,
-      }) => {
+      transition: async ({ id, from, to, at, review, supersede, liveBelow, unsuperseded, originalPublished }) => {
         const fact = world.facts.find((candidate) => candidate.id === id)
-        if (!fact || !from.includes(fact.status)) return false
-        if (revalidateSince !== undefined && fact.revalidateSince !== revalidateSince) return false
+        if (!fact) return false
+        touchFact(fact)
+        if (!from.includes(fact.status)) return false
         if (liveBelow && heldLive(fact, liveBelow.excluding) >= liveBelow.max) return false
-        if (unsuperseded && world.facts.some((candidate) => candidate.supersedesId === id && live(candidate))) {
+        if (unsuperseded && world.facts.some((candidate) => candidate.supersedesId === id && live(candidate)))
           return false
-        }
         if (originalPublished && !isPublished(originalPublished)) return false
-        const next = {
-          ...fact,
-          status: to,
-          updatedAt: at,
-          review: review ?? fact.review,
-          revalidateSince: null,
-        } as Fact
-        const dependsOnNode = (candidate: Fact) =>
-          revalidate !== undefined &&
-          live(candidate) &&
-          !isCurated(candidate) &&
-          revalidate.kinds.includes(candidate.kind) &&
-          (candidate.subjectId === revalidate.nodeId || candidate.objectId === revalidate.nodeId)
-        const rereviewed = (candidate: Fact) =>
-          rereview !== undefined &&
-          candidate.kind === rereview.kind &&
-          candidate.status === 'published' &&
-          candidate.revalidateSince === null &&
-          candidate.review?.reviewer === rereview.settledBy &&
-          candidate.subjectId !== fact.subjectId &&
-          world.entries.some((entry) => entry.id === candidate.subjectId && entry.lemma === rereview.lemma)
-        const retired = world.facts.map((candidate): Fact => {
-          if (candidate.id === supersede && candidate.status === 'published') {
-            return { ...candidate, status: 'superseded', updatedAt: at, revalidateSince: null }
-          }
-          return dependsOnNode(candidate) || rereviewed(candidate) ? { ...candidate, revalidateSince: at } : candidate
-        })
+        const next = { ...fact, status: to, updatedAt: at, review: review ?? fact.review } as Fact
+        const retired = world.facts.map(
+          (candidate): Fact =>
+            candidate.id === supersede && candidate.status === 'published' && next.supersedesId === supersede
+              ? { ...candidate, status: 'superseded', updatedAt: at }
+              : candidate,
+        )
         const violation = violatedIndex(retired, next)
         if (violation) throw new ConflictError(violation)
         world.facts.splice(
@@ -664,41 +821,13 @@ export function fakeWorld(): FakeWorld {
           world.facts.length,
           ...retired.map((candidate) => (candidate.id === id ? next : candidate)),
         )
-        retireDeadLinks(next, at)
-        touch([next.subjectId, next.objectId])
-        touchLinked(next)
+        touchFact(next)
         return true
       },
-      listRejected: async (nodeId, kinds, limit) =>
-        latestRejected(
-          world.facts
-            .filter((fact) => kinds.includes(fact.kind))
-            .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId),
-          limit,
-        ),
-      listRejectedDerivations: async (baseLemma, limit) =>
-        latestRejected(
-          world.facts
-            .filter(isKind('morphology'))
-            .filter((fact) => fact.payload.parts.some((part) => part.role === 'base' && part.lemma === baseLemma)),
-          limit,
-        ).map((fact) => {
-          const word = lemmaOf(fact.subjectId as EntryId)
-          if (word === undefined) throw new Error(`Word formation ${fact.id} is about no entry.`)
-          return { word, fact }
-        }),
-      listRevalidating: async (nodeId) =>
-        world.facts
-          .filter((fact) => live(fact) && fact.revalidateSince !== null)
-          .filter((fact) => fact.subjectId === nodeId || fact.objectId === nodeId)
-          .map((fact) => fact.id),
       listStuckBefore: async (cutoff, limit) =>
-        [
-          ...world.facts.filter((fact) => fact.status === 'pending' && fact.updatedAt < cutoff),
-          ...world.facts.filter(
-            (fact) => fact.status === 'published' && fact.revalidateSince !== null && fact.revalidateSince < cutoff,
-          ),
-        ]
+        world.facts
+          .filter((fact) => fact.status === 'pending' && fact.updatedAt < cutoff)
+          .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
           .slice(0, limit)
           .map((fact) => fact.id),
       findCuratedRejection: async (kind, subjectId, contentKey) =>
@@ -714,24 +843,28 @@ export function fakeWorld(): FakeWorld {
         const fact = world.facts.find((candidate) => candidate.id === id)
         return fact ? factWithEntry(fact) : null
       },
-      list: async ({ status, kind, author, lemma, weak, level }, page) =>
-        paged(
+      list: async ({ status, kind, author, lemma, level }, page) => {
+        const entryOf = (fact: Fact) => entryById(entryIdOfNode(fact.subjectId) ?? '')
+        return paged(
           world.facts
-            .filter(
-              (fact) =>
+            .filter((fact) => {
+              const entry = entryOf(fact)
+              return (
                 (!status || fact.status === status) &&
                 (!kind || fact.kind === kind) &&
                 (!author || fact.author === author) &&
-                (!lemma || lemmaOfSubject(fact.subjectId) === lemma) &&
-                (!weak || isWeak(fact)) &&
-                (!level || levelOfSubject(fact.subjectId) === levelRank(level)),
-            )
+                (!lemma || entry?.lemma === lemma) &&
+                (!level || (entry !== undefined && priorityOf(entry).levelRank === levelRank(level)))
+              )
+            })
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
             .map(factWithEntry),
           page.limit,
           page.cursor,
-        ),
+        )
+      },
       countByKindAndStatus: async () => {
-        const counts = new Map<string, { kind: Fact['kind']; status: Fact['status']; count: number }>()
+        const counts = new Map<string, { kind: FactKind; status: FactStatus; count: number }>()
         for (const fact of world.facts) {
           const key = `${fact.kind}/${fact.status}`
           const row = counts.get(key) ?? { kind: fact.kind, status: fact.status, count: 0 }
@@ -744,35 +877,6 @@ export function fakeWorld(): FakeWorld {
       list: async () => world.topics,
       find: async (id) => world.topics.find((node) => node.id === id) ?? null,
     },
-    feedback: {
-      insert: async (item) => {
-        world.feedback.push(item)
-        touchFact(item.targetId)
-      },
-      find: async (id) => world.feedback.find((item) => item.id === id) ?? null,
-      update: async (next, expectedRevision) => {
-        const index = world.feedback.findIndex((item) => item.id === next.id)
-        if (world.feedback[index]?.revision !== expectedRevision) return false
-        world.feedback[index] = next
-        touchFact(next.targetId)
-        return true
-      },
-      findWithEntry: async (id) => {
-        const item = world.feedback.find((candidate) => candidate.id === id)
-        return item ? feedbackWithEntry(item) : null
-      },
-      list: async ({ status }, page) =>
-        paged(
-          world.feedback.filter((item) => !status || item.status === status).map(feedbackWithEntry),
-          page.limit,
-          page.cursor,
-        ),
-      countByStatus: async () => {
-        const counts = { open: 0, claimed: 0, resolved: 0, dismissed: 0 }
-        for (const item of world.feedback) counts[item.status] += 1
-        return counts
-      },
-    },
     agents: {
       insert: async (agent, keyHash) => {
         world.agents.push({ ...agent, keyHash })
@@ -783,108 +887,6 @@ export function fakeWorld(): FakeWorld {
       revoke: async (id, at) => {
         const agent = world.agents.find((candidate) => candidate.id === id)
         if (agent) agent.revokedAt = at
-      },
-    },
-    work: {
-      markSeed: async (entryId) => {
-        world.seeds.add(entryId)
-      },
-      listStale: async (nodeIds) => {
-        const owners = new Set<EntryId>([
-          ...world.entries.filter((entry) => nodeIds.includes(entry.id)).map((entry) => entry.id),
-          ...world.senses.filter((sense) => nodeIds.includes(sense.id)).map((sense) => sense.entryId),
-          ...linkedEntries(nodeIds),
-          ...world.facts
-            .filter((fact) => fact.kind === 'morphology' && nodeIds.includes(fact.subjectId))
-            .flatMap(familyBases),
-        ])
-        return [...owners].filter(isStale).map(staleOf)
-      },
-      listAnyStale: async (limit) => [...world.work.keys()].filter(isStale).slice(0, limit).map(staleOf),
-      countStale: async () => [...world.work.keys()].filter(isStale).length,
-      listItems: async (entryId) => world.items.filter((item) => item.entryId === entryId).map((item) => ({ ...item })),
-      findItems: async (ids) => world.items.filter((item) => ids.includes(item.id)).map((item) => ({ ...item })),
-      saveAssessment: async (stale, scores, { writes, deletes }) => {
-        const row = workOf(stale.entryId)
-        if (row.revision !== stale.revision) return
-        Object.assign(row, scores, { scoredRevision: stale.revision })
-        const kept = world.items.filter((item) => !deletes.includes(item.id))
-        for (const write of writes) {
-          const { id, ...values } = write
-          const stored = kept.find((item) => item.type === write.type && item.subjectId === write.subjectId)
-          if (stored) Object.assign(stored, values)
-          else {
-            itemCount += 1
-            kept.push({
-              ...values,
-              id: id ?? (`00000000-0000-4000-9000-${String(itemCount).padStart(12, '0')}` as WorkItemId),
-              entryId: stale.entryId,
-              claimedGap: null,
-              lease: null,
-              lastWorkedAt: null,
-              lastWorkedBy: null,
-              lastNote: null,
-            })
-          }
-        }
-        world.items.splice(0, world.items.length, ...kept)
-      },
-      claim: async (draft, types, limit, now) => {
-        const queue = world.items.filter((item) => claimable(item, now)).sort(queueOrder)
-        const first = queue.find((item) => !types || types.includes(item.type))
-        if (!first) return null
-        const leased = queue.filter((item) => item.type === first.type).slice(0, limit)
-        for (const item of leased) {
-          item.lease = { id: draft.id, holder: draft.holder, expiresAt: draft.expiresAt }
-          item.claimedGap = item.gap
-        }
-        const lease: WorkLease = {
-          ...draft,
-          type: first.type,
-          entryIds: [...new Set(leased.map((item) => item.entryId))],
-          itemIds: leased.map((item) => item.id),
-          claimedAt: now,
-        }
-        world.leases.push(lease)
-        return { lease, items: leased.map((item) => ({ ...item })) }
-      },
-      findLease: async (id) => world.leases.find((lease) => lease.id === id) ?? null,
-      complete: async (lease, worked, at) => {
-        const index = world.leases.findIndex(
-          (held) => held.id === lease.id && held.holder === lease.holder && held.expiresAt > at,
-        )
-        if (index < 0) return false
-        world.leases.splice(index, 1)
-        for (const item of world.items.filter((candidate) => candidate.lease?.id === lease.id)) {
-          const pass = worked.find((candidate) => candidate.id === item.id)
-          if (pass)
-            Object.assign(item, {
-              worked: true,
-              lastWorkedAt: at,
-              lastWorkedBy: lease.holder,
-              lastNote: pass.note ?? null,
-            })
-          item.lease = null
-        }
-        for (const entryId of lease.entryIds) {
-          workOf(entryId).revision += 1
-          workOf(entryId).lastWorkedAt = at
-        }
-        return true
-      },
-      listCuration: async (type, request) =>
-        paged(
-          world.items
-            .filter((item) => item.attempts >= MAX_ATTEMPTS && (type === null || item.type === type))
-            .sort(queueOrder)
-            .map((item) => ({ ...item, lemma: lemmaOf(item.entryId) ?? ('' as Lemma) })),
-          request.limit,
-          request.cursor,
-        ),
-      purgeLeases: async (before) => {
-        const expired = world.leases.filter((lease) => lease.expiresAt <= before)
-        world.leases.splice(0, world.leases.length, ...world.leases.filter((lease) => lease.expiresAt > before))
-        return expired.length
       },
     },
     publicViews: {
@@ -916,7 +918,7 @@ export function fakeWorld(): FakeWorld {
         }
       },
       findBySense: async (id) => {
-        const sense = world.senses.find((candidate) => candidate.id === id)
+        const sense = senseById(id)
         return sense ? viewLookup(sense.entryId) : null
       },
       findForms: async (spelling) =>
@@ -1020,38 +1022,43 @@ export function fakeWorld(): FakeWorld {
           page.cursor,
         )
       },
-      listStale: async (nodeIds) => {
-        const owners = new Set<EntryId>([
-          ...world.entries.filter((entry) => nodeIds.includes(entry.id)).map((entry) => entry.id),
-          ...world.senses.filter((sense) => nodeIds.includes(sense.id)).map((sense) => sense.entryId),
-          ...linkedEntries(nodeIds),
-        ])
-        return [...owners].filter(isViewStale).map((entryId) => ({ entryId, revision: workOf(entryId).revision }))
-      },
+      listStale: async (nodeIds) =>
+        [...relatedRows(nodeIds)]
+          .filter(isViewStale)
+          .map((entryId) => ({ entryId, revision: rowOf(entryId).revision })),
       listAnyStale: async (limit) =>
         [...world.work.keys()]
           .filter(isViewStale)
+          .sort()
           .slice(0, limit)
-          .map((entryId) => ({ entryId, revision: workOf(entryId).revision })),
+          .map((entryId) => ({ entryId, revision: rowOf(entryId).revision })),
       countStale: async () => [...world.work.keys()].filter(isViewStale).length,
       save: async (stale, record) => {
-        const row = workOf(stale.entryId)
+        const row = rowOf(stale.entryId)
         if (row.revision !== stale.revision) return
         if (record) world.views.set(stale.entryId, record)
         else world.views.delete(stale.entryId)
         row.viewRevision = stale.revision
       },
     },
-    jev: {
-      ask: async (questions, state) => {
-        world.jevCalls.push({ questions, state })
-        return jevAnswer(questions)
+    decision: {
+      jev: {
+        ask: async (questions, state) => {
+          world.decisionCalls.push({ model: 'jev', questions, state })
+          return decisionAnswers.jev(questions, state)
+        },
+      },
+      luna: {
+        ask: async (questions, state) => {
+          world.decisionCalls.push({ model: 'luna', questions, state })
+          return decisionAnswers.luna(questions, state)
+        },
       },
     },
     llm: {
       judge: async (prompt) => {
         world.llmCalls.push(prompt)
-        return llmAnswer()
+        return llmAnswer(prompt)
       },
     },
     reviewQueue: {
@@ -1059,12 +1066,8 @@ export function fakeWorld(): FakeWorld {
         world.queued.push(...jobs)
       },
     },
-    feedbackLimiter: {
-      allow: async (key) => !world.limitedClients.has(key),
-    },
-    readLimiter: {
-      allow: async (key) => !world.limitedClients.has(key),
-    },
+    feedbackLimiter: { allow: async (key) => !world.limitedClients.has(key) },
+    readLimiter: { allow: async (key) => !world.limitedClients.has(key) },
     responseCache: {
       match: async (key) => world.cachedResponses.get(key)?.clone(),
       put: async (key, response) => {
@@ -1081,18 +1084,13 @@ export function fakeWorld(): FakeWorld {
     adminSubjects: new Set(['admin-1']),
     reference: {
       forLemma: async (lemma) => world.references.get(lemma) ?? { frequency: null, cefr: [] },
-      listCefrListings: async (lemma) =>
-        (world.references.get(lemma)?.cefr ?? []).map(({ level, pos, source_id }) => {
-          const source = world.referenceSources.find((candidate) => candidate.id === source_id)
-          if (!source) throw new Error(`CEFR row of ${lemma} names the unknown source ${source_id}.`)
-          return { level, pos, source: source.name }
-        }),
       listSources: async () => world.referenceSources,
       listCefrLemmasWithoutEntry: async () => {
         const lowest = new Map<string, string>()
         for (const [lemma, reference] of world.references) {
           const levels = reference.cefr.map((cefr) => cefr.level).sort()
-          if (levels.length > 0 && !world.entries.some((entry) => entry.lemma === lemma)) lowest.set(lemma, levels[0])
+          const [first] = levels
+          if (first && !world.entries.some((entry) => entry.lemma === lemma)) lowest.set(lemma, first)
         }
         return [...lowest]
           .sort(([a, x], [b, y]) => x.localeCompare(y) || (a < b ? -1 : 1))
@@ -1104,11 +1102,11 @@ export function fakeWorld(): FakeWorld {
       entry: () => nextId<EntryId>(),
       sense: () => nextId<SenseId>(),
       fact: () => nextId<FactId>(),
-      feedback: () => nextId<FeedbackId>(),
+      ticket: () => nextId<TicketId>(),
       agent: () => nextId<AgentId>(),
       lease: () => nextId<WorkLeaseId>(),
     },
   }
 
-  return { ...world, deps } as FakeWorld
+  return { ...world, deps }
 }

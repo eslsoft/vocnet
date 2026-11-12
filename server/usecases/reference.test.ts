@@ -1,10 +1,9 @@
-import { agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
+import { headword } from '@server/testing/seed'
 import { describe, expect, it } from 'vitest'
-import { createEntry, getManagedEntry } from './catalog'
+import { getManagedEntry } from './catalog'
 import { listReferenceSources } from './reference'
-import { reviewFact } from './review'
 
 const wordfreq = {
   id: 'wordfreq',
@@ -34,15 +33,14 @@ describe('reference data', () => {
     world.referenceSources.push(wordfreq, { ...wordfreq, id: 'cefrj', name: 'CEFR-J Wordlist' })
     world.references.set('bank', reference)
     world.references.set('Bank', { frequency: null, cefr: [] })
-    await createEntry(world.deps, agentA, { lemma: ' bank ' })
-    for (const fact of [...world.facts]) await reviewFact(world.deps, fact.id, 'trace')
+    await headword(world, ' bank ', [{ pos: 'noun', gloss: 'land beside a river' }])
 
-    // The public entry names no source, and shows CEFR per meaning, of which an entry without senses has none.
+    // The public entry names no source, and shows CEFR per meaning.
     expect(await publicEntryOf(world.deps, 'bank')).toMatchObject({
       lemma: 'bank',
       frequency: { zipf: 5.16, rank: 691 },
-      meanings: [],
+      meanings: [{ pos: 'noun', cefr: 'A1' }],
     })
-    expect(await getManagedEntry(world.deps, 'bank')).toMatchObject({ seed: false, ...reference })
+    expect(await getManagedEntry(world.deps, 'bank')).toMatchObject({ batch: 1, ...reference })
   })
 })

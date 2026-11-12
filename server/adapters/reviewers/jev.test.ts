@@ -25,7 +25,7 @@ describe('Jev reviewer', () => {
 
   it('posts typed noul questions to systemone and returns the probabilities', async () => {
     const calls = stubFetch(() => answer({ relation: 0.91 }))
-    await expect(jev.ask({ relation: 'Is it?' }, { fact: { id: 'f1' } })).resolves.toEqual({
+    await expect(jev.ask({ relation: 'Is it?' }, { gloss: 'land', senses: ['a', 'b'] })).resolves.toEqual({
       model: 'jev-2026',
       answers: { relation: 0.91 },
     })
@@ -34,7 +34,7 @@ describe('Jev reviewer', () => {
     expect(call?.headers.get('authorization')).toBe('Bearer secret')
     expect(await call?.json()).toEqual({
       model: 'jev-latest',
-      state: { fact: { id: 'f1' } },
+      state: { gloss: 'land', senses: ['a', 'b'] },
       questions: { relation: { type: 'noul', instructions: 'Is it?' } },
     })
   })

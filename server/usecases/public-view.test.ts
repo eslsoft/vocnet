@@ -1,34 +1,24 @@
-import { agentA } from '@server/testing/actors'
+import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { FULL, publicEntryOf } from '@server/testing/public-view'
-import type { EntryId } from '@shared/facts'
+import { drainReviews, headword } from '@server/testing/seed'
+import type { EntryId, SenseId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { createEntry, createSense, getPublicEntry } from './catalog'
+import { createEntry, getPublicEntry } from './catalog'
 import { retractFact, submitFact } from './facts'
 import { readPublicView, rebuildStalePublicViews } from './public-view'
-import { reviewFact } from './review'
 
-async function reviewAll(world: ReturnType<typeof fakeWorld>) {
-  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
-}
-
-/** "bank" and "shore", each with a published sense, linked by a published synonym relation. */
+/** "bank" and "shore", each with a published inventory, linked by a published synonym relation. */
 async function linkedWorld() {
   const world = fakeWorld()
-  const bank = await createEntry(world.deps, agentA, { lemma: 'bank' })
-  const shore = await createEntry(world.deps, agentA, { lemma: 'shore' })
-  const river = await createSense(world.deps, agentA, {
-    entry_id: bank.entry.id,
-    pos: 'noun',
-    gloss: 'land by a river',
-  })
-  const coast = await createSense(world.deps, agentA, { entry_id: shore.entry.id, pos: 'noun', gloss: 'land by water' })
+  const bank = await headword(world, 'bank', [{ pos: 'noun', gloss: 'land by a river' }])
+  const shore = await headword(world, 'shore', [{ pos: 'noun', gloss: 'land by water' }])
   await submitFact(world.deps, agentA, {
     kind: 'relation',
-    subject_id: river.sense.id,
-    payload: { type: 'synonym', target_sense_id: coast.sense.id },
+    subject_id: bank.senses[0] as SenseId,
+    payload: { type: 'synonym', target_sense_id: shore.senses[0] as SenseId },
   })
-  await reviewAll(world)
+  await drainReviews(world)
   return { world, bank, shore }
 }
 
@@ -44,7 +34,7 @@ describe('public view refresh [spec: public-view/refresh]', () => {
     expect(world.views.get(bank.entry.id)?.document.meanings[0]?.senses[0]?.relations.synonyms).toHaveLength(1)
     for (const [, row] of world.work) expect(row.viewRevision).toBe(row.revision)
 
-    await retractFact(world.deps, agentA, shore.fact.id)
+    await retractFact(world.deps, agentA, shore.inventory!.id)
     expect(world.views.has(shore.entry.id)).toBe(false)
     expect(world.views.get(bank.entry.id)?.document.meanings[0]?.senses[0]?.relations.synonyms).toEqual([])
     await expect(getPublicEntry(world.deps, 'shore', FULL)).rejects.toMatchObject({ code: 'not_found' })
@@ -62,7 +52,7 @@ describe('public view refresh [spec: public-view/refresh]', () => {
 
   it('serves nothing for a stale view that has no document after its rebuild', async () => {
     const { world, bank } = await linkedWorld()
-    const pending = await createEntry(world.deps, agentA, { lemma: 'pending' })
+    const pending = await createEntry(world.deps, admin, { lemma: 'pending', batch: 1 })
     markStale(world, pending.entry.id)
     await expect(getPublicEntry(world.deps, 'pending', FULL)).rejects.toMatchObject({ code: 'not_found' })
 

@@ -1,60 +1,55 @@
 import type { TopicNode } from '@server/domain/topics'
 import { admin, agentA } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
-import type { TopicId } from '@shared/facts'
+import { drainReviews, headword } from '@server/testing/seed'
+import type { SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { createEntry, createSense } from './catalog'
 import { rereviewFact, retractFact, submitFact } from './facts'
 import { reviewFact } from './review'
 import { getTopicTree, listTopicSenses } from './topics'
 
-const settle = async (world: ReturnType<typeof fakeWorld>) => {
-  while (world.queued.length > 0) {
-    for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
-  }
-}
+const settle = drainReviews
 
 async function hospitalWorld() {
   const world = fakeWorld()
-  const { entry } = await createEntry(world.deps, agentA, { lemma: 'nurse' })
-  const { sense: nurse } = await createSense(world.deps, agentA, {
-    entry_id: entry.id,
-    pos: 'noun',
-    gloss: 'A person trained to care for the sick.',
-  })
-  const { sense: tend } = await createSense(world.deps, agentA, {
-    entry_id: entry.id,
-    pos: 'verb',
-    gloss: 'To care for someone who is ill.',
-  })
-  const { entry: at } = await createEntry(world.deps, agentA, { lemma: 'at' })
-  const { sense: place } = await createSense(world.deps, agentA, {
-    entry_id: at.id,
-    pos: 'preposition',
-    gloss: 'In or near a place.',
-  })
-  await settle(world)
-  return { world, entry, nurse, tend, place }
+  const { entry, senses } = await headword(world, 'nurse', [
+    { pos: 'noun', gloss: 'A person trained to care for the sick.' },
+    { pos: 'verb', gloss: 'To care for someone who is ill.' },
+  ])
+  const at = await headword(world, 'at', [{ pos: 'preposition', gloss: 'In or near a place.' }])
+  const node = (id: SenseId | undefined) => ({ id: id as SenseId })
+  return { world, entry, nurse: node(senses[0]), tend: node(senses[1]), place: node(at.senses[0]) }
 }
 
 const tag = (subject: string, topic: string) =>
   ({ kind: 'topic', subject_id: subject, payload: { topic_id: topic as TopicId } }) as const
 
 describe('topic facts', () => {
-  it('tags a content sense with a leaf topic and reviews it against the topic and its category [spec: topics/tag]', async () => {
-    const { world, nurse } = await hospitalWorld()
+  it('tags a content sense with a leaf topic, settled by the mean of Jev and luna or else by the LLM [spec: topics/tag]', async () => {
+    const { world, nurse, tend } = await hospitalWorld()
+    world.decisionCalls.length = 0
     const { fact, created } = await submitFact(world.deps, agentA, tag(nurse.id, 'hospital-doctor'))
     expect(created).toBe(true)
     expect(fact).toMatchObject({ kind: 'topic', contentKey: 'hospital-doctor', objectId: null, status: 'pending' })
+    const llmBefore = world.llmCalls.length
     await settle(world)
-    const rubric = world.llmCalls.at(-1)?.user
-    expect(world.jevCalls.filter((call) => call.questions.topic)).toEqual([])
-    expect(rubric).toContain('"nurse" (noun), meaning "A person trained to care for the sick."')
-    expect(rubric).toContain('"At the doctor and hospital" (in the category "Body and health")')
+    expect(world.decisionCalls.map((call) => call.model).sort()).toEqual(['jev', 'luna'])
+    expect(world.llmCalls).toHaveLength(llmBefore)
     expect(world.facts.find((candidate) => candidate.id === fact.id)).toMatchObject({
       status: 'published',
       review: { context: { topic: { category: 'Body and health', topic: 'At the doctor and hospital' } } },
     })
+
+    world.answerDecision('luna', (questions) => ({
+      model: 'luna-test',
+      answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.2])),
+    }))
+    const unsure = await submitFact(world.deps, agentA, tag(tend.id, 'hospital-doctor'))
+    await settle(world)
+    const rubric = world.llmCalls.at(-1)?.user
+    expect(rubric).toContain('"nurse" (verb)')
+    expect(rubric).toContain('At the doctor and hospital')
+    expect(world.facts.find((candidate) => candidate.id === unsure.fact.id)?.status).toBe('published')
   })
 
   it('refuses an unknown topic, a category, and a sense of a function word [spec: topics/invalid-reference]', async () => {
@@ -101,7 +96,10 @@ describe('topic facts', () => {
     await settle(world)
     const published = world.facts.find((fact) => fact.kind === 'topic' && fact.status === 'published')
     if (!published) throw new Error('No published topic fact.')
-    await expect(rereviewFact(world.deps, admin, published.id)).resolves.toMatchObject({ status: 'pending' })
+    await expect(rereviewFact(world.deps, admin, published.id)).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'A published fact cannot be re-reviewed.',
+    })
   })
 
   it('lets a correction take the place of its original on a full sense [spec: topics/correct-at-limit]', async () => {
@@ -141,28 +139,6 @@ describe('topic facts', () => {
     await settle(world)
     expect(world.facts.find((fact) => fact.id === original.id)?.status).toBe('superseded')
     expect(world.facts.filter((fact) => fact.kind === 'topic' && fact.status === 'published')).toHaveLength(3)
-  })
-
-  it('re-reviews published topics when a correction changes the gloss [spec: topics/revalidate]', async () => {
-    const { world, nurse } = await hospitalWorld()
-    const { fact } = await submitFact(world.deps, agentA, tag(nurse.id, 'hospital-doctor'))
-    await settle(world)
-    const gloss = world.facts.find((candidate) => candidate.kind === 'sense' && candidate.subjectId === nurse.id)
-    if (!gloss) throw new Error('No gloss.')
-    await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: nurse.id,
-      supersedes_id: gloss.id,
-      payload: { gloss: 'A person who cares for the sick in a hospital.' },
-    })
-    await settle(world)
-    const topicCalls = world.llmCalls.filter((call) => call.user.includes('Topic: '))
-    expect(topicCalls).toHaveLength(2)
-    expect(topicCalls.at(-1)?.user).toContain('"A person who cares for the sick in a hospital."')
-    expect(world.facts.find((candidate) => candidate.id === fact.id)).toMatchObject({
-      status: 'published',
-      revalidateSince: null,
-    })
   })
 })
 

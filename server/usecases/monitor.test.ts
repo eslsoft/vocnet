@@ -1,12 +1,11 @@
 import type { Fact } from '@server/domain/fact'
-import type { FeedbackRecord } from '@server/domain/feedback'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
-import { MAX_ATTEMPTS } from '@server/domain/work'
+import type { TicketRecord } from '@server/domain/tickets'
 import { fakeWorld } from '@server/testing/fakes'
 import type { EntryId, FactId } from '@shared/facts'
-import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
-import type { WorkItemId, WorkLeaseId } from '@shared/work'
+import type { TicketId, TicketStatus } from '@shared/tickets'
+import { MAX_PASSES, type WorkItemId, type WorkLeaseId } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import { getConsoleStats, getWorkItem, getWorkSummary, listOpenWorkItems, listWorkAttempts } from './monitor'
 import type { MonitorRepo, WorkAttemptRecord, WorkItemRecord } from './ports'
@@ -66,7 +65,7 @@ const unused = () => {
 function monitorOf(rows: Partial<MonitorRepo>): MonitorRepo {
   const base = Object.fromEntries(
     [
-      'countWeakByKind',
+      'countByCredibility',
       'countLiveFacts',
       'completenessByLevel',
       'pendingReview',
@@ -105,52 +104,62 @@ const open = (more: Partial<Awaited<ReturnType<MonitorRepo['countOpenItems']>>[n
 })
 
 describe('console stats', () => {
-  it('averages completeness overall and by level, and counts reviews, feedback, and work [spec: monitor/stats]', async () => {
+  it('averages completeness overall and by level, and counts reviews, low-credibility facts, tickets, and work [spec: monitor/stats]', async () => {
     const { world, deps } = depsWith(
       monitorOf({
-        countWeakByKind: async () => [{ kind: 'example', count: 2 }],
+        countByCredibility: async () => [
+          { kind: 'example', reviewer: 'llm', count: 2 },
+          { kind: 'senses', reviewer: 'llm', count: 3 },
+          { kind: 'relation', reviewer: 'jev+llm', count: 1 },
+          { kind: 'relation', reviewer: 'llm', count: 2 },
+          { kind: 'relation', reviewer: 'jev', count: 5 },
+          { kind: 'relation', reviewer: 'curator', count: 4 },
+          { kind: 'form', reviewer: null, count: 7 },
+        ],
         countLiveFacts: async () => 40,
         completenessByLevel: async () => [
           { levelRank: 1, entries: 2, complete: 1, sum: 1.5 },
           { levelRank: null, entries: 2, complete: 0, sum: 0.5 },
         ],
         pendingReview: async (before) => ({ count: 3, oldestAt: before, olderThan: 1 }),
-        countOpenItems: async () => [open({ count: 4 }), open({ attempts: MAX_ATTEMPTS, count: 2 })],
+        countOpenItems: async () => [open({ count: 4 }), open({ attempts: MAX_PASSES, count: 2 })],
         countTimedOutLeases: async () => 1,
       }),
     )
-    const report = (id: string, status: FeedbackStatus): FeedbackRecord => ({
-      id: id as FeedbackId,
+    const ticket = (id: string, status: TicketStatus): TicketRecord => ({
+      id: id as TicketId,
+      type: 'feedback',
       targetType: 'entry',
-      targetId: entryId,
+      target: entryId,
       message: 'Wrong.',
       status,
-      assignee: null,
-      claimExpiresAt: null,
       resolutionNote: null,
       resolutionFactIds: [],
       revision: 0,
       createdAt: now,
       updatedAt: now,
     })
-    world.feedback.push(report('a', 'open'), report('b', 'open'), report('c', 'dismissed'))
+    world.tickets.push(ticket('a', 'open'), ticket('b', 'open'), ticket('c', 'dismissed'))
     const stats = await getConsoleStats(deps)
     expect(stats).toMatchObject({
       facts: [],
-      flagged: [{ kind: 'example', count: 2 }],
       live_facts: 40,
       completeness: { average: 0.5 },
       pending_review: { count: 3, oldest_at: '2026-11-11T04:30:00.000Z', over_one_hour: 1 },
-      feedback: { open: 2, claimed: 0, resolved: 0, dismissed: 1 },
+      tickets: { open: 2, resolved: 0, dismissed: 1 },
       work: { open: 6, stuck: 2, timed_out_24h: 1 },
     })
+    expect(stats.low_credibility).toEqual([
+      { kind: 'senses', count: 3 },
+      { kind: 'relation', count: 3 },
+    ])
     expect(stats.completeness.by_level[0]).toEqual({ level: 'A1', entries: 2, complete: 1, average: 0.75 })
     expect(stats.completeness.by_level[1]).toEqual({ level: 'A2', entries: 0, complete: 0, average: 0 })
     expect(stats.completeness.by_level[6]).toEqual({ level: null, entries: 2, complete: 0, average: 0.25 })
 
     const empty = depsWith(
       monitorOf({
-        countWeakByKind: async () => [],
+        countByCredibility: async () => [],
         countLiveFacts: async () => 0,
         completenessByLevel: async () => [],
         pendingReview: async () => ({ count: 0, oldestAt: null, olderThan: 0 }),
@@ -187,7 +196,7 @@ describe('work summary', () => {
           open({ count: 2 }),
           open({ leased: true }),
           open({ awaiting: true, levelRank: null }),
-          open({ type: 'examples', attempts: MAX_ATTEMPTS, levelRank: null }),
+          open({ type: 'examples', attempts: MAX_PASSES, levelRank: null }),
         ],
         itemFlow: async (since) => flows[since]!,
         throughput: async (_since, keyLength) => [{ key: '2026-11-11T05'.slice(0, keyLength), created: 4, closed: 3 }],

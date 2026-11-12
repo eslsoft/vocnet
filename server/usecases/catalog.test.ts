@@ -1,12 +1,14 @@
 import type { ReadVariant } from '@server/domain/public-view'
-import { admin, agentA } from '@server/testing/actors'
-import { fakeWorld } from '@server/testing/fakes'
+import type { Lemma } from '@server/domain/term'
+import { admin, agentA, curatorAgent } from '@server/testing/actors'
+import { type FakeWorld, fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
-import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
+import { drainReviews, headword, type SeedSense } from '@server/testing/seed'
+import type { FactId, SenseId, TopicId } from '@shared/facts'
+import type { WorkType } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import {
   createEntry,
-  createSense,
   type EntryListFilter,
   getManagedEntry,
   getPublicEntry,
@@ -20,27 +22,66 @@ import {
   searchPublicEntries,
 } from './catalog'
 import { submitFact } from './facts'
-import { reviewFact } from './review'
 
-async function reviewAll(world: ReturnType<typeof fakeWorld>) {
-  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
+const reviewAll = drainReviews
+
+/** One sense of a new headword: its id. */
+async function senseOf(world: FakeWorld, lemma: string, seed: SeedSense): Promise<SenseId> {
+  const { senses } = await headword(world, lemma, [seed])
+  return senses[0] as SenseId
 }
 
 describe('createEntry', () => {
-  it('creates the entry and submits its entry fact once [spec: catalog/create-entry]', async () => {
+  it('admits a normalized lemma as a live headword of the batch, once, for curators only [spec: catalog/create-entry]', async () => {
     const world = fakeWorld()
-    const first = await createEntry(world.deps, agentA, { lemma: '  ice   cream ' })
-    expect(first).toMatchObject({ created: true, entry: { lemma: 'ice cream', createdBy: 'agent:agent-a' } })
-    expect(first.fact).toMatchObject({ kind: 'entry', status: 'pending', subjectId: first.entry.id })
-    expect(world.queued).toEqual([{ factId: first.fact.id, traceId: 'trace-a' }])
+    await expect(createEntry(world.deps, agentA, { lemma: 'ice cream', batch: 2 })).rejects.toMatchObject({
+      code: 'forbidden',
+    })
+    const first = await createEntry(world.deps, admin, { lemma: '  ice   cream ', batch: 2 })
+    expect(first).toMatchObject({ created: true, entry: { lemma: 'ice cream', createdBy: 'admin:admin-1' } })
+    expect(await world.deps.nodes.admission(first.entry.id)).toEqual({ live: true, batch: 2 })
+    expect(world.queued).toEqual([])
 
-    const again = await createEntry(world.deps, agentA, { lemma: 'ice cream' })
-    expect(again).toMatchObject({ created: false, entry: { id: first.entry.id }, fact: { id: first.fact.id } })
+    const again = await createEntry(world.deps, curatorAgent, { lemma: 'ice cream', batch: 5 })
+    expect(again).toMatchObject({ created: false, entry: { id: first.entry.id } })
+    expect(await world.deps.nodes.admission(first.entry.id)).toEqual({ live: true, batch: 2 })
     expect(world.entries).toHaveLength(1)
-    expect(world.queued).toHaveLength(1)
+    // Admitting rescores the entry: a headword without an inventory needs one.
+    expect(world.items.map((item) => item.type)).toContain('senses')
   })
 
-  it('creates seed entries for the CEFR headwords without one, lowest level first, skipping single letters but "a" and "I" [spec: catalog/import-core]', async () => {
+  it('reopens the slots passes were blocked on the admitted word [spec: work/blocked-reopen]', async () => {
+    const world = fakeWorld()
+    const cat = await headword(world, 'cat', [{ pos: 'noun', gloss: 'a small furry animal kept as a pet' }])
+    const subjectId = cat.senses[0] as string
+    const type: WorkType = 'synonyms'
+    world.passes.push({
+      entryId: cat.entry.id,
+      type,
+      subjectId,
+      note: 'kitty is no entry',
+      holder: 'agent:agent-a' as never,
+      at: '2026-01-01T00:00:00.000Z',
+    })
+    world.blocks.push({ lemma: 'kitty', type, subjectId })
+    await drainReviews(world)
+    const synonymsOpen = () => world.items.some((item) => item.type === type && item.subjectId === subjectId)
+
+    await createEntry(world.deps, admin, { lemma: 'puss', batch: 1 })
+    expect(world.passes).toHaveLength(1)
+    await createEntry(world.deps, admin, { lemma: 'kitty', batch: 1 })
+    expect(world.passes).toEqual([])
+    expect(world.blocks).toEqual([])
+    expect(synonymsOpen()).toBe(true)
+  })
+
+  it('fails loudly when admitting stores no entry', async () => {
+    const world = fakeWorld()
+    const deps = { ...world.deps, nodes: { ...world.deps.nodes, admit: async () => [] } }
+    await expect(createEntry(deps, admin, { lemma: 'bank', batch: 1 })).rejects.toThrow('stored no entry')
+  })
+
+  it('admits the CEFR headwords without an entry as batch 1, lowest level first, skipping single letters but "a" and "I" [spec: catalog/import-core]', async () => {
     const world = fakeWorld()
     const level = (level: 'A1' | 'B1') => ({
       frequency: null,
@@ -49,9 +90,10 @@ describe('createEntry', () => {
     for (const lemma of ['bank', 'a', 'I', 'x', 'cove']) world.references.set(lemma, level('A1'))
     world.references.set('according to', level('B1'))
     world.references.set('tide', { frequency: { zipf: 4, rank: 1, source_id: 'wordfreq' }, cefr: [] })
-    await createEntry(world.deps, agentA, { lemma: 'cove' })
+    await createEntry(world.deps, admin, { lemma: 'cove', batch: 3 })
+    await expect(importCoreEntries(world.deps, agentA, 3)).rejects.toMatchObject({ code: 'forbidden' })
 
-    expect(await importCoreEntries(world.deps, admin, 3)).toEqual({
+    expect(await importCoreEntries(world.deps, curatorAgent, 3)).toEqual({
       created: ['I', 'a', 'bank'],
       skipped: ['x'],
       remaining: 1,
@@ -64,108 +106,25 @@ describe('createEntry', () => {
     expect(await importCoreEntries(world.deps, admin, 3)).toEqual({ created: [], skipped: ['x'], remaining: 0 })
 
     expect(world.entries.map((entry) => [entry.lemma, entry.createdBy])).toEqual([
-      ['cove', 'agent:agent-a'],
-      ['I', 'admin:admin-1'],
-      ['a', 'admin:admin-1'],
-      ['bank', 'admin:admin-1'],
+      ['cove', 'admin:admin-1'],
+      ['I', 'agent:agent-c'],
+      ['a', 'agent:agent-c'],
+      ['bank', 'agent:agent-c'],
       ['according to', 'admin:admin-1'],
     ])
-    const facts = world.facts.filter((fact) => fact.kind === 'entry' && fact.author === 'admin:admin-1')
-    expect(facts.map((fact) => fact.status)).toEqual(['pending', 'pending', 'pending', 'pending'])
-    expect(world.queued.map((job) => job.factId)).toEqual(world.facts.map((fact) => fact.id))
-    for (const lemma of ['I', 'a', 'bank', 'according to'])
-      expect((await getManagedEntry(world.deps, lemma)).seed).toBe(true)
-    expect((await getManagedEntry(world.deps, 'cove')).seed).toBe(false)
-  })
-
-  it('marks a new or existing entry as a seed entry and never unmarks it [spec: catalog/create-entry-seed]', async () => {
-    const world = fakeWorld()
-    for (const lemma of ['bank', 'cove']) await createEntry(world.deps, agentA, { lemma })
-    const tide = await createEntry(world.deps, agentA, { lemma: 'tide', seed: true })
-    expect(tide.created).toBe(true)
-    const cove = await createEntry(world.deps, agentA, { lemma: 'cove', seed: true })
-    expect(cove).toMatchObject({ created: false, fact: { kind: 'entry' } })
-    await createEntry(world.deps, agentA, { lemma: 'tide', seed: false })
-    await createEntry(world.deps, agentA, { lemma: 'tide' })
-    const seeds = []
-    for (const lemma of ['bank', 'cove', 'tide']) seeds.push((await getManagedEntry(world.deps, lemma)).seed)
-    expect(seeds).toEqual([false, true, true])
-  })
-})
-
-describe('createSense', () => {
-  it('creates a sense with its gloss fact and is idempotent by entry, POS, and gloss [spec: catalog/create-sense]', async () => {
-    const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
-    const input = { entry_id: entry.id, pos: 'noun' as const, gloss: 'land beside a river' }
-    const created = await createSense(world.deps, agentA, input)
-    expect(created).toMatchObject({ created: true, sense: { entryId: entry.id, pos: 'noun' } })
-    expect(created.fact).toMatchObject({ kind: 'sense', payload: { gloss: 'land beside a river' }, status: 'pending' })
-
-    const again = await createSense(world.deps, agentA, { ...input, gloss: 'Land beside a  river' })
-    expect(again).toMatchObject({ created: false, sense: { id: created.sense.id } })
-    const verb = await createSense(world.deps, agentA, { ...input, pos: 'verb' })
-    expect(verb.created).toBe(true)
-  })
-
-  it('returns the existing sense for the same gloss with any register [spec: catalog/create-sense-register]', async () => {
-    const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'odd' })
-    const input = { entry_id: entry.id, pos: 'adjective' as const, gloss: 'Not divisible by two.' }
-    const created = await createSense(world.deps, agentA, input)
-    await reviewAll(world)
-
-    const formal = await createSense(world.deps, agentA, { ...input, register: 'formal' })
-    expect(formal).toMatchObject({ created: false, sense: { id: created.sense.id }, fact: { id: created.fact.id } })
-    expect(formal.fact.payload).toEqual({ gloss: 'Not divisible by two.' })
-
-    const labelled = await createSense(world.deps, agentA, {
-      ...input,
-      gloss: 'Divisible by three.',
-      register: 'technical',
-    })
-    expect(labelled.created).toBe(true)
-    const relabelled = await createSense(world.deps, agentA, { ...input, gloss: 'divisible by  three.' })
-    expect(relabelled).toMatchObject({ created: false, sense: { id: labelled.sense.id } })
-    expect(world.senses).toHaveLength(2)
-    expect(world.queued.map((job) => job.factId)).toEqual([labelled.fact.id])
-  })
-
-  it('returns the sense a gloss created even after that gloss was rejected, and enqueues nothing', async () => {
-    const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
-    const input = { entry_id: entry.id, pos: 'noun' as const, gloss: 'a kind of fish' }
-    const created = await createSense(world.deps, agentA, input)
-    world.failReviews()
-    await reviewAll(world)
-
-    const again = await createSense(world.deps, agentA, input)
-    expect(again).toMatchObject({
-      created: false,
-      sense: { id: created.sense.id },
-      fact: { id: created.fact.id, status: 'rejected' },
-    })
-    expect(world.senses).toHaveLength(1)
-    expect(world.queued).toEqual([])
-  })
-
-  it('rejects a sense for an unknown entry', async () => {
-    const world = fakeWorld()
-    await expect(
-      createSense(world.deps, agentA, { entry_id: 'missing' as EntryId, pos: 'noun', gloss: 'x' }),
-    ).rejects.toMatchObject({ code: 'invalid_reference' })
+    const batches = []
+    for (const entry of world.entries) batches.push((await world.deps.nodes.admission(entry.id)).batch)
+    expect(batches).toEqual([3, 1, 1, 1, 1])
+    expect(world.facts).toEqual([])
   })
 })
 
 describe('public reads', () => {
   async function publishedBank() {
     const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
-    const { sense } = await createSense(world.deps, agentA, {
-      entry_id: entry.id,
-      pos: 'noun',
-      gloss: 'land beside a river',
-    })
+    const bank = await headword(world, 'bank', [{ pos: 'noun', gloss: 'land beside a river' }])
+    const entry = bank.entry
+    const sense = { id: bank.senses[0] as SenseId }
     await submitFact(world.deps, agentA, {
       kind: 'form',
       subject_id: entry.id,
@@ -190,7 +149,7 @@ describe('public reads', () => {
 
   it('404s an entry that exists but is not yet published', async () => {
     const world = fakeWorld()
-    await createEntry(world.deps, agentA, { lemma: 'pending' })
+    await createEntry(world.deps, admin, { lemma: 'pending', batch: 1 })
     await expect(publicEntryOf(world.deps, 'pending')).rejects.toMatchObject({ code: 'not_found' })
   })
 
@@ -219,47 +178,12 @@ describe('public reads', () => {
     await expect(lookupForm(world.deps, 'bankz', none)).rejects.toMatchObject({ code: 'not_found' })
   })
 
-  it('moves a form to its labelled meaning when a labelled form supersedes the unlabelled one [spec: facts/form-relabel]', async () => {
-    const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'will' })
-    for (const [pos, gloss] of [
-      ['verb', 'To intend something strongly.'],
-      ['auxiliary', 'Used to express the future.'],
-    ] as const) {
-      await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss })
-    }
-    const would = { kind: 'form' as const, subject_id: entry.id, payload: { form: 'would', type: 'past' as const } }
-    const unlabelled = (await submitFact(world.deps, agentA, would)).fact
-    await reviewAll(world)
-    const formsOf = async () =>
-      Object.fromEntries(
-        (await publicEntryOf(world.deps, 'will')).meanings.map((meaning) => [meaning.pos, meaning.forms]),
-      )
-    expect(await formsOf()).toEqual({ verb: { past: [{ form: 'would', irregular: true }] }, auxiliary: {} })
-
-    const labelled = { ...would, payload: { ...would.payload, pos: 'auxiliary' as const } }
-    const correction = await submitFact(world.deps, agentA, { ...labelled, supersedes_id: unlabelled.id })
-    expect(correction.created).toBe(true)
-    expect(correction.fact.contentKey).toBe('past|would|auxiliary')
-    await reviewAll(world)
-    expect(await formsOf()).toEqual({ verb: {}, auxiliary: { past: [{ form: 'would', irregular: true }] } })
-    expect((await lookupForm(world.deps, 'would', none)).read()[0]?.matches).toEqual([
-      { type: 'past', pos: 'auxiliary' },
-    ])
-    await expect(
-      submitFact(world.deps, agentA, { ...would, payload: { ...would.payload, pos: 'noun' } }),
-    ).rejects.toMatchObject({ code: 'invalid_reference' })
-  })
-
   it('groups every form of one entry that matched, with its part of speech', async () => {
     const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'record' })
-    for (const [pos, gloss] of [
-      ['noun', 'A written account.'],
-      ['verb', 'To write down.'],
-    ] as const) {
-      await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss })
-    }
+    const { entry } = await headword(world, 'record', [
+      { pos: 'noun', gloss: 'A written account.' },
+      { pos: 'verb', gloss: 'To write down.' },
+    ])
     for (const type of ['plural', 'third_person_singular'] as const) {
       await submitFact(world.deps, agentA, { kind: 'form', subject_id: entry.id, payload: { form: 'records', type } })
     }
@@ -280,11 +204,7 @@ describe('public reads', () => {
 
   it('lists the members of a public category through every layer asked for, nearest first [spec: public-view/members]', async () => {
     const world = fakeWorld()
-    const noun = async (lemma: string) => {
-      const { entry } = await createEntry(world.deps, agentA, { lemma })
-      const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: `A ${lemma}.` })
-      return sense.id
-    }
+    const noun = (lemma: string) => senseOf(world, lemma, { pos: 'noun', gloss: `A ${lemma}.` })
     const [animal, bird, eagle, raptor] = [
       await noun('animal'),
       await noun('bird'),
@@ -321,7 +241,7 @@ describe('public reads', () => {
     await submitFact(world.deps, agentA, {
       kind: 'translation',
       subject_id: sense.id,
-      payload: { language: 'zh', text: '河岸' },
+      payload: { language: 'zh', of: 'sense', text: '河岸' },
     })
     await reviewAll(world)
     const found = await getPublicSense(world.deps, sense.id, zh)
@@ -340,7 +260,7 @@ describe('public reads', () => {
 
   it('lists published entries by normalized prefix, as summaries', async () => {
     const { world } = await publishedBank()
-    await createEntry(world.deps, agentA, { lemma: 'banner' })
+    await createEntry(world.deps, admin, { lemma: 'banner', batch: 1 })
     await expect(
       listPublicEntries(world.deps, { ...everyEntry, prefix: ' ba' }, 'lemma', { limit: 10 }, none),
     ).resolves.toEqual({
@@ -375,9 +295,7 @@ describe('public reads', () => {
       ['run', 'verb', 'to move fast on foot'],
       ['hut', 'noun', 'a small simple house'],
     ] as const) {
-      const { entry } = await createEntry(world.deps, agentA, { lemma })
-      const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss })
-      senses.set(lemma, sense.id)
+      senses.set(lemma, await senseOf(world, lemma, { pos, gloss }))
     }
     for (const lemma of ['house', 'hut'] as const) {
       const sense = senses.get(lemma) as SenseId
@@ -405,21 +323,11 @@ describe('public reads', () => {
 
   it('searches lemmas, glosses, translations in the read language, and examples, in rank order [spec: search/rank]', async () => {
     const { world, sense } = await publishedBank()
-    const { entry: banker } = await createEntry(world.deps, agentA, { lemma: 'banker' })
-    const { sense: person } = await createSense(world.deps, agentA, {
-      entry_id: banker.id,
-      pos: 'noun',
-      gloss: 'a person who runs a bank',
-    })
-    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
-    const { sense: coast } = await createSense(world.deps, agentA, {
-      entry_id: shore.id,
-      pos: 'noun',
-      gloss: 'land along the sea',
-    })
+    const person = { id: await senseOf(world, 'banker', { pos: 'noun', gloss: 'a person who runs a bank' }) }
+    const coast = { id: await senseOf(world, 'shore', { pos: 'noun', gloss: 'land along the sea' }) }
     for (const [subject, payload] of [
-      [sense.id, { language: 'zh', text: '河岸' }],
-      [person.id, { language: 'zh', text: '银行家' }],
+      [sense.id, { language: 'zh', of: 'sense', text: '河岸' }],
+      [person.id, { language: 'zh', of: 'sense', text: '银行家' }],
     ] as const) {
       await submitFact(world.deps, agentA, { kind: 'translation', subject_id: subject, payload })
     }
@@ -456,51 +364,63 @@ describe('public reads', () => {
 })
 
 describe('management reads', () => {
-  it('lists entries in every status by normalized prefix', async () => {
+  it('lists entries in every state by normalized prefix, with their live inventory size', async () => {
     const world = fakeWorld()
-    for (const lemma of ['bank', 'banner', 'cat']) await createEntry(world.deps, agentA, { lemma })
-    const filter = { prefix: ' ba', level: null, flagged: false, stuck: false }
+    await headword(world, 'bank', [
+      { pos: 'noun', gloss: 'land beside a river' },
+      { pos: 'noun', gloss: 'a place that keeps money' },
+    ])
+    for (const lemma of ['banner', 'cat']) await createEntry(world.deps, admin, { lemma, batch: 1 })
+    const filter = { prefix: ' ba', level: null, stuck: false }
     const page = await listEntrySummaries(world.deps, filter, { limit: 10 })
-    expect(page.items.map(({ lemma, entry_status }) => ({ lemma, entry_status }))).toEqual([
-      { lemma: 'bank', entry_status: 'pending' },
-      { lemma: 'banner', entry_status: 'pending' },
+    expect(page.items.map(({ lemma, live, sense_count }) => ({ lemma, live, sense_count }))).toEqual([
+      { lemma: 'bank', live: true, sense_count: 2 },
+      { lemma: 'banner', live: true, sense_count: 0 },
     ])
   })
 
-  it('shows every fact in every status, without duplicating a stored relation inside the entry', async () => {
+  it('shows every fact in every status with the scores, without duplicating a stored relation inside the entry', async () => {
     const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'big' })
-    const a = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'adjective', gloss: 'large' })
-    const b = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'adjective', gloss: 'important' })
-    // Submission now refuses relations inside one entry; facts stored before that rule still show once.
+    const big = await headword(world, 'big', [
+      { pos: 'adjective', gloss: 'large in size' },
+      { pos: 'adjective', gloss: 'important or serious' },
+    ])
+    const [a, b] = big.senses as [SenseId, SenseId]
+    // Submission refuses relations inside one entry; facts stored before that rule still show once.
+    const inventory = big.inventory
+    if (!inventory) throw new Error('No inventory.')
     await world.deps.facts.insert({
-      ...a.fact,
+      ...inventory,
       id: crypto.randomUUID() as FactId,
       kind: 'relation',
-      subjectId: a.sense.id,
-      objectId: b.sense.id,
-      contentKey: `synonym|${b.sense.id}`,
-      payload: { type: 'synonym', target_sense_id: b.sense.id },
+      subjectId: a,
+      objectId: b,
+      contentKey: `synonym|${b}`,
+      payload: { type: 'synonym', target_sense_id: b },
+      status: 'pending',
+      review: null,
     })
     const view = await getManagedEntry(world.deps, 'big')
-    expect(view.seed).toBe(false)
+    expect(view).toMatchObject({ entry: { lemma: 'big', live: true }, batch: 1, frequency: null, cefr: [] })
     expect(view.senses).toHaveLength(2)
-    expect(view.facts.map((fact) => fact.kind).sort()).toEqual(['entry', 'relation', 'sense', 'sense'])
-    expect(view.facts.every((fact) => fact.status === 'pending')).toBe(true)
+    expect(view.facts.map((fact) => [fact.kind, fact.status]).sort()).toEqual([
+      ['relation', 'pending'],
+      ['senses', 'published'],
+    ])
+    expect(view.completeness).toBeGreaterThanOrEqual(0)
+    expect(view.credibility).toBeLessThanOrEqual(1)
     await expect(getManagedEntry(world.deps, 'small')).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('locates the entry that owns an entry or sense id, and 404s any other id', async () => {
     const world = fakeWorld()
-    const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
-    const { sense } = await createSense(world.deps, agentA, {
-      entry_id: entry.id,
-      pos: 'noun',
-      gloss: 'land beside a river',
+    const bank = await headword(world, 'bank', [{ pos: 'noun', gloss: 'land beside a river' }])
+    const owner = { id: bank.entry.id, lemma: 'bank' as Lemma }
+    await expect(locateNode(world.deps, bank.entry.id)).resolves.toEqual({ node_type: 'entry', entry: owner })
+    await expect(locateNode(world.deps, bank.senses[0] as string)).resolves.toEqual({
+      node_type: 'sense',
+      entry: owner,
     })
-    const owner = { id: entry.id, lemma: 'bank' }
-    await expect(locateNode(world.deps, entry.id)).resolves.toEqual({ node_type: 'entry', entry: owner })
-    await expect(locateNode(world.deps, sense.id)).resolves.toEqual({ node_type: 'sense', entry: owner })
     await expect(locateNode(world.deps, crypto.randomUUID())).rejects.toMatchObject({ code: 'not_found' })
   })
 })

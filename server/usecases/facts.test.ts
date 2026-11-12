@@ -1,44 +1,79 @@
-import { admin, agentA, agentB } from '@server/testing/actors'
-import { fakeWorld } from '@server/testing/fakes'
-import type { FactId, SenseId } from '@shared/facts'
+import type { Fact, FactOf } from '@server/domain/fact'
+import type { Lemma } from '@server/domain/term'
+import { admin, agentA, agentB, curatorAgent } from '@server/testing/actors'
+import { type FakeWorld, fakeWorld } from '@server/testing/fakes'
+import { drainReviews, headword } from '@server/testing/seed'
+import type { EntryId, FactId, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { createEntry, createSense } from './catalog'
 import { getFact, getFactWithEntry, listFacts, rereviewFact, retractFact, submitFact } from './facts'
 import { reviewFact } from './review'
 
 async function bankWorld() {
   const world = fakeWorld()
-  const { entry } = await createEntry(world.deps, agentA, { lemma: 'bank' })
-  const river = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: 'land beside a river' })
-  const money = await createSense(world.deps, agentA, {
-    entry_id: entry.id,
-    pos: 'noun',
-    gloss: 'a financial institution',
-  })
-  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
-  return { world, entry, river: river.sense, money: money.sense, riverGloss: river.fact }
+  const bank = await headword(world, 'bank', [
+    { pos: 'noun', gloss: 'land beside a river' },
+    { pos: 'noun', gloss: 'a financial institution' },
+  ])
+  const [river, money] = bank.senses as [SenseId, SenseId]
+  const shore = await headword(world, 'shore', [{ pos: 'noun', gloss: 'land along water' }])
+  world.queued.length = 0
+  world.llmCalls.length = 0
+  world.decisionCalls.length = 0
+  return { world, entry: bank.entry, river, money, shore: shore.senses[0] as SenseId, shoreEntry: shore.entry }
 }
 
-async function withShore() {
-  const bank = await bankWorld()
-  const { entry } = await createEntry(bank.world.deps, agentA, { lemma: 'shore' })
-  const { sense: shore } = await createSense(bank.world.deps, agentA, {
-    entry_id: entry.id,
-    pos: 'noun',
-    gloss: 'land along water',
-  })
-  bank.world.queued.length = 0
-  return { ...bank, shore }
+const submit = (world: FakeWorld, input: SubmitFactInput, actor = agentA) => submitFact(world.deps, actor, input)
+const example = (subject: string, text: string, supersedes_id?: FactId): SubmitFactInput => ({
+  kind: 'example',
+  subject_id: subject,
+  payload: { text },
+  ...(supersedes_id ? { supersedes_id } : {}),
+})
+const relation = (from: SenseId, type: 'synonym' | 'hypernym' | 'antonym', to: SenseId): SubmitFactInput => ({
+  kind: 'relation',
+  subject_id: from,
+  payload: { type, target_sense_id: to },
+})
+
+/** Submits and reviews the fact; the reviewers decide as the world is set to. */
+async function decided(world: FakeWorld, input: SubmitFactInput, actor = agentA): Promise<Fact> {
+  const { fact } = await submit(world, input, actor)
+  world.queued.length = 0
+  await reviewFact(world.deps, fact.id, 'trace-review')
+  return getFact(world.deps, fact.id)
+}
+
+async function rejected(world: FakeWorld, input: SubmitFactInput): Promise<Fact> {
+  world.failReviews()
+  const fact = await decided(world, input)
+  world.passReviews()
+  expect(fact.status).toBe('rejected')
+  return fact
+}
+
+/** Runs `interleave` once, right after the first read of `id`, as a write racing that read. */
+function interleaveAfterRead(world: FakeWorld, id: FactId, interleave: () => Promise<unknown>) {
+  const { find } = world.deps.facts
+  let pending = true
+  world.deps.facts.find = async (read) => {
+    const found = await find(read)
+    if (read === id && pending) {
+      pending = false
+      await interleave()
+    }
+    return found
+  }
+}
+
+const setStatus = (world: FakeWorld, id: FactId, status: Fact['status']) => {
+  const index = world.facts.findIndex((fact) => fact.id === id)
+  world.facts[index] = { ...world.facts[index], status } as Fact
 }
 
 describe('submitFact', () => {
   it('stores a pending fact authored by the actor and enqueues its review', async () => {
     const { world, river } = await bankWorld()
-    const { fact, created } = await submitFact(world.deps, agentB, {
-      kind: 'example',
-      subject_id: river.id,
-      payload: { text: 'We sat on the bank.' },
-    })
+    const { fact, created } = await submit(world, example(river, 'We sat on the bank.'), agentB)
     expect(created).toBe(true)
     expect(fact).toMatchObject({ status: 'pending', author: 'agent:agent-b', review: null, objectId: null })
     expect(world.queued).toEqual([{ factId: fact.id, traceId: 'trace-b' }])
@@ -46,311 +81,501 @@ describe('submitFact', () => {
 
   it('returns the live fact instead of a duplicate and enqueues nothing [spec: facts/dedupe]', async () => {
     const { world, river } = await bankWorld()
-    const input = { kind: 'example' as const, subject_id: river.id, payload: { text: 'We sat on the bank.' } }
-    const first = await submitFact(world.deps, agentA, input)
-    const again = await submitFact(world.deps, agentB, { ...input, payload: { text: ' we sat on the BANK. ' } })
+    const first = await submit(world, example(river, 'We sat on the bank.'))
+    const again = await submit(world, example(river, ' we sat on the BANK. '), agentB)
     expect(again).toEqual({ fact: first.fact, created: false })
     expect(world.queued).toHaveLength(1)
   })
 
-  it('accepts a fresh submission once the earlier one was rejected', async () => {
+  it('refuses content review already rejected, naming the rejection [spec: facts/rejected-before]', async () => {
     const { world, river } = await bankWorld()
-    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'Wrong sense.' }))
-    const input = { kind: 'example' as const, subject_id: river.id, payload: { text: 'I robbed a bank.' } }
-    const first = await submitFact(world.deps, agentA, input)
-    await reviewFact(world.deps, first.fact.id, 'trace-review')
-    expect((await submitFact(world.deps, agentA, input)).created).toBe(true)
+    const failed = await rejected(world, example(river, 'I robbed a bank.'))
+    await expect(submit(world, example(river, 'I robbed a bank.'))).rejects.toMatchObject({
+      code: 'rejected_before',
+      status: 409,
+      message: expect.stringContaining(`(${failed.id}): Wrong.`),
+    })
+    world.facts[world.facts.findIndex((fact) => fact.id === failed.id)] = { ...failed, review: null }
+    await expect(submit(world, example(river, 'I robbed a bank.'))).rejects.toMatchObject({
+      message: expect.stringContaining('no reason recorded'),
+    })
+    await expect(submit(world, example(river, 'I robbed a bank.'), curatorAgent)).resolves.toMatchObject({
+      created: true,
+    })
   })
 
   it("rejects a subject that is not the kind's subject type [spec: facts/subject-validation]", async () => {
     const { world, entry, river } = await bankWorld()
+    await expect(submit(world, example(entry.id, 'x'))).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: `A example fact is about a sense; ${entry.id} is not one.`,
+    })
     await expect(
-      submitFact(world.deps, agentA, { kind: 'example', subject_id: entry.id, payload: { text: 'x' } }),
+      submit(world, { kind: 'form', subject_id: river, payload: { form: 'banks', type: 'plural' } }),
     ).rejects.toMatchObject({ code: 'invalid_reference' })
     await expect(
-      submitFact(world.deps, agentA, {
-        kind: 'form',
-        subject_id: river.id,
-        payload: { form: 'banks', type: 'plural' },
+      submit(world, {
+        kind: 'translation',
+        subject_id: river,
+        payload: { language: 'zh', of: 'example', text: '银行' },
       }),
     ).rejects.toMatchObject({ code: 'invalid_reference' })
+  })
+
+  it('takes a translation of an example about the example fact, and of nothing else', async () => {
+    const { world, river } = await bankWorld()
+    const { fact: sentence } = await submit(world, example(river, 'We sat on the bank.'))
+    const translate = (subject: string, of: 'sense' | 'example') =>
+      submit(world, {
+        kind: 'translation',
+        subject_id: subject,
+        payload: { language: 'zh', of, text: '我们坐在河岸上。' },
+      })
+    await expect(translate(sentence.id, 'example')).resolves.toMatchObject({
+      created: true,
+      fact: { subjectId: sentence.id },
+    })
+    await expect(translate(sentence.id, 'sense')).rejects.toMatchObject({ code: 'invalid_reference' })
+    const { fact: form } = await submit(world, {
+      kind: 'form',
+      subject_id: world.entries[0]!.id,
+      payload: { form: 'banks', type: 'plural' },
+    })
+    await expect(translate(form.id, 'example')).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: `A translation fact is about a fact; ${form.id} is not one.`,
+    })
+    world.senses.splice(
+      world.senses.findIndex((sense) => sense.id === river),
+      1,
+    )
+    await expect(translate(sentence.id, 'example')).rejects.toThrow('which does not exist')
   })
 
   it('rejects a relation whose target sense does not exist', async () => {
     const { world, river } = await bankWorld()
-    await expect(
-      submitFact(world.deps, agentA, {
-        kind: 'relation',
-        subject_id: river.id,
-        payload: { type: 'synonym', target_sense_id: '00000000-0000-4000-8000-0000000000ff' as never },
-      }),
-    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('Target sense') })
+    await expect(submit(world, relation(river, 'synonym', crypto.randomUUID() as SenseId))).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('Target sense'),
+    })
   })
 
   it('records the target sense as the object of a relation', async () => {
-    const { world, river, shore } = await withShore()
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: shore.id,
-      payload: { type: 'hypernym', target_sense_id: river.id },
-    })
-    expect(fact).toMatchObject({ subjectId: shore.id, objectId: river.id })
+    const { world, river, shore } = await bankWorld()
+    const { fact } = await submit(world, relation(shore, 'hypernym', river))
+    expect(fact).toMatchObject({ subjectId: shore, objectId: river })
   })
 
   it('stores a symmetric relation once, whichever sense it is submitted from [spec: facts/symmetric-relation-once]', async () => {
-    const { world, river, shore } = await withShore()
-    const [low, high] = [river.id, shore.id].sort()
-    const submit = (type: 'synonym' | 'hypernym', from: string, to: string) =>
-      submitFact(world.deps, agentA, {
-        kind: 'relation',
-        subject_id: from,
-        payload: { type, target_sense_id: to as SenseId },
-      })
-    const first = await submit('synonym', high as string, low as string)
+    const { world, river, shore } = await bankWorld()
+    const [low, high] = [river, shore].sort() as [SenseId, SenseId]
+    const first = await submit(world, relation(high, 'synonym', low))
     expect(first.fact).toMatchObject({ subjectId: low, objectId: high, payload: { target_sense_id: high } })
-    await expect(submit('synonym', low as string, high as string)).resolves.toEqual({
-      fact: first.fact,
-      created: false,
-    })
+    await expect(submit(world, relation(low, 'synonym', high))).resolves.toEqual({ fact: first.fact, created: false })
     expect(world.queued).toHaveLength(1)
-    const fresh = await withShore()
-    const directed = await submitFact(fresh.world.deps, agentA, {
-      kind: 'relation',
-      subject_id: fresh.shore.id,
-      payload: { type: 'hypernym', target_sense_id: fresh.river.id },
-    })
-    expect(directed).toMatchObject({ created: true, fact: { subjectId: fresh.shore.id, objectId: fresh.river.id } })
   })
 
-  it('refuses a second relation type from one sense to the same entry, from either end [spec: facts/relation-one-type-per-entry]', async () => {
-    const { world, river, money, shore } = await withShore()
-    const relate = (type: 'synonym' | 'hypernym' | 'antonym', from: SenseId, to: SenseId) =>
-      submitFact(world.deps, agentA, { kind: 'relation', subject_id: from, payload: { type, target_sense_id: to } })
-    const synonym = await relate('synonym', river.id, shore.id)
-    await expect(relate('hypernym', shore.id, money.id)).rejects.toMatchObject({
+  it('refuses a second relation type to the same entry and a hypernym cycle', async () => {
+    const { world, river, money, shore } = await bankWorld()
+    const synonym = await submit(world, relation(river, 'synonym', shore))
+    await expect(submit(world, relation(shore, 'hypernym', money))).rejects.toMatchObject({
       code: 'invalid_reference',
       message: expect.stringContaining(`live synonym relation (${synonym.fact.id})`),
     })
-    await expect(relate('antonym', river.id, shore.id)).rejects.toMatchObject({ code: 'invalid_reference' })
-    await expect(relate('synonym', river.id, shore.id)).resolves.toMatchObject({ created: false })
-    await expect(relate('hypernym', money.id, shore.id)).resolves.toMatchObject({ created: true })
+    await expect(submit(world, relation(money, 'hypernym', shore))).resolves.toMatchObject({ created: true })
     await retractFact(world.deps, agentA, synonym.fact.id)
-    await expect(relate('hypernym', shore.id, river.id)).rejects.toMatchObject({
+    await expect(submit(world, relation(shore, 'hypernym', river))).rejects.toMatchObject({
       message: expect.stringContaining('two entries cannot each be a kind of the other'),
     })
   })
 
-  it('applies the relation write rules when a rejected relation comes back to life [spec: facts/relation-one-type-per-entry]', async () => {
-    const { world, river, shore } = await withShore()
-    world.failReviews()
-    const { fact: rejected } = await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: river.id,
-      payload: { type: 'antonym', target_sense_id: shore.id },
-    })
-    await reviewFact(world.deps, rejected.id, 'trace-review')
-    expect((await getFact(world.deps, rejected.id)).status).toBe('rejected')
-    await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: river.id,
-      payload: { type: 'synonym', target_sense_id: shore.id },
-    })
-    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'invalid_reference' })
-    world.senses.splice(world.senses.indexOf(shore), 1)
-    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toThrow('links a sense that does not exist')
-  })
-
   it('rejects a relation between two senses of one entry [spec: facts/relation-across-entries]', async () => {
     const { world, river, money } = await bankWorld()
-    for (const target of [money.id, river.id]) {
-      await expect(
-        submitFact(world.deps, agentA, {
-          kind: 'relation',
-          subject_id: river.id,
-          payload: { type: 'antonym', target_sense_id: target },
-        }),
-      ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('two different entries') })
+    for (const target of [money, river]) {
+      await expect(submit(world, relation(river, 'antonym', target))).rejects.toMatchObject({
+        code: 'invalid_reference',
+        message: expect.stringContaining('two different entries'),
+      })
     }
     expect(world.queued).toHaveLength(0)
   })
 
-  it('lets a correction change only the register of a gloss', async () => {
-    const { world, river, riverGloss } = await bankWorld()
-    const { fact, created } = await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: river.id,
-      supersedes_id: riverGloss.id,
-      payload: { gloss: 'land beside a river', register: 'literary' },
+  it('links only senses a published inventory of a live entry lists [spec: facts/relation-target-senses] [spec: facts/relation-shown-ends]', async () => {
+    const { world, river, shoreEntry } = await bankWorld()
+    const shown = { code: 'invalid_reference', message: expect.stringContaining('name the word in blocked_on') }
+    // A pending inventory names senses that cannot show yet.
+    const coast = await headword(world, 'coast')
+    const { fact: draft } = await submit(world, {
+      kind: 'senses',
+      subject_id: coast.entry.id,
+      payload: { senses: [{ pos: 'noun', gloss: 'land beside the sea', rank: 'common' }] },
     })
-    expect(created).toBe(true)
-    expect(fact).toMatchObject({ supersedesId: riverGloss.id, payload: { register: 'literary' } })
+    const pendingSense = (draft as FactOf<'senses'>).payload.senses[0]!.id
+    await expect(submit(world, relation(river, 'synonym', pendingSense))).rejects.toMatchObject(shown)
+    await expect(submit(world, example(pendingSense, 'The coast was rocky.'))).rejects.toMatchObject(shown)
+    // A sense of an entry that is not live never shows either.
+    const shore = world.work.get(shoreEntry.id)!
+    shore.live = false
+    const shoreSense = world.senses.find((sense) => sense.entryId === shoreEntry.id)!
+    await expect(submit(world, relation(river, 'hypernym', shoreSense.id))).rejects.toMatchObject(shown)
+  })
+
+  it('refuses a relation to a rare or dated sense [spec: facts/relation-ends]', async () => {
+    const { world, river } = await bankWorld()
+    const sewer = await headword(world, 'sewer', [
+      { pos: 'noun', gloss: 'an underground drain', rank: 'common', register: 'dated' },
+      { pos: 'noun', gloss: 'one who sews', rank: 'extra' },
+    ])
+    const [dated, rare] = sewer.senses as [SenseId, SenseId]
+    await expect(submit(world, relation(river, 'hypernym', dated))).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: `Sense ${dated} is labelled dated; a relation links only current senses. Relate a current sense of the word instead.`,
+    })
+    await expect(submit(world, relation(river, 'hypernym', rare))).rejects.toMatchObject({
+      message: expect.stringContaining("is in the extra senses of its entry's sense list"),
+    })
+  })
+
+  it('refuses a synonym between spellings of one word, and holds each broader term in one layer [spec: facts/relation-padding-usecase]', async () => {
+    const world = fakeWorld()
+    const practise = await headword(world, 'practise', [{ pos: 'verb', gloss: 'to do something repeatedly' }])
+    const practice = await headword(world, 'practice', [{ pos: 'verb', gloss: 'to do something often' }])
+    await submit(world, { kind: 'form', subject_id: practise.entry.id, payload: { form: 'practice', type: 'variant' } })
+    const [a, b] = [practise.senses[0]!, practice.senses[0]!]
+    for (const [from, to] of [
+      [a, b],
+      [b, a],
+    ] as const) {
+      await expect(submit(world, relation(from, 'synonym', to))).rejects.toMatchObject({
+        code: 'invalid_reference',
+        message: expect.stringContaining('are spellings of one word'),
+      })
+    }
+    const dog = await headword(world, 'dog', [{ pos: 'noun', gloss: 'an animal kept as a pet' }])
+    const canine = await headword(world, 'canine', [{ pos: 'noun', gloss: 'a dog or related animal' }])
+    const biology = { type: 'hypernym', target_sense_id: canine.senses[0]!, domain: 'biology' } as const
+    await expect(
+      submit(world, { kind: 'relation', subject_id: dog.senses[0]!, payload: biology }),
+    ).resolves.toMatchObject({ created: true, fact: { contentKey: `hypernym|${canine.senses[0]}|biology` } })
+    await expect(submit(world, relation(dog.senses[0]!, 'hypernym', canine.senses[0]!))).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('already has a live biology hypernym'),
+    })
   })
 
   it('accepts a correction only of a published fact of the same kind and subject [spec: facts/supersede-rules]', async () => {
-    const { world, river, money, riverGloss } = await bankWorld()
-    const correct = (supersedes: FactId, subject = river.id, kind: 'sense' | 'example' = 'sense') =>
-      submitFact(world.deps, agentA, {
-        kind,
-        subject_id: subject,
-        supersedes_id: supersedes,
-        payload: kind === 'sense' ? { gloss: 'sloping land beside a river' } : { text: 'x' },
-      } as never)
-
-    await expect(correct('00000000-0000-4000-8000-0000000000ff' as FactId)).rejects.toMatchObject({
+    const { world, river, money } = await bankWorld()
+    const original = await decided(world, example(river, 'We sat on the bank.'))
+    await expect(submit(world, example(river, 'x', crypto.randomUUID() as FactId))).rejects.toMatchObject({
       code: 'invalid_reference',
+      message: expect.stringContaining('does not exist'),
     })
-    await expect(correct(riverGloss.id, money.id)).rejects.toMatchObject({ code: 'invalid_reference' })
-    await expect(correct(riverGloss.id, river.id, 'example')).rejects.toMatchObject({ code: 'invalid_reference' })
-
-    const { fact: example } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: river.id,
-      payload: { text: 'We sat on the bank.' },
+    await expect(submit(world, example(money, 'x', original.id))).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: 'A correction must have the same kind and subject as the fact it supersedes.',
     })
-    await expect(correct(example.id, river.id, 'example')).rejects.toMatchObject({ code: 'conflict' })
-
-    const { fact, created } = await correct(riverGloss.id)
+    const { fact: pending } = await submit(world, example(river, 'The bank was steep.'))
+    await expect(submit(world, example(river, 'y', pending.id))).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'Only a published fact can be superseded; it is pending.',
+    })
+    const { fact, created } = await submit(world, example(river, 'We sat on the grassy bank.', original.id))
     expect(created).toBe(true)
-    expect(fact.supersedesId).toBe(riverGloss.id)
+    expect(fact.supersedesId).toBe(original.id)
   })
 
-  it('keeps single-valued kinds to one live fact per subject [spec: facts/single-gloss]', async () => {
-    const { world, river, riverGloss } = await bankWorld()
+  it('keeps one-valued kinds to one live fact per subject', async () => {
+    const { world, river } = await bankWorld()
+    const grammar = (countability: 'countable' | 'uncountable', supersedes_id?: FactId): SubmitFactInput => ({
+      kind: 'grammar',
+      subject_id: river,
+      payload: { countability },
+      ...(supersedes_id ? { supersedes_id } : {}),
+    })
+    const first = await decided(world, grammar('countable'))
+    await expect(submit(world, grammar('uncountable'))).rejects.toMatchObject({
+      code: 'conflict',
+      message: expect.stringContaining('submit one correction that supersedes the published one'),
+    })
+    await submit(world, grammar('uncountable', first.id))
     await expect(
-      submitFact(world.deps, agentA, { kind: 'sense', subject_id: river.id, payload: { gloss: 'another gloss' } }),
-    ).rejects.toMatchObject({ code: 'conflict' })
-    const input = { kind: 'sense' as const, subject_id: river.id, supersedes_id: riverGloss.id }
-    await submitFact(world.deps, agentA, { ...input, payload: { gloss: 'first correction' } })
+      submit(world, {
+        kind: 'grammar',
+        subject_id: river,
+        payload: { countability: 'countable', prepositions: ['of'] },
+        supersedes_id: first.id,
+      } as SubmitFactInput),
+    ).rejects.toMatchObject({ code: 'conflict', message: expect.stringContaining('already has a live correction') })
+  })
+
+  it('refuses a correction whose original leaves published after its check [spec: facts/correction-needs-published]', async () => {
+    const { world, river } = await bankWorld()
+    const original = await decided(world, example(river, 'We sat on the bank.'))
+    interleaveAfterRead(world, original.id, () => retractFact(world.deps, agentA, original.id))
+    await expect(submit(world, example(river, 'We sat on the grassy bank.', original.id))).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'Only a published fact can be superseded; it is retracted.',
+    })
+    expect(world.facts.filter((fact) => fact.supersedesId === original.id)).toEqual([])
+  })
+
+  it('refuses a second live correction of one original [spec: facts/one-live-correction]', async () => {
+    const { world, river } = await bankWorld()
+    const corrected = { code: 'conflict', message: expect.stringContaining('already has a live correction') }
+    const original = await decided(world, example(river, 'We sat on the bank.'))
+    const first = await rejected(world, example(river, 'We sat on the river bank.', original.id))
+    await submit(world, example(river, 'We sat on the grassy bank.', original.id))
+    await expect(submit(world, example(river, 'We sat on the steep bank.', original.id))).rejects.toMatchObject(
+      corrected,
+    )
+    await expect(rereviewFact(world.deps, admin, first.id)).rejects.toMatchObject(corrected)
+  })
+
+  it('publishes a correction in place of its original [spec: facts/correction]', async () => {
+    const { world, river } = await bankWorld()
+    const original = await decided(world, example(river, 'We sat on the bank.'))
+    const correction = await decided(world, example(river, 'We sat on the grassy bank.', original.id))
+    expect(correction.status).toBe('published')
+    expect((await getFact(world.deps, original.id)).status).toBe('superseded')
+  })
+
+  it('reviews each fact on its own, whatever else is pending [spec: facts/independent]', async () => {
+    const { world, river } = await bankWorld()
+    const { fact: grammar } = await submit(world, {
+      kind: 'grammar',
+      subject_id: river,
+      payload: { countability: 'countable' },
+    })
+    const sentence = await decided(world, example(river, 'We sat on the bank.'))
+    expect(sentence.status).toBe('published')
+    expect((await getFact(world.deps, grammar.id)).status).toBe('pending')
+  })
+})
+
+describe('submitting a sense inventory', () => {
+  const inventory = (entryId: EntryId, senses: object[], supersedes_id?: FactId): SubmitFactInput =>
+    ({
+      kind: 'senses',
+      subject_id: entryId,
+      payload: { senses },
+      ...(supersedes_id ? { supersedes_id } : {}),
+    }) as SubmitFactInput
+
+  it('gives every new sense a sense row and keeps the ids it names [spec: facts/inventory-assigns-ids]', async () => {
+    const world = fakeWorld()
+    const { entry } = await headword(world, 'run')
+    const { fact } = await submit(
+      world,
+      inventory(entry.id, [
+        { pos: 'verb', gloss: 'to move fast on foot', rank: 'common' },
+        { pos: 'noun', gloss: 'an act of running', rank: 'extra' },
+      ]),
+    )
+    const senses = (fact as FactOf<'senses'>).payload.senses
+    expect(senses.map((sense) => world.senses.find((row) => row.id === sense.id)?.pos)).toEqual(['verb', 'noun'])
+    expect(world.senses.every((sense) => sense.entryId === entry.id && sense.createdBy === 'agent:agent-a')).toBe(true)
+    world.failReviews()
+    await drainReviews(world)
+    world.passReviews()
+    // A resubmission after a rejection reuses the row of each sense with the same meaning.
+    const { fact: next } = await submit(
+      world,
+      inventory(entry.id, [
+        { pos: 'verb', gloss: 'to move fast on foot', rank: 'common' },
+        { pos: 'noun', gloss: 'An act of running', rank: 'common' },
+      ]),
+    )
+    expect((next as FactOf<'senses'>).payload.senses.map((sense) => sense.id)).toEqual(senses.map((sense) => sense.id))
+    expect(world.senses).toHaveLength(2)
+  })
+
+  it('keeps only senses of the entry', async () => {
+    const { world, entry, shore } = await bankWorld()
     await expect(
-      submitFact(world.deps, agentA, { ...input, payload: { gloss: 'second correction' } }),
+      submit(
+        world,
+        inventory(entry.id, [{ id: shore, pos: 'noun', gloss: 'land along water', rank: 'common' }]),
+        curatorAgent,
+      ),
+    ).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('keeps only senses of this entry'),
+    })
+  })
+
+  it('fails loudly when no sense row comes back for a new sense', async () => {
+    const world = fakeWorld()
+    const { entry } = await headword(world, 'run')
+    world.deps.nodes.insertSenses = async () => []
+    await expect(
+      submit(world, inventory(entry.id, [{ pos: 'verb', gloss: 'to move fast', rank: 'common' }])),
+    ).rejects.toThrow('No sense row was stored')
+  })
+
+  it('fixes the senses once the inventory publishes, except for a curator [spec: facts/inventory-settled]', async () => {
+    const { world, entry, river, money } = await bankWorld()
+    const published = world.facts.find((fact) => fact.kind === 'senses' && fact.subjectId === entry.id)!
+    const next = [
+      { id: river, pos: 'noun', gloss: 'land beside a river', rank: 'common' },
+      { id: money, pos: 'noun', gloss: 'a financial institution', rank: 'common' },
+      { pos: 'verb', gloss: 'to keep money in a bank', rank: 'common' },
+    ]
+    await expect(submit(world, inventory(entry.id, next, published.id))).rejects.toMatchObject({
+      code: 'inventory_settled',
+      status: 403,
+    })
+    const corrected = await submit(world, inventory(entry.id, next, published.id), curatorAgent)
+    expect(corrected).toMatchObject({ created: true, fact: { supersedesId: published.id, status: 'pending' } })
+    expect((corrected.fact as FactOf<'senses'>).payload.senses.slice(0, 2).map((sense) => sense.id)).toEqual([
+      river,
+      money,
+    ])
+  })
+
+  it('takes one live inventory per entry', async () => {
+    const world = fakeWorld()
+    const { entry } = await headword(world, 'run')
+    await submit(world, inventory(entry.id, [{ pos: 'verb', gloss: 'to move fast', rank: 'common' }]))
+    await expect(
+      submit(world, inventory(entry.id, [{ pos: 'verb', gloss: 'to go quickly', rank: 'common' }])),
     ).rejects.toMatchObject({ code: 'conflict' })
   })
 })
 
-describe('submitting grammar, word formation, and collocations', () => {
-  it('refuses grammar that does not fit the sense part of speech [spec: facts/grammar-by-pos]', async () => {
+describe('submitting grammar, topics, word formation, and collocations', () => {
+  it('refuses grammar that does not fit the sense part of speech', async () => {
     const { world, river } = await bankWorld()
     await expect(
-      submitFact(world.deps, agentA, {
-        kind: 'grammar',
-        subject_id: river.id,
-        payload: { transitivity: 'transitive' },
-      }),
+      submit(world, { kind: 'grammar', subject_id: river, payload: { transitivity: 'transitive' } }),
+    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('remove transitivity') })
+    const by = await headword(world, 'by', [{ pos: 'preposition', gloss: 'near or beside' }])
+    await expect(
+      submit(world, { kind: 'grammar', subject_id: by.senses[0]!, payload: { countability: 'countable' } }),
     ).rejects.toMatchObject({
       code: 'invalid_reference',
-      message:
-        'The grammar of a noun sense names only countability, number, article, patterns, and prepositions; remove transitivity.',
+      message: expect.stringContaining('this one is preposition'),
     })
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'grammar',
-      subject_id: river.id,
-      payload: { countability: 'countable' },
-    })
-    expect(fact).toMatchObject({ kind: 'grammar', status: 'pending', contentKey: 'countability:countable' })
+    await expect(
+      submit(world, { kind: 'grammar', subject_id: by.entry.id, payload: { countability: 'countable' } }),
+    ).rejects.toMatchObject({ code: 'invalid_reference' })
   })
 
-  it('refuses a word formation of a phrase or one whose parts do not spell the word [spec: facts/morphology-parts]', async () => {
+  it('tags only a leaf topic, at most three per sense', async () => {
+    const { world, river } = await bankWorld()
+    const tag = (topic: string) =>
+      submit(world, { kind: 'topic', subject_id: river, payload: { topic_id: topic as TopicId } })
+    await expect(tag('nowhere')).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('does not exist'),
+    })
+    await expect(tag('home')).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('topic category'),
+    })
+    for (const leaf of ['furniture', 'kitchen', 'dentist']) await tag(leaf)
+    await expect(tag('body-parts')).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'A sense holds at most 3 live topic facts; retract one before adding another.',
+    })
+  })
+
+  it('refuses a word formation of a phrase or one whose parts do not spell the word', async () => {
     const { world, entry } = await bankWorld()
-    const phrase = await createEntry(world.deps, agentA, { lemma: 'river bank' })
+    const phrase = await headword(world, 'river bank')
     const base = (form: string) => ({ parts: [{ form, role: 'base' as const }] })
     await expect(
-      submitFact(world.deps, agentA, { kind: 'morphology', subject_id: phrase.entry.id, payload: base('riverbank') }),
+      submit(world, { kind: 'morphology', subject_id: phrase.entry.id, payload: base('riverbank') }),
     ).rejects.toMatchObject({ code: 'invalid_reference' })
     await expect(
-      submitFact(world.deps, agentA, { kind: 'morphology', subject_id: entry.id, payload: base('bunk') }),
-    ).rejects.toMatchObject({ code: 'invalid_reference' })
-    expect(
-      (await submitFact(world.deps, agentA, { kind: 'morphology', subject_id: entry.id, payload: base('bank') }))
-        .created,
-    ).toBe(true)
+      submit(world, { kind: 'morphology', subject_id: entry.id, payload: base('bunk') }),
+    ).rejects.toMatchObject({
+      code: 'invalid_reference',
+    })
+    expect((await submit(world, { kind: 'morphology', subject_id: entry.id, payload: base('bank') })).created).toBe(
+      true,
+    )
+  })
+
+  it('takes a base lemma only of a live entry, and links the derivative into its family [spec: facts/morphology-base-lemma-usecase]', async () => {
+    const world = fakeWorld()
+    const { entry: student } = await headword(world, 'student')
+    const morphology: SubmitFactInput = {
+      kind: 'morphology',
+      subject_id: student.id,
+      payload: {
+        parts: [
+          { form: 'study', role: 'base', lemma: 'study' },
+          { form: '-ent', role: 'suffix' },
+        ],
+      },
+    }
+    const refused = {
+      code: 'invalid_reference',
+      message:
+        '"study" is not the lemma of a live entry; a base names an entry exactly as it is spelled. Leave the lemma out, or name the word in blocked_on.',
+    }
+    await expect(submit(world, morphology)).rejects.toMatchObject(refused)
+    const study = await world.deps.nodes.insertEntry({
+      id: crypto.randomUUID() as EntryId,
+      lemma: 'study' as Lemma,
+      createdBy: 'admin:admin-1' as never,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    await expect(submit(world, morphology)).rejects.toMatchObject(refused)
+    await headword(world, 'study')
+    const { fact } = await submit(world, morphology)
+    expect((await world.deps.nodes.loadEntrySnapshot(study)).family).toEqual(['student'])
+    await retractFact(world.deps, agentA, fact.id)
+    expect((await world.deps.nodes.loadEntrySnapshot(study)).family).toEqual([])
   })
 
   it('takes a collocation with a live form of the word and caps a sense at five [spec: facts/collocation-cap]', async () => {
     const { world, entry, river } = await bankWorld()
-    const collocation = (text: string, supersedes_id?: FactId) => ({
-      kind: 'collocation' as const,
-      subject_id: river.id,
-      payload: { text, pattern: 'adjective_noun' as const },
+    const collocation = (text: string, supersedes_id?: FactId): SubmitFactInput => ({
+      kind: 'collocation',
+      subject_id: river,
+      payload: { text, pattern: 'adjective_noun' },
       ...(supersedes_id ? { supersedes_id } : {}),
     })
-    await expect(submitFact(world.deps, agentA, collocation('steep banks'))).rejects.toMatchObject({
-      code: 'invalid_reference',
-    })
-    await submitFact(world.deps, agentA, {
-      kind: 'form',
-      subject_id: entry.id,
-      payload: { form: 'banks', type: 'plural' },
-    })
-    const texts = ['steep banks', 'muddy bank', 'grassy bank', 'opposite bank', 'far bank']
+    await expect(submit(world, collocation('steep banks'))).rejects.toMatchObject({ code: 'invalid_reference' })
+    await submit(world, { kind: 'form', subject_id: entry.id, payload: { form: 'banks', type: 'plural' } })
     const facts = []
-    for (const text of texts) facts.push((await submitFact(world.deps, agentA, collocation(text))).fact)
-    await expect(submitFact(world.deps, agentA, collocation('low bank'))).rejects.toMatchObject({ code: 'conflict' })
-    expect((await submitFact(world.deps, agentA, collocation('muddy bank'))).created).toBe(false)
-    for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
-    const correction = await submitFact(world.deps, agentA, collocation('low bank', facts[0].id))
-    expect(correction).toMatchObject({ created: true, fact: { supersedesId: facts[0].id } })
-  })
-})
-
-describe('submitting a sense list', () => {
-  const list = (entryId: string, common: SenseId[], extra: SenseId[] = [], supersedes_id?: FactId) => ({
-    kind: 'sense_list' as const,
-    subject_id: entryId,
-    payload: { common, extra },
-    ...(supersedes_id ? { supersedes_id } : {}),
-  })
-
-  it('takes a list of exactly the live senses of the entry [spec: facts/sense-list-write]', async () => {
-    const { world, entry, river, money, shore } = await withShore()
-    await expect(
-      submitFact(world.deps, agentA, list(entry.id, [river.id, shore.id], [money.id])),
-    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining(`${shore.id} is not one`) })
-    await expect(submitFact(world.deps, agentA, list(entry.id, [river.id]))).rejects.toMatchObject({
-      code: 'invalid_reference',
-      message: expect.stringContaining(`it leaves out ${money.id}`),
-    })
-    const { fact, created } = await submitFact(world.deps, agentA, list(entry.id, [money.id, river.id]))
-    expect(created).toBe(true)
-    expect(fact).toMatchObject({ kind: 'sense_list', subjectId: entry.id, status: 'pending' })
-    expect((await submitFact(world.deps, agentA, list(entry.id, [money.id, river.id]))).created).toBe(false)
-    await expect(submitFact(world.deps, agentA, list(entry.id, [river.id, money.id]))).rejects.toMatchObject({
+    for (const text of ['steep banks', 'muddy bank', 'grassy bank', 'opposite bank', 'far bank']) {
+      facts.push((await submit(world, collocation(text))).fact)
+    }
+    await expect(submit(world, collocation('low bank'))).rejects.toMatchObject({
       code: 'conflict',
+      message: 'A sense holds at most 5 live collocation facts; retract one before adding another.',
     })
+    expect((await submit(world, collocation('muddy bank'))).created).toBe(false)
+    await drainReviews(world)
+    const correction = await submit(world, collocation('low bank', facts[0]!.id))
+    expect(correction).toMatchObject({ created: true, fact: { supersedesId: facts[0]!.id } })
   })
 
-  it('refuses a sense whose gloss is no longer live and takes a correction of the published list [spec: facts/sense-list-write]', async () => {
-    const { world, entry, river, money } = await bankWorld()
-    const { fact: original } = await submitFact(world.deps, agentA, list(entry.id, [river.id], [money.id]))
-    for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
-    const moneyGloss = world.facts.find((fact) => fact.kind === 'sense' && fact.subjectId === money.id)
-    await retractFact(world.deps, agentA, moneyGloss?.id as FactId)
+  it('refuses a periphrastic comparison as a form', async () => {
+    const { world, entry } = await bankWorld()
     await expect(
-      submitFact(world.deps, agentA, list(entry.id, [money.id, river.id], [], original.id)),
-    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining(`${money.id} is not one`) })
-    const correction = await submitFact(world.deps, agentA, list(entry.id, [river.id], [], original.id))
-    expect(correction).toMatchObject({ created: true, fact: { supersedesId: original.id } })
+      submit(world, { kind: 'form', subject_id: entry.id, payload: { form: 'most banky', type: 'superlative' } }),
+    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('periphrastic') })
   })
 })
 
 describe('reading facts', () => {
   it('gets a fact by id and 404s an unknown one', async () => {
-    const { world, riverGloss } = await bankWorld()
-    await expect(getFact(world.deps, riverGloss.id)).resolves.toMatchObject({ id: riverGloss.id })
+    const { world, river } = await bankWorld()
+    const { fact } = await submit(world, example(river, 'We sat on the bank.'))
+    await expect(getFact(world.deps, fact.id)).resolves.toMatchObject({ id: fact.id })
     await expect(getFact(world.deps, 'missing' as FactId)).rejects.toMatchObject({ code: 'not_found' })
   })
 
-  it('lists facts filtered by status and kind', async () => {
-    const { world } = await bankWorld()
-    const page = await listFacts(world.deps, { status: 'published', kind: 'sense' }, { limit: 10 })
-    expect(page.items).toHaveLength(2)
-  })
-
   it('lists the facts one principal authored about the entry with exactly this lemma [spec: monitor/fact-filters]', async () => {
-    const { world } = await bankWorld()
+    const { world, river } = await bankWorld()
+    await submit(world, example(river, 'We sat on the bank.'), agentB)
     const about = async (lemma: string, author?: string) =>
       (await listFacts(world.deps, { lemma, author }, { limit: 50 })).items
     const facts = await about(' bank ')
-    expect(facts.length).toBeGreaterThan(0)
+    expect(facts.map((fact) => fact.kind).sort()).toEqual(['example', 'senses'])
     expect(new Set(facts.map((fact) => fact.entry.lemma))).toEqual(new Set(['bank']))
     const { entry, ...first } = facts[0]!
     await expect(getFactWithEntry(world.deps, first.id)).resolves.toEqual({ ...first, entry })
@@ -358,371 +583,183 @@ describe('reading facts', () => {
       code: 'not_found',
     })
     expect(await about('Bank')).toEqual([])
-    expect(await about('bank', 'agent:nobody')).toEqual([])
-    expect(await about('bank', facts[0]?.author)).toEqual(facts.filter((fact) => fact.author === facts[0]?.author))
+    expect((await about('bank', 'agent:agent-b')).map((fact) => fact.kind)).toEqual(['example'])
+    expect((await listFacts(world.deps, { kind: 'senses', status: 'published' }, { limit: 10 })).items).toHaveLength(2)
   })
 })
 
 describe('retractFact', () => {
   it('lets the author retract, and retracting again returns the same fact [spec: facts/retract]', async () => {
-    const { world, riverGloss } = await bankWorld()
-    const retracted = await retractFact(world.deps, agentA, riverGloss.id)
-    expect(retracted.status).toBe('retracted')
-    await expect(retractFact(world.deps, agentA, riverGloss.id)).resolves.toMatchObject({ status: 'retracted' })
+    const { world, river } = await bankWorld()
+    const { fact } = await submit(world, example(river, 'We sat on the bank.'))
+    expect((await retractFact(world.deps, agentA, fact.id)).status).toBe('retracted')
+    await expect(retractFact(world.deps, agentA, fact.id)).resolves.toMatchObject({ status: 'retracted' })
   })
 
   it("forbids an agent from retracting another agent's fact, but not an admin", async () => {
-    const { world, riverGloss } = await bankWorld()
-    await expect(retractFact(world.deps, agentB, riverGloss.id)).rejects.toMatchObject({ code: 'forbidden' })
-    await expect(retractFact(world.deps, admin, riverGloss.id)).resolves.toMatchObject({ status: 'retracted' })
+    const { world, river } = await bankWorld()
+    const { fact } = await submit(world, example(river, 'We sat on the bank.'))
+    await expect(retractFact(world.deps, agentB, fact.id)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(retractFact(world.deps, admin, fact.id)).resolves.toMatchObject({ status: 'retracted' })
   })
 
-  it('refuses facts that are already decided otherwise', async () => {
+  it('refuses a rejected fact', async () => {
     const { world, river } = await bankWorld()
-    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: river.id,
-      payload: { text: 'x' },
-    })
-    await reviewFact(world.deps, fact.id, 'trace-review')
+    const fact = await rejected(world, example(river, 'x'))
     await expect(retractFact(world.deps, agentA, fact.id)).rejects.toMatchObject({ code: 'conflict' })
   })
 
   it('reports a concurrent change instead of claiming success', async () => {
-    const { world, riverGloss } = await bankWorld()
+    const { world, river } = await bankWorld()
+    const { fact } = await submit(world, example(river, 'We sat on the bank.'))
     world.deps.facts.transition = async () => false
-    await expect(retractFact(world.deps, agentA, riverGloss.id)).rejects.toMatchObject({ code: 'conflict' })
+    await expect(retractFact(world.deps, agentA, fact.id)).rejects.toMatchObject({ code: 'conflict' })
   })
 })
 
 describe('rereviewFact', () => {
-  it('resets a decided fact to pending and enqueues it [spec: facts/rereview]', async () => {
-    const { world, riverGloss } = await bankWorld()
-    const fact = await rereviewFact(world.deps, admin, riverGloss.id)
-    expect(fact.status).toBe('pending')
-    expect(world.queued).toEqual([{ factId: riverGloss.id, traceId: 'trace-admin' }])
+  it('sends a rejected fact back to pending and enqueues it [spec: facts/rereview]', async () => {
+    const { world, river } = await bankWorld()
+    const fact = await rejected(world, example(river, 'x'))
+    await expect(rereviewFact(world.deps, admin, fact.id)).resolves.toMatchObject({ status: 'pending' })
+    expect(world.queued).toEqual([{ factId: fact.id, traceId: 'trace-admin' }])
   })
 
   it('re-enqueues a pending fact without changing it', async () => {
     const { world, river } = await bankWorld()
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: river.id,
-      payload: { text: 'x' },
-    })
+    const { fact } = await submit(world, example(river, 'x'))
     world.queued.length = 0
     await expect(rereviewFact(world.deps, admin, fact.id)).resolves.toMatchObject({ status: 'pending' })
     expect(world.queued).toHaveLength(1)
   })
 
-  it('refuses retracted facts and rejected facts whose slot is taken', async () => {
-    const { world, river, riverGloss } = await bankWorld()
-    await retractFact(world.deps, agentA, riverGloss.id)
-    await expect(rereviewFact(world.deps, admin, riverGloss.id)).rejects.toMatchObject({ code: 'conflict' })
-
-    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
-    const input = { kind: 'example' as const, subject_id: river.id, payload: { text: 'x' } }
-    const { fact: rejected } = await submitFact(world.deps, agentA, input)
-    await reviewFact(world.deps, rejected.id, 'trace-review')
-    await submitFact(world.deps, agentA, input)
-    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'conflict' })
+  it('refuses published and retracted facts, and rejected facts whose content is live again', async () => {
+    const { world, river } = await bankWorld()
+    const published = await decided(world, example(river, 'We sat on the bank.'))
+    await expect(rereviewFact(world.deps, admin, published.id)).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'A published fact cannot be re-reviewed.',
+    })
+    await retractFact(world.deps, agentA, published.id)
+    await expect(rereviewFact(world.deps, admin, published.id)).rejects.toMatchObject({ code: 'conflict' })
+    const failed = await rejected(world, example(river, 'x'))
+    await submit(world, example(river, 'x'), curatorAgent)
+    await expect(rereviewFact(world.deps, admin, failed.id)).rejects.toMatchObject({ code: 'conflict' })
   })
 
   it('refuses to revive a fact that no longer fits its subject [spec: facts/rereview-admits]', async () => {
     const { world, entry, river } = await bankWorld()
-    const { fact: form } = await submitFact(world.deps, agentA, {
+    const { fact: form } = await submit(world, {
       kind: 'form',
       subject_id: entry.id,
       payload: { form: 'banks', type: 'plural' },
     })
-    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
-    const { fact } = await submitFact(world.deps, agentA, {
+    const fact = await rejected(world, {
       kind: 'collocation',
-      subject_id: river.id,
+      subject_id: river,
       payload: { text: 'steep banks', pattern: 'adjective_noun' },
     })
-    await reviewFact(world.deps, fact.id, 'trace-review')
     await retractFact(world.deps, agentA, form.id)
     await expect(rereviewFact(world.deps, admin, fact.id)).rejects.toMatchObject({
       code: 'invalid_reference',
       message: 'A collocation contains the word: "steep banks" has neither "bank" nor one of its live forms.',
     })
     await expect(getFact(world.deps, fact.id)).resolves.toMatchObject({ status: 'rejected' })
-  })
-
-  it('fails loudly when a revived fact has lost its subject', async () => {
-    const { world, river } = await bankWorld()
-    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'collocation',
-      subject_id: river.id,
-      payload: { text: 'steep bank', pattern: 'adjective_noun' },
-    })
-    await reviewFact(world.deps, fact.id, 'trace-review')
     world.deps.nodes.findSense = async () => null
-    await expect(rereviewFact(world.deps, admin, fact.id)).rejects.toThrow(`which does not exist`)
+    await expect(rereviewFact(world.deps, admin, fact.id)).rejects.toThrow('which does not exist')
   })
 
-  it('lets a rejected fact go back to review when its slot is free', async () => {
-    const { world, river } = await bankWorld()
-    world.answerLlm(() => ({ model: 'm', verdict: 'fail', confidence: 0.9, reason: 'No.' }))
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: river.id,
-      payload: { text: 'x' },
-    })
-    await reviewFact(world.deps, fact.id, 'trace-review')
-    await expect(rereviewFact(world.deps, admin, fact.id)).resolves.toMatchObject({ status: 'pending' })
-  })
-
-  it('refuses to revive a fact while a live correction supersedes it [spec: facts/rereview-under-correction]', async () => {
-    const { world, river, riverGloss } = await bankWorld()
-    const underCorrection = { code: 'conflict', message: expect.stringContaining('review that correction instead') }
-    const { fact: correction } = await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: river.id,
-      supersedes_id: riverGloss.id,
-      payload: { gloss: 'sloping land beside a river' },
-    })
-    await expect(rereviewFact(world.deps, admin, riverGloss.id)).rejects.toMatchObject(underCorrection)
-    expect((await getFact(world.deps, riverGloss.id)).status).toBe('published')
-
-    // A rejected original whose correction published stays down, whatever room its kind has.
-    const index = world.facts.findIndex((fact) => fact.id === riverGloss.id)
-    world.facts[index] = { ...riverGloss, status: 'rejected' }
-    world.facts[world.facts.findIndex((fact) => fact.id === correction.id)] = { ...correction, status: 'published' }
-    await expect(rereviewFact(world.deps, admin, riverGloss.id)).rejects.toMatchObject(underCorrection)
-    expect((await getFact(world.deps, riverGloss.id)).status).toBe('rejected')
-  })
-
-  it('refuses a rejected correction whose original is no longer published', async () => {
-    const { world, river, riverGloss } = await bankWorld()
-    const correction = { kind: 'sense' as const, subject_id: river.id, supersedes_id: riverGloss.id }
-    world.failReviews()
-    const { fact: rejected } = await submitFact(world.deps, agentA, { ...correction, payload: { gloss: 'a fish' } })
-    await reviewFact(world.deps, rejected.id, 'trace-review')
-    await retractFact(world.deps, agentA, riverGloss.id)
-    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({ code: 'conflict' })
-    expect((await getFact(world.deps, rejected.id)).status).toBe('rejected')
-  })
-
-  it('reports a concurrent change', async () => {
-    const { world, riverGloss } = await bankWorld()
-    world.deps.facts.transition = async () => false
-    await expect(rereviewFact(world.deps, admin, riverGloss.id)).rejects.toMatchObject({ code: 'conflict' })
-  })
-})
-
-describe('a correction goes live only in place of a published original', () => {
-  /** Runs `interleave` once, right after the first read of `id`, as a write racing that read. */
-  const interleaveAfterRead = (world: ReturnType<typeof fakeWorld>, id: FactId, interleave: () => Promise<unknown>) => {
-    const { find } = world.deps.facts
-    let pending = true
-    world.deps.facts.find = async (read) => {
-      const found = await find(read)
-      if (read === id && pending) {
-        pending = false
-        await interleave()
-      }
-      return found
-    }
-  }
-  const notPublished = { code: 'conflict', message: 'Only a published fact can be superseded; it is pending.' }
-
-  it('refuses a correction whose original leaves published after its check [spec: facts/correction-needs-published]', async () => {
-    const { world, river, riverGloss } = await bankWorld()
-    interleaveAfterRead(world, riverGloss.id, () => rereviewFact(world.deps, admin, riverGloss.id))
-    await expect(
-      submitFact(world.deps, agentA, {
-        kind: 'sense',
-        subject_id: river.id,
-        supersedes_id: riverGloss.id,
-        payload: { gloss: 'sloping land beside a river' },
-      }),
-    ).rejects.toMatchObject(notPublished)
-    expect(world.facts.filter((fact) => fact.supersedesId === riverGloss.id)).toEqual([])
-  })
-
-  it('refuses to revive a rejected correction whose original leaves published meanwhile [spec: facts/correction-needs-published]', async () => {
-    const { world, river, riverGloss } = await bankWorld()
-    world.failReviews()
-    const { fact: rejected } = await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: river.id,
-      supersedes_id: riverGloss.id,
-      payload: { gloss: 'a fish' },
-    })
-    await reviewFact(world.deps, rejected.id, 'trace-review')
-    interleaveAfterRead(world, rejected.id, () => rereviewFact(world.deps, admin, riverGloss.id))
-    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject(notPublished)
-    expect((await getFact(world.deps, rejected.id)).status).toBe('rejected')
-  })
-
-  it('refuses a second live correction of one original [spec: facts/one-live-correction]', async () => {
-    const { world, river } = await bankWorld()
-    const corrected = { code: 'conflict', message: expect.stringContaining('already has a live correction') }
-    const correct = (text: string) =>
-      submitFact(world.deps, agentA, {
-        kind: 'example',
-        subject_id: river.id,
-        supersedes_id: example.id,
-        payload: { text },
-      })
-    const { fact: example } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: river.id,
-      payload: { text: 'We sat on the bank.' },
-    })
-    await reviewFact(world.deps, example.id, 'trace-review')
-    world.failReviews()
-    const { fact: first } = await correct('We sat on the river bank.')
-    await reviewFact(world.deps, first.id, 'trace-review')
-    await correct('We sat on the grassy bank.')
-    await expect(correct('We sat on the steep bank.')).rejects.toMatchObject(corrected)
-    await expect(rereviewFact(world.deps, admin, first.id)).rejects.toMatchObject(corrected)
-  })
-})
-
-describe('completeness write rules', () => {
-  it('refuses a relation to a rare or dated sense, at submission and when a rejected one comes back [spec: facts/relation-ends]', async () => {
-    const { world, river, shore } = await withShore()
-    const { entry: shoreEntry } = await createEntry(world.deps, agentA, { lemma: 'shore' })
-    const { sense: dated } = await createSense(world.deps, agentA, {
-      entry_id: shoreEntry.id,
-      pos: 'noun',
-      gloss: 'a sewer',
-      register: 'dated',
-      region: 'british',
-    })
-    const hypernym = (target: SenseId) =>
-      submitFact(world.deps, agentA, {
-        kind: 'relation',
-        subject_id: river.id,
-        payload: { type: 'hypernym', target_sense_id: target },
-      })
-    await expect(hypernym(dated.id)).rejects.toMatchObject({
-      code: 'invalid_reference',
-      message: `Sense ${dated.id} is labelled dated; a relation links only current senses. Relate a current sense of the word instead.`,
-    })
-    const { fact: rejected } = await hypernym(shore.id)
-    world.failReviews()
-    await reviewFact(world.deps, rejected.id, 'trace')
-    world.passReviews()
-    await submitFact(world.deps, agentA, {
-      kind: 'sense_list',
-      subject_id: shoreEntry.id,
-      payload: { common: [dated.id], extra: [shore.id] },
-    })
-    await expect(rereviewFact(world.deps, admin, rejected.id)).rejects.toMatchObject({
-      code: 'invalid_reference',
-      message: expect.stringContaining(`Sense ${shore.id} is in the extra senses of its entry's sense list`),
-    })
-  })
-
-  it('refuses a synonym between spellings of one word and caps no category, while one layer holds each broader term [spec: facts/relation-padding-usecase]', async () => {
+  it('refuses to revive a word formation whose base is no longer a live entry', async () => {
     const world = fakeWorld()
-    const sensed = async (lemma: string, pos: 'verb' | 'noun' = 'verb') => {
-      const { entry } = await createEntry(world.deps, agentA, { lemma })
-      const { sense } = await createSense(world.deps, agentA, { entry_id: entry.id, pos, gloss: `To ${lemma}.` })
-      return { entry, sense }
-    }
-    const practise = await sensed('practise')
-    const practice = await sensed('practice')
-    await submitFact(world.deps, agentA, {
-      kind: 'form',
-      subject_id: practise.entry.id,
-      payload: { form: 'practice', type: 'variant' },
-    })
-    const relate = (from: SenseId, type: 'synonym' | 'hypernym', to: SenseId) =>
-      submitFact(world.deps, agentA, { kind: 'relation', subject_id: from, payload: { type, target_sense_id: to } })
-    for (const [from, to] of [
-      [practise.sense.id, practice.sense.id],
-      [practice.sense.id, practise.sense.id],
-    ]) {
-      await expect(relate(from, 'synonym', to)).rejects.toMatchObject({
-        code: 'invalid_reference',
-        message: expect.stringContaining('are spellings of one word'),
-      })
-    }
-    // A category lists every kind a learner files under it: no cap on its narrower terms.
-    const animal = await sensed('animal', 'noun')
-    for (let at = 0; at < 13; at++) {
-      const kind = await sensed(`beast${at}`, 'noun')
-      await expect(relate(kind.sense.id, 'hypernym', animal.sense.id)).resolves.toMatchObject({ created: true })
-    }
-    // A broader term belongs to one layer: the same word cannot be dog's everyday and biology category.
-    const dog = await sensed('dog', 'noun')
-    const canine = await sensed('canine', 'noun')
-    const biology = { type: 'hypernym', target_sense_id: canine.sense.id, domain: 'biology' } as const
-    await expect(
-      submitFact(world.deps, agentA, { kind: 'relation', subject_id: dog.sense.id, payload: biology }),
-    ).resolves.toMatchObject({ created: true, fact: { contentKey: `hypernym|${canine.sense.id}|biology` } })
-    await expect(relate(dog.sense.id, 'hypernym', canine.sense.id)).rejects.toMatchObject({
-      code: 'invalid_reference',
-      message: expect.stringContaining('already has a live biology hypernym'),
-    })
-  })
-
-  it('takes a base lemma only of a live entry, and links the derivative into its family [spec: facts/morphology-base-lemma-usecase]', async () => {
-    const world = fakeWorld()
-    const { entry: student } = await createEntry(world.deps, agentA, { lemma: 'student' })
-    const morphology = {
-      kind: 'morphology' as const,
+    const { entry: student } = await headword(world, 'student')
+    const study = await headword(world, 'study')
+    const fact = await rejected(world, {
+      kind: 'morphology',
       subject_id: student.id,
       payload: {
         parts: [
-          { form: 'study', role: 'base' as const, lemma: 'study' },
-          { form: '-ent', role: 'suffix' as const },
+          { form: 'study', role: 'base', lemma: 'study' },
+          { form: '-ent', role: 'suffix' },
         ],
       },
-    }
-    const refused = {
-      code: 'invalid_reference',
-      message:
-        '"study" is not the lemma of a live entry; a base names an entry exactly as it is spelled. Create that entry first, or leave the lemma out.',
-    }
-    await expect(submitFact(world.deps, agentA, morphology)).rejects.toMatchObject(refused)
-    const { entry: study, fact: studyFact } = await createEntry(world.deps, agentA, { lemma: 'study' })
-    const { fact } = await submitFact(world.deps, agentA, morphology)
-    expect((await world.deps.nodes.loadEntrySnapshot(study)).family).toEqual(['student'])
-    expect((await world.deps.nodes.loadEntrySnapshot(student)).family).toEqual([])
-    await retractFact(world.deps, agentA, fact.id)
-    expect((await world.deps.nodes.loadEntrySnapshot(study)).family).toEqual([])
-    await retractFact(world.deps, agentA, studyFact.id)
-    await expect(submitFact(world.deps, agentA, morphology)).rejects.toMatchObject(refused)
+    })
+    world.work.get(study.entry.id)!.live = false
+    await expect(rereviewFact(world.deps, admin, fact.id)).rejects.toMatchObject({ code: 'invalid_reference' })
   })
 
-  it('takes a gap closure on the node its gap is about [spec: facts/gap-closure-subject]', async () => {
-    const { world, entry, river } = await bankWorld()
-    const closure = (subject: string, gap: 'forms' | 'collocations') =>
-      submitFact(world.deps, agentA, {
-        kind: 'gap_closure',
-        subject_id: subject,
-        payload: { gap, reason: 'Nothing a learner needs.' },
-      })
-    await expect(closure(entry.id, 'collocations')).rejects.toMatchObject({
-      code: 'invalid_reference',
-      message: `A gap_closure fact is about a sense; ${entry.id} is not one.`,
-    })
-    await expect(closure(river.id, 'forms')).rejects.toMatchObject({ code: 'invalid_reference' })
-    expect((await closure(river.id, 'collocations')).fact).toMatchObject({
-      kind: 'gap_closure',
-      subjectId: river.id,
-      contentKey: 'collocations|nothing a learner needs.',
-      status: 'pending',
-    })
-    expect((await closure(entry.id, 'forms')).fact).toMatchObject({ subjectId: entry.id })
+  it('applies the relation write rules when a rejected relation comes back', async () => {
+    const { world, river, shore } = await bankWorld()
+    const antonym = await rejected(world, relation(river, 'antonym', shore))
+    await submit(world, relation(river, 'synonym', shore))
+    await expect(rereviewFact(world.deps, admin, antonym.id)).rejects.toMatchObject({ code: 'invalid_reference' })
+    world.senses.splice(
+      world.senses.findIndex((sense) => sense.id === shore),
+      1,
+    )
+    await expect(rereviewFact(world.deps, admin, antonym.id)).rejects.toThrow('links a sense that does not exist')
   })
 
-  it('refuses a periphrastic comparison as a form [spec: facts/periphrastic-forms]', async () => {
-    const { world, entry } = await bankWorld()
-    await expect(
-      submitFact(world.deps, agentA, {
-        kind: 'form',
-        subject_id: entry.id,
-        payload: { form: 'most banky', type: 'superlative' },
-      }),
-    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('periphrastic') })
+  it('refuses a relation whose end became rare when it comes back', async () => {
+    const { world, river, shoreEntry, shore } = await bankWorld()
+    const hypernym = await rejected(world, relation(river, 'hypernym', shore))
+    const list = world.facts.find(
+      (fact) => fact.kind === 'senses' && fact.subjectId === shoreEntry.id,
+    ) as FactOf<'senses'>
+    world.facts[world.facts.indexOf(list)] = {
+      ...list,
+      payload: { senses: [{ ...list.payload.senses[0]!, rank: 'extra' }] },
+    }
+    await expect(rereviewFact(world.deps, admin, hypernym.id)).rejects.toMatchObject({
+      message: expect.stringContaining("is in the extra senses of its entry's sense list"),
+    })
+  })
+
+  it('refuses to revive a rejected fact when its subject is at its kind cap', async () => {
+    const { world, river } = await bankWorld()
+    const tag = (topic: string) => ({
+      kind: 'topic' as const,
+      subject_id: river,
+      payload: { topic_id: topic as TopicId },
+    })
+    const failed = await rejected(world, tag('body-parts'))
+    for (const leaf of ['furniture', 'kitchen', 'dentist']) await submit(world, tag(leaf))
+    await expect(rereviewFact(world.deps, admin, failed.id)).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'A sense holds at most 3 live topic facts; retract one before adding another.',
+    })
+  })
+
+  it('refuses to revive a fact while a live correction supersedes it [spec: facts/rereview-under-correction]', async () => {
+    const { world, river } = await bankWorld()
+    const original = await decided(world, example(river, 'We sat on the bank.'))
+    await submit(world, example(river, 'We sat on the grassy bank.', original.id))
+    setStatus(world, original.id, 'rejected')
+    await expect(rereviewFact(world.deps, admin, original.id)).rejects.toMatchObject({
+      code: 'conflict',
+      message: expect.stringContaining('review that correction instead'),
+    })
+    expect((await getFact(world.deps, original.id)).status).toBe('rejected')
+  })
+
+  it('refuses a rejected correction whose original is no longer published [spec: facts/correction-needs-published]', async () => {
+    const { world, river } = await bankWorld()
+    const original = await decided(world, example(river, 'We sat on the bank.'))
+    const correction = await rejected(world, example(river, 'A fish.', original.id))
+    await retractFact(world.deps, agentA, original.id)
+    await expect(rereviewFact(world.deps, admin, correction.id)).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'Only a published fact can be superseded; it is retracted.',
+    })
+    expect((await getFact(world.deps, correction.id)).status).toBe('rejected')
+  })
+
+  it('reports a concurrent change', async () => {
+    const { world, river } = await bankWorld()
+    const fact = await rejected(world, example(river, 'x'))
+    world.deps.facts.transition = async () => false
+    await expect(rereviewFact(world.deps, admin, fact.id)).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'The fact changed while it was being reset.',
+    })
   })
 })

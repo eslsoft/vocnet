@@ -1,914 +1,414 @@
-import type { Fact, FactOf } from '@server/domain/fact'
-import { weakFacts } from '@server/domain/work'
-import { admin, agentA, curatorAgent } from '@server/testing/actors'
-import { fakeWorld } from '@server/testing/fakes'
-import { publicEntryOf } from '@server/testing/public-view'
-import type { FactId, TopicId } from '@shared/facts'
+import type { Fact } from '@server/domain/fact'
+import { admin, agentA } from '@server/testing/actors'
+import { type FakeWorld, fakeWorld } from '@server/testing/fakes'
+import { drainReviews, headword } from '@server/testing/seed'
+import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { createEntry, createSense } from './catalog'
-import { curateFact } from './curation'
-import { getFact, rereviewFact, retractFact, submitFact } from './facts'
+import { getFact, submitFact } from './facts'
 import { ReviewerTransportError } from './ports'
 import { reconcileReviews, reviewFact } from './review'
 
-async function drain(world: ReturnType<typeof fakeWorld>) {
-  for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
-}
+const scores = (score: number, model: string) => (questions: Record<string, string>) => ({
+  model,
+  answers: Object.fromEntries(Object.keys(questions).map((key) => [key, score])),
+})
 
 async function bankWorld() {
   const world = fakeWorld()
-  const { entry, fact: entryFact } = await createEntry(world.deps, agentA, { lemma: 'bank' })
-  const { sense, fact: gloss } = await createSense(world.deps, agentA, {
-    entry_id: entry.id,
-    pos: 'noun',
-    gloss: 'land beside a river',
-  })
-  return { world, entry, entryFact, sense, gloss }
+  const bank = await headword(world, 'bank', [
+    { pos: 'noun', gloss: 'land beside a river' },
+    { pos: 'noun', gloss: 'a financial institution' },
+  ])
+  const [river, money] = bank.senses as [SenseId, SenseId]
+  return { world, bank, river, money }
+}
+
+async function submitted(world: FakeWorld, input: Parameters<typeof submitFact>[2]) {
+  const { fact } = await submitFact(world.deps, agentA, input)
+  world.queued.length = 0
+  world.decisionCalls.length = 0
+  world.llmCalls.length = 0
+  return fact
+}
+
+/** A pending fact written straight to the store, for states no submission reaches. */
+function rawFact(world: FakeWorld, fact: Pick<Fact, 'kind' | 'subjectId' | 'payload'> & Partial<Fact>): Fact {
+  const at = world.deps.clock.now().toISOString()
+  const stored = {
+    id: world.deps.ids.fact(),
+    objectId: null,
+    contentKey: `raw-${world.facts.length}`,
+    status: 'pending',
+    supersedesId: null,
+    author: 'agent:agent-a',
+    review: null,
+    createdAt: at,
+    updatedAt: at,
+    ...fact,
+  } as Fact
+  world.facts.push(stored)
+  return stored
 }
 
 describe('reviewFact', () => {
-  it('publishes a passing Jev review and records what was judged [spec: facts/review-publish]', async () => {
-    const { world, entryFact } = await bankWorld()
-    await expect(reviewFact(world.deps, entryFact.id, 'trace-review')).resolves.toBe('published')
-    const fact = await getFact(world.deps, entryFact.id)
-    expect(fact.status).toBe('published')
-    expect(fact.review).toMatchObject({
+  it('publishes an inventory the decision model settles and records what was judged [spec: facts/review-publish]', async () => {
+    const world = fakeWorld()
+    const { inventory } = await headword(world, 'bank', [{ pos: 'noun', gloss: 'land beside a river' }])
+    expect(inventory?.status).toBe('published')
+    expect(world.decisionCalls).toEqual([
+      { model: 'jev', questions: { sense_1: expect.any(String) }, state: { word: 'bank' } },
+    ])
+    expect(world.llmCalls).toEqual([])
+    expect(inventory?.review).toMatchObject({
       reviewer: 'jev',
       model: 'jev-test',
       verdict: 'pass',
       confidence: 0.95,
-      reason: 'Jev lemma=0.95',
-      context: { subject: { lemma: 'bank' }, target: null },
-      detail: { answers: { lemma: 0.95 } },
+      // The pending inventory under review is the entry's live one, so its senses are the subject's.
+      context: {
+        subject: { lemma: 'bank', senses: [{ pos: 'noun', gloss: 'land beside a river' }], caseVariants: [] },
+        target: null,
+        topic: null,
+      },
+      reviewed_at: '2026-01-01T00:00:00.000Z',
     })
-    expect(world.jevCalls[0]?.state).toMatchObject({ fact: { id: entryFact.id, kind: 'entry' } })
   })
 
-  it('rejects a letter of the alphabet without asking a reviewer [spec: facts/entry-no-letters]', async () => {
+  it('asks the LLM once when the decision model does not settle, and its verdict is final [spec: facts/one-shot-review]', async () => {
     const world = fakeWorld()
-    const { fact } = await createEntry(world.deps, agentA, { lemma: 'F' })
-    await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
-    expect(world.jevCalls).toHaveLength(0)
-    expect(world.llmCalls).toHaveLength(0)
-    expect((await getFact(world.deps, fact.id)).review).toMatchObject({
-      model: 'none',
-      verdict: 'fail',
-      reason: '"F" is a letter of the alphabet; the only one-letter entries are the words "a" and "I".',
-    })
-  })
-
-  it('settles on a Jev pass without asking the LLM [spec: facts/second-opinion-chain]', async () => {
-    const { world, gloss } = await bankWorld()
-    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('published')
-    expect(world.llmCalls).toHaveLength(0)
-    expect((await getFact(world.deps, gloss.id)).review).toMatchObject({ reviewer: 'jev', verdict: 'pass' })
-  })
-
-  it('publishes on the LLM second opinion when Jev fails, recording both opinions [spec: facts/second-opinion-chain]', async () => {
-    const { world, entry, gloss } = await bankWorld()
-    await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss: 'an institution that keeps money' })
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.2 } }))
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.85, reason: 'A recorded sense.' }))
-    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('published')
-    expect(world.llmCalls[0]?.user).toContain('established noun sense meaning "land beside a river"')
-    expect(world.llmCalls[0]?.user).toContain('- (noun) "an institution that keeps money"')
-    const review = (await getFact(world.deps, gloss.id)).review
-    expect(review).toMatchObject({
+    world.answerDecision('jev', scores(0.6, 'jev-test'))
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.8, reason: 'Gloss is wrong.' }))
+    const { inventory } = await headword(world, 'bank', [{ pos: 'noun', gloss: 'a kind of fish' }])
+    expect(inventory?.status).toBe('rejected')
+    expect(world.llmCalls).toHaveLength(1)
+    expect(inventory?.review).toMatchObject({
       reviewer: 'jev+llm',
       model: 'jev-test+llm-test',
-      verdict: 'pass',
-      confidence: 0.85,
-      reason: 'Jev lexical=0.2 | A recorded sense.',
-      context: { subject: { siblings: [{ pos: 'noun', gloss: 'an institution that keeps money' }] } },
+      verdict: 'fail',
+      confidence: 0.8,
+      reason: expect.stringContaining('Gloss is wrong.'),
       detail: {
         opinions: [
-          { reviewer: 'jev', verdict: 'fail', confidence: 0.2, detail: { answers: { lexical: 0.2 } } },
-          { reviewer: 'llm', verdict: 'pass', confidence: 0.85, detail: { prompt: world.llmCalls[0] } },
+          { reviewer: 'jev', verdict: 'uncertain' },
+          { reviewer: 'llm', verdict: 'fail', detail: { prompt: world.llmCalls[0] } },
         ],
       },
     })
   })
 
-  it('rejects when the LLM confirms a Jev failure [spec: facts/second-opinion-chain]', async () => {
-    const { world, gloss } = await bankWorld()
-    world.failReviews()
-    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('rejected')
-    expect((await getFact(world.deps, gloss.id)).review).toMatchObject({ reviewer: 'jev+llm', verdict: 'fail' })
-  })
-
-  it('publishes as uncertain when Jev and the LLM are both unsure [spec: facts/second-opinion-chain]', async () => {
-    const { world, gloss } = await bankWorld()
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.55 } }))
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'uncertain', confidence: 0.5, reason: 'Unsure.' }))
-    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).resolves.toBe('published')
-    expect((await getFact(world.deps, gloss.id)).review).toMatchObject({
-      reviewer: 'jev+llm',
-      verdict: 'uncertain',
-      confidence: 0.5,
-    })
-  })
-
-  it('leaves the fact pending when the second opinion cannot be reached [spec: facts/second-opinion-chain]', async () => {
-    const { world, gloss } = await bankWorld()
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.2 } }))
-    world.answerLlm(() => {
-      throw new ReviewerTransportError('Gateway down.')
-    })
-    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).rejects.toBeInstanceOf(ReviewerTransportError)
-    expect(await getFact(world.deps, gloss.id)).toMatchObject({ status: 'pending', review: null })
-  })
-
-  it('asks the LLM alone about a word another live entry records as an inflection, naming that entry [spec: facts/entry-inflection-evidence]', async () => {
+  it('publishes on an uncertain LLM verdict: only a fail rejects', async () => {
     const world = fakeWorld()
-    const entryFactOf = (entryId: string) => {
-      const fact = world.facts.find((candidate) => candidate.kind === 'entry' && candidate.subjectId === entryId)
-      if (!fact) throw new Error(`Entry ${entryId} has no entry fact.`)
-      return fact
-    }
-    const withForm = async (lemma: string, payload: { form: string; type: 'past' | 'plural' | 'variant' }) => {
-      const { entry } = await createEntry(world.deps, agentA, { lemma })
-      await submitFact(world.deps, agentA, { kind: 'form', subject_id: entry.id, payload })
-      return entry
-    }
-    await withForm('see', { form: 'saw', type: 'past' })
-    await withForm('sawe', { form: 'saw', type: 'variant' })
-    const rejected = await withForm('sa', { form: 'saw', type: 'plural' })
-    world.failReviews()
-    await reviewFact(world.deps, entryFactOf(rejected.id).id, 'trace-review')
-    world.passReviews()
-    const { fact } = await createEntry(world.deps, agentA, { lemma: 'saw' })
-    const jevCalls = world.jevCalls.length
-
-    await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('published')
-    expect(world.jevCalls).toHaveLength(jevCalls)
-    expect(world.llmCalls.at(-1)?.user).toContain(
-      'records "saw" as an inflection of another entry:\n- the simple past tense form of "see"\npass only',
-    )
-    expect((await getFact(world.deps, fact.id)).review).toMatchObject({
-      reviewer: 'llm',
-      context: { subject: { lemma: 'saw', inflectionOf: [{ lemma: 'see', type: 'past' }] } },
-    })
-
-    const sheep = await withForm('sheep', { form: 'sheep', type: 'plural' })
-    await reviewFact(world.deps, entryFactOf(sheep.id).id, 'trace-review')
-    expect((await getFact(world.deps, entryFactOf(sheep.id).id)).review).toMatchObject({
-      reviewer: 'jev',
-      context: { subject: { inflectionOf: [] } },
-    })
+    world.answerDecision('jev', scores(0.2, 'jev-test'))
+    world.answerLlm(() => ({ model: 'llm-test', verdict: 'uncertain', confidence: 0.5, reason: 'Not sure.' }))
+    const { inventory } = await headword(world, 'bank', [{ pos: 'noun', gloss: 'land beside a river' }])
+    expect(inventory).toMatchObject({ status: 'published', review: { reviewer: 'jev+llm', verdict: 'uncertain' } })
   })
 
-  it('re-reviews an entry Jev passed alone once another entry publishes it as an inflection [spec: facts/entry-inflection-rereview]', async () => {
-    const world = fakeWorld()
-    const entryFactOf = (entryId: string) => {
-      const fact = world.facts.find((candidate) => candidate.kind === 'entry' && candidate.subjectId === entryId)
-      if (!fact) throw new Error(`Entry ${entryId} has no entry fact.`)
-      return fact
-    }
-    const publishEntry = async (lemma: string) => {
-      const { entry, fact } = await createEntry(world.deps, agentA, { lemma })
-      await reviewFact(world.deps, fact.id, 'trace-review')
-      return entry
-    }
-    const publishForm = async (
-      entryId: string,
-      payload: { form: string; type: 'third_person_singular' | 'past' | 'plural' | 'variant' },
-    ) => {
-      const { fact } = await submitFact(world.deps, agentA, { kind: 'form', subject_id: entryId, payload })
-      world.queued.splice(0)
-      await expect(reviewFact(world.deps, fact.id, 'trace-form')).resolves.toBe('published')
-      return fact
-    }
-    const [be, see, color, sheep] = await Promise.all(['be', 'see', 'color', 'sheep'].map(publishEntry))
-    const is = await publishEntry('is')
-    const colour = await publishEntry('colour')
-    world.answerJev((questions) => ({
-      model: 'jev-test',
-      answers: Object.fromEntries(Object.keys(questions).map((key) => [key, 0.05])),
-    }))
-    await publishEntry('saw')
-    world.passReviews()
-    expect(entryFactOf(is.id).review).toMatchObject({ reviewer: 'jev', context: { subject: { inflectionOf: [] } } })
-
-    await publishForm(see.id, { form: 'saw', type: 'past' })
-    await publishForm(sheep.id, { form: 'sheep', type: 'plural' })
-    expect(world.queued).toEqual([])
-    await publishForm(colour.id, { form: 'color', type: 'variant' })
-    expect(world.queued).toEqual([{ factId: entryFactOf(color.id).id, traceId: 'trace-form' }])
-    world.queued.splice(0)
-
-    const form = await publishForm(be.id, { form: 'is', type: 'third_person_singular' })
-    expect(world.queued).toEqual([{ factId: entryFactOf(is.id).id, traceId: 'trace-form' }])
-    expect(entryFactOf(is.id).revalidateSince).not.toBeNull()
-    world.queued.splice(0)
-    await expect(reviewFact(world.deps, form.id, 'trace-form')).resolves.toBe('skipped')
-    expect(world.queued).toEqual([])
-
-    world.failReviews()
-    const jevCalls = world.jevCalls.length
-    await expect(reviewFact(world.deps, entryFactOf(is.id).id, 'trace-form')).resolves.toBe('rejected')
-    expect(world.jevCalls).toHaveLength(jevCalls)
-    expect(entryFactOf(is.id)).toMatchObject({
-      status: 'rejected',
-      revalidateSince: null,
-      review: {
-        reviewer: 'llm',
-        context: { subject: { inflectionOf: [{ lemma: 'be', type: 'third_person_singular' }] } },
-      },
-    })
-  })
-
-  it('asks the LLM alone about a word another live entry records as a spelling variant [spec: facts/entry-variant-evidence]', async () => {
-    const world = fakeWorld()
-    const { entry: colour, fact: colourFact } = await createEntry(world.deps, agentA, { lemma: 'colour' })
-    const { fact: colorFact } = await createEntry(world.deps, agentA, { lemma: 'color' })
-    await reviewFact(world.deps, colourFact.id, 'trace-review')
-    const { fact: variant } = await submitFact(world.deps, agentA, {
-      kind: 'form',
-      subject_id: colour.id,
-      payload: { form: 'color', type: 'variant' },
-    })
-    await reviewFact(world.deps, variant.id, 'trace-review')
-    const jevCalls = world.jevCalls.length
-    world.failReviews()
-    await expect(reviewFact(world.deps, colorFact.id, 'trace-review')).resolves.toBe('rejected')
-    expect(world.jevCalls).toHaveLength(jevCalls)
-    expect(world.llmCalls.at(-1)?.user).toContain(
-      'This dictionary already records "color" as a spelling variant of another entry: "colour".',
-    )
-    expect((await getFact(world.deps, colorFact.id)).review).toMatchObject({
-      reviewer: 'llm',
-      context: { subject: { variantOf: ['colour'] } },
-    })
-  })
-
-  it('reviews judgment facts with the LLM against the current gloss', async () => {
-    const { world, sense } = await bankWorld()
-    const { fact } = await submitFact(world.deps, agentA, {
+  it('sends a kind no decision model judges to the LLM alone', async () => {
+    const { world, river } = await bankWorld()
+    const example = await submitted(world, {
       kind: 'example',
-      subject_id: sense.id,
+      subject_id: river,
       payload: { text: 'We sat on the bank.' },
     })
-    await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('published')
-    expect(world.llmCalls[0]?.user).toContain('meaning "land beside a river"')
-    expect((await getFact(world.deps, fact.id)).review).toMatchObject({ reviewer: 'llm', reason: 'Looks right.' })
+    await expect(reviewFact(world.deps, example.id, 'trace-review')).resolves.toBe('published')
+    expect(world.decisionCalls).toEqual([])
+    expect(world.llmCalls).toHaveLength(1)
+    expect(world.llmCalls[0]?.user).toContain('land beside a river')
+    expect((await getFact(world.deps, example.id)).review).toMatchObject({
+      reviewer: 'llm',
+      model: 'llm-test',
+      detail: { prompt: world.llmCalls[0] },
+      context: {
+        subject: {
+          lemma: 'bank',
+          pos: 'noun',
+          gloss: 'land beside a river',
+          siblings: [{ pos: 'noun', gloss: 'a financial institution' }],
+        },
+      },
+    })
   })
 
-  it('never waits for other facts: an example is reviewed while its gloss is still pending [spec: facts/independent]', async () => {
-    const { world, sense, gloss } = await bankWorld()
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: sense.id,
-      payload: { text: 'x' },
+  it('settles a sense translation when either decision model reaches its threshold', async () => {
+    const { world, river } = await bankWorld()
+    world.answerDecision('jev', scores(0.3, 'jev-test'))
+    const translation = await submitted(world, {
+      kind: 'translation',
+      subject_id: river,
+      payload: { language: 'zh', of: 'sense', text: '河岸' },
     })
-    await reviewFact(world.deps, fact.id, 'trace-review')
-    expect((await getFact(world.deps, gloss.id)).status).toBe('pending')
-    expect((await getFact(world.deps, fact.id)).status).toBe('published')
-  })
-
-  it('rejects a meaning-dependent fact whose sense has no live gloss, without asking a reviewer', async () => {
-    const { world, sense, gloss } = await bankWorld()
-    world.failReviews()
-    await reviewFact(world.deps, gloss.id, 'trace-review')
-    const llmCalls = world.llmCalls.length
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'example',
-      subject_id: sense.id,
-      payload: { text: 'x' },
-    })
-    await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
-    expect(world.llmCalls).toHaveLength(llmCalls)
-    expect((await getFact(world.deps, fact.id)).review).toMatchObject({ model: 'none', verdict: 'fail' })
-  })
-
-  it('reviews a relation against both senses', async () => {
-    const { world, sense } = await bankWorld()
-    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
-    const other = await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'noun', gloss: 'a riverside' })
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: sense.id,
-      payload: { type: 'synonym', target_sense_id: other.sense.id },
-    })
-    await reviewFact(world.deps, fact.id, 'trace-review')
-    expect(world.jevCalls[0]?.questions.relation).toContain('"a riverside"')
-  })
-
-  it("shows the second opinion the target entry's other senses [spec: facts/relation-target-senses]", async () => {
-    const { world, sense } = await bankWorld()
-    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
-    const other = await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'noun', gloss: 'a riverside' })
-    await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'verb', gloss: 'to prop up' })
-    for (const job of world.queued.splice(0)) await reviewFact(world.deps, job.factId, job.traceId)
-    world.answerJev(() => ({ model: 'jev-test', answers: { relation: 0.6 } }))
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: sense.id,
-      payload: { type: 'synonym', target_sense_id: other.sense.id },
-    })
-    await reviewFact(world.deps, fact.id, 'trace-review')
-    expect(world.llmCalls.at(-1)?.user).toContain('Other senses of the target "shore":\n- (verb) "to prop up"')
-  })
-
-  it('shows a closure review the rejected attempts to fill its slot [spec: facts/gap-closure-attempts-context]', async () => {
-    const { world, sense } = await bankWorld()
-    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
-    const other = await createSense(world.deps, agentA, { entry_id: shore.id, pos: 'noun', gloss: 'a riverside' })
-    await drain(world)
-    const rejectAs = async (reason: string, input: Parameters<typeof submitFact>[2]) => {
-      world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason }))
-      const { fact } = await submitFact(world.deps, agentA, input)
-      await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
-      return fact
-    }
-    const topic = (topic_id: string) => ({
-      kind: 'topic' as const,
-      subject_id: sense.id,
-      payload: { topic_id: topic_id as TopicId },
-    })
-    await rejectAs('Too general for the kitchen.', topic('kitchen'))
-    world.setNow('2026-01-01T00:01:00.000Z')
-    await rejectAs('Too general for furniture.', topic('furniture'))
-    world.setNow('2026-01-01T00:02:00.000Z')
-    await rejectAs('Not the opposite of a riverside.', {
-      kind: 'relation',
-      subject_id: other.sense.id,
-      payload: { type: 'antonym', target_sense_id: sense.id },
-    })
-    world.answerJev(() => ({ model: 'jev-test', answers: { relation: 0.05 } }))
-    await rejectAs('unused', {
-      kind: 'relation',
-      subject_id: other.sense.id,
-      payload: { type: 'hypernym', target_sense_id: sense.id },
-    })
-    world.passReviews()
-    await submitFact(world.deps, agentA, topic('furniture'))
-    await drain(world)
-
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Nothing fits.' }))
-    const closure = async (gap: 'topics' | 'synonyms') => {
-      const { fact } = await submitFact(world.deps, agentA, {
-        kind: 'gap_closure',
-        subject_id: sense.id,
-        payload: { gap, reason: 'Nothing fits.' },
-      })
-      await reviewFact(world.deps, fact.id, 'trace-review')
-      return world.llmCalls.at(-1)?.user ?? ''
-    }
-    const topics = await closure('topics')
-    expect(topics).toContain(
-      '- topic {"topic_id":"kitchen"} (topic "In the kitchen" (in the category "Home")): rejected because "Too general for the kitchen."',
-    )
-    expect(topics).not.toContain('Too general for furniture.')
-    expect(topics).not.toContain('riverside.')
-    const relations = await closure('synonyms')
-    expect(relations).toContain(
-      `(linking to "shore" (noun), meaning "a riverside"): rejected because "Not the opposite of a riverside."`,
-    )
-    expect(relations).toContain(
-      `- relation {"type":"hypernym","target_sense_id":"${sense.id}"} (linking to "shore" (noun), meaning "a riverside"): rejected because "Jev relation=0.05"`,
-    )
-    expect(relations).not.toContain('kitchen')
-  })
-
-  it('shows a topics closure review every leaf topic of the taxonomy, and no other closure [spec: facts/topics-closure-taxonomy-context]', async () => {
-    const { world, sense } = await bankWorld()
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Nothing fits.' }))
-    const closure = async (gap: 'topics' | 'collocations') => {
-      const { fact } = await submitFact(world.deps, agentA, {
-        kind: 'gap_closure',
-        subject_id: sense.id,
-        payload: { gap, reason: 'Nothing fits.' },
-      })
-      await reviewFact(world.deps, fact.id, 'trace-review')
-      return world.llmCalls.at(-1)?.user ?? ''
-    }
-    expect(await closure('topics')).toContain(
-      [
-        'The slot takes only a leaf topic of this fixed taxonomy, "topic (category)":',
-        '- Parts of the body (Body and health)',
-        '- At the doctor and hospital (Body and health)',
-        '- At the dentist (Body and health)',
-        '- Furniture (Home)',
-        '- In the kitchen (Home)',
-      ].join('\n'),
-    )
-    expect(await closure('collocations')).not.toContain('fixed taxonomy')
-  })
-
-  it('shows a closure review only the candidates earlier reviews named that the stored facts block [spec: facts/gap-closure-blocked-candidates-context]', async () => {
-    const { world, sense } = await bankWorld()
-    const word = async (lemma: string, gloss: string) => {
-      const { entry, fact } = await createEntry(world.deps, agentA, { lemma })
-      const created = await createSense(world.deps, agentA, { entry_id: entry.id, pos: 'noun', gloss })
-      return { entryFact: fact, sense: created.sense }
-    }
-    const program = await word('computer program', 'a set of instructions for a computer')
-    const riverside = await word('riverside', 'the land along a river')
-    await word('slope', 'a surface with one end higher')
-    world.failReviews()
-    await expect(reviewFact(world.deps, program.entryFact.id, 'trace-review')).resolves.toBe('rejected')
-    world.passReviews()
-    await drain(world)
-    const { fact: antonym } = await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: sense.id,
-      payload: { type: 'antonym', target_sense_id: riverside.sense.id },
-    })
-    await drain(world)
-    const reason = 'Synonyms exist: "computer program", "riverside", "slope", and "office staff".'
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason }))
-    const closure = (text: string) =>
-      submitFact(world.deps, agentA, {
-        kind: 'gap_closure',
-        subject_id: sense.id,
-        payload: { gap: 'synonyms', reason: text },
-      })
-    const first = await closure('None fits.')
-    await expect(reviewFact(world.deps, first.fact.id, 'trace-review')).resolves.toBe('rejected')
-    world.passReviews()
-    const second = await closure('The named candidates cannot be recorded.')
-    await reviewFact(world.deps, second.fact.id, 'trace-review')
-    const prompt = world.llmCalls.at(-1)?.user ?? ''
-    expect(prompt).toContain(
-      `- "computer program": named by the review ${JSON.stringify(reason)}; its entry fact is not live (rejected or retracted).`,
-    )
-    expect(prompt).toContain(
-      `- "riverside": named by the review ${JSON.stringify(reason)}; a live antonym relation (${antonym.id}) already links the two words`,
-    )
-    expect(prompt).not.toContain('- "slope"')
-    expect(prompt).not.toContain('- "office staff"')
-  })
-
-  it('finds blocked candidates of an entry slot and skips other slots, the word itself, and repeats [spec: facts/gap-closure-blocked-candidates-context]', async () => {
-    const { world, entry, sense } = await bankWorld()
-    const { entry: shore } = await createEntry(world.deps, agentA, { lemma: 'shore' })
-    const shoreSense = await createSense(world.deps, agentA, {
-      entry_id: shore.id,
-      pos: 'noun',
-      gloss: 'land by the sea',
-    })
-    const banker = await createEntry(world.deps, agentA, { lemma: 'banker' })
-    const bankerSense = await createSense(world.deps, agentA, {
-      entry_id: banker.entry.id,
-      pos: 'noun',
-      gloss: 'a person who runs a bank',
-    })
-    await createEntry(world.deps, agentA, { lemma: 'bankrupt' })
-    await drain(world)
-    // An incoming relation: shore is the subject, so its sense is the other end of the link.
-    await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: shoreSense.sense.id,
-      payload: { type: 'hypernym', target_sense_id: sense.id },
-    })
-    await drain(world)
-    await retractFact(world.deps, agentA, bankerSense.fact.id)
-    const reject = async (subjectId: string, gap: 'family' | 'collocations', reason: string) => {
-      world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason }))
-      const { fact } = await submitFact(world.deps, agentA, {
-        kind: 'gap_closure',
-        subject_id: subjectId,
-        payload: { gap, reason: `Closed ${reason}` },
-      })
-      await expect(reviewFact(world.deps, fact.id, 'trace-review')).resolves.toBe('rejected')
-    }
-    await reject(entry.id, 'family', 'Derivatives: "banker", "bank", and "bankrupt".')
-    await reject(entry.id, 'family', 'Still "banker".')
-    await reject(sense.id, 'collocations', 'Use "shore".')
-    world.passReviews()
-    const { fact } = await submitFact(world.deps, agentA, {
-      kind: 'gap_closure',
-      subject_id: entry.id,
-      payload: { gap: 'family', reason: 'No derivative can be recorded.' },
-    })
-    await reviewFact(world.deps, fact.id, 'trace-review')
-    const prompt = world.llmCalls.at(-1)?.user ?? ''
-    expect(prompt).toContain(
-      '- "banker": named by the review "Still \\"banker\\"."; it has no sense with a live gloss.',
-    )
-    expect(prompt).not.toContain('- "bank":')
-    expect(prompt).not.toContain('- "shore"')
-    expect(prompt).toContain('- "bankrupt": named by the review')
-  })
-
-  it("shows a family closure review the rejected word formations of the word's derivatives [spec: facts/family-closure-attempts-context]", async () => {
-    const world = fakeWorld()
-    const { entry: pray } = await createEntry(world.deps, agentA, { lemma: 'pray' })
-    const { entry: prayer } = await createEntry(world.deps, agentA, { lemma: 'prayer' })
-    const { entry: praying } = await createEntry(world.deps, agentA, { lemma: 'praying' })
-    await drain(world)
-    const formation = (subject: string, form: string) => ({
-      kind: 'morphology' as const,
-      subject_id: subject,
-      payload: {
-        parts: [
-          { form: 'pray', role: 'base' as const, lemma: 'pray' },
-          { form, role: 'suffix' as const },
+    await expect(reviewFact(world.deps, translation.id, 'trace-review')).resolves.toBe('published')
+    expect(world.decisionCalls.map((call) => call.model)).toEqual(['jev', 'luna'])
+    expect(world.llmCalls).toEqual([])
+    expect((await getFact(world.deps, translation.id)).review).toMatchObject({
+      reviewer: 'jev+luna',
+      model: 'jev-test+luna-test',
+      verdict: 'pass',
+      confidence: 0.95,
+      detail: {
+        opinions: [
+          { reviewer: 'jev', verdict: 'fail' },
+          { reviewer: 'luna', verdict: 'pass' },
         ],
       },
     })
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'A single borrowed base.' }))
-    const { fact: rejected } = await submitFact(world.deps, agentA, formation(prayer.id, '-er'))
-    await expect(reviewFact(world.deps, rejected.id, 'trace-review')).resolves.toBe('rejected')
-    world.setNow('2026-01-01T00:01:00.000Z')
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'An inflection.' }))
-    const { fact: again } = await submitFact(world.deps, agentA, formation(praying.id, '-ing'))
-    await expect(reviewFact(world.deps, again.id, 'trace-review')).resolves.toBe('rejected')
-    world.passReviews()
-    await submitFact(world.deps, agentA, formation(praying.id, '-ing'))
-    await drain(world)
-
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Nothing fits.' }))
-    const { fact: closure } = await submitFact(world.deps, agentA, {
-      kind: 'gap_closure',
-      subject_id: pray.id,
-      payload: { gap: 'family', reason: 'Prayer is a borrowed word, not pray + -er.' },
-    })
-    await reviewFact(world.deps, closure.id, 'trace-review')
-    const user = world.llmCalls.at(-1)?.user ?? ''
-    expect(user).toContain(
-      '- morphology of "prayer" {"parts":[{"form":"pray","role":"base","lemma":"pray"},{"form":"-er","role":"suffix"}]}: rejected because "A single borrowed base."',
-    )
-    expect(user).not.toContain('praying')
   })
 
-  it('skips facts that are not pending, so duplicate deliveries change nothing [spec: facts/review-idempotent]', async () => {
-    const { world, entryFact } = await bankWorld()
-    await reviewFact(world.deps, entryFact.id, 'trace-review')
-    world.answerJev(() => ({ model: 'jev-test', answers: { lemma: 0.01 } }))
-    await expect(reviewFact(world.deps, entryFact.id, 'trace-review')).resolves.toBe('skipped')
-    expect((await getFact(world.deps, entryFact.id)).status).toBe('published')
+  it('leaves a topic to the LLM when the models’ mean misses the mean threshold, with the topic in context', async () => {
+    const { world, river } = await bankWorld()
+    world.answerDecision('jev', scores(0.7, 'jev-test'))
+    world.answerDecision('luna', scores(0.85, 'luna-test'))
+    const tag = await submitted(world, {
+      kind: 'topic',
+      subject_id: river,
+      payload: { topic_id: 'kitchen' as TopicId },
+    })
+    await expect(reviewFact(world.deps, tag.id, 'trace-review')).resolves.toBe('published')
+    expect(world.llmCalls).toHaveLength(1)
+    expect((await getFact(world.deps, tag.id)).review).toMatchObject({
+      reviewer: 'jev+luna+llm',
+      context: { topic: { category: 'Home', topic: 'In the kitchen' } },
+    })
+  })
+
+  it('judges a relation with its target sense and the target entry’s other senses [spec: facts/relation-target-senses]', async () => {
+    const { world, river } = await bankWorld()
+    const shore = await headword(world, 'shore', [
+      { pos: 'noun', gloss: 'land along the edge of water' },
+      { pos: 'verb', gloss: 'to support with props' },
+    ])
+    const relation = await submitted(world, {
+      kind: 'relation',
+      subject_id: river,
+      payload: { type: 'synonym', target_sense_id: shore.senses[0] as SenseId },
+    })
+    await expect(reviewFact(world.deps, relation.id, 'trace-review')).resolves.toBe('published')
+    expect((await getFact(world.deps, relation.id)).review?.context).toMatchObject({
+      target: {
+        lemma: 'shore',
+        gloss: 'land along the edge of water',
+        siblings: [{ pos: 'verb', gloss: 'to support with props' }],
+      },
+    })
+  })
+
+  it('rejects a fact whose context leaves nothing to judge without asking a reviewer', async () => {
+    const { world, bank, river, money } = await bankWorld()
+    const example = await submitted(world, {
+      kind: 'example',
+      subject_id: river,
+      payload: { text: 'We sat on the bank.' },
+    })
+    // A curator's correction drops the river sense, so the example's sense has no live gloss.
+    await submitFact(world.deps, admin, {
+      kind: 'senses',
+      subject_id: bank.entry.id,
+      supersedes_id: bank.inventory?.id,
+      payload: { senses: [{ id: money, pos: 'noun', gloss: 'a financial institution', rank: 'common' }] },
+    })
+    world.llmCalls.length = 0
+    await expect(reviewFact(world.deps, example.id, 'trace-review')).resolves.toBe('rejected')
+    expect(world.llmCalls).toEqual([])
+    expect((await getFact(world.deps, example.id)).review).toMatchObject({
+      reviewer: 'llm',
+      model: 'none',
+      verdict: 'fail',
+      confidence: 1,
+      reason: 'The referenced sense has no live gloss.',
+    })
+  })
+
+  it('reviews a fact about a pending fact without waiting for it [spec: facts/independent]', async () => {
+    const { world, river } = await bankWorld()
+    const example = await submitted(world, {
+      kind: 'example',
+      subject_id: river,
+      payload: { text: 'We sat on the bank.' },
+    })
+    const translation = await submitted(world, {
+      kind: 'translation',
+      subject_id: example.id,
+      payload: { language: 'zh', of: 'example', text: '我们坐在河岸上。' },
+    })
+    await expect(reviewFact(world.deps, translation.id, 'trace-review')).resolves.toBe('published')
+    expect((await getFact(world.deps, example.id)).status).toBe('pending')
+    expect((await getFact(world.deps, translation.id)).review?.context).toMatchObject({
+      subject: { kind: 'example', text: 'We sat on the bank.', sense: { gloss: 'land beside a river' } },
+    })
+  })
+
+  it('skips a decided, unknown, or concurrently changed fact [spec: facts/review-idempotent]', async () => {
+    const { world, bank, river } = await bankWorld()
+    await expect(reviewFact(world.deps, bank.inventory?.id as FactId, 'trace-review')).resolves.toBe('skipped')
     await expect(reviewFact(world.deps, 'missing' as FactId, 'trace-review')).resolves.toBe('skipped')
-  })
-
-  it('skips when another delivery decided the fact during review', async () => {
-    const { world, entryFact } = await bankWorld()
-    world.deps.facts.transition = async () => false
-    await expect(reviewFact(world.deps, entryFact.id, 'trace-review')).resolves.toBe('skipped')
-  })
-
-  it('leaves the fact pending and propagates reviewer transport errors [spec: facts/transport-retry]', async () => {
-    const { world, entryFact } = await bankWorld()
-    world.answerJev(() => {
-      throw new ReviewerTransportError('Gateway down.')
+    const example = await submitted(world, {
+      kind: 'example',
+      subject_id: river,
+      payload: { text: 'We sat on the bank.' },
     })
-    await expect(reviewFact(world.deps, entryFact.id, 'trace-review')).rejects.toBeInstanceOf(ReviewerTransportError)
-    expect((await getFact(world.deps, entryFact.id)).status).toBe('pending')
-  })
-
-  it('supersedes the corrected fact when the correction publishes [spec: facts/correction]', async () => {
-    const { world, sense, gloss } = await bankWorld()
-    await drain(world)
-    const { fact: correction } = await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: sense.id,
-      supersedes_id: gloss.id,
-      payload: { gloss: 'the sloping land beside a river' },
-    })
-    expect((await getFact(world.deps, gloss.id)).status).toBe('published')
-    await drain(world)
-    expect((await getFact(world.deps, gloss.id)).status).toBe('superseded')
-    expect((await getFact(world.deps, correction.id)).status).toBe('published')
-    const entry = await publicEntryOf(world.deps, 'bank')
-    expect(entry.meanings[0]?.senses[0]?.gloss).toBe('the sloping land beside a river')
-  })
-
-  it('leaves the original published when its correction is rejected', async () => {
-    const { world, sense, gloss } = await bankWorld()
-    await drain(world)
-    await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: sense.id,
-      supersedes_id: gloss.id,
-      payload: { gloss: 'a kind of fish' },
-    })
-    world.failReviews()
-    await drain(world)
-    expect((await getFact(world.deps, gloss.id)).status).toBe('published')
-  })
-
-  it('a re-reviewed rejected gloss cannot go live while another gloss holds the sense', async () => {
-    const { world, sense, gloss } = await bankWorld()
-    world.failReviews()
-    await drain(world)
-    world.answerJev((questions) => ({
-      model: 'jev-test',
-      answers: Object.fromEntries(Object.keys(questions).map((k) => [k, 0.9])),
-    }))
-    await submitFact(world.deps, agentA, { kind: 'sense', subject_id: sense.id, payload: { gloss: 'riverside land' } })
-    await expect(rereviewFact(world.deps, admin, gloss.id)).rejects.toMatchObject({ code: 'conflict' })
-  })
-})
-
-describe('broken references', () => {
-  it('fails loudly instead of reviewing a fact whose node is missing', async () => {
-    const { world, entryFact, gloss } = await bankWorld()
-    world.senses.length = 0
-    await expect(reviewFact(world.deps, gloss.id, 'trace-review')).rejects.toThrow('does not exist')
-    world.entries.length = 0
-    await expect(reviewFact(world.deps, entryFact.id, 'trace-review')).rejects.toThrow('does not exist')
-  })
-})
-
-async function correctedRiverBank() {
-  const { world, sense: river, gloss } = await bankWorld()
-  const { entry: shoreEntry } = await createEntry(world.deps, agentA, { lemma: 'shore' })
-  const { sense: shore } = await createSense(world.deps, agentA, {
-    entry_id: shoreEntry.id,
-    pos: 'noun',
-    gloss: 'land along water',
-  })
-  const { sense: prop } = await createSense(world.deps, agentA, {
-    entry_id: shoreEntry.id,
-    pos: 'noun',
-    gloss: 'a prop set against something',
-  })
-  const submit = async (input: Parameters<typeof submitFact>[2]) => (await submitFact(world.deps, agentA, input)).fact
-  const dependents = [
-    await submit({ kind: 'example', subject_id: river.id, payload: { text: 'We sat on the bank.' } }),
-    await submit({ kind: 'translation', subject_id: river.id, payload: { language: 'zh', text: '河岸' } }),
-    await submit({ kind: 'relation', subject_id: river.id, payload: { type: 'synonym', target_sense_id: shore.id } }),
-    await submit({ kind: 'relation', subject_id: prop.id, payload: { type: 'hypernym', target_sense_id: river.id } }),
-  ]
-  const unrelated = await submit({ kind: 'example', subject_id: shore.id, payload: { text: 'Waves hit the shore.' } })
-  await drain(world)
-  const correction = await submit({
-    kind: 'sense',
-    subject_id: river.id,
-    supersedes_id: gloss.id,
-    payload: { gloss: 'the sloping land beside a river' },
-  })
-  world.setNow('2026-01-01T00:05:00.000Z')
-  await drain(world)
-  return { world, river, gloss, correction, dependents, unrelated }
-}
-
-describe('revalidation', () => {
-  it('supersedes a gloss with a register-only correction without re-reviewing its dependents [spec: facts/relabel-no-revalidate]', async () => {
-    const { world, river, correction, dependents } = await correctedRiverBank()
-    await drain(world)
-    const before = await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))
-    const relabel = await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: river.id,
-      supersedes_id: correction.id,
-      payload: { gloss: 'the sloping land beside a river', register: 'literary' },
-    })
-    world.setNow('2026-01-01T00:09:00.000Z')
-    await drain(world)
-
-    expect((await getFact(world.deps, relabel.fact.id)).status).toBe('published')
-    expect((await getFact(world.deps, correction.id)).status).toBe('superseded')
-    expect(world.queued).toEqual([])
-    expect(await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))).toEqual(before)
-    expect((await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]).toMatchObject({ labels: ['literary'] })
-  })
-
-  it('re-reviews published facts judged against a corrected gloss while they stay public [spec: facts/revalidate-dependents]', async () => {
-    const { world, correction, dependents, unrelated } = await correctedRiverBank()
-    expect((await getFact(world.deps, correction.id)).status).toBe('published')
-    expect(world.queued.map((job) => job.factId).sort()).toEqual(dependents.map((fact) => fact.id).sort())
-    expect(world.queued.every((job) => job.traceId === 'trace-a')).toBe(true)
-    for (const fact of dependents) {
-      expect(await getFact(world.deps, fact.id)).toMatchObject({
-        status: 'published',
-        revalidateSince: '2026-01-01T00:05:00.000Z',
-      })
-    }
-    expect((await getFact(world.deps, unrelated.id)).revalidateSince).toBeNull()
-    const visible = (await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]
-    const relations = Object.values(visible?.relations ?? {}).flat()
-    expect([visible?.examples.length, visible?.translations, relations.length]).toEqual([1, { zh: ['河岸'] }, 2])
-
-    world.setNow('2026-01-01T00:06:00.000Z')
-    await drain(world)
-    const example = await getFact(world.deps, dependents[0]?.id as FactId)
-    expect(example).toMatchObject({ status: 'published', revalidateSince: null })
-    expect(example.review).toMatchObject({
-      reviewed_at: '2026-01-01T00:06:00.000Z',
-      context: { subject: { gloss: 'the sloping land beside a river' } },
-    })
-    expect(world.llmCalls.at(-1)?.user).toContain('the sloping land beside a river')
-  })
-
-  it('keeps a gloss that fails its review in place published, as a weak fact its producer corrects [spec: work/failed-gloss]', async () => {
-    const { world, entry, gloss, entryFact } = await bankWorld()
-    await drain(world)
-    await reviewFact(world.deps, entryFact.id, 'trace')
-    await reviewFact(world.deps, gloss.id, 'trace')
-    const stored = world.facts.find((fact) => fact.id === gloss.id)
-    if (!stored) throw new Error('The gloss is missing.')
-    stored.revalidateSince = '2026-01-01T00:00:00.000Z'
-    world.answerJev(() => ({ model: 'jev-test', answers: { lexical: 0.1 } }))
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'British only; no region.' }))
-    await expect(reviewFact(world.deps, gloss.id, 'trace')).resolves.toBe('published')
-    expect(await getFact(world.deps, gloss.id)).toMatchObject({
-      status: 'published',
-      revalidateSince: null,
-      review: { verdict: 'fail', reason: 'Jev lexical=0.1 | British only; no region.' },
-    })
-    const snapshot = await world.deps.nodes.loadEntrySnapshot(entry)
-    expect(weakFacts(snapshot)).toEqual([{ type: 'weak_fact', fact_id: gloss.id, kind: 'sense', reason: 'failed' }])
-    expect((await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]?.gloss).toBe('land beside a river')
-    // A correction that adds the region replaces it and keeps everything judged against it.
-    world.passReviews()
-    const { fact: relabel } = await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: gloss.subjectId,
-      supersedes_id: gloss.id,
-      payload: { gloss: 'land beside a river', region: 'british' },
-    })
-    await reviewFact(world.deps, relabel.id, 'trace')
-    expect((await getFact(world.deps, gloss.id)).status).toBe('superseded')
-    expect(weakFacts(await world.deps.nodes.loadEntrySnapshot(entry))).toEqual([])
-  })
-
-  it('rejects a dependent whose new review fails and keeps the rest', async () => {
-    const { world, dependents } = await correctedRiverBank()
-    world.answerLlm(() => ({ model: 'llm-test', verdict: 'fail', confidence: 0.9, reason: 'Other sense.' }))
-    await drain(world)
-    const statuses = await Promise.all(dependents.map(async (fact) => (await getFact(world.deps, fact.id)).status))
-    // Jev passes the synonym; a hypernym's pass is the rubric's, which fails it.
-    expect(statuses).toEqual(['rejected', 'rejected', 'published', 'rejected'])
-    const visible = (await publicEntryOf(world.deps, 'bank')).meanings[0]?.senses[0]
-    expect([visible?.examples.length, visible?.translations]).toEqual([0, {}])
-  })
-
-  it('skips a revalidation whose gloss was corrected again while it was being reviewed', async () => {
-    const { world, river, correction, dependents } = await correctedRiverBank()
-    const id = dependents[0]?.id as FactId
-    world.answerLlm(async () => {
-      world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Fine.' }))
-      world.setNow('2026-01-01T00:07:00.000Z')
-      const { fact: again } = await submitFact(world.deps, agentA, {
-        kind: 'sense',
-        subject_id: river.id,
-        supersedes_id: correction.id,
-        payload: { gloss: 'the ground at the edge of a river' },
-      })
-      await reviewFact(world.deps, again.id, 't')
+    world.answerLlm(() => {
+      const index = world.facts.findIndex((fact) => fact.id === example.id)
+      world.facts[index] = { ...(world.facts[index] as Fact), status: 'retracted' }
       return { model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Fine.' }
     })
-    await expect(reviewFact(world.deps, id, 't')).resolves.toBe('skipped')
-    expect((await getFact(world.deps, id)).revalidateSince).toBe('2026-01-01T00:07:00.000Z')
+    await expect(reviewFact(world.deps, example.id, 'trace-review')).resolves.toBe('skipped')
+    expect((await getFact(world.deps, example.id)).review).toBeNull()
   })
 
-  it('settles once, so a second delivery changes nothing', async () => {
-    const { world, dependents } = await correctedRiverBank()
-    const id = dependents[0]?.id as FactId
-    await expect(reviewFact(world.deps, id, 't')).resolves.toBe('published')
-    await expect(reviewFact(world.deps, id, 't')).resolves.toBe('skipped')
+  it('propagates a reviewer transport failure and leaves the fact pending [spec: facts/transport-retry]', async () => {
+    const world = fakeWorld()
+    const { entry } = await headword(world, 'bank')
+    world.answerDecision('jev', () => {
+      throw new ReviewerTransportError('Jev is down.')
+    })
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'senses',
+      subject_id: entry.id,
+      payload: { senses: [{ pos: 'noun', gloss: 'land beside a river', rank: 'common' }] },
+    })
+    await expect(reviewFact(world.deps, fact.id, 'trace-review')).rejects.toBeInstanceOf(ReviewerTransportError)
+    expect((await getFact(world.deps, fact.id)).status).toBe('pending')
+    world.answerLlm(() => {
+      throw new ReviewerTransportError('The LLM is down.')
+    })
+    world.answerDecision('jev', scores(0.6, 'jev-test'))
+    await expect(reviewFact(world.deps, fact.id, 'trace-review')).rejects.toBeInstanceOf(ReviewerTransportError)
+    expect((await getFact(world.deps, fact.id)).status).toBe('pending')
   })
 
-  it('releases dependents without a verdict when the correction is retracted before they revalidate', async () => {
-    const { world, correction, dependents } = await correctedRiverBank()
-    const before = await Promise.all(dependents.map((fact) => getFact(world.deps, fact.id)))
-    await retractFact(world.deps, agentA, correction.id)
-    const llmCalls = world.llmCalls.length
-    const jevCalls = world.jevCalls.length
-    world.setNow('2026-01-01T00:06:00.000Z')
-    await drain(world)
-    // The sense has no live gloss left, so its relations left live with the retraction.
-    for (const fact of before) {
-      expect(await getFact(world.deps, fact.id)).toMatchObject({
-        status: fact.kind === 'relation' ? 'retracted' : 'published',
-        revalidateSince: null,
-        review: fact.review,
-      })
-    }
-    expect([world.llmCalls.length, world.jevCalls.length]).toEqual([llmCalls, jevCalls])
-  })
-
-  it('cannot publish a pending dependent against a gloss that a correction replaced mid-review [spec: facts/pending-dependent-current-gloss]', async () => {
-    const { world, sense, gloss } = await bankWorld()
-    await drain(world)
-    const { fact: example } = await submitFact(world.deps, agentA, {
+  it('retires the original when its correction publishes', async () => {
+    const { world, river } = await bankWorld()
+    const original = await submitted(world, {
       kind: 'example',
-      subject_id: sense.id,
+      subject_id: river,
       payload: { text: 'We sat on the bank.' },
     })
-    const { fact: correction } = await submitFact(world.deps, agentA, {
-      kind: 'sense',
-      subject_id: sense.id,
-      supersedes_id: gloss.id,
-      payload: { gloss: 'the sloping land beside a river' },
+    await reviewFact(world.deps, original.id, 'trace-review')
+    const correction = await submitted(world, {
+      kind: 'example',
+      subject_id: river,
+      supersedes_id: original.id,
+      payload: { text: 'We sat on the river bank.' },
     })
-    world.queued.length = 0
-    world.answerLlm(async () => {
-      world.answerLlm(() => ({ model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Fine.' }))
-      world.setNow('2026-01-01T00:05:00.000Z')
-      await reviewFact(world.deps, correction.id, 't')
-      return { model: 'llm-test', verdict: 'pass', confidence: 0.9, reason: 'Judged the old gloss.' }
-    })
-
-    await expect(reviewFact(world.deps, example.id, 't')).resolves.toBe('skipped')
-    expect(world.llmCalls[0]?.user).toContain('meaning "land beside a river"')
-    expect(await getFact(world.deps, example.id)).toMatchObject({
-      status: 'pending',
-      review: null,
-      revalidateSince: '2026-01-01T00:05:00.000Z',
-    })
-    expect(world.queued.map((job) => job.factId)).toEqual([example.id])
-
-    await drain(world)
-    const reviewed = await getFact(world.deps, example.id)
-    expect(reviewed).toMatchObject({ status: 'published', revalidateSince: null })
-    expect(reviewed.review?.context).toMatchObject({ subject: { gloss: 'the sloping land beside a river' } })
+    await expect(reviewFact(world.deps, correction.id, 'trace-review')).resolves.toBe('published')
+    expect((await getFact(world.deps, original.id)).status).toBe('superseded')
   })
 
-  it.each([
-    ['a new gloss text marks', { gloss: 'the sloping land beside a river' }, '2026-01-01T00:05:00.000Z'],
-    ['a register-only correction marks no', { gloss: 'land beside a river', register: 'literary' as const }, null],
-  ])('%s pending or published dependent [spec: facts/correction-marks-live-dependents]', async (_name, payload, mark) => {
-    const { world, sense, gloss } = await bankWorld()
-    const submit = async (input: Parameters<typeof submitFact>[2]) => (await submitFact(world.deps, agentA, input)).fact
-    const published = await submit({ kind: 'example', subject_id: sense.id, payload: { text: 'We sat on the bank.' } })
-    await drain(world)
-    const pending = await submit({ kind: 'example', subject_id: sense.id, payload: { text: 'It flooded.' } })
-    const correction = await submit({ kind: 'sense', subject_id: sense.id, supersedes_id: gloss.id, payload })
-    world.queued.length = 0
-    world.setNow('2026-01-01T00:05:00.000Z')
-
-    await expect(reviewFact(world.deps, correction.id, 't')).resolves.toBe('published')
-    expect(await getFact(world.deps, gloss.id)).toMatchObject({ status: 'superseded' })
-    expect(await getFact(world.deps, published.id)).toMatchObject({ status: 'published', revalidateSince: mark })
-    expect(await getFact(world.deps, pending.id)).toMatchObject({ status: 'pending', revalidateSince: mark })
-    expect(world.queued.map((job) => job.factId).sort()).toEqual(mark ? [published.id, pending.id].sort() : [])
+  it('fails loudly on a fact whose nodes are gone', async () => {
+    const { world, river } = await bankWorld()
+    const orphanEntry = rawFact(world, {
+      kind: 'syllables',
+      subjectId: 'gone-entry' as EntryId,
+      payload: { syllables: ['x'] },
+    })
+    await expect(reviewFact(world.deps, orphanEntry.id, 't')).rejects.toThrow('does not exist')
+    const orphanSense = rawFact(world, { kind: 'example', subjectId: 'gone-sense' as SenseId, payload: { text: 'x' } })
+    await expect(reviewFact(world.deps, orphanSense.id, 't')).rejects.toThrow('does not exist')
+    const notTranslatable = rawFact(world, {
+      kind: 'translation',
+      subjectId: river as unknown as FactId,
+      payload: { language: 'zh', of: 'example', text: '岸' },
+    })
+    await expect(reviewFact(world.deps, notTranslatable.id, 't')).rejects.toThrow('is not an example or a collocation')
   })
 
-  it('retires the relations of a sense that stops showing, curated ones included, and nothing else [spec: facts/dead-sense-retires-links]', async () => {
-    const { world, river, dependents } = await correctedRiverBank()
-    await drain(world)
-    const [example, translation, outgoing, incoming] = dependents as [Fact, Fact, Fact, Fact]
-    await curateFact(world.deps, curatorAgent, outgoing.id, { verdict: 'pass', reason: 'Right.' })
-    const current = world.facts.find(
-      (fact) => fact.kind === 'sense' && fact.subjectId === river.id && fact.status === 'published',
+  it('reads a topic id that names a category as no topic, and fails on a leaf whose category is gone', async () => {
+    const { world, river } = await bankWorld()
+    const category = rawFact(world, { kind: 'topic', subjectId: river, payload: { topic_id: 'home' as TopicId } })
+    await expect(reviewFact(world.deps, category.id, 't')).resolves.toBe('rejected')
+    expect((await getFact(world.deps, category.id)).review?.reason).toBe(
+      'The referenced topic is not a leaf topic of the taxonomy.',
     )
-    world.setNow('2026-01-01T00:10:00.000Z')
-    await retractFact(world.deps, agentA, current?.id as FactId)
-
-    expect(world.queued).toEqual([])
-    for (const fact of [outgoing, incoming]) {
-      expect(await getFact(world.deps, fact.id)).toMatchObject({
-        status: 'retracted',
-        updatedAt: '2026-01-01T00:10:00.000Z',
-        revalidateSince: null,
-      })
-    }
-    for (const fact of [example, translation]) {
-      expect(await getFact(world.deps, fact.id)).toMatchObject({ status: 'published', revalidateSince: null })
-    }
-    expect((await publicEntryOf(world.deps, 'bank')).meanings).toEqual([])
-
-    // Once the sense shows again, the producer resubmits: dedupe ignores the retracted relation.
-    await submitFact(world.deps, agentA, { kind: 'sense', subject_id: river.id, payload: { gloss: 'land by a river' } })
-    const again = await submitFact(world.deps, agentA, {
-      kind: 'relation',
-      subject_id: river.id,
-      payload: (outgoing as FactOf<'relation'>).payload,
-    })
-    expect([again.fact.id === outgoing.id, again.fact.status]).toEqual([false, 'pending'])
-  })
-
-  it('retires the relations of every sense of an entry whose entry fact leaves live [spec: facts/dead-sense-retires-links]', async () => {
-    const { world, river, dependents } = await correctedRiverBank()
-    await drain(world)
-    const [, , outgoing, incoming] = dependents as [Fact, Fact, Fact, Fact]
-    const shoreFact = world.facts.find(
-      (fact) =>
-        fact.kind === 'entry' && world.entries.some((entry) => entry.id === fact.subjectId && entry.lemma === 'shore'),
+    world.topics.splice(
+      world.topics.findIndex((node) => node.id === 'home'),
+      1,
     )
-    await curateFact(world.deps, curatorAgent, shoreFact?.id as FactId, { verdict: 'fail', reason: 'Not a word.' })
-    for (const fact of [outgoing, incoming]) expect((await getFact(world.deps, fact.id)).status).toBe('retracted')
-    expect(
-      world.facts.filter((fact) => fact.subjectId === river.id && fact.kind !== 'relation').map((fact) => fact.status),
-    ).not.toContain('retracted')
+    const orphan = rawFact(world, { kind: 'topic', subjectId: river, payload: { topic_id: 'kitchen' as TopicId } })
+    await expect(reviewFact(world.deps, orphan.id, 't')).rejects.toThrow('which does not exist')
   })
 })
 
-const FIVE_MINUTES_MS = 5 * 60 * 1000
+describe('a published phrases list', () => {
+  const admission = (world: FakeWorld, lemma: string) => {
+    const entry = world.entries.find((candidate) => candidate.lemma === lemma)
+    return entry && world.work.get(entry.id)
+  }
 
-describe('reconcileReviews', () => {
-  it('re-enqueues facts pending longer than five minutes [spec: facts/reconcile]', async () => {
-    const { world, entryFact, gloss } = await bankWorld()
-    world.queued.length = 0
-    await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(0)
-    expect(world.queued).toEqual([])
+  it('admits its phrases as live entries of its headword’s batch, and lets dropped ones go [spec: facts/phrases-admit]', async () => {
+    const world = fakeWorld()
+    const give = await headword(world, 'give', [{ pos: 'verb', gloss: 'to hand something to someone' }])
+    const { fact: list } = await submitFact(world.deps, agentA, {
+      kind: 'phrases',
+      subject_id: give.entry.id,
+      payload: { phrases: ['give up', 'give in'] },
+    })
+    expect(admission(world, 'give up')).toBeUndefined()
+    await drainReviews(world)
+    expect((await getFact(world.deps, list.id)).status).toBe('published')
+    expect(admission(world, 'give up')).toMatchObject({ live: true, batch: 1 })
+    expect(admission(world, 'give in')).toMatchObject({ live: true, batch: 1 })
 
-    world.setNow(new Date(Date.parse(entryFact.createdAt) + FIVE_MINUTES_MS + 1).toISOString())
-    await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(2)
-    expect(world.queued).toEqual([
-      { factId: entryFact.id, traceId: 'cron' },
-      { factId: gloss.id, traceId: 'cron' },
-    ])
+    const up = await headword(world, 'up', [{ pos: 'adverb', gloss: 'towards a higher place' }])
+    await submitFact(world.deps, agentA, {
+      kind: 'phrases',
+      subject_id: up.entry.id,
+      payload: { phrases: ['give up'] },
+    })
+    await drainReviews(world)
+
+    await submitFact(world.deps, admin, {
+      kind: 'phrases',
+      subject_id: give.entry.id,
+      supersedes_id: list.id,
+      payload: { phrases: ['give out'] },
+    })
+    await drainReviews(world)
+    expect((await getFact(world.deps, list.id)).status).toBe('superseded')
+    expect(admission(world, 'give out')).toMatchObject({ live: true })
+    expect(admission(world, 'give in')).toMatchObject({ live: false })
+    // Another published list still names it.
+    expect(admission(world, 'give up')).toMatchObject({ live: true })
   })
 
-  it('re-enqueues facts awaiting revalidation for longer than five minutes [spec: facts/reconcile-revalidation]', async () => {
-    const { world, dependents } = await correctedRiverBank()
-    world.queued.length = 0
-    world.setNow(new Date(Date.parse('2026-01-01T00:05:00.000Z') + FIVE_MINUTES_MS - 1).toISOString())
-    await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(0)
-    world.setNow(new Date(Date.parse('2026-01-01T00:05:00.000Z') + FIVE_MINUTES_MS + 1).toISOString())
-    await expect(reconcileReviews(world.deps, 'cron')).resolves.toBe(dependents.length)
+  it('admits phrases of a headword outside any batch in batch 0, and skips a dropped phrase with no entry', async () => {
+    const world = fakeWorld()
+    const take = await world.deps.nodes.insertEntry({
+      id: world.deps.ids.entry(),
+      lemma: 'take' as never,
+      createdBy: 'admin:admin-1' as never,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    const original = rawFact(world, {
+      kind: 'phrases',
+      subjectId: take.id,
+      status: 'published',
+      payload: { phrases: ['take off'] },
+    })
+    const correction = rawFact(world, {
+      kind: 'phrases',
+      subjectId: take.id,
+      supersedesId: original.id,
+      payload: { phrases: ['take over'] },
+    })
+    await expect(reviewFact(world.deps, correction.id, 't')).resolves.toBe('published')
+    expect(admission(world, 'take over')).toMatchObject({ live: true, batch: 0 })
+    expect(admission(world, 'take off')).toBeUndefined()
+  })
+})
+
+describe('reconcileReviews', () => {
+  it('re-enqueues facts pending for more than five minutes with the trace [spec: facts/reconcile]', async () => {
+    const { world, river } = await bankWorld()
+    const fact = await submitted(world, {
+      kind: 'example',
+      subject_id: river,
+      payload: { text: 'We sat on the bank.' },
+    })
+    await expect(reconcileReviews(world.deps, 'trace-cron')).resolves.toBe(0)
+    expect(world.queued).toEqual([])
+    world.setNow('2026-01-01T00:05:01.000Z')
+    await expect(reconcileReviews(world.deps, 'trace-cron')).resolves.toBe(1)
+    expect(world.queued).toEqual([{ factId: fact.id, traceId: 'trace-cron' }])
   })
 })
