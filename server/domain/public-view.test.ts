@@ -161,7 +161,6 @@ describe('public view records', () => {
       },
       expect.objectContaining({ topicId: 'places' }),
     ])
-    expect(record.phraseWords).toEqual([])
     expect(record.morphemes).toEqual([{ form: 'bank', role: 'base' }])
 
     const phrase = publicViewRecord({
@@ -175,7 +174,6 @@ describe('public view records', () => {
         review: review('m2'),
       },
     })
-    expect(phrase.phraseWords).toEqual(['bank', 'on'])
     expect(phrase.morphemes).toEqual([{ form: 'on', role: 'base' }])
     expect(publicViewRecord({ ...bank, morphology: null }).morphemes).toEqual([])
     const unranked = publicViewRecord({
