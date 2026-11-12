@@ -2071,13 +2071,13 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
 - D1 stores nodes, facts, the topic taxonomy, tickets, agents, the worklist and work items, the public view, and
   imported reference data.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
-  takes batches of up to 16, reviews them concurrently, and logs the trace ID.
-  A batch waits for its slowest review, so the batch size bounds both review
-  throughput and the concurrent calls on the model gateway: 100 at once tripped
-  the gateway's rate limits, and 16 still reviews more facts an hour than the
-  producers submit.
+  takes batches of up to 48, reviews them concurrently, and logs the trace ID.
+  A batch waits for its slowest review, so the batch is sized to keep the
+  per-model caps below busy: 48 reviews queue behind 8 LLM slots, which stay
+  full while one slow call finishes, so a batch no longer waits on its tail.
   Within a batch each gateway model also has its own cap, `JEV_CONCURRENCY`
-  and `REVIEW_LLM_CONCURRENCY` (10 and 5): a review waits its turn for a slot
+  and `REVIEW_LLM_CONCURRENCY` (10 and 8), measured as the balance where the
+  gateway keeps answering while it queues what its upstream rate-limits: a review waits its turn for a slot
   before its call starts, so the wait never counts against the call's timeout.
   The caps are per batch, not per Worker: the runtime cancels a continuation
   that another request resolves, so requests cannot share a limit.

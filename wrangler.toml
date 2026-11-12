@@ -12,7 +12,7 @@ run_worker_first = true
 JEV_MODEL = "jev-latest"
 # Calls each gateway model gets at once within one review batch; the gateway rate-limits above these.
 JEV_CONCURRENCY = "10"
-REVIEW_LLM_CONCURRENCY = "5"
+REVIEW_LLM_CONCURRENCY = "8"
 DECISIONS_BASE_URL = "https://api.openai.com"
 DECISIONS_MODEL = "gpt-6-luna"
 
@@ -28,10 +28,10 @@ queue = "vocnet-reviews"
 
 [[queues.consumers]]
 queue = "vocnet-reviews"
-# Each batch's reviews run at once, so the batch size caps concurrent reviewer calls on the model
-# gateway: 100 at once tripped its rate limits, and 16 still reviews far more facts an hour than
-# producers submit.
-max_batch_size = 16
+# A batch's reviews share the per-model caps (JEV_CONCURRENCY, REVIEW_LLM_CONCURRENCY), so the
+# batch only has to keep those slots busy: 48 queue behind 8 LLM slots, doubling reviews an hour
+# over batches of 16, which waited on their slowest call.
+max_batch_size = 48
 max_retries = 5
 dead_letter_queue = "vocnet-reviews-dlq"
 
