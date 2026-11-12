@@ -753,6 +753,21 @@ describe('sense inventories', () => {
     )
     expect(text).toContain("Oxford Advanced Learner's, Longman, or Cambridge")
     expect(text).toContain('and is every gloss right?')
+    // The rubric asks about labels, so it shows the ones each sense carries.
+    expect(text).toContain('Square brackets give the register and region labels the producer gives a sense')
+    const labelled = rubric(
+      plan({
+        senses: [
+          listed(volume, 'noun', 'A written work published in printed or electronic form.', 'common', {
+            register: 'informal',
+            region: 'british',
+          }),
+        ],
+      }),
+    )
+    expect(labelled).toContain(
+      '1. (noun) [informal, british] "A written work published in printed or electronic form."',
+    )
     expect(text).toContain('fail when one of these holds:')
     expect(text).toContain('among its main senses of this word for A1 to B1 learners')
     expect(text).toContain('A sense only an advanced or specialist dictionary lists is never missing.')

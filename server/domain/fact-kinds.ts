@@ -1415,15 +1415,23 @@ function otherCaseRules(lemma: string, caseVariants: readonly string[]): string[
   ]
 }
 
+/** A gloss with the register and region labels the producer gives it. */
+type LabelledGloss = SenseGloss & Pick<Inventory['senses'][number], 'register' | 'region'>
+
 function inventoryRubric(
   { lemma, caseVariants }: SubjectViews['entry'],
-  common: readonly SenseGloss[],
-  extra: readonly SenseGloss[],
+  common: readonly LabelledGloss[],
+  extra: readonly LabelledGloss[],
 ): string {
-  const numberedGlosses = (senses: readonly SenseGloss[], from: number) =>
-    senses.map(({ pos, gloss }, at) => `${from + at}. (${pos}) ${quote(gloss)}`)
+  // The labels are part of the claim: a rubric that asks for labels must show the ones given.
+  const numberedGlosses = (senses: readonly LabelledGloss[], from: number) =>
+    senses.map(({ pos, gloss, register, region }, at) => {
+      const labels = [register, region].filter(Boolean)
+      return `${from + at}. (${pos})${labels.length > 0 ? ` [${labels.join(', ')}]` : ''} ${quote(gloss)}`
+    })
   return [
     `Is this the sense inventory a learner's dictionary such as the Oxford Advanced Learner's, Longman, or Cambridge gives for the English word ${quote(lemma)}, and is every gloss right?`,
+    'Square brackets give the register and region labels the producer gives a sense; a sense without brackets has none.',
     'Common senses, in the order the producer gives them:',
     ...numberedGlosses(common, 1),
     extra.length === 0 ? 'Extra senses: none.' : 'Extra senses, claimed rare or not needed in general use:',
@@ -1449,7 +1457,7 @@ function planInventory({ senses }: Inventory, entry: SubjectViews['entry']): Rev
       lexicalQuestion(entry.lemma, sense.pos, sense.gloss, sense.register, sense.region),
     ]),
   )
-  const gloss = ({ pos, gloss }: Inventory['senses'][number]) => ({ pos, gloss })
+  const gloss = ({ pos, gloss, register, region }: Inventory['senses'][number]) => ({ pos, gloss, register, region })
   return decide(
     { word: entry.lemma },
     questions,
