@@ -888,6 +888,9 @@ describe('phrases lists', () => {
     )
     const text = rubric(plan) ?? ''
     expect(text).toContain('1. "give up"\n2. "give a book"')
+    // An idiom belongs to its content word, never to a grammar word it contains: both reviewers say so.
+    expect(question(plan, 'phrase_1')).toContain('An idiom is printed under its main content word')
+    expect(text).toContain('- Filed under the wrong headword: An idiom is printed under its main content word')
     for (const passing of [
       '"bear fruit"',
       '"red blood cell"',

@@ -1258,8 +1258,12 @@ function syllablesQuestion(entry: SubjectViews['entry'], syllables: readonly str
 }
 
 /** A phrase belongs to its headword only when a learner's dictionary would print it there. */
+/** Where a learner's dictionary files an idiom: under its content word, not a grammar word inside it. */
+const GRAMMAR_WORD_PHRASES =
+  'An idiom is printed under its main content word ("a piece of cake" under "cake", "in a nutshell" under "nutshell"), never under an article, pronoun, preposition, or other grammar word it merely contains; under a grammar word only the phrases built on that word itself belong ("a lot of", "after all").'
+
 function phraseQuestion(headword: string, phrase: string): string {
-  return `Does a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) print ${quote(phrase)} as a phrase, phrasal verb, or idiom of the headword ${quote(headword)}, or is its meaning not the sum of its words? Answer no for a plain description built from the words' ordinary meanings ("white rice", "oven door"), a coined combination no dictionary prints ("telephone in", "party down"), or a phrase that does not contain the headword. ${DATA}`
+  return `Does a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) print ${quote(phrase)} as a phrase, phrasal verb, or idiom of the headword ${quote(headword)}, or is its meaning not the sum of its words? Answer no for a plain description built from the words' ordinary meanings ("white rice", "oven door"), a coined combination no dictionary prints ("telephone in", "party down"), or a phrase that does not contain the headword. ${GRAMMAR_WORD_PHRASES} ${DATA}`
 }
 
 function phrasesRubric(entry: SubjectViews['entry'], phrases: readonly string[]): string {
@@ -1270,6 +1274,7 @@ function phrasesRubric(entry: SubjectViews['entry'], phrases: readonly string[])
     ...MULTIWORD_PASSES.map((rule) => `- ${rule}`),
     'fail when any listed phrase is none of these, for example:',
     ...MULTIWORD_FAILS.map((rule) => `- ${rule}`),
+    `- Filed under the wrong headword: ${GRAMMAR_WORD_PHRASES}`,
     'Never fail because a phrase is missing from the list: the list grows as more are found. A fail reason names each wrong phrase by number.',
     PROPER_NOUNS,
     listSenses("The headword's senses", entry.senses),
