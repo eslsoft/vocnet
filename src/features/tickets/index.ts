@@ -1,2 +1,2 @@
-// Public surface of the tickets feature: problems readers report, read-only.
+// Public surface of the tickets feature: everything a curator handles by hand.
 export { TicketsBrowser } from './tickets-browser'

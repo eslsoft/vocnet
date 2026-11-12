@@ -47,21 +47,22 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
+async function throwApiError(response: Response): Promise<never> {
+  const parsedError = apiErrorSchema.safeParse(await readJson(response))
+  if (!parsedError.success) {
+    throw new ApiProtocolError(`API error response does not match the contract for status ${response.status}.`)
+  }
+  if (response.status === 401) clearAccessToken()
+  throw new ApiClientError(response.status, parsedError.data.error.code, parsedError.data.error.message)
+}
+
 /** Decodes a response and keeps the payload as sent, for views that show the wire JSON beside its reading. */
 export async function decodeApiPayload<T>(
   response: Response,
   schema: z.ZodType<T>,
 ): Promise<{ data: T; payload: unknown }> {
+  if (!response.ok) await throwApiError(response)
   const payload = await readJson(response)
-  if (!response.ok) {
-    const parsedError = apiErrorSchema.safeParse(payload)
-    if (!parsedError.success) {
-      throw new ApiProtocolError(`API error response does not match the contract for status ${response.status}.`)
-    }
-    if (response.status === 401) clearAccessToken()
-    throw new ApiClientError(response.status, parsedError.data.error.code, parsedError.data.error.message)
-  }
-
   const parsed = schema.safeParse(payload)
   if (!parsed.success) {
     throw new ApiProtocolError('API success response does not match the runtime contract.', {
@@ -73,6 +74,12 @@ export async function decodeApiPayload<T>(
 
 export async function decodeApiResponse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
   return (await decodeApiPayload(response, schema)).data
+}
+
+/** Checks a response that succeeds without a body (204). */
+export async function expectNoContent(response: Response): Promise<void> {
+  if (!response.ok) await throwApiError(response)
+  if (response.status !== 204) throw new ApiProtocolError(`API answered ${response.status} where 204 was expected.`)
 }
 
 // Hono RPC supplies compile-time route inference. Runtime payloads are decoded

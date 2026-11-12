@@ -8,6 +8,7 @@ import {
   clearAccessToken,
   decodeApiPayload,
   decodeApiResponse,
+  expectNoContent,
   getAccessToken,
   rpc,
   setAccessToken,
@@ -81,5 +82,17 @@ describe('rpc client', () => {
     await expect(
       decodeApiResponse(new Response('{', { headers: { 'content-type': 'application/json' } }), z.object({})),
     ).rejects.toBeInstanceOf(ApiProtocolError)
+  })
+
+  it('accepts a 204 without a body and surfaces errors where one was expected', async () => {
+    await expect(expectNoContent(new Response(null, { status: 204 }))).resolves.toBeUndefined()
+    await expect(
+      expectNoContent(new Response(JSON.stringify({}), { headers: { 'content-type': 'application/json' } })),
+    ).rejects.toBeInstanceOf(ApiProtocolError)
+    const forbidden = new Response(JSON.stringify({ error: { code: 'forbidden', message: 'Curators only.' } }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    })
+    await expect(expectNoContent(forbidden)).rejects.toMatchObject({ status: 403, code: 'forbidden' })
   })
 })

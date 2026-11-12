@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Toggle } from '@/shared/ui/toggle'
 import type { EntryFilter } from './api'
 import { useEntryPages } from './hooks'
-import { QUALITY_WATCH } from './scores'
+import { CREDIBILITY_WATCH } from './scores'
 
 export const entryPath = (lemma: string) => `/console/entries/${encodeURIComponent(lemma)}`
 
@@ -26,7 +26,6 @@ function useFilter() {
   const filter: EntryFilter = {
     prefix: prefix || undefined,
     level: cefrLevelSchema.safeParse(params.get('level')).data,
-    flagged: params.get('flagged') === 'true' ? 'true' : undefined,
     stuck: params.get('stuck') === 'true' ? 'true' : undefined,
   }
   return { filter, draft, setDraft, setParam }
@@ -84,13 +83,15 @@ function OpenTasks({ entry }: { entry: EntrySummary }) {
 function EntryRow({ entry }: { entry: EntrySummary }) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const live = (entry.fact_counts.published ?? 0) + (entry.fact_counts.pending ?? 0)
   return (
     <TableRow className="cursor-pointer" onClick={() => navigate(entryPath(entry.lemma))}>
       <TableCell>
-        <Link className="font-semibold font-serif text-base hover:underline" to={entryPath(entry.lemma)}>
-          {entry.lemma}
-        </Link>
+        <span className="flex items-center gap-2">
+          <Link className="font-semibold font-serif text-base hover:underline" to={entryPath(entry.lemma)}>
+            {entry.lemma}
+          </Link>
+          {entry.live ? null : <Badge variant="muted">{t('entries.notLive')}</Badge>}
+        </span>
       </TableCell>
       <TableCell>{entry.level ? <Badge variant="outline">{entry.level}</Badge> : '—'}</TableCell>
       <TableCell className="text-right tabular-nums">{entry.sense_count}</TableCell>
@@ -98,12 +99,9 @@ function EntryRow({ entry }: { entry: EntrySummary }) {
         <Completeness entry={entry} />
       </TableCell>
       <TableCell
-        className={cn(
-          'tabular-nums',
-          entry.quality < QUALITY_WATCH && live > 0 && 'font-medium text-warning-foreground',
-        )}
+        className={cn('tabular-nums', entry.credibility < CREDIBILITY_WATCH && 'font-medium text-warning-foreground')}
       >
-        {live === 0 ? '—' : formatPercent(entry.quality, i18n.language, 1)}
+        {formatPercent(entry.credibility, i18n.language)}
       </TableCell>
       <TableCell>
         <OpenTasks entry={entry} />
@@ -161,13 +159,6 @@ export function EntryList() {
         />
         <Toggle
           variant="outline"
-          pressed={filter.flagged === 'true'}
-          onPressedChange={(pressed) => setParam('flagged', pressed ? 'true' : null)}
-        >
-          {t('entries.hasFlagged')}
-        </Toggle>
-        <Toggle
-          variant="outline"
           pressed={filter.stuck === 'true'}
           onPressedChange={(pressed) => setParam('stuck', pressed ? 'true' : null)}
         >
@@ -186,7 +177,7 @@ export function EntryList() {
               <TableHead>{t('entries.level')}</TableHead>
               <TableHead className="text-right">{t('entries.senses')}</TableHead>
               <TableHead>{t('entries.completeness')}</TableHead>
-              <TableHead>{t('entries.quality')}</TableHead>
+              <TableHead>{t('entries.credibility')}</TableHead>
               <TableHead>{t('entries.openTasks')}</TableHead>
               <TableHead>{t('entries.lastUpdated')}</TableHead>
             </TableRow>

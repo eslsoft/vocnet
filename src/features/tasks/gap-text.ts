@@ -5,14 +5,13 @@ import type { TFunction } from 'i18next'
 export function gapText(gap: Gap, t: TFunction): string {
   switch (gap.type) {
     case 'senses':
-    case 'sense_list':
+    case 'phrases':
     case 'family':
     case 'morphology':
     case 'syllables':
     case 'category':
     case 'parts':
     case 'synonyms':
-    case 'translations':
     case 'topics':
     case 'grammar':
     case 'collocations':
@@ -23,22 +22,17 @@ export function gapText(gap: Gap, t: TFunction): string {
       })
     case 'pronunciation':
       return t('gap.pronunciation', { accents: gap.accents.map((accent) => t(`accent.${accent}`)).join(', ') })
-    case 'phrases':
-      return t('gap.phrases', { count: gap.have.length, need: gap.need })
     case 'form_pronunciations':
       return t('gap.form_pronunciations', { forms: gap.forms.join(', ') })
     case 'examples':
       return t('gap.examples', { count: gap.count, need: gap.need })
-    case 'example_translations':
-      return t('gap.example_translations', { count: gap.examples.length })
-    case 'weak_fact':
-      return t(`gap.weak_fact.${gap.reason}`, { kind: t(`factKind.${gap.kind}`) })
+    case 'translations':
+      return t('gap.translations', { count: gap.missing.length })
   }
 }
 
 /** The short form shown inline where the missing fact would go: what is still needed. */
 export function gapNeed(gap: Gap, t: TFunction): string {
   if (gap.type === 'examples') return t('gapNeed.examples', { count: gap.need - gap.count })
-  if (gap.type === 'phrases') return t('gapNeed.phrases', { count: gap.need - gap.have.length })
   return gapText(gap, t)
 }

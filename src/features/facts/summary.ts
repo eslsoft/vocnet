@@ -5,11 +5,9 @@ const labels = (...values: Array<string | undefined>) => values.filter((value) =
 /** One line describing what a fact claims, for lists. */
 export function summarizeFact(fact: FactDto): string {
   switch (fact.kind) {
-    case 'entry':
-      return ''
-    case 'sense': {
-      const { gloss, register, region } = fact.payload
-      return register || region ? `${gloss} (${labels(register, region)})` : gloss
+    case 'senses': {
+      const common = fact.payload.senses.filter((sense) => sense.rank === 'common').length
+      return `${common} common, ${fact.payload.senses.length - common} extra`
     }
     case 'form': {
       const { form, type, pos, ipa, accent } = fact.payload
@@ -19,14 +17,10 @@ export function summarizeFact(fact: FactDto): string {
       return `${fact.payload.type} → sense ${fact.payload.target_sense_id.slice(0, 8)}`
     case 'pronunciation':
       return `/${fact.payload.ipa}/ (${labels(fact.payload.accent, fact.payload.strength, fact.payload.pos)})`
-    case 'example': {
-      const translations = Object.entries(fact.payload.translations ?? {}).map(
-        ([language, text]) => `${language}: ${text}`,
-      )
-      return [fact.payload.text, ...translations].join(' · ')
-    }
+    case 'example':
+      return fact.payload.text
     case 'translation':
-      return `${fact.payload.language}: ${fact.payload.text}`
+      return `${fact.payload.language} (${fact.payload.of}): ${fact.payload.text}`
     case 'topic':
       return fact.payload.topic_id
     case 'grammar': {
@@ -51,11 +45,9 @@ export function summarizeFact(fact: FactDto): string {
     }
     case 'collocation':
       return `${fact.payload.text} (${fact.payload.pattern})`
-    case 'sense_list':
-      return `${fact.payload.common.length} common, ${fact.payload.extra.length} extra`
     case 'syllables':
       return fact.payload.syllables.join('·')
-    case 'gap_closure':
-      return `${fact.payload.gap}: ${fact.payload.reason}`
+    case 'phrases':
+      return fact.payload.phrases.join(' · ')
   }
 }

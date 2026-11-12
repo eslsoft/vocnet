@@ -15,7 +15,7 @@ import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router'
 import { logout } from '@/features/auth'
-import { entryTotal, flaggedTotal, useConsoleStats } from '@/features/overview'
+import { entryTotal, lowCredibilityTotal, useConsoleStats } from '@/features/overview'
 import { cn } from '@/shared/lib/cn'
 import { formatNumber } from '@/shared/lib/format'
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar'
@@ -73,12 +73,12 @@ function useNavCounts() {
   const stats = useConsoleStats().data
   if (!stats) return {}
   const number = (value: number) => formatNumber(value, i18n.language)
-  const flagged = flaggedTotal(stats)
+  const low = lowCredibilityTotal(stats)
   return {
     entries: { text: number(entryTotal(stats)), tone: 'muted' as const },
-    facts: { text: t('nav.flagged', { count: flagged, formatted: number(flagged) }), tone: 'warning' as const },
+    facts: { text: t('nav.lowCredibility', { count: low, formatted: number(low) }), tone: 'warning' as const },
     tickets: {
-      text: t('nav.open', { count: stats.feedback.open, formatted: number(stats.feedback.open) }),
+      text: t('nav.open', { count: stats.tickets.open, formatted: number(stats.tickets.open) }),
       tone: 'muted' as const,
     },
     tasks: {

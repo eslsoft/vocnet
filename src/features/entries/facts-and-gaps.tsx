@@ -2,7 +2,7 @@ import type { FactDto, FactId, FactKind } from '@shared/facts'
 import type { WorkItemOverview } from '@shared/monitor'
 import type { WorkType } from '@shared/work'
 import { ChevronDown } from 'lucide-react'
-import { Fragment, type ReactNode, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SenseView } from '@/features/facts'
 import { Button } from '@/shared/ui/button'
@@ -10,13 +10,12 @@ import { FactRow, IncomingRow, TaskRow } from './fact-rows'
 
 /** The blocks of a sense, each with the fact kinds it shows and the tasks that would add to it. */
 const GROUPS: Array<{ key: string; kinds: FactKind[]; tasks: WorkType[]; incoming?: boolean }> = [
-  { key: 'examples', kinds: ['example'], tasks: ['examples', 'example_translations'] },
-  { key: 'translations', kinds: ['translation'], tasks: ['translations'] },
+  { key: 'examples', kinds: ['example'], tasks: ['examples'] },
+  { key: 'translations', kinds: ['translation'], tasks: [] },
   { key: 'relations', kinds: ['relation'], tasks: ['category', 'parts', 'synonyms'], incoming: true },
   { key: 'collocations', kinds: ['collocation'], tasks: ['collocations'] },
   { key: 'topics', kinds: ['topic'], tasks: ['topics'] },
   { key: 'grammar', kinds: ['grammar'], tasks: ['grammar'] },
-  { key: 'closures', kinds: ['gap_closure'], tasks: [] },
 ]
 
 /** Senses shown before the rest fold away. */
@@ -34,48 +33,21 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function Facts({
-  facts,
-  weak,
-  onSelect,
-}: {
-  facts: FactDto[]
-  weak: ReadonlyMap<string, WorkItemOverview>
-  onSelect: (id: FactId) => void
-}) {
-  return facts.map((fact) => {
-    const task = weak.get(fact.id)
-    return (
-      <Fragment key={fact.id}>
-        <FactRow fact={fact} onSelect={onSelect} />
-        {task ? <TaskRow task={task} /> : null}
-      </Fragment>
-    )
-  })
-}
-
 function SenseBlock({
   view,
   number,
   tasks,
-  weak,
   onSelect,
 }: {
   view: SenseView
   number: number
   tasks: WorkItemOverview[]
-  weak: ReadonlyMap<string, WorkItemOverview>
   onSelect: (id: FactId) => void
 }) {
   const { t } = useTranslation()
   const current = view.facts.filter(isCurrent)
-  const glosses = current.filter((fact) => fact.kind === 'sense')
-  const listing =
-    view.listing === 'extra'
-      ? t('inspector.lessCommon')
-      : view.listing === 'unlisted'
-        ? t('inspector.notOrdered')
-        : null
+  const { item } = view
+  const listing = item === null ? t('inspector.unlisted') : item.rank === 'extra' ? t('inspector.lessCommon') : null
   return (
     <section
       id={`sense-${view.sense.id}`}
@@ -87,10 +59,14 @@ function SenseBlock({
         <span className="font-serif text-muted-foreground italic">{t(`pos.${view.sense.pos}`)}</span>
         {listing ? <span className="text-muted-foreground text-xs">{listing}</span> : null}
       </div>
-      <div className="flex flex-col gap-1 text-lg">
-        {glosses.length === 0 ? <p className="text-muted-foreground text-sm">{t('inspector.noGloss')}</p> : null}
-        <Facts facts={glosses} weak={weak} onSelect={onSelect} />
-      </div>
+      <p className="font-serif text-lg">
+        {item ? item.gloss : <span className="text-muted-foreground text-sm">{t('inspector.noGloss')}</span>}
+        {item?.register || item?.region ? (
+          <span className="ml-2 text-muted-foreground text-xs">
+            {[item.register, item.region].filter(Boolean).join(' · ')}
+          </span>
+        ) : null}
+      </p>
       {GROUPS.map((group) => {
         const facts = current.filter((fact) => group.kinds.includes(fact.kind))
         const incoming = group.incoming
@@ -102,7 +78,9 @@ function SenseBlock({
         if (facts.length + incoming.length + open.length === 0) return null
         return (
           <Group key={group.key} label={t(`inspector.groups.${group.key}`)}>
-            <Facts facts={facts} weak={weak} onSelect={onSelect} />
+            {facts.map((fact) => (
+              <FactRow key={fact.id} fact={fact} onSelect={onSelect} />
+            ))}
             {incoming.map((fact) => (
               <IncomingRow key={fact.id} fact={fact} onSelect={onSelect} />
             ))}
@@ -148,9 +126,6 @@ export function FactsAndGaps({
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const weak = new Map(
-    tasks.flatMap((task) => (task.gap.type === 'weak_fact' ? [[task.gap.fact_id as string, task] as const] : [])),
-  )
   const shown = expanded ? senses : senses.slice(0, FIRST_SENSES)
   const entryTasks = tasks.filter((task) => task.type === 'senses')
   return (
@@ -170,7 +145,6 @@ export function FactsAndGaps({
           view={view}
           number={index + 1}
           tasks={tasks.filter((task) => task.subject_id === view.sense.id)}
-          weak={weak}
           onSelect={onSelect}
         />
       ))}

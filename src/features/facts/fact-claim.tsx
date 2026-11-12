@@ -14,19 +14,27 @@ export function FactClaim({ fact, size = 'sm' }: { fact: FactDto; size?: 'sm' | 
   const { t } = useTranslation()
   const large = size === 'lg'
   switch (fact.kind) {
-    case 'example': {
-      const zh = fact.payload.translations?.zh
+    case 'example':
+      return <span className={cn('font-serif italic', large && 'text-2xl')}>{fact.payload.text}</span>
+    case 'senses':
       return (
-        <span className={cn('flex flex-wrap items-baseline gap-x-3', large && 'flex-col gap-1')}>
-          <span className={cn('font-serif italic', large && 'text-2xl')}>{fact.payload.text}</span>
-          {zh ? <span className={cn('text-muted-foreground', large && 'text-base')}>{zh}</span> : null}
+        <ol className={cn('flex list-decimal flex-col gap-0.5 pl-5 font-serif', large && 'text-lg')}>
+          {fact.payload.senses.map((sense) => (
+            <li key={sense.id} className={cn(sense.rank === 'extra' && 'text-muted-foreground')}>
+              <span className="text-muted-foreground text-sm italic">{t(`pos.${sense.pos}`)}</span> {sense.gloss}
+            </li>
+          ))}
+        </ol>
+      )
+    case 'translation':
+      return (
+        <span className={cn('inline-flex items-baseline gap-2', large && 'text-2xl')}>
+          {fact.payload.of === 'sense' ? null : (
+            <span className="text-muted-foreground text-sm">{t(`factKind.${fact.payload.of}`)}</span>
+          )}
+          {fact.payload.text}
         </span>
       )
-    }
-    case 'sense':
-      return <span className={cn('font-serif', large && 'text-2xl')}>{summarizeFact(fact)}</span>
-    case 'translation':
-      return <span className={cn(large && 'text-2xl')}>{fact.payload.text}</span>
     case 'relation':
       return (
         <span className={cn('inline-flex items-baseline gap-2', large && 'text-2xl')}>

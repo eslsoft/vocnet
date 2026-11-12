@@ -5,9 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import type { z } from 'zod'
 import { EntryView } from '@/features/dictionary'
-import { FactSheet, FactStatusBadge, groupEntry, useFactSelection, useManagedEntry } from '@/features/facts'
+import { FactSheet, groupEntry, useFactSelection, useManagedEntry } from '@/features/facts'
 import { usePrincipalName } from '@/features/keys'
-import { gapText, TaskStatusBadge, TaskTypeBadge, taskPath, useTasks } from '@/features/tasks'
+import { gapText, SettleSlotDialog, TaskStatusBadge, TaskTypeBadge, taskPath, useTasks } from '@/features/tasks'
 import { formatNumber, formatPercent, formatRelative } from '@/shared/lib/format'
 import { useSearchParamState } from '@/shared/lib/search-params'
 import { Badge } from '@/shared/ui/badge'
@@ -18,9 +18,9 @@ import { SegmentedBar } from '@/shared/ui/segmented-bar'
 import { StatCard } from '@/shared/ui/stat-card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
-import { ReferenceData, SensesOutline, WordDetails } from './entry-side'
+import { InventoryCard, ReferenceData, WordDetails } from './entry-side'
 import { FactsAndGaps } from './facts-and-gaps'
-import { factHealth, lastChange, taskCounts } from './scores'
+import { CREDIBILITY_WATCH, lastChange, taskCounts } from './scores'
 
 type ManagedEntryDetail = z.infer<typeof managedEntryDetailSchema>
 
@@ -30,7 +30,6 @@ type View = (typeof VIEWS)[number]
 function Header({ entry }: { entry: ManagedEntryDetail }) {
   const { t, i18n } = useTranslation()
   const nameOf = usePrincipalName()
-  const entryFact = entry.facts.find((fact) => fact.kind === 'entry' && fact.subject_id === entry.entry.id)
   const ipa = entry.facts.find(
     (fact) => fact.kind === 'pronunciation' && fact.status === 'published' && fact.subject_id === entry.entry.id,
   )
@@ -56,7 +55,11 @@ function Header({ entry }: { entry: ManagedEntryDetail }) {
             ) : null}
           </h1>
           <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
-            {entryFact ? <FactStatusBadge status={entryFact.status} /> : null}
+            {entry.live && entry.batch !== null ? (
+              <Badge variant="success">{t('inspector.batch', { batch: entry.batch })}</Badge>
+            ) : (
+              <Badge variant="muted">{t('entries.notLive')}</Badge>
+            )}
             {entry.cefr.length > 0 ? (
               <Badge variant="outline">
                 {entry.cefr.map((item) => `${item.level} ${t(`pos.${item.pos}`)}`).join(' · ')}
@@ -91,7 +94,6 @@ function Scores({ entry, tasks }: { entry: ManagedEntryDetail; tasks: WorkItemOv
   const { t, i18n } = useTranslation()
   const percent = (value: number, digits = 0) => formatPercent(value, i18n.language, digits)
   const { slots } = entry
-  const health = factHealth(entry)
   const counts = taskCounts(tasks)
   return (
     <div className="grid gap-4 md:grid-cols-3">
@@ -112,9 +114,13 @@ function Scores({ entry, tasks }: { entry: ManagedEntryDetail; tasks: WorkItemOv
           })}
         </span>
       </StatCard>
-      <StatCard label={t('entries.quality')} value={percent(entry.quality, 1)}>
-        <Progress value={entry.quality * 100} aria-label={t('entries.quality')} />
-        <span>{t('overview.flaggedOf', { flagged: health.flagged, live: health.live })}</span>
+      <StatCard label={t('entries.credibility')} value={percent(entry.credibility)}>
+        <Progress
+          value={entry.credibility * 100}
+          aria-label={t('entries.credibility')}
+          indicatorClassName={entry.credibility < CREDIBILITY_WATCH ? 'bg-warning' : undefined}
+        />
+        <span>{t('inspector.credibilityHint')}</span>
       </StatCard>
       <StatCard label={t('entries.openTasks')} value={tasks.length}>
         <SegmentedBar
@@ -144,6 +150,9 @@ function EntryTasks({ tasks }: { tasks: WorkItemOverview[] }) {
           <TableHead>{t('inspector.about')}</TableHead>
           <TableHead>{t('taskDetail.missing')}</TableHead>
           <TableHead>{t('inspector.status')}</TableHead>
+          <TableHead>
+            <span className="sr-only">{t('settle.action')}</span>
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -160,6 +169,9 @@ function EntryTasks({ tasks }: { tasks: WorkItemOverview[] }) {
             <TableCell className="max-w-80 truncate">{gapText(task.gap, t)}</TableCell>
             <TableCell>
               <TaskStatusBadge status={task.status} />
+            </TableCell>
+            <TableCell className="text-right">
+              <SettleSlotDialog task={task} />
             </TableCell>
           </TableRow>
         ))}
@@ -180,7 +192,7 @@ function Inspector({ entry }: { entry: ManagedEntryDetail }) {
   const [, select] = useFactSelection()
   const [view, setView] = useView()
   const open = tasks.data?.items ?? []
-  const { entryFacts, senses } = groupEntry(entry)
+  const { entryFacts, inventory, senses } = groupEntry(entry)
   const entryTasks = open.filter((task) => task.subject_id === entry.entry.id)
   return (
     <div className="flex flex-col gap-6">
@@ -206,7 +218,7 @@ function Inspector({ entry }: { entry: ManagedEntryDetail }) {
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <FactsAndGaps senses={senses} tasks={open} onSelect={select} />
             <div className="flex flex-col gap-4">
-              <SensesOutline senses={senses} />
+              <InventoryCard inventory={inventory} senses={senses} onSelect={select} />
               <WordDetails facts={entryFacts} tasks={entryTasks} onSelect={select} />
               <ReferenceData frequency={entry.frequency} cefr={entry.cefr} />
             </div>

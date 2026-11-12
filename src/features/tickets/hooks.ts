@@ -1,17 +1,27 @@
-import type { FeedbackId, FeedbackStatus } from '@shared/feedback'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { getTicket, listTickets } from './api'
+import type { ResolveTicketInput, TicketId } from '@shared/tickets'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { getTicket, listTickets, resolveTicket, type TicketFilter } from './api'
 
-export function useTicketPages(status: FeedbackStatus | undefined, enabled = true) {
+export function useTicketPages(filter: TicketFilter) {
   return useInfiniteQuery({
-    queryKey: ['feedback', status ?? null],
-    queryFn: ({ pageParam }) => listTickets(status, pageParam),
+    queryKey: ['tickets', filter],
+    queryFn: ({ pageParam }) => listTickets(filter, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    enabled,
   })
 }
 
-export function useTicket(id: FeedbackId | null) {
-  return useQuery({ queryKey: ['ticket', id], queryFn: () => getTicket(id as FeedbackId), enabled: id !== null })
+export function useTicket(id: TicketId | null) {
+  return useQuery({ queryKey: ['ticket', id], queryFn: () => getTicket(id as TicketId), enabled: id !== null })
+}
+
+/** Closing a ticket moves it between tabs and changes the counts, so lists and stats are read again. */
+export function useResolveTicket(id: TicketId) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: ResolveTicketInput) => resolveTicket(id, input),
+    onSuccess: async () => {
+      await Promise.all(['ticket', 'tickets', 'stats'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })))
+    },
+  })
 }

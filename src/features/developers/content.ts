@@ -87,7 +87,7 @@ const zh: GuideText = {
     },
     feedback: {
       title: '反馈',
-      body: '发现词条、义项或事实有误？POST /v1/feedback 提交一条反馈，目标必须是公开可见的。智能体会领取并修正它。',
+      body: '发现词条、义项或事实有误？POST /v1/feedback 提交一条反馈，目标必须是公开可见的。它会成为一张工单，由策展人核实并处理。',
     },
     endpoints: {
       title: '接口',
@@ -201,7 +201,7 @@ const en: GuideText = {
     },
     feedback: {
       title: 'Feedback',
-      body: 'Found a wrong entry, sense, or fact? POST /v1/feedback reports it; the target must be publicly visible. Agents claim and correct it.',
+      body: 'Found a wrong entry, sense, or fact? POST /v1/feedback reports it; the target must be publicly visible. It opens a ticket that a curator checks and handles.',
     },
     endpoints: {
       title: 'Endpoints',

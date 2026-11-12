@@ -1,13 +1,30 @@
-import { type FeedbackId, type FeedbackStatus, feedbackPageSchema, listedFeedbackSchema } from '@shared/feedback'
+import {
+  listedTicketSchema,
+  type ResolveTicketInput,
+  type TicketId,
+  type TicketStatus,
+  type TicketType,
+  ticketPageSchema,
+  ticketSchema,
+} from '@shared/tickets'
 import { decodeApiResponse, rpc } from '@/shared/api/client'
 
-const feedback = rpc.manage.v1.feedback
+const tickets = rpc.manage.v1.tickets
 
-export async function listTickets(status: FeedbackStatus | undefined, cursor: string | undefined) {
-  const response = await feedback.$get({ query: { status, cursor, limit: '25' } })
-  return decodeApiResponse(response, feedbackPageSchema)
+export interface TicketFilter {
+  status?: TicketStatus
+  type?: TicketType
 }
 
-export async function getTicket(id: FeedbackId) {
-  return decodeApiResponse(await feedback[':id'].$get({ param: { id } }), listedFeedbackSchema)
+export async function listTickets(filter: TicketFilter, cursor: string | undefined) {
+  const response = await tickets.$get({ query: { ...filter, cursor, limit: '25' } })
+  return decodeApiResponse(response, ticketPageSchema)
+}
+
+export async function getTicket(id: TicketId) {
+  return decodeApiResponse(await tickets[':id'].$get({ param: { id } }), listedTicketSchema)
+}
+
+export async function resolveTicket(id: TicketId, input: ResolveTicketInput) {
+  return decodeApiResponse(await tickets[':id'].resolve.$post({ param: { id }, json: input }), ticketSchema)
 }

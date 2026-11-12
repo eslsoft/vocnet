@@ -20,9 +20,9 @@ const routes = [
 describe('ConsoleLayout', () => {
   it('lists the pages with what needs a look beside each, and the public resources [spec: console/navigation]', async () => {
     const stats = consoleStats({
-      flagged: [
+      low_credibility: [
         { kind: 'example', count: 300 },
-        { kind: 'sense', count: 86 },
+        { kind: 'senses', count: 86 },
       ],
       completeness: {
         average: 0.7,
@@ -31,7 +31,7 @@ describe('ConsoleLayout', () => {
           { level: null, entries: 2_408, complete: 1, average: 0.1 },
         ],
       },
-      feedback: { open: 5, claimed: 2, resolved: 9, dismissed: 1 },
+      tickets: { open: 5, resolved: 9, dismissed: 1 },
       work: { open: 100, stuck: 37, timed_out_24h: 0 },
     })
     server.use(...consoleApi({ stats }).handlers)
@@ -41,7 +41,7 @@ describe('ConsoleLayout', () => {
     const link = (name: RegExp) => within(nav).getByRole('link', { name })
     expect(await within(nav).findByText('12,408')).toBeInTheDocument()
     expect(link(/^Entries/)).toHaveAttribute('href', '/console/entries')
-    expect(within(link(/^Facts/)).getByText('386 flagged')).toHaveClass('text-warning-foreground')
+    expect(within(link(/^Facts/)).getByText('386 low credibility')).toHaveClass('text-warning-foreground')
     expect(link(/^Tickets/)).toHaveTextContent('5 open')
     expect(within(link(/^Tasks/)).getByText('37 stuck')).toHaveClass('text-destructive')
     expect(link(/^API Keys/)).toHaveAttribute('href', '/console/keys')

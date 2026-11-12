@@ -6,8 +6,8 @@ import {
   publicSenseDetailSchema,
   searchPageSchema,
 } from '@shared/catalog'
-import { feedbackReceiptSchema } from '@shared/feedback'
 import { referenceSourceListSchema } from '@shared/reference'
+import { feedbackReceiptSchema } from '@shared/tickets'
 import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { apiErrorSchema } from '@shared/types'
 import type { z } from 'zod'

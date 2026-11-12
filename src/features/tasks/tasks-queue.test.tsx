@@ -61,8 +61,8 @@ const summary = workSummary({
       success_rate: 0.52,
     },
     {
-      type: 'weak_fact',
-      stage: 5,
+      type: 'translations',
+      stage: 3,
       open: 386,
       waiting_on_review: 0,
       stuck: 0,
@@ -101,7 +101,7 @@ const summary = workSummary({
     {
       id: crypto.randomUUID() as never,
       holder: 'agent:reviser',
-      type: 'weak_fact',
+      type: 'translations',
       items: 2,
       lemmas: ['get', 'play'],
       claimed_at: fromNow(-3000),
@@ -156,14 +156,14 @@ describe('TasksQueue', () => {
     ])
 
     const groups = screen.getAllByRole('columnheader').filter((cell) => cell.getAttribute('scope') === 'colgroup')
-    expect(groups.map((cell) => cell.textContent)).toEqual(['Senses', 'Word relations', 'Usage', 'Fixes'])
+    expect(groups.map((cell) => cell.textContent)).toEqual(['Senses', 'Word relations', 'Translations', 'Usage'])
     const examples = screen.getByRole('cell', { name: 'Examples' }).closest('tr') as HTMLElement
     expect(
       within(examples)
         .getAllByRole('cell')
         .map((cell) => cell.textContent),
     ).toEqual(['Examples', '3,980', '520', '2', '640', '1m 30s', '84%'])
-    const phrases = screen.getByRole('cell', { name: 'Phrasal verbs' }).closest('tr') as HTMLElement
+    const phrases = screen.getByRole('cell', { name: 'Phrases' }).closest('tr') as HTMLElement
     expect(within(phrases).getByText('52%')).toHaveClass('text-warning-foreground')
     expect(within(phrases).getAllByText('—')).toHaveLength(1)
 

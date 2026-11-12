@@ -1,5 +1,5 @@
-import { type FeedbackId, feedbackIdSchema, type ListedFeedbackDto } from '@shared/feedback'
 import type { ConsoleStats } from '@shared/monitor'
+import { type ListedTicketDto, type TicketId, ticketIdSchema, ticketTypeSchema } from '@shared/tickets'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 import { cn } from '@/shared/lib/cn'
@@ -8,40 +8,24 @@ import { useSearchParamState } from '@/shared/lib/search-params'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { ErrorNotice } from '@/shared/ui/error-notice'
+import { FilterSelect } from '@/shared/ui/filter-select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useTicketPages } from './hooks'
-import { newestFirst, TAB_STATUSES, TICKET_TABS, type TicketTab, tabCount } from './tabs'
+import { TICKET_TABS, type TicketTab, tabCount, tabStatus } from './tabs'
 import { TicketDetail } from './ticket-detail'
 
 const tabSchema = z.enum(TICKET_TABS)
 
-// The tab and the selected ticket come from the URL, which is user input.
+// The tab, the type filter, and the selected ticket come from the URL, which is user input.
 function useTicketParams() {
   const [params, setParam] = useSearchParamState()
   return {
     tab: tabSchema.safeParse(params.get('tab')).data ?? 'open',
-    selected: feedbackIdSchema.safeParse(params.get('ticket')).data ?? null,
+    type: ticketTypeSchema.safeParse(params.get('type')).data,
+    selected: ticketIdSchema.safeParse(params.get('ticket')).data ?? null,
     setTab: (tab: TicketTab) => setParam('tab', tab === 'open' ? null : tab),
-    select: (id: FeedbackId) => setParam('ticket', id),
-  }
-}
-
-/** The tickets of a tab: one status, or for Resolved the resolved and dismissed ones together. */
-function useTabTickets(tab: TicketTab) {
-  const [first, second] = TAB_STATUSES[tab]
-  const both = TAB_STATUSES[tab].length > 1
-  const primary = useTicketPages(first)
-  const secondary = useTicketPages(second, both)
-  const queries = both ? [primary, secondary] : [primary]
-  return {
-    items: newestFirst(queries.flatMap((query) => query.data?.pages.flatMap((page) => page.items) ?? [])),
-    error: queries.find((query) => query.error)?.error ?? null,
-    loaded: queries.every((query) => query.isSuccess),
-    hasMore: queries.some((query) => query.hasNextPage),
-    fetching: queries.some((query) => query.isFetchingNextPage),
-    loadMore: () => {
-      for (const query of queries) if (query.hasNextPage) void query.fetchNextPage()
-    },
+    setType: (type: string | null) => setParam('type', type),
+    select: (id: TicketId) => setParam('ticket', id),
   }
 }
 
@@ -50,7 +34,7 @@ function TicketRow({
   selected,
   onSelect,
 }: {
-  ticket: ListedFeedbackDto
+  ticket: ListedTicketDto
   selected: boolean
   onSelect: () => void
 }) {
@@ -67,8 +51,8 @@ function TicketRow({
         )}
       >
         <span className="flex items-center gap-2">
-          <span className="font-semibold font-serif text-base">{ticket.entry.lemma}</span>
-          <Badge variant="outline">{t(`tickets.targetType.${ticket.target_type}`)}</Badge>
+          <span className="font-semibold font-serif text-base">{ticket.entry?.lemma ?? ticket.target}</span>
+          <Badge variant="outline">{t(`tickets.types.${ticket.type}`)}</Badge>
           <span className="ml-auto shrink-0 text-muted-foreground text-xs">
             {formatRelative(ticket.created_at, i18n.language)}
           </span>
@@ -81,23 +65,26 @@ function TicketRow({
 
 function TicketList({
   tab,
+  type,
   selected,
   onSelect,
 }: {
   tab: TicketTab
-  selected: FeedbackId | null
-  onSelect: (id: FeedbackId) => void
+  type: ListedTicketDto['type'] | undefined
+  selected: TicketId | null
+  onSelect: (id: TicketId) => void
 }) {
   const { t } = useTranslation()
-  const tickets = useTabTickets(tab)
+  const pages = useTicketPages({ status: tabStatus(tab), type })
+  const items = pages.data?.pages.flatMap((page) => page.items) ?? []
   return (
     <>
-      <ErrorNotice error={tickets.error} className="m-4" />
-      {tickets.loaded && tickets.items.length === 0 ? (
+      <ErrorNotice error={pages.error} className="m-4" />
+      {pages.isSuccess && items.length === 0 ? (
         <p className="p-4 text-muted-foreground text-sm">{t('tickets.empty')}</p>
       ) : null}
       <ul aria-label={t('tickets.list')}>
-        {tickets.items.map((ticket) => (
+        {items.map((ticket) => (
           <TicketRow
             key={ticket.id}
             ticket={ticket}
@@ -106,9 +93,9 @@ function TicketList({
           />
         ))}
       </ul>
-      {tickets.hasMore ? (
+      {pages.hasNextPage ? (
         <div className="p-4">
-          <Button variant="outline" disabled={tickets.fetching} onClick={tickets.loadMore}>
+          <Button variant="outline" disabled={pages.isFetchingNextPage} onClick={() => pages.fetchNextPage()}>
             {t('common.loadMore')}
           </Button>
         </div>
@@ -117,10 +104,13 @@ function TicketList({
   )
 }
 
-/** Problems readers reported, beside the one selected. Read-only: agents resolve tickets through the API. */
-export function TicketsBrowser({ counts }: { counts?: ConsoleStats['feedback'] }) {
+/**
+ * Everything a curator handles by hand, oldest first, beside the one selected: work its passes did
+ * not fill, reader feedback, audit picks, and missing words.
+ */
+export function TicketsBrowser({ counts }: { counts?: ConsoleStats['tickets'] }) {
   const { t, i18n } = useTranslation()
-  const { tab, selected, setTab, select } = useTicketParams()
+  const { tab, type, selected, setTab, setType, select } = useTicketParams()
   return (
     <div className="grid overflow-hidden rounded-xl border bg-card lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
       <Tabs
@@ -142,10 +132,18 @@ export function TicketsBrowser({ counts }: { counts?: ConsoleStats['feedback'] }
               </TabsTrigger>
             ))}
           </TabsList>
+          <FilterSelect
+            label={t('tickets.type')}
+            allLabel={t('common.all')}
+            value={type ?? null}
+            options={ticketTypeSchema.options.map((value) => ({ value, label: t(`tickets.types.${value}`) }))}
+            onChange={setType}
+            className="self-start"
+          />
         </div>
         {TICKET_TABS.map((value) => (
           <TabsContent key={value} value={value} className="min-h-0 overflow-y-auto">
-            <TicketList tab={value} selected={selected} onSelect={select} />
+            <TicketList tab={value} type={type} selected={selected} onSelect={select} />
           </TabsContent>
         ))}
       </Tabs>

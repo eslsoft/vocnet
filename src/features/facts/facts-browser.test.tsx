@@ -1,8 +1,8 @@
 import type { FactDto } from '@shared/facts'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { agent, apiError, consoleApi, fact, review, workTask } from '@/test/console-api'
+import { agent, apiError, consoleApi, fact, review } from '@/test/console-api'
 import { server } from '@/test/msw'
 import { renderAt } from '@/test/render'
 import { chooseOption } from '@/test/select'
@@ -10,7 +10,7 @@ import { HEAVY_TEST_MS } from '@/test/timeouts'
 import { FactSheet, FactsBrowser } from './index'
 
 const routes = [
-  { path: '/console/facts', element: <FactsBrowser flagged={386} /> },
+  { path: '/console/facts', element: <FactsBrowser /> },
   { path: '/console/entries/:lemma', element: <FactSheet /> },
 ]
 
@@ -33,7 +33,6 @@ function world() {
     created_at: '2026-11-02T08:40:00.000Z',
   })
   const flagged = example('She ran to catch the last bus.', {
-    payload: { text: 'She ran to catch the last bus.', translations: { zh: '她跑着去赶末班车。' } },
     supersedes_id: replaced.id,
     author: `agent:${producer.id}`,
     created_at: '2026-11-10T21:02:00.000Z',
@@ -46,11 +45,24 @@ function world() {
     }),
   })
   const facts = [
-    fact({ kind: 'entry', payload: {}, subject_id: run.id }),
-    fact({ kind: 'sense', payload: { gloss: 'move at a speed faster than walking' }, subject_id: speed.id }),
-    fact({ kind: 'sense', payload: { gloss: 'be in charge of' }, subject_id: manage.id }),
+    fact({
+      kind: 'senses',
+      payload: {
+        senses: [
+          { id: speed.id as never, pos: 'verb', gloss: 'move at a speed faster than walking', rank: 'common' },
+          { id: manage.id as never, pos: 'verb', gloss: 'be in charge of', rank: 'common' },
+        ],
+      },
+      subject_id: run.id,
+      created_at: '2026-11-01T08:00:00.000Z',
+    }),
     replaced,
     flagged,
+    fact({
+      kind: 'translation',
+      payload: { language: 'zh', of: 'example', text: '她跑着去赶末班车。' },
+      subject_id: flagged.id,
+    }),
     fact({
       kind: 'relation',
       payload: { type: 'synonym', target_sense_id: obtainSense.id as never },
@@ -61,20 +73,13 @@ function world() {
     example('He ran across the road.', { status: 'rejected', review: review({ verdict: 'fail', confidence: 0.1 }) }),
     example('Fresh', { status: 'pending', review: null }),
   ]
-  const task = workTask({
-    entry: run as never,
-    subject_id: flagged.id,
-    stage: 5,
-    gap: { type: 'weak_fact', fact_id: flagged.id, kind: 'example', reason: 'uncertain' },
-  })
   const api = consoleApi({
     entries: [run, get, obtain],
     senses: [speed, manage, getSense, obtainSense],
     facts,
-    tasks: [task],
     agents: [producer],
   })
-  return { api, flagged, replaced, task }
+  return { api, flagged, replaced }
 }
 
 const detail = () => screen.getByRole('region', { name: 'Fact detail' })
@@ -87,18 +92,18 @@ describe('FactsBrowser', () => {
       server.use(...api.handlers)
       const view = renderAt('/console/facts', routes)
 
-      expect(screen.getByText('386 flagged · newest first')).toBeInTheDocument()
+      expect(screen.getByText('Newest first')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Flagged only' })).not.toBeInTheDocument()
       const list = await screen.findByRole('list', { name: 'Facts' })
       const flaggedRow = (await within(list).findByText('She ran to catch the last bus.')).closest(
         'button',
       ) as HTMLElement
       expect(await within(flaggedRow).findByText('run')).toBeInTheDocument()
       expect(within(flaggedRow).getByText('Example')).toBeInTheDocument()
-      expect(within(flaggedRow).getByText('她跑着去赶末班车。')).toBeInTheDocument()
-
-      fireEvent.click(screen.getByRole('button', { name: 'Flagged only' }))
-      await waitFor(() => expect(view.location()).toBe('/console/facts?flagged=true'))
-      await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2))
+      const translationRow = within(list).getByText('她跑着去赶末班车。').closest('button') as HTMLElement
+      expect(within(translationRow).getByText('Translation')).toBeInTheDocument()
+      const inventoryRow = within(list).getByText('Sense inventory').closest('button') as HTMLElement
+      expect(within(inventoryRow).getByText('move at a speed faster than walking')).toBeInTheDocument()
 
       await chooseOption('Type', 'Relation')
       await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1))
@@ -107,9 +112,8 @@ describe('FactsBrowser', () => {
       await chooseOption('Level', 'A1')
       await chooseOption('Author', 'producer-a1')
       await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1))
-      expect(view.location()).toBe(`/console/facts?flagged=true&level=A1&author=agent%3A${producer.id}`)
+      expect(view.location()).toBe(`/console/facts?level=A1&author=agent%3A${producer.id}`)
 
-      fireEvent.click(screen.getByRole('button', { name: 'Flagged only' }))
       await chooseOption('Status', 'Rejected')
       expect(await screen.findByText('No facts match these filters.')).toBeInTheDocument()
 
@@ -134,8 +138,8 @@ describe('FactsBrowser', () => {
     expect(screen.getAllByText('Replaced')).toHaveLength(1)
   })
 
-  it('shows a fact read-only with its claim, review, task, and history [spec: console/fact-detail]', async () => {
-    const { api, flagged, replaced, task } = world()
+  it('shows a fact read-only with its claim, review, and history [spec: console/fact-detail]', async () => {
+    const { api, flagged, replaced } = world()
     server.use(...api.handlers)
     const view = renderAt('/console/facts', routes)
     expect(screen.getByText('Select a fact to see its claim, review, and history.')).toBeInTheDocument()
@@ -152,17 +156,13 @@ describe('FactsBrowser', () => {
     const verdict = within(detail()).getByRole('region', { name: 'Review' })
     expect(verdict).toHaveTextContent('Uncertain62%It leans toward hurrying.llm · claude-sonnet')
     expect(verdict.className).toContain('bg-warning')
-    expect(await within(detail()).findByRole('link', { name: /Task · Fix flagged fact/ })).toHaveAttribute(
-      'href',
-      `/console/tasks/activity?task=${task.id}`,
-    )
     expect(within(detail()).getByRole('link', { name: 'Open entry' })).toHaveAttribute('href', '/console/entries/run')
     expect(within(detail()).queryByRole('button', { name: /retract|re-review/i })).not.toBeInTheDocument()
 
     const history = (await within(detail()).findByText('History')).closest('section') as HTMLElement
     const entries = within(history).getAllByRole('button')
     expect(entries.map((entry) => entry.textContent)).toEqual([
-      expect.stringMatching(/^PublishedShe ran to catch the last bus\. · zh: 她跑着去赶末班车。producer-a1 · /),
+      expect.stringMatching(/^PublishedShe ran to catch the last bus\.producer-a1 · /),
       expect.stringMatching(/^ReplacedShe runs every morning before work\.agent:producer · /),
     ])
     expect(entries[0]).toBeDisabled()
@@ -212,6 +212,7 @@ describe('FactsBrowser', () => {
     expect(await screen.findByText('Fact not found.')).toBeInTheDocument()
 
     server.use(http.get('/manage/v1/facts', () => apiError(403, 'forbidden', 'Admins only.')))
+    cleanup()
     renderAt('/console/facts', [{ path: '/console/facts', element: <FactsBrowser /> }])
     expect(await screen.findByText('Admins only.')).toBeInTheDocument()
     expect(screen.getByText('Newest first')).toBeInTheDocument()

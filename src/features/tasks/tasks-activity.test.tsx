@@ -1,4 +1,3 @@
-import type { WorkItemId } from '@shared/work'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -7,7 +6,7 @@ import { server } from '@/test/msw'
 import { renderAt } from '@/test/render'
 import { chooseOption } from '@/test/select'
 import { HEAVY_TEST_MS } from '@/test/timeouts'
-import { SubjectTasks, TasksActivity } from './index'
+import { TasksActivity } from './index'
 
 const routes = [{ path: '/console/tasks/activity', element: <TasksActivity /> }]
 
@@ -60,7 +59,7 @@ function world() {
       attempt({ entry: { id: crypto.randomUUID() as never, lemma: `word${index}` }, type: 'grammar' }),
     ),
   ]
-  return consoleApi({ attempts, tasks: [task], agents: [producer] })
+  return consoleApi({ entries: [run, bank], attempts, tasks: [task], agents: [producer] })
 }
 
 describe('TasksActivity', () => {
@@ -98,17 +97,18 @@ describe('TasksActivity', () => {
     HEAVY_TEST_MS,
   )
 
-  it('opens a task with its gap and every attempt, read-only [spec: console/task-detail]', async () => {
-    server.use(...world().handlers)
+  it('opens a task with its gap and every attempt, and settles its slot by hand [spec: console/task-detail]', async () => {
+    const api = world()
+    server.use(...api.handlers)
     const view = renderAt('/console/tasks/activity', routes)
     fireEvent.click(await screen.findByRole('button', { name: /^run/ }))
     expect(view.location()).toBe(`/console/tasks/activity?task=${task.id}`)
 
-    const sheet = await screen.findByRole('dialog')
+    const sheet = await screen.findByRole('dialog', { name: /Task · Examples/ })
     expect(await within(sheet).findByText('Task · Examples')).toBeInTheDocument()
     expect(within(sheet).getByText('run')).toBeInTheDocument()
     expect(within(sheet).getByText('be in charge of; manage')).toBeInTheDocument()
-    expect(within(sheet).getByText('1 of 3 tries without progress')).toBeInTheDocument()
+    expect(within(sheet).getByText('1 of 2 tries without progress')).toBeInTheDocument()
     expect(within(sheet).getByText('Has 1 example. This sense needs 2.')).toBeInTheDocument()
     expect(within(sheet).getByText(/producer-a1 is on it/)).toBeInTheDocument()
     expect(within(sheet).getByText('7m 12s')).toBeInTheDocument()
@@ -121,12 +121,34 @@ describe('TasksActivity', () => {
     expect(attempts[0]).toHaveTextContent('Added a workplace example.')
     expect(attempts[1]).toHaveTextContent('#1agent:producer-bNo progress2m 05s')
     expect(attempts[1]).toHaveTextContent('Submitted no facts.')
-    expect(within(sheet).getByText('Read-only. Agents pick up tasks through the API.')).toBeInTheDocument()
+    expect(
+      within(sheet).getByText('Agents pick up tasks through the API. A curator settles a slot nothing can fill.'),
+    ).toBeInTheDocument()
     expect(
       within(sheet)
         .queryAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['Close'])
+    ).toEqual(['Settle', 'Close'])
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Settle' }))
+    const settle = await screen.findByRole('dialog', { name: 'Settle Examples for run' })
+    const submit = within(settle).getByRole('button', { name: 'Settle slot' })
+    expect(submit).toBeDisabled()
+    fireEvent.change(within(settle).getByLabelText('Why nothing fills it'), {
+      target: { value: 'A learner dictionary gives one example only.' },
+    })
+    fireEvent.click(submit)
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Settle/ })).not.toBeInTheDocument())
+    expect(api.state.passes).toEqual([
+      {
+        entry_id: task.entry.id,
+        type: 'examples',
+        subject_id: task.subject_id,
+        note: 'A learner dictionary gives one example only.',
+      },
+    ])
+    expect(await within(sheet).findByText('Closed')).toBeInTheDocument()
+    expect(within(sheet).queryByRole('button', { name: 'Settle' })).not.toBeInTheDocument()
 
     fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(view.location()).toBe('/console/tasks/activity'))
@@ -140,7 +162,7 @@ describe('TasksActivity', () => {
     renderAt(`/console/tasks/activity?task=${fresh.id}`, routes)
     const sheet = await screen.findByRole('dialog')
     expect(await within(sheet).findByText('No attempts yet.')).toBeInTheDocument()
-    expect(within(sheet).getByText('No senses yet.')).toBeInTheDocument()
+    expect(within(sheet).getByText('No sense inventory yet.')).toBeInTheDocument()
 
     server.use(http.get('/manage/v1/work/items/:id', () => apiError(404, 'not_found', 'Work item not found.')))
     renderAt(`/console/tasks/activity?task=${crypto.randomUUID()}`, routes)
@@ -153,26 +175,18 @@ describe('TasksActivity', () => {
     renderAt('/console/tasks/activity', routes)
     expect(await screen.findByRole('alert')).toHaveTextContent('Admins only.')
   })
-})
 
-describe('SubjectTasks', () => {
-  it('links the open task about a subject, or shows nothing without one', async () => {
-    const flagged = workTask({
-      entry: run,
-      subject_id: example.id,
-      stage: 5,
-      gap: { type: 'weak_fact', fact_id: example.id, kind: 'example', reason: 'uncertain' },
-    })
-    server.use(...consoleApi({ tasks: [flagged] }).handlers)
-    const routesFor = (subjectId: string) => [{ path: '/', element: <SubjectTasks subjectId={subjectId} /> }]
-    renderAt('/', routesFor(example.id))
-    const link = await screen.findByRole('link', { name: /Task · Fix flagged fact/ })
-    expect(link).toHaveAttribute('href', `/console/tasks/activity?task=${flagged.id as WorkItemId}`)
-    expect(link).toHaveTextContent('0 tries without progress')
-    expect(link).toHaveTextContent('Queued')
-
-    server.use(http.get('/manage/v1/work/items', () => apiError(403, 'forbidden', 'No tasks for you.')))
-    renderAt('/', routesFor(crypto.randomUUID()))
-    expect(await screen.findByRole('alert')).toHaveTextContent('No tasks for you.')
+  it('shows a failed settle where the curator acted', async () => {
+    server.use(...world().handlers)
+    server.use(http.post('/manage/v1/entries/:id/passes', () => apiError(403, 'forbidden', 'Curators only.')))
+    renderAt(`/console/tasks/activity?task=${task.id}`, routes)
+    const sheet = await screen.findByRole('dialog', { name: /Task · Examples/ })
+    fireEvent.click(await within(sheet).findByRole('button', { name: 'Settle' }))
+    const settle = await screen.findByRole('dialog', { name: 'Settle Examples for run' })
+    fireEvent.change(within(settle).getByLabelText('Why nothing fills it'), { target: { value: 'None fits.' } })
+    fireEvent.click(within(settle).getByRole('button', { name: 'Settle slot' }))
+    expect(await within(settle).findByRole('alert')).toHaveTextContent('Curators only.')
+    fireEvent.click(within(settle).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Settle/ })).not.toBeInTheDocument())
   })
 })

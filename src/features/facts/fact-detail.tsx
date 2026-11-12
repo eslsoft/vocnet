@@ -3,7 +3,6 @@ import { ArrowUpRight, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { usePrincipalName } from '@/features/keys'
-import { SubjectTasks } from '@/features/tasks'
 import { cn } from '@/shared/lib/cn'
 import { formatPercent, formatStamp } from '@/shared/lib/format'
 import { buttonVariants } from '@/shared/ui/button'
@@ -117,9 +116,9 @@ function Detail({ fact, onSelect }: { fact: ListedFactDto; onSelect: (id: FactId
         <FactFlagBadge fact={fact} long />
       </div>
       <div className="flex flex-col gap-2 rounded-xl bg-muted p-4">
-        {context.sense?.gloss && fact.kind !== 'sense' ? (
+        {context.sense?.item ? (
           <p className="text-muted-foreground text-xs">
-            {t('factDetail.senseNumber', { number: context.sense.number })} · {context.sense.gloss}
+            {t('factDetail.senseNumber', { number: context.sense.number })} · {context.sense.item.gloss}
           </p>
         ) : null}
         <FactClaim fact={fact} size="lg" />
@@ -143,7 +142,6 @@ function Detail({ fact, onSelect }: { fact: ListedFactDto; onSelect: (id: FactId
         </details>
       </div>
       <Review fact={fact} />
-      <SubjectTasks subjectId={fact.id} />
       {chain.length > 1 ? <History chain={chain} current={fact.id} onSelect={onSelect} /> : null}
     </div>
   )

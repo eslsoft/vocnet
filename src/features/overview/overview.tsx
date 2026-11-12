@@ -15,7 +15,7 @@ import { StatCard } from '@/shared/ui/stat-card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/ui/tooltip'
 import { useConsoleStats } from './hooks'
-import { entryTotal, type FactTypeRow, factTypeRows, flaggedTotal, REVIEW_SLA_MS } from './stats'
+import { entryTotal, type FactTypeRow, factTypeRows, lowCredibilityTotal, REVIEW_SLA_MS } from './stats'
 
 function useFormat() {
   const { i18n } = useTranslation()
@@ -90,17 +90,17 @@ function PendingCard({ stats }: { stats: ConsoleStats }) {
 function Headline({ stats }: { stats: ConsoleStats }) {
   const { t } = useTranslation()
   const { number, percent } = useFormat()
-  const flagged = flaggedTotal(stats)
-  const quality = stats.live_facts === 0 ? 1 : 1 - flagged / stats.live_facts
+  const low = lowCredibilityTotal(stats)
+  const credible = stats.live_facts === 0 ? 1 : 1 - low / stats.live_facts
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label={t('overview.completeness')} value={percent(stats.completeness.average)}>
         <Progress value={stats.completeness.average * 100} aria-label={t('overview.completeness')} />
         <span>{t('overview.averageAcross', { count: entryTotal(stats), formatted: number(entryTotal(stats)) })}</span>
       </StatCard>
-      <StatCard label={t('overview.quality')} value={percent(quality)}>
-        <Progress value={quality * 100} aria-label={t('overview.quality')} />
-        <span>{t('overview.flaggedOf', { flagged: number(flagged), live: number(stats.live_facts) })}</span>
+      <StatCard label={t('overview.credibility')} value={percent(credible)}>
+        <Progress value={credible * 100} aria-label={t('overview.credibility')} />
+        <span>{t('overview.lowOf', { low: number(low), live: number(stats.live_facts) })}</span>
       </StatCard>
       <OpenTasksCard stats={stats} />
       <PendingCard stats={stats} />
@@ -183,14 +183,14 @@ function NeedsAttention({ stats }: { stats: ConsoleStats }) {
       <CardContent>
         <ul className="flex flex-col divide-y">
           <AttentionRow
-            to="/console/facts?flagged=true"
+            to="/console/tickets?type=audit"
             icon={<AlertTriangle aria-hidden />}
-            label={t('overview.flaggedFacts')}
-            count={flaggedTotal(stats)}
+            label={t('overview.lowCredibilityFacts')}
+            count={lowCredibilityTotal(stats)}
             variant="warning"
           />
           <AttentionRow
-            to="/console/tasks/activity?result=stuck"
+            to="/console/tickets?type=stuck_work"
             icon={<Hand aria-hidden />}
             label={t('overview.stuckTasks')}
             count={stats.work.stuck}
@@ -200,7 +200,7 @@ function NeedsAttention({ stats }: { stats: ConsoleStats }) {
             to="/console/tickets"
             icon={<MessageSquareWarning aria-hidden />}
             label={t('overview.openTickets')}
-            count={stats.feedback.open}
+            count={stats.tickets.open}
             variant="warning"
           />
           <AttentionRow
@@ -225,7 +225,7 @@ function NeedsAttention({ stats }: { stats: ConsoleStats }) {
 
 const SEGMENTS = [
   { key: 'published', className: 'bg-primary', query: 'status=published' },
-  { key: 'flagged', className: 'bg-warning', query: 'flagged=true' },
+  { key: 'low', className: 'bg-warning', query: 'status=published' },
   { key: 'pending', className: 'bg-info', query: 'status=pending' },
   { key: 'rejected', className: 'bg-muted-foreground/40', query: 'status=rejected' },
 ] as const
@@ -291,7 +291,7 @@ function FactsByType({ stats }: { stats: ConsoleStats }) {
               <TableRow>
                 <TableHead>{t('overview.type')}</TableHead>
                 <TableHead className="w-1/2">{t('overview.distribution')}</TableHead>
-                <TableHead className="text-right">{t('overview.segments.flagged')}</TableHead>
+                <TableHead className="text-right">{t('overview.segments.low')}</TableHead>
                 <TableHead className="text-right">{t('overview.segments.pending')}</TableHead>
                 <TableHead className="text-right">{t('overview.total')}</TableHead>
               </TableRow>
@@ -304,9 +304,9 @@ function FactsByType({ stats }: { stats: ConsoleStats }) {
                     <Distribution row={row} max={max} />
                   </TableCell>
                   <TableCell
-                    className={cn('text-right tabular-nums', row.flagged > 0 && 'font-medium text-warning-foreground')}
+                    className={cn('text-right tabular-nums', row.low > 0 && 'font-medium text-warning-foreground')}
                   >
-                    {number(row.flagged)}
+                    {number(row.low)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground tabular-nums">{number(row.pending)}</TableCell>
                   <TableCell className="text-right tabular-nums">{number(row.total)}</TableCell>

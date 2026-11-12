@@ -1,16 +1,14 @@
 import { type FactId, factKindSchema, factStatusSchema, type ListedFactDto } from '@shared/facts'
 import { cefrLevelSchema } from '@shared/reference'
-import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAgentOptions } from '@/features/keys'
 import { cn } from '@/shared/lib/cn'
-import { formatNumber, formatRelative } from '@/shared/lib/format'
+import { formatRelative } from '@/shared/lib/format'
 import { useDebouncedParam, useSearchParamState } from '@/shared/lib/search-params'
 import { Button } from '@/shared/ui/button'
 import { ErrorNotice } from '@/shared/ui/error-notice'
 import { FilterSelect } from '@/shared/ui/filter-select'
 import { Input } from '@/shared/ui/input'
-import { Toggle } from '@/shared/ui/toggle'
 import type { FactFilter } from './api'
 import { FactStateBadge } from './fact-badges'
 import { FactClaim } from './fact-claim'
@@ -26,7 +24,6 @@ function useFilter() {
   const filter: FactFilter = {
     status: factStatusSchema.safeParse(params.get('status')).data,
     kind: factKindSchema.safeParse(params.get('kind')).data,
-    weak: params.get('flagged') === 'true' ? 'true' : undefined,
     level: cefrLevelSchema.safeParse(params.get('level')).data,
     author: params.get('author') ?? undefined,
     lemma: lemma || undefined,
@@ -76,19 +73,15 @@ function FactRow({
   )
 }
 
-function Filters({ flagged }: { flagged: number | undefined }) {
-  const { t, i18n } = useTranslation()
+function Filters() {
+  const { t } = useTranslation()
   const { filter, draft, setDraft, setParam } = useFilter()
   const authors = useAgentOptions()
   return (
     <div className="flex flex-col gap-3 border-b px-4 pb-4">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="font-semibold text-2xl tracking-tight">{t('facts.title')}</h1>
-        <span className="text-muted-foreground text-xs">
-          {flagged === undefined
-            ? t('facts.newestFirst')
-            : t('facts.flaggedNewest', { flagged: formatNumber(flagged, i18n.language) })}
-        </span>
+        <span className="text-muted-foreground text-xs">{t('facts.newestFirst')}</span>
       </div>
       <Input
         type="search"
@@ -99,15 +92,6 @@ function Filters({ flagged }: { flagged: number | undefined }) {
         onChange={(event) => setDraft(event.target.value)}
       />
       <div className="flex flex-wrap gap-2">
-        <Toggle
-          variant="outline"
-          pressed={filter.weak === 'true'}
-          onPressedChange={(pressed) => setParam('flagged', pressed ? 'true' : null)}
-          className="aria-pressed:border-warning/60 aria-pressed:bg-warning/10 aria-pressed:text-warning-foreground"
-        >
-          <AlertTriangle aria-hidden />
-          {t('facts.flaggedOnly')}
-        </Toggle>
         <FilterSelect
           label={t('facts.type')}
           allLabel={t('common.all')}
@@ -141,8 +125,8 @@ function Filters({ flagged }: { flagged: number | undefined }) {
   )
 }
 
-/** Facts newest first beside the one selected; flagged facts are what the admin watches most. */
-export function FactsBrowser({ flagged }: { flagged?: number }) {
+/** Facts newest first beside the one selected. */
+export function FactsBrowser() {
   const { t } = useTranslation()
   const { filter } = useFilter()
   const [selected, select] = useFactSelection()
@@ -151,7 +135,7 @@ export function FactsBrowser({ flagged }: { flagged?: number }) {
   return (
     <div className="grid overflow-hidden rounded-xl border bg-card lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col pt-4 lg:max-h-[calc(100dvh-4rem)] lg:border-r">
-        <Filters flagged={flagged} />
+        <Filters />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <ErrorNotice error={pages.error} className="m-4" />
           {pages.isSuccess && facts.length === 0 ? (

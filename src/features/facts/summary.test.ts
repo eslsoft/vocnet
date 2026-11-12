@@ -7,19 +7,29 @@ const target = '7d3b2a10-0000-4000-8000-000000000000'
 
 describe('summarizeFact', () => {
   it.each([
-    [{ kind: 'entry', payload: {} }, ''],
-    [{ kind: 'sense', payload: { gloss: 'land beside a river' } }, 'land beside a river'],
+    [
+      {
+        kind: 'senses',
+        payload: {
+          senses: [
+            { id: target, pos: 'noun', gloss: 'land beside a river', rank: 'common' },
+            { id: target, pos: 'noun', gloss: 'a money business', rank: 'common' },
+            { id: target, pos: 'verb', gloss: 'to tilt a plane', rank: 'extra' },
+          ],
+        },
+      },
+      '2 common, 1 extra',
+    ],
     [{ kind: 'form', payload: { form: 'banks', type: 'plural' } }, 'banks (plural)'],
     [{ kind: 'relation', payload: { type: 'synonym', target_sense_id: target } }, 'synonym → sense 7d3b2a10'],
     [{ kind: 'pronunciation', payload: { ipa: 'bæŋk', accent: 'us' } }, '/bæŋk/ (us)'],
-    [{ kind: 'sense', payload: { gloss: 'Semen.', register: 'taboo' } }, 'Semen. (taboo)'],
     [{ kind: 'form', payload: { form: 'would', type: 'past', pos: 'auxiliary' } }, 'would (past, auxiliary)'],
     [
       { kind: 'pronunciation', payload: { ipa: 'tə', accent: 'us', strength: 'weak', pos: 'preposition' } },
       '/tə/ (us, weak, preposition)',
     ],
     [{ kind: 'example', payload: { text: 'We sat on the bank.' } }, 'We sat on the bank.'],
-    [{ kind: 'translation', payload: { language: 'zh', text: '河岸' } }, 'zh: 河岸'],
+    [{ kind: 'translation', payload: { language: 'zh', of: 'sense', text: '河岸' } }, 'zh (sense): 河岸'],
     [{ kind: 'topic', payload: { topic_id: 'hospital' } }, 'hospital'],
     [{ kind: 'grammar', payload: { countability: 'countable' } }, 'countable'],
     [
@@ -46,9 +56,8 @@ describe('summarizeFact', () => {
       { kind: 'collocation', payload: { text: 'make a decision', pattern: 'verb_noun' } },
       'make a decision (verb_noun)',
     ],
-    [{ kind: 'sense_list', payload: { common: [target, target], extra: [target] } }, '2 common, 1 extra'],
+    [{ kind: 'phrases', payload: { phrases: ['bank on', 'break the bank'] } }, 'bank on · break the bank'],
     [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
-    [{ kind: 'sense', payload: { gloss: 'A lorry.', region: 'british' } }, 'A lorry. (british)'],
     [{ kind: 'grammar', payload: { agreement: ['singular_noun', 'of_plural'] } }, 'singular_noun, of_plural'],
     [{ kind: 'grammar', payload: { position: 'mid' } }, 'mid'],
     [
@@ -74,15 +83,7 @@ describe('summarizeFact', () => {
       { kind: 'grammar', payload: { countability: 'uncountable', number: 'singular_only', article: 'with_the' } },
       'uncountable, singular_only, with_the',
     ],
-    [
-      { kind: 'gap_closure', payload: { gap: 'collocations', reason: 'A month name has no common collocations.' } },
-      'collocations: A month name has no common collocations.',
-    ],
     [{ kind: 'form', payload: { form: 'went', type: 'past', ipa: 'went', accent: 'uk' } }, 'went (past) /went/ (uk)'],
-    [
-      { kind: 'example', payload: { text: 'We sat on the bank.', translations: { zh: '我们坐在河岸上。' } } },
-      'We sat on the bank. · zh: 我们坐在河岸上。',
-    ],
   ])('summarizes a %o fact', (input, expected) => {
     expect(summarizeFact(fact(input as FactDto))).toBe(expected)
   })

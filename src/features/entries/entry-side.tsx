@@ -3,41 +3,71 @@ import type { WorkItemOverview } from '@shared/monitor'
 import type { LemmaReference } from '@shared/reference'
 import type { WorkType } from '@shared/work'
 import { useTranslation } from 'react-i18next'
-import { FactStateBadge, type SenseView, summarizeFact } from '@/features/facts'
-import { TaskStatusBadge } from '@/features/tasks'
+import { FactStateBadge, type InventoryFact, type SenseView, summarizeFact } from '@/features/facts'
+import { gapText, TaskStatusBadge } from '@/features/tasks'
+import { cn } from '@/shared/lib/cn'
 import { formatNumber } from '@/shared/lib/format'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { ErrorNotice } from '@/shared/ui/error-notice'
 import { useReferenceSources } from './hooks'
 
-/** The senses in their agreed order, the less common ones and the ones not yet ordered counted apart. */
-export function SensesOutline({ senses }: { senses: SenseView[] }) {
+/**
+ * The entry's sense inventory in display order: the common senses first, then the extra ones. It
+ * is decided once; after it publishes only a curator changes it.
+ */
+export function InventoryCard({
+  inventory,
+  senses,
+  onSelect,
+}: {
+  inventory: InventoryFact | null
+  senses: SenseView[]
+  onSelect: (id: FactId) => void
+}) {
   const { t } = useTranslation()
-  const extra = senses.filter((view) => view.listing === 'extra').length
-  const unordered = senses.filter((view) => view.listing === 'unlisted').length
+  const unlisted = senses.filter((view) => view.item === null).length
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>{t('inspector.senses')}</CardTitle>
-        <CardDescription>{t('inspector.sensesHint')}</CardDescription>
+        <CardTitle>{t('inspector.inventory')}</CardTitle>
+        <CardDescription>{t('inspector.inventoryHint')}</CardDescription>
       </CardHeader>
-      <CardContent>
-        {senses.length === 0 ? <p className="text-muted-foreground text-sm">{t('inspector.noSenses')}</p> : null}
+      <CardContent className="flex flex-col gap-2">
+        {inventory ? (
+          <button
+            type="button"
+            onClick={() => onSelect(inventory.id)}
+            className="inline-flex items-center gap-2 self-start text-left text-muted-foreground text-xs hover:underline"
+          >
+            <FactStateBadge fact={inventory} />
+            {t('inspector.inventorySummary', {
+              common: inventory.payload.senses.filter((sense) => sense.rank === 'common').length,
+              extra: inventory.payload.senses.filter((sense) => sense.rank === 'extra').length,
+            })}
+          </button>
+        ) : (
+          <p className="text-muted-foreground text-sm">{t('inspector.noInventory')}</p>
+        )}
         <ol className="flex flex-col gap-1.5 text-sm">
-          {senses.map((view, index) =>
-            view.listing === 'extra' || view.listing === 'unlisted' ? null : (
-              <li key={view.sense.id} className="flex gap-3">
-                <span className="w-4 shrink-0 text-muted-foreground tabular-nums">{index + 1}</span>
-                <span className="min-w-0 truncate font-serif">{view.gloss ?? t('inspector.noGloss')}</span>
-              </li>
-            ),
-          )}
+          {inventory?.payload.senses.map((sense, index) => (
+            <li key={sense.id} className={cn('flex gap-3', sense.rank === 'extra' && 'text-muted-foreground')}>
+              <span className="w-4 shrink-0 text-muted-foreground tabular-nums">{index + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="text-muted-foreground italic">{t(`pos.${sense.pos}`)}</span>{' '}
+                <span className="font-serif">{sense.gloss}</span>
+                {[sense.register, sense.region, sense.rank === 'extra' ? t('inspector.lessCommon') : undefined]
+                  .filter(Boolean)
+                  .map((label) => (
+                    <span key={label} className="ml-1.5 text-muted-foreground text-xs">
+                      {label}
+                    </span>
+                  ))}
+              </span>
+            </li>
+          ))}
         </ol>
-        {extra + unordered > 0 ? (
-          <ul className="mt-2 flex flex-col gap-1 text-muted-foreground text-sm">
-            {extra > 0 ? <li>{t('inspector.lessCommonCount', { count: extra })}</li> : null}
-            {unordered > 0 ? <li>{t('inspector.notOrderedCount', { count: unordered })}</li> : null}
-          </ul>
+        {unlisted > 0 ? (
+          <p className="text-muted-foreground text-sm">{t('inspector.notInInventory', { count: unlisted })}</p>
         ) : null}
       </CardContent>
     </Card>
@@ -50,8 +80,8 @@ const DETAILS: Array<{ key: string; kinds: FactKind[]; tasks: WorkType[] }> = [
   { key: 'forms', kinds: ['form'], tasks: ['forms', 'form_pronunciations'] },
   { key: 'syllables', kinds: ['syllables'], tasks: ['syllables'] },
   { key: 'formation', kinds: ['morphology'], tasks: ['morphology', 'family'] },
-  { key: 'phrases', kinds: [], tasks: ['phrases'] },
-  { key: 'senseOrder', kinds: ['sense_list'], tasks: ['sense_list'] },
+  { key: 'phrases', kinds: ['phrases'], tasks: ['phrases'] },
+  { key: 'translations', kinds: [], tasks: ['translations'] },
 ]
 
 const isCurrent = (fact: FactDto) => fact.status === 'pending' || fact.status === 'published'
@@ -77,7 +107,6 @@ export function WordDetails({
           {DETAILS.map((row) => {
             const current = facts.filter((fact) => row.kinds.includes(fact.kind) && isCurrent(fact))
             const task = tasks.find((candidate) => row.tasks.includes(candidate.type))
-            const phrases = task?.gap.type === 'phrases' ? task.gap.have : []
             return (
               <div key={row.key} className="contents">
                 <dt className="text-muted-foreground text-xs leading-5">{t(`inspector.details.${row.key}`)}</dt>
@@ -95,9 +124,8 @@ export function WordDetails({
                       )}
                     </button>
                   ))}
-                  {phrases.length > 0 ? <span>{phrases.join(' · ')}</span> : null}
-                  {current.length === 0 && phrases.length === 0 ? (
-                    <span className="text-muted-foreground">—</span>
+                  {current.length === 0 ? (
+                    <span className="text-muted-foreground">{task ? gapText(task.gap, t) : '—'}</span>
                   ) : null}
                   {task ? (
                     <span className="ml-auto">

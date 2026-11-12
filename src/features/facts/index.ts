@@ -1,6 +1,6 @@
 // Public surface of the facts feature: reading facts, their state, and the entry they belong to.
 
-export { groupEntry, type Listing, type SenseView } from './entry-view'
+export { currentInventory, groupEntry, type InventoryFact, type SenseView } from './entry-view'
 export { FactFlagBadge, FactStateBadge, FactStatusBadge } from './fact-badges'
 export { FactClaim } from './fact-claim'
 export { FactSheet } from './fact-sheet'

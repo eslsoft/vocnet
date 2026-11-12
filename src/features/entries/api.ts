@@ -6,9 +6,7 @@ import { decodeApiResponse, rpc } from '@/shared/api/client'
 export interface EntryFilter {
   prefix?: string
   level?: CefrLevel
-  /** Only entries with a flagged fact. */
-  flagged?: 'true'
-  /** Only entries with a stuck task. */
+  /** Only entries with a task its passes did not fill. */
   stuck?: 'true'
 }
 

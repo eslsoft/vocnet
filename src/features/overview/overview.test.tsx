@@ -13,10 +13,10 @@ const stats = consoleStats({
     { kind: 'example', status: 'published', count: 16_000 },
     { kind: 'example', status: 'pending', count: 380 },
     { kind: 'example', status: 'rejected', count: 220 },
-    { kind: 'sense', status: 'published', count: 9_000 },
-    { kind: 'sense', status: 'superseded', count: 10 },
+    { kind: 'senses', status: 'published', count: 9_000 },
+    { kind: 'senses', status: 'superseded', count: 10 },
   ],
-  flagged: [{ kind: 'example', count: 141 }],
+  low_credibility: [{ kind: 'example', count: 141 }],
   live_facts: 25_380,
   completeness: {
     average: 0.724,
@@ -26,7 +26,7 @@ const stats = consoleStats({
     ],
   },
   pending_review: { count: 1_204, oldest_at: fromNow(-(3 * 3600 + 12 * 60)), over_one_hour: 94 },
-  feedback: { open: 5, claimed: 2, resolved: 9, dismissed: 1 },
+  tickets: { open: 5, resolved: 9, dismissed: 1 },
   work: { open: 18_442, stuck: 37, timed_out_24h: 12 },
 })
 
@@ -42,16 +42,18 @@ const summary = workSummary({
 })
 
 describe('Overview', () => {
-  it('shows completeness, quality, open tasks, and pending review at a glance [spec: console/overview]', async () => {
+  it('shows completeness, credibility, open tasks, and pending review at a glance [spec: console/overview]', async () => {
     server.use(...consoleApi({ stats, summary }).handlers)
     renderAt('/console', routes)
 
     const completeness = await screen.findByRole('region', { name: 'Completeness' })
     expect(within(completeness).getByText('72.4%')).toBeInTheDocument()
     expect(within(completeness).getByText('Average across 3,344 entries')).toBeInTheDocument()
-    const quality = screen.getByRole('region', { name: 'Quality' })
-    expect(within(quality).getByText('99.4%')).toBeInTheDocument()
-    expect(within(quality).getByText('141 flagged of 25,380 live facts')).toBeInTheDocument()
+    const credibility = screen.getByRole('region', { name: 'Credibility' })
+    expect(within(credibility).getByText('99.4%')).toBeInTheDocument()
+    expect(
+      within(credibility).getByText('141 of 25,380 live facts settled by a review path right less than 9 times in 10'),
+    ).toBeInTheDocument()
     const open = screen.getByRole('region', { name: 'Open tasks' })
     expect(within(open).getByText('18,442')).toBeInTheDocument()
     expect(await within(open).findByText('A1 done in ~1 day')).toBeInTheDocument()
@@ -70,13 +72,13 @@ describe('Overview', () => {
     server.use(...consoleApi({ stats, summary }).handlers)
     const view = renderAt('/console', routes)
     const link = async (name: RegExp) => screen.findByRole('link', { name })
-    expect(await link(/Flagged facts/)).toHaveAttribute('href', '/console/facts?flagged=true')
-    expect(await link(/Stuck tasks\s*37/)).toHaveAttribute('href', '/console/tasks/activity?result=stuck')
+    expect(await link(/Low-credibility facts\s*141/)).toHaveAttribute('href', '/console/tickets?type=audit')
+    expect(await link(/Stuck tasks\s*37/)).toHaveAttribute('href', '/console/tickets?type=stuck_work')
     expect(await link(/Open tickets\s*5/)).toHaveAttribute('href', '/console/tickets')
     expect(await link(/timed out \(24h\)\s*12/)).toHaveAttribute('href', '/console/tasks')
     expect(await link(/over 1 hour\s*94/)).toHaveAttribute('href', '/console/facts?status=pending')
-    fireEvent.click(await link(/Flagged facts/))
-    expect(view.location()).toBe('/console/facts?flagged=true')
+    fireEvent.click(await link(/Low-credibility facts/))
+    expect(view.location()).toBe('/console/tickets?type=audit')
   })
 
   it('splits facts by type into linked status segments [spec: console/facts-by-type]', async () => {
@@ -92,15 +94,15 @@ describe('Overview', () => {
       'href',
       '/console/facts?kind=example&status=published',
     )
-    expect(within(example).getByRole('link', { name: 'Example: 141 Flagged' })).toHaveAttribute(
+    expect(within(example).getByRole('link', { name: 'Example: 141 Low credibility' })).toHaveAttribute(
       'href',
-      '/console/facts?kind=example&flagged=true',
+      '/console/facts?kind=example&status=published',
     )
     expect(within(example).getByRole('link', { name: 'Example: 220 Rejected' })).toHaveAttribute(
       'href',
       '/console/facts?kind=example&status=rejected',
     )
-    const sense = screen.getByRole('cell', { name: 'Sense' }).closest('tr') as HTMLElement
+    const sense = screen.getByRole('cell', { name: 'Sense inventory' }).closest('tr') as HTMLElement
     expect(within(sense).queryByRole('link', { name: /Pending/ })).not.toBeInTheDocument()
   })
 

@@ -3,9 +3,10 @@ import type { ConsoleStats } from '@shared/monitor'
 
 export interface FactTypeRow {
   kind: FactKind
-  /** Published and not flagged. */
+  /** Published and credible. */
   published: number
-  flagged: number
+  /** Published, by a review path right less than nine times in ten. */
+  low: number
   pending: number
   rejected: number
   total: number
@@ -18,14 +19,14 @@ export function factTypeRows(stats: ConsoleStats): FactTypeRow[] {
   const kinds = [...new Set(stats.facts.map((cell) => cell.kind))]
   return kinds
     .map((kind) => {
-      const flagged = stats.flagged.find((cell) => cell.kind === kind)?.count ?? 0
+      const low = stats.low_credibility.find((cell) => cell.kind === kind)?.count ?? 0
       const published = count(kind, 'published')
       const pending = count(kind, 'pending')
       const rejected = count(kind, 'rejected')
       return {
         kind,
-        published: Math.max(0, published - flagged),
-        flagged,
+        published: Math.max(0, published - low),
+        low,
         pending,
         rejected,
         total: published + pending + rejected,
@@ -35,7 +36,8 @@ export function factTypeRows(stats: ConsoleStats): FactTypeRow[] {
     .sort((a, b) => b.total - a.total)
 }
 
-export const flaggedTotal = (stats: ConsoleStats) => stats.flagged.reduce((sum, cell) => sum + cell.count, 0)
+export const lowCredibilityTotal = (stats: ConsoleStats) =>
+  stats.low_credibility.reduce((sum, cell) => sum + cell.count, 0)
 
 export const entryTotal = (stats: ConsoleStats) =>
   stats.completeness.by_level.reduce((sum, level) => sum + level.entries, 0)

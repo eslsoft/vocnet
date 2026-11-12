@@ -1,6 +1,5 @@
 import type { WorkAttemptDto, WorkItemDetail } from '@shared/monitor'
-import type { WorkItemId } from '@shared/work'
-import { Eye } from 'lucide-react'
+import { MAX_PASSES, type WorkItemId } from '@shared/work'
 import { useTranslation } from 'react-i18next'
 import { usePrincipalName } from '@/features/keys'
 import { formatDuration, formatRelative, formatStamp } from '@/shared/lib/format'
@@ -9,10 +8,8 @@ import { ErrorNotice } from '@/shared/ui/error-notice'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/shared/ui/sheet'
 import { gapText } from './gap-text'
 import { useTask } from './hooks'
+import { SettleSlotDialog } from './settle-slot-dialog'
 import { AttemptFactBadge, OutcomeBadge, TaskStatusBadge } from './task-badges'
-
-/** Three attempts without progress move a task out of the agents' queue. */
-const MAX_TRIES = 3
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -99,7 +96,7 @@ function TaskBody({ task }: { task: WorkItemDetail }) {
   )
 }
 
-/** One task with every attempt at it, newest first. Read-only: agents claim tasks through the API. */
+/** One task with every attempt at it, newest first; a curator can settle an open one by hand. */
 export function TaskSheet({ taskId, onClose }: { taskId: WorkItemId | null; onClose: () => void }) {
   const { t } = useTranslation()
   const task = useTask(taskId)
@@ -120,7 +117,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: WorkItemId | null; onCl
               <div className="flex flex-wrap items-center gap-2">
                 <TaskStatusBadge status={data.status} />
                 <Badge variant="outline">
-                  {t('taskDetail.tries', { count: data.attempts_without_progress, max: MAX_TRIES })}
+                  {t('taskDetail.tries', { count: data.attempts_without_progress, max: MAX_PASSES })}
                 </Badge>
               </div>
             </>
@@ -128,10 +125,12 @@ export function TaskSheet({ taskId, onClose }: { taskId: WorkItemId | null; onCl
         </SheetHeader>
         <ErrorNotice error={task.error} className="m-4" />
         {data ? <TaskBody task={data} /> : null}
-        <SheetFooter className="flex-row items-center gap-2 border-t bg-muted/50 text-muted-foreground text-xs">
-          <Eye aria-hidden className="size-4" />
-          {t('taskDetail.readOnly')}
-        </SheetFooter>
+        {data && data.status !== 'closed' ? (
+          <SheetFooter className="flex-row items-center gap-3 border-t bg-muted/50 text-muted-foreground text-xs">
+            <span className="flex-1">{t('taskDetail.settleHint')}</span>
+            <SettleSlotDialog task={data} />
+          </SheetFooter>
+        ) : null}
       </SheetContent>
     </Sheet>
   )

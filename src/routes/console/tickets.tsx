@@ -3,5 +3,5 @@ import { TicketsBrowser } from '@/features/tickets'
 
 export default function TicketsPage() {
   const stats = useConsoleStats()
-  return <TicketsBrowser counts={stats.data?.feedback} />
+  return <TicketsBrowser counts={stats.data?.tickets} />
 }

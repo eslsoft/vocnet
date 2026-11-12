@@ -36,7 +36,7 @@ function world() {
   const run = {
     id: crypto.randomUUID(),
     lemma: 'run',
-    summary: { completeness: 0.93, quality: 0.986, slots: { total: 212, published: 188, pending: 9 } },
+    summary: { completeness: 0.93, credibility: 0.88, slots: { total: 212, published: 188, pending: 9 } },
   }
   const sprint = { id: crypto.randomUUID(), lemma: 'sprint' }
   const operate = { id: crypto.randomUUID(), lemma: 'operate' }
@@ -46,18 +46,34 @@ function world() {
   >
   const sprintSense = sense(sprint.id)
   const operateSense = sense(operate.id)
-  const gloss = (node: { id: string }, text: string) =>
-    fact({ kind: 'sense', payload: { gloss: text }, subject_id: node.id })
+  const item = (node: { id: string } | undefined, gloss: string, rank: 'common' | 'extra' = 'common') => ({
+    id: node?.id as never,
+    pos: 'verb' as const,
+    gloss,
+    rank,
+  })
   const flagged = fact({
     kind: 'example',
-    payload: { text: 'She ran to catch the last bus.', translations: { zh: '她跑着去赶末班车。' } },
+    payload: { text: 'She ran to catch the last bus.' },
     subject_id: speed?.id,
     author: `agent:${producer.id}`,
     updated_at: fromNow(-180),
     review: review({ verdict: 'uncertain', confidence: 0.62 }),
   })
+  const inventory = fact({
+    kind: 'senses',
+    payload: {
+      senses: [
+        item(speed, 'move at a speed faster than walking'),
+        item(manage, 'be in charge of; manage'),
+        item(machine, 'operate or function'),
+        item(fourth, 'flow'),
+        { ...item(rare, 'compete in an election', 'extra'), region: 'american' as const },
+      ],
+    },
+    subject_id: run.id,
+  })
   const facts = [
-    fact({ kind: 'entry', payload: {}, subject_id: run.id }),
     fact({ kind: 'pronunciation', payload: { ipa: 'rʌn', accent: 'us' }, subject_id: run.id }),
     fact({
       kind: 'form',
@@ -66,21 +82,20 @@ function world() {
       status: 'pending',
       review: null,
     }),
+    inventory,
     fact({
-      kind: 'sense_list',
-      payload: {
-        common: [speed, manage, machine, fourth].map((node) => node?.id as never),
-        extra: [rare?.id as never],
-      },
+      kind: 'phrases',
+      payload: { phrases: ['run out', 'run into'] },
       subject_id: run.id,
+      status: 'pending',
+      review: null,
     }),
-    gloss(speed as never, 'move at a speed faster than walking'),
-    gloss(manage as never, 'be in charge of; manage'),
-    gloss(machine as never, 'operate or function'),
-    gloss(fourth as never, 'flow'),
-    gloss(rare as never, 'compete in an election'),
-    gloss(fresh as never, 'a series'),
     flagged,
+    fact({
+      kind: 'translation',
+      payload: { language: 'zh', of: 'example', text: '她跑着去赶末班车。' },
+      subject_id: flagged.id,
+    }),
     fact({
       kind: 'example',
       payload: { text: 'The children ran across the field.' },
@@ -89,7 +104,7 @@ function world() {
     }),
     fact({
       kind: 'translation',
-      payload: { language: 'zh', text: '运行' },
+      payload: { language: 'zh', of: 'sense', text: '运行' },
       subject_id: manage?.id,
       status: 'rejected',
       review: review({ verdict: 'fail' }),
@@ -101,8 +116,6 @@ function world() {
       status: 'pending',
       review: null,
     }),
-    gloss(sprintSense, 'run fast'),
-    gloss(operateSense, 'control'),
     fact({
       kind: 'relation',
       payload: { type: 'synonym', target_sense_id: sprintSense.id as never },
@@ -139,7 +152,7 @@ function world() {
       sense_gloss: 'be in charge of; manage',
       gap: { type: 'grammar', sense_id: manage?.id as never },
       status: 'stuck',
-      attempts_without_progress: 3,
+      attempts_without_progress: 2,
     }),
     workTask({
       entry,
@@ -150,13 +163,12 @@ function world() {
     }),
     workTask({
       entry,
-      subject_id: flagged.id,
-      stage: 5,
-      gap: { type: 'weak_fact', fact_id: flagged.id, kind: 'example', reason: 'uncertain' },
-      status: 'waiting_on_review',
+      stage: 3,
+      gap: { type: 'translations', language: 'zh', missing: [{ of: 'sense', id: speed?.id as string }] },
+      status: 'in_progress',
     }),
     workTask({ entry, gap: { type: 'syllables' } }),
-    workTask({ entry, gap: { type: 'phrases', have: ['run out', 'run into'], need: 3 }, status: 'in_progress' }),
+    workTask({ entry, gap: { type: 'phrases' }, status: 'waiting_on_review' }),
   ]
   return consoleApi({
     entries: [run, sprint, operate, { id: crypto.randomUUID(), lemma: 'empty' }],
@@ -180,7 +192,7 @@ function world() {
 const section = (name: string) => screen.getByRole('region', { name })
 
 describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
-  it('heads the entry with its reference badges and three scores [spec: console/entry-inspector]', async () => {
+  it('heads the entry with its batch, reference badges, and three scores [spec: console/entry-inspector]', async () => {
     server.use(...world().handlers)
     renderAt('/console/entries/run', routes)
 
@@ -188,11 +200,12 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     expect(screen.getByRole('link', { name: 'Entries' })).toHaveAttribute('href', '/console/entries')
     expect(screen.getByText('A1 verb · A2 noun')).toBeInTheDocument()
     expect(screen.getByText('Frequency rank #212')).toBeInTheDocument()
+    expect(screen.getByText('Batch 1')).toBeInTheDocument()
     expect(await screen.findByText(/^6 senses · updated .* by producer-a1$/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Public page' })).toHaveAttribute('href', '/words/run')
 
     expect(section('Completeness')).toHaveTextContent('93%197 of 212 filled · 9 pending review')
-    expect(section('Quality')).toHaveTextContent(/98\.6%.*1 flagged of 13 live facts/)
+    expect(section('Credibility')).toHaveTextContent(/88%.*How often its least reliable published fact/)
     const open = section('Open tasks')
     await waitFor(() => expect(open).toHaveTextContent('6'))
     expect(open).toHaveTextContent('2 queued · 2 in progress · 1 in review · 1 stuck')
@@ -212,16 +225,15 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     expect(await within(first).findByText('sprint')).toBeInTheDocument()
     const topic = await within(first).findByRole('link', { name: /No topic yet\./ })
     expect(topic).toHaveTextContent(/Topics task · created .*Queued/)
-    expect(within(first).getByRole('link', { name: /Review was unsure about this Example\./ })).toHaveTextContent(
-      'Waiting on review',
-    )
+    const translation = within(first).getByText('她跑着去赶末班车。').closest('button') as HTMLElement
+    expect(translation).toHaveTextContent('Example她跑着去赶末班车。')
 
     const second = section('Sense 2')
     expect(within(second).getByText('运行').closest('button')).toHaveAttribute('data-state', 'rejected')
     expect(within(second).getByText('She runs a bakery.').closest('button')).toHaveAttribute('data-state', 'pending')
     expect(await within(second).findByText('← linked from operate')).toBeInTheDocument()
     expect(within(second).getByRole('link', { name: /No grammar note yet\./ })).toHaveTextContent(
-      '3 tries without progressStuck',
+      '2 tries without progressStuck',
     )
     expect(await within(section('Sense 3')).findByRole('link', { name: /Needs 1 more example/ })).toHaveTextContent(
       /producer-a1 · 1[12]m.* leftIn progress/,
@@ -240,7 +252,9 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     expect(screen.queryByRole('region', { name: 'Sense 4' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show 3 more senses' }))
     expect(within(section('Sense 5')).getByText('Less common')).toBeInTheDocument()
-    expect(within(section('Sense 6')).getByText('Not yet ordered')).toBeInTheDocument()
+    expect(within(section('Sense 5')).getByText('american')).toBeInTheDocument()
+    expect(within(section('Sense 6')).getByText('Not in the inventory')).toBeInTheDocument()
+    expect(within(section('Sense 6')).getByText('No definition yet')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show fewer senses' }))
     expect(screen.queryByRole('region', { name: 'Sense 4' })).not.toBeInTheDocument()
 
@@ -253,28 +267,35 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     server.use(...world().handlers)
     renderAt('/console/entries/run', routes)
 
-    const outline = (await screen.findByText('In their agreed order')).closest('[data-slot=card]') as HTMLElement
+    const outline = (await screen.findByText('Decided once: after it publishes, only a curator changes it.')).closest(
+      '[data-slot=card]',
+    ) as HTMLElement
     expect(
       within(outline)
         .getAllByRole('listitem')
         .map((item) => item.textContent),
     ).toEqual([
-      '1move at a speed faster than walking',
-      '2be in charge of; manage',
-      '3operate or function',
-      '4flow',
-      'Less common · 1',
-      'Not yet ordered · 1',
+      '1verb move at a speed faster than walking',
+      '2verb be in charge of; manage',
+      '3verb operate or function',
+      '4verb flow',
+      '5verb compete in an electionamericanLess common',
     ])
+    expect(within(outline).getByText('1 sense not in the inventory')).toBeInTheDocument()
+    fireEvent.click(within(outline).getByRole('button', { name: /4 common · 1 less common/ }))
+    expect(await within(await screen.findByRole('dialog')).findByText('compete in an election')).toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
     const details = screen.getByText('Word details').closest('[data-slot=card]') as HTMLElement
     const row = (label: string) => within(details).getByText(label).nextElementSibling as HTMLElement
     expect(row('Pronunciation')).toHaveTextContent('/rʌn/ (us)')
     expect(row('Forms')).toHaveTextContent('runs (third_person_singular)Pending')
     expect(await within(details).findByText('run out · run into')).toBeInTheDocument()
-    expect(row('Phrasal verbs')).toHaveTextContent('In progress')
-    expect(row('Syllables')).toHaveTextContent('—Queued')
-    expect(row('Sense order')).toHaveTextContent('4 common, 1 extra')
+    expect(row('Phrases')).toHaveTextContent('run out · run intoPendingWaiting on review')
+    expect(row('Syllables')).toHaveTextContent('No syllable division yet.Queued')
+    expect(row('Translations')).toHaveTextContent('1 item has no Chinese translation.In progress')
+    expect(row('Word formation')).toHaveTextContent('—')
     fireEvent.click(within(row('Pronunciation')).getByRole('button'))
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
 
@@ -286,8 +307,9 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     expect(within(reference).queryByText(/Credit unused\./)).not.toBeInTheDocument()
   })
 
-  it("lists the entry's open tasks in their tab [spec: console/entry-tasks]", async () => {
-    server.use(...world().handlers)
+  it("lists the entry's open tasks in their tab and settles one [spec: console/entry-tasks]", async () => {
+    const api = world()
+    server.use(...api.handlers)
     const view = renderAt('/console/entries/run', routes)
     fireEvent.click(await screen.findByRole('tab', { name: 'Tasks · 6' }))
     await waitFor(() => expect(view.location()).toBe('/console/entries/run?view=tasks'))
@@ -297,6 +319,18 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     expect(within(grammar).getByText('Stuck')).toBeInTheDocument()
     expect(within(table).getAllByText('whole entry')).toHaveLength(4)
     expect(within(grammar).getByText('be in charge of; manage')).toBeInTheDocument()
+
+    fireEvent.click(within(grammar).getByRole('button', { name: 'Settle' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Settle Grammar for run' })
+    fireEvent.change(within(dialog).getByLabelText('Why nothing fills it'), {
+      target: { value: 'This sense has no grammar a learner needs.' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Settle slot' }))
+    await waitFor(() => expect(screen.queryByText('No grammar note yet.')).not.toBeInTheDocument())
+    expect(api.state.passes).toEqual([
+      expect.objectContaining({ type: 'grammar', note: 'This sense has no grammar a learner needs.' }),
+    ])
+    expect(await screen.findByRole('tab', { name: 'Tasks · 5' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: 'Facts and gaps' }))
     await waitFor(() => expect(view.location()).toBe('/console/entries/run'))
   })
@@ -317,8 +351,11 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     api.state.tasks.push(workTask({ entry: { id: empty.id as never, lemma: 'empty' }, gap: { type: 'senses' } }))
     server.use(...api.handlers)
     renderAt('/console/entries/empty', routes)
-    expect(await screen.findAllByText('No senses yet.')).toHaveLength(2)
-    expect(await screen.findByRole('link', { name: /No senses yet\..*Add senses task/ })).toBeInTheDocument()
+    expect(await screen.findByText('No senses yet.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByText('No sense inventory yet.')).toHaveLength(2))
+    expect(
+      await screen.findByRole('link', { name: /No sense inventory yet\..*Sense inventory task/ }),
+    ).toBeInTheDocument()
     expect(screen.getAllByText('Not listed')).toHaveLength(2)
 
     server.use(http.get('/manage/v1/work/items', () => apiError(403, 'forbidden', 'Tasks are hidden.')))

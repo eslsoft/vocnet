@@ -5,19 +5,8 @@ import type { z } from 'zod'
 
 type ManagedEntry = z.infer<typeof managedEntrySchema>
 
-/** Below this quality, an entry has enough flagged facts to deserve a look. */
-export const QUALITY_WATCH = 0.97
-
-const isLive = (fact: FactDto) => fact.status === 'pending' || fact.status === 'published'
-const isFlawed = (fact: FactDto) =>
-  fact.status === 'published' && fact.review !== null && fact.review.verdict !== 'pass'
-
-/** The live facts about the entry and its senses (not relations pointing in), and how many have a flaw. */
-export function factHealth(view: ManagedEntry): { live: number; flagged: number } {
-  const own = new Set<string>([view.entry.id, ...view.senses.map((sense) => sense.id)])
-  const live = view.facts.filter((fact) => own.has(fact.subject_id) && isLive(fact))
-  return { live: live.length, flagged: live.filter(isFlawed).length }
-}
+/** Below this credibility, a fact of its kind and review path is wrong more than one time in ten: audits look here first. */
+export const CREDIBILITY_WATCH = 0.9
 
 /** Open tasks by where they stand, in the order the bar shows them. */
 export function taskCounts(tasks: readonly WorkItemOverview[]): Record<Exclude<WorkItemStatus, 'closed'>, number> {

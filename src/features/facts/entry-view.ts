@@ -1,68 +1,59 @@
 import type { managedEntrySchema } from '@shared/catalog'
-import type { FactDto } from '@shared/facts'
+import type { FactDto, StoredInventorySense } from '@shared/facts'
 import type { z } from 'zod'
 
 type ManagedEntry = z.infer<typeof managedEntrySchema>
 type SenseNode = ManagedEntry['senses'][number]
-
-/** Where the entry's sense list puts a sense: its rank among the common senses, extra, or not named. */
-export type Listing = { rank: number } | 'extra' | 'unlisted'
+export type InventoryFact = Extract<FactDto, { kind: 'senses' }>
 
 export interface SenseView {
   sense: SenseNode
-  /** The published gloss, or until one publishes, the pending one. */
-  gloss: string | null
-  /** Null while the entry has no live sense list. */
-  listing: Listing | null
+  /** The inventory's line for the sense: its gloss, labels, and rank; null when the inventory does not list it. */
+  item: StoredInventorySense | null
+  /** Facts about the sense, and the translations of its examples and collocations. */
   facts: FactDto[]
   /** Relations from other entries' senses that point at this sense. */
   incoming: FactDto[]
 }
 
-const isLive = (fact: FactDto) => fact.status === 'pending' || fact.status === 'published'
-
-function liveGloss(facts: FactDto[]): string | null {
-  const glossOf = (status: FactDto['status']) => {
-    const fact = facts.find((candidate) => candidate.kind === 'sense' && candidate.status === status)
-    return fact?.kind === 'sense' ? fact.payload.gloss : undefined
-  }
-  return glossOf('published') ?? glossOf('pending') ?? null
-}
-
-/** The live sense list that no live correction supersedes, as the worklist reads it. */
-function currentSenseList(entryFacts: FactDto[]) {
-  const live = entryFacts.filter(isLive)
-  const list = live.find((fact) => fact.kind === 'sense_list' && !live.some((other) => other.supersedes_id === fact.id))
-  return list?.kind === 'sense_list' ? list.payload : null
+/** The inventory the entry shows: the published one, or until one publishes, the pending one. */
+export function currentInventory(entryFacts: FactDto[]): InventoryFact | null {
+  const inventories = entryFacts.filter((fact): fact is InventoryFact => fact.kind === 'senses')
+  return (
+    inventories.find((fact) => fact.status === 'published') ??
+    inventories.find((fact) => fact.status === 'pending') ??
+    null
+  )
 }
 
 /**
- * Groups the management view's flat fact list by the node each fact is about. With a sense list,
- * the senses follow it: common by rank, then extra, then the senses it does not name.
+ * Groups the management view's flat fact list by the node each fact is about. The senses follow
+ * the current inventory's order; a sense it does not list comes last.
  */
-export function groupEntry(view: ManagedEntry): { entryFacts: FactDto[]; senses: SenseView[] } {
+export function groupEntry(view: ManagedEntry): {
+  entryFacts: FactDto[]
+  inventory: InventoryFact | null
+  senses: SenseView[]
+} {
   const ownIds = new Set<string>([view.entry.id, ...view.senses.map((sense) => sense.id)])
   const about = (id: string) => view.facts.filter((fact) => fact.subject_id === id)
   const entryFacts = about(view.entry.id)
-  const list = currentSenseList(entryFacts)
-  const listed: Array<SenseNode['id']> = list ? [...list.common, ...list.extra] : []
-  const listingOf = (id: SenseNode['id']): Listing | null => {
-    if (!list) return null
-    const rank = list.common.indexOf(id)
-    if (rank >= 0) return { rank: rank + 1 }
-    return list.extra.includes(id) ? 'extra' : 'unlisted'
+  const inventory = currentInventory(entryFacts)
+  const items = inventory?.payload.senses ?? []
+  const position = (id: SenseNode['id']) => {
+    const index = items.findIndex((item) => item.id === id)
+    return index === -1 ? items.length : index
   }
-  const position = (id: SenseNode['id']) => (listed.includes(id) ? listed.indexOf(id) : listed.length)
   const senses = [...view.senses].sort((a, b) => position(a.id) - position(b.id))
   return {
     entryFacts,
+    inventory,
     senses: senses.map((sense) => {
-      const facts = about(sense.id)
+      const own = about(sense.id)
       return {
         sense,
-        gloss: liveGloss(facts),
-        listing: listingOf(sense.id),
-        facts,
+        item: items.find((item) => item.id === sense.id) ?? null,
+        facts: [...own, ...own.flatMap((fact) => about(fact.id))],
         incoming: view.facts.filter((fact) => fact.object_id === sense.id && !ownIds.has(fact.subject_id)),
       }
     }),

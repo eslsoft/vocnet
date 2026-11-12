@@ -1,3 +1,4 @@
+import type { EntryId } from '@shared/facts'
 import {
   type WorkAttemptOutcome,
   type WorkWindow,
@@ -6,8 +7,8 @@ import {
   workItemOverviewListSchema,
   workSummarySchema,
 } from '@shared/monitor'
-import type { WorkItemId, WorkType } from '@shared/work'
-import { decodeApiResponse, rpc } from '@/shared/api/client'
+import type { SettleSlotInput, WorkItemId, WorkType } from '@shared/work'
+import { decodeApiResponse, expectNoContent, rpc } from '@/shared/api/client'
 
 const work = rpc.manage.v1.work
 
@@ -36,4 +37,9 @@ export async function listTasks(scope: TaskScope) {
 
 export async function getTask(id: WorkItemId) {
   return decodeApiResponse(await work.items[':id'].$get({ param: { id } }), workItemDetailSchema)
+}
+
+/** A curator settles a slot nothing can fill, so its task closes. */
+export async function settleSlot(entryId: EntryId, input: SettleSlotInput) {
+  await expectNoContent(await rpc.manage.v1.entries[':id'].passes.$post({ param: { id: entryId }, json: input }))
 }

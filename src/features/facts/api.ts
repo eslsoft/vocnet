@@ -6,8 +6,6 @@ import { decodeApiResponse, rpc } from '@/shared/api/client'
 export interface FactFilter {
   status?: FactStatus
   kind?: FactKind
-  /** Only published facts whose review is uncertain or failed. */
-  weak?: 'true'
   level?: CefrLevel
   author?: string
   lemma?: string
