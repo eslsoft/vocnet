@@ -442,6 +442,13 @@
       "when": 1794459801275,
       "tag": "20261112050321_drop_phrase_words",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1794462187976,
+      "tag": "20261112054307_facts_kind_payload_index",
+      "breakpoints": true
     }
   ]
 }

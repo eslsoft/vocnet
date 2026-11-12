@@ -1,0 +1,1 @@
+CREATE INDEX `facts_kind_payload_idx` ON `facts` (`kind`,`status`,`subject_id`,`payload`);

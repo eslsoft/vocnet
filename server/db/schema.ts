@@ -83,6 +83,10 @@ export const facts = sqliteTable(
       .on(table.supersedesId)
       .where(sql`supersedes_id is not null and status in ('pending', 'published')`),
     index('facts_subject_idx').on(table.subjectId, table.status),
+    // Covers the scans that read a kind's payloads, such as the morphology facts naming a base: a
+    // fact row carries its review (kilobytes), so reading the rows instead cost about 100 ms per
+    // entry snapshot.
+    index('facts_kind_payload_idx').on(table.kind, table.status, table.subjectId, table.payload),
     index('facts_object_idx').on(table.objectId),
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),
     index('facts_status_updated_idx').on(table.status, table.updatedAt),
