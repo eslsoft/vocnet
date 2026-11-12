@@ -13,6 +13,7 @@ import { createTicketRepo } from '@server/adapters/repos/tickets'
 import { createTopicRepo } from '@server/adapters/repos/topics'
 import { createWorkRepo } from '@server/adapters/repos/work'
 import { createReviewQueue } from '@server/adapters/review-queue'
+import { sharedConcurrencyLimit } from '@server/adapters/reviewers/concurrency'
 import { createJevReviewer } from '@server/adapters/reviewers/jev'
 import { createLlmReviewer } from '@server/adapters/reviewers/llm'
 import { createLunaReviewer } from '@server/adapters/reviewers/luna'
@@ -27,6 +28,10 @@ import type { Deps } from '@server/usecases/deps'
 export function createDeps(env: Env): Deps {
   const db = createDb(env)
   const review = getReviewConfig(env)
+  const jev = createJevReviewer({ ...review.gateway, model: review.jevModel })
+  const jevLimit = sharedConcurrencyLimit('jev', review.concurrency.jev)
+  const llm = createLlmReviewer({ ...review.gateway, model: review.llmModel })
+  const llmLimit = sharedConcurrencyLimit('llm', review.concurrency.llm)
   return {
     nodes: createNodeRepo(db),
     facts: createFactRepo(db),
@@ -38,10 +43,10 @@ export function createDeps(env: Env): Deps {
     reference: createReferenceRepo(db),
     publicViews: createPublicViewRepo(db),
     decision: {
-      jev: createJevReviewer({ ...review.gateway, model: review.jevModel }),
+      jev: { ask: (questions, state) => jevLimit(() => jev.ask(questions, state)) },
       luna: createLunaReviewer(review.decisions),
     },
-    llm: createLlmReviewer({ ...review.gateway, model: review.llmModel }),
+    llm: { judge: (prompt) => llmLimit(() => llm.judge(prompt)) },
     reviewQueue: createReviewQueue(env.REVIEW_QUEUE),
     feedbackLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),
     readLimiter: createRateLimiter(env.READ_RATE_LIMITER),
