@@ -27,7 +27,7 @@ this note fixes the shape and the semantics in advance. Field names are snake_ca
 | `topic` | sense | many (≤ 3) | unchanged | mean(Jev, luna) → LLM |
 | `collocation` | sense | many (≤ 5) | unchanged | LLM |
 | `example` | sense | many | `{ text }` (no `translations`) | LLM |
-| `translation` (reshaped) | the translated node: a sense, an example fact, or a collocation fact | one per subject and language | `{ language: "zh", text }` | Jev or luna → LLM |
+| `translation` (reshaped) | the translated node: a sense, an example fact, or a collocation fact | one per subject and language | `{ language: "zh", of: "sense" \| "example" \| "collocation", text }` | Jev or luna → LLM |
 | `phrases` (new) | entry | one | `{ phrases: [lemma] }` (multiword lemmas, no cap) | Jev per phrase, then LLM |
 
 Removed kinds: `entry`, `sense`, `sense_list`, `gap_closure`.
@@ -42,7 +42,12 @@ Removed kinds: `entry`, `sense`, `sense_list`, `gap_closure`.
 - `POST /manage/v1/senses` is removed.
 
 ### `translation`
-- `subject_id` is a sense id (its learner equivalent), an example fact id, or a collocation fact id.
+- `of` says what is translated; `subject_id` is then the sense id (its learner equivalent), the example
+  fact id, or the collocation fact id. One live translation per subject and language: change it by
+  superseding it.
+- The `translations` item's context carries the entry view (every sense, example and collocation
+  with its text). Gaps `phrases`, `family`, `morphology`, `syllables` carry only `{ type }`.
+  `context.rejections` is an array of facts (with their reviews).
   When the example or collocation is superseded, its translation stops showing and the entry's
   translations item reopens for the new fact.
 
