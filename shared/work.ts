@@ -314,6 +314,9 @@ export const workClaimSchema = z
 /** The longest note a pass leaves. */
 export const PASS_NOTE_MAX = 500
 
+/** A pass that found nothing says what it considered. */
+const notedIfFoundNone = (item: { found_none?: boolean; note?: string }) => !item.found_none || item.note !== undefined
+
 export const settleSlotInputSchema = z
   .object({
     type: workTypeSchema,
@@ -349,7 +352,7 @@ export const completeWorkInputSchema = z
       .max(MAX_CLAIM_ITEMS)
       .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Each item is listed once.')
       .refine(
-        (items) => items.every((item) => !item.found_none || item.note !== undefined),
+        (items) => items.every(notedIfFoundNone),
         'An item completed with found_none gives a note saying what was considered.',
       )
       .meta({
