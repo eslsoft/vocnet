@@ -620,19 +620,18 @@ describe('work items', () => {
   const work = (gap: Gap, awaiting = false): OpenWork => ({ gap, subjectId: subjectOf(gap, entryId), awaiting })
   const examples = (count: number): Gap => ({ type: 'examples', sense_id: senseId, count, need: 2 })
 
-  it('ranks by batch, then A1 and A2 through every stage, then the rest by stage, band, and frequency [spec: work/item-priority]', () => {
-    expect([1, 6, null].map((levelRank) => learnerBand({ levelRank, zipf: null }))).toEqual([0, 5, 7])
-    expect(learnerBand({ levelRank: null, zipf: 3 })).toBe(6)
+  it("ranks by batch, then band, A1 to C2 then no level; the stage only orders one entry's work [spec: work/item-priority]", () => {
+    expect([1, 6, null].map((levelRank) => learnerBand({ levelRank }))).toEqual([0, 5, 6])
     const rank = (type: WorkType, levelRank: number | null, batch = 1) =>
       workPriority(type, { batch, levelRank, zipf: null }).rank
-    // A core band's last stage comes before any other band's first.
-    expect(rank('morphology', 2)).toBeLessThan(rank('senses', 3))
-    expect(rank('senses', 3)).toBeLessThan(rank('translations', 3))
-    expect(rank('translations', 3)).toBeLessThan(rank('translations', 4))
-    expect(rank('translations', 4)).toBeLessThan(rank('grammar', 3))
+    // Every stage of a band ranks alike, and before any work of the next band.
+    expect(rank('morphology', 1)).toBe(rank('senses', 1))
+    expect(rank('morphology', 1)).toBeLessThan(rank('senses', 2))
+    expect(rank('translations', 6)).toBeLessThan(rank('senses', null))
     // A later batch waits for every item of the earlier one.
     expect(rank('morphology', null, 1)).toBeLessThan(rank('senses', 1, 2))
     expect(workPriority('senses', learner)).toMatchObject({ stage: WORK_POLICY.senses.stage, zipfOrder: 4.2 })
+    expect(workPriority('morphology', learner).stage).toBeGreaterThan(workPriority('senses', learner).stage)
     expect(workPriority('senses', { ...learner, zipf: null }).zipfOrder).toBe(-1)
   })
 

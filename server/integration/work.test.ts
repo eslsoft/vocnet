@@ -182,6 +182,16 @@ describe('work items', () => {
     expect(await lemmasOf(token, ['senses'], 2)).toEqual(['reef', 'shore'])
   })
 
+  it('finishes the more frequent word of a band before starting the next, whatever the stage [spec: work/claim-priority]', async () => {
+    const token = await issueAgentKey()
+    await importLearnerData({ zipf: { bank: 5, cove: 3 }, levels: { bank: 'A1', cove: 'A1' } })
+    // bank has its inventory, so its later stages are open; cove still needs its first.
+    await headword('bank', [{ pos: 'noun', gloss: 'An organization that keeps and lends money.' }])
+    await admit('cove', 1)
+    const first = await claim(token, { limit: 1 })
+    expect(first?.items.map((item) => [item.lemma, item.type === 'senses'])).toEqual([['bank', false]])
+  })
+
   it('leases no item of an entry until it is live [spec: work/claim-live]', async () => {
     const token = await issueAgentKey()
     const { entryId: give } = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])

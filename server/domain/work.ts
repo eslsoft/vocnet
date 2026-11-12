@@ -770,26 +770,23 @@ export interface LearnerPriority {
   zipf: number | null
 }
 
-/** The learner band: CEFR A1 to C2 are 0 to 5, then entries with a frequency but no level (6), then the rest (7). */
-export function learnerBand({ levelRank, zipf }: Pick<LearnerPriority, 'levelRank' | 'zipf'>): number {
-  if (levelRank !== null) return levelRank - 1
-  return zipf === null ? 7 : 6
+/** The learner band: CEFR A1 to C2 are 0 to 5, and an entry without a level (most phrases) is 6. */
+export function learnerBand({ levelRank }: Pick<LearnerPriority, 'levelRank'>): number {
+  return levelRank === null ? 6 : levelRank - 1
 }
 
-export const BANDS = 8
+export const BANDS = 7
 
-/** The learner bands finished first, every stage of them before any other band's work: A1 and A2. */
-export const CORE_BANDS = 2
-
-/** The last stage of the policy; a core band's items all rank before any other band's. */
+/** The last stage of the policy. */
 export const STAGES = 4
 
 /**
  * The priority policy, the one table of what each type of work is worth and what a worker needs to
- * do it. `stage` orders the work of a tier: 1 identity (the sense inventory), 2 network (categories,
- * parts, synonyms, family, phrases, topics), 3 meaning (translations), 4 usage. The core bands (A1,
- * A2) are one tier and finish every stage first; the other bands follow, stage by stage. Batches
- * come before all of that: a later batch of headwords waits for the earlier one. `context: 'entry'`
+ * do it. `stage` orders one entry's work: 1 identity (the sense inventory), 2 network (categories,
+ * parts, synonyms, family, phrases, topics), 3 meaning (translations), 4 usage. Entries go band by
+ * band (A1 to C2, then entries without a level) and, within a band, the more frequent word first, so
+ * whole entries finish one after another instead of every entry being half done. Batches come before
+ * all of that: a later batch of headwords waits for the earlier one. `context: 'entry'`
  * hands the worker the entry's whole management view, for work that reads every sense at once;
  * `'node'` the facts about the item's node.
  */
@@ -812,24 +809,21 @@ export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'e
   form_pronunciations: { stage: 4, context: 'node' },
 }
 
-/** The ranks one batch spans: two tiers of every stage of every band. */
-export const BATCH_SPAN = 2 * (STAGES + 1) * BANDS
+/** The ranks one batch spans: one per band. */
+export const BATCH_SPAN = BANDS
 
 /**
- * Where an item sorts, lowest first: its entry's batch, then its tier (the core bands A1 and A2
- * first), then its type's stage, then the learner band of its entry; within a rank, the more
- * frequent entry first (`zipfOrder` descending, -1 for none, which sorts last).
+ * Where an item sorts: by `rank` (its entry's batch, then its band) lowest first, then the more
+ * frequent entry (`zipfOrder` descending, -1 for none, which sorts last), then its type's `stage`.
  */
 export function workPriority(
   type: WorkType,
   learner: LearnerPriority,
 ): { stage: number; rank: number; zipfOrder: number } {
   const { stage } = WORK_POLICY[type]
-  const band = learnerBand(learner)
-  const tier = band < CORE_BANDS ? 0 : 1
   return {
     stage,
-    rank: learner.batch * BATCH_SPAN + tier * (STAGES + 1) * BANDS + stage * BANDS + band,
+    rank: learner.batch * BATCH_SPAN + learnerBand(learner),
     zipfOrder: learner.zipf ?? -1,
   }
 }

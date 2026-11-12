@@ -48,10 +48,10 @@ const claimRoute = createRoute({
   description:
     'Leases up to `limit` items, all of one type: the type of the highest-priority free item of the production ' +
     'queue (within `types` when given), then the next free items of that type. Priority is the headword batch, ' +
-    'then the learner band of the entry (CEFR A1 to C2, then a frequency without a level, then the rest), then ' +
-    'the policy stage of the type (1 the sense inventory, 2 relations, phrases, and topics, 3 translations, 4 usage, ' +
-    'forms, and pronunciation), then the higher ' +
-    'frequency. An item is in the queue while no pending fact can change it and fewer than two passes left it ' +
+    'then the learner band of the entry (CEFR A1 to C2, then entries without a level), then the more frequent ' +
+    'entry, then the policy stage of the type (1 the sense inventory, 2 relations, phrases, and topics, ' +
+    '3 translations, 4 usage, forms, and pronunciation), so entries finish one after another. ' +
+    'An item is in the queue while no pending fact can change it and fewer than two passes left it ' +
     'unfilled. Each item ' +
     'comes with its gap and the context its type needs. Two concurrent claims never lease the same item. 204 ' +
     'means no item is free.',

@@ -1163,13 +1163,14 @@ to its gap starts its attempts over. The rescore's verdicts are `closed`,
 
 `WORK_POLICY` in `server/domain/work.ts` is the one table of what each type of
 work is worth and what context it needs; nothing else branches on a type.
-`workPriority` ranks an item by its entry's headword **batch**, then its
-**tier**, then its type's **stage**, then the **learner band** of its entry,
-then its entry's Zipf frequency, highest first (`zipf_order`, -1 without one),
-then age and id. A later batch waits for the earlier one; a phrase queues with
-its headword's batch. Within a batch the core bands, A1 and A2 (`CORE_BANDS`),
-are the first tier: their entries go through every stage before any other
-band's work. The other bands follow as the second tier, stage by stage:
+`workPriority` ranks an item by its entry's headword **batch**, then the
+**learner band** of its entry; the queue then takes the entry's Zipf frequency,
+highest first (`zipf_order`, -1 without one), then the type's **stage**, then
+age and id. A later batch waits for the earlier one; a phrase queues with its
+headword's batch. Within a band the producers work entry by entry, the more
+frequent word first, so whole entries finish one after another instead of every
+entry standing half done; an entry's stages order its own work, and while its
+next stage waits on a review the workers move on to the next entry:
 
 | Stage | Types | Why |
 | ----- | ----- | --- |
@@ -1178,10 +1179,10 @@ band's work. The other bands follow as the second tier, stage by stage:
 | 3 translation | `translations` | What the word means to a learner in each served language |
 | 4 usage | `examples`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations` | How the word is used |
 
-The band is the entry's lowest CEFR level, A1 to C2 (0 to 5), then a frequency
-without a level (6), then neither (7) (`learnerBand`). `rank` is the batch
-times the span of one batch, plus the tier, stage, and band. An import
-re-ranks the items with the worklist (`rankWorkItemsSql`).
+The band is the entry's lowest CEFR level, A1 to C2 (0 to 5), then an entry
+without a level, most phrases among them (6) (`learnerBand`). `rank` is the
+batch times the band count plus the band. An import re-ranks the items with the
+worklist (`rankWorkItemsSql`).
 
 ### Scores
 

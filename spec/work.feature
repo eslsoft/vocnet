@@ -126,10 +126,10 @@ Feature: Work items
     Then exactly the pieces the two computations disagree on await review and the others stay workable
 
   @work/item-priority @domain
-  Scenario: The priority policy puts the batch first, then the core bands, then the stage
-    Given items of every type on entries of two batches and of every CEFR level, with a frequency and no level, and with neither
+  Scenario: The priority policy puts the batch first, then the band, then the entry's frequency, then the stage
+    Given items of every type on entries of two batches, of every CEFR level, and without a level
     When their priority is computed
-    Then every item of an earlier batch comes first; within a batch A1 and A2 come first through every stage, then the other bands; within each, the stage of the type (1 identity, 2 network, 3 translation, 4 usage) comes first, then A1 to C2, then a frequency without a level, then the rest, then the higher frequency
+    Then every item of an earlier batch comes first; within a batch the bands go A1 to C2, then entries without a level, every stage of a band before the next band; within a band the more frequent entry comes first, and an entry's stage (1 identity, 2 network, 3 translation, 4 usage) orders its own work
 
   @work/item-upsert @domain
   Scenario: A rescore converges the stored items on the open work
@@ -279,7 +279,7 @@ Feature: Work items
   Scenario: Items are claimed by batch, then learner priority, re-ranked by every reference import
     Given headwords of batches 1 and 2 with CEFR levels, with a frequency and no level, and with neither
     When agents claim items, and again after a reimport changes the levels and the leases lapse
-    Then every batch 1 item comes before any batch 2 item; within a batch A1 entries come first, then the higher levels in order, then frequency without a level, then the rest, the more frequent first; a capitalized lemma has the frequency of its lowercase word form, and the reimport's levels decide the next claim
+    Then every batch 1 item comes before any batch 2 item; within a batch A1 entries come first, then the higher levels in order, then entries without a level, the more frequent first, and a more frequent entry's later stages come before a less frequent entry's first; a capitalized lemma has the frequency of its lowercase word form, and the reimport's levels decide the next claim
 
   @work/claim-lease @usecase
   Scenario: A claimed item is leased to one agent

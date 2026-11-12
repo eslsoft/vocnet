@@ -217,7 +217,13 @@ export function relatedWorklistRows(db: Db, nodeIds: readonly string[]) {
  */
 const inQueue = sql.raw(`work_items.awaiting = 0 and work_items.attempts < ${MAX_PASSES}`)
 const free = (now: string) => or(isNull(workItems.leaseExpiresAt), lte(workItems.leaseExpiresAt, now))
-const queueOrder = [asc(workItems.rank), desc(workItems.zipfOrder), asc(workItems.createdAt), asc(workItems.id)]
+const queueOrder = [
+  asc(workItems.rank),
+  desc(workItems.zipfOrder),
+  asc(workItems.stage),
+  asc(workItems.createdAt),
+  asc(workItems.id),
+]
 
 export function toWorkItem(row: typeof workItems.$inferSelect): WorkItem {
   return {
@@ -675,7 +681,7 @@ export function createWorkRepo(db: Db): WorkRepo {
   }
 }
 
-/** Queue order of two items: rank, then the more frequent entry, then the older item. */
+/** Queue order of two items: rank, then the more frequent entry, then the earlier stage. */
 function compareQueue(a: WorkItem, b: WorkItem): number {
-  return a.rank - b.rank || b.zipfOrder - a.zipfOrder || a.id.localeCompare(b.id)
+  return a.rank - b.rank || b.zipfOrder - a.zipfOrder || a.stage - b.stage || a.id.localeCompare(b.id)
 }

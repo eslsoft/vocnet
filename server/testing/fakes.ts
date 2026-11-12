@@ -598,7 +598,7 @@ export function fakeWorld(): FakeWorld {
   const claimable = (item: WorkItem, at: string) =>
     !item.awaiting && item.attempts < MAX_PASSES && (item.lease === null || item.lease.expiresAt <= at)
   const queueOrder = (a: WorkItem, b: WorkItem) =>
-    a.rank - b.rank || b.zipfOrder - a.zipfOrder || a.id.localeCompare(b.id)
+    a.rank - b.rank || b.zipfOrder - a.zipfOrder || a.stage - b.stage || a.id.localeCompare(b.id)
 
   const work: WorkRepo = {
     listStale: async (nodeIds) => [...relatedRows(nodeIds)].filter(isStale).map(staleOf),

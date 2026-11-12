@@ -222,10 +222,10 @@ export const workItems = sqliteTable(
     index('work_items_lease_idx').on(table.leaseId).where(sql`lease_id is not null`),
     // The production queue in claim order, across types and within one.
     index('work_items_queue_idx')
-      .on(table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
+      .on(table.rank, sql`${table.zipfOrder} desc`, table.stage, table.createdAt, table.id)
       .where(sql`awaiting = 0 and attempts < 2`),
     index('work_items_type_queue_idx')
-      .on(table.type, table.rank, sql`${table.zipfOrder} desc`, table.createdAt, table.id)
+      .on(table.type, table.rank, sql`${table.zipfOrder} desc`, table.stage, table.createdAt, table.id)
       .where(sql`awaiting = 0 and attempts < 2`),
     check(
       'work_items_lease_whole',
