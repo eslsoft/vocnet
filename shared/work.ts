@@ -307,7 +307,11 @@ export const completeWorkInputSchema = z
           id: workItemIdSchema,
           note: z.string().trim().min(1).max(PASS_NOTE_MAX).optional().meta({
             description:
-              'What the pass did. Required for an optional slot completed without a value: what was considered and why none fits.',
+              'What the pass did. Required with found_none: what was considered and why none fits.',
+          }),
+          found_none: z.boolean().optional().meta({
+            description:
+              'Optional slots only: the pass looked and found no value a learner\'s dictionary gives, so it submitted none. The slot is then complete.',
           }),
           blocked_on: z
             .array(z.string().trim().min(1).max(100))
@@ -321,9 +325,13 @@ export const completeWorkInputSchema = z
       )
       .max(MAX_CLAIM_ITEMS)
       .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Each item is listed once.')
+      .refine(
+        (items) => items.every((item) => !item.found_none || item.note !== undefined),
+        'An item completed with found_none gives a note saying what was considered.',
+      )
       .meta({
         description:
-          'The leased items this pass worked. Each is judged once its reviews settle: a pass that did not fill a required gap counts an attempt; an optional slot is complete after one pass. Leased items left out are released without one.',
+          'The leased items this pass worked. Each is judged once its reviews settle: a pass that did not fill the gap counts an attempt, except that an optional slot completed with found_none is complete. Leased items left out are released without one.',
       }),
   })
   .meta({ id: 'CompleteWorkInput' })

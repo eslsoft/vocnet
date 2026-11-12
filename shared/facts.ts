@@ -471,8 +471,12 @@ const inventorySenseSchema = z
   .meta({ id: 'InventorySense' })
 export type InventorySense = z.infer<typeof inventorySenseSchema>
 
+/** A stored inventory names every sense by id: submitting it assigns ids to the new ones. */
+const storedInventorySenseSchema = inventorySenseSchema.extend({ id: senseIdSchema })
+export type StoredInventorySense = z.infer<typeof storedInventorySenseSchema>
+
 const sensesPayloadSchema = z.strictObject({
-  senses: z.array(inventorySenseSchema).min(1).max(MAX_INVENTORY_SENSES).meta({
+  senses: z.array(storedInventorySenseSchema).min(1).max(MAX_INVENTORY_SENSES).meta({
     description:
       'Every sense of the entry in display order: the common senses first, most common first across parts of speech, then the extra ones.',
   }),
