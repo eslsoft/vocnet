@@ -1149,6 +1149,8 @@ describe('morphology facts', () => {
     expect(user).not.toContain('Claimed: a simple word')
     expect(user).toContain('a back-formation ("televise" from "television", "edit" from "editor")')
     expect(user).toContain('never fail it for being a back-formation')
+    // A clipping that gives only a later sense does not make the word shortened.
+    expect(user).toContain("judge it by the word's first sense")
   })
 
   it('keys a word formation by its parts, roles, and meanings', () => {
