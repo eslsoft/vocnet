@@ -1164,8 +1164,12 @@ function grammarRubric(grammar: Grammar, subject: SubjectViews['sense'], sense: 
 
 type Morpheme = FactPayloads['morphology']['parts'][number]
 
-/** How many letters may change where two parts join: happy + -ness gives happiness, decide + -ion decision. */
-const JOIN_CHANGES = 2
+/**
+ * How many letters may change where two parts join: happy + -ness gives happiness, decide + -ion
+ * decision, and a suffix may replace the base's own ending: important + -ance gives importance,
+ * silent + -ence silence.
+ */
+const JOIN_CHANGES = 3
 
 const letters = (form: string) => form.toLowerCase().replace(/[-'’.]/g, '')
 

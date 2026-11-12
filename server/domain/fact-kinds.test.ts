@@ -1103,7 +1103,10 @@ describe('morphology facts', () => {
     expect(admit('happy', parts(['hap', 'base']))).toBe(
       'The parts hap do not spell "happy"; spelling changes only where parts join (happy + -ness gives happiness).',
     )
-    expect(admit('kindness', parts(['un-', 'prefix'], ['kind', 'base'], ['-ly', 'suffix']))).toContain('do not spell')
+    expect(admit('kindness', parts(['kin', 'base'], ['-ly', 'suffix']))).toContain('do not spell')
+    // A suffix may replace the base's own ending: -ant and -ent give -ance and -ence.
+    expect(admit('importance', parts(['important', 'base'], ['-ance', 'suffix']))).toBeNull()
+    expect(admit('silence', parts(['silent', 'base'], ['-ence', 'suffix']))).toBeNull()
     expect(admit('post office', parts(['post', 'base'], ['office', 'base']))).toBe(
       'A word formation describes a single word; "post office" is a phrase.',
     )
