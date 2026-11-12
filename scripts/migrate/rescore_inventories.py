@@ -8,6 +8,10 @@ inventory (reviewer jev); otherwise the LLM verdict it already has stands (revie
     python3 -I scripts/migrate/rescore_inventories.py export <d1.sqlite> <work-dir>
     node <bundle of rescore-inventories.ts> <work-dir>          # asks Jev, writes scored.jsonl
     python3 -I scripts/migrate/rescore_inventories.py apply <d1.sqlite> <work-dir>
+    python3 -I scripts/migrate/rescore_inventories.py audit <d1.sqlite> <work-dir>
+
+`audit` opens an audit ticket on each re-scored inventory Jev scored below 0.5 on some gloss while
+the LLM passed it: the two reviewers disagree outright, so a curator checks it. Stop the server first.
 
 `export` reads a copy (or the live file read-only). `apply` writes the live file: stop the producer
 workers and the server first. It changes only facts still published with the LLM review it read,
@@ -15,8 +19,11 @@ and marks their entries stale so the rescore recomputes their credibility.
 """
 
 import json
+import re
 import sqlite3
 import sys
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 SELECT = """
@@ -83,6 +90,44 @@ def apply(db_path: str, work: Path) -> None:
     print(f'updated {changed} of {len(scored)} inventories; published inventories by reviewer: {paths}')
 
 
+# Below this Jev reads a gloss as wrong (review-chain DECISION_FAIL_BELOW).
+JEV_FAIL_BELOW = 0.5
+
+
+def audit(db_path: str, work: Path) -> None:
+    exported = {row['factId']: row for row in map(json.loads, (work / 'inventories.jsonl').open())}
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    tickets = []
+    for row in map(json.loads, (work / 'scored.jsonl').open()):
+        review = row['review']
+        if review['reviewer'] != 'jev+llm':
+            continue
+        jev_part, _, llm_reason = review['reason'].partition(' | ')
+        scores = {key: float(value) for key, value in re.findall(r'(sense_\d+)=([\d.]+)', jev_part)}
+        failed = {key: score for key, score in scores.items() if score < JEV_FAIL_BELOW}
+        if not failed:
+            continue
+        senses = exported[row['factId']]['payload']['senses']
+        listed = '; '.join(
+            f"{key}={score:g} ({senses[int(key.split('_')[1]) - 1]['pos']}: {senses[int(key.split('_')[1]) - 1]['gloss']})"
+            for key, score in sorted(failed.items(), key=lambda item: item[1])
+        )
+        message = f'Jev scored below {JEV_FAIL_BELOW} what the LLM passed: {listed}. LLM: {llm_reason}'
+        tickets.append((str(uuid.uuid4()), row['factId'], message[:2000], now, now))
+    db = sqlite3.connect(db_path, timeout=60)
+    with db:
+        before = db.total_changes
+        db.executemany(
+            "insert into tickets (id, type, target_type, target, message, status, resolution_note, "
+            "resolution_fact_ids, revision, created_at, updated_at) "
+            "select ?, 'audit', 'fact', ?, ?, 'open', null, '[]', 0, ?, ? "
+            "on conflict do nothing",
+            tickets,
+        )
+        opened = db.total_changes - before
+    print(f'{len(tickets)} inventories disagree; opened {opened} audit tickets')
+
+
 if __name__ == '__main__':
     command, db_path, work_dir = sys.argv[1:4]
-    {'export': export, 'apply': apply}[command](db_path, Path(work_dir))
+    {'export': export, 'apply': apply, 'audit': audit}[command](db_path, Path(work_dir))
