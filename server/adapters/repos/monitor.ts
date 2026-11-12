@@ -25,23 +25,22 @@ import {
 } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { type Db, decodeCursor, inIds, liveStatus, page, toFact, weakReview } from './rows'
+import { type Db, decodeCursor, inIds, liveStatus, page, toFact } from './rows'
 import { toLease } from './work'
 
 /**
- * The live gloss of the sense the outer row's subject names: the published one, else the pending
- * one under review; null when the subject is not a sense.
+ * The gloss the live inventory of its entry gives the sense the outer row's subject names: the
+ * published inventory, else the pending one under review; null when the subject is not a sense.
  */
-function glossOf(db: Db, subjectId: SQLWrapper) {
-  const gloss = alias(facts, 'gloss')
-  return sql<string | null>`(${db
-    .select({ text: sql`json_extract(${gloss.payload}, '$.gloss')` })
-    .from(gloss)
-    .where(
-      and(eq(gloss.kind, 'sense'), eq(gloss.subjectId, subjectId), inArray(gloss.status, ['pending', 'published'])),
-    )
-    .orderBy(desc(sql`${gloss.status} = 'published'`), desc(gloss.updatedAt))
-    .limit(1)})`
+function glossOf(_db: Db, subjectId: SQLWrapper) {
+  return sql<string | null>`(select json_extract(listed.value, '$.gloss')
+    from senses as glossed
+    join facts as inventory on inventory.kind = 'senses' and inventory.subject_id = glossed.entry_id
+      and inventory.status in ('pending', 'published')
+    join json_each(inventory.payload, '$.senses') as listed on json_extract(listed.value, '$.id') = glossed.id
+    where glossed.id = ${subjectId}
+    order by inventory.status = 'published' desc, inventory.updated_at desc
+    limit 1)`
 }
 
 const leased = (now: string) => sql<number>`coalesce(${workItems.leaseExpiresAt} > ${now}, 0)`
@@ -171,14 +170,15 @@ export function createMonitorRepo(db: Db): MonitorRepo {
       .innerJoin(entries, eq(entries.id, workItems.entryId))
 
   return {
-    async countWeakByKind() {
+    async countByCredibility() {
+      const reviewer = sql<string | null>`json_extract(${facts.review}, '$.reviewer')`
       const rows = await db
-        .select({ kind: facts.kind, count: count() })
+        .select({ kind: facts.kind, reviewer, count: count() })
         .from(facts)
-        .where(weakReview)
-        .groupBy(facts.kind)
+        .where(eq(facts.status, 'published'))
+        .groupBy(facts.kind, reviewer)
         .orderBy(asc(facts.kind))
-      return rows.map((row) => ({ kind: factKindSchema.parse(row.kind), count: row.count }))
+      return rows.map((row) => ({ kind: factKindSchema.parse(row.kind), reviewer: row.reviewer, count: row.count }))
     },
 
     async countLiveFacts() {

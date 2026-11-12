@@ -1,18 +1,19 @@
-import { entries, facts, feedback, lemmaCefr, senses, workItems, worklist } from '@server/db/schema'
+import { entries, facts, senses, workItems, worklist, workPasses } from '@server/db/schema'
 import type { FactOf } from '@server/domain/fact'
-import { meaningKeyOf } from '@server/domain/fact-kinds'
 import { levelOfRank, openItemStatus } from '@server/domain/monitor'
 import type { EntryNode, SenseWithLemma } from '@server/domain/nodes'
+import type { PrincipalRef } from '@server/domain/principal'
 import { levelRank } from '@server/domain/reference'
-import { isMultiword, type Lemma } from '@server/domain/term'
-import { MAX_ATTEMPTS } from '@server/domain/work'
+import type { Lemma } from '@server/domain/term'
+import { passKey } from '@server/domain/work'
 import type { EntrySummaryFilter, NodeRepo, PageRequest } from '@server/usecases/ports'
-import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
+import { type EntryId, type FactStatus, factStatusSchema } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
-import { and, asc, count, desc, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
+import { MAX_PASSES, workTypeSchema } from '@shared/work'
+import { and, asc, count, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { type Db, decodeCursor, factSelectValues, liveStatus, page, toEntry, toFact, toSense, weakReview } from './rows'
-import { insertWorklistRow, touchLinkedWorkOfFact, touchWorkOf } from './work'
+import { type Db, decodeCursor, inIds, page, toEntry, toFact, toSense } from './rows'
+import { insertWorklistRow } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
 const entryCursor = z.object({ lemma: z.string() })
@@ -31,26 +32,21 @@ const toSenseWithLemma = (row: Parameters<typeof toSense>[0] & { lemma: string }
   lemma: row.lemma as Lemma,
 })
 
+const bumpRevision = { revision: sql`${worklist.revision} + 1` }
+
 /** Lemma range scan on the unique lemma index. */
 function lemmaStartsWith(prefix: string) {
   return prefix ? and(gte(entries.lemma, prefix), lt(entries.lemma, `${prefix}${PREFIX_END}`)) : undefined
 }
 
-/**
- * A phrase headed by the lemma: its first word is the lemma. The phrase sorts between the lemma
- * and a space and the lemma and "!", the character after the space, a range scan on the unique
- * lemma index. A phrase heads nothing.
- */
-const headedBy = (lemma: string) =>
-  isMultiword(lemma) ? sql`0` : and(gt(entries.lemma, `${lemma} `), lt(entries.lemma, `${lemma}!`))
-
-/** A sense of the entry in the outer query that is a verb and has a live gloss. */
-function liveVerbSense(db: Db) {
-  return db
-    .select({ one: sql`1` })
-    .from(senses)
-    .innerJoin(facts, and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id), liveStatus))
-    .where(and(eq(senses.entryId, entries.id), eq(senses.pos, 'verb')))
+/** The entry is admitted: an imported headword, or a phrase a published phrases list names. */
+function liveEntryOf(entryId: SQL | typeof entries.id, db: Db) {
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(worklist)
+      .where(and(eq(worklist.entryId, entryId), eq(worklist.live, true))),
+  )
 }
 
 /**
@@ -67,7 +63,7 @@ function familyOf(db: Db, entry: EntryNode) {
     .where(
       and(
         eq(facts.kind, 'morphology'),
-        liveStatus,
+        inArray(facts.status, ['pending', 'published']),
         ne(entries.id, entry.id),
         sql`instr(${facts.payload}, ${quoted}) > 0`,
         sql`exists (select 1 from json_each(${facts.payload}, '$.parts') where json_extract(value, '$.role') = 'base' and json_extract(value, '$.lemma') = ${entry.lemma})`,
@@ -80,36 +76,13 @@ function familyOf(db: Db, entry: EntryNode) {
 const noFacts = (): Record<FactStatus, number> =>
   Object.fromEntries(factStatusSchema.options.map((status) => [status, 0])) as Record<FactStatus, number>
 
-function liveEntryOf(entryId: SQL | typeof entries.id, db: Db) {
-  return exists(
-    db
-      .select({ one: sql`1` })
-      .from(facts)
-      .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entryId), liveStatus)),
-  )
-}
-
-/**
- * The entry in the outer query has a weak fact (`weakReview`) about it or one of its senses, read
- * through facts_subject_idx.
- */
-function hasWeakFact(db: Db) {
-  const owned = db.select({ id: senses.id }).from(senses).where(eq(senses.entryId, entries.id))
-  return exists(
-    db
-      .select({ one: sql`1` })
-      .from(facts)
-      .where(and(or(eq(facts.subjectId, entries.id), inArray(facts.subjectId, owned)), weakReview)),
-  )
-}
-
-/** The entry in the outer query has an item at the attempt bound, read through work_items_entry_idx. */
+/** The entry in the outer query has an item past the pass bound, read through work_items_entry_idx. */
 function hasStuckItem(db: Db) {
   return exists(
     db
       .select({ one: sql`1` })
       .from(workItems)
-      .where(and(eq(workItems.entryId, entries.id), gte(workItems.attempts, MAX_ATTEMPTS))),
+      .where(and(eq(workItems.entryId, entries.id), gte(workItems.attempts, MAX_PASSES))),
   )
 }
 
@@ -126,13 +99,11 @@ function atLevel(db: Db, level: CefrLevel) {
 /**
  * The statements behind one page of entry summaries. Each one reads only the page's entries and
  * their senses, facts, and items through an index, so a page costs the same however large the
- * dictionary grows; a filter is an EXISTS through an index per entry the lemma order reaches. The
- * glossed-sense count is an EXISTS on facts_subject_idx: joined to facts with kind = 'sense',
- * SQLite starts from facts_live_content_idx and reads every live sense fact.
+ * dictionary grows; a filter is an EXISTS through an index per entry the lemma order reaches.
  */
 export function entrySummaryStatements(
   db: Db,
-  { prefix, level, flagged, stuck }: EntrySummaryFilter,
+  { prefix, level, stuck }: EntrySummaryFilter,
   { limit, cursor }: PageRequest,
   now: string,
 ) {
@@ -141,7 +112,6 @@ export function entrySummaryStatements(
     lemmaStartsWith(prefix),
     after ? gt(entries.lemma, after.lemma) : undefined,
     level ? atLevel(db, level) : undefined,
-    flagged ? hasWeakFact(db) : undefined,
     stuck ? hasStuckItem(db) : undefined,
   )
   const pageIds = db
@@ -150,16 +120,11 @@ export function entrySummaryStatements(
     .where(inPage)
     .orderBy(asc(entries.lemma))
     .limit(limit + 1)
-  const entryStatus = db
-    .select({ status: facts.status })
+  const inventorySize = db
+    .select({ size: sql<number>`json_array_length(${facts.payload}, '$.senses')` })
     .from(facts)
-    .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, entries.id)))
-    .orderBy(desc(liveStatus), desc(facts.updatedAt), desc(facts.id))
+    .where(and(eq(facts.kind, 'senses'), eq(facts.subjectId, entries.id), eq(facts.status, 'published')))
     .limit(1)
-  const liveGloss = db
-    .select({ one: sql`1` })
-    .from(facts)
-    .where(and(eq(facts.subjectId, senses.id), eq(facts.kind, 'sense'), liveStatus))
   const leased = sql<number>`coalesce(${workItems.leaseExpiresAt} > ${now}, 0)`
 
   return [
@@ -168,14 +133,15 @@ export function entrySummaryStatements(
         id: entries.id,
         lemma: entries.lemma,
         createdAt: entries.createdAt,
+        live: worklist.live,
         lastWorkedAt: worklist.lastWorkedAt,
         levelRank: worklist.levelRank,
         completeness: worklist.completeness,
-        quality: worklist.quality,
+        credibility: worklist.credibility,
         slotsTotal: worklist.slotsTotal,
         slotsPublished: worklist.slotsPublished,
         slotsPending: worklist.slotsPending,
-        entryStatus: sql<string | null>`(${entryStatus})`,
+        senseCount: sql<number | null>`(${inventorySize})`,
       })
       .from(entries)
       .innerJoin(worklist, eq(worklist.entryId, entries.id))
@@ -193,11 +159,6 @@ export function entrySummaryStatements(
       .innerJoin(facts, eq(facts.subjectId, senses.id))
       .where(inArray(senses.entryId, pageIds))
       .groupBy(senses.entryId, facts.status),
-    db
-      .select({ entryId: senses.entryId, count: count() })
-      .from(senses)
-      .where(and(inArray(senses.entryId, pageIds), exists(liveGloss)))
-      .groupBy(senses.entryId),
     db
       .select({
         entryId: workItems.entryId,
@@ -245,67 +206,88 @@ export function createNodeRepo(db: Db): NodeRepo {
       return row ? toSenseWithLemma(row) : null
     },
 
-    async findSenseByGloss(entryId, pos, meaningKey) {
-      // A labelled key extends the meaning key with `|…`; `}` is the character after `|`, so the
-      // range stays on the content index. The meaning key of each candidate decides.
+    async listSenses(entryId) {
       const rows = await db
-        .select({ sense: senses, fact: facts })
+        .select()
         .from(senses)
-        .innerJoin(
-          facts,
-          and(
-            eq(facts.kind, 'sense'),
-            or(
-              eq(facts.contentKey, meaningKey),
-              and(gt(facts.contentKey, `${meaningKey}|`), lt(facts.contentKey, `${meaningKey}}`)),
-            ),
-            eq(facts.subjectId, senses.id),
-            liveStatus,
-          ),
-        )
-        .where(and(eq(senses.entryId, entryId), eq(senses.pos, pos)))
-      const match = rows
-        .map((row) => ({ sense: toSense(row.sense), fact: toFact(row.fact) }))
-        .find(({ fact }) => fact.kind === 'sense' && meaningKeyOf('sense', fact.payload) === meaningKey)
-      return match ?? null
+        .where(eq(senses.entryId, entryId))
+        .orderBy(asc(senses.createdAt), asc(senses.id))
+      return rows.map(toSense)
     },
 
-    async insertSenseWithFact(sense, fact, creationKey) {
-      // The creation index makes a concurrent duplicate a no-op, and the fact is inserted only
-      // if its sense was, so the loser of a race leaves nothing behind and reads the winner.
-      const values = factSelectValues(fact)
+    async insertSenses(rows) {
+      const [first] = rows
+      if (!first) return []
+      // The creation index makes a concurrent duplicate a no-op; the stored rows are read back by key.
+      await db
+        .insert(senses)
+        .values(rows.map(({ sense, creationKey }) => ({ ...sense, creationKey })))
+        .onConflictDoNothing()
+      const stored = await db.select().from(senses).where(eq(senses.entryId, first.sense.entryId))
+      const byKey = new Map(stored.map((row) => [`${row.pos}|${row.creationKey}`, row]))
+      return rows.map(({ sense, creationKey }) => {
+        const row = byKey.get(`${sense.pos}|${creationKey}`)
+        if (!row) throw new Error(`Sense ${sense.id} vanished after insert.`)
+        return toSense(row)
+      })
+    },
+
+    async admission(entryId) {
+      const row = await db
+        .select({ live: worklist.live, batch: worklist.batch })
+        .from(worklist)
+        .where(eq(worklist.entryId, entryId))
+        .get()
+      if (!row) throw new Error(`Entry ${entryId} has no worklist row.`)
+      return row
+    },
+
+    async admit(lemmas, batch, createdBy, now) {
+      if (lemmas.length === 0) return []
+      const fresh = lemmas.map((lemma) => ({
+        id: crypto.randomUUID() as EntryId,
+        lemma,
+        createdBy: createdBy as PrincipalRef,
+        createdAt: now,
+      }))
+      await db.batch([
+        db.insert(entries).values(fresh).onConflictDoNothing(),
+        ...fresh.map((entry) => insertWorklistRow(db, entry)),
+      ])
+      const rows = await db
+        .select()
+        .from(entries)
+        .where(inIds(entries.lemma, [...lemmas]))
+      const ids = rows.map((row) => row.id)
+      await db
+        .update(worklist)
+        .set({ live: true, batch: sql`coalesce(${worklist.batch}, ${batch})`, ...bumpRevision })
+        .where(inIds(worklist.entryId, ids))
+      return rows.map(toEntry)
+    },
+
+    async setPhrasesLive(live, dead, batch) {
+      // A dropped phrase stays live while another published phrases list still names it.
+      const named = sql`exists (select 1 from facts as list, json_each(list.payload, '$.phrases') as phrase where list.kind = 'phrases' and list.status = 'published' and phrase.value = ${entries.lemma})`
+      const stillNamed = db
+        .select({ id: entries.id })
+        .from(entries)
+        .where(and(inIds(entries.id, [...dead]), named))
       await db.batch([
         db
-          .insert(senses)
-          .values({ ...sense, creationKey })
-          .onConflictDoNothing(),
-        db.insert(facts).select(db.select(values).from(senses).where(eq(senses.id, sense.id)) as never),
-        touchWorkOf(db, [sense.entryId]),
-        touchLinkedWorkOfFact(db, fact.id),
+          .update(worklist)
+          .set({ live: true, batch: sql`coalesce(${worklist.batch}, ${batch})`, ...bumpRevision })
+          .where(inIds(worklist.entryId, [...live])),
+        db
+          .update(worklist)
+          .set({ live: false, ...bumpRevision })
+          .where(and(inIds(worklist.entryId, [...dead]), sql`${worklist.entryId} not in (${stillNamed})`)),
       ])
-      const stored = await db
-        .select({ sense: senses, fact: facts })
-        .from(senses)
-        .innerJoin(facts, and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id)))
-        .where(and(eq(senses.entryId, sense.entryId), eq(senses.pos, sense.pos), eq(senses.creationKey, creationKey)))
-        .orderBy(asc(facts.createdAt), asc(facts.id))
-        .get()
-      if (!stored) throw new Error(`Sense ${sense.id} has no defining fact right after insert.`)
-      return { sense: toSense(stored.sense), fact: toFact(stored.fact) }
-    },
-
-    async listLiveGlosses(entryId) {
-      const rows = await db
-        .select({ sense: senses, fact: facts })
-        .from(senses)
-        .innerJoin(facts, and(eq(facts.kind, 'sense'), eq(facts.subjectId, senses.id), liveStatus))
-        .where(eq(senses.entryId, entryId))
-        .orderBy(asc(senses.createdAt), asc(senses.id), asc(facts.createdAt), asc(facts.id))
-      return rows.map((row) => ({ sense: toSense(row.sense), fact: toFact(row.fact) as FactOf<'sense'> }))
     },
 
     async loadEntrySnapshot(entry) {
       const own = sensesOf(entry.id)
+      const ownFacts = db.select({ id: facts.id }).from(facts).where(inArray(facts.subjectId, own))
       const outgoingTargets = db
         .select({ id: facts.objectId })
         .from(facts)
@@ -314,104 +296,72 @@ export function createNodeRepo(db: Db): NodeRepo {
         .select({ id: facts.subjectId })
         .from(facts)
         .where(and(eq(facts.kind, 'relation'), inArray(facts.objectId, own)))
-      const neighborIds = or(inArray(senses.id, outgoingTargets), inArray(senses.id, incomingSources))
-      const neighborEntries = db.select({ id: senses.entryId }).from(senses).where(neighborIds)
-      const neighborSenseIds = db.select({ id: senses.id }).from(senses).where(neighborIds)
+      const neighborEntries = db
+        .select({ id: senses.entryId })
+        .from(senses)
+        .where(
+          and(
+            or(inArray(senses.id, outgoingTargets), inArray(senses.id, incomingSources)),
+            ne(senses.entryId, entry.id),
+          ),
+        )
       const order = [asc(facts.createdAt), asc(facts.id)]
 
-      const ownFactIds = db
-        .select({ id: facts.id })
-        .from(facts)
-        .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own)))
-      const [work, ownSenses, subjectFacts, incoming, neighborSenses, neighborFacts, flagged, phrases, family] =
-        await db.batch([
-          db
-            .select({
-              seed: worklist.seed,
-              levelRank: worklist.levelRank,
-              zipf: worklist.zipf,
-              // One primary-key lookup: the exact lemma listed as an A1 or A2 verb.
-              coreVerb: sql<number>`${exists(
-                db
-                  .select({ one: sql`1` })
-                  .from(lemmaCefr)
-                  .where(
-                    and(
-                      eq(lemmaCefr.lemma, entry.lemma),
-                      eq(lemmaCefr.pos, 'verb'),
-                      inArray(lemmaCefr.level, ['A1', 'A2']),
-                    ),
-                  ),
-              )}`,
-            })
-            .from(worklist)
-            .where(eq(worklist.entryId, entry.id)),
-          db
-            .select(senseColumns)
-            .from(senses)
-            .innerJoin(entries, eq(entries.id, senses.entryId))
-            .where(eq(senses.entryId, entry.id))
-            .orderBy(asc(senses.createdAt), asc(senses.id)),
-          db
-            .select()
-            .from(facts)
-            .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own)))
-            .orderBy(...order),
-          db
-            .select()
-            .from(facts)
-            .where(and(eq(facts.kind, 'relation'), inArray(facts.objectId, own)))
-            .orderBy(...order),
-          db.select(senseColumns).from(senses).innerJoin(entries, eq(entries.id, senses.entryId)).where(neighborIds),
-          db
-            .select()
-            .from(facts)
-            .where(
-              or(
-                and(eq(facts.kind, 'sense'), inArray(facts.subjectId, neighborSenseIds)),
-                and(eq(facts.kind, 'entry'), inArray(facts.subjectId, neighborEntries)),
-              ),
-            )
-            .orderBy(...order),
-          db
-            .selectDistinct({ id: feedback.targetId })
-            .from(feedback)
-            .where(
-              and(
-                inArray(feedback.targetId, ownFactIds),
-                eq(feedback.targetType, 'fact'),
-                inArray(feedback.status, ['open', 'claimed']),
-              ),
-            ),
-          db
-            .select({ lemma: entries.lemma })
-            .from(entries)
-            .where(and(headedBy(entry.lemma), liveEntryOf(entries.id, db), exists(liveVerbSense(db))))
-            .orderBy(asc(entries.lemma)),
-          familyOf(db, entry),
-        ])
+      const [work, ownSenses, subjectFacts, incoming, neighbors, inventories, passes, family] = await db.batch([
+        db
+          .select({ live: worklist.live, batch: worklist.batch, levelRank: worklist.levelRank, zipf: worklist.zipf })
+          .from(worklist)
+          .where(eq(worklist.entryId, entry.id)),
+        db.select().from(senses).where(eq(senses.entryId, entry.id)).orderBy(asc(senses.createdAt), asc(senses.id)),
+        db
+          .select()
+          .from(facts)
+          .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own), inArray(facts.subjectId, ownFacts)))
+          .orderBy(...order),
+        db
+          .select()
+          .from(facts)
+          .where(and(eq(facts.kind, 'relation'), inArray(facts.objectId, own)))
+          .orderBy(...order),
+        db
+          .select({ id: entries.id, lemma: entries.lemma, live: worklist.live })
+          .from(entries)
+          .innerJoin(worklist, eq(worklist.entryId, entries.id))
+          .where(inArray(entries.id, neighborEntries)),
+        db
+          .select()
+          .from(facts)
+          .where(and(eq(facts.kind, 'senses'), inArray(facts.subjectId, neighborEntries)))
+          .orderBy(...order),
+        db
+          .select({ type: workPasses.type, subjectId: workPasses.subjectId })
+          .from(workPasses)
+          .where(eq(workPasses.entryId, entry.id)),
+        familyOf(db, entry),
+      ])
 
-      if (!work[0]) throw new Error(`Entry ${entry.id} has no worklist row.`)
+      const [row] = work
+      if (!row) throw new Error(`Entry ${entry.id} has no worklist row.`)
       return {
-        entry,
-        seed: work[0].seed,
-        levelRank: work[0].levelRank,
-        zipf: work[0].zipf,
-        coreVerb: work[0].coreVerb === 1,
-        phrases: phrases.map((row) => row.lemma),
-        family: family.map((row) => row.lemma),
-        senses: ownSenses.map(toSenseWithLemma),
+        entry: { ...entry, live: row.live },
+        batch: row.batch,
+        levelRank: row.levelRank,
+        zipf: row.zipf,
+        family: family.map((member) => member.lemma),
+        senses: ownSenses.map(toSense),
         facts: subjectFacts.map(toFact),
         incoming: incoming.map(toFact),
-        flagged: new Set(flagged.map((row) => row.id as FactId)),
-        neighbors: { senses: neighborSenses.map(toSenseWithLemma), facts: neighborFacts.map(toFact) },
+        passes: new Set(passes.map((pass) => passKey(workTypeSchema.parse(pass.type), pass.subjectId))),
+        neighbors: {
+          inventories: inventories.map(toFact),
+          lemmas: new Map(neighbors.map((neighbor) => [neighbor.id as EntryId, neighbor.lemma])),
+          liveEntries: new Set(neighbors.filter((neighbor) => neighbor.live).map((neighbor) => neighbor.id as EntryId)),
+        },
       }
     },
 
     async listEntrySummaries(filter, request, now) {
-      const [rows, entryFacts, senseFacts, glossed, items] = await db.batch(
-        entrySummaryStatements(db, filter, request, now),
-      )
+      const [rows, entryFacts, senseFacts, items] = await db.batch(entrySummaryStatements(db, filter, request, now))
 
       const factCounts = new Map<string, Record<FactStatus, number>>()
       for (const row of [...entryFacts, ...senseFacts]) {
@@ -419,7 +369,6 @@ export function createNodeRepo(db: Db): NodeRepo {
         counts[factStatusSchema.parse(row.status)] += row.count
         factCounts.set(row.entryId, counts)
       }
-      const senseCounts = new Map(glossed.map((row) => [row.entryId, row.count]))
       const work = new Map<string, ReturnType<typeof noWork>>()
       for (const row of items) {
         const counts = work.get(row.entryId) ?? noWork()
@@ -435,14 +384,14 @@ export function createNodeRepo(db: Db): NodeRepo {
         (row) => ({
           id: row.id as EntryId,
           lemma: row.lemma,
-          entry_status: row.entryStatus === null ? null : factStatusSchema.parse(row.entryStatus),
-          sense_count: senseCounts.get(row.id) ?? 0,
+          live: row.live,
+          sense_count: row.senseCount ?? 0,
           fact_counts: factCounts.get(row.id) ?? noFacts(),
           last_worked_at: row.lastWorkedAt,
           created_at: row.createdAt,
           level: levelOfRank(row.levelRank),
           completeness: row.completeness,
-          quality: row.quality,
+          credibility: row.credibility,
           slots: { total: row.slotsTotal, published: row.slotsPublished, pending: row.slotsPending },
           open_work: work.get(row.id) ?? noWork(),
         }),
@@ -455,12 +404,18 @@ export function createNodeRepo(db: Db): NodeRepo {
       // the range stays on the content index.
       const keyOrLabelled = (key: string) =>
         or(eq(facts.contentKey, key), and(gt(facts.contentKey, `${key}|`), lt(facts.contentKey, `${key}}`)))
-      const liveEntry = liveEntryOf(entries.id, db)
       const rows = await db
         .select({ entry: entries, fact: facts })
         .from(facts)
         .innerJoin(entries, eq(entries.id, facts.subjectId))
-        .where(and(eq(facts.kind, 'form'), or(...contentKeys.map(keyOrLabelled)), liveStatus, liveEntry))
+        .where(
+          and(
+            eq(facts.kind, 'form'),
+            or(...contentKeys.map(keyOrLabelled)),
+            inArray(facts.status, ['pending', 'published']),
+            liveEntryOf(entries.id, db),
+          ),
+        )
         .orderBy(asc(entries.lemma), asc(facts.id))
       return rows.map((row) => ({ entry: toEntry(row.entry), fact: toFact(row.fact) as FactOf<'form'> }))
     },

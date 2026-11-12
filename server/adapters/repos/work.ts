@@ -2,20 +2,29 @@ import {
   entries,
   facts,
   senses,
+  tickets,
   wordFrequency,
   workAttempts,
   workItemLog,
   workItems,
   workLeases,
   worklist,
+  workPassBlocks,
+  workPasses,
 } from '@server/db/schema'
 import type { PrincipalRef } from '@server/domain/principal'
 import { frequencyKey } from '@server/domain/reference'
-import type { Lemma } from '@server/domain/term'
-import { MAX_ATTEMPTS, type WorkItem, type WorkLease } from '@server/domain/work'
+import type { WorkItem, WorkLease } from '@server/domain/work'
 import type { StaleWork, WorkRepo } from '@server/usecases/ports'
 import { type EntryId, entryIdSchema } from '@shared/facts'
-import { gapSchema, type WorkItemId, type WorkLeaseId, workItemIdSchema, workTypeSchema } from '@shared/work'
+import {
+  gapSchema,
+  MAX_PASSES,
+  type WorkItemId,
+  type WorkLeaseId,
+  workItemIdSchema,
+  workTypeSchema,
+} from '@shared/work'
 import {
   and,
   asc,
@@ -34,10 +43,9 @@ import {
   type SQLWrapper,
   sql,
 } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { levelRankSql } from '../reference-sql'
-import { type Db, decodeCursor, inIds, liveStatus, page } from './rows'
+import { type Db, inIds } from './rows'
 
 /**
  * Creates the entry's worklist row once the entry row exists, with the learner priority of its
@@ -53,14 +61,14 @@ export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) 
           entryId: entries.id,
           createdAt: entries.createdAt,
           live: sql`0`.as('live'),
-          seed: sql`0`.as('seed'),
+          batch: sql`null`.as('batch'),
           frequencyKey: sql`${key}`.as('frequency_key'),
           levelRank: sql.raw(levelRankSql('entries.lemma')).as('level_rank'),
           zipf: sql`(${db.select({ zipf: wordFrequency.zipf }).from(wordFrequency).where(eq(wordFrequency.word, key))})`.as(
             'zipf',
           ),
           completeness: sql`0`.as('completeness'),
-          quality: sql`1`.as('quality'),
+          credibility: sql`1`.as('credibility'),
           slotsTotal: sql`0`.as('slots_total'),
           slotsPublished: sql`0`.as('slots_published'),
           slotsPending: sql`0`.as('slots_pending'),
@@ -76,21 +84,6 @@ export function insertWorklistRow(db: Db, entry: { id: string; lemma: string }) 
     .onConflictDoNothing()
 }
 
-/**
- * Recomputes `live` from the entry fact. Batch it after every fact write about these subjects; a
- * subject that is not an entry matches no row.
- */
-export function syncWorklistLive(db: Db, subjectIds: string[] | SQLWrapper) {
-  const liveEntryFact = db
-    .select({ one: sql`1` })
-    .from(facts)
-    .where(and(eq(facts.kind, 'entry'), eq(facts.subjectId, worklist.entryId), liveStatus))
-  return db
-    .update(worklist)
-    .set({ live: exists(liveEntryFact) })
-    .where(inArray(worklist.entryId, subjectIds))
-}
-
 const bumpRevision = { revision: sql`${worklist.revision} + 1` }
 
 /**
@@ -99,11 +92,22 @@ const bumpRevision = { revision: sql`${worklist.revision} + 1` }
  * never got to still leaves the row claimable and listed as stale.
  */
 export function touchWorkOf(db: Db, nodeIds: string[] | SQLWrapper) {
-  const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
   return db
     .update(worklist)
     .set(bumpRevision)
-    .where(or(inArray(worklist.entryId, nodeIds), inArray(worklist.entryId, owners)))
+    .where(or(inArray(worklist.entryId, nodeIds), inArray(worklist.entryId, ownersOf(db, nodeIds))))
+}
+
+/**
+ * The entries that own these nodes: a sense's entry, and for an example or collocation fact (what a
+ * translation is about) the entry of its sense.
+ */
+function ownersOf(db: Db, nodeIds: string[] | SQLWrapper) {
+  const factSenses = db.select({ id: facts.subjectId }).from(facts).where(inArray(facts.id, nodeIds))
+  return db
+    .select({ id: senses.entryId })
+    .from(senses)
+    .where(or(inArray(senses.id, nodeIds), inArray(senses.id, factSenses)))
 }
 
 /** Marks stale the entries at either end of this fact, entry or sense; a fact that does not exist marks nothing. */
@@ -113,20 +117,22 @@ export function touchWorkOfFact(db: Db, factId: string) {
     .select({ id: facts.objectId })
     .from(facts)
     .where(and(eq(facts.id, factId), isNotNull(facts.objectId)))
-  const senseOwners = db
-    .select({ id: senses.entryId })
-    .from(senses)
-    .where(or(inArray(senses.id, subject), inArray(senses.id, object)))
   return db
     .update(worklist)
     .set(bumpRevision)
-    .where(or(inArray(worklist.entryId, subject), inArray(worklist.entryId, senseOwners)))
+    .where(
+      or(
+        inArray(worklist.entryId, subject),
+        inArray(worklist.entryId, ownersOf(db, subject)),
+        inArray(worklist.entryId, ownersOf(db, object)),
+      ),
+    )
 }
 
 /**
  * The entries with a sense that a relation links to a sense that is, or belongs to, one of these
- * nodes. A relation fills a gap only while the sense at its other end has a live gloss and a live
- * entry fact, so those facts entering or leaving live change the linked entries' gaps.
+ * nodes. A relation fills a gap only while a live entry's published inventory lists the sense at
+ * its other end, so that inventory changing changes the linked entries' gaps.
  */
 function linkedEntriesOf(db: Db, nodeIds: string[] | SQLWrapper) {
   const nodeSenses = db
@@ -147,20 +153,6 @@ function linkedEntriesOf(db: Db, nodeIds: string[] | SQLWrapper) {
     .where(or(inArray(senses.id, sources), inArray(senses.id, targets)))
 }
 
-/**
- * The entries spelled like the first word of a multiword entry that is, or owns as a sense, one of
- * these nodes: the phrase or its verb sense entering or leaving live changes their phrases gap.
- */
-function phraseHeadsOf(db: Db, nodeIds: string[] | SQLWrapper) {
-  const phrase = alias(entries, 'phrase')
-  const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
-  return db
-    .select({ id: entries.id })
-    .from(phrase)
-    .innerJoin(entries, sql`${entries.lemma} = substr(${phrase.lemma}, 1, instr(${phrase.lemma}, ' ') - 1)`)
-    .where(and(or(inArray(phrase.id, nodeIds), inArray(phrase.id, owners)), sql`instr(${phrase.lemma}, ' ') > 0`))
-}
-
 /** The entries a base part names in the morphology facts `named` that `which` picks. */
 function namedBases(db: Db, which: SQL) {
   return db
@@ -171,37 +163,24 @@ function namedBases(db: Db, which: SQL) {
     )
 }
 
-/**
- * The entries a base part names in this fact, when it is a morphology fact, or in the morphology
- * of the entry it defines, when it is an entry fact: either entering or leaving live changes their
- * family gap.
- */
-const familyBasesOf = (db: Db, factId: string) =>
-  namedBases(
-    db,
-    sql`(named.id = ${factId} or named.subject_id = (select defining.subject_id from facts as defining where defining.id = ${factId} and defining.kind = 'entry'))`,
-  )
+/** The entries a base part names in this fact, when it is a morphology fact: their family gap changes with it. */
+const familyBasesOf = (db: Db, factId: string) => namedBases(db, sql`named.id = ${factId}`)
 
 /**
- * Marks stale the entries linked to the entry or sense this fact defines: by a relation, as the
- * head of the phrase an entry or sense fact defines, or as a base the entry's word formation
- * names; and the bases a morphology fact names. A fact of any other kind, or one that does not
- * exist, marks nothing. Batch it with every fact insert and status change.
+ * Marks stale the entries linked to the entry whose inventory this fact is, by a relation, and the
+ * bases a morphology fact names. A fact of any other kind, or one that does not exist, marks
+ * nothing. Batch it with every fact insert and status change.
  */
 export function touchLinkedWorkOfFact(db: Db, factId: string) {
   const defined = db
     .select({ id: facts.subjectId })
     .from(facts)
-    .where(and(eq(facts.id, factId), inArray(facts.kind, ['entry', 'sense'])))
+    .where(and(eq(facts.id, factId), eq(facts.kind, 'senses')))
   return db
     .update(worklist)
     .set(bumpRevision)
     .where(
-      or(
-        inArray(worklist.entryId, linkedEntriesOf(db, defined)),
-        inArray(worklist.entryId, phraseHeadsOf(db, defined)),
-        inArray(worklist.entryId, familyBasesOf(db, factId)),
-      ),
+      or(inArray(worklist.entryId, linkedEntriesOf(db, defined)), inArray(worklist.entryId, familyBasesOf(db, factId))),
     )
 }
 
@@ -211,12 +190,10 @@ export function touchLinkedWorkOfFact(db: Db, factId: string) {
  * and of the bases their word formations name: every row a write about the nodes can make stale.
  */
 export function relatedWorklistRows(db: Db, nodeIds: string[]) {
-  const owners = db.select({ id: senses.entryId }).from(senses).where(inArray(senses.id, nodeIds))
   return or(
     inArray(worklist.entryId, nodeIds),
-    inArray(worklist.entryId, owners),
+    inArray(worklist.entryId, ownersOf(db, nodeIds)),
     inArray(worklist.entryId, linkedEntriesOf(db, nodeIds)),
-    inArray(worklist.entryId, phraseHeadsOf(db, nodeIds)),
     inArray(worklist.entryId, namedBases(db, inArray(sql`named.subject_id`, nodeIds))),
   )
 }
@@ -225,8 +202,7 @@ export function relatedWorklistRows(db: Db, nodeIds: string[]) {
  * In the production queue: not awaiting a review and short of the attempt bound. A literal, not
  * bound, so SQLite matches it against the partial queue indexes.
  */
-const inQueue = sql.raw(`work_items.awaiting = 0 and work_items.attempts < ${MAX_ATTEMPTS}`)
-const inCuration = sql.raw(`work_items.attempts >= ${MAX_ATTEMPTS}`)
+const inQueue = sql.raw(`work_items.awaiting = 0 and work_items.attempts < ${MAX_PASSES}`)
 const free = (now: string) => or(isNull(workItems.leaseExpiresAt), lte(workItems.leaseExpiresAt, now))
 const queueOrder = [asc(workItems.rank), desc(workItems.zipfOrder), asc(workItems.createdAt), asc(workItems.id)]
 
@@ -243,6 +219,7 @@ export function toWorkItem(row: typeof workItems.$inferSelect): WorkItem {
     awaiting: row.awaiting,
     attempts: row.attempts,
     worked: row.worked,
+    foundNone: row.foundNone,
     claimedGap: row.claimedGap === null ? null : gapSchema.parse(JSON.parse(row.claimedGap)),
     lease:
       row.leaseId === null || row.leaseHolder === null || row.leaseExpiresAt === null
@@ -306,8 +283,6 @@ export function leaseStatement(
     .returning()
 }
 
-const curationCursor = z.object({ rank: z.number().int(), zipf: z.number(), created_at: z.string(), id: z.string() })
-
 const staleColumns = { entryId: worklist.entryId, revision: worklist.revision }
 const isStale = ne(worklist.revision, worklist.scoredRevision)
 const toStale = (row: { entryId: string; revision: number }): StaleWork => ({
@@ -317,10 +292,6 @@ const toStale = (row: { entryId: string; revision: number }): StaleWork => ({
 
 export function createWorkRepo(db: Db): WorkRepo {
   return {
-    async markSeed(entryId) {
-      await db.update(worklist).set({ seed: true }).where(eq(worklist.entryId, entryId))
-    },
-
     async listStale(nodeIds) {
       const rows = await db
         .select(staleColumns)
@@ -358,7 +329,7 @@ export function createWorkRepo(db: Db): WorkRepo {
       return rows.map(toWorkItem)
     },
 
-    async saveAssessment(stale, { completeness, quality, slots }, { writes, deletes, verdicts }) {
+    async saveAssessment(stale, { completeness, credibility, slots }, { writes, deletes, verdicts }) {
       // One batch, each statement conditional on the revision the rescore read: a write that bumped
       // it since leaves the scores and the items as they were, and its own rescore follows.
       const current = exists(
@@ -390,6 +361,7 @@ export function createWorkRepo(db: Db): WorkRepo {
               awaiting: field('awaiting').as('awaiting'),
               attempts: field('attempts').as('attempts'),
               worked: field('worked').as('worked'),
+              foundNone: field('foundNone').as('found_none'),
               claimedGap: sql`null`.as('claimed_gap'),
               leaseId: sql`null`.as('lease_id'),
               leaseHolder: sql`null`.as('lease_holder'),
@@ -412,6 +384,7 @@ export function createWorkRepo(db: Db): WorkRepo {
             awaiting: sql`excluded.awaiting`,
             attempts: sql`excluded.attempts`,
             worked: sql`excluded.worked`,
+            foundNone: sql`excluded.found_none`,
           },
         })
       // The history row of every item written: inserted with a new item, its gap refreshed after.
@@ -441,6 +414,52 @@ export function createWorkRepo(db: Db): WorkRepo {
             ),
         )
         .onConflictDoUpdate({ target: workItemLog.id, set: { gap: sql`excluded.gap` } })
+      // A slot whose pass found none is filled by the pass: record it before the item goes.
+      const passedIds = verdicts.filter((verdict) => verdict.verdict === 'passed').map((verdict) => verdict.id)
+      const pass = db
+        .insert(workPasses)
+        .select(
+          db
+            .select({
+              entryId: workItems.entryId,
+              type: workItems.type,
+              subjectId: workItems.subjectId,
+              note: sql`coalesce(${workItems.lastNote}, 'found none')`.as('note'),
+              holder: sql`coalesce(${workItems.lastWorkedBy}, 'unknown')`.as('holder'),
+              createdAt: sql`${now}`.as('created_at'),
+            })
+            .from(workItems)
+            .where(and(inIds(workItems.id, passedIds), current)),
+        )
+        .onConflictDoNothing()
+      // An item its passes did not fill is a ticket on its node, one open ticket per node and type.
+      const stuck = verdicts
+        .filter((verdict) => verdict.verdict === 'stuck')
+        .map((verdict) => ({ ticket: crypto.randomUUID(), item: verdict.id }))
+      const raise = db
+        .insert(tickets)
+        .select(
+          db
+            .select({
+              id: sql`json_extract(value, '$.ticket')`.as('id'),
+              type: sql`'stuck_work'`.as('type'),
+              targetType: sql`case when ${workItems.subjectId} = ${workItems.entryId} then 'entry' else 'sense' end`.as(
+                'target_type',
+              ),
+              target: workItems.subjectId,
+              message: sql`${workItems.type} || ': ' || coalesce(${workItems.lastNote}, 'no note')`.as('message'),
+              status: sql`'open'`.as('status'),
+              resolutionNote: sql`null`.as('resolution_note'),
+              resolutionFactIds: sql`'[]'`.as('resolution_fact_ids'),
+              revision: sql`0`.as('revision'),
+              createdAt: sql`${now}`.as('created_at'),
+              updatedAt: sql`${now}`.as('updated_at'),
+            })
+            .from(sql`json_each(${JSON.stringify(stuck)})`)
+            .innerJoin(workItems, sql`${workItems.id} = json_extract(value, '$.item')`)
+            .where(current),
+        )
+        .onConflictDoNothing()
       const remove = db.delete(workItems).where(and(inArray(workItems.id, [...deletes]), current))
       const close = db
         .update(workItemLog)
@@ -467,14 +486,14 @@ export function createWorkRepo(db: Db): WorkRepo {
         .update(worklist)
         .set({
           completeness,
-          quality,
+          credibility,
           slotsTotal: slots.total,
           slotsPublished: slots.published,
           slotsPending: slots.pending,
           scoredRevision: stale.revision,
         })
         .where(and(eq(worklist.entryId, stale.entryId), eq(worklist.revision, stale.revision)))
-      await db.batch([upsert, log, remove, close, settle, score])
+      await db.batch([upsert, log, pass, raise, remove, close, settle, score])
     },
 
     async claim(draft, types, limit, now) {
@@ -514,7 +533,12 @@ export function createWorkRepo(db: Db): WorkRepo {
       const held = and(eq(workLeases.id, lease.id), eq(workLeases.holder, lease.holder), gt(workLeases.expiresAt, at))
       const stillHeld = exists(db.select({ one: sql`1` }).from(workLeases).where(held))
       const notes = JSON.stringify(
-        worked.map((item) => ({ id: item.id, note: item.note ?? null, attempt: crypto.randomUUID() })),
+        worked.map((item) => ({
+          id: item.id,
+          note: item.note ?? null,
+          foundNone: item.foundNone,
+          attempt: crypto.randomUUID(),
+        })),
       )
       // Qualified: a bare "id" inside the subquery names json_each's own id column.
       const named = (column: string) =>
@@ -559,6 +583,7 @@ export function createWorkRepo(db: Db): WorkRepo {
           lastWorkedAt: at,
           lastWorkedBy: lease.holder,
           lastNote: sql`(select json_extract(value, '$.note') from json_each(${notes}) where json_extract(value, '$.id') = ${workItems.id})`,
+          foundNone: sql`coalesce((select json_extract(value, '$.foundNone') from json_each(${notes}) where json_extract(value, '$.id') = ${workItems.id}), 0)`,
         })
         .where(
           and(
@@ -570,6 +595,22 @@ export function createWorkRepo(db: Db): WorkRepo {
             stillHeld,
           ),
         )
+      // The words a pass was blocked on, so importing one reopens the slot.
+      const blocks = JSON.stringify(worked.flatMap((item) => item.blockedOn.map((lemma) => ({ id: item.id, lemma }))))
+      const block = db
+        .insert(workPassBlocks)
+        .select(
+          db
+            .select({
+              lemma: sql`json_extract(value, '$.lemma')`.as('lemma'),
+              type: workItems.type,
+              subjectId: workItems.subjectId,
+            })
+            .from(sql`json_each(${blocks})`)
+            .innerJoin(workItems, sql`${workItems.id} = json_extract(value, '$.id')`)
+            .where(stillHeld),
+        )
+        .onConflictDoNothing()
       const release = db
         .update(workItems)
         .set({ leaseId: null, leaseHolder: null, leaseExpiresAt: null })
@@ -579,33 +620,49 @@ export function createWorkRepo(db: Db): WorkRepo {
         .set({ ...bumpRevision, lastWorkedAt: at })
         .where(and(inArray(worklist.entryId, [...lease.entryIds]), stillHeld))
       const remove = db.delete(workLeases).where(held).returning({ id: workLeases.id })
-      const [, , , , removed] = await db.batch([attempts, markWorked, release, bump, remove])
+      const [, , , , , removed] = await db.batch([attempts, markWorked, block, release, bump, remove])
       return removed.length > 0
     },
 
-    async listCuration(type, request) {
-      const last = request.cursor ? decodeCursor(request.cursor, curationCursor) : undefined
-      const rows = await db
-        .select({ item: workItems, lemma: entries.lemma })
-        .from(workItems)
-        .innerJoin(entries, eq(entries.id, workItems.entryId))
-        .where(
-          and(
-            inCuration,
-            type ? eq(workItems.type, type) : undefined,
-            last
-              ? sql`(${workItems.rank}, -${workItems.zipfOrder}, ${workItems.createdAt}, ${workItems.id}) > (${last.rank}, ${-last.zipf}, ${last.created_at}, ${last.id})`
-              : undefined,
+    async recordPass({ entryId, type, subjectId, note, holder, at }) {
+      await db.batch([
+        db
+          .insert(workPasses)
+          .values({ entryId, type, subjectId, note, holder, createdAt: at })
+          .onConflictDoUpdate({
+            target: [workPasses.type, workPasses.subjectId],
+            set: { note, holder, createdAt: at },
+          }),
+        db.update(worklist).set(bumpRevision).where(eq(worklist.entryId, entryId)),
+      ])
+    },
+
+    async reopenBlocked(lemmas) {
+      if (lemmas.length === 0) return 0
+      const blocked = db
+        .select({ key: sql`${workPassBlocks.type} || '|' || ${workPassBlocks.subjectId}` })
+        .from(workPassBlocks)
+        .where(inIds(workPassBlocks.lemma, lemmas))
+      const passKey = sql`${workPasses.type} || '|' || ${workPasses.subjectId}`
+      const reopened = await db
+        .select({ entryId: workPasses.entryId })
+        .from(workPasses)
+        .where(inArray(passKey, blocked))
+      if (reopened.length === 0) return 0
+      await db.batch([
+        db.delete(workPasses).where(inArray(passKey, blocked)),
+        db.delete(workPassBlocks).where(inIds(workPassBlocks.lemma, lemmas)),
+        db
+          .update(worklist)
+          .set(bumpRevision)
+          .where(
+            inIds(
+              worklist.entryId,
+              reopened.map((row) => row.entryId),
+            ),
           ),
-        )
-        .orderBy(...queueOrder)
-        .limit(request.limit + 1)
-      return page(
-        rows,
-        request.limit,
-        (row) => ({ ...toWorkItem(row.item), lemma: row.lemma as Lemma }),
-        (row) => ({ rank: row.item.rank, zipf: row.item.zipfOrder, created_at: row.item.createdAt, id: row.item.id }),
-      )
+      ])
+      return reopened.length
     },
 
     async purgeLeases(before) {

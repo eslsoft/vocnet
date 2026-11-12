@@ -1,11 +1,11 @@
 import type { createDb } from '@server/db/client'
-import { type FactRow, type FeedbackRow, facts } from '@server/db/schema'
+import { type FactRow, facts, type TicketRow } from '@server/db/schema'
 import type { Fact } from '@server/domain/fact'
-import { factKinds } from '@server/domain/fact-kinds'
-import type { FeedbackRecord } from '@server/domain/feedback'
+import { slotOf } from '@server/domain/fact-kinds'
 import type { EntryNode, SenseNode } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
+import type { TicketRecord } from '@server/domain/tickets'
 import { ConflictError, InvalidCursorError } from '@server/usecases/errors'
 import {
   type EntryId,
@@ -18,7 +18,7 @@ import {
   reviewSchema,
   type SenseId,
 } from '@shared/facts'
-import { type FeedbackId, feedbackStatusSchema, feedbackTargetTypeSchema } from '@shared/feedback'
+import { type TicketId, ticketStatusSchema, ticketTargetTypeSchema, ticketTypeSchema } from '@shared/tickets'
 import { getTableColumns, type SQLWrapper, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -26,9 +26,6 @@ export type Db = ReturnType<typeof createDb>
 
 /** Literal, not bound, so SQLite matches it against the partial unique index predicate. */
 export const liveStatus = sql`${facts.status} in ('pending', 'published')`
-
-/** Published facts whose standing review is uncertain or failed: the weak facts the reviews leave. */
-export const weakReview = sql`${facts.status} = 'published' and json_extract(${facts.review}, '$.verdict') in ('uncertain', 'fail')`
 
 // Stored rows are external data: each is parsed into its domain shape here, so
 // nothing past the repos sees JSON text or unchecked enums.
@@ -59,7 +56,7 @@ export function toFact(row: FactRow): Fact {
   return {
     id: row.id as FactId,
     kind,
-    subjectId: row.subjectId as EntryId | SenseId,
+    subjectId: row.subjectId as EntryId | SenseId | FactId,
     objectId: row.objectId as SenseId | null,
     contentKey: row.contentKey,
     payload: factPayloadSchemas[kind].parse(JSON.parse(row.payload)),
@@ -67,7 +64,6 @@ export function toFact(row: FactRow): Fact {
     supersedesId: row.supersedesId as FactId | null,
     author: row.author as PrincipalRef,
     review: row.review === null ? null : reviewSchema.parse(JSON.parse(row.review)),
-    revalidateSince: row.revalidateSince,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   } as Fact
@@ -76,7 +72,7 @@ export function toFact(row: FactRow): Fact {
 export function fromFact(fact: Fact): FactRow {
   return {
     ...fact,
-    exclusive: factKinds[fact.kind].cardinality === 'one',
+    slot: slotOf(fact.kind, fact.payload as never),
     payload: JSON.stringify(fact.payload),
     review: fact.review && JSON.stringify(fact.review),
   }
@@ -115,15 +111,14 @@ export async function guardUnique<T>(messages: Record<string, string>, write: ()
   }
 }
 
-export function toFeedback(row: FeedbackRow): FeedbackRecord {
+export function toTicket(row: TicketRow): TicketRecord {
   return {
-    id: row.id as FeedbackId,
-    targetType: feedbackTargetTypeSchema.parse(row.targetType),
-    targetId: row.targetId,
+    id: row.id as TicketId,
+    type: ticketTypeSchema.parse(row.type),
+    targetType: ticketTargetTypeSchema.parse(row.targetType),
+    target: row.target,
     message: row.message,
-    status: feedbackStatusSchema.parse(row.status),
-    assignee: row.assignee as PrincipalRef | null,
-    claimExpiresAt: row.claimExpiresAt,
+    status: ticketStatusSchema.parse(row.status),
     resolutionNote: row.resolutionNote,
     resolutionFactIds: z.array(factIdSchema).parse(JSON.parse(row.resolutionFactIds)),
     revision: row.revision,
@@ -132,8 +127,8 @@ export function toFeedback(row: FeedbackRow): FeedbackRecord {
   }
 }
 
-export function fromFeedback(item: FeedbackRecord): FeedbackRow {
-  return { ...item, resolutionFactIds: JSON.stringify(item.resolutionFactIds) }
+export function fromTicket(ticket: TicketRecord): TicketRow {
+  return { ...ticket, resolutionFactIds: JSON.stringify(ticket.resolutionFactIds) }
 }
 
 // Opaque keyset cursors: base64url JSON of the ordering key, including a unique tiebreaker.
