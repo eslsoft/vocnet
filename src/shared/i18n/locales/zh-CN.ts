@@ -94,6 +94,7 @@ export const zhCN: typeof enUS = {
   outcome: {
     waiting_on_review: '等待审核',
     closed: '已完成',
+    passed: '确认没有',
     progressed: '有进展',
     no_progress: '无进展',
     stuck: '卡住',

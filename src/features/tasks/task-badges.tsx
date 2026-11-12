@@ -17,6 +17,7 @@ const STATUS_VARIANT: Record<WorkItemStatus, Variant> = {
 const OUTCOME_VARIANT: Record<WorkAttemptOutcome, Variant> = {
   waiting_on_review: 'info',
   closed: 'success',
+  passed: 'success',
   progressed: 'progress',
   no_progress: 'muted',
   stuck: 'destructive',

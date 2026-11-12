@@ -91,6 +91,7 @@ export const enUS = {
   outcome: {
     waiting_on_review: 'Waiting on review',
     closed: 'Closed',
+    passed: 'Found none',
     progressed: 'Progressed',
     no_progress: 'No progress',
     stuck: 'Stuck',
