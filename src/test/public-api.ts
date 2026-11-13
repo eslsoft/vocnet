@@ -1,6 +1,8 @@
 import type { ReferenceSource } from '@shared/reference'
 import { HttpResponse, http } from 'msw'
 
+const noPhrases = { by_sense: [], phrasal_verbs: [], idioms: [], compounds: [], sayings: [] }
+
 // The public dictionary API (/v1) at the network edge, for the public site's component tests.
 
 export const sources: ReferenceSource[] = [
@@ -82,7 +84,13 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
         senses: [
           sense(senseIds.animal, 'A living creature that is not a plant or a human.', {
             translations: ['动物'],
-            examples: [{ text: 'Please do not feed the animals.', translation: '请不要给动物喂食。' }],
+            examples: [
+              {
+                sentence_id: '00000000-0000-4000-8000-0000000000e1' as never,
+                text: 'Please do not feed the animals.',
+                translation: '请不要给动物喂食。',
+              },
+            ],
             collocations: [{ text: 'wild animal', pattern: 'adjective_noun' }],
             topics: [{ id: 'wild-animals', name: { en: 'Wild animals', zh: '野生动物' } }],
             relations: {
@@ -120,7 +128,31 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
         ],
       },
     ],
-    phrases: [{ lemma: 'animal kingdom', pos: ['noun'], cefr: null, gloss: 'All animals.' }],
+    phrase_type: null,
+    phrases: {
+      by_sense: [
+        {
+          sense_id: senseIds.animal as never,
+          phrases: [{ lemma: 'animal kingdom', pos: ['noun'], cefr: null, gloss: 'All animals.' }],
+        },
+      ],
+      phrasal_verbs: [],
+      idioms: [{ lemma: 'party animal', pos: ['noun'], cefr: null, gloss: 'Someone who loves parties.' }],
+      compounds: [],
+      sayings: [
+        {
+          sentence_id: '00000000-0000-4000-8000-0000000000e3' as never,
+          text: 'Man is a social animal.',
+          meaning: 'People need the company of others.',
+          translation: '人是社会性动物。',
+        },
+        {
+          sentence_id: '00000000-0000-4000-8000-0000000000e4' as never,
+          text: 'Every animal has its day.',
+          meaning: null,
+        },
+      ],
+    },
   }
 }
 
@@ -143,7 +175,13 @@ export function dictionaryApi({ search = [] as ReturnType<typeof searchHit>[] } 
       const domain = url.searchParams.get('domain') as 'biology' | null
       if (params.lemma === 'animal') return HttpResponse.json(animalEntry(domain ?? undefined))
       if (params.lemma === 'bird') {
-        return HttpResponse.json({ ...animalEntry(), lemma: 'bird', morphology: null, pronunciations: [], phrases: [] })
+        return HttpResponse.json({
+          ...animalEntry(),
+          lemma: 'bird',
+          morphology: null,
+          pronunciations: [],
+          phrases: noPhrases,
+        })
       }
       return apiError(404, 'not_found', `No entry for "${params.lemma}".`)
     }),
@@ -199,7 +237,7 @@ export function goEntry() {
             region: 'south_african',
             rare: false,
             grammar: null,
-            examples: [{ text: 'We went home.' }],
+            examples: [{ sentence_id: '00000000-0000-4000-8000-0000000000e2' as never, text: 'We went home.' }],
             collocations: [
               { text: 'go home', pattern: 'verb_noun' },
               { text: 'go away', pattern: 'verb_adverb' },
@@ -210,7 +248,8 @@ export function goEntry() {
         ],
       },
     ],
-    phrases: [],
+    phrase_type: null,
+    phrases: noPhrases,
   }
 }
 

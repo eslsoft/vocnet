@@ -1,5 +1,5 @@
 import type { ReviewMeta } from '@shared/catalog'
-import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, SenseId, SentenceId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import type { StoredEntry, StoredMeaning, StoredSense, StoredSummary } from './catalog-view'
 import {
@@ -10,6 +10,7 @@ import {
   shapeEntry,
   shapeSenseDetail,
   shapeSenseSummary,
+  shapeSentence,
   shapeSummary,
   UNRANKED,
 } from './public-view'
@@ -25,7 +26,14 @@ const storedSense = (id: string, topics: string[], translations: Record<string, 
   rare: false,
   translations,
   grammar: { countability: 'countable', patterns: [], prepositions: [], review: review(`g-${id}`) },
-  examples: [{ text: `An example of ${id}.`, translations: { zh: `${id} 的例句。` }, review: review(`x-${id}`) }],
+  examples: [
+    {
+      sentence_id: `x-${id}` as SentenceId,
+      text: `An example of ${id}.`,
+      translations: { zh: `${id} 的例句。` },
+      review: review(`x-${id}`),
+    },
+  ],
   collocations: [
     { text: `river ${id}`, pattern: 'noun_noun', translations: { zh: `${id} 的搭配` }, review: review(`c-${id}`) },
   ],
@@ -91,7 +99,22 @@ const bank: StoredEntry = {
     },
   ],
   summary,
-  phrases: ['bank on'],
+  phrases: [
+    { type: 'phrasal_verb', lemma: 'bank on', sense_id: null },
+    { type: 'compound', lemma: 'bank account', sense_id: 's1' as SenseId },
+    { type: 'idiom', lemma: 'break the bank', sense_id: 'gone' as SenseId },
+    { type: 'fixed_phrase', lemma: 'at the bank', sense_id: null },
+    { type: 'compound', lemma: 'not public', sense_id: null },
+  ],
+  sayings: [
+    {
+      sentence_id: 'y-1' as SentenceId,
+      text: 'Never bank on luck.',
+      meaning: 'Do not rely on chance.',
+      translations: { zh: '别指望运气。' },
+    },
+  ],
+  phrase_type: null,
   review: { inventory: review('e1'), syllables: review('y1'), phrases: review('h1') },
   forms: [
     { form: 'banks', type: 'plural', pos: 'noun' },
@@ -102,7 +125,12 @@ const bank: StoredEntry = {
 }
 
 const links: EntryLinks = {
-  phrases: [{ lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translations: { zh: '指望' } }],
+  phrases: [
+    { lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translations: { zh: '指望' } },
+    { lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.', translations: {} },
+    { lemma: 'break the bank', pos: ['verb'], cefr: null, gloss: 'To cost too much.', translations: {} },
+    { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.', translations: {} },
+  ],
   family: [{ lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.', translations: {} }],
   publicParts: ['bank'],
 }
@@ -204,13 +232,34 @@ describe('public read variants', () => {
     expect(names(null)).toEqual({ en: 'Topic finance' })
     expect(names('all')).toEqual({ en: 'Topic finance', zh: '话题 finance' })
     // Summaries keep one shape: with all they carry no translation.
-    expect(shapeEntry(bank, links, { lang: 'all', review: false }).phrases[0]).not.toHaveProperty('translation')
+    expect(shapeEntry(bank, links, { lang: 'all', review: false }).phrases.phrasal_verbs[0]).not.toHaveProperty(
+      'translation',
+    )
 
     const entry = shapeEntry(bank, links, { lang: 'zh', review: false })
     expect(entry.lang).toBe('zh')
-    expect(entry.phrases).toEqual([
-      { lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translation: '指望' },
-    ])
+    expect(entry.phrase_type).toBeNull()
+    expect(entry.phrases).toEqual({
+      by_sense: [
+        { sense_id: 's1', phrases: [{ lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.' }] },
+      ],
+      phrasal_verbs: [{ lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translation: '指望' }],
+      // A phrase filed under a sense the document does not show goes by its type.
+      idioms: [
+        { lemma: 'break the bank', pos: ['verb'], cefr: null, gloss: 'To cost too much.' },
+        { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.' },
+      ],
+      compounds: [],
+      sayings: [
+        {
+          sentence_id: 'y-1',
+          text: 'Never bank on luck.',
+          meaning: 'Do not rely on chance.',
+          translation: '别指望运气。',
+        },
+      ],
+    })
+    expect(shapeEntry(bank, links, none).phrases.sayings[0]).not.toHaveProperty('translation')
     expect(entry.morphology?.family).toEqual([{ lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.' }])
   })
 
@@ -240,9 +289,10 @@ describe('public read variants', () => {
   it('shows syllables, form objects, and example translations in the read language [spec: catalog/new-fields]', () => {
     const exampleOf = (lang: string | null) =>
       shapeEntry(bank, links, { lang, review: false }).meanings[0]?.senses[0]?.examples[0]
-    expect(exampleOf('zh')).toEqual({ text: 'An example of s1.', translation: 's1 的例句。' })
-    expect(exampleOf('all')).toEqual({ text: 'An example of s1.', translation: { zh: 's1 的例句。' } })
-    expect(exampleOf(null)).toEqual({ text: 'An example of s1.' })
+    const sentence_id = 'x-s1'
+    expect(exampleOf('zh')).toEqual({ sentence_id, text: 'An example of s1.', translation: 's1 的例句。' })
+    expect(exampleOf('all')).toEqual({ sentence_id, text: 'An example of s1.', translation: { zh: 's1 的例句。' } })
+    expect(exampleOf(null)).toEqual({ sentence_id, text: 'An example of s1.' })
     const entry = shapeEntry(bank, links, { lang: null, review: false })
     expect(entry.syllables).toEqual(['bank'])
     expect(entry.meanings[0]?.forms).toEqual({ plural: [{ form: 'banks', irregular: false }] })
@@ -396,5 +446,31 @@ describe('public read variants', () => {
       },
       { ...shapeSummary(summary, none), matches: [{ type: 'variant' }] },
     ])
+  })
+})
+
+describe('public sentences', () => {
+  it('shows a sentence with its translation in the read language, its meaning, and where it shows [spec: public-view/sentence]', () => {
+    const record = {
+      id: 'y-1' as SentenceId,
+      text: 'Never bank on luck.',
+      source: null,
+      meaning: 'Do not rely on chance.',
+      translations: { zh: '别指望运气。' },
+      examplesOf: [{ lemma: 'luck', sense_id: 's1' as SenseId }],
+      sayingOf: ['bank'],
+    }
+    expect(shapeSentence(record, { lang: 'zh', review: false })).toEqual({
+      lang: 'zh',
+      id: 'y-1',
+      text: 'Never bank on luck.',
+      source: null,
+      meaning: 'Do not rely on chance.',
+      translation: '别指望运气。',
+      examples_of: [{ lemma: 'luck', sense_id: 's1' }],
+      saying_of: ['bank'],
+    })
+    expect(shapeSentence(record, { lang: 'all', review: false }).translation).toEqual({ zh: '别指望运气。' })
+    expect(shapeSentence(record, none)).not.toHaveProperty('translation')
   })
 })

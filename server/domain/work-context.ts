@@ -1,6 +1,12 @@
 import type { EntryId, Pos, Region, Register, SenseId } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
-import { type EntrySnapshot, type ManagedEntryView, managedEntryView } from './catalog-view'
+import {
+  type EntrySnapshot,
+  type ManagedEntryView,
+  managedEntryView,
+  namedNodesOf,
+  withNamedTexts,
+} from './catalog-view'
 import { type Fact, isKind } from './fact'
 import { currentInventory, inventorySenses } from './inventory'
 import type { TopicView } from './topics'
@@ -62,7 +68,9 @@ export function workContext(
   reference: { cefr: ReadonlyArray<{ pos: Pos; level: CefrLevel }> },
   taxonomy: readonly TopicView[],
 ): WorkContext {
-  const all = [...snapshot.facts, ...snapshot.incoming]
+  // Each example carries its sentence's text, each phrases item its lemma or text.
+  const named = namedNodesOf(snapshot)
+  const all = [...snapshot.facts, ...snapshot.incoming].map((fact) => withNamedTexts(fact, named))
   const inventory = currentInventory(snapshot.facts)
   const status = inventory?.status === 'published' ? 'published' : 'pending'
   const senses = inventorySenses(inventory).map(

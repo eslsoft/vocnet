@@ -4,12 +4,12 @@ import { type Fact, type FactOf, isKind } from '@server/domain/fact'
 import { factKinds, type JevQuestions, type Link, type LlmPrompt } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import { levelOfRank, openItemStatus } from '@server/domain/monitor'
-import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { EntryNode, SenseNode, SentenceNode } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import { type PublicViewRecord, STEM_ROLES } from '@server/domain/public-view'
 import { levelRank } from '@server/domain/reference'
 import { EXACT_LEMMA_TIER, fieldTier, LEMMA_PREFIX_TIER, SEARCH_TIERS } from '@server/domain/search'
-import type { Lemma } from '@server/domain/term'
+import { isMultiword, type Lemma, textKey } from '@server/domain/term'
 import type { TicketRecord } from '@server/domain/tickets'
 import type { TopicNode } from '@server/domain/topics'
 import { passKey, type WorkItem, type WorkLease } from '@server/domain/work'
@@ -30,7 +30,7 @@ import type {
   WorkScores,
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
-import type { EntryId, FactId, FactKind, FactStatus, Pos, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactStatus, Pos, SenseId, SentenceId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
 import type { TicketId } from '@shared/tickets'
 import { MAX_PASSES, type WorkItemId, type WorkLeaseId, type WorkType } from '@shared/work'
@@ -78,6 +78,7 @@ export interface FakeWorld {
   deps: Deps
   entries: EntryNode[]
   senses: SenseNode[]
+  sentences: SentenceNode[]
   facts: Fact[]
   /** A slice of the seeded taxonomy: two categories and some of their leaf topics. */
   topics: TopicNode[]
@@ -167,6 +168,7 @@ export function fakeWorld(): FakeWorld {
   const world: Omit<FakeWorld, 'deps'> = {
     entries: [],
     senses: [],
+    sentences: [],
     facts: [],
     topics: [...fakeTopics],
     tickets: [],
@@ -249,12 +251,38 @@ export function fakeWorld(): FakeWorld {
    * The entry a node is or belongs to: an entry, a sense's entry, or for an example or collocation
    * fact (what a translation is about) the entry of its sense.
    */
-  const entryIdOfNode = (nodeId: string): EntryId | undefined => {
-    if (entryById(nodeId)) return nodeId as EntryId
+  const entryIdOfNode = (nodeId: string): EntryId | undefined => ownersOfNode(nodeId)[0]
+  /** The live phrases lists that name a sentence a saying. */
+  const sayingLists = (sentenceId: string) =>
+    world.facts
+      .filter(isKind('phrases'))
+      .filter(
+        (fact) =>
+          live(fact) && fact.payload.phrases.some((item) => item.type === 'saying' && item.sentence_id === sentenceId),
+      )
+  /** The live examples that name a sentence. */
+  const sentenceExamples = (sentenceId: string) =>
+    world.facts.filter((fact) => fact.kind === 'example' && fact.objectId === sentenceId && live(fact))
+  /**
+   * The entries a node is or belongs to: an entry, a sense's entry, a collocation's entry, and for a
+   * sentence each entry whose example or phrases list names it, as `entryOf` and `ownersOf` read them.
+   */
+  const ownersOfNode = (nodeId: string): EntryId[] => {
+    if (entryById(nodeId)) return [nodeId as EntryId]
     const sense = senseById(nodeId)
-    if (sense) return sense.entryId
+    if (sense) return [sense.entryId]
+    if (world.sentences.some((sentence) => sentence.id === nodeId)) {
+      const all = world.facts.filter((fact) => fact.kind === 'example' && fact.objectId === nodeId)
+      return [
+        ...new Set([
+          ...all.flatMap((fact) => senseById(fact.subjectId)?.entryId ?? []),
+          ...sayingLists(nodeId).map((fact) => fact.subjectId as EntryId),
+        ]),
+      ]
+    }
     const fact = world.facts.find((candidate) => candidate.id === nodeId)
-    return fact ? senseById(fact.subjectId)?.entryId : undefined
+    const owner = fact && senseById(fact.subjectId)?.entryId
+    return owner ? [owner] : []
   }
   const isLiveEntry = (entryId: string) => world.work.get(entryId as EntryId)?.live === true
   /** The entries whose relations link to a sense that is, or belongs to, one of these nodes. */
@@ -282,14 +310,14 @@ export function fakeWorld(): FakeWorld {
   /** Every row a write about these nodes can make stale, as `relatedWorklistRows` selects them. */
   const relatedRows = (nodeIds: readonly string[]) =>
     new Set<EntryId>([
-      ...nodeIds.flatMap((id) => entryIdOfNode(id) ?? []),
+      ...nodeIds.flatMap(ownersOfNode),
       ...linkedEntries(nodeIds),
       ...namedBases(world.facts.filter((fact) => nodeIds.includes(fact.subjectId))),
     ])
   /** What the real fact writes batch with them: the nodes' entries, and the linked entries and bases of the fact. */
   const touchFact = (fact: Fact) => {
     const nodes = [fact.subjectId, ...(fact.objectId ? [fact.objectId] : [])]
-    bump(nodes.flatMap((id) => entryIdOfNode(id) ?? []))
+    bump(nodes.flatMap(ownersOfNode))
     if (fact.kind === 'senses') bump(linkedEntries([fact.subjectId]))
     bump(namedBases([fact]))
   }
@@ -397,6 +425,45 @@ export function fakeWorld(): FakeWorld {
       newRow(entry.id)
       return entry
     },
+    findEntries: async (ids) => world.entries.filter((entry) => ids.includes(entry.id)),
+    findEntriesByLemmas: async (lemmas) => world.entries.filter((entry) => lemmas.includes(entry.lemma)),
+    ensureEntries: async (lemmas, createdBy, at) => admitEntries(lemmas, createdBy, at),
+    listNamingLists: async (entryId) =>
+      world.facts
+        .filter(isKind('phrases'))
+        .filter(
+          (fact) =>
+            fact.status === 'published' &&
+            fact.payload.phrases.some((item) => item.type !== 'saying' && item.entry_id === entryId),
+        )
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+        .map((fact) => fact.id),
+    findSentence: async (id) => world.sentences.find((sentence) => sentence.id === id) ?? null,
+    findSentences: async (ids) => world.sentences.filter((sentence) => ids.includes(sentence.id)),
+    findSentencesByTexts: async (texts) => {
+      const keys = texts.map(textKey)
+      return world.sentences.filter((sentence) => keys.includes(textKey(sentence.text)))
+    },
+    insertSentences: async (rows) =>
+      rows.map((row) => {
+        const existing = world.sentences.find((sentence) => textKey(sentence.text) === textKey(row.text))
+        if (existing) return existing
+        world.sentences.push(row)
+        return row
+      }),
+    listSentenceUses: async (id) => ({
+      examples: sentenceExamples(id).flatMap((fact) => {
+        const sense = senseById(fact.subjectId)
+        const entry = sense && entryById(sense.entryId)
+        return sense && entry
+          ? [{ factId: fact.id, status: fact.status, senseId: sense.id, entryId: entry.id, lemma: entry.lemma }]
+          : []
+      }),
+      sayings: sayingLists(id).flatMap((fact) => {
+        const entry = entryById(fact.subjectId)
+        return entry ? [{ factId: fact.id, status: fact.status, entryId: entry.id, lemma: entry.lemma }] : []
+      }),
+    }),
     findSense: async (id) => {
       const sense = senseById(id)
       return sense ? withLemma(sense) : null
@@ -429,13 +496,17 @@ export function fakeWorld(): FakeWorld {
     },
     setPhrasesLive: async (alive, dead, batch) => {
       goLive(alive, batch)
-      const named = (lemma: string) =>
+      const named = (entryId: string) =>
         world.facts
           .filter(isKind('phrases'))
-          .some((fact) => fact.status === 'published' && fact.payload.phrases.includes(lemma))
+          .some(
+            (fact) =>
+              fact.status === 'published' &&
+              fact.payload.phrases.some((item) => item.type !== 'saying' && item.entry_id === entryId),
+          )
       for (const entryId of dead) {
         const entry = entryById(entryId)
-        if (!entry || named(entry.lemma)) continue
+        if (!entry || named(entry.id)) continue
         const row = rowOf(entryId)
         row.live = false
         row.revision += 1
@@ -447,10 +518,7 @@ export function fakeWorld(): FakeWorld {
         .filter(
           (fact) =>
             fact.status === 'published' &&
-            fact.payload.phrases.some((phrase) => {
-              const entry = world.entries.find((candidate) => candidate.lemma === phrase)
-              return !entry || !rowOf(entry.id).live
-            }),
+            fact.payload.phrases.some((item) => item.type !== 'saying' && !rowOf(item.entry_id).live),
         )
         .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
         .slice(0, limit)
@@ -461,9 +529,33 @@ export function fakeWorld(): FakeWorld {
       const senseFacts = new Set<string>(
         world.facts.filter((fact) => ownIds.has(fact.subjectId)).map((fact) => fact.id),
       )
-      const facts = world.facts.filter(
-        (fact) => fact.subjectId === entry.id || ownIds.has(fact.subjectId) || senseFacts.has(fact.subjectId),
+      const ownLists = world.facts.filter(isKind('phrases')).filter((fact) => fact.subjectId === entry.id)
+      const sentenceIds = new Set<string>([
+        ...world.facts
+          .filter((fact) => fact.kind === 'example' && ownIds.has(fact.subjectId))
+          .flatMap((fact) => fact.objectId ?? []),
+        ...ownLists.flatMap((fact) =>
+          fact.payload.phrases.flatMap((item) => (item.type === 'saying' ? [item.sentence_id] : [])),
+        ),
+      ])
+      const phraseEntryIds = new Set<string>(
+        ownLists.flatMap((fact) =>
+          fact.payload.phrases.flatMap((item) => (item.type === 'saying' ? [] : [item.entry_id])),
+        ),
       )
+      const facts = world.facts.filter(
+        (fact) =>
+          fact.subjectId === entry.id ||
+          ownIds.has(fact.subjectId) ||
+          senseFacts.has(fact.subjectId) ||
+          sentenceIds.has(fact.subjectId),
+      )
+      const naming = world.facts
+        .filter(isKind('phrases'))
+        .filter((fact) => fact.status === 'published' && !fact.payload.migrated)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+        .flatMap((fact) => fact.payload.phrases)
+        .find((item) => item.type !== 'saying' && item.entry_id === entry.id)
       const outgoing = facts.filter((fact) => fact.kind === 'relation').map((fact) => fact.objectId)
       const incoming = world.facts.filter((fact) => fact.kind === 'relation' && ownIds.has(fact.objectId ?? ''))
       const neighborEntries = new Set<EntryId>(
@@ -493,6 +585,15 @@ export function fakeWorld(): FakeWorld {
         levelRank: priorityOf(entry).levelRank,
         zipf: priorityOf(entry).zipf,
         family,
+        phraseType: isMultiword(entry.lemma) && naming && naming.type !== 'saying' ? naming.type : null,
+        sentences: new Map(
+          world.sentences.filter((sentence) => sentenceIds.has(sentence.id)).map((sentence) => [sentence.id, sentence]),
+        ),
+        phraseEntries: new Map(
+          world.entries
+            .filter((candidate) => phraseEntryIds.has(candidate.id))
+            .map((candidate) => [candidate.id, candidate.lemma]),
+        ),
         senses: own,
         facts,
         incoming,
@@ -921,7 +1022,7 @@ export function fakeWorld(): FakeWorld {
           ...viewLookup(entry.id),
           links: {
             phrases: (built.find(([entryId]) => entryId === entry.id)?.[1].document.phrases ?? []).flatMap((phrase) =>
-              built.filter(([, record]) => record.document.lemma === phrase).map(([, r]) => r.document.summary),
+              built.filter(([, record]) => record.document.lemma === phrase.lemma).map(([, r]) => r.document.summary),
             ),
             family: built
               .filter(([entryId, record]) => entryId !== entry.id && shares(record))
@@ -1116,6 +1217,7 @@ export function fakeWorld(): FakeWorld {
     ids: {
       entry: () => nextId<EntryId>(),
       sense: () => nextId<SenseId>(),
+      sentence: () => nextId<SentenceId>('b000'),
       fact: () => nextId<FactId>(),
       ticket: () => nextId<TicketId>(),
       agent: () => nextId<AgentId>(),

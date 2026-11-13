@@ -37,9 +37,9 @@ async function seedBank() {
   const form = await submitOk(token, 'form', bank.entryId, { form: 'banks', type: 'plural' })
   const example = await submitOk(token, 'example', river, { text: 'We sat on the bank.' })
   const equivalent = await submitOk(token, 'translation', river, { language: 'zh', of: 'sense', text: '河岸' })
-  const sentence = await submitOk(token, 'translation', example.id, {
+  const sentence = await submitOk(token, 'translation', example.object_id as string, {
     language: 'zh',
-    of: 'example',
+    of: 'sentence',
     text: '我们坐在河岸上。',
   })
   const relation = await submitOk(token, 'relation', river, { type: 'synonym', target_sense_id: coast })
@@ -50,7 +50,7 @@ describe('public catalog', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('serves a reviewed entry with forms, senses, examples, translations, and relations [spec: catalog/entry-read]', async () => {
-    const { river, coast, bank } = await seedBank()
+    const { river, coast, bank, example } = await seedBank()
     await reviewPending()
 
     const { status, body } = await call('/v1/entries/bank?lang=zh')
@@ -70,7 +70,9 @@ describe('public catalog', () => {
             labels: [],
             rare: false,
             translations: ['河岸'],
-            examples: [{ text: 'We sat on the bank.', translation: '我们坐在河岸上。' }],
+            examples: [
+              { sentence_id: example.object_id, text: 'We sat on the bank.', translation: '我们坐在河岸上。' },
+            ],
             relations: expect.objectContaining({
               synonyms: [{ lemma: 'shore', sense_id: coast, gloss: 'Land along water.' }],
             }),
@@ -87,7 +89,11 @@ describe('public catalog', () => {
     const [meaning] = reviewed.meanings
     expect(meaning?.review?.forms.plural).toEqual([expect.objectContaining({ verdict: 'pass', confidence: 0.93 })])
     expect(meaning?.senses[0]?.examples).toEqual([
-      { text: 'We sat on the bank.', review: expect.objectContaining({ confidence: 0.88 }) },
+      {
+        sentence_id: example.object_id,
+        text: 'We sat on the bank.',
+        review: expect.objectContaining({ confidence: 0.88 }),
+      },
     ])
     expect(meaning?.senses[0]?.relations.synonyms[0]?.review).toEqual(expect.objectContaining({ verdict: 'pass' }))
 
@@ -107,11 +113,16 @@ describe('public catalog', () => {
     await submitOk(token, 'form', pending, { form: 'banks', type: 'plural' })
     // "give in" is live while a published phrases list names it, and not once the list drops it.
     const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
-    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give in'] })
+    const list = await curated('phrases', give.entryId, {
+      phrases: [
+        { type: 'phrasal_verb', text: 'give up' },
+        { type: 'phrasal_verb', text: 'give in' },
+      ],
+    })
     const dropped = (await managed('give in')).entry.id
     await publishInventory(dropped, [{ pos: 'verb', gloss: 'To stop arguing and accept defeat.' }])
     expect((await call('/v1/entries/give%20in')).status).toBe(200)
-    await curated('phrases', give.entryId, { phrases: ['give up'] }, list.id)
+    await curated('phrases', give.entryId, { phrases: [{ type: 'phrasal_verb', text: 'give up' }] }, list.id)
 
     for (const path of [
       '/v1/entries/bank',
@@ -190,7 +201,11 @@ describe('public catalog', () => {
     await reviewPending()
     const [sense] = pending.senses
     const example = await submitOk(token, 'example', sense!.id, { text: 'We sat on the bank.' })
-    await submitOk(token, 'translation', example.id, { language: 'zh', of: 'example', text: '我们坐在河岸上。' })
+    await submitOk(token, 'translation', example.object_id as string, {
+      language: 'zh',
+      of: 'sentence',
+      text: '我们坐在河岸上。',
+    })
     const view = managedEntrySchema.parse((await call('/manage/v1/entries/bank', { token })).body)
     expect(view.facts.map((fact) => [fact.kind, fact.status]).sort()).toEqual([
       ['example', 'pending'],
@@ -211,8 +226,13 @@ describe('public catalog', () => {
     for (const lemma of ['band', 'bar', 'cat']) await admit(lemma)
     // "give back" exists but is not live: the phrases list that admitted it dropped it.
     const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
-    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give back'] })
-    await curated('phrases', give.entryId, { phrases: ['give up'] }, list.id)
+    const list = await curated('phrases', give.entryId, {
+      phrases: [
+        { type: 'phrasal_verb', text: 'give up' },
+        { type: 'phrasal_verb', text: 'give back' },
+      ],
+    })
+    await curated('phrases', give.entryId, { phrases: [{ type: 'phrasal_verb', text: 'give up' }] }, list.id)
     await reviewPending()
     const example = await submitOk(token, 'example', river, { text: 'The bank flooded.' })
     await call(`/manage/v1/facts/${example.id}/retract`, { method: 'POST', token })

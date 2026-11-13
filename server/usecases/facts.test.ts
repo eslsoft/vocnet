@@ -3,7 +3,7 @@ import type { Lemma } from '@server/domain/term'
 import { admin, agentA, agentB, curatorAgent } from '@server/testing/actors'
 import { type FakeWorld, fakeWorld } from '@server/testing/fakes'
 import { drainReviews, headword } from '@server/testing/seed'
-import type { EntryId, FactId, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
+import type { EntryId, FactId, FactPayloads, SenseId, SentenceId, SubmitFactInput, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { getFact, getFactWithEntry, listFacts, rereviewFact, retractFact, submitFact } from './facts'
 import { reviewFact } from './review'
@@ -75,8 +75,94 @@ describe('submitFact', () => {
     const { world, river } = await bankWorld()
     const { fact, created } = await submit(world, example(river, 'We sat on the bank.'), agentB)
     expect(created).toBe(true)
-    expect(fact).toMatchObject({ status: 'pending', author: 'agent:agent-b', review: null, objectId: null })
+    const [sentence] = world.sentences
+    expect(sentence).toMatchObject({ text: 'We sat on the bank.', source: null, createdBy: 'agent:agent-b' })
+    expect(fact).toMatchObject({
+      status: 'pending',
+      author: 'agent:agent-b',
+      review: null,
+      objectId: sentence?.id,
+      payload: { sentence_id: sentence?.id },
+      contentKey: sentence?.id,
+    })
     expect(world.queued).toEqual([{ factId: fact.id, traceId: 'trace-b' }])
+  })
+
+  it('finds a sentence by its text or creates it, so senses share one sentence [spec: facts/sentence-resolve]', async () => {
+    const { world, river, money, shore } = await bankWorld()
+    const { fact: first } = await submit(world, example(river, 'We sat on the bank.'))
+    const { fact: shared } = await submit(world, example(shore, '  we sat on the BANK. '))
+    expect(world.sentences).toHaveLength(1)
+    expect(shared.payload).toEqual(first.payload)
+    const sentenceId = world.sentences[0]?.id as SentenceId
+    const { fact: byId } = await submit(world, {
+      kind: 'example',
+      subject_id: money,
+      payload: { sentence_id: sentenceId },
+    })
+    expect(byId.objectId).toBe(sentenceId)
+    await expect(
+      submit(world, {
+        kind: 'example',
+        subject_id: money,
+        payload: { sentence_id: crypto.randomUUID() as SentenceId },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('does not exist') })
+    // A sentence is created only for a submission about a real subject.
+    await expect(submit(world, example(crypto.randomUUID(), 'A new sentence.'))).rejects.toMatchObject({
+      code: 'invalid_reference',
+    })
+    expect(world.sentences).toHaveLength(1)
+  })
+
+  it('names phrase entries and sayings by text, creating missing ones only once the list fits [spec: facts/phrases-resolve]', async () => {
+    const { world, entry, river } = await bankWorld()
+    const list = (phrases: unknown[]) =>
+      submit(world, { kind: 'phrases', subject_id: entry.id, payload: { phrases } } as SubmitFactInput)
+    await expect(list([{ type: 'idiom', text: 'make up' }])).rejects.toMatchObject({ code: 'invalid_reference' })
+    await expect(
+      list([{ type: 'compound', text: 'bank account', sense_id: crypto.randomUUID() }]),
+    ).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('is not a sense of the current inventory'),
+    })
+    expect(world.entries.map((one) => one.lemma)).not.toContain('make up')
+    expect(world.entries.map((one) => one.lemma)).not.toContain('bank account')
+    const { fact } = await list([
+      { type: 'compound', text: 'bank account', sense_id: river },
+      { type: 'idiom', text: 'break the bank' },
+      { type: 'saying', text: 'Never bank on luck.' },
+    ])
+    const account = world.entries.find((one) => one.lemma === 'bank account')
+    const broken = world.entries.find((one) => one.lemma === 'break the bank')
+    const saying = world.sentences.find((one) => one.text === 'Never bank on luck.')
+    expect(fact.payload).toEqual({
+      phrases: [
+        { type: 'compound', entry_id: account?.id, sense_id: river },
+        { type: 'idiom', entry_id: broken?.id },
+        { type: 'saying', sentence_id: saying?.id },
+      ],
+    })
+    // Created entries are not live until the list publishes.
+    expect(world.work.get(account?.id as EntryId)?.live).toBe(false)
+    // The same list named by ids is the same live fact.
+    await expect(
+      submit(world, {
+        kind: 'phrases',
+        subject_id: entry.id,
+        payload: { phrases: [...(fact.payload as FactPayloads['phrases']).phrases].reverse() },
+      } as SubmitFactInput),
+    ).resolves.toMatchObject({ created: false, fact: { id: fact.id } })
+    await expect(list([{ type: 'idiom', entry_id: crypto.randomUUID() }])).rejects.toMatchObject({
+      code: 'invalid_reference',
+      message: expect.stringContaining('does not exist'),
+    })
+    await expect(
+      list([
+        { type: 'idiom', text: 'break the bank' },
+        { type: 'phrasal_verb', entry_id: broken?.id },
+      ]),
+    ).rejects.toMatchObject({ code: 'invalid_reference', message: expect.stringContaining('names each phrase once') })
   })
 
   it('returns the live fact instead of a duplicate and enqueues nothing [spec: facts/dedupe]', async () => {
@@ -117,39 +203,51 @@ describe('submitFact', () => {
       submit(world, {
         kind: 'translation',
         subject_id: river,
-        payload: { language: 'zh', of: 'example', text: '银行' },
+        payload: { language: 'zh', of: 'sentence', text: '银行' },
       }),
     ).rejects.toMatchObject({ code: 'invalid_reference' })
   })
 
-  it('takes a translation of an example about the example fact, and of nothing else', async () => {
+  it('takes a translation of a sentence about the sentence, and of a collocation about that fact [spec: facts/translation-of]', async () => {
     const { world, river } = await bankWorld()
-    const { fact: sentence } = await submit(world, example(river, 'We sat on the bank.'))
-    const translate = (subject: string, of: 'sense' | 'example') =>
+    const { fact: example_ } = await submit(world, example(river, 'We sat on the bank.'))
+    const sentenceId = example_.objectId as string
+    const translate = (subject: string, of: 'sense' | 'sentence' | 'collocation') =>
       submit(world, {
         kind: 'translation',
         subject_id: subject,
         payload: { language: 'zh', of, text: '我们坐在河岸上。' },
       })
-    await expect(translate(sentence.id, 'example')).resolves.toMatchObject({
+    await expect(translate(sentenceId, 'sentence')).resolves.toMatchObject({
       created: true,
-      fact: { subjectId: sentence.id },
+      fact: { subjectId: sentenceId },
     })
-    await expect(translate(sentence.id, 'sense')).rejects.toMatchObject({ code: 'invalid_reference' })
-    const { fact: form } = await submit(world, {
-      kind: 'form',
-      subject_id: world.entries[0]!.id,
-      payload: { form: 'banks', type: 'plural' },
-    })
-    await expect(translate(form.id, 'example')).rejects.toMatchObject({
+    await expect(translate(sentenceId, 'sense')).rejects.toMatchObject({ code: 'invalid_reference' })
+    await expect(translate(example_.id, 'sentence')).rejects.toMatchObject({
       code: 'invalid_reference',
-      message: `A translation fact is about a fact; ${form.id} is not one.`,
+      message: `A translation fact is about a sentence; ${example_.id} is not one.`,
     })
+    await expect(translate(example_.id, 'collocation')).rejects.toMatchObject({ code: 'invalid_reference' })
+    const { fact: collocation } = await submit(world, {
+      kind: 'collocation',
+      subject_id: river,
+      payload: { text: 'river bank', pattern: 'noun_noun' },
+    })
+    await expect(translate(collocation.id, 'collocation')).resolves.toMatchObject({ created: true })
     world.senses.splice(
       world.senses.findIndex((sense) => sense.id === river),
       1,
     )
-    await expect(translate(sentence.id, 'example')).rejects.toThrow('which does not exist')
+    await expect(translate(collocation.id, 'collocation')).rejects.toThrow('which does not exist')
+  })
+
+  it('takes a sentence meaning about a sentence [spec: facts/sentence-meaning]', async () => {
+    const { world, river } = await bankWorld()
+    const { fact: example_ } = await submit(world, example(river, 'We sat on the bank.'))
+    const meaning = (subject: string) =>
+      submit(world, { kind: 'sentence_meaning', subject_id: subject, payload: { gloss: 'We rested by the river.' } })
+    await expect(meaning(example_.objectId as string)).resolves.toMatchObject({ created: true })
+    await expect(meaning(river)).rejects.toMatchObject({ code: 'invalid_reference' })
   })
 
   it('rejects a relation whose target sense does not exist', async () => {

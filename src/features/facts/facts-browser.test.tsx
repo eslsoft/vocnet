@@ -24,7 +24,12 @@ const getSense = { id: crypto.randomUUID(), entry_id: get.id, pos: 'verb' as con
 const obtainSense = { id: crypto.randomUUID(), entry_id: obtain.id, pos: 'verb' as const }
 
 function example(text: string, overrides: Partial<FactDto> = {}) {
-  return fact({ kind: 'example', payload: { text }, subject_id: speed.id, ...overrides } as FactDto)
+  return fact({
+    kind: 'example',
+    payload: { sentence_id: crypto.randomUUID() as never, text },
+    subject_id: speed.id,
+    ...overrides,
+  } as FactDto)
 }
 
 function world() {
@@ -60,8 +65,8 @@ function world() {
     flagged,
     fact({
       kind: 'translation',
-      payload: { language: 'zh', of: 'example', text: '她跑着去赶末班车。' },
-      subject_id: flagged.id,
+      payload: { language: 'zh', of: 'sense', text: '跑' },
+      subject_id: speed.id,
     }),
     fact({
       kind: 'relation',
@@ -100,7 +105,7 @@ describe('FactsBrowser', () => {
       ) as HTMLElement
       expect(await within(flaggedRow).findByText('run')).toBeInTheDocument()
       expect(within(flaggedRow).getByText('Example')).toBeInTheDocument()
-      const translationRow = within(list).getByText('她跑着去赶末班车。').closest('button') as HTMLElement
+      const translationRow = within(list).getByText('跑').closest('button') as HTMLElement
       expect(within(translationRow).getByText('Translation')).toBeInTheDocument()
       const inventoryRow = within(list).getByText('Sense inventory').closest('button') as HTMLElement
       expect(within(inventoryRow).getByText('move at a speed faster than walking')).toBeInTheDocument()

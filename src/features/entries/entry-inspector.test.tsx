@@ -54,7 +54,7 @@ function world() {
   })
   const flagged = fact({
     kind: 'example',
-    payload: { text: 'She ran to catch the last bus.' },
+    payload: { sentence_id: crypto.randomUUID() as never, text: 'She ran to catch the last bus.' },
     subject_id: speed?.id,
     author: `agent:${producer.id}`,
     updated_at: fromNow(-180),
@@ -85,7 +85,12 @@ function world() {
     inventory,
     fact({
       kind: 'phrases',
-      payload: { phrases: ['run out', 'run into'] },
+      payload: {
+        phrases: [
+          { type: 'phrasal_verb', entry_id: crypto.randomUUID() as never, text: 'run out' },
+          { type: 'phrasal_verb', entry_id: crypto.randomUUID() as never, text: 'run into' },
+        ],
+      },
       subject_id: run.id,
       status: 'pending',
       review: null,
@@ -93,12 +98,12 @@ function world() {
     flagged,
     fact({
       kind: 'translation',
-      payload: { language: 'zh', of: 'example', text: '她跑着去赶末班车。' },
-      subject_id: flagged.id,
+      payload: { language: 'zh', of: 'sentence', text: '她跑着去赶末班车。' },
+      subject_id: (flagged.payload as { sentence_id: string }).sentence_id,
     }),
     fact({
       kind: 'example',
-      payload: { text: 'The children ran across the field.' },
+      payload: { sentence_id: crypto.randomUUID() as never, text: 'The children ran across the field.' },
       subject_id: speed?.id,
       status: 'superseded',
     }),
@@ -111,7 +116,7 @@ function world() {
     }),
     fact({
       kind: 'example',
-      payload: { text: 'She runs a bakery.' },
+      payload: { sentence_id: crypto.randomUUID() as never, text: 'She runs a bakery.' },
       subject_id: manage?.id,
       status: 'pending',
       review: null,
@@ -226,7 +231,7 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     const topic = await within(first).findByRole('link', { name: /No topic yet\./ })
     expect(topic).toHaveTextContent(/Topics task · created .*Queued/)
     const translation = within(first).getByText('她跑着去赶末班车。').closest('button') as HTMLElement
-    expect(translation).toHaveTextContent('Example她跑着去赶末班车。')
+    expect(translation).toHaveTextContent('Sentence她跑着去赶末班车。')
 
     const second = section('Sense 2')
     expect(within(second).getByText('运行').closest('button')).toHaveAttribute('data-state', 'rejected')
@@ -291,8 +296,8 @@ describe('EntryInspector', { timeout: HEAVY_TEST_MS }, () => {
     const row = (label: string) => within(details).getByText(label).nextElementSibling as HTMLElement
     expect(row('Pronunciation')).toHaveTextContent('/rʌn/ (us)')
     expect(row('Forms')).toHaveTextContent('runs (third_person_singular)Pending')
-    expect(await within(details).findByText('run out · run into')).toBeInTheDocument()
-    expect(row('Phrases')).toHaveTextContent('run out · run intoPendingWaiting on review')
+    expect(await within(details).findByText('run out (phrasal_verb) · run into (phrasal_verb)')).toBeInTheDocument()
+    expect(row('Phrases')).toHaveTextContent('run out (phrasal_verb) · run into (phrasal_verb)PendingWaiting on review')
     expect(row('Syllables')).toHaveTextContent('No syllable division yet.Queued')
     expect(row('Translations')).toHaveTextContent('1 item has no Chinese translation.In progress')
     expect(row('Word formation')).toHaveTextContent('—')

@@ -48,7 +48,11 @@ describe('fact review flow', () => {
     })
     const after = publicEntrySchema.parse((await call('/v1/entries/lake?include=review')).body)
     expect(after.meanings[0]?.senses[0]?.examples).toEqual([
-      { text: 'We swam in the lake.', review: { fact_id: example.id, confidence: 0.88, verdict: 'pass' } },
+      {
+        sentence_id: example.object_id,
+        text: 'We swam in the lake.',
+        review: { fact_id: example.id, confidence: 0.88, verdict: 'pass' },
+      },
     ])
   })
 

@@ -16,10 +16,12 @@ import type {
   RelationType,
   ReviewerKind,
   SenseId,
+  SentenceId,
   ServedLanguage,
+  SubmitPayloads,
   TopicId,
 } from '@shared/facts'
-import { MORPHEME_SPELLING } from '@shared/facts'
+import { isCompleteSentence, MORPHEME_SPELLING, SAYING_ISSUE } from '@shared/facts'
 import { editDistance, isMultiword, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
@@ -33,14 +35,15 @@ export interface SubjectTypeOf {
   relation: 'sense'
   pronunciation: 'entry'
   example: 'sense'
-  /** A sense's equivalent is about the sense; an example's or collocation's translation about that fact. */
-  translation: 'sense' | 'fact'
+  /** A sense's equivalent is about the sense, a sentence's translation the sentence, a collocation's that fact. */
+  translation: 'sense' | 'sentence' | 'fact'
   topic: 'sense'
   grammar: 'sense'
   morphology: 'entry'
   collocation: 'sense'
   syllables: 'entry'
   phrases: 'entry'
+  sentence_meaning: 'sentence'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -61,7 +64,7 @@ export interface SenseGloss {
 export type EntrySense = SenseGloss & { id: SenseId }
 
 /** The kinds a translation of a fact translates. */
-export type TranslatedFactKind = 'example' | 'collocation'
+export type TranslatedFactKind = 'collocation'
 
 export interface SubjectViews {
   /**
@@ -74,8 +77,18 @@ export interface SubjectViews {
     caseVariants: string[]
   }
   sense: SenseView & { siblings: SenseGloss[] }
-  /** An example or collocation a translation is about, with the sense it belongs to. */
+  /** A collocation a translation is about, with the sense it belongs to. */
   fact: { kind: TranslatedFactKind; text: string; sense: SenseView & { siblings: SenseGloss[] } }
+  /**
+   * A sentence: its text, the first sense it is a live example of (null when none), the headwords
+   * whose published phrases list names it a saying, and its live meaning (null when none).
+   */
+  sentence: {
+    text: string
+    sense: (SenseView & { siblings: SenseGloss[] }) | null
+    sayingOf: readonly string[]
+    meaning: string | null
+  }
 }
 
 /**
@@ -84,9 +97,37 @@ export interface SubjectViews {
  * a fact its kind.
  */
 export interface AdmissionViews {
-  entry: { lemma: string; senses: readonly SenseId[] }
+  /** `senses`: every sense row of the entry; `inventory`: the senses its current live inventory lists. */
+  entry: { lemma: string; senses: readonly SenseId[]; inventory: readonly SenseId[] }
   sense: { lemma: string; pos: Pos; forms: readonly string[] }
   fact: { kind: FactKind }
+  sentence: { text: string }
+}
+
+/** The nodes a payload names besides its subject, by id: a phrases list's entries and sentences, an example's sentence. */
+export interface Mentions {
+  entries: readonly EntryId[]
+  sentences: readonly SentenceId[]
+}
+
+/** What a rule or review sees of the nodes a payload names: each entry's lemma and each sentence's text, by id. */
+export interface NamedNodes {
+  entries: ReadonlyMap<string, string>
+  sentences: ReadonlyMap<string, string>
+}
+
+export const NO_NAMED_NODES: NamedNodes = { entries: new Map(), sentences: new Map() }
+
+/** The texts a submission names nodes by: lemmas of entries and texts of sentences. */
+export interface NodeTexts {
+  lemmas: readonly string[]
+  sentences: readonly string[]
+}
+
+/** The id of a node a submission named by text; the use case resolved every text the submission named. */
+export interface NodeIds {
+  entry(lemma: string): EntryId
+  sentence(text: string): SentenceId
 }
 
 export interface ReviewContext<S extends SubjectType = SubjectType> {
@@ -95,6 +136,8 @@ export interface ReviewContext<S extends SubjectType = SubjectType> {
   target: SubjectViews['sense'] | null
   /** The topic a topic fact tags its sense with; null for every other kind, or when no such leaf topic exists. */
   topic: TopicView | null
+  /** The lemmas and texts of the nodes the payload names (`names.mentions`). */
+  named: NamedNodes
 }
 
 export type JevQuestions = Record<string, string>
@@ -164,8 +207,20 @@ interface BaseSpec<K extends FactKind> {
   /** The decision models the kind's plans consult, for the console and the producer; empty for the LLM alone. */
   models: readonly DecisionModel[]
   plan(payload: FactPayloads[K], context: ReviewContext<SubjectTypeOf[K]>): ReviewPlan
-  /** The sense a relation points at; absent for kinds without an object. */
+  /** The sense a relation points at; absent for kinds that link no sense. */
   target?(payload: FactPayloads[K]): SenseId
+  /** The node stored as the fact's object: a relation's target sense, an example's sentence; absent for none. */
+  object?(payload: FactPayloads[K]): string
+  /**
+   * Nodes a payload names by id, which a submission may name by text instead: `texts` lists those
+   * texts, `bind` stores the submission with every text replaced by the id the use case resolved,
+   * and `mentions` lists the ids a stored payload names, which must exist.
+   */
+  names?: {
+    texts(submitted: SubmitPayloads[K]): NodeTexts
+    bind(submitted: SubmitPayloads[K], ids: NodeIds): FactPayloads[K]
+    mentions(payload: FactPayloads[K]): Mentions
+  }
   /** The write rules a submission of the kind must meet, in plain sentences for the producer. */
   limits?: readonly string[]
   /** The leaf topic the fact tags its subject with; absent for kinds that reference no topic. */
@@ -185,7 +240,7 @@ interface BaseSpec<K extends FactKind> {
    * A write rule that needs the subject, checked when the fact is submitted: why the payload does
    * not fit it, or null when it does.
    */
-  admit?(payload: FactPayloads[K], subject: AdmissionViews[SubjectTypeOf[K]]): string | null
+  admit?(payload: FactPayloads[K], subject: AdmissionViews[SubjectTypeOf[K]], named: NamedNodes): string | null
   /**
    * A write rule over the live facts of this kind that link the same two entries, checked when the
    * fact is submitted: why the link may not join them, or null when it may. Only for kinds with a
@@ -717,16 +772,41 @@ function equivalentRubric(language: ServedLanguage, text: string, sense: Subject
 const TRANSLATOR_CHOICES =
   'Where the target language must say something the English leaves open (whether a sister is older or younger, a cousin on which side), a natural choice a translator would make is correct and adds no meaning.'
 
-function textTranslationRubric(
+function collocationTranslationRubric(
   language: ServedLanguage,
   translation: string,
-  { kind, text, sense }: SubjectViews['fact'] & { sense: GlossedSense },
+  { text, sense }: SubjectViews['fact'] & { sense: GlossedSense },
 ): string {
-  const what = kind === 'example' ? 'example sentence' : 'collocation'
   return [
-    `Is ${quote(translation)} a faithful, natural ${languageNames[language]} translation of the English ${what} ${quote(text)}, which uses ${describe(sense)}?`,
+    `Is ${quote(translation)} a faithful, natural ${languageNames[language]} translation of the English collocation ${quote(text)}, which uses ${describe(sense)}?`,
     'pass when it renders the whole text with the word in this sense and reads as fluent, natural text in its language.',
     'fail when it adds, drops, or changes meaning, renders the word in another sense, or is unnatural or ungrammatical.',
+    TRANSLATOR_CHOICES,
+  ].join('\n')
+}
+
+/**
+ * A sentence is translated once for every entry that uses it: as an example it renders the word in
+ * the sense it illustrates, as a saying it conveys what the saying means.
+ */
+function sentenceTranslationRubric(
+  language: ServedLanguage,
+  translation: string,
+  { text, sense, sayingOf, meaning }: SubjectViews['sentence'],
+): string {
+  const uses = [
+    ...(sense?.gloss ? [`It is an example of ${describe({ ...sense, gloss: sense.gloss })}.`] : []),
+    ...(sayingOf.length > 0
+      ? [
+          `It is a saying${meaning ? `, meaning ${quote(meaning)}` : ''}: an established ${languageNames[language]} saying with the same meaning and use also passes.`,
+        ]
+      : []),
+  ]
+  return [
+    `Is ${quote(translation)} a faithful, natural ${languageNames[language]} translation of the English sentence ${quote(text)}?`,
+    ...uses,
+    'pass when it renders the whole sentence and reads as fluent, natural text in its language.',
+    `fail when it adds, drops, or changes meaning${sense ? ', renders the word in another sense' : ''}, or is unnatural or ungrammatical.`,
     TRANSLATOR_CHOICES,
   ].join('\n')
 }
@@ -748,22 +828,22 @@ function equivalentQuestion(language: ServedLanguage, text: string, sense: Gloss
  */
 function planTranslation(
   { language, of, text }: FactPayloads['translation'],
-  subject: SubjectViews['sense'] | SubjectViews['fact'],
+  subject: SubjectViews['sense'] | SubjectViews['sentence'] | SubjectViews['fact'],
 ): ReviewPlan {
-  if ('kind' in subject) {
-    if (of === 'sense') return { kind: 'unreviewable', reason: 'A sense equivalent is about a sense, not a fact.' }
-    return withGloss(subject.sense, (sense) => llm(textTranslationRubric(language, text, { ...subject, sense })))
+  if (of === 'sentence') return llm(sentenceTranslationRubric(language, text, subject as SubjectViews['sentence']))
+  if (of === 'collocation') {
+    const fact = subject as SubjectViews['fact']
+    return withGloss(fact.sense, (sense) => llm(collocationTranslationRubric(language, text, { ...fact, sense })))
   }
-  if (of !== 'sense')
-    return { kind: 'unreviewable', reason: `A translation of ${article(of)} ${of} is about that fact, not a sense.` }
-  return withGloss(subject, (sense) =>
+  const sense = subject as SubjectViews['sense']
+  return withGloss(sense, (glossed) =>
     decide(
       {
-        ...senseState({ ...subject, ...sense }),
+        ...senseState({ ...sense, ...glossed }),
         [`proposed ${languageNames[language]} dictionary translation`]: text,
       },
-      { equivalent: equivalentQuestion(language, text, sense) },
-      equivalentRubric(language, text, { ...subject, ...sense }),
+      { equivalent: equivalentQuestion(language, text, glossed) },
+      equivalentRubric(language, text, { ...sense, ...glossed }),
       { models: ['jev', 'luna'], combine: 'any', passAt: TRANSLATION_PASS_AT },
     ),
   )
@@ -1289,23 +1369,68 @@ function syllablesQuestion(entry: SubjectViews['entry'], syllables: readonly str
 const GRAMMAR_WORD_PHRASES =
   'An idiom is printed under its main content word ("a piece of cake" under "cake", "in a nutshell" under "nutshell"), never under an article, pronoun, preposition, or other grammar word it merely contains; under a grammar word only the phrases built on that word itself belong ("a lot of", "after all").'
 
-function phraseQuestion(headword: string, phrase: string): string {
-  return `Does a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) print ${quote(phrase)} as a phrase, phrasal verb, or idiom of the headword ${quote(headword)}, or is its meaning not the sum of its words? Answer no for a plain description built from the words' ordinary meanings ("white rice", "oven door"), a coined combination no dictionary prints ("telephone in", "party down"), or a phrase that does not contain the headword. ${GRAMMAR_WORD_PHRASES} ${DATA}`
+const phraseTypeNames: Record<FactPayloads['phrases']['phrases'][number]['type'], string> = {
+  phrasal_verb: 'a phrasal verb',
+  compound: 'a compound',
+  idiom: 'an idiom',
+  fixed_phrase: 'a fixed phrase',
+  saying: 'a saying',
 }
 
-function phrasesRubric(entry: SubjectViews['entry'], phrases: readonly string[]): string {
+/** One listed phrase as a question or rubric names it: its text, its claimed type, and the sense it is filed under. */
+interface ListedPhrase {
+  text: string
+  type: FactPayloads['phrases']['phrases'][number]['type']
+  sense: string | null
+}
+
+const PHRASE_TYPES_RULE =
+  'The types: phrasal_verb, a verb with a particle ("give up"); compound, a fixed compound naming one thing ("bank account"); idiom, a phrase whose meaning is not the sum of its words; fixed_phrase, a set prepositional or grammatical phrase ("at all", "in front of"); saying, a complete sentence (a proverb, maxim, or saying, "look before you leap"). A complete sentence is always a saying, never a phrase entry.'
+
+function phraseQuestion(headword: string, { text, type, sense }: ListedPhrase): string {
+  const filed = sense ? `, filed under the sense ${quote(sense)}` : ''
+  if (type === 'saying') {
+    return `Is ${quote(text)} an established English saying, proverb, or maxim that a learner's dictionary prints under the headword ${quote(headword)}${filed}? Answer no for a sentence anyone composes, or one no dictionary prints. ${DATA}`
+  }
+  return `Does a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) print ${quote(text)} as ${phraseTypeNames[type]} of the headword ${quote(headword)}${filed}, or is its meaning not the sum of its words, and is ${phraseTypeNames[type]} the right type for it? Answer no for a plain description built from the words' ordinary meanings ("white rice", "oven door"), a coined combination no dictionary prints ("telephone in", "party down"), a phrase that does not contain the headword, a complete sentence (a saying), or the wrong type. ${GRAMMAR_WORD_PHRASES} ${DATA}`
+}
+
+function phrasesRubric(entry: SubjectViews['entry'], phrases: readonly ListedPhrase[]): string {
   return [
-    `Does a learner's dictionary such as the Oxford Advanced Learner's, Longman, or Cambridge give these as the phrases of the headword ${quote(entry.lemma)}, each a lexical unit worth its own entry?`,
-    ...phrases.map((phrase, at) => `${at + 1}. ${quote(phrase)}`),
-    'A listed phrase is right when it contains the headword and at least one holds:',
+    `Does a learner's dictionary such as the Oxford Advanced Learner's, Longman, or Cambridge give these as the phrases of the headword ${quote(entry.lemma)}, each a lexical unit worth its own entry or a saying, with the right type?`,
+    ...phrases.map(
+      ({ text, type, sense }, at) => `${at + 1}. (${type}${sense ? `, sense: ${quote(sense)}` : ''}) ${quote(text)}`,
+    ),
+    'A listed phrase other than a saying is right when it contains the headword and at least one holds:',
     ...MULTIWORD_PASSES.map((rule) => `- ${rule}`),
     'fail when any listed phrase is none of these, for example:',
     ...MULTIWORD_FAILS.map((rule) => `- ${rule}`),
     `- Filed under the wrong headword: ${GRAMMAR_WORD_PHRASES}`,
+    `- The type is wrong. ${PHRASE_TYPES_RULE}`,
+    '- A saying is no established saying, proverb, or maxim.',
+    '- A given sense is not a sense the phrase plainly belongs to. A missing sense is never a failure: idioms, phrasal verbs, and phrases tied to no sense name none.',
     'Never fail because a phrase is missing from the list: the list grows as more are found. A fail reason names each wrong phrase by number.',
     PROPER_NOUNS,
     listSenses("The headword's senses", entry.senses),
   ].join('\n')
+}
+
+/** The listed phrases with their texts and the glosses of the senses they are filed under. */
+function listedPhrases(
+  { phrases }: FactPayloads['phrases'],
+  entry: SubjectViews['entry'],
+  named: NamedNodes,
+): ListedPhrase[] {
+  return phrases.map((item) => ({
+    text:
+      (item.type === 'saying' ? named.sentences.get(item.sentence_id) : named.entries.get(item.entry_id)) ??
+      '<unknown>',
+    type: item.type,
+    sense:
+      item.type === 'saying' || !item.sense_id
+        ? null
+        : (entry.senses.find((sense) => sense.id === item.sense_id)?.gloss ?? null),
+  }))
 }
 
 /** A sense holds at most this many live collocations: the strongest few a learner needs. */
@@ -1321,7 +1446,14 @@ const collocationPatterns: Record<CollocationPattern, string> = {
   noun_preposition: 'a noun with a preposition ("an increase in")',
   adjective_preposition: 'an adjective with a preposition ("afraid of")',
   phrase: 'a fixed phrase built around the word ("in the long run")',
+  subject_verb: 'a noun subject with its verb ("the room spins", "a stomach grumbles")',
+  verb_adjective: 'a verb with an adjective that completes it ("go bankrupt", "squash flat", "prise open")',
+  passive: 'a past participle with its by-phrase ("tormented by guilt", "besieged by reporters")',
 }
+
+/** Where the patterns meet: which one a combination with a particle or a preposition takes. */
+const PATTERN_BOUNDARIES =
+  'A verb with a particle after it is verb_adverb ("tack down"), and a verb with a preposition and its noun is verb_preposition ("return to one\'s birthplace").'
 
 /** Typographic apostrophes (’ and ‘) read as the straight one, so either spelling is the same text. */
 const straightApostrophes = (text: string) => text.replace(/[\u2018\u2019]/g, "'")
@@ -1389,6 +1521,7 @@ function collocationRubric(
   return [
     `Is ${quote(text)} a collocation of ${describe(sense)} that a learner's dictionary of collocations would list?`,
     `Claimed pattern: ${pattern}, ${collocationPatterns[pattern]}.`,
+    PATTERN_BOUNDARIES,
     'pass: native speakers commonly use this combination with the word in this sense, and it has the claimed pattern.',
     'fail when any of these holds:',
     ...COLLOCATION_FAILS.map((rule) => `- ${rule}`),
@@ -1427,8 +1560,8 @@ function inventoryKey({ senses }: Inventory): string {
 const SENSE_LIST_FAILS = [
   "Missing: a common, general-knowledge sense that a learner's dictionary lists among its main senses of this word for A1 to B1 learners, in any part of speech the word has, is in neither list. A sense only an advanced or specialist dictionary lists is never missing.",
   'Duplicated: two common senses are the same meaning, or one meaning split too finely into several.',
-  'Misplaced as common: a rare, archaic, technical, specialist, or legal sense, or one used only in a variety other than British or American English, is in common ("stay" meaning to stop legal proceedings, "mobile" meaning changing facial expression, Scottish "stay" meaning to live somewhere).',
-  'Wrong part of speech: a sense is given a part of speech its meaning does not have.',
+  'Misplaced as common: a rare, archaic, technical, specialist, or legal sense, or one used only in a variety other than British or American English, is in common ("stay" meaning to stop legal proceedings, "mobile" meaning changing facial expression, Scottish "stay" meaning to live somewhere), unless every sense of the entry is so (see below).',
+  'Wrong part of speech: a sense is given a part of speech whose grammatical function its meaning does not have.',
   'An inflection as a sense: a sense that only names an inflected form of another word (the past tense or past participle of a verb, a plural, a comparative or superlative, or a person or tense form of be, do, or have) is not a sense of this word; its base word lists that form. Its own meanings stay: "broken" meaning damaged is a sense, "past participle of break" is not.',
   "A main sense in extra: a sense every learner's dictionary prints among the main senses of this word is in extra. It counts as missing from common, since extra senses get no further work.",
   "The main meaning not first: the meaning every learner's dictionary prints first for this word (or first for one of its parts of speech) is not among the first three common senses. The first three common senses get the fullest treatment, so the word's best-known meaning must be among them.",
@@ -1438,6 +1571,8 @@ const SENSE_LIST_NEVER_FAILS = [
   'Never fail for the relative order of the common senses beyond the main-meaning rule above: earlier reviews reordered the same senses of "go", "food", and "block" back and forth on successive passes; within that rule order is the producer\'s call.',
   'Never fail for a borderline placement, a sense a learner may or may not meet in general use, whichever list it is in: earlier reviews moved the same senses of "go", "food", and "block" between common and extra and back. Fail only a sense that is plainly rare, archaic, technical, specialist, or regional placed in common, or a main sense every learner\'s dictionary prints placed in extra.',
   'A rare, archaic, Old English, technical, or specialist sense missing from both lists is never a failure.',
+  'The part of speech is the grammatical function of the sense: an idiom or fixed phrase is labelled verb, noun, adverb, and so on by how it is used. Never fail a sense for not being labelled "idiom", "phrase", or "saying".',
+  'An entry whose every sense is technical, specialist, or regional ranks its main sense common, since an inventory has at least one common sense ("China pink", "retire hurt"): never fail that sense as misplaced in common.',
 ]
 
 /** Entries are case-sensitive: "May" the month is its own entry, never a sense missing from "may". */
@@ -1502,40 +1637,71 @@ function planInventory({ senses }: Inventory, entry: SubjectViews['entry']): Rev
   )
 }
 
+/** The node a translation is about, by what it translates. */
+const TRANSLATION_SUBJECTS: Record<FactPayloads['translation']['of'], SubjectTypeOf['translation']> = {
+  sense: 'sense',
+  sentence: 'sentence',
+  collocation: 'fact',
+}
+
 const TRANSLATION_LIMITS = [
-  'A translation names what it translates (of) and is about it: a sense equivalent about the sense, an example or collocation translation about that fact.',
+  'A translation names what it translates (of) and is about it: a sense equivalent about the sense, a sentence translation (an example or a saying) about the sentence, a collocation translation about that fact.',
   'A subject holds one live translation per language: change it with a correction that supersedes it.',
 ]
 
-/** A translation of a fact translates an example or a collocation, and says which. */
+/** A translation of a fact translates a collocation; the subject type follows `of`, so a sense or sentence fits by construction. */
 function admitTranslation(
-  { of }: FactPayloads['translation'],
-  subject: AdmissionViews['sense'] | AdmissionViews['fact'],
+  _payload: FactPayloads['translation'],
+  subject: AdmissionViews['sense'] | AdmissionViews['sentence'] | AdmissionViews['fact'],
 ): string | null {
-  if (!('kind' in subject))
-    return of === 'sense'
-      ? null
-      : `A translation of ${article(of)} ${of} is about that fact; its subject_id is the ${of} fact id.`
-  if (of === 'sense') return 'A sense equivalent is about the sense; its subject_id is the sense id.'
-  if (subject.kind !== of)
-    return `The subject is ${article(subject.kind)} ${subject.kind} fact, but the translation claims to translate ${article(of)} ${of}.`
-  return null
+  if (!('kind' in subject) || subject.kind === 'collocation') return null
+  return `The subject is ${article(subject.kind)} ${subject.kind} fact, but a translation of a fact translates a collocation.`
 }
 
-/** Every listed phrase contains the headword, in one of its forms or as it is spelled. */
-function admitPhrases({ phrases }: FactPayloads['phrases'], { lemma }: AdmissionViews['entry']): string | null {
+/**
+ * Every item other than a saying is a multiword lemma containing the headword; a saying is a
+ * complete sentence; each target is named once; a given sense is one of the headword's current
+ * inventory.
+ */
+function admitPhrases(
+  { phrases }: FactPayloads['phrases'],
+  { lemma, inventory }: AdmissionViews['entry'],
+  named: NamedNodes,
+): string | null {
   if (isMultiword(lemma)) return `${quote(lemma)} is a phrase; phrases are listed on a single-word headword.`
   const head = normalizeTerm(lemma).toLowerCase()
-  const without = phrases.filter(
-    (phrase) =>
-      !normalizeTerm(phrase)
-        .toLowerCase()
-        .split(/\s+/)
-        .some((word) => word.startsWith(head.slice(0, Math.max(2, head.length - 2)))),
-  )
-  if (without.length === 0) return null
-  return `A phrase of ${quote(lemma)} contains the word; ${without.map(quote).join(', ')} ${without.length === 1 ? 'does' : 'do'} not.`
+  const contains = (phrase: string) =>
+    normalizeTerm(phrase)
+      .toLowerCase()
+      .split(/\s+/)
+      .some((word) => word.startsWith(head.slice(0, Math.max(2, head.length - 2))))
+  const issues: string[] = []
+  const targets = phrases.map((item) => (item.type === 'saying' ? item.sentence_id : item.entry_id))
+  const twice = [...new Set(targets.filter((target, at) => targets.indexOf(target) !== at))]
+  const textOf = (id: string) => named.sentences.get(id) ?? named.entries.get(id) ?? id
+  if (twice.length > 0)
+    issues.push(`A phrase list names each phrase once; ${twice.map((id) => quote(textOf(id))).join(', ')} twice.`)
+  for (const item of phrases) {
+    if (item.type === 'saying') {
+      const text = named.sentences.get(item.sentence_id) ?? ''
+      if (!isCompleteSentence(text)) issues.push(`${quote(text)}: ${SAYING_ISSUE}`)
+      continue
+    }
+    const phrase = named.entries.get(item.entry_id) ?? ''
+    if (!isMultiword(phrase)) issues.push(`${quote(phrase)} is a single word; a ${item.type} has at least two words.`)
+    else if (!contains(phrase)) issues.push(`A phrase of ${quote(lemma)} contains the word; ${quote(phrase)} does not.`)
+    if (item.sense_id && !inventory.includes(item.sense_id)) {
+      issues.push(`${item.sense_id} is not a sense of the current inventory of ${quote(lemma)}.`)
+    }
+  }
+  return issues.length === 0 ? null : issues.join(' ')
 }
+
+/** The content key of one listed phrase: its type, its target, and the sense it is filed under. */
+const phraseKey = (item: FactPayloads['phrases']['phrases'][number]) =>
+  item.type === 'saying'
+    ? `saying:${item.sentence_id}`
+    : `${item.type}:${item.entry_id}${item.sense_id ? `:${item.sense_id}` : ''}`
 
 const FORM_LIMITS = [
   'A periphrastic comparison (with more or most) is never a form; record only an inflected comparative or superlative.',
@@ -1565,7 +1731,10 @@ const MORPHOLOGY_LIMITS = [
 
 const SYLLABLES_LIMITS = [SYLLABLE_RULE, 'Joined, the syllables spell the lemma exactly. A phrase has no syllables.']
 
-const COLLOCATION_LIMITS = ['A collocation contains the word itself or one of its live forms.']
+const COLLOCATION_LIMITS = [
+  'A collocation contains the word itself or one of its live forms.',
+  `Its pattern names the word classes it combines: ${PATTERN_BOUNDARIES}`,
+]
 
 const INVENTORY_LIMITS = [
   'An inventory lists every sense of the entry, the common ones first; at least one is common.',
@@ -1573,19 +1742,44 @@ const INVENTORY_LIMITS = [
 ]
 
 const PHRASES_LIMITS = [
-  'A phrases list names every phrase of the headword once, each a multiword lemma; publishing it makes each phrase an entry of its own.',
+  'A phrases list names every phrase of the headword once, each typed: phrasal_verb, compound, idiom, or fixed_phrase name an entry (a multiword lemma containing the headword), saying names a sentence (a complete sentence). Name each by id or by its text: a text finds the entry with exactly that lemma, created not live when there is none, or the sentence with that text, created when there is none.',
+  "A sense_id, when given, is a sense of the headword's current inventory the phrase plainly belongs to.",
+  'Publishing the list admits each entry item as an entry of its own; a saying stays a sentence and gets its translation and meaning on the headword.',
+]
+
+const EXAMPLE_LIMITS = [
+  'An example names its sentence by sentence_id, or by text: the sentence with that text is found, or created when there is none. A sentence may be an example of many senses; a sense has it once.',
+]
+
+const SENTENCE_MEANING_LIMITS = [
+  'A sentence meaning is about a sentence (subject_id is the sentence id), one live per sentence: a dictionary-style gloss of what a saying means and when it is said, never the saying itself.',
 ]
 
 /** The topic rule in the words Jev and luna fail loose tags with. */
 const TOPIC_RULE =
   'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is core vocabulary of the topic, a word a learner studying the topic should learn. Answer no when the sense is general-purpose and merely can appear in this topic ("full" in hotels, "stop" meaning cease functioning in driving), when the link is only a loose association, or when the topic fits a different sense of the word.'
 
+const MEANING_RULE =
+  "pass only when the gloss states the saying's actual meaning, not the literal meaning of its words, and when it is said, in dictionary style. Answer no for a literal paraphrase, a wrong meaning, or a gloss that quotes the saying itself."
+
+function meaningQuestion(text: string, gloss: string): string {
+  return `Does the English saying ${quote(text)} mean ${quote(gloss)}? ${MEANING_RULE} ${DATA}`
+}
+
+function meaningRubric(text: string, gloss: string): string {
+  return [
+    `Is ${quote(gloss)} the right dictionary gloss of the English saying ${quote(text)}?`,
+    'pass when it states what the saying actually means (not the literal meaning of its words) and when it is said, in dictionary style.',
+    'fail when it gives the literal meaning, a wrong meaning, quotes the saying itself as the gloss, or is not in dictionary style.',
+  ].join('\n')
+}
+
 function topicQuestion(sense: GlossedSense, topic: TopicView): string {
   return `Should a learner's dictionary tag ${quote(sense.lemma)} (${sense.pos}) in the given sense with the topic ${describeTopic(topic)}? ${TOPIC_RULE} ${DATA}`
 }
 
 const EXAMPLE_PROMPT = (text: string, sense: GlossedSense) =>
-  `Is ${quote(text)} a natural, grammatical English example sentence that uses ${describe(sense)}? A dictionary illustrates vulgar, offensive, and derogatory senses too: an example that shows such a sense in ordinary use is correct, although the word itself offends. Reject sentences that use another sense, are ungrammatical, or add offence the sense does not need, such as abuse of a whole group.`
+  `Is ${quote(text)} a natural, grammatical English example sentence that uses ${describe(sense)}, and does it fit under this sense? A dictionary illustrates vulgar, offensive, and derogatory senses too: an example that shows such a sense in ordinary use is correct, although the word itself offends. Reject sentences that use another sense, are ungrammatical, or add offence the sense does not need, such as abuse of a whole group.`
 
 export const factKinds: { [K in FactKind]: KindSpec<K> } = {
   senses: {
@@ -1638,6 +1832,7 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // The layer is part of the claim: canine as a biology hypernym of dog is not an everyday one.
     contentKey: ({ type, target_sense_id, domain }) => labelled(`${type}|${target_sense_id}`, domain),
     target: ({ target_sense_id }) => target_sense_id,
+    object: ({ target_sense_id }) => target_sense_id,
     orient: orientRelation,
     admitLink: admitRelationLink,
     admitEnds: admitRelationEnds,
@@ -1667,17 +1862,27 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       ),
   },
   example: {
-    summary: ({ text }) => text,
+    summary: ({ sentence_id, text }) => text ?? sentence_id,
+    limits: EXAMPLE_LIMITS,
     subject: 'sense',
     cardinality: 'many',
     models: [],
-    contentKey: ({ text }) => textKey(text),
-    plan: ({ text }, { subject }) => withGloss(subject, (sense) => llm(EXAMPLE_PROMPT(text, sense))),
+    contentKey: ({ sentence_id }) => sentence_id,
+    object: ({ sentence_id }) => sentence_id,
+    names: {
+      texts: (submitted) => ({ lemmas: [], sentences: 'text' in submitted ? [submitted.text] : [] }),
+      bind: (submitted, ids) => ({
+        sentence_id: 'text' in submitted ? ids.sentence(submitted.text) : submitted.sentence_id,
+      }),
+      mentions: ({ sentence_id }) => ({ entries: [], sentences: [sentence_id] }),
+    },
+    plan: ({ sentence_id }, { subject, named }) =>
+      withGloss(subject, (sense) => llm(EXAMPLE_PROMPT(named.sentences.get(sentence_id) ?? '', sense))),
   },
   translation: {
     summary: ({ language, of, text }) => `${language} (${of}): ${text}`,
     limits: TRANSLATION_LIMITS,
-    subject: ({ of }) => (of === 'sense' ? 'sense' : 'fact'),
+    subject: ({ of }) => TRANSLATION_SUBJECTS[of],
     cardinality: 'per_language',
     models: ['jev', 'luna'],
     contentKey: ({ language, of, text }) => `${language}|${of}|${textKey(text)}`,
@@ -1801,22 +2006,56 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       withGloss(subject, (sense) => llm(collocationRubric(text, pattern, { ...subject, ...sense }))),
   },
   phrases: {
-    summary: ({ phrases }) => phrases.join(', '),
+    summary: ({ phrases }) =>
+      phrases
+        .map((item) => `${item.text ?? (item.type === 'saying' ? item.sentence_id : item.entry_id)} (${item.type})`)
+        .join(', '),
     limits: PHRASES_LIMITS,
     subject: 'entry',
     cardinality: 'one',
     models: ['jev'],
-    contentKey: ({ phrases }) =>
-      phrases
-        .map((phrase) => normalizeTerm(phrase))
-        .sort()
-        .join('|'),
+    contentKey: ({ phrases }) => phrases.map(phraseKey).sort().join('|'),
     admit: admitPhrases,
-    plan: ({ phrases }, { subject }) =>
-      decide(
+    names: {
+      texts: ({ phrases }) => ({
+        lemmas: phrases.flatMap((item) => (item.type !== 'saying' && 'text' in item ? [item.text] : [])),
+        sentences: phrases.flatMap((item) => (item.type === 'saying' && 'text' in item ? [item.text] : [])),
+      }),
+      bind: ({ phrases }, ids) => ({
+        phrases: phrases.map((item) => {
+          if (item.type === 'saying') {
+            return { type: item.type, sentence_id: 'text' in item ? ids.sentence(item.text) : item.sentence_id }
+          }
+          const entryId = 'text' in item ? ids.entry(item.text) : item.entry_id
+          return { type: item.type, entry_id: entryId, ...(item.sense_id ? { sense_id: item.sense_id } : {}) }
+        }),
+      }),
+      mentions: ({ phrases }) => ({
+        entries: phrases.flatMap((item) => (item.type === 'saying' ? [] : [item.entry_id])),
+        sentences: phrases.flatMap((item) => (item.type === 'saying' ? [item.sentence_id] : [])),
+      }),
+    },
+    plan: (payload, { subject, named }) => {
+      const listed = listedPhrases(payload, subject, named)
+      return decide(
         { headword: subject.lemma },
-        Object.fromEntries(phrases.map((phrase, at) => [`phrase_${at + 1}`, phraseQuestion(subject.lemma, phrase)])),
-        phrasesRubric(subject, phrases),
+        Object.fromEntries(listed.map((phrase, at) => [`phrase_${at + 1}`, phraseQuestion(subject.lemma, phrase)])),
+        phrasesRubric(subject, listed),
+      )
+    },
+  },
+  sentence_meaning: {
+    summary: ({ gloss }) => gloss,
+    limits: SENTENCE_MEANING_LIMITS,
+    subject: 'sentence',
+    cardinality: 'one',
+    models: ['jev'],
+    contentKey: ({ gloss }) => textKey(gloss),
+    plan: ({ gloss }, { subject }) =>
+      decide(
+        { saying: subject.text, 'proposed meaning': gloss },
+        { meaning: meaningQuestion(subject.text, gloss) },
+        meaningRubric(subject.text, gloss),
       ),
   },
 }
@@ -1840,8 +2079,30 @@ export function admissionOf<K extends FactKind>(
   kind: K,
   payload: FactPayloads[K],
   subject: AdmissionViews[SubjectTypeOf[K]],
+  named: NamedNodes = NO_NAMED_NODES,
 ): string | null {
-  return factKinds[kind].admit?.(payload, subject) ?? null
+  return factKinds[kind].admit?.(payload, subject, named) ?? null
+}
+
+/** The node stored as the fact's object; null for kinds without one. */
+export function objectOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): string | null {
+  return factKinds[kind].object?.(payload) ?? null
+}
+
+/** The nodes the payload names by id; none for kinds that name none. */
+export function mentionsOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): Mentions {
+  return factKinds[kind].names?.mentions(payload) ?? { entries: [], sentences: [] }
+}
+
+/** The texts a submission names nodes by; none for kinds that name none by text. */
+export function namedTextsOf<K extends FactKind>(kind: K, submitted: SubmitPayloads[K]): NodeTexts {
+  return factKinds[kind].names?.texts(submitted) ?? { lemmas: [], sentences: [] }
+}
+
+/** The submission as stored, every node it named by text replaced by its id. */
+export function bindNames<K extends FactKind>(kind: K, submitted: SubmitPayloads[K], ids: NodeIds): FactPayloads[K] {
+  const names = factKinds[kind].names
+  return names ? names.bind(submitted, ids) : (submitted as FactPayloads[K])
 }
 
 /** The entry lemmas the payload names, each of which must be a live entry; none for kinds that name none. */

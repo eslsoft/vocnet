@@ -1,4 +1,15 @@
-import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Pos, Review, SenseId, TopicId } from '@shared/facts'
+import type {
+  EntryId,
+  FactId,
+  FactKind,
+  FactPayloads,
+  FactStatus,
+  Pos,
+  Review,
+  SenseId,
+  SentenceId,
+  TopicId,
+} from '@shared/facts'
 import { type Gap, MAX_PASSES, type WorkItemId, type WorkType } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import type { Fact, FactOf } from './fact'
@@ -43,7 +54,12 @@ function fact<K extends FactKind>(
     id: id<FactId>(),
     kind,
     subjectId: subjectId as never,
-    objectId: kind === 'relation' ? (payload as FactPayloads['relation']).target_sense_id : null,
+    objectId:
+      kind === 'relation'
+        ? (payload as FactPayloads['relation']).target_sense_id
+        : kind === 'example'
+          ? (payload as FactPayloads['example']).sentence_id
+          : null,
     contentKey: 'k',
     payload,
     status,
@@ -85,6 +101,7 @@ function snapshot(facts: Fact[], over: Partial<EntryFacts> & { lemma?: string } 
     entry: { id: entryId, lemma, live: true },
     levelRank: null,
     family: [],
+    phraseType: null,
     facts,
     incoming: [],
     passes: new Set(),
@@ -133,7 +150,7 @@ describe('entryGaps', () => {
       inventory(entryId, [noun]),
       fact('morphology', entryId, { parts: [{ form: 'bank', role: 'base' }] }, 'pending'),
       fact('syllables', entryId, { syllables: ['bank'] }),
-      fact('phrases', entryId, { phrases: ['bank on'] }),
+      fact('phrases', entryId, { phrases: [{ type: 'phrasal_verb', entry_id: id<EntryId>() }] }),
     ])
     expect(typesOf(filled)).not.toContain('morphology')
     expect(typesOf(filled)).not.toContain('syllables')
@@ -184,7 +201,7 @@ describe('entryGaps', () => {
     const noun = sense()
     const gaps = gapsOf([
       inventory(entryId, [noun]),
-      fact('example', noun.id, { text: 'I went to the bank.' }, 'pending'),
+      fact('example', noun.id, { sentence_id: id<SentenceId>() }, 'pending'),
       fact('topic', noun.id, { topic_id: 'finance' as TopicId }),
       fact('grammar', noun.id, { countability: 'countable' }),
       fact('collocation', noun.id, { text: 'bank account', pattern: 'noun_noun' }),
@@ -195,45 +212,109 @@ describe('entryGaps', () => {
 })
 
 describe('translations gap', () => {
-  it('needs every common sense, its current examples, and its collocations translated into each served language [spec: work/translations-gap]', () => {
+  it("needs every common sense, its current examples' sentences, and its collocations translated into each served language [spec: work/translations-gap]", () => {
     const noun = sense()
-    const old = fact('example', noun.id, { text: 'The bank is open.' })
-    const correction = fact('example', noun.id, { text: 'The bank opens at nine.' }, 'pending', {
-      supersedesId: old.id,
-    })
+    const other = sense()
+    const [said, shared, opens] = [id<SentenceId>(), id<SentenceId>(), id<SentenceId>()]
+    const old = fact('example', noun.id, { sentence_id: said })
+    const correction = fact('example', noun.id, { sentence_id: opens }, 'pending', { supersedesId: old.id })
+    // A sentence two senses share is one slot.
+    const first = fact('example', noun.id, { sentence_id: shared })
+    const second = fact('example', other.id, { sentence_id: shared })
     const collocation = fact('collocation', noun.id, { text: 'bank account', pattern: 'noun_noun' })
-    const base = [inventory(entryId, [noun]), old, correction, collocation]
+    const base = [inventory(entryId, [noun, other]), old, correction, first, second, collocation]
     const translations = (facts: Fact[]) => gapsOf(facts).find((gap) => gap.type === 'translations')
     expect(translations(base)).toEqual({
       type: 'translations',
       language: 'zh',
       missing: [
         { of: 'sense', id: noun.id },
-        { of: 'example', id: correction.id },
+        { of: 'sentence', id: opens },
+        { of: 'sentence', id: shared },
         { of: 'collocation', id: collocation.id },
+        { of: 'sense', id: other.id },
       ],
     })
     // A translation fills its target only when it says what it translates; a rejected one fills nothing.
     const partial = [
       ...base,
       fact('translation', noun.id, { language: 'zh', of: 'sense', text: '银行' }, 'pending'),
-      fact('translation', correction.id, { language: 'zh', of: 'collocation', text: '银行九点开门。' }),
+      fact('translation', other.id, { language: 'zh', of: 'sense', text: '河岸' }),
+      fact('translation', opens, { language: 'zh', of: 'collocation', text: '银行九点开门。' }),
+      fact('translation', shared, { language: 'zh', of: 'sentence', text: '共享。' }),
       fact('translation', collocation.id, { language: 'zh', of: 'collocation', text: '银行账户' }, 'rejected'),
     ]
     expect(translations(partial)).toEqual({
       type: 'translations',
       language: 'zh',
       missing: [
-        { of: 'example', id: correction.id },
+        { of: 'sentence', id: opens },
         { of: 'collocation', id: collocation.id },
       ],
     })
     const full = [
       ...partial,
-      fact('translation', correction.id, { language: 'zh', of: 'example', text: '银行九点开门。' }),
+      fact('translation', opens, { language: 'zh', of: 'sentence', text: '银行九点开门。' }),
       fact('translation', collocation.id, { language: 'zh', of: 'collocation', text: '银行账户' }),
     ]
     expect(translations(full)).toBeUndefined()
+  })
+
+  it('translates the sayings of a published phrases list and asks each for its meaning [spec: work/sayings-gap]', () => {
+    const noun = sense()
+    const saying = id<SentenceId>()
+    const phrase = id<EntryId>()
+    const list = (status: FactStatus) =>
+      fact(
+        'phrases',
+        entryId,
+        {
+          phrases: [
+            { type: 'idiom', entry_id: phrase },
+            { type: 'saying', sentence_id: saying },
+          ],
+        },
+        status,
+      )
+    const base = [
+      inventory(entryId, [noun]),
+      fact('translation', noun.id, { language: 'zh', of: 'sense', text: '银行' }),
+    ]
+    // A pending list asks nothing of its sayings yet.
+    expect(typesOf(gapsOf([...base, list('pending')]))).not.toContain('sayings')
+    const published = [...base, list('published')]
+    expect(gapsOf(published).find((gap) => gap.type === 'sayings')).toEqual({ type: 'sayings', missing: [saying] })
+    expect(gapsOf(published).find((gap) => gap.type === 'translations')).toEqual({
+      type: 'translations',
+      language: 'zh',
+      missing: [{ of: 'sentence', id: saying }],
+    })
+    const done = [
+      ...published,
+      fact('sentence_meaning', saying, { gloss: 'Think before you act.' }, 'pending'),
+      fact('translation', saying, { language: 'zh', of: 'sentence', text: '三思而后行。' }),
+    ]
+    expect(typesOf(gapsOf(done))).not.toContain('sayings')
+    expect(typesOf(gapsOf(done))).not.toContain('translations')
+    expect(missingOf({ type: 'sayings', missing: [saying] })).toBe(1)
+    expect(filledSince({ type: 'sayings', missing: [saying] }, { type: 'sayings', missing: [] })).toBe(true)
+  })
+})
+
+describe('phrase slots', () => {
+  it('asks a typed phrase entry only for the slots of its type [spec: work/phrase-type-slots]', () => {
+    const verb = sense('verb')
+    const noun = sense('noun')
+    const facts = [inventory(entryId, [verb, noun])]
+    const slots = (phraseType: EntryFacts['phraseType']) =>
+      [...new Set(typesOf(gapsOf(facts, { lemma: 'give up', phraseType })))].sort()
+    expect(slots('phrasal_verb')).toEqual(['examples', 'grammar', 'synonyms', 'translations'])
+    expect(slots('compound')).toEqual(['category', 'examples', 'synonyms', 'topics', 'translations'])
+    expect(slots('idiom')).toEqual(['examples', 'synonyms', 'translations'])
+    expect(slots('fixed_phrase')).toEqual(['examples', 'synonyms', 'translations'])
+    // An untyped phrase keeps every slot it had.
+    expect(slots(null)).toContain('pronunciation')
+    expect(slots(null)).toContain('collocations')
   })
 })
 
@@ -246,8 +327,11 @@ describe('relation slots', () => {
     const domain = fact('relation', noun.id, { type: 'hypernym', target_sense_id: shown.id, domain: 'biology' })
     expect(ofSense(gapsOf([...base, domain]), noun.id)).toContain('category')
     const category = fact('relation', noun.id, { type: 'hypernym', target_sense_id: shown.id })
+    // An everyday hypernym to a visible sense fills the synonyms slot too.
     const categorized = gapsOf([...base, category])
-    expect(ofSense(categorized, noun.id).slice(0, 2)).toEqual(['parts', 'synonyms'])
+    expect(ofSense(categorized, noun.id).slice(0, 2)).toEqual(['parts', 'examples'])
+    // Any live hypernym to a visible sense does, a domain one included.
+    expect(ofSense(gapsOf([...base, domain]), noun.id)).not.toContain('synonyms')
     const part = fact('relation', shown.id, { type: 'part_of', target_sense_id: noun.id })
     const antonym = fact('relation', shown.id, { type: 'antonym', target_sense_id: noun.id })
     const linked = gapsOf([...base, category], { incoming: [part, antonym] })
@@ -337,7 +421,10 @@ describe('per-sense slots by part of speech', () => {
 
   it('needs two examples of each core sense of an A1 or A2 entry [spec: work/core-examples]', () => {
     const nouns = [sense(), sense(), sense(), sense()]
-    const facts = [inventory(entryId, nouns), fact('example', nouns[0]?.id as SenseId, { text: 'A bank.' })]
+    const facts = [
+      inventory(entryId, nouns),
+      fact('example', nouns[0]?.id as SenseId, { sentence_id: id<SentenceId>() }),
+    ]
     const examples = (levelRank: number | null) => gapsOf(facts, { levelRank }).filter((gap) => gap.type === 'examples')
     expect(examples(2).map((gap) => [gap.count, gap.need])).toEqual([
       [1, 2],
@@ -454,10 +541,21 @@ describe('entry slots', () => {
   it('asks every inventoried single word for its phrases list, filled by one live list [spec: work/phrases-gap]', () => {
     const listed = [inventory(entryId, [verb])]
     expect(typesOf(gapsOf(listed, { lemma: 'give' }))).toContain('phrases')
-    const phrases = fact('phrases', entryId, { phrases: ['give up', 'give in'] }, 'pending')
+    const phrases = fact(
+      'phrases',
+      entryId,
+      { phrases: [{ type: 'phrasal_verb', entry_id: id<EntryId>() }] },
+      'pending',
+    )
     expect(typesOf(gapsOf([...listed, phrases], { lemma: 'give' }))).not.toContain('phrases')
-    const rejected = fact('phrases', entryId, { phrases: ['give it'] }, 'rejected')
+    const rejected = fact('phrases', entryId, { phrases: [{ type: 'idiom', entry_id: id<EntryId>() }] }, 'rejected')
     expect(typesOf(gapsOf([...listed, rejected], { lemma: 'give' }))).toContain('phrases')
+    // A list the migration converted from untyped phrases fills nothing until a typed correction does.
+    const migrated = fact('phrases', entryId, {
+      phrases: [{ type: 'idiom', entry_id: id<EntryId>() }],
+      migrated: true,
+    })
+    expect(typesOf(gapsOf([...listed, migrated], { lemma: 'give' }))).toContain('phrases')
   })
 })
 
@@ -536,7 +634,7 @@ describe('assessEntry', () => {
 
   it('awaits review exactly where a pending fact changes the open work, and lists none for a dead entry [spec: work/awaiting-review]', () => {
     const pending = fact('morphology', entryId, { parts: [{ form: 'bank', role: 'base' }] }, 'pending')
-    const example = fact('example', noun.id, { text: 'A bank.' }, 'pending')
+    const example = fact('example', noun.id, { sentence_id: id<SentenceId>() }, 'pending')
     const { work } = assessEntry(snapshot([listed, pending, example]))
     const awaiting = work.filter((piece) => piece.awaiting).map((piece) => piece.gap.type)
     // The pending example also asks for its translation.
@@ -683,7 +781,7 @@ describe('work items', () => {
   })
 
   it('counts a pass as progress when it filled a slot its claim found, even if others opened new ones [spec: work/item-attempts]', () => {
-    const target = (id: string) => ({ of: 'example' as const, id: id as FactId })
+    const target = (id: string) => ({ of: 'sentence' as const, id: id as FactId })
     const translations = (...ids: string[]) => ({
       type: 'translations' as const,
       language: 'zh' as const,

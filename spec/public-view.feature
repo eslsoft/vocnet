@@ -69,7 +69,13 @@ Feature: Public view
   Scenario: A headword lists the public phrases its phrases list names
     Given a public headword "give" whose published phrases list names "give up" and "give in"
     When "give up" becomes public, and later stops being live
-    Then reading "give" lists "give up" as a phrase summary in the list's order and leaves out "give in" until it is public, and then no longer lists "give up", with a new ETag each time
+    Then reading "give" lists "give up" as a phrase summary under its type in the list's order and leaves out "give in" until it is public, and then no longer lists "give up", with a new ETag each time
+
+  @public-view/sentence @usecase
+  Scenario: A sentence is public where a public document shows it
+    Given a public sense with a published example and a translation of its sentence, a public headword whose published list names a saying with a meaning, and a pending example
+    When the sentences are read
+    Then each shows its text, source, meaning, translation in the read's language, the public senses it exemplifies, and the public headwords it is a saying of, and the pending example's sentence and an unknown id are not found
 
   @public-view/family @api
   Scenario: Entries sharing a base list each other as word family

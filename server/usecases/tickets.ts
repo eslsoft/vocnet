@@ -1,8 +1,8 @@
 import { publicFactIds } from '@server/domain/catalog-view'
-import { subjectTypeOf } from '@server/domain/fact-kinds'
+import { type SubjectType, subjectTypeOf } from '@server/domain/fact-kinds'
 import { principalRef } from '@server/domain/principal'
 import { isClosed, resolve, type TicketRecord } from '@server/domain/tickets'
-import type { EntryId, FactId, SenseId } from '@shared/facts'
+import type { EntryId, FactId, SenseId, SentenceId } from '@shared/facts'
 import type {
   FeedbackTargetType,
   ResolveTicketInput,
@@ -28,15 +28,19 @@ async function publicEntryOf(deps: LookupDeps, id: EntryId) {
   return entry && projectEntry(deps, entry, await topicNamesOf(deps))
 }
 
-async function entryIdOf(
-  deps: LookupDeps,
-  subjectType: 'entry' | 'sense' | 'fact',
-  subjectId: string,
-): Promise<EntryId | null> {
-  if (subjectType === 'entry') return subjectId as EntryId
-  if (subjectType === 'sense') return (await deps.nodes.findSense(subjectId as SenseId))?.entryId ?? null
+/** The entries a fact's subject is or belongs to: one, or for a sentence every entry that uses it. */
+async function entryIdsOf(deps: LookupDeps, subjectType: SubjectType, subjectId: string): Promise<EntryId[]> {
+  if (subjectType === 'entry') return [subjectId as EntryId]
+  if (subjectType === 'sense') {
+    const sense = await deps.nodes.findSense(subjectId as SenseId)
+    return sense ? [sense.entryId] : []
+  }
+  if (subjectType === 'sentence') {
+    const uses = await deps.nodes.listSentenceUses(subjectId as SentenceId)
+    return [...new Set([...uses.examples, ...uses.sayings].map((use) => use.entryId))]
+  }
   const fact = await deps.facts.find(subjectId as FactId)
-  return fact ? entryIdOf(deps, subjectTypeOf(fact.kind, fact.payload), fact.subjectId) : null
+  return fact ? entryIdsOf(deps, subjectTypeOf(fact.kind, fact.payload), fact.subjectId) : []
 }
 
 // Feedback follows the public read rules: only what the public API shows can be reported.
@@ -50,9 +54,11 @@ const targetIsPublic: { [T in FeedbackTargetType]: (deps: LookupDeps, id: string
   fact: async (deps, id) => {
     const fact = await deps.facts.find(id as FactId)
     if (fact?.status !== 'published') return false
-    const entryId = await entryIdOf(deps, subjectTypeOf(fact.kind, fact.payload), fact.subjectId)
-    const view = entryId && (await publicEntryOf(deps, entryId))
-    return !!view && publicFactIds(view).has(fact.id)
+    for (const entryId of await entryIdsOf(deps, subjectTypeOf(fact.kind, fact.payload), fact.subjectId)) {
+      const view = await publicEntryOf(deps, entryId)
+      if (view && publicFactIds(view).has(fact.id)) return true
+    }
+    return false
   },
 }
 

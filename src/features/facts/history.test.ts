@@ -3,7 +3,8 @@ import { fact } from '@/test/console-api'
 import { factState } from './fact-state'
 import { correctionChain } from './history'
 
-const example = (text: string, overrides = {}) => fact({ kind: 'example', payload: { text }, ...overrides })
+const example = (text: string, overrides = {}) =>
+  fact({ kind: 'example', payload: { sentence_id: crypto.randomUUID() as never, text }, ...overrides })
 
 describe('correctionChain', () => {
   it('follows the supersedes links both ways, newest first', () => {
@@ -15,11 +16,9 @@ describe('correctionChain', () => {
     })
     const third = example('three', { supersedes_id: second.id, created_at: '2026-11-03T00:00:00.000Z' })
     const other = example('other')
-    expect(correctionChain(second, [first, third, other]).map((item) => item.payload)).toEqual([
-      { text: 'three' },
-      { text: 'two' },
-      { text: 'one' },
-    ])
+    expect(
+      correctionChain(second, [first, third, other]).map((item) => (item.payload as { text: string }).text),
+    ).toEqual(['three', 'two', 'one'])
     expect(correctionChain(other, [])).toEqual([other])
   })
 })

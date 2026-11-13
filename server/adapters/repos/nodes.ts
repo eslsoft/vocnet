@@ -1,18 +1,26 @@
-import { entries, facts, senses, workItems, worklist, workPasses } from '@server/db/schema'
+import { entries, facts, senses, sentences, workItems, worklist, workPasses } from '@server/db/schema'
 import type { FactOf } from '@server/domain/fact'
 import { levelOfRank, openItemStatus } from '@server/domain/monitor'
 import type { EntryNode, SenseWithLemma } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import { levelRank } from '@server/domain/reference'
-import type { Lemma } from '@server/domain/term'
+import { isMultiword, type Lemma, textKey } from '@server/domain/term'
 import { passKey } from '@server/domain/work'
 import type { EntrySummaryFilter, NodeRepo, PageRequest } from '@server/usecases/ports'
-import { type EntryId, type FactId, type FactStatus, factStatusSchema } from '@shared/facts'
+import {
+  type EntryId,
+  entryPhraseTypeSchema,
+  type FactId,
+  type FactStatus,
+  factStatusSchema,
+  type SenseId,
+  type SentenceId,
+} from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
 import { MAX_PASSES, workTypeSchema } from '@shared/work'
 import { and, asc, count, eq, exists, gt, gte, inArray, lt, ne, or, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { type Db, decodeCursor, inIds, page, toEntry, toFact, toSense } from './rows'
+import { type Db, decodeCursor, inIds, page, toEntry, toFact, toSense, toSentence } from './rows'
 import { insertWorklistRow, touchLinkedWorkOfEntries } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
@@ -72,6 +80,13 @@ function familyOf(db: Db, entry: EntryNode) {
     )
     .orderBy(asc(entries.lemma))
 }
+
+/** The items of the phrases lists `which` picks, as `item` beside `list`. */
+const phraseItems = (which: SQL) =>
+  sql`select list.id as list_id, list.status as status, list.subject_id as head, list.created_at as created_at, json_extract(item.value, '$.type') as type, json_extract(item.value, '$.entry_id') as entry_id, json_extract(item.value, '$.sentence_id') as sentence_id from facts as list, json_each(list.payload, '$.phrases') as item where list.kind = 'phrases' and ${which}`
+
+/** A published phrases list names the entry in the outer query as an entry item. */
+const namedByPublishedList = sql`exists (select 1 from facts as list, json_each(list.payload, '$.phrases') as item where list.kind = 'phrases' and list.status = 'published' and instr(list.payload, ${entries.id}) > 0 and json_extract(item.value, '$.entry_id') = ${entries.id})`
 
 const noFacts = (): Record<FactStatus, number> =>
   Object.fromEntries(factStatusSchema.options.map((status) => [status, 0])) as Record<FactStatus, number>
@@ -196,6 +211,166 @@ export function createNodeRepo(db: Db): NodeRepo {
       return toEntry(row)
     },
 
+    async findEntries(ids) {
+      if (ids.length === 0) return []
+      const rows = await db.select().from(entries).where(inIds(entries.id, ids))
+      return rows.map(toEntry)
+    },
+
+    async findEntriesByLemmas(lemmas) {
+      if (lemmas.length === 0) return []
+      const rows = await db.select().from(entries).where(inIds(entries.lemma, lemmas))
+      return rows.map(toEntry)
+    },
+
+    async ensureEntries(lemmas, createdBy, now) {
+      if (lemmas.length === 0) return []
+      const fresh = lemmas.map((lemma) => ({ id: crypto.randomUUID() as EntryId, lemma, createdBy, createdAt: now }))
+      const field = (name: string) => sql`json_extract(value, ${`$.${name}`})`
+      await db.batch([
+        db
+          .insert(entries)
+          .select(
+            db
+              .select({
+                id: field('id').as('id'),
+                lemma: field('lemma').as('lemma'),
+                createdBy: field('createdBy').as('created_by'),
+                createdAt: field('createdAt').as('created_at'),
+              })
+              .from(sql`json_each(${JSON.stringify(fresh)})`)
+              .where(sql`true`),
+          )
+          .onConflictDoNothing(),
+        ...fresh.map((entry) => insertWorklistRow(db, entry)),
+      ])
+      const rows = await db.select().from(entries).where(inIds(entries.lemma, lemmas))
+      const byLemma = new Map(rows.map((row) => [row.lemma, toEntry(row)]))
+      return lemmas.map((lemma) => {
+        const entry = byLemma.get(lemma)
+        if (!entry) throw new Error(`Entry ${lemma} vanished after insert.`)
+        return entry
+      })
+    },
+
+    async listNamingLists(entryId) {
+      const rows = await db.all<{ list_id: string }>(
+        sql`select distinct list_id from (${phraseItems(sql`list.status = 'published' and instr(list.payload, ${entryId}) > 0`)}) where entry_id = ${entryId} order by created_at, list_id`,
+      )
+      return rows.map((row) => row.list_id as FactId)
+    },
+
+    async findSentence(id) {
+      const row = await db.select().from(sentences).where(eq(sentences.id, id)).get()
+      return row ? toSentence(row) : null
+    },
+
+    async findSentences(ids) {
+      if (ids.length === 0) return []
+      const rows = await db.select().from(sentences).where(inIds(sentences.id, ids))
+      return rows.map(toSentence)
+    },
+
+    async findSentencesByTexts(texts) {
+      if (texts.length === 0) return []
+      const rows = await db
+        .select()
+        .from(sentences)
+        .where(inIds(sentences.textKey, texts.map(textKey)))
+      return rows.map(toSentence)
+    },
+
+    async insertSentences(rows) {
+      if (rows.length === 0) return []
+      const values = rows.map((sentence) => ({ ...sentence, textKey: textKey(sentence.text) }))
+      // One JSON parameter for every row: D1 binds at most 100 parameters per statement.
+      const field = (name: string) => sql`json_extract(value, ${`$.${name}`})`
+      await db
+        .insert(sentences)
+        .select(
+          db
+            .select({
+              id: field('id').as('id'),
+              text: field('text').as('text'),
+              textKey: field('textKey').as('text_key'),
+              source: field('source').as('source'),
+              createdBy: field('createdBy').as('created_by'),
+              createdAt: field('createdAt').as('created_at'),
+            })
+            .from(sql`json_each(${JSON.stringify(values)})`)
+            .where(sql`true`),
+        )
+        .onConflictDoNothing()
+      const stored = await db
+        .select()
+        .from(sentences)
+        .where(
+          inIds(
+            sentences.textKey,
+            values.map((value) => value.textKey),
+          ),
+        )
+      const byKey = new Map(stored.map((row) => [row.textKey, toSentence(row)]))
+      return values.map((value) => {
+        const row = byKey.get(value.textKey)
+        if (!row) throw new Error(`Sentence ${value.id} vanished after insert.`)
+        return row
+      })
+    },
+
+    async listSentenceUses(id) {
+      const live = inArray(facts.status, ['pending', 'published'])
+      const [examples, sayings] = await db.batch([
+        // Aliased: a batch maps the columns of a joined select by name, and three of them are "id".
+        db
+          .select({
+            factId: sql<string>`${facts.id}`.as('fact_id'),
+            status: facts.status,
+            senseId: sql<string>`${senses.id}`.as('sense_id'),
+            entryId: sql<string>`${entries.id}`.as('entry_id'),
+            lemma: entries.lemma,
+          })
+          .from(facts)
+          .innerJoin(senses, eq(senses.id, facts.subjectId))
+          .innerJoin(entries, eq(entries.id, senses.entryId))
+          .where(and(eq(facts.kind, 'example'), eq(facts.objectId, id), live))
+          .orderBy(asc(facts.createdAt), asc(facts.id)),
+        db
+          .select({
+            factId: sql<string>`${facts.id}`.as('fact_id'),
+            status: facts.status,
+            entryId: sql<string>`${entries.id}`.as('entry_id'),
+            lemma: entries.lemma,
+          })
+          .from(facts)
+          .innerJoin(entries, eq(entries.id, facts.subjectId))
+          .where(
+            and(
+              eq(facts.kind, 'phrases'),
+              live,
+              sql`instr(${facts.payload}, ${id}) > 0`,
+              sql`exists (select 1 from json_each(${facts.payload}, '$.phrases') as item where json_extract(item.value, '$.sentence_id') = ${id})`,
+            ),
+          )
+          .orderBy(asc(facts.createdAt), asc(facts.id)),
+      ])
+      return {
+        examples: examples.map((row) => ({
+          factId: row.factId as FactId,
+          status: factStatusSchema.parse(row.status),
+          senseId: row.senseId as SenseId,
+          entryId: row.entryId as EntryId,
+          lemma: row.lemma as Lemma,
+        })),
+        sayings: sayings.map((row) => ({
+          factId: row.factId as FactId,
+          status: factStatusSchema.parse(row.status),
+          entryId: row.entryId as EntryId,
+          lemma: row.lemma as Lemma,
+        })),
+      }
+    },
+
     async findSense(id) {
       const row = await db
         .select(senseColumns)
@@ -285,11 +460,10 @@ export function createNodeRepo(db: Db): NodeRepo {
 
     async setPhrasesLive(live, dead, batch) {
       // A dropped phrase stays live while another published phrases list still names it.
-      const named = sql`exists (select 1 from facts as list, json_each(list.payload, '$.phrases') as phrase where list.kind = 'phrases' and list.status = 'published' and phrase.value = ${entries.lemma})`
       const stillNamed = db
         .select({ id: entries.id })
         .from(entries)
-        .where(and(inIds(entries.id, [...dead]), named))
+        .where(and(inIds(entries.id, [...dead]), namedByPublishedList))
       await db.batch([
         db
           .update(worklist)
@@ -311,7 +485,7 @@ export function createNodeRepo(db: Db): NodeRepo {
           and(
             eq(facts.kind, 'phrases'),
             eq(facts.status, 'published'),
-            sql`exists (select 1 from json_each(${facts.payload}, '$.phrases') as phrase where not exists (select 1 from entries join worklist on worklist.entry_id = entries.id where entries.lemma = phrase.value and worklist.live = 1))`,
+            sql`exists (select 1 from json_each(${facts.payload}, '$.phrases') as item where json_extract(item.value, '$.type') <> 'saying' and not exists (select 1 from worklist where worklist.entry_id = json_extract(item.value, '$.entry_id') and worklist.live = 1))`,
           ),
         )
         .orderBy(asc(facts.updatedAt))
@@ -340,8 +514,22 @@ export function createNodeRepo(db: Db): NodeRepo {
           ),
         )
       const order = [asc(facts.createdAt), asc(facts.id)]
+      // The sentences of the entry's examples and the sayings its phrases lists name.
+      const ownSentences = sql`(select ex.object_id from facts as ex join senses as s on s.id = ex.subject_id where ex.kind = 'example' and s.entry_id = ${entry.id} union select sentence_id from (${phraseItems(sql`list.subject_id = ${entry.id}`)}) where type = 'saying')`
+      const ownPhraseEntries = sql`(select entry_id from (${phraseItems(sql`list.subject_id = ${entry.id}`)}) where type <> 'saying')`
 
-      const [work, ownSenses, subjectFacts, incoming, neighbors, inventories, passes, family] = await db.batch([
+      const [
+        work,
+        ownSenses,
+        subjectFacts,
+        incoming,
+        neighbors,
+        inventories,
+        passes,
+        family,
+        sentenceRows,
+        phraseEntries,
+      ] = await db.batch([
         db
           .select({ live: worklist.live, batch: worklist.batch, levelRank: worklist.levelRank, zipf: worklist.zipf })
           .from(worklist)
@@ -350,7 +538,14 @@ export function createNodeRepo(db: Db): NodeRepo {
         db
           .select()
           .from(facts)
-          .where(or(eq(facts.subjectId, entry.id), inArray(facts.subjectId, own), inArray(facts.subjectId, ownFacts)))
+          .where(
+            or(
+              eq(facts.subjectId, entry.id),
+              inArray(facts.subjectId, own),
+              inArray(facts.subjectId, ownFacts),
+              sql`${facts.subjectId} in ${ownSentences}`,
+            ),
+          )
           .orderBy(...order),
         db
           .select()
@@ -372,7 +567,19 @@ export function createNodeRepo(db: Db): NodeRepo {
           .from(workPasses)
           .where(eq(workPasses.entryId, entry.id)),
         familyOf(db, entry),
+        db.select().from(sentences).where(sql`${sentences.id} in ${ownSentences}`),
+        db
+          .select({ id: entries.id, lemma: entries.lemma })
+          .from(entries)
+          .where(sql`${entries.id} in ${ownPhraseEntries}`),
       ])
+      // A phrase entry's type is the one the earliest published list naming it gives; only a phrase has
+      // one, and a list the migration converted from untyped phrases types nothing.
+      const [typed] = isMultiword(entry.lemma)
+        ? await db.all<{ type: string }>(
+            sql`select type from (${phraseItems(sql`list.status = 'published' and instr(list.payload, ${entry.id}) > 0 and json_extract(list.payload, '$.migrated') is null`)}) where entry_id = ${entry.id} order by created_at, list_id limit 1`,
+          )
+        : []
 
       const [row] = work
       if (!row) throw new Error(`Entry ${entry.id} has no worklist row.`)
@@ -382,6 +589,9 @@ export function createNodeRepo(db: Db): NodeRepo {
         levelRank: row.levelRank,
         zipf: row.zipf,
         family: family.map((member) => member.lemma),
+        phraseType: typed ? entryPhraseTypeSchema.parse(typed.type) : null,
+        sentences: new Map(sentenceRows.map((row) => [row.id as SentenceId, toSentence(row)])),
+        phraseEntries: new Map(phraseEntries.map((row) => [row.id as EntryId, row.lemma])),
         senses: ownSenses.map(toSense),
         facts: subjectFacts.map(toFact),
         incoming: incoming.map(toFact),

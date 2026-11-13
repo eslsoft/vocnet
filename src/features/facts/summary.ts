@@ -18,7 +18,7 @@ export function summarizeFact(fact: FactDto): string {
     case 'pronunciation':
       return `/${fact.payload.ipa}/ (${labels(fact.payload.accent, fact.payload.strength, fact.payload.pos)})`
     case 'example':
-      return fact.payload.text
+      return fact.payload.text ?? `sentence ${fact.payload.sentence_id.slice(0, 8)}`
     case 'translation':
       return `${fact.payload.language} (${fact.payload.of}): ${fact.payload.text}`
     case 'topic':
@@ -48,6 +48,13 @@ export function summarizeFact(fact: FactDto): string {
     case 'syllables':
       return fact.payload.syllables.join('·')
     case 'phrases':
-      return fact.payload.phrases.join(' · ')
+      return fact.payload.phrases
+        .map(
+          (item) =>
+            `${item.text ?? (item.type === 'saying' ? item.sentence_id : item.entry_id).slice(0, 8)} (${item.type})`,
+        )
+        .join(' · ')
+    case 'sentence_meaning':
+      return fact.payload.gloss
   }
 }

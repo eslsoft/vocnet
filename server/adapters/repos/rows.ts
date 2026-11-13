@@ -1,8 +1,8 @@
 import type { createDb } from '@server/db/client'
-import { type FactRow, facts, type TicketRow } from '@server/db/schema'
+import { type FactRow, facts, type SentenceRow, type TicketRow } from '@server/db/schema'
 import type { Fact } from '@server/domain/fact'
 import { slotOf } from '@server/domain/fact-kinds'
-import type { EntryNode, SenseNode } from '@server/domain/nodes'
+import type { EntryNode, SenseNode, SentenceNode } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
 import type { TicketRecord } from '@server/domain/tickets'
@@ -17,6 +17,7 @@ import {
   posSchema,
   reviewSchema,
   type SenseId,
+  type SentenceId,
 } from '@shared/facts'
 import { type TicketId, ticketStatusSchema, ticketTargetTypeSchema, ticketTypeSchema } from '@shared/tickets'
 import { getTableColumns, type SQLWrapper, sql } from 'drizzle-orm'
@@ -51,13 +52,21 @@ export const toSense = (row: {
   createdAt: row.createdAt,
 })
 
+export const toSentence = (row: SentenceRow): SentenceNode => ({
+  id: row.id as SentenceId,
+  text: row.text,
+  source: row.source,
+  createdBy: row.createdBy as PrincipalRef,
+  createdAt: row.createdAt,
+})
+
 export function toFact(row: FactRow): Fact {
   const kind = factKindSchema.parse(row.kind)
   return {
     id: row.id as FactId,
     kind,
-    subjectId: row.subjectId as EntryId | SenseId | FactId,
-    objectId: row.objectId as SenseId | null,
+    subjectId: row.subjectId as EntryId | SenseId | FactId | SentenceId,
+    objectId: row.objectId as SenseId | SentenceId | null,
     contentKey: row.contentKey,
     payload: factPayloadSchemas[kind].parse(JSON.parse(row.payload)),
     status: factStatusSchema.parse(row.status),

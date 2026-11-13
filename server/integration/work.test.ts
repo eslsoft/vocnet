@@ -195,10 +195,15 @@ describe('work items', () => {
   it('leases no item of an entry until it is live [spec: work/claim-live]', async () => {
     const token = await issueAgentKey()
     const { entryId: give } = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
-    const list = await curated('phrases', give, { phrases: ['give up', 'give in'] })
+    const list = await curated('phrases', give, {
+      phrases: [
+        { type: 'phrasal_verb', text: 'give up' },
+        { type: 'phrasal_verb', text: 'give in' },
+      ],
+    })
     expect((await managed('give up')).live).toBe(true)
     // The correction drops "give up": its entry stays, but it is no longer live and has no items.
-    await curated('phrases', give, { phrases: ['give in'] }, list.id)
+    await curated('phrases', give, { phrases: [{ type: 'phrasal_verb', text: 'give in' }] }, list.id)
     const dropped = await managed('give up')
     expect([dropped.live, dropped.batch]).toEqual([false, 1])
     expect(await itemsOf(dropped.entry.id)).toEqual([])
@@ -220,7 +225,11 @@ describe('work items', () => {
     await curated('pronunciation', entryId, { ipa: 'ˈaɪs kriːm', accent: 'us' })
     const example = await curated('example', sense, { text: 'The children ate ice cream.' })
     await curated('translation', sense, { language: 'zh', of: 'sense', text: '冰淇淋' })
-    await curated('translation', example.id, { language: 'zh', of: 'example', text: '孩子们吃了冰淇淋。' })
+    await curated('translation', example.object_id as string, {
+      language: 'zh',
+      of: 'sentence',
+      text: '孩子们吃了冰淇淋。',
+    })
     for (const type of ['category', 'synonyms', 'topics', 'grammar', 'collocations']) {
       const passed = await call(`/manage/v1/entries/${entryId}/passes`, {
         method: 'POST',
@@ -315,7 +324,7 @@ describe('work items', () => {
       senses: [animalSense],
     } = await headword('animal', [{ pos: 'noun', gloss: 'A living thing that can move and feel.' }])
     const { entryId: domestic } = await headword('domestic', [{ pos: 'adjective', gloss: 'Kept by people at home.' }])
-    const list = await curated('phrases', domestic, { phrases: ['domestic animal'] })
+    const list = await curated('phrases', domestic, { phrases: [{ type: 'phrasal_verb', text: 'domestic animal' }] })
     const pet = await admit('domestic animal')
     const {
       senses: [petSense],
@@ -334,7 +343,7 @@ describe('work items', () => {
     expect((await rowOf(dog))?.fresh).toBe(1)
     expect(await typesAt(dog, dogSense as string)).not.toContain('category')
     // "domestic animal" leaves the dictionary: no hypernym can show, so the category opens and the parts close.
-    await curated('phrases', domestic, { phrases: ['domestic help'] }, list.id)
+    await curated('phrases', domestic, { phrases: [{ type: 'phrasal_verb', text: 'domestic help' }] }, list.id)
     expect((await managed('domestic animal')).live).toBe(false)
     expect((await rowOf(dog))?.fresh).toBe(1)
     const types = await typesAt(dog, dogSense as string)
@@ -355,14 +364,18 @@ describe('work items', () => {
       language: 'zh',
       missing: [
         { of: 'sense', id: sense },
-        { of: 'example', id: example.id },
+        { of: 'sentence', id: example.object_id },
         { of: 'collocation', id: collocation.id },
       ],
     })
     expect(item?.context.view?.entry.id).toBe(entryId)
     const translations = [
       await submitOk(token, 'translation', sense, { language: 'zh', of: 'sense', text: '潮汐' }),
-      await submitOk(token, 'translation', example.id, { language: 'zh', of: 'example', text: '潮水涨得很快。' }),
+      await submitOk(token, 'translation', example.object_id as string, {
+        language: 'zh',
+        of: 'sentence',
+        text: '潮水涨得很快。',
+      }),
       await submitOk(token, 'translation', collocation.id, { language: 'zh', of: 'collocation', text: '满潮' }),
     ]
     expect((await complete(token, work?.lease.id as string, [{ id: item?.id as string }])).items[0]?.state).toBe(
@@ -381,12 +394,16 @@ describe('work items', () => {
       attempts: 0,
       gap: {
         missing: [
-          { of: 'example', id: example.id },
+          { of: 'sentence', id: example.object_id },
           { of: 'collocation', id: collocation.id },
         ],
       },
     })
-    await submitOk(token, 'translation', example.id, { language: 'zh', of: 'example', text: '潮水来得很快。' })
+    await submitOk(token, 'translation', example.object_id as string, {
+      language: 'zh',
+      of: 'sentence',
+      text: '潮水来得很快。',
+    })
     await submitOk(token, 'translation', collocation.id, { language: 'zh', of: 'collocation', text: '高潮位' })
     await complete(token, retry?.lease.id as string, [{ id: retry?.items[0]?.id as string }])
     await reviewPending()
@@ -589,10 +606,11 @@ describe('headword admission', () => {
       expect(result.status).toBe(200)
       results.push(coreImportResultSchema.parse(result.body))
     }
+    const skipped = { letters: ['x'], contractions: [], characters: [], inflections: [], variants: [] }
     expect(results).toEqual([
-      { created: ['bank'], skipped: ['x'], remaining: 1 },
-      { created: ['according to'], skipped: ['x'], remaining: 0 },
-      { created: [], skipped: ['x'], remaining: 0 },
+      { created: ['bank'], skipped, remaining: 1 },
+      { created: ['according to'], skipped, remaining: 0 },
+      { created: [], skipped, remaining: 0 },
     ])
     const batches = await Promise.all(
       ['bank', 'according to', 'the'].map(async (lemma) => (await managed(lemma)).batch),
@@ -606,6 +624,27 @@ describe('headword admission', () => {
     ).toEqual([])
     // "the" is A1 and more frequent but batch 2, so the batch 1 headwords come first.
     expect(await lemmasOf(agent, ['senses'])).toEqual(['bank', 'according to', 'the'])
+  })
+
+  it('takes an entry off the wordlist for curators, unless a published list names it [spec: catalog/retire-api]', async () => {
+    const curator = await issueAgentKey('curator', true)
+    const producer = await issueAgentKey('producer')
+    const { entryId } = await headword('fabulate', [{ pos: 'verb', gloss: 'To make up a story.' }])
+    const retire = (token: string, id: string) => call(`/manage/v1/entries/${id}/retire`, { method: 'POST', token })
+    const denied = await retire(producer, entryId)
+    expect([denied.status, codeOf(denied.body)]).toEqual([403, 'forbidden'])
+    const done = await retire(curator, entryId)
+    expect([done.status, (done.body as { retired: boolean }).retired]).toEqual([200, true])
+    expect((await managed('fabulate')).live).toBe(false)
+    expect((await call('/v1/entries/fabulate')).status).toBe(404)
+    expect((await lemmasOf(producer, ['examples', 'translations'])) ?? []).not.toContain('fabulate')
+    expect((await retire(curator, crypto.randomUUID())).status).toBe(404)
+    const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
+    await curated('phrases', give.entryId, { phrases: [{ type: 'phrasal_verb', text: 'give up' }] })
+    const named = await retire(curator, (await managed('give up')).entry.id)
+    expect([named.status, codeOf(named.body)]).toEqual([409, 'conflict'])
+    await admit('fabulate', 1)
+    expect((await managed('fabulate')).live).toBe(true)
   })
 
   it('admits a headword only for a curator, idempotently by lemma [spec: catalog/create-entry-api]', async () => {

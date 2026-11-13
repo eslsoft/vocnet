@@ -1,7 +1,7 @@
 import type { SenseId } from '@shared/facts'
 import type { Gap } from '@shared/work'
 import { describe, expect, it } from 'vitest'
-import { GENERAL_LIMITS, limitsOf, planReview } from './fact-kinds'
+import { GENERAL_LIMITS, limitsOf, NO_NAMED_NODES, planReview } from './fact-kinds'
 import { workCriteria } from './work-criteria'
 
 const sense = '00000000-0000-4000-8000-000000000001' as SenseId
@@ -36,6 +36,7 @@ describe('workCriteria', () => {
         subject: { lemma: '<word>', pos: 'noun', gloss: '<the gloss of the sense>', siblings: [] },
         target: null,
         topic: { category: '<category>', topic: '<topic>' },
+        named: NO_NAMED_NODES,
       },
     )
     expect(topics.fills[0]?.rubric).toBe(plan.kind === 'review' ? plan.prompt.user : null)
@@ -47,7 +48,7 @@ describe('workCriteria', () => {
     const translations = of({ type: 'translations', language: 'zh', missing: [] }, null)
     expect(translations.fills.map((fill) => fill.claim)).toEqual([
       'translation zh of a sense',
-      'translation zh of an example',
+      'translation zh of a sentence (an example or a saying)',
       'translation zh of a collocation',
     ])
     const [equivalent, ...texts] = translations.fills
@@ -75,14 +76,19 @@ describe('workCriteria', () => {
         ['form past', 'form past_participle'],
       ],
       [{ type: 'pronunciation', accents: ['us', 'uk'] }, null, ['pronunciation us', 'pronunciation uk']],
-      [{ type: 'phrases' }, null, ['phrases (every phrase of the headword)']],
+      [{ type: 'phrases' }, null, ['phrases (every phrase of the headword, typed)']],
+      [{ type: 'sayings', missing: [] }, null, ['sentence_meaning of each saying']],
       [{ type: 'family' }, null, ['morphology of the derivative']],
       [{ type: 'morphology' }, null, ['morphology']],
       [{ type: 'syllables' }, null, ['syllables']],
       [{ type: 'form_pronunciations', forms: ['went'] }, null, ['form with its pronunciation']],
       [{ type: 'category', sense_id: sense }, 'noun', ['relation hypernym (everyday layer, no domain)']],
       [{ type: 'parts', sense_id: sense }, 'noun', ['relation part_of, from the part to this sense']],
-      [{ type: 'examples', sense_id: sense, count: 0, need: 2 }, 'noun', ['example']],
+      [
+        { type: 'examples', sense_id: sense, count: 0, need: 2 },
+        'noun',
+        ['example (a sentence, by sentence_id or text)'],
+      ],
       [{ type: 'topics', sense_id: sense }, 'noun', ['topic']],
       [{ type: 'grammar', sense_id: sense }, 'noun', ['grammar (a sample noun claim)']],
       [{ type: 'collocations', sense_id: sense }, 'noun', ['collocation']],

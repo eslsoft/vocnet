@@ -4,6 +4,7 @@ import {
   collocationPatternSchema,
   dependentPrepositionSchema,
   entryIdSchema,
+  entryPhraseTypeSchema,
   entryRefSchema,
   factIdSchema,
   factSchema,
@@ -17,6 +18,7 @@ import {
   registerSchema,
   relationDomainSchema,
   senseIdSchema,
+  sentenceIdSchema,
   shorteningSchema,
   strengthSchema,
   topicIdSchema,
@@ -226,8 +228,17 @@ export const publicGrammarSchema = grammarPayloadSchema
   .meta({ id: 'Grammar' })
 export type PublicGrammar = z.infer<typeof publicGrammarSchema>
 
+const sentenceTranslationSchema = z
+  .union([z.string(), byLanguage(z.string())])
+  .optional()
+  .meta({
+    description:
+      "The sentence in the response's language, when one is published; by language tag with lang=all; absent without a language.",
+  })
+
 export const publicExampleSchema = z
   .object({
+    sentence_id: sentenceIdSchema.meta({ description: 'The sentence; GET /v1/sentences/{id}.' }),
     text: z.string(),
     translation: z
       .union([z.string(), byLanguage(z.string())])
@@ -309,6 +320,54 @@ export const meaningSchema = z
   .meta({ id: 'Meaning', description: 'The senses of one part of speech.' })
 export type Meaning = z.infer<typeof meaningSchema>
 
+export const publicSayingSchema = z
+  .object({
+    sentence_id: sentenceIdSchema,
+    text: z.string(),
+    meaning: z
+      .string()
+      .nullable()
+      .meta({ description: 'What the saying means and when it is said; null until one is published.' }),
+    translation: sentenceTranslationSchema,
+  })
+  .meta({ id: 'Saying' })
+export type PublicSaying = z.infer<typeof publicSayingSchema>
+
+export const publicPhrasesSchema = z
+  .object({
+    by_sense: z
+      .array(z.object({ sense_id: senseIdSchema, phrases: z.array(wordSummarySchema) }))
+      .meta({ description: 'Phrases filed under one sense of the headword, in sense order.' }),
+    phrasal_verbs: z.array(wordSummarySchema),
+    idioms: z.array(wordSummarySchema).meta({ description: 'Idioms and fixed phrases.' }),
+    compounds: z.array(wordSummarySchema),
+    sayings: z.array(publicSayingSchema),
+  })
+  .meta({
+    id: 'Phrases',
+    description:
+      "The headword's published phrases list, grouped: phrases filed under a sense, then the rest by type, each a public phrase entry in list order; sayings are sentences.",
+  })
+export type PublicPhrases = z.infer<typeof publicPhrasesSchema>
+
+export const publicSentenceSchema = z
+  .object({
+    lang: responseLangSchema,
+    id: sentenceIdSchema,
+    text: z.string(),
+    source: z.string().nullable().meta({ description: 'Where the sentence comes from; null when it was made up.' }),
+    meaning: z.string().nullable().meta({ description: "A saying's published meaning; null otherwise." }),
+    translation: sentenceTranslationSchema,
+    examples_of: z
+      .array(z.object({ lemma: z.string(), sense_id: senseIdSchema }))
+      .meta({ description: 'The public senses it is a published example of.' }),
+    saying_of: z
+      .array(z.string())
+      .meta({ description: 'The public headwords whose published phrases list names it a saying.' }),
+  })
+  .meta({ id: 'Sentence' })
+export type PublicSentence = z.infer<typeof publicSentenceSchema>
+
 export const publicEntrySchema = z
   .object({
     lang: responseLangSchema,
@@ -328,9 +387,11 @@ export const publicEntrySchema = z
       description:
         "One per part of speech, in the order of each one's first sense; senses follow the entry's inventory.",
     }),
-    phrases: z
-      .array(wordSummarySchema)
-      .meta({ description: "The public phrases the headword's published phrases list names, in its order." }),
+    phrase_type: entryPhraseTypeSchema.nullable().meta({
+      description:
+        'For a phrase entry, its type as the earliest published phrases list naming it gives it; null for a single word or an untyped phrase.',
+    }),
+    phrases: publicPhrasesSchema,
     review: z
       .object({
         inventory: reviewMetaSchema,
@@ -467,9 +528,12 @@ export const managedEntrySchema = z
       description:
         "The headword batch the entry was imported in, or its headword's for a phrase; null for an entry that is not live.",
     }),
+    phrase_type: entryPhraseTypeSchema
+      .nullable()
+      .meta({ description: 'The type the earliest published phrases list naming the entry gives it; null otherwise.' }),
     completeness: z.number().min(0).max(1).meta({
       description:
-        'Share of the slots the gaps count that live facts fill or a pass completed: the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, a pronunciation per irregular form, and its phrases list; per common sense the category, parts, and synonym slots, topic, grammar, and collocation its part of speech needs, and its examples; and a translation per served language of every common sense, example, and collocation. Optional slots (phrases, family, category, parts, synonyms, topics, grammar, collocations) are complete after one pass. 1 means no gaps. Computed from the facts on read, never stored.',
+        'Share of the slots the gaps count that live facts fill or a pass completed: the sense inventory, a us and a uk pronunciation, for a single word its paradigm forms, word formation, syllables, a pronunciation per irregular form, and its phrases list; per common sense the category, parts, and synonym slots, topic, grammar, and collocation its part of speech needs, and its examples; a translation per served language of every common sense, example sentence, saying, and collocation; and a meaning per saying. A typed phrase entry counts only the slots of its type. Optional slots (phrases, family, category, parts, synonyms, topics, grammar, collocations) are complete after one pass. 1 means no gaps. Computed from the facts on read, never stored.',
     }),
     credibility: z.number().min(0).max(1).meta({
       description:
@@ -477,9 +541,10 @@ export const managedEntrySchema = z
     }),
     slots: slotCountsSchema,
     senses: z.array(senseNodeSchema),
-    facts: z
-      .array(factSchema)
-      .meta({ description: 'Facts about the entry and its senses, plus relations pointing at its senses.' }),
+    facts: z.array(factSchema).meta({
+      description:
+        "Facts about the entry, its senses, and its sentences (its examples' and its sayings'), plus relations pointing at its senses. An example carries its sentence's text, a phrases item its lemma or text.",
+    }),
   })
   .meta({ id: 'ManagedEntry' })
 
@@ -536,16 +601,38 @@ export const coreImportInputSchema = z
   })
   .meta({ id: 'CoreImportInput' })
 export type CoreImportInput = z.infer<typeof coreImportInputSchema>
+export const importSkipsSchema = z
+  .object({
+    letters: z.array(z.string()).meta({ description: 'Single letters other than "a" and "I".' }),
+    contractions: z.array(z.string()).meta({ description: 'Contractions and clitics ("\'s", "\'m", "\'re").' }),
+    characters: z
+      .array(z.string())
+      .meta({ description: 'Lemmas with a character other than a letter, space, hyphen, or apostrophe.' }),
+    inflections: z
+      .array(z.object({ lemma: z.string(), base: z.string() }))
+      .meta({ description: 'Regular inflections reduced to a base that is a candidate or an entry.' }),
+    variants: z.array(z.object({ lemma: z.string(), of: z.string() })).meta({
+      description:
+        'American spellings merged into their British spelling, a candidate or an entry; recorded as its variant form when this call creates it.',
+    }),
+  })
+  .meta({ id: 'ImportSkips', description: 'What each import filter rule skipped.' })
+
 export const coreImportResultSchema = z
   .object({
     created: z.array(z.string()).meta({ description: 'The lemmas this call created entries for, in import order.' }),
-    skipped: z
-      .array(z.string())
-      .meta({ description: 'Headwords the import never makes entries: single letters other than "a" and "I".' }),
+    skipped: importSkipsSchema,
     remaining: z.number().int().nonnegative().meta({ description: 'Headwords still without an entry; 0 when done.' }),
   })
   .meta({ id: 'CoreImportResult' })
 export type CoreImportResult = z.infer<typeof coreImportResultSchema>
+
+export const retireEntryResultSchema = z
+  .object({
+    entry: entryNodeSchema,
+    retired: z.boolean().meta({ description: 'false when the entry was not live already.' }),
+  })
+  .meta({ id: 'RetireEntryResult' })
 
 export const createEntryResultSchema = z
   .object({ entry: entryNodeSchema, created: z.boolean() })

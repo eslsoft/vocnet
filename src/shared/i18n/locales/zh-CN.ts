@@ -49,6 +49,8 @@ export const zhCN: typeof enUS = {
     collocation: '搭配',
     syllables: '音节',
     phrases: '短语',
+    sentence_meaning: '谚语释义',
+    sentence: '句子',
   },
   factState: {
     flagged: '待查 · {{confidence}}',
@@ -83,6 +85,7 @@ export const zhCN: typeof enUS = {
     syllables: '音节',
     morphology: '构词',
     form_pronunciations: '词形发音',
+    sayings: '谚语释义',
   },
   taskStatus: {
     queued: '排队中',
@@ -124,6 +127,8 @@ export const zhCN: typeof enUS = {
     topics: '还没有话题。',
     grammar: '还没有语法说明。',
     collocations: '还没有搭配。',
+    sayings_one: '{{count}} 条谚语还没有释义。',
+    sayings_other: '{{count}} 条谚语还没有释义。',
   },
   gapNeed: {
     examples_one: '还需要 {{count}} 个例句',
@@ -589,6 +594,13 @@ export const zhCN: typeof enUS = {
     },
     shortened: '“{{of}}”的{{type}}',
     phrases: '短语',
+    phraseGroups: {
+      bySense: '本义项下',
+      phrasalVerbs: '短语动词',
+      idioms: '习语和固定词组',
+      compounds: '复合词',
+      sayings: '谚语',
+    },
     missingTitle: 'Vocnet 还没有收录这个词',
     missingBody:
       '没有词条的拼写与“{{lemma}}”完全一致。查词是精确匹配，Vocnet 不会替换成别的词；智能体每天都在添加新词条。',

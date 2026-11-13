@@ -11,6 +11,7 @@ import type {
 } from '@shared/catalog'
 import type {
   EntryId,
+  EntryPhraseType,
   FactId,
   FactKind,
   FormType,
@@ -18,15 +19,16 @@ import type {
   Pos,
   RelationType,
   SenseId,
+  SentenceId,
   Shortening,
   StoredInventorySense,
   TopicId,
 } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
-import { formMeaning, isIrregularForm } from './fact-kinds'
+import { formMeaning, isIrregularForm, type NamedNodes } from './fact-kinds'
 import { currentInventory, inventorySenses } from './inventory'
-import type { EntryNode, SenseNode } from './nodes'
+import type { EntryNode, SenseNode, SentenceNode } from './nodes'
 import { levelRank } from './reference'
 import { assessEntry, type SlotCounts } from './work'
 
@@ -42,9 +44,15 @@ export interface EntrySnapshot {
   zipf: number | null
   /** The lemmas of the other live entries whose live morphology names this lemma as a base. */
   family: string[]
+  /** The type the earliest published phrases list naming the entry gives it; null for a single word or an unlisted entry. */
+  phraseType: EntryPhraseType | null
+  /** The sentences of the entry's examples and of the sayings its phrases lists name. */
+  sentences: ReadonlyMap<SentenceId, SentenceNode>
+  /** The lemmas of the entries its phrases lists name, by id. */
+  phraseEntries: ReadonlyMap<EntryId, string>
   /** The sense rows of the entry: every sense any of its inventories ever named. */
   senses: SenseNode[]
-  /** Facts whose subject is the entry, one of its senses, or one of their examples and collocations. */
+  /** Facts whose subject is the entry, one of its senses, one of their collocations, or one of its sentences. */
   facts: Fact[]
   /** Relation facts whose object is one of the entry's senses. */
   incoming: Fact[]
@@ -60,6 +68,7 @@ export interface EntrySnapshot {
 export interface ManagedEntryView {
   entry: EntryNode & { live: boolean }
   batch: number | null
+  phraseType: EntryPhraseType | null
   completeness: number
   credibility: number
   slots: SlotCounts
@@ -67,13 +76,40 @@ export interface ManagedEntryView {
   facts: Fact[]
 }
 
+/** What a view names by id, with the texts the snapshot read: its sentences and its phrase entries. */
+export const namedNodesOf = (snapshot: Pick<EntrySnapshot, 'sentences' | 'phraseEntries'>): NamedNodes => ({
+  entries: snapshot.phraseEntries,
+  sentences: new Map([...snapshot.sentences].map(([id, sentence]) => [id, sentence.text])),
+})
+
+/**
+ * The fact as a view shows it: an example with its sentence's text, a phrases list with each
+ * item's lemma or text, so a reader needs no further read. The stored payload holds only ids.
+ */
+export function withNamedTexts(fact: Fact, named: NamedNodes): Fact {
+  if (fact.kind === 'example') {
+    const text = named.sentences.get(fact.payload.sentence_id)
+    return text === undefined ? fact : { ...fact, payload: { ...fact.payload, text } }
+  }
+  if (fact.kind === 'phrases') {
+    const phrases = fact.payload.phrases.map((item) => {
+      const text = item.type === 'saying' ? named.sentences.get(item.sentence_id) : named.entries.get(item.entry_id)
+      return text === undefined ? item : { ...item, text }
+    })
+    return { ...fact, payload: { phrases } }
+  }
+  return fact
+}
+
 /** The management view: the entry with every fact in every status, including relations pointing at it. */
 export function managedEntryView(snapshot: EntrySnapshot): ManagedEntryView {
-  const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, fact]))
+  const named = namedNodesOf(snapshot)
+  const facts = new Map([...snapshot.facts, ...snapshot.incoming].map((fact) => [fact.id, withNamedTexts(fact, named)]))
   const { completeness, credibility, slots } = assessEntry(snapshot)
   return {
     entry: snapshot.entry,
     batch: snapshot.batch,
+    phraseType: snapshot.phraseType,
     completeness,
     credibility,
     slots,
@@ -92,7 +128,7 @@ export type ByLanguage<T> = Record<string, T>
 export interface StoredSense
   extends Omit<PublicSense, 'translations' | 'topics' | 'review' | 'examples' | 'collocations'> {
   translations: ByLanguage<string[]>
-  examples: Array<{ text: string; translations: ByLanguage<string>; review: ReviewMeta }>
+  examples: Array<{ sentence_id: SentenceId; text: string; translations: ByLanguage<string>; review: ReviewMeta }>
   collocations: Array<{
     text: string
     pattern: PublicSense['collocations'][number]['pattern']
@@ -145,8 +181,15 @@ export interface StoredEntry {
   morphology: { parts: Morpheme[]; shortened?: Shortening; review: ReviewMeta } | null
   meanings: StoredMeaning[]
   summary: StoredSummary
-  /** The lemmas the headword's published phrases list names, in its order; reads join their summaries. */
-  phrases: string[]
+  /**
+   * The entries the headword's published phrases list names, in its order, with their type and the
+   * sense they are filed under; reads join their summaries.
+   */
+  phrases: StoredPhrase[]
+  /** The sayings the headword's published phrases list names, in its order. */
+  sayings: StoredSaying[]
+  /** The type the earliest published list naming a phrase entry gives it; null for a single word. */
+  phrase_type: EntryPhraseType | null
   review: {
     inventory: ReviewMeta
     syllables: ReviewMeta | null
@@ -157,6 +200,19 @@ export interface StoredEntry {
    * do not show it; the view indexes it (server/domain/public-view.ts).
    */
   forms: IndexedForm[]
+}
+
+export interface StoredPhrase {
+  type: EntryPhraseType
+  lemma: string
+  sense_id: SenseId | null
+}
+
+export interface StoredSaying {
+  sentence_id: SentenceId
+  text: string
+  meaning: string | null
+  translations: ByLanguage<string>
 }
 
 /** What a public document needs besides the entry's own facts. */
@@ -296,11 +352,19 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
             review: reviewOf(grammar),
           }
         : null,
-      examples: about('example', sense.id).map((fact) => ({
-        text: fact.payload.text,
-        translations: translationsOf(fact.id),
-        review: reviewOf(fact),
-      })),
+      examples: about('example', sense.id).flatMap((fact) => {
+        const sentence = snapshot.sentences.get(fact.payload.sentence_id)
+        if (!sentence)
+          throw new Error(`Example ${fact.id} names sentence ${fact.payload.sentence_id}, which does not exist.`)
+        return [
+          {
+            sentence_id: sentence.id,
+            text: sentence.text,
+            translations: translationsOf(sentence.id),
+            review: reviewOf(fact),
+          },
+        ]
+      }),
       collocations: about('collocation', sense.id).map((fact) => ({
         text: fact.payload.text,
         pattern: fact.payload.pattern,
@@ -363,6 +427,26 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
   const [morphology] = about('morphology', snapshot.entry.id)
   const [syllables] = about('syllables', snapshot.entry.id)
   const [phrases] = about('phrases', snapshot.entry.id)
+  const listed = phrases?.payload.phrases ?? []
+  const storedPhrases = listed.flatMap((item): StoredPhrase[] => {
+    if (item.type === 'saying') return []
+    const lemma = snapshot.phraseEntries.get(item.entry_id)
+    return lemma ? [{ type: item.type, lemma, sense_id: item.sense_id ?? null }] : []
+  })
+  const sayings = listed.flatMap((item): StoredSaying[] => {
+    if (item.type !== 'saying') return []
+    const sentence = snapshot.sentences.get(item.sentence_id)
+    if (!sentence) return []
+    const [meaning] = about('sentence_meaning', sentence.id)
+    return [
+      {
+        sentence_id: sentence.id,
+        text: sentence.text,
+        meaning: meaning ? meaning.payload.gloss : null,
+        translations: translationsOf(sentence.id),
+      },
+    ]
+  })
   const first = ordered[0]?.senses[0]
   return {
     id: snapshot.entry.id,
@@ -383,7 +467,9 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       gloss: first?.gloss ?? null,
       translations: first ? firstOfEach(first.translations) : {},
     },
-    phrases: phrases ? phrases.payload.phrases : [],
+    phrases: storedPhrases,
+    sayings,
+    phrase_type: snapshot.phraseType,
     review: {
       inventory: reviewOf(inventory),
       syllables: syllables ? reviewOf(syllables) : null,

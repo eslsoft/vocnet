@@ -307,11 +307,19 @@ export function consoleApi(
         (candidate) => nodeIds.has(candidate.subject_id) || nodeIds.has(candidate.object_id ?? ''),
       )
       const ownIds = new Set<string>(own.map((candidate) => candidate.id))
-      const facts = [...own, ...state.facts.filter((candidate) => ownIds.has(candidate.subject_id))]
+      // A sentence is shared, so the facts about an example's sentence come with the example.
+      const sentences = new Set<string>(
+        own.flatMap((candidate) => (candidate.kind === 'example' ? [candidate.payload.sentence_id] : [])),
+      )
+      const facts = [
+        ...own,
+        ...state.facts.filter((candidate) => ownIds.has(candidate.subject_id) || sentences.has(candidate.subject_id)),
+      ]
       return HttpResponse.json({
         entry: { id: entry.id, lemma: entry.lemma, created_by: 'agent:producer', created_at: at },
         live: entry.summary?.live ?? true,
         batch: entry.batch ?? 1,
+        phrase_type: null,
         completeness: entry.summary?.completeness ?? 0.6,
         credibility: entry.summary?.credibility ?? 0.97,
         slots: entry.summary?.slots ?? slots,

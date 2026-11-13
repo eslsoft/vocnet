@@ -12,7 +12,11 @@ describe('entry scores', () => {
 
   it('finds the fact changed last', () => {
     const earlier = fact({ kind: 'syllables', payload: { syllables: ['bank'] }, subject_id: entryId })
-    const later = fact({ kind: 'example', payload: { text: 'x' }, updated_at: '2026-11-09T00:00:00.000Z' })
+    const later = fact({
+      kind: 'example',
+      payload: { sentence_id: crypto.randomUUID() as never, text: 'x' },
+      updated_at: '2026-11-09T00:00:00.000Z',
+    })
     expect(lastChange(view([]))).toBeNull()
     expect(lastChange(view([earlier, later]))).toBe(later)
   })

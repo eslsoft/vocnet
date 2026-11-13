@@ -142,3 +142,42 @@ Per entry, as now (work items stay keyed by entry):
    items' attempts reset to 0.
 6. Retire fabulate, bereftly, exaltedly, evokingly, genomically, misdemanour (via the retire path).
 7. Rebuild every worklist row (`revision + 1`) so rescore and views follow.
+
+## Deviations (as implemented)
+
+The server implements §1–7 with these smallest faithful deviations:
+
+1. **Migrated lists are marked.** A published list converted from untyped phrases (§7.4) would fill
+   the headword's `phrases` slot, so it could never reopen. The migration stores such a list with
+   `migrated: true` (read-only; never submitted): it fills no `phrases` slot and types no phrase
+   entry. The headword's `phrases` item reopens, and the producer submits a typed list as a
+   correction (`supersedes_id`) of the migrated one; until then its entries stay live and a phrase
+   entry named only by migrated lists is untyped (keeps every slot).
+2. **Every list is converted, not only published ones.** Pending, rejected, superseded, and
+   retracted lists in the old string shape would no longer parse, so the migration converts all of
+   them. A lemma of a list that never published that has no entry gets one, not live (602 on the
+   snapshot), as a submission by text would.
+3. **`translation`, not `translations`.** A public example keeps its `translation` field (string in
+   the read language, by tag with `lang=all`, absent without a language) and gains `sentence_id`;
+   a saying and `GET /v1/sentences/{id}` use the same `translation` field.
+4. **A saying names no sense.** A `saying` item is `{ type, sentence_id }` (or `{ type, text }`);
+   `sense_id` is only on entry items.
+5. **Lengths.** `sentence_meaning.gloss` follows the gloss format (6–300 characters, a capital or
+   quote first, a final period, no embedded example). An entry item's `text` is a lemma (2+ words,
+   at most 100 characters); a saying's `text` at most 500.
+6. **`parts` follows `category`.** The §4 table does not list `parts`; it needs an everyday category,
+   so a phrase has it only as a compound.
+7. **Synonyms by hypernym in any layer.** A live hypernym to a visible sense fills the `synonyms`
+   slot whether it is everyday or a domain one.
+8. **Views carry texts.** Wherever a management view or a work context shows a fact, an example has
+   `{ sentence_id, text }` and each phrases item `{ type, entry_id, text, sense_id? }` or
+   `{ type: "saying", sentence_id, text }`; the stored payload holds ids only and `text` is never
+   part of a content key (the read schemas accept the optional `text`). The managed view also gains
+   `phrase_type`.
+9. **Retire response.** `POST /manage/v1/entries/{id}/retire` answers `200 { entry, retired }`;
+   `retired: false` when the entry was not live; `404` for an unknown id.
+10. **Import filter.** The inflection rule needs the reference list's word list; for the core import
+    every candidate is a CEFR headword, so it reduces nothing there. The `-or` rule needs five
+    letters and no `o` before the ending, so "floor"/"flour" and "or"/"our" never pair.
+11. **Fact lists.** A fact about a sentence lists under the entry of the sentence's oldest example,
+    else the headword of the oldest list naming it a saying.

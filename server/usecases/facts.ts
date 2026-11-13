@@ -3,12 +3,17 @@ import { type Fact, isKind } from '@server/domain/fact'
 import {
   type AdmissionViews,
   admissionOf,
+  bindNames,
   contentKeyOf,
   endsAdmissionOf,
   factKinds,
   type Link,
   type LinkEnd,
   linkAdmissionOf,
+  mentionsOf,
+  type NamedNodes,
+  namedTextsOf,
+  objectOf,
   orientOf,
   referencesOf,
   type SenseEnd,
@@ -23,7 +28,18 @@ import { currentInventory, inventorySenses } from '@server/domain/inventory'
 import { mayActOn, mayCurate, type Principal, principalRef } from '@server/domain/principal'
 import { type Lemma, normalizeTerm, textKey } from '@server/domain/term'
 import { isLeaf } from '@server/domain/topics'
-import type { EntryId, FactId, FactKind, FactPayloads, Pos, SenseId, SubmitFactInput, TopicId } from '@shared/facts'
+import type {
+  EntryId,
+  FactId,
+  FactKind,
+  FactPayloads,
+  Pos,
+  SenseId,
+  SentenceId,
+  SubmitFactInput,
+  SubmitPayloads,
+  TopicId,
+} from '@shared/facts'
 import { requireCurator } from './access'
 import type { Deps } from './deps'
 import {
@@ -35,6 +51,7 @@ import {
   NotFoundError,
   RejectedBeforeError,
 } from './errors'
+import { namedNodesOf } from './named'
 import type { FactFilter, PageRequest, WithEntry } from './ports'
 import { refreshEntries } from './refresh'
 import { recordDecision } from './review'
@@ -51,7 +68,8 @@ type SubmitDeps = Pick<
 >
 
 interface SubjectNode<S extends SubjectType> {
-  entryId: EntryId
+  /** The entry the subject is or belongs to; null for a sentence, which entries share. */
+  entryId: EntryId | null
   /** The sense's part of speech; null for an entry. */
   pos: Pos | null
   /** What the kind's write rule sees of the subject; loaded only for a kind that has one. */
@@ -83,6 +101,7 @@ const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Prom
           lemma: entry.lemma,
           // Every sense row of the entry, so a new inventory can keep a sense a rejected one named.
           senses: (await deps.nodes.listSenses(entry.id)).map(({ id: sense }) => sense),
+          inventory: (await inventoryOf(deps, entry.id)).map(({ id: sense }) => sense),
         }),
       }
     )
@@ -99,11 +118,113 @@ const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Prom
   },
   fact: async (deps, id) => {
     const fact = await deps.facts.find(id as FactId)
-    if (!fact || (fact.kind !== 'example' && fact.kind !== 'collocation')) return null
+    if (fact?.kind !== 'collocation') return null
     const sense = await deps.nodes.findSense(fact.subjectId as SenseId)
     if (!sense) throw new Error(`The ${fact.kind} ${fact.id} is about sense ${fact.subjectId}, which does not exist.`)
     return { entryId: sense.entryId, pos: sense.pos, admission: async () => ({ kind: fact.kind }) }
   },
+  sentence: async (deps, id) => {
+    const sentence = await deps.nodes.findSentence(id as SentenceId)
+    return sentence && { entryId: null, pos: null, admission: async () => ({ text: sentence.text }) }
+  },
+}
+
+/** A submission with every node it named by text bound to an id, and the nodes it names. */
+interface Resolved<K extends FactKind> {
+  payload: FactPayloads[K]
+  named: NamedNodes
+  /** Lemmas and sentence texts the submission named that no node has yet: they are created once it is admitted. */
+  missing: { lemmas: string[]; sentences: string[] }
+}
+
+/**
+ * Binds the nodes a submission names by text: an entry by its exact lemma, a sentence by its text
+ * key. A node that does not exist yet gets a provisional id; `createNamed` creates it. Every node
+ * the payload names by id must exist (422).
+ */
+async function resolveNames<K extends FactKind>(
+  deps: Pick<Deps, 'nodes' | 'ids'>,
+  kind: K,
+  submitted: SubmitPayloads[K],
+  known?: { entries: ReadonlyMap<string, EntryId>; sentences: ReadonlyMap<string, SentenceId> },
+): Promise<Resolved<K>> {
+  const texts = namedTextsOf(kind, submitted)
+  const lemmas = [...new Set(texts.lemmas.map(normalizeTerm))]
+  const [entries, sentences] = await Promise.all([
+    known ? [] : deps.nodes.findEntriesByLemmas(lemmas),
+    known ? [] : deps.nodes.findSentencesByTexts(texts.sentences),
+  ])
+  const entryIds = new Map<string, EntryId>(known?.entries ?? entries.map((entry) => [entry.lemma, entry.id]))
+  const sentenceIds = new Map<string, SentenceId>(
+    known?.sentences ?? sentences.map((sentence) => [textKey(sentence.text), sentence.id]),
+  )
+  const missing = {
+    lemmas: lemmas.filter((lemma) => !entryIds.has(lemma)),
+    sentences: [...new Set(texts.sentences.map((text) => normalizeTerm(text)))].filter(
+      (text) => !sentenceIds.has(textKey(text)),
+    ),
+  }
+  for (const lemma of missing.lemmas) entryIds.set(lemma, deps.ids.entry())
+  for (const text of missing.sentences) sentenceIds.set(textKey(text), deps.ids.sentence())
+  const lemmaOf = new Map([...entryIds].map(([lemma, id]) => [id as string, lemma]))
+  const textOf = new Map<string, string>([
+    ...sentences.map((sentence) => [sentence.id as string, sentence.text] as const),
+    ...missing.sentences.map((text) => [sentenceIds.get(textKey(text)) as string, text] as const),
+  ])
+  const payload = bindNames(kind, submitted, {
+    entry: (lemma) => entryIds.get(normalizeTerm(lemma)) as EntryId,
+    sentence: (text) => sentenceIds.get(textKey(text)) as SentenceId,
+  })
+  const mentions = mentionsOf(kind, payload)
+  const [namedEntries, namedSentences] = await Promise.all([
+    deps.nodes.findEntries(mentions.entries.filter((id) => !lemmaOf.has(id))),
+    deps.nodes.findSentences(mentions.sentences.filter((id) => !textOf.has(id))),
+  ])
+  for (const entry of namedEntries) lemmaOf.set(entry.id, entry.lemma)
+  for (const sentence of namedSentences) textOf.set(sentence.id, sentence.text)
+  const unknown = [
+    ...mentions.entries.filter((id) => !lemmaOf.has(id)).map((id) => `entry ${id}`),
+    ...mentions.sentences.filter((id) => !textOf.has(id)).map((id) => `sentence ${id}`),
+  ]
+  if (unknown.length > 0) {
+    throw new InvalidReferenceError(`A ${kind} fact names ${unknown.join(', ')}, which does not exist.`)
+  }
+  return { payload, named: { entries: lemmaOf, sentences: textOf }, missing }
+}
+
+/**
+ * Creates the nodes a submission named by text that did not exist: entries not live, sentences
+ * with no source. A concurrent submission may have created one first, so the submission is bound
+ * again to the stored ids.
+ */
+async function createNamed<K extends FactKind>(
+  deps: Pick<Deps, 'nodes' | 'ids'>,
+  actor: Actor,
+  kind: K,
+  submitted: SubmitPayloads[K],
+  resolved: Resolved<K>,
+  at: string,
+): Promise<Resolved<K>> {
+  const { lemmas, sentences } = resolved.missing
+  if (lemmas.length === 0 && sentences.length === 0) return resolved
+  const createdBy = principalRef(actor.principal)
+  const [entries, stored] = await Promise.all([
+    deps.nodes.ensureEntries(lemmas as Lemma[], createdBy, at),
+    deps.nodes.insertSentences(
+      sentences.map((text) => ({ id: deps.ids.sentence(), text, source: null, createdBy, createdAt: at })),
+    ),
+  ])
+  const known = {
+    entries: new Map<string, EntryId>([
+      ...[...resolved.named.entries].map(([id, lemma]) => [lemma, id as EntryId] as const),
+      ...entries.map((entry) => [entry.lemma as string, entry.id] as const),
+    ]),
+    sentences: new Map<string, SentenceId>([
+      ...[...resolved.named.sentences].map(([id, text]) => [textKey(text), id as SentenceId] as const),
+      ...stored.map((sentence) => [textKey(sentence.text), sentence.id] as const),
+    ]),
+  }
+  return resolveNames(deps, kind, submitted, known)
 }
 
 async function assertLeafTopic(deps: Pick<Deps, 'topics'>, id: TopicId): Promise<void> {
@@ -141,15 +262,22 @@ export async function submitFact(
   const { kind, curation } = input
   if (curation) requireCurator(actor.principal)
   const spec = factKinds[kind]
+  const submitted = input.payload as SubmitPayloads[typeof kind]
+  let resolved = await resolveNames(deps, kind, submitted)
   // A submitted inventory may name new senses without ids; assignSenseIds gives them theirs.
-  const oriented = orientOf(kind, input.subject_id, input.payload as FactPayloads[typeof kind])
+  const oriented = orientOf(kind, input.subject_id, resolved.payload)
   const subjectId = oriented.subjectId
-  const payload = oriented.payload
-  const subjectType = subjectTypeOf(kind, payload)
+  const subjectType = subjectTypeOf(kind, oriented.payload)
   const subject = await subjectNode[subjectType](deps, subjectId)
   if (!subject) {
     throw new InvalidReferenceError(`A ${kind} fact is about a ${subjectType}; ${subjectId} is not one.`)
   }
+  // The nodes it named by text and that do not exist are created only once it fits its subject.
+  if (resolved.missing.lemmas.length > 0 || resolved.missing.sentences.length > 0) {
+    if (spec.admit) await assertAdmitted(kind, oriented.payload, subject, resolved.named)
+    resolved = await createNamed(deps, actor, kind, submitted, resolved, deps.clock.now().toISOString())
+  }
+  const payload = orientOf(kind, input.subject_id, resolved.payload).payload
   const { entryId, pos } = subject
   if (spec.subjectPos && !(pos && spec.subjectPos.includes(pos))) {
     throw new InvalidReferenceError(
@@ -182,6 +310,7 @@ export async function submitFact(
     }
     if (
       kind === 'senses' &&
+      entryId &&
       (await deps.facts.listLive('senses', entryId)).some((fact) => fact.status === 'published')
     ) {
       throw new InventorySettledError(
@@ -190,12 +319,12 @@ export async function submitFact(
     }
   }
   if (targetSense) await assertTargetShown(deps, targetSense.id, targetSense.entryId)
-  if (subjectType === 'sense') await assertTargetShown(deps, subjectId as SenseId, entryId)
+  if (subjectType === 'sense' && entryId) await assertTargetShown(deps, subjectId as SenseId, entryId)
 
-  if (spec.admit) await assertAdmitted(kind, payload, subject)
+  if (spec.admit) await assertAdmitted(kind, payload, subject, resolved.named)
   await assertReferencesLive(deps, referencesOf(kind, payload))
   const factId = deps.ids.fact()
-  if (targetSense) {
+  if (targetSense && entryId) {
     const link = {
       id: factId,
       payload,
@@ -215,12 +344,14 @@ export async function submitFact(
 
   const now = deps.clock.now().toISOString()
   const stored =
-    kind === 'senses' ? await assignSenseIds(deps, entryId, payload as FactPayloads['senses'], actor, now) : payload
+    kind === 'senses' && entryId
+      ? await assignSenseIds(deps, entryId, payload as FactPayloads['senses'], actor, now)
+      : payload
   const draft = {
     id: factId,
     kind,
     subjectId,
-    objectId: target,
+    objectId: objectOf(kind, payload),
     contentKey,
     payload: stored,
     status: 'pending',
@@ -238,7 +369,7 @@ export async function submitFact(
   }
   const created = fact.id === draft.id
   if (created && curation) return { fact: await publishCurated(deps, actor, fact, curation.reason), created }
-  await refreshEntries(deps, [subjectId, target])
+  await refreshEntries(deps, [subjectId, objectOf(kind, payload)])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { fact, created }
 }
@@ -305,8 +436,9 @@ async function assertAdmitted<K extends FactKind>(
   kind: K,
   payload: FactPayloads[K],
   subject: SubjectNode<SubjectTypeOf[K]>,
+  named: NamedNodes,
 ): Promise<void> {
-  const refusal = admissionOf(kind, payload, await subject.admission())
+  const refusal = admissionOf(kind, payload, await subject.admission(), named)
   if (refusal) throw new InvalidReferenceError(refusal)
 }
 
@@ -495,10 +627,11 @@ export async function resetToPending(
   // live already and keeps its place.
   const reviving = !isLive(fact.status)
   if (reviving && factKinds[fact.kind].admit)
-    await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact))
+    await assertAdmitted(fact.kind, fact.payload, await existingSubject(deps, fact), await namedNodesOf(deps, fact))
   if (reviving) await assertReferencesLive(deps, referencesOf(fact.kind, fact.payload))
-  if (reviving && fact.objectId) {
-    const link = await storedLink(deps, fact, fact.objectId)
+  const target = targetOf(fact.kind, fact.payload)
+  if (reviving && target) {
+    const link = await storedLink(deps, fact, target)
     await assertEndsAdmitted(deps, fact.kind, link)
     await assertLinkAdmitted(deps, fact.kind, link)
   }

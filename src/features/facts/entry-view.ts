@@ -10,7 +10,7 @@ export interface SenseView {
   sense: SenseNode
   /** The inventory's line for the sense: its gloss, labels, and rank; null when the inventory does not list it. */
   item: StoredInventorySense | null
-  /** Facts about the sense, and the translations of its examples and collocations. */
+  /** Facts about the sense, the facts about its examples' sentences, and the translations of its collocations. */
   facts: FactDto[]
   /** Relations from other entries' senses that point at this sense. */
   incoming: FactDto[]
@@ -53,7 +53,13 @@ export function groupEntry(view: ManagedEntry): {
       return {
         sense,
         item: items.find((item) => item.id === sense.id) ?? null,
-        facts: [...own, ...own.flatMap((fact) => about(fact.id))],
+        facts: [
+          ...own,
+          ...own.flatMap((fact) => [
+            ...about(fact.id),
+            ...(fact.kind === 'example' ? about(fact.payload.sentence_id) : []),
+          ]),
+        ],
         incoming: view.facts.filter((fact) => fact.object_id === sense.id && !ownIds.has(fact.subject_id)),
       }
     }),

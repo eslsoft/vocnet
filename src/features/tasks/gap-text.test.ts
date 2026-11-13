@@ -36,13 +36,14 @@ describe('gapText', () => {
         language: 'zh',
         missing: [
           { of: 'sense', id: sense.sense_id },
-          { of: 'example', id: crypto.randomUUID() },
+          { of: 'sentence', id: crypto.randomUUID() },
         ],
       },
       '2 items have no Chinese translation.',
     ],
     [{ type: 'topics', ...sense }, 'No topic yet.'],
     [{ type: 'grammar', ...sense }, 'No grammar note yet.'],
+    [{ type: 'sayings', missing: [crypto.randomUUID() as never] }, '1 saying has no meaning yet.'],
     [{ type: 'collocations', ...sense }, 'No collocation yet.'],
   ])('describes a %o gap in plain words', (gap, expected) => {
     expect(gapText(gap, t)).toBe(expected)

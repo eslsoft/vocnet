@@ -8,6 +8,7 @@ import { ErrorNotice } from '@/shared/ui/error-notice'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { DomainSwitch } from './domain-switch'
 import { EntryExtras } from './entry-extras'
+import { phraseCount } from './entry-format'
 import { EntryHeader } from './entry-header'
 import { EntryMissing } from './entry-missing'
 import { useEntry } from './hooks'
@@ -43,7 +44,9 @@ function Contents({ entry }: { entry: PublicEntry }) {
     ...(entry.morphology && (entry.morphology.parts.length > 1 || entry.morphology.family.length > 0)
       ? [{ href: '#word-family', label: t('entry.wordFamily'), count: entry.morphology.family.length }]
       : []),
-    ...(entry.phrases.length > 0 ? [{ href: '#phrases', label: t('entry.phrases'), count: entry.phrases.length }] : []),
+    ...(phraseCount(entry.phrases) > 0
+      ? [{ href: '#phrases', label: t('entry.phrases'), count: phraseCount(entry.phrases) }]
+      : []),
   ]
   return (
     <nav aria-label={t('entry.contents')} className="flex flex-col gap-1.5">

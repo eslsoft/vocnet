@@ -14,7 +14,10 @@ const producer = agent({ name: 'producer-a1' })
 const run = { id: crypto.randomUUID() as never, lemma: 'run' }
 const bank = { id: crypto.randomUUID() as never, lemma: 'bank' }
 const senseId = crypto.randomUUID()
-const example = fact({ kind: 'example', payload: { text: 'She runs a small bakery downtown.' } })
+const example = fact({
+  kind: 'example',
+  payload: { sentence_id: crypto.randomUUID() as never, text: 'She runs a small bakery downtown.' },
+})
 
 const task = workTask({
   entry: run,

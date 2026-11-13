@@ -5,6 +5,7 @@ import {
   importCoreEntries,
   listEntrySummaries,
   locateNode,
+  retireEntry,
 } from '@server/usecases/catalog'
 import { getConsoleStats } from '@server/usecases/monitor'
 import { listReferenceSources } from '@server/usecases/reference'
@@ -17,7 +18,9 @@ import {
   lemmaInputSchema,
   managedEntryDetailSchema,
   nodeLocationSchema,
+  retireEntryResultSchema,
 } from '@shared/catalog'
+import { entryIdSchema } from '@shared/facts'
 import { consoleStatsSchema } from '@shared/monitor'
 import { cefrLevelSchema, referenceSourceListSchema } from '@shared/reference'
 import { z } from 'zod'
@@ -44,6 +47,24 @@ const postEntry = createRoute({
   },
 })
 
+const retire = createRoute({
+  method: 'post',
+  path: '/entries/{id}/retire',
+  tags,
+  summary: 'Take an admitted entry off the wordlist (curators)',
+  description:
+    'The entry stops being live: it has no work items and shows nowhere publicly. 409 when a published phrases ' +
+    'list names it as a phrase (correct that list instead). Idempotent: retiring an entry that is not live changes ' +
+    'nothing. POST /manage/v1/entries admits it again.',
+  request: { params: z.object({ id: entryIdSchema }) },
+  responses: {
+    200: json(retireEntryResultSchema, 'The entry, and whether this call retired it.'),
+    403: errorResponse,
+    404: errorResponse,
+    409: errorResponse,
+  },
+})
+
 const importCore = createRoute({
   method: 'post',
   path: '/entries/core',
@@ -51,8 +72,12 @@ const importCore = createRoute({
   middleware: requireAdmin,
   summary: 'Admit the CEFR headwords that have no entry as batch 1 (admins)',
   description:
-    'Admits up to `limit` headwords of the imported CEFR profiles that no entry has, lowest level first. Single ' +
-    'letters other than "a" and "I" are skipped. Repeat until `remaining` is 0; a repeat after that admits nothing.',
+    'Admits up to `limit` headwords of the imported CEFR profiles that no entry has, lowest level first, after the ' +
+    'import filter: single letters other than "a" and "I", contractions and clitics, and lemmas with characters other ' +
+    'than letters, space, hyphen, and apostrophe are skipped; a regular inflection whose base is a candidate or an ' +
+    'entry is reduced to it unless the list lists the form itself; an American spelling (-or, -ize, -yze, -er, -og) ' +
+    'whose British one is a candidate or an entry is merged into it, recorded as its variant form when this call ' +
+    'creates it. `skipped` reports what each rule skipped. Repeat until `remaining` is 0.',
   request: { body: jsonBody(coreImportInputSchema) },
   responses: {
     200: json(coreImportResultSchema, 'What this call created and what is left.'),
@@ -126,6 +151,10 @@ export const manageCatalogRoutes = createRouter()
     const result = await createEntry(c.get('deps'), actorOf(c), c.req.valid('json'))
     const body = { entry: entryDto(result.entry), created: result.created }
     return result.created ? c.json(body, 201) : c.json(body, 200)
+  })
+  .openapi(retire, async (c) => {
+    const result = await retireEntry(c.get('deps'), actorOf(c), c.req.valid('param').id)
+    return c.json({ entry: entryDto(result.entry), retired: result.retired }, 200)
   })
   .openapi(importCore, async (c) =>
     c.json(await importCoreEntries(c.get('deps'), actorOf(c), c.req.valid('json').limit), 200),

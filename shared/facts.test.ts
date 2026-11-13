@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { factPayloadSchemas, submitFactInputSchema } from './facts'
+import { factPayloadSchemas, isCompleteSentence, submitFactInputSchema } from './facts'
 
 const sense = '00000000-0000-4000-8000-000000000001'
 const entry = '00000000-0000-4000-8000-000000000002'
+const sentence = '00000000-0000-4000-8000-000000000003'
 
 const issues = (input: unknown) => {
   const result = submitFactInputSchema.safeParse(input)
@@ -122,10 +123,10 @@ describe('translation language', () => {
     for (const text of ['银行;河岸', '银行,河岸', '银行(机构)']) {
       expect(zh(text)).toEqual(['A zh text uses fullwidth punctuation: write ； ， （ ） in place of ASCII ; , ( ).'])
     }
-    expect(zh('我们回家，好吗？', 'example')).toEqual([])
-    expect(zh('我们回家,好吗？', 'example')).toEqual([expect.stringContaining('fullwidth punctuation')])
+    expect(zh('我们回家，好吗？', 'sentence')).toEqual([])
+    expect(zh('我们回家,好吗？', 'sentence')).toEqual([expect.stringContaining('fullwidth punctuation')])
     // A sentence may repeat a phrase between semicolons; only an equivalent lists alternatives.
-    expect(zh('走吧；走吧', 'example')).toEqual([])
+    expect(zh('走吧；走吧', 'sentence')).toEqual([])
   })
 
   it('names what it translates and keeps a sense equivalent short [spec: facts/translation-of]', () => {
@@ -136,7 +137,9 @@ describe('translation language', () => {
     expect(translation({ language: 'zh', of: 'sense', text: '河'.repeat(201) })).toEqual([
       'A sense equivalent is at most 200 characters.',
     ])
-    expect(translation({ language: 'zh', of: 'example', text: '河'.repeat(201) })).toEqual([])
+    expect(translation({ language: 'zh', of: 'sentence', text: '河'.repeat(201) })).toEqual([])
+    // An example is translated as its sentence.
+    expect(translation({ language: 'zh', of: 'example', text: '河岸' })).toHaveLength(1)
   })
 
   it('applies only to writes: stored translations still parse [spec: facts/zh-translation-format]', () => {
@@ -286,11 +289,45 @@ describe('sense inventory format', () => {
 describe('phrases format', () => {
   const submit = (phrases: unknown[]) => issues({ kind: 'phrases', subject_id: entry, payload: { phrases } })
 
-  it('lists multiword phrases, each once [spec: facts/phrases-format]', () => {
-    expect(submit(['give up', 'give in'])).toEqual([])
-    expect(submit(['give'])).toEqual(['A phrase has at least two words.'])
-    expect(submit(['give up', 'Give up'])).toEqual(['A phrase list names each phrase once.'])
+  it('lists typed phrases by id or text, each once [spec: facts/phrases-format]', () => {
+    expect(
+      submit([
+        { type: 'phrasal_verb', text: 'give up' },
+        { type: 'idiom', entry_id: entry, sense_id: sense },
+        { type: 'saying', text: 'Give and take.' },
+        { type: 'saying', sentence_id: sentence },
+      ]),
+    ).toEqual([])
+    expect(submit([{ type: 'idiom', text: 'give' }])).toHaveLength(1)
+    expect(submit([{ type: 'saying', text: 'give and take' }])).toHaveLength(1)
+    expect(submit([{ type: 'saying', text: 'Give and take.', sense_id: sense }])).toHaveLength(1)
+    expect(submit([{ type: 'idiom', text: 'give up', entry_id: entry }])).toHaveLength(1)
+    expect(submit([{ type: 'proverb', text: 'Give and take.' }])).toHaveLength(1)
+    expect(submit(['give up'])).toHaveLength(1)
+    expect(
+      submit([
+        { type: 'idiom', text: 'give up' },
+        { type: 'phrasal_verb', text: 'Give up' },
+      ]),
+    ).toEqual(['A phrase list names each phrase once.'])
     expect(submit([])).toHaveLength(1)
+    expect(isCompleteSentence('Look before you leap.')).toBe(true)
+    expect(isCompleteSentence('"Look before you leap."')).toBe(true)
+    expect(isCompleteSentence('look before you leap')).toBe(false)
+    expect(isCompleteSentence('Look')).toBe(false)
+  })
+
+  it('stores each item by id, a view adding its text [spec: facts/phrases-format]', () => {
+    expect(
+      factPayloadSchemas.phrases.safeParse({ phrases: [{ type: 'idiom', entry_id: entry, text: 'give up' }] }).success,
+    ).toBe(true)
+    expect(factPayloadSchemas.phrases.safeParse({ phrases: ['give up'] }).success).toBe(false)
+  })
+
+  it('takes a sentence meaning as a dictionary-style gloss [spec: facts/sentence-meaning]', () => {
+    const meaning = (gloss: string) => issues({ kind: 'sentence_meaning', subject_id: sentence, payload: { gloss } })
+    expect(meaning('Each side should give something.')).toEqual([])
+    expect(meaning('give')).not.toEqual([])
   })
 })
 
@@ -305,9 +342,11 @@ describe('new data field formats', () => {
     expect(form({ ipa: '/went/', accent: 'us' })).toEqual([expect.stringContaining('without slashes')])
   })
 
-  it('takes an example as its text alone: translations are their own facts [spec: facts/translation-of]', () => {
+  it('takes an example as its sentence, by id or text alone: translations are their own facts [spec: facts/translation-of]', () => {
     const example = (payload: object) => issues({ kind: 'example', subject_id: sense, payload })
     expect(example({ text: 'We go home.' })).toEqual([])
+    expect(example({ sentence_id: sentence })).toEqual([])
+    expect(example({ sentence_id: sentence, text: 'We go home.' })).toHaveLength(1)
     expect(example({ text: 'We go home.', translations: { zh: '我们回家。' } })).toHaveLength(1)
   })
 

@@ -291,11 +291,11 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       // One batch: the view, and what the built views of other entries supply to it.
       const [rows, phrases, family, parts] = await db.batch([
         lookup(entries, eq(entries.lemma, lemma), entries.id),
-        // The phrases the headword's published list names, in its order, that have a public view.
+        // The phrase entries the headword's published list names, in its order, that have a public view.
         db
           .select({ summary: sql<string>`listed_entry.summary` })
           .from(
-            sql`public_entries as head join json_each(head.document, '$.phrases') as listed join public_entries as listed_entry on listed_entry.lemma = listed.value`,
+            sql`public_entries as head join json_each(head.document, '$.phrases') as listed join public_entries as listed_entry on listed_entry.lemma = json_extract(listed.value, '$.lemma')`,
           )
           .where(sql`head.lemma = ${lemma}`)
           .orderBy(sql`listed.key`),

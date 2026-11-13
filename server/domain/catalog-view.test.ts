@@ -6,6 +6,7 @@ import type {
   FactStatus,
   Pos,
   SenseId,
+  SentenceId,
   StoredInventorySense,
   TopicId,
 } from '@shared/facts'
@@ -21,7 +22,7 @@ import {
 } from './catalog-view'
 import type { Fact, FactOf } from './fact'
 import { formMeaning } from './fact-kinds'
-import type { EntryNode, SenseNode } from './nodes'
+import type { EntryNode, SenseNode, SentenceNode } from './nodes'
 import type { Lemma } from './term'
 
 let counter = 0
@@ -48,6 +49,14 @@ const inventorySense = (
   extra: Partial<StoredInventorySense> = {},
 ): StoredInventorySense => ({ id: id<SenseId>(), pos, gloss, rank: 'common', ...extra })
 
+/** Every sentence the tests made, as a snapshot reads them. */
+const sentences = new Map<SentenceId, SentenceNode>()
+const sentence = (text: string): SentenceId => {
+  const node: SentenceNode = { id: id<SentenceId>(), text, source: null, createdBy: 'agent:a' as never, createdAt: at }
+  sentences.set(node.id, node)
+  return node.id
+}
+
 function fact<K extends FactKind>(
   kind: K,
   subjectId: string,
@@ -58,7 +67,12 @@ function fact<K extends FactKind>(
     id: id<FactId>(),
     kind,
     subjectId: subjectId as never,
-    objectId: kind === 'relation' ? (payload as FactPayloads['relation']).target_sense_id : null,
+    objectId:
+      kind === 'relation'
+        ? (payload as FactPayloads['relation']).target_sense_id
+        : kind === 'example'
+          ? (payload as FactPayloads['example']).sentence_id
+          : null,
     contentKey: 'k',
     payload,
     status,
@@ -111,6 +125,9 @@ function snapshotOf(
     levelRank: null,
     zipf: null,
     family: [],
+    phraseType: null,
+    sentences,
+    phraseEntries: new Map(),
     senses,
     facts,
     incoming: [],
@@ -125,7 +142,8 @@ function bankWorld() {
   const shore = neighbor('shore', 'land along water')
   const river = inventorySense('land beside a river')
   const bankInventory = inventory(bank, [river])
-  const example = fact('example', river.id, { text: 'We sat on the bank.' })
+  const sat = sentence('We sat on the bank.')
+  const example = fact('example', river.id, { sentence_id: sat })
   const facts: Fact[] = [
     bankInventory,
     inventory(bank, [inventorySense('a pending replacement')], 'pending'),
@@ -133,10 +151,10 @@ function bankWorld() {
     fact('form', bank.id, { form: 'bankes', type: 'variant' }, 'rejected'),
     fact('pronunciation', bank.id, { ipa: 'bæŋk', accent: 'us' }),
     example,
-    fact('example', river.id, { text: 'Pending example.' }, 'pending'),
+    fact('example', river.id, { sentence_id: sentence('Pending example.') }, 'pending'),
     fact('translation', river.id, { language: 'zh', of: 'sense', text: '河岸' }),
     fact('translation', river.id, { language: 'zh', of: 'sense', text: '岸边' }, 'pending'),
-    fact('translation', example.id, { language: 'zh', of: 'example', text: '我们坐在河岸上。' }),
+    fact('translation', sat, { language: 'zh', of: 'sentence', text: '我们坐在河岸上。' }),
     fact('relation', river.id, { type: 'synonym', target_sense_id: shore.sense.id }),
   ]
   const snapshot = snapshotOf(bank, facts, { neighbors: neighborsOf(shore) })
@@ -466,27 +484,71 @@ describe('public read model', () => {
   it('projects syllables, a form pronunciation, example translations, and the phrases list [spec: catalog/new-fields]', () => {
     const go = entry('go')
     const move = inventorySense('To move.', 'verb')
-    const example = fact('example', move.id, { text: 'We go home.' })
+    const home = sentence('We go home.')
+    const example = fact('example', move.id, { sentence_id: home })
     const syllables = fact('syllables', go.id, { syllables: ['go'] })
-    const phrases = fact('phrases', go.id, { phrases: ['go on', 'go out'] })
+    const [goOn, goOut, unknown] = [id<EntryId>(), id<EntryId>(), id<EntryId>()]
+    const proverb = sentence('Easy come, easy go.')
+    const phrases = fact('phrases', go.id, {
+      phrases: [
+        { type: 'phrasal_verb', entry_id: goOn },
+        { type: 'idiom', entry_id: goOut, sense_id: move.id },
+        { type: 'idiom', entry_id: unknown },
+        { type: 'saying', sentence_id: proverb },
+      ],
+    })
     const facts = [
       inventory(go, [move]),
       fact('form', go.id, { form: 'went', type: 'past', ipa: 'went', accent: 'uk' }),
       syllables,
       phrases,
       example,
-      fact('translation', example.id, { language: 'zh', of: 'example', text: '我们回家。' }),
+      fact('translation', home, { language: 'zh', of: 'sentence', text: '我们回家。' }),
+      fact('sentence_meaning', proverb, { gloss: 'What is gained easily is lost easily.' }),
+      fact('translation', proverb, { language: 'zh', of: 'sentence', text: '来得容易去得快。' }),
     ]
-    const view = project(snapshotOf(go, facts))
+    const phraseEntries = new Map([
+      [goOn, 'go on'],
+      [goOut, 'go out'],
+    ])
+    const view = project(snapshotOf(go, facts, { phraseEntries }))
     expect(view?.meanings[0]?.forms).toEqual({ past: [{ form: 'went', irregular: true, ipa: 'went', accent: 'uk' }] })
     expect(view?.syllables).toEqual(['go'])
-    expect(view?.phrases).toEqual(['go on', 'go out'])
+    expect(view?.phrases).toEqual([
+      { type: 'phrasal_verb', lemma: 'go on', sense_id: null },
+      { type: 'idiom', lemma: 'go out', sense_id: move.id },
+    ])
+    expect(view?.sayings).toEqual([
+      {
+        sentence_id: proverb,
+        text: 'Easy come, easy go.',
+        meaning: 'What is gained easily is lost easily.',
+        translations: { zh: '来得容易去得快。' },
+      },
+    ])
+    expect(view?.phrase_type).toBeNull()
     expect(view?.review.syllables).toEqual(review(syllables))
     expect(view?.review.phrases).toEqual(review(phrases))
     expect(view?.meanings[0]?.senses[0]?.examples[0]).toMatchObject({
+      sentence_id: home,
       text: 'We go home.',
       translations: { zh: '我们回家。' },
     })
+    // A phrase entry carries its type.
+    const goOnEntry = { ...entry('go on'), id: goOn }
+    const typed = project(
+      snapshotOf(goOnEntry, [inventory(goOnEntry, [inventorySense('To continue.', 'verb')])], {
+        phraseType: 'phrasal_verb',
+      }),
+    )
+    expect(typed?.phrase_type).toBe('phrasal_verb')
+  })
+
+  it('fails loudly on an example whose sentence is gone', () => {
+    const go = entry('go')
+    const move = inventorySense('To move.', 'verb')
+    const facts = [inventory(go, [move]), fact('example', move.id, { sentence_id: id<SentenceId>() })]
+    expect(() => project(snapshotOf(go, facts))).toThrow('does not exist')
   })
 
   it('indexes every published form for lookup, shown or not [spec: catalog/form-index]', () => {
@@ -539,5 +601,39 @@ describe('management view', () => {
     expect(view.completeness).toBeLessThan(1)
     expect(view.credibility).toBeGreaterThan(0)
     expect(view.slots.total).toBeGreaterThan(0)
+  })
+
+  it('shows each example with its sentence text and each phrases item with its lemma or text [spec: catalog/view-texts]', () => {
+    const { snapshot, example } = bankWorld()
+    const said = sentence('Look before you leap.')
+    const phrase = id<EntryId>()
+    const unknown = id<EntryId>()
+    const list = fact('phrases', snapshot.entry.id, {
+      phrases: [
+        { type: 'compound', entry_id: phrase },
+        { type: 'idiom', entry_id: unknown },
+        { type: 'saying', sentence_id: said },
+      ],
+    })
+    const view = managedEntryView({
+      ...snapshot,
+      facts: [...snapshot.facts, list],
+      phraseEntries: new Map([[phrase, 'bank account']]),
+      phraseType: null,
+    })
+    expect(view.phraseType).toBeNull()
+    expect(view.facts.find((one) => one.id === example.id)?.payload).toEqual({
+      sentence_id: example.payload.sentence_id,
+      text: 'We sat on the bank.',
+    })
+    expect(view.facts.find((one) => one.id === list.id)?.payload).toEqual({
+      phrases: [
+        { type: 'compound', entry_id: phrase, text: 'bank account' },
+        { type: 'idiom', entry_id: unknown },
+        { type: 'saying', sentence_id: said, text: 'Look before you leap.' },
+      ],
+    })
+    const missing = fact('example', id<SenseId>(), { sentence_id: id<SentenceId>() })
+    expect(managedEntryView({ ...snapshot, facts: [missing] }).facts[0]?.payload).toEqual(missing.payload)
   })
 })

@@ -4,7 +4,7 @@ import { admin, agentA, curatorAgent } from '@server/testing/actors'
 import { type FakeWorld, fakeWorld } from '@server/testing/fakes'
 import { publicEntryOf } from '@server/testing/public-view'
 import { drainReviews, headword, type SeedSense } from '@server/testing/seed'
-import type { FactId, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, SenseId, SentenceId, TopicId } from '@shared/facts'
 import type { WorkType } from '@shared/work'
 import { describe, expect, it } from 'vitest'
 import {
@@ -13,12 +13,14 @@ import {
   getManagedEntry,
   getPublicEntry,
   getPublicSense,
+  getPublicSentence,
   importCoreEntries,
   listEntrySummaries,
   listPublicEntries,
   listSenseMembers,
   locateNode,
   lookupForm,
+  retireEntry,
   searchPublicEntries,
 } from './catalog'
 import { submitFact } from './facts'
@@ -93,17 +95,18 @@ describe('createEntry', () => {
     await createEntry(world.deps, admin, { lemma: 'cove', batch: 3 })
     await expect(importCoreEntries(world.deps, agentA, 3)).rejects.toMatchObject({ code: 'forbidden' })
 
+    const skipped = { letters: ['x'], contractions: [], characters: [], inflections: [], variants: [] }
     expect(await importCoreEntries(world.deps, curatorAgent, 3)).toEqual({
       created: ['I', 'a', 'bank'],
-      skipped: ['x'],
+      skipped,
       remaining: 1,
     })
     expect(await importCoreEntries(world.deps, admin, 3)).toEqual({
       created: ['according to'],
-      skipped: ['x'],
+      skipped,
       remaining: 0,
     })
-    expect(await importCoreEntries(world.deps, admin, 3)).toEqual({ created: [], skipped: ['x'], remaining: 0 })
+    expect(await importCoreEntries(world.deps, admin, 3)).toEqual({ created: [], skipped, remaining: 0 })
 
     expect(world.entries.map((entry) => [entry.lemma, entry.createdBy])).toEqual([
       ['cove', 'admin:admin-1'],
@@ -116,6 +119,60 @@ describe('createEntry', () => {
     for (const entry of world.entries) batches.push((await world.deps.nodes.admission(entry.id)).batch)
     expect(batches).toEqual([3, 1, 1, 1, 1])
     expect(world.facts).toEqual([])
+  })
+
+  it('filters the import by rule and records a merged American spelling on the British entry it creates [spec: catalog/import-filter]', async () => {
+    const world = fakeWorld()
+    const a1 = { frequency: null, cefr: [{ pos: 'noun' as const, level: 'A1' as const, source_id: 'cefrj' }] }
+    for (const lemma of ['colour', 'color', 'centre', "'s", "can't", 'a.m.', '3D', 'honor', 'floor', 'flour'])
+      world.references.set(lemma, a1)
+    await createEntry(world.deps, admin, { lemma: 'honour', batch: 1 })
+    const result = await importCoreEntries(world.deps, curatorAgent, 50)
+    expect(result.skipped).toEqual({
+      letters: [],
+      contractions: ["'s", "can't"],
+      characters: ['3D', 'a.m.'],
+      inflections: [],
+      variants: [
+        { lemma: 'color', of: 'colour' },
+        { lemma: 'honor', of: 'honour' },
+      ],
+    })
+    expect(result.created).toEqual(['centre', 'colour', 'floor', 'flour'])
+    const colour = world.entries.find((entry) => entry.lemma === 'colour')
+    expect(world.facts).toEqual([
+      expect.objectContaining({
+        kind: 'form',
+        subjectId: colour?.id,
+        payload: { form: 'color', type: 'variant' },
+        status: 'published',
+        review: expect.objectContaining({ reviewer: 'curator' }),
+      }),
+    ])
+  })
+
+  it('takes an admitted entry off the wordlist unless a published list names it [spec: catalog/retire]', async () => {
+    const world = fakeWorld()
+    const give = await headword(world, 'give', [{ pos: 'verb', gloss: 'to hand something to someone' }])
+    const { entry: rare } = await createEntry(world.deps, admin, { lemma: 'fabulate', batch: 1 })
+    await expect(retireEntry(world.deps, agentA, rare.id)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(retireEntry(world.deps, admin, crypto.randomUUID() as EntryId)).rejects.toMatchObject({
+      code: 'not_found',
+    })
+    await expect(retireEntry(world.deps, admin, rare.id)).resolves.toEqual({ entry: rare, retired: true })
+    expect(world.work.get(rare.id)?.live).toBe(false)
+    await expect(retireEntry(world.deps, admin, rare.id)).resolves.toEqual({ entry: rare, retired: false })
+    await submitFact(world.deps, agentA, {
+      kind: 'phrases',
+      subject_id: give.entry.id,
+      payload: { phrases: [{ type: 'phrasal_verb', text: 'give up' }] },
+    })
+    await drainReviews(world)
+    const giveUp = world.entries.find((entry) => entry.lemma === 'give up')
+    await expect(retireEntry(world.deps, admin, giveUp?.id as EntryId)).rejects.toMatchObject({ code: 'conflict' })
+    // Admitting it again brings it back.
+    await createEntry(world.deps, admin, { lemma: 'fabulate', batch: 1 })
+    expect(world.work.get(rare.id)?.live).toBe(true)
   })
 })
 
@@ -147,6 +204,62 @@ describe('public reads', () => {
     await expect(publicEntryOf(world.deps, 'Bank')).rejects.toMatchObject({ code: 'not_found' })
   })
 
+  it('reads a public sentence from the documents that show it, and 404s any other [spec: public-view/sentence]', async () => {
+    const { world, sense } = await publishedBank()
+    const example = async (text: string) =>
+      (await submitFact(world.deps, agentA, { kind: 'example', subject_id: sense.id, payload: { text } })).fact
+    const shown = await example('We sat on the bank.')
+    const sentence = shown.objectId as SentenceId
+    await submitFact(world.deps, agentA, {
+      kind: 'translation',
+      subject_id: sentence,
+      payload: { language: 'zh', of: 'sentence', text: '我们坐在河岸上。' },
+    })
+    await reviewAll(world)
+    const bank = world.entries.find((entry) => entry.lemma === 'bank')
+    await submitFact(world.deps, agentA, {
+      kind: 'phrases',
+      subject_id: bank?.id as string,
+      payload: { phrases: [{ type: 'saying', text: 'Never bank on luck.' }] },
+    })
+    await reviewAll(world)
+    const saying = world.sentences.find((one) => one.text === 'Never bank on luck.')?.id as SentenceId
+    await submitFact(world.deps, agentA, {
+      kind: 'sentence_meaning',
+      subject_id: saying,
+      payload: { gloss: 'Do not rely on chance.' },
+    })
+    await reviewAll(world)
+
+    const read = await getPublicSentence(world.deps, sentence, zh)
+    expect(read.versions).toHaveLength(1)
+    expect(read.read()).toEqual({
+      lang: 'zh',
+      id: sentence,
+      text: 'We sat on the bank.',
+      source: null,
+      meaning: null,
+      translation: '我们坐在河岸上。',
+      examples_of: [{ lemma: 'bank', sense_id: sense.id }],
+      saying_of: [],
+    })
+    expect((await getPublicSentence(world.deps, saying, none)).read()).toMatchObject({
+      text: 'Never bank on luck.',
+      meaning: 'Do not rely on chance.',
+      examples_of: [],
+      saying_of: ['bank'],
+    })
+    // A pending example, an unknown id, and a sentence no public document shows are not found.
+    world.failReviews()
+    const pending = await example('A pending bank.')
+    await expect(getPublicSentence(world.deps, pending.objectId as SentenceId, none)).rejects.toMatchObject({
+      code: 'not_found',
+    })
+    await expect(getPublicSentence(world.deps, crypto.randomUUID() as SentenceId, none)).rejects.toMatchObject({
+      code: 'not_found',
+    })
+  })
+
   it('404s an entry that exists but is not yet published', async () => {
     const world = fakeWorld()
     await createEntry(world.deps, admin, { lemma: 'pending', batch: 1 })
@@ -157,7 +270,12 @@ describe('public reads', () => {
     const { world } = await publishedBank()
     const read = await getPublicEntry(world.deps, 'bank', none)
     expect(read.versions).toEqual([expect.any(String), JSON.stringify({ phrases: [], family: [], publicParts: [] })])
-    expect(read.read()).toMatchObject({ lang: null, lemma: 'bank', phrases: [] })
+    expect(read.read()).toMatchObject({
+      lang: null,
+      lemma: 'bank',
+      phrase_type: null,
+      phrases: { by_sense: [], phrasal_verbs: [], idioms: [], compounds: [], sayings: [] },
+    })
     expect(read.read().review).toBeUndefined()
     expect((await getPublicEntry(world.deps, 'bank', { lang: 'zh', review: true })).read().review).toBeDefined()
   })

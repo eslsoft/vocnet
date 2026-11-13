@@ -100,15 +100,28 @@ export function touchWorkOf(db: Db, nodeIds: readonly string[]) {
 }
 
 /**
- * The entries that own these nodes: a sense's entry, and for an example or collocation fact (what a
- * translation is about) the entry of its sense.
+ * The entries that own these nodes: a sense's entry, for a collocation fact (what a translation is
+ * about) the entry of its sense, and for a sentence the entries whose examples or phrases lists
+ * name it. The phrases lists are read only when a node is a sentence.
  */
 function ownersOf(db: Db, nodeIds: SQLWrapper) {
   const factSenses = db.select({ id: facts.subjectId }).from(facts).where(inArray(facts.id, nodeIds))
+  const exampleSenses = db
+    .select({ id: facts.subjectId })
+    .from(facts)
+    .where(and(eq(facts.kind, 'example'), inArray(facts.objectId, nodeIds)))
   return db
     .select({ id: senses.entryId })
     .from(senses)
-    .where(or(inArray(senses.id, nodeIds), inArray(senses.id, factSenses)))
+    .where(or(inArray(senses.id, nodeIds), inArray(senses.id, factSenses), inArray(senses.id, exampleSenses)))
+    .union(
+      db
+        .select({ id: sql<string>`list.subject_id` })
+        .from(sql`facts as list, json_each(list.payload, '$.phrases') as item`)
+        .where(
+          sql`list.kind = 'phrases' and exists (select 1 from sentences where sentences.id in ${nodeIds}) and json_extract(item.value, '$.sentence_id') in ${nodeIds}`,
+        ),
+    )
 }
 
 /** Marks stale the entries at either end of this fact, entry or sense; a fact that does not exist marks nothing. */

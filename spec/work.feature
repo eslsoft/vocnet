@@ -36,8 +36,14 @@ Feature: Work items
   Scenario: The translations gap lists every item of the entry a learner reads without a translation
     Given an entry with common and extra senses, examples, a pending correction of an example, collocations, and translations in every status
     When the gaps are computed
-    Then one translations gap per served language lists each common sense, current example, and live collocation with no live translation in that language, naming what each is
-    And a pending correction stands for the example it corrects, and the gap needs one slot per listed item
+    Then one translations gap per served language lists each common sense, the sentence of each current example, and each live collocation with no live translation in that language, naming what each is
+    And a pending correction stands for the example it corrects, a sentence several examples share is one slot, and the gap needs one slot per listed item
+
+  @work/sayings-gap @domain
+  Scenario: A headword's sayings need their meaning and their translation
+    Given a headword whose phrases list names a saying, pending and then published
+    When the gaps are computed
+    Then a pending list asks nothing, and the published one opens a sayings gap naming each saying with no live meaning and adds each saying to the translations gap, until a meaning and a translation are live
 
   @work/translations-api @api
   Scenario: The translations item covers the whole entry in one language
@@ -68,7 +74,7 @@ Feature: Work items
   Scenario: Relations fill slots, with no quotas and with layers
     Given a core noun sense with no relations, a biology hypernym, an everyday hypernym, its own part_of, parts attached to it, or a synonym or antonym in either direction
     When the gaps are computed
-    Then it needs one everyday category, which a domain hypernym does not fill; once it has one it needs a part attached to it, which its own part_of does not fill; and it needs one synonym or antonym
+    Then it needs one everyday category, which a domain hypernym does not fill; once it has one it needs a part attached to it, which its own part_of does not fill; and it needs one synonym or antonym, which a live hypernym to a sense that can show, in any layer, also fills
 
   @work/relations-visible-ends @domain
   Scenario: A relation fills a slot only while its other end can show
@@ -360,11 +366,17 @@ Feature: Work items
     When the gaps are computed
     Then a core sense of an A1 or A2 entry has an examples gap asking for two and counting the one it has, and other senses and entries need one
 
+  @work/phrase-type-slots @domain
+  Scenario: A phrase entry has the slots of its type
+    Given a multiword entry typed phrasal_verb, compound, idiom, or fixed_phrase by the earliest published list naming it, or by none
+    When the gaps are computed
+    Then every type needs senses, examples, translations, and synonyms; a compound also its category, parts, and topics; a phrasal verb its grammar; none a pronunciation or collocations; and an untyped multiword entry keeps every slot
+
   @work/phrases-gap @domain
   Scenario: Every single-word headword with an inventory has a phrases slot
     Given single-word and multiword entries with and without an inventory and a live phrases list
     When the gaps are computed
-    Then a single word with an inventory and no live phrases list has a phrases gap, and a phrase or a word with a live list has none
+    Then a single word with an inventory and no live phrases list has a phrases gap, and a phrase or a word with a live list has none, unless that list is one the migration converted from untyped phrases
 
   @work/family-gap @domain
   Scenario: An A1 or A2 single word needs a word family member

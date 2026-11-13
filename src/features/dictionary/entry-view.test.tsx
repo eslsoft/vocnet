@@ -61,6 +61,16 @@ describe('EntryView', () => {
     expect(screen.getByText('root · breath')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'animalistic' })).toHaveAttribute('href', '/words/animalistic')
     expect(screen.getByRole('link', { name: 'animal kingdom' })).toHaveAttribute('href', '/words/animal%20kingdom')
+    // Phrases are grouped: under the sense they belong to, then by type, then the sayings.
+    expect(
+      screen.getByRole('heading', { name: 'A living creature that is not a plant or a human.' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Idioms and fixed phrases' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'party animal' })).toBeInTheDocument()
+    expect(screen.getByText('Man is a social animal.')).toBeInTheDocument()
+    expect(screen.getByText('People need the company of others.')).toBeInTheDocument()
+    expect(screen.getByText('人是社会性动物。')).toBeInTheDocument()
+    expect(screen.getByText('Every animal has its day.')).toBeInTheDocument()
   })
 
   it('shows the exact request and JSON slice behind a block [spec: site/entry-api]', async () => {

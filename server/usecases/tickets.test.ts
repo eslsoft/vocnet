@@ -22,8 +22,8 @@ async function catWorld() {
   await drainReviews(world)
   const translation = await submitFact(world.deps, agentA, {
     kind: 'translation',
-    subject_id: example.fact.id,
-    payload: { language: 'zh', of: 'example', text: '猫睡了。' },
+    subject_id: example.fact.objectId as string,
+    payload: { language: 'zh', of: 'sentence', text: '猫睡了。' },
   })
   const gloss = await submitFact(world.deps, agentA, {
     kind: 'translation',
@@ -77,7 +77,29 @@ describe('submitFeedback', () => {
       { target_type: 'fact', target_id: translation },
     ] as const
     for (const target of refused) await expect(report(world, target)).rejects.toMatchObject({ code: 'not_found' })
-    // A translation whose example is gone belongs to no entry.
+    // A collocation's translation is shown as text with no fact id either.
+    const collocation = await submitFact(world.deps, agentA, {
+      kind: 'collocation',
+      subject_id: sense,
+      payload: { text: 'the cat purred', pattern: 'subject_verb' },
+    })
+    const collocated = await submitFact(world.deps, agentA, {
+      kind: 'translation',
+      subject_id: collocation.fact.id,
+      payload: { language: 'zh', of: 'collocation', text: '猫咕噜叫。' },
+    })
+    await drainReviews(world)
+    await expect(report(world, { target_type: 'fact', target_id: collocated.fact.id })).rejects.toMatchObject({
+      code: 'not_found',
+    })
+    world.facts.splice(
+      world.facts.findIndex((fact) => fact.id === collocation.fact.id),
+      1,
+    )
+    await expect(report(world, { target_type: 'fact', target_id: collocated.fact.id })).rejects.toMatchObject({
+      code: 'not_found',
+    })
+    // A translation of a sentence no example uses any more belongs to no entry.
     world.facts.splice(
       world.facts.findIndex((fact) => fact.id === example),
       1,

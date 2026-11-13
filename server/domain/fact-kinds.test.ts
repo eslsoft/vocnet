@@ -1,14 +1,17 @@
 import {
+  type EntryId,
   type FactKind,
   type FactPayloads,
   type Pos,
   type SenseId,
+  type SentenceId,
   submitFactInputSchema,
   type TopicId,
 } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import {
   admissionOf,
+  bindNames,
   contentKeyOf,
   DEFAULT_PASS_AT,
   type EntrySense,
@@ -25,7 +28,12 @@ import {
   linkAdmissionOf,
   MAX_COLLOCATIONS,
   MAX_TOPICS_PER_SENSE,
+  mentionsOf,
   modelsOf,
+  type NamedNodes,
+  NO_NAMED_NODES,
+  namedTextsOf,
+  objectOf,
   orientOf,
   planReview,
   type ReviewContext,
@@ -41,6 +49,20 @@ import {
 } from './fact-kinds'
 
 const target = '00000000-0000-4000-8000-000000000009' as SenseId
+const said = '00000000-0000-4000-8000-000000000201' as SentenceId
+const saying = '00000000-0000-4000-8000-000000000202' as SentenceId
+const giveUp = '00000000-0000-4000-8000-000000000203' as EntryId
+const giveIn = '00000000-0000-4000-8000-000000000204' as EntryId
+const named: NamedNodes = {
+  entries: new Map([
+    [giveUp, 'give up'],
+    [giveIn, 'give in'],
+  ]),
+  sentences: new Map([
+    [said, 'We sat on the bank.'],
+    [saying, 'Give and take.'],
+  ]),
+}
 const hospital = 'hospital-doctor' as TopicId
 const hospitalView = { category: 'Body and health', topic: 'At the doctor and hospital' }
 const money = { pos: 'noun' as const, gloss: 'an institution that keeps money' }
@@ -58,11 +80,12 @@ const entryView = (lemma: string, senses: EntrySense[] = [], caseVariants: strin
 })
 const bankEntry = entryView('bank', [{ ...money, id: target }])
 
-function on(subject: SubjectViews['entry']): ReviewContext<'entry'>
+function on(subject: SubjectViews['entry'], extra?: Partial<ReviewContext<'entry'>>): ReviewContext<'entry'>
 function on(subject: SubjectViews['sense'], extra?: Partial<ReviewContext<'sense'>>): ReviewContext<'sense'>
 function on(subject: SubjectViews['fact']): ReviewContext<'fact'>
+function on(subject: SubjectViews['sentence']): ReviewContext<'sentence'>
 function on(subject: SubjectViews[keyof SubjectViews], extra: Partial<ReviewContext> = {}): ReviewContext {
-  return { subject, target: null, topic: null, ...extra }
+  return { subject, target: null, topic: null, named: NO_NAMED_NODES, ...extra }
 }
 
 const decision = (plan: ReviewPlan) => (plan.kind === 'review' ? plan.decision : null)
@@ -198,9 +221,11 @@ describe('fact-kind registry', () => {
     expect(contentKeyOf('relation', { type: 'synonym', target_sense_id: target })).toBe(`synonym|${target}`)
     expect(contentKeyOf('pronunciation', { ipa: 'bæŋk', accent: 'us' })).toBe('us|bæŋk')
     expect(contentKeyOf('pronunciation', { ipa: 'tə', accent: 'us', strength: 'weak' })).toBe('us|tə')
-    expect(contentKeyOf('example', { text: 'We sat on the Bank.' })).toBe('we sat on the bank.')
+    expect(contentKeyOf('example', { sentence_id: said })).toBe(said)
+    expect(contentKeyOf('example', { sentence_id: said, text: 'We sat on the bank.' })).toBe(said)
+    expect(contentKeyOf('sentence_meaning', { gloss: 'Share  Fairly.' })).toBe('share fairly.')
     expect(contentKeyOf('translation', { language: 'zh', of: 'sense', text: '河岸' })).toBe('zh|sense|河岸')
-    expect(contentKeyOf('translation', { language: 'zh', of: 'example', text: '河岸' })).toBe('zh|example|河岸')
+    expect(contentKeyOf('translation', { language: 'zh', of: 'sentence', text: '河岸' })).toBe('zh|sentence|河岸')
     expect(contentKeyOf('topic', { topic_id: hospital })).toBe('hospital-doctor')
     expect(contentKeyOf('form', { form: 'would', type: 'past', pos: 'auxiliary' })).toBe('past|would|auxiliary')
     expect(contentKeyOf('form', { form: ' would ', type: 'past' })).toBe('past|would')
@@ -219,12 +244,59 @@ describe('fact-kind registry', () => {
     })
     const hypernym = { type: 'hypernym', target_sense_id: low as SenseId } as const
     expect(orientOf('relation', target, hypernym)).toEqual({ subjectId: target, payload: hypernym })
-    expect(orientOf('example', target, { text: 'x' })).toEqual({ subjectId: target, payload: { text: 'x' } })
+    expect(orientOf('example', target, { sentence_id: said })).toEqual({
+      subjectId: target,
+      payload: { sentence_id: said },
+    })
   })
 
   it('names the relation target as the object and no other kind has one', () => {
     expect(targetOf('relation', { type: 'antonym', target_sense_id: target })).toBe(target)
-    expect(targetOf('example', { text: 'x' })).toBeNull()
+    expect(targetOf('example', { sentence_id: said })).toBeNull()
+    expect(objectOf('relation', { type: 'antonym', target_sense_id: target })).toBe(target)
+    expect(objectOf('example', { sentence_id: said })).toBe(said)
+    expect(objectOf('topic', { topic_id: hospital })).toBeNull()
+  })
+
+  it('binds the nodes a submission names by text to their ids, and lists the ids a payload names [spec: facts/sentence-resolve]', () => {
+    const ids = {
+      entry: (lemma: string) => `entry:${lemma}` as EntryId,
+      sentence: (text: string) => `s:${text}` as SentenceId,
+    }
+    expect(namedTextsOf('example', { text: 'We sat on the bank.' })).toEqual({
+      lemmas: [],
+      sentences: ['We sat on the bank.'],
+    })
+    expect(namedTextsOf('example', { sentence_id: said })).toEqual({ lemmas: [], sentences: [] })
+    expect(bindNames('example', { text: 'We sat.' }, ids)).toEqual({ sentence_id: 's:We sat.' })
+    expect(bindNames('example', { sentence_id: said }, ids)).toEqual({ sentence_id: said })
+    expect(mentionsOf('example', { sentence_id: said })).toEqual({ entries: [], sentences: [said] })
+    const submitted = {
+      phrases: [
+        { type: 'phrasal_verb' as const, text: 'give up', sense_id: target },
+        { type: 'idiom' as const, entry_id: giveIn },
+        { type: 'saying' as const, text: 'Give and take.' },
+        { type: 'saying' as const, sentence_id: said },
+      ],
+    }
+    expect(namedTextsOf('phrases', submitted)).toEqual({ lemmas: ['give up'], sentences: ['Give and take.'] })
+    const bound = bindNames('phrases', submitted, ids)
+    expect(bound).toEqual({
+      phrases: [
+        { type: 'phrasal_verb', entry_id: 'entry:give up', sense_id: target },
+        { type: 'idiom', entry_id: giveIn },
+        { type: 'saying', sentence_id: 's:Give and take.' },
+        { type: 'saying', sentence_id: said },
+      ],
+    })
+    expect(mentionsOf('phrases', bound)).toEqual({
+      entries: ['entry:give up', giveIn],
+      sentences: ['s:Give and take.', said],
+    })
+    // A kind that names no node by text is stored as submitted.
+    expect(namedTextsOf('topic', { topic_id: hospital })).toEqual({ lemmas: [], sentences: [] })
+    expect(bindNames('topic', { topic_id: hospital }, ids)).toEqual({ topic_id: hospital })
+    expect(mentionsOf('topic', { topic_id: hospital })).toEqual({ entries: [], sentences: [] })
   })
 
   it('names the decision models each kind consults, and none for the kinds the LLM judges alone [spec: facts/reviewer-routing]', () => {
@@ -242,6 +314,7 @@ describe('fact-kind registry', () => {
       syllables: ['luna'],
       collocation: [],
       phrases: ['jev'],
+      sentence_meaning: ['jev'],
     })
   })
 
@@ -260,14 +333,19 @@ describe('fact-kind registry', () => {
       form: planReview('form', { form: 'banks', type: 'plural' }, on(bankEntry)),
       relation: relationPlan({ type: 'hypernym', target_sense_id: target }),
       pronunciation: planReview('pronunciation', { ipa: 'bæŋk', accent: 'uk' }, on(bankEntry)),
-      example: planReview('example', { text: 'We sat on the bank.' }, on(bank)),
+      example: planReview('example', { sentence_id: said }, on(bank, { named })),
       translation: planReview('translation', { language: 'zh', of: 'sense', text: '河岸' }, on(bank)),
       topic: planReview('topic', { topic_id: hospital }, on(bank, { topic: hospitalView })),
       grammar: planReview('grammar', { countability: 'countable' }, on(bank)),
       morphology: planReview('morphology', { parts: [{ form: 'bank', role: 'base' }] }, on(bankEntry)),
       syllables: planReview('syllables', { syllables: ['bank'] }, on(bankEntry)),
       collocation: planReview('collocation', { text: 'river bank', pattern: 'noun_noun' }, on(bank)),
-      phrases: planReview('phrases', { phrases: ['bank on'] }, on(bankEntry)),
+      phrases: planReview('phrases', { phrases: [{ type: 'phrasal_verb', entry_id: giveUp }] }, on(bankEntry)),
+      sentence_meaning: planReview(
+        'sentence_meaning',
+        { gloss: 'Fairness on both sides.' },
+        on({ text: 'Give and take.', sense: null, sayingOf: ['give'], meaning: null }),
+      ),
     }
     expect(Object.fromEntries(Object.entries(plans).map(([kind, plan]) => [kind, settle(plan)]))).toEqual({
       senses: one('jev'),
@@ -294,6 +372,7 @@ describe('fact-kind registry', () => {
       syllables: one('luna', 0.9),
       collocation: null,
       phrases: one('jev'),
+      sentence_meaning: one('jev'),
     })
     for (const plan of Object.values(plans)) {
       expect(system(plan)).toContain('"verdict"')
@@ -320,30 +399,35 @@ describe('fact-kind registry', () => {
 
   it('names the node each kind is about, a translation by what it translates', () => {
     expect(subjectTypeOf('senses', { senses: [] })).toBe('entry')
-    expect(subjectTypeOf('example', { text: 'x' })).toBe('sense')
+    expect(subjectTypeOf('example', { sentence_id: said })).toBe('sense')
+    expect(subjectTypeOf('sentence_meaning', { gloss: 'x' })).toBe('sentence')
     expect(subjectTypeOf('translation', { language: 'zh', of: 'sense', text: '河岸' })).toBe('sense')
-    expect(subjectTypeOf('translation', { language: 'zh', of: 'example', text: '河岸' })).toBe('fact')
+    expect(subjectTypeOf('translation', { language: 'zh', of: 'sentence', text: '河岸' })).toBe('sentence')
     expect(subjectTypeOf('translation', { language: 'zh', of: 'collocation', text: '大雨' })).toBe('fact')
   })
 
   it('keeps one live fact of a single-slot kind, one translation per language, and no limit otherwise', () => {
     expect(slotOf('senses', { senses: [] })).toBe('')
-    expect(slotOf('phrases', { phrases: ['give up'] })).toBe('')
+    expect(slotOf('phrases', { phrases: [{ type: 'idiom', entry_id: giveUp }] })).toBe('')
+    expect(slotOf('sentence_meaning', { gloss: 'x' })).toBe('')
     expect(slotOf('translation', { language: 'zh', of: 'sense', text: '河岸' })).toBe('zh')
     expect(slotOf('relation', { type: 'synonym', target_sense_id: target })).toBeNull()
     expect(GENERAL_LIMITS[1]).toBe(
-      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, and one live translation per language: change it with a correction that supersedes the published one.',
+      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, sentence_meaning, and one live translation per language: change it with a correction that supersedes the published one.',
     )
     expect(GENERAL_LIMITS).toHaveLength(3)
   })
 
   it('states the write rules of each kind for the producer', () => {
     expect(limitsOf('pronunciation')).toEqual([])
-    expect(limitsOf('example')).toEqual([])
+    expect(limitsOf('example')[0]).toContain('An example names its sentence by sentence_id, or by text')
+    expect(limitsOf('sentence_meaning')[0]).toContain('never the saying itself')
+    expect(limitsOf('collocation')[1]).toContain('A verb with a particle after it is verb_adverb')
     expect(limitsOf('senses')).toContain(
       'It keeps an existing sense by naming its id; a sense of the entry it leaves out is gone, with everything attached to it. Once it publishes, only a curator changes it.',
     )
-    expect(limitsOf('phrases')[0]).toContain('publishing it makes each phrase an entry of its own')
+    expect(limitsOf('phrases')[0]).toContain('saying names a sentence (a complete sentence)')
+    expect(limitsOf('phrases')[2]).toContain('a saying stays a sentence')
     expect(limitsOf('translation')[0]).toContain('A translation names what it translates (of)')
     expect(limitsOf('topic')[0]).toContain(
       'on a noun, verb, adjective, adverb sense; a sense holds at most 3 live topics',
@@ -421,7 +505,13 @@ describe('fact-kind registry', () => {
   })
 
   it('judges an example of an offensive sense as an illustration of that sense [spec: facts/example-offensive-sense]', () => {
-    const plan = planReview('example', { text: 'She called him a dog.' }, on(bank))
+    const plan = planReview(
+      'example',
+      { sentence_id: said },
+      on(bank, { named: { entries: new Map(), sentences: new Map([[said, 'She called him a dog.']]) } }),
+    )
+    expect(rubric(plan)).toContain('Is "She called him a dog." a natural, grammatical English example sentence')
+    expect(rubric(plan)).toContain('and does it fit under this sense?')
     expect(rubric(plan)).toContain('an example that shows such a sense in ordinary use is correct')
     expect(rubric(plan)).toContain(
       'Reject sentences that use another sense, are ungrammatical, or add offence the sense does not need',
@@ -481,7 +571,7 @@ describe('fact-kind registry', () => {
   it('cannot review a meaning-dependent fact against a sense without a gloss [spec: facts/unreviewable]', () => {
     const glossless = { ...bank, gloss: null }
     const unreviewable = { kind: 'unreviewable', reason: 'The referenced sense has no live gloss.' }
-    expect(planReview('example', { text: 'x' }, on(glossless))).toEqual(unreviewable)
+    expect(planReview('example', { sentence_id: 'x' as SentenceId }, on(glossless))).toEqual(unreviewable)
     expect(planReview('collocation', { text: 'x y', pattern: 'phrase' }, on(glossless))).toEqual(unreviewable)
     expect(planReview('grammar', { countability: 'countable' }, on(glossless))).toEqual(unreviewable)
     expect(planReview('translation', { language: 'zh', of: 'sense', text: '河岸' }, on(glossless))).toEqual(
@@ -531,7 +621,7 @@ describe('fact-kind registry', () => {
     })
     expect(MAX_TOPICS_PER_SENSE).toBe(3)
     expect(topicOf('topic', { topic_id: hospital })).toBe(hospital)
-    expect(topicOf('example', { text: 'x' })).toBeNull()
+    expect(topicOf('example', { sentence_id: 'x' as SentenceId })).toBeNull()
   })
 
   it('cannot judge a topic fact without a glossed sense or a leaf topic', () => {
@@ -623,16 +713,33 @@ describe('sense translations', () => {
   })
 })
 
-describe('translations of examples and collocations', () => {
-  const example = { kind: 'example' as const, text: 'We sat on the bank.', sense: bank }
+describe('translations of sentences and collocations', () => {
+  const example = { text: 'We sat on the bank.', sense: bank, sayingOf: [], meaning: null }
 
   it('judges a text translation by the LLM alone as a faithful, natural rendering [spec: facts/translation-of]', () => {
-    const plan = planReview('translation', { language: 'zh', of: 'example', text: '我们坐在河岸上。' }, on(example))
+    const plan = planReview('translation', { language: 'zh', of: 'sentence', text: '我们坐在河岸上。' }, on(example))
     expect(decision(plan)).toBeNull()
     expect(rubric(plan)).toContain(
-      'Is "我们坐在河岸上。" a faithful, natural Simplified Chinese translation of the English example sentence "We sat on the bank.", which uses "bank" (noun), meaning "land beside a river"?',
+      'Is "我们坐在河岸上。" a faithful, natural Simplified Chinese translation of the English sentence "We sat on the bank."?',
     )
+    expect(rubric(plan)).toContain('It is an example of "bank" (noun), meaning "land beside a river".')
+    expect(rubric(plan)).toContain('renders the word in another sense')
     expect(rubric(plan)).toContain('a natural choice a translator would make is correct and adds no meaning')
+    const proverb = planReview(
+      'translation',
+      { language: 'zh', of: 'sentence', text: '有来有往。' },
+      on({ text: 'Give and take.', sense: null, sayingOf: ['give'], meaning: 'Fairness on both sides.' }),
+    )
+    expect(rubric(proverb)).toContain(
+      'It is a saying, meaning "Fairness on both sides.": an established Simplified Chinese saying',
+    )
+    expect(rubric(proverb)).not.toContain('renders the word in another sense')
+    const bare = planReview(
+      'translation',
+      { language: 'zh', of: 'sentence', text: '有来有往。' },
+      on({ text: 'Give and take.', sense: { ...bank, gloss: null }, sayingOf: ['give'], meaning: null }),
+    )
+    expect(rubric(bare)).toContain('It is a saying: an established')
     const collocation = planReview(
       'translation',
       { language: 'zh', of: 'collocation', text: '陡峭的河岸' },
@@ -641,42 +748,54 @@ describe('translations of examples and collocations', () => {
     expect(rubric(collocation)).toContain('translation of the English collocation "steep bank"')
   })
 
-  it('cannot judge a translation about the wrong kind of subject or of an unglossed sense [spec: facts/translation-of]', () => {
-    expect(planReview('translation', { language: 'zh', of: 'sense', text: '河岸' }, on(example))).toEqual({
-      kind: 'unreviewable',
-      reason: 'A sense equivalent is about a sense, not a fact.',
-    })
-    expect(planReview('translation', { language: 'zh', of: 'example', text: '河岸' }, on(bank))).toEqual({
-      kind: 'unreviewable',
-      reason: 'A translation of an example is about that fact, not a sense.',
-    })
+  it('cannot judge a collocation translation of an unglossed sense [spec: facts/translation-of]', () => {
     expect(
       planReview(
         'translation',
-        { language: 'zh', of: 'example', text: '河岸' },
-        on({ ...example, sense: { ...bank, gloss: null } }),
+        { language: 'zh', of: 'collocation', text: '河岸' },
+        on({ kind: 'collocation', text: 'steep bank', sense: { ...bank, gloss: null } }),
       ),
     ).toMatchObject({ kind: 'unreviewable' })
+    expect(
+      planReview('translation', { language: 'zh', of: 'sense', text: '河岸' }, on({ ...bank, gloss: null })),
+    ).toMatchObject({
+      kind: 'unreviewable',
+    })
   })
 
-  it('admits a translation only about what it translates [spec: facts/translation-of]', () => {
-    const senseView = { lemma: 'bank', pos: 'noun' as const, forms: [] }
+  it('admits a translation of a fact only about a collocation [spec: facts/translation-of]', () => {
     const admit = (
-      of: 'sense' | 'example' | 'collocation',
+      of: 'sense' | 'sentence' | 'collocation',
       subject: Parameters<typeof admissionOf<'translation'>>[2],
     ) => admissionOf('translation', { language: 'zh', of, text: '河岸' }, subject)
-    expect(admit('sense', senseView)).toBeNull()
-    expect(admit('example', senseView)).toBe(
-      'A translation of an example is about that fact; its subject_id is the example fact id.',
-    )
-    expect(admit('sense', { kind: 'example' })).toBe(
-      'A sense equivalent is about the sense; its subject_id is the sense id.',
-    )
-    expect(admit('collocation', { kind: 'example' })).toBe(
-      'The subject is an example fact, but the translation claims to translate a collocation.',
-    )
-    expect(admit('example', { kind: 'example' })).toBeNull()
+    expect(admit('sense', { lemma: 'bank', pos: 'noun' as const, forms: [] })).toBeNull()
+    expect(admit('sentence', { text: 'We sat.' })).toBeNull()
     expect(admit('collocation', { kind: 'collocation' })).toBeNull()
+    expect(admit('collocation', { kind: 'example' })).toBe(
+      'The subject is an example fact, but a translation of a fact translates a collocation.',
+    )
+  })
+})
+
+describe('sentence meanings', () => {
+  it('asks Jev whether the gloss states what the saying means, then the LLM [spec: facts/sentence-meaning]', () => {
+    const plan = planReview(
+      'sentence_meaning',
+      { gloss: 'Fairness on both sides.' },
+      on({ text: 'Give and take.', sense: null, sayingOf: ['give'], meaning: null }),
+    )
+    expect(decision(plan)?.state).toEqual({ saying: 'Give and take.', 'proposed meaning': 'Fairness on both sides.' })
+    expect(question(plan, 'meaning')).toContain(
+      'Does the English saying "Give and take." mean "Fairness on both sides."?',
+    )
+    expect(question(plan, 'meaning')).toContain('not the literal meaning of its words')
+    expect(rubric(plan)).toContain(
+      'Is "Fairness on both sides." the right dictionary gloss of the English saying "Give and take."?',
+    )
+    expect(rubric(plan)).toContain('quotes the saying itself as the gloss')
+    expect(summarizeFact({ kind: 'sentence_meaning', payload: { gloss: 'Fairness on both sides.' } })).toBe(
+      'Fairness on both sides.',
+    )
   })
 })
 
@@ -703,7 +822,11 @@ describe('sense inventories', () => {
 
   it('keeps only senses of the entry [spec: facts/inventory-admission]', () => {
     const admit = (senses: Array<Partial<Listed>>) =>
-      admissionOf('senses', { senses: senses as Listed[] }, { lemma: 'book', senses: [volume, reserve, record] })
+      admissionOf(
+        'senses',
+        { senses: senses as Listed[] },
+        { lemma: 'book', senses: [volume, reserve, record], inventory: [] },
+      )
     expect(admit(inventory.senses)).toBeNull()
     expect(admit([{ pos: 'noun', gloss: 'A new sense.', rank: 'common' }])).toBeNull()
     expect(admit([...inventory.senses, listed(lean, 'verb', 'To bend.', 'extra')])).toBe(
@@ -776,7 +899,15 @@ describe('sense inventories', () => {
     expect(text).toContain('A sense only an advanced or specialist dictionary lists is never missing.')
     expect(text).toContain('the same meaning, or one meaning split too finely into several')
     expect(text).toContain('"stay" meaning to stop legal proceedings')
-    expect(text).toContain('Wrong part of speech: a sense is given a part of speech its meaning does not have.')
+    expect(text).toContain(
+      'Wrong part of speech: a sense is given a part of speech whose grammatical function its meaning does not have.',
+    )
+    // An idiom is labelled by its grammatical function, and a technical-only entry keeps its main sense common.
+    expect(text).toContain('Never fail a sense for not being labelled "idiom", "phrase", or "saying".')
+    expect(text).toContain(
+      'An entry whose every sense is technical, specialist, or regional ranks its main sense common',
+    )
+    expect(text).toContain('unless every sense of the entry is so')
     // An inflection of another word is never a sense: its base word lists the form.
     expect(text).toContain('An inflection as a sense: a sense that only names an inflected form of another word')
     expect(text).toContain('- A gloss is wrong: the word has no such meaning in that part of speech')
@@ -861,36 +992,119 @@ describe('sense inventories', () => {
 
 describe('phrases lists', () => {
   const give = entryView('give', [{ id: target, pos: 'verb', gloss: 'To hand something to someone.' }])
-  const admit = (phrases: string[], lemma = 'give') => admissionOf('phrases', { phrases }, { lemma, senses: [] })
+  const ids = new Map<string, EntryId>()
+  const entryOf = (lemma: string) => {
+    const existing = ids.get(lemma)
+    if (existing) return existing
+    const id = `00000000-0000-4000-8000-0000000003${String(ids.size).padStart(2, '0')}` as EntryId
+    ids.set(lemma, id)
+    return id
+  }
+  const nodes = (): NamedNodes => ({
+    entries: new Map([...ids].map(([lemma, id]) => [id, lemma])),
+    sentences: named.sentences,
+  })
+  const admit = (phrases: string[], lemma = 'give', inventory: SenseId[] = []) =>
+    admissionOf(
+      'phrases',
+      { phrases: phrases.map((phrase) => ({ type: 'idiom' as const, entry_id: entryOf(phrase) })) },
+      { lemma, senses: [], inventory },
+      nodes(),
+    )
 
   it('lists phrases that contain the headword, on a single-word headword [spec: facts/phrases-admission]', () => {
     expect(admit(['give up', 'give in', 'given name', 'Give way'])).toBeNull()
     expect(admit(['make up'])).toBe('A phrase of "give" contains the word; "make up" does not.')
-    expect(admit(['make up', 'take off'])).toBe('A phrase of "give" contains the word; "make up", "take off" do not.')
+    expect(admit(['make up', 'take off'])).toBe(
+      'A phrase of "give" contains the word; "make up" does not. A phrase of "give" contains the word; "take off" does not.',
+    )
     expect(admit(['in front of'], 'front')).toBeNull()
     expect(admit(['go to the dogs'], 'go')).toBeNull()
     expect(admit(['give up the ghost'], 'give up')).toBe(
       '"give up" is a phrase; phrases are listed on a single-word headword.',
     )
+    expect(admit(['given'])).toBe('"given" is a single word; a idiom has at least two words.')
   })
 
-  it('keys a list by its phrases as a set [spec: facts/phrases-admission]', () => {
-    expect(contentKeyOf('phrases', { phrases: ['give up', ' give  in '] })).toBe('give in|give up')
-    expect(contentKeyOf('phrases', { phrases: ['give in', 'give up'] })).toBe(
-      contentKeyOf('phrases', { phrases: ['give up', 'give in'] }),
+  it('names each target once, a saying a complete sentence, and a sense of the headword [spec: facts/phrases-typed]', () => {
+    const list = (phrases: FactPayloads['phrases']['phrases'], inventory: SenseId[] = [target]) =>
+      admissionOf('phrases', { phrases }, { lemma: 'give', senses: [], inventory }, nodes())
+    const up = entryOf('give up')
+    expect(
+      list([
+        { type: 'phrasal_verb', entry_id: up, sense_id: target },
+        { type: 'saying', sentence_id: saying },
+      ]),
+    ).toBeNull()
+    expect(
+      list([
+        { type: 'phrasal_verb', entry_id: up },
+        { type: 'idiom', entry_id: up },
+      ]),
+    ).toBe('A phrase list names each phrase once; "give up" twice.')
+    expect(list([{ type: 'phrasal_verb', entry_id: up, sense_id: target }], [])).toBe(
+      `${target} is not a sense of the current inventory of "give".`,
+    )
+    const lower = '00000000-0000-4000-8000-000000000299' as SentenceId
+    expect(
+      admissionOf(
+        'phrases',
+        { phrases: [{ type: 'saying', sentence_id: lower }] },
+        { lemma: 'give', senses: [], inventory: [] },
+        { entries: new Map(), sentences: new Map([[lower, 'give and take']]) },
+      ),
+    ).toContain('A saying is a complete sentence')
+  })
+
+  it('keys a list by its typed items as a set [spec: facts/phrases-admission]', () => {
+    const items: FactPayloads['phrases']['phrases'] = [
+      { type: 'phrasal_verb', entry_id: giveUp, sense_id: target },
+      { type: 'idiom', entry_id: giveIn },
+      { type: 'saying', sentence_id: saying },
+    ]
+    expect(contentKeyOf('phrases', { phrases: items })).toBe(
+      `idiom:${giveIn}|phrasal_verb:${giveUp}:${target}|saying:${saying}`,
+    )
+    expect(contentKeyOf('phrases', { phrases: [...items].reverse() })).toBe(contentKeyOf('phrases', { phrases: items }))
+    // A view's text is never part of the claim.
+    expect(contentKeyOf('phrases', { phrases: items.map((item) => ({ ...item, text: 'x' })) })).toBe(
+      contentKeyOf('phrases', { phrases: items }),
     )
     expect(factKinds.phrases).toMatchObject({ subject: 'entry', cardinality: 'one' })
   })
 
   it('asks Jev about each phrase and the LLM whether each is a lexical unit of the headword [spec: facts/phrases-rubric]', () => {
-    const plan = planReview('phrases', { phrases: ['give up', 'give a book'] }, on(give))
-    expect(decision(plan)?.state).toEqual({ headword: 'give' })
-    expect(Object.keys(decision(plan)?.questions ?? {})).toEqual(['phrase_1', 'phrase_2'])
-    expect(question(plan, 'phrase_2')).toContain(
-      'Does a learner\'s dictionary (Oxford Advanced Learner\'s, Longman, Cambridge) print "give a book" as a phrase, phrasal verb, or idiom of the headword "give"',
+    const giveBook = entryOf('give a book')
+    const plan = planReview(
+      'phrases',
+      {
+        phrases: [
+          { type: 'phrasal_verb', entry_id: giveUp },
+          { type: 'compound', entry_id: giveBook, sense_id: target },
+          { type: 'saying', sentence_id: saying },
+          {
+            type: 'idiom',
+            entry_id: '00000000-0000-4000-8000-000000000398' as EntryId,
+            sense_id: '00000000-0000-4000-8000-000000000397' as SenseId,
+          },
+        ],
+      },
+      on(give, { named: { entries: new Map([...nodes().entries, ...named.entries]), sentences: named.sentences } }),
     )
+    expect(decision(plan)?.state).toEqual({ headword: 'give' })
+    expect(Object.keys(decision(plan)?.questions ?? {})).toEqual(['phrase_1', 'phrase_2', 'phrase_3', 'phrase_4'])
+    expect(question(plan, 'phrase_2')).toContain(
+      'Does a learner\'s dictionary (Oxford Advanced Learner\'s, Longman, Cambridge) print "give a book" as a compound of the headword "give", filed under the sense "To hand something to someone."',
+    )
+    expect(question(plan, 'phrase_2')).toContain('a complete sentence (a saying), or the wrong type')
+    expect(question(plan, 'phrase_3')).toContain('Is "Give and take." an established English saying, proverb, or maxim')
     const text = rubric(plan) ?? ''
-    expect(text).toContain('1. "give up"\n2. "give a book"')
+    expect(text).toContain(
+      '1. (phrasal_verb) "give up"\n2. (compound, sense: "To hand something to someone.") "give a book"\n3. (saying) "Give and take."\n4. (idiom) "<unknown>"',
+    )
+    expect(text).toContain('- The type is wrong.')
+    expect(text).toContain('A complete sentence is always a saying, never a phrase entry.')
+    expect(text).toContain('A missing sense is never a failure')
     // An idiom belongs to its content word, never to a grammar word it contains: both reviewers say so.
     expect(question(plan, 'phrase_1')).toContain('An idiom is printed under its main content word')
     expect(text).toContain('- Filed under the wrong headword: An idiom is printed under its main content word')
@@ -1092,7 +1306,7 @@ describe('morphology facts', () => {
     parts: list.map(([form, role, meaning]) => ({ form, role, ...(meaning ? { meaning } : {}) })),
   })
   const admit = (lemma: string, payload: FactPayloads['morphology']) =>
-    admissionOf('morphology', payload, { lemma, senses: [] })
+    admissionOf('morphology', payload, { lemma, senses: [], inventory: [] })
 
   it('admits parts that spell the word, allowing spelling changes where they join [spec: facts/morphology-parts]', () => {
     expect(admit('unhappiness', parts(['un-', 'prefix'], ['happy', 'base'], ['-ness', 'suffix']))).toBeNull()
@@ -1178,7 +1392,7 @@ describe('morphology facts', () => {
     expect(contentKeyOf('morphology', student)).toBe('base:study|=study+suffix:-ent')
     expect(referencesOf('morphology', student)).toEqual(['study'])
     expect(referencesOf('morphology', parts(['spect', 'root', 'look'], ['-ator', 'suffix']))).toEqual([])
-    expect(referencesOf('example', { text: 'x' })).toEqual([])
+    expect(referencesOf('example', { sentence_id: 'x' as SentenceId })).toEqual([])
     expect(admit('student', student)).toBeNull()
     expect(admit('study', { parts: [{ form: 'study', role: 'base', lemma: 'study' }] })).toBe(
       'A base names the entry of another word the word is built on; "study" is this entry, so leave its lemma out.',
@@ -1285,11 +1499,21 @@ describe('collocation facts', () => {
     expect(text).toContain('It uses the word in another sense')
     expect(text).toContain('rare, unnatural')
     expect(text).toContain('- (noun) "an institution that keeps money"')
+    expect(text).toContain('A verb with a particle after it is verb_adverb ("tack down")')
+    expect(text).toContain('a verb with a preposition and its noun is verb_preposition')
+    const passive = rubric(planReview('collocation', { text: 'tormented by guilt', pattern: 'passive' }, on(bank)))
+    expect(passive).toContain('Claimed pattern: passive, a past participle with its by-phrase')
+    expect(rubric(planReview('collocation', { text: 'the room spins', pattern: 'subject_verb' }, on(bank)))).toContain(
+      'a noun subject with its verb',
+    )
+    expect(rubric(planReview('collocation', { text: 'go bankrupt', pattern: 'verb_adjective' }, on(bank)))).toContain(
+      'a verb with an adjective that completes it',
+    )
   })
 })
 
 describe('forms, syllables, and relation ends', () => {
-  const entry = (lemma: string) => ({ lemma, senses: [] as SenseId[] })
+  const entry = (lemma: string) => ({ lemma, senses: [] as SenseId[], inventory: [] as SenseId[] })
 
   it('admits syllables that spell a single-word lemma and lets luna settle whether it follows the pronunciation [spec: facts/syllables]', () => {
     expect(admissionOf('syllables', { syllables: ['a', 'bil', 'i', 'ty'] }, entry('ability'))).toBeNull()
@@ -1395,7 +1619,7 @@ describe('forms, syllables, and relation ends', () => {
     expect(endsAdmissionOf('relation', synonym, ends(end(a, false, 'dated'), end(b)))).toContain(
       `Sense ${a} is labelled dated`,
     )
-    expect(endsAdmissionOf('example', { text: 'x' }, ends(end(a, true), end(b, true)))).toBeNull()
+    expect(endsAdmissionOf('example', { sentence_id: 'x' as SentenceId }, ends(end(a, true), end(b, true)))).toBeNull()
     const biology = { ...hypernym, domain: 'biology' } as const
     expect(endsAdmissionOf('relation', biology, ends(end(a), end(b, true)))).toBeNull()
     expect(endsAdmissionOf('relation', biology, ends(end(a), end(b, false, 'dated')))).toContain('labelled dated')
@@ -1456,10 +1680,11 @@ describe('fact summaries', () => {
     expect(summary('pronunciation', { ipa: 'ðə', accent: 'us', strength: 'weak', pos: 'determiner' })).toBe(
       '/ðə/ (us, weak, determiner)',
     )
-    expect(summary('example', { text: 'We sat on the bank.' })).toBe('We sat on the bank.')
+    expect(summary('example', { sentence_id: said })).toBe(said)
+    expect(summary('example', { sentence_id: said, text: 'We sat on the bank.' })).toBe('We sat on the bank.')
     expect(summary('translation', { language: 'zh', of: 'sense', text: '河岸' })).toBe('zh (sense): 河岸')
-    expect(summary('translation', { language: 'zh', of: 'example', text: '我们坐着。' })).toBe(
-      'zh (example): 我们坐着。',
+    expect(summary('translation', { language: 'zh', of: 'sentence', text: '我们坐着。' })).toBe(
+      'zh (sentence): 我们坐着。',
     )
     expect(summary('topic', { topic_id: hospital })).toBe(hospital)
     expect(summary('grammar', { countability: 'countable' })).toBe('countable')
@@ -1482,6 +1707,13 @@ describe('fact summaries', () => {
     ).toBe('phone, clipping of telephone')
     expect(summary('syllables', { syllables: ['ba', 'nana'] })).toBe('ba·nana')
     expect(summary('collocation', { text: 'river bank', pattern: 'noun_noun' })).toBe('river bank (noun_noun)')
-    expect(summary('phrases', { phrases: ['give up', 'give in'] })).toBe('give up, give in')
+    expect(
+      summary('phrases', {
+        phrases: [
+          { type: 'phrasal_verb', entry_id: giveUp, text: 'give up' },
+          { type: 'saying', sentence_id: saying },
+        ],
+      }),
+    ).toBe(`give up (phrasal_verb), ${saying} (saying)`)
   })
 })

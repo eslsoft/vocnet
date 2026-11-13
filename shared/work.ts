@@ -10,6 +10,7 @@ import {
   regionSchema,
   registerSchema,
   senseIdSchema,
+  sentenceIdSchema,
   servedLanguageSchema,
   translatedSchema,
 } from './facts'
@@ -41,7 +42,7 @@ const formSlotSchema = z.object({ type: formTypeSchema, pos: posSchema }).meta({
 const translationTargetSchema = z
   .object({
     of: translatedSchema,
-    id: z.uuid().meta({ description: 'The sense id, or the example or collocation fact id.' }),
+    id: z.uuid().meta({ description: 'The sense id, the sentence id, or the collocation fact id.' }),
   })
   .meta({ id: 'TranslationTarget' })
 
@@ -70,7 +71,7 @@ export const gapSchema = z
       })
       .meta({ description: 'The entry needs a strong (citation) pronunciation in both us and uk.' }),
     z.object({ type: z.literal('phrases') }).meta({
-      description: `The headword has no live phrases list. Submit one phrases fact listing every phrase of the headword that a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) prints as its phrase, phrasal verb, or idiom, or whose meaning is not the sum of its words ("give up", "in front of"); never coin one, and never list a plain description built from the words' ordinary meanings ("white rice"). There is no limit on how many. Each listed phrase becomes an entry of its own once the list publishes. ${OPTIONAL}`,
+      description: `The headword has no live phrases list. Submit one phrases fact listing every phrase of the headword that a learner's dictionary (Oxford Advanced Learner's, Longman, Cambridge) prints as its phrasal verb, compound, idiom, fixed phrase, or saying, each with its type and, when it plainly belongs to one, the sense_id of the headword's sense ("give up": phrasal_verb; "bank account": compound under the bank sense; "look before you leap": saying); never coin one, and never list a plain description built from the words' ordinary meanings ("white rice"). There is no limit on how many. Each entry item becomes an entry of its own once the list publishes; a saying stays a sentence. ${OPTIONAL}`,
     }),
     z.object({ type: z.literal('family') }).meta({
       description: `An A1 or A2 single word has no live word-family member: no live entry has a live morphology fact with a base part whose lemma is this word. Its common derivatives a learner's dictionary lists with it (happy: happiness, happily, unhappy; study: student, studious) that are entries get a morphology whose base part names this word as its lemma ({"form": "study", "role": "base", "lemma": "study"}). ${OPTIONAL}`,
@@ -115,12 +116,23 @@ export const gapSchema = z
         language: servedLanguageSchema,
         missing: z.array(translationTargetSchema).meta({
           description:
-            'Each live sense, example, and collocation of the entry with no live translation in the language.',
+            "Each counted sense, sentence (of the senses' examples, and on a headword the sayings of its published phrases list), and collocation of the entry with no live translation in the language.",
         }),
       })
       .meta({
         description:
-          'Translate every listed item of the entry into the language, one translation fact each (of: what it translates; subject_id: the sense id or the example or collocation fact id). The context view carries every sense, example, and collocation with its text.',
+          "Translate every listed item of the entry into the language, one translation fact each (of: what it translates; subject_id: the sense id, the sentence id, or the collocation fact id). The context view carries every sense, example (with its sentence's text), saying, and collocation with its text. A sentence several entries share is translated once, for all of them.",
+      }),
+    z
+      .object({
+        type: z.literal('sayings'),
+        missing: z.array(sentenceIdSchema).meta({
+          description: "The sayings of the headword's published phrases list with no live sentence_meaning.",
+        }),
+      })
+      .meta({
+        description:
+          "Submit one sentence_meaning fact about each listed saying (subject_id: the sentence id): a dictionary-style gloss of what the saying actually means and when it is said, never the saying itself. The context view carries the phrases list with each saying's text.",
       }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
       description: `The core sense has no live topic fact. Core nouns and verbs have a topics slot; tag only a leaf topic of the taxonomy (GET /v1/topics). ${OPTIONAL}`,

@@ -1,11 +1,13 @@
 import {
   accentSchema,
   type EntryId,
+  type EntryPhraseType,
   type FactStatus,
   type FormType,
   type Pos,
   SERVED_LANGUAGES,
   type SenseId,
+  type SentenceId,
   type ServedLanguage,
   type Translated,
 } from '@shared/facts'
@@ -29,7 +31,12 @@ export interface EntryFacts {
    * lemma: its word family.
    */
   family: readonly string[]
-  /** Facts whose subject is the entry, one of its senses, or (translations) one of their facts. */
+  /** The type the earliest published phrases list naming the entry gives it; null for a single word or an unlisted entry. */
+  phraseType: EntryPhraseType | null
+  /**
+   * Facts whose subject is the entry, one of its senses, (translations) one of their collocations,
+   * or one of its sentences.
+   */
   facts: Fact[]
   /** Relation facts whose object is one of the entry's senses. */
   incoming: Fact[]
@@ -45,7 +52,10 @@ export interface EntryFacts {
   neighbors: { inventories: Fact[]; liveEntries: ReadonlySet<EntryId> }
 }
 
-type GapInput = Pick<EntryFacts, 'entry' | 'levelRank' | 'family' | 'facts' | 'incoming' | 'passes' | 'neighbors'>
+type GapInput = Pick<
+  EntryFacts,
+  'entry' | 'levelRank' | 'family' | 'phraseType' | 'facts' | 'incoming' | 'passes' | 'neighbors'
+>
 
 /** The key of an optional slot's completed pass. */
 export const passKey = (type: WorkType, subjectId: string) => `${type}|${subjectId}`
@@ -100,6 +110,7 @@ type EntryGap = Extract<
       | 'syllables'
       | 'form_pronunciations'
       | 'translations'
+      | 'sayings'
   }
 >
 type SenseGap = Exclude<Gap, EntryGap>
@@ -132,7 +143,25 @@ interface EntryState {
   /** The neighbor senses a relation may link to and count. */
   visible: ReadonlySet<string>
   passes: ReadonlySet<string>
+  phraseType: EntryPhraseType | null
 }
+
+/**
+ * The slots a phrase entry has, by its type: a phrase needs its senses, examples, translations,
+ * and synonyms; a compound, which names a thing, also its category, parts, and topics; a phrasal
+ * verb its grammar (paused). A phrase's pronunciation is its words', and it has no collocations.
+ * A multiword entry no published list types keeps every slot.
+ */
+const PHRASE_SLOTS: Readonly<Record<EntryPhraseType, ReadonlySet<WorkType>>> = {
+  phrasal_verb: new Set(['senses', 'examples', 'translations', 'synonyms', 'grammar']),
+  compound: new Set(['senses', 'examples', 'translations', 'synonyms', 'category', 'parts', 'topics']),
+  idiom: new Set(['senses', 'examples', 'translations', 'synonyms']),
+  fixed_phrase: new Set(['senses', 'examples', 'translations', 'synonyms']),
+}
+
+/** Whether the entry has this slot: every slot unless it is a typed phrase. */
+const hasSlot = ({ phraseType }: Pick<EntryState, 'phraseType'>, type: WorkType) =>
+  phraseType === null || PHRASE_SLOTS[phraseType].has(type)
 
 const counting =
   (kind: Fact['kind']) =>
@@ -240,12 +269,13 @@ function irregularForms({ lemma, live }: EntryState): Map<string, { form: string
 }
 
 interface EntryRule {
+  type: EntryGap['type']
   gap: (state: EntryState) => EntryGap
   need: (state: EntryState) => number
   filled: (state: EntryState) => number
 }
 
-/** One translation slot: a counted sense's equivalent, or a current example or live collocation of one. */
+/** One translation slot: a counted sense's equivalent, a sentence, or a live collocation of one. */
 interface TranslationTarget {
   of: Translated
   id: string
@@ -260,16 +290,39 @@ function currentExamples(live: readonly Fact[], senseId: SenseId): FactOf<'examp
   return examples.filter((fact) => !examples.some((other) => other.supersedesId === fact.id))
 }
 
-/** What a learner reads in the entry and so needs in every served language. */
-function translationTargets({ live, counted }: EntryState): TranslationTarget[] {
-  return counted.flatMap((sense) => [
-    { of: 'sense' as const, id: sense.id },
-    ...currentExamples(live, sense.id).map((example) => ({ of: 'example' as const, id: example.id })),
-    ...live
-      .filter(isKind('collocation'))
-      .filter((fact) => fact.subjectId === sense.id)
-      .map((collocation) => ({ of: 'collocation' as const, id: collocation.id })),
-  ])
+/** The sayings the headword's published phrases list names. */
+function sayingsOf({ facts }: Pick<EntryState, 'facts'>): SentenceId[] {
+  const list = currentOf(
+    facts.filter((fact) => fact.status === 'published'),
+    'phrases',
+  )
+  return (list?.payload.phrases ?? []).flatMap((item) => (item.type === 'saying' ? [item.sentence_id] : []))
+}
+
+/**
+ * What a learner reads in the entry and so needs in every served language: each counted sense, the
+ * sentence of each of its current examples, each of its live collocations, and the headword's
+ * sayings. A sentence several examples share is one slot.
+ */
+function translationTargets(state: EntryState): TranslationTarget[] {
+  const { live, counted } = state
+  const sentences = new Set<string>()
+  const sentence = (id: string) => {
+    if (sentences.has(id)) return []
+    sentences.add(id)
+    return [{ of: 'sentence' as const, id }]
+  }
+  return [
+    ...counted.flatMap((sense) => [
+      { of: 'sense' as const, id: sense.id as string },
+      ...currentExamples(live, sense.id).flatMap((example) => sentence(example.payload.sentence_id)),
+      ...live
+        .filter(isKind('collocation'))
+        .filter((fact) => fact.subjectId === sense.id)
+        .map((collocation) => ({ of: 'collocation' as const, id: collocation.id as string })),
+    ]),
+    ...sayingsOf(state).flatMap(sentence),
+  ]
 }
 
 const translated =
@@ -282,6 +335,7 @@ const translated =
       )
 
 const translationRule = (language: ServedLanguage): EntryRule => ({
+  type: 'translations',
   gap: (state) => ({
     type: 'translations',
     language,
@@ -291,6 +345,12 @@ const translationRule = (language: ServedLanguage): EntryRule => ({
   filled: (state) => translationTargets(state).filter(translated(state, language)).length,
 })
 
+/** A saying has a live meaning. */
+const explained =
+  ({ live }: EntryState) =>
+  (sentenceId: SentenceId) =>
+    live.some((fact) => fact.kind === 'sentence_meaning' && fact.subjectId === sentenceId)
+
 /** A slot a pass completed without a value counts as filled. */
 const passed = (state: EntryState, type: WorkType, subjectId: string) => state.passes.has(passKey(type, subjectId))
 
@@ -299,17 +359,20 @@ const passed = (state: EntryState, type: WorkType, subjectId: string) => state.p
 const entryGapRules: readonly EntryRule[] = [
   // The inventory is one slot; once it publishes, its senses are fixed.
   {
+    type: 'senses',
     gap: () => ({ type: 'senses' }),
     need: () => 1,
     filled: ({ inventoried }) => (inventoried ? 1 : 0),
   },
   {
+    type: 'forms',
     gap: (state) => ({ type: 'forms', missing: formSlots(state).filter((slot) => !fills(state)(slot)) }),
     need: (state) => formSlots(state).length,
     filled: (state) => formSlots(state).filter(fills(state)).length,
   },
   // A learner's dictionary gives both the British and the American pronunciation.
   {
+    type: 'pronunciation',
     gap: (state) => ({
       type: 'pronunciation',
       accents: ACCENTS.filter((accent) => !pronouncedAccents(state).has(accent)),
@@ -317,31 +380,37 @@ const entryGapRules: readonly EntryRule[] = [
     need: () => ACCENTS.length,
     filled: (state) => pronouncedAccents(state).size,
   },
+  // A list the migration converted from untyped phrases fills nothing: its typed correction does.
   {
+    type: 'phrases',
     gap: () => ({ type: 'phrases' }),
     need: (state) => (needsPhrases(state) ? 1 : 0),
-    filled: (state) => (counting('phrases')(state) > 0 ? 1 : 0),
+    filled: ({ live }) => (live.filter(isKind('phrases')).some((fact) => !fact.payload.migrated) ? 1 : 0),
   },
   // One live derivative linked by its morphology fills it; the producer adds the common ones.
   {
+    type: 'family',
     gap: () => ({ type: 'family' }),
     need: (state) => (needsFamily(state) ? 1 : 0),
     filled: (state) => (state.family.length > 0 ? 1 : 0),
   },
   // Word formation analyses one word; a phrase's parts are its own entries.
   {
+    type: 'morphology',
     gap: () => ({ type: 'morphology' }),
     need: ({ lemma }) => (isMultiword(lemma) ? 0 : 1),
     filled: counting('morphology'),
   },
   // Syllables divide one written word; a phrase's words are their own entries.
   {
+    type: 'syllables',
     gap: () => ({ type: 'syllables' }),
     need: ({ lemma }) => (isMultiword(lemma) ? 0 : 1),
     filled: counting('syllables'),
   },
   // A learner cannot work out how an irregular form sounds, so each needs a pronunciation.
   {
+    type: 'form_pronunciations',
     gap: (state) => ({
       type: 'form_pronunciations',
       forms: [...irregularForms(state).values()].filter((form) => !form.pronounced).map(({ form }) => form),
@@ -350,6 +419,13 @@ const entryGapRules: readonly EntryRule[] = [
     filled: (state) => [...irregularForms(state).values()].filter((form) => form.pronounced).length,
   },
   ...SERVED_LANGUAGES.map(translationRule),
+  // A saying in the headword's published list needs its meaning.
+  {
+    type: 'sayings',
+    gap: (state) => ({ type: 'sayings', missing: sayingsOf(state).filter((id) => !explained(state)(id)) }),
+    need: (state) => sayingsOf(state).length,
+    filled: (state) => sayingsOf(state).filter(explained(state)).length,
+  },
 ]
 
 /**
@@ -462,6 +538,7 @@ const hasEverydayCategory = (sense: CountedSense, state: EntryState) =>
 const examplesNeeded = (senseId: SenseId, { elementary, core }: EntryState) => (elementary && core.has(senseId) ? 2 : 1)
 
 interface SenseRule {
+  type: SenseGap['type']
   /**
    * The counted senses the rule applies to: every common one, or only the core ones. A learner's
    * dictionary gives a sense beyond the first few its translation, an example, and its grammar,
@@ -479,6 +556,7 @@ const senseGapRules: readonly SenseRule[] = [
   // One everyday category opens the slot's work; a word may have several, and the producer
   // submits every one a learner uses. Narrower terms are never asked of the category word.
   {
+    type: 'category',
     scope: 'core',
     need: onePer(CATEGORY_POS),
     fills: (fact, senseId, state) => everydayCategoryOf(fact, senseId, state.visible),
@@ -487,6 +565,7 @@ const senseGapRules: readonly SenseRule[] = [
   // A thing placed in an everyday category may have main parts a learner needs; a sense whose
   // category is closed as general or abstract has none to ask for.
   {
+    type: 'parts',
     scope: 'core',
     need: (sense, state) => (PARTS_POS.includes(sense.pos) && hasEverydayCategory(sense, state) ? 1 : 0),
     fills: (fact, senseId, state) =>
@@ -496,17 +575,24 @@ const senseGapRules: readonly SenseRule[] = [
       state.visible.has(fact.subjectId),
     gap: (senseId) => ({ type: 'parts', sense_id: senseId }),
   },
+  // A live hypernym to a visible sense fills it too: a word with no synonym or antonym is placed by
+  // its broader term. Producers still submit every real synonym and antonym.
   {
+    type: 'synonyms',
     scope: 'core',
     need: onePer(SYNONYMS_POS),
     fills: (fact, senseId, state) =>
       fact.kind === 'relation' &&
-      (fact.payload.type === 'synonym' || fact.payload.type === 'antonym') &&
-      ((fact.subjectId === senseId && state.visible.has(fact.payload.target_sense_id)) ||
-        (fact.objectId === senseId && state.visible.has(fact.subjectId))),
+      (((fact.payload.type === 'synonym' || fact.payload.type === 'antonym') &&
+        ((fact.subjectId === senseId && state.visible.has(fact.payload.target_sense_id)) ||
+          (fact.objectId === senseId && state.visible.has(fact.subjectId)))) ||
+        (fact.payload.type === 'hypernym' &&
+          fact.subjectId === senseId &&
+          state.visible.has(fact.payload.target_sense_id))),
     gap: (senseId) => ({ type: 'synonyms', sense_id: senseId }),
   },
   {
+    type: 'examples',
     scope: 'common',
     need: (sense, state) => examplesNeeded(sense.id, state),
     fills: (fact, senseId) => fact.kind === 'example' && fact.subjectId === senseId,
@@ -518,18 +604,21 @@ const senseGapRules: readonly SenseRule[] = [
     }),
   },
   {
+    type: 'topics',
     scope: 'core',
     need: (sense) => TOPICS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'topic' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'topics', sense_id: senseId }),
   },
   {
+    type: 'grammar',
     scope: 'common',
     need: (sense) => GRAMMAR_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'grammar' && fact.subjectId === senseId,
     gap: (senseId) => ({ type: 'grammar', sense_id: senseId }),
   },
   {
+    type: 'collocations',
     scope: 'core',
     need: (sense) => COLLOCATIONS_NEEDED[sense.pos],
     fills: (fact, senseId) => fact.kind === 'collocation' && fact.subjectId === senseId,
@@ -559,9 +648,12 @@ function coreSenses(counted: readonly CountedSense[]): ReadonlySet<SenseId> {
   return new Set([...first, ...firstOfPos].map((sense) => sense.id))
 }
 
-/** The per-sense rules that apply to a counted sense: the common ones, and the core ones for a core sense. */
+/**
+ * The per-sense rules that apply to a counted sense: the common ones, and the core ones for a core
+ * sense, of the slots the entry has.
+ */
 const rulesFor = (sense: CountedSense, state: EntryState) =>
-  senseGapRules.filter((rule) => rule.scope === 'common' || state.core.has(sense.id))
+  senseGapRules.filter((rule) => (rule.scope === 'common' || state.core.has(sense.id)) && hasSlot(state, rule.type))
 
 /**
  * The open gaps, and how many slots the rules count for the entry: each entry rule and, per counted
@@ -592,9 +684,12 @@ function openGaps(
     inflections: inflectionsOf(live, counted),
     visible: visibleNeighbors(snapshot.neighbors, counts),
     passes: snapshot.passes,
+    phraseType: snapshot.phraseType,
   }
   // Until the inventory exists, the entry's only work is the inventory itself.
-  const rules = inventory === null ? entryGapRules.slice(0, 1) : entryGapRules
+  const rules = (inventory === null ? entryGapRules.slice(0, 1) : entryGapRules).filter((rule) =>
+    hasSlot(state, rule.type),
+  )
   const entry = rules.flatMap((rule) => {
     const missing = rule.need(state) - rule.filled(state)
     if (missing <= 0) return []
@@ -646,6 +741,7 @@ export function missingOf(gap: Gap): number {
     case 'form_pronunciations':
       return gap.forms.length
     case 'translations':
+    case 'sayings':
       return gap.missing.length
     case 'examples':
       return gap.need - gap.count
@@ -665,6 +761,8 @@ function listedSlots(gap: Gap): string[] | null {
       return gap.forms
     case 'translations':
       return gap.missing.map((target) => `${target.of}:${target.id}`)
+    case 'sayings':
+      return gap.missing
     default:
       return null
   }
@@ -832,6 +930,7 @@ export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'e
   phrases: { stage: 2, context: 'entry' },
   topics: { stage: 2, context: 'node' },
   translations: { stage: 3, context: 'entry' },
+  sayings: { stage: 3, context: 'entry' },
   examples: { stage: 4, context: 'node' },
   grammar: { stage: 4, context: 'node' },
   collocations: { stage: 4, context: 'node' },

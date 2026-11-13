@@ -2,6 +2,7 @@ import { createRoute } from '@hono/zod-openapi'
 import {
   getPublicEntry,
   getPublicSense,
+  getPublicSentence,
   listPublicEntries,
   listSenseMembers,
   lookupForm,
@@ -21,10 +22,11 @@ import {
   memberPageSchema,
   publicEntrySchema,
   publicSenseDetailSchema,
+  publicSentenceSchema,
   searchPageSchema,
   searchQueryTextSchema,
 } from '@shared/catalog'
-import { posSchema, relationDomainSchema, senseIdSchema, topicIdSchema } from '@shared/facts'
+import { posSchema, relationDomainSchema, senseIdSchema, sentenceIdSchema, topicIdSchema } from '@shared/facts'
 import { referenceSourceListSchema } from '@shared/reference'
 import { feedbackReceiptSchema, submitFeedbackInputSchema } from '@shared/tickets'
 import { z } from 'zod'
@@ -126,6 +128,21 @@ const getSense = createRoute({
   },
 })
 
+const getSentence = createRoute({
+  method: 'get',
+  path: '/sentences/{id}',
+  tags,
+  summary: 'Get one sentence: an example or a saying',
+  description: `The sentence with its source, its translation, its meaning when it is a saying, and the public senses it is a published example of and the public headwords whose published phrases list names it a saying. A sentence neither is 404.${LANGUAGE}`,
+  request: { params: z.object({ id: sentenceIdSchema }), query: z.object({ lang: langQuerySchema }) },
+  responses: {
+    200: json(publicSentenceSchema, 'The sentence.'),
+    304: notModifiedResponse,
+    400: errorResponse,
+    404: errorResponse,
+  },
+})
+
 const listMembers = createRoute({
   method: 'get',
   path: '/senses/{id}/members',
@@ -203,6 +220,11 @@ export const publicRoutes = createRouter()
     const variant = readVariant(c, c.req.valid('query'))
     const sense = await getPublicSense(c.get('deps'), c.req.valid('param').id, variant)
     return notModified(c, await etagOf(sense.versions, variant)) ?? c.json(sense.read(), 200)
+  })
+  .openapi(getSentence, async (c) => {
+    const variant = readVariant(c, c.req.valid('query'))
+    const sentence = await getPublicSentence(c.get('deps'), c.req.valid('param').id, variant)
+    return notModified(c, await etagOf(sentence.versions, variant)) ?? c.json(sentence.read(), 200)
   })
   .openapi(listMembers, async (c) => {
     const { domain, limit, cursor, lang } = c.req.valid('query')

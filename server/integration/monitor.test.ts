@@ -320,9 +320,9 @@ describe('console monitor', () => {
     const sense = senses[0] as string
     await noun('wave', 'A raised line of water.')
     const example = await submitOk(token, 'example', sense, { text: 'The tide came in fast.' })
-    const translation = await submitOk(token, 'translation', example.id, {
+    const translation = await submitOk(token, 'translation', example.object_id as string, {
       language: 'zh',
-      of: 'example',
+      of: 'sentence',
       text: '潮水涨得很快。',
     })
     await reviewPending()

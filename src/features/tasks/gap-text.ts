@@ -28,6 +28,8 @@ export function gapText(gap: Gap, t: TFunction): string {
       return t('gap.examples', { count: gap.count, need: gap.need })
     case 'translations':
       return t('gap.translations', { count: gap.missing.length })
+    case 'sayings':
+      return t('gap.sayings', { count: gap.missing.length })
   }
 }
 

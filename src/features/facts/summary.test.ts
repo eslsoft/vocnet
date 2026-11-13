@@ -28,7 +28,10 @@ describe('summarizeFact', () => {
       { kind: 'pronunciation', payload: { ipa: 'tə', accent: 'us', strength: 'weak', pos: 'preposition' } },
       '/tə/ (us, weak, preposition)',
     ],
-    [{ kind: 'example', payload: { text: 'We sat on the bank.' } }, 'We sat on the bank.'],
+    [
+      { kind: 'example', payload: { sentence_id: crypto.randomUUID() as never, text: 'We sat on the bank.' } },
+      'We sat on the bank.',
+    ],
     [{ kind: 'translation', payload: { language: 'zh', of: 'sense', text: '河岸' } }, 'zh (sense): 河岸'],
     [{ kind: 'topic', payload: { topic_id: 'hospital' } }, 'hospital'],
     [{ kind: 'grammar', payload: { countability: 'countable' } }, 'countable'],
@@ -56,7 +59,20 @@ describe('summarizeFact', () => {
       { kind: 'collocation', payload: { text: 'make a decision', pattern: 'verb_noun' } },
       'make a decision (verb_noun)',
     ],
-    [{ kind: 'phrases', payload: { phrases: ['bank on', 'break the bank'] } }, 'bank on · break the bank'],
+    [
+      {
+        kind: 'phrases',
+        payload: {
+          phrases: [
+            { type: 'phrasal_verb', entry_id: '00000000-0000-4000-8000-000000000001', text: 'bank on' },
+            { type: 'saying', sentence_id: '12345678-0000-4000-8000-000000000002' },
+          ],
+        },
+      },
+      'bank on (phrasal_verb) · 12345678 (saying)',
+    ],
+    [{ kind: 'example', payload: { sentence_id: 'abcdef12-0000-4000-8000-000000000003' } }, 'sentence abcdef12'],
+    [{ kind: 'sentence_meaning', payload: { gloss: 'Do not rely on chance.' } }, 'Do not rely on chance.'],
     [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
     [{ kind: 'grammar', payload: { agreement: ['singular_noun', 'of_plural'] } }, 'singular_noun, of_plural'],
     [{ kind: 'grammar', payload: { position: 'mid' } }, 'mid'],

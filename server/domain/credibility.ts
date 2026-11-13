@@ -38,6 +38,8 @@ const LLM_ALONE: Readonly<Record<FactKind, number>> = {
   collocation: 0.97,
   syllables: 0.96,
   phrases: 0.88,
+  // Not yet measured: the translation rate stands in until an audit sets it.
+  sentence_meaning: 0.93,
 }
 
 /** The credibility of a live fact: how often its kind and path are right. A pending fact has none yet. */

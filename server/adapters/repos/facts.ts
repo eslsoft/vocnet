@@ -32,18 +32,22 @@ function aboutLevel(db: Db, level: CefrLevel) {
 }
 
 /**
- * The entry a subject id is or belongs to: an entry, a sense's entry, or for a translation of an
- * example or collocation the entry of that fact's sense.
+ * The entry a subject id is or belongs to: an entry, a sense's entry, for a translation of a
+ * collocation the entry of that fact's sense, and for a sentence (which entries share) the entry of
+ * its oldest example, else the headword of the oldest phrases list naming it a saying.
  */
 export function entryOf(db: Db, subjectId: SQLWrapper) {
   const sense = alias(senses, 'of_sense')
   const translated = alias(facts, 'of_fact')
   const factSense = alias(senses, 'of_fact_sense')
-  return sql`coalesce(
+  return sql`case when exists (select 1 from sentences where sentences.id = ${subjectId}) then coalesce(
+    (select s.entry_id from facts as ex join senses as s on s.id = ex.subject_id where ex.kind = 'example' and ex.object_id = ${subjectId} order by ex.created_at, ex.id limit 1),
+    (select list.subject_id from facts as list where list.kind = 'phrases' and instr(list.payload, ${subjectId}) > 0 order by list.created_at, list.id limit 1)
+  ) else coalesce(
     (${db.select({ entryId: sense.entryId }).from(sense).where(eq(sense.id, subjectId))}),
     (${db.select({ entryId: factSense.entryId }).from(translated).innerJoin(factSense, eq(factSense.id, translated.subjectId)).where(eq(translated.id, subjectId))}),
     ${subjectId}
-  )`
+  ) end`
 }
 
 const subjectEntry = alias(entries, 'subject_entry')

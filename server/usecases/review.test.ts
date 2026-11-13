@@ -2,7 +2,7 @@ import type { Fact } from '@server/domain/fact'
 import { admin, agentA } from '@server/testing/actors'
 import { type FakeWorld, fakeWorld } from '@server/testing/fakes'
 import { drainReviews, headword } from '@server/testing/seed'
-import type { EntryId, FactId, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, SenseId, SentenceId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { getFact, submitFact } from './facts'
 import { ReviewerTransportError } from './ports'
@@ -228,14 +228,20 @@ describe('reviewFact', () => {
     })
     const translation = await submitted(world, {
       kind: 'translation',
-      subject_id: example.id,
-      payload: { language: 'zh', of: 'example', text: '我们坐在河岸上。' },
+      subject_id: example.objectId as string,
+      payload: { language: 'zh', of: 'sentence', text: '我们坐在河岸上。' },
     })
     await expect(reviewFact(world.deps, translation.id, 'trace-review')).resolves.toBe('published')
     expect((await getFact(world.deps, example.id)).status).toBe('pending')
     expect((await getFact(world.deps, translation.id)).review?.context).toMatchObject({
-      subject: { kind: 'example', text: 'We sat on the bank.', sense: { gloss: 'land beside a river' } },
+      subject: {
+        text: 'We sat on the bank.',
+        sense: { gloss: 'land beside a river' },
+        sayingOf: [],
+        meaning: null,
+      },
     })
+    expect(world.llmCalls.at(-1)?.user).toContain('It is an example of "bank" (noun), meaning "land beside a river".')
   })
 
   it('skips a decided, unknown, or concurrently changed fact [spec: facts/review-idempotent]', async () => {
@@ -303,14 +309,24 @@ describe('reviewFact', () => {
       payload: { syllables: ['x'] },
     })
     await expect(reviewFact(world.deps, orphanEntry.id, 't')).rejects.toThrow('does not exist')
-    const orphanSense = rawFact(world, { kind: 'example', subjectId: 'gone-sense' as SenseId, payload: { text: 'x' } })
+    const orphanSense = rawFact(world, {
+      kind: 'example',
+      subjectId: 'gone-sense' as SenseId,
+      payload: { sentence_id: 'gone-sentence' as SentenceId },
+    })
     await expect(reviewFact(world.deps, orphanSense.id, 't')).rejects.toThrow('does not exist')
     const notTranslatable = rawFact(world, {
       kind: 'translation',
       subjectId: river as unknown as FactId,
-      payload: { language: 'zh', of: 'example', text: '岸' },
+      payload: { language: 'zh', of: 'collocation', text: '岸' },
     })
-    await expect(reviewFact(world.deps, notTranslatable.id, 't')).rejects.toThrow('is not an example or a collocation')
+    await expect(reviewFact(world.deps, notTranslatable.id, 't')).rejects.toThrow('is not a collocation')
+    const orphanSentence = rawFact(world, {
+      kind: 'sentence_meaning',
+      subjectId: 'gone-sentence' as SentenceId,
+      payload: { gloss: 'Gone.' },
+    })
+    await expect(reviewFact(world.deps, orphanSentence.id, 't')).rejects.toThrow('does not exist')
   })
 
   it('reads a topic id that names a category as no topic, and fails on a leaf whose category is gone', async () => {
@@ -334,26 +350,38 @@ describe('a published phrases list', () => {
     const entry = world.entries.find((candidate) => candidate.lemma === lemma)
     return entry && world.work.get(entry.id)
   }
+  const idOf = (world: FakeWorld, lemma: string) =>
+    world.entries.find((candidate) => candidate.lemma === lemma)?.id as EntryId
 
-  it('admits its phrases as live entries of its headword’s batch, and lets dropped ones go [spec: facts/phrases-admit]', async () => {
+  it('admits its entry items as live entries of its headword’s batch, and lets dropped ones go [spec: facts/phrases-admit]', async () => {
     const world = fakeWorld()
     const give = await headword(world, 'give', [{ pos: 'verb', gloss: 'to hand something to someone' }])
     const { fact: list } = await submitFact(world.deps, agentA, {
       kind: 'phrases',
       subject_id: give.entry.id,
-      payload: { phrases: ['give up', 'give in'] },
+      payload: {
+        phrases: [
+          { type: 'phrasal_verb', text: 'give up' },
+          { type: 'phrasal_verb', text: 'give in' },
+          { type: 'saying', text: 'Give and take.' },
+        ],
+      },
     })
-    expect(admission(world, 'give up')).toBeUndefined()
+    expect(admission(world, 'give up')).toMatchObject({ live: false })
     await drainReviews(world)
     expect((await getFact(world.deps, list.id)).status).toBe('published')
     expect(admission(world, 'give up')).toMatchObject({ live: true, batch: 1 })
     expect(admission(world, 'give in')).toMatchObject({ live: true, batch: 1 })
+    // A saying admits nothing: it is a sentence.
+    expect(admission(world, 'Give and take.')).toBeUndefined()
+    // Jev was asked about each item by its type and text.
+    expect(world.decisionCalls.at(-1)?.questions.phrase_3).toContain('"Give and take." an established English saying')
 
     const up = await headword(world, 'up', [{ pos: 'adverb', gloss: 'towards a higher place' }])
     await submitFact(world.deps, agentA, {
       kind: 'phrases',
       subject_id: up.entry.id,
-      payload: { phrases: ['give up'] },
+      payload: { phrases: [{ type: 'phrasal_verb', entry_id: idOf(world, 'give up') }] },
     })
     await drainReviews(world)
 
@@ -361,7 +389,7 @@ describe('a published phrases list', () => {
       kind: 'phrases',
       subject_id: give.entry.id,
       supersedes_id: list.id,
-      payload: { phrases: ['give out'] },
+      payload: { phrases: [{ type: 'phrasal_verb', text: 'give out' }] },
     })
     await drainReviews(world)
     expect((await getFact(world.deps, list.id)).status).toBe('superseded')
@@ -371,7 +399,7 @@ describe('a published phrases list', () => {
     expect(admission(world, 'give up')).toMatchObject({ live: true })
   })
 
-  it('admits phrases of a headword outside any batch in batch 0, and skips a dropped phrase with no entry', async () => {
+  it('admits phrases of a headword outside any batch in batch 0', async () => {
     const world = fakeWorld()
     const take = await world.deps.nodes.insertEntry({
       id: world.deps.ids.entry(),
@@ -379,40 +407,84 @@ describe('a published phrases list', () => {
       createdBy: 'admin:admin-1' as never,
       createdAt: '2026-01-01T00:00:00.000Z',
     })
+    const [off, over] = await world.deps.nodes.ensureEntries(
+      ['take off', 'take over'] as never,
+      'admin:admin-1' as never,
+      '2026-01-01T00:00:00.000Z',
+    )
     const original = rawFact(world, {
       kind: 'phrases',
       subjectId: take.id,
       status: 'published',
-      payload: { phrases: ['take off'] },
+      payload: { phrases: [{ type: 'phrasal_verb', entry_id: off?.id as EntryId }] },
     })
     const correction = rawFact(world, {
       kind: 'phrases',
       subjectId: take.id,
       supersedesId: original.id,
-      payload: { phrases: ['take over'] },
+      payload: { phrases: [{ type: 'phrasal_verb', entry_id: over?.id as EntryId }] },
     })
     await expect(reviewFact(world.deps, correction.id, 't')).resolves.toBe('published')
     expect(admission(world, 'take over')).toMatchObject({ live: true, batch: 0 })
-    expect(admission(world, 'take off')).toBeUndefined()
+    expect(admission(world, 'take off')).toMatchObject({ live: false })
   })
 
   it('finishes the admission of a published list that names phrases with no live entry [spec: facts/phrases-admit]', async () => {
     const world = fakeWorld()
     const give = await headword(world, 'give', [{ pos: 'verb', gloss: 'to hand something to someone' }])
+    const [up, inn] = await world.deps.nodes.ensureEntries(
+      ['give up', 'give in'] as never,
+      'agent:agent-a' as never,
+      '2026-01-01T00:00:00.000Z',
+    )
     // Published, but its admission never ran: the list's status was written before it failed.
     rawFact(world, {
       kind: 'phrases',
       subjectId: give.entry.id,
       status: 'published',
-      payload: { phrases: ['give up', 'give in'] },
+      payload: {
+        phrases: [
+          { type: 'phrasal_verb', entry_id: up?.id as EntryId },
+          { type: 'phrasal_verb', entry_id: inn?.id as EntryId },
+        ],
+      },
     })
-    expect(admission(world, 'give up')).toBeUndefined()
+    expect(admission(world, 'give up')).toMatchObject({ live: false })
 
     await expect(reconcilePhraseLists(world.deps)).resolves.toBe(1)
     expect(admission(world, 'give up')).toMatchObject({ live: true, batch: 1 })
     expect(admission(world, 'give in')).toMatchObject({ live: true, batch: 1 })
     expect(await world.deps.work.countStale()).toBe(0)
     await expect(reconcilePhraseLists(world.deps)).resolves.toBe(0)
+  })
+
+  it('reviews a sentence translation and meaning with where the sentence is used [spec: facts/sentence-meaning]', async () => {
+    const world = fakeWorld()
+    const give = await headword(world, 'give', [{ pos: 'verb', gloss: 'to hand something to someone' }])
+    await submitFact(world.deps, agentA, {
+      kind: 'phrases',
+      subject_id: give.entry.id,
+      payload: { phrases: [{ type: 'saying', text: 'Give and take.' }] },
+    })
+    await drainReviews(world)
+    const sentence = world.sentences[0]?.id as SentenceId
+    const meaning = await submitted(world, {
+      kind: 'sentence_meaning',
+      subject_id: sentence,
+      payload: { gloss: 'Each side should give something.' },
+    })
+    world.answerDecision('jev', scores(0.2, 'jev-test'))
+    await expect(reviewFact(world.deps, meaning.id, 't')).resolves.toBe('published')
+    expect(world.llmCalls.at(-1)?.user).toContain('the right dictionary gloss of the English saying "Give and take."')
+    const translation = await submitted(world, {
+      kind: 'translation',
+      subject_id: sentence,
+      payload: { language: 'zh', of: 'sentence', text: '有来有往。' },
+    })
+    await expect(reviewFact(world.deps, translation.id, 't')).resolves.toBe('published')
+    expect((await getFact(world.deps, translation.id)).review?.context).toMatchObject({
+      subject: { text: 'Give and take.', sense: null, sayingOf: ['give'], meaning: 'Each side should give something.' },
+    })
   })
 })
 

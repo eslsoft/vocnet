@@ -142,7 +142,25 @@ Feature: Catalog
     Given CEFR headwords of several levels, one of them already an entry, and the single letters "a", "I", and "x"
     When an admin runs the core import a few entries at a time until nothing remains, and once more
     Then each headword without an entry becomes a live batch 1 entry the admin created, lowest level first, nothing is queued for review, and the reopened blocked slots are those of the admitted words
-    And "x" is skipped and reported, the existing entry is left as it was, and the last run creates nothing
+    And "x" is skipped and reported under its rule, the existing entry is left as it was, and the last run creates nothing
+
+  @catalog/import-filter @usecase
+  Scenario: A headword import filters its candidates before it admits them
+    Given candidates with contractions and clitics, lemmas with digits or dots, regular inflections of a candidate or an entry, and American spellings of a British candidate or entry
+    When the import runs
+    Then each is skipped and reported under its rule, an inflection the reference list lists stays a headword, a short word never pairs with another ("floor" and "flour"), and an American spelling merged into a British headword the call creates is recorded on it as a curated variant form
+
+  @catalog/retire @usecase
+  Scenario: A curator takes an admitted entry off the wordlist
+    Given a live headword, and a phrase a published phrases list names
+    When a producer and then a curator retire the headword, the curator retires it again, retires an unknown id, and retires the listed phrase
+    Then the producer is forbidden, the headword stops being live and the repeat changes nothing, the unknown id is not found, the listed phrase is a conflict, and admitting the headword again makes it live
+
+  @catalog/retire-api @api
+  Scenario: Retiring an entry over HTTP
+    Given a live headword and a phrase a published list names
+    When a producer and a curator post to /manage/v1/entries/{id}/retire
+    Then the producer gets 403, the curator 200 with the entry retired, which has no public entry and no claimable work, an unknown id 404, and the listed phrase 409
 
   @catalog/import-core-api @api
   Scenario: Only an admin runs the core import over HTTP
@@ -161,7 +179,13 @@ Feature: Catalog
   Scenario: Management sees every fact in every status
     Given a live entry with a pending inventory and pending facts
     When an agent requests the entry through the management API
-    Then every fact about the entry, its senses, and their examples and collocations is returned with its status, with whether the entry is live, its batch, its completeness, credibility, and slot counts
+    Then every fact about the entry, its senses, their collocations, and its sentences is returned with its status, with whether the entry is live, its batch, its phrase type, its completeness, credibility, and slot counts
+
+  @catalog/view-texts @domain
+  Scenario: A view shows each id it names with its text
+    Given an entry with examples and a phrases list naming entries and sayings
+    When its management view is built
+    Then each example carries its sentence's text beside the id and each phrases item its lemma or text, while a node the snapshot did not read keeps its id alone, and the stored payloads hold ids only
 
   @catalog/manage-entry-list @api
   Scenario: Management lists entries in every status with their progress
@@ -183,9 +207,10 @@ Feature: Catalog
 
   @catalog/new-fields @domain
   Scenario: The entry document shows syllables, form objects, and the translations of each item
-    Given an entry with published syllables, a form with a pronunciation, and published translations of a sense, an example, and a collocation, and a translation of a superseded example
+    Given an entry with published syllables, a form with a pronunciation, published translations of a sense, an example's sentence, and a collocation, a translation of a superseded example's sentence, and a published phrases list with phrase entries and a saying
     When its document is projected and read
     Then the entry has its syllables, each form is an object with irregular and its pronunciation, and each sense, example, and collocation shows its own translation in the read's language, every one with lang=all, none without a language, and the superseded example's translation nowhere
+    And each example carries its sentence_id, a phrase entry its phrase_type, and the headword's phrases are grouped under the sense they are filed under, then as phrasal verbs, idioms and fixed phrases, and compounds, with the sayings and their meaning and translation
 
   @catalog/new-fields-api @api
   Scenario: The new fields are validated and served through the API

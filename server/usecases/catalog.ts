@@ -4,6 +4,7 @@ import {
   managedEntryView,
   type StoredEntry,
 } from '@server/domain/catalog-view'
+import { britishSpelling, filterHeadwords, type HeadwordFilter, regularBases } from '@server/domain/headword-import'
 import type { EntryNode } from '@server/domain/nodes'
 import { principalRef } from '@server/domain/principal'
 import {
@@ -14,10 +15,11 @@ import {
   shapeEntry,
   shapeSenseDetail,
   shapeSenseSummary,
+  shapeSentence,
   shapeSummary,
 } from '@server/domain/public-view'
 import { searchTerms } from '@server/domain/search'
-import { isLetterOfTheAlphabet, type Lemma, normalizeTerm } from '@server/domain/term'
+import { type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
   EntrySort,
@@ -26,15 +28,16 @@ import type {
   NodeLocation,
   PublicEntry,
   PublicSenseDetail,
+  PublicSentence,
   SearchHit,
   WordSummary,
 } from '@shared/catalog'
-import type { EntryId, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, Pos, RelationDomain, SenseId, SentenceId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { requireCurator } from './access'
 import type { Deps } from './deps'
-import { NotFoundError } from './errors'
-import type { Actor } from './facts'
+import { ConflictError, NotFoundError } from './errors'
+import { type Actor, submitFact } from './facts'
 import type { EntrySummaryFilter, Page, PageRequest } from './ports'
 import { readPublicView, type ViewDeps } from './public-view'
 import { refreshEntries } from './refresh'
@@ -78,20 +81,59 @@ async function admitHeadwords(
 
 /**
  * Admits the next `limit` headwords of the CEFR profiles that no entry has yet, lowest level
- * first, as batch 1. Single letters other than "a" and "I" are skipped and listed. Repeating it
- * continues where the last call stopped and admits nothing once done.
+ * first, as batch 1, after the import filter (`filterHeadwords`): what it skipped is reported by
+ * rule, and an American spelling merged into a British headword this call creates is recorded on
+ * it as a curated variant form. Repeating it continues where the last call stopped and admits
+ * nothing once done.
  */
 export async function importCoreEntries(
   deps: WriteDeps,
   actor: Actor,
   limit: number,
-): Promise<{ created: Lemma[]; skipped: Lemma[]; remaining: number }> {
+): Promise<{ created: Lemma[]; skipped: HeadwordFilter['skipped']; remaining: number }> {
   requireCurator(actor.principal)
   const missing = await deps.reference.listCefrLemmasWithoutEntry()
-  const core = missing.filter((lemma) => !isLetterOfTheAlphabet(lemma))
-  const next = core.slice(0, limit)
-  await admitHeadwords(deps, actor, next, CORE_BATCH)
-  return { created: next, skipped: missing.filter(isLetterOfTheAlphabet), remaining: core.length - next.length }
+  // Every candidate is a CEFR headword, so the list lists each; only the bases and British
+  // spellings are looked up among the entries.
+  const related = [...new Set(missing.flatMap((lemma) => [...regularBases(lemma), britishSpelling(lemma) ?? []]))]
+  const entries = new Set<string>(
+    (await deps.nodes.findEntriesByLemmas(related as Lemma[])).map((entry) => entry.lemma),
+  )
+  const { admit, skipped } = filterHeadwords(missing, { isEntry: (lemma) => entries.has(lemma), listed: () => true })
+  const next = admit.slice(0, limit)
+  const admitted = await admitHeadwords(deps, actor, next, CORE_BATCH)
+  for (const { lemma, of } of skipped.variants) {
+    const british = admitted.find((entry) => entry.lemma === of)
+    if (!british) continue
+    await submitFact(deps, actor, {
+      kind: 'form',
+      subject_id: british.id,
+      payload: { form: lemma, type: 'variant' },
+      curation: { reason: `The import merged the American spelling ${JSON.stringify(lemma)} into this entry.` },
+    })
+  }
+  return { created: next, skipped, remaining: admit.length - next.length }
+}
+
+/** Takes an admitted entry off the wordlist: it stops being live, so it has no work and shows nowhere. */
+export async function retireEntry(
+  deps: WriteDeps,
+  actor: Actor,
+  id: EntryId,
+): Promise<{ entry: EntryNode; retired: boolean }> {
+  requireCurator(actor.principal)
+  const entry = await deps.nodes.findEntry(id)
+  if (!entry) throw new NotFoundError(`Entry ${id} not found.`)
+  const lists = await deps.nodes.listNamingLists(id)
+  if (lists.length > 0) {
+    throw new ConflictError(
+      `A published phrases list (${lists.join(', ')}) names ${JSON.stringify(entry.lemma)} as a phrase; correct that list instead.`,
+    )
+  }
+  if (!(await deps.nodes.admission(id)).live) return { entry, retired: false }
+  await deps.nodes.setPhrasesLive([], [id], null)
+  await refreshEntries(deps, [id])
+  return { entry, retired: true }
 }
 
 /** The headword batch the CEFR profiles are. */
@@ -146,6 +188,57 @@ export async function getPublicSense(
   const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant)
   if (!found || !sense) throw new NotFoundError(`Sense ${id} not found.`)
   return { versions: [found.view.digest], read: () => sense }
+}
+
+/**
+ * A public sentence: a published example of a public sense, or a saying of a public headword's
+ * published phrases list. What it shows is read from those public documents, so it never says more
+ * than they do; anything else is not found.
+ */
+export async function getPublicSentence(
+  deps: ViewDeps,
+  id: SentenceId,
+  variant: ReadVariant,
+): Promise<VersionedRead<PublicSentence>> {
+  const sentence = await deps.nodes.findSentence(id)
+  if (!sentence) throw new NotFoundError(`Sentence ${id} not found.`)
+  const uses = await deps.nodes.listSentenceUses(id)
+  const versions: string[] = []
+  const examplesOf: Array<{ lemma: string; sense_id: SenseId }> = []
+  const sayingOf: string[] = []
+  let translations: Record<string, string> | null = null
+  let meaning: string | null = null
+  for (const use of uses.examples.filter((example) => example.status === 'published')) {
+    const found = await readPublicView(deps, () => deps.publicViews.findBySense(use.senseId))
+    const document = found && readStored<StoredEntry>(found.view.json)
+    const sense = document?.meanings.flatMap((item) => item.senses).find((candidate) => candidate.id === use.senseId)
+    const example = sense?.examples.find((candidate) => candidate.sentence_id === id)
+    if (!found || !document || !sense || !example) continue
+    versions.push(found.view.digest)
+    examplesOf.push({ lemma: document.lemma, sense_id: sense.id })
+    translations ??= example.translations
+  }
+  for (const use of uses.sayings.filter((saying) => saying.status === 'published')) {
+    const found = await readPublicView(deps, () => deps.publicViews.findByLemma(use.lemma))
+    const document = found && readStored<StoredEntry>(found.view.json)
+    const saying = document?.sayings.find((candidate) => candidate.sentence_id === id)
+    if (!found || !document || !saying || sayingOf.includes(document.lemma)) continue
+    versions.push(found.view.digest)
+    sayingOf.push(document.lemma)
+    translations ??= saying.translations
+    meaning ??= saying.meaning
+  }
+  if (versions.length === 0) throw new NotFoundError(`Sentence ${id} not found.`)
+  const record = {
+    id,
+    text: sentence.text,
+    source: sentence.source,
+    meaning,
+    translations: translations ?? {},
+    examplesOf,
+    sayingOf,
+  }
+  return { versions, read: () => shapeSentence(record, variant) }
 }
 
 /**

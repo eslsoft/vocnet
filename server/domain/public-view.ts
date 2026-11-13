@@ -1,8 +1,10 @@
 import type {
   FormMatch,
   PublicEntry,
+  PublicPhrases,
   PublicSense,
   PublicSenseDetail,
+  PublicSentence,
   Relations,
   ReviewMeta,
   SenseSummary,
@@ -49,7 +51,7 @@ export interface PublicViewRecord {
 
 /** What a read joins from other entries' views into an entry document. */
 export interface EntryLinks {
-  /** Summaries of the public multiword entries that have the lemma as a word, in lemma order. */
+  /** Summaries of the public phrase entries the headword's published list names. */
   phrases: StoredSummary[]
   /** Summaries of the other public entries sharing a base or root, in lemma order. */
   family: StoredSummary[]
@@ -259,6 +261,35 @@ function shapeSense(sense: StoredSense, variant: ReadVariant): PublicSense {
   }
 }
 
+/**
+ * The headword's phrases as a read shows them: each public phrase entry in list order, under the
+ * sense it is filed under, else by its type; then the sayings.
+ */
+function shapePhrases(document: StoredEntry, summaries: readonly StoredSummary[], variant: ReadVariant): PublicPhrases {
+  const byLemma = new Map(summaries.map((summary) => [summary.lemma, summary]))
+  const listed = document.phrases.flatMap((phrase) => {
+    const summary = byLemma.get(phrase.lemma)
+    return summary ? [{ ...phrase, summary: shapeSummary(summary, variant) }] : []
+  })
+  const senseOrder = document.meanings.flatMap((meaning) => meaning.senses.map((sense) => sense.id))
+  const unfiled = listed.filter((phrase) => phrase.sense_id === null || !senseOrder.includes(phrase.sense_id))
+  const ofType = (...types: string[]) =>
+    unfiled.filter((phrase) => types.includes(phrase.type)).map((phrase) => phrase.summary)
+  return {
+    by_sense: senseOrder.flatMap((senseId) => {
+      const phrases = listed.filter((phrase) => phrase.sense_id === senseId).map((phrase) => phrase.summary)
+      return phrases.length > 0 ? [{ sense_id: senseId, phrases }] : []
+    }),
+    phrasal_verbs: ofType('phrasal_verb'),
+    idioms: ofType('idiom', 'fixed_phrase'),
+    compounds: ofType('compound'),
+    sayings: document.sayings.map(({ translations, ...saying }) => {
+      const translation = exampleTranslationIn(translations, variant.lang)
+      return { ...saying, ...(translation === undefined ? {} : { translation }) }
+    }),
+  }
+}
+
 /** The entry document as a read asks for it, with what other entries supply joined in. */
 export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: ReadVariant): PublicEntry {
   const publicParts = new Set(links.publicParts)
@@ -288,7 +319,8 @@ export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: Re
       senses: meaning.senses.map((sense) => shapeSense(sense, variant)),
       ...(variant.review ? { review: meaning.review } : {}),
     })),
-    phrases: summaries(links.phrases),
+    phrase_type: document.phrase_type,
+    phrases: shapePhrases(document, links.phrases, variant),
     ...(variant.review ? { review: document.review } : {}),
   }
 }
@@ -325,4 +357,30 @@ export function formMatches(
     byLemma.set(row.summary.lemma, match)
   }
   return [...byLemma.values()]
+}
+
+/** What a sentence read joins: the sentence, its published meaning and translations, and where it shows. */
+export interface SentenceRecord {
+  id: PublicSentence['id']
+  text: string
+  source: string | null
+  meaning: string | null
+  translations: ByLanguage<string>
+  examplesOf: Array<{ lemma: string; sense_id: SenseId }>
+  sayingOf: string[]
+}
+
+/** A public sentence in the read's language. */
+export function shapeSentence(record: SentenceRecord, variant: ReadVariant): PublicSentence {
+  const translation = exampleTranslationIn(record.translations, variant.lang)
+  return {
+    lang: variant.lang,
+    id: record.id,
+    text: record.text,
+    source: record.source,
+    meaning: record.meaning,
+    ...(translation === undefined ? {} : { translation }),
+    examples_of: record.examplesOf,
+    saying_of: record.sayingOf,
+  }
 }

@@ -42,6 +42,20 @@ export const senses = sqliteTable(
   ],
 )
 
+/**
+ * Sentences: examples and sayings, a node like `entries`. `text_key` (`textKey` of the text) is
+ * unique, so a submission naming a sentence by text finds the existing row or creates one.
+ * `source` is free-text provenance (a book or film title); null means a producer made it up.
+ */
+export const sentences = sqliteTable('sentences', {
+  id: text('id').primaryKey(),
+  text: text('text').notNull(),
+  textKey: text('text_key').notNull().unique(),
+  source: text('source'),
+  createdBy: text('created_by').notNull(),
+  createdAt: text('created_at').notNull(),
+})
+
 export const facts = sqliteTable(
   'facts',
   {
@@ -567,6 +581,7 @@ export const lemmaCefr = sqliteTable(
 )
 
 export type FactRow = typeof facts.$inferSelect
+export type SentenceRow = typeof sentences.$inferSelect
 export type TicketRow = typeof tickets.$inferSelect
 export type AgentRow = typeof agents.$inferSelect
 export type TopicRow = typeof topics.$inferSelect

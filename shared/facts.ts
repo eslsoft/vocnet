@@ -13,6 +13,8 @@ export const senseIdSchema = z.uuid().brand<'SenseId'>()
 export type SenseId = z.infer<typeof senseIdSchema>
 export const factIdSchema = z.uuid().brand<'FactId'>()
 export type FactId = z.infer<typeof factIdSchema>
+export const sentenceIdSchema = z.uuid().brand<'SentenceId'>()
+export type SentenceId = z.infer<typeof sentenceIdSchema>
 export const topicIdSchema = z
   .string()
   .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, 'A topic id is lowercase words joined by hyphens.')
@@ -236,11 +238,24 @@ export const collocationPatternSchema = z
     'noun_preposition',
     'adjective_preposition',
     'phrase',
+    'subject_verb',
+    'verb_adjective',
+    'passive',
   ])
-  .meta({ id: 'CollocationPattern', description: 'The word classes the collocation combines, in order.' })
+  .meta({
+    id: 'CollocationPattern',
+    description:
+      'The word classes the collocation combines, in order. subject_verb: a noun subject with its verb ("the room spins"). verb_adjective: a verb with an adjective that completes it ("go bankrupt", "squash flat"). passive: a past participle with its by-phrase ("tormented by guilt"). A verb with a particle after it is verb_adverb ("tack down"); a verb, preposition, and noun is verb_preposition ("return to one\'s birthplace").',
+  })
 export type CollocationPattern = z.infer<typeof collocationPatternSchema>
 
 const text = (max: number) => z.string().trim().min(1).max(max)
+
+/** What a view adds to a stored id so a reader needs no further read: the sentence's text, the entry's lemma. */
+const viewText = z.string().optional().meta({
+  description:
+    "Views only: the named sentence's text or entry's lemma. Never stored; a submission names the node by id or by text.",
+})
 
 const GLOSS_START = /^[\p{Lu}\p{N}"'“‘(]/u
 const GLOSS_EXAMPLE_MARKER = /\b(as in|e\.g\.|for example|for instance)(?=\W|$)/i
@@ -485,12 +500,78 @@ const sensesPayloadSchema = z.strictObject({
 /** The most phrases one headword lists. */
 export const MAX_HEADWORD_PHRASES = 200
 
+export const phraseTypeSchema = z.enum(['phrasal_verb', 'compound', 'idiom', 'fixed_phrase', 'saying']).meta({
+  id: 'PhraseType',
+  description:
+    'phrasal_verb: a verb with a particle ("give up"). compound: a fixed compound naming one thing ("bank account"). idiom: a phrase whose meaning is not the sum of its words ("put the cart before the horse"). fixed_phrase: a set prepositional or grammatical phrase ("at all", "in front of"). saying: a complete sentence, a proverb, maxim, or saying ("look before you leap"); it is a sentence, never an entry.',
+})
+export type PhraseType = z.infer<typeof phraseTypeSchema>
+
+/** The phrase types that name an entry; a saying names a sentence. */
+export const ENTRY_PHRASE_TYPES = ['phrasal_verb', 'compound', 'idiom', 'fixed_phrase'] as const
+export const entryPhraseTypeSchema = z.enum(ENTRY_PHRASE_TYPES)
+export type EntryPhraseType = z.infer<typeof entryPhraseTypeSchema>
+
+const phraseSenseSchema = senseIdSchema.optional().meta({
+  description:
+    "A sense of the headword's current inventory the phrase plainly belongs to (a compound or set phrase built on that sense). Idioms, phrasal verbs, and phrases tied to no sense omit it.",
+})
+
+const submitEntryPhraseSchema = z.strictObject({
+  type: entryPhraseTypeSchema,
+  entry_id: entryIdSchema,
+  sense_id: phraseSenseSchema,
+})
+const submitSayingSchema = z.strictObject({ type: z.literal('saying'), sentence_id: sentenceIdSchema })
+const entryPhraseSchema = submitEntryPhraseSchema.extend({ text: viewText }).meta({ id: 'PhraseEntryItem' })
+const sayingSchema = submitSayingSchema.extend({ text: viewText }).meta({ id: 'PhraseSayingItem' })
+
+export const phraseItemSchema = z.union([entryPhraseSchema, sayingSchema]).meta({
+  id: 'PhraseItem',
+  description: 'One phrase of the headword: a saying names a sentence, every other type an entry.',
+})
+export type PhraseItem = z.infer<typeof phraseItemSchema>
+export type EntryPhraseItem = z.infer<typeof entryPhraseSchema>
+export type SayingItem = z.infer<typeof sayingSchema>
+
 const phrasesPayloadSchema = z.strictObject({
-  phrases: z.array(text(100)).min(1).max(MAX_HEADWORD_PHRASES).meta({
+  phrases: z.array(phraseItemSchema).min(1).max(MAX_HEADWORD_PHRASES).meta({
     description:
-      "Every phrase of the headword a learner's dictionary prints as its phrase, phrasal verb, or idiom, or whose meaning is not the sum of its words: multiword lemmas, each its own entry once this list publishes.",
+      "Every phrase of the headword a learner's dictionary prints as its phrasal verb, compound, idiom, fixed phrase, or saying, each typed and named by id.",
+  }),
+  migrated: z.literal(true).optional().meta({
+    description:
+      'Stored only by the sentences migration on a list converted from untyped phrases: its types are provisional, so it types no phrase entry and fills no phrases slot until a typed correction supersedes it. Never submitted.',
   }),
 })
+
+/** A saying is a complete sentence: it starts with a capital letter or a quote and has at least two words. */
+const SENTENCE_START = /^[\p{Lu}"'“‘]/u
+export const isCompleteSentence = (text: string) => SENTENCE_START.test(text.trim()) && /\S\s+\S/.test(text.trim())
+export const SAYING_ISSUE =
+  'A saying is a complete sentence: it starts with a capital letter and has at least two words ("Look before you leap.").'
+
+const phraseText = text(100).refine((lemma) => /\s/.test(lemma), 'A phrase has at least two words.')
+const sayingText = text(500).refine(isCompleteSentence, SAYING_ISSUE)
+
+/** A submitted phrase names its entry or sentence by id, or by its text for the server to resolve. */
+const submitPhraseItemSchema = z.union([
+  submitEntryPhraseSchema,
+  z.strictObject({
+    type: entryPhraseTypeSchema,
+    text: phraseText.meta({
+      description:
+        'The phrase as its entry spells it: the entry with exactly this lemma, created (not live) when there is none.',
+    }),
+    sense_id: phraseSenseSchema,
+  }),
+  submitSayingSchema,
+  z.strictObject({
+    type: z.literal('saying'),
+    text: sayingText.meta({ description: 'The saying: the sentence with this text, created when there is none.' }),
+  }),
+])
+export type SubmitPhraseItem = z.infer<typeof submitPhraseItemSchema>
 
 /**
  * The languages the dataset collects translations in, and so the only ones a translation is
@@ -505,10 +586,10 @@ export const servedLanguageSchema = z
   })
   .meta({ id: 'ServedLanguage' })
 
-export const translatedSchema = z.enum(['sense', 'example', 'collocation']).meta({
+export const translatedSchema = z.enum(['sense', 'sentence', 'collocation']).meta({
   id: 'Translated',
   description:
-    "What a translation translates: a sense (its learner's-dictionary equivalent; subject_id is the sense), an example, or a collocation (subject_id is that fact).",
+    "What a translation translates: a sense (its learner's-dictionary equivalent; subject_id is the sense), a sentence (an example or a saying; subject_id is the sentence), or a collocation (subject_id is that fact).",
 })
 export type Translated = z.infer<typeof translatedSchema>
 
@@ -525,7 +606,27 @@ const formPayloadSchema = z.strictObject({
   accent: accentSchema.optional().meta({ description: 'The accent of `ipa`; given with it, never alone.' }),
 })
 
-const examplePayloadSchema = z.strictObject({ text: text(500) })
+const storedExampleSchema = z.strictObject({
+  sentence_id: sentenceIdSchema.meta({ description: 'The sentence that illustrates the sense.' }),
+})
+const examplePayloadSchema = storedExampleSchema.extend({ text: viewText })
+
+/** A submitted example names its sentence by id, or by its text for the server to find or create. */
+const submitExamplePayloadSchema = z.union([
+  storedExampleSchema,
+  z.strictObject({
+    text: text(500).meta({
+      description: 'The example sentence: the sentence with this text, created when there is none.',
+    }),
+  }),
+])
+
+const sentenceMeaningPayloadSchema = z.strictObject({
+  gloss: text(500).meta({
+    description:
+      'What the saying means and when it is said, in dictionary style: its actual meaning, not the literal one, and never the saying itself.',
+  }),
+})
 
 const translationPayloadSchema = z.strictObject({
   language: servedLanguageSchema,
@@ -575,6 +676,7 @@ export const factPayloadSchemas = {
   }),
   syllables: syllablesPayloadSchema,
   phrases: phrasesPayloadSchema,
+  sentence_meaning: sentenceMeaningPayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -601,17 +703,14 @@ const submitPayloadSchemas = {
       const ids = senses.flatMap((sense) => (sense.id ? [sense.id] : []))
       return new Set(ids).size === ids.length
     }, 'An inventory names each existing sense once.'),
+  example: submitExamplePayloadSchema,
   phrases: z
-    .strictObject({
-      phrases: z
-        .array(text(100).refine((lemma) => /\s/.test(lemma), 'A phrase has at least two words.'))
-        .min(1)
-        .max(MAX_HEADWORD_PHRASES),
-    })
-    .refine(
-      ({ phrases }) => new Set(phrases.map((phrase) => phrase.toLowerCase())).size === phrases.length,
-      'A phrase list names each phrase once.',
-    ),
+    .strictObject({ phrases: z.array(submitPhraseItemSchema).min(1).max(MAX_HEADWORD_PHRASES) })
+    .refine(({ phrases }) => {
+      const names = phrases.map((item) => ('text' in item ? `text:${item.text.toLowerCase()}` : JSON.stringify(item)))
+      return new Set(names).size === names.length
+    }, 'A phrase list names each phrase once.'),
+  sentence_meaning: z.strictObject({ gloss: glossSchema }),
   pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }).refine(usIpaFits, US_IPA_ISSUE),
   form: formPayloadSchema
     .extend({ ipa: ipaSchema.optional() })
@@ -664,6 +763,8 @@ const submitPayloadSchemas = {
   }),
 }
 
+export type SubmitPayloads = { [K in FactKind]: z.infer<(typeof submitPayloadSchemas)[K]> }
+
 export const factKindSchema = z
   .enum([
     'senses',
@@ -678,6 +779,7 @@ export const factKindSchema = z
     'collocation',
     'syllables',
     'phrases',
+    'sentence_meaning',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -747,7 +849,7 @@ function submitVariant<K extends FactKind>(kind: K) {
     kind: z.literal(kind),
     subject_id: z.uuid().meta({
       description:
-        'The node the fact is about: the entry, a sense, or for a translation of an example or collocation that fact; the kind decides which.',
+        'The node the fact is about: the entry, a sense, a sentence (a translation of a sentence, a sentence meaning), or for a translation of a collocation that fact; the kind decides which.',
     }),
     supersedes_id: factIdSchema.optional().meta({
       description:
@@ -772,6 +874,7 @@ export const submitFactInputSchema = z
     submitVariant('collocation'),
     submitVariant('syllables'),
     submitVariant('phrases'),
+    submitVariant('sentence_meaning'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -781,7 +884,10 @@ function factVariant<K extends FactKind>(kind: K) {
     id: factIdSchema,
     kind: z.literal(kind),
     subject_id: z.uuid(),
-    object_id: senseIdSchema.nullable(),
+    object_id: z.uuid().nullable().meta({
+      description:
+        'The node the fact points at besides its subject: a relation its target sense, an example its sentence.',
+    }),
     payload: factPayloadSchemas[kind],
     status: factStatusSchema,
     supersedes_id: factIdSchema.nullable(),
@@ -806,6 +912,7 @@ export const factSchema = z
     factVariant('collocation'),
     factVariant('syllables'),
     factVariant('phrases'),
+    factVariant('sentence_meaning'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

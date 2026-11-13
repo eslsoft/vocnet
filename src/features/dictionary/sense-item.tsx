@@ -76,7 +76,7 @@ export function SenseItem({
         {sense.examples.length > 0 ? (
           <ul aria-label={t('entry.examples')} className="flex flex-col gap-2">
             {sense.examples.map((example) => (
-              <li key={example.text} className="border-border border-l-2 pl-3">
+              <li key={example.sentence_id} className="border-border border-l-2 pl-3">
                 <p className="text-foreground/90 italic">{example.text}</p>
                 {exampleTranslation(example.translation) ? (
                   <p lang="zh-CN" className="text-muted-foreground text-sm">

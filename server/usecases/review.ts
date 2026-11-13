@@ -20,10 +20,10 @@ import {
   type Opinion,
   scoreOf,
 } from '@server/domain/review-chain'
-import type { Lemma } from '@server/domain/term'
 import type { TopicView } from '@server/domain/topics'
-import type { EntryId, FactId, FactKind, FactStatus, Review, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactStatus, Review, SenseId, SentenceId, TopicId } from '@shared/facts'
 import type { Deps } from './deps'
+import { namedNodesOf } from './named'
 import { refreshEntries } from './refresh'
 
 type ReviewDeps = Pick<
@@ -66,10 +66,24 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
   sense: (deps, id) => senseContext(deps, id as SenseId),
   fact: async (deps, id) => {
     const fact = await deps.facts.find(id as FactId)
-    if (!fact || (fact.kind !== 'example' && fact.kind !== 'collocation')) {
-      throw new Error(`Fact ${id} a translation translates is not an example or a collocation.`)
-    }
+    if (fact?.kind !== 'collocation') throw new Error(`Fact ${id} a translation translates is not a collocation.`)
     return { kind: fact.kind, text: fact.payload.text, sense: await senseContext(deps, fact.subjectId as SenseId) }
+  },
+  sentence: async (deps, id) => {
+    const sentence = await deps.nodes.findSentence(id as SentenceId)
+    if (!sentence) throw new Error(`Sentence ${id} referenced by a fact does not exist.`)
+    const [uses, meanings] = await Promise.all([
+      deps.nodes.listSentenceUses(sentence.id),
+      deps.facts.listLive('sentence_meaning', sentence.id),
+    ])
+    const [example] = uses.examples
+    const meaning = meanings.find((fact) => fact.status === 'published') ?? meanings[0]
+    return {
+      text: sentence.text,
+      sense: example ? await senseContext(deps, example.senseId) : null,
+      sayingOf: [...new Set(uses.sayings.map((saying) => saying.lemma as string))],
+      meaning: meaning?.kind === 'sentence_meaning' ? meaning.payload.gloss : null,
+    }
   },
 }
 
@@ -94,6 +108,7 @@ async function loadContext<K extends FactKind>(
     subject: subject as SubjectViews[SubjectTypeOf[K]],
     target: target ? await senseContext(deps, target) : null,
     topic: topic ? await topicView(deps, topic) : null,
+    named: await namedNodesOf(deps, fact as Fact),
   }
 }
 
@@ -173,22 +188,21 @@ export interface Decision {
   review?: Review
 }
 
+/** The entries a phrases list names as entry items; a saying admits nothing. */
+const entryItems = (list: FactOf<'phrases'> | null): EntryId[] =>
+  (list?.payload.phrases ?? []).flatMap((item) => (item.type === 'saying' ? [] : [item.entry_id]))
+
 /**
- * Admits the phrases a published phrases list names, in its headword's batch, and lets the phrases
- * the list it replaces dropped go, unless another published list still names them.
+ * Admits the entries a published phrases list names as entry items, in its headword's batch, and
+ * lets the entries the list it replaces dropped go, unless another published list still names them.
  */
-async function admitPhrases(deps: DecisionDeps, list: FactOf<'phrases'>, at: string): Promise<EntryId[]> {
+async function admitPhrases(deps: DecisionDeps, list: FactOf<'phrases'>): Promise<EntryId[]> {
   const head = await deps.nodes.admission(list.subjectId)
-  const admitted = await deps.nodes.admit(list.payload.phrases as Lemma[], head.batch ?? 0, list.author, at)
+  const live = entryItems(list)
   const original = list.supersedesId ? ((await deps.facts.find(list.supersedesId)) as FactOf<'phrases'> | null) : null
-  const kept = new Set(list.payload.phrases)
-  const dropped = (original?.payload.phrases ?? []).filter((phrase) => !kept.has(phrase))
-  const droppedEntries = (
-    await Promise.all(dropped.map((lemma) => deps.nodes.findEntryByLemma(lemma as Lemma)))
-  ).flatMap((entry) => (entry ? [entry.id] : []))
-  const live = admitted.map((entry) => entry.id)
-  await deps.nodes.setPhrasesLive(live, droppedEntries, head.batch)
-  return [...live, ...droppedEntries]
+  const dropped = entryItems(original).filter((id) => !live.includes(id))
+  await deps.nodes.setPhrasesLive(live, dropped, head.batch ?? 0)
+  return [...live, ...dropped]
 }
 
 /**
@@ -208,7 +222,7 @@ export async function recordDecision(
   const applied = await deps.facts.transition({ id: fact.id, from, to, at, review, supersede })
   if (!applied) return false
   // The phrases a published list admits or drops get or lose their items in this request.
-  const phrases = publishes && fact.kind === 'phrases' ? await admitPhrases(deps, fact, at) : []
+  const phrases = publishes && fact.kind === 'phrases' ? await admitPhrases(deps, fact) : []
   await refreshEntries(deps, [fact.subjectId, fact.objectId, ...phrases])
   return true
 }
@@ -222,11 +236,10 @@ const PHRASE_LISTS_BATCH = 20
  */
 export async function reconcilePhraseLists(deps: DecisionDeps): Promise<number> {
   const ids = await deps.nodes.listUnadmittedPhraseLists(PHRASE_LISTS_BATCH)
-  const at = deps.clock.now().toISOString()
   for (const id of ids) {
     const list = (await deps.facts.find(id)) as FactOf<'phrases'> | null
     if (!list) throw new Error(`Phrases list ${id} vanished while it was being admitted.`)
-    const phrases = await admitPhrases(deps, list, at)
+    const phrases = await admitPhrases(deps, list)
     await refreshEntries(deps, [list.subjectId, ...phrases])
   }
   return ids.length

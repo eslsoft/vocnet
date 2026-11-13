@@ -15,7 +15,7 @@ export function FactClaim({ fact, size = 'sm' }: { fact: FactDto; size?: 'sm' | 
   const large = size === 'lg'
   switch (fact.kind) {
     case 'example':
-      return <span className={cn('font-serif italic', large && 'text-2xl')}>{fact.payload.text}</span>
+      return <span className={cn('font-serif italic', large && 'text-2xl')}>{summarizeFact(fact)}</span>
     case 'senses':
       return (
         <ol className={cn('flex list-decimal flex-col gap-0.5 pl-5 font-serif', large && 'text-lg')}>

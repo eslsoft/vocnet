@@ -1,7 +1,7 @@
 import type { EntrySnapshot, StoredSenseSummary, StoredSummary } from '@server/domain/catalog-view'
 import type { Fact, FactOf } from '@server/domain/fact'
 import type { DecisionModel, JevQuestions, Link, LlmPrompt } from '@server/domain/fact-kinds'
-import type { EntryNode, SenseNode, SenseWithLemma } from '@server/domain/nodes'
+import type { EntryNode, SenseNode, SenseWithLemma, SentenceNode, SentenceUses } from '@server/domain/nodes'
 import type { PrincipalRef } from '@server/domain/principal'
 import type { EntryLinks, PublicViewRecord } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
@@ -20,6 +20,7 @@ import type {
   RelationDomain,
   Review,
   SenseId,
+  SentenceId,
   TopicId,
   Verdict,
 } from '@shared/facts'
@@ -49,6 +50,29 @@ export interface NodeRepo {
   findEntry(id: EntryId): Promise<EntryNode | null>
   /** Inserts unless the lemma exists; returns the stored entry either way. */
   insertEntry(entry: EntryNode): Promise<EntryNode>
+  /** The entries with these ids; an id with no entry is left out. */
+  findEntries(ids: readonly EntryId[]): Promise<EntryNode[]>
+  /** The entries spelled exactly as these lemmas; a lemma with no entry is left out. */
+  findEntriesByLemmas(lemmas: readonly Lemma[]): Promise<EntryNode[]>
+  /**
+   * Creates the entries these lemmas have none of, not live (their worklist rows say so), and
+   * returns the stored entry of every lemma in order; a concurrent create converges on one row.
+   */
+  ensureEntries(lemmas: readonly Lemma[], createdBy: PrincipalRef, now: string): Promise<EntryNode[]>
+  /** The published phrases lists that name this entry as an entry item, oldest first. */
+  listNamingLists(entryId: EntryId): Promise<FactId[]>
+  findSentence(id: SentenceId): Promise<SentenceNode | null>
+  /** The sentences with these ids; an id with no sentence is left out. */
+  findSentences(ids: readonly SentenceId[]): Promise<SentenceNode[]>
+  /** The sentences whose text key is one of these texts' (`textKey`). */
+  findSentencesByTexts(texts: readonly string[]): Promise<SentenceNode[]>
+  /**
+   * Inserts the sentences whose text key no row has and returns the stored row of every given
+   * sentence in order, so a concurrent create converges on one row.
+   */
+  insertSentences(sentences: readonly SentenceNode[]): Promise<SentenceNode[]>
+  /** The live examples and live phrases lists that name the sentence. */
+  listSentenceUses(id: SentenceId): Promise<SentenceUses>
   findSense(id: SenseId): Promise<SenseWithLemma | null>
   /** The sense rows of the entry, oldest first. */
   listSenses(entryId: EntryId): Promise<SenseNode[]>
@@ -582,6 +606,7 @@ export interface Clock {
 export interface IdGenerator {
   entry(): EntryId
   sense(): SenseId
+  sentence(): SentenceId
   fact(): FactId
   ticket(): TicketId
   agent(): AgentId

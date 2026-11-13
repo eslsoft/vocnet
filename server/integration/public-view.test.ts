@@ -76,7 +76,12 @@ describe('public view', () => {
   it('moves a phrase in and out of every public read as its headword lists and drops it [spec: public-view/publish]', async () => {
     const token = await issueAgentKey()
     const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
-    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give in'] })
+    const list = await curated('phrases', give.entryId, {
+      phrases: [
+        { type: 'phrasal_verb', text: 'give up' },
+        { type: 'phrasal_verb', text: 'give in' },
+      ],
+    })
     const giveUp = (await managed('give up')).entry.id
     const { senses } = await publishInventory(giveUp, [{ pos: 'verb', gloss: 'To stop trying to do something.' }])
     const sense = senses[0] as SenseId
@@ -95,7 +100,7 @@ describe('public view', () => {
     expect(await tagged()).toEqual([sense])
     expect(await staleViews()).toBe(0)
 
-    await curated('phrases', give.entryId, { phrases: ['give in'] }, list.id)
+    await curated('phrases', give.entryId, { phrases: [{ type: 'phrasal_verb', text: 'give in' }] }, list.id)
     expect((await call('/v1/entries/give%20up')).status).toBe(404)
     expect((await call(`/v1/senses/${sense}`)).status).toBe(404)
     expect((await call('/v1/forms/gave%20up')).status).toBe(404)
@@ -343,14 +348,19 @@ describe('public view', () => {
   it('lists the public phrases a headword names, in its list order, joined on read [spec: public-view/phrases]', async () => {
     const give = await headword('give', [{ pos: 'verb', gloss: 'To hand something to someone.' }])
     const etagOf = async (lemma: string) => (await request(`/v1/entries/${lemma}`)).headers.get('etag')
-    expect((await entryOf('give')).phrases).toEqual([])
-    const list = await curated('phrases', give.entryId, { phrases: ['give up', 'give in'] })
+    expect((await entryOf('give')).phrases.phrasal_verbs).toEqual([])
+    const list = await curated('phrases', give.entryId, {
+      phrases: [
+        { type: 'phrasal_verb', text: 'give up' },
+        { type: 'phrasal_verb', text: 'give in' },
+      ],
+    })
     const listedEtag = await etagOf('give')
     // Neither phrase is public before its inventory publishes.
-    expect((await entryOf('give')).phrases).toEqual([])
+    expect((await entryOf('give')).phrases.phrasal_verbs).toEqual([])
 
     await publishInventory((await managed('give up')).entry.id, [{ pos: 'verb', gloss: 'To stop trying.' }])
-    expect((await entryOf('give')).phrases).toEqual([
+    expect((await entryOf('give')).phrases.phrasal_verbs).toEqual([
       { lemma: 'give up', pos: ['verb'], cefr: null, gloss: 'To stop trying.' },
     ])
     const shownEtag = await etagOf('give')
@@ -360,10 +370,10 @@ describe('public view', () => {
     await publishInventory((await managed('give in')).entry.id, [{ pos: 'verb', gloss: 'To accept defeat.' }])
     // A public phrase containing the word that the list does not name is not one of its phrases.
     await headword('give way', [{ pos: 'verb', gloss: 'To break under pressure.' }])
-    expect((await entryOf('give')).phrases.map((phrase) => phrase.lemma)).toEqual(['give up', 'give in'])
+    expect((await entryOf('give')).phrases.phrasal_verbs.map((phrase) => phrase.lemma)).toEqual(['give up', 'give in'])
 
-    await curated('phrases', give.entryId, { phrases: ['give in'] }, list.id)
-    expect((await entryOf('give')).phrases.map((phrase) => phrase.lemma)).toEqual(['give in'])
+    await curated('phrases', give.entryId, { phrases: [{ type: 'phrasal_verb', text: 'give in' }] }, list.id)
+    expect((await entryOf('give')).phrases.phrasal_verbs.map((phrase) => phrase.lemma)).toEqual(['give in'])
     expect(await etagOf('give')).not.toBe(shownEtag)
   })
 

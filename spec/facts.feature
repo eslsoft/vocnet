@@ -160,25 +160,25 @@ Feature: Facts and review
 
   @facts/translation-rubric @domain
   Scenario: Translations are judged as a bilingual dictionary would
-    Given a translation of a sense, of an example, and of a collocation
+    Given a translation of a sense, of a sentence, and of a collocation
     When their reviews are planned
     Then a sense equivalent asks Jev at 0.9 and luna at 0.8, either settling a pass, and the LLM decides otherwise with a rubric that accepts verb-like or descriptive renderings of function words, bracketed usage notes, and for a noun sense an equivalent that also reads as a verb or adjective, and rejects a wrong meaning, a different sense, a noun-only equivalent of a verb sense, unnatural wording, or equivalents of unrelated senses
-    And an example or collocation translation goes to the LLM alone, which fails a rendering that is unfaithful to the text or unnatural
+    And a sentence or collocation translation goes to the LLM alone, which fails a rendering that is unfaithful to the text or unnatural, names the sense a sentence is an example of, and for a saying names its meaning and also passes an established saying of the language with the same meaning
     And a translation whose subject is not what it claims to translate is unreviewable
 
   @facts/translation-of @domain
   Scenario: A translation names what it translates and is about it
-    Given translations of a sense, an example, and a collocation
+    Given translations of a sense, a sentence, and a collocation
     When they are submitted
-    Then each names what it translates in of, a sense equivalent is about the sense and at most 200 characters, an example or collocation translation is about that fact, and any other subject is an invalid reference
-    And an example is its text alone, and a translation is keyed by its language, what it translates, and its text, one live per subject and language
+    Then each names what it translates in of (sense, sentence, or collocation; example is no longer one), a sense equivalent is about the sense and at most 200 characters, a sentence translation about the sentence, a collocation translation about that fact, and any other subject is an invalid reference
+    And an example names its sentence, by id or by text, and a translation is keyed by its language, what it translates, and its text, one live per subject and language
 
   @facts/translation-per-item-api @api
   Scenario: Each translated item has its own translation fact
     Given a sense with a published example and a published collocation
-    When an agent submits a zh translation of the sense, of the example, and of the collocation, a second zh translation of the sense, and one about the wrong subject
+    When an agent submits a zh translation of the sense, of the example's sentence, and of the collocation, a second zh translation of the sense, and one about the wrong subject
     Then the three are created and reviewed on their own, the second is 409 conflict, the wrong subject is 422, and the public entry shows the sense equivalent, the example translation, and the collocation translation in zh
-    And once the example is superseded its translation no longer shows and the entry's translations item names the new example
+    And once the example is superseded by one with another sentence its translation no longer shows and the entry's translations item names the new sentence
 
   @facts/example-offensive-sense @domain
   Scenario: An example of an offensive sense is judged as an illustration of that sense
@@ -290,8 +290,8 @@ Feature: Facts and review
     Given a sense inventory of an entry
     When its review is planned
     Then Jev is asked one question per sense about its gloss and labels, and the LLM rubric numbers every sense with its part of speech and gloss, common in order and then extra
-    And it fails only a list that misses a main general-knowledge sense a learner's dictionary lists for A1 to B1 learners, holds two duplicate or over-split common senses, puts a rare, archaic, technical, legal, specialist, or regional-only sense in common, gives a sense the wrong part of speech, puts a main sense in extra, leaves the word's best-known meaning out of the first three common senses, or has a wrong gloss or label
-    And it passes every other list, never failing for another order of common senses, a borderline placement, or a missing rare sense, and its reason names each sense to change
+    And it fails only a list that misses a main general-knowledge sense a learner's dictionary lists for A1 to B1 learners, holds two duplicate or over-split common senses, puts a rare, archaic, technical, legal, specialist, or regional-only sense in common, gives a sense a part of speech whose grammatical function it does not have, puts a main sense in extra, leaves the word's best-known meaning out of the first three common senses, or has a wrong gloss or label
+    And it passes every other list, never failing for another order of common senses, a borderline placement, a missing rare sense, an idiom or fixed phrase not labelled idiom, phrase, or saying, or the main sense of an entry whose every sense is technical, specialist, or regional ranked common, and its reason names each sense to change
 
   @facts/sense-list-capitalization @domain
   Scenario: An inventory is never failed for the senses of a differently capitalized entry
@@ -306,35 +306,65 @@ Feature: Facts and review
     Then its review context carries "May" alone as a case variant, and the rubric names "May" as a separate entry
 
   @facts/phrases-format @domain
-  Scenario: A phrases list names multiword phrases, each once
+  Scenario: A phrases list names typed phrases, each once
     Given a phrases list to submit
-    When a phrase is one word or a phrase is named twice in any letter case
-    Then the submission is invalid naming the rule
+    When an item has no type or one outside phrasal_verb, compound, idiom, fixed_phrase, and saying, a phrase item is one word, a saying is not a complete sentence or names a sense, an item gives both an id and a text, or a phrase is named twice in any letter case
+    Then the submission is invalid naming the rule, and a stored list names every item by id
 
   @facts/phrases-admission @domain
   Scenario: A phrases list belongs to a single-word headword and names phrases containing it
     Given a phrases list on a headword
     When it is admitted
-    Then a list on a multiword entry, or naming a phrase that does not contain the headword, is an invalid reference naming the phrases
+    Then a list on a multiword entry, or naming a phrase that does not contain the headword, is an invalid reference naming the phrases, and its content key is its typed items as a set
+
+  @facts/phrases-typed @domain
+  Scenario: A typed phrases list names each target once, a saying as a sentence, and a sense of the headword
+    Given a phrases list with entry items, sayings, and items filed under a sense
+    When it is admitted
+    Then a target named twice, a saying that is not a complete sentence, and a sense the headword's current inventory does not list are invalid references naming each
+
+  @facts/phrases-resolve @usecase
+  Scenario: A phrases list names its entries and sayings by text
+    Given a headword with a published inventory
+    When an agent submits a list naming phrases and a saying by text, a list that does not fit the headword, and the same list by ids
+    Then each phrase resolves to the entry with exactly that lemma, created not live when there is none, and the saying to the sentence with that text, created when there is none; a refused list creates nothing; the list by ids is the same live fact; and an unknown id is an invalid reference
+
+  @facts/sentence-resolve @usecase
+  Scenario: An example names its sentence, found or created by text
+    Given senses of two entries
+    When an agent submits examples with the same text in another letter case or spacing, one by sentence id, and one by an unknown id
+    Then one sentence holds the text, every example stores its id as its payload and object and content key, and the unknown id is an invalid reference; a submission about no subject creates no sentence
+
+  @facts/sentence-meaning @domain
+  Scenario: A saying's meaning is a dictionary-style gloss of what it means
+    Given a sentence meaning about a saying
+    When it is submitted and its review is planned
+    Then it is a gloss in dictionary style about a sentence, one live per sentence, and Jev is asked whether the saying means it, then the LLM rubric fails a literal meaning, a wrong one, or the saying quoted as its gloss
 
   @facts/phrases-rubric @domain
-  Scenario: A phrases list is judged phrase by phrase
+  Scenario: A phrases list is judged item by item
     Given a phrases list of a headword
     When its review is planned
-    Then Jev is asked one question per phrase whether a learner's dictionary prints it as a phrase, phrasal verb, or idiom of the headword or its meaning is not the sum of its words
-    And the LLM rubric numbers each phrase, passes idioms, fixed phrases, and phrasal verbs a learner's dictionary prints, fails a plain description ("white rice") or a coined combination ("telephone in"), never fails for a missing phrase, and names each wrong phrase by number
+    Then Jev is asked one question per item naming its type and, when given, its sense: whether a learner's dictionary prints it as that type of the headword, or for a saying whether it is an established saying
+    And the LLM rubric numbers each item with its type and sense, passes idioms, fixed phrases, and phrasal verbs a learner's dictionary prints, fails a plain description ("white rice"), a coined combination ("telephone in"), a wrong type, a complete sentence not typed saying, or a sense the phrase does not belong to, never fails for a missing phrase or a missing sense, and names each wrong item by number
 
   @facts/phrases-admit @usecase
-  Scenario: A published phrases list admits its phrases as entries
+  Scenario: A published phrases list admits its entry items as entries
     Given a headword of a batch
     When its phrases list publishes, and later a correction that drops one phrase publishes
-    Then each listed phrase is a live entry of the headword's batch, created when it had none, and the dropped phrase stops being live unless another published list still names it
+    Then each entry item is a live entry of the headword's batch, a saying admits nothing, and the dropped phrase stops being live unless another published list still names it
 
   @facts/phrases-api @api
   Scenario: A phrases list admits its phrases on a real database
     Given live headwords "give" and "front", and "give up" listed under "give"
     When phrases lists of "give" and "front" publish through the queue, one naming "in front of", and a curator corrects the list of "give" to drop "give up"
     Then "give up" and "in front of" are live entries in their headword's batch with items of their own and are listed among the headword's phrases, a phrases list on a phrase is 422, and once dropped "give up" is no longer live and has no items
+
+  @facts/phrases-typed-api @api
+  Scenario: A typed list files a compound under a sense and keeps a saying a sentence
+    Given a headword with a published sense
+    When an agent submits a list with a sense of no inventory, a lowercase saying, and then a compound under the sense and a saying, and its saying gets a meaning and a translation
+    Then the first is 422 and creates nothing, the second 400, the managed view shows each item with its text, the compound is a live entry typed compound, the saying no entry, the headword has a sayings item until the meaning publishes, and the public entry files the compound under its sense and shows the saying with its meaning and translation, which GET /v1/sentences/{id} serves too
 
   @facts/ipa-format @domain
   Scenario: A pronunciation holds one broad IPA transcription
@@ -590,6 +620,7 @@ Feature: Facts and review
     When its review is planned
     Then the LLM alone is asked whether natives commonly use it with this sense in the claimed pattern
     And it fails free combinations, another sense, rare or unnatural wording, and the wrong pattern
+    And the patterns include subject_verb ("the room spins"), verb_adjective ("go bankrupt"), and passive ("tormented by guilt"), and the rubric says a particle after a verb is verb_adverb and a verb with a preposition and its noun is verb_preposition
 
   @facts/usage-admission-api @api
   Scenario: Submissions that do not fit their subject are refused on a real database

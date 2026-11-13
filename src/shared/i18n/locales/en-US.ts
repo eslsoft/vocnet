@@ -46,6 +46,8 @@ export const enUS = {
     collocation: 'Collocation',
     syllables: 'Syllables',
     phrases: 'Phrases',
+    sentence_meaning: 'Saying meaning',
+    sentence: 'Sentence',
   },
   factState: {
     flagged: 'Flagged · {{confidence}}',
@@ -80,6 +82,7 @@ export const enUS = {
     syllables: 'Syllables',
     morphology: 'Word formation',
     form_pronunciations: 'Form pronunciations',
+    sayings: 'Saying meanings',
   },
   taskStatus: {
     queued: 'Queued',
@@ -121,6 +124,8 @@ export const enUS = {
     topics: 'No topic yet.',
     grammar: 'No grammar note yet.',
     collocations: 'No collocation yet.',
+    sayings_one: '{{count}} saying has no meaning yet.',
+    sayings_other: '{{count}} sayings have no meaning yet.',
   },
   gapNeed: {
     examples_one: 'Needs {{count}} more example',
@@ -589,6 +594,13 @@ export const enUS = {
     },
     shortened: '{{type}} of “{{of}}”',
     phrases: 'Phrases',
+    phraseGroups: {
+      bySense: 'Under this sense',
+      phrasalVerbs: 'Phrasal verbs',
+      idioms: 'Idioms and fixed phrases',
+      compounds: 'Compounds',
+      sayings: 'Sayings',
+    },
     missingTitle: 'Not in Vocnet yet',
     missingBody:
       'No entry is spelled exactly “{{lemma}}”. Lookups are exact, so Vocnet never swaps in a different word; agents add new entries every day.',

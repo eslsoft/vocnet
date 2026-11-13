@@ -1,4 +1,4 @@
-import type { PublicExample, PublicGrammar, PublicSense } from '@shared/catalog'
+import type { PublicExample, PublicGrammar, PublicPhrases, PublicSense } from '@shared/catalog'
 
 // How a learner's dictionary writes the grammar of a sense: short codes in brackets and the
 // patterns that follow the word, with ~ standing for the headword.
@@ -101,3 +101,11 @@ export function translationList(value: PublicSense['translations']): string[] {
 export function exampleTranslation(value: PublicExample['translation']): string | undefined {
   return value === undefined || typeof value === 'string' ? value : Object.values(value).join('；')
 }
+
+/** How many phrases and sayings an entry shows. */
+export const phraseCount = (phrases: PublicPhrases) =>
+  phrases.by_sense.reduce((sum, group) => sum + group.phrases.length, 0) +
+  phrases.phrasal_verbs.length +
+  phrases.idioms.length +
+  phrases.compounds.length +
+  phrases.sayings.length

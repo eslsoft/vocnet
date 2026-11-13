@@ -1,14 +1,20 @@
-import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Review, SenseId } from '@shared/facts'
+import type { EntryId, FactId, FactKind, FactPayloads, FactStatus, Review, SenseId, SentenceId } from '@shared/facts'
 import type { SubjectTypeOf } from './fact-kinds'
 import type { PrincipalRef } from './principal'
 
-type SubjectIdOf<K extends FactKind> = { entry: EntryId; sense: SenseId; fact: FactId }[SubjectTypeOf[K]]
+type SubjectIdOf<K extends FactKind> = {
+  entry: EntryId
+  sense: SenseId
+  fact: FactId
+  sentence: SentenceId
+}[SubjectTypeOf[K]]
 
 export interface FactOf<K extends FactKind> {
   id: FactId
   kind: K
   subjectId: SubjectIdOf<K>
-  objectId: SenseId | null
+  /** A relation's target sense, an example's sentence; null for other kinds. */
+  objectId: SenseId | SentenceId | null
   contentKey: string
   payload: FactPayloads[K]
   status: FactStatus

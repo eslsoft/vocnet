@@ -45,6 +45,7 @@ export const managedEntryDto = (view: ManagedEntryView) => ({
   entry: entryDto(view.entry),
   live: view.entry.live,
   batch: view.batch,
+  phrase_type: view.phraseType,
   completeness: view.completeness,
   credibility: view.credibility,
   slots: view.slots,

@@ -47,6 +47,7 @@ identity, never reviewed content.
 | --------- | ------------------------------------------------- | ----------------------------------- |
 | `entries` | `id`, `lemma` (normalized, unique), `created_by`  | One entry per lemma spelling        |
 | `senses`  | `id`, `entry_id`, `pos`, `creation_key`, `created_by` | One row per sense an inventory created |
+| `sentences` | `id`, `text`, `text_key` (unique), `source`, `created_by` | One sentence per text key: an example, a saying, or both |
 
 An entry is **live** when it is admitted: an imported headword, or a phrase
 that a published `phrases` fact names (see Headwords and phrases). Liveness is
@@ -60,6 +61,19 @@ sense has no reviewed content of its own: its gloss, labels, and rank are in
 the entry's inventory, and a sense shows only while its entry's published
 inventory lists it. Correcting a sense's part of speech means a new sense.
 
+A **sentence** is an example sentence or a saying (a proverb, maxim, or
+saying), shared by every fact that names it. `text_key` is `textKey` of the
+text (`server/domain/term.ts`); `source` is free-text provenance (a book or
+film title), null when a producer made it up. Workers never create sentences
+directly: a submission that names a sentence by `text` (an `example`, or a
+saying in a `phrases` list) resolves it by text key to the existing row or a
+new one created in the same submission, before the fact is stored, and the
+stored payload holds the id. What a sentence is, is derived on read: a
+**saying** while a published `phrases` list names it with type `saying`, an
+**example** while a published `example` fact links it to a sense; it may be
+both. Nothing stores the type. A sentence is the subject of its translations
+and of its `sentence_meaning`.
+
 ### Facts
 
 Everything else is a fact: one row in `facts`, one reviewed claim.
@@ -68,8 +82,8 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | --------------- | -------------------------------------------------------------- |
 | `id`            | Stable fact ID                                                 |
 | `kind`          | Key into the fact-kind registry                                |
-| `subject_id`    | The node the fact is about: an entry, a sense, or for a translation of an example or collocation that fact |
-| `object_id`     | Referenced sense for relations, else null                      |
+| `subject_id`    | The node the fact is about: an entry, a sense, a sentence, or for a translation of a collocation that fact |
+| `object_id`     | The node it points at besides its subject: a relation's target sense, an example's sentence; else null |
 | `content_key`   | Deterministic key of the identifying payload, for dedupe       |
 | `payload`       | Kind-specific JSON, validated by the registry schema           |
 | `status`        | `pending`, `published`, `rejected`, `superseded`, `retracted`  |
@@ -98,19 +112,20 @@ entry plus its payload schema in `shared/facts.ts`.
 | `form`          | entry   | many        | `{ form, type, pos?, ipa?, accent? }` (plural, past, variant…) | Jev, then LLM; LLM alone for a variant or a form with ipa |
 | `relation`      | sense   | many        | `{ type, target_sense_id, domain? }` (`domain` only on a hypernym: `biology` or `medicine`) | Jev at the type's threshold, then LLM; LLM alone for a domain hypernym |
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM |
-| `example`       | sense   | many        | `{ text }`                                               | LLM |
-| `translation`   | sense, or an example or collocation fact | one per language | `{ language, of, text }` (`of`: `sense`, `example`, or `collocation`) | a sense equivalent Jev or luna, then LLM; an example or collocation LLM |
+| `example`       | sense   | many        | `{ sentence_id }` (submitted as `{ sentence_id }` or `{ text }`); object and content key the sentence | LLM |
+| `translation`   | sense, sentence, or a collocation fact | one per language | `{ language, of, text }` (`of`: `sense`, `sentence`, or `collocation`) | a sense equivalent Jev or luna, then LLM; a sentence or collocation LLM |
 | `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | mean of Jev and luna, then LLM |
 | `grammar`       | sense   | one         | `{ countability?, number?, article?, transitivity?, position?, agreement?, patterns?, prepositions? }` | Jev, then LLM |
 | `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning?, lemma? }], shortened?: { type, of } }` | Jev, then LLM |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM |
 | `syllables`     | entry   | one         | `{ syllables: [string] }` (`["a", "bil", "i", "ty"]`)     | luna, then LLM |
-| `phrases`       | entry   | one         | `{ phrases: [lemma] }` (multiword lemmas, no cap)         | Jev per phrase, then LLM |
+| `phrases`       | entry   | one         | `{ phrases: [{ type, entry_id, sense_id? } \| { type: "saying", sentence_id }] }` (no cap) | Jev per item, then LLM |
+| `sentence_meaning` | sentence | one      | `{ gloss }`: what a saying means and when it is said      | Jev, then LLM |
 
 A kind with cardinality *one* admits a single live fact per subject, and
 *one per language* a single live translation per subject and language: an
 entry has one inventory, one word formation, one syllable division, and one
-phrases list, and a sense one grammar fact. Changing it means submitting a
+phrases list, a sentence one meaning, and a sense one grammar fact. Changing it means submitting a
 correction that supersedes the published fact; a second one without
 `supersedes_id` is a conflict. D1 enforces this with two partial unique indexes
 on `(kind, subject_id, slot)` over rows whose `slot` is set. The *holder*
@@ -171,7 +186,11 @@ ones; at least one is common. Extra senses never count toward completeness.
   out of the first three common senses, or has a wrong gloss or label. It never
   fails for another order of common senses, a borderline placement (successive
   reviews of *go*, *food*, and *block* moved the same senses back and forth), or
-  a missing rare sense, and its reason names every sense to change. Entries are
+  a missing rare sense; the part of speech is the grammatical function, so an
+  idiom or fixed phrase is never failed for not being labelled idiom, phrase,
+  or saying; and an entry whose every sense is technical, specialist, or
+  regional ranks its main sense common, never failed as misplaced. Its reason
+  names every sense to change. Entries are
   case-sensitive: the rubric judges only the exact spelling, and when other live
   entries are spelled like the lemma but for letter case, the review context
   carries their lemmas (`caseVariants`, read on `entries_lemma_case_idx`) and the
@@ -190,10 +209,20 @@ records the batch it was imported in; importing a batch admits its headwords
 (`nodes.admit`: the entry row if it is missing, then `live` and `batch` on its
 worklist row, keeping an earlier batch), and their work items follow from the
 gaps on the next rescore, so the producers continue without a code change.
-Duplicates are settled before an import: a lemma already admitted is skipped,
-an inflection is reduced to its base ("coming" to "come") unless the
-dictionary word list lists it on its own ("left", "saw", "found"), and spelling
-variants are merged into one entry with the other spelling as a `variant` form.
+Duplicates are settled before an import (`filterHeadwords` in
+`server/domain/headword-import.ts`, applied by `importCoreEntries` and any batch
+import): a lemma already admitted is skipped; single letters other than "a"
+and "I", contractions and clitics ("'s", "'m", "'re", "can't"), and lemmas with
+a character other than a letter, space, hyphen, or apostrophe are skipped; a
+regular inflection (`-s/-es/-ies`, `-ed/-ied`, `-ing`, `-er/-est`) is reduced
+to its base when the base is a candidate or an entry and the reference CEFR
+list does not list the form itself ("left", "saw", "found" stay); and an
+American spelling (`-or`, `-ize`, `-yze`, `-er`, `-og`) whose British spelling
+(`-our`, `-ise`, `-yse`, `-re`, `-ogue`) is a candidate or an entry is merged
+into it, recorded as a curated `variant` form when the call creates the British
+entry. A short word never pairs (`-or` needs five letters and no `o` before it,
+so "floor" and "flour" both stay). The response reports what each rule skipped
+(`skipped.letters`, `contractions`, `characters`, `inflections`, `variants`).
 
 | Batch | Headwords |
 | ----- | --------- |
@@ -208,52 +237,87 @@ when it existed, and either way it is live from then on in its earlier batch
 or this one. Admitting a word reopens every optional slot a pass was blocked on
 it (see Passes).
 
+`POST /manage/v1/entries/{id}/retire` (curators) takes an admitted entry off
+the wordlist: it stops being live (a revision bump, and the entries linked to
+it are touched, as for a dropped phrase), so it has no work items and shows
+nowhere; retiring an entry that is not live changes nothing (`retired:
+false`). It is `409 conflict` while a published phrases list names the entry
+as an entry item (correct that list instead), and `404` for an unknown id.
+`POST /manage/v1/entries` admits it again.
+
 A **phrase** is an entry of its own, with its own inventory, translations,
 examples, and relations. A headword's `phrases` fact lists the phrases filed
-under it: each phrase a learner's dictionary prints as the headword's phrase,
-phrasal verb, or idiom, or whose meaning is not the sum of its words ("give
-up", "in front of"), with no cap. A plain description built from the words'
-ordinary meanings ("white rice", "paper handkerchief") is not listed, and a
-phrase may be listed under several headwords ("in front of" under *front*).
+under it, each **typed**: `phrasal_verb` ("give up"), `compound` ("bank
+account"), `idiom` ("put the cart before the horse"), `fixed_phrase` ("at all",
+"in front of"), or `saying` ("look before you leap"), with no cap. A saying
+names a sentence and never becomes an entry; every other type names an entry.
+An item may name `sense_id`, a sense of the headword's current inventory the
+phrase plainly belongs to (a compound or set phrase built on that sense);
+idioms, phrasal verbs, and phrases tied to no sense omit it. A plain
+description built from the words' ordinary meanings ("white rice", "paper
+handkerchief") is not listed, and a phrase may be listed under several
+headwords ("in front of" under *front*).
 
-- **Write rules.** Each phrase is a multiword lemma, named once in any letter
-  case (`400`); a list on a multiword entry, or naming a phrase that does not
-  contain the headword, is `422 invalid_reference`. The content key is the
-  sorted normalized phrases.
-- **Review.** Jev is asked one question per phrase (`phrase_1`, …) whether a
-  learner's dictionary prints it as a phrase of the headword or its meaning is
-  not the sum of its words; the LLM rubric numbers the phrases, passes idioms,
-  fixed phrases, and the phrasal verbs a learner's dictionary prints even when
-  transparent ("sit down", "come back"), fails a plain description or a coined
-  combination ("telephone in", "party down"), never fails for a missing phrase,
-  and names each wrong phrase by number.
-- **Admission.** Publishing a phrases list admits each phrase in its
-  headword's batch, creating its entry if it has none (`admitPhrases` in
-  `server/usecases/review.ts`), so the phrase gets its own work items, which
-  queue with its headword's batch. When a correction drops a phrase, the
-  phrase stops being live unless another published list still names it.
+- **Write rules.** An item is `{ type, entry_id | sentence_id, sense_id? }`, or
+  submitted `{ type, text, sense_id? }`: a text resolves to the entry with
+  exactly that lemma, created **not live** when there is none (a non-saying
+  type), or to the sentence with that text, created when there is none (a
+  saying). Nothing is created for a list that does not fit: the write rules
+  run on the provisional ids first. A non-saying item is a multiword lemma
+  (text `400`, id `422`) containing the headword; a saying is a complete
+  sentence (a capital letter or quote first, at least two words) and names no
+  sense; each target is named once; a `sense_id` is a sense of the headword's
+  current inventory; a list on a multiword entry is refused; each a `422
+  invalid_reference` naming the items. The content key is the sorted
+  `type:id[:sense_id]` of the items.
+- **Review.** Jev is asked one question per item (`phrase_1`, …) naming its
+  type and, when given, its sense: whether a learner's dictionary prints it as
+  that type of the headword or its meaning is not the sum of its words, or for
+  a saying whether it is an established saying; the LLM rubric numbers each
+  item with its type and sense, passes idioms, fixed phrases, and the phrasal
+  verbs a learner's dictionary prints even when transparent ("sit down", "come
+  back"), fails a plain description or a coined combination ("telephone in",
+  "party down"), a wrong type (a complete sentence is always a saying), a
+  sense the phrase does not belong to, never fails for a missing phrase or a
+  missing sense, and names each wrong item by number.
+- **Admission.** Publishing a phrases list makes each entry item live in its
+  headword's batch (`admitPhrases` in `server/usecases/review.ts`), so the
+  phrase gets its own work items, which queue with its headword's batch. A
+  saying admits nothing; its sentence gets translation and meaning work on the
+  headword. When a correction drops an entry item, the phrase stops being live
+  unless another published list still names it as an entry item.
+- **Phrase type.** A phrase entry's type is derived on read: the type the
+  earliest published list naming it gives (by creation). It decides which
+  slots the phrase has (see Gaps) and shows as `phrase_type`.
 
-The headword's public entry lists the public phrases its list names, in the
-list's order (see Public API).
+The headword's public entry shows the public phrases its list names, grouped
+under the sense they are filed under and otherwise by type, and its sayings
+(see Public API).
+
+The migration `sentences` (`scripts/migrate/sentences.py`) moved every example
+onto a sentence, every example translation onto its sentence, and every
+published phrases list into typed items (`idiom`) with every headword's
+`phrases` slot reopened, so producers regenerate typed lists.
 
 #### Translations
 
 A `translation` translates one item a learner reads into one served language:
-a sense (its learner's-dictionary equivalent), an example, or a collocation.
-`of` says which, and `subject_id` is the sense id or the example or
-collocation fact id; a subject that is not what `of` claims is `422
-invalid_reference`. One live translation per subject and language (`slot` is
-the language): changing one means superseding it. A sense equivalent is at
-most 200 characters and lists each alternative once, separated by `；`.
+a sense (its learner's-dictionary equivalent), a sentence (an example or a
+saying), or a collocation. `of` says which, and `subject_id` is the sense id,
+the sentence id, or the collocation fact id; a subject that is not what `of`
+claims is `422 invalid_reference`. One live translation per subject and
+language (`slot` is the language): changing one means superseding it. A sense
+equivalent is at most 200 characters and lists each alternative once,
+separated by `；`. A sentence is translated once, for every entry that uses it.
 
 A translation work item is one entry and one language, and translates every
 listed item of the entry in one pass, but each translation is stored and
 reviewed on its own. A new language is a new set of translation items; no
-existing fact changes. When an example or collocation is superseded, its
-translation's subject is no longer current, so the translation stops showing
+existing fact changes. When an example or collocation is superseded, a new
+sentence or collocation is current, so the old one's translation stops showing
 (visibility is derived on read) and the entry's translations item reopens for
-the new fact; the original's own facts are untouched. Examples carry only their
-text, so adding a translation never supersedes an example.
+the new one; the original's own facts are untouched. Examples carry only their
+sentence, so adding a translation never supersedes an example.
 
 A sense equivalent is judged by Jev (passing at 0.9) and luna (at 0.8), either
 settling a pass: each passed correct equivalents the other missed, and Jev at
@@ -262,9 +326,17 @@ bilingual-dictionary rubric that accepts verb-like or descriptive renderings
 of function words, bracketed usage notes, and for a noun sense an equivalent
 that also reads as a verb or adjective, since Chinese does not mark part of
 speech; it rejects a wrong meaning, a different sense, a noun-only equivalent
-of a verb sense, unnatural wording, or equivalents of unrelated senses. An
-example or collocation translation is a fluency judgement neither decision
-model makes, so the LLM judges it alone against the text and the sense.
+of a verb sense, unnatural wording, or equivalents of unrelated senses. A
+sentence or collocation translation is a fluency judgement neither decision
+model makes, so the LLM judges it alone against the text: a sentence with the
+first sense it is a live example of, and for a saying its meaning (an
+established saying of the language with the same meaning passes too).
+
+A **sentence meaning** (`sentence_meaning`, `{ gloss }`, about a sentence, one
+per sentence) is a dictionary-style gloss of what a saying actually means and
+when it is said, never the saying itself; it is required only of sayings. Jev
+is asked whether the saying means the gloss; the LLM rubric fails a literal
+meaning, a wrong one, or the saying quoted as its gloss.
 
 The migration `redesign` turned every sense translation into the new shape and
 split the Chinese of every example into its own translation fact.
@@ -704,7 +776,12 @@ entry's `morphology` carries `shortened` when the formation has one.
 `collocation` is a combination native speakers commonly use with a sense, such
 as *make a decision*. `pattern` is `verb_noun`, `adjective_noun`, `noun_noun`,
 `adverb_adjective`, `verb_adverb`, `verb_preposition`, `noun_preposition`,
-`adjective_preposition`, or `phrase`. Its text must contain the lemma, or the
+`adjective_preposition`, `phrase`, `subject_verb` (*the room spins*),
+`verb_adjective` (*go bankrupt*, *squash flat*), or `passive` (*tormented by
+guilt*); a verb with a particle after it is `verb_adverb` (*tack down*) and a
+verb with a preposition and its noun `verb_preposition` (*return to one's
+birthplace*), as the rubric and the write rules say. Published collocations
+keep their pattern. Its text must contain the lemma, or the
 form of one of the entry's live `form` facts, as whole words, case-insensitively
 and with a typographic apostrophe (’ or ‘) matching a straight one; otherwise it
 is `422 invalid_reference`, and the message tells the agent to use the word or
@@ -1073,9 +1150,15 @@ item's `rejections` (up to ten rejected facts of the kinds that fill it, newest
 first, so a retry addresses each reason and never resubmits rejected content),
 the senses at the other end of its relations (`related`; `gloss` is null when
 that sense cannot show, so a relation to it fills nothing), and, for the types
-that read every sense at once (`senses`, `phrases`, `family`, `translations`),
-the entry's whole management view as `GET /manage/v1/entries/{lemma}` returns
-it.
+that read every sense at once (`senses`, `phrases`, `family`, `translations`,
+`sayings`), the entry's whole management view as `GET /manage/v1/entries/{lemma}`
+returns it. Wherever a view or a context shows a fact, an example carries its
+sentence's text beside its id (`{ sentence_id, text }`) and each phrases item
+its lemma or text (`{ type, entry_id, text, sense_id? }`, `{ type: "saying",
+sentence_id, text }`), so a producer reads every translation target and keeps
+a list's items without another read; the view also lists the facts about the
+entry's sentences (their translations and meanings) and its `phrase_type`. The
+stored payloads hold ids only, and `text` is never part of a content key.
 
 `criteria` (`workCriteria` in `server/domain/work-criteria.ts`) makes the
 server the one source of what passes: for each kind of fact that fills the
@@ -1250,9 +1333,16 @@ needs and no pass completed it. Entry gaps:
 - `family`: an A1 or A2 single word that no live entry's live word formation
   names as a base.
 - `morphology`, `syllables`: a single word without one.
-- `translations`, one per served language: each common sense, current example
-  (a pending correction stands for its original), and live collocation with no
-  live translation in the language, by `of` and id.
+- `translations`, one per served language: each common sense, the sentence of
+  each of its current examples (a pending correction stands for its original;
+  a sentence several examples share is one slot), each live collocation, and
+  on a headword each saying of its published phrases list, with no live
+  translation in the language, by `of` (`sense`, `sentence`, `collocation`) and
+  id. A sentence shared by several entries is one translation: whichever
+  entry's pass fills it, it is filled for all.
+- `sayings` (required, stage 3, entry context): each saying of the headword's
+  published phrases list with no live `sentence_meaning`, as
+  `{ type: "sayings", missing: [sentence_id] }`.
 
 Sense gaps, per common sense of the current inventory, within its scope:
 
@@ -1260,7 +1350,7 @@ Sense gaps, per common sense of the current inventory, within its scope:
 | --- | ----- | ---- |
 | `category` | core | a noun: one everyday hypernym to a sense that can show |
 | `parts` | core | a noun with an everyday category: one `part_of` attached to it |
-| `synonyms` | core | a noun, verb, adjective, or adverb: one synonym or antonym in either direction |
+| `synonyms` | core | a noun, verb, adjective, or adverb: one synonym or antonym in either direction, or a hypernym (any layer) to a sense that can show |
 | `topics` | core | a noun or verb: one topic |
 | `collocations` | core | a noun, verb, adjective, adverb, determiner, preposition, or conjunction: one collocation |
 | `examples` | common | two for a core sense of an A1 or A2 entry, else one |
@@ -1268,7 +1358,23 @@ Sense gaps, per common sense of the current inventory, within its scope:
 
 A relation fills a slot only while the sense at its other end is listed by the
 current inventory of a live entry (`visibleNeighbors`). A number sense needs
-its examples and translation and none of the usage slots. Each piece of open
+its examples and translation and none of the usage slots. A producer still
+submits every real synonym and antonym; a hypernym only stops a sense with none
+from staying open.
+
+A **phrase entry** has the slots of its phrase type (see Headwords and
+phrases); a multiword entry no published list types keeps every slot:
+
+| Slot | phrasal_verb | compound | idiom | fixed_phrase |
+| ---- | ------------ | -------- | ----- | ------------ |
+| senses, examples, translations, synonyms | ✓ | ✓ | ✓ | ✓ |
+| category, parts, topics | – | ✓ | – | – |
+| grammar | ✓ (paused) | – | – | – |
+| pronunciation, collocations | – | – | – | – |
+| forms, syllables, morphology, phrases, family | – | – | – | – |
+
+Facts already published for a slot a type no longer needs stay; they no longer
+count. Each piece of open
 work is compared with the same computation over the published facts alone:
 where they differ a pending fact may still change it, so it awaits review.
 
@@ -1675,7 +1781,7 @@ entry document; every list returns summaries.
         {
           "id": "…", "gloss": "…", "labels": [], "rare": false, "translations": ["记录"],
           "grammar": { "transitivity": "transitive", "patterns": [], "prepositions": [] },
-          "examples": [{ "text": "…", "translation": "…" }], "collocations": [{ "text": "…", "pattern": "verb_noun" }],
+          "examples": [{ "sentence_id": "…", "text": "…", "translation": "…" }], "collocations": [{ "text": "…", "pattern": "verb_noun" }],
           "topics": [{ "id": "office", "name": { "en": "At the office", "zh": "办公室" } }],
           "relations": { "synonyms": [{ "lemma": "log", "sense_id": "…", "gloss": "…" }],
             "antonyms": [], "broader": [], "narrower": [], "part_of": [], "parts": [] }
@@ -1683,7 +1789,14 @@ entry document; every list returns summaries.
       ]
     }
   ],
-  "phrases": [{ "lemma": "off the record", "pos": ["noun"], "cefr": null, "gloss": "…", "translation": "…" }]
+  "phrase_type": null,
+  "phrases": {
+    "by_sense": [{ "sense_id": "…", "phrases": [{ "lemma": "record player", "pos": ["noun"], "cefr": null, "gloss": "…" }] }],
+    "phrasal_verbs": [],
+    "idioms": [{ "lemma": "off the record", "pos": ["adverb"], "cefr": null, "gloss": "…", "translation": "…" }],
+    "compounds": [],
+    "sayings": [{ "sentence_id": "…", "text": "…", "meaning": "…", "translation": "…" }]
+  }
 }
 ```
 
@@ -1745,9 +1858,20 @@ entry document; every list returns summaries.
   that spelling. `family` lists, as summaries in lemma order, the other public
   entries whose word formation has a part of the same form and role among
   `base` and `root` (`happiness` and `unhappy` share the base `happy`).
-- **Phrases.** Summaries, in the list's order, of the public entries the
-  headword's published `phrases` fact names (see Headwords and phrases); a
-  listed phrase shows once it is public itself.
+- **Phrases.** The headword's published `phrases` fact (see Headwords and
+  phrases), grouped: `by_sense` lists, in sense order, the phrases filed under a
+  sense the document shows; the rest go by type into `phrasal_verbs`, `idioms`
+  (idioms and fixed phrases), and `compounds`; each a summary of the public
+  entry, in the list's order, shown once it is public itself. `sayings` lists
+  `{ sentence_id, text, meaning, translation? }`, the meaning null until
+  published. A phrase entry's document has `phrase_type` (the type the
+  earliest published list naming it gives; null for a single word or an
+  untyped phrase). An example is `{ sentence_id, text, translation? }`.
+- **Sentences.** `GET /v1/sentences/{id}` returns `{ lang, id, text, source,
+  meaning, translation?, examples_of: [{ lemma, sense_id }], saying_of: [lemma]
+  }`, read from the public documents that show it, so it is public only as a
+  published example of a public sense or a saying of a public headword's
+  published list; anything else is `404`. Its ETag covers those documents.
 - **Review metadata.** Fact ids, confidence, and verdict appear only with
   `?include=review`: every object a published fact shows gains `review: {
   fact_id, confidence, verdict }`; claims shown as strings have theirs in the

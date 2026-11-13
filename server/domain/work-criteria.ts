@@ -1,10 +1,11 @@
-import type { FactKind, FactPayloads, Pos, SenseId, TopicId } from '@shared/facts'
+import type { EntryId, FactKind, FactPayloads, Pos, SenseId, SentenceId, TopicId } from '@shared/facts'
 import type { Gap } from '@shared/work'
 import {
   type DecisionModel,
   type DecisionRequest,
   GENERAL_LIMITS,
   limitsOf,
+  type NamedNodes,
   planReview,
   type ReviewContext,
   type SubjectViews,
@@ -47,11 +48,28 @@ const senseView = (pos: Pos): SubjectViews['sense'] => ({
   gloss: '<the gloss of the sense>',
   siblings: [],
 })
-const factView = (kind: 'example' | 'collocation', pos: Pos): SubjectViews['fact'] => ({
-  kind,
-  text: kind === 'example' ? '<sentence>' : '<collocation>',
+const factView = (pos: Pos): SubjectViews['fact'] => ({
+  kind: 'collocation',
+  text: '<collocation>',
   sense: senseView(pos),
 })
+const sentenceView = (pos: Pos): SubjectViews['sentence'] => ({
+  text: '<sentence>',
+  sense: senseView(pos),
+  sayingOf: [],
+  meaning: null,
+})
+const sayingView: SubjectViews['sentence'] = { text: '<saying>', sense: null, sayingOf: [WORD], meaning: null }
+const PHRASE = '00000000-0000-4000-8000-000000000001' as EntryId
+const SENTENCE = '00000000-0000-4000-8000-000000000002' as SentenceId
+const SAYING = '00000000-0000-4000-8000-000000000003' as SentenceId
+const named: NamedNodes = {
+  entries: new Map([[PHRASE, '<phrase>']]),
+  sentences: new Map([
+    [SENTENCE, '<sentence>'],
+    [SAYING, '<saying>'],
+  ]),
+}
 const targetView = (pos: Pos): SubjectViews['sense'] => ({
   lemma: '<other word>',
   pos,
@@ -89,7 +107,14 @@ function samplesOf(gap: Gap, pos: Pos): Sample[] {
     case 'pronunciation':
       return gap.accents.map((accent) => sample('pronunciation', `pronunciation ${accent}`, { ipa: '<ipa>', accent }))
     case 'phrases':
-      return [sample('phrases', 'phrases (every phrase of the headword)', { phrases: ['<phrase>'] })]
+      return [
+        sample('phrases', 'phrases (every phrase of the headword, typed)', {
+          phrases: [
+            { type: 'idiom', entry_id: PHRASE },
+            { type: 'saying', sentence_id: SAYING },
+          ],
+        }),
+      ]
     case 'family':
       return [
         sample('morphology', 'morphology of the derivative', {
@@ -114,7 +139,7 @@ function samplesOf(gap: Gap, pos: Pos): Sample[] {
     case 'synonyms':
       return [relation('synonym', 'relation synonym'), relation('antonym', 'relation antonym')]
     case 'examples':
-      return [sample('example', 'example', { text: '<sentence>' })]
+      return [sample('example', 'example (a sentence, by sentence_id or text)', { sentence_id: SENTENCE })]
     case 'translations':
       return [
         sample('translation', `translation ${gap.language} of a sense`, {
@@ -122,9 +147,9 @@ function samplesOf(gap: Gap, pos: Pos): Sample[] {
           of: 'sense',
           text: '<translation>',
         }),
-        sample('translation', `translation ${gap.language} of an example`, {
+        sample('translation', `translation ${gap.language} of a sentence (an example or a saying)`, {
           language: gap.language,
-          of: 'example',
+          of: 'sentence',
           text: '<translation>',
         }),
         sample('translation', `translation ${gap.language} of a collocation`, {
@@ -141,21 +166,24 @@ function samplesOf(gap: Gap, pos: Pos): Sample[] {
     }
     case 'collocations':
       return [sample('collocation', 'collocation', { text: '<collocation>', pattern: 'phrase' })]
+    case 'sayings':
+      return [sample('sentence_meaning', 'sentence_meaning of each saying', { gloss: '<gloss>' })]
   }
 }
 
 function contextFor({ kind, payload }: Sample, pos: Pos): ReviewContext {
   const subjectType = subjectTypeOf(kind, payload as never)
-  const subject =
-    subjectType === 'entry'
-      ? entryView
-      : subjectType === 'fact'
-        ? factView((payload as FactPayloads['translation']).of === 'collocation' ? 'collocation' : 'example', pos)
-        : senseView(pos)
+  const subjects = {
+    entry: entryView,
+    fact: factView(pos),
+    sentence: kind === 'sentence_meaning' ? sayingView : sentenceView(pos),
+    sense: senseView(pos),
+  }
   return {
-    subject,
+    subject: subjects[subjectType],
     target: kind === 'relation' ? targetView(pos) : null,
     topic: kind === 'topic' ? topicView : null,
+    named,
   } as ReviewContext
 }
 
