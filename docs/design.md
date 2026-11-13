@@ -279,7 +279,10 @@ headwords ("in front of" under *front*).
   back"), fails a plain description or a coined combination ("telephone in",
   "party down"), a wrong type (a complete sentence is always a saying), a
   sense the phrase does not belong to, never fails for a missing phrase or a
-  missing sense, and names each wrong item by number.
+  missing sense, and names each wrong item by number. Idiom and fixed phrase
+  are one group in review: a question asks "an idiom or fixed phrase", and
+  typing one as the other is never a failure (they are phrase entries with
+  the same work; reviews flipped the same phrases between them).
 - **Admission.** Publishing a phrases list makes each entry item live in its
   headword's batch (`admitPhrases` in `server/usecases/review.ts`), so the
   phrase gets its own work items, which queue with its headword's batch. A

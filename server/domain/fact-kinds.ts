@@ -1369,11 +1369,16 @@ function syllablesQuestion(entry: SubjectViews['entry'], syllables: readonly str
 const GRAMMAR_WORD_PHRASES =
   'An idiom is printed under its main content word ("a piece of cake" under "cake", "in a nutshell" under "nutshell"), never under an article, pronoun, preposition, or other grammar word it merely contains; under a grammar word only the phrases built on that word itself belong ("a lot of", "after all").'
 
+/**
+ * What a question asks a phrase to be. Idiom and fixed phrase are one group: both are phrase entries
+ * with the same work, and reviews flipped the same phrases between them ("little by little", "by and
+ * by", "off and on"), rejecting a third of the typed lists for a label that changes nothing.
+ */
 const phraseTypeNames: Record<FactPayloads['phrases']['phrases'][number]['type'], string> = {
   phrasal_verb: 'a phrasal verb',
   compound: 'a compound',
-  idiom: 'an idiom',
-  fixed_phrase: 'a fixed phrase',
+  idiom: 'an idiom or fixed phrase',
+  fixed_phrase: 'an idiom or fixed phrase',
   saying: 'a saying',
 }
 
@@ -1385,7 +1390,7 @@ interface ListedPhrase {
 }
 
 const PHRASE_TYPES_RULE =
-  'The types: phrasal_verb, a verb with a particle ("give up"); compound, a fixed compound naming one thing ("bank account"); idiom, a phrase whose meaning is not the sum of its words; fixed_phrase, a set prepositional or grammatical phrase ("at all", "in front of"); saying, a complete sentence (a proverb, maxim, or saying, "look before you leap"). A complete sentence is always a saying, never a phrase entry.'
+  'The types: phrasal_verb, a verb with a particle ("give up"); compound, a fixed compound naming one thing ("bank account"); idiom, a phrase whose meaning is not the sum of its words; fixed_phrase, a set prepositional or grammatical phrase ("at all", "in front of"); saying, a complete sentence (a proverb, maxim, or saying, "look before you leap"). A complete sentence is always a saying, never a phrase entry. Idiom and fixed_phrase are one group: never fail a phrase typed idiom that could be a fixed_phrase, or the reverse ("little by little", "by and by", "the other day"); fail only a type outside the right group.'
 
 function phraseQuestion(headword: string, { text, type, sense }: ListedPhrase): string {
   const filed = sense ? `, filed under the sense ${quote(sense)}` : ''

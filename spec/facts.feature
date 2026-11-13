@@ -346,7 +346,7 @@ Feature: Facts and review
     Given a phrases list of a headword
     When its review is planned
     Then Jev is asked one question per item naming its type and, when given, its sense: whether a learner's dictionary prints it as that type of the headword, or for a saying whether it is an established saying
-    And the LLM rubric numbers each item with its type and sense, passes idioms, fixed phrases, and phrasal verbs a learner's dictionary prints, fails a plain description ("white rice"), a coined combination ("telephone in"), a wrong type, a complete sentence not typed saying, or a sense the phrase does not belong to, never fails for a missing phrase or a missing sense, and names each wrong item by number
+    And the LLM rubric numbers each item with its type and sense, passes idioms, fixed phrases, and phrasal verbs a learner's dictionary prints, fails a plain description ("white rice"), a coined combination ("telephone in"), a wrong type, a complete sentence not typed saying, or a sense the phrase does not belong to, never fails for a missing phrase, a missing sense, or an idiom typed fixed_phrase or the reverse, and names each wrong item by number
 
   @facts/phrases-admit @usecase
   Scenario: A published phrases list admits its entry items as entries

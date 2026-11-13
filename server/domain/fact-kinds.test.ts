@@ -1104,6 +1104,9 @@ describe('phrases lists', () => {
     )
     expect(text).toContain('- The type is wrong.')
     expect(text).toContain('A complete sentence is always a saying, never a phrase entry.')
+    // Idiom and fixed phrase are one group: neither the question nor the rubric fails one typed as the other.
+    expect(question(plan, 'phrase_4')).toContain('as an idiom or fixed phrase of the headword')
+    expect(text).toContain('never fail a phrase typed idiom that could be a fixed_phrase, or the reverse')
     expect(text).toContain('A missing sense is never a failure')
     // An idiom belongs to its content word, never to a grammar word it contains: both reviewers say so.
     expect(question(plan, 'phrase_1')).toContain('An idiom is printed under its main content word')
