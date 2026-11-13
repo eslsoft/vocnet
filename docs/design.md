@@ -2222,7 +2222,10 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   status change is more than an hour old and that are still `pending`, so
   a lost enqueue cannot strand a fact (an hour outlasts a review backlog, so a
   fact still waiting in the queue is not enqueued twice); it keys on `updated_at`, not
-  `created_at`, so a re-reviewed fact counts from its reset. It also deletes the
+  `created_at`, so a re-reviewed fact counts from its reset. It stamps each fact it
+  re-enqueues (`facts.review_enqueued_at`) and skips it until another hour has
+  passed, so a backlog longer than an hour is not re-enqueued on every cron run
+  (the local cron loop runs back to back while rows are stale). It also deletes the
   leases that expired more than a day ago.
 - A reviewer transport failure (network, timeout, 429, 5xx) retries the message with a
   delay; after five attempts it lands in the `vocnet-reviews-dlq` dead letter

@@ -77,6 +77,12 @@ export const facts = sqliteTable(
     review: text('review'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
+    /**
+     * When the reconciler last re-enqueued the pending fact's review; null until it does. The
+     * reconciler waits a full interval past this as well as past `updated_at`, so a fact still
+     * waiting in a backlog is enqueued once per interval, not on every cron run.
+     */
+    reviewEnqueuedAt: text('review_enqueued_at'),
   },
   (table) => [
     // Resubmitting a live fact must find the existing one instead of duplicating it.

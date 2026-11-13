@@ -467,6 +467,7 @@ Feature: Facts and review
     Given facts pending for more than an hour
     When the reconciler runs
     Then their review jobs are enqueued again
+    And a fact it re-enqueued is not enqueued again until another hour has passed, however often the reconciler runs
 
   @facts/reconcile-api @api
   Scenario: The cron re-enqueues a stuck pending fact

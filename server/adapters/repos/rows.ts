@@ -84,6 +84,8 @@ export function fromFact(fact: Fact): FactRow {
     slot: slotOf(fact.kind, fact.payload as never),
     payload: JSON.stringify(fact.payload),
     review: fact.review && JSON.stringify(fact.review),
+    // A written fact starts its reconcile interval from its own `updated_at`.
+    reviewEnqueuedAt: null,
   }
 }
 

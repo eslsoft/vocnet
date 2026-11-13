@@ -178,8 +178,11 @@ export interface FactRepo {
    * slot is taken or the original already has another live correction.
    */
   transition(write: FactTransitionWrite): Promise<boolean>
-  /** Facts pending since before cutoff, oldest first. */
-  listStuckBefore(cutoff: string, limit: number): Promise<FactId[]>
+  /**
+   * Facts pending since before cutoff and not re-enqueued since then, oldest first, stamped as
+   * re-enqueued at `at`, so the next call skips them until another interval has passed.
+   */
+  claimStuckBefore(cutoff: string, limit: number, at: string): Promise<FactId[]>
   /** A rejected fact of this kind about this subject with this content that a curator rejected. */
   findCuratedRejection(kind: FactKind, subjectId: string, contentKey: string): Promise<Fact | null>
   /** The fact with the entry its subject is or belongs to. */

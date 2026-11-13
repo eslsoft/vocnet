@@ -504,4 +504,25 @@ describe('reconcileReviews', () => {
     await expect(reconcileReviews(world.deps, 'trace-cron')).resolves.toBe(1)
     expect(world.queued).toEqual([{ factId: fact.id, traceId: 'trace-cron' }])
   })
+
+  it('re-enqueues a fact still waiting in a backlog once per hour, not on every run [spec: facts/reconcile]', async () => {
+    const { world, river } = await bankWorld()
+    const fact = await submitted(world, {
+      kind: 'example',
+      subject_id: river,
+      payload: { text: 'We sat on the bank.' },
+    })
+    world.setNow('2026-01-01T01:00:01.000Z')
+    await expect(reconcileReviews(world.deps, 'trace-1')).resolves.toBe(1)
+    world.setNow('2026-01-01T01:05:00.000Z')
+    await expect(reconcileReviews(world.deps, 'trace-2')).resolves.toBe(0)
+    world.setNow('2026-01-01T02:00:00.000Z')
+    await expect(reconcileReviews(world.deps, 'trace-3')).resolves.toBe(0)
+    world.setNow('2026-01-01T02:00:02.000Z')
+    await expect(reconcileReviews(world.deps, 'trace-4')).resolves.toBe(1)
+    expect(world.queued).toEqual([
+      { factId: fact.id, traceId: 'trace-1' },
+      { factId: fact.id, traceId: 'trace-4' },
+    ])
+  })
 })

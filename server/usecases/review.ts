@@ -255,8 +255,9 @@ export async function reconcileReviews(
   deps: Pick<Deps, 'facts' | 'reviewQueue' | 'clock'>,
   traceId: string,
 ): Promise<number> {
-  const cutoff = new Date(deps.clock.now().getTime() - RECONCILE_AFTER_MS).toISOString()
-  const ids = await deps.facts.listStuckBefore(cutoff, RECONCILE_BATCH)
+  const now = deps.clock.now()
+  const cutoff = new Date(now.getTime() - RECONCILE_AFTER_MS).toISOString()
+  const ids = await deps.facts.claimStuckBefore(cutoff, RECONCILE_BATCH, now.toISOString())
   if (ids.length > 0) await deps.reviewQueue.enqueue(ids.map((factId) => ({ factId, traceId })))
   return ids.length
 }

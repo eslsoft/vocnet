@@ -14,7 +14,22 @@ import {
   type SenseId,
 } from '@shared/facts'
 import type { CefrLevel } from '@shared/reference'
-import { and, asc, count, desc, eq, exists, inArray, lt, ne, notExists, or, type SQLWrapper, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  notExists,
+  or,
+  type SQLWrapper,
+  sql,
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
@@ -281,14 +296,27 @@ export function createFactRepo(db: Db): FactRepo {
       return row ? toFact(row) : null
     },
 
-    async listStuckBefore(cutoff, limit) {
+    async claimStuckBefore(cutoff, limit, at) {
       const pending = await db
         .select({ id: facts.id })
         .from(facts)
-        .where(and(eq(facts.status, 'pending'), lt(facts.updatedAt, cutoff)))
+        .where(
+          and(
+            eq(facts.status, 'pending'),
+            lt(facts.updatedAt, cutoff),
+            or(isNull(facts.reviewEnqueuedAt), lt(facts.reviewEnqueuedAt, cutoff)),
+          ),
+        )
         .orderBy(asc(facts.updatedAt))
         .limit(limit)
-      return pending.map((row) => row.id as FactId)
+      const ids = pending.map((row) => row.id as FactId)
+      if (ids.length > 0) {
+        await db
+          .update(facts)
+          .set({ reviewEnqueuedAt: at })
+          .where(and(inArray(facts.id, ids), eq(facts.status, 'pending')))
+      }
+      return ids
     },
 
     async findCuratedRejection(kind, subjectId, contentKey) {

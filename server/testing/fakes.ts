@@ -164,6 +164,8 @@ export function fakeWorld(): FakeWorld {
     luna: passingDecision('luna-test'),
   }
   let llmAnswer: (prompt: LlmPrompt) => LlmJudgement | Promise<LlmJudgement> = passingLlm
+  /** When the reconciler last re-enqueued each pending fact (facts.review_enqueued_at). */
+  const reviewEnqueuedAt = new Map<string, string>()
 
   const world: Omit<FakeWorld, 'deps'> = {
     entries: [],
@@ -940,12 +942,18 @@ export function fakeWorld(): FakeWorld {
         touchFact(next)
         return true
       },
-      listStuckBefore: async (cutoff, limit) =>
-        world.facts
-          .filter((fact) => fact.status === 'pending' && fact.updatedAt < cutoff)
+      claimStuckBefore: async (cutoff, limit, at) => {
+        const ids = world.facts
+          .filter(
+            (fact) =>
+              fact.status === 'pending' && fact.updatedAt < cutoff && (reviewEnqueuedAt.get(fact.id) ?? '') < cutoff,
+          )
           .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
           .slice(0, limit)
-          .map((fact) => fact.id),
+          .map((fact) => fact.id)
+        for (const id of ids) reviewEnqueuedAt.set(id, at)
+        return ids
+      },
       findCuratedRejection: async (kind, subjectId, contentKey) =>
         world.facts.find(
           (fact) =>

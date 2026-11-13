@@ -1,0 +1,1 @@
+ALTER TABLE `facts` ADD `review_enqueued_at` text;
