@@ -30,11 +30,23 @@ const nodes = new Set(nodeIds)
 const nodeFacts = rows(`select * from facts where subject_id in (${list(nodeIds)}) order by id`, ...nodeIds).filter(
   (fact) => fact.object_id === null || nodes.has(fact.object_id),
 )
-// A translation of an example or collocation is about that fact, not a node.
+// A translation of a collocation is about that fact, not a node; the sentences of the examples and
+// the sayings of the phrases lists are nodes the entries share, exported with the facts about them.
 const factIds = nodeFacts.map((fact) => fact.id)
+const sentenceIds = [
+  ...new Set(
+    nodeFacts.flatMap((fact) => {
+      if (fact.kind === 'example') return [fact.object_id]
+      if (fact.kind !== 'phrases') return []
+      return JSON.parse(fact.payload).phrases.flatMap((item) => (item.type === 'saying' ? [item.sentence_id] : []))
+    }),
+  ),
+]
+const sentences = rows(`select * from sentences where id in (${list(sentenceIds)}) order by id`, ...sentenceIds)
 const facts = [
   ...nodeFacts,
   ...rows(`select * from facts where subject_id in (${list(factIds)}) order by id`, ...factIds),
+  ...rows(`select * from facts where subject_id in (${list(sentenceIds)}) order by id`, ...sentenceIds),
 ]
 const byEntry = (table) => rows(`select * from ${table} where entry_id in (${list(entryIds)})`, ...entryIds)
 const worklist = byEntry('worklist').map((row) => ({ ...row, view_revision: row.revision }))
@@ -46,6 +58,7 @@ const tables = [
   ['lemma_cefr', rows(`select * from lemma_cefr where lemma in (${list(LEMMAS)})`, ...LEMMAS)],
   ['entries', entries],
   ['senses', senses],
+  ['sentences', sentences],
   ['facts', facts],
   ['worklist', worklist],
   ['work_passes', byEntry('work_passes')],
