@@ -417,7 +417,7 @@ describe('a published phrases list', () => {
 })
 
 describe('reconcileReviews', () => {
-  it('re-enqueues facts pending for more than five minutes with the trace [spec: facts/reconcile]', async () => {
+  it('re-enqueues facts pending for more than an hour with the trace [spec: facts/reconcile]', async () => {
     const { world, river } = await bankWorld()
     const fact = await submitted(world, {
       kind: 'example',
@@ -426,7 +426,9 @@ describe('reconcileReviews', () => {
     })
     await expect(reconcileReviews(world.deps, 'trace-cron')).resolves.toBe(0)
     expect(world.queued).toEqual([])
-    world.setNow('2026-01-01T00:05:01.000Z')
+    world.setNow('2026-01-01T00:59:59.000Z')
+    await expect(reconcileReviews(world.deps, 'trace-cron')).resolves.toBe(0)
+    world.setNow('2026-01-01T01:00:01.000Z')
     await expect(reconcileReviews(world.deps, 'trace-cron')).resolves.toBe(1)
     expect(world.queued).toEqual([{ factId: fact.id, traceId: 'trace-cron' }])
   })

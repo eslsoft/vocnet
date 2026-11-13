@@ -2092,8 +2092,9 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   that another request resolves, so requests cannot share a limit.
 - A cron trigger runs every five minutes, rescores up to 100 stale worklist
   rows, rebuilds up to 100 stale public views, and re-enqueues facts whose last
-  status change is more than five minutes old and that are still `pending`, so
-  a lost enqueue cannot strand a fact; it keys on `updated_at`, not
+  status change is more than an hour old and that are still `pending`, so
+  a lost enqueue cannot strand a fact (an hour outlasts a review backlog, so a
+  fact still waiting in the queue is not enqueued twice); it keys on `updated_at`, not
   `created_at`, so a re-reviewed fact counts from its reset. It also deletes the
   leases that expired more than a day ago.
 - A reviewer transport failure (network, timeout, 429, 5xx) retries the message with a

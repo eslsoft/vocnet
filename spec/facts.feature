@@ -434,13 +434,13 @@ Feature: Facts and review
 
   @facts/reconcile @usecase
   Scenario: Stuck facts are re-enqueued
-    Given facts pending for more than five minutes
+    Given facts pending for more than an hour
     When the reconciler runs
     Then their review jobs are enqueued again
 
   @facts/reconcile-api @api
   Scenario: The cron re-enqueues a stuck pending fact
-    Given a fact pending for more than five minutes and one submitted just now
+    Given a fact pending for more than an hour and one submitted just now
     When the scheduled handler runs
     Then the stuck fact's review job is enqueued and the fresh one's is not
 

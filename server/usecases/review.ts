@@ -232,7 +232,9 @@ export async function reconcilePhraseLists(deps: DecisionDeps): Promise<number> 
   return ids.length
 }
 
-const RECONCILE_AFTER_MS = 5 * 60 * 1000
+// Longer than a queue backlog lasts: a fact still waiting in the queue is not stranded, and
+// re-enqueueing it only crowds the batches with duplicates that review skips.
+const RECONCILE_AFTER_MS = 60 * 60 * 1000
 const RECONCILE_BATCH = 500
 
 /** Re-enqueues facts pending for too long, so a lost enqueue cannot strand a fact. */
