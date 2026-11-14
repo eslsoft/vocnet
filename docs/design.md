@@ -2224,6 +2224,9 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   otherwise walked every published fact through the status index, five seconds
   a phrase-type lookup, and that one statement held claims, completions, and
   reviews behind it.
+  The console's fact counts by status, kind, and reviewer read the expression
+  index `facts_status_kind_reviewer_idx` (`status, kind, review->reviewer`):
+  reading every published row's review JSON took 17 s and held D1 the same way.
   A batch waits for its slowest review, so the batch is sized to keep the
   per-model caps below busy: 48 reviews queue behind 8 LLM slots, which stay
   full while one slow call finishes, so a batch no longer waits on its tail.

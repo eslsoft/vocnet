@@ -362,4 +362,25 @@ describe('console monitor', () => {
       )
     }
   })
+
+  it('plans the console counts and phrase lookups on their indexes, never a scan of every fact', async () => {
+    const plan = async (query: string) =>
+      (await env.DB.prepare(`explain query plan ${query}`).all<{ detail: string }>()).results
+        .map((row) => row.detail)
+        .join(' | ')
+    // D1 runs one statement at a time: a scan of every published fact here held every request.
+    expect(
+      await plan(
+        "select kind, json_extract(review, '$.reviewer'), count(*) from facts where status = 'published' group by kind, json_extract(review, '$.reviewer') order by kind",
+      ),
+    ).toContain('facts_status_kind_reviewer_idx')
+    expect(await plan('select kind, status, count(*) from facts group by kind, status')).toContain(
+      'COVERING INDEX facts_status_kind_reviewer_idx',
+    )
+    expect(
+      await plan(
+        "select list.id from facts as list indexed by facts_kind_payload_idx where list.kind = 'phrases' and list.status = 'published' order by list.created_at limit 1",
+      ),
+    ).toContain('facts_kind_payload_idx')
+  })
 })

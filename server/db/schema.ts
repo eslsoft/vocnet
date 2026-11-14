@@ -110,6 +110,13 @@ export const facts = sqliteTable(
     index('facts_object_idx').on(table.objectId),
     index('facts_status_created_idx').on(table.status, table.createdAt, table.id),
     index('facts_status_updated_idx').on(table.status, table.updatedAt),
+    // Covers the console's fact counts by status, kind, and reviewer: without it they read every
+    // published row and its review JSON (17 s for 330,000 facts) and held D1 for every request.
+    index('facts_status_kind_reviewer_idx').on(
+      table.status,
+      table.kind,
+      sql`json_extract(${table.review}, '$.reviewer')`,
+    ),
     // Resubmitting rejected content is refused by looking the rejection up.
     index('facts_rejected_content_idx')
       .on(table.kind, table.subjectId, table.contentKey)
