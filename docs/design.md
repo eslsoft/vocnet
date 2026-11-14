@@ -2216,7 +2216,9 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   Each batch logs a `review_batch` start and end, and each review a `review_stage`
   line as each step ends (`loaded`, `judged`, `transitioned`, `admitted`,
   `refreshed`), so a batch that never ends names the review and the step it
-  stopped after.
+  stopped after. D1 runs one statement at a time, so the database binding logs
+  every statement that takes 500 ms or longer as `slow_query` with its SQL
+  (`server/adapters/d1-timing.ts`): a slow statement delays every request behind it.
   A batch waits for its slowest review, so the batch is sized to keep the
   per-model caps below busy: 48 reviews queue behind 8 LLM slots, which stay
   full while one slow call finishes, so a batch no longer waits on its tail.
