@@ -41,7 +41,12 @@ const sample = <K extends FactKind>(kind: K, claim: string, payload: FactPayload
 // for every word, and a rendered value would read as the expected answer.
 const WORD = '<word>'
 const TARGET = '00000000-0000-4000-8000-000000000000' as SenseId
-const entryView: SubjectViews['entry'] = { lemma: WORD, senses: [], caseVariants: [] }
+const entryView: SubjectViews['entry'] = { lemma: WORD, senses: [], caseVariants: [], zipf: null }
+/** The entry a productive use is about: one common sense of the claimed part of speech. */
+const usedEntryView = (pos: Pos): SubjectViews['entry'] => ({
+  ...entryView,
+  senses: [{ id: TARGET, pos, gloss: '<the gloss of the sense>', rank: 'common' }],
+})
 const senseView = (pos: Pos): SubjectViews['sense'] => ({
   lemma: WORD,
   pos,
@@ -168,13 +173,26 @@ function samplesOf(gap: Gap, pos: Pos): Sample[] {
       return [sample('collocation', 'collocation', { text: '<collocation>', pattern: 'phrase' })]
     case 'sayings':
       return [sample('sentence_meaning', 'sentence_meaning of each saying', { gloss: '<gloss>' })]
+    case 'productive_use': {
+      // Each claimed value has its own question, so every value a submission can take is shown.
+      const at = gap.missing[0] ?? pos
+      return [
+        sample('productive_use', 'productive_use, active for both', { pos: at, native: true, learner: true }),
+        sample('productive_use', 'productive_use, active for native, passive for learner', {
+          pos: at,
+          native: true,
+          learner: false,
+        }),
+        sample('productive_use', 'productive_use, passive for both', { pos: at, native: false, learner: false }),
+      ]
+    }
   }
 }
 
 function contextFor({ kind, payload }: Sample, pos: Pos): ReviewContext {
   const subjectType = subjectTypeOf(kind, payload as never)
   const subjects = {
-    entry: entryView,
+    entry: kind === 'productive_use' ? usedEntryView((payload as FactPayloads['productive_use']).pos) : entryView,
     fact: factView(pos),
     sentence: kind === 'sentence_meaning' ? sayingView : sentenceView(pos),
     sense: senseView(pos),

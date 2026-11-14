@@ -314,6 +314,8 @@ export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: Re
     meanings: document.meanings.map((meaning) => ({
       pos: meaning.pos,
       cefr: meaning.cefr,
+      productive_use: meaning.productive_use,
+      skills: meaning.skills,
       pronunciations: meaning.pronunciations.map((item) => withReview(item, variant)),
       forms: meaning.forms,
       senses: meaning.senses.map((sense) => shapeSense(sense, variant)),

@@ -31,7 +31,7 @@ Feature: Facts and review
   @facts/reviewer-routing @domain
   Scenario: Each kind names the decision models that judge it first
     Given the fact-kind registry
-    Then senses, form, relation, grammar, morphology, and phrases ask Jev, translation and topic ask Jev and luna, syllables asks luna, and pronunciation, example, and collocation go to the LLM alone
+    Then senses, form, relation, grammar, morphology, phrases, sentence_meaning, and productive_use ask Jev, translation and topic ask Jev and luna, syllables asks luna, and pronunciation, example, and collocation go to the LLM alone
     And a plan may skip straight to the LLM, which ends every chain
 
   @facts/second-opinion @domain
@@ -316,6 +316,20 @@ Feature: Facts and review
     Given a phrases list on a headword
     When it is admitted
     Then a list on a multiword entry, or naming a phrase that does not contain the headword, is an invalid reference naming the phrases, and its content key is its typed items as a set
+
+  @facts/productive-use-review @domain
+  Scenario: A productive use is judged by one Jev question per tier, worded for the claimed value
+    Given a productive use of a part of speech of the entry's common senses, claiming native and learner each active or passive
+    When it is planned for review
+    Then Jev is asked about native and learner with the word, the part of speech, the common senses of that part of speech with their labels, and the word's frequency
+    And an active claim is asked whether the tier uses the word itself, a passive one whether the word is of a passive kind, both must reach 0.8, and below that the LLM judges both tiers together
+    And a part of speech with no common sense in the live inventory is unreviewable
+
+  @facts/productive-use-admission @api
+  Scenario: An entry holds one productive use per part of speech of its common senses
+    Given an entry with common verb and noun senses and an extra adjective sense
+    When an agent submits productive uses
+    Then one per part of speech is created, a second for the same part of speech is 409 conflict, the adjective is 422 invalid_reference, and native false with learner true is 400
 
   @facts/phrases-typed @domain
   Scenario: A typed phrases list names each target once, a saying as a sentence, and a sense of the headword

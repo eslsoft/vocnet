@@ -69,7 +69,7 @@ export const facts = sqliteTable(
     /**
      * The slot the fact holds on its subject (`slotOf` in the registry): one live fact per kind,
      * subject, and slot. The empty string for a kind with one live fact per subject, the language
-     * for a translation, null for a kind without the limit.
+     * for a translation, the part of speech for a productive use, null for a kind without the limit.
      */
     slot: text('slot'),
     supersedesId: text('supersedes_id'),

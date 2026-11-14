@@ -9,7 +9,7 @@ Feature: Work items
     Given a live entry and its facts in every status
     When the gaps are computed from its pending and published facts
     Then an entry without a live inventory has only its senses gap
-    And with one, missing paradigm forms, a pronunciation in either accent, an irregular form's pronunciation, the phrases list, word formation, and syllables of a single word, and the translations of the entry in each served language are entry gaps
+    And with one, missing paradigm forms, a pronunciation in either accent, an irregular form's pronunciation, the phrases list, word formation, and syllables of a single word, the productive uses, and the translations of the entry in each served language are entry gaps
     And each core sense lacking the category, parts, synonym, examples, topic, grammar, or collocations its part of speech needs, and each other common sense lacking its examples or grammar, is a sense gap
     And an entry that is not live has no gaps
 
@@ -366,11 +366,17 @@ Feature: Work items
     When the gaps are computed
     Then a core sense of an A1 or A2 entry has an examples gap asking for two and counting the one it has, and other senses and entries need one
 
+  @work/productive-use-gaps @domain
+  Scenario: Each part of speech of the common senses needs a productive use
+    Given an entry whose inventory has common verb and noun senses and an extra adjective sense
+    When the gaps are computed
+    Then a usage-stage productive_use gap lists the verb and noun until a live productive use fills each, a rejected one fills nothing, and the extra adjective needs none
+
   @work/phrase-type-slots @domain
   Scenario: A phrase entry has the slots of its type
     Given a multiword entry typed phrasal_verb, compound, idiom, or fixed_phrase by the earliest published list naming it, or by none
     When the gaps are computed
-    Then every type needs senses, examples, translations, and synonyms; a compound also its category, parts, and topics; a phrasal verb its grammar; none a pronunciation or collocations; and an untyped multiword entry keeps every slot
+    Then every type needs senses, examples, translations, synonyms, and productive uses; a compound also its category, parts, and topics; a phrasal verb its grammar; none a pronunciation or collocations; and an untyped multiword entry keeps every slot
 
   @work/phrases-gap @domain
   Scenario: Every single-word headword with an inventory has a phrases slot

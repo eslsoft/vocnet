@@ -81,6 +81,7 @@ const DETAILS: Array<{ key: string; kinds: FactKind[]; tasks: WorkType[] }> = [
   { key: 'syllables', kinds: ['syllables'], tasks: ['syllables'] },
   { key: 'formation', kinds: ['morphology'], tasks: ['morphology', 'family'] },
   { key: 'phrases', kinds: ['phrases'], tasks: ['phrases'] },
+  { key: 'productiveUse', kinds: ['productive_use'], tasks: ['productive_use'] },
   { key: 'translations', kinds: [], tasks: ['translations'] },
 ]
 

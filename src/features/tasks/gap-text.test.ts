@@ -44,6 +44,7 @@ describe('gapText', () => {
     [{ type: 'topics', ...sense }, 'No topic yet.'],
     [{ type: 'grammar', ...sense }, 'No grammar note yet.'],
     [{ type: 'sayings', missing: [crypto.randomUUID() as never] }, '1 saying has no meaning yet.'],
+    [{ type: 'productive_use', missing: ['verb', 'noun'] }, 'Not yet marked active or passive: verb, noun.'],
     [{ type: 'collocations', ...sense }, 'No collocation yet.'],
   ])('describes a %o gap in plain words', (gap, expected) => {
     expect(gapText(gap, t)).toBe(expected)

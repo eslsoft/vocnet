@@ -73,6 +73,10 @@ describe('summarizeFact', () => {
     ],
     [{ kind: 'example', payload: { sentence_id: 'abcdef12-0000-4000-8000-000000000003' } }, 'sentence abcdef12'],
     [{ kind: 'sentence_meaning', payload: { gloss: 'Do not rely on chance.' } }, 'Do not rely on chance.'],
+    [
+      { kind: 'productive_use', payload: { pos: 'verb', native: true, learner: false } },
+      'verb: native active, learner passive',
+    ],
     [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
     [{ kind: 'grammar', payload: { agreement: ['singular_noun', 'of_plural'] } }, 'singular_noun, of_plural'],
     [{ kind: 'grammar', payload: { position: 'mid' } }, 'mid'],

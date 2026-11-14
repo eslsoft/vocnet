@@ -87,7 +87,7 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | `content_key`   | Deterministic key of the identifying payload, for dedupe       |
 | `payload`       | Kind-specific JSON, validated by the registry schema           |
 | `status`        | `pending`, `published`, `rejected`, `superseded`, `retracted`  |
-| `slot`          | The slot the fact holds on its subject (`slotOf` in the registry): `''` for a kind with one live fact per subject, the language for a translation, null for a kind without the limit |
+| `slot`          | The slot the fact holds on its subject (`slotOf` in the registry): `''` for a kind with one live fact per subject, the language for a translation, the part of speech for a productive use, null for a kind without the limit |
 | `supersedes_id` | Fact this one corrects, if any                                 |
 | `author`        | Agent or admin principal that submitted it                     |
 | `review`        | Reviewer, verdict, confidence, reason, raw detail, reviewed at |
@@ -121,9 +121,12 @@ entry plus its payload schema in `shared/facts.ts`.
 | `syllables`     | entry   | one         | `{ syllables: [string] }` (`["a", "bil", "i", "ty"]`)     | luna, then LLM |
 | `phrases`       | entry   | one         | `{ phrases: [{ type, entry_id, sense_id? } \| { type: "saying", sentence_id }] }` (no cap) | Jev per item, then LLM |
 | `sentence_meaning` | sentence | one      | `{ gloss }`: what a saying means and when it is said      | Jev, then LLM |
+| `productive_use` | entry  | one per part of speech | `{ pos, native, learner }`: whether native speakers and a C1 learner use the word or only understand it | Jev per tier, then LLM |
 
-A kind with cardinality *one* admits a single live fact per subject, and
-*one per language* a single live translation per subject and language: an
+A kind with cardinality *one* admits a single live fact per subject,
+*one per language* a single live translation per subject and language, and
+*one per part of speech* a single live productive use per entry and part of
+speech: an
 entry has one inventory, one word formation, one syllable division, and one
 phrases list, a sentence one meaning, and a sense one grammar fact. Changing it means submitting a
 correction that supersedes the published fact; a second one without
@@ -349,6 +352,45 @@ meaning, a wrong one, or the saying quoted as its gloss.
 
 The migration `redesign` turned every sense translation into the new shape and
 split the Chinese of every example into its own translation fact.
+
+#### Productive use
+
+Linguistics calls the words a speaker uses in speech and writing their
+*productive* (active) vocabulary and the words they only understand their
+*receptive* (passive) vocabulary. A **productive use** (`productive_use`,
+`{ pos, native, learner }`, about an entry, one per part of speech of its
+common senses) says, for two tiers, whether the word in that part of speech
+is active (`true`) or passive (`false`). The name is not `productive`, which
+morphology means otherwise.
+
+- **native**: native speakers use it themselves, in every register: everyday,
+  formal written, and the informal and slang words of their own variety. It is
+  passive only for archaic and literary words and specialist terms outside
+  general knowledge (henceforth, betwixt, red shift).
+- **learner**: an advanced, CEFR C1 learner who studies, works, and lives in
+  English needs to use it: everyday words, academic and workplace vocabulary,
+  and common phrasal verbs, idioms, and fixed phrases (give up, a piece of
+  cake). It is passive for slang, jokey or strongly colloquial idioms (kick the
+  bucket), informal words of only one variety of English (gobsmacked,
+  knackered; a standard regional word such as truck is not one), and every
+  word passive for natives. So `native: false` with `learner: true` is `400`.
+
+`pos` must be the part of speech of a common sense of the entry's live
+inventory, else `422 invalid_reference`; extra senses are passive for both
+tiers and take none. The content key is `pos|native|learner`, the slot the part
+of speech. Both tiers are one fact so a contradiction between them is caught in
+one review.
+
+Jev is asked one question per tier, worded for the claimed value, about the
+word, the part of speech, its common senses with their labels, and its Zipf
+frequency: an active claim asks whether the tier uses the word itself, a
+passive one whether the word is of a passive kind. A question asked one way
+round scores the other side poorly: in the 2026-11-14 trial (180 hand-labelled
+words), "is recognising enough" passed 90 of 113 words a learner must use. Both
+answers must reach 0.8, which in the trial let no wrong claim through and
+settled about three facts in four; otherwise the LLM judges both tiers
+together. A part of speech the live inventory no longer has a common sense of
+is unreviewable.
 
 #### Syllables and form pronunciations
 
@@ -1286,7 +1328,7 @@ next stage waits on a review the workers move on to the next entry:
 | 1 identity | `senses` | Nothing else can be judged before the inventory exists, and relations need their ends' inventories |
 | 2 network | `category`, `parts`, `synonyms`, `family`, `phrases`, `topics` | Where the word sits among other words |
 | 3 translation | `translations` | What the word means to a learner in each served language |
-| 4 usage | `examples`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations` | How the word is used |
+| 4 usage | `examples`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations`, `productive_use` | How the word is used |
 
 The band is the entry's lowest CEFR level, A1 to C2 (0 to 5), then an entry
 without a level, most phrases among them (6) (`learnerBand`). `rank` is the
@@ -1300,7 +1342,8 @@ worklist (`rankWorkItemsSql`).
 - **Completeness** is the filled share of the slots its gaps count: the
   inventory, each paradigm form, a strong pronunciation in `us` and `uk`, each
   irregular form's pronunciation, and for a single word its phrases list, word
-  formation, and syllables (and its family at A1 and A2); per common sense the
+  formation, and syllables (and its family at A1 and A2); one productive use
+  per part of speech of its common senses; per common sense the
   slots of its scope (below); and per served language one translation per
   common sense, current example, and live collocation. A passed slot counts as
   filled. 1 means no gaps. Until the inventory exists the inventory is the only
@@ -1360,6 +1403,9 @@ needs and no pass completed it. Entry gaps:
 - `sayings` (required, stage 3, entry context): each saying of the headword's
   published phrases list with no live `sentence_meaning`, as
   `{ type: "sayings", missing: [sentence_id] }`.
+- `productive_use` (required, stage 4, entry context): each part of speech of
+  the common senses with no live productive use, in inventory order, as
+  `{ type: "productive_use", missing: [pos] }`; single words and phrases alike.
 
 Sense gaps, per common sense of the current inventory, within its scope:
 
@@ -1384,7 +1430,7 @@ phrases); a multiword entry no published list types keeps every slot:
 
 | Slot | phrasal_verb | compound | idiom | fixed_phrase |
 | ---- | ------------ | -------- | ----- | ------------ |
-| senses, examples, translations, synonyms | ✓ | ✓ | ✓ | ✓ |
+| senses, examples, translations, synonyms, productive_use | ✓ | ✓ | ✓ | ✓ |
 | category, parts, topics | – | ✓ | – | – |
 | grammar | ✓ (paused) | – | – | – |
 | pronunciation, collocations | – | – | – | – |
@@ -1792,6 +1838,8 @@ entry document; every list returns summaries.
     {
       "pos": "verb",
       "cefr": "A2",
+      "productive_use": { "native": true, "learner": true },
+      "skills": { "native": ["listen", "speak", "read", "write"], "learner": ["listen", "speak", "read", "write"] },
       "pronunciations": [{ "ipa": "rɪˈkɔːrd", "accent": "us" }],
       "forms": { "past": [{ "form": "recorded", "irregular": false }], "present_participle": [{ "form": "recording", "irregular": false }] },
       "senses": [
@@ -1820,6 +1868,17 @@ entry document; every list returns summaries.
 - **Meanings.** One meaning per part of speech, in the order of each one's
   first sense in the inventory's order (see Sense inventory), with the CEFR level of
   the lemma in that part of speech or `null`.
+- **Productive use.** A meaning's `productive_use` is `{ native, learner }`
+  from its published productive use (see Productive use), each `true` for
+  active and `false` for passive, and `skills` the skills each tier needs it
+  for, computed rather than stored: active is `listen`, `speak`, `read`,
+  `write`, passive `listen`, `read`; when every common sense of the part of
+  speech is labelled `informal`, `slang`, `taboo`, or `offensive` only the
+  spoken ones stay, and when every one is `formal` or `literary` only the
+  written ones (`skillsOf` in `server/domain/productive-use.ts`). A meaning of
+  only extra senses is passive for both tiers; one whose productive use is not
+  published has `null` for both. With `?include=review` its
+  `review.productive_use` names the fact, `null` when none is published.
 - **Pronunciations.** The entry's `pronunciations` are the facts without a part
   of speech, the default. A meaning lists only the facts labelled with its part
   of speech, the ones that differ from the default. A weak form keeps

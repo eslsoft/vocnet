@@ -1,3 +1,4 @@
+import type { Meaning } from '@shared/catalog'
 import type { CefrLevel } from '@shared/reference'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/shared/lib/cn'
@@ -23,6 +24,25 @@ export function CefrBadge({ level, className }: { level: CefrLevel; className?: 
     >
       {level}
     </abbr>
+  )
+}
+
+/** Whether native speakers and an advanced learner use the word in this part of speech or only understand it. */
+export function ProductiveUseBadges({ use, skills }: { use: Meaning['productive_use']; skills: Meaning['skills'] }) {
+  const { t } = useTranslation()
+  if (!use || !skills) return null
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 text-xs">
+      {(['native', 'learner'] as const).map((tier) => (
+        <span
+          key={tier}
+          title={skills[tier].map((skill) => t(`entry.skill.${skill}`)).join(' · ')}
+          className="inline-flex h-5 items-center rounded px-1.5 text-muted-foreground ring-1 ring-border ring-inset"
+        >
+          {t(`entry.tier.${tier}`)} · {t(use[tier] ? 'entry.active' : 'entry.passive')}
+        </span>
+      ))}
+    </span>
   )
 }
 

@@ -97,12 +97,16 @@ const subjectNode: { [S in SubjectType]: (deps: SubjectDeps, id: string) => Prom
       entry && {
         entryId: entry.id,
         pos: null,
-        admission: async () => ({
-          lemma: entry.lemma,
-          // Every sense row of the entry, so a new inventory can keep a sense a rejected one named.
-          senses: (await deps.nodes.listSenses(entry.id)).map(({ id: sense }) => sense),
-          inventory: (await inventoryOf(deps, entry.id)).map(({ id: sense }) => sense),
-        }),
+        admission: async () => {
+          const [rows, inventory] = await Promise.all([deps.nodes.listSenses(entry.id), inventoryOf(deps, entry.id)])
+          return {
+            lemma: entry.lemma,
+            // Every sense row of the entry, so a new inventory can keep a sense a rejected one named.
+            senses: rows.map(({ id: sense }) => sense),
+            inventory: inventory.map(({ id: sense }) => sense),
+            commonPos: [...new Set(inventory.filter(({ rank }) => rank === 'common').map(({ pos }) => pos))],
+          }
+        },
       }
     )
   },

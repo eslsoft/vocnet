@@ -30,6 +30,8 @@ export function gapText(gap: Gap, t: TFunction): string {
       return t('gap.translations', { count: gap.missing.length })
     case 'sayings':
       return t('gap.sayings', { count: gap.missing.length })
+    case 'productive_use':
+      return t('gap.productive_use', { pos: gap.missing.map((pos) => t(`pos.${pos}`)).join(', ') })
   }
 }
 

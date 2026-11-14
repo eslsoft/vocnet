@@ -641,6 +641,20 @@ const syllablesPayloadSchema = z.strictObject({
   }),
 })
 
+const productiveUsePayloadSchema = z.strictObject({
+  pos: posSchema.meta({
+    description: "A part of speech of the entry's common senses: one fact per such part of speech.",
+  }),
+  native: z.boolean().meta({
+    description:
+      'Whether native speakers use the word in this part of speech in their own speech or writing (true) or only understand it (false): archaic and literary words and specialist terms outside general knowledge are false.',
+  }),
+  learner: z.boolean().meta({
+    description:
+      'Whether an advanced (CEFR C1) learner needs to use it (true) or only to recognise it (false): slang, jokey or strongly colloquial idioms, informal words of only one variety of English, and every word false for native are false.',
+  }),
+})
+
 export const factPayloadSchemas = {
   senses: sensesPayloadSchema,
   form: formPayloadSchema,
@@ -677,6 +691,7 @@ export const factPayloadSchemas = {
   syllables: syllablesPayloadSchema,
   phrases: phrasesPayloadSchema,
   sentence_meaning: sentenceMeaningPayloadSchema,
+  productive_use: productiveUsePayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -711,6 +726,10 @@ const submitPayloadSchemas = {
       return new Set(names).size === names.length
     }, 'A phrase list names each phrase once.'),
   sentence_meaning: z.strictObject({ gloss: glossSchema }),
+  productive_use: productiveUsePayloadSchema.refine(
+    ({ native, learner }) => native || !learner,
+    'A word native speakers only understand is passive for a learner too: learner is false when native is false.',
+  ),
   pronunciation: factPayloadSchemas.pronunciation.extend({ ipa: ipaSchema }).refine(usIpaFits, US_IPA_ISSUE),
   form: formPayloadSchema
     .extend({ ipa: ipaSchema.optional() })
@@ -780,6 +799,7 @@ export const factKindSchema = z
     'syllables',
     'phrases',
     'sentence_meaning',
+    'productive_use',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -875,6 +895,7 @@ export const submitFactInputSchema = z
     submitVariant('syllables'),
     submitVariant('phrases'),
     submitVariant('sentence_meaning'),
+    submitVariant('productive_use'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -913,6 +934,7 @@ export const factSchema = z
     factVariant('syllables'),
     factVariant('phrases'),
     factVariant('sentence_meaning'),
+    factVariant('productive_use'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

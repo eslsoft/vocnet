@@ -79,6 +79,8 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
       {
         pos: 'noun',
         cefr: 'A1',
+        productive_use: { native: true, learner: true },
+        skills: { native: ['listen', 'speak', 'read', 'write'], learner: ['listen', 'speak', 'read', 'write'] },
         pronunciations: [],
         forms: { plural: [{ form: 'animals', irregular: false }] },
         senses: [
@@ -119,6 +121,8 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
       {
         pos: 'adjective',
         cefr: 'B1',
+        productive_use: { native: true, learner: false },
+        skills: { native: ['listen', 'speak'], learner: ['listen'] },
         pronunciations: [],
         forms: {},
         senses: [
@@ -218,6 +222,8 @@ export function goEntry() {
       {
         pos: 'verb',
         cefr: null,
+        productive_use: null,
+        skills: null,
         pronunciations: [
           { ipa: 'ɡəʊ', accent: 'uk', strength: 'strong' },
           { ipa: 'ɡə', accent: 'uk', strength: 'weak' },

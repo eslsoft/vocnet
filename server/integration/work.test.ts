@@ -230,6 +230,7 @@ describe('work items', () => {
       of: 'sentence',
       text: '孩子们吃了冰淇淋。',
     })
+    await curated('productive_use', entryId, { pos: 'noun', native: true, learner: true })
     for (const type of ['category', 'synonyms', 'topics', 'grammar', 'collocations']) {
       const passed = await call(`/manage/v1/entries/${entryId}/passes`, {
         method: 'POST',

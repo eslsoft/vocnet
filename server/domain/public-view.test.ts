@@ -81,21 +81,25 @@ const bank: StoredEntry = {
     {
       pos: 'noun',
       cefr: 'A2',
+      productive_use: { native: true, learner: true },
+      skills: { native: ['listen', 'speak', 'read', 'write'], learner: ['listen', 'speak', 'read', 'write'] },
       pronunciations: [],
       forms: { plural: [{ form: 'banks', irregular: false }] },
       senses: [
         storedSense('s1', ['finance', 'places'], { zh: ['银行', '库'], 'zh-Hant': ['銀行'], fr: ['banque'] }),
         storedSense('s2', [], {}),
       ],
-      review: { forms: { plural: [review('f1')] } },
+      review: { forms: { plural: [review('f1')] }, productive_use: review('u1') },
     },
     {
       pos: 'verb',
       cefr: null,
+      productive_use: null,
+      skills: null,
       pronunciations: [{ ipa: 'bæŋk', accent: 'uk', strength: 'weak', review: review('p2') }],
       forms: { past: [{ form: 'banked', irregular: false }] },
       senses: [storedSense('s3', [], { zh: ['存'] })],
-      review: { forms: { past: [review('f2')] } },
+      review: { forms: { past: [review('f2')] }, productive_use: null },
     },
   ],
   summary,
@@ -273,7 +277,7 @@ describe('public read variants', () => {
     expect(reviewed.pronunciations[0]?.review).toEqual(review('p1'))
     expect(reviewed.variants[0]?.review).toEqual(review('v1'))
     expect(reviewed.morphology?.review).toEqual(review('m1'))
-    expect(reviewed.meanings[0]?.review).toEqual({ forms: { plural: [review('f1')] } })
+    expect(reviewed.meanings[0]?.review).toEqual({ forms: { plural: [review('f1')] }, productive_use: review('u1') })
     const [first] = reviewed.meanings[0]?.senses ?? []
     expect(first?.review).toEqual({ gloss: review('s-s1'), translations: [review('tr-zh-0'), review('tr-zh-1')] })
     expect(first?.grammar?.review).toEqual(review('g-s1'))

@@ -73,10 +73,17 @@ const shore = {
   gloss: 'the land along the edge of water',
   siblings: [{ pos: 'verb' as const, gloss: 'to support with props' }],
 }
-const entryView = (lemma: string, senses: EntrySense[] = [], caseVariants: string[] = []) => ({
+/** An entry view whose senses are common unless a test ranks them. */
+const entryView = (
+  lemma: string,
+  senses: Array<Omit<EntrySense, 'rank'> & Partial<Pick<EntrySense, 'rank'>>> = [],
+  caseVariants: string[] = [],
+  zipf: number | null = null,
+): SubjectViews['entry'] => ({
   lemma,
-  senses,
+  senses: senses.map((sense) => ({ rank: 'common', ...sense })),
   caseVariants,
+  zipf,
 })
 const bankEntry = entryView('bank', [{ ...money, id: target }])
 
@@ -315,6 +322,7 @@ describe('fact-kind registry', () => {
       collocation: [],
       phrases: ['jev'],
       sentence_meaning: ['jev'],
+      productive_use: ['jev'],
     })
   })
 
@@ -346,6 +354,7 @@ describe('fact-kind registry', () => {
         { gloss: 'Fairness on both sides.' },
         on({ text: 'Give and take.', sense: null, sayingOf: ['give'], meaning: null }),
       ),
+      productive_use: planReview('productive_use', { pos: 'noun', native: true, learner: true }, on(bankEntry)),
     }
     expect(Object.fromEntries(Object.entries(plans).map(([kind, plan]) => [kind, settle(plan)]))).toEqual({
       senses: one('jev'),
@@ -373,6 +382,7 @@ describe('fact-kind registry', () => {
       collocation: null,
       phrases: one('jev'),
       sentence_meaning: one('jev'),
+      productive_use: one('jev'),
     })
     for (const plan of Object.values(plans)) {
       expect(system(plan)).toContain('"verdict"')
@@ -406,14 +416,15 @@ describe('fact-kind registry', () => {
     expect(subjectTypeOf('translation', { language: 'zh', of: 'collocation', text: '大雨' })).toBe('fact')
   })
 
-  it('keeps one live fact of a single-slot kind, one translation per language, and no limit otherwise', () => {
+  it('keeps one live fact of a single-slot kind, one translation per language, one productive use per part of speech, and no limit otherwise', () => {
     expect(slotOf('senses', { senses: [] })).toBe('')
     expect(slotOf('phrases', { phrases: [{ type: 'idiom', entry_id: giveUp }] })).toBe('')
     expect(slotOf('sentence_meaning', { gloss: 'x' })).toBe('')
     expect(slotOf('translation', { language: 'zh', of: 'sense', text: '河岸' })).toBe('zh')
+    expect(slotOf('productive_use', { pos: 'verb', native: true, learner: false })).toBe('verb')
     expect(slotOf('relation', { type: 'synonym', target_sense_id: target })).toBeNull()
     expect(GENERAL_LIMITS[1]).toBe(
-      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, sentence_meaning, and one live translation per language: change it with a correction that supersedes the published one.',
+      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, sentence_meaning, one live translation per language, and one live productive_use per part of speech: change it with a correction that supersedes the published one.',
     )
     expect(GENERAL_LIMITS).toHaveLength(3)
   })
@@ -832,7 +843,7 @@ describe('sense inventories', () => {
       admissionOf(
         'senses',
         { senses: senses as Listed[] },
-        { lemma: 'book', senses: [volume, reserve, record], inventory: [] },
+        { lemma: 'book', senses: [volume, reserve, record], inventory: [], commonPos: [] },
       )
     expect(admit(inventory.senses)).toBeNull()
     expect(admit([{ pos: 'noun', gloss: 'A new sense.', rank: 'common' }])).toBeNull()
@@ -1015,7 +1026,7 @@ describe('phrases lists', () => {
     admissionOf(
       'phrases',
       { phrases: phrases.map((phrase) => ({ type: 'idiom' as const, entry_id: entryOf(phrase) })) },
-      { lemma, senses: [], inventory },
+      { lemma, senses: [], inventory, commonPos: [] },
       nodes(),
     )
 
@@ -1035,7 +1046,7 @@ describe('phrases lists', () => {
 
   it('names each target once, a saying a complete sentence, and a sense of the headword [spec: facts/phrases-typed]', () => {
     const list = (phrases: FactPayloads['phrases']['phrases'], inventory: SenseId[] = [target]) =>
-      admissionOf('phrases', { phrases }, { lemma: 'give', senses: [], inventory }, nodes())
+      admissionOf('phrases', { phrases }, { lemma: 'give', senses: [], inventory, commonPos: [] }, nodes())
     const up = entryOf('give up')
     expect(
       list([
@@ -1057,7 +1068,7 @@ describe('phrases lists', () => {
       admissionOf(
         'phrases',
         { phrases: [{ type: 'saying', sentence_id: lower }] },
-        { lemma: 'give', senses: [], inventory: [] },
+        { lemma: 'give', senses: [], inventory: [], commonPos: [] },
         { entries: new Map(), sentences: new Map([[lower, 'give and take']]) },
       ),
     ).toContain('A saying is a complete sentence')
@@ -1320,7 +1331,7 @@ describe('morphology facts', () => {
     parts: list.map(([form, role, meaning]) => ({ form, role, ...(meaning ? { meaning } : {}) })),
   })
   const admit = (lemma: string, payload: FactPayloads['morphology']) =>
-    admissionOf('morphology', payload, { lemma, senses: [], inventory: [] })
+    admissionOf('morphology', payload, { lemma, senses: [], inventory: [], commonPos: [] })
 
   it('admits parts that spell the word, allowing spelling changes where they join [spec: facts/morphology-parts]', () => {
     expect(admit('unhappiness', parts(['un-', 'prefix'], ['happy', 'base'], ['-ness', 'suffix']))).toBeNull()
@@ -1527,7 +1538,7 @@ describe('collocation facts', () => {
 })
 
 describe('forms, syllables, and relation ends', () => {
-  const entry = (lemma: string) => ({ lemma, senses: [] as SenseId[], inventory: [] as SenseId[] })
+  const entry = (lemma: string) => ({ lemma, senses: [] as SenseId[], inventory: [] as SenseId[], commonPos: [] })
 
   it('admits syllables that spell a single-word lemma and lets luna settle whether it follows the pronunciation [spec: facts/syllables]', () => {
     expect(admissionOf('syllables', { syllables: ['a', 'bil', 'i', 'ty'] }, entry('ability'))).toBeNull()
@@ -1729,5 +1740,77 @@ describe('fact summaries', () => {
         ],
       }),
     ).toBe(`give up (phrasal_verb), ${saying} (saying)`)
+  })
+})
+
+describe('productive uses', () => {
+  const run = entryView(
+    'run',
+    [
+      { id: sense(1), pos: 'verb', gloss: 'To move fast on foot.' },
+      { id: sense(2), pos: 'verb', gloss: 'To manage a business.', register: 'informal', region: 'british' },
+      { id: sense(3), pos: 'noun', gloss: 'An act of running.' },
+      { id: sense(4), pos: 'adjective', gloss: 'Melted.', rank: 'extra', register: 'dated' },
+    ],
+    [],
+    4.9,
+  )
+  const plan = (native: boolean, learner: boolean, pos: Pos = 'verb') =>
+    planReview('productive_use', { pos, native, learner }, on(run))
+
+  it('asks Jev one question per tier, worded for the claimed value, at 0.8 [spec: facts/productive-use-review]', () => {
+    const active = plan(true, true)
+    expect(decision(active)?.gates).toEqual([{ model: 'jev', passAt: 0.8 }])
+    expect(decision(active)?.state).toEqual({
+      word: 'run',
+      'part of speech': 'verb',
+      senses: ['To move fast on foot.', 'To manage a business. (informal, british)'],
+      'word frequency (zipf)': '4.9',
+    })
+    expect(question(active, 'native')).toContain('Do native English speakers themselves use "run" (verb)')
+    expect(question(active, 'learner')).toContain('should use in their own speech or writing?')
+    const passive = plan(false, false)
+    expect(question(passive, 'native')).toContain('an archaic or literary word, or a specialist term')
+    expect(question(passive, 'learner')).toContain('Is "run" (verb) in the given senses slang')
+    expect(question(plan(true, false), 'native')).toBe(question(active, 'native'))
+    expect(question(plan(true, false), 'learner')).toBe(question(passive, 'learner'))
+    expect(rubric(plan(true, false))).toContain(
+      'active (uses it) vocabulary for native speakers and passive (only understands it) vocabulary for an advanced (CEFR C1) learner',
+    )
+    expect(decision(plan(true, true, 'noun'))?.state.senses).toEqual(['An act of running.'])
+    expect(
+      decision(
+        planReview(
+          'productive_use',
+          { pos: 'noun', native: true, learner: true },
+          on(entryView('x', [{ id: sense(1), pos: 'noun', gloss: 'g' }])),
+        ),
+      )?.state['word frequency (zipf)'],
+    ).toBe('unknown')
+  })
+
+  it('cannot review a part of speech the live inventory has no common sense of', () => {
+    expect(plan(false, false, 'adjective')).toEqual({
+      kind: 'unreviewable',
+      reason: "The entry's live inventory has no common adjective sense.",
+    })
+  })
+
+  it('admits a part of speech of the common senses only [spec: facts/productive-use-admission]', () => {
+    const admission = { lemma: 'run', senses: [], inventory: [], commonPos: ['verb', 'noun'] as Pos[] }
+    expect(admissionOf('productive_use', { pos: 'noun', native: true, learner: true }, admission)).toBeNull()
+    expect(admissionOf('productive_use', { pos: 'adjective', native: false, learner: false }, admission)).toBe(
+      'No common sense of the entry is of the part of speech adjective; a productive use names a part of speech of its common senses (verb, noun).',
+    )
+    expect(
+      admissionOf('productive_use', { pos: 'noun', native: true, learner: true }, { ...admission, commonPos: [] }),
+    ).toContain('(none)')
+  })
+
+  it('keys a productive use by its part of speech and both tiers', () => {
+    expect(contentKeyOf('productive_use', { pos: 'verb', native: true, learner: false })).toBe('verb|true|false')
+    expect(summarizeFact({ kind: 'productive_use', payload: { pos: 'verb', native: false, learner: false } })).toBe(
+      'verb: native passive, learner passive',
+    )
   })
 })

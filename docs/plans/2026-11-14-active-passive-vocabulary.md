@@ -30,7 +30,7 @@
 | 数量 | 每个词性一条：新增数量规则 `per_pos`（与 `per_language` 同理），格（`slot`）就是词性，沿用现有的唯一索引 |
 | 内容 | `{ pos, native, learner }`，`native` 和 `learner` 是布尔值：`true` 为主动（产出性），`false` 为被动（只需理解） |
 | 内容键 | `pos`、`native`、`learner` |
-| 写入规则 | `native` 为 `false` 时 `learner` 必须也是 `false`（学习者的主动词汇是母语者主动词汇的一部分），否则 `422`；`pos` 必须是该词条某个 common 义项的词性，否则 `422` |
+| 写入规则 | `native` 为 `false` 时 `learner` 必须也是 `false`（学习者的主动词汇是母语者主动词汇的一部分），否则 `400`（格式规则）；`pos` 必须是该词条某个 common 义项的词性，否则 `422 invalid_reference` |
 | 审核 | Jev 每档一问，按取值选问题（见 3.3），两问都 ≥ 0.8 即通过；否则交审核模型判断整条 |
 
 - 只对 common 义项生效。**extra 义项（罕见、专业、过时）两档一律视为被动**，不单独标，也不占格。词条有几个 common 义项的词性，就有几个格。

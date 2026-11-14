@@ -205,6 +205,19 @@ Feature: Catalog
     When management asks for the node behind the entry id, the sense id, or an unknown id
     Then it gets the owning entry's id and lemma for both, and 404 for the unknown id
 
+  @catalog/productive-use-read @domain
+  Scenario: Each meaning says whether native speakers and a C1 learner use the word, and for which skills
+    Given an entry with published and pending productive uses and a part of speech with only extra senses
+    When its document is projected
+    Then a meaning with a published productive use shows native and learner as true or false with their skills, a meaning without one shows null for both, and a meaning of only extra senses is passive for both
+    And an active tier is listen, speak, read, and write and a passive one listen and read, keeping only listen and speak when every common sense is informal, slang, taboo, or offensive, and only read and write when every one is formal or literary
+
+  @catalog/productive-use-api @api
+  Scenario: A reviewed productive use is served on its meaning
+    Given an entry with an informal British adjective sense and an extra verb sense
+    When an agent submits a productive use and Jev answers both questions at 0.8, or below 0.8 and the LLM fails it
+    Then the first publishes and the public entry serves it with its skills and its review, the verb passive for both, and the failed one leaves the meaning unmarked until a curator publishes it
+
   @catalog/new-fields @domain
   Scenario: The entry document shows syllables, form objects, and the translations of each item
     Given an entry with published syllables, a form with a pronunciation, published translations of a sense, an example's sentence, and a collocation, a translation of a superseded example's sentence, and a published phrases list with phrase entries and a saying

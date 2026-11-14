@@ -301,21 +301,40 @@ export const publicSenseSchema = z
   .meta({ id: 'Sense' })
 export type PublicSense = z.infer<typeof publicSenseSchema>
 
+export const skillSchema = z.enum(['listen', 'speak', 'read', 'write']).meta({ id: 'Skill' })
+export type Skill = z.infer<typeof skillSchema>
+
+const byTier = <T extends z.ZodType>(value: T) => z.object({ native: value, learner: value })
+
 export const meaningSchema = z
   .object({
     pos: posSchema,
     cefr: cefrLevelSchema
       .nullable()
       .meta({ description: 'CEFR level of the lemma in this part of speech; null when it has none.' }),
+    productive_use: byTier(z.boolean()).nullable().meta({
+      id: 'ProductiveUse',
+      description:
+        'Whether native speakers (native) and an advanced CEFR C1 learner (learner) use the word in this part of speech themselves (true, active) or only understand it (false, passive). A part of speech with only rare senses is passive for both; null until a productive use is published.',
+    }),
+    skills: byTier(z.array(skillSchema)).nullable().meta({
+      description:
+        'The skills each tier needs the word for, derived from productive_use and the registers of the common senses: active is listen, speak, read, and write, passive listen and read, and a part of speech whose common senses are all informal (informal, slang, taboo, offensive) keeps only the spoken ones (listen, speak), all formal or literary only the written ones (read, write). null with productive_use.',
+    }),
     pronunciations: z.array(publicPronunciationSchema).meta({
       description: "Only pronunciations particular to this part of speech; the entry's pronunciations are the default.",
     }),
     forms: formsSchema,
     senses: z.array(publicSenseSchema),
     review: z
-      .object({ forms: z.partialRecord(inflectionTypeSchema, z.array(reviewMetaSchema)) })
+      .object({
+        forms: z.partialRecord(inflectionTypeSchema, z.array(reviewMetaSchema)),
+        productive_use: reviewMetaSchema.nullable(),
+      })
       .optional()
-      .meta({ description: 'One per form, in the same order as forms.' }),
+      .meta({
+        description: 'One per form, in the same order as forms, and the productive use; null when none is published.',
+      }),
   })
   .meta({ id: 'Meaning', description: 'The senses of one part of speech.' })
 export type Meaning = z.infer<typeof meaningSchema>
