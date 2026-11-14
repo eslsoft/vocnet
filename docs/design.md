@@ -783,7 +783,13 @@ adding a lemma or a source to a published formation is a correction. The public
 entry's `morphology` carries `shortened` when the formation has one.
 
 `collocation` is a combination native speakers commonly use with a sense, such
-as *make a decision*. `pattern` is `verb_noun`, `adjective_noun`, `noun_noun`,
+as *make a decision*: its meaning is plain from its words, and only the choice
+of words is conventional (*heavy rain*, not *big rain*). A combination whose
+meaning is not plain from its words or whose form is frozen (*in vain*, *a means
+to an end*, *in the long run*) is a phrase: it belongs in the headword's phrases
+list and gets an entry, and review fails it as a collocation. The `phrase`
+pattern is a set combination with a preposition or determiner whose meaning is
+plain (*by air*, *over the phone*). `pattern` is `verb_noun`, `adjective_noun`, `noun_noun`,
 `adverb_adjective`, `verb_adverb`, `verb_preposition`, `noun_preposition`,
 `adjective_preposition`, `phrase`, `subject_verb` (*the room spins*),
 `verb_adjective` (*go bankrupt*, *squash flat*), or `passive` (*tormented by

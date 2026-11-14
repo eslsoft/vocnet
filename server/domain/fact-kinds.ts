@@ -1450,7 +1450,8 @@ const collocationPatterns: Record<CollocationPattern, string> = {
   verb_preposition: 'a verb with a preposition ("depend on")',
   noun_preposition: 'a noun with a preposition ("an increase in")',
   adjective_preposition: 'an adjective with a preposition ("afraid of")',
-  phrase: 'a fixed phrase built around the word ("in the long run")',
+  phrase:
+    'a set combination of the word with a preposition or determiner whose meaning is plain from its words ("by air", "over the phone")',
   subject_verb: 'a noun subject with its verb ("the room spins", "a stomach grumbles")',
   verb_adjective: 'a verb with an adjective that completes it ("go bankrupt", "squash flat", "prise open")',
   passive: 'a past participle with its by-phrase ("tormented by guilt", "besieged by reporters")',
@@ -1511,7 +1512,13 @@ function admitCollocation(
   return `A collocation contains the word: ${quote(text)} has neither ${quote(lemma)} nor one of its live forms.`
 }
 
+/**
+ * A collocation's meaning is plain from its words; only the choice of words is conventional. A
+ * combination whose meaning is not, or whose form is frozen, is a phrase: it gets an entry through the
+ * headword's phrases list, so recording it as a collocation too put 4,562 phrases on both sides.
+ */
 const COLLOCATION_FAILS = [
+  'It is an idiom, fixed phrase, or phrasal verb: its meaning is not plain from its words, or its form is frozen ("in the long run", "in vain", "a means to an end", "kick the bucket"). That is a phrase of the headword\'s phrases list, never a collocation.',
   'It is a free combination anyone composes from the plain meanings of the words ("a nice decision", "see a car").',
   'It uses the word in another sense, such as one of the other senses listed below.',
   'It is rare, unnatural, or ungrammatical.',

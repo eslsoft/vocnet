@@ -568,6 +568,13 @@ describe('fact-kind registry', () => {
     )
   })
 
+  it('fails as a collocation an idiom or fixed phrase, which belongs in the phrases list', () => {
+    const prompt = rubric(planReview('collocation', { text: 'by the bank', pattern: 'phrase' }, on(bank))) ?? ''
+    expect(prompt).toContain('It is an idiom, fixed phrase, or phrasal verb: its meaning is not plain from its words')
+    expect(prompt).toContain("That is a phrase of the headword's phrases list, never a collocation.")
+    expect(prompt).toContain('a set combination of the word with a preposition or determiner whose meaning is plain')
+  })
+
   it('cannot review a meaning-dependent fact against a sense without a gloss [spec: facts/unreviewable]', () => {
     const glossless = { ...bank, gloss: null }
     const unreviewable = { kind: 'unreviewable', reason: 'The referenced sense has no live gloss.' }
