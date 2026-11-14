@@ -1070,6 +1070,10 @@ describe('phrases lists', () => {
     expect(contentKeyOf('phrases', { phrases: items.map((item) => ({ ...item, text: 'x' })) })).toBe(
       contentKeyOf('phrases', { phrases: items }),
     )
+    // A migrated list's provisional types are their own claim: the typed list with the same items corrects it.
+    expect(contentKeyOf('phrases', { phrases: items, migrated: true })).toBe(
+      `migrated:${contentKeyOf('phrases', { phrases: items })}`,
+    )
     expect(factKinds.phrases).toMatchObject({ subject: 'entry', cardinality: 'one' })
   })
 

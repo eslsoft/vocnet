@@ -2019,7 +2019,9 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     subject: 'entry',
     cardinality: 'one',
     models: ['jev'],
-    contentKey: ({ phrases }) => phrases.map(phraseKey).sort().join('|'),
+    // A migrated list's types are provisional, so its key is its own: a typed list naming the same
+    // items with the same types is the correction that types them, never a duplicate of it.
+    contentKey: ({ phrases, migrated }) => `${migrated ? 'migrated:' : ''}${phrases.map(phraseKey).sort().join('|')}`,
     admit: admitPhrases,
     names: {
       texts: ({ phrases }) => ({

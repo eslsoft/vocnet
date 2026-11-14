@@ -303,7 +303,10 @@ published phrases list into typed items (`idiom`) and deleted the phrases
 passes, so producers submit typed corrections of the migrated lists. Deleting
 every pass also reopened about 3,400 headwords whose pass had found no phrases;
 `scripts/migrate/phrase_passes.py` restored those passes from the backup taken
-before the migration (a headword that had since gained a list keeps it).
+before the migration (a headword that had since gained a list keeps it). A migrated
+list's content key carries a `migrated:` prefix, so a typed correction naming the
+same items with the same types is a new fact that types them, not a duplicate of
+the migrated list (`scripts/migrate/migrated_list_keys.py` rewrote the stored keys).
 
 #### Translations
 
