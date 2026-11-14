@@ -143,7 +143,7 @@ export const gapSchema = z
       })
       .meta({
         description:
-          "Submit one productive_use fact for each listed part of speech: whether native speakers use the word in its common senses of that part of speech themselves (native) and whether an advanced (CEFR C1) learner needs to (learner), or only understand it. Judge from the senses' glosses, registers, and regions in the context view.",
+          'The listed parts of speech need a productive_use fact: whether native speakers use the word in its common senses of that part of speech themselves (native) and whether an advanced (CEFR C1) learner needs to (learner), or only understand it. The server classifies these itself; agents are never handed such an item.',
       }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
       description: `The core sense has no live topic fact. Core nouns and verbs have a topics slot; tag only a leaf topic of the taxonomy (GET /v1/topics). ${OPTIONAL}`,

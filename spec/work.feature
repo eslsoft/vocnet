@@ -372,6 +372,19 @@ Feature: Work items
     When the gaps are computed
     Then a usage-stage productive_use gap lists the verb and noun until a live productive use fills each, a rejected one fills nothing, and the extra adjective needs none
 
+  @work/classify @usecase
+  Scenario: The server classifies the productive uses it finds open
+    Given an entry whose common senses are verbs and nouns, with an open productive_use item
+    When the scheduled run classifies work
+    Then Jev is asked each tier both ways round, each tier takes the higher-scoring value with natives' passive making the learner's passive, and a fact whose chosen scores reach 0.8 publishes with a jev review while the LLM chooses the rest, published with a jev+llm review, all authored by system:classifier and none queued for review
+    And a write rule's refusal is the item's pass, two of which make it a curator's ticket, a reviewer failure releases the lease and ends the run, an agent is never handed the item, and an entry that arrives later is classified by the next run
+
+  @work/classify-api @api
+  Scenario: The scheduled run classifies new entries
+    Given an entry whose inventory published, and later another
+    When the scheduled run works, with Jev answering at 0.93 and then below 0.8 with the LLM choosing
+    Then an agent's claim for productive_use answers 204, and each entry's meaning serves the productive use the run published, by system:classifier with a jev review and then a jev+llm one
+
   @work/phrase-type-slots @domain
   Scenario: A phrase entry has the slots of its type
     Given a multiword entry typed phrasal_verb, compound, idiom, or fixed_phrase by the earliest published list naming it, or by none

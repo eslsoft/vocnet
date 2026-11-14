@@ -26,7 +26,7 @@ import type { Deps } from './deps'
 import { namedNodesOf } from './named'
 import { refreshEntries } from './refresh'
 
-type ReviewDeps = Pick<
+export type ReviewDeps = Pick<
   Deps,
   'nodes' | 'facts' | 'topics' | 'reference' | 'publicViews' | 'work' | 'decision' | 'llm' | 'reviewQueue' | 'clock'
 >
@@ -47,6 +47,15 @@ async function senseContext(deps: ReviewDeps, id: SenseId): Promise<SubjectViews
     gloss: senses.find((candidate) => candidate.id === id)?.gloss ?? null,
     siblings: senses.filter((candidate) => candidate.id !== id).map(({ pos, gloss }) => ({ pos, gloss })),
   }
+}
+
+/** The subject of a fact as its review, or the classification of a slot on it, sees it. */
+export function loadSubject<S extends keyof SubjectViews>(
+  deps: ReviewDeps,
+  type: S,
+  id: string,
+): Promise<SubjectViews[S]> {
+  return (subjectLoaders[type] as (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]>)(deps, id)
 }
 
 const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]> } = {

@@ -47,7 +47,10 @@ export function createDeps(env: Env): Deps {
       jev: { ask: (questions, state) => jevLimit(() => jev.ask(questions, state)) },
       luna: createLunaReviewer(review.decisions),
     },
-    llm: { judge: (prompt) => llmLimit(() => llm.judge(prompt)) },
+    llm: {
+      judge: (prompt) => llmLimit(() => llm.judge(prompt)),
+      answer: (prompt) => llmLimit(() => llm.answer(prompt)),
+    },
     reviewQueue: createReviewQueue(env.REVIEW_QUEUE),
     feedbackLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),
     readLimiter: createRateLimiter(env.READ_RATE_LIMITER),

@@ -1,7 +1,7 @@
 import type { StoredSenseSummary } from '@server/domain/catalog-view'
 import { isCurated } from '@server/domain/curation'
 import { type Fact, type FactOf, isKind } from '@server/domain/fact'
-import { factKinds, type JevQuestions, type Link, type LlmPrompt } from '@server/domain/fact-kinds'
+import { factKinds, type JevQuestions, type Link, type LlmPrompt, slotOf } from '@server/domain/fact-kinds'
 import { isLive } from '@server/domain/fact-lifecycle'
 import { levelOfRank, openItemStatus } from '@server/domain/monitor'
 import type { EntryNode, SenseNode, SentenceNode } from '@server/domain/nodes'
@@ -108,6 +108,8 @@ export interface FakeWorld {
   setNow(iso: string): void
   answerDecision(model: DecisionModelName, answer: DecisionAnswer): void
   answerLlm(answer: (prompt: LlmPrompt) => LlmJudgement | Promise<LlmJudgement>): void
+  /** Sets the JSON object the LLM answers a prompt that asks it to choose. */
+  chooseLlm(answer: (prompt: LlmPrompt) => unknown): void
   /** Every decision model scores every question this low (and the LLM fails) until passReviews. */
   failReviews(): void
   /** Every reviewer passes what it is asked, as it does by default. */
@@ -164,6 +166,8 @@ export function fakeWorld(): FakeWorld {
     luna: passingDecision('luna-test'),
   }
   let llmAnswer: (prompt: LlmPrompt) => LlmJudgement | Promise<LlmJudgement> = passingLlm
+  /** What the LLM answers a prompt asking it to choose: a JSON object the caller decodes. */
+  let llmChoice: (prompt: LlmPrompt) => unknown = () => ({})
   /** When the reconciler last re-enqueued each pending fact (facts.review_enqueued_at). */
   const reviewEnqueuedAt = new Map<string, string>()
 
@@ -197,6 +201,9 @@ export function fakeWorld(): FakeWorld {
     },
     answerLlm: (answer) => {
       llmAnswer = answer
+    },
+    chooseLlm: (answer) => {
+      llmChoice = answer
     },
     failReviews: () => {
       decisionAnswers.jev = (questions) => scoring(questions, 0.05, 'jev-test')
@@ -350,6 +357,8 @@ export function fakeWorld(): FakeWorld {
     const takesSlot = (other: Fact) => {
       if (live(other) && live(candidate) && other.contentKey === candidate.contentKey) return true
       if (factKinds[candidate.kind].cardinality === 'many') return false
+      if (slotOf(other.kind, other.payload as never) !== slotOf(candidate.kind, candidate.payload as never))
+        return false
       return (
         (holdsSlot(other) && holdsSlot(candidate)) || (other.status === 'pending' && candidate.status === 'pending')
       )
@@ -1183,6 +1192,10 @@ export function fakeWorld(): FakeWorld {
       judge: async (prompt) => {
         world.llmCalls.push(prompt)
         return llmAnswer(prompt)
+      },
+      answer: async (prompt) => {
+        world.llmCalls.push(prompt)
+        return { model: 'llm-test', answer: await llmChoice(prompt) }
       },
     },
     reviewQueue: {

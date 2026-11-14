@@ -655,6 +655,14 @@ const productiveUsePayloadSchema = z.strictObject({
   }),
 })
 
+/** What the LLM answers when it chooses a productive use the decision model did not settle. */
+export const productiveUseAnswerSchema = z.object({
+  native: z.boolean(),
+  learner: z.boolean(),
+  confidence: z.number().min(0).max(1),
+  reason: z.string().min(1),
+})
+
 export const factPayloadSchemas = {
   senses: sensesPayloadSchema,
   form: formPayloadSchema,

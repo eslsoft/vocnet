@@ -2,6 +2,7 @@ import {
   accentSchema,
   type EntryId,
   type EntryPhraseType,
+  type FactKind,
   type FactStatus,
   type FormType,
   type Pos,
@@ -943,9 +944,12 @@ export const STAGES = 4
  * whole entries finish one after another instead of every entry being half done. Batches come before
  * all of that: a later batch of headwords waits for the earlier one. `context: 'entry'`
  * hands the worker the entry's whole management view, for work that reads every sense at once;
- * `'node'` the facts about the item's node.
+ * `'node'` the facts about the item's node. `classifies` names the kind the server fills the
+ * item's slots with itself (`classifiedSlots`); agents are never handed such an item.
  */
-export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'entry' | 'node' }>> = {
+export const WORK_POLICY: Readonly<
+  Record<WorkType, { stage: number; context: 'entry' | 'node'; classifies?: FactKind }>
+> = {
   senses: { stage: 1, context: 'entry' },
   category: { stage: 2, context: 'node' },
   parts: { stage: 2, context: 'node' },
@@ -963,7 +967,23 @@ export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'e
   syllables: { stage: 4, context: 'node' },
   morphology: { stage: 4, context: 'node' },
   form_pronunciations: { stage: 4, context: 'node' },
-  productive_use: { stage: 4, context: 'entry' },
+  productive_use: { stage: 4, context: 'entry', classifies: 'productive_use' },
+}
+
+/** The types the server works itself, by classification. */
+export const CLASSIFIED_TYPES: readonly WorkType[] = (Object.keys(WORK_POLICY) as WorkType[]).filter(
+  (type) => WORK_POLICY[type].classifies !== undefined,
+)
+
+/** The types agents are handed. */
+export const AGENT_TYPES: readonly WorkType[] = (Object.keys(WORK_POLICY) as WorkType[]).filter(
+  (type) => WORK_POLICY[type].classifies === undefined,
+)
+
+/** The slots of a classified item the server fills, one fact each: a productive use's parts of speech. */
+export function classifiedSlots(gap: Gap): { kind: FactKind; slots: readonly string[] } {
+  if (gap.type === 'productive_use') return { kind: 'productive_use', slots: gap.missing }
+  throw new Error(`The server does not classify ${gap.type} items.`)
 }
 
 /** The ranks one batch spans: one per band. */

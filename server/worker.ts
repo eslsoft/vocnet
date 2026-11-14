@@ -10,6 +10,7 @@ import type { AppVariables } from './http/context'
 import { onError } from './http/errors'
 import { auditBoundary, requestBoundary } from './http/observability'
 import { publicReadBoundary } from './http/public-reads'
+import { classifyWork } from './usecases/classify'
 import { ReviewerTransportError } from './usecases/ports'
 import { rebuildStalePublicViews } from './usecases/public-view'
 import { type ReviewStage, reconcilePhraseLists, reconcileReviews, reviewFact } from './usecases/review'
@@ -87,6 +88,11 @@ async function handleReviewMessage(
 
 /** Views a cron run rebuilds: reads rebuild what they find stale, so the sweep only drains leftovers. */
 const STALE_VIEW_BATCH = 100
+/**
+ * How long one scheduled run classifies: past this it lets the next run carry on, so a run stays
+ * inside the platform's cron limit and the local loop's request timeout.
+ */
+const CLASSIFY_BUDGET_MS = 8 * 60 * 1000
 
 export async function handleScheduled(env: Env): Promise<void> {
   const traceId = crypto.randomUUID()
@@ -121,6 +127,11 @@ export async function handleScheduled(env: Env): Promise<void> {
     'rebuild_public_views',
     () => rebuildStalePublicViews(deps, STALE_VIEW_BATCH),
     (views) => views,
+  )
+  await timed(
+    'classify_work',
+    () => classifyWork(deps, traceId, CLASSIFY_BUDGET_MS),
+    (tally) => tally,
   )
 }
 

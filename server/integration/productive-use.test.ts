@@ -1,7 +1,20 @@
+import { env } from 'cloudflare:test'
+import { handleScheduled } from '@server/worker'
 import { publicEntrySchema } from '@shared/catalog'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { call, curated, headword, issueAgentKey, readFact, reviewPending, submit, submitOk } from './helpers'
+import {
+  call,
+  claim,
+  curated,
+  headword,
+  issueAgentKey,
+  readFact,
+  reviewPending,
+  stubReviewers,
+  submit,
+  submitOk,
+} from './helpers'
 
 const read = async (lemma: string, query = '') =>
   publicEntrySchema.parse((await call(`/v1/entries/${encodeURIComponent(lemma)}${query}`)).body)
@@ -74,5 +87,30 @@ describe('productive uses', () => {
       productive_use: { native: false, learner: false },
       skills: { native: ['read'], learner: ['read'] },
     })
+  })
+
+  it('classifies every open productive use on the scheduled run, new entries included [spec: work/classify-api]', async () => {
+    const { entryId } = await headword('lake', [{ pos: 'noun', gloss: 'A large area of water surrounded by land.' }])
+    const token = await issueAgentKey()
+    // Agents are never handed the item: the server classifies it.
+    expect(await claim(token, { types: ['productive_use'] })).toBeNull()
+    const gateway = stubReviewers({ jev: 0.93 })
+    await handleScheduled(env)
+    gateway.mockRestore()
+    expect((await read('lake', '?include=review')).meanings[0]).toMatchObject({
+      productive_use: { native: true, learner: true },
+      skills: { native: ['listen', 'speak', 'read', 'write'], learner: ['listen', 'speak', 'read', 'write'] },
+    })
+    const fact = (await read('lake', '?include=review')).meanings[0]?.review?.productive_use
+    const stored = await readFact(fact?.fact_id as string)
+    expect([stored.author, stored.review?.reviewer, stored.subject_id]).toEqual(['system:classifier', 'jev', entryId])
+
+    // An entry that arrives later is classified by the next run; scores short of 0.8 let the LLM choose.
+    await headword('loch', [{ pos: 'noun', gloss: 'A lake.', region: 'scottish' }])
+    stubReviewers({ jev: 0.6, choice: { native: true, learner: false, confidence: 0.8, reason: 'Scottish only.' } })
+    await handleScheduled(env)
+    const loch = (await read('loch', '?include=review')).meanings[0]
+    expect(loch?.productive_use).toEqual({ native: true, learner: false })
+    expect((await readFact(loch?.review?.productive_use?.fact_id as string)).review?.reviewer).toBe('jev+llm')
   })
 })

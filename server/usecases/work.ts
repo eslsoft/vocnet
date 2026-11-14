@@ -1,7 +1,14 @@
 import { principalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
 import { leafViews } from '@server/domain/topics'
-import { completeDecision, itemState, leaseExpiry, type WorkItem, type WorkLease } from '@server/domain/work'
+import {
+  AGENT_TYPES,
+  completeDecision,
+  itemState,
+  leaseExpiry,
+  type WorkItem,
+  type WorkLease,
+} from '@server/domain/work'
 import { type WorkContext, workContext } from '@server/domain/work-context'
 import type { EntryId } from '@shared/facts'
 import {
@@ -13,7 +20,6 @@ import {
   type WorkItemState,
   type WorkLeaseId,
   type WorkType,
-  workTypeSchema,
 } from '@shared/work'
 import type { Deps } from './deps'
 import { ConflictError, InvalidReferenceError, InvalidRequestError, NotFoundError } from './errors'
@@ -51,7 +57,8 @@ export async function claimWork(
       holder: principalRef(actor.principal),
       expiresAt: leaseExpiry(now, input.lease_seconds ?? DEFAULT_LEASE_SECONDS),
     },
-    (input.types ?? workTypeSchema.options).filter((type) => !PAUSED_TYPES.includes(type)),
+    // An item the server classifies itself is never handed to an agent.
+    (input.types ?? AGENT_TYPES).filter((type) => AGENT_TYPES.includes(type) && !PAUSED_TYPES.includes(type)),
     input.limit,
     now.toISOString(),
   )

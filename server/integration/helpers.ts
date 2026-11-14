@@ -82,17 +82,20 @@ interface ReviewerAnswers {
   luna?: number
   /** The LLM's verdict. */
   verdict?: Verdict
+  /** What the LLM answers a prompt that asks it to choose (the classifier's). */
+  choice?: Record<string, unknown>
 }
 
 /**
  * Stubs the reviewers: Jev answers every question with `jev`, luna with `luna`, and the LLM
  * answers `verdict`. The defaults settle every decision-model pass.
  */
-export function stubReviewers({ jev = 0.93, luna = 0.93, verdict = 'pass' }: ReviewerAnswers = {}) {
+export function stubReviewers({ jev = 0.93, luna = 0.93, verdict = 'pass', choice }: ReviewerAnswers = {}) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const request = new Request(input, init)
     const body = (await request.json()) as {
       questions?: Record<string, unknown> | Array<{ name: string }>
+      messages?: Array<{ role: string; content: string }>
     }
     if (request.url === JEV_URL) {
       const keys = Object.keys(body.questions ?? {})
@@ -109,7 +112,9 @@ export function stubReviewers({ jev = 0.93, luna = 0.93, verdict = 'pass' }: Rev
       })
     }
     if (request.url === LLM_URL) {
-      const content = JSON.stringify({ verdict, confidence: 0.88, reason: 'Fine.' })
+      const classifies = body.messages?.[0]?.content.startsWith('You classify') ?? false
+      if (classifies && !choice) throw new Error('The classifier asked the LLM to choose, and the test gave no choice.')
+      const content = JSON.stringify(classifies ? choice : { verdict, confidence: 0.88, reason: 'Fine.' })
       return Response.json({ model: 'llm-test', choices: [{ message: { content } }] })
     }
     throw new Error(`Unexpected fetch to ${request.url}`)

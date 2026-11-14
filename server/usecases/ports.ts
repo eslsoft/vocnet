@@ -548,6 +548,8 @@ export interface LlmJudgement {
 
 export interface LlmReviewer {
   judge(prompt: LlmPrompt): Promise<LlmJudgement>
+  /** The JSON object the LLM answers the prompt with, undecoded: the caller decodes it against its own contract. */
+  answer(prompt: LlmPrompt): Promise<{ model: string; answer: unknown }>
 }
 
 /** The reviewer could not be reached or failed upstream. Not a verdict: retry later. */

@@ -34,6 +34,7 @@ import type {
   FactKind,
   FactPayloads,
   Pos,
+  Review,
   SenseId,
   SentenceId,
   SubmitFactInput,
@@ -62,7 +63,7 @@ export interface Actor {
   traceId: string
 }
 
-type SubmitDeps = Pick<
+export type SubmitDeps = Pick<
   Deps,
   'nodes' | 'facts' | 'topics' | 'work' | 'reference' | 'publicViews' | 'reviewQueue' | 'clock' | 'ids'
 >
@@ -256,12 +257,14 @@ function slotTakenMessage(kind: FactKind, subject: SubjectType): string {
  * fact returns it with created=false and enqueues nothing. A symmetric relation
  * submitted from either end is the same fact. A curator's curated submission passes
  * every rule a submission does and then publishes at once with the curator's review,
- * enqueueing nothing; only a curator resubmits content a curator rejected.
+ * enqueueing nothing; only a curator resubmits content a curator rejected. The server's classifier
+ * passes the review it already `decided` the fact by, which publishes it the same way.
  */
 export async function submitFact(
   deps: SubmitDeps,
   actor: Actor,
   input: SubmitFactInput,
+  decided?: Review,
 ): Promise<{ fact: Fact; created: boolean }> {
   const { kind, curation } = input
   if (curation) requireCurator(actor.principal)
@@ -373,6 +376,7 @@ export async function submitFact(
   }
   const created = fact.id === draft.id
   if (created && curation) return { fact: await publishCurated(deps, actor, fact, curation.reason), created }
+  if (created && decided) return { fact: await publishDecided(deps, actor, fact, decided), created }
   await refreshEntries(deps, [subjectId, objectOf(kind, payload)])
   if (created) await deps.reviewQueue.enqueue([{ factId: fact.id, traceId: actor.traceId }])
   return { fact, created }
@@ -431,6 +435,14 @@ async function publishCurated(deps: SubmitDeps, actor: Actor, fact: Fact, reason
     { event: 'curate_pass', from: ['pending'], at, review },
     actor.traceId,
   )
+  if (!applied) throw new ConflictError('The fact changed while it was being published.')
+  return getFact(deps, fact.id)
+}
+
+/** Publishes a new pending fact the server classified with the review it was decided by. */
+async function publishDecided(deps: SubmitDeps, actor: Actor, fact: Fact, review: Review): Promise<Fact> {
+  const at = deps.clock.now().toISOString()
+  const applied = await recordDecision(deps, fact, { event: 'publish', from: ['pending'], at, review }, actor.traceId)
   if (!applied) throw new ConflictError('The fact changed while it was being published.')
   return getFact(deps, fact.id)
 }

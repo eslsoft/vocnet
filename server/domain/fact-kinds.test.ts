@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest'
 import {
   admissionOf,
   bindNames,
+  classificationOf,
+  classifiedSubjectOf,
   contentKeyOf,
   DEFAULT_PASS_AT,
   type EntrySense,
@@ -1812,5 +1814,87 @@ describe('productive uses', () => {
     expect(summarizeFact({ kind: 'productive_use', payload: { pos: 'verb', native: false, learner: false } })).toBe(
       'verb: native passive, learner passive',
     )
+  })
+})
+
+describe('productive use classification', () => {
+  const run = entryView(
+    'run',
+    [
+      { id: sense(1), pos: 'verb', gloss: 'To move fast on foot.', register: 'informal' },
+      { id: sense(2), pos: 'adjective', gloss: 'Melted.', rank: 'extra' },
+    ],
+    [],
+    4.9,
+  )
+  const verb = () => {
+    const classification = classificationOf('productive_use', 'verb', run)
+    if (!classification) throw new Error('A verb sense is common, so it classifies.')
+    return classification
+  }
+  const scores = (native: [number, number], learner: [number, number]) => ({
+    native_active: native[0],
+    native_passive: native[1],
+    learner_active: learner[0],
+    learner_passive: learner[1],
+  })
+
+  it('asks Jev each tier both ways round and picks the higher-scoring value [spec: work/classify]', () => {
+    const { state, questions, pick } = verb()
+    expect(state).toEqual({
+      word: 'run',
+      'part of speech': 'verb',
+      senses: ['To move fast on foot. (informal)'],
+      'word frequency (zipf)': '4.9',
+    })
+    expect(questions.native_active).toBe(
+      question(planReview('productive_use', { pos: 'verb', native: true, learner: true }, on(run)), 'native'),
+    )
+    expect(questions.learner_passive).toBe(
+      question(planReview('productive_use', { pos: 'verb', native: true, learner: false }, on(run)), 'learner'),
+    )
+    expect(pick(scores([0.95, 0.1], [0.85, 0.2]))).toEqual({
+      payload: { pos: 'verb', native: true, learner: true },
+      settled: true,
+      confidence: 0.85,
+    })
+    expect(pick(scores([0.95, 0.1], [0.3, 0.7]))).toEqual({
+      payload: { pos: 'verb', native: true, learner: false },
+      settled: false,
+      confidence: 0.7,
+    })
+    // A tie keeps the word active; natives' passive makes the learner's passive whatever it scored.
+    expect(pick(scores([0.5, 0.5], [0.9, 0.9])).payload).toEqual({ pos: 'verb', native: true, learner: true })
+    expect(pick(scores([0.2, 0.85], [0.99, 0.01]))).toEqual({
+      payload: { pos: 'verb', native: false, learner: false },
+      settled: true,
+      confidence: 0.85,
+    })
+    expect(pick({}).payload).toEqual({ pos: 'verb', native: true, learner: true })
+  })
+
+  it('lets the LLM choose when the scores do not settle, within the write rule', () => {
+    const { prompt, parse } = verb()
+    expect(prompt.system).toContain('"native": boolean, "learner": boolean')
+    expect(prompt.user).toContain('"run" (verb)')
+    expect(prompt.user).toContain('"word frequency (zipf)":"4.9"')
+    expect(parse({ native: true, learner: false, confidence: 0.7, reason: 'Informal.' })).toEqual({
+      payload: { pos: 'verb', native: true, learner: false },
+      confidence: 0.7,
+      reason: 'Informal.',
+    })
+    expect(parse({ native: false, learner: true, confidence: 0.6, reason: 'Literary.' })?.payload).toEqual({
+      pos: 'verb',
+      native: false,
+      learner: false,
+    })
+    expect(parse({ native: 'yes' })).toBeNull()
+  })
+
+  it('classifies only a part of speech with a common sense, and only a server-filled kind', () => {
+    expect(classificationOf('productive_use', 'adjective', run)).toBeNull()
+    expect(classificationOf('syllables', '', run)).toBeNull()
+    expect(classifiedSubjectOf('productive_use')).toBe('entry')
+    expect(() => classifiedSubjectOf('translation')).toThrow('A classified kind is about one type of node')
   })
 })

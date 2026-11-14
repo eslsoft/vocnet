@@ -89,7 +89,7 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | `status`        | `pending`, `published`, `rejected`, `superseded`, `retracted`  |
 | `slot`          | The slot the fact holds on its subject (`slotOf` in the registry): `''` for a kind with one live fact per subject, the language for a translation, the part of speech for a productive use, null for a kind without the limit |
 | `supersedes_id` | Fact this one corrects, if any                                 |
-| `author`        | Agent or admin principal that submitted it                     |
+| `author`        | Agent or admin principal that submitted it, or `system:classifier` for a fact the server classified |
 | `review`        | Reviewer, verdict, confidence, reason, raw detail, reviewed at |
 
 A partial unique index on `(kind, content_key, subject_id)` over `pending` and
@@ -381,16 +381,36 @@ tiers and take none. The content key is `pos|native|learner`, the slot the part
 of speech. Both tiers are one fact so a contradiction between them is caught in
 one review.
 
-Jev is asked one question per tier, worded for the claimed value, about the
-word, the part of speech, its common senses with their labels, and its Zipf
-frequency: an active claim asks whether the tier uses the word itself, a
-passive one whether the word is of a passive kind. A question asked one way
-round scores the other side poorly: in the 2026-11-14 trial (180 hand-labelled
-words), "is recognising enough" passed 90 of 113 words a learner must use. Both
-answers must reach 0.8, which in the trial let no wrong claim through and
-settled about three facts in four; otherwise the LLM judges both tiers
-together. A part of speech the live inventory no longer has a common sense of
-is unreviewable.
+Each tier has two Jev questions, one per value, about the word, the part of
+speech, its common senses with their labels, and its Zipf frequency: whether
+the tier uses the word itself, and whether the word is of a passive kind. A
+question asked one way round scores the other side poorly: in the 2026-11-14
+trial (180 hand-labelled words), "is recognising enough" passed 90 of 113 words
+a learner must use.
+
+**The server classifies productive uses itself**; it is the one kind no agent
+produces, because it is a choice among four values over data the entry already
+has, which Jev answers in a tenth of a second, where an agent session cost
+twenty turns a batch of ten. The scheduled run works the open `productive_use`
+items (see Work items) as the principal `system:classifier`: Jev is asked all
+four questions, each tier takes the value whose question scores higher (a tie
+is active), and natives' passive makes the learner's passive whatever it
+scored. When each chosen score reaches 0.8 (for a passive native, its score
+alone), the fact is submitted already decided and publishes with a `jev` review
+holding the four scores, never entering the review queue; at 0.8 the trial let
+no wrong value through and the first run settled about four in five. Otherwise
+the LLM is shown the same data and rules and chooses (`{ native, learner,
+confidence, reason }`, natives' passive again forcing the learner's), and the
+fact publishes with a `jev+llm` review. The submission passes every write rule;
+one that refuses it (content a review rejected) is recorded as the item's pass,
+so after two passes the item becomes a curator's ticket. A reviewer transport
+or protocol failure ends the run with the unworked items released for the next.
+New entries, inventories that publish or change, and anything else that opens
+the slot get classified the same way on the next run. A productive use an agent
+or a curator submits, such as a correction, is reviewed as above: Jev is asked
+the two questions of the claimed values, both must reach 0.8, and otherwise the
+LLM judges both tiers together. A part of speech the live inventory no longer
+has a common sense of is unreviewable.
 
 #### Syllables and form pronunciations
 
@@ -1159,6 +1179,13 @@ agents off the same item. An item gets at most two passes (`MAX_PASSES`): the
 first, and one retry that sees the review reasons. Then it leaves the queue as
 a ticket.
 
+A type whose `WORK_POLICY` entry names a kind it `classifies` is worked by the
+server itself, never handed to an agent (see Productive use): each scheduled
+run, after its other steps, leases such items in queue order as
+`system:classifier`, fifty at a time, for up to eight minutes, and completes
+each lease with a pass per item noting what it published or why a write rule
+refused it.
+
 ### Claim
 
 `POST /manage/v1/work/claim` with `{ types?, limit?, lease_seconds? }` leases up
@@ -1403,9 +1430,10 @@ needs and no pass completed it. Entry gaps:
 - `sayings` (required, stage 3, entry context): each saying of the headword's
   published phrases list with no live `sentence_meaning`, as
   `{ type: "sayings", missing: [sentence_id] }`.
-- `productive_use` (required, stage 4, entry context): each part of speech of
-  the common senses with no live productive use, in inventory order, as
-  `{ type: "productive_use", missing: [pos] }`; single words and phrases alike.
+- `productive_use` (required, stage 4, entry context, classified by the
+  server): each part of speech of the common senses with no live productive
+  use, in inventory order, as `{ type: "productive_use", missing: [pos] }`;
+  single words and phrases alike.
 
 Sense gaps, per common sense of the current inventory, within its scope:
 

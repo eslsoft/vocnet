@@ -14,8 +14,11 @@ import { type Gap, MAX_PASSES, type WorkItemId, type WorkType } from '@shared/wo
 import { describe, expect, it } from 'vitest'
 import type { Fact, FactOf } from './fact'
 import {
+  AGENT_TYPES,
   assessEntry,
+  CLASSIFIED_TYPES,
   COLLOCATIONS_NEEDED,
+  classifiedSlots,
   completeDecision,
   type EntryFacts,
   entryGaps,
@@ -315,7 +318,15 @@ describe('translations gap', () => {
     expect(productive([listed, used('verb'), used('noun', 'rejected')])).toEqual([
       { type: 'productive_use', missing: ['noun'] },
     ])
-    expect(WORK_POLICY.productive_use).toEqual({ stage: 4, context: 'entry' })
+    expect(WORK_POLICY.productive_use).toEqual({ stage: 4, context: 'entry', classifies: 'productive_use' })
+    expect(CLASSIFIED_TYPES).toEqual(['productive_use'])
+    expect(AGENT_TYPES).not.toContain('productive_use')
+    expect(AGENT_TYPES).toHaveLength(Object.keys(WORK_POLICY).length - 1)
+    expect(classifiedSlots({ type: 'productive_use', missing: ['verb', 'noun'] })).toEqual({
+      kind: 'productive_use',
+      slots: ['verb', 'noun'],
+    })
+    expect(() => classifiedSlots({ type: 'syllables' })).toThrow('The server does not classify syllables items.')
   })
 })
 
