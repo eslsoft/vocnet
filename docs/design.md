@@ -299,8 +299,11 @@ under the sense they are filed under and otherwise by type, and its sayings
 
 The migration `sentences` (`scripts/migrate/sentences.py`) moved every example
 onto a sentence, every example translation onto its sentence, and every
-published phrases list into typed items (`idiom`) with every headword's
-`phrases` slot reopened, so producers regenerate typed lists.
+published phrases list into typed items (`idiom`) and deleted the phrases
+passes, so producers submit typed corrections of the migrated lists. Deleting
+every pass also reopened about 3,400 headwords whose pass had found no phrases;
+`scripts/migrate/phrase_passes.py` restored those passes from the backup taken
+before the migration (a headword that had since gained a list keeps it).
 
 #### Translations
 
