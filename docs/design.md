@@ -997,7 +997,9 @@ inventory, pending or published.
   one gloss mentions and the other omits (see Relations).
 - Every model call is bounded by `GATEWAY_TIMEOUT_MS` (120 s), body included; a
   call that never answers once stalled every review for twenty minutes, so past
-  the bound it is a transport failure.
+  the bound it is a transport failure. The bound is a deadline the call races,
+  not only an abort signal handed to `fetch`: the local runtime let calls run
+  past the signal, and one that never answered held its batch and the queue.
 - A transport or protocol failure of any reviewer is not a verdict. The fact
   stays `pending`, the error propagates, and the queue retries the whole chain.
   There is no fallback reviewer.

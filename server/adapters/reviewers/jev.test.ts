@@ -70,6 +70,18 @@ describe('Jev reviewer', () => {
     await expect(
       postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', { model: 'm' }, 10),
     ).rejects.toBeInstanceOf(ReviewerTransportError)
+    // A fetch that ignores its abort signal still ends at the deadline, so its review batch finishes.
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}))
+    await expect(
+      postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', { model: 'm' }, 10),
+    ).rejects.toBeInstanceOf(ReviewerTransportError)
+    // So does a body that never finishes arriving.
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({ start: () => {} })))
+    await expect(
+      postJson({ baseUrl: 'https://jev.test', apiKey: 'k' }, '/x', { model: 'm' }, 10),
+    ).rejects.toBeInstanceOf(ReviewerTransportError)
     // A body that stops arriving times out too, rather than reading as malformed JSON.
     vi.restoreAllMocks()
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
