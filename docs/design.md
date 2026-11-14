@@ -2219,6 +2219,11 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   stopped after. D1 runs one statement at a time, so the database binding logs
   every statement that takes 500 ms or longer as `slow_query` with its SQL
   (`server/adapters/d1-timing.ts`): a slow statement delays every request behind it.
+  A scan of one kind's payloads (phrases lists, morphology parts) names the kind
+  index (`indexed by facts_kind_payload_idx`): ordered by creation time, SQLite
+  otherwise walked every published fact through the status index, five seconds
+  a phrase-type lookup, and that one statement held claims, completions, and
+  reviews behind it.
   A batch waits for its slowest review, so the batch is sized to keep the
   per-model caps below busy: 48 reviews queue behind 8 LLM slots, which stay
   full while one slow call finishes, so a batch no longer waits on its tail.

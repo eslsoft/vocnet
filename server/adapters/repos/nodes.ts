@@ -81,12 +81,17 @@ function familyOf(db: Db, entry: EntryNode) {
     .orderBy(asc(entries.lemma))
 }
 
-/** The items of the phrases lists `which` picks, as `item` beside `list`. */
+/**
+ * The items of the phrases lists `which` picks, as `item` beside `list`. Every scan of one kind's
+ * payloads names the kind index: with `order by created_at`, SQLite otherwise walks
+ * facts_status_created_idx over every published fact (330,000 rows, 5 s a lookup in workerd) hoping
+ * for an early match, and D1 runs one statement at a time, so each lookup stalled every request.
+ */
 const phraseItems = (which: SQL) =>
-  sql`select list.id as list_id, list.status as status, list.subject_id as head, list.created_at as created_at, json_extract(item.value, '$.type') as type, json_extract(item.value, '$.entry_id') as entry_id, json_extract(item.value, '$.sentence_id') as sentence_id from facts as list, json_each(list.payload, '$.phrases') as item where list.kind = 'phrases' and ${which}`
+  sql`select list.id as list_id, list.status as status, list.subject_id as head, list.created_at as created_at, json_extract(item.value, '$.type') as type, json_extract(item.value, '$.entry_id') as entry_id, json_extract(item.value, '$.sentence_id') as sentence_id from facts as list indexed by facts_kind_payload_idx, json_each(list.payload, '$.phrases') as item where list.kind = 'phrases' and ${which}`
 
 /** A published phrases list names the entry in the outer query as an entry item. */
-const namedByPublishedList = sql`exists (select 1 from facts as list, json_each(list.payload, '$.phrases') as item where list.kind = 'phrases' and list.status = 'published' and instr(list.payload, ${entries.id}) > 0 and json_extract(item.value, '$.entry_id') = ${entries.id})`
+const namedByPublishedList = sql`exists (select 1 from facts as list indexed by facts_kind_payload_idx, json_each(list.payload, '$.phrases') as item where list.kind = 'phrases' and list.status = 'published' and instr(list.payload, ${entries.id}) > 0 and json_extract(item.value, '$.entry_id') = ${entries.id})`
 
 const noFacts = (): Record<FactStatus, number> =>
   Object.fromEntries(factStatusSchema.options.map((status) => [status, 0])) as Record<FactStatus, number>

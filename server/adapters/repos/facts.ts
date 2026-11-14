@@ -57,7 +57,7 @@ export function entryOf(db: Db, subjectId: SQLWrapper) {
   const factSense = alias(senses, 'of_fact_sense')
   return sql`case when exists (select 1 from sentences where sentences.id = ${subjectId}) then coalesce(
     (select s.entry_id from facts as ex join senses as s on s.id = ex.subject_id where ex.kind = 'example' and ex.object_id = ${subjectId} order by ex.created_at, ex.id limit 1),
-    (select list.subject_id from facts as list where list.kind = 'phrases' and instr(list.payload, ${subjectId}) > 0 order by list.created_at, list.id limit 1)
+    (select list.subject_id from facts as list indexed by facts_kind_payload_idx where list.kind = 'phrases' and instr(list.payload, ${subjectId}) > 0 order by list.created_at, list.id limit 1)
   ) else coalesce(
     (${db.select({ entryId: sense.entryId }).from(sense).where(eq(sense.id, subjectId))}),
     (${db.select({ entryId: factSense.entryId }).from(translated).innerJoin(factSense, eq(factSense.id, translated.subjectId)).where(eq(translated.id, subjectId))}),

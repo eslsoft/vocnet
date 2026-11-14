@@ -117,7 +117,7 @@ function ownersOf(db: Db, nodeIds: SQLWrapper) {
     .union(
       db
         .select({ id: sql<string>`list.subject_id` })
-        .from(sql`facts as list, json_each(list.payload, '$.phrases') as item`)
+        .from(sql`facts as list indexed by facts_kind_payload_idx, json_each(list.payload, '$.phrases') as item`)
         .where(
           sql`list.kind = 'phrases' and exists (select 1 from sentences where sentences.id in ${nodeIds}) and json_extract(item.value, '$.sentence_id') in ${nodeIds}`,
         ),
@@ -173,7 +173,7 @@ function namedBases(db: Db, which: SQL) {
     .select({ id: entries.id })
     .from(entries)
     .where(
-      sql`${entries.lemma} in (select json_extract(part.value, '$.lemma') from facts as named, json_each(named.payload, '$.parts') as part where named.kind = 'morphology' and json_extract(part.value, '$.role') = 'base' and ${which})`,
+      sql`${entries.lemma} in (select json_extract(part.value, '$.lemma') from facts as named indexed by facts_kind_payload_idx, json_each(named.payload, '$.parts') as part where named.kind = 'morphology' and json_extract(part.value, '$.role') = 'base' and ${which})`,
     )
 }
 
