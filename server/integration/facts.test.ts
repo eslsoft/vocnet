@@ -246,6 +246,32 @@ describe('fact review flow', () => {
     expect(ids).not.toContain(fresh.id)
   })
 
+  it('re-enqueues a backlog larger than one statement binds [spec: facts/reconcile-api]', async () => {
+    const { senses } = await headword('rill', [{ pos: 'noun', gloss: 'A very small stream.' }])
+    const token = await issueAgentKey()
+    const seed = await submitOk(token, 'example', senses[0] as string, { text: 'A rill crossed the path.' })
+    // D1 binds at most 100 parameters a statement; a backlog past that must still be stamped and sent.
+    await env.DB.prepare(
+      `insert into facts (id, kind, subject_id, object_id, slot, content_key, payload, status, supersedes_id, author, review, created_at, updated_at)
+       select lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-8' || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))),
+              kind, subject_id, object_id, slot, content_key || n, payload, status, supersedes_id, author, review, created_at, created_at
+       from facts, (with recursive c(n) as (select 1 union all select n + 1 from c where n < 150) select n from c)
+       where facts.id = ?`,
+    )
+      .bind(seed.id)
+      .run()
+    await env.DB.prepare("update facts set updated_at = '2026-01-01T00:00:00.000Z' where status = 'pending'").run()
+
+    const sent = vi.spyOn(env.REVIEW_QUEUE, 'sendBatch')
+    await entry.scheduled({} as ScheduledController, env)
+    const ids = sent.mock.calls.flatMap(([messages]) => [...messages])
+    expect(ids.length).toBeGreaterThan(150)
+    const unstamped = await env.DB.prepare(
+      "select count(*) n from facts where status = 'pending' and review_enqueued_at is null",
+    ).first<{ n: number }>()
+    expect(unstamped?.n).toBe(0)
+  })
+
   it('lets an agent retract its own fact, reserves re-review for admins, and counts facts [spec: facts/manage-api]', async () => {
     const { senses } = await headword('creek', [{ pos: 'noun', gloss: 'A narrow stream.' }])
     const token = await issueAgentKey()

@@ -32,7 +32,7 @@ import {
 } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, liveStatus, page, toFact } from './rows'
+import { type Db, decodeCursor, factSelectValues, fromFact, guardUnique, inIds, liveStatus, page, toFact } from './rows'
 import { touchLinkedWorkOfFact, touchWorkOf, touchWorkOfFact } from './work'
 
 /** The facts about an entry, or a sense of an entry, whose lowest CEFR level is this. */
@@ -314,7 +314,7 @@ export function createFactRepo(db: Db): FactRepo {
         await db
           .update(facts)
           .set({ reviewEnqueuedAt: at })
-          .where(and(inArray(facts.id, ids), eq(facts.status, 'pending')))
+          .where(and(inIds(facts.id, ids), eq(facts.status, 'pending')))
       }
       return ids
     },
