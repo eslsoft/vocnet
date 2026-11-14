@@ -2213,6 +2213,10 @@ index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
   imported reference data.
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   takes batches of up to 48, reviews them concurrently, and logs the trace ID.
+  Each batch logs a `review_batch` start and end, and each review a `review_stage`
+  line as each step ends (`loaded`, `judged`, `transitioned`, `admitted`,
+  `refreshed`), so a batch that never ends names the review and the step it
+  stopped after.
   A batch waits for its slowest review, so the batch is sized to keep the
   per-model caps below busy: 48 reviews queue behind 8 LLM slots, which stay
   full while one slow call finishes, so a batch no longer waits on its tail.

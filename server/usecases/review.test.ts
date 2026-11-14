@@ -4,6 +4,7 @@ import { type FakeWorld, fakeWorld } from '@server/testing/fakes'
 import { drainReviews, headword } from '@server/testing/seed'
 import type { EntryId, FactId, SenseId, SentenceId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
+import { createEntry } from './catalog'
 import { getFact, submitFact } from './facts'
 import { ReviewerTransportError } from './ports'
 import { reconcilePhraseLists, reconcileReviews, reviewFact } from './review'
@@ -50,6 +51,8 @@ function rawFact(world: FakeWorld, fact: Pick<Fact, 'kind' | 'subjectId' | 'payl
   return stored
 }
 
+const createEntryFor = (world: FakeWorld, lemma: string) => createEntry(world.deps, admin, { lemma, batch: 1 })
+
 describe('reviewFact', () => {
   it('publishes an inventory the decision model settles and records what was judged [spec: facts/review-publish]', async () => {
     const world = fakeWorld()
@@ -72,6 +75,22 @@ describe('reviewFact', () => {
       },
       reviewed_at: '2026-01-01T00:00:00.000Z',
     })
+  })
+
+  it('reports each step of a review as it ends, so a review that never finishes names where it stopped', async () => {
+    const world = fakeWorld()
+    const { entry } = await createEntryFor(world, 'brook')
+    const { fact } = await submitFact(world.deps, agentA, {
+      kind: 'senses',
+      subject_id: entry.id,
+      payload: { senses: [{ pos: 'noun', gloss: 'A small stream.', rank: 'common' }] },
+    })
+    const stages: string[] = []
+    expect(await reviewFact(world.deps, fact.id, 'trace', (stage) => stages.push(stage))).toBe('published')
+    expect(stages).toEqual(['loaded', 'judged', 'transitioned', 'admitted', 'refreshed'])
+    const again: string[] = []
+    expect(await reviewFact(world.deps, fact.id, 'trace', (stage) => again.push(stage))).toBe('skipped')
+    expect(again).toEqual(['loaded'])
   })
 
   it('asks the LLM once when the decision model does not settle, and its verdict is final [spec: facts/one-shot-review]', async () => {

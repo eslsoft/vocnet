@@ -12,7 +12,7 @@ import { auditBoundary, requestBoundary } from './http/observability'
 import { publicReadBoundary } from './http/public-reads'
 import { ReviewerTransportError } from './usecases/ports'
 import { rebuildStalePublicViews } from './usecases/public-view'
-import { reconcilePhraseLists, reconcileReviews, reviewFact } from './usecases/review'
+import { type ReviewStage, reconcilePhraseLists, reconcileReviews, reviewFact } from './usecases/review'
 import { purgeExpiredLeases } from './usecases/work'
 import { refreshStaleWork } from './usecases/work-scores'
 
@@ -44,10 +44,19 @@ const RETRY_DELAY_SECONDS = 60
 // concurrently; a sequential loop made one slow model call hold up the whole batch.
 export async function handleReviewBatch(batch: MessageBatch<unknown>, env: Env): Promise<void> {
   const deps = createDeps(env)
-  await Promise.all(batch.messages.map((message) => handleReviewMessage(deps, message)))
+  const batchId = crypto.randomUUID()
+  const started = Date.now()
+  // Start and end lines bracket the batch: a batch that starts and never ends held the queue.
+  console.info(JSON.stringify({ event: 'review_batch', batchId, phase: 'start', size: batch.messages.length }))
+  await Promise.all(batch.messages.map((message) => handleReviewMessage(deps, message, batchId)))
+  console.info(JSON.stringify({ event: 'review_batch', batchId, phase: 'end', durationMs: Date.now() - started }))
 }
 
-async function handleReviewMessage(deps: ReturnType<typeof createDeps>, message: Message<unknown>): Promise<void> {
+async function handleReviewMessage(
+  deps: ReturnType<typeof createDeps>,
+  message: Message<unknown>,
+  batchId: string,
+): Promise<void> {
   const parsed = reviewMessageSchema.safeParse(message.body)
   if (!parsed.success) {
     console.error(JSON.stringify({ event: 'review_job_invalid', messageId: message.id, issues: parsed.error.issues }))
@@ -56,8 +65,14 @@ async function handleReviewMessage(deps: ReturnType<typeof createDeps>, message:
   }
   const job: ReviewMessage = parsed.data
   const log = { event: 'review_job', factId: job.fact_id, traceId: job.trace_id, attempt: message.attempts }
+  const started = Date.now()
+  // Each step's end, so a review that never finishes names the step it stopped after.
+  const onStage = (stage: ReviewStage) =>
+    console.info(
+      JSON.stringify({ event: 'review_stage', batchId, factId: job.fact_id, stage, ms: Date.now() - started }),
+    )
   try {
-    const outcome = await reviewFact(deps, job.fact_id, job.trace_id)
+    const outcome = await reviewFact(deps, job.fact_id, job.trace_id, onStage)
     console.info(JSON.stringify({ ...log, outcome }))
     message.ack()
   } catch (error) {

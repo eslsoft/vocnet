@@ -159,10 +159,21 @@ export type ReviewOutcome = 'published' | 'rejected' | 'skipped'
  * and the status write is conditional on the status the review read, so a duplicate delivery
  * cannot change a decided fact. Reviewer transport errors propagate so the queue retries.
  */
-export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string): Promise<ReviewOutcome> {
+/** The steps of one review, reported as each one ends so a review that never finishes shows where it stopped. */
+export type ReviewStage = 'loaded' | 'judged' | 'transitioned' | 'admitted' | 'refreshed'
+export type StageObserver = (stage: ReviewStage) => void
+
+export async function reviewFact(
+  deps: ReviewDeps,
+  id: FactId,
+  traceId: string,
+  onStage: StageObserver = () => {},
+): Promise<ReviewOutcome> {
   const fact = await deps.facts.find(id)
+  onStage('loaded')
   if (fact?.status !== 'pending') return 'skipped'
   const { finding, verdict, context } = await judge(deps, fact)
+  onStage('judged')
   const event = decide(finding)
   const at = deps.clock.now().toISOString()
   const applied = await recordDecision(
@@ -170,6 +181,7 @@ export async function reviewFact(deps: ReviewDeps, id: FactId, traceId: string):
     fact,
     { event, from: factTransitions[event].from, at, review: { ...verdict, context: { ...context }, reviewed_at: at } },
     traceId,
+    onStage,
   )
   if (!applied) return 'skipped'
   return event === 'publish' ? 'published' : 'rejected'
@@ -215,15 +227,19 @@ export async function recordDecision(
   fact: Fact,
   { event, from, at, review }: Decision,
   _traceId: string,
+  onStage: StageObserver = () => {},
 ): Promise<boolean> {
   const { to } = factTransitions[event]
   const publishes = fact.status !== 'published' && to === 'published'
   const supersede = publishes ? (fact.supersedesId ?? undefined) : undefined
   const applied = await deps.facts.transition({ id: fact.id, from, to, at, review, supersede })
+  onStage('transitioned')
   if (!applied) return false
   // The phrases a published list admits or drops get or lose their items in this request.
   const phrases = publishes && fact.kind === 'phrases' ? await admitPhrases(deps, fact) : []
+  onStage('admitted')
   await refreshEntries(deps, [fact.subjectId, fact.objectId, ...phrases])
+  onStage('refreshed')
   return true
 }
 
