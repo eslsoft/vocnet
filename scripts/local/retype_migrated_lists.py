@@ -92,6 +92,11 @@ def is_sentence(text):
     return bool(re.match(r'^[A-Z"\'“‘]', text.strip())) and bool(re.search(r'\S\s+\S', text.strip()))
 
 
+def contains_word(text, word):
+    """Whether the phrase has the word itself as one of its words (forms are the server's call)."""
+    return word.lower() in re.findall(r"[a-z0-9'-]+", text.lower())
+
+
 def load(db_path, limit):
     db = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
     db.execute('pragma busy_timeout = 30000')
