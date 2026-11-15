@@ -384,7 +384,18 @@ describe('public reads', () => {
       payload: { language: 'zh', of: 'sense', text: '河岸' },
     })
     await reviewAll(world)
-    const found = await listEntryOverviews(world.deps, ['shore', ' Bank', 'bank', 'shore', 'banks'], 4, zh)
+    const lemmas = ['shore', ' Bank', 'bank', 'shore', 'banks']
+    const read = await listEntryOverviews(world.deps, lemmas, 4, zh)
+    // Versioned by the sense limit and, in the order asked, each document's digest or what is missing.
+    expect(read.versions).toEqual([
+      '4',
+      expect.stringMatching(/^digest/),
+      'missing: Bank',
+      expect.stringMatching(/^digest/),
+      'missing:banks',
+    ])
+    expect((await listEntryOverviews(world.deps, lemmas, 2, zh)).versions[0]).toBe('2')
+    const found = read.read()
     expect(found.items.map((item) => item.lemma)).toEqual(['shore', 'bank'])
     // Exact lemmas only: a different case or an inflected form is missing, as it was spelled.
     expect(found.missing).toEqual([' Bank', 'banks'])
@@ -398,7 +409,7 @@ describe('public reads', () => {
         },
       ],
     })
-    await expect(listEntryOverviews(world.deps, ['nothing'], 4, none)).resolves.toEqual({
+    expect((await listEntryOverviews(world.deps, ['nothing'], 4, none)).read()).toEqual({
       items: [],
       missing: ['nothing'],
     })

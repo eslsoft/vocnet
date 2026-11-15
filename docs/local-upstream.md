@@ -99,7 +99,8 @@ curl -s -H "Authorization: Bearer $VOCNET_API_KEY" \
   120-a-minute allowance. A backend that proxies many users must send its key.
 - Lists (`/v1/entries`, `/v1/search`, `/v1/topics`, `/v1/topics/{id}/senses`,
   `/v1/overviews`, `/v1/senses/{id}/members`) are `Cache-Control: public,
-  max-age=5`. Documents (`/v1/entries/{lemma}`, `/v1/senses/{id}`,
+  max-age=5`; `/v1/overviews` and `/v1/topics` also carry an ETag and answer
+  `If-None-Match` with `304`. Documents (`/v1/entries/{lemma}`, `/v1/senses/{id}`,
   `/v1/sentences/{id}`, `/v1/forms/{form}`) are `no-cache` with a strong ETag:
   send `If-None-Match` and a `304` costs one indexed lookup.
 - Translations and topic names follow `?lang=` (else `Accept-Language`), and

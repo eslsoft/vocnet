@@ -12,6 +12,7 @@ import {
   headword,
   issueAgentKey,
   publishInventory,
+  request,
   stubReviewers,
 } from './helpers'
 
@@ -68,9 +69,12 @@ describe('topics', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('serves the seeded taxonomy as 16 categories over 147 leaf topics [spec: topics/tree-api]', async () => {
-    const { status, body } = await call('/v1/topics')
-    expect(status).toBe(200)
-    const { categories } = topicTreeSchema.parse(body)
+    const read = await request('/v1/topics')
+    expect([read.status, read.headers.get('Cache-Control')]).toEqual([200, 'public, max-age=5'])
+    const etag = read.headers.get('ETag') ?? ''
+    expect(etag).toMatch(/^"[0-9a-f]{32}"$/)
+    expect((await request('/v1/topics', { headers: { 'if-none-match': etag } })).status).toBe(304)
+    const { categories } = topicTreeSchema.parse(await read.json())
     expect(categories).toHaveLength(16)
     expect(categories.flatMap((category) => category.topics)).toHaveLength(147)
     expect(categories[0]).toMatchObject({
@@ -99,6 +103,7 @@ describe('topics', () => {
     expect((await submit(room.id, 'hospital-doctor')).status).toBe(201)
     expect((await submit(tend.id, 'injury-first-aid')).status).toBe(201)
     expect((await senses('hospital-doctor')).items).toEqual([])
+    const emptyEtag = (await request('/v1/topics')).headers.get('ETag') ?? ''
 
     stubReviewers()
     await deliverPendingReviews()
@@ -145,6 +150,9 @@ describe('topics', () => {
       sense_count: 2,
       entry_count: 2,
     })
+    // The counts are part of the taxonomy's ETag: one from before these tags no longer matches.
+    const stale = await request('/v1/topics', { headers: { 'if-none-match': emptyEtag } })
+    expect(stale.status).toBe(200)
 
     const entry = publicEntrySchema.parse((await call('/v1/entries/nurse?lang=zh&include=review')).body)
     const nouns = entry.meanings.flatMap((meaning) => meaning.senses)

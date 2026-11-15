@@ -4,9 +4,9 @@ import { listLangQuerySchema, senseSortSchema } from '@shared/catalog'
 import { topicIdSchema } from '@shared/facts'
 import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { z } from 'zod'
-import { LIST_CACHE } from './caching'
+import { etagOf, LIST_CACHE, notModified } from './caching'
 import { readVariant } from './language'
-import { createRouter, errorResponse, json, pageQuery } from './router'
+import { createRouter, errorResponse, json, notModifiedResponse, pageQuery } from './router'
 
 const tags = ['Topics']
 
@@ -16,8 +16,8 @@ const getTopics = createRoute({
   tags,
   summary: 'List the topic taxonomy',
   description:
-    'Every category with its leaf topics, in display order, each with its names and how many public senses and entries it lists. Only leaf topics tag senses.',
-  responses: { 200: json(topicTreeSchema, 'The taxonomy.') },
+    'Every category with its leaf topics, in display order, each with its names and how many public senses and entries it lists. Only leaf topics tag senses. Carries an ETag; send it as If-None-Match to get 304 while the taxonomy and its counts are unchanged.',
+  responses: { 200: json(topicTreeSchema, 'The taxonomy.'), 304: notModifiedResponse },
 })
 
 const getTopicSenses = createRoute({
@@ -37,8 +37,8 @@ const getTopicSenses = createRoute({
 export const topicRoutes = createRouter()
   .openapi(getTopics, async (c) => {
     const tree = await getTopicTree(c.get('deps'))
-    c.header('Cache-Control', LIST_CACHE)
-    return c.json(tree, 200)
+    const etag = await etagOf([JSON.stringify(tree)], { lang: null, review: false })
+    return notModified(c, etag, LIST_CACHE) ?? c.json(tree, 200)
   })
   .openapi(getTopicSenses, async (c) => {
     const { sort, limit, cursor, lang } = c.req.valid('query')

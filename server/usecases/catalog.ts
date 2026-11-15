@@ -286,27 +286,27 @@ export async function listSenseMembers(
 /**
  * The overviews of the public entries spelled exactly as these lemmas, in the order asked, each
  * once, and the lemmas with no public entry. Read from the built views as lists are; a lemma that
- * matches no entry exactly is missing, never matched by another spelling.
+ * matches no entry exactly is missing, never matched by another spelling. Versioned by the digest
+ * of each document found and by what is missing, so an unchanged answer revalidates without a body.
  */
 export async function listEntryOverviews(
   deps: Pick<Deps, 'publicViews'>,
   lemmas: readonly string[],
   senses: number,
   variant: ReadVariant,
-): Promise<{ items: EntryOverview[]; missing: string[] }> {
+): Promise<VersionedRead<{ items: EntryOverview[]; missing: string[] }>> {
   const asked = new Map(lemmas.map((lemma) => [normalizeTerm(lemma), lemma]))
-  const documents = (await deps.publicViews.findDocuments([...asked.keys()])).map((json) =>
-    readStored<StoredEntry>(json),
-  )
-  const byLemma = new Map(documents.map((document) => [document.lemma, document]))
-  const items: EntryOverview[] = []
-  const missing: string[] = []
-  for (const [lemma, spelled] of asked) {
-    const document = byLemma.get(lemma)
-    if (document) items.push(shapeOverview(document, senses, variant))
-    else missing.push(spelled)
+  const views = await deps.publicViews.findDocuments([...asked.keys()])
+  const found = views.map((view) => ({ view, document: readStored<StoredEntry>(view.json) }))
+  const byLemma = new Map(found.map((item) => [item.document.lemma as string, item]))
+  const inOrder = [...asked].map(([lemma, spelled]) => ({ spelled, found: byLemma.get(lemma) }))
+  return {
+    versions: [String(senses), ...inOrder.map((item) => item.found?.view.digest ?? `missing:${item.spelled}`)],
+    read: () => ({
+      items: inOrder.flatMap((item) => (item.found ? [shapeOverview(item.found.document, senses, variant)] : [])),
+      missing: inOrder.flatMap((item) => (item.found ? [] : [item.spelled])),
+    }),
   }
-  return { items, missing }
 }
 
 /**

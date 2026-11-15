@@ -1140,7 +1140,10 @@ export function fakeWorld(): FakeWorld {
       findDocuments: async (lemmas) =>
         builtViews()
           .filter((record) => (lemmas as readonly string[]).includes(record.document.lemma))
-          .map((record) => JSON.stringify(record.document)),
+          .map((record) => {
+            const json = JSON.stringify(record.document)
+            return { json, digest: `digest(${json.length}:${record.document.lemma})` }
+          }),
       listMembers: async (id, domain, page) => {
         const links = builtViews().flatMap((record) => record.hypernyms)
         const nearest = new Map<string, StoredMember>()

@@ -243,6 +243,13 @@ describe('public lists and search', () => {
     )
     expect(read.status).toBe(200)
     expect(read.headers.get('Cache-Control')).toBe('public, max-age=5')
+    // A list a client keeps: fresh for five seconds, then revalidated by its ETag without the body.
+    const etag = read.headers.get('ETag') ?? ''
+    const path = '/v1/overviews?lemma=river&lemma=bank&lemma=Bank&lemma=rivers&lemma=river&senses=1&lang=zh'
+    const unchanged = await request(path, { headers: { 'if-none-match': etag } })
+    expect([unchanged.status, unchanged.headers.get('ETag'), await unchanged.text()]).toEqual([304, etag, ''])
+    expect((await request(path.replace('senses=1', 'senses=2'))).headers.get('ETag')).not.toBe(etag)
+    expect((await request(path.replace('lang=zh', 'lang=fr'))).headers.get('ETag')).not.toBe(etag)
     const overviews = entryOverviewListSchema.parse(await read.json())
     expect(overviews.lang).toBe('zh')
     expect(overviews.items.map((item) => item.lemma)).toEqual(['river', 'bank'])

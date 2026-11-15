@@ -108,12 +108,16 @@ const listOverviews = createRoute({
   tags,
   summary: 'Get the overviews of many entries by their exact lemmas',
   description:
-    'What a word card shows, for up to 100 lemmas in one read: each entry with its US and UK pronunciations and, per part of speech, its sense count and first senses with every translation in the response language. Items come in the order asked, each once; a lemma with no public entry is named in missing, with no fuzzy fallback.' +
+    'What a word card shows, for up to 100 lemmas in one read: each entry with its US and UK pronunciations and, per part of speech, its sense count and first senses with every translation in the response language. Items come in the order asked, each once; a lemma with no public entry is named in missing, with no fuzzy fallback. Carries an ETag over the entries found; send it as If-None-Match to get 304 while they are unchanged.' +
     LANGUAGE,
   request: {
     query: z.object({ lemma: overviewLemmasSchema, senses: overviewSensesSchema, lang: listLangQuerySchema }),
   },
-  responses: { 200: json(entryOverviewListSchema, 'The overviews and the lemmas without one.'), 400: errorResponse },
+  responses: {
+    200: json(entryOverviewListSchema, 'The overviews and the lemmas without one.'),
+    304: notModifiedResponse,
+    400: errorResponse,
+  },
 })
 
 const getForm = createRoute({
@@ -231,8 +235,10 @@ export const publicRoutes = createRouter()
     const { lemma, senses, lang } = c.req.valid('query')
     const variant = readVariant(c, { lang })
     const found = await listEntryOverviews(c.get('deps'), [lemma].flat(), senses, variant)
-    c.header('Cache-Control', LIST_CACHE)
-    return c.json({ lang: variant.lang, items: found.items, missing: found.missing }, 200)
+    return (
+      notModified(c, await etagOf(found.versions, variant), LIST_CACHE) ??
+      c.json({ lang: variant.lang, ...found.read() }, 200)
+    )
   })
   .openapi(getForm, async (c) => {
     const variant = readVariant(c, c.req.valid('query'))

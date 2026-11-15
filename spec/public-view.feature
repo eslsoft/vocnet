@@ -144,12 +144,14 @@ Feature: Public view
     When the overviews of a list of lemmas are read with a sense limit and a language
     Then each entry comes once, in the order asked, with its pronunciations and per part of speech its level, its sense count, and its first senses with every translation in that language
     And a lemma no public entry is spelled exactly like is named as missing, as it was asked
+    And the read is versioned by the sense limit and, in the order asked, each document's digest or the missing lemma
 
   @public-view/overviews-api @api
   Scenario: One read serves the word cards of a topic page
     Given published entries with levels, frequencies, pronunciations, and translations
     When GET /v1/overviews is read with repeated lemma parameters, senses, and lang
-    Then it answers the overviews in the order asked with a five-second max-age, names the lemmas without a public entry, and shows no translations without a language
+    Then it answers the overviews in the order asked with a five-second max-age and an ETag, names the lemmas without a public entry, and shows no translations without a language
+    And If-None-Match with that ETag is 304 without a body, while another sense limit or language has another ETag
     And no lemma, more than 100 lemmas, lang=all, or senses above 10 is 400
 
   @public-view/topic-category @usecase

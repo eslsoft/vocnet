@@ -300,8 +300,8 @@ export interface PublicViewRepo {
   listTaggedSenses(leaves: readonly TopicId[], sort: SenseSort, page: PageRequest): Promise<Page<StoredTaggedSense>>
   /** What every leaf topic with a tagged public sense lists, and every category over its leaves. */
   countTagged(): Promise<TopicCount[]>
-  /** The stored documents of the built public entries spelled exactly as these lemmas, in any order. */
-  findDocuments(lemmas: readonly Lemma[]): Promise<string[]>
+  /** The stored documents, each with its digest, of the built public entries spelled exactly as these lemmas, in any order. */
+  findDocuments(lemmas: readonly Lemma[]): Promise<StoredView[]>
   /**
    * Built public entries the query matches, each once at its best tier (`SEARCH_TIERS`), then by
    * frequency, then by lemma.

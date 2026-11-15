@@ -402,10 +402,10 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
     async findDocuments(lemmas) {
       if (lemmas.length === 0) return []
       const rows = await db
-        .select({ document: publicEntries.document })
+        .select({ json: publicEntries.document, digest: publicEntries.digest })
         .from(publicEntries)
         .where(inIds(publicEntries.lemma, lemmas))
-      return rows.map((row) => row.document)
+      return rows
     },
 
     async search(query, request) {

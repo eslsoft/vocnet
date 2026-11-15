@@ -2295,7 +2295,12 @@ bump the revision without changing anything public, keep cached bodies valid.
 /v1/overviews`, `GET /v1/senses/{id}/members`, and `GET /v1/search` change
 whenever any entry in them does; an ETag would need the whole page query before
 a `304` could save only the body, so they carry `Cache-Control: public,
-max-age=5`, which stays within the budget, and no ETag. Errors and the feedback
+max-age=5`, which stays within the budget, and no ETag. Two of them are lists
+a client reads whole and keeps, so they carry a strong ETag beside the
+max-age and answer `If-None-Match` with `304`: `GET /v1/overviews`, over the
+sense limit and each asked lemma's document digest (or that it is missing),
+read with the documents in the one statement; and `GET /v1/topics`, over the
+taxonomy with its counts. The `304` saves the body, not the query. Errors and the feedback
 POST carry no caching headers.
 
 **Edge cache.** The Worker runs in front of Cloudflare's cache, so the edge

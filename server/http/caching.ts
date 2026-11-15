@@ -13,7 +13,9 @@ export const DOCUMENT_CACHE = 'public, no-cache'
 
 /**
  * Lists change whenever any entry in them does, and an ETag would cost the whole page query before
- * a 304 could save only the body; five seconds fresh stays within the staleness budget.
+ * a 304 could save only the body; five seconds fresh stays within the staleness budget. The two
+ * lists a client reads whole and keeps (the overviews of a set of lemmas, the taxonomy) carry an
+ * ETag as well, so a client past those five seconds revalidates without the body.
  */
 export const LIST_CACHE = 'public, max-age=5'
 
@@ -29,11 +31,12 @@ export async function etagOf(versions: string[], variant: ReadVariant): Promise<
 
 /**
  * Sets the caching headers and answers 304 when the client's If-None-Match holds the ETag;
- * otherwise null, and the caller sends the body.
+ * otherwise null, and the caller sends the body. A document revalidates on every use; a list
+ * passes its own Cache-Control.
  */
-export function notModified(c: Context, etag: string): Response | null {
+export function notModified(c: Context, etag: string, cacheControl = DOCUMENT_CACHE): Response | null {
   c.header('ETag', etag)
-  c.header('Cache-Control', DOCUMENT_CACHE)
+  c.header('Cache-Control', cacheControl)
   const tags = c.req
     .header('if-none-match')
     ?.split(',')

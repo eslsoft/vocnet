@@ -66,7 +66,8 @@ Feature: Topics
   Scenario: The seeded taxonomy is public
     Given a fresh database with every migration applied
     When GET /v1/topics is called
-    Then it returns the 16 approved categories over 147 leaf topics with their English and Chinese names and zero counts
+    Then it returns the 16 approved categories over 147 leaf topics with their English and Chinese names and zero counts, with a five-second max-age and an ETag
+    And If-None-Match with that ETag is 304, until a count changes
 
   @topics/publish-api @api
   Scenario: A topic fact is reviewed, published, and listed on a real database
