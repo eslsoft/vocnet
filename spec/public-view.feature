@@ -178,6 +178,7 @@ Feature: Public view
     Given a public read
     When a response is public with a max-age, and when it is a document, an error, or a HEAD
     Then the first is kept at the edge under its URL and the served language its Accept-Language reads, a hit is served with its Age and Vary, and nothing else is kept
+    And a hit whose ETag the request's If-None-Match holds is answered 304 without the body
 
   @public-view/rate-limit @api
   Scenario: Public reads are rate limited per client address

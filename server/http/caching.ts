@@ -37,9 +37,11 @@ export async function etagOf(versions: string[], variant: ReadVariant): Promise<
 export function notModified(c: Context, etag: string, cacheControl = DOCUMENT_CACHE): Response | null {
   c.header('ETag', etag)
   c.header('Cache-Control', cacheControl)
-  const tags = c.req
-    .header('if-none-match')
-    ?.split(',')
-    .map((tag) => tag.trim().replace(/^W\//, ''))
-  return tags?.some((tag) => tag === etag || tag === '*') ? c.body(null, 304) : null
+  return holdsEtag(c.req.header('if-none-match'), etag) ? c.body(null, 304) : null
+}
+
+/** Whether an If-None-Match header names the ETag, compared weakly, or any (`*`). */
+export function holdsEtag(ifNoneMatch: string | undefined, etag: string): boolean {
+  const tags = ifNoneMatch?.split(',').map((tag) => tag.trim().replace(/^W\//, ''))
+  return tags?.some((tag) => tag === etag || tag === '*') ?? false
 }

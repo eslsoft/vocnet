@@ -3,6 +3,7 @@ import { RateLimitedError } from '@server/usecases/errors'
 import { LIMIT_PERIOD_SECONDS } from '@server/usecases/ports'
 import { authenticateService } from '@server/usecases/services'
 import type { Context, MiddlewareHandler } from 'hono'
+import { holdsEtag } from './caching'
 import type { AppEnv } from './context'
 import { negotiatedLanguage } from './language'
 
@@ -44,9 +45,17 @@ function stored(response: Response, now: Date): Response {
   return copy
 }
 
-/** A cache hit as served: its Vary restored and its Age, so downstream caches keep it only for what is left of max-age. */
-function served(hit: Response, now: Date): Response {
-  const response = new Response(hit.body, hit)
+/**
+ * A cache hit as served: its Vary restored and its Age, so downstream caches keep it only for what
+ * is left of max-age. A hit with an ETag the request already holds is a 304 without the body, as
+ * the route itself answers it.
+ */
+function served(hit: Response, now: Date, ifNoneMatch: string | undefined): Response {
+  const etag = hit.headers.get('ETag')
+  const response =
+    etag && holdsEtag(ifNoneMatch, etag)
+      ? new Response(null, { status: 304, headers: hit.headers })
+      : new Response(hit.body, hit)
   const age = Math.max(0, Math.floor((now.getTime() - Date.parse(hit.headers.get('Date') ?? '')) / 1000))
   response.headers.set('Age', String(age))
   response.headers.set('Vary', 'Accept-Language')
@@ -91,7 +100,7 @@ export const publicReadBoundary: MiddlewareHandler<AppEnv> = async (c, next) => 
   if (c.req.method === 'HEAD') return next()
   const key = edgeCacheKey(c.req.url, c.req.header('accept-language'))
   const hit = await responseCache.match(key)
-  if (hit) return served(hit, clock.now())
+  if (hit) return served(hit, clock.now(), c.req.header('if-none-match'))
   await next()
   if (c.res.status === 200 && sharedFresh(c.res.headers.get('Cache-Control'))) {
     c.executionCtx.waitUntil(responseCache.put(key, stored(c.res, clock.now())))

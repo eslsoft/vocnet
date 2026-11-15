@@ -23,6 +23,12 @@ function harness() {
       c.header('Vary', 'Accept-Language')
       return c.json({ served })
     })
+    .get('/v1/tagged', (c) => {
+      served += 1
+      c.header('Cache-Control', 'public, max-age=5')
+      c.header('ETag', '"v1"')
+      return c.json({ served })
+    })
     .get('/v1/document', (c) => {
       served += 1
       c.header('Cache-Control', 'public, no-cache')
@@ -76,6 +82,23 @@ describe('public read boundary', () => {
     expect(hit.headers.get('Cache-Control')).toBe('public, max-age=5')
 
     expect(await (await send('/v1/list')).json()).toEqual({ served: 2 })
+    expect(served()).toBe(2)
+  })
+
+  it('answers a hit whose ETag the request holds with 304 and no body [spec: public-view/edge-cache]', async () => {
+    const { send, served } = harness()
+    expect(await (await send('/v1/tagged')).json()).toEqual({ served: 1 })
+    const unchanged = await send('/v1/tagged', { 'if-none-match': 'W/"v1"' })
+    expect([unchanged.status, await unchanged.text()]).toEqual([304, ''])
+    expect([
+      unchanged.headers.get('ETag'),
+      unchanged.headers.get('Cache-Control'),
+      unchanged.headers.get('Age'),
+    ]).toEqual(['"v1"', 'public, max-age=5', '0'])
+    expect(await (await send('/v1/tagged', { 'if-none-match': '"v0"' })).json()).toEqual({ served: 1 })
+    // A list without an ETag is served whole whatever the request holds.
+    await send('/v1/list')
+    expect((await send('/v1/list', { 'if-none-match': '*' })).status).toBe(200)
     expect(served()).toBe(2)
   })
 

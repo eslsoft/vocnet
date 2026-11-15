@@ -2309,7 +2309,7 @@ puts responses in the Workers Cache API (`caches.default`, the cache of the
 colo serving the request) itself, after the read rate limit. It stores exactly
 the `200` `GET` responses whose own headers let a shared cache keep them fresh
 (`public` with a `max-age`, and no `no-cache`, `no-store`, or `private`): the
-three lists. Documents and form lookups are `no-cache`, so they are never
+lists. Documents and form lookups are `no-cache`, so they are never
 stored: a stored body would still need the same indexed batch to revalidate,
 and that batch already answers a matching `If-None-Match` with a bodiless
 `304`. The key is the request URL and, when it has no `?lang=`, the served
@@ -2319,7 +2319,9 @@ that header; a `?lang=` stays as sent, so a value the route rejects never
 shares a key with one it serves. The stored copy drops `Vary` and carries the
 `Date` it was stored; a hit is served with `Vary: Accept-Language` restored and
 `Age` set from that date, so a browser or downstream cache keeps it only for
-what is left of the five seconds. A list is therefore at most five seconds
+what is left of the five seconds. A hit that carries an ETag (the overviews
+and the taxonomy) and whose ETag the request's `If-None-Match` holds is
+answered `304` without the body, as the route answers it. A list is therefore at most five seconds
 older than the view it was read from, at the edge or anywhere downstream, plus
 the lag every list has behind a write (see Staleness). The cache is per colo
 and is not purged on write: the max-age is the bound. The integration suite
