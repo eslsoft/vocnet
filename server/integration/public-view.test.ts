@@ -7,6 +7,7 @@ import {
   readStored,
   shapeEntry,
   shapeSenseDetail,
+  topicCategories,
 } from '@server/domain/public-view'
 import type { Lemma } from '@server/domain/term'
 import { topicNamesOf } from '@server/usecases/public-view'
@@ -290,6 +291,7 @@ describe('public view', () => {
     await deliverPendingReviews()
     const deps = createDeps(env)
     const topicNames = await topicNamesOf(deps)
+    const categories = topicCategories(await deps.topics.list())
     const variants: Array<[string, ReadVariant]> = [
       ['', { lang: null, review: false }],
       ['?lang=zh', { lang: 'zh', review: false }],
@@ -307,10 +309,10 @@ describe('public view', () => {
       if (!live || !found) throw new Error(`${lemma} is not public.`)
       for (const [query, variant] of variants) {
         expect(await (await request(`/v1/entries/${lemma}${query}`)).json()).toEqual(
-          shapeEntry(live, found.links, variant),
+          shapeEntry(live, found.links, variant, categories),
         )
         expect(await (await request(`/v1/senses/${senseId}${query}`)).json()).toEqual(
-          shapeSenseDetail(live, senseId, variant),
+          shapeSenseDetail(live, senseId, variant, categories),
         )
       }
     }
@@ -430,7 +432,13 @@ describe('public view', () => {
     const zh = await read('?lang=zh')
     expect(zh.body.lang).toBe('zh')
     expect(zh.sense?.translations).toEqual(['河岸'])
-    expect(zh.sense?.topics).toEqual([{ id: 'family', name: { en: expect.any(String), zh: expect.any(String) } }])
+    expect(zh.sense?.topics).toEqual([
+      {
+        id: 'family',
+        name: { en: expect.any(String), zh: expect.any(String) },
+        category: { id: 'people-feelings', name: { en: 'People and feelings', zh: '人物与情感' } },
+      },
+    ])
     expect((await read('?lang=zh')).etag).toBe(zh.etag)
 
     // The response names the stored language it used, so a regional tag reads and reports zh.
@@ -444,6 +452,7 @@ describe('public view', () => {
     expect(traditional.body.lang).toBeNull()
     expect(traditional.sense).not.toHaveProperty('translations')
     expect(traditional.sense?.topics[0]?.name).toEqual({ en: expect.any(String) })
+    expect(traditional.sense?.topics[0]?.category.name).toEqual({ en: 'People and feelings' })
     expect((await read('', { 'accept-language': 'zh-Hant,en;q=0.5' })).body.lang).toBeNull()
 
     const all = await read('?lang=ALL')

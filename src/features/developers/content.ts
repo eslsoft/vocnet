@@ -47,11 +47,11 @@ const zh: GuideText = {
     },
     auth: {
       title: '认证',
-      body: '读取 /v1 不需要任何凭据。提交事实、领取工作等写操作属于 /manage/v1，只对持有 vn_agent_ 密钥的智能体和管理员开放，不在本指南范围内。',
+      body: '读取 /v1 不需要任何凭据。下游服务可以向管理员申请一个 vn_service_ 服务密钥，用 Authorization: Bearer 发送：它只标识调用方并改用按服务计的读取限额，不授予其他权限；未知或已撤销的密钥返回 401。提交事实、领取工作等写操作属于 /manage/v1，只对持有 vn_agent_ 密钥的智能体和管理员开放，不在本指南范围内。',
     },
     limits: {
       title: '速率限制',
-      body: '每个客户端地址每分钟最多 120 次读取；POST /v1/feedback 每分钟最多 10 次。超出时返回 429，错误码 rate_limited，并带 Retry-After 头（秒）。请在等待后重试，不要立即重放。',
+      body: '每个客户端地址每分钟最多 120 次读取；带服务密钥的读取改为每个服务每分钟最多 6000 次，与来源地址无关；POST /v1/feedback 每分钟最多 10 次。超出时返回 429，错误码 rate_limited，并带 Retry-After 头（秒）。请在等待后重试，不要立即重放。',
     },
     language: {
       title: '语言：?lang=',
@@ -113,13 +113,20 @@ const zh: GuideText = {
       title: '列出词条',
       body: '按词头或词频列出词条摘要，可按 CEFR 级别（level=A1,A2）、词性和话题过滤。',
     },
+    'list-overviews': {
+      title: '批量词条概览',
+      body: '一次读取最多 100 个词头（重复 lemma 参数）的概览：美式和英式发音，以及每个词性的义项数和前几个义项（含所选语言的全部翻译）。没有公开词条的词头列在 missing 里。',
+    },
     'get-form': { title: '按词形查找', body: '找出某个屈折形式或变体（如 birds、went）属于哪些词条。' },
     'get-sense': { title: '获取义项', body: '返回一个义项，形状与词条中的义项一致，并附上所属词条的摘要。' },
     'list-members': {
       title: '类别成员',
-      body: '把义项当作类别，返回所有上位词链通向它的义项（animal 的成员有 dog、cat，以及经由 bird 的每种鸟），每个只出现一次，depth 为最近的层级，近的在前。',
+      body: '把义项当作类别，返回所有上位词链通向它的义项（animal 的成员有 dog、cat，以及经由 bird 的每种鸟），每个只出现一次，depth 为最近的层级，近的在前；parents 给出它在本次遍历中直接从属的义项，可据此还原层级树，total 为全部成员数。',
     },
-    topics: { title: '话题分类', body: '返回全部类别及其叶子话题；只有叶子话题会标注到义项上。' },
+    topics: {
+      title: '话题分类',
+      body: '返回全部类别及其叶子话题，各带名称以及它列出的公开义项数和词条数；只有叶子话题会标注到义项上。',
+    },
     'topic-senses': {
       title: '话题下的义项',
       body: '返回标注了该话题的已发布义项；传入类别时包含其所有叶子话题。可按 lemma、frequency 或 level 排序。',
@@ -161,11 +168,11 @@ const en: GuideText = {
     },
     auth: {
       title: 'Authentication',
-      body: 'Reads under /v1 need no credential. Writes such as submitting facts or claiming work belong to /manage/v1, open only to agents with a vn_agent_ key and to admins, and are outside this guide.',
+      body: 'Reads under /v1 need no credential. A downstream service can ask an admin for a vn_service_ key and send it as Authorization: Bearer: it only names the caller and moves its reads to the per-service limit, and grants nothing else; an unknown or revoked key is 401. Writes such as submitting facts or claiming work belong to /manage/v1, open only to agents with a vn_agent_ key and to admins, and are outside this guide.',
     },
     limits: {
       title: 'Rate limits',
-      body: 'Each client address may read 120 times a minute, and POST /v1/feedback 10 times a minute. Past that the API answers 429 with the code rate_limited and a Retry-After header in seconds. Wait that long before retrying.',
+      body: 'Each client address may read 120 times a minute; a read with a service key counts against its service instead, 6000 a minute wherever it comes from; and POST /v1/feedback 10 times a minute. Past that the API answers 429 with the code rate_limited and a Retry-After header in seconds. Wait that long before retrying.',
     },
     language: {
       title: 'Language: ?lang=',
@@ -227,6 +234,10 @@ const en: GuideText = {
       title: 'List entries',
       body: 'Entry summaries in lemma or frequency order, filtered by CEFR level (level=A1,A2), part of speech, and topic.',
     },
+    'list-overviews': {
+      title: 'Overviews of many entries',
+      body: 'Up to 100 lemmas in one read (repeat lemma): each entry’s US and UK pronunciations and, per part of speech, its sense count and first senses with every translation in the response language. A lemma with no public entry is named in missing.',
+    },
     'get-form': { title: 'Look up a form', body: 'The entries an inflected or variant form (birds, went) belongs to.' },
     'get-sense': {
       title: 'Get a sense',
@@ -234,9 +245,12 @@ const en: GuideText = {
     },
     'list-members': {
       title: 'Category members',
-      body: 'Every sense whose broader terms lead up to this one (animal: dog, cat, and each bird through bird), each once at its nearest depth, nearest first.',
+      body: 'Every sense whose broader terms lead up to this one (animal: dog, cat, and each bird through bird), each once at its nearest depth, nearest first. parents names the senses a member is a direct kind of within the walk, which rebuilds the tree, and total counts every member.',
     },
-    topics: { title: 'Topic taxonomy', body: 'Every category with its leaf topics; only leaves tag senses.' },
+    topics: {
+      title: 'Topic taxonomy',
+      body: 'Every category with its leaf topics, each with its names and how many public senses and entries it lists; only leaves tag senses.',
+    },
     'topic-senses': {
       title: 'Senses of a topic',
       body: 'The published senses tagged with a topic, or with any topic of a category, by lemma, frequency, or level.',

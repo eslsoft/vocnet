@@ -14,6 +14,7 @@ import type {
   ReferenceRepo,
   ResponseCache,
   ReviewQueue,
+  ServiceRepo,
   TicketRepo,
   TopicRepo,
   WorkRepo,
@@ -26,6 +27,7 @@ export interface Deps {
   topics: TopicRepo
   tickets: TicketRepo
   agents: AgentRepo
+  services: ServiceRepo
   work: WorkRepo
   monitor: MonitorRepo
   reference: ReferenceRepo
@@ -38,6 +40,8 @@ export interface Deps {
   feedbackLimiter: RateLimiter
   /** Caps public reads per client address. */
   readLimiter: RateLimiter
+  /** Caps the public reads of each service that reads with its key. */
+  serviceReadLimiter: RateLimiter
   /** The edge cache public lists are kept in for their max-age. */
   responseCache: ResponseCache
   authVerifier: AuthVerifier

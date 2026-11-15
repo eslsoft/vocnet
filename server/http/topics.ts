@@ -15,7 +15,8 @@ const getTopics = createRoute({
   path: '/topics',
   tags,
   summary: 'List the topic taxonomy',
-  description: 'Every category with its leaf topics, in display order. Only leaf topics tag senses.',
+  description:
+    'Every category with its leaf topics, in display order, each with its names and how many public senses and entries it lists. Only leaf topics tag senses.',
   responses: { 200: json(topicTreeSchema, 'The taxonomy.') },
 })
 
@@ -25,7 +26,7 @@ const getTopicSenses = createRoute({
   tags,
   summary: 'List the published senses tagged with a topic',
   description:
-    'A leaf topic lists the senses tagged with it; a category lists the senses tagged with any of its topics, each once, as sense summaries, by lemma, frequency, or level. A sense appears when its topic fact, its gloss, and its entry are published. An unknown id is 404. Translations are in the language of ?lang=, else of Accept-Language.',
+    'A leaf topic lists the senses tagged with it; a category lists the senses tagged with any of its topics, each once, as sense summaries marked rare when the entry ranks the sense extra, by lemma, frequency, or level. A sense appears when its topic fact, its gloss, and its entry are published. An unknown id is 404. Translations are in the language of ?lang=, else of Accept-Language.',
   request: {
     params: z.object({ id: topicIdSchema }),
     query: pageQuery.extend({ sort: senseSortSchema, lang: listLangQuerySchema }),
@@ -34,7 +35,11 @@ const getTopicSenses = createRoute({
 })
 
 export const topicRoutes = createRouter()
-  .openapi(getTopics, async (c) => c.json(await getTopicTree(c.get('deps')), 200))
+  .openapi(getTopics, async (c) => {
+    const tree = await getTopicTree(c.get('deps'))
+    c.header('Cache-Control', LIST_CACHE)
+    return c.json(tree, 200)
+  })
   .openapi(getTopicSenses, async (c) => {
     const { sort, limit, cursor, lang } = c.req.valid('query')
     const variant = readVariant(c, { lang })

@@ -30,7 +30,7 @@ export async function adminToken(sub = 'admin-1') {
 }
 
 /** Bindings a test swaps for fakes, as the composition root reads them from the env. */
-type Bindings = Partial<Pick<typeof env, 'READ_RATE_LIMITER'>>
+type Bindings = Partial<Pick<typeof env, 'READ_RATE_LIMITER' | 'SERVICE_READ_RATE_LIMITER'>>
 type CallInit = RequestInit & { token?: string; json?: unknown; bindings?: Bindings }
 
 let clients = 0

@@ -117,7 +117,8 @@ Feature: Public view
   Scenario: A topic lists an entry only for a common sense
     Given an entry whose rare sense, ranked extra in its inventory, is tagged with a topic
     When the entry list is read by that topic, and again once a common sense is tagged
-    Then the entry is listed only after the common sense is tagged, while the topic's senses list the rare sense itself
+    Then the entry is listed only after the common sense is tagged, while the topic's senses list the rare sense itself, marked rare
+    And the taxonomy counts the topic's senses and entries as those two lists show them
 
   @public-view/relation-layers-api @api
   Scenario: Relations show the everyday layer, and a domain layer on request
@@ -129,13 +130,34 @@ Feature: Public view
   Scenario: The members walk reads the public hypernyms
     Given public senses linked by everyday and biology hypernyms
     When the members of the top category are listed a page at a time, with and without the domain, and of a sense that is not public
-    Then each member comes with its depth, pages continue, the domain adds its members, and the hidden sense is not found
+    Then each member comes with its depth and the senses it is a direct kind of within the layers walked, every page gives the total, pages continue, the domain adds its members, and the hidden sense is not found
 
   @public-view/members-api @api
   Scenario: A category lists its members transitively
     Given everyday hypernyms making bird, dog, and eagle animals and eagle a bird, and biology hypernyms making dog a canine and canine a carnivore
     When the members of animal, bird, and carnivore are read, page by page, with and without domain biology, and of an unknown sense
-    Then each member comes once at its nearest depth, nearest first then by lemma, pages continue where the last stopped, a domain taxonomy is walked only on request, and an unknown sense is 404
+    Then each member comes once at its nearest depth, nearest first then by lemma, with its parents inside the walk (a member of two categories names both, a category outside the walk is left out) and the total over every page, pages continue where the last stopped, a domain taxonomy is walked only on request, and an unknown sense is 404
+
+  @public-view/overviews @usecase
+  Scenario: Overviews of many entries are cut from the built views
+    Given public entries with pronunciations, several parts of speech, and translations
+    When the overviews of a list of lemmas are read with a sense limit and a language
+    Then each entry comes once, in the order asked, with its pronunciations and per part of speech its level, its sense count, and its first senses with every translation in that language
+    And a lemma no public entry is spelled exactly like is named as missing, as it was asked
+
+  @public-view/overviews-api @api
+  Scenario: One read serves the word cards of a topic page
+    Given published entries with levels, frequencies, pronunciations, and translations
+    When GET /v1/overviews is read with repeated lemma parameters, senses, and lang
+    Then it answers the overviews in the order asked with a five-second max-age, names the lemmas without a public entry, and shows no translations without a language
+    And no lemma, more than 100 lemmas, lang=all, or senses above 10 is 400
+
+  @public-view/topic-category @usecase
+  Scenario: A topic tag shows its category
+    Given a public sense tagged with a leaf topic
+    When its entry or the sense is read
+    Then each topic tag carries its category's id and name from the taxonomy as it is now, in the read's language, and the taxonomy is part of the read's ETag
+    And a tag whose topic the taxonomy lacks fails the read
 
   @public-view/topic-sort @api
   Scenario: The senses of a topic sort by lemma, frequency, or level

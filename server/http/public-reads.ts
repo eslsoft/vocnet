@@ -1,12 +1,15 @@
+import { isServiceKey } from '@server/domain/principal'
 import { RateLimitedError } from '@server/usecases/errors'
 import { LIMIT_PERIOD_SECONDS } from '@server/usecases/ports'
-import type { MiddlewareHandler } from 'hono'
+import { authenticateService } from '@server/usecases/services'
+import type { Context, MiddlewareHandler } from 'hono'
 import type { AppEnv } from './context'
 import { negotiatedLanguage } from './language'
 
-// The boundary of every public read: a per-address rate limit, then the edge cache. Documents are
-// `no-cache`, so only what a response's own headers let a shared cache keep fresh is stored: the
-// lists, search, for their five-second max-age.
+// The boundary of every public read: a rate limit, per service for a read with a service key and
+// per client address otherwise, then the edge cache. Documents are `no-cache`, so only what a
+// response's own headers let a shared cache keep fresh is stored: the lists, search, for their
+// five-second max-age.
 
 /** The response may be kept fresh by a shared cache: public with a max-age, and not no-cache or no-store. */
 function sharedFresh(cacheControl: string | null): boolean {
@@ -50,14 +53,41 @@ function served(hit: Response, now: Date): Response {
   return response
 }
 
-export const publicReadBoundary: MiddlewareHandler<AppEnv> = async (c, next) => {
-  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return next()
-  const { readLimiter, responseCache, clock } = c.get('deps')
+/** The service key a read presents as its bearer token; any other Authorization is not a read's credential. */
+function presentedServiceKey(header: string | undefined): string | null {
+  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : ''
+  return isServiceKey(token) ? token : null
+}
+
+/**
+ * Counts the read against its caller's allowance. A service key names the caller, so its reads
+ * share the service's allowance wherever they come from and need no client address; a key that
+ * names no live service is refused, never read as anonymous. Any other read is counted by the
+ * address Cloudflare reports.
+ */
+async function admitRead(c: Context<AppEnv>): Promise<void> {
+  const deps = c.get('deps')
+  const key = presentedServiceKey(c.req.header('authorization'))
+  if (key) {
+    const service = await authenticateService(deps, key)
+    c.set('authMethod', 'service_key')
+    c.set('service', { id: service.id, name: service.name })
+    if (!(await deps.serviceReadLimiter.allow(service.id))) {
+      throw new RateLimitedError('Too many requests from this service; try again in a minute.', LIMIT_PERIOD_SECONDS)
+    }
+    return
+  }
   const client = c.req.header('cf-connecting-ip')
   if (!client) throw new Error('CF-Connecting-IP is missing; the Worker must run behind Cloudflare.')
-  if (!(await readLimiter.allow(client))) {
+  if (!(await deps.readLimiter.allow(client))) {
     throw new RateLimitedError('Too many requests from this address; try again in a minute.', LIMIT_PERIOD_SECONDS)
   }
+}
+
+export const publicReadBoundary: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') return next()
+  const { responseCache, clock } = c.get('deps')
+  await admitRead(c)
   if (c.req.method === 'HEAD') return next()
   const key = edgeCacheKey(c.req.url, c.req.header('accept-language'))
   const hit = await responseCache.match(key)

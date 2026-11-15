@@ -1,14 +1,16 @@
 import { type ReadVariant, shapeSenseSummary } from '@server/domain/public-view'
 import { leavesUnder, topicTree } from '@server/domain/topics'
-import type { SenseSort, SenseSummary } from '@shared/catalog'
+import type { SenseSort } from '@shared/catalog'
 import type { TopicId } from '@shared/facts'
-import type { TopicTree } from '@shared/topics'
+import type { TopicSense, TopicTree } from '@shared/topics'
 import type { Deps } from './deps'
 import { NotFoundError } from './errors'
 import type { Page, PageRequest } from './ports'
 
-export async function getTopicTree(deps: Pick<Deps, 'topics'>): Promise<TopicTree> {
-  return topicTree(await deps.topics.list())
+/** The taxonomy with how many public senses and entries each topic and category lists now. */
+export async function getTopicTree(deps: Pick<Deps, 'topics' | 'publicViews'>): Promise<TopicTree> {
+  const [nodes, counts] = await Promise.all([deps.topics.list(), deps.publicViews.countTagged()])
+  return topicTree(nodes, new Map(counts.map(({ topicId, senses, entries }) => [topicId, { senses, entries }])))
 }
 
 /** The leaf topics a topic id stands for: itself, or a category's leaves. An unknown id is not found. */
@@ -29,7 +31,10 @@ export async function listTopicSenses(
   sort: SenseSort,
   page: PageRequest,
   variant: ReadVariant,
-): Promise<Page<SenseSummary>> {
+): Promise<Page<TopicSense>> {
   const found = await deps.publicViews.listTaggedSenses(await leavesOf(deps, id), sort, page)
-  return { ...found, items: found.items.map((summary) => shapeSenseSummary(summary, variant)) }
+  return {
+    ...found,
+    items: found.items.map(({ summary, rare }) => ({ ...shapeSenseSummary(summary, variant), rare })),
+  }
 }

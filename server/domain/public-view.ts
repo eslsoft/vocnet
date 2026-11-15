@@ -1,4 +1,5 @@
 import type {
+  EntryOverview,
   FormMatch,
   PublicEntry,
   PublicPhrases,
@@ -23,6 +24,7 @@ import {
 import { levelRank } from './reference'
 import { type SearchField, searchBody } from './search'
 import { normalizeTerm } from './term'
+import type { TopicNode } from './topics'
 
 // The public view stores each entry's public document, built by the same projection that defines
 // visibility, plus the lookup rows the other public reads need. Everything here derives from the
@@ -57,6 +59,22 @@ export interface EntryLinks {
   family: StoredSummary[]
   /** The morphology part forms that are the lemma of a public entry. */
   publicParts: string[]
+}
+
+/**
+ * Each leaf topic's category as the taxonomy has it now. A read joins it to the topic tags of a
+ * sense, so a tag shows its category without the document storing it.
+ */
+export type TopicCategories = ReadonlyMap<TopicId, { id: TopicId; name: ByLanguage<string> }>
+
+export function topicCategories(nodes: readonly TopicNode[]): TopicCategories {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const categories = new Map<TopicId, { id: TopicId; name: ByLanguage<string> }>()
+  for (const node of nodes) {
+    const parent = node.parentId === null ? undefined : byId.get(node.parentId)
+    if (parent) categories.set(node.id, { id: parent.id, name: { en: parent.nameEn, zh: parent.nameZh } })
+  }
+  return categories
 }
 
 /** The language and review variant a read asks for. */
@@ -181,6 +199,10 @@ function exampleTranslationIn(
 const translationIn = (values: ByLanguage<string>, lang: string | null): string | undefined =>
   lang === null || lang === 'all' ? undefined : values[lang]
 
+/** A list shows every translation in the read's one language; with `all` or no language it shows none. */
+const listTranslationsIn = (values: ByLanguage<string[]>, lang: string | null): string[] | undefined =>
+  lang === null || lang === 'all' ? undefined : (values[lang] ?? [])
+
 function nameIn(names: ByLanguage<string>, lang: string | null): ByLanguage<string> {
   if (lang === 'all') return names
   const { en } = names
@@ -219,7 +241,14 @@ export function shapeSenseSummary(summary: StoredSenseSummary, variant: ReadVari
   }
 }
 
-function shapeSense(sense: StoredSense, variant: ReadVariant): PublicSense {
+/** The category of a topic tag. A tag whose topic the taxonomy lacks is broken data, not a tag to show bare. */
+function categoryOf(topicId: TopicId, categories: TopicCategories, lang: string | null) {
+  const category = categories.get(topicId)
+  if (!category) throw new Error(`Topic ${topicId} is not a leaf of the taxonomy.`)
+  return { id: category.id, name: nameIn(category.name, lang) }
+}
+
+function shapeSense(sense: StoredSense, variant: ReadVariant, categories: TopicCategories): PublicSense {
   const translations = translationsIn(sense.translations, variant.lang)
   const translationReviews = translationsIn(sense.review.translations, variant.lang)
   const relations = Object.fromEntries(
@@ -247,6 +276,7 @@ function shapeSense(sense: StoredSense, variant: ReadVariant): PublicSense {
     topics: sense.topics.map((topic) => ({
       id: topic.id,
       name: nameIn(topic.name, variant.lang),
+      category: categoryOf(topic.id, categories, variant.lang),
       ...reviewed(topic.review, variant),
     })),
     relations,
@@ -291,7 +321,12 @@ function shapePhrases(document: StoredEntry, summaries: readonly StoredSummary[]
 }
 
 /** The entry document as a read asks for it, with what other entries supply joined in. */
-export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: ReadVariant): PublicEntry {
+export function shapeEntry(
+  document: StoredEntry,
+  links: EntryLinks,
+  variant: ReadVariant,
+  categories: TopicCategories,
+): PublicEntry {
   const publicParts = new Set(links.publicParts)
   const summaries = (items: StoredSummary[]) => items.map((item) => shapeSummary(item, variant))
   return {
@@ -318,7 +353,7 @@ export function shapeEntry(document: StoredEntry, links: EntryLinks, variant: Re
       skills: meaning.skills,
       pronunciations: meaning.pronunciations.map((item) => withReview(item, variant)),
       forms: meaning.forms,
-      senses: meaning.senses.map((sense) => shapeSense(sense, variant)),
+      senses: meaning.senses.map((sense) => shapeSense(sense, variant, categories)),
       ...(variant.review ? { review: meaning.review } : {}),
     })),
     phrase_type: document.phrase_type,
@@ -332,19 +367,54 @@ export function shapeSenseDetail(
   document: StoredEntry,
   senseId: SenseId,
   variant: ReadVariant,
+  categories: TopicCategories,
 ): PublicSenseDetail | null {
   for (const meaning of document.meanings) {
     const sense = meaning.senses.find((candidate) => candidate.id === senseId)
     if (sense) {
       return {
         lang: variant.lang,
-        ...shapeSense(sense, variant),
+        ...shapeSense(sense, variant, categories),
         pos: meaning.pos,
         entry: shapeSummary(document.summary, variant),
       }
     }
   }
   return null
+}
+
+/**
+ * The entry as a word card shows it: its pronunciations and, per part of speech, how many senses
+ * it has and the first `senses` of them with their translations. A list read, so one language.
+ */
+export function shapeOverview(document: StoredEntry, senses: number, variant: ReadVariant): EntryOverview {
+  const bare = ({ ipa, accent, strength }: StoredEntry['pronunciations'][number]) => ({
+    ipa,
+    accent,
+    ...(strength === undefined ? {} : { strength }),
+  })
+  return {
+    id: document.id,
+    lemma: document.lemma,
+    cefr: document.summary.cefr,
+    frequency: document.frequency,
+    pronunciations: document.pronunciations.map(bare),
+    meanings: document.meanings.map((meaning) => ({
+      pos: meaning.pos,
+      cefr: meaning.cefr,
+      pronunciations: meaning.pronunciations.map(bare),
+      sense_count: meaning.senses.length,
+      senses: meaning.senses.slice(0, senses).map((sense) => {
+        const translations = listTranslationsIn(sense.translations, variant.lang)
+        return {
+          id: sense.id,
+          gloss: sense.gloss,
+          rare: sense.rare,
+          ...(translations === undefined ? {} : { translations }),
+        }
+      }),
+    })),
+  }
 }
 
 /** The entries a form lookup found, one item per entry with every form of it that matched, in row order. */

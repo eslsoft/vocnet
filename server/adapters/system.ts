@@ -1,6 +1,7 @@
 import type { Clock, IdGenerator } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
 import type { EntryId, FactId, SenseId, SentenceId } from '@shared/facts'
+import type { ServiceId } from '@shared/services'
 import type { TicketId } from '@shared/tickets'
 import type { WorkLeaseId } from '@shared/work'
 
@@ -13,5 +14,6 @@ export const uuidGenerator: IdGenerator = {
   fact: () => crypto.randomUUID() as FactId,
   ticket: () => crypto.randomUUID() as TicketId,
   agent: () => crypto.randomUUID() as AgentId,
+  service: () => crypto.randomUUID() as ServiceId,
   lease: () => crypto.randomUUID() as WorkLeaseId,
 }

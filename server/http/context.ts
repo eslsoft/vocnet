@@ -14,7 +14,9 @@ export interface AppBindings {
 export interface AppVariables {
   deps: Deps
   principal: Principal
-  authMethod: 'agent_key' | 'oidc'
+  authMethod: 'agent_key' | 'oidc' | 'service_key'
+  /** The service a public read's key names; unset for a read without a key. */
+  service?: { id: string; name: string }
   requestId: string
   traceId: string
   unexpectedError?: Error

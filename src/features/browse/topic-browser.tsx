@@ -9,11 +9,11 @@ import { ErrorNotice } from '@/shared/ui/error-notice'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { useTopicSenses, useTopicTree } from './hooks'
 
-type Named = { name_en: string; name_zh: string }
+type Named = { name: { en: string; zh: string } }
 
 function useTopicName() {
   const { i18n } = useTranslation()
-  return (topic: Named) => (i18n.language.startsWith('zh') ? topic.name_zh : topic.name_en)
+  return (topic: Named) => (i18n.language.startsWith('zh') ? topic.name.zh : topic.name.en)
 }
 
 function TopicSenses({ topic, tree }: { topic: string; tree: TopicTree }) {

@@ -77,6 +77,8 @@ describe('DeveloperGuide', () => {
     const toc = screen.getByRole('navigation', { name: '目录' })
     expect(within(toc).getByRole('link', { name: '速率限制' })).toHaveAttribute('href', '#limits')
     expect(screen.getByText(/每个客户端地址每分钟最多 120 次读取/)).toBeInTheDocument()
+    expect(screen.getByText(/带服务密钥的读取改为每个服务每分钟最多 6000 次/)).toBeInTheDocument()
+    expect(screen.getByText(/vn_service_ 服务密钥/)).toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'rate_limited' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /\/docs/ })).toHaveAttribute('href', '/docs')
     expect(screen.getByRole('link', { name: /\/openapi\.json/ })).toHaveAttribute('href', '/openapi.json')

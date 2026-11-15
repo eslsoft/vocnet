@@ -13,15 +13,19 @@ import {
   type ReadVariant,
   readStored,
   shapeEntry,
+  shapeOverview,
   shapeSenseDetail,
   shapeSenseSummary,
   shapeSentence,
   shapeSummary,
+  type TopicCategories,
+  topicCategories,
 } from '@server/domain/public-view'
 import { searchTerms } from '@server/domain/search'
 import { type Lemma, normalizeTerm } from '@server/domain/term'
 import type {
   CreateEntryInput,
+  EntryOverview,
   EntrySort,
   FormMatch,
   Member,
@@ -172,10 +176,20 @@ export async function getPublicEntry(
   const found = await readPublicView(deps, () => deps.publicViews.findByLemma(normalizeTerm(lemma)))
   if (!found) throw new NotFoundError(`No entry for ${JSON.stringify(lemma)}.`)
   const { view, links } = found
+  const taxonomy = await taxonomyOf(deps)
   return {
-    versions: [view.digest, JSON.stringify(links)],
-    read: () => shapeEntry(readStored<StoredEntry>(view.json), links, variant),
+    versions: [view.digest, JSON.stringify(links), taxonomy.version],
+    read: () => shapeEntry(readStored<StoredEntry>(view.json), links, variant, taxonomy.categories),
   }
+}
+
+/**
+ * The category of every leaf topic as the taxonomy has it now, which a read joins to the topic
+ * tags it shows, and a version of it for the read's ETag: the document does not store categories.
+ */
+async function taxonomyOf(deps: Pick<Deps, 'topics'>): Promise<{ categories: TopicCategories; version: string }> {
+  const categories = topicCategories(await deps.topics.list())
+  return { categories, version: JSON.stringify([...categories]) }
 }
 
 /** One public sense in the requested variant, with its entry's summary. */
@@ -185,9 +199,10 @@ export async function getPublicSense(
   variant: ReadVariant,
 ): Promise<VersionedRead<PublicSenseDetail>> {
   const found = await readPublicView(deps, () => deps.publicViews.findBySense(id))
-  const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant)
+  const taxonomy = await taxonomyOf(deps)
+  const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant, taxonomy.categories)
   if (!found || !sense) throw new NotFoundError(`Sense ${id} not found.`)
-  return { versions: [found.view.digest], read: () => sense }
+  return { versions: [found.view.digest, taxonomy.version], read: () => sense }
 }
 
 /**
@@ -252,15 +267,46 @@ export async function listSenseMembers(
   domain: RelationDomain | null,
   page: PageRequest,
   variant: ReadVariant,
-): Promise<Page<Member>> {
+): Promise<Page<Member> & { total: number }> {
   const found = await readPublicView(deps, () => deps.publicViews.findBySense(id))
-  const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant)
-  if (!sense) throw new NotFoundError(`Sense ${id} not found.`)
+  const document = found && readStored<StoredEntry>(found.view.json)
+  const isPublic = document?.meanings.some((meaning) => meaning.senses.some((sense) => sense.id === id))
+  if (!isPublic) throw new NotFoundError(`Sense ${id} not found.`)
   const members = await deps.publicViews.listMembers(id, domain, page)
   return {
     ...members,
-    items: members.items.map(({ summary, depth }) => ({ ...shapeSenseSummary(summary, variant), depth })),
+    items: members.items.map(({ summary, depth, parents }) => ({
+      ...shapeSenseSummary(summary, variant),
+      depth,
+      parents,
+    })),
   }
+}
+
+/**
+ * The overviews of the public entries spelled exactly as these lemmas, in the order asked, each
+ * once, and the lemmas with no public entry. Read from the built views as lists are; a lemma that
+ * matches no entry exactly is missing, never matched by another spelling.
+ */
+export async function listEntryOverviews(
+  deps: Pick<Deps, 'publicViews'>,
+  lemmas: readonly string[],
+  senses: number,
+  variant: ReadVariant,
+): Promise<{ items: EntryOverview[]; missing: string[] }> {
+  const asked = new Map(lemmas.map((lemma) => [normalizeTerm(lemma), lemma]))
+  const documents = (await deps.publicViews.findDocuments([...asked.keys()])).map((json) =>
+    readStored<StoredEntry>(json),
+  )
+  const byLemma = new Map(documents.map((document) => [document.lemma, document]))
+  const items: EntryOverview[] = []
+  const missing: string[] = []
+  for (const [lemma, spelled] of asked) {
+    const document = byLemma.get(lemma)
+    if (document) items.push(shapeOverview(document, senses, variant))
+    else missing.push(spelled)
+  }
+  return { items, missing }
 }
 
 /**

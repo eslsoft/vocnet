@@ -26,7 +26,7 @@ import { type EntryId, formTypeSchema, posSchema, type RelationDomain, type Sens
 import { and, asc, count, eq, exists, gte, inArray, lt, ne, type SQL, sql } from 'drizzle-orm'
 import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { type Db, decodeCursor, page } from './rows'
+import { type Db, decodeCursor, inIds, page } from './rows'
 import { relatedWorklistRows } from './work'
 
 const PREFIX_END = '\u{10FFFF}'
@@ -205,6 +205,7 @@ export function taggedSenseStatement(
       lemma: publicSenseTopics.lemma,
       order: sql<number>`${orderColumn ?? publicSenseTopics.frequencyOrder}`,
       summary: publicSenseTopics.summary,
+      rare: publicSenseTopics.rare,
     })
     .from(publicSenseTopics)
     .where(and(inArray(publicSenseTopics.topicId, [...leaves]), last ? after(keyColumns, last) : undefined))
@@ -245,6 +246,7 @@ export function searchStatement(query: SearchQuery, { limit, cursor }: PageReque
  */
 export function memberStatement(id: SenseId, domain: RelationDomain | null, { limit, cursor }: PageRequest) {
   const last = cursor ? decodeCursor(cursor, memberCursor) : undefined
+  // The total is its own one-row source, so a page with no member still reports it.
   return sql`
     WITH RECURSIVE walk(sense_id, depth) AS (
       SELECT sense_id, 1 FROM public_hypernyms AS h
@@ -259,11 +261,19 @@ export function memberStatement(id: SenseId, domain: RelationDomain | null, { li
         (SELECT lemma FROM public_hypernyms WHERE sense_id = nearest.sense_id LIMIT 1) AS lemma,
         (SELECT summary FROM public_hypernyms WHERE sense_id = nearest.sense_id LIMIT 1) AS summary
       FROM nearest
+    ),
+    paged AS (
+      SELECT id, depth, lemma, summary FROM members
+      ${last ? sql`WHERE (depth, lemma, id) > (${last.depth}, ${last.lemma}, ${last.id})` : sql``}
+      ORDER BY depth, lemma, id
+      LIMIT ${limit + 1}
     )
-    SELECT id, depth, lemma, summary FROM members
-    ${last ? sql`WHERE (depth, lemma, id) > (${last.depth}, ${last.lemma}, ${last.id})` : sql``}
-    ORDER BY depth, lemma, id
-    LIMIT ${limit + 1}
+    SELECT totals.total AS total, paged.id AS id, paged.depth AS depth, paged.lemma AS lemma, paged.summary AS summary,
+      (SELECT json_group_array(h.broader_sense_id) FROM public_hypernyms AS h
+        WHERE h.sense_id = paged.id AND (h.domain IS NULL OR h.domain = ${domain})
+          AND (h.broader_sense_id = ${id} OR h.broader_sense_id IN (SELECT sense_id FROM nearest))) AS parents
+    FROM (SELECT count(*) AS total FROM nearest) AS totals LEFT JOIN paged ON 1
+    ORDER BY paged.depth, paged.lemma, paged.id
   `
 }
 
@@ -367,10 +377,35 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       return page(
         rows,
         request.limit,
-        (row) => readStored<StoredSenseSummary>(row.summary),
+        (row) => ({ summary: readStored<StoredSenseSummary>(row.summary), rare: row.rare }),
         (row): Record<string, string | number> =>
           sort === 'lemma' ? { lemma: row.lemma, id: row.id } : { order: row.order, lemma: row.lemma, id: row.id },
       )
+    },
+
+    async countTagged() {
+      // A leaf counts its rows (one per tagged sense); a category counts each sense of its leaves once.
+      const rows = await db.all<{ id: string; senses: number; entries: number }>(sql`
+        SELECT topic_id AS id, count(*) AS senses,
+          count(DISTINCT CASE WHEN rare = 0 THEN entry_id END) AS entries
+        FROM public_sense_topics GROUP BY topic_id
+        UNION ALL
+        SELECT topics.parent_id, count(DISTINCT public_sense_topics.sense_id),
+          count(DISTINCT CASE WHEN public_sense_topics.rare = 0 THEN public_sense_topics.entry_id END)
+        FROM public_sense_topics JOIN topics ON topics.id = public_sense_topics.topic_id
+        WHERE topics.parent_id IS NOT NULL
+        GROUP BY topics.parent_id
+      `)
+      return rows.map((row) => ({ topicId: row.id as TopicId, senses: row.senses, entries: row.entries }))
+    },
+
+    async findDocuments(lemmas) {
+      if (lemmas.length === 0) return []
+      const rows = await db
+        .select({ document: publicEntries.document })
+        .from(publicEntries)
+        .where(inIds(publicEntries.lemma, lemmas))
+      return rows.map((row) => row.document)
     },
 
     async search(query, request) {
@@ -386,15 +421,25 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
     },
 
     async listMembers(id, domain, request) {
-      const rows = await db.all<{ id: string; depth: number; lemma: string; summary: string }>(
-        memberStatement(id, domain, request),
-      )
-      return page(
-        rows,
+      const rows = await db.all<{
+        total: number
+        id: string | null
+        depth: number
+        lemma: string
+        summary: string
+        parents: string
+      }>(memberStatement(id, domain, request))
+      const members = page(
+        rows.filter((row) => row.id !== null),
         request.limit,
-        (row) => ({ summary: readStored<StoredSenseSummary>(row.summary), depth: row.depth }),
-        (row) => ({ depth: row.depth, lemma: row.lemma, id: row.id }),
+        (row) => ({
+          summary: readStored<StoredSenseSummary>(row.summary),
+          depth: row.depth,
+          parents: z.array(z.string()).parse(JSON.parse(row.parents)).sort() as SenseId[],
+        }),
+        (row) => ({ depth: row.depth, lemma: row.lemma, id: row.id as string }),
       )
+      return { ...members, total: rows[0]?.total ?? 0 }
     },
 
     async listStale(nodeIds) {

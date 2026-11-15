@@ -1,4 +1,6 @@
+import { admin } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
+import { issueService, revokeService } from '@server/usecases/services'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { AppEnv } from './context'
@@ -95,6 +97,51 @@ describe('public read boundary', () => {
     expect(limited.headers.get('Retry-After')).toBe('60')
     expect(await limited.json()).toMatchObject({ error: { code: 'rate_limited' } })
     expect((await send('/v1/list', { 'cf-connecting-ip': '192.0.2.2' })).status).toBe(200)
+  })
+
+  it('counts a read with a service key against the service, with or without a client address [spec: services/read-limit]', async () => {
+    const { world, send } = harness()
+    const { service, key } = await issueService(world.deps, admin, { name: 'wordkith' })
+    const authorization = `Bearer ${key}`
+    // The address has used up its reads; the service has its own allowance.
+    world.limitedClients.add('192.0.2.1')
+    expect((await send('/v1/list')).status).toBe(429)
+    expect((await send('/v1/list', { authorization })).status).toBe(200)
+
+    // No Cloudflare in front: a keyed read needs no CF-Connecting-IP.
+    const bare = new Hono<AppEnv>()
+      .onError(onError)
+      .use('*', async (c, next) => {
+        c.set('deps', world.deps)
+        await next()
+      })
+      .use('*', publicReadBoundary)
+      .get('/v1/who', (c) => c.json({ authMethod: c.get('authMethod'), service: c.get('service') }))
+    const read = await bare.request('/v1/who', { headers: { authorization } })
+    expect(await read.json()).toEqual({ authMethod: 'service_key', service: { id: service.id, name: 'wordkith' } })
+
+    world.limitedClients.add(service.id)
+    const limited = await send('/v1/list', { authorization, 'cf-connecting-ip': '192.0.2.9' })
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('Retry-After')).toBe('60')
+    expect(await limited.json()).toMatchObject({
+      error: { code: 'rate_limited', message: expect.stringContaining('this service') },
+    })
+  })
+
+  it('refuses a read whose service key names no live service, and reads any other credential as none [spec: services/read-limit]', async () => {
+    const { world, send } = harness()
+    const { service, key } = await issueService(world.deps, admin, { name: 'wordkith' })
+    const unknown = await send('/v1/list', { authorization: 'Bearer vn_service_unknown' })
+    expect(unknown.status).toBe(401)
+    expect(await unknown.json()).toMatchObject({ error: { code: 'invalid_credential' } })
+    await revokeService(world.deps, service.id)
+    expect((await send('/v1/list', { authorization: `Bearer ${key}` })).status).toBe(401)
+    // An agent key or anything else is no read credential: the read is anonymous, by its address.
+    expect((await send('/v1/list', { authorization: 'Bearer vn_agent_whatever' })).status).toBe(200)
+    expect((await send('/v1/list', { authorization: 'Basic abc' })).status).toBe(200)
+    world.limitedClients.add('192.0.2.1')
+    expect((await send('/v1/list', { authorization: 'Bearer vn_agent_whatever' })).status).toBe(429)
   })
 
   it('fails loudly without a client address', async () => {

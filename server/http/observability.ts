@@ -29,6 +29,7 @@ export const requestBoundary: MiddlewareHandler<AppEnv> = async (c, next) => {
     status: c.res.status,
     durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
     authMethod: c.get('authMethod') ?? null,
+    service: c.get('service') ?? null,
     userAgent: c.req.header('user-agent') ?? null,
     contentType: c.req.header('content-type') ?? null,
     error: error ? { name: error.name, message: error.message, stack: error.stack } : null,

@@ -169,33 +169,48 @@ describe('topic review context', () => {
 describe('topic listings', () => {
   it('lists the taxonomy as categories with their leaf topics in display order [spec: topics/tree]', async () => {
     const world = fakeWorld()
+    const named = (id: string, en: string, senses = 0, entries = 0) => ({
+      id,
+      name: { en, zh: `${en} (zh)` },
+      sense_count: senses,
+      entry_count: entries,
+    })
     expect(await getTopicTree(world.deps)).toEqual({
       categories: [
         {
-          id: 'body-health',
-          name_en: 'Body and health',
-          name_zh: 'Body and health (zh)',
+          ...named('body-health', 'Body and health'),
           topics: [
-            { id: 'body-parts', name_en: 'Parts of the body', name_zh: 'Parts of the body (zh)' },
-            {
-              id: 'hospital-doctor',
-              name_en: 'At the doctor and hospital',
-              name_zh: 'At the doctor and hospital (zh)',
-            },
-            { id: 'dentist', name_en: 'At the dentist', name_zh: 'At the dentist (zh)' },
+            named('body-parts', 'Parts of the body'),
+            named('hospital-doctor', 'At the doctor and hospital'),
+            named('dentist', 'At the dentist'),
           ],
         },
         {
-          id: 'home',
-          name_en: 'Home',
-          name_zh: 'Home (zh)',
-          topics: [
-            { id: 'furniture', name_en: 'Furniture', name_zh: 'Furniture (zh)' },
-            { id: 'kitchen', name_en: 'In the kitchen', name_zh: 'In the kitchen (zh)' },
-          ],
+          ...named('home', 'Home'),
+          topics: [named('furniture', 'Furniture'), named('kitchen', 'In the kitchen')],
         },
       ],
     })
+  })
+
+  it('counts what each topic and category lists: its public senses, each once, and its entries [spec: topics/counts]', async () => {
+    const { world, nurse, tend } = await hospitalWorld()
+    await submitFact(world.deps, agentA, tag(nurse.id, 'hospital-doctor'))
+    await submitFact(world.deps, agentA, tag(nurse.id, 'dentist'))
+    await submitFact(world.deps, agentA, tag(tend.id, 'body-parts'))
+    await settle(world)
+    const [health, home] = (await getTopicTree(world.deps)).categories
+    const counts = (topic: { id: string; sense_count: number; entry_count: number } | undefined) =>
+      topic && [topic.id, topic.sense_count, topic.entry_count]
+    // The nurse sense is tagged with two leaves of the category and counts once in it.
+    // and both senses belong to one entry.
+    expect(counts(health)).toEqual(['body-health', 2, 1])
+    expect(health?.topics.map(counts)).toEqual([
+      ['body-parts', 1, 1],
+      ['hospital-doctor', 1, 1],
+      ['dentist', 1, 1],
+    ])
+    expect(counts(home)).toEqual(['home', 0, 0])
   })
 
   it('lists the senses of a leaf, rolls a category up over its leaves, and 404s an unknown id [spec: topics/senses]', async () => {
@@ -210,7 +225,14 @@ describe('topic listings', () => {
       (await listTopicSenses(world.deps, topic as TopicId, 'lemma', page, none)).items.map((item) => item.sense_id)
     expect(await ids('hospital-doctor')).toEqual([nurse.id])
     expect((await listTopicSenses(world.deps, 'hospital-doctor' as TopicId, 'lemma', page, none)).items).toEqual([
-      { lemma: 'nurse', sense_id: nurse.id, pos: 'noun', cefr: null, gloss: 'A person trained to care for the sick.' },
+      {
+        lemma: 'nurse',
+        sense_id: nurse.id,
+        pos: 'noun',
+        cefr: null,
+        gloss: 'A person trained to care for the sick.',
+        rare: false,
+      },
     ])
     expect((await ids('body-health')).sort()).toEqual([nurse.id, tend.id].sort())
     expect(await ids('furniture')).toEqual([])

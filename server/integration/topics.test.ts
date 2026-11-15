@@ -75,10 +75,16 @@ describe('topics', () => {
     expect(categories.flatMap((category) => category.topics)).toHaveLength(147)
     expect(categories[0]).toMatchObject({
       id: 'people-feelings',
-      name_en: 'People and feelings',
-      name_zh: '人物与情感',
+      name: { en: 'People and feelings', zh: '人物与情感' },
+      sense_count: 0,
+      entry_count: 0,
     })
-    expect(categories[0]?.topics[0]).toEqual({ id: 'family', name_en: 'Family', name_zh: '家庭' })
+    expect(categories[0]?.topics[0]).toEqual({
+      id: 'family',
+      name: { en: 'Family', zh: '家庭' },
+      sense_count: 0,
+      entry_count: 0,
+    })
     const health = categories.find((category) => category.id === 'body-health')
     expect(health?.topics.map((topic) => topic.id)).toContain('hospital-doctor')
   })
@@ -107,8 +113,22 @@ describe('topics', () => {
     expect(leaf).toEqual({
       lang: null,
       items: [
-        { lemma: 'nurse', sense_id: care.id, pos: 'noun', cefr: null, gloss: 'A person trained to care for the sick.' },
-        { lemma: 'ward', sense_id: room.id, pos: 'noun', cefr: null, gloss: 'A room in a hospital for patients.' },
+        {
+          lemma: 'nurse',
+          sense_id: care.id,
+          pos: 'noun',
+          cefr: null,
+          gloss: 'A person trained to care for the sick.',
+          rare: false,
+        },
+        {
+          lemma: 'ward',
+          sense_id: room.id,
+          pos: 'noun',
+          cefr: null,
+          gloss: 'A room in a hospital for patients.',
+          rare: false,
+        },
       ],
       next_cursor: null,
     })
@@ -117,6 +137,14 @@ describe('topics', () => {
     const second = await senses('body-health', `?limit=2&cursor=${first.next_cursor}`)
     expect(second).toEqual({ lang: null, items: [leaf.items[1]], next_cursor: null })
     expect((await senses('home')).items).toEqual([])
+    // The taxonomy counts what these lists show: a category counts each sense of its leaves once.
+    const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
+    const health = categories.find((category) => category.id === 'body-health')
+    expect([health?.sense_count, health?.entry_count]).toEqual([3, 2])
+    expect(health?.topics.find((topic) => topic.id === 'hospital-doctor')).toMatchObject({
+      sense_count: 2,
+      entry_count: 2,
+    })
 
     const entry = publicEntrySchema.parse((await call('/v1/entries/nurse?lang=zh&include=review')).body)
     const nouns = entry.meanings.flatMap((meaning) => meaning.senses)
@@ -124,6 +152,7 @@ describe('topics', () => {
       {
         id: 'hospital-doctor',
         name: { en: 'At the doctor and hospital', zh: expect.any(String) },
+        category: { id: 'body-health', name: { en: 'Body and health', zh: expect.any(String) } },
         review: { fact_id: fact.id, confidence: 0.93, verdict: 'pass' },
       },
     ])

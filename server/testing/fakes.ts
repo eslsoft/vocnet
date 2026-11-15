@@ -11,7 +11,7 @@ import { levelRank } from '@server/domain/reference'
 import { EXACT_LEMMA_TIER, fieldTier, LEMMA_PREFIX_TIER, SEARCH_TIERS } from '@server/domain/search'
 import { isMultiword, type Lemma, textKey } from '@server/domain/term'
 import type { TicketRecord } from '@server/domain/tickets'
-import type { TopicNode } from '@server/domain/topics'
+import { leavesUnder, type TopicNode } from '@server/domain/topics'
 import { passKey, type WorkItem, type WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
 import { ConflictError } from '@server/usecases/errors'
@@ -21,6 +21,7 @@ import type {
   LlmJudgement,
   NodeRepo,
   ReviewJob,
+  ServiceRecord,
   StaleWork,
   StoredMember,
   TicketRepo,
@@ -32,6 +33,7 @@ import type {
 import type { AgentId } from '@shared/agents'
 import type { EntryId, FactId, FactKind, FactStatus, Pos, SenseId, SentenceId, TopicId } from '@shared/facts'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
+import type { ServiceId } from '@shared/services'
 import type { TicketId } from '@shared/tickets'
 import { MAX_PASSES, type WorkItemId, type WorkLeaseId, type WorkType } from '@shared/work'
 
@@ -84,6 +86,7 @@ export interface FakeWorld {
   topics: TopicNode[]
   tickets: TicketRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
+  services: Array<ServiceRecord & { keyHash: string }>
   leases: WorkLease[]
   /** The work items, as the work_items table stores them. */
   items: WorkItem[]
@@ -181,6 +184,7 @@ export function fakeWorld(): FakeWorld {
     references: new Map(),
     referenceSources: [],
     agents: [],
+    services: [],
     leases: [],
     items: [],
     attempts: [],
@@ -1022,6 +1026,18 @@ export function fakeWorld(): FakeWorld {
         if (agent) agent.revokedAt = at
       },
     },
+    services: {
+      insert: async (service, keyHash) => {
+        world.services.push({ ...service, keyHash })
+      },
+      find: async (id) => world.services.find((service) => service.id === id) ?? null,
+      findByKeyHash: async (keyHash) => world.services.find((service) => service.keyHash === keyHash) ?? null,
+      list: async () => world.services.map(({ keyHash: _hash, ...service }) => service),
+      revoke: async (id, at) => {
+        const service = world.services.find((candidate) => candidate.id === id)
+        if (service) service.revokedAt = at
+      },
+    },
     publicViews: {
       findByLemma: async (lemma) => {
         const entry = world.entries.find((candidate) => candidate.lemma === lemma)
@@ -1086,11 +1102,11 @@ export function fakeWorld(): FakeWorld {
         )
       },
       listTaggedSenses: async (leaves, sort, page) => {
-        const tagged = new Map<string, { summary: StoredSenseSummary; order: number }>()
+        const tagged = new Map<string, { summary: StoredSenseSummary; rare: boolean; order: number }>()
         for (const record of builtViews()) {
           for (const tag of record.taggedSenses.filter((candidate) => leaves.includes(candidate.topicId))) {
             const order = { lemma: 0, frequency: record.frequencyOrder, level: tag.levelOrder }[sort]
-            tagged.set(tag.summary.sense_id, { summary: tag.summary, order })
+            tagged.set(tag.summary.sense_id, { summary: tag.summary, rare: tag.rare, order })
           }
         }
         const ordered = [...tagged.values()].sort(
@@ -1100,11 +1116,31 @@ export function fakeWorld(): FakeWorld {
             a.summary.sense_id.localeCompare(b.summary.sense_id),
         )
         return paged(
-          ordered.map((tag) => tag.summary),
+          ordered.map(({ summary, rare }) => ({ summary, rare })),
           page.limit,
           page.cursor,
         )
       },
+      countTagged: async () => {
+        const tags = builtViews().flatMap((record) =>
+          record.taggedSenses.map((tag) => ({ ...tag, entryId: record.document.id })),
+        )
+        const countOf = (topicId: TopicId, leaves: readonly TopicId[]) => {
+          const own = tags.filter((tag) => leaves.includes(tag.topicId))
+          return {
+            topicId,
+            senses: new Set(own.map((tag) => tag.summary.sense_id)).size,
+            entries: new Set(own.filter((tag) => !tag.rare).map((tag) => tag.entryId)).size,
+          }
+        }
+        return world.topics
+          .map((node) => countOf(node.id, leavesUnder(node, world.topics)))
+          .filter((count) => count.senses > 0)
+      },
+      findDocuments: async (lemmas) =>
+        builtViews()
+          .filter((record) => (lemmas as readonly string[]).includes(record.document.lemma))
+          .map((record) => JSON.stringify(record.document)),
       listMembers: async (id, domain, page) => {
         const links = builtViews().flatMap((record) => record.hypernyms)
         const nearest = new Map<string, StoredMember>()
@@ -1117,7 +1153,7 @@ export function fakeWorld(): FakeWorld {
               link.summary.sense_id !== id &&
               !nearest.has(link.summary.sense_id),
           )
-          for (const link of next) nearest.set(link.summary.sense_id, { summary: link.summary, depth })
+          for (const link of next) nearest.set(link.summary.sense_id, { summary: link.summary, depth, parents: [] })
           frontier = [...new Set(next.map((link) => link.summary.sense_id))]
         }
         const ordered = [...nearest.values()].sort(
@@ -1126,7 +1162,18 @@ export function fakeWorld(): FakeWorld {
             a.summary.lemma.localeCompare(b.summary.lemma) ||
             a.summary.sense_id.localeCompare(b.summary.sense_id),
         )
-        return paged(ordered, page.limit, page.cursor)
+        for (const member of ordered) {
+          member.parents = links
+            .filter(
+              (link) =>
+                link.summary.sense_id === member.summary.sense_id &&
+                (link.domain === null || link.domain === domain) &&
+                (link.broaderSenseId === id || nearest.has(link.broaderSenseId)),
+            )
+            .map((link) => link.broaderSenseId)
+            .sort()
+        }
+        return { ...paged(ordered, page.limit, page.cursor), total: ordered.length }
       },
       search: async ({ text, terms, scopes }, page) => {
         const tierOf = (record: PublicViewRecord) => {
@@ -1205,6 +1252,7 @@ export function fakeWorld(): FakeWorld {
     },
     feedbackLimiter: { allow: async (key) => !world.limitedClients.has(key) },
     readLimiter: { allow: async (key) => !world.limitedClients.has(key) },
+    serviceReadLimiter: { allow: async (key) => !world.limitedClients.has(key) },
     responseCache: {
       match: async (key) => world.cachedResponses.get(key)?.clone(),
       put: async (key, response) => {
@@ -1242,6 +1290,7 @@ export function fakeWorld(): FakeWorld {
       fact: () => nextId<FactId>(),
       ticket: () => nextId<TicketId>(),
       agent: () => nextId<AgentId>(),
+      service: () => nextId<ServiceId>(),
       lease: () => nextId<WorkLeaseId>(),
     },
   }

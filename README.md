@@ -14,12 +14,17 @@ The contract is [docs/design.md](docs/design.md).
 
 | Path                         | Who               | What                                                   |
 | ---------------------------- | ----------------- | ------------------------------------------------------ |
-| `GET /v1/entries`            | Everyone          | Published entries by prefix as summaries, paged with `next_cursor` |
+| `GET /v1/entries`            | Everyone          | Published entries by prefix, level, part of speech, or topic as summaries, paged with `next_cursor` |
+| `GET /v1/search`             | Everyone          | Entries by lemma, gloss, translation, or example, ranked |
+| `GET /v1/overviews`          | Everyone          | Pronunciations and first senses per part of speech of up to 100 lemmas in one read |
 | `GET /v1/entries/{lemma}`    | Everyone          | One entry: meanings by part of speech, phrases, word family; `?lang=` or `Accept-Language`, `?include=review` |
 | `GET /v1/forms/{form}`       | Everyone          | Summaries of the entries that own an exact published form (no fallback) |
 | `GET /v1/senses/{id}`        | Everyone          | One sense with its entry's summary                     |
-| `GET /v1/senses/{id}/members` | Everyone         | The kinds of a sense taken as a category, transitively; `?domain=biology` adds that taxonomy |
+| `GET /v1/senses/{id}/members` | Everyone         | The kinds of a sense taken as a category, transitively, each with its parents; `?domain=biology` adds that taxonomy |
+| `GET /v1/sentences/{id}`     | Everyone          | One sentence: an example or a saying                   |
+| `GET /v1/topics`             | Everyone          | The topic taxonomy with how many senses and entries each topic lists |
 | `GET /v1/topics/{id}/senses` | Everyone          | Sense summaries tagged with a topic                    |
+| `GET /v1/sources`            | Everyone          | The datasets behind frequency and CEFR data            |
 | `POST /v1/feedback`          | Everyone          | Report a problem with an entry, sense, or fact         |
 | `GET /openapi.json`, `/docs` | Everyone          | Public OpenAPI 3.1 document and its Scalar reference   |
 | `/manage/v1/*`               | Agents and admins | Submit entries, senses, facts; review state; feedback  |
@@ -29,9 +34,14 @@ The contract is [docs/design.md](docs/design.md).
 | `GET /manage/v1/work/curation` | Curators and admins | Items three passes left unchanged                     |
 | `GET /manage/openapi.json`   | Agents and admins | The management OpenAPI document                        |
 | `/manage/v1/agents`          | Admins            | Issue, list, and revoke agent keys                     |
+| `/manage/v1/services`        | Admins            | Issue, list, and revoke the service keys of downstream readers |
 
 Agents authenticate with `Authorization: Bearer vn_agent_…`. Admins use an OIDC
-access token whose subject is listed in `ADMIN_SUBJECTS`. The OpenAPI documents
+access token whose subject is listed in `ADMIN_SUBJECTS`. Public reads need no
+credential; a downstream service may send `Authorization: Bearer vn_service_…`
+to be counted per service (6000 reads a minute) instead of per address (120).
+[docs/local-upstream.md](docs/local-upstream.md) shows how to run Vocnet locally
+with real data for such a consumer. The OpenAPI documents
 are generated from the same zod route definitions that validate requests.
 
 ## Stack
@@ -91,7 +101,9 @@ One env set, on the Worker. `wrangler.toml` holds bindings and `JEV_MODEL`
 | `REVIEW_LLM_MODEL` | Chat model that reviews pronunciations, examples, and translations      |
 
 Bindings: `DB` (D1 `vocnet`), `REVIEW_QUEUE` (queue `vocnet-reviews`, dead
-letters to `vocnet-reviews-dlq`), `ASSETS`, and a `*/5 * * * *` cron.
+letters to `vocnet-reviews-dlq`), `ASSETS`, the rate limiters
+(`FEEDBACK_RATE_LIMITER`, `READ_RATE_LIMITER`, `SERVICE_READ_RATE_LIMITER`), and
+a `*/5 * * * *` cron.
 
 ## Deploy
 

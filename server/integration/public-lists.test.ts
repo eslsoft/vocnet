@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test'
 import { entryListStatement, searchStatement, taggedSenseStatement } from '@server/adapters/repos/public-view'
 import { createDb } from '@server/db/client'
-import { entryPageSchema, searchPageSchema } from '@shared/catalog'
+import { entryOverviewListSchema, entryPageSchema, publicEntrySchema, searchPageSchema } from '@shared/catalog'
 import type { TopicId } from '@shared/facts'
 import { topicSensePageSchema } from '@shared/topics'
 import type { SQL } from 'drizzle-orm'
@@ -54,6 +54,8 @@ async function seedWords() {
   await deliverPendingReviews()
   return senses
 }
+
+const entryIdOf = async (lemma: string) => publicEntrySchema.parse((await call(`/v1/entries/${lemma}`)).body).id
 
 const lemmas = async (path: string) => entryPageSchema.parse((await call(path)).body).items.map((item) => item.lemma)
 
@@ -224,6 +226,62 @@ describe('public lists and search', () => {
     )
     expect(plans.senses).toEqual(['SEARCH public_sense_topics USING INDEX public_sense_topics_level_idx (topic_id=?)'])
     expect(plans.search.some((step) => step.includes('VIRTUAL TABLE INDEX'))).toBe(true)
+  })
+
+  it('reads the overviews of many lemmas in one call, in the order asked [spec: public-view/overviews-api]', async () => {
+    const senses = await seedWords()
+    const us = await submitOk(await issueAgentKey(), 'pronunciation', (await entryIdOf('bank')) as string, {
+      ipa: 'bæŋk',
+      accent: 'us',
+    })
+    expect(us.status).toBe('pending')
+    stubReviewers()
+    await deliverPendingReviews()
+
+    const read = await request(
+      '/v1/overviews?lemma=river&lemma=bank&lemma=Bank&lemma=rivers&lemma=river&senses=1&lang=zh',
+    )
+    expect(read.status).toBe(200)
+    expect(read.headers.get('Cache-Control')).toBe('public, max-age=5')
+    const overviews = entryOverviewListSchema.parse(await read.json())
+    expect(overviews.lang).toBe('zh')
+    expect(overviews.items.map((item) => item.lemma)).toEqual(['river', 'bank'])
+    // Exact lemmas only, as spelled: no case folding and no form lookup.
+    expect(overviews.missing).toEqual(['Bank', 'rivers'])
+    expect(overviews.items[1]).toMatchObject({
+      lemma: 'bank',
+      cefr: 'A1',
+      frequency: { zipf: 5.2, rank: 1 },
+      pronunciations: [{ ipa: 'bæŋk', accent: 'us' }],
+      meanings: [
+        {
+          pos: 'noun',
+          cefr: 'A1',
+          sense_count: 1,
+          senses: [
+            {
+              id: senses['bank noun'],
+              gloss: 'An organization that keeps money for its customers.',
+              rare: false,
+              translations: ['银行'],
+            },
+          ],
+        },
+        { pos: 'verb', cefr: null, sense_count: 1, senses: [{ id: senses['bank verb'], translations: ['存钱'] }] },
+      ],
+    })
+    const bare = entryOverviewListSchema.parse((await call('/v1/overviews?lemma=bank')).body)
+    expect(bare.lang).toBeNull()
+    expect(bare.items[0]?.meanings[0]?.senses[0]).not.toHaveProperty('translations')
+
+    expect((await call('/v1/overviews')).status).toBe(400)
+    expect((await call('/v1/overviews?lemma=bank&lang=all')).status).toBe(400)
+    expect((await call('/v1/overviews?lemma=bank&senses=11')).status).toBe(400)
+    const tooMany = Array.from({ length: 101 }, (_, at) => `lemma=w${at}`).join('&')
+    expect((await call(`/v1/overviews?${tooMany}`)).status).toBe(400)
+    const most = Array.from({ length: 99 }, (_, at) => `lemma=w${at}`).join('&')
+    const full = entryOverviewListSchema.parse((await call(`/v1/overviews?${most}&lemma=money`)).body)
+    expect([full.items.map((item) => item.lemma), full.missing.length]).toEqual([['money'], 99])
   })
 
   it('limits public reads per client address with 429 and Retry-After [spec: public-view/rate-limit]', async () => {

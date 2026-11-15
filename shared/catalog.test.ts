@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { entrySortSchema, langQuerySchema, levelFilterSchema, listLangQuerySchema, senseSortSchema } from './catalog'
+import {
+  entrySortSchema,
+  langQuerySchema,
+  levelFilterSchema,
+  listLangQuerySchema,
+  OVERVIEW_MAX_LEMMAS,
+  overviewLemmasSchema,
+  overviewSensesSchema,
+  senseSortSchema,
+} from './catalog'
 
 describe('public lang query', () => {
   it('accepts all only on document reads [spec: public-view/list-language]', () => {
@@ -22,5 +31,21 @@ describe('public list filters', () => {
     expect(levelFilterSchema.safeParse('A1,').success).toBe(false)
     expect(entrySortSchema.parse(undefined)).toBe('lemma')
     expect(senseSortSchema.parse('level')).toBe('level')
+  })
+})
+
+describe('overview query', () => {
+  it('reads lemmas one or repeated, never split at a comma, within the limit [spec: public-view/overviews]', () => {
+    expect(overviewLemmasSchema.parse('bright')).toBe('bright')
+    expect(overviewLemmasSchema.parse([' run ', 'easy come, easy go'])).toEqual(['run', 'easy come, easy go'])
+    expect(overviewLemmasSchema.safeParse(undefined).success).toBe(false)
+    expect(overviewLemmasSchema.safeParse(['run', ' ']).success).toBe(false)
+    const lemmas = (count: number) => Array.from({ length: count }, (_, at) => `w${at}`)
+    expect(overviewLemmasSchema.parse(lemmas(OVERVIEW_MAX_LEMMAS))).toHaveLength(OVERVIEW_MAX_LEMMAS)
+    expect(overviewLemmasSchema.safeParse(lemmas(OVERVIEW_MAX_LEMMAS + 1)).success).toBe(false)
+    expect(overviewSensesSchema.parse(undefined)).toBe(4)
+    expect(overviewSensesSchema.parse('2')).toBe(2)
+    expect(overviewSensesSchema.safeParse('0').success).toBe(false)
+    expect(overviewSensesSchema.safeParse('11').success).toBe(false)
   })
 })

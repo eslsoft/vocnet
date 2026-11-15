@@ -652,17 +652,28 @@ all and says to fail when it doubts the sense is typical vocabulary of the
 topic; an uncertain verdict still publishes, as in every chain. It sees the
 entry's other senses.
 
-`GET /v1/topics` returns `{ categories: [{ id, name_en, name_zh, topics: [{ id,
-name_en, name_zh }] }] }` in display order. `GET /v1/topics/{id}/senses`
+`GET /v1/topics` returns `{ categories: [{ id, name: { en, zh }, sense_count,
+entry_count, topics: [{ id, name: { en, zh }, sense_count, entry_count }] }] }`
+in display order, the names keyed by language as a sense's topic tags name
+them. `sense_count` is how many public senses `GET /v1/topics/{id}/senses`
+lists for the topic, a category counting each sense of its leaves once;
+`entry_count` is how many public entries `GET /v1/entries?topic=` lists, those
+with a common sense tagged with it. Both are counted from `public_sense_topics`
+on read, and the response is a list, cached for five seconds.
+`GET /v1/topics/{id}/senses`
 returns a keyset page `{ lang, items, next_cursor }` of sense summaries (see
-Public API) of the senses that published topic facts tag with that leaf, or
+Public API), each with `rare` (the entry's inventory ranks the sense extra), of the senses that published topic facts tag with that leaf, or
 with any leaf of that category, each sense once, in lemma then sense-id order. A sense appears
 only while its topic fact is published and a published inventory of its live entry lists it. An unknown
 id is `404 not_found`, without a fuzzy fallback. The listing reads the public
 view's `public_sense_topics` rows, one per topic tag of a public sense, keyed
 `(topic_id, lemma, sense_id)`, so a leaf is one index range in page order.
-The public entry lists each sense's `topics` as `{ id, name }`, the name in
-English and the requested language, and topic facts appear wherever the
+The public entry lists each sense's `topics` as `{ id, name, category: { id,
+name } }`, each name in English and the requested language. The category is
+the topic's parent in the taxonomy as it is when the entry is read: the stored
+document holds the tag and the read joins the category, so it is never stale
+and the taxonomy is part of the document's ETag. A tag whose topic is not a
+leaf of the taxonomy fails the read. Topic facts appear wherever the
 management API lists facts.
 
 ### Write rules
@@ -1713,8 +1724,9 @@ batches.
 | Surface                   | Who                  | Credential                                   |
 | ------------------------- | -------------------- | -------------------------------------------- |
 | `/v1/*`, `/openapi.json`, `/docs` | Everyone     | None                                         |
+| `GET /v1/*` as a service  | Downstream services  | Optional service key, for the per-service read limit |
 | `/manage/v1/*`, `/manage/openapi.json` | Agents and admins | Agent API key or admin OIDC access token |
-| `/manage/v1/agents`       | Admins only          | Admin OIDC access token                      |
+| `/manage/v1/agents`, `/manage/v1/services` | Admins only | Admin OIDC access token                 |
 | `/manage/v1/facts/{id}/curate`, `curation` on `POST /manage/v1/facts`, `POST /manage/v1/entries`, `/manage/v1/tickets/{id}/resolve`, `POST /manage/v1/entries/{id}/passes` | Curators: admins and curator agents | Admin OIDC access token or curator agent key |
 | Admin console (SPA)       | Admins               | OIDC Authorization Code + PKCE               |
 
@@ -1729,6 +1741,23 @@ secrets (`vn_agent_…`) that an admin issues. The Worker stores only their
 SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403. A
 bearer that is not a structurally valid JWT gets 401 before the Worker contacts
 the issuer; an unreachable issuer is a 500, not a bad credential.
+
+**Service keys.** A downstream product that reads the dictionary for its own
+users reads `/v1` as a service. An admin issues it a key with `POST
+/manage/v1/services { name }`, which answers `{ service, key }` once; `GET
+/manage/v1/services` lists the services and `DELETE /manage/v1/services/{id}`
+revokes one. A service key is a random secret (`vn_service_…`) made and stored
+exactly as an agent key is: only its SHA-256 hash, in the `services` table
+(`id`, `name`, `key_hash`, `created_by`, `created_at`, `revoked_at`). The
+service sends it as `Authorization: Bearer vn_service_…` on a public `GET`. The
+key names the caller and nothing more: the read is counted against the
+service's own allowance and logged with the service's id and name, and it
+returns what an anonymous read returns. A key that names no service, or a
+revoked one, is `401 invalid_credential`; a read that presents a key is never
+served as anonymous. A service key is no management credential (`401` on
+`/manage`), and any other `Authorization` value on `/v1` is not read: an agent
+key there is an anonymous read. Vocnet is not an OAuth resource server; a
+service is authenticated by its key alone.
 
 ## Web
 
@@ -1875,7 +1904,7 @@ entry document; every list returns summaries.
           "id": "…", "gloss": "…", "labels": [], "rare": false, "translations": ["记录"],
           "grammar": { "transitivity": "transitive", "patterns": [], "prepositions": [] },
           "examples": [{ "sentence_id": "…", "text": "…", "translation": "…" }], "collocations": [{ "text": "…", "pattern": "verb_noun" }],
-          "topics": [{ "id": "office", "name": { "en": "At the office", "zh": "办公室" } }],
+          "topics": [{ "id": "office", "name": { "en": "At the office", "zh": "办公室" }, "category": { "id": "work-economy", "name": { "en": "Work and economy", "zh": "工作与经济" } } }],
           "relations": { "synonyms": [{ "lemma": "log", "sense_id": "…", "gloss": "…" }],
             "antonyms": [], "broader": [], "narrower": [], "part_of": [], "parts": [] }
         }
@@ -2006,8 +2035,8 @@ carry `lang`, the stored tag used (`"zh"` for a `zh-CN` request), `all`, or
 language, empty when it has none, and absent without a language; `?lang=all`
 gives an object keyed by stored tag. `all` is accepted only by the document
 reads (`GET /v1/entries/{lemma}`, `GET /v1/senses/{id}`); the lists
-(`GET /v1/entries`, `GET /v1/forms/{form}`, `GET /v1/topics/{id}/senses`,
-`GET /v1/search`) reject it with `400 invalid_request`, so every summary has one shape. A
+(`GET /v1/entries`, `GET /v1/overviews`, `GET /v1/forms/{form}`, `GET
+/v1/topics/{id}/senses`, `GET /v1/senses/{id}/members`, `GET /v1/search`) reject it with `400 invalid_request`, so every summary has one shape. A
 topic's `name` is `{ "en": …, "<lang>": … }` keyed by the stored tag, with the
 language only when the topic has a name in it (the taxonomy has English and
 Chinese names), and every name for `all`.
@@ -2033,15 +2062,49 @@ a form the document does not show is still found. List pages are
 `GET /v1/senses/{id}/members?domain=&lang=&limit=&cursor=` lists the members of
 a public sense taken as a category: every public sense whose broader terms lead
 up to it, in the everyday layer and, with `domain`, that domain's as well, each
-once at its nearest `depth` (1 for a direct kind), as `{ lang, items: [sense
-summary + depth], next_cursor }` ordered by depth, lemma, and sense id. "animal"
+once at its nearest `depth` (1 for a direct kind), as `{ lang, total, items:
+[sense summary + depth + parents], next_cursor }` ordered by depth, lemma, and
+sense id, so the pages go down the category level by level. "animal"
 lists dog, cat, and bird at depth 1 and eagle, through bird, at 2; with
-`domain=biology`, "carnivore" lists canine and then dog. It walks the view's
+`domain=biology`, "carnivore" lists canine and then dog. `parents` is the ids
+of the senses the member is a direct kind of within the walk, in the layers
+walked: the category itself or other members, so a client rebuilds the tree
+(or, where a member has two parents, the graph) from one flat list, and a
+broader term outside the category is left out. `total` is how many members the
+walk reaches, on every page, so a client can say "388 kinds" before it has
+read them all. It walks the view's
 `public_hypernyms` rows (one per broader term a public sense shows, with the
 narrower sense's summary) in one recursive query, bounded at `MEMBER_DEPTH`
 (12), the depth that also ends a walk round a cycle of three or more entries. A
 sense that is not public is `404 not_found`. It is a list, cached for five
 seconds like the others.
+
+**Overviews.** `GET /v1/overviews?lemma=&lemma=&senses=&lang=` returns what a
+word card shows for up to 100 entries in one read, so a page of a topic's words
+needs one request, not one entry document per word:
+
+```json
+{ "lang": "zh", "items": [
+  { "id": "…", "lemma": "bright", "cefr": "A1", "frequency": { "zipf": 4.61, "rank": 2410 },
+    "pronunciations": [{ "ipa": "braɪt", "accent": "us" }, { "ipa": "braɪt", "accent": "uk" }],
+    "meanings": [
+      { "pos": "adjective", "cefr": "A1", "pronunciations": [], "sense_count": 7,
+        "senses": [{ "id": "…", "gloss": "Giving out or reflecting a lot of light.", "rare": false, "translations": ["明亮的"] }] }
+    ] }
+], "missing": ["brite"] }
+```
+
+`lemma` is repeated, one exact lemma each (a value is never split at a comma,
+which a lemma may hold); none, or more than 100, is `400`. Each public entry
+comes once, in the order first asked, with its default pronunciations and, per
+part of speech in document order, its level, the pronunciations particular to
+it, `sense_count` (every public sense of that part of speech), and its first
+`senses` senses (4 by default, 1 to 10) with `rare` and every translation in
+the read's language, absent without one. A lemma no public entry is spelled
+exactly like is listed in `missing` as it was asked; there is no case folding
+or form lookup. It is a list: it reads the built `public_entries` documents in
+one statement, takes one language (`lang=all` is `400`), and is cached for
+five seconds.
 
 **Lists.** `GET /v1/entries` takes `prefix`, `level` (CEFR levels, repeated
 `level=A1&level=A2` or comma-separated `level=A1,A2`), `pos`, `topic` (a leaf
@@ -2096,6 +2159,16 @@ translation holding 银行 (`银行`, `银行家`, `银行账户`), `银行家` 
 `429 rate_limited` with `Retry-After: 60`, the binding's period, since the
 binding reports no finer reset. Cache hits count too: the limit protects the
 Worker, not only D1. Feedback keeps its own limit of 10 a minute.
+
+A read with a service key (see Access) counts against the service instead, by
+its id in the `SERVICE_READ_RATE_LIMITER` binding: 6000 a minute, the budget of
+a backend that reads for many users from a few addresses. The client address is
+not read at all for it, so a service may call from anywhere, with or without
+Cloudflare in front. A read without a key still needs `CF-Connecting-IP` and
+fails as a `500` without it: Cloudflare always sets the header in production,
+and locally Miniflare sets it from the socket's address (and passes on one the
+client sent), so the failure only shows when the Worker is called with no such
+runtime in front.
 
 ## Public view
 
@@ -2154,6 +2227,9 @@ is `404`.
 | `GET /v1/forms/{form}`        | `public_forms` by spelling joined to `public_entries`, in lemma order |
 | `GET /v1/entries`             | `public_entries` summaries by lemma range or along `(frequency_order, lemma)`, each checked through the key of `public_meanings`, or with a topic the `(entry_id, topic_id)` index of `public_sense_topics` |
 | `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf along the index of the sort |
+| `GET /v1/topics`              | `topics`, and two grouped counts over `public_sense_topics`: per leaf, and per category through `topics.parent_id` |
+| `GET /v1/overviews`           | `public_entries` documents by exact lemma, one statement for every lemma asked |
+| `GET /v1/senses/{id}/members` | One recursive walk down `public_hypernyms`, with each member's parents and the total from the same statement |
 | `GET /v1/search`              | `public_entries` by exact lemma and lemma range, `public_forms` by variant form, and `public_search_fts` joined to `public_search` by rowid, grouped by entry |
 
 Feedback targets are checked against the live projection, and the management
@@ -2215,7 +2291,8 @@ request, so a cache must not keep a document fresh past it: every use
 revalidates, and the revalidation costs one indexed batch and no body. The
 ETag changes only when the body can, so feedback and completed work, which
 bump the revision without changing anything public, keep cached bodies valid.
-`GET /v1/entries`, `GET /v1/topics/{id}/senses`, and `GET /v1/search` change
+`GET /v1/entries`, `GET /v1/topics`, `GET /v1/topics/{id}/senses`, `GET
+/v1/overviews`, `GET /v1/senses/{id}/members`, and `GET /v1/search` change
 whenever any entry in them does; an ETag would need the whole page query before
 a `304` could save only the body, so they carry `Cache-Control: public,
 max-age=5`, which stays within the budget, and no ETag. Errors and the feedback

@@ -214,6 +214,9 @@ export const senseTopicSchema = z
       description:
         "The English name under en, and the name in the response's language under its tag (every language with lang=all), when there is one.",
     }),
+    category: z
+      .object({ id: topicIdSchema, name: byLanguage(z.string()) })
+      .meta({ description: 'The category of GET /v1/topics the topic belongs to, named as the topic is.' }),
     ...review,
   })
   .meta({ id: 'SenseTopic' })
@@ -443,6 +446,10 @@ export const memberSchema = senseSummarySchema
     depth: z.number().int().positive().meta({
       description: 'How many broader-term links lead from the member up to the category: 1 for a direct kind.',
     }),
+    parents: z.array(senseIdSchema).meta({
+      description:
+        'The senses this member is a direct kind of within the walk, in the layers walked: the category itself (for a direct kind) or other members. A member under two categories names both, so the members form a tree or graph by sense_id.',
+    }),
   })
   .meta({
     id: 'Member',
@@ -451,8 +458,93 @@ export const memberSchema = senseSummarySchema
 export type Member = z.infer<typeof memberSchema>
 
 export const memberPageSchema = z
-  .object({ lang: responseLangSchema, items: z.array(memberSchema), next_cursor: z.string().nullable() })
+  .object({
+    lang: responseLangSchema,
+    total: z
+      .number()
+      .int()
+      .nonnegative()
+      .meta({ description: 'How many members the category has in the layers walked, over every page.' }),
+    items: z.array(memberSchema),
+    next_cursor: z.string().nullable(),
+  })
   .meta({ id: 'MemberPage', description: 'The members of a category, nearest first, then by lemma.' })
+
+/** How many senses of each part of speech an overview shows unless ?senses= says otherwise. */
+export const OVERVIEW_SENSES = 4
+/** The most lemmas one overview read takes. */
+export const OVERVIEW_MAX_LEMMAS = 100
+
+const overviewPronunciationSchema = publicPronunciationSchema.omit({ review: true })
+
+export const entryOverviewSchema = z
+  .object({
+    id: entryIdSchema,
+    lemma: z.string(),
+    cefr: cefrLevelSchema
+      .nullable()
+      .meta({ description: 'The lowest CEFR level of the lemma; null when it has none.' }),
+    frequency: publicFrequencySchema.nullable(),
+    pronunciations: z
+      .array(overviewPronunciationSchema)
+      .meta({ description: "The entry's default pronunciations: its US and UK IPA when both are published." }),
+    meanings: z.array(
+      z.object({
+        pos: posSchema,
+        cefr: cefrLevelSchema.nullable(),
+        pronunciations: z
+          .array(overviewPronunciationSchema)
+          .meta({ description: 'Only pronunciations particular to this part of speech.' }),
+        sense_count: z
+          .number()
+          .int()
+          .positive()
+          .meta({ description: 'How many public senses the part of speech has in the entry document.' }),
+        senses: z
+          .array(
+            z.object({
+              id: senseIdSchema,
+              gloss: z.string(),
+              rare: z.boolean(),
+              translations: z
+                .array(z.string())
+                .optional()
+                .meta({ description: "Every translation in the response's language; absent without a language." }),
+            }),
+          )
+          .meta({ description: 'The first senses of the part of speech, in the order of the entry document.' }),
+      }),
+    ),
+  })
+  .meta({
+    id: 'EntryOverview',
+    description:
+      'An entry as a word card shows it: pronunciations, and per part of speech the sense count and first senses.',
+  })
+export type EntryOverview = z.infer<typeof entryOverviewSchema>
+
+export const entryOverviewListSchema = z
+  .object({
+    lang: responseLangSchema,
+    items: z
+      .array(entryOverviewSchema)
+      .meta({ description: 'One per lemma with a public entry, in the order asked, each once.' }),
+    missing: z
+      .array(z.string())
+      .meta({ description: 'The lemmas asked for that have no public entry, exactly as spelled in the request.' }),
+  })
+  .meta({ id: 'EntryOverviewList' })
+
+/** ?lemma= of an overview read: one lemma or the parameter repeated. A lemma may hold a comma, so values are never split. */
+export const overviewLemmasSchema = z
+  .union([lemmaInputSchema, z.array(lemmaInputSchema).min(1).max(OVERVIEW_MAX_LEMMAS)])
+  .meta({
+    description: `Exact lemmas, the parameter repeated (lemma=bright&lemma=run), at most ${OVERVIEW_MAX_LEMMAS}.`,
+  })
+
+export const overviewSensesSchema = z.coerce.number().int().min(1).max(10).default(OVERVIEW_SENSES).meta({
+  description: 'How many senses of each part of speech to show; sense_count always counts them all.',
+})
 
 export const formMatchSchema = wordSummarySchema
   .extend({

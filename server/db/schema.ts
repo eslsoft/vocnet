@@ -552,6 +552,19 @@ export const agents = sqliteTable('agents', {
   revokedAt: text('revoked_at'),
 })
 
+/**
+ * A downstream service that reads the public API with its own key: the key names the caller and
+ * moves its reads from the per-address limit to the per-service one. It grants nothing else.
+ */
+export const services = sqliteTable('services', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  keyHash: text('key_hash').notNull().unique(),
+  createdBy: text('created_by').notNull(),
+  createdAt: text('created_at').notNull(),
+  revokedAt: text('revoked_at'),
+})
+
 // Reference data imported by scripts/reference/, keyed by spelling and independent of entries,
 // so an import never depends on which entries exist. CEFR is read by exact lemma, frequency by
 // the lemma's frequency key (domain/reference.ts).
@@ -597,4 +610,5 @@ export type FactRow = typeof facts.$inferSelect
 export type SentenceRow = typeof sentences.$inferSelect
 export type TicketRow = typeof tickets.$inferSelect
 export type AgentRow = typeof agents.$inferSelect
+export type ServiceRow = typeof services.$inferSelect
 export type TopicRow = typeof topics.$inferSelect

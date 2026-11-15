@@ -35,3 +35,10 @@ export const AGENT_KEY_PREFIX = 'vn_agent_'
 export function isAgentKey(token: string): boolean {
   return token.startsWith(AGENT_KEY_PREFIX)
 }
+
+/** A service key reads the public API as a named downstream service; it is no management credential. */
+export const SERVICE_KEY_PREFIX = 'vn_service_'
+
+export function isServiceKey(token: string): boolean {
+  return token.startsWith(SERVICE_KEY_PREFIX)
+}

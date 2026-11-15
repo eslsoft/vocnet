@@ -5,10 +5,20 @@ import { topicIdSchema } from './facts'
 // The topic taxonomy on the wire. Topics are admin-curated by migration: categories group the
 // leaf topics, and only leaves tag senses.
 
+const count = z.number().int().nonnegative()
+
 const topicFields = {
   id: topicIdSchema,
-  name_en: z.string(),
-  name_zh: z.string(),
+  name: z
+    .object({ en: z.string(), zh: z.string() })
+    .meta({ description: 'The name by language tag, as Sense.topics names a topic.' }),
+  sense_count: count.meta({
+    description: 'How many public senses GET /v1/topics/{id}/senses lists for it; a category counts each sense once.',
+  }),
+  entry_count: count.meta({
+    description:
+      'How many public entries GET /v1/entries?topic= lists for it: those with a common (not rare) sense tagged with it.',
+  }),
 }
 
 export const topicSchema = z
@@ -22,6 +32,16 @@ export const topicCategorySchema = z
 export const topicTreeSchema = z.object({ categories: z.array(topicCategorySchema) }).meta({ id: 'TopicTree' })
 export type TopicTree = z.infer<typeof topicTreeSchema>
 
+export const topicSenseSchema = senseSummarySchema
+  .extend({
+    rare: z.boolean().meta({
+      description:
+        "true: the entry's inventory ranks the sense extra (rare, archaic, or specialist), so GET /v1/entries?topic= does not list its entry for it.",
+    }),
+  })
+  .meta({ id: 'TopicSense', description: 'One sense as a topic listing shows it.' })
+export type TopicSense = z.infer<typeof topicSenseSchema>
+
 export const topicSensePageSchema = z
-  .object({ lang: responseLangSchema, items: z.array(senseSummarySchema), next_cursor: z.string().nullable() })
+  .object({ lang: responseLangSchema, items: z.array(topicSenseSchema), next_cursor: z.string().nullable() })
   .meta({ id: 'TopicSensePage', description: 'Published senses tagged with a topic, in the order asked.' })
