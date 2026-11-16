@@ -16,12 +16,13 @@ import type {
   RelationType,
   ReviewerKind,
   SenseId,
+  SenseRank,
   SentenceId,
   ServedLanguage,
   SubmitPayloads,
   TopicId,
 } from '@shared/facts'
-import { isCompleteSentence, MORPHEME_SPELLING, SAYING_ISSUE } from '@shared/facts'
+import { isCompleteSentence, MORPHEME_SPELLING, productiveUseAnswerSchema, SAYING_ISSUE } from '@shared/facts'
 import { editDistance, isMultiword, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
@@ -44,6 +45,7 @@ export interface SubjectTypeOf {
   syllables: 'entry'
   phrases: 'entry'
   sentence_meaning: 'sentence'
+  productive_use: 'entry'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -60,8 +62,8 @@ export interface SenseGloss {
   gloss: string
 }
 
-/** A sense of the entry under review, with its current gloss. */
-export type EntrySense = SenseGloss & { id: SenseId }
+/** A sense of the entry under review, with its current gloss, rank, and labels. */
+export type EntrySense = SenseGloss & { id: SenseId; rank: SenseRank; register?: Register; region?: Region }
 
 /** The kinds a translation of a fact translates. */
 export type TranslatedFactKind = 'collocation'
@@ -70,11 +72,13 @@ export interface SubjectViews {
   /**
    * `senses`: the senses of the live inventory, in its order.
    * `caseVariants`: the lemmas of the other live entries spelled like this one but for letter case.
+   * `zipf`: the frequency of the lemma's word form; null when the source does not list it.
    */
   entry: {
     lemma: string
     senses: EntrySense[]
     caseVariants: string[]
+    zipf: number | null
   }
   sense: SenseView & { siblings: SenseGloss[] }
   /** A collocation a translation is about, with the sense it belongs to. */
@@ -97,8 +101,11 @@ export interface SubjectViews {
  * a fact its kind.
  */
 export interface AdmissionViews {
-  /** `senses`: every sense row of the entry; `inventory`: the senses its current live inventory lists. */
-  entry: { lemma: string; senses: readonly SenseId[]; inventory: readonly SenseId[] }
+  /**
+   * `senses`: every sense row of the entry; `inventory`: the senses its current live inventory lists;
+   * `commonPos`: the parts of speech of that inventory's common senses.
+   */
+  entry: { lemma: string; senses: readonly SenseId[]; inventory: readonly SenseId[]; commonPos: readonly Pos[] }
   sense: { lemma: string; pos: Pos; forms: readonly string[] }
   fact: { kind: FactKind }
   sentence: { text: string }
@@ -198,9 +205,10 @@ interface BaseSpec<K extends FactKind> {
   subject: SubjectTypeOf[K] | ((payload: FactPayloads[K]) => SubjectTypeOf[K])
   /**
    * `one`: a subject holds at most one live fact of this kind; corrections must supersede it.
-   * `per_language`: one live fact per subject and language. `many`: no such limit.
+   * `per_language`: one live fact per subject and language. `per_pos`: one per subject and part of
+   * speech. `many`: no such limit.
    */
-  cardinality: 'one' | 'per_language' | 'many'
+  cardinality: 'one' | 'per_language' | 'per_pos' | 'many'
   contentKey(payload: FactPayloads[K]): string
   /** One line saying what the fact claims, for the console's lists. */
   summary(payload: FactPayloads[K]): string
@@ -273,7 +281,27 @@ export interface Oriented<K extends FactKind> {
   payload: FactPayloads[K]
 }
 
-export type KindSpec<K extends FactKind> = BaseSpec<K>
+/**
+ * How the server fills a slot of a kind itself, for a claim the data settles by choosing among a
+ * few values: the decision model's state and its questions, how its scores pick the payload and
+ * whether they settle it, and the LLM prompt and answer that choose when they do not.
+ */
+export interface Classification<K extends FactKind> {
+  state: DecisionRequest['state']
+  questions: JevQuestions
+  pick(scores: Readonly<Record<string, number>>): { payload: FactPayloads[K]; settled: boolean; confidence: number }
+  prompt: LlmPrompt
+  /** The payload the LLM's answer chooses; null when the answer breaks its contract. */
+  parse(answer: unknown): { payload: FactPayloads[K]; confidence: number; reason: string } | null
+}
+
+export type KindSpec<K extends FactKind> = BaseSpec<K> & {
+  /**
+   * The server fills the kind's slots itself: the classification of one slot of the subject, null
+   * when the subject has nothing to classify there. Absent for kinds agents submit.
+   */
+  classify?(slot: string, subject: SubjectViews[SubjectTypeOf[K]]): Classification<K> | null
+}
 
 const quote = (value: string) => JSON.stringify(value)
 
@@ -292,7 +320,7 @@ const LLM_SYSTEM = [
   DATA_NOT_INSTRUCTIONS,
 ].join('\n')
 
-const prompt = (user: string): LlmPrompt => ({ system: LLM_SYSTEM, user })
+const prompt = (user: string, system = LLM_SYSTEM): LlmPrompt => ({ system, user })
 
 /** The LLM alone judges the fact. */
 function llm(user: string): ReviewPlan {
@@ -1767,6 +1795,137 @@ const SENTENCE_MEANING_LIMITS = [
   'A sentence meaning is about a sentence (subject_id is the sentence id), one live per sentence: a dictionary-style gloss of what a saying means and when it is said, never the saying itself.',
 ]
 
+/** The examples the productive-use questions and rubric share; none is a word the trial judged. */
+const NATIVE_ACTIVE =
+  'Native speakers use actively the ordinary words of the language in every register: everyday words (table, hang out), formal written words (moreover, ascertain), and informal or slang words of their own variety (brolly, zonked).'
+const NATIVE_PASSIVE =
+  'Native speakers only understand, and rarely say or write themselves, archaic and literary words (methinks, erstwhile) and specialist terms outside general knowledge (eigenvalue, mortise and tenon).'
+const LEARNER_ACTIVE =
+  'An advanced (CEFR C1, about IELTS 7) learner who studies, works, and lives in English must use everyday words and names of everyday things, academic and workplace words (moreover, ascertain), common phrasal verbs (hang out), and common idioms and fixed phrases (break the ice, by the way).'
+const LEARNER_PASSIVE =
+  'Recognising is enough for slang, jokey or strongly colloquial idioms (pop your clogs), informal words of only one variety of English (brolly, zonked; a standard regional word such as truck or sidewalk is not one), archaic and literary words (methinks), and specialist terms outside general knowledge (eigenvalue).'
+
+/**
+ * The question that asks a tier one way round: whether the word is active, or whether it is of a
+ * passive kind. A question asked only one way round scores its other side poorly (2026-11-14
+ * trial: "is recognising enough" passed 90 of 113 words a learner must use), so each value of a
+ * tier has its own.
+ */
+function tierQuestion(tier: 'native' | 'learner', active: boolean, lemma: string, pos: Pos): string {
+  const word = `${quote(lemma)} (${pos}) in the given senses`
+  if (tier === 'native') {
+    return active
+      ? `Do native English speakers themselves use ${word} in their own speech or writing? ${NATIVE_ACTIVE} ${NATIVE_PASSIVE} ${DATA}`
+      : `Is ${word} an archaic or literary word, or a specialist term outside general knowledge, that native English speakers understand but rarely say or write themselves? Examples of yes: methinks, erstwhile, eigenvalue, mortise and tenon. Examples of no: table, moreover, ascertain, hang out, brolly, zonked. ${DATA}`
+  }
+  return active
+    ? `Is ${word} ordinary vocabulary that an advanced (CEFR C1) learner of English should use in their own speech or writing? ${LEARNER_ACTIVE} No only for: ${LEARNER_PASSIVE} ${DATA}`
+    : `Is ${word} slang, a jokey or strongly colloquial idiom, an informal word of only one variety of English, an archaic or literary word, or a specialist term outside general knowledge? Examples of yes: pop your clogs, brolly, zonked, methinks, eigenvalue. Examples of no: table, moreover, ascertain, hang out, break the ice, by the way, apple pie. ${DATA}`
+}
+
+/** The question for each tier, worded for the claimed value. */
+function productiveUseQuestions({ pos, native, learner }: FactPayloads['productive_use'], lemma: string): JevQuestions {
+  return { native: tierQuestion('native', native, lemma, pos), learner: tierQuestion('learner', learner, lemma, pos) }
+}
+
+const tierUse = (active: boolean) => (active ? 'active (uses it)' : 'passive (only understands it)')
+
+function productiveUseRubric({ pos, native, learner }: FactPayloads['productive_use'], lemma: string): string {
+  return [
+    `Is ${quote(lemma)} (${pos}), in its common senses of this part of speech, ${tierUse(native)} vocabulary for native speakers and ${tierUse(learner)} vocabulary for an advanced (CEFR C1) learner?`,
+    `${NATIVE_ACTIVE} ${NATIVE_PASSIVE}`,
+    `${LEARNER_ACTIVE} ${LEARNER_PASSIVE} A word native speakers only understand is passive for the learner too.`,
+    'pass when both tiers are right; fail when either is wrong.',
+  ].join('\n')
+}
+
+const PRODUCTIVE_USE_LIMITS = [
+  "A productive use is about the entry, one live per part of speech of the entry's common senses: pos is one of them.",
+  'native is false only for archaic and literary words and specialist terms outside general knowledge; learner is false for those and for slang, jokey or strongly colloquial idioms, and informal words of only one variety of English. When native is false, learner is false too.',
+]
+
+function admitProductiveUse(
+  { pos }: FactPayloads['productive_use'],
+  { commonPos }: AdmissionViews['entry'],
+): string | null {
+  if (commonPos.includes(pos)) return null
+  return `No common sense of the entry is of the part of speech ${pos}; a productive use names a part of speech of its common senses (${commonPos.join(', ') || 'none'}).`
+}
+
+/** What a productive use of the part of speech is judged on; null when no common sense has it. */
+function productiveUseState(entry: SubjectViews['entry'], pos: Pos): DecisionRequest['state'] | null {
+  const senses = entry.senses.filter((sense) => sense.rank === 'common' && sense.pos === pos)
+  if (senses.length === 0) return null
+  return {
+    word: entry.lemma,
+    'part of speech': pos,
+    senses: senses.map((sense) => withLabels(sense.gloss, sense.register, sense.region)),
+    'word frequency (zipf)': entry.zipf === null ? 'unknown' : String(entry.zipf),
+  }
+}
+
+function planProductiveUse(payload: FactPayloads['productive_use'], entry: SubjectViews['entry']): ReviewPlan {
+  const state = productiveUseState(entry, payload.pos)
+  if (!state) return { kind: 'unreviewable', reason: `The entry's live inventory has no common ${payload.pos} sense.` }
+  return decide(state, productiveUseQuestions(payload, entry.lemma), productiveUseRubric(payload, entry.lemma))
+}
+
+const TIERS = ['native', 'learner'] as const
+const answerKey = (tier: (typeof TIERS)[number], active: boolean) => `${tier}_${active ? 'active' : 'passive'}`
+
+const CLASSIFY_SYSTEM = [
+  "You classify one word for a learner's dictionary.",
+  'Answer with a JSON object {"native": boolean, "learner": boolean, "confidence": number from 0 to 1, "reason": string}.',
+  'true is active (uses it), false passive (only understands it). confidence is how sure you are; reason is one short sentence.',
+  DATA_NOT_INSTRUCTIONS,
+].join('\n')
+
+/**
+ * The server fills a productive use itself: Jev is asked each tier both ways round and each tier
+ * takes the value whose question scores higher, natives' passive making the learner's passive too.
+ * When a chosen score falls short of the pass score, the LLM chooses instead.
+ */
+function classifyProductiveUse(pos: Pos, entry: SubjectViews['entry']): Classification<'productive_use'> | null {
+  const state = productiveUseState(entry, pos)
+  if (!state) return null
+  const questions = Object.fromEntries(
+    TIERS.flatMap((tier) =>
+      [true, false].map((active) => [answerKey(tier, active), tierQuestion(tier, active, entry.lemma, pos)]),
+    ),
+  )
+  return {
+    state,
+    questions,
+    pick: (scores) => {
+      const score = (tier: (typeof TIERS)[number], active: boolean) => scores[answerKey(tier, active)] ?? 0
+      const native = score('native', true) >= score('native', false)
+      const learner = native && score('learner', true) >= score('learner', false)
+      // A word natives only understand is passive for the learner whatever the learner's scores.
+      const chosen = { native: score('native', native), learner: native ? score('learner', learner) : 1 }
+      return {
+        payload: { pos, native, learner },
+        settled: chosen.native >= DEFAULT_PASS_AT && chosen.learner >= DEFAULT_PASS_AT,
+        confidence: Math.min(chosen.native, chosen.learner),
+      }
+    },
+    prompt: prompt(
+      [
+        `Is ${quote(entry.lemma)} (${pos}), in its common senses of this part of speech, active or passive vocabulary for native speakers and for an advanced (CEFR C1) learner?`,
+        `${NATIVE_ACTIVE} ${NATIVE_PASSIVE}`,
+        `${LEARNER_ACTIVE} ${LEARNER_PASSIVE} A word native speakers only understand is passive for the learner too.`,
+        `The word: ${JSON.stringify(state)}`,
+      ].join('\n'),
+      CLASSIFY_SYSTEM,
+    ),
+    parse: (answer) => {
+      const parsed = productiveUseAnswerSchema.safeParse(answer)
+      if (!parsed.success) return null
+      const { native, learner, confidence, reason } = parsed.data
+      return { payload: { pos, native, learner: native && learner }, confidence, reason }
+    },
+  }
+}
+
 /** The topic rule in the words Jev and luna fail loose tags with. */
 const TOPIC_RULE =
   'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is core vocabulary of the topic, a word a learner studying the topic should learn. Answer no when the sense is general-purpose and merely can appear in this topic ("full" in hotels, "stop" meaning cease functioning in driving), when the link is only a loose association, or when the topic fits a different sense of the word.'
@@ -2072,6 +2231,18 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
         meaningRubric(subject.text, gloss),
       ),
   },
+  productive_use: {
+    summary: ({ pos, native, learner }) =>
+      `${pos}: native ${native ? 'active' : 'passive'}, learner ${learner ? 'active' : 'passive'}`,
+    limits: PRODUCTIVE_USE_LIMITS,
+    subject: 'entry',
+    cardinality: 'per_pos',
+    models: ['jev'],
+    contentKey: ({ pos, native, learner }) => `${pos}|${native}|${learner}`,
+    admit: admitProductiveUse,
+    plan: (payload, { subject }) => planProductiveUse(payload, subject),
+    classify: (slot, subject) => classifyProductiveUse(slot as Pos, subject),
+  },
 }
 
 /** The node type a fact of this kind and payload is about. */
@@ -2086,6 +2257,22 @@ export function planReview<K extends FactKind>(
   context: ReviewContext<SubjectTypeOf[K]>,
 ): ReviewPlan {
   return factKinds[kind].plan(payload, context)
+}
+
+/** The node a kind the server classifies is about: always one type, since no payload exists yet to decide it. */
+export function classifiedSubjectOf(kind: FactKind): SubjectType {
+  const { subject } = factKinds[kind] as BaseSpec<FactKind>
+  if (typeof subject !== 'string') throw new Error(`A classified kind is about one type of node; ${kind} is not.`)
+  return subject
+}
+
+/** The classification of one slot of a server-filled kind; null when the kind is not one or the subject has nothing there. */
+export function classificationOf<K extends FactKind>(
+  kind: K,
+  slot: string,
+  subject: SubjectViews[SubjectTypeOf[K]],
+): Classification<K> | null {
+  return (factKinds[kind] as KindSpec<K>).classify?.(slot, subject) ?? null
 }
 
 /** Why the payload does not fit its subject, or null; kinds without a subject rule admit everything. */
@@ -2159,7 +2346,7 @@ export const GENERAL_LIMITS: readonly string[] = [
     .filter((kind) => factKinds[kind].cardinality === 'one')
     .join(
       ', ',
-    )}, and one live translation per language: change it with a correction that supersedes the published one.`,
+    )}, one live translation per language, and one live productive_use per part of speech: change it with a correction that supersedes the published one.`,
   'Content a review already rejected for the same subject is refused (409 rejected_before): fix what the review named instead of resending it.',
 ]
 
@@ -2171,6 +2358,7 @@ export function slotOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): s
   const { cardinality } = factKinds[kind]
   if (cardinality === 'many') return null
   if (cardinality === 'one') return ''
+  if (cardinality === 'per_pos') return (payload as FactPayloads['productive_use']).pos
   return (payload as FactPayloads['translation']).language
 }
 

@@ -1,3 +1,4 @@
+import type { LlmPrompt } from '@server/domain/fact-kinds'
 import type { LlmReviewer } from '@server/usecases/ports'
 import { ReviewerProtocolError } from '@server/usecases/ports'
 import { verdictSchema } from '@shared/facts'
@@ -15,35 +16,35 @@ const judgementSchema = z.object({
   reason: z.string().min(1),
 })
 
-function parseJudgement(content: string) {
-  let value: unknown
-  try {
-    value = JSON.parse(content)
-  } catch (cause) {
-    throw new ReviewerProtocolError('LLM reviewer did not answer with JSON.', { cause })
-  }
-  const parsed = judgementSchema.safeParse(value)
-  if (!parsed.success)
-    throw new ReviewerProtocolError('LLM judgement does not match its contract.', { cause: parsed.error })
-  return parsed.data
-}
-
 export function createLlmReviewer(config: ModelGatewayConfig & { model: string }): LlmReviewer {
+  /** The JSON object the model answers with: chat completions in JSON mode. */
+  async function answer(prompt: LlmPrompt): Promise<{ model: string; answer: unknown }> {
+    const raw = await postJson(config, 'v1/chat/completions', {
+      model: config.model,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: prompt.system },
+        { role: 'user', content: prompt.user },
+      ],
+    })
+    const parsed = completionSchema.safeParse(raw)
+    if (!parsed.success)
+      throw new ReviewerProtocolError('Chat completion does not match its contract.', { cause: parsed.error })
+    const [choice] = parsed.data.choices
+    try {
+      return { model: parsed.data.model, answer: JSON.parse(choice.message.content) as unknown }
+    } catch (cause) {
+      throw new ReviewerProtocolError('LLM reviewer did not answer with JSON.', { cause })
+    }
+  }
   return {
+    answer,
     async judge(prompt) {
-      const raw = await postJson(config, 'v1/chat/completions', {
-        model: config.model,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: prompt.system },
-          { role: 'user', content: prompt.user },
-        ],
-      })
-      const parsed = completionSchema.safeParse(raw)
+      const { model, answer: value } = await answer(prompt)
+      const parsed = judgementSchema.safeParse(value)
       if (!parsed.success)
-        throw new ReviewerProtocolError('Chat completion does not match its contract.', { cause: parsed.error })
-      const [choice] = parsed.data.choices
-      return { model: parsed.data.model, ...parseJudgement(choice.message.content) }
+        throw new ReviewerProtocolError('LLM judgement does not match its contract.', { cause: parsed.error })
+      return { model, ...parsed.data }
     },
   }
 }

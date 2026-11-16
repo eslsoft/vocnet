@@ -134,6 +134,17 @@ export const gapSchema = z
         description:
           "Submit one sentence_meaning fact about each listed saying (subject_id: the sentence id): a dictionary-style gloss of what the saying actually means and when it is said, never the saying itself. The context view carries the phrases list with each saying's text.",
       }),
+    z
+      .object({
+        type: z.literal('productive_use'),
+        missing: z.array(posSchema).meta({
+          description: "The parts of speech of the entry's common senses with no live productive_use.",
+        }),
+      })
+      .meta({
+        description:
+          'The listed parts of speech need a productive_use fact: whether native speakers use the word in its common senses of that part of speech themselves (native) and whether an advanced (CEFR C1) learner needs to (learner), or only understand it. The server classifies these itself; agents are never handed such an item.',
+      }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
       description: `The core sense has no live topic fact. Core nouns and verbs have a topics slot; tag only a leaf topic of the taxonomy (GET /v1/topics). ${OPTIONAL}`,
     }),

@@ -2,6 +2,7 @@ import {
   accentSchema,
   type EntryId,
   type EntryPhraseType,
+  type FactKind,
   type FactStatus,
   type FormType,
   type Pos,
@@ -111,6 +112,7 @@ type EntryGap = Extract<
       | 'form_pronunciations'
       | 'translations'
       | 'sayings'
+      | 'productive_use'
   }
 >
 type SenseGap = Exclude<Gap, EntryGap>
@@ -153,10 +155,19 @@ interface EntryState {
  * A multiword entry no published list types keeps every slot.
  */
 const PHRASE_SLOTS: Readonly<Record<EntryPhraseType, ReadonlySet<WorkType>>> = {
-  phrasal_verb: new Set(['senses', 'examples', 'translations', 'synonyms', 'grammar']),
-  compound: new Set(['senses', 'examples', 'translations', 'synonyms', 'category', 'parts', 'topics']),
-  idiom: new Set(['senses', 'examples', 'translations', 'synonyms']),
-  fixed_phrase: new Set(['senses', 'examples', 'translations', 'synonyms']),
+  phrasal_verb: new Set(['senses', 'examples', 'translations', 'synonyms', 'productive_use', 'grammar']),
+  compound: new Set([
+    'senses',
+    'examples',
+    'translations',
+    'synonyms',
+    'productive_use',
+    'category',
+    'parts',
+    'topics',
+  ]),
+  idiom: new Set(['senses', 'examples', 'translations', 'synonyms', 'productive_use']),
+  fixed_phrase: new Set(['senses', 'examples', 'translations', 'synonyms', 'productive_use']),
 }
 
 /** Whether the entry has this slot: every slot unless it is a typed phrase. */
@@ -356,6 +367,12 @@ const passed = (state: EntryState, type: WorkType, subjectId: string) => state.p
 
 // A gap is open while fewer live facts fill it than it needs. The input facts are the entry's own
 // (about the entry, its senses, or their facts) plus relations pointing at its senses, so a kind check scopes to the entry.
+/** The parts of speech of the counted senses, in inventory order: one productive use each. */
+const countedPos = ({ counted }: EntryState): Pos[] => [...new Set(counted.map((sense) => sense.pos))]
+
+const usedPos = ({ live }: EntryState): ReadonlySet<Pos> =>
+  new Set(live.filter(isKind('productive_use')).map((fact) => fact.payload.pos))
+
 const entryGapRules: readonly EntryRule[] = [
   // The inventory is one slot; once it publishes, its senses are fixed.
   {
@@ -417,6 +434,14 @@ const entryGapRules: readonly EntryRule[] = [
     }),
     need: (state) => irregularForms(state).size,
     filled: (state) => [...irregularForms(state).values()].filter((form) => form.pronounced).length,
+  },
+  // Each part of speech of the common senses says whether native speakers and an advanced learner
+  // use the word or only understand it; extra senses are passive for both and need none.
+  {
+    type: 'productive_use',
+    gap: (state) => ({ type: 'productive_use', missing: countedPos(state).filter((pos) => !usedPos(state).has(pos)) }),
+    need: (state) => countedPos(state).length,
+    filled: (state) => countedPos(state).filter((pos) => usedPos(state).has(pos)).length,
   },
   ...SERVED_LANGUAGES.map(translationRule),
   // A saying in the headword's published list needs its meaning.
@@ -919,9 +944,12 @@ export const STAGES = 4
  * whole entries finish one after another instead of every entry being half done. Batches come before
  * all of that: a later batch of headwords waits for the earlier one. `context: 'entry'`
  * hands the worker the entry's whole management view, for work that reads every sense at once;
- * `'node'` the facts about the item's node.
+ * `'node'` the facts about the item's node. `classifies` names the kind the server fills the
+ * item's slots with itself (`classifiedSlots`); agents are never handed such an item.
  */
-export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'entry' | 'node' }>> = {
+export const WORK_POLICY: Readonly<
+  Record<WorkType, { stage: number; context: 'entry' | 'node'; classifies?: FactKind }>
+> = {
   senses: { stage: 1, context: 'entry' },
   category: { stage: 2, context: 'node' },
   parts: { stage: 2, context: 'node' },
@@ -939,6 +967,23 @@ export const WORK_POLICY: Readonly<Record<WorkType, { stage: number; context: 'e
   syllables: { stage: 4, context: 'node' },
   morphology: { stage: 4, context: 'node' },
   form_pronunciations: { stage: 4, context: 'node' },
+  productive_use: { stage: 4, context: 'entry', classifies: 'productive_use' },
+}
+
+/** The types the server works itself, by classification. */
+export const CLASSIFIED_TYPES: readonly WorkType[] = (Object.keys(WORK_POLICY) as WorkType[]).filter(
+  (type) => WORK_POLICY[type].classifies !== undefined,
+)
+
+/** The types agents are handed. */
+export const AGENT_TYPES: readonly WorkType[] = (Object.keys(WORK_POLICY) as WorkType[]).filter(
+  (type) => WORK_POLICY[type].classifies === undefined,
+)
+
+/** The slots of a classified item the server fills, one fact each: a productive use's parts of speech. */
+export function classifiedSlots(gap: Gap): { kind: FactKind; slots: readonly string[] } {
+  if (gap.type === 'productive_use') return { kind: 'productive_use', slots: gap.missing }
+  throw new Error(`The server does not classify ${gap.type} items.`)
 }
 
 /** The ranks one batch spans: one per band. */

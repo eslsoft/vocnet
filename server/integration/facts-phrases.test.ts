@@ -14,6 +14,7 @@ import {
   publishInventory,
   readFact,
   reviewPending,
+  stubReviewers,
   submit,
   submitOk,
 } from './helpers'
@@ -166,6 +167,8 @@ describe('phrases lists', () => {
     await env.DB.prepare('update worklist set live = 0 where entry_id = ?').bind(handIn.entry.id).run()
     expect((await managed('hand in')).live).toBe(false)
 
+    // The run also classifies the entries' open productive uses.
+    stubReviewers()
     await handleScheduled(env)
     expect((await managed('hand in')).live).toBe(true)
     expect((await itemsOf(handIn.entry.id)).map((item) => item.type)).toEqual(['senses'])

@@ -41,7 +41,7 @@ const sample = <K extends FactKind>(kind: K, claim: string, payload: FactPayload
 // for every word, and a rendered value would read as the expected answer.
 const WORD = '<word>'
 const TARGET = '00000000-0000-4000-8000-000000000000' as SenseId
-const entryView: SubjectViews['entry'] = { lemma: WORD, senses: [], caseVariants: [] }
+const entryView: SubjectViews['entry'] = { lemma: WORD, senses: [], caseVariants: [], zipf: null }
 const senseView = (pos: Pos): SubjectViews['sense'] => ({
   lemma: WORD,
   pos,
@@ -168,6 +168,9 @@ function samplesOf(gap: Gap, pos: Pos): Sample[] {
       return [sample('collocation', 'collocation', { text: '<collocation>', pattern: 'phrase' })]
     case 'sayings':
       return [sample('sentence_meaning', 'sentence_meaning of each saying', { gloss: '<gloss>' })]
+    case 'productive_use':
+      // The server classifies these itself; no agent is handed one.
+      return []
   }
 }
 

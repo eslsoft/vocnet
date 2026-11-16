@@ -37,6 +37,17 @@ describe('LLM reviewer', () => {
     })
   })
 
+  it('answers a prompt with the JSON object it returns, for the caller to decode', async () => {
+    reply(JSON.stringify({ native: true, learner: false }))
+    await expect(llm.answer(prompt)).resolves.toEqual({
+      model: 'gpt-test-2026',
+      answer: { native: true, learner: false },
+    })
+    vi.restoreAllMocks()
+    reply('not json')
+    await expect(llm.answer(prompt)).rejects.toBeInstanceOf(ReviewerProtocolError)
+  })
+
   it('rejects content that is not JSON or not a judgement', async () => {
     reply('I think it passes.')
     await expect(llm.judge(prompt)).rejects.toBeInstanceOf(ReviewerProtocolError)

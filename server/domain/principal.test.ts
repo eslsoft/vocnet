@@ -1,6 +1,6 @@
 import type { AgentId } from '@shared/agents'
 import { describe, expect, it } from 'vitest'
-import { isAgentKey, mayActOn, mayCurate, principalRef } from './principal'
+import { CLASSIFIER, isAgentKey, mayActOn, mayCurate, principalRef } from './principal'
 import { normalizeTerm, textKey } from './term'
 
 const agent = { kind: 'agent' as const, agentId: 'a1' as AgentId, name: 'bot', curator: false }
@@ -9,6 +9,7 @@ describe('principals', () => {
   it('records admins and agents as distinct refs', () => {
     expect(principalRef({ kind: 'admin', sub: 's1' })).toBe('admin:s1')
     expect(principalRef(agent)).toBe('agent:a1')
+    expect(principalRef(CLASSIFIER)).toBe('system:classifier')
   })
 
   it('lets admins act on anything and agents only on their own work', () => {
@@ -21,6 +22,7 @@ describe('principals', () => {
     expect(mayCurate({ kind: 'admin', sub: 's1' })).toBe(true)
     expect(mayCurate({ ...agent, curator: true })).toBe(true)
     expect(mayCurate(agent)).toBe(false)
+    expect(mayCurate(CLASSIFIER)).toBe(false)
   })
 
   it('recognizes agent keys by prefix', () => {

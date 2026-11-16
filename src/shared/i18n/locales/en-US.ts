@@ -47,6 +47,7 @@ export const enUS = {
     syllables: 'Syllables',
     phrases: 'Phrases',
     sentence_meaning: 'Saying meaning',
+    productive_use: 'Active or passive',
     sentence: 'Sentence',
   },
   factState: {
@@ -83,6 +84,7 @@ export const enUS = {
     morphology: 'Word formation',
     form_pronunciations: 'Form pronunciations',
     sayings: 'Saying meanings',
+    productive_use: 'Active or passive',
   },
   taskStatus: {
     queued: 'Queued',
@@ -126,6 +128,7 @@ export const enUS = {
     collocations: 'No collocation yet.',
     sayings_one: '{{count}} saying has no meaning yet.',
     sayings_other: '{{count}} sayings have no meaning yet.',
+    productive_use: 'Not yet marked active or passive: {{pos}}.',
   },
   gapNeed: {
     examples_one: 'Needs {{count}} more example',
@@ -293,6 +296,7 @@ export const enUS = {
       syllables: 'Syllables',
       formation: 'Word formation',
       phrases: 'Phrases',
+      productiveUse: 'Active or passive',
       translations: 'Translations',
     },
     reference: 'Reference data',
@@ -545,6 +549,10 @@ export const enUS = {
       us: 'American English',
     },
     weak: 'weak form',
+    tier: { native: 'Native', learner: 'C1 learner' },
+    active: 'active',
+    passive: 'passive',
+    skill: { listen: 'listen', speak: 'speak', read: 'read', write: 'write' },
     irregular: 'Irregular form',
     forms: {
       plural: 'plural',

@@ -26,6 +26,7 @@ import type {
 } from '@shared/facts'
 import type { WorkAttemptOutcome } from '@shared/monitor'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
+import type { ServiceId } from '@shared/services'
 import type { TicketId, TicketStatus, TicketType } from '@shared/tickets'
 import type { Gap, WorkItemId, WorkLeaseId, WorkType } from '@shared/work'
 
@@ -237,6 +238,21 @@ export interface FormRow {
 export interface StoredMember {
   summary: StoredSenseSummary
   depth: number
+  /** The senses it is a direct kind of within the walk: the category or other members, by id. */
+  parents: SenseId[]
+}
+
+/** A tagged sense as the view stores it: its sense summary and whether its entry's inventory ranks it extra. */
+export interface StoredTaggedSense {
+  summary: StoredSenseSummary
+  rare: boolean
+}
+
+/** What a topic or a category lists: its public senses, each once, and the entries with a common one. */
+export interface TopicCount {
+  topicId: TopicId
+  senses: number
+  entries: number
 }
 
 /** Which public entries a list shows. */
@@ -281,7 +297,11 @@ export interface PublicViewRepo {
    * Built public senses tagged with one of these leaves, each once, by lemma, frequency, or level,
    * each then by lemma and sense.
    */
-  listTaggedSenses(leaves: readonly TopicId[], sort: SenseSort, page: PageRequest): Promise<Page<StoredSenseSummary>>
+  listTaggedSenses(leaves: readonly TopicId[], sort: SenseSort, page: PageRequest): Promise<Page<StoredTaggedSense>>
+  /** What every leaf topic with a tagged public sense lists, and every category over its leaves. */
+  countTagged(): Promise<TopicCount[]>
+  /** The stored documents, each with its digest, of the built public entries spelled exactly as these lemmas, in any order. */
+  findDocuments(lemmas: readonly Lemma[]): Promise<StoredView[]>
   /**
    * Built public entries the query matches, each once at its best tier (`SEARCH_TIERS`), then by
    * frequency, then by lemma.
@@ -289,9 +309,14 @@ export interface PublicViewRepo {
   search(query: SearchQuery, page: PageRequest): Promise<Page<SearchRow>>
   /**
    * The public senses a broader-term walk from this sense reaches through everyday links, and the
-   * links of `domain` when one is given, each once at its nearest depth, by depth, lemma, and id.
+   * links of `domain` when one is given, each once at its nearest depth, by depth, lemma, and id,
+   * with how many the walk reaches in all.
    */
-  listMembers(id: SenseId, domain: RelationDomain | null, page: PageRequest): Promise<Page<StoredMember>>
+  listMembers(
+    id: SenseId,
+    domain: RelationDomain | null,
+    page: PageRequest,
+  ): Promise<Page<StoredMember> & { total: number }>
   /** Stale views of the entries that are, or own as a sense, these nodes, or link to them by a relation. */
   listStale(nodeIds: string[]): Promise<StaleView[]>
   /** Up to `limit` stale views of any entry. */
@@ -526,6 +551,22 @@ export interface AgentRepo {
   revoke(id: AgentId, at: string): Promise<void>
 }
 
+export interface ServiceRecord {
+  id: ServiceId
+  name: string
+  createdBy: PrincipalRef
+  createdAt: string
+  revokedAt: string | null
+}
+
+export interface ServiceRepo {
+  insert(service: ServiceRecord, keyHash: string): Promise<void>
+  find(id: ServiceId): Promise<ServiceRecord | null>
+  findByKeyHash(keyHash: string): Promise<ServiceRecord | null>
+  list(): Promise<ServiceRecord[]>
+  revoke(id: ServiceId, at: string): Promise<void>
+}
+
 export interface DecisionAnswers {
   model: string
   /** Probability per question key, in [0, 1]. */
@@ -548,6 +589,8 @@ export interface LlmJudgement {
 
 export interface LlmReviewer {
   judge(prompt: LlmPrompt): Promise<LlmJudgement>
+  /** The JSON object the LLM answers the prompt with, undecoded: the caller decodes it against its own contract. */
+  answer(prompt: LlmPrompt): Promise<{ model: string; answer: unknown }>
 }
 
 /** The reviewer could not be reached or failed upstream. Not a verdict: retry later. */
@@ -613,5 +656,6 @@ export interface IdGenerator {
   fact(): FactId
   ticket(): TicketId
   agent(): AgentId
+  service(): ServiceId
   lease(): WorkLeaseId
 }

@@ -116,6 +116,7 @@ export default defineConfig({
               ratelimits: {
                 FEEDBACK_RATE_LIMITER: { simple: { limit: 10, period: 60 } },
                 READ_RATE_LIMITER: { simple: { limit: 120, period: 60 } },
+                SERVICE_READ_RATE_LIMITER: { simple: { limit: 6000, period: 60 } },
               },
               bindings: {
                 ADMIN_SUBJECTS: 'admin-1, admin-2',

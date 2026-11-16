@@ -58,3 +58,12 @@ namespace_id = "1002"
   [ratelimits.simple]
   limit = 120
   period = 60
+
+# Public reads with a service key: 6000 GET requests per service per minute.
+[[ratelimits]]
+name = "SERVICE_READ_RATE_LIMITER"
+namespace_id = "1003"
+
+  [ratelimits.simple]
+  limit = 6000
+  period = 60

@@ -1,7 +1,7 @@
 import type { InflectionType, Meaning, PublicPronunciation } from '@shared/catalog'
 import { useTranslation } from 'react-i18next'
 import { useApiPeek } from './api-peek'
-import { CefrBadge } from './badges'
+import { CefrBadge, ProductiveUseBadges } from './badges'
 import { SenseItem } from './sense-item'
 
 const FORM_ORDER: InflectionType[] = [
@@ -76,6 +76,7 @@ export function MeaningSection({
           {t(`pos.${meaning.pos}`)}
         </h2>
         {meaning.cefr ? <CefrBadge level={meaning.cefr} /> : null}
+        <ProductiveUseBadges use={meaning.productive_use} skills={meaning.skills} />
         {forms.length > 0 ? (
           <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {forms.map((type) => (

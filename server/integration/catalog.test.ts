@@ -61,6 +61,8 @@ describe('public catalog', () => {
       {
         pos: 'noun',
         cefr: null,
+        productive_use: null,
+        skills: null,
         pronunciations: [],
         forms: { plural: [{ form: 'banks', irregular: false }] },
         senses: [

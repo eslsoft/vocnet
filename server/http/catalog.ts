@@ -3,6 +3,7 @@ import {
   getPublicEntry,
   getPublicSense,
   getPublicSentence,
+  listEntryOverviews,
   listPublicEntries,
   listSenseMembers,
   lookupForm,
@@ -11,6 +12,7 @@ import {
 import { listReferenceSources } from '@server/usecases/reference'
 import { submitFeedback } from '@server/usecases/tickets'
 import {
+  entryOverviewListSchema,
   entryPageSchema,
   entrySortSchema,
   formLookupSchema,
@@ -20,6 +22,8 @@ import {
   levelFilterSchema,
   listLangQuerySchema,
   memberPageSchema,
+  overviewLemmasSchema,
+  overviewSensesSchema,
   publicEntrySchema,
   publicSenseDetailSchema,
   publicSentenceSchema,
@@ -98,6 +102,24 @@ const getEntry = createRoute({
   },
 })
 
+const listOverviews = createRoute({
+  method: 'get',
+  path: '/overviews',
+  tags,
+  summary: 'Get the overviews of many entries by their exact lemmas',
+  description:
+    'What a word card shows, for up to 100 lemmas in one read: each entry with its US and UK pronunciations and, per part of speech, its sense count and first senses with every translation in the response language. Items come in the order asked, each once; a lemma with no public entry is named in missing, with no fuzzy fallback. Carries an ETag over the entries found; send it as If-None-Match to get 304 while they are unchanged.' +
+    LANGUAGE,
+  request: {
+    query: z.object({ lemma: overviewLemmasSchema, senses: overviewSensesSchema, lang: listLangQuerySchema }),
+  },
+  responses: {
+    200: json(entryOverviewListSchema, 'The overviews and the lemmas without one.'),
+    304: notModifiedResponse,
+    400: errorResponse,
+  },
+})
+
 const getForm = createRoute({
   method: 'get',
   path: '/forms/{form}',
@@ -149,7 +171,7 @@ const listMembers = createRoute({
   tags,
   summary: 'List the kinds of a sense taken as a category',
   description:
-    'Every public sense whose broader terms lead up to this one ("animal": dog, cat, eagle, and each bird through "bird"), each once at its nearest depth, nearest first, then by lemma. The everyday layer by default; ?domain= also walks that specialist taxonomy (biology: canine, carnivore, mammal). A sense that is not public is 404.' +
+    'Every public sense whose broader terms lead up to this one ("animal": dog, cat, eagle, and each bird through "bird"), each once at its nearest depth, nearest first, then by lemma, so pages go down level by level. Each member names the senses it is a direct kind of within the walk (parents), which rebuilds the tree, and total counts the members over every page. The everyday layer by default; ?domain= also walks that specialist taxonomy (biology: canine, carnivore, mammal). A sense that is not public is 404.' +
     LANGUAGE,
   request: {
     params: z.object({ id: senseIdSchema }),
@@ -209,6 +231,15 @@ export const publicRoutes = createRouter()
     const entry = await getPublicEntry(c.get('deps'), c.req.valid('param').lemma, variant)
     return notModified(c, await etagOf(entry.versions, variant)) ?? c.json(entry.read(), 200)
   })
+  .openapi(listOverviews, async (c) => {
+    const { lemma, senses, lang } = c.req.valid('query')
+    const variant = readVariant(c, { lang })
+    const found = await listEntryOverviews(c.get('deps'), [lemma].flat(), senses, variant)
+    return (
+      notModified(c, await etagOf(found.versions, variant), LIST_CACHE) ??
+      c.json({ lang: variant.lang, ...found.read() }, 200)
+    )
+  })
   .openapi(getForm, async (c) => {
     const variant = readVariant(c, c.req.valid('query'))
     const found = await lookupForm(c.get('deps'), c.req.valid('param').form, variant)
@@ -237,7 +268,7 @@ export const publicRoutes = createRouter()
       variant,
     )
     c.header('Cache-Control', LIST_CACHE)
-    return c.json({ lang: variant.lang, items: page.items, next_cursor: page.nextCursor }, 200)
+    return c.json({ lang: variant.lang, total: page.total, items: page.items, next_cursor: page.nextCursor }, 200)
   })
   .openapi(listSources, async (c) => c.json({ items: await listReferenceSources(c.get('deps')) }, 200))
   .openapi(postFeedback, async (c) => {

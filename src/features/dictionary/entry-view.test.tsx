@@ -28,6 +28,10 @@ describe('EntryView', () => {
     expect(screen.getByText('Common')).toBeInTheDocument()
 
     const noun = screen.getByRole('region', { name: 'noun' })
+    expect(within(noun).getByText('Native · active')).toHaveAttribute('title', 'listen · speak · read · write')
+    expect(within(noun).getByText('C1 learner · active')).toBeInTheDocument()
+    const adjectiveMeaning = screen.getByRole('region', { name: 'adjective' })
+    expect(within(adjectiveMeaning).getByText('C1 learner · passive')).toHaveAttribute('title', 'listen')
     expect(within(noun).getByText('animals')).toBeInTheDocument()
     expect(within(noun).getByText('1.', { exact: false })).toBeInTheDocument()
     expect(within(noun).getByText('动物')).toBeInTheDocument()

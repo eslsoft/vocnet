@@ -56,5 +56,10 @@ export function summarizeFact(fact: FactDto): string {
         .join(' · ')
     case 'sentence_meaning':
       return fact.payload.gloss
+    case 'productive_use': {
+      const { pos, native, learner } = fact.payload
+      const use = (active: boolean) => (active ? 'active' : 'passive')
+      return `${pos}: native ${use(native)}, learner ${use(learner)}`
+    }
   }
 }

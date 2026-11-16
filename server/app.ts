@@ -8,6 +8,7 @@ import { agentRoutes } from './http/manage/agents'
 import { manageCatalogRoutes } from './http/manage/catalog'
 import { manageFactRoutes } from './http/manage/facts'
 import { managePublicViewRoutes } from './http/manage/public-view'
+import { serviceRoutes } from './http/manage/services'
 import { manageTicketRoutes } from './http/manage/tickets'
 import { manageWorkRoutes } from './http/manage/work'
 import { createRouter } from './http/router'
@@ -25,10 +26,18 @@ const manageV1 = createRouter()
   .route('/', manageWorkRoutes)
   .route('/', managePublicViewRoutes)
   .route('/', agentRoutes)
+  .route('/', serviceRoutes)
 manageV1.openAPIRegistry.registerComponent('securitySchemes', 'bearer', {
   type: 'http',
   scheme: 'bearer',
   description: 'An agent API key (vn_agent_...) or an admin OIDC access token.',
+})
+
+publicV1.openAPIRegistry.registerComponent('securitySchemes', 'serviceKey', {
+  type: 'http',
+  scheme: 'bearer',
+  description:
+    'Optional. A service key (vn_service_...) an admin issued to a downstream service: its reads are counted per service (6000 a minute), not per client address (120 a minute). An unknown or revoked key is 401.',
 })
 
 const info = (title: string, description: string) => ({ title, version: '1.0.0', description })
@@ -38,6 +47,7 @@ const publicDocument = publicV1.getOpenAPI31Document({
   openapi: '3.1.0',
   info: info('Vocnet API', 'A relational English dictionary. Every item is a reviewed fact with its confidence.'),
   servers: [{ url: '/v1' }],
+  security: [{}, { serviceKey: [] }],
 })
 const manageDocument = manageV1.getOpenAPI31Document({
   openapi: '3.1.0',

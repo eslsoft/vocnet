@@ -87,9 +87,9 @@ Everything else is a fact: one row in `facts`, one reviewed claim.
 | `content_key`   | Deterministic key of the identifying payload, for dedupe       |
 | `payload`       | Kind-specific JSON, validated by the registry schema           |
 | `status`        | `pending`, `published`, `rejected`, `superseded`, `retracted`  |
-| `slot`          | The slot the fact holds on its subject (`slotOf` in the registry): `''` for a kind with one live fact per subject, the language for a translation, null for a kind without the limit |
+| `slot`          | The slot the fact holds on its subject (`slotOf` in the registry): `''` for a kind with one live fact per subject, the language for a translation, the part of speech for a productive use, null for a kind without the limit |
 | `supersedes_id` | Fact this one corrects, if any                                 |
-| `author`        | Agent or admin principal that submitted it                     |
+| `author`        | Agent or admin principal that submitted it, or `system:classifier` for a fact the server classified |
 | `review`        | Reviewer, verdict, confidence, reason, raw detail, reviewed at |
 
 A partial unique index on `(kind, content_key, subject_id)` over `pending` and
@@ -121,9 +121,12 @@ entry plus its payload schema in `shared/facts.ts`.
 | `syllables`     | entry   | one         | `{ syllables: [string] }` (`["a", "bil", "i", "ty"]`)     | luna, then LLM |
 | `phrases`       | entry   | one         | `{ phrases: [{ type, entry_id, sense_id? } \| { type: "saying", sentence_id }] }` (no cap) | Jev per item, then LLM |
 | `sentence_meaning` | sentence | one      | `{ gloss }`: what a saying means and when it is said      | Jev, then LLM |
+| `productive_use` | entry  | one per part of speech | `{ pos, native, learner }`: whether native speakers and a C1 learner use the word or only understand it | Jev per tier, then LLM |
 
-A kind with cardinality *one* admits a single live fact per subject, and
-*one per language* a single live translation per subject and language: an
+A kind with cardinality *one* admits a single live fact per subject,
+*one per language* a single live translation per subject and language, and
+*one per part of speech* a single live productive use per entry and part of
+speech: an
 entry has one inventory, one word formation, one syllable division, and one
 phrases list, a sentence one meaning, and a sense one grammar fact. Changing it means submitting a
 correction that supersedes the published fact; a second one without
@@ -349,6 +352,65 @@ meaning, a wrong one, or the saying quoted as its gloss.
 
 The migration `redesign` turned every sense translation into the new shape and
 split the Chinese of every example into its own translation fact.
+
+#### Productive use
+
+Linguistics calls the words a speaker uses in speech and writing their
+*productive* (active) vocabulary and the words they only understand their
+*receptive* (passive) vocabulary. A **productive use** (`productive_use`,
+`{ pos, native, learner }`, about an entry, one per part of speech of its
+common senses) says, for two tiers, whether the word in that part of speech
+is active (`true`) or passive (`false`). The name is not `productive`, which
+morphology means otherwise.
+
+- **native**: native speakers use it themselves, in every register: everyday,
+  formal written, and the informal and slang words of their own variety. It is
+  passive only for archaic and literary words and specialist terms outside
+  general knowledge (henceforth, betwixt, red shift).
+- **learner**: an advanced, CEFR C1 learner who studies, works, and lives in
+  English needs to use it: everyday words, academic and workplace vocabulary,
+  and common phrasal verbs, idioms, and fixed phrases (give up, a piece of
+  cake). It is passive for slang, jokey or strongly colloquial idioms (kick the
+  bucket), informal words of only one variety of English (gobsmacked,
+  knackered; a standard regional word such as truck is not one), and every
+  word passive for natives. So `native: false` with `learner: true` is `400`.
+
+`pos` must be the part of speech of a common sense of the entry's live
+inventory, else `422 invalid_reference`; extra senses are passive for both
+tiers and take none. The content key is `pos|native|learner`, the slot the part
+of speech. Both tiers are one fact so a contradiction between them is caught in
+one review.
+
+Each tier has two Jev questions, one per value, about the word, the part of
+speech, its common senses with their labels, and its Zipf frequency: whether
+the tier uses the word itself, and whether the word is of a passive kind. A
+question asked one way round scores the other side poorly: in the 2026-11-14
+trial (180 hand-labelled words), "is recognising enough" passed 90 of 113 words
+a learner must use.
+
+**The server classifies productive uses itself**; it is the one kind no agent
+produces, because it is a choice among four values over data the entry already
+has, which Jev answers in a tenth of a second, where an agent session cost
+twenty turns a batch of ten. The scheduled run works the open `productive_use`
+items (see Work items) as the principal `system:classifier`: Jev is asked all
+four questions, each tier takes the value whose question scores higher (a tie
+is active), and natives' passive makes the learner's passive whatever it
+scored. When each chosen score reaches 0.8 (for a passive native, its score
+alone), the fact is submitted already decided and publishes with a `jev` review
+holding the four scores, never entering the review queue; at 0.8 the trial let
+no wrong value through and the first run settled about four in five. Otherwise
+the LLM is shown the same data and rules and chooses (`{ native, learner,
+confidence, reason }`, natives' passive again forcing the learner's), and the
+fact publishes with a `jev+llm` review. The submission passes every write rule;
+one that refuses it (content a review rejected) is recorded as the item's pass,
+so after two passes the item becomes a curator's ticket. A reviewer transport
+or protocol failure ends the run with the unworked items released for the next.
+New entries, inventories that publish or change, and anything else that opens
+the slot get classified the same way on the next run. A productive use an agent
+or a curator submits, such as a correction, is reviewed as above: Jev is asked
+the two questions of the claimed values, both must reach 0.8, and otherwise the
+LLM judges both tiers together. A part of speech the live inventory no longer
+has a common sense of is unreviewable.
 
 #### Syllables and form pronunciations
 
@@ -590,17 +652,28 @@ all and says to fail when it doubts the sense is typical vocabulary of the
 topic; an uncertain verdict still publishes, as in every chain. It sees the
 entry's other senses.
 
-`GET /v1/topics` returns `{ categories: [{ id, name_en, name_zh, topics: [{ id,
-name_en, name_zh }] }] }` in display order. `GET /v1/topics/{id}/senses`
+`GET /v1/topics` returns `{ categories: [{ id, name: { en, zh }, sense_count,
+entry_count, topics: [{ id, name: { en, zh }, sense_count, entry_count }] }] }`
+in display order, the names keyed by language as a sense's topic tags name
+them. `sense_count` is how many public senses `GET /v1/topics/{id}/senses`
+lists for the topic, a category counting each sense of its leaves once;
+`entry_count` is how many public entries `GET /v1/entries?topic=` lists, those
+with a common sense tagged with it. Both are counted from `public_sense_topics`
+on read, and the response is a list, cached for five seconds.
+`GET /v1/topics/{id}/senses`
 returns a keyset page `{ lang, items, next_cursor }` of sense summaries (see
-Public API) of the senses that published topic facts tag with that leaf, or
+Public API), each with `rare` (the entry's inventory ranks the sense extra), of the senses that published topic facts tag with that leaf, or
 with any leaf of that category, each sense once, in lemma then sense-id order. A sense appears
 only while its topic fact is published and a published inventory of its live entry lists it. An unknown
 id is `404 not_found`, without a fuzzy fallback. The listing reads the public
 view's `public_sense_topics` rows, one per topic tag of a public sense, keyed
 `(topic_id, lemma, sense_id)`, so a leaf is one index range in page order.
-The public entry lists each sense's `topics` as `{ id, name }`, the name in
-English and the requested language, and topic facts appear wherever the
+The public entry lists each sense's `topics` as `{ id, name, category: { id,
+name } }`, each name in English and the requested language. The category is
+the topic's parent in the taxonomy as it is when the entry is read: the stored
+document holds the tag and the read joins the category, so it is never stale
+and the taxonomy is part of the document's ETag. A tag whose topic is not a
+leaf of the taxonomy fails the read. Topic facts appear wherever the
 management API lists facts.
 
 ### Write rules
@@ -1117,6 +1190,13 @@ agents off the same item. An item gets at most two passes (`MAX_PASSES`): the
 first, and one retry that sees the review reasons. Then it leaves the queue as
 a ticket.
 
+A type whose `WORK_POLICY` entry names a kind it `classifies` is worked by the
+server itself, never handed to an agent (see Productive use): each scheduled
+run, after its other steps, leases such items in queue order as
+`system:classifier`, fifty at a time, for up to eight minutes, and completes
+each lease with a pass per item noting what it published or why a write rule
+refused it.
+
 ### Claim
 
 `POST /manage/v1/work/claim` with `{ types?, limit?, lease_seconds? }` leases up
@@ -1286,7 +1366,7 @@ next stage waits on a review the workers move on to the next entry:
 | 1 identity | `senses` | Nothing else can be judged before the inventory exists, and relations need their ends' inventories |
 | 2 network | `category`, `parts`, `synonyms`, `family`, `phrases`, `topics` | Where the word sits among other words |
 | 3 translation | `translations` | What the word means to a learner in each served language |
-| 4 usage | `examples`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations` | How the word is used |
+| 4 usage | `examples`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations`, `productive_use` | How the word is used |
 
 The band is the entry's lowest CEFR level, A1 to C2 (0 to 5), then an entry
 without a level, most phrases among them (6) (`learnerBand`). `rank` is the
@@ -1300,7 +1380,8 @@ worklist (`rankWorkItemsSql`).
 - **Completeness** is the filled share of the slots its gaps count: the
   inventory, each paradigm form, a strong pronunciation in `us` and `uk`, each
   irregular form's pronunciation, and for a single word its phrases list, word
-  formation, and syllables (and its family at A1 and A2); per common sense the
+  formation, and syllables (and its family at A1 and A2); one productive use
+  per part of speech of its common senses; per common sense the
   slots of its scope (below); and per served language one translation per
   common sense, current example, and live collocation. A passed slot counts as
   filled. 1 means no gaps. Until the inventory exists the inventory is the only
@@ -1360,6 +1441,10 @@ needs and no pass completed it. Entry gaps:
 - `sayings` (required, stage 3, entry context): each saying of the headword's
   published phrases list with no live `sentence_meaning`, as
   `{ type: "sayings", missing: [sentence_id] }`.
+- `productive_use` (required, stage 4, entry context, classified by the
+  server): each part of speech of the common senses with no live productive
+  use, in inventory order, as `{ type: "productive_use", missing: [pos] }`;
+  single words and phrases alike.
 
 Sense gaps, per common sense of the current inventory, within its scope:
 
@@ -1384,7 +1469,7 @@ phrases); a multiword entry no published list types keeps every slot:
 
 | Slot | phrasal_verb | compound | idiom | fixed_phrase |
 | ---- | ------------ | -------- | ----- | ------------ |
-| senses, examples, translations, synonyms | ✓ | ✓ | ✓ | ✓ |
+| senses, examples, translations, synonyms, productive_use | ✓ | ✓ | ✓ | ✓ |
 | category, parts, topics | – | ✓ | – | – |
 | grammar | ✓ (paused) | – | – | – |
 | pronunciation, collocations | – | – | – | – |
@@ -1639,8 +1724,9 @@ batches.
 | Surface                   | Who                  | Credential                                   |
 | ------------------------- | -------------------- | -------------------------------------------- |
 | `/v1/*`, `/openapi.json`, `/docs` | Everyone     | None                                         |
+| `GET /v1/*` as a service  | Downstream services  | Optional service key, for the per-service read limit |
 | `/manage/v1/*`, `/manage/openapi.json` | Agents and admins | Agent API key or admin OIDC access token |
-| `/manage/v1/agents`       | Admins only          | Admin OIDC access token                      |
+| `/manage/v1/agents`, `/manage/v1/services` | Admins only | Admin OIDC access token                 |
 | `/manage/v1/facts/{id}/curate`, `curation` on `POST /manage/v1/facts`, `POST /manage/v1/entries`, `/manage/v1/tickets/{id}/resolve`, `POST /manage/v1/entries/{id}/passes` | Curators: admins and curator agents | Admin OIDC access token or curator agent key |
 | Admin console (SPA)       | Admins               | OIDC Authorization Code + PKCE               |
 
@@ -1655,6 +1741,23 @@ secrets (`vn_agent_…`) that an admin issues. The Worker stores only their
 SHA-256 hash. A valid OIDC token whose subject is not an admin gets 403. A
 bearer that is not a structurally valid JWT gets 401 before the Worker contacts
 the issuer; an unreachable issuer is a 500, not a bad credential.
+
+**Service keys.** A downstream product that reads the dictionary for its own
+users reads `/v1` as a service. An admin issues it a key with `POST
+/manage/v1/services { name }`, which answers `{ service, key }` once; `GET
+/manage/v1/services` lists the services and `DELETE /manage/v1/services/{id}`
+revokes one. A service key is a random secret (`vn_service_…`) made and stored
+exactly as an agent key is: only its SHA-256 hash, in the `services` table
+(`id`, `name`, `key_hash`, `created_by`, `created_at`, `revoked_at`). The
+service sends it as `Authorization: Bearer vn_service_…` on a public `GET`. The
+key names the caller and nothing more: the read is counted against the
+service's own allowance and logged with the service's id and name, and it
+returns what an anonymous read returns. A key that names no service, or a
+revoked one, is `401 invalid_credential`; a read that presents a key is never
+served as anonymous. A service key is no management credential (`401` on
+`/manage`), and any other `Authorization` value on `/v1` is not read: an agent
+key there is an anonymous read. Vocnet is not an OAuth resource server; a
+service is authenticated by its key alone.
 
 ## Web
 
@@ -1792,6 +1895,8 @@ entry document; every list returns summaries.
     {
       "pos": "verb",
       "cefr": "A2",
+      "productive_use": { "native": true, "learner": true },
+      "skills": { "native": ["listen", "speak", "read", "write"], "learner": ["listen", "speak", "read", "write"] },
       "pronunciations": [{ "ipa": "rɪˈkɔːrd", "accent": "us" }],
       "forms": { "past": [{ "form": "recorded", "irregular": false }], "present_participle": [{ "form": "recording", "irregular": false }] },
       "senses": [
@@ -1799,7 +1904,7 @@ entry document; every list returns summaries.
           "id": "…", "gloss": "…", "labels": [], "rare": false, "translations": ["记录"],
           "grammar": { "transitivity": "transitive", "patterns": [], "prepositions": [] },
           "examples": [{ "sentence_id": "…", "text": "…", "translation": "…" }], "collocations": [{ "text": "…", "pattern": "verb_noun" }],
-          "topics": [{ "id": "office", "name": { "en": "At the office", "zh": "办公室" } }],
+          "topics": [{ "id": "office", "name": { "en": "At the office", "zh": "办公室" }, "category": { "id": "work-economy", "name": { "en": "Work and economy", "zh": "工作与经济" } } }],
           "relations": { "synonyms": [{ "lemma": "log", "sense_id": "…", "gloss": "…" }],
             "antonyms": [], "broader": [], "narrower": [], "part_of": [], "parts": [] }
         }
@@ -1820,6 +1925,17 @@ entry document; every list returns summaries.
 - **Meanings.** One meaning per part of speech, in the order of each one's
   first sense in the inventory's order (see Sense inventory), with the CEFR level of
   the lemma in that part of speech or `null`.
+- **Productive use.** A meaning's `productive_use` is `{ native, learner }`
+  from its published productive use (see Productive use), each `true` for
+  active and `false` for passive, and `skills` the skills each tier needs it
+  for, computed rather than stored: active is `listen`, `speak`, `read`,
+  `write`, passive `listen`, `read`; when every common sense of the part of
+  speech is labelled `informal`, `slang`, `taboo`, or `offensive` only the
+  spoken ones stay, and when every one is `formal` or `literary` only the
+  written ones (`skillsOf` in `server/domain/productive-use.ts`). A meaning of
+  only extra senses is passive for both tiers; one whose productive use is not
+  published has `null` for both. With `?include=review` its
+  `review.productive_use` names the fact, `null` when none is published.
 - **Pronunciations.** The entry's `pronunciations` are the facts without a part
   of speech, the default. A meaning lists only the facts labelled with its part
   of speech, the ones that differ from the default. A weak form keeps
@@ -1919,8 +2035,8 @@ carry `lang`, the stored tag used (`"zh"` for a `zh-CN` request), `all`, or
 language, empty when it has none, and absent without a language; `?lang=all`
 gives an object keyed by stored tag. `all` is accepted only by the document
 reads (`GET /v1/entries/{lemma}`, `GET /v1/senses/{id}`); the lists
-(`GET /v1/entries`, `GET /v1/forms/{form}`, `GET /v1/topics/{id}/senses`,
-`GET /v1/search`) reject it with `400 invalid_request`, so every summary has one shape. A
+(`GET /v1/entries`, `GET /v1/overviews`, `GET /v1/forms/{form}`, `GET
+/v1/topics/{id}/senses`, `GET /v1/senses/{id}/members`, `GET /v1/search`) reject it with `400 invalid_request`, so every summary has one shape. A
 topic's `name` is `{ "en": …, "<lang>": … }` keyed by the stored tag, with the
 language only when the topic has a name in it (the taxonomy has English and
 Chinese names), and every name for `all`.
@@ -1946,15 +2062,49 @@ a form the document does not show is still found. List pages are
 `GET /v1/senses/{id}/members?domain=&lang=&limit=&cursor=` lists the members of
 a public sense taken as a category: every public sense whose broader terms lead
 up to it, in the everyday layer and, with `domain`, that domain's as well, each
-once at its nearest `depth` (1 for a direct kind), as `{ lang, items: [sense
-summary + depth], next_cursor }` ordered by depth, lemma, and sense id. "animal"
+once at its nearest `depth` (1 for a direct kind), as `{ lang, total, items:
+[sense summary + depth + parents], next_cursor }` ordered by depth, lemma, and
+sense id, so the pages go down the category level by level. "animal"
 lists dog, cat, and bird at depth 1 and eagle, through bird, at 2; with
-`domain=biology`, "carnivore" lists canine and then dog. It walks the view's
+`domain=biology`, "carnivore" lists canine and then dog. `parents` is the ids
+of the senses the member is a direct kind of within the walk, in the layers
+walked: the category itself or other members, so a client rebuilds the tree
+(or, where a member has two parents, the graph) from one flat list, and a
+broader term outside the category is left out. `total` is how many members the
+walk reaches, on every page, so a client can say "388 kinds" before it has
+read them all. It walks the view's
 `public_hypernyms` rows (one per broader term a public sense shows, with the
 narrower sense's summary) in one recursive query, bounded at `MEMBER_DEPTH`
 (12), the depth that also ends a walk round a cycle of three or more entries. A
 sense that is not public is `404 not_found`. It is a list, cached for five
 seconds like the others.
+
+**Overviews.** `GET /v1/overviews?lemma=&lemma=&senses=&lang=` returns what a
+word card shows for up to 100 entries in one read, so a page of a topic's words
+needs one request, not one entry document per word:
+
+```json
+{ "lang": "zh", "items": [
+  { "id": "…", "lemma": "bright", "cefr": "A1", "frequency": { "zipf": 4.61, "rank": 2410 },
+    "pronunciations": [{ "ipa": "braɪt", "accent": "us" }, { "ipa": "braɪt", "accent": "uk" }],
+    "meanings": [
+      { "pos": "adjective", "cefr": "A1", "pronunciations": [], "sense_count": 7,
+        "senses": [{ "id": "…", "gloss": "Giving out or reflecting a lot of light.", "rare": false, "translations": ["明亮的"] }] }
+    ] }
+], "missing": ["brite"] }
+```
+
+`lemma` is repeated, one exact lemma each (a value is never split at a comma,
+which a lemma may hold); none, or more than 100, is `400`. Each public entry
+comes once, in the order first asked, with its default pronunciations and, per
+part of speech in document order, its level, the pronunciations particular to
+it, `sense_count` (every public sense of that part of speech), and its first
+`senses` senses (4 by default, 1 to 10) with `rare` and every translation in
+the read's language, absent without one. A lemma no public entry is spelled
+exactly like is listed in `missing` as it was asked; there is no case folding
+or form lookup. It is a list: it reads the built `public_entries` documents in
+one statement, takes one language (`lang=all` is `400`), and is cached for
+five seconds.
 
 **Lists.** `GET /v1/entries` takes `prefix`, `level` (CEFR levels, repeated
 `level=A1&level=A2` or comma-separated `level=A1,A2`), `pos`, `topic` (a leaf
@@ -2009,6 +2159,16 @@ translation holding 银行 (`银行`, `银行家`, `银行账户`), `银行家` 
 `429 rate_limited` with `Retry-After: 60`, the binding's period, since the
 binding reports no finer reset. Cache hits count too: the limit protects the
 Worker, not only D1. Feedback keeps its own limit of 10 a minute.
+
+A read with a service key (see Access) counts against the service instead, by
+its id in the `SERVICE_READ_RATE_LIMITER` binding: 6000 a minute, the budget of
+a backend that reads for many users from a few addresses. The client address is
+not read at all for it, so a service may call from anywhere, with or without
+Cloudflare in front. A read without a key still needs `CF-Connecting-IP` and
+fails as a `500` without it: Cloudflare always sets the header in production,
+and locally Miniflare sets it from the socket's address (and passes on one the
+client sent), so the failure only shows when the Worker is called with no such
+runtime in front.
 
 ## Public view
 
@@ -2067,6 +2227,9 @@ is `404`.
 | `GET /v1/forms/{form}`        | `public_forms` by spelling joined to `public_entries`, in lemma order |
 | `GET /v1/entries`             | `public_entries` summaries by lemma range or along `(frequency_order, lemma)`, each checked through the key of `public_meanings`, or with a topic the `(entry_id, topic_id)` index of `public_sense_topics` |
 | `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf along the index of the sort |
+| `GET /v1/topics`              | `topics`, and two grouped counts over `public_sense_topics`: per leaf, and per category through `topics.parent_id` |
+| `GET /v1/overviews`           | `public_entries` documents by exact lemma, one statement for every lemma asked |
+| `GET /v1/senses/{id}/members` | One recursive walk down `public_hypernyms`, with each member's parents and the total from the same statement |
 | `GET /v1/search`              | `public_entries` by exact lemma and lemma range, `public_forms` by variant form, and `public_search_fts` joined to `public_search` by rowid, grouped by entry |
 
 Feedback targets are checked against the live projection, and the management
@@ -2128,10 +2291,16 @@ request, so a cache must not keep a document fresh past it: every use
 revalidates, and the revalidation costs one indexed batch and no body. The
 ETag changes only when the body can, so feedback and completed work, which
 bump the revision without changing anything public, keep cached bodies valid.
-`GET /v1/entries`, `GET /v1/topics/{id}/senses`, and `GET /v1/search` change
+`GET /v1/entries`, `GET /v1/topics`, `GET /v1/topics/{id}/senses`, `GET
+/v1/overviews`, `GET /v1/senses/{id}/members`, and `GET /v1/search` change
 whenever any entry in them does; an ETag would need the whole page query before
 a `304` could save only the body, so they carry `Cache-Control: public,
-max-age=5`, which stays within the budget, and no ETag. Errors and the feedback
+max-age=5`, which stays within the budget, and no ETag. Two of them are lists
+a client reads whole and keeps, so they carry a strong ETag beside the
+max-age and answer `If-None-Match` with `304`: `GET /v1/overviews`, over the
+sense limit and each asked lemma's document digest (or that it is missing),
+read with the documents in the one statement; and `GET /v1/topics`, over the
+taxonomy with its counts. The `304` saves the body, not the query. Errors and the feedback
 POST carry no caching headers.
 
 **Edge cache.** The Worker runs in front of Cloudflare's cache, so the edge
@@ -2140,7 +2309,7 @@ puts responses in the Workers Cache API (`caches.default`, the cache of the
 colo serving the request) itself, after the read rate limit. It stores exactly
 the `200` `GET` responses whose own headers let a shared cache keep them fresh
 (`public` with a `max-age`, and no `no-cache`, `no-store`, or `private`): the
-three lists. Documents and form lookups are `no-cache`, so they are never
+lists. Documents and form lookups are `no-cache`, so they are never
 stored: a stored body would still need the same indexed batch to revalidate,
 and that batch already answers a matching `If-None-Match` with a bodiless
 `304`. The key is the request URL and, when it has no `?lang=`, the served
@@ -2150,7 +2319,9 @@ that header; a `?lang=` stays as sent, so a value the route rejects never
 shares a key with one it serves. The stored copy drops `Vary` and carries the
 `Date` it was stored; a hit is served with `Vary: Accept-Language` restored and
 `Age` set from that date, so a browser or downstream cache keeps it only for
-what is left of the five seconds. A list is therefore at most five seconds
+what is left of the five seconds. A hit that carries an ETag (the overviews
+and the taxonomy) and whose ETag the request's `If-None-Match` holds is
+answered `304` without the body, as the route answers it. A list is therefore at most five seconds
 older than the view it was read from, at the edge or anywhere downstream, plus
 the lag every list has behind a write (see Staleness). The cache is per colo
 and is not purged on write: the max-age is the bound. The integration suite

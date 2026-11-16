@@ -15,23 +15,20 @@ const nodes = [food, node('drinks', 'food', 2), node('kitchen', 'home', 1), node
 
 describe('topic taxonomy', () => {
   it('serves categories with their leaves, each in display order [spec: topics/tree]', () => {
-    expect(topicTree(nodes)).toEqual({
+    const counts = new Map([
+      ['food' as TopicId, { senses: 5, entries: 4 }],
+      ['fruit' as TopicId, { senses: 3, entries: 2 }],
+    ])
+    const named = (id: string, senses = 0, entries = 0) => ({
+      id,
+      name: { en: `${id} en`, zh: `${id} zh` },
+      sense_count: senses,
+      entry_count: entries,
+    })
+    expect(topicTree(nodes, counts)).toEqual({
       categories: [
-        {
-          id: 'home',
-          name_en: 'home en',
-          name_zh: 'home zh',
-          topics: [{ id: 'kitchen', name_en: 'kitchen en', name_zh: 'kitchen zh' }],
-        },
-        {
-          id: 'food',
-          name_en: 'food en',
-          name_zh: 'food zh',
-          topics: [
-            { id: 'fruit', name_en: 'fruit en', name_zh: 'fruit zh' },
-            { id: 'drinks', name_en: 'drinks en', name_zh: 'drinks zh' },
-          ],
-        },
+        { ...named('home'), topics: [named('kitchen')] },
+        { ...named('food', 5, 4), topics: [named('fruit', 3, 2), named('drinks')] },
       ],
     })
   })

@@ -171,6 +171,18 @@ describe('labels', () => {
   })
 })
 
+describe('productive use format', () => {
+  it('makes a word native speakers only understand passive for a learner too [spec: facts/productive-use-admission]', () => {
+    const submit = (payload: unknown) => issues({ kind: 'productive_use', subject_id: entry, payload })
+    expect(submit({ pos: 'verb', native: true, learner: false })).toEqual([])
+    expect(submit({ pos: 'verb', native: false, learner: false })).toEqual([])
+    expect(submit({ pos: 'verb', native: false, learner: true })).toEqual([
+      'A word native speakers only understand is passive for a learner too: learner is false when native is false.',
+    ])
+    expect(submit({ pos: 'verb', native: 'active', learner: true })).toHaveLength(1)
+  })
+})
+
 describe('grammar, word formation, and collocation formats', () => {
   const submit = (kind: string, subject: string, payload: unknown) => issues({ kind, subject_id: subject, payload })
   const morphology = (...parts: Array<[string, string]>) =>

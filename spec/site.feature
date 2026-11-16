@@ -64,7 +64,7 @@ Feature: Public site
   Scenario: The developer guide explains the public API
     Given the developers page
     When a developer reads it
-    Then it gives the base URL, that reads need no key, the rate limits, ?lang= and ?domain=, cursor pagination, ETag and Cache-Control caching, the error envelope with its stable codes, the feedback endpoint, and links to /docs and /openapi.json
+    Then it gives the base URL, that reads need no key and a downstream service may read with a service key, the rate limits per address and per service, ?lang= and ?domain=, cursor pagination, ETag and Cache-Control caching, the error envelope with its stable codes, the feedback endpoint, and links to /docs and /openapi.json
     And it reads in Chinese or English, switched in place, with a table of contents
 
   @site/try-it @critical @web

@@ -238,6 +238,8 @@ describe('fact review flow', () => {
     await env.DB.prepare("update facts set updated_at = '2026-01-01T00:00:00.000Z' where id = ?").bind(stuck.id).run()
 
     const sent = vi.spyOn(env.REVIEW_QUEUE, 'sendBatch')
+    // The run also classifies the entry's open productive use.
+    stubReviewers()
     await entry.scheduled({} as ScheduledController, env)
     const ids = sent.mock.calls.flatMap(([messages]) =>
       [...messages].map((message) => (message.body as { fact_id: string }).fact_id),
@@ -263,6 +265,8 @@ describe('fact review flow', () => {
     await env.DB.prepare("update facts set updated_at = '2026-01-01T00:00:00.000Z' where status = 'pending'").run()
 
     const sent = vi.spyOn(env.REVIEW_QUEUE, 'sendBatch')
+    // The run also classifies the entry's open productive use.
+    stubReviewers()
     await entry.scheduled({} as ScheduledController, env)
     const ids = sent.mock.calls.flatMap(([messages]) => [...messages])
     expect(ids.length).toBeGreaterThan(150)

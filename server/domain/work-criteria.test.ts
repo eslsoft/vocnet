@@ -92,6 +92,7 @@ describe('workCriteria', () => {
       [{ type: 'topics', sense_id: sense }, 'noun', ['topic']],
       [{ type: 'grammar', sense_id: sense }, 'noun', ['grammar (a sample noun claim)']],
       [{ type: 'collocations', sense_id: sense }, 'noun', ['collocation']],
+      [{ type: 'productive_use', missing: ['verb'] }, null, []],
     ]
     for (const [gap, pos, claims] of gaps) {
       const criteria = of(gap, pos)

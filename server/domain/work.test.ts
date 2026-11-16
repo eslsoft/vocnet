@@ -14,8 +14,11 @@ import { type Gap, MAX_PASSES, type WorkItemId, type WorkType } from '@shared/wo
 import { describe, expect, it } from 'vitest'
 import type { Fact, FactOf } from './fact'
 import {
+  AGENT_TYPES,
   assessEntry,
+  CLASSIFIED_TYPES,
   COLLOCATIONS_NEEDED,
+  classifiedSlots,
   completeDecision,
   type EntryFacts,
   entryGaps,
@@ -129,6 +132,7 @@ describe('entryGaps', () => {
       { type: 'phrases' },
       { type: 'morphology' },
       { type: 'syllables' },
+      { type: 'productive_use', missing: ['noun'] },
       { type: 'translations', language: 'zh', missing: [{ of: 'sense', id: noun.id }] },
       { type: 'category', sense_id: noun.id },
       { type: 'synonyms', sense_id: noun.id },
@@ -142,7 +146,7 @@ describe('entryGaps', () => {
   it('asks a phrase for no phrases, word formation, or syllables [spec: work/usage-gaps]', () => {
     const noun = sense()
     const phrase = gapsOf([inventory(entryId, [noun])], { lemma: 'post office' })
-    expect(typesOf(phrase).slice(0, 2)).toEqual(['pronunciation', 'translations'])
+    expect(typesOf(phrase).slice(0, 3)).toEqual(['pronunciation', 'productive_use', 'translations'])
     expect(typesOf(phrase)).not.toContain('phrases')
     expect(typesOf(phrase)).not.toContain('morphology')
     expect(typesOf(phrase)).not.toContain('syllables')
@@ -299,6 +303,31 @@ describe('translations gap', () => {
     expect(missingOf({ type: 'sayings', missing: [saying] })).toBe(1)
     expect(filledSince({ type: 'sayings', missing: [saying] }, { type: 'sayings', missing: [] })).toBe(true)
   })
+  it('asks each part of speech of the common senses for one productive use [spec: work/productive-use-gaps]', () => {
+    const verb = sense('verb')
+    const other = sense('verb')
+    const noun = sense('noun')
+    const rare = sense('adjective', 'extra')
+    const listed = inventory(entryId, [verb, other, noun, rare])
+    const productive = (facts: Fact[]) => gapsOf(facts).filter((gap) => gap.type === 'productive_use')
+    expect(productive([listed])).toEqual([{ type: 'productive_use', missing: ['verb', 'noun'] }])
+    const used = (pos: 'verb' | 'noun', status: FactStatus = 'published') =>
+      fact('productive_use', entryId, { pos, native: true, learner: false }, status)
+    expect(productive([listed, used('verb', 'pending')])).toEqual([{ type: 'productive_use', missing: ['noun'] }])
+    expect(productive([listed, used('verb'), used('noun')])).toEqual([])
+    expect(productive([listed, used('verb'), used('noun', 'rejected')])).toEqual([
+      { type: 'productive_use', missing: ['noun'] },
+    ])
+    expect(WORK_POLICY.productive_use).toEqual({ stage: 4, context: 'entry', classifies: 'productive_use' })
+    expect(CLASSIFIED_TYPES).toEqual(['productive_use'])
+    expect(AGENT_TYPES).not.toContain('productive_use')
+    expect(AGENT_TYPES).toHaveLength(Object.keys(WORK_POLICY).length - 1)
+    expect(classifiedSlots({ type: 'productive_use', missing: ['verb', 'noun'] })).toEqual({
+      kind: 'productive_use',
+      slots: ['verb', 'noun'],
+    })
+    expect(() => classifiedSlots({ type: 'syllables' })).toThrow('The server does not classify syllables items.')
+  })
 })
 
 describe('phrase slots', () => {
@@ -308,10 +337,10 @@ describe('phrase slots', () => {
     const facts = [inventory(entryId, [verb, noun])]
     const slots = (phraseType: EntryFacts['phraseType']) =>
       [...new Set(typesOf(gapsOf(facts, { lemma: 'give up', phraseType })))].sort()
-    expect(slots('phrasal_verb')).toEqual(['examples', 'grammar', 'synonyms', 'translations'])
-    expect(slots('compound')).toEqual(['category', 'examples', 'synonyms', 'topics', 'translations'])
-    expect(slots('idiom')).toEqual(['examples', 'synonyms', 'translations'])
-    expect(slots('fixed_phrase')).toEqual(['examples', 'synonyms', 'translations'])
+    expect(slots('phrasal_verb')).toEqual(['examples', 'grammar', 'productive_use', 'synonyms', 'translations'])
+    expect(slots('compound')).toEqual(['category', 'examples', 'productive_use', 'synonyms', 'topics', 'translations'])
+    expect(slots('idiom')).toEqual(['examples', 'productive_use', 'synonyms', 'translations'])
+    expect(slots('fixed_phrase')).toEqual(['examples', 'productive_use', 'synonyms', 'translations'])
     // An untyped phrase keeps every slot it had.
     expect(slots(null)).toContain('pronunciation')
     expect(slots(null)).toContain('collocations')
@@ -594,11 +623,11 @@ describe('assessEntry', () => {
   })
 
   it('scores completeness as filled slots over the slots the rules count [spec: work/scores]', () => {
-    // Entry: senses, two accents, phrases, morphology, syllables, one translation; sense: category,
-    // synonyms, example, topic, grammar, collocation.
+    // Entry: senses, two accents, phrases, morphology, syllables, one productive use, one
+    // translation; sense: category, synonyms, example, topic, grammar, collocation.
     const bare = assessEntry(snapshot([listed]))
-    expect(bare.slots.total).toBe(13)
-    expect(bare.completeness).toBeCloseTo(1 / 13)
+    expect(bare.slots.total).toBe(14)
+    expect(bare.completeness).toBeCloseTo(1 / 14)
     // Without an inventory the inventory is the entry's only slot.
     expect(assessEntry(snapshot([])).slots.total).toBe(1)
     expect(assessEntry(snapshot([])).completeness).toBe(0)
@@ -606,10 +635,10 @@ describe('assessEntry', () => {
 
   it('counts the slots published facts fill and the ones only pending facts fill [spec: work/slot-counts]', () => {
     const pending = fact('morphology', entryId, { parts: [{ form: 'bank', role: 'base' }] }, 'pending')
-    expect(assessEntry(snapshot([listed, pending])).slots).toEqual({ total: 13, published: 1, pending: 1 })
+    expect(assessEntry(snapshot([listed, pending])).slots).toEqual({ total: 14, published: 1, pending: 1 })
     // A pending inventory fills only in the live view.
     expect(assessEntry(snapshot([inventory(entryId, [noun], 'pending')])).slots).toEqual({
-      total: 13,
+      total: 14,
       published: 0,
       pending: 1,
     })

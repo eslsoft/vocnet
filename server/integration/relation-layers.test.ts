@@ -1,5 +1,6 @@
 import { entryPageSchema, memberPageSchema, publicEntrySchema } from '@shared/catalog'
 import { factWriteResultSchema } from '@shared/facts'
+import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { call, deliverPendingReviews, headword, issueAgentKey, request, stubReviewers } from './helpers'
 
@@ -95,18 +96,27 @@ describe('relation layers', () => {
       ['eagle', 1],
     ])
     expect(all.items[0]).toMatchObject({ sense_id: bird.senseId, pos: 'noun', gloss: 'A kind of thing called bird.' })
+    // Each member names what it is a direct kind of within the walk: eagle is a bird and an animal;
+    // dog's other category, pet, is outside it. The total counts every member on every page.
+    expect(all.total).toBe(3)
+    expect(all.items.map((member) => member.parents)).toEqual([
+      [animal.senseId],
+      [animal.senseId],
+      [animal.senseId, bird.senseId].sort(),
+    ])
     expect((await membersOf(bird.senseId)).items.map((member) => member.lemma)).toEqual(['eagle'])
     const first = await membersOf(animal.senseId, '?limit=2')
     expect(first.items.map((member) => member.lemma)).toEqual(['bird', 'dog'])
     const rest = await membersOf(animal.senseId, `?limit=2&cursor=${first.next_cursor}`)
     expect([rest.items.map((member) => member.lemma), rest.next_cursor]).toEqual([['eagle'], null])
+    expect([first.total, rest.total]).toEqual([3, 3])
     // A domain taxonomy is walked only on request.
-    expect((await membersOf(carnivore.senseId)).items).toEqual([])
-    expect(
-      (await membersOf(carnivore.senseId, '?domain=biology')).items.map((member) => [member.lemma, member.depth]),
-    ).toEqual([
-      ['canine', 1],
-      ['dog', 2],
+    expect(await membersOf(carnivore.senseId)).toMatchObject({ total: 0, items: [], next_cursor: null })
+    const biology = await membersOf(carnivore.senseId, '?domain=biology')
+    expect(biology.total).toBe(2)
+    expect(biology.items.map((member) => [member.lemma, member.depth, member.parents])).toEqual([
+      ['canine', 1, [carnivore.senseId]],
+      ['dog', 2, [canine.senseId]],
     ])
     expect((await call('/v1/senses/00000000-0000-4000-8000-000000000999/members')).status).toBe(404)
   })
@@ -130,10 +140,18 @@ describe('relation layers', () => {
       entryPageSchema.parse((await call('/v1/entries?topic=hospital-doctor')).body).items.map((item) => item.lemma)
     expect(await listed()).toEqual([])
     // The topic's senses still list the rare sense itself.
-    const senses = (await call('/v1/topics/hospital-doctor/senses')).body as { items: Array<{ sense_id: string }> }
-    expect(senses.items.map((item) => item.sense_id)).toEqual([rare])
+    const senses = topicSensePageSchema.parse((await call('/v1/topics/hospital-doctor/senses')).body)
+    expect(senses.items.map((item) => [item.sense_id, item.rare])).toEqual([[rare, true]])
+    // The taxonomy counts what each list shows: the rare sense, and no entry yet.
+    const counted = async () => {
+      const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
+      const topic = categories.flatMap((category) => category.topics).find((leaf) => leaf.id === 'hospital-doctor')
+      return [topic?.sense_count, topic?.entry_count]
+    }
+    expect(await counted()).toEqual([1, 0])
     expect((await tag(common)).status).toBe(201)
     await settle()
     expect(await listed()).toEqual(['theatre'])
+    expect(await counted()).toEqual([2, 1])
   })
 })

@@ -1,4 +1,5 @@
 import {
+  entryOverviewListSchema,
   entryPageSchema,
   formLookupSchema,
   memberPageSchema,
@@ -74,6 +75,14 @@ export const ENDPOINTS: Endpoint[] = [
       ...page(),
     ],
     schema: entryPageSchema,
+    tryable: true,
+  },
+  {
+    id: 'list-overviews',
+    method: 'GET',
+    path: '/v1/overviews',
+    params: [{ name: 'lemma', in: 'query', example: 'bird' }, { name: 'senses', in: 'query', example: '2' }, lang()],
+    schema: entryOverviewListSchema,
     tryable: true,
   },
   {

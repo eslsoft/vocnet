@@ -30,5 +30,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: support.browsers.map((browser) => ({ name: browser, use: { ...supportedDevices[browser] } })),
-  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}-{projectName}{ext}',
+  // The serif and monospace stacks are system fonts, so a page renders differently on each
+  // platform: a baseline is reviewed per platform and never compared across them.
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}-{projectName}-{platform}{ext}',
 })

@@ -544,6 +544,45 @@ describe('public read model', () => {
     expect(typed?.phrase_type).toBe('phrasal_verb')
   })
 
+  it('shows each part of speech as active or passive for both tiers, with their skills [spec: catalog/productive-use-read]', () => {
+    const run = entry('run')
+    const move = inventorySense('To move fast on foot.', 'verb')
+    const manage = inventorySense('To manage.', 'verb', { register: 'informal' })
+    const act = inventorySense('An act of running.', 'noun', { register: 'informal' })
+    const melted = inventorySense('Melted.', 'adjective', { rank: 'extra', register: 'dated' })
+    const verb = fact('productive_use', run.id, { pos: 'verb', native: true, learner: false })
+    const facts = [
+      inventory(run, [move, manage, act, melted]),
+      verb,
+      // Only published facts show, and one about a part of speech the entry lacks shows nowhere.
+      fact('productive_use', run.id, { pos: 'noun', native: true, learner: true }, 'pending'),
+      fact('productive_use', run.id, { pos: 'adverb', native: true, learner: true }),
+    ]
+    const view = project(snapshotOf(run, facts))
+    expect(
+      view?.meanings.map(({ pos, productive_use, skills, review }) => ({
+        pos,
+        productive_use,
+        skills,
+        review: review.productive_use,
+      })),
+    ).toEqual([
+      {
+        pos: 'verb',
+        productive_use: { native: true, learner: false },
+        skills: { native: ['listen', 'speak', 'read', 'write'], learner: ['listen', 'read'] },
+        review: review(verb),
+      },
+      { pos: 'noun', productive_use: null, skills: null, review: null },
+      {
+        pos: 'adjective',
+        productive_use: { native: false, learner: false },
+        skills: { native: ['listen', 'read'], learner: ['listen', 'read'] },
+        review: null,
+      },
+    ])
+  })
+
   it('fails loudly on an example whose sentence is gone', () => {
     const go = entry('go')
     const move = inventorySense('To move.', 'verb')

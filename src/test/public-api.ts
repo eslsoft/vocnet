@@ -79,6 +79,8 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
       {
         pos: 'noun',
         cefr: 'A1',
+        productive_use: { native: true, learner: true },
+        skills: { native: ['listen', 'speak', 'read', 'write'], learner: ['listen', 'speak', 'read', 'write'] },
         pronunciations: [],
         forms: { plural: [{ form: 'animals', irregular: false }] },
         senses: [
@@ -92,7 +94,13 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
               },
             ],
             collocations: [{ text: 'wild animal', pattern: 'adjective_noun' }],
-            topics: [{ id: 'wild-animals', name: { en: 'Wild animals', zh: '野生动物' } }],
+            topics: [
+              {
+                id: 'wild-animals',
+                name: { en: 'Wild animals', zh: '野生动物' },
+                category: { id: 'nature', name: { en: 'Nature', zh: '自然' } },
+              },
+            ],
             relations: {
               ...noRelations,
               antonyms: [related('human', 'A person.')],
@@ -119,6 +127,8 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
       {
         pos: 'adjective',
         cefr: 'B1',
+        productive_use: { native: true, learner: false },
+        skills: { native: ['listen', 'speak'], learner: ['listen'] },
         pronunciations: [],
         forms: {},
         senses: [
@@ -218,6 +228,8 @@ export function goEntry() {
       {
         pos: 'verb',
         cefr: null,
+        productive_use: null,
+        skills: null,
         pronunciations: [
           { ipa: 'ɡəʊ', accent: 'uk', strength: 'strong' },
           { ipa: 'ɡə', accent: 'uk', strength: 'weak' },
@@ -242,7 +254,13 @@ export function goEntry() {
               { text: 'go home', pattern: 'verb_noun' },
               { text: 'go away', pattern: 'verb_adverb' },
             ],
-            topics: [{ id: 'travel', name: { en: 'Travel', zh: '旅行' } }],
+            topics: [
+              {
+                id: 'travel',
+                name: { en: 'Travel', zh: '旅行' },
+                category: { id: 'leisure', name: { en: 'Leisure', zh: '休闲' } },
+              },
+            ],
             relations: { synonyms: [], antonyms: [], broader: [], narrower: [], part_of: [], parts: [] },
           },
         ],
@@ -266,6 +284,7 @@ const memberOf = (lemma: string, depth: number) => ({
   gloss: `A ${lemma}.`,
   translation: lemma === 'bird' ? '鸟' : undefined,
   depth,
+  parents: [],
 })
 
 /** A category tree: animal has bird and fish; bird has eagle; eagle has none. Records each read. */
@@ -286,13 +305,13 @@ export function networkApi({ topicsFail = false } = {}) {
       if (params.id === memberIds.fish) {
         return HttpResponse.json(
           url.searchParams.get('cursor')
-            ? { lang: 'zh', items: [memberOf('tiger', 1)], next_cursor: null }
-            : { lang: 'zh', items: [memberOf('lion', 1)], next_cursor: 'page-2' },
+            ? { lang: 'zh', total: 2, items: [memberOf('tiger', 1)], next_cursor: null }
+            : { lang: 'zh', total: 2, items: [memberOf('lion', 1)], next_cursor: 'page-2' },
         )
       }
       const items = tree[String(params.id)]
       if (!items) return apiError(404, 'not_found', 'Sense not found.')
-      return HttpResponse.json({ lang: 'zh', items, next_cursor: null })
+      return HttpResponse.json({ lang: 'zh', total: items.length, items, next_cursor: null })
     }),
     http.get('/v1/topics', () =>
       topicsFail
@@ -301,9 +320,12 @@ export function networkApi({ topicsFail = false } = {}) {
             categories: [
               {
                 id: 'nature',
-                name_en: 'Nature',
-                name_zh: '自然',
-                topics: [{ id: 'wild-animals', name_en: 'Wild animals', name_zh: '野生动物' }],
+                name: { en: 'Nature', zh: '自然' },
+                sense_count: 2,
+                entry_count: 2,
+                topics: [
+                  { id: 'wild-animals', name: { en: 'Wild animals', zh: '野生动物' }, sense_count: 2, entry_count: 2 },
+                ],
               },
             ],
           }),
@@ -313,7 +335,7 @@ export function networkApi({ topicsFail = false } = {}) {
       reads.push(url)
       if (params.id === 'nature') return HttpResponse.json({ lang: 'zh', items: [], next_cursor: null })
       const cursor = url.searchParams.get('cursor')
-      const item = (lemma: string) => ({ ...memberOf(lemma, 1), depth: undefined })
+      const item = (lemma: string) => ({ ...memberOf(lemma, 1), depth: undefined, parents: undefined, rare: false })
       return HttpResponse.json(
         cursor
           ? { lang: 'zh', items: [item('tiger')], next_cursor: null }

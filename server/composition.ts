@@ -9,6 +9,7 @@ import { createMonitorRepo } from '@server/adapters/repos/monitor'
 import { createNodeRepo } from '@server/adapters/repos/nodes'
 import { createPublicViewRepo } from '@server/adapters/repos/public-view'
 import { createReferenceRepo } from '@server/adapters/repos/reference'
+import { createServiceRepo } from '@server/adapters/repos/services'
 import { createTicketRepo } from '@server/adapters/repos/tickets'
 import { createTopicRepo } from '@server/adapters/repos/topics'
 import { createWorkRepo } from '@server/adapters/repos/work'
@@ -39,6 +40,7 @@ export function createDeps(env: Env): Deps {
     topics: createTopicRepo(db),
     tickets: createTicketRepo(db),
     agents: createAgentRepo(db),
+    services: createServiceRepo(db),
     work: createWorkRepo(db),
     monitor: createMonitorRepo(db),
     reference: createReferenceRepo(db),
@@ -47,10 +49,14 @@ export function createDeps(env: Env): Deps {
       jev: { ask: (questions, state) => jevLimit(() => jev.ask(questions, state)) },
       luna: createLunaReviewer(review.decisions),
     },
-    llm: { judge: (prompt) => llmLimit(() => llm.judge(prompt)) },
+    llm: {
+      judge: (prompt) => llmLimit(() => llm.judge(prompt)),
+      answer: (prompt) => llmLimit(() => llm.answer(prompt)),
+    },
     reviewQueue: createReviewQueue(env.REVIEW_QUEUE),
     feedbackLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),
     readLimiter: createRateLimiter(env.READ_RATE_LIMITER),
+    serviceReadLimiter: createRateLimiter(env.SERVICE_READ_RATE_LIMITER),
     // The DOM lib also declares `caches`; the Workers runtime's has the colo cache as `default`.
     responseCache: createEdgeCache((caches as unknown as WorkersCacheStorage).default),
     authVerifier: createAuthVerifier(getAuthConfig(env)),

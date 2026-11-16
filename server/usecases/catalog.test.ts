@@ -15,6 +15,7 @@ import {
   getPublicSense,
   getPublicSentence,
   importCoreEntries,
+  listEntryOverviews,
   listEntrySummaries,
   listPublicEntries,
   listSenseMembers,
@@ -269,7 +270,12 @@ describe('public reads', () => {
   it('versions an entry by its document and what other entries supply, and shapes it per variant', async () => {
     const { world } = await publishedBank()
     const read = await getPublicEntry(world.deps, 'bank', none)
-    expect(read.versions).toEqual([expect.any(String), JSON.stringify({ phrases: [], family: [], publicParts: [] })])
+    // The digest, what other entries supply, and the taxonomy the topic categories are joined from.
+    expect(read.versions).toEqual([
+      expect.any(String),
+      JSON.stringify({ phrases: [], family: [], publicParts: [] }),
+      expect.stringContaining('"hospital-doctor",{"id":"body-health"'),
+    ])
     expect(read.read()).toMatchObject({
       lang: null,
       lemma: 'bank',
@@ -343,15 +349,86 @@ describe('public reads', () => {
       listSenseMembers(world.deps, animal, domain, { limit: 1, cursor }, zh)
     const first = await members(null)
     expect(first.items).toEqual([
-      expect.objectContaining({ lemma: 'bird', sense_id: bird, depth: 1, gloss: 'A bird.' }),
+      expect.objectContaining({ lemma: 'bird', sense_id: bird, depth: 1, gloss: 'A bird.', parents: [animal] }),
     ])
+    expect(first.total).toBe(2)
     const second = await members(null, first.nextCursor ?? undefined)
-    expect([second.items.map((item) => [item.lemma, item.depth]), second.nextCursor]).toEqual([[['eagle', 2]], null])
+    expect([second.items.map((item) => [item.lemma, item.depth, item.parents]), second.nextCursor]).toEqual([
+      [['eagle', 2, [bird]]],
+      null,
+    ])
+    expect(second.total).toBe(2)
     const all = await listSenseMembers(world.deps, animal, 'biology', { limit: 10 }, zh)
     expect(all.items.map((item) => item.lemma)).toEqual(['bird', 'raptor', 'eagle'])
+    expect(all.total).toBe(3)
+    // A member of two categories names both; a parent outside the layers walked is left out.
+    await relate(eagle, raptor)
+    await reviewAll(world)
+    const parentsOf = async (domain: 'biology' | null) =>
+      (await listSenseMembers(world.deps, animal, domain, { limit: 10 }, zh)).items.find(
+        (item) => item.lemma === 'eagle',
+      )?.parents
+    expect(await parentsOf('biology')).toEqual([bird, raptor].sort())
+    expect(await parentsOf(null)).toEqual([bird])
     await expect(listSenseMembers(world.deps, 'missing' as SenseId, null, { limit: 10 }, zh)).rejects.toMatchObject({
       code: 'not_found',
     })
+  })
+
+  it('reads the overviews of many lemmas in the order asked, and names the ones without an entry [spec: public-view/overviews]', async () => {
+    const { world, sense } = await publishedBank()
+    await headword(world, 'shore', [{ pos: 'noun', gloss: 'the land along a sea' }])
+    await submitFact(world.deps, agentA, {
+      kind: 'translation',
+      subject_id: sense.id,
+      payload: { language: 'zh', of: 'sense', text: '河岸' },
+    })
+    await reviewAll(world)
+    const lemmas = ['shore', ' Bank', 'bank', 'shore', 'banks']
+    const read = await listEntryOverviews(world.deps, lemmas, 4, zh)
+    // Versioned by the sense limit and, in the order asked, each document's digest or what is missing.
+    expect(read.versions).toEqual([
+      '4',
+      expect.stringMatching(/^digest/),
+      'missing: Bank',
+      expect.stringMatching(/^digest/),
+      'missing:banks',
+    ])
+    expect((await listEntryOverviews(world.deps, lemmas, 2, zh)).versions[0]).toBe('2')
+    const found = read.read()
+    expect(found.items.map((item) => item.lemma)).toEqual(['shore', 'bank'])
+    // Exact lemmas only: a different case or an inflected form is missing, as it was spelled.
+    expect(found.missing).toEqual([' Bank', 'banks'])
+    expect(found.items[1]).toMatchObject({
+      lemma: 'bank',
+      meanings: [
+        {
+          pos: 'noun',
+          sense_count: 1,
+          senses: [{ id: sense.id, gloss: 'land beside a river', rare: false, translations: ['河岸'] }],
+        },
+      ],
+    })
+    expect((await listEntryOverviews(world.deps, ['nothing'], 4, none)).read()).toEqual({
+      items: [],
+      missing: ['nothing'],
+    })
+  })
+
+  it('shows the category of a topic tag on the entry and the sense [spec: public-view/topic-category]', async () => {
+    const { world, sense } = await publishedBank()
+    await submitFact(world.deps, agentA, {
+      kind: 'topic',
+      subject_id: sense.id,
+      payload: { topic_id: 'furniture' as TopicId },
+    })
+    await reviewAll(world)
+    const category = { id: 'home', name: { en: 'Home', zh: 'Home (zh)' } }
+    const entry = (await getPublicEntry(world.deps, 'bank', zh)).read()
+    expect(entry.meanings[0]?.senses[0]?.topics).toEqual([
+      { id: 'furniture', name: { en: 'Furniture', zh: 'Furniture (zh)' }, category },
+    ])
+    expect((await getPublicSense(world.deps, sense.id, zh)).read().topics[0]?.category).toEqual(category)
   })
 
   it('gets a published sense in the requested language and 404s unknown or hidden ones', async () => {
@@ -363,7 +440,7 @@ describe('public reads', () => {
     })
     await reviewAll(world)
     const found = await getPublicSense(world.deps, sense.id, zh)
-    expect(found.versions).toEqual([expect.any(String)])
+    expect(found.versions).toEqual([expect.any(String), expect.stringContaining('"body-health"')])
     expect(found.read()).toMatchObject({
       lang: 'zh',
       id: sense.id,

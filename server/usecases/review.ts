@@ -26,7 +26,7 @@ import type { Deps } from './deps'
 import { namedNodesOf } from './named'
 import { refreshEntries } from './refresh'
 
-type ReviewDeps = Pick<
+export type ReviewDeps = Pick<
   Deps,
   'nodes' | 'facts' | 'topics' | 'reference' | 'publicViews' | 'work' | 'decision' | 'llm' | 'reviewQueue' | 'clock'
 >
@@ -49,18 +49,36 @@ async function senseContext(deps: ReviewDeps, id: SenseId): Promise<SubjectViews
   }
 }
 
+/** The subject of a fact as its review, or the classification of a slot on it, sees it. */
+export function loadSubject<S extends keyof SubjectViews>(
+  deps: ReviewDeps,
+  type: S,
+  id: string,
+): Promise<SubjectViews[S]> {
+  return (subjectLoaders[type] as (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]>)(deps, id)
+}
+
 const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string) => Promise<SubjectViews[S]> } = {
   entry: async (deps, id) => {
     const entry = await deps.nodes.findEntry(id as EntryId)
     if (!entry) throw new Error(`Entry ${id} referenced by a fact does not exist.`)
-    const [senses, caseVariants] = await Promise.all([
+    const [senses, caseVariants, reference] = await Promise.all([
       entrySenses(deps, entry.id),
       deps.nodes.listLiveCaseVariants(entry),
+      deps.reference.forLemma(entry.lemma),
     ])
     return {
       lemma: entry.lemma,
-      senses: senses.map(({ id: senseId, pos, gloss }) => ({ id: senseId, pos, gloss })),
+      senses: senses.map(({ id: senseId, pos, gloss, rank, register, region }) => ({
+        id: senseId,
+        pos,
+        gloss,
+        rank,
+        ...(register ? { register } : {}),
+        ...(region ? { region } : {}),
+      })),
       caseVariants,
+      zipf: reference.frequency?.zipf ?? null,
     }
   },
   sense: (deps, id) => senseContext(deps, id as SenseId),

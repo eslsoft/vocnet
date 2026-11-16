@@ -50,6 +50,7 @@ export const zhCN: typeof enUS = {
     syllables: '音节',
     phrases: '短语',
     sentence_meaning: '谚语释义',
+    productive_use: '主动 / 被动',
     sentence: '句子',
   },
   factState: {
@@ -86,6 +87,7 @@ export const zhCN: typeof enUS = {
     morphology: '构词',
     form_pronunciations: '词形发音',
     sayings: '谚语释义',
+    productive_use: '主动 / 被动',
   },
   taskStatus: {
     queued: '排队中',
@@ -129,6 +131,7 @@ export const zhCN: typeof enUS = {
     collocations: '还没有搭配。',
     sayings_one: '{{count}} 条谚语还没有释义。',
     sayings_other: '{{count}} 条谚语还没有释义。',
+    productive_use: '还没有标主动 / 被动：{{pos}}。',
   },
   gapNeed: {
     examples_one: '还需要 {{count}} 个例句',
@@ -295,6 +298,7 @@ export const zhCN: typeof enUS = {
       syllables: '音节',
       formation: '构词',
       phrases: '短语',
+      productiveUse: '主动 / 被动',
       translations: '翻译',
     },
     reference: '参考数据',
@@ -545,6 +549,10 @@ export const zhCN: typeof enUS = {
       us: '美式英语',
     },
     weak: '弱读',
+    tier: { native: '母语者', learner: 'C1 学习者' },
+    active: '主动',
+    passive: '被动',
+    skill: { listen: '听', speak: '说', read: '读', write: '写' },
     irregular: '不规则形式',
     forms: {
       plural: '复数',

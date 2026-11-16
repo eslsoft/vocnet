@@ -29,6 +29,7 @@ import { type Fact, type FactOf, isKind } from './fact'
 import { formMeaning, isIrregularForm, type NamedNodes } from './fact-kinds'
 import { currentInventory, inventorySenses } from './inventory'
 import type { EntryNode, SenseNode, SentenceNode } from './nodes'
+import { skillsOf } from './productive-use'
 import { levelRank } from './reference'
 import { assessEntry, type SlotCounts } from './work'
 
@@ -141,7 +142,7 @@ export interface StoredSense
 
 export interface StoredMeaning extends Omit<Meaning, 'senses' | 'review'> {
   senses: StoredSense[]
-  review: { forms: Partial<Record<InflectionType, ReviewMeta[]>> }
+  review: { forms: Partial<Record<InflectionType, ReviewMeta[]>>; productive_use: ReviewMeta | null }
 }
 
 /** An entry as lists show it, with its first sense's first translation in every language. */
@@ -384,16 +385,32 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
   // One meaning per part of speech, in the order of its first sense in the inventory.
   const meanings = new Map<Pos, StoredMeaning>()
   for (const sense of inventory.payload.senses) {
-    const meaning = meanings.get(sense.pos) ?? {
+    const meaning: StoredMeaning = meanings.get(sense.pos) ?? {
       pos: sense.pos,
       cefr: context.reference.cefr.find((row) => row.pos === sense.pos)?.level ?? null,
+      productive_use: null,
+      skills: null,
       pronunciations: [],
       forms: {},
       senses: [],
-      review: { forms: {} },
+      review: { forms: {}, productive_use: null },
     }
     meaning.senses.push(storedSense(sense))
     meanings.set(sense.pos, meaning)
+  }
+
+  // A part of speech with only rare senses is passive for both tiers; any other shows its published
+  // productive use, with the skills its common senses' registers give each tier.
+  const uses = about('productive_use', snapshot.entry.id)
+  for (const meaning of meanings.values()) {
+    const common = inventory.payload.senses.filter((sense) => sense.pos === meaning.pos && sense.rank === 'common')
+    const fact = common.length === 0 ? undefined : uses.find((use) => use.payload.pos === meaning.pos)
+    const use = common.length === 0 ? { native: false, learner: false } : fact?.payload
+    if (!use) continue
+    const registers = common.map((sense) => sense.register)
+    meaning.productive_use = { native: use.native, learner: use.learner }
+    meaning.skills = { native: skillsOf(use.native, registers), learner: skillsOf(use.learner, registers) }
+    if (fact) meaning.review.productive_use = reviewOf(fact)
   }
 
   const pronunciations: PublicPronunciation[] = []

@@ -46,7 +46,14 @@ Feature: Topics
   Scenario: The taxonomy is served as categories with their leaf topics
     Given the topic taxonomy
     When it is listed
-    Then each category carries its leaf topics, both in display order, with English and Chinese names
+    Then each category carries its leaf topics, both in display order, with English and Chinese names under name
+
+  @topics/counts @usecase
+  Scenario: The taxonomy counts what each topic lists
+    Given published topic facts on senses of an entry, one sense under two leaves of a category
+    When the taxonomy is listed
+    Then each leaf and category gives how many public senses its sense list shows, a category counting each sense once, and how many entries its entry list shows
+    And a topic nothing is tagged with counts zero
 
   @topics/senses @usecase
   Scenario: A topic lists the published senses it tags, and a category rolls up its leaves
@@ -59,15 +66,16 @@ Feature: Topics
   Scenario: The seeded taxonomy is public
     Given a fresh database with every migration applied
     When GET /v1/topics is called
-    Then it returns the 16 approved categories over 147 leaf topics with their English and Chinese names
+    Then it returns the 16 approved categories over 147 leaf topics with their English and Chinese names and zero counts, with a five-second max-age and an ETag
+    And If-None-Match with that ETag is 304, until a count changes
 
   @topics/publish-api @api
   Scenario: A topic fact is reviewed, published, and listed on a real database
     Given topic facts submitted on senses of two entries
     When the queue reviews and publishes them
-    Then GET /v1/topics/{id}/senses lists each tagged sense as a sense summary with its lemma, id, part of speech, CEFR level, gloss, and translation, in lemma order and paginated
-    And a category lists the senses of all its leaves
-    And the public entry shows the topic tags of each sense, and the management API lists the topic facts
+    Then GET /v1/topics/{id}/senses lists each tagged sense as a sense summary with its lemma, id, part of speech, CEFR level, gloss, translation, and whether it is rare, in lemma order and paginated
+    And a category lists the senses of all its leaves, and GET /v1/topics counts them
+    And the public entry shows the topic tags of each sense with their category, and the management API lists the topic facts
 
   @topics/visibility @api
   Scenario: A tagged sense is listed only while everything it shows is published
