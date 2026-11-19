@@ -82,7 +82,7 @@
     "typescript": "^6.0.3",
     "vite": "^7.3.2",
     "vitest": "^4.1.2",
-    "wrangler": "^4.95.0"
+    "wrangler": "^4.157.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
