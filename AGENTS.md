@@ -8,6 +8,14 @@ Use `$best-engineering-practice` for every code change. This repository is the
 Hono + Cloudflare Workers + React specialization of that technology-neutral
 policy. When rules conflict, the generic skill's core policy wins.
 
+## Handbook
+
+Types: cf-workers
+Stage: development
+Facts: production is the Worker `vocnet` at https://vocnet.saltbo.workers.dev in Cloudflare account `94a89d03c0fc785c8dcbd3c674d6742a` (set `CLOUDFLARE_ACCOUNT_ID` for `realmroot exec cloudflare -- pnpm wrangler`), a public replica of the local database where agents produce the facts (docs/adr/0001-production-is-a-public-replica.md); `pnpm replica:sync -- --remote` publishes what changed locally; D1 `vocnet` for production and `vocnet-preview` shared by previews; Workers Builds deploys, its `main` trigger running `pnpm db:migrate:remote && pnpm exec wrangler deploy` and its trigger for other branches `pnpm db:migrate:preview && pnpm exec wrangler preview` (set in Cloudflare, not in this repository); a preview takes `MODEL_API_KEY` and `OPENAI_API_KEY` from the Worker's `previews_base_config` when it is created, so a preview created without them is deleted (`wrangler preview delete`) and built again; the Realmroot GitHub integration has no access to the eslsoft organization, so pushes and PRs here use the owner's `gh` credentials
+Preview: Workers Builds creates one for every branch other than `main`, at `https://<branch>-vocnet.saltbo.workers.dev`, on `vocnet-preview`, which holds whatever was last synced to it with `pnpm replica:sync -- --remote --preview`
+Exceptions: none
+
 ## Domain rules
 
 - Facts are the unit. Every reviewed claim is one row in `facts`; nodes
