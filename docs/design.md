@@ -2386,6 +2386,45 @@ migrations apply --local`, and 64 rebuild calls of 200 rebuilt every view in
 about 5 ms, and a topic-filtered list by frequency, which walks the frequency
 index checking each entry, 10 to 18 ms; `run` in `zh` 4 ms as before.
 
+## Public replica
+
+Until production moves online, the facts are produced on a local deployment
+and production is a public replica: it serves the public reads (`/v1/*`) from
+rows copied out of the local database, holds no facts, and runs no reviews.
+`pnpm replica:sync -- --remote` (`scripts/replica/sync.mjs`) copies them; with
+`-- --local --persist-to <dir>` it rehearses against a local database instead.
+
+The unit of a copy is one public entry (`server/domain/replica.ts`): its
+`entries` row, its `senses` rows, a `worklist` row, and its rows in every
+public view table. The topic taxonomy is one more unit. The worklist row keeps
+only `entry_id`, `created_at`, and `live`, so every revision on the replica is
+0 and no view is ever stale there: a stale view would be rebuilt from facts
+the replica does not have. A `public_search` row drops its id; the replica
+numbers its own rows and its triggers keep `public_search_fts` in step.
+
+The replica keeps `replica_manifest` (`key`, `fingerprint`, `synced_at`; key
+`entry:<id>` or `topics`), which only the sync reads or writes and the sync
+creates. A unit's fingerprint is the first 128 bits of the SHA-256 of its rows,
+each row's values in column order and the rows sorted. A sync reads every unit
+of the local database in one read transaction, so it sees one snapshot while
+the producer keeps writing; reads the replica's manifest; pushes the units the
+replica lacks or holds with another fingerprint; and removes the entries the
+replica holds that are no longer public. Removals go first, since a removed
+entry may hold the lemma a pushed entry takes. Pushing a unit deletes the
+replica's rows of it and inserts the source's, and writes its manifest row
+last, so a sync cut off midway copies the unfinished units again on the next
+run, and running it twice changes nothing. The statements of the sync go to
+the replica as `wrangler d1 execute --file` imports of up to 50 MB, one row of
+`public_entries` to a statement under D1's 100 KB statement limit. An import
+holds the database while it runs, so a first sync of every entry makes the
+replica unavailable for its duration; a later sync copies only what changed.
+
+What a replica cannot answer: feedback is `404` for every target, because it
+is checked against the live projection of the facts (see Feedback), which the
+replica does not have. The management API answers, but over a database with no
+facts or work. The replica's reviewer gateway is `https://models.invalid`,
+which never resolves, so a review there fails loudly instead of reaching a model.
+
 ## Runtime
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
