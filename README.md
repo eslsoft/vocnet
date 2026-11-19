@@ -107,19 +107,24 @@ a `*/5 * * * *` cron.
 
 ## Deploy
 
-Create the resources once, then put the D1 id in `wrangler.toml`:
+Production is the Worker `vocnet` with D1 `vocnet`; it is a public replica that
+serves the public reads from data produced locally (see
+[Public replica](docs/design.md#public-replica)). The queues `vocnet-reviews`,
+`vocnet-reviews-dlq`, and `vocnet-reviews-preview` exist, and the secrets
+`MODEL_API_KEY` and `OPENAI_API_KEY` are set on the Worker.
+
+CI (`.github/workflows/ci.yml`) gates every push. Cloudflare Workers Builds
+deploys: a push to `main` runs `pnpm db:migrate:remote && pnpm exec wrangler
+deploy`, and every other branch gets a preview with `pnpm db:migrate:preview &&
+pnpm exec wrangler preview`, on the shared D1 `vocnet-preview`. The triggers
+are set in Cloudflare, not in this repository.
+
+To publish what the local database produced since the last sync:
 
 ```bash
-wrangler d1 create vocnet
-wrangler queues create vocnet-reviews
-wrangler queues create vocnet-reviews-dlq
-wrangler secret put MODEL_API_KEY
-pnpm db:migrate:remote
-pnpm build && pnpm run deploy
+pnpm replica:sync -- --remote             # what changed, then copies it
+pnpm replica:sync --dry-run -- --remote   # only counts what would change
 ```
-
-CI (`.github/workflows/ci.yml`) gates every push. CD (`deploy.yml`) ships `main`
-when the repo variable `ENABLE_DEPLOY=true` and the Cloudflare secrets are set.
 
 ## Operations
 

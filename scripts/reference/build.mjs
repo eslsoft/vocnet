@@ -3,28 +3,14 @@
 // Usage: node scripts/reference/build.mjs <raw.json> > reference.sql
 //
 // It runs the server's own import rules and SQL renderer straight from their TypeScript
-// sources: Node strips the types, and the hook below resolves the repo's path aliases and
-// extensionless imports the way the bundler does.
+// sources through the loader in scripts/server-modules.mjs.
+import '../server-modules.mjs'
 import { readFile } from 'node:fs/promises'
-import { registerHooks } from 'node:module'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const root = path.resolve(here, '../..')
-const aliases = { '@server/': path.join(root, 'server/'), '@shared/': path.join(root, 'shared/') }
-
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    const alias = Object.keys(aliases).find((prefix) => specifier.startsWith(prefix))
-    if (alias) return nextResolve(`${pathToFileURL(aliases[alias] + specifier.slice(alias.length))}.ts`, context)
-    if (specifier.startsWith('.') && context.parentURL?.endsWith('.ts') && !path.extname(specifier)) {
-      return nextResolve(`${specifier}.ts`, context)
-    }
-    return nextResolve(specifier, context)
-  },
-})
 
 const { cefrjPos, mergeCefr, octanovePos, rankFrequencies } = await import('../../server/domain/reference.ts')
 const { referenceImportSql } = await import('../../server/adapters/reference-sql.ts')

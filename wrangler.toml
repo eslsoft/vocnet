@@ -8,7 +8,18 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = true
 
+# Production is a public replica (docs/design.md, Public replica): it serves the public reads from
+# rows synced out of the local database where the facts are produced, and runs no reviews. The
+# reviewer settings below are what a review would use once production moves online.
 [vars]
+# Realmroot application "Vocnet Console".
+OIDC_ISSUER = "https://id.realmroot.dev/api/auth"
+OIDC_CLIENT_ID = "01a1cbe0-6e6c-74fb-a782-f3790276a7cc"
+OIDC_AUDIENCE = "https://id.realmroot.dev/api/auth/oauth2/userinfo"
+ADMIN_SUBJECTS = "019ff417-3c2a-7095-bfff-526e03267968"
+# The replica reaches no model gateway: `.invalid` never resolves, so a review there fails loudly.
+MODEL_BASE_URL = "https://models.invalid"
+REVIEW_LLM_MODEL = "gpt-5-mini"
 JEV_MODEL = "jev-latest"
 # Calls each gateway model gets at once within one review batch; the gateway rate-limits above these.
 JEV_CONCURRENCY = "10"
@@ -19,7 +30,8 @@ DECISIONS_MODEL = "gpt-6-luna"
 [[d1_databases]]
 binding = "DB"
 database_name = "vocnet"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "44830fb1-6a0f-442c-ba1c-73543b9f41cf"
+preview_database_id = "ac79bdc6-dc75-416b-a229-810163154b3a"
 migrations_dir = "migrations"
 
 [[queues.producers]]
@@ -65,5 +77,54 @@ name = "SERVICE_READ_RATE_LIMITER"
 namespace_id = "1003"
 
   [ratelimits.simple]
+  limit = 6000
+  period = 60
+
+# Previews of this Worker use the shared pre-release database and their own review queue, never
+# production's. Previews inherit no vars or bindings, so each is listed again.
+[previews.vars]
+OIDC_ISSUER = "https://id.realmroot.dev/api/auth"
+OIDC_CLIENT_ID = "01a1cbe0-6e6c-74fb-a782-f3790276a7cc"
+OIDC_AUDIENCE = "https://id.realmroot.dev/api/auth/oauth2/userinfo"
+ADMIN_SUBJECTS = "019ff417-3c2a-7095-bfff-526e03267968"
+MODEL_BASE_URL = "https://models.invalid"
+REVIEW_LLM_MODEL = "gpt-5-mini"
+JEV_MODEL = "jev-latest"
+JEV_CONCURRENCY = "10"
+REVIEW_LLM_CONCURRENCY = "8"
+DECISIONS_BASE_URL = "https://api.openai.com"
+DECISIONS_MODEL = "gpt-6-luna"
+
+[[previews.d1_databases]]
+binding = "DB"
+database_name = "vocnet-preview"
+database_id = "ac79bdc6-dc75-416b-a229-810163154b3a"
+migrations_dir = "migrations"
+
+[[previews.queues.producers]]
+binding = "REVIEW_QUEUE"
+queue = "vocnet-reviews-preview"
+
+[[previews.ratelimits]]
+name = "FEEDBACK_RATE_LIMITER"
+namespace_id = "1001"
+
+  [previews.ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[previews.ratelimits]]
+name = "READ_RATE_LIMITER"
+namespace_id = "1002"
+
+  [previews.ratelimits.simple]
+  limit = 120
+  period = 60
+
+[[previews.ratelimits]]
+name = "SERVICE_READ_RATE_LIMITER"
+namespace_id = "1003"
+
+  [previews.ratelimits.simple]
   limit = 6000
   period = 60
