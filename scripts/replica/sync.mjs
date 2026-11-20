@@ -5,6 +5,7 @@
 //
 // Usage: node scripts/replica/sync.mjs [--source <file.sqlite>] [--media-source <dir>]
 //          [--database vocnet] [--bucket vocnet-media] [--wrangler "<command>"] [--dry-run]
+//          [--media-concurrency 16]
 //          -- <wrangler target flags, e.g. --remote>
 //
 // --source defaults to the local D1 file under .wrangler, --media-source to the local state the
@@ -13,7 +14,7 @@
 // execute` does: `--remote`, `--remote --preview`, or `--local --persist-to <dir>` for a
 // rehearsal. --bucket is the replica's media bucket: vocnet-media-preview for a preview.
 import '../server-modules.mjs'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -36,6 +37,7 @@ const { values: options } = parseArgs({
     bucket: { type: 'string', default: 'vocnet-media' },
     wrangler: { type: 'string', default: 'pnpm exec wrangler' },
     'dry-run': { type: 'boolean', default: false },
+    'media-concurrency': { type: 'string', default: '16' },
   },
 })
 const target = process.argv.slice(separator + 1)
@@ -66,15 +68,43 @@ function runWrangler(args) {
   return run.stdout
 }
 
+/** Runs Wrangler with the arguments without blocking, for the media copies that run side by side. */
+function runWranglerAsync(args) {
+  const [command, ...prefix] = options.wrangler.split(' ').filter(Boolean)
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, [...prefix, ...args], { stdio: ['ignore', 'ignore', 'inherit'] })
+    child.on('error', reject)
+    child.on('close', (status) =>
+      status === 0 ? resolve() : reject(new Error(`wrangler ${args.slice(0, 3).join(' ')} exited with ${status}.`)),
+    )
+  })
+}
+
 /** Runs `wrangler d1 execute` against the replica. */
 const wrangler = (args) => runWrangler(['d1', 'execute', options.database, ...target, ...args])
 
 /** Copies a media file from the local state to the replica's bucket. */
-function copyMedia(id, directory) {
+async function copyMedia(id, directory) {
   const file = path.join(directory, id)
-  runWrangler(['r2', 'object', 'get', `${SOURCE_BUCKET}/${id}`, '--local', '--persist-to', options['media-source'], '--file', file])
-  runWrangler(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP])
+  await runWranglerAsync(['r2', 'object', 'get', `${SOURCE_BUCKET}/${id}`, '--local', '--persist-to', options['media-source'], '--file', file])
+  await runWranglerAsync(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP])
   rmSync(file)
+}
+
+/** Copies the media files --media-concurrency at a time; the first failure stops the sync. */
+async function copyAllMedia(ids, directory) {
+  let next = 0
+  let copied = 0
+  const worker = async () => {
+    while (next < ids.length) {
+      const id = ids[next++]
+      await copyMedia(id, directory)
+      copied += 1
+      if (copied % 50 === 0 || copied === ids.length) console.info(`Copied media ${copied}/${ids.length}`)
+    }
+  }
+  const workers = Math.max(1, Number(options['media-concurrency']))
+  await Promise.all(Array.from({ length: Math.min(workers, ids.length) }, worker))
 }
 
 // One read transaction: every unit is read from the same snapshot while the producer keeps writing.
@@ -110,10 +140,7 @@ if (!options['dry-run'] && plan.media.length + plan.push.length + plan.remove.le
   try {
     // The files go first, so no row the replica serves names a file it lacks.
     const syncedAt = new Date().toISOString()
-    for (const [index, id] of plan.media.entries()) {
-      console.info(`Copying media ${index + 1}/${plan.media.length}`)
-      copyMedia(id, directory)
-    }
+    await copyAllMedia(plan.media, directory)
     const files = []
     let statements = plan.media.map((id) => sql.mediaManifestSql(id, syncedAt))
     let size = statements.reduce((total, statement) => total + statement.length + 1, 0)
