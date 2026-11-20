@@ -20,9 +20,14 @@ import { refreshStaleWork } from './usecases/work-scores'
 // Composition root: wire per-request deps, then delegate to the app. Kept out of
 // app.ts so the exported AppType (consumed by the SPA's RPC client) carries no
 // Workers-only types. Exported for integration tests that drive the full stack.
+const pageHeaders = secureHeaders()
+// A media file is made to be shown on other sites, such as a consumer's topic cards; same-origin
+// would keep browsers from loading it there.
+const mediaHeaders = secureHeaders({ crossOriginResourcePolicy: 'cross-origin' })
+
 export const worker = new Hono<{ Bindings: Env; Variables: AppVariables }>()
   .onError(onError)
-  .use('*', secureHeaders())
+  .use('*', (c, next) => (c.req.path.startsWith('/v1/media/') ? mediaHeaders : pageHeaders)(c, next))
   .use('*', requestBoundary)
   .use('*', auditBoundary)
   .use('*', async (c, next) => {

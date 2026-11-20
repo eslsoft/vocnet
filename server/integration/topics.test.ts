@@ -310,6 +310,8 @@ describe('topic pictures', () => {
       'public, max-age=31536000, immutable',
     ])
     expect(read.headers.get('ETag')).toBe(`"${id}"`)
+    expect(read.headers.get('Cross-Origin-Resource-Policy')).toBe('cross-origin')
+    expect((await request('/v1/topics')).headers.get('Cross-Origin-Resource-Policy')).toBe('same-origin')
     expect(new Uint8Array(await read.arrayBuffer())).toEqual(picture)
     const again = await request(image_url, { headers: { 'if-none-match': `"${id}"` } })
     expect(again.status).toBe(304)
