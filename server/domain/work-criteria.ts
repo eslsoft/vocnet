@@ -208,6 +208,15 @@ function decisionRule({ gates, combine }: DecisionRequest): string {
 function fillCriteria(one: Sample, pos: Pos): FillCriteria {
   const plan = planReview(one.kind, one.payload as never, contextFor(one, pos))
   if (plan.kind === 'unreviewable') throw new Error(`The ${one.kind} criteria sample is unreviewable: ${plan.reason}`)
+  if (plan.kind === 'look') {
+    return {
+      kind: one.kind,
+      claim: one.claim,
+      decision: null,
+      rubric: plan.judge(['<guesses>']).user,
+      limits: limitsOf(one.kind),
+    }
+  }
   return {
     kind: one.kind,
     claim: one.claim,

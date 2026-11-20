@@ -111,6 +111,8 @@ export interface FakeWorld {
   cachedResponses: Map<string, Response>
   decisionCalls: Array<{ model: DecisionModelName; questions: JevQuestions; state: Readonly<Record<string, unknown>> }>
   llmCalls: LlmPrompt[]
+  /** The pictures shown with each LLM call, in the order of llmCalls. */
+  llmPictures: Array<readonly string[]>
   setNow(iso: string): void
   answerDecision(model: DecisionModelName, answer: DecisionAnswer): void
   answerLlm(answer: (prompt: LlmPrompt) => LlmJudgement | Promise<LlmJudgement>): void
@@ -202,6 +204,7 @@ export function fakeWorld(): FakeWorld {
     cachedResponses: new Map(),
     decisionCalls: [],
     llmCalls: [],
+    llmPictures: [],
     setNow: (iso) => {
       now = new Date(iso)
     },
@@ -1026,6 +1029,7 @@ export function fakeWorld(): FakeWorld {
       put: async (id, bytes, contentType) => {
         if (!world.media.has(id)) world.media.set(id, { bytes, contentType })
       },
+      has: async (id) => world.media.has(id),
       get: async (id) => {
         const file = world.media.get(id)
         if (!file) return null
@@ -1257,12 +1261,14 @@ export function fakeWorld(): FakeWorld {
       },
     },
     llm: {
-      judge: async (prompt) => {
+      judge: async (prompt, pictures = []) => {
         world.llmCalls.push(prompt)
+        world.llmPictures.push(pictures)
         return llmAnswer(prompt)
       },
-      answer: async (prompt) => {
+      answer: async (prompt, pictures = []) => {
         world.llmCalls.push(prompt)
+        world.llmPictures.push(pictures)
         return { model: 'llm-test', answer: await llmChoice(prompt) }
       },
     },

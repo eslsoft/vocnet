@@ -32,6 +32,7 @@ const review = (id: string): ReviewMeta => ({ fact_id: id as FactId, confidence:
 const entryId = 'e0000000-0000-4000-8000-000000000001' as EntryId
 
 const storedSense = (id: string, topics: string[], translations: Record<string, string[]>): StoredSense => ({
+  image: null,
   id: id as SenseId,
   gloss: `Gloss of ${id}.`,
   labels: [],
@@ -80,9 +81,11 @@ const summary: StoredSummary = {
   cefr: 'A2',
   gloss: 'Gloss of s1.',
   translations: { zh: '银行' },
+  image_url: null,
 }
 
 const bank: StoredEntry = {
+  image: null,
   id: entryId,
   lemma: 'bank',
   frequency: { zipf: 5.16, rank: 691 },
@@ -143,12 +146,26 @@ const bank: StoredEntry = {
 
 const links: EntryLinks = {
   phrases: [
-    { lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translations: { zh: '指望' } },
-    { lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.', translations: {} },
-    { lemma: 'break the bank', pos: ['verb'], cefr: null, gloss: 'To cost too much.', translations: {} },
-    { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.', translations: {} },
+    {
+      lemma: 'bank on',
+      pos: ['verb'],
+      cefr: null,
+      gloss: 'To rely on.',
+      translations: { zh: '指望' },
+      image_url: null,
+    },
+    { lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.', translations: {}, image_url: null },
+    {
+      lemma: 'break the bank',
+      pos: ['verb'],
+      cefr: null,
+      gloss: 'To cost too much.',
+      translations: {},
+      image_url: null,
+    },
+    { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.', translations: {}, image_url: null },
   ],
-  family: [{ lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.', translations: {} }],
+  family: [{ lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.', translations: {}, image_url: null }],
   publicParts: ['bank'],
 }
 
@@ -202,6 +219,7 @@ describe('public view records', () => {
           cefr: 'A2',
           gloss: 'Gloss of s1.',
           translations: { zh: '银行', 'zh-Hant': '銀行', fr: 'banque' },
+          image_url: null,
         },
       },
       expect.objectContaining({ topicId: 'places' }),
@@ -258,13 +276,18 @@ describe('public read variants', () => {
     expect(entry.phrase_type).toBeNull()
     expect(entry.phrases).toEqual({
       by_sense: [
-        { sense_id: 's1', phrases: [{ lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.' }] },
+        {
+          sense_id: 's1',
+          phrases: [{ lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.', image_url: null }],
+        },
       ],
-      phrasal_verbs: [{ lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translation: '指望' }],
+      phrasal_verbs: [
+        { lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translation: '指望', image_url: null },
+      ],
       // A phrase filed under a sense the document does not show goes by its type.
       idioms: [
-        { lemma: 'break the bank', pos: ['verb'], cefr: null, gloss: 'To cost too much.' },
-        { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.' },
+        { lemma: 'break the bank', pos: ['verb'], cefr: null, gloss: 'To cost too much.', image_url: null },
+        { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.', image_url: null },
       ],
       compounds: [],
       sayings: [
@@ -277,7 +300,9 @@ describe('public read variants', () => {
       ],
     })
     expect(entryOf(bank, links, none).phrases.sayings[0]).not.toHaveProperty('translation')
-    expect(entry.morphology?.family).toEqual([{ lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.' }])
+    expect(entry.morphology?.family).toEqual([
+      { lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.', image_url: null },
+    ])
   })
 
   it('shows review metadata only when asked for [spec: catalog/review-metadata]', () => {
@@ -409,7 +434,14 @@ describe('public read variants', () => {
       id: 's3',
       pos: 'verb',
       translations: ['存'],
-      entry: { lemma: 'bank', pos: ['noun', 'verb'], cefr: 'A2', gloss: 'Gloss of s1.', translation: '银行' },
+      entry: {
+        lemma: 'bank',
+        pos: ['noun', 'verb'],
+        cefr: 'A2',
+        gloss: 'Gloss of s1.',
+        translation: '银行',
+        image_url: null,
+      },
     })
     expect(senseDetailOf(bank, 's8' as SenseId, none)).toBeNull()
   })
@@ -476,6 +508,7 @@ describe('public read variants', () => {
       pos: ['noun', 'verb'],
       cefr: 'A2',
       gloss: 'Gloss of s1.',
+      image_url: null,
     })
     expect(shapeSummary(summary, { lang: 'zh', review: true }).translation).toBe('银行')
     expect(shapeSummary(summary, { lang: 'all', review: false })).not.toHaveProperty('translation')
@@ -488,6 +521,7 @@ describe('public read variants', () => {
       cefr: null,
       gloss: 'Land.',
       translations: { zh: '岸' },
+      image_url: '/v1/media/abc',
     }
     expect(shapeSenseSummary(sense, { lang: 'zh', review: false })).toEqual({
       lemma: 'bank',
@@ -496,6 +530,7 @@ describe('public read variants', () => {
       cefr: null,
       gloss: 'Land.',
       translation: '岸',
+      image_url: '/v1/media/abc',
     })
     expect(shapeSenseSummary(sense, none)).not.toHaveProperty('translation')
 

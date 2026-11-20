@@ -1,6 +1,6 @@
 import { webpHeader } from '@server/testing/webp'
 import { describe, expect, it } from 'vitest'
-import { mediaIdOf, TOPIC_IMAGE, topicImageProblem, webpSize } from './media'
+import { mediaIdOf, PICTURE, pictureProblem, webpSize } from './media'
 
 describe('webpSize', () => {
   it('reads the size a lossy, lossless, or extended WebP declares, and none from other files [spec: topics/image-format]', () => {
@@ -24,14 +24,14 @@ describe('webpSize', () => {
   })
 })
 
-describe('topicImageProblem', () => {
+describe('pictureProblem', () => {
   it('accepts a 1024×1024 WebP within the size limit and names what is wrong with anything else', () => {
-    expect(topicImageProblem(webpHeader(1024, 1024))).toBeNull()
-    expect(topicImageProblem(webpHeader(1024, 1024, { chunk: 'VP8X' }))).toBeNull()
-    expect(topicImageProblem(new Uint8Array(64))).toBe('A topic image is a WebP file.')
-    expect(topicImageProblem(webpHeader(1254, 1254))).toBe('A topic image is 1024×1024; this one is 1254×1254.')
-    expect(topicImageProblem(webpHeader(1024, 1024, { length: TOPIC_IMAGE.maxBytes + 1 }))).toBe(
-      `A topic image is at most ${TOPIC_IMAGE.maxBytes} bytes; this one is ${TOPIC_IMAGE.maxBytes + 1}.`,
+    expect(pictureProblem(webpHeader(1024, 1024))).toBeNull()
+    expect(pictureProblem(webpHeader(1024, 1024, { chunk: 'VP8X' }))).toBeNull()
+    expect(pictureProblem(new Uint8Array(64))).toBe('A picture is a WebP file.')
+    expect(pictureProblem(webpHeader(1254, 1254))).toBe('A picture is 1024×1024; this one is 1254×1254.')
+    expect(pictureProblem(webpHeader(1024, 1024, { length: PICTURE.maxBytes + 1 }))).toBe(
+      `A picture is at most ${PICTURE.maxBytes} bytes; this one is ${PICTURE.maxBytes + 1}.`,
     )
   })
 })

@@ -51,6 +51,7 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
     examples: [],
     collocations: [],
     topics: [],
+    image: null,
     relations: noRelations,
     ...extra,
   })
@@ -65,14 +66,15 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
     ],
     variants: [],
     syllables: ['an', 'i', 'mal'],
+    image: null,
     morphology: {
       parts: [
         { form: 'anim', role: 'root', meaning: 'breath' },
         { form: '-al', role: 'suffix' },
       ],
       family: [
-        { lemma: 'animalistic', pos: ['adjective'], cefr: null, gloss: 'Like an animal.' },
-        { lemma: 'animalism', pos: [], cefr: null, gloss: null },
+        { lemma: 'animalistic', pos: ['adjective'], cefr: null, gloss: 'Like an animal.', image_url: null },
+        { lemma: 'animalism', pos: [], cefr: null, gloss: null, image_url: null },
       ],
     },
     meanings: [
@@ -143,11 +145,13 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
       by_sense: [
         {
           sense_id: senseIds.animal as never,
-          phrases: [{ lemma: 'animal kingdom', pos: ['noun'], cefr: null, gloss: 'All animals.' }],
+          phrases: [{ lemma: 'animal kingdom', pos: ['noun'], cefr: null, gloss: 'All animals.', image_url: null }],
         },
       ],
       phrasal_verbs: [],
-      idioms: [{ lemma: 'party animal', pos: ['noun'], cefr: null, gloss: 'Someone who loves parties.' }],
+      idioms: [
+        { lemma: 'party animal', pos: ['noun'], cefr: null, gloss: 'Someone who loves parties.', image_url: null },
+      ],
       compounds: [],
       sayings: [
         {
@@ -172,6 +176,7 @@ export const searchHit = (lemma: string, gloss: string, match = 'lemma') => ({
   cefr: 'A1',
   gloss,
   translation: '动物',
+  image_url: null,
   match,
 })
 
@@ -219,6 +224,7 @@ export function goEntry() {
     ],
     variants: [{ form: 'goe' }],
     syllables: ['go'],
+    image: null,
     morphology: {
       parts: [{ form: 'going', role: 'base', lemma: 'going' }],
       shortened: { type: 'clipping', of: 'going' },
@@ -261,6 +267,7 @@ export function goEntry() {
                 category: { id: 'leisure', name: { en: 'Leisure', zh: '休闲' } },
               },
             ],
+            image: null,
             relations: { synonyms: [], antonyms: [], broader: [], narrower: [], part_of: [], parts: [] },
           },
         ],
@@ -283,6 +290,7 @@ const memberOf = (lemma: string, depth: number) => ({
   cefr: lemma === 'eagle' ? null : 'A1',
   gloss: `A ${lemma}.`,
   translation: lemma === 'bird' ? '鸟' : undefined,
+  image_url: null,
   depth,
   parents: [],
 })

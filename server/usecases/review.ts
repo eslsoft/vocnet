@@ -2,6 +2,7 @@ import type { Fact, FactOf } from '@server/domain/fact'
 import {
   type DecisionModel,
   type DecisionRequest,
+  type LookPlan,
   planReview,
   type ReviewContext,
   type SubjectTypeOf,
@@ -21,14 +22,36 @@ import {
   scoreOf,
 } from '@server/domain/review-chain'
 import type { TopicView } from '@server/domain/topics'
-import type { EntryId, FactId, FactKind, FactStatus, Review, SenseId, SentenceId, TopicId } from '@shared/facts'
+import {
+  blindGuessesSchema,
+  type EntryId,
+  type FactId,
+  type FactKind,
+  type FactStatus,
+  type Review,
+  type SenseId,
+  type SentenceId,
+  type TopicId,
+} from '@shared/facts'
+import type { MediaId } from '@shared/media'
 import type { Deps } from './deps'
 import { namedNodesOf } from './named'
+import { ReviewerProtocolError } from './ports'
 import { refreshEntries } from './refresh'
 
 export type ReviewDeps = Pick<
   Deps,
-  'nodes' | 'facts' | 'topics' | 'reference' | 'publicViews' | 'work' | 'decision' | 'llm' | 'reviewQueue' | 'clock'
+  | 'nodes'
+  | 'facts'
+  | 'topics'
+  | 'reference'
+  | 'publicViews'
+  | 'work'
+  | 'decision'
+  | 'llm'
+  | 'media'
+  | 'reviewQueue'
+  | 'clock'
 >
 
 /** The senses of the entry's live inventory, in its order. */
@@ -159,6 +182,11 @@ async function judge<K extends FactKind>(
       verdict: { reviewer: 'llm', model: 'none', verdict: 'fail', confidence: 1, reason: plan.reason, detail: {} },
     }
   }
+  if (plan.kind === 'look') {
+    const judgement = await look(deps, plan)
+    const verdict = chainVerdict([judgement])
+    return { context, finding: verdict.verdict, verdict }
+  }
   const decided = plan.decision ? await askDecision(deps, plan.decision) : { opinions: [], settled: null }
   if (decided.settled !== null) {
     const verdict = chainVerdict(decided.opinions as [Opinion, ...Opinion[]], decided.settled)
@@ -168,6 +196,28 @@ async function judge<K extends FactKind>(
   const final: Opinion = { reviewer: 'llm', ...judgement, detail: { prompt: plan.prompt } }
   const verdict = chainVerdict([...decided.opinions, final] as unknown as [Opinion, ...Opinion[]])
   return { context, finding: verdict.verdict, verdict }
+}
+
+/** The picture as the LLM sees it: a data URL of its bytes. */
+async function pictureUrl(deps: Pick<Deps, 'media'>, id: MediaId): Promise<string> {
+  const file = await deps.media.get(id)
+  if (!file) throw new Error(`Picture ${id} of an image fact is not stored.`)
+  const bytes = new Uint8Array(await new Response(file.body).arrayBuffer())
+  let binary = ''
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
+  return `data:${file.contentType};base64,${btoa(binary)}`
+}
+
+/** The LLM names what the picture shows without the word, then judges it with those guesses. */
+async function look(deps: Pick<Deps, 'llm' | 'media'>, plan: LookPlan): Promise<Opinion> {
+  const picture = await pictureUrl(deps, plan.image)
+  const blind = await deps.llm.answer(plan.blind, [picture])
+  const parsed = blindGuessesSchema.safeParse(blind.answer)
+  if (!parsed.success)
+    throw new ReviewerProtocolError('Blind guesses do not match their contract.', { cause: parsed.error })
+  const prompt = plan.judge(parsed.data.guesses)
+  const judgement = await deps.llm.judge(prompt, [picture])
+  return { reviewer: 'llm', ...judgement, detail: { prompt, guesses: parsed.data.guesses } }
 }
 
 export type ReviewOutcome = 'published' | 'rejected' | 'skipped'

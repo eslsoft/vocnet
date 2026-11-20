@@ -12,6 +12,14 @@ export type MediaId = z.infer<typeof mediaIdSchema>
 /** Where a media file is read publicly. */
 export const mediaUrl = (id: MediaId) => `/v1/media/${id}`
 
+export const pictureUploadResultSchema = z
+  .object({
+    id: mediaIdSchema,
+    url: z.string().meta({ description: 'The path of the picture under this server, cacheable forever.' }),
+  })
+  .meta({ id: 'PictureUpload', description: 'A stored picture: name it by id in an image fact.' })
+export type PictureUploadResult = z.infer<typeof pictureUploadResultSchema>
+
 export const topicImageResultSchema = z
   .object({
     topic_id: z.string(),

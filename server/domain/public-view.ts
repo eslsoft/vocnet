@@ -135,6 +135,7 @@ const senseSummaryOf = (
   cefr: meaning.cefr,
   gloss: sense.gloss,
   translations: firstOfEach(sense.translations),
+  image_url: sense.image?.url ?? null,
 })
 
 export function publicViewRecord(document: StoredEntry): PublicViewRecord {
@@ -226,6 +227,7 @@ export function shapeSummary(summary: StoredSummary, variant: ReadVariant): Word
     cefr: summary.cefr,
     gloss: summary.gloss,
     ...(translation === undefined ? {} : { translation }),
+    image_url: summary.image_url,
   }
 }
 
@@ -238,6 +240,7 @@ export function shapeSenseSummary(summary: StoredSenseSummary, variant: ReadVari
     cefr: summary.cefr,
     gloss: summary.gloss,
     ...(translation === undefined ? {} : { translation }),
+    image_url: summary.image_url,
   }
 }
 
@@ -279,6 +282,7 @@ function shapeSense(sense: StoredSense, variant: ReadVariant, categories: TopicC
       category: categoryOf(topic.id, categories, variant.lang),
       ...reviewed(topic.review, variant),
     })),
+    image: sense.image && withReview(sense.image, variant),
     relations,
     ...(variant.review
       ? {
@@ -346,6 +350,7 @@ export function shapeEntry(
       family: summaries(links.family),
       ...reviewed(document.morphology.review, variant),
     },
+    image: document.image && withReview(document.image, variant),
     meanings: document.meanings.map((meaning) => ({
       pos: meaning.pos,
       cefr: meaning.cefr,

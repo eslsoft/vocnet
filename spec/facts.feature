@@ -721,3 +721,41 @@ Feature: Facts and review
     Given an entry with an adjective sense
     When a periphrastic comparative, a dotted or ɛ American pronunciation, an ASCII-punctuated zh translation, or a synonym to a dated sense is submitted
     Then each is refused, 422 for the write rules and 400 for the formats, with a message that names the fix
+
+  @facts/picture-upload @usecase
+  Scenario: A picture is stored once under the SHA-256 of its bytes
+    Given a 1024×1024 WebP picture
+    When an agent stores it, and stores it again
+    Then it is stored once under the SHA-256 of its bytes and both answers give that id and its URL
+    And a picture that is not a 1024×1024 WebP of at most 300 KB is an invalid request naming what is wrong
+
+  @facts/image-submit @usecase
+  Scenario: An image fact names a stored picture and, when it shows an example, an existing sentence
+    Given a sense of a published inventory
+    When an agent submits an image fact naming a picture that is not stored, or a sentence that does not exist
+    Then the submission is refused as an invalid reference
+    And with a stored picture it is pending, keyed by the picture's id, with the sentence it shows as its object
+
+  @facts/image-review @domain
+  Scenario: A picture is judged by looking at it, first without the word
+    Given an image fact on a glossed sense
+    When its review is planned
+    Then the LLM first names the headwords the picture shows without being told the word
+    And then judges the picture against the lemma, part of speech, and gloss with those guesses: the sense and not another, no literal idiom, no letters or logos, nothing offensive, no visual defects, and never the drawing style
+    And a picture of an example is judged against that sentence, with no blind guess expected to name the word
+    And a sense without a gloss, or a sentence that does not exist, is unreviewable
+
+  @facts/image-review-flow @usecase
+  Scenario: The LLM sees the picture in both steps and its verdict is final
+    Given a pending image fact
+    When it is reviewed
+    Then both the blind look and the judgement are sent the picture, the judgement's verdict publishes or rejects it, and the review keeps the guesses
+    And guesses that break their contract are a reviewer failure that leaves the fact pending, never a verdict
+
+  @facts/image-api @api
+  Scenario: A picture is stored, reviewed, and shown on a real Worker
+    Given an agent key and a sense of a published inventory
+    When the agent posts a picture to POST /manage/v1/media and submits an image fact naming it, and the queue reviews it
+    Then both LLM calls carry the picture as an image part, and the entry, its sense, and the entry list show it
+    And a replica sync lists the picture among the files it copies
+    And a wrong-sized picture is 400 and an image fact naming a picture that is not stored is 422

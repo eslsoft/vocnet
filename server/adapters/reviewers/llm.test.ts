@@ -37,6 +37,19 @@ describe('LLM reviewer', () => {
     })
   })
 
+  it('sends the pictures a prompt is about as image parts of the user message', async () => {
+    const calls = reply(JSON.stringify({ verdict: 'pass', confidence: 0.9, reason: 'Shows it.' }))
+    await llm.judge(prompt, ['data:image/webp;base64,AAAA'])
+    const body = (await calls[0]?.json()) as { messages: unknown[] }
+    expect(body.messages[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Is this right?' },
+        { type: 'image_url', image_url: { url: 'data:image/webp;base64,AAAA' } },
+      ],
+    })
+  })
+
   it('answers a prompt with the JSON object it returns, for the caller to decode', async () => {
     reply(JSON.stringify({ native: true, learner: false }))
     await expect(llm.answer(prompt)).resolves.toEqual({

@@ -9,6 +9,10 @@ export function createMediaStore(bucket: Env['MEDIA']): MediaStore {
       await bucket.put(id, bytes, { httpMetadata: { contentType } })
     },
 
+    async has(id) {
+      return (await bucket.head(id)) !== null
+    },
+
     async get(id) {
       const object = await bucket.get(id)
       if (!object) return null

@@ -23,6 +23,7 @@ import type {
   TopicId,
 } from '@shared/facts'
 import { isCompleteSentence, MORPHEME_SPELLING, productiveUseAnswerSchema, SAYING_ISSUE } from '@shared/facts'
+import type { MediaId } from '@shared/media'
 import { editDistance, isMultiword, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
 
@@ -46,6 +47,7 @@ export interface SubjectTypeOf {
   phrases: 'entry'
   sentence_meaning: 'sentence'
   productive_use: 'entry'
+  image: 'sense'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -185,7 +187,21 @@ export interface DecisionRequest {
  */
 export type ReviewPlan =
   | { kind: 'review'; decision: DecisionRequest | null; prompt: LlmPrompt }
+  | LookPlan
   | { kind: 'unreviewable'; reason: string }
+
+/**
+ * A picture the LLM judges by looking at it. It first names the headwords the picture shows without
+ * being told the word (`blind`, answering `{ guesses }`), so a picture that only shows a related
+ * idea shows up; then it judges the picture against the sense with those guesses (`judge`), and its
+ * verdict is final. Both see the picture.
+ */
+export interface LookPlan {
+  kind: 'look'
+  image: MediaId
+  blind: LlmPrompt
+  judge(guesses: readonly string[]): LlmPrompt
+}
 
 /**
  * What a write rule sees of one end of a relation: whether the end's sense is rare (ranked extra in
@@ -218,7 +234,7 @@ interface BaseSpec<K extends FactKind> {
   /** The sense a relation points at; absent for kinds that link no sense. */
   target?(payload: FactPayloads[K]): SenseId
   /** The node stored as the fact's object: a relation's target sense, an example's sentence; absent for none. */
-  object?(payload: FactPayloads[K]): string
+  object?(payload: FactPayloads[K]): string | null
   /**
    * Nodes a payload names by id, which a submission may name by text instead: `texts` lists those
    * texts, `bind` stores the submission with every text replaced by the id the use case resolved,
@@ -231,6 +247,8 @@ interface BaseSpec<K extends FactKind> {
   }
   /** The write rules a submission of the kind must meet, in plain sentences for the producer. */
   limits?: readonly string[]
+  /** The picture the payload names, which must be stored; absent for kinds that name none. */
+  media?(payload: FactPayloads[K]): MediaId
   /** The leaf topic the fact tags its subject with; absent for kinds that reference no topic. */
   topic?(payload: FactPayloads[K]): TopicId
   /** The parts of speech a sense subject must have; absent means any. */
@@ -1791,9 +1809,66 @@ const EXAMPLE_LIMITS = [
   'An example names its sentence by sentence_id, or by text: the sentence with that text is found, or created when there is none. A sentence may be an example of many senses; a sense has it once.',
 ]
 
+const IMAGE_LIMITS = [
+  'An image is about a sense, one live per sense: image_id names a picture stored with POST /manage/v1/media, a 1024×1024 WebP of at most 300 KB.',
+  'The picture shows the sense itself in one scene, without letters, numbers, or logos. Only a sense no picture can show takes a picture of one of its published examples, named by sentence_id, and is always shown with that sentence.',
+]
+
 const SENTENCE_MEANING_LIMITS = [
   'A sentence meaning is about a sentence (subject_id is the sentence id), one live per sentence: a dictionary-style gloss of what a saying means and when it is said, never the saying itself.',
 ]
+
+const IMAGE_SYSTEM = [
+  "You review one picture for a learner's English dictionary.",
+  'Answer with a JSON object {"verdict": "pass" | "fail" | "uncertain", "confidence": number from 0 to 1, "reason": string}.',
+  'pass: the picture is right for the word as stated. fail: it is wrong or misleading. uncertain: you cannot tell.',
+  'confidence is how sure you are of the verdict. reason is one short sentence.',
+  DATA_NOT_INSTRUCTIONS,
+].join('\n')
+
+const BLIND_SYSTEM = [
+  "You look at one picture from a learner's English dictionary, which illustrates one headword.",
+  'Answer with a JSON object {"guesses": [five strings]}: the five headwords (single words or phrases) it most likely illustrates, most likely first.',
+].join('\n')
+
+const BLIND_PROMPT: LlmPrompt = { system: BLIND_SYSTEM, user: 'Which headword does this picture illustrate?' }
+
+function imageRubric(sense: GlossedSense, sentence: string | null, guesses: readonly string[]): string {
+  const shows = sentence
+    ? `The picture shows this published example of the sense, and is always shown with it: ${quote(sentence)}`
+    : 'The picture shows the sense itself.'
+  const meaning = sentence
+    ? 'it must show the situation of that sentence; blind guesses are not expected to name the word.'
+    : 'blind guesses that miss the sense usually mean the picture shows only a related idea, and fail.'
+  return [
+    `Is this picture right for ${describe(sense)}? ${shows}`,
+    `Another reviewer saw only the picture, without the word, and guessed these headwords, most likely first: ${guesses.map(quote).join(', ')}.`,
+    'Pass only if all hold:',
+    `1. A learner who sees the picture next to the word grasps this sense: not another sense of the word, not a literal reading of an idiom, and not merely a related idea. With the picture of the sense, ${meaning}`,
+    '2. No letters, numbers, words, or logos appear anywhere in the picture.',
+    '3. Nothing offensive, and no real people or brands; an offensive sense is shown in ordinary use without added offence.',
+    '4. No visual defects such as malformed hands, faces, or objects.',
+    'The drawing style is not judged.',
+  ].join('\n')
+}
+
+function planImage(
+  { image_id, sentence_id }: FactPayloads['image'],
+  { subject, named }: ReviewContext<'sense'>,
+): ReviewPlan {
+  return withGloss(subject, (sense) => {
+    const sentence = sentence_id === undefined ? null : (named.sentences.get(sentence_id) ?? null)
+    if (sentence_id !== undefined && sentence === null) {
+      return { kind: 'unreviewable', reason: 'The example sentence the picture shows does not exist.' }
+    }
+    return {
+      kind: 'look',
+      image: image_id,
+      blind: BLIND_PROMPT,
+      judge: (guesses) => prompt(imageRubric(sense, sentence, guesses), IMAGE_SYSTEM),
+    }
+  })
+}
 
 /** The examples the productive-use questions and rubric share; none is a word the trial judged. */
 const NATIVE_ACTIVE =
@@ -2243,6 +2318,22 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     plan: (payload, { subject }) => planProductiveUse(payload, subject),
     classify: (slot, subject) => classifyProductiveUse(slot as Pos, subject),
   },
+  image: {
+    summary: ({ image_id, sentence_id }) => (sentence_id ? `${image_id} (example ${sentence_id})` : image_id),
+    limits: IMAGE_LIMITS,
+    subject: 'sense',
+    cardinality: 'one',
+    models: [],
+    contentKey: ({ image_id }) => image_id,
+    object: ({ sentence_id }) => sentence_id ?? null,
+    media: ({ image_id }) => image_id,
+    names: {
+      texts: () => ({ lemmas: [], sentences: [] }),
+      bind: (submitted) => submitted,
+      mentions: ({ sentence_id }) => ({ entries: [], sentences: sentence_id === undefined ? [] : [sentence_id] }),
+    },
+    plan: planImage,
+  },
 }
 
 /** The node type a fact of this kind and payload is about. */
@@ -2291,6 +2382,11 @@ export function objectOf<K extends FactKind>(kind: K, payload: FactPayloads[K]):
 }
 
 /** The nodes the payload names by id; none for kinds that name none. */
+/** The picture a payload names, which must be stored; null for kinds that name none. */
+export function mediaOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): MediaId | null {
+  return factKinds[kind].media?.(payload) ?? null
+}
+
 export function mentionsOf<K extends FactKind>(kind: K, payload: FactPayloads[K]): Mentions {
   return factKinds[kind].names?.mentions(payload) ?? { entries: [], sentences: [] }
 }

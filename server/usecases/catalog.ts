@@ -49,7 +49,7 @@ import { leavesOf } from './topics'
 
 type WriteDeps = Pick<
   Deps,
-  'nodes' | 'facts' | 'topics' | 'work' | 'reference' | 'publicViews' | 'reviewQueue' | 'clock' | 'ids'
+  'nodes' | 'facts' | 'topics' | 'work' | 'reference' | 'publicViews' | 'media' | 'reviewQueue' | 'clock' | 'ids'
 >
 
 /**

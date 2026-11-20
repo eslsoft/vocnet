@@ -78,6 +78,14 @@ describe('summarizeFact', () => {
       'verb: native active, learner passive',
     ],
     [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
+    [{ kind: 'image', payload: { image_id: 'ab12cd34'.repeat(8) } }, 'picture ab12cd34'],
+    [
+      {
+        kind: 'image',
+        payload: { image_id: 'ab12cd34'.repeat(8), sentence_id: '0f3e9a1c-0000-4000-8000-000000000000' },
+      },
+      'picture ab12cd34 of sentence 0f3e9a1c',
+    ],
     [{ kind: 'grammar', payload: { agreement: ['singular_noun', 'of_plural'] } }, 'singular_noun, of_plural'],
     [{ kind: 'grammar', payload: { position: 'mid' } }, 'mid'],
     [

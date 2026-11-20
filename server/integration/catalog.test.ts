@@ -154,6 +154,7 @@ describe('public catalog', () => {
           pos: ['noun'],
           cefr: null,
           gloss: 'Land beside a river.',
+          image_url: null,
           matches: [{ type: 'plural', pos: 'noun' }],
         },
       ],

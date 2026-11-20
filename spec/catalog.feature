@@ -230,3 +230,17 @@ Feature: Catalog
     Given an agent submits syllables, a form with a pronunciation, and a translation of an example
     When the payloads break a rule, or once they are reviewed and published
     Then a malformed ipa, an ipa without an accent, or an unserved language is 400, syllables that do not spell the lemma are 422, and the public entry serves the published fields
+
+  @catalog/picture @usecase
+  Scenario: A sense shows its published picture and the entry the first one
+    Given published image facts on the second sense of an entry, then on the first
+    When the entry is read
+    Then each sense shows its picture, and the entry shows the picture of its first sense in inventory order that has one, with that sense's id
+    And the summaries of lists and search give that picture's URL, and the review of the image fact with include=review
+    And once the first sense's image fact is retracted the entry shows the second sense's picture again
+
+  @catalog/picture-example @usecase
+  Scenario: A picture of an example shows only with its published example
+    Given a published image fact whose picture shows a published example of its sense
+    When the entry is read, and after the example is retracted
+    Then the picture shows with the example's sentence while the example is published, and not at all once it is retracted
