@@ -321,10 +321,17 @@ export function networkApi({ topicsFail = false } = {}) {
               {
                 id: 'nature',
                 name: { en: 'Nature', zh: '自然' },
+                image_url: null,
                 sense_count: 2,
                 entry_count: 2,
                 topics: [
-                  { id: 'wild-animals', name: { en: 'Wild animals', zh: '野生动物' }, sense_count: 2, entry_count: 2 },
+                  {
+                    id: 'wild-animals',
+                    name: { en: 'Wild animals', zh: '野生动物' },
+                    image_url: null,
+                    sense_count: 2,
+                    entry_count: 2,
+                  },
                 ],
               },
             ],

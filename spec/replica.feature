@@ -21,3 +21,9 @@ Feature: Public replica
     Given a replica synced from the source
     When an entry changes and another stops being public, and the source syncs again
     Then the replica serves the changed entry and answers 404 for the removed one
+
+  @replica/media @domain
+  Scenario: A sync copies the media files the replica lacks
+    Given the media files the source's rows name and the replica's manifest of the files it holds
+    When a sync is planned
+    Then it copies each named file the manifest lacks once and never removes a file the replica holds

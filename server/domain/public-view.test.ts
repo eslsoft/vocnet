@@ -429,6 +429,7 @@ describe('public read variants', () => {
       nameEn: `${id} en`,
       nameZh: `${id} zh`,
       position: 1,
+      imageId: null,
     })
     expect([...topicCategories([node('money', null), node('finance', 'money'), node('orphan', 'gone')])]).toEqual([
       ['finance', { id: 'money', name: { en: 'money en', zh: 'money zh' } }],

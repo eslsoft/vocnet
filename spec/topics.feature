@@ -108,3 +108,30 @@ Feature: Topics
     Given no topic with the requested id
     When GET /v1/topics/{id}/senses is called
     Then the response is 404 not_found, with no fuzzy fallback
+
+  @topics/image @usecase
+  Scenario: A curator gives a topic its picture
+    Given a category or leaf topic and a 1024×1024 WebP picture of it
+    When a curator sets the picture as the topic's image
+    Then the picture is stored under the SHA-256 of its bytes and the taxonomy serves its image_url
+    And setting the same picture again changes nothing, and a topic without a picture has a null image_url
+
+  @topics/image-rules @usecase
+  Scenario: Only a curator sets a topic picture, and only a square WebP
+    Given a producer agent, an unknown topic id, and pictures that are not WebP, not 1024×1024, or larger than 300 KB
+    When each sets a topic picture
+    Then the producer is forbidden, the unknown topic is not found, and each wrong picture is an invalid request naming what is wrong
+    And nothing is stored and no topic changes
+
+  @topics/image-format @domain
+  Scenario: A picture's size is read from its WebP header
+    Given lossy, lossless, and extended WebP files, and files that are not WebP
+    When their size is read
+    Then each WebP gives the width and height it declares, and the rest give none
+
+  @topics/image-api @api
+  Scenario: A topic picture is set and served on a real Worker
+    Given a curator agent and a 1024×1024 WebP picture
+    When the curator puts it as a topic's image and the taxonomy and the picture are read
+    Then GET /v1/topics gives the topic's image_url, and GET /v1/media/{id} answers the bytes as image/webp, cacheable forever, with the id as its ETag
+    And If-None-Match with that ETag is 304, an id no file has is 404, and a producer agent's put is 403

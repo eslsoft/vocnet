@@ -2,8 +2,8 @@ import { z } from 'zod'
 import { responseLangSchema, senseSummarySchema } from './catalog'
 import { topicIdSchema } from './facts'
 
-// The topic taxonomy on the wire. Topics are admin-curated by migration: categories group the
-// leaf topics, and only leaves tag senses.
+// The topic taxonomy on the wire. Topics are admin-curated by migration, their pictures by curators:
+// categories group the leaf topics, and only leaves tag senses.
 
 const count = z.number().int().nonnegative()
 
@@ -12,6 +12,9 @@ const topicFields = {
   name: z
     .object({ en: z.string(), zh: z.string() })
     .meta({ description: 'The name by language tag, as Sense.topics names a topic.' }),
+  image_url: z.string().nullable().meta({
+    description: 'The path of its picture under this server, cacheable forever; null until a curator sets one.',
+  }),
   sense_count: count.meta({
     description: 'How many public senses GET /v1/topics/{id}/senses lists for it; a category counts each sense once.',
   }),

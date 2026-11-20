@@ -7,6 +7,7 @@ import type {
   FactRepo,
   IdGenerator,
   LlmReviewer,
+  MediaStore,
   MonitorRepo,
   NodeRepo,
   PublicViewRepo,
@@ -32,6 +33,8 @@ export interface Deps {
   monitor: MonitorRepo
   reference: ReferenceRepo
   publicViews: PublicViewRepo
+  /** Pictures and other media files, by the SHA-256 of their bytes. */
+  media: MediaStore
   /** The decision models: Jev and OpenAI's Decisions API (luna). */
   decision: DecisionReviewers
   llm: LlmReviewer

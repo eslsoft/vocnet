@@ -1,13 +1,17 @@
 // Syncs a public replica (docs/design.md, Public replica) from the local database where the facts
-// are produced: copies the public entries whose rows changed since the last sync, takes off the
-// ones no longer public, and keeps the replica's topics equal to the source's.
+// are produced: copies the media files its rows name that the replica lacks, then the public
+// entries whose rows changed since the last sync, takes off the ones no longer public, and keeps
+// the replica's topics equal to the source's.
 //
-// Usage: node scripts/replica/sync.mjs [--source <file.sqlite>] [--database vocnet]
-//          [--wrangler "<command>"] [--dry-run] -- <wrangler target flags, e.g. --remote>
+// Usage: node scripts/replica/sync.mjs [--source <file.sqlite>] [--media-source <dir>]
+//          [--database vocnet] [--bucket vocnet-media] [--wrangler "<command>"] [--dry-run]
+//          -- <wrangler target flags, e.g. --remote>
 //
-// --source defaults to the local D1 file under .wrangler. --wrangler is the command that runs
-// Wrangler (default `pnpm exec wrangler`); the target flags after `--` pick the replica database
-// as `wrangler d1 execute` does: `--remote`, or `--local --persist-to <dir>` for a rehearsal.
+// --source defaults to the local D1 file under .wrangler, --media-source to the local state the
+// media files are read from (.wrangler/state). --wrangler is the command that runs Wrangler
+// (default `pnpm exec wrangler`); the target flags after `--` pick the replica as `wrangler d1
+// execute` does: `--remote`, `--remote --preview`, or `--local --persist-to <dir>` for a
+// rehearsal. --bucket is the replica's media bucket: vocnet-media-preview for a preview.
 import '../server-modules.mjs'
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -18,6 +22,7 @@ import { parseArgs } from 'node:util'
 
 const { DatabaseSync } = await import('node:sqlite')
 const { ENTRY_UNIT_TABLES, planReplicaSync } = await import('../../server/domain/replica.ts')
+const { WEBP } = await import('../../server/domain/media.ts')
 const sql = await import('../../server/adapters/replica-sql.ts')
 
 const separator = process.argv.indexOf('--')
@@ -26,12 +31,18 @@ const { values: options } = parseArgs({
   args: process.argv.slice(2, separator),
   options: {
     source: { type: 'string' },
+    'media-source': { type: 'string', default: '.wrangler/state' },
     database: { type: 'string', default: 'vocnet' },
+    bucket: { type: 'string', default: 'vocnet-media' },
     wrangler: { type: 'string', default: 'pnpm exec wrangler' },
     'dry-run': { type: 'boolean', default: false },
   },
 })
 const target = process.argv.slice(separator + 1)
+/** `wrangler r2 object` has no --preview: a preview's bucket is named by --bucket instead. */
+const mediaTarget = target.filter((flag) => flag !== '--preview')
+/** The bucket the Worker's MEDIA binding names locally, where the source's files are. */
+const SOURCE_BUCKET = 'vocnet-media'
 
 /** Bytes per SQL file: one `wrangler d1 execute --file` import each. */
 const FILE_BUDGET = 50 * 1024 * 1024
@@ -43,16 +54,27 @@ function localDatabase() {
   return path.join(directory, files[0])
 }
 
-/** Runs `wrangler d1 execute` against the replica; its stdout is returned, its errors shown. */
-function wrangler(args) {
+/** Runs Wrangler with the arguments; its stdout is returned, its errors shown. */
+function runWrangler(args) {
   const [command, ...prefix] = options.wrangler.split(' ').filter(Boolean)
-  const run = spawnSync(command, [...prefix, 'd1', 'execute', options.database, ...target, ...args], {
+  const run = spawnSync(command, [...prefix, ...args], {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'inherit'],
   })
-  if (run.status !== 0) throw new Error(`wrangler d1 execute ${args.join(' ')} exited with ${run.status}.`)
+  if (run.status !== 0) throw new Error(`wrangler ${args.slice(0, 3).join(' ')} exited with ${run.status}.`)
   return run.stdout
+}
+
+/** Runs `wrangler d1 execute` against the replica. */
+const wrangler = (args) => runWrangler(['d1', 'execute', options.database, ...target, ...args])
+
+/** Copies a media file from the local state to the replica's bucket. */
+function copyMedia(id, directory) {
+  const file = path.join(directory, id)
+  runWrangler(['r2', 'object', 'get', `${SOURCE_BUCKET}/${id}`, '--local', '--persist-to', options['media-source'], '--file', file])
+  runWrangler(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP])
+  rmSync(file)
 }
 
 // One read transaction: every unit is read from the same snapshot while the producer keeps writing.
@@ -73,15 +95,28 @@ const source = {
 const fingerprints = await sql.sourceFingerprints(source)
 wrangler(['--command', sql.replicaManifestSql])
 const [manifest] = JSON.parse(wrangler(['--command', sql.readManifestSql, '--json']))
-const plan = planReplicaSync(fingerprints, new Map(manifest.results.map((row) => [row.key, row.fingerprint])))
-console.info(`${plan.push.length} to push, ${plan.remove.length} to remove, ${plan.unchanged} unchanged`)
+const mediaIds = database.prepare(sql.mediaIdsSql).all().map((row) => row.image_id)
+const plan = planReplicaSync(
+  fingerprints,
+  new Map(manifest.results.map((row) => [row.key, row.fingerprint])),
+  mediaIds,
+)
+console.info(
+  `${plan.media.length} media files to copy, ${plan.push.length} to push, ${plan.remove.length} to remove, ${plan.unchanged} unchanged`,
+)
 
-if (!options['dry-run'] && plan.push.length + plan.remove.length > 0) {
+if (!options['dry-run'] && plan.media.length + plan.push.length + plan.remove.length > 0) {
   const directory = mkdtempSync(path.join(tmpdir(), 'vocnet-replica-'))
   try {
+    // The files go first, so no row the replica serves names a file it lacks.
+    const syncedAt = new Date().toISOString()
+    for (const [index, id] of plan.media.entries()) {
+      console.info(`Copying media ${index + 1}/${plan.media.length}`)
+      copyMedia(id, directory)
+    }
     const files = []
-    let statements = []
-    let size = 0
+    let statements = plan.media.map((id) => sql.mediaManifestSql(id, syncedAt))
+    let size = statements.reduce((total, statement) => total + statement.length + 1, 0)
     const flush = () => {
       if (statements.length === 0) return
       const file = path.join(directory, `${String(files.length).padStart(4, '0')}.sql`)
@@ -90,7 +125,7 @@ if (!options['dry-run'] && plan.push.length + plan.remove.length > 0) {
       statements = []
       size = 0
     }
-    for await (const unit of sql.syncStatements(source, plan, fingerprints, new Date().toISOString())) {
+    for await (const unit of sql.syncStatements(source, plan, fingerprints, syncedAt)) {
       const unitSize = unit.reduce((total, statement) => total + statement.length + 1, 0)
       if (size > 0 && size + unitSize > FILE_BUDGET) flush()
       statements.push(...unit)

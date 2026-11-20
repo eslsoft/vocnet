@@ -19,6 +19,9 @@ export const DOCUMENT_CACHE = 'public, no-cache'
  */
 export const LIST_CACHE = 'public, max-age=5'
 
+/** A media file never changes under its id, which is the SHA-256 of its bytes. */
+export const MEDIA_CACHE = 'public, max-age=31536000, immutable'
+
 /**
  * A strong ETag over the versions of what a response is cut from and the variant it asks for: the
  * first 16 bytes of their SHA-256 in hex, so it changes exactly when the body of that variant can.

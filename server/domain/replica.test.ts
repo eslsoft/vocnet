@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalUnit, entryIdOf, entryKey, planReplicaSync, replicaRow, TOPICS_KEY } from './replica'
+import { canonicalUnit, entryIdOf, entryKey, mediaKey, planReplicaSync, replicaRow, TOPICS_KEY } from './replica'
 
 describe('planReplicaSync', () => {
   it('pushes missing and changed units, removes the ones the source lacks, and keeps the rest [spec: replica/plan]', () => {
@@ -15,16 +15,32 @@ describe('planReplicaSync', () => {
       [entryKey('gone'), 'old'],
       [TOPICS_KEY, 'taxonomy'],
     ])
-    expect(planReplicaSync(source, replica)).toEqual({
+    expect(planReplicaSync(source, replica, [])).toEqual({
       push: [entryKey('b'), entryKey('c')],
       remove: [entryKey('gone')],
       unchanged: 2,
+      media: [],
+    })
+  })
+
+  it('copies each media file the replica lacks once and never removes one it holds [spec: replica/media]', () => {
+    const source = new Map([[TOPICS_KEY, 'taxonomy']])
+    const replica = new Map([
+      [TOPICS_KEY, 'taxonomy'],
+      [mediaKey('held'), 'held'],
+      [mediaKey('unnamed'), 'unnamed'],
+    ])
+    expect(planReplicaSync(source, replica, ['new', 'held', 'new'])).toEqual({
+      push: [],
+      remove: [],
+      unchanged: 1,
+      media: ['new'],
     })
   })
 
   it('pushes everything to an empty replica', () => {
     const source = new Map([[TOPICS_KEY, 'taxonomy']])
-    expect(planReplicaSync(source, new Map())).toEqual({ push: [TOPICS_KEY], remove: [], unchanged: 0 })
+    expect(planReplicaSync(source, new Map(), [])).toEqual({ push: [TOPICS_KEY], remove: [], unchanged: 0, media: [] })
   })
 })
 

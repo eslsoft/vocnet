@@ -34,6 +34,11 @@ database_id = "44830fb1-6a0f-442c-ba1c-73543b9f41cf"
 preview_database_id = "ac79bdc6-dc75-416b-a229-810163154b3a"
 migrations_dir = "migrations"
 
+# Pictures and other media files, each under the SHA-256 of its bytes (docs/design.md, Media).
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "vocnet-media"
+
 [[queues.producers]]
 binding = "REVIEW_QUEUE"
 queue = "vocnet-reviews"
@@ -100,6 +105,10 @@ binding = "DB"
 database_name = "vocnet-preview"
 database_id = "ac79bdc6-dc75-416b-a229-810163154b3a"
 migrations_dir = "migrations"
+
+[[previews.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "vocnet-media-preview"
 
 [[previews.queues.producers]]
 binding = "REVIEW_QUEUE"

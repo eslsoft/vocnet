@@ -1,12 +1,13 @@
 import type { TopicNode } from '@server/domain/topics'
-import { admin, agentA } from '@server/testing/actors'
+import { admin, agentA, curatorAgent } from '@server/testing/actors'
 import { fakeWorld } from '@server/testing/fakes'
 import { drainReviews, headword } from '@server/testing/seed'
+import { webpHeader } from '@server/testing/webp'
 import type { SenseId, TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
 import { rereviewFact, retractFact, submitFact } from './facts'
 import { reviewFact } from './review'
-import { getTopicTree, listTopicSenses } from './topics'
+import { getTopicTree, listTopicSenses, setTopicImage } from './topics'
 
 const settle = drainReviews
 
@@ -172,6 +173,7 @@ describe('topic listings', () => {
     const named = (id: string, en: string, senses = 0, entries = 0) => ({
       id,
       name: { en, zh: `${en} (zh)` },
+      image_url: null,
       sense_count: senses,
       entry_count: entries,
     })
@@ -239,5 +241,54 @@ describe('topic listings', () => {
     await expect(listTopicSenses(world.deps, 'no-such-topic' as TopicId, 'lemma', page, none)).rejects.toMatchObject({
       code: 'not_found',
     })
+  })
+})
+
+describe('topic pictures', () => {
+  const imageOf = async (world: ReturnType<typeof fakeWorld>, id: string) =>
+    (await getTopicTree(world.deps)).categories
+      .flatMap((category) => [category, ...category.topics])
+      .find((topic) => topic.id === id)?.image_url
+
+  it("stores a curator's picture under its SHA-256 and serves it as the topic's image_url [spec: topics/image]", async () => {
+    const world = fakeWorld()
+    const picture = webpHeader(1024, 1024)
+    expect(await imageOf(world, 'home')).toBeNull()
+
+    const result = await setTopicImage(world.deps, curatorAgent, 'home' as TopicId, picture)
+    const [id] = [...world.media.keys()]
+    expect(id).toMatch(/^[0-9a-f]{64}$/)
+    expect(result).toEqual({ topic_id: 'home', image_url: `/v1/media/${id}` })
+    expect(world.media.get(id as string)).toEqual({ bytes: picture, contentType: 'image/webp' })
+    expect(await imageOf(world, 'home')).toBe(`/v1/media/${id}`)
+    expect(await imageOf(world, 'furniture')).toBeNull()
+
+    // A leaf takes a picture as a category does; the same picture again changes nothing.
+    await setTopicImage(world.deps, admin, 'furniture' as TopicId, picture)
+    expect(await setTopicImage(world.deps, curatorAgent, 'home' as TopicId, picture)).toEqual(result)
+    expect(world.media.size).toBe(1)
+    expect(await imageOf(world, 'furniture')).toBe(`/v1/media/${id}`)
+  })
+
+  it('lets only a curator set a square WebP on a known topic, storing nothing otherwise [spec: topics/image-rules]', async () => {
+    const world = fakeWorld()
+    const square = webpHeader(1024, 1024)
+    const set = (actor: typeof agentA, id: string, bytes: Uint8Array<ArrayBuffer>) =>
+      setTopicImage(world.deps, actor, id as TopicId, bytes)
+    await expect(set(agentA, 'home', square)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(set(curatorAgent, 'no-such-topic', square)).rejects.toMatchObject({ code: 'not_found' })
+    await expect(set(curatorAgent, 'home', new Uint8Array(64))).rejects.toMatchObject({
+      code: 'invalid_request',
+      message: 'A topic image is a WebP file.',
+    })
+    await expect(set(curatorAgent, 'home', webpHeader(1254, 1254))).rejects.toMatchObject({
+      code: 'invalid_request',
+      message: 'A topic image is 1024×1024; this one is 1254×1254.',
+    })
+    await expect(set(curatorAgent, 'home', webpHeader(1024, 1024, { length: 300 * 1024 + 1 }))).rejects.toMatchObject({
+      code: 'invalid_request',
+    })
+    expect(world.media.size).toBe(0)
+    expect(world.topics.every((topic) => topic.imageId === null)).toBe(true)
   })
 })

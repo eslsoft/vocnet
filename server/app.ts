@@ -10,19 +10,22 @@ import { manageFactRoutes } from './http/manage/facts'
 import { managePublicViewRoutes } from './http/manage/public-view'
 import { serviceRoutes } from './http/manage/services'
 import { manageTicketRoutes } from './http/manage/tickets'
+import { manageTopicRoutes } from './http/manage/topics'
 import { manageWorkRoutes } from './http/manage/work'
+import { mediaRoutes } from './http/media'
 import { createRouter } from './http/router'
 import { topicRoutes } from './http/topics'
 
 // Routes are chained so their types flow into `AppType` for the SPA's RPC client.
 // Per-request deps are wired by the worker; see server/worker.ts.
 
-const publicV1 = createRouter().route('/', publicRoutes).route('/', topicRoutes)
+const publicV1 = createRouter().route('/', publicRoutes).route('/', topicRoutes).route('/', mediaRoutes)
 
 const manageV1 = createRouter()
   .route('/', manageCatalogRoutes)
   .route('/', manageFactRoutes)
   .route('/', manageTicketRoutes)
+  .route('/', manageTopicRoutes)
   .route('/', manageWorkRoutes)
   .route('/', managePublicViewRoutes)
   .route('/', agentRoutes)

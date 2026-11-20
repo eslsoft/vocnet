@@ -24,6 +24,7 @@ import type {
   TopicId,
   Verdict,
 } from '@shared/facts'
+import type { MediaId } from '@shared/media'
 import type { WorkAttemptOutcome } from '@shared/monitor'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
 import type { ServiceId } from '@shared/services'
@@ -197,6 +198,21 @@ export interface TopicRepo {
   /** Every category and leaf topic. */
   list(): Promise<TopicNode[]>
   find(id: TopicId): Promise<TopicNode | null>
+  /** Gives a topic the picture stored under the id. */
+  setImage(id: TopicId, imageId: MediaId): Promise<void>
+}
+
+/** A stored media file. */
+export interface MediaFile {
+  body: ReadableStream<Uint8Array>
+  contentType: string
+  size: number
+}
+
+/** Media files by their content id. Storing the same id again leaves the file as it was. */
+export interface MediaStore {
+  put(id: MediaId, bytes: Uint8Array<ArrayBuffer>, contentType: string): Promise<void>
+  get(id: MediaId): Promise<MediaFile | null>
 }
 
 /** A public view whose rows no longer describe the entry. */

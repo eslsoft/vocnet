@@ -109,6 +109,7 @@ export default defineConfig({
               compatibilityDate: '2026-06-03',
               compatibilityFlags: ['nodejs_compat'],
               d1Databases: ['DB'],
+              r2Buckets: ['MEDIA'],
               // The edge cache keeps lists for seconds across tests that reuse URLs; tests prove it
               // over a fake (server/http/public-reads.test.ts), so the Cache API is a no-op here.
               cache: false,

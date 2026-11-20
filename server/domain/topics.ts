@@ -1,4 +1,5 @@
 import type { TopicId } from '@shared/facts'
+import { type MediaId, mediaUrl } from '@shared/media'
 import type { TopicTree } from '@shared/topics'
 
 /**
@@ -12,6 +13,8 @@ export interface TopicNode {
   nameZh: string
   /** Display order among its siblings. */
   position: number
+  /** The picture a curator gave it, or null. */
+  imageId: MediaId | null
 }
 
 export const isLeaf = (topic: TopicNode) => topic.parentId !== null
@@ -32,6 +35,7 @@ export function topicTree(nodes: readonly TopicNode[], counts: TopicCounts): Top
   const name = (node: TopicNode) => ({
     id: node.id,
     name: { en: node.nameEn, zh: node.nameZh },
+    image_url: node.imageId === null ? null : mediaUrl(node.imageId),
     sense_count: counts.get(node.id)?.senses ?? 0,
     entry_count: counts.get(node.id)?.entries ?? 0,
   })

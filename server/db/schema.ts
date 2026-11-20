@@ -526,7 +526,8 @@ export const publicMorphemes = sqliteTable(
 
 /**
  * The two-level topic taxonomy: a category has no parent, a leaf topic has its category as parent.
- * Admin-curated: rows change only by migration. Ids are stable; names are display labels.
+ * Admin-curated: rows change only by migration, except the picture a curator sets. Ids are stable;
+ * names are display labels.
  */
 export const topics = sqliteTable(
   'topics',
@@ -537,6 +538,8 @@ export const topics = sqliteTable(
     nameZh: text('name_zh').notNull(),
     /** Display order among the topic's siblings. */
     position: integer('position').notNull(),
+    /** The media id (SHA-256) of its picture, or null. */
+    imageId: text('image_id'),
   },
   (table) => [index('topics_parent_idx').on(table.parentId, table.position)],
 )
