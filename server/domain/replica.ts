@@ -36,6 +36,15 @@ export function entryIdOf(key: string): string {
 export const TOPICS_KEY = 'topics'
 
 /**
+ * The manifest key of a media file the replica holds. A file is named by the SHA-256 of its bytes,
+ * so the key alone says it is there and unchanged; files are never removed, since no row names
+ * one the replica lacks and an unused one costs only its storage.
+ */
+const MEDIA_PREFIX = 'media:'
+export const mediaKey = (mediaId: string) => `${MEDIA_PREFIX}${mediaId}`
+const isMediaKey = (key: string) => key.startsWith(MEDIA_PREFIX)
+
+/**
  * The row a unit carries for its source row. A public read rebuilds a view whose revision differs
  * from the worklist's, which needs the facts; the replica has none, so its worklist rows hold only
  * what reads need, with every revision equal. `public_search` drops its id: the replica numbers
@@ -68,12 +77,18 @@ export interface ReplicaPlan {
   /** Units the replica holds that the source no longer has. */
   remove: string[]
   unchanged: number
+  /** The media files the source's rows name that the replica lacks, copied before any unit. */
+  media: string[]
 }
 
-/** What a sync copies: compares the source's fingerprints with the replica's manifest. */
+/**
+ * What a sync copies: compares the source's fingerprints with the replica's manifest, and the media
+ * files the source's rows name with the ones the manifest lists.
+ */
 export function planReplicaSync(
   source: ReadonlyMap<string, string>,
   replica: ReadonlyMap<string, string>,
+  mediaIds: readonly string[],
 ): ReplicaPlan {
   const push: string[] = []
   let unchanged = 0
@@ -81,6 +96,7 @@ export function planReplicaSync(
     if (replica.get(key) === fingerprint) unchanged += 1
     else push.push(key)
   }
-  const remove = [...replica.keys()].filter((key) => !source.has(key))
-  return { push: push.sort(), remove: remove.sort(), unchanged }
+  const remove = [...replica.keys()].filter((key) => !isMediaKey(key) && !source.has(key))
+  const media = [...new Set(mediaIds)].filter((id) => !replica.has(mediaKey(id)))
+  return { push: push.sort(), remove: remove.sort(), unchanged, media: media.sort() }
 }

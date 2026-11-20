@@ -8,8 +8,10 @@ const node = (id: string, parentId: string | null, position: number): TopicNode 
   nameEn: `${id} en`,
   nameZh: `${id} zh`,
   position,
+  imageId: null,
 })
-const food = node('food', null, 2)
+const imageId = 'a'.repeat(64)
+const food = { ...node('food', null, 2), imageId }
 const home = node('home', null, 1)
 const nodes = [food, node('drinks', 'food', 2), node('kitchen', 'home', 1), node('fruit', 'food', 1), home]
 
@@ -22,6 +24,7 @@ describe('topic taxonomy', () => {
     const named = (id: string, senses = 0, entries = 0) => ({
       id,
       name: { en: `${id} en`, zh: `${id} zh` },
+      image_url: id === 'food' ? `/v1/media/${imageId}` : null,
       sense_count: senses,
       entry_count: entries,
     })

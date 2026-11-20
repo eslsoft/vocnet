@@ -5,6 +5,7 @@ import {
   type EntryUnitTable,
   entryIdOf,
   entryKey,
+  mediaKey,
   type ReplicaPlan,
   type ReplicaRow,
   replicaRow,
@@ -30,6 +31,9 @@ export const unitReadSql = Object.fromEntries(
 ) as Record<EntryUnitTable, string>
 
 export const topicsReadSql = 'SELECT * FROM topics;'
+
+/** The media files the source's rows name: the topics' pictures. */
+export const mediaIdsSql = 'SELECT DISTINCT image_id FROM topics WHERE image_id IS NOT NULL ORDER BY image_id;'
 
 /** Bytes per INSERT: under D1's 100 KB statement limit, which one document alone stays under. */
 const STATEMENT_BUDGET = 90_000
@@ -69,6 +73,10 @@ function inserts(table: string, rows: readonly ReplicaRow[], suffix = ''): strin
 const manifestRowSql = (key: string, fingerprint: string, syncedAt: string) =>
   `INSERT INTO replica_manifest (key, fingerprint, synced_at) VALUES (${value(key)}, ${value(fingerprint)}, ${value(syncedAt)}) ` +
   'ON CONFLICT (key) DO UPDATE SET fingerprint = excluded.fingerprint, synced_at = excluded.synced_at;'
+
+/** Records that the replica holds a media file, once the file is stored there. */
+export const mediaManifestSql = (mediaId: string, syncedAt: string) =>
+  manifestRowSql(mediaKey(mediaId), mediaId, syncedAt)
 
 /** Deletes an entry's rows, referencing rows first. */
 const deleteEntryRowsSql = (entryId: string) =>

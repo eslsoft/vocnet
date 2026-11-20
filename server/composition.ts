@@ -2,6 +2,7 @@ import type { CacheStorage as WorkersCacheStorage } from '@cloudflare/workers-ty
 import { webCryptoAgentKeys } from '@server/adapters/agent-keys'
 import { createAuthVerifier } from '@server/adapters/auth/verifier'
 import { createEdgeCache } from '@server/adapters/edge-cache'
+import { createMediaStore } from '@server/adapters/media-store'
 import { createRateLimiter } from '@server/adapters/rate-limiter'
 import { createAgentRepo } from '@server/adapters/repos/agents'
 import { createFactRepo } from '@server/adapters/repos/facts'
@@ -45,6 +46,7 @@ export function createDeps(env: Env): Deps {
     monitor: createMonitorRepo(db),
     reference: createReferenceRepo(db),
     publicViews: createPublicViewRepo(db),
+    media: createMediaStore(env.MEDIA),
     decision: {
       jev: { ask: (questions, state) => jevLimit(() => jev.ask(questions, state)) },
       luna: createLunaReviewer(review.decisions),

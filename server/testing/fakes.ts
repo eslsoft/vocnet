@@ -32,6 +32,7 @@ import type {
 } from '@server/usecases/ports'
 import type { AgentId } from '@shared/agents'
 import type { EntryId, FactId, FactKind, FactStatus, Pos, SenseId, SentenceId, TopicId } from '@shared/facts'
+import type { MediaId } from '@shared/media'
 import type { CefrLevel, LemmaReference, ReferenceSource } from '@shared/reference'
 import type { ServiceId } from '@shared/services'
 import type { TicketId } from '@shared/tickets'
@@ -84,6 +85,8 @@ export interface FakeWorld {
   facts: Fact[]
   /** A slice of the seeded taxonomy: two categories and some of their leaf topics. */
   topics: TopicNode[]
+  /** The stored media files by id. */
+  media: Map<MediaId, { bytes: Uint8Array<ArrayBuffer>; contentType: string }>
   tickets: TicketRecord[]
   agents: Array<AgentRecord & { keyHash: string }>
   services: Array<ServiceRecord & { keyHash: string }>
@@ -128,6 +131,7 @@ const topic = (id: string, parentId: string | null, nameEn: string, position: nu
   nameEn,
   nameZh: `${nameEn} (zh)`,
   position,
+  imageId: null,
 })
 
 export const fakeTopics: readonly TopicNode[] = [
@@ -180,6 +184,7 @@ export function fakeWorld(): FakeWorld {
     sentences: [],
     facts: [],
     topics: [...fakeTopics],
+    media: new Map(),
     tickets: [],
     references: new Map(),
     referenceSources: [],
@@ -1013,6 +1018,19 @@ export function fakeWorld(): FakeWorld {
     topics: {
       list: async () => world.topics,
       find: async (id) => world.topics.find((node) => node.id === id) ?? null,
+      setImage: async (id, imageId) => {
+        world.topics = world.topics.map((node) => (node.id === id ? { ...node, imageId } : node))
+      },
+    },
+    media: {
+      put: async (id, bytes, contentType) => {
+        if (!world.media.has(id)) world.media.set(id, { bytes, contentType })
+      },
+      get: async (id) => {
+        const file = world.media.get(id)
+        if (!file) return null
+        return { body: new Blob([file.bytes]).stream(), contentType: file.contentType, size: file.bytes.length }
+      },
     },
     agents: {
       insert: async (agent, keyHash) => {

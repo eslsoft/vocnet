@@ -37,7 +37,7 @@ const source: ReplicaSource = {
 /** The fingerprints and the statements a sync to a replica holding `manifest` applies, read now. */
 async function syncFromSource(manifest: ReadonlyMap<string, string>) {
   const fingerprints = await sourceFingerprints(source)
-  const plan = planReplicaSync(fingerprints, manifest)
+  const plan = planReplicaSync(fingerprints, manifest, [])
   const statements: string[] = []
   for await (const unit of syncStatements(source, plan, fingerprints, '2026-11-19T00:00:00.000Z')) {
     statements.push(...unit)

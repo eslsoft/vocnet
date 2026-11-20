@@ -601,12 +601,33 @@ follow:
 
 Learners find words by topic: the scene they need them in ("words I need at
 the hospital") or the subject area they belong to ("emotions"). The server keeps a two-level controlled taxonomy in the `topics`
-table (`id`, `parent_id`, `name_en`, `name_zh`, `position`): 16 categories
+table (`id`, `parent_id`, `name_en`, `name_zh`, `position`, `image_id`): 16 categories
 (`parent_id` null), such as `body-health` "Body and health", over 147 leaf
 topics, such as `hospital-doctor` "At the doctor and hospital". Ids are stable;
 names are display labels; `position` orders siblings. The owner curates it, so
-it changes only by migration (`topics_seed` inserted the approved taxonomy);
+its rows change only by migration (`topics_seed` inserted the approved taxonomy);
 agents cannot create topics.
+
+A category or leaf topic shows a picture, which a curator sets with `PUT
+/manage/v1/topics/{id}/image`: the body is the picture itself, a 1024×1024 WebP
+of at most 300 KB, small enough to load a whole topic list at once. Its size is
+read from the WebP header; any other file, size, or a larger one is `400
+invalid_request` naming what is wrong, a producer agent `403`, an unknown topic
+`404`. The picture is stored in the media bucket (see Media) before `image_id`
+names it, so a topic never names a file that is not there, and setting the same
+picture again changes nothing. The pictures are generated outside the server
+and checked before they are set; a picture is a curator's choice, not a
+reviewed fact.
+
+#### Media
+
+Pictures are media files in the R2 bucket bound as `MEDIA` (`vocnet-media`;
+`vocnet-media-preview` for previews), each under the lowercase hex SHA-256 of
+its bytes with its content type. The id names the content, so a file never
+changes: `GET /v1/media/{id}` answers it with `Cache-Control: public,
+max-age=31536000, immutable` and the id as its ETag (`If-None-Match` with it is
+`304`), and an id no file has is `404`. Nothing deletes a file; one no row names
+costs only its storage.
 
 A `topic` fact tags one sense with one leaf topic. Topics are tags, not
 relations between words: a relation to an "anchor word" would need an anchor
@@ -652,10 +673,11 @@ all and says to fail when it doubts the sense is typical vocabulary of the
 topic; an uncertain verdict still publishes, as in every chain. It sees the
 entry's other senses.
 
-`GET /v1/topics` returns `{ categories: [{ id, name: { en, zh }, sense_count,
-entry_count, topics: [{ id, name: { en, zh }, sense_count, entry_count }] }] }`
+`GET /v1/topics` returns `{ categories: [{ id, name: { en, zh }, image_url, sense_count,
+entry_count, topics: [{ id, name: { en, zh }, image_url, sense_count, entry_count }] }] }`
 in display order, the names keyed by language as a sense's topic tags name
-them. `sense_count` is how many public senses `GET /v1/topics/{id}/senses`
+them, and `image_url` the path of the topic's picture (`/v1/media/{id}`), null
+until a curator sets one. `sense_count` is how many public senses `GET /v1/topics/{id}/senses`
 lists for the topic, a category counting each sense of its leaves once;
 `entry_count` is how many public entries `GET /v1/entries?topic=` lists, those
 with a common sense tagged with it. Both are counted from `public_sense_topics`
@@ -1727,7 +1749,7 @@ batches.
 | `GET /v1/*` as a service  | Downstream services  | Optional service key, for the per-service read limit |
 | `/manage/v1/*`, `/manage/openapi.json` | Agents and admins | Agent API key or admin OIDC access token |
 | `/manage/v1/agents`, `/manage/v1/services` | Admins only | Admin OIDC access token                 |
-| `/manage/v1/facts/{id}/curate`, `curation` on `POST /manage/v1/facts`, `POST /manage/v1/entries`, `/manage/v1/tickets/{id}/resolve`, `POST /manage/v1/entries/{id}/passes` | Curators: admins and curator agents | Admin OIDC access token or curator agent key |
+| `/manage/v1/facts/{id}/curate`, `curation` on `POST /manage/v1/facts`, `POST /manage/v1/entries`, `/manage/v1/tickets/{id}/resolve`, `POST /manage/v1/entries/{id}/passes`, `PUT /manage/v1/topics/{id}/image` | Curators: admins and curator agents | Admin OIDC access token or curator agent key |
 | Admin console (SPA)       | Admins               | OIDC Authorization Code + PKCE               |
 
 Admins are OIDC subjects listed in `ADMIN_SUBJECTS`. The console signs in with
@@ -2228,6 +2250,7 @@ is `404`.
 | `GET /v1/entries`             | `public_entries` summaries by lemma range or along `(frequency_order, lemma)`, each checked through the key of `public_meanings`, or with a topic the `(entry_id, topic_id)` index of `public_sense_topics` |
 | `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf along the index of the sort |
 | `GET /v1/topics`              | `topics`, and two grouped counts over `public_sense_topics`: per leaf, and per category through `topics.parent_id` |
+| `GET /v1/media/{id}`          | The `MEDIA` R2 bucket by key, streamed                         |
 | `GET /v1/overviews`           | `public_entries` documents by exact lemma, one statement for every lemma asked |
 | `GET /v1/senses/{id}/members` | One recursive walk down `public_hypernyms`, with each member's parents and the total from the same statement |
 | `GET /v1/search`              | `public_entries` by exact lemma and lemma range, `public_forms` by variant form, and `public_search_fts` joined to `public_search` by rowid, grouped by entry |
@@ -2403,7 +2426,7 @@ the replica does not have. A `public_search` row drops its id; the replica
 numbers its own rows and its triggers keep `public_search_fts` in step.
 
 The replica keeps `replica_manifest` (`key`, `fingerprint`, `synced_at`; key
-`entry:<id>` or `topics`), which only the sync reads or writes and the sync
+`entry:<id>`, `topics`, or `media:<id>`), which only the sync reads or writes and the sync
 creates. A unit's fingerprint is the first 128 bits of the SHA-256 of its rows,
 each row's values in column order and the rows sorted. A sync reads every unit
 of the local database in one read transaction, so it sees one snapshot while
@@ -2419,6 +2442,15 @@ the replica as `wrangler d1 execute --file` imports of up to 50 MB, one row of
 holds the database while it runs, so a first sync of every entry makes the
 replica unavailable for its duration; a later sync copies only what changed.
 
+Media files go first. The sync lists the files the source's rows name (the
+topics' `image_id`), copies each one the manifest lacks from the local bucket
+(`wrangler r2 object get --local`) to the replica's (`wrangler r2 object put`;
+`--bucket vocnet-media-preview` for a preview, whose bucket the `--preview` flag
+of `d1 execute` does not reach), and records it as `media:<id>` with its id as
+fingerprint, so no row the replica serves names a file it lacks. A file is
+named by its content, so the key alone says it is there and unchanged, and the
+sync never removes one.
+
 What a replica cannot answer: feedback is `404` for every target, because it
 is checked against the live projection of the facts (see Feedback), which the
 replica does not have. The management API answers, but over a database with no
@@ -2429,7 +2461,7 @@ which never resolves, so a review there fails loudly instead of reaching a model
 
 - One Worker serves the API, the OpenAPI documents, and the console assets.
 - D1 stores nodes, facts, the topic taxonomy, tickets, agents, the worklist and work items, the public view, and
-  imported reference data.
+  imported reference data. R2 stores media files (see Media).
 - A Cloudflare Queue carries `{ fact_id, trace_id }` review jobs. Its consumer
   takes batches of up to 48, reviews them concurrently, and logs the trace ID.
   Each batch logs a `review_batch` start and end, and each review a `review_stage`

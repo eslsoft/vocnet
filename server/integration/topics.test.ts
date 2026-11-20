@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:test'
+import { webpHeader } from '@server/testing/webp'
 import { publicEntrySchema } from '@shared/catalog'
 import { factPageSchema, factWriteResultSchema } from '@shared/facts'
+import { topicImageResultSchema } from '@shared/media'
 import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -86,6 +88,7 @@ describe('topics', () => {
     expect(categories[0]?.topics[0]).toEqual({
       id: 'family',
       name: { en: 'Family', zh: '家庭' },
+      image_url: null,
       sense_count: 0,
       entry_count: 0,
     })
@@ -279,5 +282,45 @@ describe('topics', () => {
     expect(missing.status).toBe(404)
     expect(codeOf(missing.body).code).toBe('not_found')
     expect((await call('/v1/topics/Hospital/senses')).status).toBe(400)
+  })
+})
+
+describe('topic pictures', () => {
+  it('sets a topic picture with a curator key and serves it forever by its id [spec: topics/image-api]', async () => {
+    const curator = await issueAgentKey('Curator', true)
+    const producer = await issueAgentKey()
+    const picture = webpHeader(1024, 1024)
+    const put = (token: string, id: string, body: Uint8Array<ArrayBuffer>) =>
+      call(`/manage/v1/topics/${id}/image`, { method: 'PUT', token, headers: { 'content-type': 'image/webp' }, body })
+
+    const set = await put(curator, 'dentist', picture)
+    expect(set.status).toBe(200)
+    const { image_url } = topicImageResultSchema.parse(set.body)
+    expect(image_url).toMatch(/^\/v1\/media\/[0-9a-f]{64}$/)
+    const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
+    const health = categories.find((category) => category.id === 'body-health')
+    expect(health?.image_url).toBeNull()
+    expect(health?.topics.find((topic) => topic.id === 'dentist')?.image_url).toBe(image_url)
+
+    const read = await request(image_url)
+    const id = image_url.split('/').pop()
+    expect([read.status, read.headers.get('Content-Type'), read.headers.get('Cache-Control')]).toEqual([
+      200,
+      'image/webp',
+      'public, max-age=31536000, immutable',
+    ])
+    expect(read.headers.get('ETag')).toBe(`"${id}"`)
+    expect(new Uint8Array(await read.arrayBuffer())).toEqual(picture)
+    const again = await request(image_url, { headers: { 'if-none-match': `"${id}"` } })
+    expect(again.status).toBe(304)
+
+    const missing = await call(`/v1/media/${'0'.repeat(64)}`)
+    expect([missing.status, apiErrorSchema.parse(missing.body).error.code]).toEqual([404, 'not_found'])
+    expect((await call('/v1/media/not-a-hash')).status).toBe(400)
+    const refused = await put(producer, 'dentist', picture)
+    expect([refused.status, apiErrorSchema.parse(refused.body).error.code]).toEqual([403, 'forbidden'])
+    const wrong = await put(curator, 'dentist', webpHeader(512, 512))
+    expect([wrong.status, apiErrorSchema.parse(wrong.body).error.code]).toEqual([400, 'invalid_request'])
+    expect((await put(curator, 'no-such-topic', picture)).status).toBe(404)
   })
 })

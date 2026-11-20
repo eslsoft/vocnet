@@ -26,5 +26,5 @@ export function requireAdminPrincipal(principal: Principal): void {
 }
 
 export function requireCurator(principal: Principal): void {
-  if (!mayCurate(principal)) throw new ForbiddenError('Only curators (admins and curator agents) may curate facts.')
+  if (!mayCurate(principal)) throw new ForbiddenError('Only curators (admins and curator agents) may do this.')
 }

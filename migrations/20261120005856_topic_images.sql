@@ -1,0 +1,1 @@
+ALTER TABLE `topics` ADD `image_id` text;
