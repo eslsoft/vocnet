@@ -2517,7 +2517,10 @@ topics' `image_id` and the pictures of published image facts), copies each one t
 of `d1 execute` does not reach), and records it as `media:<id>` with its id as
 fingerprint, so no row the replica serves names a file it lacks. A file is
 named by its content, so the key alone says it is there and unchanged, and the
-sync never removes one.
+sync never removes one. The copies run eight at a time (`--media-concurrency`),
+and each step is retried, since R2 answers an occasional transient error.
+`--skip-media` pushes the rows without their files, when a release cannot wait
+for them: a picture those rows name answers `404` until a later sync copies it.
 
 What a replica cannot answer: feedback is `404` for every target, because it
 is checked against the live projection of the facts (see Feedback), which the
