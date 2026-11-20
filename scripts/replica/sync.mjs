@@ -87,7 +87,17 @@ const wrangler = (args) => runWrangler(['d1', 'execute', options.database, ...ta
 async function copyMedia(id, directory) {
   const file = path.join(directory, id)
   await runWranglerAsync(['r2', 'object', 'get', `${SOURCE_BUCKET}/${id}`, '--local', '--persist-to', options['media-source'], '--file', file])
-  await runWranglerAsync(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP])
+  // R2's API answers an occasional 500 that asks to try again; a put of the same bytes is idempotent.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await runWranglerAsync(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP])
+      break
+    } catch (error) {
+      if (attempt === 4) throw error
+      console.info(`Retrying media ${id} (attempt ${attempt + 1})`)
+      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt))
+    }
+  }
   rmSync(file)
 }
 
