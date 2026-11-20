@@ -3,11 +3,14 @@
   python3 -I scripts/local/pictures.py jobs <d1.sqlite> <jobs.jsonl> [--topics]
       one job per public entry, most frequent first: its first common sense and that sense's first example
       (--topics: only entries with a sense tagged with a topic)
+  python3 -I scripts/local/pictures.py jobs <d1.sqlite> <jobs.jsonl> --topic-senses
+      one job per sense tagged with a topic that has no image fact yet
   bash scripts/local/picture-gen.sh <job json> <dir> [example]
       draws a job's sense, or its example, through the model gateway into <dir>/<sense id>[.example].webp
-  python3 -I scripts/local/pictures.py submit <jobs.jsonl> <dir> <ledger.jsonl> [<limit>]
+  python3 -I scripts/local/pictures.py submit <jobs.jsonl> <dir> <ledger.jsonl> [<limit>] [--curated]
       stores each drawn picture not yet submitted and submits its image fact, at most <limit> of them, so a
-      run never queues more reviews than the producers' facts can wait behind; the ledger records each submission
+      run never queues more reviews than the producers' facts can wait behind; the ledger records each submission;
+      with --curated, each fact is published at once with a curator review instead of the reviewer chain
   python3 -I scripts/local/pictures.py status <ledger.jsonl> [<jobs.jsonl> <retry.jsonl>]
       counts the submitted facts by status; with the jobs, writes to <retry.jsonl> the jobs whose picture of the
       sense was rejected and that have an example, for picture-gen.sh with "example" and a second submit
@@ -47,6 +50,42 @@ def read_jsonl(path):
     return [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
 
 
+def topic_sense_jobs(db_path, out_path):
+    """One job per sense tagged with a topic that has no image fact yet, most frequent entry first."""
+    db = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+    tagged = {row[0] for row in db.execute('SELECT DISTINCT sense_id FROM public_sense_topics')}
+    tried = {row[0] for row in db.execute("SELECT DISTINCT subject_id FROM facts WHERE kind = 'image'")}
+    rows = db.execute(
+        """SELECT p.entry_id, json_extract(p.document, '$.lemma'), w.zipf, json_extract(p.document, '$.meanings')
+            FROM public_entries p LEFT JOIN worklist w ON w.entry_id = p.entry_id
+            WHERE p.entry_id IN (SELECT entry_id FROM public_sense_topics)
+            ORDER BY coalesce(w.zipf, -1) DESC, p.entry_id"""
+    )
+    written = 0
+    with open(out_path, 'w') as out:
+        for entry_id, lemma, zipf, meanings in rows:
+            for meaning in json.loads(meanings):
+                for sense in meaning['senses']:
+                    if sense['id'] not in tagged or sense['id'] in tried:
+                        continue
+                    example = sense['examples'][0] if sense['examples'] else None
+                    job = {
+                        'entry_id': entry_id,
+                        'lemma': lemma,
+                        'zipf': zipf,
+                        'labels': sense.get('labels') or [],
+                        'sense': {
+                            'id': sense['id'],
+                            'pos': meaning['pos'],
+                            'gloss': sense['gloss'],
+                            'example': example and {'sentence_id': example['sentence_id'], 'text': example['text']},
+                        },
+                    }
+                    out.write(json.dumps(job, ensure_ascii=False) + '\n')
+                    written += 1
+    print(f'{written} jobs')
+
+
 def jobs(db_path, out_path, topics_only):
     db = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
     where = 'WHERE p.entry_id IN (SELECT entry_id FROM public_sense_topics)' if topics_only else ''
@@ -84,7 +123,7 @@ def jobs(db_path, out_path, topics_only):
     print(f'{written} jobs')
 
 
-def submit(jobs_path, directory, ledger_path, limit=None):
+def submit(jobs_path, directory, ledger_path, limit=None, curated=False):
     submitted = {(row['sense_id'], row['mode']) for row in read_jsonl(ledger_path)}
     budget = int(limit) if limit else None
     counts = Counter()
@@ -106,7 +145,10 @@ def submit(jobs_path, directory, ledger_path, limit=None):
                 payload = {'image_id': stored['id']}
                 if mode == 'example':
                     payload['sentence_id'] = sense['example']['sentence_id']
-                status, body = call('POST', '/manage/v1/facts', {'kind': 'image', 'subject_id': sense['id'], 'payload': payload})
+                fact = {'kind': 'image', 'subject_id': sense['id'], 'payload': payload}
+                if curated:
+                    fact['curation'] = {'reason': 'The owner publishes the drawn pictures without review.'}
+                status, body = call('POST', '/manage/v1/facts', fact)
                 if status not in (200, 201):
                     counts[f'submit {status}'] += 1
                     print(f'{job["lemma"]}: submit {status} {body}', file=sys.stderr)
@@ -143,10 +185,12 @@ def status(ledger_path, jobs_path=None, retry_path=None):
 
 if __name__ == '__main__':
     command, *args = sys.argv[1:]
-    if command == 'jobs':
+    if command == 'jobs' and '--topic-senses' in args[2:]:
+        topic_sense_jobs(args[0], args[1])
+    elif command == 'jobs':
         jobs(args[0], args[1], '--topics' in args[2:])
     elif command == 'submit':
-        submit(*args)
+        submit(*[arg for arg in args if arg != '--curated'], curated='--curated' in args)
     elif command == 'status':
         status(*args)
     else:
