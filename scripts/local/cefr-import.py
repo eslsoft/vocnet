@@ -5,8 +5,8 @@ The curator key is read from ~/.vocnet/keys/curator.key.
 
 <lists dir> holds CEFR-A1.json ... CEFR-C2.json, each a JSON array of words. A word takes the lowest
 level a list gives it. Each word that has an entry the reference lists do not level gets a curated
-cefr fact, its reason naming <source name> and the list; a word the reference lists level, or that
-already has a live cefr fact, is skipped. With --admit, a lower-case single word that has no entry
+cefr fact, its reason naming <source name> and the list: a published estimate is corrected by it, and
+a word the reference lists level, or whose level is curated or still pending, is skipped. With --admit, a lower-case single word that has no entry
 is admitted first, as a headword of batch 0, so it is produced first.
 """
 
@@ -75,11 +75,17 @@ def main(directory, source, admit, dry_run):
         if entry['cefr']:
             counts['leveled by the reference lists'] += 1
             continue
-        if any(fact['kind'] == 'cefr' and fact['status'] in ('pending', 'published') for fact in entry['facts']):
-            counts['has a level fact'] += 1
+        live = [fact for fact in entry['facts'] if fact['kind'] == 'cefr' and fact['status'] in ('pending', 'published')]
+        estimate = next((fact for fact in live if fact['status'] == 'published' and fact['review'] and fact['review']['reviewer'] != 'curator'), None)
+        if live and not estimate:
+            counts['has a curated or pending level'] += 1
             continue
+        if estimate and estimate['payload']['level'] == level:
+            counts['estimate already agrees'] += 1
+            continue
+        verb = 'correct' if estimate else 'level'
         if dry_run:
-            counts[f'would level {level}'] += 1
+            counts[f'would {verb} {level}'] += 1
             continue
         status, body = call(
             'POST',
@@ -89,10 +95,11 @@ def main(directory, source, admit, dry_run):
                 'subject_id': entry['entry']['id'],
                 'payload': {'level': level},
                 'curation': {'reason': f'{source}: listed at {level} (CEFR-{level}).'},
+                **({'supersedes_id': estimate['id']} if estimate else {}),
             },
         )
         if status in (200, 201):
-            counts[f'leveled {level}'] += 1
+            counts[f'{verb}ed {level}'.replace('levelled', 'leveled')] += 1
         else:
             counts[f'submit failed {status}'] += 1
             print(f'{word}: submit {status} {body}', file=sys.stderr)
