@@ -36,7 +36,12 @@ for attempt in 1 2 3 4 5 6 7 8 9 10; do
   # A refusal by the safety system is final for this prompt.
   grep -q 'safety system' "$tmp/r.json" 2>/dev/null && break
   # The upstream account rate-limits image generation: wait for its window instead of failing.
-  if grep -q 'rate_limit_error\|429' "$tmp/r.json" 2>/dev/null; then sleep $((attempt * 60)); else sleep $((attempt * 5)); fi
+  if grep -q 'rate_limit_error\|429' "$tmp/r.json" 2>/dev/null; then
+    echo "WAIT $lemma $name 429, attempt $attempt" >&2
+    sleep $((attempt * 60))
+  else
+    sleep $((attempt * 5))
+  fi
 done
 echo "FAIL $lemma $name $(jq -c '.error // .' "$tmp/r.json" 2>/dev/null | head -c 200)"
 rm -rf "$tmp"
