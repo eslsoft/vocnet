@@ -5,7 +5,7 @@
 //
 // Usage: node scripts/replica/sync.mjs [--source <file.sqlite>] [--media-source <dir>]
 //          [--database vocnet] [--bucket vocnet-media] [--wrangler "<command>"] [--dry-run]
-//          [--media-concurrency 16]
+//          [--media-concurrency 8]
 //          -- <wrangler target flags, e.g. --remote>
 //
 // --source defaults to the local D1 file under .wrangler, --media-source to the local state the
@@ -37,7 +37,7 @@ const { values: options } = parseArgs({
     bucket: { type: 'string', default: 'vocnet-media' },
     wrangler: { type: 'string', default: 'pnpm exec wrangler' },
     'dry-run': { type: 'boolean', default: false },
-    'media-concurrency': { type: 'string', default: '16' },
+    'media-concurrency': { type: 'string', default: '8' },
   },
 })
 const target = process.argv.slice(separator + 1)
@@ -86,35 +86,57 @@ const wrangler = (args) => runWrangler(['d1', 'execute', options.database, ...ta
 /** Copies a media file from the local state to the replica's bucket. */
 async function copyMedia(id, directory) {
   const file = path.join(directory, id)
-  await runWranglerAsync(['r2', 'object', 'get', `${SOURCE_BUCKET}/${id}`, '--local', '--persist-to', options['media-source'], '--file', file])
-  // R2's API answers an occasional 500 that asks to try again; a put of the same bytes is idempotent.
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await runWranglerAsync(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP])
-      break
-    } catch (error) {
-      if (attempt === 4) throw error
-      console.info(`Retrying media ${id} (attempt ${attempt + 1})`)
-      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt))
-    }
-  }
+  await retried(id, () =>
+    runWranglerAsync(['r2', 'object', 'get', `${SOURCE_BUCKET}/${id}`, '--local', '--persist-to', options['media-source'], '--file', file]),
+  )
+  await retried(id, () =>
+    runWranglerAsync(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP]),
+  )
   rmSync(file)
 }
 
-/** Copies the media files --media-concurrency at a time; the first failure stops the sync. */
+/**
+ * Runs a media step again after a failure, up to four times: R2's API answers an occasional 500 or
+ * 503 that asks to try again, and the local bucket an occasional internal error under concurrent
+ * reads. A get or a put of the same bytes is idempotent.
+ */
+async function retried(id, step) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await step()
+    } catch (error) {
+      if (attempt === 4) throw error
+      console.info(`Retrying media ${id} (attempt ${attempt + 1})`)
+      await new Promise((resolve) => setTimeout(resolve, 3000 * attempt))
+    }
+  }
+}
+
+/**
+ * Copies the media files --media-concurrency at a time. The first failure stops the sync once the
+ * copies already running have ended, so none of them loses its file to the directory's removal.
+ */
 async function copyAllMedia(ids, directory) {
   let next = 0
   let copied = 0
+  let failed = false
   const worker = async () => {
-    while (next < ids.length) {
+    while (!failed && next < ids.length) {
       const id = ids[next++]
-      await copyMedia(id, directory)
+      try {
+        await copyMedia(id, directory)
+      } catch (error) {
+        failed = true
+        throw error
+      }
       copied += 1
       if (copied % 50 === 0 || copied === ids.length) console.info(`Copied media ${copied}/${ids.length}`)
     }
   }
   const workers = Math.max(1, Number(options['media-concurrency']))
-  await Promise.all(Array.from({ length: Math.min(workers, ids.length) }, worker))
+  const results = await Promise.allSettled(Array.from({ length: Math.min(workers, ids.length) }, worker))
+  const failure = results.find((result) => result.status === 'rejected')
+  if (failure) throw failure.reason
 }
 
 // One read transaction: every unit is read from the same snapshot while the producer keeps writing.
