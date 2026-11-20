@@ -7,9 +7,10 @@
       one job per sense tagged with a topic that has no image fact yet
   bash scripts/local/picture-gen.sh <job json> <dir> [example]
       draws a job's sense, or its example, through the model gateway into <dir>/<sense id>[.example].webp
-  python3 -I scripts/local/pictures.py submit <jobs.jsonl> <dir> <ledger.jsonl> [<limit>]
+  python3 -I scripts/local/pictures.py submit <jobs.jsonl> <dir> <ledger.jsonl> [<limit>] [--curated]
       stores each drawn picture not yet submitted and submits its image fact, at most <limit> of them, so a
-      run never queues more reviews than the producers' facts can wait behind; the ledger records each submission
+      run never queues more reviews than the producers' facts can wait behind; the ledger records each submission;
+      with --curated, each fact is published at once with a curator review instead of the reviewer chain
   python3 -I scripts/local/pictures.py status <ledger.jsonl> [<jobs.jsonl> <retry.jsonl>]
       counts the submitted facts by status; with the jobs, writes to <retry.jsonl> the jobs whose picture of the
       sense was rejected and that have an example, for picture-gen.sh with "example" and a second submit
@@ -122,7 +123,7 @@ def jobs(db_path, out_path, topics_only):
     print(f'{written} jobs')
 
 
-def submit(jobs_path, directory, ledger_path, limit=None):
+def submit(jobs_path, directory, ledger_path, limit=None, curated=False):
     submitted = {(row['sense_id'], row['mode']) for row in read_jsonl(ledger_path)}
     budget = int(limit) if limit else None
     counts = Counter()
@@ -144,7 +145,10 @@ def submit(jobs_path, directory, ledger_path, limit=None):
                 payload = {'image_id': stored['id']}
                 if mode == 'example':
                     payload['sentence_id'] = sense['example']['sentence_id']
-                status, body = call('POST', '/manage/v1/facts', {'kind': 'image', 'subject_id': sense['id'], 'payload': payload})
+                fact = {'kind': 'image', 'subject_id': sense['id'], 'payload': payload}
+                if curated:
+                    fact['curation'] = {'reason': 'The owner publishes the drawn pictures without review.'}
+                status, body = call('POST', '/manage/v1/facts', fact)
                 if status not in (200, 201):
                     counts[f'submit {status}'] += 1
                     print(f'{job["lemma"]}: submit {status} {body}', file=sys.stderr)
@@ -186,7 +190,7 @@ if __name__ == '__main__':
     elif command == 'jobs':
         jobs(args[0], args[1], '--topics' in args[2:])
     elif command == 'submit':
-        submit(*args)
+        submit(*[arg for arg in args if arg != '--curated'], curated='--curated' in args)
     elif command == 'status':
         status(*args)
     else:
