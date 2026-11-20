@@ -327,6 +327,7 @@ describe('fact-kind registry', () => {
       sentence_meaning: ['jev'],
       productive_use: ['jev'],
       image: [],
+      cefr: [],
     })
   })
 
@@ -428,7 +429,7 @@ describe('fact-kind registry', () => {
     expect(slotOf('productive_use', { pos: 'verb', native: true, learner: false })).toBe('verb')
     expect(slotOf('relation', { type: 'synonym', target_sense_id: target })).toBeNull()
     expect(GENERAL_LIMITS[1]).toBe(
-      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, sentence_meaning, image, one live translation per language, and one live productive_use per part of speech: change it with a correction that supersedes the published one.',
+      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, sentence_meaning, image, cefr, one live translation per language, and one live productive_use per part of speech: change it with a correction that supersedes the published one.',
     )
     expect(GENERAL_LIMITS).toHaveLength(3)
   })
@@ -1842,7 +1843,9 @@ describe('productive use classification', () => {
   })
 
   it('asks Jev each tier both ways round and picks the higher-scoring value [spec: work/classify]', () => {
-    const { state, questions, pick } = verb()
+    const { state, decision: jev } = verb()
+    if (!jev) throw new Error('A productive use asks Jev first.')
+    const { questions, pick } = jev
     expect(state).toEqual({
       word: 'run',
       'part of speech': 'verb',
@@ -1949,5 +1952,48 @@ describe('image facts', () => {
     expect(mentionsOf('image', { image_id: picture })).toEqual({ entries: [], sentences: [] })
     expect(mediaOf('image', { image_id: picture })).toBe(picture)
     expect(mediaOf('example', { sentence_id: said })).toBeNull()
+  })
+})
+
+describe('cefr facts', () => {
+  const asylum = {
+    ...entryView('asylum', [{ ...money, id: target, gloss: 'Protection given to a refugee.' }]),
+    zipf: 3.4,
+  }
+
+  it('lets the LLM alone choose a level from the common senses and the frequency [spec: facts/cefr-review]', () => {
+    const classification = classificationOf('cefr', 'level', asylum)
+    if (!classification) throw new Error('A word with common senses has a level to estimate.')
+    expect(classification.decision).toBeNull()
+    expect(classification.state).toEqual({
+      word: 'asylum',
+      senses: ['(noun) Protection given to a refugee.'],
+      zipf: '3.40',
+    })
+    expect(classification.prompt.system).toMatch(/^You classify one word's CEFR level/)
+    expect(classification.prompt.user).toContain('What is the CEFR level of "asylum"?')
+    expect(classification.prompt.user).toContain('frequency alone often misjudges a level by one')
+    expect(classification.parse({ level: 'C1', confidence: 0.7, reason: 'Formal.' })).toEqual({
+      payload: { level: 'C1' },
+      confidence: 0.7,
+      reason: 'Formal.',
+    })
+    expect(classification.parse({ level: 'D1', confidence: 0.7, reason: 'No.' })).toBeNull()
+    expect(classificationOf('cefr', 'level', { ...asylum, zipf: null })?.state.zipf).toBe('not listed')
+    expect(
+      classificationOf('cefr', 'level', { ...asylum, senses: [{ ...money, id: target, rank: 'extra' }] }),
+    ).toBeNull()
+  })
+
+  it('judges a submitted level by the same rule, passing one level off', () => {
+    const plan = planReview('cefr', { level: 'B2' }, on(asylum))
+    expect(rubric(plan)).toContain('Is B2 the CEFR level of "asylum"?')
+    expect(rubric(plan)).toContain('pass when the level is right or one away')
+    expect(planReview('cefr', { level: 'B2' }, on({ ...asylum, senses: [] }))).toEqual({
+      kind: 'unreviewable',
+      reason: 'The entry has no common sense to judge a level by.',
+    })
+    expect(factKinds.cefr.contentKey({ level: 'B2' })).toBe('B2')
+    expect(factKinds.cefr.summary({ level: 'B2' })).toBe('B2')
   })
 })

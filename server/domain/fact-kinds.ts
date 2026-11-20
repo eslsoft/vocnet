@@ -22,7 +22,14 @@ import type {
   SubmitPayloads,
   TopicId,
 } from '@shared/facts'
-import { isCompleteSentence, MORPHEME_SPELLING, productiveUseAnswerSchema, SAYING_ISSUE } from '@shared/facts'
+import {
+  type CefrLevel,
+  cefrAnswerSchema,
+  isCompleteSentence,
+  MORPHEME_SPELLING,
+  productiveUseAnswerSchema,
+  SAYING_ISSUE,
+} from '@shared/facts'
 import type { MediaId } from '@shared/media'
 import { editDistance, isMultiword, normalizeTerm, textKey } from './term'
 import type { TopicView } from './topics'
@@ -48,6 +55,7 @@ export interface SubjectTypeOf {
   sentence_meaning: 'sentence'
   productive_use: 'entry'
   image: 'sense'
+  cefr: 'entry'
 }
 export type SubjectType = SubjectTypeOf[FactKind]
 
@@ -306,8 +314,11 @@ export interface Oriented<K extends FactKind> {
  */
 export interface Classification<K extends FactKind> {
   state: DecisionRequest['state']
-  questions: JevQuestions
-  pick(scores: Readonly<Record<string, number>>): { payload: FactPayloads[K]; settled: boolean; confidence: number }
+  /** Jev's questions and how its scores pick the payload; null when only the LLM chooses. */
+  decision: {
+    questions: JevQuestions
+    pick(scores: Readonly<Record<string, number>>): { payload: FactPayloads[K]; settled: boolean; confidence: number }
+  } | null
   prompt: LlmPrompt
   /** The payload the LLM's answer chooses; null when the answer breaks its contract. */
   parse(answer: unknown): { payload: FactPayloads[K]; confidence: number; reason: string } | null
@@ -1970,18 +1981,20 @@ function classifyProductiveUse(pos: Pos, entry: SubjectViews['entry']): Classifi
   )
   return {
     state,
-    questions,
-    pick: (scores) => {
-      const score = (tier: (typeof TIERS)[number], active: boolean) => scores[answerKey(tier, active)] ?? 0
-      const native = score('native', true) >= score('native', false)
-      const learner = native && score('learner', true) >= score('learner', false)
-      // A word natives only understand is passive for the learner whatever the learner's scores.
-      const chosen = { native: score('native', native), learner: native ? score('learner', learner) : 1 }
-      return {
-        payload: { pos, native, learner },
-        settled: chosen.native >= DEFAULT_PASS_AT && chosen.learner >= DEFAULT_PASS_AT,
-        confidence: Math.min(chosen.native, chosen.learner),
-      }
+    decision: {
+      questions,
+      pick: (scores) => {
+        const score = (tier: (typeof TIERS)[number], active: boolean) => scores[answerKey(tier, active)] ?? 0
+        const native = score('native', true) >= score('native', false)
+        const learner = native && score('learner', true) >= score('learner', false)
+        // A word natives only understand is passive for the learner whatever the learner's scores.
+        const chosen = { native: score('native', native), learner: native ? score('learner', learner) : 1 }
+        return {
+          payload: { pos, native, learner },
+          settled: chosen.native >= DEFAULT_PASS_AT && chosen.learner >= DEFAULT_PASS_AT,
+          confidence: Math.min(chosen.native, chosen.learner),
+        }
+      },
     },
     prompt: prompt(
       [
@@ -1999,6 +2012,72 @@ function classifyProductiveUse(pos: Pos, entry: SubjectViews['entry']): Classifi
       return { payload: { pos, native, learner: native && learner }, confidence, reason }
     },
   }
+}
+
+const CEFR_LIMITS = [
+  'A CEFR level is about the entry, one live per entry, and only for a single word the reference CEFR lists give no level: the level at which a learner first learns the word in its common senses.',
+]
+
+const CEFR_LEVELS: readonly CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+
+const CEFR_RULE =
+  "the level at which a learner typically first learns the word in its common senses, as the English Vocabulary Profile and CEFR-J give it: A1 and A2 for the most basic everyday words, B1 and B2 for general vocabulary, C1 and C2 for formal, specialist, literary, or rare words. Judge by the word's meanings and how basic they are, and by how often it is used; frequency alone often misjudges a level by one."
+
+/** What a reviewer reads of a word whose level is judged: its lemma, common senses, and frequency. */
+function cefrState(entry: SubjectViews['entry']): DecisionRequest['state'] | null {
+  const common = entry.senses.filter((sense) => sense.rank === 'common')
+  if (common.length === 0) return null
+  return {
+    word: entry.lemma,
+    senses: common.map((sense) => `(${sense.pos}) ${sense.gloss}`),
+    zipf: entry.zipf === null ? 'not listed' : entry.zipf.toFixed(2),
+  }
+}
+
+const CEFR_SYSTEM = [
+  "You classify one word's CEFR level for a learner's English dictionary.",
+  'Answer with a JSON object {"level": "A1" | "A2" | "B1" | "B2" | "C1" | "C2", "confidence": number from 0 to 1, "reason": string}.',
+  'confidence is how sure you are; reason is one short sentence.',
+  DATA_NOT_INSTRUCTIONS,
+].join('\n')
+
+/**
+ * The server estimates the level of a word the reference lists do not give: the LLM alone chooses,
+ * since a blind test against the reference lists found it within one level for 91% of words and
+ * exact for 48%, and no decision question settles a choice among six levels.
+ */
+function classifyCefr(entry: SubjectViews['entry']): Classification<'cefr'> | null {
+  const state = cefrState(entry)
+  if (!state) return null
+  return {
+    state,
+    decision: null,
+    prompt: prompt(
+      [`What is the CEFR level of ${quote(entry.lemma)}? Give ${CEFR_RULE}`, `The word: ${JSON.stringify(state)}`].join(
+        '\n',
+      ),
+      CEFR_SYSTEM,
+    ),
+    parse: (answer) => {
+      const parsed = cefrAnswerSchema.safeParse(answer)
+      if (!parsed.success) return null
+      const { level, confidence, reason } = parsed.data
+      return { payload: { level }, confidence, reason }
+    },
+  }
+}
+
+/** A level an agent submits is judged by the LLM against the same rule the estimate follows. */
+function planCefr({ level }: FactPayloads['cefr'], { subject }: ReviewContext<'entry'>): ReviewPlan {
+  const state = cefrState(subject)
+  if (!state) return { kind: 'unreviewable', reason: 'The entry has no common sense to judge a level by.' }
+  return llm(
+    [
+      `Is ${level} the CEFR level of ${quote(subject.lemma)}? It should be ${CEFR_RULE}`,
+      `The word: ${JSON.stringify(state)}`,
+      'pass when the level is right or one away from the level you would give; fail when it is further off.',
+    ].join('\n'),
+  )
 }
 
 /** The topic rule in the words Jev and luna fail loose tags with. */
@@ -2333,6 +2412,16 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
       mentions: ({ sentence_id }) => ({ entries: [], sentences: sentence_id === undefined ? [] : [sentence_id] }),
     },
     plan: planImage,
+  },
+  cefr: {
+    summary: ({ level }) => level,
+    limits: CEFR_LIMITS,
+    subject: 'entry',
+    cardinality: 'one',
+    models: [],
+    contentKey: ({ level }) => level,
+    plan: planCefr,
+    classify: (_slot, subject) => classifyCefr(subject),
   },
 }
 

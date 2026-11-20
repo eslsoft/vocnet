@@ -86,6 +86,8 @@ interface ReviewerAnswers {
   choice?: Record<string, unknown>
   /** The headwords the LLM guesses a picture shows before it is told the word. */
   guesses?: string[]
+  /** The level the LLM estimates for a word the reference lists do not level. */
+  level?: string
 }
 
 /**
@@ -98,6 +100,7 @@ export function stubReviewers({
   verdict = 'pass',
   choice,
   guesses = ['picture'],
+  level = 'B2',
 }: ReviewerAnswers = {}) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const request = new Request(input, init)
@@ -121,13 +124,16 @@ export function stubReviewers({
     }
     if (request.url === LLM_URL) {
       const system = body.messages?.[0]?.content ?? ''
-      const classifies = system.startsWith('You classify')
+      const levels = system.startsWith("You classify one word's CEFR level")
+      const classifies = system.startsWith('You classify') && !levels
       if (classifies && !choice) throw new Error('The classifier asked the LLM to choose, and the test gave no choice.')
-      const answer = classifies
-        ? choice
-        : system.startsWith('You look at one picture')
-          ? { guesses }
-          : { verdict, confidence: 0.88, reason: 'Fine.' }
+      const answer = levels
+        ? { level, confidence: 0.6, reason: 'Estimated.' }
+        : classifies
+          ? choice
+          : system.startsWith('You look at one picture')
+            ? { guesses }
+            : { verdict, confidence: 0.88, reason: 'Fine.' }
       const content = JSON.stringify(answer)
       return Response.json({ model: 'llm-test', choices: [{ message: { content } }] })
     }

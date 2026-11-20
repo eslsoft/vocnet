@@ -759,3 +759,10 @@ Feature: Facts and review
     Then both LLM calls carry the picture as an image part, and the entry, its sense, and the entry list show it
     And a replica sync lists the picture among the files it copies
     And a wrong-sized picture is 400 and an image fact naming a picture that is not stored is 422
+
+  @facts/cefr-review @domain
+  Scenario: A level is estimated and judged by the same rule
+    Given a word with common senses and a frequency
+    When its level is classified, or a submitted level is reviewed
+    Then the LLM alone chooses among the six levels from the senses and the frequency
+    And a submitted level passes when it is right or one level off, and a word without common senses is unreviewable

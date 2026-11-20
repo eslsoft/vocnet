@@ -6,8 +6,9 @@ import { posSchema } from './facts'
 
 export const referenceSourceIdSchema = z.string().min(1).meta({ id: 'ReferenceSourceId' })
 
-export const cefrLevelSchema = z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']).meta({ id: 'CefrLevel' })
-export type CefrLevel = z.infer<typeof cefrLevelSchema>
+import { cefrLevelSchema } from './facts'
+
+export { type CefrLevel, cefrLevelSchema } from './facts'
 
 export const frequencySchema = z
   .object({

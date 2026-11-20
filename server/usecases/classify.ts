@@ -117,8 +117,26 @@ async function decide<K extends FactKind>(
   classification: Classification<K>,
 ): Promise<{ payload: unknown; review: Review }> {
   const at = deps.clock.now().toISOString()
-  const jev = await deps.decision.jev.ask(classification.questions, classification.state)
-  const picked = classification.pick(jev.answers)
+  if (!classification.decision) {
+    const { model, answer } = await deps.llm.answer(classification.prompt)
+    const chosen = classification.parse(answer)
+    if (!chosen) throw new ReviewerProtocolError('The LLM answered a classification outside its contract.')
+    return {
+      payload: chosen.payload,
+      review: {
+        reviewer: 'llm',
+        model,
+        verdict: 'pass',
+        confidence: chosen.confidence,
+        reason: chosen.reason,
+        context: classification.state,
+        detail: { llm: answer as Record<string, unknown> },
+        reviewed_at: at,
+      },
+    }
+  }
+  const jev = await deps.decision.jev.ask(classification.decision.questions, classification.state)
+  const picked = classification.decision.pick(jev.answers)
   if (picked.settled) {
     return {
       payload: picked.payload,

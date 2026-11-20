@@ -97,12 +97,15 @@ const neighbors: EntryFacts['neighbors'] = {
   liveEntries: new Set([otherEntry]),
 }
 
-/** An entry with no CEFR level, no family, and no passes, so those rules stay out of the way. */
+/**
+ * A B1 entry with no family and no passes, so those rules stay out of the way: not elementary, and
+ * leveled by the reference lists, so it needs no estimated level.
+ */
 function snapshot(facts: Fact[], over: Partial<EntryFacts> & { lemma?: string } = {}): EntryFacts {
   const { lemma = 'bank', ...rest } = over
   return {
     entry: { id: entryId, lemma, live: true },
-    levelRank: null,
+    levelRank: 3,
     family: [],
     phraseType: null,
     facts,
@@ -319,9 +322,9 @@ describe('translations gap', () => {
       { type: 'productive_use', missing: ['noun'] },
     ])
     expect(WORK_POLICY.productive_use).toEqual({ stage: 4, context: 'entry', classifies: 'productive_use' })
-    expect(CLASSIFIED_TYPES).toEqual(['productive_use'])
+    expect(CLASSIFIED_TYPES).toEqual(['productive_use', 'cefr'])
     expect(AGENT_TYPES).not.toContain('productive_use')
-    expect(AGENT_TYPES).toHaveLength(Object.keys(WORK_POLICY).length - 1)
+    expect(AGENT_TYPES).toHaveLength(Object.keys(WORK_POLICY).length - 2)
     expect(classifiedSlots({ type: 'productive_use', missing: ['verb', 'noun'] })).toEqual({
       kind: 'productive_use',
       slots: ['verb', 'noun'],
@@ -605,6 +608,25 @@ describe('slot passes', () => {
     // A pass on another node closes nothing here.
     const elsewhere = assessEntry(snapshot(facts, { passes: new Set([passKey('category', shown.id)]) }))
     expect(types(elsewhere.work)).toContain('category')
+  })
+})
+
+describe('cefr gap', () => {
+  it('asks a single word the reference lists give no level for one estimated level [spec: work/cefr-gaps]', () => {
+    const listed = inventory(entryId, [sense()])
+    const cefr = (facts: Fact[], over: Partial<EntryFacts> & { lemma?: string } = {}) =>
+      gapsOf(facts, { levelRank: null, ...over }).filter((gap) => gap.type === 'cefr')
+    expect(cefr([listed])).toEqual([{ type: 'cefr' }])
+    // A level from the reference lists, a phrase, and an entry without common senses need none.
+    expect(cefr([listed], { levelRank: 4 })).toEqual([])
+    expect(cefr([listed], { lemma: 'bank on' })).toEqual([])
+    expect(cefr([inventory(entryId, [sense('noun', 'extra')])])).toEqual([])
+    expect(cefr([])).toEqual([])
+    // A live level fills it; a rejected one does not.
+    expect(cefr([listed, fact('cefr', entryId, { level: 'C1' }, 'pending')])).toEqual([])
+    expect(cefr([listed, fact('cefr', entryId, { level: 'C1' }, 'rejected')])).toEqual([{ type: 'cefr' }])
+    expect(WORK_POLICY.cefr).toEqual({ stage: 4, context: 'entry', classifies: 'cefr' })
+    expect(classifiedSlots({ type: 'cefr' })).toEqual({ kind: 'cefr', slots: ['level'] })
   })
 })
 

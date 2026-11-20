@@ -190,7 +190,7 @@ describe('public read model', () => {
     expect(only?.relations.synonyms).toEqual([
       expect.objectContaining({ lemma: 'shore', sense_id: shore.sense.id, gloss: 'land along water' }),
     ])
-    expect(view?.review).toEqual({ inventory: review(bankInventory), syllables: null, phrases: null })
+    expect(view?.review).toEqual({ inventory: review(bankInventory), syllables: null, phrases: null, cefr: null })
   })
 
   it('hides an entry that is not live or has no published inventory', () => {
@@ -453,6 +453,7 @@ describe('public read model', () => {
       lemma: 'bank',
       pos: ['noun'],
       cefr: 'A2',
+      cefr_source: 'reference',
       gloss: 'land beside a river',
       translations: { zh: '河岸' },
       image_url: null,
@@ -468,6 +469,7 @@ describe('public read model', () => {
       lemma: 'bank',
       pos: [],
       cefr: null,
+      cefr_source: null,
       gloss: null,
       translations: {},
       image_url: null,

@@ -18,8 +18,10 @@ const jevScores =
   })
 const ACTIVE = { native_active: 0.95, native_passive: 0.1, learner_active: 0.9, learner_passive: 0.2 }
 
+/** "run" at A1 in the reference lists, so its only classified slot is its productive use. */
 async function runWorld() {
   const world = fakeWorld()
+  world.references.set('run', { frequency: null, cefr: [{ pos: 'verb', level: 'A1', source_id: 'cefrj-1.6' }] })
   const run = await headword(world, 'run', [
     { pos: 'verb', gloss: 'To move fast on foot.' },
     { pos: 'noun', gloss: 'An act of running.', register: 'informal' },
@@ -105,6 +107,7 @@ describe('classifyWork', () => {
     world.answerDecision('jev', jevScores({ verb: ACTIVE, noun: ACTIVE }))
     await classifyWork(world.deps, 'trace-cron', 60_000)
 
+    world.references.set('walk', { frequency: null, cefr: [{ pos: 'verb', level: 'A1', source_id: 'cefrj-1.6' }] })
     const walk = await headword(world, 'walk', [{ pos: 'verb', gloss: 'To move on foot at a normal pace.' }])
     expect(openItems(world).map((item) => item.entryId)).toEqual([walk.entry.id])
     world.answerDecision('jev', jevScores({ verb: ACTIVE }))
@@ -200,5 +203,45 @@ describe('classifyWork', () => {
     const { world } = await runWorld()
     expect(await classifyWork(world.deps, 'trace-cron', 0)).toEqual({ items: 0, decided: 0, chosen: 0, refused: 0 })
     expect(openItems(world)).toHaveLength(1)
+  })
+
+  it('has the LLM estimate the level of a word the reference lists do not give, as the classifier [spec: work/cefr-classify]', async () => {
+    const world = fakeWorld()
+    world.references.set('asylum', { frequency: { zipf: 3.4, rank: 9000, source_id: 'wordfreq' }, cefr: [] })
+    const asylum = await headword(world, 'asylum', [
+      { pos: 'noun', gloss: 'Protection a state gives someone who has left their country as a refugee.' },
+    ])
+    world.answerDecision('jev', jevScores({ noun: ACTIVE }))
+    world.chooseLlm((prompt) =>
+      prompt.system.startsWith("You classify one word's CEFR level")
+        ? { level: 'C1', confidence: 0.7, reason: 'A formal word of law and politics.' }
+        : { native: true, learner: true, confidence: 0.8, reason: 'Common.' },
+    )
+    world.decisionCalls.length = 0
+    await classifyWork(world.deps, 'trace-cron', 60_000)
+    const level = world.facts.find((fact) => fact.kind === 'cefr' && fact.subjectId === asylum.entry.id)
+    expect(level).toMatchObject({
+      payload: { level: 'C1' },
+      status: 'published',
+      author: 'system:classifier',
+      review: { reviewer: 'llm', confidence: 0.7, reason: 'A formal word of law and politics.' },
+    })
+    // The level goes to the LLM alone: Jev was asked only about the productive use.
+    expect(world.decisionCalls.every((call) => 'native_active' in call.questions)).toBe(true)
+    const prompt = world.llmCalls.find((call) => call.system.startsWith("You classify one word's CEFR level"))
+    expect(prompt?.user).toContain('"senses":["(noun) Protection a state gives someone')
+    expect(prompt?.user).toContain('"zipf":"3.40"')
+    // The level fills the slot; no item is left, and none was ever an agent's.
+    expect(world.items.filter((item) => item.type === 'cefr' && item.entryId === asylum.entry.id)).toEqual([])
+    expect(await claimWork(world.deps, agentA, { limit: 10, types: ['cefr'] })).toBeNull()
+  })
+
+  it('treats a level outside its contract as a protocol failure and publishes nothing', async () => {
+    const world = fakeWorld()
+    await headword(world, 'asylum', [{ pos: 'noun', gloss: 'Protection given to a refugee.' }])
+    world.answerDecision('jev', jevScores({ noun: ACTIVE }))
+    world.chooseLlm(() => ({ level: 'D1', confidence: 0.7, reason: 'No such level.' }))
+    await expect(classifyWork(world.deps, 'trace-cron', 60_000)).rejects.toThrow(ReviewerProtocolError)
+    expect(world.facts.filter((fact) => fact.kind === 'cefr')).toEqual([])
   })
 })

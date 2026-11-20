@@ -79,6 +79,7 @@ const summary: StoredSummary = {
   lemma: 'bank',
   pos: ['noun', 'verb'],
   cefr: 'A2',
+  cefr_source: 'reference',
   gloss: 'Gloss of s1.',
   translations: { zh: '银行' },
   image_url: null,
@@ -86,6 +87,8 @@ const summary: StoredSummary = {
 
 const bank: StoredEntry = {
   image: null,
+  cefr: 'A2',
+  cefr_source: 'reference',
   id: entryId,
   lemma: 'bank',
   frequency: { zipf: 5.16, rank: 691 },
@@ -135,7 +138,7 @@ const bank: StoredEntry = {
     },
   ],
   phrase_type: null,
-  review: { inventory: review('e1'), syllables: review('y1'), phrases: review('h1') },
+  review: { inventory: review('e1'), syllables: review('y1'), phrases: review('h1'), cefr: null },
   forms: [
     { form: 'banks', type: 'plural', pos: 'noun' },
     { form: 'banked', type: 'past', pos: 'verb' },
@@ -150,22 +153,50 @@ const links: EntryLinks = {
       lemma: 'bank on',
       pos: ['verb'],
       cefr: null,
+      cefr_source: null,
       gloss: 'To rely on.',
       translations: { zh: '指望' },
       image_url: null,
     },
-    { lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.', translations: {}, image_url: null },
+    {
+      lemma: 'bank account',
+      pos: ['noun'],
+      cefr: null,
+      cefr_source: null,
+      gloss: 'An account.',
+      translations: {},
+      image_url: null,
+    },
     {
       lemma: 'break the bank',
       pos: ['verb'],
       cefr: null,
+      cefr_source: null,
       gloss: 'To cost too much.',
       translations: {},
       image_url: null,
     },
-    { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.', translations: {}, image_url: null },
+    {
+      lemma: 'at the bank',
+      pos: ['adverb'],
+      cefr: null,
+      cefr_source: null,
+      gloss: 'In a bank.',
+      translations: {},
+      image_url: null,
+    },
   ],
-  family: [{ lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.', translations: {}, image_url: null }],
+  family: [
+    {
+      lemma: 'banker',
+      pos: ['noun'],
+      cefr: 'B2',
+      cefr_source: 'reference',
+      gloss: 'One who banks.',
+      translations: {},
+      image_url: null,
+    },
+  ],
   publicParts: ['bank'],
 }
 
@@ -217,6 +248,7 @@ describe('public view records', () => {
           sense_id: 's1',
           pos: 'noun',
           cefr: 'A2',
+          cefr_source: 'reference',
           gloss: 'Gloss of s1.',
           translations: { zh: '银行', 'zh-Hant': '銀行', fr: 'banque' },
           image_url: null,
@@ -278,16 +310,40 @@ describe('public read variants', () => {
       by_sense: [
         {
           sense_id: 's1',
-          phrases: [{ lemma: 'bank account', pos: ['noun'], cefr: null, gloss: 'An account.', image_url: null }],
+          phrases: [
+            {
+              lemma: 'bank account',
+              pos: ['noun'],
+              cefr: null,
+              cefr_source: null,
+              gloss: 'An account.',
+              image_url: null,
+            },
+          ],
         },
       ],
       phrasal_verbs: [
-        { lemma: 'bank on', pos: ['verb'], cefr: null, gloss: 'To rely on.', translation: '指望', image_url: null },
+        {
+          lemma: 'bank on',
+          pos: ['verb'],
+          cefr: null,
+          cefr_source: null,
+          gloss: 'To rely on.',
+          translation: '指望',
+          image_url: null,
+        },
       ],
       // A phrase filed under a sense the document does not show goes by its type.
       idioms: [
-        { lemma: 'break the bank', pos: ['verb'], cefr: null, gloss: 'To cost too much.', image_url: null },
-        { lemma: 'at the bank', pos: ['adverb'], cefr: null, gloss: 'In a bank.', image_url: null },
+        {
+          lemma: 'break the bank',
+          pos: ['verb'],
+          cefr: null,
+          cefr_source: null,
+          gloss: 'To cost too much.',
+          image_url: null,
+        },
+        { lemma: 'at the bank', pos: ['adverb'], cefr: null, cefr_source: null, gloss: 'In a bank.', image_url: null },
       ],
       compounds: [],
       sayings: [
@@ -301,7 +357,14 @@ describe('public read variants', () => {
     })
     expect(entryOf(bank, links, none).phrases.sayings[0]).not.toHaveProperty('translation')
     expect(entry.morphology?.family).toEqual([
-      { lemma: 'banker', pos: ['noun'], cefr: 'B2', gloss: 'One who banks.', image_url: null },
+      {
+        lemma: 'banker',
+        pos: ['noun'],
+        cefr: 'B2',
+        cefr_source: 'reference',
+        gloss: 'One who banks.',
+        image_url: null,
+      },
     ])
   })
 
@@ -311,7 +374,12 @@ describe('public read variants', () => {
     expect(plain).not.toContain('fact_id')
 
     const reviewed = entryOf(bank, links, { lang: 'zh', review: true })
-    expect(reviewed.review).toEqual({ inventory: review('e1'), syllables: review('y1'), phrases: review('h1') })
+    expect(reviewed.review).toEqual({
+      inventory: review('e1'),
+      syllables: review('y1'),
+      phrases: review('h1'),
+      cefr: null,
+    })
     expect(reviewed.pronunciations[0]?.review).toEqual(review('p1'))
     expect(reviewed.variants[0]?.review).toEqual(review('v1'))
     expect(reviewed.morphology?.review).toEqual(review('m1'))
@@ -438,6 +506,7 @@ describe('public read variants', () => {
         lemma: 'bank',
         pos: ['noun', 'verb'],
         cefr: 'A2',
+        cefr_source: 'reference',
         gloss: 'Gloss of s1.',
         translation: '银行',
         image_url: null,
@@ -476,6 +545,7 @@ describe('public read variants', () => {
       id: entryId,
       lemma: 'bank',
       cefr: 'A2',
+      cefr_source: 'reference',
       frequency: { zipf: 5.16, rank: 691 },
       pronunciations: [{ ipa: 'bæŋk', accent: 'us' }],
       meanings: [
@@ -507,6 +577,7 @@ describe('public read variants', () => {
       lemma: 'bank',
       pos: ['noun', 'verb'],
       cefr: 'A2',
+      cefr_source: 'reference',
       gloss: 'Gloss of s1.',
       image_url: null,
     })
@@ -519,6 +590,7 @@ describe('public read variants', () => {
       sense_id: 's1' as SenseId,
       pos: 'noun' as const,
       cefr: null,
+      cefr_source: null,
       gloss: 'Land.',
       translations: { zh: '岸' },
       image_url: '/v1/media/abc',
@@ -528,6 +600,7 @@ describe('public read variants', () => {
       sense_id: 's1',
       pos: 'noun',
       cefr: null,
+      cefr_source: null,
       gloss: 'Land.',
       translation: '岸',
       image_url: '/v1/media/abc',
