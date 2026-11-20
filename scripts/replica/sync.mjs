@@ -5,7 +5,7 @@
 //
 // Usage: node scripts/replica/sync.mjs [--source <file.sqlite>] [--media-source <dir>]
 //          [--database vocnet] [--bucket vocnet-media] [--wrangler "<command>"] [--dry-run]
-//          [--media-concurrency 8] [--skip-media]
+//          [--media-concurrency 32] [--skip-media]
 //          -- <wrangler target flags, e.g. --remote>
 //
 // --source defaults to the local D1 file under .wrangler, --media-source to the local state the
@@ -13,10 +13,15 @@
 // (default `pnpm exec wrangler`); the target flags after `--` pick the replica as `wrangler d1
 // execute` does: `--remote`, `--remote --preview`, or `--local --persist-to <dir>` for a
 // rehearsal. --bucket is the replica's media bucket: vocnet-media-preview for a preview.
+//
+// Media files are read straight from the local bucket's state and, for a --remote replica, put with
+// R2's REST API (CLOUDFLARE_ACCOUNT_ID, and CLOUDFLARE_API_TOKEN or Wrangler's own login), many at
+// a time; each batch is recorded in the manifest as it lands, so a stopped sync resumes where it
+// was. A --local rehearsal puts them with `wrangler r2 object put`.
 import '../server-modules.mjs'
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { parseArgs } from 'node:util'
@@ -37,7 +42,7 @@ const { values: options } = parseArgs({
     bucket: { type: 'string', default: 'vocnet-media' },
     wrangler: { type: 'string', default: 'pnpm exec wrangler' },
     'dry-run': { type: 'boolean', default: false },
-    'media-concurrency': { type: 'string', default: '8' },
+    'media-concurrency': { type: 'string', default: '32' },
     'skip-media': { type: 'boolean', default: false },
   },
 })
@@ -84,22 +89,73 @@ function runWranglerAsync(args) {
 /** Runs `wrangler d1 execute` against the replica. */
 const wrangler = (args) => runWrangler(['d1', 'execute', options.database, ...target, ...args])
 
-/** Copies a media file from the local state to the replica's bucket. */
-async function copyMedia(id, directory) {
-  const file = path.join(directory, id)
-  await retried(id, () =>
-    runWranglerAsync(['r2', 'object', 'get', `${SOURCE_BUCKET}/${id}`, '--local', '--persist-to', options['media-source'], '--file', file]),
-  )
-  await retried(id, () =>
-    runWranglerAsync(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP]),
-  )
-  rmSync(file)
+/** Media manifest rows per `d1 execute`: a batch of copies is recorded as soon as it lands. */
+const MANIFEST_BATCH = 200
+
+/** Reads a media file's bytes from the local bucket's Miniflare state. */
+function localMediaReader() {
+  const state = path.join(options['media-source'], 'v3', 'r2')
+  const directory = path.join(state, 'miniflare-R2BucketObject')
+  const files = readdirSync(directory).filter((name) => name.endsWith('.sqlite') && name !== 'metadata.sqlite')
+  if (files.length !== 1) throw new Error(`Expected one local R2 object file in ${directory}.`)
+  const objects = new DatabaseSync(path.resolve(directory, files[0]), { readOnly: true })
+  const blob = objects.prepare('SELECT blob_id FROM _mf_objects WHERE key = ?')
+  return (id) => {
+    const row = blob.get(id)
+    if (!row) throw new Error(`The local bucket has no media file ${id}.`)
+    return readFileSync(path.join(state, SOURCE_BUCKET, 'blobs', row.blob_id))
+  }
+}
+
+/** The OAuth token Wrangler keeps after `wrangler whoami` refreshes it, when no API token is set. */
+function apiToken() {
+  if (process.env.CLOUDFLARE_API_TOKEN) return process.env.CLOUDFLARE_API_TOKEN
+  runWrangler(['whoami'])
+  const config = [
+    path.join(homedir(), 'Library', 'Preferences', '.wrangler', 'config', 'default.toml'),
+    path.join(process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), '.wrangler', 'config', 'default.toml'),
+  ].find((file) => {
+    try {
+      readFileSync(file)
+      return true
+    } catch {
+      return false
+    }
+  })
+  const token = config && /^oauth_token\s*=\s*"([^"]+)"/m.exec(readFileSync(config, 'utf8'))?.[1]
+  if (!token) throw new Error('Set CLOUDFLARE_API_TOKEN or log in with `wrangler login`.')
+  return token
+}
+
+/** Puts media files into the replica's bucket: R2's REST API for --remote, Wrangler otherwise. */
+function mediaWriter(directory) {
+  if (!mediaTarget.includes('--remote')) {
+    return async (id, bytes) => {
+      const file = path.join(directory, id)
+      writeFileSync(file, bytes)
+      await runWranglerAsync(['r2', 'object', 'put', `${options.bucket}/${id}`, ...mediaTarget, '--file', file, '--content-type', WEBP])
+      rmSync(file)
+    }
+  }
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID
+  if (!account) throw new Error('Set CLOUDFLARE_ACCOUNT_ID to copy media to a remote bucket.')
+  let token = apiToken()
+  return async (id, bytes) => {
+    const url = `https://api.cloudflare.com/client/v4/accounts/${account}/r2/buckets/${options.bucket}/objects/${id}`
+    const put = () => fetch(url, { method: 'PUT', headers: { authorization: `Bearer ${token}`, 'content-type': WEBP }, body: bytes })
+    let response = await put()
+    // An OAuth token lives an hour; a long copy outlives it.
+    if (response.status === 401 || response.status === 403) {
+      token = apiToken()
+      response = await put()
+    }
+    if (!response.ok) throw new Error(`R2 answered ${response.status} for ${id}: ${(await response.text()).slice(0, 200)}`)
+  }
 }
 
 /**
  * Runs a media step again after a failure, up to four times: R2's API answers an occasional 500 or
- * 503 that asks to try again, and the local bucket an occasional internal error under concurrent
- * reads. A get or a put of the same bytes is idempotent.
+ * 503 that asks to try again. A put of the same bytes is idempotent.
  */
 async function retried(id, step) {
   for (let attempt = 1; ; attempt++) {
@@ -107,35 +163,48 @@ async function retried(id, step) {
       return await step()
     } catch (error) {
       if (attempt === 4) throw error
-      console.info(`Retrying media ${id} (attempt ${attempt + 1})`)
+      console.info(`Retrying media ${id} (attempt ${attempt + 1}): ${error.message}`)
       await new Promise((resolve) => setTimeout(resolve, 3000 * attempt))
     }
   }
 }
 
 /**
- * Copies the media files --media-concurrency at a time. The first failure stops the sync once the
- * copies already running have ended, so none of them loses its file to the directory's removal.
+ * Copies the media files --media-concurrency at a time and records each batch of MANIFEST_BATCH in
+ * the replica's manifest once it has landed. The first failure stops the sync once the copies
+ * already running have ended; what was recorded stays, so the next sync skips it.
  */
-async function copyAllMedia(ids, directory) {
+async function copyAllMedia(ids, directory, syncedAt) {
+  const read = localMediaReader()
+  const write = mediaWriter(directory)
   let next = 0
-  let copied = 0
   let failed = false
+  let landed = []
+  let recorded = 0
+  const record = () => {
+    if (landed.length === 0) return
+    const batch = landed
+    landed = []
+    wrangler(['--command', batch.map((id) => sql.mediaManifestSql(id, syncedAt)).join(' ')])
+    recorded += batch.length
+    console.info(`Copied media ${recorded}/${ids.length}`)
+  }
   const worker = async () => {
     while (!failed && next < ids.length) {
       const id = ids[next++]
       try {
-        await copyMedia(id, directory)
+        await retried(id, () => write(id, read(id)))
       } catch (error) {
         failed = true
         throw error
       }
-      copied += 1
-      if (copied % 50 === 0 || copied === ids.length) console.info(`Copied media ${copied}/${ids.length}`)
+      landed.push(id)
+      if (landed.length >= MANIFEST_BATCH) record()
     }
   }
   const workers = Math.max(1, Number(options['media-concurrency']))
   const results = await Promise.allSettled(Array.from({ length: Math.min(workers, ids.length) }, worker))
+  record()
   const failure = results.find((result) => result.status === 'rejected')
   if (failure) throw failure.reason
 }
@@ -175,10 +244,10 @@ if (!options['dry-run'] && plan.media.length + plan.push.length + plan.remove.le
   try {
     // The files go first, so no row the replica serves names a file it lacks.
     const syncedAt = new Date().toISOString()
-    await copyAllMedia(plan.media, directory)
+    await copyAllMedia(plan.media, directory, syncedAt)
     const files = []
-    let statements = plan.media.map((id) => sql.mediaManifestSql(id, syncedAt))
-    let size = statements.reduce((total, statement) => total + statement.length + 1, 0)
+    let statements = []
+    let size = 0
     const flush = () => {
       if (statements.length === 0) return
       const file = path.join(directory, `${String(files.length).padStart(4, '0')}.sql`)
