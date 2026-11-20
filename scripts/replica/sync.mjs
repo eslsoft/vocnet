@@ -5,7 +5,7 @@
 //
 // Usage: node scripts/replica/sync.mjs [--source <file.sqlite>] [--media-source <dir>]
 //          [--database vocnet] [--bucket vocnet-media] [--wrangler "<command>"] [--dry-run]
-//          [--media-concurrency 8]
+//          [--media-concurrency 8] [--skip-media]
 //          -- <wrangler target flags, e.g. --remote>
 //
 // --source defaults to the local D1 file under .wrangler, --media-source to the local state the
@@ -38,6 +38,7 @@ const { values: options } = parseArgs({
     wrangler: { type: 'string', default: 'pnpm exec wrangler' },
     'dry-run': { type: 'boolean', default: false },
     'media-concurrency': { type: 'string', default: '8' },
+    'skip-media': { type: 'boolean', default: false },
   },
 })
 const target = process.argv.slice(separator + 1)
@@ -161,7 +162,9 @@ const mediaIds = database.prepare(sql.mediaIdsSql).all().map((row) => row.image_
 const plan = planReplicaSync(
   fingerprints,
   new Map(manifest.results.map((row) => [row.key, row.fingerprint])),
-  mediaIds,
+  // --skip-media pushes the rows before their files, which a later sync copies; until then a picture
+  // the rows name answers 404.
+  options['skip-media'] ? [] : mediaIds,
 )
 console.info(
   `${plan.media.length} media files to copy, ${plan.push.length} to push, ${plan.remove.length} to remove, ${plan.unchanged} unchanged`,
