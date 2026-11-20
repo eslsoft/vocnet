@@ -153,6 +153,7 @@ describe('public catalog', () => {
           lemma: 'bank',
           pos: ['noun'],
           cefr: null,
+          cefr_source: null,
           gloss: 'Land beside a river.',
           image_url: null,
           matches: [{ type: 'plural', pos: 'noun' }],

@@ -1,4 +1,5 @@
 import type {
+  CefrSource,
   InflectionType,
   Meaning,
   PublicPronunciation,
@@ -24,6 +25,7 @@ import type {
   StoredInventorySense,
   TopicId,
 } from '@shared/facts'
+import { CURATOR } from '@shared/facts'
 import { mediaUrl } from '@shared/media'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
@@ -159,6 +161,7 @@ export interface StoredSummary {
   lemma: string
   pos: Pos[]
   cefr: CefrLevel | null
+  cefr_source: CefrSource | null
   gloss: string | null
   translations: ByLanguage<string>
   image_url: string | null
@@ -170,6 +173,7 @@ export interface StoredSenseSummary {
   sense_id: SenseId
   pos: Pos
   cefr: CefrLevel | null
+  cefr_source: CefrSource | null
   gloss: string
   translations: ByLanguage<string>
   image_url: string | null
@@ -191,6 +195,9 @@ export interface StoredEntry {
   variants: Variant[]
   syllables: string[] | null
   morphology: { parts: Morpheme[]; shortened?: Shortening; review: ReviewMeta } | null
+  /** The lowest level of the lemma, and where it comes from. */
+  cefr: CefrLevel | null
+  cefr_source: CefrSource | null
   /** The picture of the first sense, in inventory order, that has one. */
   image: (StoredPicture & { sense_id: SenseId }) | null
   meanings: StoredMeaning[]
@@ -208,6 +215,7 @@ export interface StoredEntry {
     inventory: ReviewMeta
     syllables: ReviewMeta | null
     phrases: ReviewMeta | null
+    cefr: ReviewMeta | null
   }
   /**
    * Every published form, independent of display: a lookup never depends on presentation. Reads
@@ -414,13 +422,28 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     }
   }
 
+  // An entry the reference lists give no level takes its published cefr fact's, for every part of
+  // speech; the server estimates one, or a curator imports one, only for such an entry.
+  const [levelFact] = context.reference.cefr.length > 0 ? [] : about('cefr', snapshot.entry.id)
+  const levelOf = (pos: Pos) =>
+    context.reference.cefr.find((row) => row.pos === pos)?.level ?? levelFact?.payload.level ?? null
+  const cefr = lowestLevel(context.reference.cefr.map((row) => row.level)) ?? levelFact?.payload.level ?? null
+  const cefrSource: CefrSource | null =
+    context.reference.cefr.length > 0
+      ? 'reference'
+      : levelFact
+        ? levelFact.review?.reviewer === CURATOR
+          ? 'curated'
+          : 'estimated'
+        : null
+
   // One meaning per part of speech, in the order of its first sense in the inventory.
   const meanings = new Map<Pos, StoredMeaning>()
   let image: StoredEntry['image'] = null
   for (const sense of inventory.payload.senses) {
     const meaning: StoredMeaning = meanings.get(sense.pos) ?? {
       pos: sense.pos,
-      cefr: context.reference.cefr.find((row) => row.pos === sense.pos)?.level ?? null,
+      cefr: levelOf(sense.pos),
       productive_use: null,
       skills: null,
       pronunciations: [],
@@ -511,12 +534,15 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     variants,
     syllables: syllables ? syllables.payload.syllables : null,
     morphology: morphology ? { ...morphology.payload, review: reviewOf(morphology) } : null,
+    cefr,
+    cefr_source: cefrSource,
     image,
     meanings: ordered,
     summary: {
       lemma: snapshot.entry.lemma,
       pos: ordered.map((meaning) => meaning.pos),
-      cefr: lowestLevel(context.reference.cefr.map((row) => row.level)),
+      cefr,
+      cefr_source: cefrSource,
       gloss: first?.gloss ?? null,
       translations: first ? firstOfEach(first.translations) : {},
       image_url: image?.url ?? null,
@@ -528,6 +554,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       inventory: reviewOf(inventory),
       syllables: syllables ? reviewOf(syllables) : null,
       phrases: phrases ? reviewOf(phrases) : null,
+      cefr: levelFact ? reviewOf(levelFact) : null,
     },
     forms,
   }

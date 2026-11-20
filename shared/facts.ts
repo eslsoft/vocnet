@@ -622,6 +622,16 @@ const submitExamplePayloadSchema = z.union([
   }),
 ])
 
+export const cefrLevelSchema = z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']).meta({ id: 'CefrLevel' })
+export type CefrLevel = z.infer<typeof cefrLevelSchema>
+
+const cefrPayloadSchema = z.strictObject({
+  level: cefrLevelSchema.meta({
+    description:
+      'The level at which a learner first learns the word in its common senses, as the CEFR word lists give it: the lowest level of the lemma.',
+  }),
+})
+
 const imagePayloadSchema = z.strictObject({
   image_id: mediaIdSchema.meta({
     description:
@@ -668,6 +678,13 @@ const productiveUsePayloadSchema = z.strictObject({
 })
 
 /** What the LLM answers when it chooses a productive use the decision model did not settle. */
+/** What the LLM answers when it estimates a word's CEFR level. */
+export const cefrAnswerSchema = z.object({
+  level: cefrLevelSchema,
+  confidence: z.number().min(0).max(1),
+  reason: z.string().min(1),
+})
+
 export const productiveUseAnswerSchema = z.object({
   native: z.boolean(),
   learner: z.boolean(),
@@ -716,6 +733,7 @@ export const factPayloadSchemas = {
   sentence_meaning: sentenceMeaningPayloadSchema,
   productive_use: productiveUsePayloadSchema,
   image: imagePayloadSchema,
+  cefr: cefrPayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -825,6 +843,7 @@ export const factKindSchema = z
     'sentence_meaning',
     'productive_use',
     'image',
+    'cefr',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -922,6 +941,7 @@ export const submitFactInputSchema = z
     submitVariant('sentence_meaning'),
     submitVariant('productive_use'),
     submitVariant('image'),
+    submitVariant('cefr'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -962,6 +982,7 @@ export const factSchema = z
     factVariant('sentence_meaning'),
     factVariant('productive_use'),
     factVariant('image'),
+    factVariant('cefr'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

@@ -408,3 +408,18 @@ Feature: Work items
     Given an A1 word whose family item is claimed
     When a derivative's morphology names a lemma that is no live entry, names a lemma on a suffix, names the word, and is later retracted
     Then the unknown lemma is an invalid reference, the misplaced lemma a validation error, the formation rescores the word with its gap filled in the same request and shows the base's lemma publicly, and the retraction reopens the gap
+
+  @work/cefr-gaps @domain
+  Scenario: A single word the reference lists do not level needs one estimated level
+    Given entries with and without a reference CEFR level
+    When their gaps are computed
+    Then an inventoried single word with a common sense and no reference level has a cefr gap, which a live cefr fact fills
+    And a word the reference lists level, a phrase, and a word without common senses have none
+    And the server classifies cefr items itself, one level each
+
+  @work/cefr-classify @usecase
+  Scenario: The server estimates a missing level with the LLM alone
+    Given a published inventory of a word the reference lists do not level
+    When the scheduled run classifies its cefr item
+    Then the LLM chooses the level from the common senses and the word's frequency, without asking Jev, and the classifier publishes it as a fact the LLM reviewed
+    And no agent is handed the item, and an answer outside the contract is a reviewer failure that publishes nothing

@@ -86,9 +86,21 @@ export const summaryTranslationSchema = z.string().meta({
     "The first sense's first translation in the response's language. Absent without a language, with lang=all, or when there is none.",
 })
 
+/**
+ * Where a level comes from: the reference CEFR lists, a list a curator imported, or the server's
+ * estimate, whose credibility is lower.
+ */
+export const cefrSourceSchema = z.enum(['reference', 'curated', 'estimated']).meta({
+  id: 'CefrSource',
+  description:
+    "reference: the CEFR lists the dictionary imports (CEFR-J, Octanove). curated: a list a curator imported as a cefr fact. estimated: the server's estimate, a cefr fact a model chose, exact for about half of words and within one level for nine in ten.",
+})
+export type CefrSource = z.infer<typeof cefrSourceSchema>
+
 const summaryFields = {
   lemma: z.string(),
   cefr: cefrLevelSchema.nullable(),
+  cefr_source: cefrSourceSchema.nullable().meta({ description: 'Where `cefr` comes from; null when it is null.' }),
   translation: summaryTranslationSchema.optional(),
   image_url: z.string().nullable().meta({
     description:
@@ -422,6 +434,11 @@ export const publicEntrySchema = z
         'The written word divided into syllables, as a learner\'s dictionary breaks it: ["a", "bil", "i", "ty"].',
     }),
     morphology: publicMorphologySchema.nullable(),
+    cefr: cefrLevelSchema.nullable().meta({
+      description:
+        'The lowest CEFR level of the lemma: from the reference lists, else from its cefr fact; null when it has none.',
+    }),
+    cefr_source: cefrSourceSchema.nullable().meta({ description: 'Where `cefr` comes from; null when it is null.' }),
     image: publicPictureSchema
       .extend({ sense_id: senseIdSchema.meta({ description: 'The sense the picture belongs to.' }) })
       .nullable()
@@ -443,6 +460,9 @@ export const publicEntrySchema = z
         inventory: reviewMetaSchema,
         syllables: reviewMetaSchema.nullable(),
         phrases: reviewMetaSchema.nullable(),
+        cefr: reviewMetaSchema
+          .nullable()
+          .meta({ description: 'The cefr fact the level comes from; null for a reference level.' }),
       })
       .optional()
       .meta({
@@ -508,6 +528,7 @@ export const entryOverviewSchema = z
     cefr: cefrLevelSchema
       .nullable()
       .meta({ description: 'The lowest CEFR level of the lemma; null when it has none.' }),
+    cefr_source: cefrSourceSchema.nullable().meta({ description: 'Where `cefr` comes from; null when it is null.' }),
     frequency: publicFrequencySchema.nullable(),
     pronunciations: z
       .array(overviewPronunciationSchema)

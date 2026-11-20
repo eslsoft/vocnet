@@ -44,6 +44,9 @@ const LLM_ALONE: Readonly<Record<FactKind, number>> = {
   productive_use: 0.9,
   // Not yet measured: the post-launch audit sets it.
   image: 0.9,
+  // The LLM's estimate matched the reference lists' level for 48% of 300 words, and was within one
+  // level for 91% (2026-11-19 blind test); a level a curator imports from a list is trusted.
+  cefr: 0.48,
 }
 
 /** The credibility of a live fact: how often its kind and path are right. A pending fact has none yet. */

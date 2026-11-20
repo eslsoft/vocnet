@@ -79,6 +79,7 @@ describe('summarizeFact', () => {
     ],
     [{ kind: 'syllables', payload: { syllables: ['a', 'bil', 'i', 'ty'] } }, 'a·bil·i·ty'],
     [{ kind: 'image', payload: { image_id: 'ab12cd34'.repeat(8) } }, 'picture ab12cd34'],
+    [{ kind: 'cefr', payload: { level: 'C1' } }, 'C1'],
     [
       {
         kind: 'image',

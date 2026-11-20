@@ -169,6 +169,7 @@ function samplesOf(gap: Gap, pos: Pos): Sample[] {
     case 'sayings':
       return [sample('sentence_meaning', 'sentence_meaning of each saying', { gloss: '<gloss>' })]
     case 'productive_use':
+    case 'cefr':
       // The server classifies these itself; no agent is handed one.
       return []
   }

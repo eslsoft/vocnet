@@ -48,6 +48,8 @@ export const enUS = {
     phrases: 'Phrases',
     sentence_meaning: 'Saying meaning',
     productive_use: 'Active or passive',
+    image: 'Picture',
+    cefr: 'CEFR level',
     sentence: 'Sentence',
   },
   factState: {
@@ -85,6 +87,7 @@ export const enUS = {
     form_pronunciations: 'Form pronunciations',
     sayings: 'Saying meanings',
     productive_use: 'Active or passive',
+    cefr: 'CEFR level',
   },
   taskStatus: {
     queued: 'Queued',
@@ -129,6 +132,7 @@ export const enUS = {
     sayings_one: '{{count}} saying has no meaning yet.',
     sayings_other: '{{count}} sayings have no meaning yet.',
     productive_use: 'Not yet marked active or passive: {{pos}}.',
+    cefr: 'No CEFR level yet.',
   },
   gapNeed: {
     examples_one: 'Needs {{count}} more example',

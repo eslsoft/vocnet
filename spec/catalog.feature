@@ -244,3 +244,16 @@ Feature: Catalog
     Given a published image fact whose picture shows a published example of its sense
     When the entry is read, and after the example is retracted
     Then the picture shows with the example's sentence while the example is published, and not at all once it is retracted
+
+  @catalog/cefr-level @usecase
+  Scenario: A word the reference lists do not level shows its cefr fact's level, marked by where it comes from
+    Given words with a curated level, an estimated level, and a reference level
+    When they are read and listed
+    Then a curated or estimated level is the entry's level and every part of speech's, and is marked curated or estimated in the entry and its summaries
+    And a reference level is marked reference and stands over any cefr fact
+
+  @catalog/cefr-api @api
+  Scenario: A curated level shows on a real Worker
+    Given a word the reference lists do not level
+    When a curator submits its level with curation
+    Then the entry, its meanings, and the entry list filtered by that level show it as curated, with the fact behind it under include=review

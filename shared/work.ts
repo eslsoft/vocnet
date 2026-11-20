@@ -154,6 +154,11 @@ export const gapSchema = z
     z.object({ type: z.literal('collocations'), ...senseGap }).meta({
       description: `A core noun, verb, adjective, adverb, determiner, preposition, or conjunction sense has no live collocation: a combination native speakers commonly use with the word in this sense ("make a decision", "work hard", "both ... and"). ${OPTIONAL}`,
     }),
+    z.object({ type: z.literal('cefr') }).meta({
+      id: 'CefrGap',
+      description:
+        'A single word the reference CEFR lists give no level needs a cefr fact: the level at which a learner first learns it. The server classifies these itself; agents are never handed such an item.',
+    }),
   ])
   .meta({
     id: 'Gap',

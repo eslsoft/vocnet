@@ -133,6 +133,7 @@ const senseSummaryOf = (
   sense_id: sense.id,
   pos: meaning.pos,
   cefr: meaning.cefr,
+  cefr_source: meaning.cefr === null ? null : document.cefr_source,
   gloss: sense.gloss,
   translations: firstOfEach(sense.translations),
   image_url: sense.image?.url ?? null,
@@ -225,6 +226,7 @@ export function shapeSummary(summary: StoredSummary, variant: ReadVariant): Word
     lemma: summary.lemma,
     pos: summary.pos,
     cefr: summary.cefr,
+    cefr_source: summary.cefr_source,
     gloss: summary.gloss,
     ...(translation === undefined ? {} : { translation }),
     image_url: summary.image_url,
@@ -238,6 +240,7 @@ export function shapeSenseSummary(summary: StoredSenseSummary, variant: ReadVari
     sense_id: summary.sense_id,
     pos: summary.pos,
     cefr: summary.cefr,
+    cefr_source: summary.cefr_source,
     gloss: summary.gloss,
     ...(translation === undefined ? {} : { translation }),
     image_url: summary.image_url,
@@ -341,6 +344,8 @@ export function shapeEntry(
     pronunciations: document.pronunciations.map((item) => withReview(item, variant)),
     variants: document.variants.map((item) => withReview(item, variant)),
     syllables: document.syllables,
+    cefr: document.cefr,
+    cefr_source: document.cefr_source,
     morphology: document.morphology && {
       parts: document.morphology.parts.map(({ lemma, ...part }) => ({
         ...part,
@@ -402,6 +407,7 @@ export function shapeOverview(document: StoredEntry, senses: number, variant: Re
     id: document.id,
     lemma: document.lemma,
     cefr: document.summary.cefr,
+    cefr_source: document.summary.cefr_source,
     frequency: document.frequency,
     pronunciations: document.pronunciations.map(bare),
     meanings: document.meanings.map((meaning) => ({

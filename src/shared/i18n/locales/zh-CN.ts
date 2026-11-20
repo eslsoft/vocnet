@@ -51,6 +51,8 @@ export const zhCN: typeof enUS = {
     phrases: '短语',
     sentence_meaning: '谚语释义',
     productive_use: '主动 / 被动',
+    image: '配图',
+    cefr: 'CEFR 等级',
     sentence: '句子',
   },
   factState: {
@@ -88,6 +90,7 @@ export const zhCN: typeof enUS = {
     form_pronunciations: '词形发音',
     sayings: '谚语释义',
     productive_use: '主动 / 被动',
+    cefr: 'CEFR 等级',
   },
   taskStatus: {
     queued: '排队中',
@@ -132,6 +135,7 @@ export const zhCN: typeof enUS = {
     sayings_one: '{{count}} 条谚语还没有释义。',
     sayings_other: '{{count}} 条谚语还没有释义。',
     productive_use: '还没有标主动 / 被动：{{pos}}。',
+    cefr: '还没有 CEFR 等级。',
   },
   gapNeed: {
     examples_one: '还需要 {{count}} 个例句',

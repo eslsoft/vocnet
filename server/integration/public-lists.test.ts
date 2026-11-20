@@ -142,6 +142,7 @@ describe('public lists and search', () => {
       lemma: 'bank',
       pos: ['noun', 'verb'],
       cefr: 'A1',
+      cefr_source: 'reference',
       gloss: 'An organization that keeps money for its customers.',
       image_url: null,
       translation: '银行',
@@ -259,6 +260,7 @@ describe('public lists and search', () => {
     expect(overviews.items[1]).toMatchObject({
       lemma: 'bank',
       cefr: 'A1',
+      cefr_source: 'reference',
       frequency: { zipf: 5.2, rank: 1 },
       pronunciations: [{ ipa: 'bæŋk', accent: 'us' }],
       meanings: [
@@ -275,7 +277,12 @@ describe('public lists and search', () => {
             },
           ],
         },
-        { pos: 'verb', cefr: null, sense_count: 1, senses: [{ id: senses['bank verb'], translations: ['存钱'] }] },
+        {
+          pos: 'verb',
+          cefr: null,
+          sense_count: 1,
+          senses: [{ id: senses['bank verb'], translations: ['存钱'] }],
+        },
       ],
     })
     const bare = entryOverviewListSchema.parse((await call('/v1/overviews?lemma=bank')).body)

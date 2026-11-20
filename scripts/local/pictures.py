@@ -5,8 +5,9 @@
       (--topics: only entries with a sense tagged with a topic)
   bash scripts/local/picture-gen.sh <job json> <dir> [example]
       draws a job's sense, or its example, through the model gateway into <dir>/<sense id>[.example].webp
-  python3 -I scripts/local/pictures.py submit <jobs.jsonl> <dir> <ledger.jsonl>
-      stores each drawn picture not yet submitted and submits its image fact; the ledger records each submission
+  python3 -I scripts/local/pictures.py submit <jobs.jsonl> <dir> <ledger.jsonl> [<limit>]
+      stores each drawn picture not yet submitted and submits its image fact, at most <limit> of them, so a
+      run never queues more reviews than the producers' facts can wait behind; the ledger records each submission
   python3 -I scripts/local/pictures.py status <ledger.jsonl> [<jobs.jsonl> <retry.jsonl>]
       counts the submitted facts by status; with the jobs, writes to <retry.jsonl> the jobs whose picture of the
       sense was rejected and that have an example, for picture-gen.sh with "example" and a second submit
@@ -83,8 +84,9 @@ def jobs(db_path, out_path, topics_only):
     print(f'{written} jobs')
 
 
-def submit(jobs_path, directory, ledger_path):
+def submit(jobs_path, directory, ledger_path, limit=None):
     submitted = {(row['sense_id'], row['mode']) for row in read_jsonl(ledger_path)}
+    budget = int(limit) if limit else None
     counts = Counter()
     with open(ledger_path, 'a') as ledger:
         for job in read_jsonl(jobs_path):
@@ -93,6 +95,9 @@ def submit(jobs_path, directory, ledger_path):
                 picture = Path(directory) / f'{sense["id"]}{suffix}.webp'
                 if (sense['id'], mode) in submitted or not picture.exists():
                     continue
+                if budget is not None and sum(counts[m] for m in ('sense', 'example')) >= budget:
+                    print(dict(counts))
+                    return
                 status, stored = call('POST', '/manage/v1/media', picture.read_bytes(), 'image/webp')
                 if status != 200:
                     counts[f'upload {status}'] += 1

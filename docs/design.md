@@ -123,6 +123,7 @@ entry plus its payload schema in `shared/facts.ts`.
 | `sentence_meaning` | sentence | one      | `{ gloss }`: what a saying means and when it is said      | Jev, then LLM |
 | `productive_use` | entry  | one per part of speech | `{ pos, native, learner }`: whether native speakers and a C1 learner use the word or only understand it | Jev per tier, then LLM |
 | `image`         | sense   | one         | `{ image_id, sentence_id? }`: a stored picture of the sense, or of one of its examples (see Pictures) | LLM, looking at the picture |
+| `cefr`          | entry   | one         | `{ level }`: the CEFR level of a word the reference lists do not level (see CEFR levels) | LLM |
 
 A kind with cardinality *one* admits a single live fact per subject,
 *one per language* a single live translation per subject and language, and
@@ -412,6 +413,36 @@ or a curator submits, such as a correction, is reviewed as above: Jev is asked
 the two questions of the claimed values, both must reach 0.8, and otherwise the
 LLM judges both tiers together. A part of speech the live inventory no longer
 has a common sense of is unreviewable.
+
+#### CEFR levels
+
+The reference CEFR lists (CEFR-J, Octanove; see Reference data) level about
+8,900 lemmas. A word they do not level gets a **CEFR level** fact (`cefr`,
+`{ level }`, about the entry, one live): the level at which a learner first
+learns the word in its common senses, the lemma's lowest, as the lists give
+it. A level comes two ways, and the public view says which:
+
+- **curated**: a curator imports a word list's level as a fact with
+  `curation`; it is trusted as the curator path is.
+- **estimated**: the server estimates it (`cefr` items, stage 4, entry
+  context, classified like a productive use). The LLM alone chooses among the
+  six levels from the lemma, its common senses, and its Zipf frequency: no
+  decision question settles a choice among six. Against 300 words of the
+  reference lists (50 per level) it chose the exact level for 48% and was
+  within one level for 91%, where frequency alone was exact for 37% and within
+  one for 78%; its own confidence did not tell its hits from its misses. Its
+  credibility is that 48%.
+
+Only an inventoried single word with a common sense and no reference level has
+the slot, so a word has a reference level or a cefr fact, never both. A level
+an agent submits is judged by the same rule and passes when it is right or one
+level off; a cefr fact on a word the reference lists level is never shown. The
+level of a word with a cefr fact is its entry's level and every part of
+speech's, so lists, filters, and summaries treat it as a reference level;
+`cefr_source` (`reference`, `curated`, `estimated`) on the entry, its overview,
+and every summary says where it comes from, and `review.cefr` names the fact.
+The learner priority reads the reference lists alone, so an estimate never
+reorders the work.
 
 #### Syllables and form pronunciations
 
@@ -1422,7 +1453,7 @@ next stage waits on a review the workers move on to the next entry:
 | 1 identity | `senses` | Nothing else can be judged before the inventory exists, and relations need their ends' inventories |
 | 2 network | `category`, `parts`, `synonyms`, `family`, `phrases`, `topics` | Where the word sits among other words |
 | 3 translation | `translations` | What the word means to a learner in each served language |
-| 4 usage | `examples`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations`, `productive_use` | How the word is used |
+| 4 usage | `examples`, `grammar`, `collocations`, `forms`, `pronunciation`, `syllables`, `morphology`, `form_pronunciations`, `productive_use`, `cefr` | How the word is used |
 
 The band is the entry's lowest CEFR level, A1 to C2 (0 to 5), then an entry
 without a level, most phrases among them (6) (`learnerBand`). `rank` is the
@@ -1501,6 +1532,9 @@ needs and no pass completed it. Entry gaps:
   server): each part of speech of the common senses with no live productive
   use, in inventory order, as `{ type: "productive_use", missing: [pos] }`;
   single words and phrases alike.
+- `cefr` (required, stage 4, entry context, classified by the server): an
+  inventoried single word with a common sense, no reference CEFR level, and no
+  live cefr fact, as `{ type: "cefr" }` (see CEFR levels).
 
 Sense gaps, per common sense of the current inventory, within its scope:
 
@@ -2099,8 +2133,8 @@ Chinese names), and every name for `all`.
 
 **Summaries.** Every list returns only summaries: `GET /v1/entries`, morphology
 `family`, `phrases`, and the entry of a sense read return the word summary
-`{ lemma, pos, cefr, gloss, translation? }`: the parts of speech of its meanings,
-the lemma's lowest CEFR level or `null`, its first sense's gloss (or `null`
+`{ lemma, pos, cefr, cefr_source, gloss, translation?, image_url }`: the parts of speech of its meanings,
+the lemma's lowest CEFR level or `null` and where it comes from (see CEFR levels), its first sense's gloss (or `null`
 without a public sense), and that sense's first translation in the read's
 language, a string, absent without a language, with `all` (in a document
 read's phrases, family, and entry), or without a translation. `GET /v1/topics/{id}/senses` returns the sense summary
@@ -2483,7 +2517,10 @@ topics' `image_id` and the pictures of published image facts), copies each one t
 of `d1 execute` does not reach), and records it as `media:<id>` with its id as
 fingerprint, so no row the replica serves names a file it lacks. A file is
 named by its content, so the key alone says it is there and unchanged, and the
-sync never removes one.
+sync never removes one. The copies run eight at a time (`--media-concurrency`),
+and each step is retried, since R2 answers an occasional transient error.
+`--skip-media` pushes the rows without their files, when a release cannot wait
+for them: a picture those rows name answers `404` until a later sync copies it.
 
 What a replica cannot answer: feedback is `404` for every target, because it
 is checked against the live projection of the facts (see Feedback), which the

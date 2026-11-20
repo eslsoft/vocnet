@@ -295,6 +295,7 @@ describe('public reads', () => {
         lemma: 'bank',
         pos: ['noun'],
         cefr: null,
+        cefr_source: null,
         gloss: 'land beside a river',
         image_url: null,
         matches: [{ type: 'plural', pos: 'noun' }],
@@ -460,7 +461,9 @@ describe('public reads', () => {
     await expect(
       listPublicEntries(world.deps, { ...everyEntry, prefix: ' ba' }, 'lemma', { limit: 10 }, none),
     ).resolves.toEqual({
-      items: [{ lemma: 'bank', pos: ['noun'], cefr: null, gloss: 'land beside a river', image_url: null }],
+      items: [
+        { lemma: 'bank', pos: ['noun'], cefr: null, cefr_source: null, gloss: 'land beside a river', image_url: null },
+      ],
       nextCursor: null,
     })
   })
@@ -555,6 +558,7 @@ describe('public reads', () => {
         lemma: 'bank',
         pos: ['noun'],
         cefr: null,
+        cefr_source: null,
         gloss: 'land beside a river',
         translation: '河岸',
         image_url: null,

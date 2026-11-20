@@ -232,6 +232,7 @@ describe('topic listings', () => {
         sense_id: nurse.id,
         pos: 'noun',
         cefr: null,
+        cefr_source: null,
         gloss: 'A person trained to care for the sick.',
         image_url: null,
         rare: false,

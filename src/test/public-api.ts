@@ -66,6 +66,8 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
     ],
     variants: [],
     syllables: ['an', 'i', 'mal'],
+    cefr: 'A1',
+    cefr_source: 'reference',
     image: null,
     morphology: {
       parts: [
@@ -73,8 +75,15 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
         { form: '-al', role: 'suffix' },
       ],
       family: [
-        { lemma: 'animalistic', pos: ['adjective'], cefr: null, gloss: 'Like an animal.', image_url: null },
-        { lemma: 'animalism', pos: [], cefr: null, gloss: null, image_url: null },
+        {
+          lemma: 'animalistic',
+          pos: ['adjective'],
+          cefr: null,
+          cefr_source: null,
+          gloss: 'Like an animal.',
+          image_url: null,
+        },
+        { lemma: 'animalism', pos: [], cefr: null, cefr_source: null, gloss: null, image_url: null },
       ],
     },
     meanings: [
@@ -145,12 +154,28 @@ export function animalEntry(domain?: 'biology' | 'medicine') {
       by_sense: [
         {
           sense_id: senseIds.animal as never,
-          phrases: [{ lemma: 'animal kingdom', pos: ['noun'], cefr: null, gloss: 'All animals.', image_url: null }],
+          phrases: [
+            {
+              lemma: 'animal kingdom',
+              pos: ['noun'],
+              cefr: null,
+              cefr_source: null,
+              gloss: 'All animals.',
+              image_url: null,
+            },
+          ],
         },
       ],
       phrasal_verbs: [],
       idioms: [
-        { lemma: 'party animal', pos: ['noun'], cefr: null, gloss: 'Someone who loves parties.', image_url: null },
+        {
+          lemma: 'party animal',
+          pos: ['noun'],
+          cefr: null,
+          cefr_source: null,
+          gloss: 'Someone who loves parties.',
+          image_url: null,
+        },
       ],
       compounds: [],
       sayings: [
@@ -174,6 +199,7 @@ export const searchHit = (lemma: string, gloss: string, match = 'lemma') => ({
   lemma,
   pos: ['noun'],
   cefr: 'A1',
+  cefr_source: 'reference',
   gloss,
   translation: '动物',
   image_url: null,
@@ -224,6 +250,8 @@ export function goEntry() {
     ],
     variants: [{ form: 'goe' }],
     syllables: ['go'],
+    cefr: null,
+    cefr_source: null,
     image: null,
     morphology: {
       parts: [{ form: 'going', role: 'base', lemma: 'going' }],
@@ -288,6 +316,7 @@ const memberOf = (lemma: string, depth: number) => ({
   sense_id: memberIds[lemma],
   pos: 'noun',
   cefr: lemma === 'eagle' ? null : 'A1',
+  cefr_source: lemma === 'eagle' ? null : 'reference',
   gloss: `A ${lemma}.`,
   translation: lemma === 'bird' ? '鸟' : undefined,
   image_url: null,

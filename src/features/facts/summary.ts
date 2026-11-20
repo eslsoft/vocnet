@@ -61,6 +61,8 @@ export function summarizeFact(fact: FactDto): string {
       const use = (active: boolean) => (active ? 'active' : 'passive')
       return `${pos}: native ${use(native)}, learner ${use(learner)}`
     }
+    case 'cefr':
+      return fact.payload.level
     case 'image': {
       const { image_id, sentence_id } = fact.payload
       return sentence_id

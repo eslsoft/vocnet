@@ -113,6 +113,7 @@ type EntryGap = Extract<
       | 'translations'
       | 'sayings'
       | 'productive_use'
+      | 'cefr'
   }
 >
 type SenseGap = Exclude<Gap, EntryGap>
@@ -133,6 +134,8 @@ interface EntryState {
   lemma: string
   /** The entry is at CEFR A1 or A2, where a learner needs more of each sense. */
   elementary: boolean
+  /** The reference CEFR lists give the lemma a level. */
+  leveled: boolean
   family: readonly string[]
   facts: readonly Fact[]
   live: Fact[]
@@ -443,6 +446,13 @@ const entryGapRules: readonly EntryRule[] = [
     need: (state) => countedPos(state).length,
     filled: (state) => countedPos(state).filter((pos) => usedPos(state).has(pos)).length,
   },
+  // A single word the reference lists give no level gets one, estimated from its common senses.
+  {
+    type: 'cefr',
+    gap: () => ({ type: 'cefr' }),
+    need: (state) => (state.leveled || isMultiword(state.lemma) || state.counted.length === 0 ? 0 : 1),
+    filled: counting('cefr'),
+  },
   ...SERVED_LANGUAGES.map(translationRule),
   // A saying in the headword's published list needs its meaning.
   {
@@ -700,6 +710,7 @@ function openGaps(
     entryId: snapshot.entry.id,
     lemma: snapshot.entry.lemma,
     elementary: snapshot.levelRank !== null && snapshot.levelRank <= 2,
+    leveled: snapshot.levelRank !== null,
     family: snapshot.family,
     facts: snapshot.facts,
     live,
@@ -968,6 +979,7 @@ export const WORK_POLICY: Readonly<
   morphology: { stage: 4, context: 'node' },
   form_pronunciations: { stage: 4, context: 'node' },
   productive_use: { stage: 4, context: 'entry', classifies: 'productive_use' },
+  cefr: { stage: 4, context: 'entry', classifies: 'cefr' },
 }
 
 /** The types the server works itself, by classification. */
@@ -983,6 +995,7 @@ export const AGENT_TYPES: readonly WorkType[] = (Object.keys(WORK_POLICY) as Wor
 /** The slots of a classified item the server fills, one fact each: a productive use's parts of speech. */
 export function classifiedSlots(gap: Gap): { kind: FactKind; slots: readonly string[] } {
   if (gap.type === 'productive_use') return { kind: 'productive_use', slots: gap.missing }
+  if (gap.type === 'cefr') return { kind: 'cefr', slots: ['level'] }
   throw new Error(`The server does not classify ${gap.type} items.`)
 }
 
