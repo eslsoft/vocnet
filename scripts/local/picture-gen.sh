@@ -2,7 +2,8 @@
 # Draws one picture job of scripts/local/pictures.py through the model gateway (docs/design.md,
 # Pictures): the job's sense, or with "example" its example sentence, in the house style, cut square
 # and saved as a 1024x1024 WebP. The gateway is MODEL_BASE_URL and MODEL_API_KEY, from .dev.vars
-# unless set. A safety refusal is final; a rate limit waits for its window.
+# unless set, and the model is IMAGE_MODEL (default Google's Gemini flash image model). A safety
+# refusal is final; a rate limit waits for its window.
 #
 #   bash scripts/local/picture-gen.sh <job json> <dir> [example]
 set -uo pipefail
@@ -10,6 +11,7 @@ job=$1 out=$2 mode=${3:-sense}
 vars="$(dirname "$0")/../../.dev.vars"
 : "${MODEL_BASE_URL:=$(grep '^MODEL_BASE_URL=' "$vars" | cut -d= -f2-)}"
 : "${MODEL_API_KEY:=$(grep '^MODEL_API_KEY=' "$vars" | cut -d= -f2- | tr -d '"')}"
+: "${IMAGE_MODEL:=google/models/gemini-3.1-flash-image}"
 sid=$(jq -r '.sense.id' <<< "$job"); lemma=$(jq -r '.lemma' <<< "$job"); pos=$(jq -r '.sense.pos' <<< "$job"); gloss=$(jq -r '.sense.gloss' <<< "$job")
 name=$sid; [ "$mode" = example ] && name=$sid.example
 [ -f "$out/$name.webp" ] && exit 0
@@ -25,7 +27,7 @@ prompt="$STYLE
 $subject"
 tmp=$(mktemp -d)
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  jq -n --arg p "$prompt" '{model:"codex/gpt-image-2.6-flare",prompt:$p,n:1}' \
+  jq -n --arg m "$IMAGE_MODEL" --arg p "$prompt" '{model:$m,prompt:$p,n:1}' \
     | curl -sS -m 300 "$MODEL_BASE_URL/v1/images/generations" -H "Authorization: Bearer $MODEL_API_KEY" -H "Content-Type: application/json" -d @- -o "$tmp/r.json"
   if jq -e '.data[0].b64_json' "$tmp/r.json" >/dev/null 2>&1; then
     jq -r '.data[0].b64_json' "$tmp/r.json" | base64 -d > "$tmp/raw"
