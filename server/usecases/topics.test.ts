@@ -233,6 +233,7 @@ describe('topic listings', () => {
         pos: 'noun',
         cefr: null,
         gloss: 'A person trained to care for the sick.',
+        image_url: null,
         rare: false,
       },
     ])
@@ -279,11 +280,11 @@ describe('topic pictures', () => {
     await expect(set(curatorAgent, 'no-such-topic', square)).rejects.toMatchObject({ code: 'not_found' })
     await expect(set(curatorAgent, 'home', new Uint8Array(64))).rejects.toMatchObject({
       code: 'invalid_request',
-      message: 'A topic image is a WebP file.',
+      message: 'A picture is a WebP file.',
     })
     await expect(set(curatorAgent, 'home', webpHeader(1254, 1254))).rejects.toMatchObject({
       code: 'invalid_request',
-      message: 'A topic image is 1024×1024; this one is 1254×1254.',
+      message: 'A picture is 1024×1024; this one is 1254×1254.',
     })
     await expect(set(curatorAgent, 'home', webpHeader(1024, 1024, { length: 300 * 1024 + 1 }))).rejects.toMatchObject({
       code: 'invalid_request',

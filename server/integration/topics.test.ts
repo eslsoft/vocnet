@@ -127,6 +127,7 @@ describe('topics', () => {
           pos: 'noun',
           cefr: null,
           gloss: 'A person trained to care for the sick.',
+          image_url: null,
           rare: false,
         },
         {
@@ -135,6 +136,7 @@ describe('topics', () => {
           pos: 'noun',
           cefr: null,
           gloss: 'A room in a hospital for patients.',
+          image_url: null,
           rare: false,
         },
       ],

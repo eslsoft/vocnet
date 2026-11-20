@@ -363,7 +363,7 @@ describe('public view', () => {
 
     await publishInventory((await managed('give up')).entry.id, [{ pos: 'verb', gloss: 'To stop trying.' }])
     expect((await entryOf('give')).phrases.phrasal_verbs).toEqual([
-      { lemma: 'give up', pos: ['verb'], cefr: null, gloss: 'To stop trying.' },
+      { lemma: 'give up', pos: ['verb'], cefr: null, gloss: 'To stop trying.', image_url: null },
     ])
     const shownEtag = await etagOf('give')
     expect(shownEtag).not.toBe(listedEtag)
@@ -398,7 +398,7 @@ describe('public view', () => {
         { form: 'happy', role: 'base', lemma: 'happy' },
         { form: '-ness', role: 'suffix' },
       ],
-      family: [{ lemma: 'happy', pos: ['noun'], cefr: null, gloss: 'Feeling or showing pleasure.' }],
+      family: [{ lemma: 'happy', pos: ['noun'], cefr: null, gloss: 'Feeling or showing pleasure.', image_url: null }],
     })
     expect((await morphologyOf('happy'))?.family.map((member) => member.lemma)).toEqual(['happiness'])
 
@@ -480,6 +480,7 @@ describe('public view', () => {
       pos: ['noun'],
       cefr: null,
       gloss: 'Land beside a river.',
+      image_url: null,
       translation: '河岸',
     })
     const sense = publicSenseDetailSchema.parse((await call(`/v1/senses/${river}?lang=zh`)).body)

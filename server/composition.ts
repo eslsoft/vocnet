@@ -52,8 +52,8 @@ export function createDeps(env: Env): Deps {
       luna: createLunaReviewer(review.decisions),
     },
     llm: {
-      judge: (prompt) => llmLimit(() => llm.judge(prompt)),
-      answer: (prompt) => llmLimit(() => llm.answer(prompt)),
+      judge: (prompt, pictures) => llmLimit(() => llm.judge(prompt, pictures)),
+      answer: (prompt, pictures) => llmLimit(() => llm.answer(prompt, pictures)),
     },
     reviewQueue: createReviewQueue(env.REVIEW_QUEUE),
     feedbackLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),

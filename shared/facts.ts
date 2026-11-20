@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { mediaIdSchema } from './media'
 
 // The fact vocabulary on the wire. Runtime schemas are authoritative; types are
 // inferred. The domain registry (server/domain/fact-kinds.ts) is keyed by the
@@ -621,6 +622,17 @@ const submitExamplePayloadSchema = z.union([
   }),
 ])
 
+const imagePayloadSchema = z.strictObject({
+  image_id: mediaIdSchema.meta({
+    description:
+      'A picture stored with POST /manage/v1/media: a 1024×1024 WebP of the sense, or of the example sentence.',
+  }),
+  sentence_id: sentenceIdSchema.optional().meta({
+    description:
+      'Only when the picture shows a published example of the sense rather than the sense itself: that sentence, which is always shown with the picture.',
+  }),
+})
+
 const sentenceMeaningPayloadSchema = z.strictObject({
   gloss: text(500).meta({
     description:
@@ -663,6 +675,9 @@ export const productiveUseAnswerSchema = z.object({
   reason: z.string().min(1),
 })
 
+/** What the LLM answers when it names the headwords a picture shows before it is told the word. */
+export const blindGuessesSchema = z.object({ guesses: z.array(z.string()).min(1).max(10) })
+
 export const factPayloadSchemas = {
   senses: sensesPayloadSchema,
   form: formPayloadSchema,
@@ -700,6 +715,7 @@ export const factPayloadSchemas = {
   phrases: phrasesPayloadSchema,
   sentence_meaning: sentenceMeaningPayloadSchema,
   productive_use: productiveUsePayloadSchema,
+  image: imagePayloadSchema,
 }
 export type FactPayloads = { [K in FactKind]: z.infer<(typeof factPayloadSchemas)[K]> }
 
@@ -808,6 +824,7 @@ export const factKindSchema = z
     'phrases',
     'sentence_meaning',
     'productive_use',
+    'image',
   ])
   .meta({ id: 'FactKind' })
 export type FactKind = z.infer<typeof factKindSchema>
@@ -904,6 +921,7 @@ export const submitFactInputSchema = z
     submitVariant('phrases'),
     submitVariant('sentence_meaning'),
     submitVariant('productive_use'),
+    submitVariant('image'),
   ])
   .meta({ id: 'SubmitFactInput' })
 export type SubmitFactInput = z.infer<typeof submitFactInputSchema>
@@ -943,6 +961,7 @@ export const factSchema = z
     factVariant('phrases'),
     factVariant('sentence_meaning'),
     factVariant('productive_use'),
+    factVariant('image'),
   ])
   .meta({ id: 'Fact' })
 export type FactDto = z.infer<typeof factSchema>

@@ -10,6 +10,7 @@ import {
   type Link,
   type LinkEnd,
   linkAdmissionOf,
+  mediaOf,
   mentionsOf,
   type NamedNodes,
   namedTextsOf,
@@ -65,7 +66,7 @@ export interface Actor {
 
 export type SubmitDeps = Pick<
   Deps,
-  'nodes' | 'facts' | 'topics' | 'work' | 'reference' | 'publicViews' | 'reviewQueue' | 'clock' | 'ids'
+  'nodes' | 'facts' | 'topics' | 'work' | 'reference' | 'publicViews' | 'media' | 'reviewQueue' | 'clock' | 'ids'
 >
 
 interface SubjectNode<S extends SubjectType> {
@@ -293,6 +294,10 @@ export async function submitFact(
   }
   const topic = topicOf(kind, payload)
   if (topic) await assertLeafTopic(deps, topic)
+  const picture = mediaOf(kind, payload)
+  if (picture && !(await deps.media.has(picture))) {
+    throw new InvalidReferenceError(`Picture ${picture} is not stored; upload it with POST /manage/v1/media first.`)
+  }
   const target = targetOf(kind, payload)
   const targetSense = target && (await deps.nodes.findSense(target))
   if (target && !targetSense) throw new InvalidReferenceError(`Target sense ${target} does not exist.`)

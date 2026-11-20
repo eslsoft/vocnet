@@ -455,6 +455,7 @@ describe('public read model', () => {
       cefr: 'A2',
       gloss: 'land beside a river',
       translations: { zh: '河岸' },
+      image_url: null,
     })
     expect(() => project({ ...snapshot, facts }, { topicNames: new Map() })).toThrow('does not exist')
   })
@@ -463,7 +464,14 @@ describe('public read model', () => {
     const bank = entry('bank')
     const view = project(snapshotOf(bank, [inventory(bank, [])]))
     expect(view?.meanings).toEqual([])
-    expect(view?.summary).toEqual({ lemma: 'bank', pos: [], cefr: null, gloss: null, translations: {} })
+    expect(view?.summary).toEqual({
+      lemma: 'bank',
+      pos: [],
+      cefr: null,
+      gloss: null,
+      translations: {},
+      image_url: null,
+    })
   })
 
   it('places a form under its labelled part of speech, else the first carrier of its type the entry has [spec: catalog/form-placement]', () => {

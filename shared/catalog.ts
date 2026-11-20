@@ -90,6 +90,10 @@ const summaryFields = {
   lemma: z.string(),
   cefr: cefrLevelSchema.nullable(),
   translation: summaryTranslationSchema.optional(),
+  image_url: z.string().nullable().meta({
+    description:
+      'The path of its picture (GET /v1/media/{id}), cacheable forever: the picture its document shows as `image`; null when none is public.',
+  }),
 }
 
 export const wordSummarySchema = z
@@ -254,6 +258,18 @@ export const publicExampleSchema = z
   })
   .meta({ id: 'Example' })
 export type PublicExample = z.infer<typeof publicExampleSchema>
+export const publicPictureSchema = z
+  .object({
+    url: z.string().meta({ description: 'The path of the picture (GET /v1/media/{id}), cacheable forever.' }),
+    sentence: z.string().nullable().meta({
+      description:
+        'The published example the picture shows, which is always shown with it; null when it shows the sense itself.',
+    }),
+    ...review,
+  })
+  .meta({ id: 'Picture' })
+export type PublicPicture = z.infer<typeof publicPictureSchema>
+
 export const publicCollocationSchema = z
   .object({
     text: z.string(),
@@ -298,6 +314,7 @@ export const publicSenseSchema = z
     examples: z.array(publicExampleSchema),
     collocations: z.array(publicCollocationSchema),
     topics: z.array(senseTopicSchema).meta({ description: 'Leaf topics of GET /v1/topics this sense is tagged with.' }),
+    image: publicPictureSchema.nullable().meta({ description: 'Its published picture; null when it has none.' }),
     relations: relationsSchema,
     review: senseReviewSchema.optional(),
   })
@@ -405,6 +422,13 @@ export const publicEntrySchema = z
         'The written word divided into syllables, as a learner\'s dictionary breaks it: ["a", "bil", "i", "ty"].',
     }),
     morphology: publicMorphologySchema.nullable(),
+    image: publicPictureSchema
+      .extend({ sense_id: senseIdSchema.meta({ description: 'The sense the picture belongs to.' }) })
+      .nullable()
+      .meta({
+        description:
+          "The entry's picture: the picture of its first sense, in inventory order, that has one; null when none has.",
+      }),
     meanings: z.array(meaningSchema).meta({
       description:
         "One per part of speech, in the order of each one's first sense; senses follow the entry's inventory.",

@@ -24,6 +24,7 @@ import type {
   StoredInventorySense,
   TopicId,
 } from '@shared/facts'
+import { mediaUrl } from '@shared/media'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
 import { formMeaning, isIrregularForm, type NamedNodes } from './fact-kinds'
@@ -126,8 +127,15 @@ export type ByLanguage<T> = Record<string, T>
 // review, so one document serves each language and include variant. Reads cut the variant out of
 // it (server/domain/public-view.ts); fields other entries supply are joined on read.
 
+/** A published picture as the document stores it, with the review of its image fact. */
+export interface StoredPicture {
+  url: string
+  sentence: string | null
+  review: ReviewMeta
+}
+
 export interface StoredSense
-  extends Omit<PublicSense, 'translations' | 'topics' | 'review' | 'examples' | 'collocations'> {
+  extends Omit<PublicSense, 'translations' | 'topics' | 'review' | 'examples' | 'collocations' | 'image'> {
   translations: ByLanguage<string[]>
   examples: Array<{ sentence_id: SentenceId; text: string; translations: ByLanguage<string>; review: ReviewMeta }>
   collocations: Array<{
@@ -137,6 +145,7 @@ export interface StoredSense
     review: ReviewMeta
   }>
   topics: Array<{ id: TopicId; name: ByLanguage<string>; review: ReviewMeta }>
+  image: StoredPicture | null
   review: { gloss: ReviewMeta; translations: ByLanguage<ReviewMeta[]> }
 }
 
@@ -152,6 +161,7 @@ export interface StoredSummary {
   cefr: CefrLevel | null
   gloss: string | null
   translations: ByLanguage<string>
+  image_url: string | null
 }
 
 /** One sense as topic listings show it. */
@@ -162,6 +172,7 @@ export interface StoredSenseSummary {
   cefr: CefrLevel | null
   gloss: string
   translations: ByLanguage<string>
+  image_url: string | null
 }
 
 /** One published form of a public entry as the form lookup indexes it, shown or not. */
@@ -180,6 +191,8 @@ export interface StoredEntry {
   variants: Variant[]
   syllables: string[] | null
   morphology: { parts: Morpheme[]; shortened?: Shortening; review: ReviewMeta } | null
+  /** The picture of the first sense, in inventory order, that has one. */
+  image: (StoredPicture & { sense_id: SenseId }) | null
   meanings: StoredMeaning[]
   summary: StoredSummary
   /**
@@ -330,6 +343,24 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
   const translationsOf = (subjectId: string): ByLanguage<string> =>
     Object.fromEntries(about('translation', subjectId).map((fact) => [fact.payload.language, fact.payload.text]))
 
+  /**
+   * The sense's published picture. A picture of an example shows only while a published example
+   * links that sentence to the sense, since it is always shown with the sentence.
+   */
+  const pictureOf = (senseId: SenseId): StoredPicture | null => {
+    const [fact] = about('image', senseId)
+    if (!fact) return null
+    const { image_id, sentence_id } = fact.payload
+    let sentence: string | null = null
+    if (sentence_id !== undefined) {
+      const example = about('example', senseId).some((candidate) => candidate.payload.sentence_id === sentence_id)
+      const text = snapshot.sentences.get(sentence_id)?.text
+      if (!example || text === undefined) return null
+      sentence = text
+    }
+    return { url: mediaUrl(image_id), sentence, review: reviewOf(fact) }
+  }
+
   const storedSense = (sense: StoredInventorySense): StoredSense => {
     const translations: ByLanguage<string[]> = {}
     const translationReviews: ByLanguage<ReviewMeta[]> = {}
@@ -377,6 +408,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
         name: topicName(fact.payload.topic_id),
         review: reviewOf(fact),
       })),
+      image: pictureOf(sense.id),
       relations: relations(sense.id),
       review: { gloss: reviewOf(inventory), translations: translationReviews },
     }
@@ -384,6 +416,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
 
   // One meaning per part of speech, in the order of its first sense in the inventory.
   const meanings = new Map<Pos, StoredMeaning>()
+  let image: StoredEntry['image'] = null
   for (const sense of inventory.payload.senses) {
     const meaning: StoredMeaning = meanings.get(sense.pos) ?? {
       pos: sense.pos,
@@ -395,7 +428,9 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       senses: [],
       review: { forms: {}, productive_use: null },
     }
-    meaning.senses.push(storedSense(sense))
+    const stored = storedSense(sense)
+    if (!image && stored.image) image = { ...stored.image, sense_id: sense.id }
+    meaning.senses.push(stored)
     meanings.set(sense.pos, meaning)
   }
 
@@ -476,6 +511,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
     variants,
     syllables: syllables ? syllables.payload.syllables : null,
     morphology: morphology ? { ...morphology.payload, review: reviewOf(morphology) } : null,
+    image,
     meanings: ordered,
     summary: {
       lemma: snapshot.entry.lemma,
@@ -483,6 +519,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       cefr: lowestLevel(context.reference.cefr.map((row) => row.level)),
       gloss: first?.gloss ?? null,
       translations: first ? firstOfEach(first.translations) : {},
+      image_url: image?.url ?? null,
     },
     phrases: storedPhrases,
     sayings,

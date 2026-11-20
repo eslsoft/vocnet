@@ -18,13 +18,20 @@ const judgementSchema = z.object({
 
 export function createLlmReviewer(config: ModelGatewayConfig & { model: string }): LlmReviewer {
   /** The JSON object the model answers with: chat completions in JSON mode. */
-  async function answer(prompt: LlmPrompt): Promise<{ model: string; answer: unknown }> {
+  async function answer(
+    prompt: LlmPrompt,
+    pictures: readonly string[] = [],
+  ): Promise<{ model: string; answer: unknown }> {
+    const user =
+      pictures.length === 0
+        ? prompt.user
+        : [{ type: 'text', text: prompt.user }, ...pictures.map((url) => ({ type: 'image_url', image_url: { url } }))]
     const raw = await postJson(config, 'v1/chat/completions', {
       model: config.model,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: prompt.system },
-        { role: 'user', content: prompt.user },
+        { role: 'user', content: user },
       ],
     })
     const parsed = completionSchema.safeParse(raw)
@@ -39,8 +46,8 @@ export function createLlmReviewer(config: ModelGatewayConfig & { model: string }
   }
   return {
     answer,
-    async judge(prompt) {
-      const { model, answer: value } = await answer(prompt)
+    async judge(prompt, pictures) {
+      const { model, answer: value } = await answer(prompt, pictures)
       const parsed = judgementSchema.safeParse(value)
       if (!parsed.success)
         throw new ReviewerProtocolError('LLM judgement does not match its contract.', { cause: parsed.error })

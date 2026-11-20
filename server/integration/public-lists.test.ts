@@ -143,6 +143,7 @@ describe('public lists and search', () => {
       pos: ['noun', 'verb'],
       cefr: 'A1',
       gloss: 'An organization that keeps money for its customers.',
+      image_url: null,
       translation: '银行',
       match: 'lemma',
     })

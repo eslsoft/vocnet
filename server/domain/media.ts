@@ -3,8 +3,8 @@ import type { MediaId } from '@shared/media'
 /** The one format a picture is stored in. */
 export const WEBP = 'image/webp'
 
-/** What a topic's picture must be: a square WebP, small enough to load at once in a topic list. */
-export const TOPIC_IMAGE = { side: 1024, maxBytes: 300 * 1024 } as const
+/** What a picture must be: a square WebP, small enough to load a list of them at once. */
+export const PICTURE = { side: 1024, maxBytes: 300 * 1024 } as const
 
 /** The bytes a reader of the size needs: the RIFF header, the first chunk's header, and its size fields. */
 const HEADER_BYTES = 30
@@ -33,15 +33,15 @@ export function webpSize(bytes: Uint8Array): { width: number; height: number } |
   return null
 }
 
-/** Why the bytes cannot be a topic's picture, or null when they can. */
-export function topicImageProblem(bytes: Uint8Array): string | null {
-  if (bytes.length > TOPIC_IMAGE.maxBytes) {
-    return `A topic image is at most ${TOPIC_IMAGE.maxBytes} bytes; this one is ${bytes.length}.`
+/** Why the bytes cannot be a picture, or null when they can. */
+export function pictureProblem(bytes: Uint8Array): string | null {
+  if (bytes.length > PICTURE.maxBytes) {
+    return `A picture is at most ${PICTURE.maxBytes} bytes; this one is ${bytes.length}.`
   }
   const size = webpSize(bytes)
-  if (!size) return 'A topic image is a WebP file.'
-  if (size.width !== TOPIC_IMAGE.side || size.height !== TOPIC_IMAGE.side) {
-    return `A topic image is ${TOPIC_IMAGE.side}×${TOPIC_IMAGE.side}; this one is ${size.width}×${size.height}.`
+  if (!size) return 'A picture is a WebP file.'
+  if (size.width !== PICTURE.side || size.height !== PICTURE.side) {
+    return `A picture is ${PICTURE.side}×${PICTURE.side}; this one is ${size.width}×${size.height}.`
   }
   return null
 }

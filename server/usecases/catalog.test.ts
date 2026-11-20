@@ -296,6 +296,7 @@ describe('public reads', () => {
         pos: ['noun'],
         cefr: null,
         gloss: 'land beside a river',
+        image_url: null,
         matches: [{ type: 'plural', pos: 'noun' }],
       },
     ])
@@ -459,7 +460,7 @@ describe('public reads', () => {
     await expect(
       listPublicEntries(world.deps, { ...everyEntry, prefix: ' ba' }, 'lemma', { limit: 10 }, none),
     ).resolves.toEqual({
-      items: [{ lemma: 'bank', pos: ['noun'], cefr: null, gloss: 'land beside a river' }],
+      items: [{ lemma: 'bank', pos: ['noun'], cefr: null, gloss: 'land beside a river', image_url: null }],
       nextCursor: null,
     })
   })
@@ -550,7 +551,15 @@ describe('public reads', () => {
     expect(await search('银行')).toEqual([])
     expect(await search('bnak')).toEqual([])
     expect((await searchPublicEntries(world.deps, 'bank', { limit: 1 }, zh)).items).toEqual([
-      { lemma: 'bank', pos: ['noun'], cefr: null, gloss: 'land beside a river', translation: '河岸', match: 'lemma' },
+      {
+        lemma: 'bank',
+        pos: ['noun'],
+        cefr: null,
+        gloss: 'land beside a river',
+        translation: '河岸',
+        image_url: null,
+        match: 'lemma',
+      },
     ])
     await expect(searchPublicEntries(world.deps, 'bank', { limit: 1 }, { lang: 'all', review: false })).rejects.toThrow(
       'one language',

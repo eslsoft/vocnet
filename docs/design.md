@@ -122,13 +122,14 @@ entry plus its payload schema in `shared/facts.ts`.
 | `phrases`       | entry   | one         | `{ phrases: [{ type, entry_id, sense_id? } \| { type: "saying", sentence_id }] }` (no cap) | Jev per item, then LLM |
 | `sentence_meaning` | sentence | one      | `{ gloss }`: what a saying means and when it is said      | Jev, then LLM |
 | `productive_use` | entry  | one per part of speech | `{ pos, native, learner }`: whether native speakers and a C1 learner use the word or only understand it | Jev per tier, then LLM |
+| `image`         | sense   | one         | `{ image_id, sentence_id? }`: a stored picture of the sense, or of one of its examples (see Pictures) | LLM, looking at the picture |
 
 A kind with cardinality *one* admits a single live fact per subject,
 *one per language* a single live translation per subject and language, and
 *one per part of speech* a single live productive use per entry and part of
 speech: an
 entry has one inventory, one word formation, one syllable division, and one
-phrases list, a sentence one meaning, and a sense one grammar fact. Changing it means submitting a
+phrases list, a sentence one meaning, and a sense one grammar fact and one picture. Changing it means submitting a
 correction that supersedes the published fact; a second one without
 `supersedes_id` is a conflict. D1 enforces this with two partial unique indexes
 on `(kind, subject_id, slot)` over rows whose `slot` is set. The *holder*
@@ -610,24 +611,12 @@ agents cannot create topics.
 
 A category or leaf topic shows a picture, which a curator sets with `PUT
 /manage/v1/topics/{id}/image`: the body is the picture itself, a 1024×1024 WebP
-of at most 300 KB, small enough to load a whole topic list at once. Its size is
-read from the WebP header; any other file, size, or a larger one is `400
-invalid_request` naming what is wrong, a producer agent `403`, an unknown topic
-`404`. The picture is stored in the media bucket (see Media) before `image_id`
+of at most 300 KB, as every picture is (see Pictures); a producer agent is
+`403`, an unknown topic `404`. The picture is stored before `image_id`
 names it, so a topic never names a file that is not there, and setting the same
 picture again changes nothing. The pictures are generated outside the server
 and checked before they are set; a picture is a curator's choice, not a
 reviewed fact.
-
-#### Media
-
-Pictures are media files in the R2 bucket bound as `MEDIA` (`vocnet-media`;
-`vocnet-media-preview` for previews), each under the lowercase hex SHA-256 of
-its bytes with its content type. The id names the content, so a file never
-changes: `GET /v1/media/{id}` answers it with `Cache-Control: public,
-max-age=31536000, immutable` and the id as its ETag (`If-None-Match` with it is
-`304`), and an id no file has is `404`. Nothing deletes a file; one no row names
-costs only its storage.
 
 A `topic` fact tags one sense with one leaf topic. Topics are tags, not
 relations between words: a relation to an "anchor word" would need an anchor
@@ -697,6 +686,50 @@ document holds the tag and the read joins the category, so it is never stale
 and the taxonomy is part of the document's ETag. A tag whose topic is not a
 leaf of the taxonomy fails the read. Topic facts appear wherever the
 management API lists facts.
+
+### Pictures
+
+Pictures are media files in the R2 bucket bound as `MEDIA` (`vocnet-media`;
+`vocnet-media-preview` for previews), each under the lowercase hex SHA-256 of
+its bytes with its content type. The id names the content, so a file never
+changes: `GET /v1/media/{id}` answers it with `Cache-Control: public,
+max-age=31536000, immutable` and the id as its ETag (`If-None-Match` with it is
+`304`), and an id no file has is `404`. Nothing deletes a file; one no row names
+costs only its storage.
+
+A picture is a 1024×1024 WebP of at most 300 KB, small enough to load a list of
+them at once; its size is read from the WebP header, and any other file, size,
+or a larger one is `400 invalid_request` naming what is wrong. An agent stores
+one with `POST /manage/v1/media`, whose body is the picture itself; the answer
+is `{ id, url }`, and storing it again changes nothing.
+
+An `image` fact gives a sense its picture: `{ image_id, sentence_id? }`, one
+live per sense, keyed by the picture's id. Its picture must be stored (`422
+invalid_reference` otherwise). A picture shows the sense itself in one scene;
+only a sense no picture can show, such as a conjunction, takes a picture of one
+of its examples, named by `sentence_id` (the fact's object), and that picture
+is always shown with the sentence. Producers draw them with the model gateway's
+image model from the sense's gloss, or from the sentence, in one house style.
+
+The LLM reviews a picture by looking at it (`LookPlan`): it is first sent the
+picture alone and names the five headwords it most likely illustrates, then the
+picture with the lemma, part of speech, gloss, the sentence if any, and those
+guesses, and judges it. The guesses catch a picture of a merely related idea:
+"two people laughing" for *break the ice* is guessed as *laugh*. They do not
+decide alone, since a literal *break the ice* or a riverbank for the financial
+*bank* is guessed right too. The rubric fails another sense, a literal idiom, a
+merely related idea, any letters, numbers, or logos, offence or real people and
+brands, and malformed hands, faces, or objects; it never judges the drawing
+style, which the producer's prompt sets, because judging it failed four of ten
+good pictures for their backgrounds. Guesses that break their contract are a
+reviewer failure, so the queue retries.
+
+The public view shows a sense's published picture as `image: { url, sentence }`
+(`sentence` null for a picture of the sense); a picture of an example shows only
+while a published example links that sentence to the sense. The entry's
+`image` is the picture of its first sense in inventory order that has one, with
+its `sense_id`, and every summary gives its picture's `image_url`: a word
+summary the entry's, a sense summary the sense's.
 
 ### Write rules
 
@@ -1058,7 +1091,8 @@ correction indexes (`409`). Only a new fact is enqueued for review.
   answers nothing and scores 0, leaving the fact to the LLM.
 - **LLM** gets a rubric prompt at the OpenAI-compatible chat completions
   endpoint of the model gateway and must return JSON `{ verdict, confidence,
-  reason }`.
+  reason }`. A picture goes with the prompt as an image part of the user
+  message (see Pictures).
 
 A decision model's **score** is its lowest answer: every question must hold. It
 reads `pass` at its kind's threshold, `fail` below 0.5, and `uncertain` between
@@ -2443,7 +2477,7 @@ holds the database while it runs, so a first sync of every entry makes the
 replica unavailable for its duration; a later sync copies only what changed.
 
 Media files go first. The sync lists the files the source's rows name (the
-topics' `image_id`), copies each one the manifest lacks from the local bucket
+topics' `image_id` and the pictures of published image facts), copies each one the manifest lacks from the local bucket
 (`wrangler r2 object get --local`) to the replica's (`wrangler r2 object put`;
 `--bucket vocnet-media-preview` for a preview, whose bucket the `--preview` flag
 of `d1 execute` does not reach), and records it as `media:<id>` with its id as

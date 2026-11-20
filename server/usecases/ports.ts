@@ -213,6 +213,7 @@ export interface MediaFile {
 export interface MediaStore {
   put(id: MediaId, bytes: Uint8Array<ArrayBuffer>, contentType: string): Promise<void>
   get(id: MediaId): Promise<MediaFile | null>
+  has(id: MediaId): Promise<boolean>
 }
 
 /** A public view whose rows no longer describe the entry. */
@@ -603,10 +604,14 @@ export interface LlmJudgement {
   reason: string
 }
 
+/**
+ * The general model. `pictures` are data URLs of pictures the prompt is about, shown to the model
+ * with the user message.
+ */
 export interface LlmReviewer {
-  judge(prompt: LlmPrompt): Promise<LlmJudgement>
+  judge(prompt: LlmPrompt, pictures?: readonly string[]): Promise<LlmJudgement>
   /** The JSON object the LLM answers the prompt with, undecoded: the caller decodes it against its own contract. */
-  answer(prompt: LlmPrompt): Promise<{ model: string; answer: unknown }>
+  answer(prompt: LlmPrompt, pictures?: readonly string[]): Promise<{ model: string; answer: unknown }>
 }
 
 /** The reviewer could not be reached or failed upstream. Not a verdict: retry later. */

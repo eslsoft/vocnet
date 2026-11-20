@@ -32,8 +32,14 @@ export const unitReadSql = Object.fromEntries(
 
 export const topicsReadSql = 'SELECT * FROM topics;'
 
-/** The media files the source's rows name: the topics' pictures. */
-export const mediaIdsSql = 'SELECT DISTINCT image_id FROM topics WHERE image_id IS NOT NULL ORDER BY image_id;'
+/**
+ * The media files the source's rows name: the topics' pictures, and the pictures of the published
+ * image facts, which the public views show (a few, of examples no longer published, are copied
+ * without being shown).
+ */
+export const mediaIdsSql = `SELECT image_id FROM topics WHERE image_id IS NOT NULL
+UNION SELECT json_extract(payload, '$.image_id') FROM facts WHERE kind = 'image' AND status = 'published'
+ORDER BY 1;`
 
 /** Bytes per INSERT: under D1's 100 KB statement limit, which one document alone stays under. */
 const STATEMENT_BUDGET = 90_000

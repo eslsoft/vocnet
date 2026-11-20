@@ -30,6 +30,7 @@ import {
   linkAdmissionOf,
   MAX_COLLOCATIONS,
   MAX_TOPICS_PER_SENSE,
+  mediaOf,
   mentionsOf,
   modelsOf,
   type NamedNodes,
@@ -325,6 +326,7 @@ describe('fact-kind registry', () => {
       phrases: ['jev'],
       sentence_meaning: ['jev'],
       productive_use: ['jev'],
+      image: [],
     })
   })
 
@@ -426,7 +428,7 @@ describe('fact-kind registry', () => {
     expect(slotOf('productive_use', { pos: 'verb', native: true, learner: false })).toBe('verb')
     expect(slotOf('relation', { type: 'synonym', target_sense_id: target })).toBeNull()
     expect(GENERAL_LIMITS[1]).toBe(
-      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, sentence_meaning, one live translation per language, and one live productive_use per part of speech: change it with a correction that supersedes the published one.',
+      'A subject holds one live fact of senses, grammar, morphology, syllables, phrases, sentence_meaning, image, one live translation per language, and one live productive_use per part of speech: change it with a correction that supersedes the published one.',
     )
     expect(GENERAL_LIMITS).toHaveLength(3)
   })
@@ -1896,5 +1898,56 @@ describe('productive use classification', () => {
     expect(classificationOf('syllables', '', run)).toBeNull()
     expect(classifiedSubjectOf('productive_use')).toBe('entry')
     expect(() => classifiedSubjectOf('translation')).toThrow('A classified kind is about one type of node')
+  })
+})
+
+describe('image facts', () => {
+  const picture = 'a'.repeat(64)
+  const look = (plan: ReviewPlan) => {
+    if (plan.kind !== 'look') throw new Error(`Expected a look plan, got ${plan.kind}.`)
+    return plan
+  }
+
+  it('looks at the picture blind first, then judges it against the sense with the guesses [spec: facts/image-review]', () => {
+    const plan = look(planReview('image', { image_id: picture }, on(bank)))
+    expect(plan.image).toBe(picture)
+    expect(`${plan.blind.system}\n${plan.blind.user}`).not.toContain('bank')
+    const judged = plan.judge(['shore', 'river']).user
+    expect(judged).toContain('Is this picture right for "bank" (noun), meaning "land beside a river"?')
+    expect(judged).toContain('The picture shows the sense itself.')
+    expect(judged).toContain('guessed these headwords, most likely first: "shore", "river".')
+    expect(judged).toContain('not a literal reading of an idiom')
+    expect(judged).toContain('No letters, numbers, words, or logos')
+    expect(judged).toContain('The drawing style is not judged.')
+
+    const example = look(planReview('image', { image_id: picture, sentence_id: said }, on(bank, { named })))
+    const withSentence = example.judge(['sit']).user
+    expect(withSentence).toContain(
+      'this published example of the sense, and is always shown with it: "We sat on the bank."',
+    )
+    expect(withSentence).toContain('blind guesses are not expected to name the word')
+  })
+
+  it('cannot review a picture of a sense without a gloss or of a sentence that does not exist', () => {
+    expect(planReview('image', { image_id: picture }, on({ ...bank, gloss: null }))).toEqual({
+      kind: 'unreviewable',
+      reason: 'The referenced sense has no live gloss.',
+    })
+    expect(planReview('image', { image_id: picture, sentence_id: said }, on(bank))).toEqual({
+      kind: 'unreviewable',
+      reason: 'The example sentence the picture shows does not exist.',
+    })
+  })
+
+  it('names its picture and stores the sentence it shows as its object', () => {
+    const spec = factKinds.image
+    expect(spec.contentKey({ image_id: picture })).toBe(picture)
+    expect(spec.object?.({ image_id: picture })).toBeNull()
+    expect(spec.object?.({ image_id: picture, sentence_id: said })).toBe(said)
+    expect(spec.summary({ image_id: picture, sentence_id: said })).toBe(`${picture} (example ${said})`)
+    expect(mentionsOf('image', { image_id: picture, sentence_id: said })).toEqual({ entries: [], sentences: [said] })
+    expect(mentionsOf('image', { image_id: picture })).toEqual({ entries: [], sentences: [] })
+    expect(mediaOf('image', { image_id: picture })).toBe(picture)
+    expect(mediaOf('example', { sentence_id: said })).toBeNull()
   })
 })
