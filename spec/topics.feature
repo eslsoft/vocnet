@@ -133,5 +133,5 @@ Feature: Topics
   Scenario: A topic picture is set and served on a real Worker
     Given a curator agent and a 1024×1024 WebP picture
     When the curator puts it as a topic's image and the taxonomy and the picture are read
-    Then GET /v1/topics gives the topic's image_url, and GET /v1/media/{id} answers the bytes as image/webp, cacheable forever, with the id as its ETag
+    Then GET /v1/topics gives the topic's image_url, and GET /v1/media/{id} answers the bytes as image/webp, cacheable forever, with the id as its ETag, and loadable by pages on other sites
     And If-None-Match with that ETag is 304, an id no file has is 404, and a producer agent's put is 403
