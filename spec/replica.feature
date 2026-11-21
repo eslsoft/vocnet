@@ -22,6 +22,12 @@ Feature: Public replica
     When an entry changes and another stops being public, and the source syncs again
     Then the replica serves the changed entry and answers 404 for the removed one
 
+  @replica/long-row @api
+  Scenario: A sync copies an entry whose row is longer than a statement allows
+    Given a public entry whose view document is longer than D1 takes in one statement
+    When the entry is pushed to an empty replica
+    Then the replica holds the document whole and serves the entry as the source did
+
   @replica/media @domain
   Scenario: A sync copies the media files the replica lacks
     Given the media files the source's rows name and the replica's manifest of the files it holds

@@ -41,8 +41,13 @@ export const mediaIdsSql = `SELECT image_id FROM topics WHERE image_id IS NOT NU
 UNION SELECT json_extract(payload, '$.image_id') FROM facts WHERE kind = 'image' AND status = 'published'
 ORDER BY 1;`
 
-/** Bytes per INSERT: under D1's 100 KB statement limit, which one document alone stays under. */
+/** Bytes per statement: under D1's 100 KB statement limit. */
 const STATEMENT_BUDGET = 90_000
+
+/** Bytes of a text a statement carries at most; a longer one is written in parts. */
+const TEXT_PART_BUDGET = 60_000
+
+const bytes = (text: string) => new TextEncoder().encode(text).length
 
 function value(item: string | number | null): string {
   if (item === null) return 'NULL'
@@ -53,26 +58,80 @@ function value(item: string | number | null): string {
   return `'${item.replaceAll("'", "''")}'`
 }
 
+/** A text in parts whose quoted SQL literals each fit the part budget, split between code points. */
+function textParts(text: string): string[] {
+  const parts: string[] = []
+  let part = ''
+  let size = 2
+  for (const char of text) {
+    const charSize = char === "'" ? 2 : bytes(char)
+    if (size + charSize > TEXT_PART_BUDGET) {
+      parts.push(part)
+      part = ''
+      size = 2
+    }
+    part += char
+    size += charSize
+  }
+  parts.push(part)
+  return parts
+}
+
+/**
+ * A row too long for one statement: an INSERT with each long text's first part, then one UPDATE per
+ * further part that appends it to the row just inserted.
+ */
+function longRowStatements(head: string, table: string, columns: readonly string[], row: ReplicaRow): string[] {
+  const parts = new Map<string, string[]>()
+  const first = columns.map((column) => {
+    const item = row[column] ?? null
+    if (typeof item !== 'string' || bytes(value(item)) <= TEXT_PART_BUDGET) return value(item)
+    const [lead = '', ...rest] = textParts(item)
+    parts.set(column, rest)
+    return value(lead)
+  })
+  const insert = `${head}(${first.join(', ')});`
+  if (bytes(insert) > STATEMENT_BUDGET) throw new Error(`A row of ${table} is too long for a statement even in parts.`)
+  return [
+    insert,
+    ...[...parts].flatMap(([column, rest]) =>
+      rest.map(
+        (part) => `UPDATE ${table} SET ${column} = ${column} || ${value(part)} WHERE rowid = last_insert_rowid();`,
+      ),
+    ),
+  ]
+}
+
 /** INSERTs of the rows, as many to a statement as the budget allows. Every row has the first row's columns. */
 function inserts(table: string, rows: readonly ReplicaRow[], suffix = ''): string[] {
   const [first] = rows
   if (!first) return []
   const columns = Object.keys(first)
   const head = `INSERT INTO ${table} (${columns.join(', ')}) VALUES\n`
+  const headSize = bytes(head) + bytes(suffix) + 1
   const statements: string[] = []
   let values: string[] = []
-  let size = head.length
+  let size = headSize
+  const flush = () => {
+    if (values.length > 0) statements.push(`${head}${values.join(',\n')}${suffix};`)
+    values = []
+    size = headSize
+  }
   for (const row of rows) {
     const tuple = `(${columns.map((column) => value(row[column] ?? null)).join(', ')})`
-    if (values.length > 0 && size + tuple.length > STATEMENT_BUDGET) {
-      statements.push(`${head}${values.join(',\n')}${suffix};`)
-      values = []
-      size = head.length
+    const tupleSize = bytes(tuple)
+    if (headSize + tupleSize > STATEMENT_BUDGET) {
+      // An upsert may update a row instead of inserting one, which last_insert_rowid() does not name.
+      if (suffix) throw new Error(`A row of ${table} is too long for an upsert statement.`)
+      flush()
+      statements.push(...longRowStatements(head, table, columns, row))
+      continue
     }
+    if (values.length > 0 && size + tupleSize + 2 > STATEMENT_BUDGET) flush()
     values.push(tuple)
-    size += tuple.length + 2
+    size += tupleSize + 2
   }
-  statements.push(`${head}${values.join(',\n')}${suffix};`)
+  flush()
   return statements
 }
 
