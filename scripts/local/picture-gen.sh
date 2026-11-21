@@ -15,23 +15,29 @@ vars="$(dirname "$0")/../../.dev.vars"
 sid=$(jq -r '.sense.id' <<< "$job"); lemma=$(jq -r '.lemma' <<< "$job"); pos=$(jq -r '.sense.pos' <<< "$job"); gloss=$(jq -r '.sense.gloss' <<< "$job")
 name=$sid; [ "$mode" = example ] && name=$sid.example
 [ -f "$out/$name.webp" ] && exit 0
-STYLE="Flat vector illustration for an English learner's dictionary. A full-bleed square image with no border or frame, every important element well inside the edges and nothing cut off. Clean, friendly, modern style with soft colours on a plain off-white background, simple shapes, no clutter. No text, letters, writing on signs, logos, brand names or brand patterns anywhere in the image.
-Make the meaning the centre of attention. If the word names a physical object, substance, animal, plant or place, draw only that thing, large and centred, with no people or hands. For an action, state, quality or idea, show the one moment that makes it obvious, through the scene rather than a thought bubble. People are adults unless the meaning is about children. Suitable for all ages: no blood, wounds, or dead bodies shown."
 # The model draws the same person every time unless told whom to draw, so the sense id picks one.
 ages=(young middle-aged older elderly); people=("East Asian woman" "Black man" "South Asian woman" "white man" "Latina woman" "Middle Eastern man" "Black woman" "East Asian man" "white woman" "Latino man" "South Asian man" "Middle Eastern woman")
-looks=("short grey hair and a teal jacket" "a shaved head and an orange shirt" "a long braid and a green sweater" "glasses and a navy coat" "a ponytail and a yellow top" "curly red hair and a striped shirt" "a beard and a brown jacket" "a bob haircut and a red cardigan" "a knitted beanie and a blue jumper" "straight black hair and a white shirt")
+looks=("short grey hair and a teal jacket" "a shaved head and an orange shirt" "a long braid and a green sweater" "glasses and a navy coat" "a ponytail and a yellow top" "curly red hair and a striped shirt" "short dark hair and a brown jacket" "a bob haircut and a red cardigan" "a knitted beanie and a blue jumper" "straight black hair and a white shirt")
 h=$(printf %s "$sid" | cksum | cut -d' ' -f1)
-cast="When people appear, the main person is a ${ages[h % 4]} ${people[h / 4 % 12]} with ${looks[h / 48 % 10]}; any others look different from each other."
-STYLE="$STYLE $cast"
+person="a ${ages[h % 4]} ${people[h / 4 % 12]} with ${looks[h / 48 % 10]}"
 if [ "$mode" = example ]; then
   sentence=$(jq -r '.sense.example.text' <<< "$job")
-  subject="Draw one single scene, not a collage or several panels, that shows this example sentence of the English word \"$lemma\" ($pos, meaning: $gloss): \"$sentence\""
+  purpose="This picture goes next to an example sentence in an English learner's dictionary. A learner who sees it should understand the sentence, and through it this meaning of the word, at a glance and without reading."
+  subject="Word: \"$lemma\" ($pos)
+Meaning: $gloss
+Example sentence to show: \"$sentence\""
 else
-  subject="Draw one single scene, not a collage or several panels, that shows the main meaning of the English word \"$lemma\" ($pos): $gloss"
+  purpose="This picture goes next to one meaning of an English word in a learner's dictionary. A learner who sees it should grasp and remember this meaning at a glance and without reading, and tell it apart from the word's other meanings, so show exactly this meaning, not another sense of the same word."
+  subject="Word: \"$lemma\" ($pos)
+Meaning to show: $gloss"
 fi
-prompt="$STYLE
+prompt="$purpose
 
-$subject"
+$subject
+
+How to show it: one single scene, not a collage or several panels, with the meaning at the centre of attention. If the meaning is a physical object, substance, animal, plant or place, draw only that thing, large and centred, with no people or hands. For an action, state, quality or idea, show the one moment that makes it obvious, through the scene rather than a thought bubble or symbols. When people appear, the main person is $person, and any others look different from each other; people are adults unless the meaning is about children.
+
+Style: flat vector illustration, clean, friendly and modern, soft colours on a plain off-white background, simple shapes, no clutter. A full-bleed square image with no border or frame, every important element well inside the edges. No text, letters, writing on signs, logos, brand names or brand patterns anywhere. Suitable for all ages: no blood, wounds, or dead bodies shown."
 tmp=$(mktemp -d)
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
   jq -n --arg m "$IMAGE_MODEL" --arg p "$prompt" '{model:$m,prompt:$p,n:1,size:"1024x1024"}' \
