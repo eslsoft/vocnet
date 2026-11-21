@@ -4,7 +4,8 @@
       one job per public entry, most frequent first: its first common sense and that sense's first example
       (--topics: only entries with a sense tagged with a topic)
   python3 -I scripts/local/pictures.py jobs <d1.sqlite> <jobs.jsonl> --topic-senses
-      one job per sense tagged with a topic that has no image fact yet
+      one job per sense tagged with a topic that has no image fact yet, common senses first, leaving out the
+      senses that are no picture for a learner's dictionary (offensive labels, sex, genitals, illegal drugs)
   bash scripts/local/picture-gen.sh <job json> <dir> [example]
       draws a job's sense, or its example, through the model gateway into <dir>/<sense id>[.example].webp
   python3 -I scripts/local/pictures.py submit <jobs.jsonl> <dir> <ledger.jsonl> [<limit>] [--curated]
@@ -18,6 +19,7 @@
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import urllib.error
@@ -50,8 +52,20 @@ def read_jsonl(path):
     return [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
 
 
+UNDRAWABLE_LABELS = {'taboo', 'offensive', 'vulgar', 'derogatory', 'slur'}
+UNDRAWABLE_GLOSS = re.compile(
+    r'intercourse|have sex|sexual (activity|stimulation|desire)|sexually attractive|genital|buttocks|illegal drug|powdered drug',
+    re.IGNORECASE,
+)
+
+
+def drawable(sense):
+    return not UNDRAWABLE_LABELS & set(sense.get('labels') or []) and not UNDRAWABLE_GLOSS.search(sense['gloss'])
+
+
 def topic_sense_jobs(db_path, out_path):
-    """One job per sense tagged with a topic that has no image fact yet, most frequent entry first."""
+    """One job per drawable sense tagged with a topic that has no image fact yet: the common senses by their
+    entry's frequency, then the rare ones."""
     db = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
     tagged = {row[0] for row in db.execute('SELECT DISTINCT sense_id FROM public_sense_topics')}
     tried = {row[0] for row in db.execute("SELECT DISTINCT subject_id FROM facts WHERE kind = 'image'")}
@@ -61,29 +75,29 @@ def topic_sense_jobs(db_path, out_path):
             WHERE p.entry_id IN (SELECT entry_id FROM public_sense_topics)
             ORDER BY coalesce(w.zipf, -1) DESC, p.entry_id"""
     )
-    written = 0
+    common, rare = [], []
+    for entry_id, lemma, zipf, meanings in rows:
+        for meaning in json.loads(meanings):
+            for sense in meaning['senses']:
+                if sense['id'] in tagged and sense['id'] not in tried and drawable(sense):
+                    (rare if sense['rare'] else common).append((entry_id, lemma, zipf, meaning['pos'], sense))
     with open(out_path, 'w') as out:
-        for entry_id, lemma, zipf, meanings in rows:
-            for meaning in json.loads(meanings):
-                for sense in meaning['senses']:
-                    if sense['id'] not in tagged or sense['id'] in tried:
-                        continue
-                    example = sense['examples'][0] if sense['examples'] else None
-                    job = {
-                        'entry_id': entry_id,
-                        'lemma': lemma,
-                        'zipf': zipf,
-                        'labels': sense.get('labels') or [],
-                        'sense': {
-                            'id': sense['id'],
-                            'pos': meaning['pos'],
-                            'gloss': sense['gloss'],
-                            'example': example and {'sentence_id': example['sentence_id'], 'text': example['text']},
-                        },
-                    }
-                    out.write(json.dumps(job, ensure_ascii=False) + '\n')
-                    written += 1
-    print(f'{written} jobs')
+        for entry_id, lemma, zipf, pos, sense in common + rare:
+            example = sense['examples'][0] if sense['examples'] else None
+            job = {
+                'entry_id': entry_id,
+                'lemma': lemma,
+                'zipf': zipf,
+                'labels': sense.get('labels') or [],
+                'sense': {
+                    'id': sense['id'],
+                    'pos': pos,
+                    'gloss': sense['gloss'],
+                    'example': example and {'sentence_id': example['sentence_id'], 'text': example['text']},
+                },
+            }
+            out.write(json.dumps(job, ensure_ascii=False) + '\n')
+    print(f'{len(common)} common and {len(rare)} rare jobs')
 
 
 def jobs(db_path, out_path, topics_only):
