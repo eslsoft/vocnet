@@ -2505,8 +2505,10 @@ entry may hold the lemma a pushed entry takes. Pushing a unit deletes the
 replica's rows of it and inserts the source's, and writes its manifest row
 last, so a sync cut off midway copies the unfinished units again on the next
 run, and running it twice changes nothing. The statements of the sync go to
-the replica as `wrangler d1 execute --file` imports of up to 50 MB, one row of
-`public_entries` to a statement under D1's 100 KB statement limit. An import
+the replica as `wrangler d1 execute --file` imports of up to 50 MB, each statement under D1's 100 KB statement limit
+in bytes. A row too long for one statement, such as the `public_entries` row of
+a word with many meanings, is inserted with the first part of each long text
+and the rest appended by `UPDATE`s of the row just inserted. An import
 holds the database while it runs, so a first sync of every entry makes the
 replica unavailable for its duration; a later sync copies only what changed.
 
