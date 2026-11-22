@@ -81,7 +81,7 @@ describe('pictures', () => {
     const sense = bank.senses[0] as string
     const { id } = pictureUploadResultSchema.parse((await upload(token, webpHeader(1024, 1024))).body)
     await submitOk(token, 'image', sense, { image_id: id })
-    await submitOk(token, 'topic', sense, { topic_id: 'hospital-doctor' })
+    await submitOk(token, 'topic', sense, { topic_id: 'healthcare' })
     stubReviewers({ guesses: ['bank'] })
     await deliverPendingReviews()
     vi.restoreAllMocks()
@@ -91,10 +91,10 @@ describe('pictures', () => {
     const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
     expect(entry.image?.url).toBe(url)
     expect(entry.meanings[0]?.senses[0]?.image?.url).toBe(url)
-    const listed = topicSensePageSchema.parse((await call('/v1/topics/hospital-doctor/senses')).body)
+    const listed = topicSensePageSchema.parse((await call('/v1/topics/healthcare/senses')).body)
     expect(listed.items.map((item) => item.image_url)).toEqual([url])
 
-    const set = await call('/manage/v1/topics/dentist/image', {
+    const set = await call('/manage/v1/topics/health-and-fitness/image', {
       method: 'PUT',
       token: curator,
       headers: { 'content-type': 'image/webp' },
@@ -102,7 +102,7 @@ describe('pictures', () => {
     })
     expect(topicImageResultSchema.parse(set.body).image_url).toBe(url)
     const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
-    const dentist = categories.flatMap((category) => category.topics).find((topic) => topic.id === 'dentist')
+    const dentist = categories.flatMap((category) => category.topics).find((topic) => topic.id === 'health-and-fitness')
     expect(dentist?.image_url).toBe(url)
 
     // The stored views name the picture by id alone: no path and no host.

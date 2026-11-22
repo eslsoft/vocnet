@@ -47,7 +47,8 @@ async function seedWords() {
       senses[`${lemma} ${pos}`] = sense
       await submitOk(token, 'translation', sense, { language: 'zh', of: 'sense', text: translation })
       if (example) await submitOk(token, 'example', sense, { text: example })
-      if (pos === 'noun' && lemma !== 'money') await submitOk(token, 'topic', sense, { topic_id: 'family' })
+      if (pos === 'noun' && lemma !== 'money')
+        await submitOk(token, 'topic', sense, { topic_id: 'family-and-relationships' })
     }
   }
   stubReviewers()
@@ -95,9 +96,9 @@ describe('public lists and search', () => {
     expect(await lemmas('/v1/entries?pos=verb')).toEqual(['bank'])
     // The verb meaning has no level, so no one meaning is both.
     expect(await lemmas('/v1/entries?pos=verb&level=A1')).toEqual([])
-    expect(await lemmas('/v1/entries?topic=family')).toEqual(['bank', 'banker', 'river'])
-    expect(await allPages('/v1/entries?topic=people-feelings&level=A1&sort=frequency')).toEqual(['bank', 'river'])
-    expect(await lemmas('/v1/entries?topic=family&pos=verb')).toEqual([])
+    expect(await lemmas('/v1/entries?topic=family-and-relationships')).toEqual(['bank', 'banker', 'river'])
+    expect(await allPages('/v1/entries?topic=people&level=A1&sort=frequency')).toEqual(['bank', 'river'])
+    expect(await lemmas('/v1/entries?topic=family-and-relationships&pos=verb')).toEqual([])
 
     const lemmaCursor = entryPageSchema.parse((await call('/v1/entries?limit=1')).body).next_cursor
     expect((await call(`/v1/entries?sort=frequency&cursor=${lemmaCursor}`)).status).toBe(400)
@@ -111,15 +112,28 @@ describe('public lists and search', () => {
     const ids = (...keys: string[]) => keys.map((key) => senses[key])
     const page = async (sort: string) =>
       topicSensePageSchema
-        .parse((await call(`/v1/topics/family/senses?sort=${sort}`)).body)
+        .parse((await call(`/v1/topics/family-and-relationships/senses?sort=${sort}`)).body)
         .items.map((item) => item.sense_id)
     expect(await page('lemma')).toEqual(ids('bank noun', 'banker noun', 'river noun'))
     expect(await page('frequency')).toEqual(ids('bank noun', 'river noun', 'banker noun'))
     expect(await page('level')).toEqual(ids('bank noun', 'river noun', 'banker noun'))
     for (const sort of ['lemma', 'frequency', 'level']) {
-      expect(await allPages(`/v1/topics/people-feelings/senses?sort=${sort}`)).toEqual(await page(sort))
+      expect(await allPages(`/v1/topics/people/senses?sort=${sort}`)).toEqual(await page(sort))
     }
-    expect((await call('/v1/topics/family/senses?sort=zipf')).status).toBe(400)
+    expect((await call('/v1/topics/family-and-relationships/senses?sort=zipf')).status).toBe(400)
+
+    // The verb "bank" is tagged where its entry's main sense has no tag: it pages after the core
+    // vocabulary of the topic, here the unranked "money", though it is more frequent.
+    const token = await issueAgentKey()
+    await submitOk(token, 'topic', senses['bank verb'] as string, { topic_id: 'money' })
+    await submitOk(token, 'topic', senses['money noun'] as string, { topic_id: 'money' })
+    await deliverPendingReviews()
+    for (const sort of ['lemma', 'frequency', 'level']) {
+      expect(await allPages(`/v1/topics/money/senses?sort=${sort}`)).toEqual(ids('money noun', 'bank verb'))
+      expect(await allPages(`/v1/topics/work-and-business/senses?sort=${sort}`)).toEqual(ids('money noun', 'bank verb'))
+    }
+    const listed = topicSensePageSchema.parse((await call('/v1/topics/money/senses')).body).items
+    expect(listed.map((item) => item.specialized)).toEqual([false, true])
   })
 
   it('ranks the exact lemma, lemma prefixes, glosses, translations, then examples, each entry once [spec: search/rank]', async () => {
@@ -206,12 +220,17 @@ describe('public lists and search', () => {
     const page = { limit: 20 }
     const plans = {
       byFrequency: await planOf(
-        entryListStatement(db, { prefix: '', levels: ['A1'], pos: 'noun', leaves: null }, 'frequency', page),
+        entryListStatement(db, { prefix: '', levels: ['A1'], pos: 'noun', topics: null }, 'frequency', page),
       ),
       byTopic: await planOf(
-        entryListStatement(db, { prefix: 'b', levels: [], pos: null, leaves: ['family' as TopicId] }, 'lemma', page),
+        entryListStatement(
+          db,
+          { prefix: 'b', levels: [], pos: null, topics: ['family-and-relationships' as TopicId] },
+          'lemma',
+          page,
+        ),
       ),
-      senses: await planOf(taggedSenseStatement(db, ['family' as TopicId], 'level', page)),
+      senses: await planOf(taggedSenseStatement(db, ['family-and-relationships' as TopicId], 'level', page)),
       search: await planOf(searchStatement({ text: 'bank', terms: ['bank'], scopes: ['en', 'zh'] }, page)),
     }
     console.info(`public list query plans:\n${JSON.stringify(plans, null, 2)}`)

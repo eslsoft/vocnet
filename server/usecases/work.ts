@@ -1,6 +1,6 @@
 import { principalRef } from '@server/domain/principal'
 import type { Lemma } from '@server/domain/term'
-import { leafViews } from '@server/domain/topics'
+import { topicViews } from '@server/domain/topics'
 import {
   AGENT_TYPES,
   completeDecision,
@@ -68,7 +68,7 @@ export async function claimWork(
     Promise.all(claimed.lease.entryIds.map(async (id) => [id, await entryContext(deps, id)] as const)).then(
       (entries) => new Map(entries),
     ),
-    deps.topics.list().then(leafViews),
+    deps.topics.list().then(topicViews),
   ])
   return {
     lease: claimed.lease,

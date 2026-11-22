@@ -32,8 +32,13 @@ import { relatedWorklistRows } from './work'
 const PREFIX_END = '\u{10FFFF}'
 const lemmaCursor = z.object({ lemma: z.string() })
 const rankedLemmaCursor = z.object({ order: z.number().int(), lemma: z.string() })
-const senseCursor = z.object({ lemma: z.string(), id: z.string() })
-const rankedSenseCursor = z.object({ order: z.number().int(), lemma: z.string(), id: z.string() })
+const senseCursor = z.object({ specialized: z.union([z.literal(0), z.literal(1)]), lemma: z.string(), id: z.string() })
+const rankedSenseCursor = z.object({
+  specialized: z.union([z.literal(0), z.literal(1)]),
+  order: z.number().int(),
+  lemma: z.string(),
+  id: z.string(),
+})
 const searchCursor = z.object({ tier: z.number().int(), order: z.number().int(), lemma: z.string() })
 const memberCursor = z.object({ depth: z.number().int(), lemma: z.string(), id: z.string() })
 
@@ -125,14 +130,14 @@ function tierMatch(tier: number) {
  * (entry_id, topic_id) index of public_sense_topics. Exported so a test can pin its query plan.
  */
 export function entryListStatement(db: Db, filter: EntryFilter, sort: EntrySort, { limit, cursor }: PageRequest) {
-  const { prefix, levels, pos, leaves } = filter
+  const { prefix, levels, pos, topics } = filter
   const fits = (posColumn: SQLiteColumn, cefrColumn: SQLiteColumn) => [
     pos === null ? undefined : eq(posColumn, pos),
     levels.length > 0 ? inArray(cefrColumn, [...levels]) : undefined,
   ]
   // Topic, part of speech, and level hold for one tagged common sense, or without a topic for one
   // meaning. A topic on a rare sense does not put its entry in the topic's word list.
-  const restriction = leaves
+  const restriction = topics
     ? exists(
         db
           .select({ one: sql`1` })
@@ -140,7 +145,7 @@ export function entryListStatement(db: Db, filter: EntryFilter, sort: EntrySort,
           .where(
             and(
               eq(publicSenseTopics.entryId, publicEntries.entryId),
-              inArray(publicSenseTopics.topicId, [...leaves]),
+              inArray(publicSenseTopics.topicId, [...topics]),
               eq(publicSenseTopics.rare, false),
               ...fits(publicSenseTopics.pos, publicSenseTopics.cefr),
             ),
@@ -179,26 +184,34 @@ export function entryListStatement(db: Db, filter: EntryFilter, sort: EntrySort,
 
 /**
  * The page query of `GET /v1/topics/{id}/senses`: one index of public_sense_topics per sort,
- * each led by topic_id. Exported so a test can pin its query plan.
+ * each led by topic_id and specialized, so a topic's core vocabulary pages before its specialized
+ * senses. Exported so a test can pin its query plan.
  */
 export function taggedSenseStatement(
   db: Db,
-  leaves: readonly TopicId[],
+  topics: readonly TopicId[],
   sort: SenseSort,
   { limit, cursor }: PageRequest,
 ) {
   const orderColumn = sortColumn[sort]
-  const keyColumns = [...(orderColumn ? [orderColumn] : []), publicSenseTopics.lemma, publicSenseTopics.senseId]
+  const keyColumns = [
+    publicSenseTopics.specialized,
+    ...(orderColumn ? [orderColumn] : []),
+    publicSenseTopics.lemma,
+    publicSenseTopics.senseId,
+  ]
   const keyOf = (value: string) => {
     if (!orderColumn) {
-      const { lemma, id } = decodeCursor(value, senseCursor)
-      return [lemma, id]
+      const { specialized, lemma, id } = decodeCursor(value, senseCursor)
+      return [specialized, lemma, id]
     }
-    const { order, lemma, id } = decodeCursor(value, rankedSenseCursor)
-    return [order, lemma, id]
+    const { specialized, order, lemma, id } = decodeCursor(value, rankedSenseCursor)
+    return [specialized, order, lemma, id]
   }
   const last = cursor && keyOf(cursor)
-  // A sense tagged with two leaves of one category has a row under each; distinct shows it once.
+  // A sense tagged with a category and one of its topics, or with two of its topics, has a row
+  // under each, alike in every column read here (specialized is judged by category); distinct
+  // shows it once.
   return db
     .selectDistinct({
       id: publicSenseTopics.senseId,
@@ -206,9 +219,10 @@ export function taggedSenseStatement(
       order: sql<number>`${orderColumn ?? publicSenseTopics.frequencyOrder}`,
       summary: publicSenseTopics.summary,
       rare: publicSenseTopics.rare,
+      specialized: publicSenseTopics.specialized,
     })
     .from(publicSenseTopics)
-    .where(and(inArray(publicSenseTopics.topicId, [...leaves]), last ? after(keyColumns, last) : undefined))
+    .where(and(inArray(publicSenseTopics.topicId, [...topics]), last ? after(keyColumns, last) : undefined))
     .orderBy(...keyColumns.map((column) => asc(column)))
     .limit(limit + 1)
 }
@@ -372,29 +386,39 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
       )
     },
 
-    async listTaggedSenses(leaves, sort, request) {
-      const rows = await taggedSenseStatement(db, leaves, sort, request)
+    async listTaggedSenses(topics, sort, request) {
+      const rows = await taggedSenseStatement(db, topics, sort, request)
       return page(
         rows,
         request.limit,
-        (row) => ({ summary: readStored<StoredSenseSummary>(row.summary), rare: row.rare }),
-        (row): Record<string, string | number> =>
-          sort === 'lemma' ? { lemma: row.lemma, id: row.id } : { order: row.order, lemma: row.lemma, id: row.id },
+        (row) => ({
+          summary: readStored<StoredSenseSummary>(row.summary),
+          rare: row.rare,
+          specialized: row.specialized,
+        }),
+        (row): Record<string, string | number> => {
+          const specialized = row.specialized ? 1 : 0
+          return sort === 'lemma'
+            ? { specialized, lemma: row.lemma, id: row.id }
+            : { specialized, order: row.order, lemma: row.lemma, id: row.id }
+        },
       )
     },
 
     async countTagged() {
-      // A leaf counts its rows (one per tagged sense); a category counts each sense of its leaves once.
+      // A topic counts its rows (one per tagged sense); a category counts each sense tagged with it
+      // or any of its topics once.
       const rows = await db.all<{ id: string; senses: number; entries: number }>(sql`
-        SELECT topic_id AS id, count(*) AS senses,
-          count(DISTINCT CASE WHEN rare = 0 THEN entry_id END) AS entries
-        FROM public_sense_topics GROUP BY topic_id
-        UNION ALL
-        SELECT topics.parent_id, count(DISTINCT public_sense_topics.sense_id),
-          count(DISTINCT CASE WHEN public_sense_topics.rare = 0 THEN public_sense_topics.entry_id END)
+        SELECT public_sense_topics.topic_id AS id, count(*) AS senses,
+          count(DISTINCT CASE WHEN public_sense_topics.rare = 0 THEN public_sense_topics.entry_id END) AS entries
         FROM public_sense_topics JOIN topics ON topics.id = public_sense_topics.topic_id
         WHERE topics.parent_id IS NOT NULL
-        GROUP BY topics.parent_id
+        GROUP BY public_sense_topics.topic_id
+        UNION ALL
+        SELECT coalesce(topics.parent_id, topics.id), count(DISTINCT public_sense_topics.sense_id),
+          count(DISTINCT CASE WHEN public_sense_topics.rare = 0 THEN public_sense_topics.entry_id END)
+        FROM public_sense_topics JOIN topics ON topics.id = public_sense_topics.topic_id
+        GROUP BY coalesce(topics.parent_id, topics.id)
       `)
       return rows.map((row) => ({ topicId: row.id as TopicId, senses: row.senses, entries: row.entries }))
     },
@@ -564,6 +588,7 @@ export function createPublicViewRepo(db: Db): PublicViewRepo {
             frequencyOrder: sql`${record.frequencyOrder}`.as('frequency_order'),
             summary: sql<string>`json(json_extract(value, '$.summary'))`.as('summary'),
             rare: field('rare').as('rare'),
+            specialized: field('specialized').as('specialized'),
           })
           .from(rows(record.taggedSenses))
           .where(current),

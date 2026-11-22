@@ -71,7 +71,7 @@ async function seed() {
   const shore = await headword('shore', [{ pos: 'noun', gloss: 'Land along water.' }])
   const [river] = bank.senses
   await submitOk(token, 'form', bank.entryId, { form: 'banks', type: 'plural' })
-  await submitOk(token, 'topic', river as string, { topic_id: 'family' })
+  await submitOk(token, 'topic', river as string, { topic_id: 'family-and-relationships' })
   await submitOk(token, 'relation', river as string, { type: 'synonym', target_sense_id: shore.senses[0] })
   stubReviewers()
   await deliverPendingReviews()
@@ -89,7 +89,7 @@ describe('public replica', () => {
       `/v1/senses/${river}`,
       '/v1/forms/banks',
       '/v1/entries',
-      '/v1/topics/family/senses',
+      '/v1/topics/family-and-relationships/senses',
       '/v1/search?q=river',
       `/v1/senses/${river}/members`,
     ]

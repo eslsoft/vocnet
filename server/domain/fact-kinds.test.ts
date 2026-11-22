@@ -66,8 +66,13 @@ const named: NamedNodes = {
     [saying, 'Give and take.'],
   ]),
 }
-const hospital = 'hospital-doctor' as TopicId
-const hospitalView = { category: 'Body and health', topic: 'At the doctor and hospital' }
+const hospital = 'healthcare' as TopicId
+const hospitalView = { category: 'Health', topic: 'Healthcare', topics: [] }
+const healthView = {
+  category: null,
+  topic: 'Health',
+  topics: ['Health and fitness', 'Health problems', 'Healthcare'],
+}
 const money = { pos: 'noun' as const, gloss: 'an institution that keeps money' }
 const bank = { lemma: 'bank', pos: 'noun' as const, gloss: 'land beside a river', siblings: [money] }
 const shore = {
@@ -236,7 +241,7 @@ describe('fact-kind registry', () => {
     expect(contentKeyOf('sentence_meaning', { gloss: 'Share  Fairly.' })).toBe('share fairly.')
     expect(contentKeyOf('translation', { language: 'zh', of: 'sense', text: '河岸' })).toBe('zh|sense|河岸')
     expect(contentKeyOf('translation', { language: 'zh', of: 'sentence', text: '河岸' })).toBe('zh|sentence|河岸')
-    expect(contentKeyOf('topic', { topic_id: hospital })).toBe('hospital-doctor')
+    expect(contentKeyOf('topic', { topic_id: hospital })).toBe('healthcare')
     expect(contentKeyOf('form', { form: 'would', type: 'past', pos: 'auxiliary' })).toBe('past|would|auxiliary')
     expect(contentKeyOf('form', { form: ' would ', type: 'past' })).toBe('past|would')
   })
@@ -606,7 +611,7 @@ describe('fact-kind registry', () => {
     expect(planReview('relation', { type: 'synonym', target_sense_id: target }, on(bank))).toEqual(unreviewable)
   })
 
-  it('asks Jev and luna whether this sense is core vocabulary of the topic, settling on their mean [spec: topics/review-plan]', () => {
+  it('asks Jev and luna whether the meaning of this sense belongs to the topic, settling on their mean [spec: topics/review-plan]', () => {
     const plan = planReview('topic', { topic_id: hospital }, on(bank, { topic: hospitalView }))
     expect(decision(plan)).toMatchObject({
       gates: [{ model: 'jev' }, { model: 'luna' }],
@@ -615,27 +620,39 @@ describe('fact-kind registry', () => {
     expect(decision(plan)?.state).toMatchObject({
       word: 'bank',
       sense: 'land beside a river',
-      topic: '"At the doctor and hospital" (in the category "Body and health")',
+      topic: '"Healthcare" (in the category "Health")',
     })
     expect(question(plan, 'topic')).toContain(
-      'Should a learner\'s dictionary tag "bank" (noun) in the given sense with the topic "At the doctor and hospital"',
+      'Should a learner\'s dictionary tag "bank" (noun) in the given sense with the topic "Healthcare"',
     )
-    expect(question(plan, 'topic')).toContain('"full" in hotels')
+    expect(question(plan, 'topic')).toContain('the meaning of this sense belongs to this subject')
+    expect(question(plan, 'topic')).toContain('"full" meaning holding as much as possible in Holidays')
     const text = rubric(plan)
     expect(text).toContain('Sense: "bank" (noun), meaning "land beside a river".')
-    expect(text).toContain('Topic: "At the doctor and hospital" (in the category "Body and health").')
+    expect(text).toContain('Topic: "Healthcare" (in the category "Health").')
     expect(text).toContain(
-      'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is typical vocabulary of that scene or subject area, a word a learner studying the topic should learn.',
+      'pass only when the meaning of this sense belongs to this subject: the sense names a thing, action, quality, or idea of it.',
     )
-    expect(text).toContain('a scene (at the hospital) or a subject area (emotions, colours and shapes)')
-    expect(text).toContain('- "oven" (a cooking appliance) in "Household appliances"')
+    expect(text).toContain('A specialized sense of a general word passes in the subject it is specialized for.')
+    expect(text).toContain('- "oven" (a cooking appliance) in "Houses and homes"')
+    expect(text).toContain('- "first" (the lowest forward gear) in "Cars and roads"')
     expect(text).toContain(
-      'fail when the sense is general-purpose, usable in many scenes, and merely can appear in this one; when the link is only a loose association; or when the topic fits a different sense of the word, not this one.',
+      'fail when the sense is general-purpose and its meaning belongs to no one subject; when the link is only a scene the sense can turn up in or a loose association; when another topic of the taxonomy holds the meaning more precisely; or when the topic fits a different sense of the word, not this one.',
     )
-    expect(text).toContain('- "full" (holding as much as possible) in "Hotels and accommodation"')
-    expect(text).toContain('A sense may be core vocabulary of several topics')
-    expect(text).toContain('If you doubt whether the sense is typical vocabulary of the topic, fail.')
+    expect(text).toContain('- "full" (holding as much as possible) in "Holidays and accommodation"')
+    expect(text).toContain('A sense may belong to several subjects')
+    expect(text).toContain('If you doubt whether the meaning belongs to the subject, fail.')
     expect(text).toContain('- (noun) "an institution that keeps money"')
+    expect(text).not.toMatch(/scene \(at the hospital\)/)
+
+    // A category tag shows its topics, so a reviewer fails it when one of them holds the sense.
+    const category = rubric(planReview('topic', { topic_id: 'health' as TopicId }, on(bank, { topic: healthView })))
+    expect(category).toContain(
+      'Topic: the category "Health", whose topics are "Health and fitness", "Health problems", "Healthcare".',
+    )
+    expect(category).toContain(
+      'A category is right only when the meaning belongs to the category and none of its topics holds it',
+    )
     expect(factKinds.topic).toMatchObject({
       subject: 'sense',
       cardinality: 'many',
@@ -647,14 +664,14 @@ describe('fact-kind registry', () => {
     expect(topicOf('example', { sentence_id: 'x' as SentenceId })).toBeNull()
   })
 
-  it('cannot judge a topic fact without a glossed sense or a leaf topic', () => {
+  it('cannot judge a topic fact without a glossed sense or a topic of the taxonomy', () => {
     const payload = { topic_id: hospital }
     expect(planReview('topic', payload, on({ ...bank, gloss: null }, { topic: hospitalView }))).toMatchObject({
       kind: 'unreviewable',
     })
     expect(planReview('topic', payload, on(bank))).toEqual({
       kind: 'unreviewable',
-      reason: 'The referenced topic is not a leaf topic of the taxonomy.',
+      reason: 'The referenced topic is not in the taxonomy.',
     })
   })
 

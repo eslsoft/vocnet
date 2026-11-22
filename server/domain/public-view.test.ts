@@ -206,9 +206,12 @@ const links: EntryLinks = {
 
 const none = { lang: null, review: false }
 
+const categoryIds = new Map(['finance', 'places', 'society'].map((id) => [id as TopicId, 'society' as TopicId]))
+const recordOf = (document: StoredEntry) => publicViewRecord(document, categoryIds)
+
 describe('public view records', () => {
   it('derives every row from the stored document [spec: public-view/document]', () => {
-    const record = publicViewRecord(bank)
+    const record = recordOf(bank)
     expect(record.document).toBe(bank)
     expect(record.frequencyOrder).toBe(691)
     expect(record.meanings).toEqual([
@@ -221,7 +224,7 @@ describe('public view records', () => {
       { form: 'bankest', type: 'superlative', pos: 'adverb' },
       { form: 'banque', type: 'variant', pos: null },
     ])
-    expect(publicViewRecord({ ...bank, forms: [{ form: ' bank  up ', type: 'variant', pos: null }] }).forms).toEqual([
+    expect(recordOf({ ...bank, forms: [{ form: ' bank  up ', type: 'variant', pos: null }] }).forms).toEqual([
       { form: 'bank up', type: 'variant', pos: null },
     ])
     expect(record.searchTexts).toEqual([
@@ -239,14 +242,14 @@ describe('public view records', () => {
     ])
     const twice = storedSense('s1', [], { zh: ['银行', '银行'] })
     expect(
-      publicViewRecord({ ...bank, meanings: [{ ...(bank.meanings[0] as StoredMeaning), senses: [twice, twice] }] })
-        .searchTexts,
+      recordOf({ ...bank, meanings: [{ ...(bank.meanings[0] as StoredMeaning), senses: [twice, twice] }] }).searchTexts,
     ).toHaveLength(3)
     expect(record.taggedSenses).toEqual([
       {
         topicId: 'finance',
         levelOrder: 2,
         rare: false,
+        specialized: false,
         summary: {
           lemma: 'bank',
           sense_id: 's1',
@@ -262,7 +265,7 @@ describe('public view records', () => {
     ])
     expect(record.morphemes).toEqual([{ form: 'bank', role: 'base' }])
 
-    const phrase = publicViewRecord({
+    const phrase = recordOf({
       ...bank,
       lemma: 'bank on bank',
       morphology: {
@@ -274,8 +277,8 @@ describe('public view records', () => {
       },
     })
     expect(phrase.morphemes).toEqual([{ form: 'on', role: 'base' }])
-    expect(publicViewRecord({ ...bank, morphology: null }).morphemes).toEqual([])
-    const unranked = publicViewRecord({
+    expect(recordOf({ ...bank, morphology: null }).morphemes).toEqual([])
+    const unranked = recordOf({
       ...bank,
       frequency: null,
       meanings: [{ ...(bank.meanings[0] as StoredMeaning), cefr: null }],
@@ -283,6 +286,42 @@ describe('public view records', () => {
     expect(unranked.frequencyOrder).toBe(UNRANKED)
     expect(unranked.taggedSenses[0]?.levelOrder).toBe(7)
     expect(readStored<StoredEntry>(JSON.stringify(bank))).toEqual(bank)
+  })
+})
+
+describe('topic listings', () => {
+  it('marks a tag specialized unless it is the main sense or the main sense is tagged in its category [spec: topics/specialized]', () => {
+    const meaning = bank.meanings[0] as StoredMeaning
+    const taboo = { ...storedSense('s4', ['finance'], {}), labels: ['taboo' as const] }
+    const document: StoredEntry = {
+      ...bank,
+      meanings: [
+        {
+          ...meaning,
+          senses: [
+            storedSense('s1', ['finance'], {}),
+            storedSense('s2', ['places'], {}),
+            storedSense('s3', ['gear'], {}),
+            taboo,
+            { ...storedSense('s5', ['places'], {}), labels: ['offensive'] },
+          ],
+        },
+      ],
+    }
+    const ids = new Map([...categoryIds, ['gear' as TopicId, 'cars' as TopicId]])
+    const tags = publicViewRecord(document, ids).taggedSenses
+    expect(tags.map((tag) => [tag.summary.sense_id, tag.topicId, tag.specialized])).toEqual([
+      ['s1', 'finance', false],
+      ['s2', 'places', false],
+      ['s3', 'gear', true],
+    ])
+    // A main sense with no tag leaves every other sense of the word specialized.
+    const untagged = {
+      ...document,
+      meanings: [{ ...meaning, senses: [storedSense('s0', [], {}), storedSense('s1', ['finance'], {})] }],
+    }
+    expect(publicViewRecord(untagged, ids).taggedSenses.map((tag) => tag.specialized)).toEqual([true])
+    expect(() => publicViewRecord(document, categoryIds)).toThrow('Topic gear is not in the taxonomy.')
   })
 })
 
@@ -445,7 +484,7 @@ describe('public read variants', () => {
       }).meanings[0]?.senses[0]?.relations.broader.map((item) => item.lemma)
     expect(lemmas()).toEqual(['place'])
     expect(lemmas('biology')).toEqual(['place', 'mammal'])
-    expect(publicViewRecord(layered).hypernyms.map((item) => [item.broaderSenseId, item.domain])).toEqual([
+    expect(recordOf(layered).hypernyms.map((item) => [item.broaderSenseId, item.domain])).toEqual([
       ['s8', null],
       ['s7', 'biology'],
     ])
@@ -484,7 +523,7 @@ describe('public read variants', () => {
         review,
       },
     }
-    expect(publicViewRecord(student).morphemes).toEqual([
+    expect(recordOf(student).morphemes).toEqual([
       { form: 'study', role: 'base' },
       { form: '-ent', role: 'suffix' },
     ])
@@ -526,7 +565,7 @@ describe('public read variants', () => {
       ['places', { id: 'society', name: { en: 'Society', zh: '社会' } }],
     ])
     expect(tags(null)?.[0]?.category).toEqual({ id: 'society', name: { en: 'Society' } })
-    expect(senseDetailOf(bank, 's1' as SenseId, none)?.topics[0]?.category.id).toBe('society')
+    expect(senseDetailOf(bank, 's1' as SenseId, none)?.topics[0]?.category?.id).toBe('society')
 
     const node = (id: string, parentId: string | null) => ({
       id: id as TopicId,
@@ -537,12 +576,14 @@ describe('public read variants', () => {
       imageId: null,
     })
     expect([...topicCategories([node('money', null), node('finance', 'money'), node('orphan', 'gone')])]).toEqual([
+      ['money', null],
       ['finance', { id: 'money', name: { en: 'money en', zh: 'money zh' } }],
     ])
+    // A tag naming a category has no category of its own.
+    const society = shapeEntry(bank, links, media, none, new Map([...categories, ['finance' as TopicId, null]]))
+    expect(society.meanings[0]?.senses[0]?.topics[0]?.category).toBeNull()
     // A tag whose topic the taxonomy lacks is broken data: the read fails, it does not show the tag bare.
-    expect(() => shapeEntry(bank, links, media, none, new Map())).toThrow(
-      'Topic finance is not a leaf of the taxonomy.',
-    )
+    expect(() => shapeEntry(bank, links, media, none, new Map())).toThrow('Topic finance is not in the taxonomy.')
   })
 
   it('cuts an overview: pronunciations, and per part of speech the count and first senses [spec: public-view/overviews]', () => {

@@ -57,7 +57,7 @@ const listEntries = createRoute({
   tags,
   summary: 'List published entries, filtered and sorted',
   description:
-    'Each entry as a summary, in lemma order or by frequency. level and pos keep the entries with a meaning of that part of speech at one of those levels; with topic, a sense tagged with that topic (a leaf, or any leaf of a category) must also have that part of speech and level. An unknown topic is 404.' +
+    'Each entry as a summary, in lemma order or by frequency. level and pos keep the entries with a meaning of that part of speech at one of those levels; with topic, a sense tagged with that topic (a topic, or a category or any of its topics) must also have that part of speech and level. An unknown topic is 404.' +
     LANGUAGE,
   request: {
     query: pageQuery.extend({

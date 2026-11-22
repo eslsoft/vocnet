@@ -44,7 +44,7 @@ async function seedBank() {
   const submit = (kind: string, subjectId: string, payload: unknown, supersedesId?: string) =>
     submitOk(token, kind, subjectId, payload, supersedesId ? { supersedes_id: supersedesId } : {})
   const form = await submit('form', bank.entryId, { form: 'banks', type: 'plural' })
-  await submit('topic', river, { topic_id: 'family' })
+  await submit('topic', river, { topic_id: 'family-and-relationships' })
   await submit('relation', river, { type: 'synonym', target_sense_id: coast })
   stubReviewers()
   await deliverPendingReviews()
@@ -54,7 +54,7 @@ async function seedBank() {
 const entryOf = async (lemma: string) => publicEntrySchema.parse((await call(`/v1/entries/${lemma}`)).body)
 const listed = async () => entryPageSchema.parse((await call('/v1/entries')).body).items.map((item) => item.lemma)
 const tagged = async () =>
-  topicSensePageSchema.parse((await call('/v1/topics/people-feelings/senses')).body).items.map((item) => item.sense_id)
+  topicSensePageSchema.parse((await call('/v1/topics/people/senses')).body).items.map((item) => item.sense_id)
 /** Every stored view row of the entry and its view revision, to compare across a save. */
 const viewRowsOf = (entryId: string) =>
   env.DB.batch(
@@ -87,7 +87,7 @@ describe('public view', () => {
     const { senses } = await publishInventory(giveUp, [{ pos: 'verb', gloss: 'To stop trying to do something.' }])
     const sense = senses[0] as SenseId
     await submitOk(token, 'form', giveUp, { form: 'gave up', type: 'past' })
-    await submitOk(token, 'topic', sense, { topic_id: 'family' })
+    await submitOk(token, 'topic', sense, { topic_id: 'family-and-relationships' })
     expect(await tagged()).toEqual([])
     stubReviewers()
     await deliverPendingReviews()
@@ -169,7 +169,7 @@ describe('public view', () => {
       // Another variant of the same document has its own ETag.
       expect((await request(`${path}?lang=zh`)).headers.get('etag')).not.toBe(etag)
     }
-    for (const path of ['/v1/entries', '/v1/topics/people-feelings/senses']) {
+    for (const path of ['/v1/entries', '/v1/topics/people/senses']) {
       const response = await request(path)
       expect(response.headers.get('cache-control')).toBe(LIST_CACHE)
       expect(response.headers.get('vary')).toBe('Accept-Language')
@@ -245,7 +245,7 @@ describe('public view', () => {
 
     await publicViews.save(
       stale,
-      publicViewRecord({ ...document, lemma: 'bank up', meanings: [], morphology: null, frequency: null }),
+      publicViewRecord({ ...document, lemma: 'bank up', meanings: [], morphology: null, frequency: null }, new Map()),
     )
     expect(await viewRowsOf(bank.entryId)).toEqual(moved)
     await publicViews.save(stale, null)
@@ -443,9 +443,9 @@ describe('public view', () => {
     expect(zh.sense?.translations).toEqual(['河岸'])
     expect(zh.sense?.topics).toEqual([
       {
-        id: 'family',
-        name: { en: expect.any(String), zh: expect.any(String) },
-        category: { id: 'people-feelings', name: { en: 'People and feelings', zh: '人物与情感' } },
+        id: 'family-and-relationships',
+        name: { en: 'Family and relationships', zh: '家庭与关系' },
+        category: { id: 'people', name: { en: 'People', zh: '人物' } },
       },
     ])
     expect((await read('?lang=zh')).etag).toBe(zh.etag)
@@ -461,7 +461,7 @@ describe('public view', () => {
     expect(traditional.body.lang).toBeNull()
     expect(traditional.sense).not.toHaveProperty('translations')
     expect(traditional.sense?.topics[0]?.name).toEqual({ en: expect.any(String) })
-    expect(traditional.sense?.topics[0]?.category.name).toEqual({ en: 'People and feelings' })
+    expect(traditional.sense?.topics[0]?.category?.name).toEqual({ en: 'People' })
     expect((await read('', { 'accept-language': 'zh-Hant,en;q=0.5' })).body.lang).toBeNull()
 
     const all = await read('?lang=ALL')
@@ -505,7 +505,11 @@ describe('public view', () => {
 
   it('rejects lang=all on every list, so each summary has one shape [spec: public-view/list-language]', async () => {
     await seedBank()
-    for (const path of ['/v1/entries?lang=all', '/v1/forms/banks?lang=All', '/v1/topics/family/senses?lang=all']) {
+    for (const path of [
+      '/v1/entries?lang=all',
+      '/v1/forms/banks?lang=All',
+      '/v1/topics/family-and-relationships/senses?lang=all',
+    ]) {
       const rejected = await call(path)
       expect(rejected.status).toBe(400)
       expect(rejected.body).toMatchObject({

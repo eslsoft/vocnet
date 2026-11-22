@@ -118,7 +118,7 @@ describe('work items', () => {
     expect(criteria?.fills.map((fill) => [fill.kind, fill.decision?.models])).toEqual([['topic', ['jev', 'luna']]])
     expect(criteria?.fills[0]?.decision?.rule).toContain('mean score of jev and luna')
     expect(criteria?.fills[0]?.rubric).toContain('Topic: "<topic>" (in the category "<category>").')
-    expect(JSON.stringify(criteria)).toContain('House and rooms')
+    expect(JSON.stringify(criteria)).toContain('Houses and homes')
     expect(criteria?.limits).toContainEqual(expect.stringContaining('Only a published fact can be superseded'))
     const synonyms = await claim(token, { types: ['synonyms'] })
     const [synonym] = synonyms?.items[0]?.context.criteria.fills ?? []

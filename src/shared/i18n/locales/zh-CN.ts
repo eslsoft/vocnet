@@ -642,6 +642,8 @@ export const zhCN: typeof enUS = {
     noKinds: '暂无下位词。',
     pickTopic: '选择一个话题，查看相关词汇。',
     emptyTopic: '这个话题下还没有已发布的词。',
+    specialized: '专门义项',
+    specializedHint: '常用词在这个领域里的专门意思。',
   },
   home: {
     eyebrow: '开放的学习词典 · 词义关系网络 · 公共 API',

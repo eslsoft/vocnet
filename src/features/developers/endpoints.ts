@@ -120,7 +120,7 @@ export const ENDPOINTS: Endpoint[] = [
     method: 'GET',
     path: '/v1/topics/{id}/senses',
     params: [
-      { name: 'id', in: 'path', example: 'wild-animals' },
+      { name: 'id', in: 'path', example: 'mammals-and-others' },
       { name: 'sort', in: 'query', example: 'frequency' },
       lang(),
       ...page(),

@@ -10,7 +10,7 @@ const putImage = createRoute({
   method: 'put',
   path: '/topics/{id}/image',
   tags: ['Topics'],
-  summary: 'Set the picture of a category or leaf topic (curators)',
+  summary: 'Set the picture of a category or topic (curators)',
   description:
     'The body is the picture itself: a 1024×1024 WebP of at most 300 KB (400 otherwise). It is stored under the SHA-256 ' +
     'of its bytes and replaces the picture the topic showed; GET /v1/topics serves its image_url. Setting the same ' +

@@ -436,7 +436,8 @@ export const publicForms = sqliteTable(
 
 /**
  * One row per published topic tag of a public sense, with the sense's part of speech and level and
- * its entry's frequency order, in each order a topic listing pages.
+ * its entry's frequency order, in each order a topic listing pages. A listing pages a topic's core
+ * vocabulary before its specialized senses, so every order is led by `specialized`.
  */
 export const publicSenseTopics = sqliteTable(
   'public_sense_topics',
@@ -454,11 +455,26 @@ export const publicSenseTopics = sqliteTable(
     summary: text('summary').notNull(),
     /** The sense is in the extra senses of its entry's published sense list. */
     rare: integer('rare', { mode: 'boolean' }).notNull().default(false),
+    /** The tag is a specialized sense of a word whose main sense lies outside the topic's category. */
+    specialized: integer('specialized', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [
     primaryKey({ columns: [table.topicId, table.lemma, table.senseId] }),
-    index('public_sense_topics_frequency_idx').on(table.topicId, table.frequencyOrder, table.lemma, table.senseId),
-    index('public_sense_topics_level_idx').on(table.topicId, table.levelOrder, table.lemma, table.senseId),
+    index('public_sense_topics_lemma_idx').on(table.topicId, table.specialized, table.lemma, table.senseId),
+    index('public_sense_topics_frequency_idx').on(
+      table.topicId,
+      table.specialized,
+      table.frequencyOrder,
+      table.lemma,
+      table.senseId,
+    ),
+    index('public_sense_topics_level_idx').on(
+      table.topicId,
+      table.specialized,
+      table.levelOrder,
+      table.lemma,
+      table.senseId,
+    ),
     // An entry list by topic checks one common tagged sense per entry: entry, rarity, then topic.
     index('public_sense_topics_entry_idx').on(table.entryId, table.rare, table.topicId),
   ],

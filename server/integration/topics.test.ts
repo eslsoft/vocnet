@@ -70,42 +70,42 @@ const senses = async (topicId: string, query = '') => {
 describe('topics', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('serves the seeded taxonomy as 16 categories over 147 leaf topics [spec: topics/tree-api]', async () => {
+  it('serves the seeded taxonomy as 19 categories over 89 topics [spec: topics/tree-api]', async () => {
     const read = await request('/v1/topics')
     expect([read.status, read.headers.get('Cache-Control')]).toEqual([200, 'public, max-age=5'])
     const etag = read.headers.get('ETag') ?? ''
     expect(etag).toMatch(/^"[0-9a-f]{32}"$/)
     expect((await request('/v1/topics', { headers: { 'if-none-match': etag } })).status).toBe(304)
     const { categories } = topicTreeSchema.parse(await read.json())
-    expect(categories).toHaveLength(16)
-    expect(categories.flatMap((category) => category.topics)).toHaveLength(147)
+    expect(categories).toHaveLength(19)
+    expect(categories.flatMap((category) => category.topics)).toHaveLength(89)
     expect(categories[0]).toMatchObject({
-      id: 'people-feelings',
-      name: { en: 'People and feelings', zh: '人物与情感' },
+      id: 'people',
+      name: { en: 'People', zh: '人物' },
       sense_count: 0,
       entry_count: 0,
     })
     expect(categories[0]?.topics[0]).toEqual({
-      id: 'family',
-      name: { en: 'Family', zh: '家庭' },
+      id: 'family-and-relationships',
+      name: { en: 'Family and relationships', zh: '家庭与关系' },
       image_url: null,
       sense_count: 0,
       entry_count: 0,
     })
-    const health = categories.find((category) => category.id === 'body-health')
-    expect(health?.topics.map((topic) => topic.id)).toContain('hospital-doctor')
+    const health = categories.find((category) => category.id === 'health')
+    expect(health?.topics.map((topic) => topic.id)).toContain('healthcare')
   })
 
   it('reviews and publishes a topic fact, then lists its sense under the leaf and its category [spec: topics/publish-api]', async () => {
     const { care, tend, room, submit } = await seedNurse()
-    const tagged = await submit(care.id, 'hospital-doctor')
+    const tagged = await submit(care.id, 'healthcare')
     expect(tagged.status).toBe(201)
     const { fact } = factWriteResultSchema.parse(tagged.body)
     expect(fact).toMatchObject({ kind: 'topic', subject_id: care.id, object_id: null, status: 'pending' })
-    expect((await submit(care.id, 'hospital-doctor')).status).toBe(200)
-    expect((await submit(room.id, 'hospital-doctor')).status).toBe(201)
-    expect((await submit(tend.id, 'injury-first-aid')).status).toBe(201)
-    expect((await senses('hospital-doctor')).items).toEqual([])
+    expect((await submit(care.id, 'healthcare')).status).toBe(200)
+    expect((await submit(room.id, 'healthcare')).status).toBe(201)
+    expect((await submit(tend.id, 'mental-health')).status).toBe(201)
+    expect((await senses('healthcare')).items).toEqual([])
     const emptyEtag = (await request('/v1/topics')).headers.get('ETag') ?? ''
 
     stubReviewers()
@@ -114,10 +114,10 @@ describe('topics', () => {
     const published = await call(`/manage/v1/facts/${fact.id}`, { token: await adminToken() })
     expect(published.body).toMatchObject({ status: 'published', review: { reviewer: 'jev+luna' } })
     expect((published.body as { review: { context: unknown } }).review.context).toMatchObject({
-      topic: { category: 'Body and health', topic: 'At the doctor and hospital' },
+      topic: { category: 'Health', topic: 'Healthcare', topics: [] },
     })
 
-    const leaf = await senses('hospital-doctor')
+    const leaf = await senses('healthcare')
     expect(leaf).toEqual({
       lang: null,
       items: [
@@ -130,6 +130,7 @@ describe('topics', () => {
           gloss: 'A person trained to care for the sick.',
           image_url: null,
           rare: false,
+          specialized: false,
         },
         {
           lemma: 'ward',
@@ -140,20 +141,21 @@ describe('topics', () => {
           gloss: 'A room in a hospital for patients.',
           image_url: null,
           rare: false,
+          specialized: false,
         },
       ],
       next_cursor: null,
     })
-    const first = await senses('body-health', '?limit=2')
+    const first = await senses('health', '?limit=2')
     expect(first.items.map((item) => item.sense_id)).toEqual([care.id, tend.id].sort() as string[])
-    const second = await senses('body-health', `?limit=2&cursor=${first.next_cursor}`)
+    const second = await senses('health', `?limit=2&cursor=${first.next_cursor}`)
     expect(second).toEqual({ lang: null, items: [leaf.items[1]], next_cursor: null })
-    expect((await senses('home')).items).toEqual([])
-    // The taxonomy counts what these lists show: a category counts each sense of its leaves once.
+    expect((await senses('homes-and-buildings')).items).toEqual([])
+    // The taxonomy counts what these lists show: a category counts each sense of its topics once.
     const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
-    const health = categories.find((category) => category.id === 'body-health')
+    const health = categories.find((category) => category.id === 'health')
     expect([health?.sense_count, health?.entry_count]).toEqual([3, 2])
-    expect(health?.topics.find((topic) => topic.id === 'hospital-doctor')).toMatchObject({
+    expect(health?.topics.find((topic) => topic.id === 'healthcare')).toMatchObject({
       sense_count: 2,
       entry_count: 2,
     })
@@ -165,9 +167,9 @@ describe('topics', () => {
     const nouns = entry.meanings.flatMap((meaning) => meaning.senses)
     expect(nouns.find((sense) => sense.id === care.id)?.topics).toEqual([
       {
-        id: 'hospital-doctor',
-        name: { en: 'At the doctor and hospital', zh: expect.any(String) },
-        category: { id: 'body-health', name: { en: 'Body and health', zh: expect.any(String) } },
+        id: 'healthcare',
+        name: { en: 'Healthcare', zh: '医疗' },
+        category: { id: 'health', name: { en: 'Health', zh: '健康' } },
         review: { fact_id: fact.id, confidence: 0.93, verdict: 'pass' },
       },
     ])
@@ -179,43 +181,38 @@ describe('topics', () => {
 
   it('lists a tagged sense only while its topic fact and the inventory that lists it are published [spec: topics/visibility]', async () => {
     const { token, nurse, care, tend, submit } = await seedNurse()
-    const tagged = factWriteResultSchema.parse((await submit(care.id, 'hospital-doctor')).body).fact
-    const other = factWriteResultSchema.parse((await submit(tend.id, 'hospital-doctor')).body).fact
-    expect((await senses('hospital-doctor')).items).toEqual([])
+    const tagged = factWriteResultSchema.parse((await submit(care.id, 'healthcare')).body).fact
+    const other = factWriteResultSchema.parse((await submit(tend.id, 'healthcare')).body).fact
+    expect((await senses('healthcare')).items).toEqual([])
     stubReviewers()
     await deliverReviews([tagged.id, other.id])
-    expect((await senses('hospital-doctor')).items.map((item) => item.sense_id).sort()).toEqual(
-      [care.id, tend.id].sort(),
-    )
+    expect((await senses('healthcare')).items.map((item) => item.sense_id).sort()).toEqual([care.id, tend.id].sort())
     // A curator's correction of the inventory drops the noun sense: its tag no longer shows.
     await publishInventory(
       nurse.entryId,
       [{ id: tend.id, pos: 'verb', gloss: 'To care for someone who is ill.' }],
       nurse.inventory.id,
     )
-    expect((await senses('hospital-doctor')).items.map((item) => item.sense_id)).toEqual([tend.id])
+    expect((await senses('healthcare')).items.map((item) => item.sense_id)).toEqual([tend.id])
     expect((await call(`/manage/v1/facts/${other.id}/retract`, { method: 'POST', token })).status).toBe(200)
-    expect((await senses('hospital-doctor')).items).toEqual([])
+    expect((await senses('healthcare')).items).toEqual([])
   })
 
-  it('refuses unknown topics, categories, function-word senses, and a fourth topic [spec: topics/write-rules-api]', async () => {
+  it('refuses unknown topics, function-word senses, and a fourth topic, and takes a category [spec: topics/write-rules-api]', async () => {
     const { care, place, submit } = await seedNurse()
     const unknown = await submit(care.id, 'no-such-topic')
     expect(unknown.status).toBe(422)
     expect(codeOf(unknown.body)).toMatchObject({ code: 'invalid_reference' })
-    const category = await submit(care.id, 'body-health')
-    expect(category.status).toBe(422)
-    expect(codeOf(category.body).message).toContain('is a topic category')
-    const preposition = await submit(place.id, 'hospital-doctor')
+    const preposition = await submit(place.id, 'healthcare')
     expect(preposition.status).toBe(422)
     expect(codeOf(preposition.body).message).toContain('this one is preposition')
     const malformed = await submit(care.id, 'Not A Topic')
     expect(malformed.status).toBe(400)
 
-    for (const topic of ['hospital-doctor', 'illness-symptoms', 'medicine-pharmacy']) {
+    for (const topic of ['health', 'healthcare', 'health-problems']) {
       expect((await submit(care.id, topic)).status).toBe(201)
     }
-    const fourth = await submit(care.id, 'dentist')
+    const fourth = await submit(care.id, 'health-and-fitness')
     expect(fourth.status).toBe(409)
     expect(codeOf(fourth.body).message).toBe(
       'A sense holds at most 3 live topic facts; retract one before adding another.',
@@ -227,7 +224,7 @@ describe('topics', () => {
   it('lets a correction replace a topic on a full sense, one correction at a time [spec: topics/correct-at-limit-api]', async () => {
     const { care, submit } = await seedNurse()
     const tags = []
-    for (const topic of ['hospital-doctor', 'illness-symptoms', 'medicine-pharmacy']) {
+    for (const topic of ['healthcare', 'health-problems', 'disability']) {
       tags.push(factWriteResultSchema.parse((await submit(care.id, topic)).body).fact)
     }
     stubReviewers()
@@ -241,11 +238,11 @@ describe('topics', () => {
       expect(codeOf(body).message).toBe(message)
     }
 
-    const first = await submit(care.id, 'dentist', original.id)
+    const first = await submit(care.id, 'health-and-fitness', original.id)
     expect(first.status).toBe(201)
     const correction = factWriteResultSchema.parse(first.body).fact
-    await refused(submit(care.id, 'injury-first-aid', original.id), ALREADY_CORRECTED)
-    await refused(submit(care.id, 'injury-first-aid'))
+    await refused(submit(care.id, 'mental-health', original.id), ALREADY_CORRECTED)
+    await refused(submit(care.id, 'mental-health'))
 
     await deliverPendingReviews()
     const live = await env.DB.prepare(
@@ -259,13 +256,15 @@ describe('topics', () => {
 
   it('holds one live correction per original, at the limit or below it [spec: topics/one-live-correction-api]', async () => {
     const { care, submit } = await seedNurse()
-    const original = factWriteResultSchema.parse((await submit(care.id, 'hospital-doctor')).body).fact
+    const original = factWriteResultSchema.parse((await submit(care.id, 'healthcare')).body).fact
     stubReviewers()
     await deliverPendingReviews()
 
     // Concurrent corrections of one original: the unique index admits one.
     const racing = await Promise.all(
-      ['dentist', 'family', 'injury-first-aid', 'illness-symptoms'].map((topic) => submit(care.id, topic, original.id)),
+      ['health-and-fitness', 'family-and-relationships', 'mental-health', 'health-problems'].map((topic) =>
+        submit(care.id, topic, original.id),
+      ),
     )
     expect(racing.map((response) => response.status).sort()).toEqual([201, 409, 409, 409])
     for (const response of racing.filter((candidate) => candidate.status === 409)) {
@@ -276,7 +275,7 @@ describe('topics', () => {
     await deliverPendingReviews()
     expect(await publishedOf(care.id)).toEqual([winner.id])
     expect(await statusOf(original.id)).toBe('superseded')
-    const late = await submit(care.id, 'family', original.id)
+    const late = await submit(care.id, 'family-and-relationships', original.id)
     expect(late.status).toBe(409)
     expect(codeOf(late.body).message).toBe('Only a published fact can be superseded; it is superseded.')
   })
@@ -297,14 +296,14 @@ describe('topic pictures', () => {
     const put = (token: string, id: string, body: Uint8Array<ArrayBuffer>) =>
       call(`/manage/v1/topics/${id}/image`, { method: 'PUT', token, headers: { 'content-type': 'image/webp' }, body })
 
-    const set = await put(curator, 'dentist', picture)
+    const set = await put(curator, 'health-and-fitness', picture)
     expect(set.status).toBe(200)
     const { image_url } = topicImageResultSchema.parse(set.body)
     expect(image_url).toMatch(/^https:\/\/media\.test\/[0-9a-f]{64}$/)
     const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
-    const health = categories.find((category) => category.id === 'body-health')
+    const health = categories.find((category) => category.id === 'health')
     expect(health?.image_url).toBeNull()
-    expect(health?.topics.find((topic) => topic.id === 'dentist')?.image_url).toBe(image_url)
+    expect(health?.topics.find((topic) => topic.id === 'health-and-fitness')?.image_url).toBe(image_url)
 
     const id = image_url.split('/').pop()
     const read = await request(`/v1/media/${id}`)
@@ -323,9 +322,9 @@ describe('topic pictures', () => {
     const missing = await call(`/v1/media/${'0'.repeat(64)}`)
     expect([missing.status, apiErrorSchema.parse(missing.body).error.code]).toEqual([404, 'not_found'])
     expect((await call('/v1/media/not-a-hash')).status).toBe(400)
-    const refused = await put(producer, 'dentist', picture)
+    const refused = await put(producer, 'health-and-fitness', picture)
     expect([refused.status, apiErrorSchema.parse(refused.body).error.code]).toEqual([403, 'forbidden'])
-    const wrong = await put(curator, 'dentist', webpHeader(512, 512))
+    const wrong = await put(curator, 'health-and-fitness', webpHeader(512, 512))
     expect([wrong.status, apiErrorSchema.parse(wrong.body).error.code]).toEqual([400, 'invalid_request'])
     expect((await put(curator, 'no-such-topic', picture)).status).toBe(404)
   })

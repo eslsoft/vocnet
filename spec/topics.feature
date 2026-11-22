@@ -1,31 +1,34 @@
 Feature: Topics
-  Learners find words by topic, a scene or a subject area. A server-maintained, two-level taxonomy
-  groups leaf topics ("At the doctor and hospital") under categories ("Body and health"). Agents
-  tag senses with leaf topics through topic facts; topics are tags, never relations between words.
+  Learners find words by topic: the subject a sense's meaning belongs to, never a scene it can turn
+  up in. A server-maintained, two-level taxonomy, built on the learner's dictionary topics of the
+  Oxford Learner's Dictionaries, groups topics ("Healthcare") under categories ("Health"). Agents
+  tag senses with a topic, or with a category when none of its topics holds the sense, through
+  topic facts; topics are tags, never relations between words.
 
   @topics/review-plan @domain
-  Scenario: A topic fact asks whether this sense is core vocabulary of that topic
-    Given a topic fact on a glossed sense and the leaf topic it names
+  Scenario: A topic fact asks whether the meaning of this sense belongs to that subject
+    Given a topic fact on a glossed sense and the topic or category it names
     When its review is planned
     Then Jev and luna are asked one question with the lemma, part of speech, gloss, topic, category, and the entry's other senses, and their mean score against the mean threshold settles a pass
-    And otherwise the LLM decides, with the same context
-    And its rubric passes only a sense a learner characteristically meets or needs in the topic, typical vocabulary of that scene or subject area
-    And fails a general-purpose sense that merely can appear in the topic, a loose association, or a topic that fits a different sense of the word
-    And it gives audited passes and fails as examples and says to fail when in doubt
-    And a sense without a gloss or a topic that is not a leaf is unreviewable
+    And otherwise the LLM decides, with the same context, a category shown with its topics
+    And its rubric passes only a sense whose meaning belongs to the subject, a specialized sense of a general word in the subject it is specialized for, and a category only when none of its topics holds the sense
+    And fails a general-purpose sense, a scene the sense can turn up in, a loose association, a topic another topic holds more precisely, or a topic that fits a different sense of the word
+    And it gives passes and fails as examples and says to fail when in doubt
+    And a sense without a gloss or a topic the taxonomy lacks is unreviewable
 
   @topics/tag @usecase
-  Scenario: An agent tags a content sense with a leaf topic
-    Given a noun sense and a leaf topic
+  Scenario: An agent tags a content sense with a topic
+    Given a noun sense and a topic
     When an agent submits a topic fact
     Then the fact is pending with the topic id as its content key
     And its review reads the topic and its category's English names and publishes on a pass
 
   @topics/invalid-reference @usecase
-  Scenario: A topic fact names an existing leaf topic on a content sense
-    Given an unknown topic id, a category id, or a preposition sense
+  Scenario: A topic fact names a topic or category of the taxonomy on a content sense
+    Given an unknown topic id or a preposition sense
     When an agent submits a topic fact with it
     Then the submission is refused as an invalid reference with a message saying why, and nothing is queued
+    And a category id is taken as a tag like a topic's
 
   @topics/limit @usecase
   Scenario: A sense holds at most three live topics
@@ -43,38 +46,46 @@ Feature: Topics
     And a plain fourth topic fact is still refused as a conflict naming the limit of three
 
   @topics/tree @usecase
-  Scenario: The taxonomy is served as categories with their leaf topics
+  Scenario: The taxonomy is served as categories with their topics
     Given the topic taxonomy
     When it is listed
-    Then each category carries its leaf topics, both in display order, with English and Chinese names under name
+    Then each category carries its topics, both in display order, with English and Chinese names under name
 
   @topics/counts @usecase
   Scenario: The taxonomy counts what each topic lists
-    Given published topic facts on senses of an entry, one sense under two leaves of a category
+    Given published topic facts on senses of an entry, one sense under two topics of a category
     When the taxonomy is listed
-    Then each leaf and category gives how many public senses its sense list shows, a category counting each sense once, and how many entries its entry list shows
+    Then each topic and category gives how many public senses its sense list shows, a category counting each sense tagged with it or its topics once, and how many entries its entry list shows
     And a topic nothing is tagged with counts zero
 
   @topics/senses @usecase
-  Scenario: A topic lists the published senses it tags, and a category rolls up its leaves
-    Given published topic facts on several senses
-    When the senses of a leaf topic or of a category are listed
-    Then a leaf lists the senses tagged with it and a category the senses tagged with any of its leaves, each once
+  Scenario: A topic lists the published senses it tags, and a category rolls up its topics
+    Given published topic facts on several senses, one of them on a category
+    When the senses of a topic or of a category are listed
+    Then a topic lists the senses tagged with it and a category the senses tagged with it or any of its topics, each once
     And an unknown topic id is not found
+
+  @topics/specialized @domain
+  Scenario: A listing gives a topic's core vocabulary before the specialized senses of other words
+    Given an entry whose senses are tagged with topics, some senses labelled taboo or offensive
+    When its public view rows are built
+    Then a tag is specialized unless its sense is the entry's main sense or the main sense has a tag in the same category
+    And the senses labelled taboo or offensive keep their tags in the entry but are in no topic listing
+    And a topic listing pages every core sense before the specialized ones
 
   @topics/tree-api @api
   Scenario: The seeded taxonomy is public
     Given a fresh database with every migration applied
     When GET /v1/topics is called
-    Then it returns the 16 approved categories over 147 leaf topics with their English and Chinese names and zero counts, with a five-second max-age and an ETag
+    Then it returns the 19 approved categories over 89 topics with their English and Chinese names and zero counts, with a five-second max-age and an ETag
     And If-None-Match with that ETag is 304, until a count changes
 
   @topics/publish-api @api
   Scenario: A topic fact is reviewed, published, and listed on a real database
     Given topic facts submitted on senses of two entries
     When the queue reviews and publishes them
-    Then GET /v1/topics/{id}/senses lists each tagged sense as a sense summary with its lemma, id, part of speech, CEFR level, gloss, translation, and whether it is rare, in lemma order and paginated
-    And a category lists the senses of all its leaves, and GET /v1/topics counts them
+    Then GET /v1/topics/{id}/senses lists each tagged sense as a sense summary with its lemma, id, part of speech, CEFR level, gloss, translation, and whether it is rare or specialized, in lemma order and paginated
+    And a category lists the senses of all its topics, and GET /v1/topics counts them
     And the public entry shows the topic tags of each sense with their category, and the management API lists the topic facts
 
   @topics/visibility @api
@@ -86,8 +97,8 @@ Feature: Topics
   @topics/write-rules-api @api
   Scenario: The write rules hold on a real database
     Given a noun sense and a preposition sense
-    When topic facts with an unknown topic, a category, a preposition sense, or a fourth topic are submitted
-    Then the first three are 422 invalid_reference, the fourth is 409 naming the limit, and a malformed id is 400
+    When topic facts with an unknown topic, a preposition sense, a category and two topics, and a fourth topic are submitted
+    Then the first two are 422 invalid_reference, the category and the topics are taken, the fourth is 409 naming the limit, and a malformed id is 400
 
   @topics/correct-at-limit-api @api
   Scenario: A correction replaces a topic on a full sense on a real database
@@ -111,7 +122,7 @@ Feature: Topics
 
   @topics/image @usecase
   Scenario: A curator gives a topic its picture
-    Given a category or leaf topic and a 1024×1024 WebP picture of it
+    Given a category or topic and a 1024×1024 WebP picture of it
     When a curator sets the picture as the topic's image
     Then the picture is stored under the SHA-256 of its bytes and the taxonomy serves its image_url
     And setting the same picture again changes nothing, and a topic without a picture has a null image_url

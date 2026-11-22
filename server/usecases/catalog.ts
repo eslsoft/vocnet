@@ -45,7 +45,7 @@ import { type Actor, submitFact } from './facts'
 import type { EntrySummaryFilter, Page, PageRequest } from './ports'
 import { readPublicView, type ViewDeps } from './public-view'
 import { refreshEntries } from './refresh'
-import { leavesOf } from './topics'
+import { topicIdsOf } from './topics'
 
 type WriteDeps = Pick<
   Deps,
@@ -347,9 +347,9 @@ export async function listPublicEntries(
   page: PageRequest,
   variant: ReadVariant,
 ): Promise<Page<WordSummary>> {
-  const leaves = filter.topic === null ? null : await leavesOf(deps, filter.topic)
+  const topics = filter.topic === null ? null : await topicIdsOf(deps, filter.topic)
   const found = await deps.publicViews.listEntries(
-    { prefix: normalizeTerm(filter.prefix), levels: filter.levels, pos: filter.pos, leaves },
+    { prefix: normalizeTerm(filter.prefix), levels: filter.levels, pos: filter.pos, topics },
     sort,
     page,
   )

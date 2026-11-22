@@ -12,7 +12,7 @@ import type {
   SenseSummary,
   WordSummary,
 } from '@shared/catalog'
-import type { FormType, MorphemeRole, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
+import type { FormType, MorphemeRole, Pos, Register, RelationDomain, SenseId, TopicId } from '@shared/facts'
 import { type MediaId, mediaUrl } from '@shared/media'
 import { type CefrLevel, cefrLevelSchema } from '@shared/reference'
 import {
@@ -43,9 +43,18 @@ export interface PublicViewRecord {
   meanings: Array<{ pos: Pos; cefr: CefrLevel | null }>
   /** One per published form, shown or not, by its spelling, with the part of speech it is shown under. */
   forms: Array<{ form: string; type: FormType; pos: Pos | null }>
-  /** One per published topic tag of a public sense, with where it sorts by level. */
-  /** `rare`: the sense is in the extra senses of the entry's sense list, so an entry listing by topic leaves it out. */
-  taggedSenses: Array<{ topicId: TopicId; summary: StoredSenseSummary; levelOrder: number; rare: boolean }>
+  /**
+   * One per published topic tag of a public sense a topic listing shows, with where it sorts by
+   * level. `rare`: the sense is in the extra senses of the entry's sense list, so an entry listing
+   * by topic leaves it out. `specialized`: see `isSpecialized`.
+   */
+  taggedSenses: Array<{
+    topicId: TopicId
+    summary: StoredSenseSummary
+    levelOrder: number
+    rare: boolean
+    specialized: boolean
+  }>
   /** One per broader term a public sense shows, with the sense's summary: the members walk of a category. */
   hypernyms: Array<{ broaderSenseId: SenseId; domain: RelationDomain | null; summary: StoredSenseSummary }>
   /** One per distinct gloss, translation, and example of a public sense, as the search index stores it. */
@@ -65,16 +74,20 @@ export interface EntryLinks {
 }
 
 /**
- * Each leaf topic's category as the taxonomy has it now. A read joins it to the topic tags of a
- * sense, so a tag shows its category without the document storing it.
+ * Each topic's category as the taxonomy has it now, null for a category itself. A read joins it to
+ * the topic tags of a sense, so a tag shows its category without the document storing it.
  */
-export type TopicCategories = ReadonlyMap<TopicId, { id: TopicId; name: ByLanguage<string> }>
+export type TopicCategories = ReadonlyMap<TopicId, { id: TopicId; name: ByLanguage<string> } | null>
 
 export function topicCategories(nodes: readonly TopicNode[]): TopicCategories {
   const byId = new Map(nodes.map((node) => [node.id, node]))
-  const categories = new Map<TopicId, { id: TopicId; name: ByLanguage<string> }>()
+  const categories = new Map<TopicId, { id: TopicId; name: ByLanguage<string> } | null>()
   for (const node of nodes) {
-    const parent = node.parentId === null ? undefined : byId.get(node.parentId)
+    if (node.parentId === null) {
+      categories.set(node.id, null)
+      continue
+    }
+    const parent = byId.get(node.parentId)
     if (parent) categories.set(node.id, { id: parent.id, name: { en: parent.nameEn, zh: parent.nameZh } })
   }
   return categories
@@ -142,23 +155,50 @@ const senseSummaryOf = (
   image_id: sense.image?.image_id ?? null,
 })
 
-export function publicViewRecord(document: StoredEntry): PublicViewRecord {
+/** The category each topic belongs to, a category's being its own id. */
+export type TopicCategoryIds = ReadonlyMap<TopicId, TopicId>
+
+/** Senses with these labels keep their tags in the entry but are left out of topic listings. */
+const UNLISTED_REGISTERS: readonly Register[] = ['taboo', 'offensive']
+
+function categoryIdIn(categories: TopicCategoryIds, topicId: TopicId): TopicId {
+  const category = categories.get(topicId)
+  if (!category) throw new Error(`Topic ${topicId} is not in the taxonomy.`)
+  return category
+}
+
+/**
+ * The topic listings of the entry's senses. A tag is specialized when the sense is not the entry's
+ * main sense (its inventory's first) and the main sense has no tag in the same category: the word
+ * is general, or belongs to another subject, and only this sense belongs here ("first" meaning the
+ * lowest gear). A listing shows a topic's core vocabulary first.
+ */
+function taggedSensesOf(document: StoredEntry, categories: TopicCategoryIds): PublicViewRecord['taggedSenses'] {
+  const main = document.meanings[0]?.senses[0]
+  const mainCategories = new Set(main?.topics.map((topic) => categoryIdIn(categories, topic.id)))
+  return document.meanings.flatMap((meaning) =>
+    meaning.senses
+      .filter((sense) => !sense.labels.some((label) => UNLISTED_REGISTERS.includes(label)))
+      .flatMap((sense) =>
+        sense.topics.map((topic) => ({
+          topicId: topic.id,
+          levelOrder: levelOrder(meaning.cefr),
+          rare: sense.rare,
+          specialized: sense.id !== main?.id && !mainCategories.has(categoryIdIn(categories, topic.id)),
+          summary: senseSummaryOf(document, meaning, sense),
+        })),
+      ),
+  )
+}
+
+export function publicViewRecord(document: StoredEntry, categories: TopicCategoryIds): PublicViewRecord {
   const parts = document.morphology?.parts ?? []
   return {
     document,
     frequencyOrder: document.frequency?.rank ?? UNRANKED,
     meanings: document.meanings.map(({ pos, cefr }) => ({ pos, cefr })),
     forms: document.forms.map(({ form, type, pos }) => ({ form: normalizeTerm(form), type, pos })),
-    taggedSenses: document.meanings.flatMap((meaning) =>
-      meaning.senses.flatMap((sense) =>
-        sense.topics.map((topic) => ({
-          topicId: topic.id,
-          levelOrder: levelOrder(meaning.cefr),
-          rare: sense.rare,
-          summary: senseSummaryOf(document, meaning, sense),
-        })),
-      ),
-    ),
+    taggedSenses: taggedSensesOf(document, categories),
     hypernyms: document.meanings.flatMap((meaning) =>
       meaning.senses.flatMap((sense) =>
         sense.relations.broader.map((broader) => ({
@@ -258,11 +298,14 @@ export function shapeSenseSummary(summary: StoredSenseSummary, media: string, va
   }
 }
 
-/** The category of a topic tag. A tag whose topic the taxonomy lacks is broken data, not a tag to show bare. */
+/**
+ * The category of a topic tag, null for a tag naming a category. A tag whose topic the taxonomy
+ * lacks is broken data, not a tag to show bare.
+ */
 function categoryOf(topicId: TopicId, categories: TopicCategories, lang: string | null) {
   const category = categories.get(topicId)
-  if (!category) throw new Error(`Topic ${topicId} is not a leaf of the taxonomy.`)
-  return { id: category.id, name: nameIn(category.name, lang) }
+  if (category === undefined) throw new Error(`Topic ${topicId} is not in the taxonomy.`)
+  return category && { id: category.id, name: nameIn(category.name, lang) }
 }
 
 function shapeSense(sense: StoredSense, media: string, variant: ReadVariant, categories: TopicCategories): PublicSense {

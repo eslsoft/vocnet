@@ -3,8 +3,9 @@ import { type MediaId, mediaUrl } from '@shared/media'
 import type { TopicTree } from '@shared/topics'
 
 /**
- * One node of the two-level topic taxonomy. A category has no parent; a leaf topic belongs to one
- * category. Only leaves tag senses. Ids are stable; names are display labels.
+ * One node of the two-level topic taxonomy. A category has no parent; a topic belongs to one
+ * category. Both tag senses: a sense takes the topic its meaning belongs to, or the category itself
+ * when none of its topics holds it. Ids are stable; names are display labels.
  */
 export interface TopicNode {
   id: TopicId
@@ -19,13 +20,21 @@ export interface TopicNode {
 
 export const isLeaf = (topic: TopicNode) => topic.parentId !== null
 
-/** What a reviewer reads about a leaf topic: its English name and its category's. */
+/**
+ * What a reviewer reads about a node: its English name, its category's (null for a category), and
+ * a category's topics, so a reviewer can tell whether one of them holds the sense instead.
+ */
 export interface TopicView {
-  category: string
+  category: string | null
   topic: string
+  /** The English names of a category's topics; empty for a topic. */
+  topics: readonly string[]
 }
 
 const byPosition = (a: TopicNode, b: TopicNode) => a.position - b.position
+
+const childrenOf = (id: TopicId, nodes: readonly TopicNode[]) =>
+  nodes.filter((node) => node.parentId === id).sort(byPosition)
 
 /** How many public senses and entries a topic or category lists; a topic absent here lists none. */
 export type TopicCounts = ReadonlyMap<TopicId, { senses: number; entries: number }>
@@ -45,28 +54,38 @@ export function topicTree(nodes: readonly TopicNode[], counts: TopicCounts, medi
       .sort(byPosition)
       .map((category) => ({
         ...name(category),
-        topics: nodes
-          .filter((node) => node.parentId === category.id)
-          .sort(byPosition)
-          .map(name),
+        topics: childrenOf(category.id, nodes).map(name),
       })),
   }
 }
 
-/** Every leaf topic with its category's name, in display order: categories, then their leaves. */
-export const leafViews = (nodes: readonly TopicNode[]): TopicView[] =>
+function viewOf(node: TopicNode, nodes: readonly TopicNode[]): TopicView {
+  if (node.parentId === null) {
+    return { category: null, topic: node.nameEn, topics: childrenOf(node.id, nodes).map((child) => child.nameEn) }
+  }
+  const category = nodes.find((other) => other.id === node.parentId)
+  if (!category) throw new Error(`Topic ${node.id} belongs to category ${node.parentId}, which does not exist.`)
+  return { category: category.nameEn, topic: node.nameEn, topics: [] }
+}
+
+/** Every node as a reviewer reads it, in display order: each category, then its topics. */
+export const topicViews = (nodes: readonly TopicNode[]): TopicView[] =>
   nodes
     .filter((node) => !isLeaf(node))
     .sort(byPosition)
-    .flatMap((category) =>
-      nodes
-        .filter((node) => node.parentId === category.id)
-        .sort(byPosition)
-        .map((leaf) => ({ category: category.nameEn, topic: leaf.nameEn })),
-    )
+    .flatMap((category) => [category, ...childrenOf(category.id, nodes)].map((node) => viewOf(node, nodes)))
 
-/** The leaves a topic id selects: itself when it is a leaf, every topic of it when it is a category. */
-export function leavesUnder(topic: TopicNode, nodes: readonly TopicNode[]): TopicId[] {
-  if (isLeaf(topic)) return [topic.id]
-  return nodes.filter((node) => node.parentId === topic.id).map((node) => node.id)
+/** What a reviewer reads of the node with this id; null when no node has it. */
+export function topicViewOf(id: TopicId, nodes: readonly TopicNode[]): TopicView | null {
+  const node = nodes.find((other) => other.id === id)
+  return node ? viewOf(node, nodes) : null
 }
+
+/** The ids a topic's listing reads: a topic's own, a category's own and every one of its topics'. */
+export function topicsUnder(topic: TopicNode, nodes: readonly TopicNode[]): TopicId[] {
+  if (isLeaf(topic)) return [topic.id]
+  return [topic.id, ...nodes.filter((node) => node.parentId === topic.id).map((node) => node.id)]
+}
+
+/** The category a node belongs to: a category's own id, a topic's parent. */
+export const categoryIdOf = (topic: TopicNode): TopicId => topic.parentId ?? topic.id

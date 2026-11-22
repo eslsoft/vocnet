@@ -114,7 +114,7 @@ entry plus its payload schema in `shared/facts.ts`.
 | `pronunciation` | entry   | many        | `{ ipa, accent, strength?, pos? }` (accent `us` or `uk`) | LLM |
 | `example`       | sense   | many        | `{ sentence_id }` (submitted as `{ sentence_id }` or `{ text }`); object and content key the sentence | LLM |
 | `translation`   | sense, sentence, or a collocation fact | one per language | `{ language, of, text }` (`of`: `sense`, `sentence`, or `collocation`) | a sense equivalent Jev or luna, then LLM; a sentence or collocation LLM |
-| `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a leaf topic)                            | mean of Jev and luna, then LLM |
+| `topic`         | sense   | many (≤ 3)  | `{ topic_id }` (a topic, or a category none of whose topics fits) | mean of Jev and luna, then LLM |
 | `grammar`       | sense   | one         | `{ countability?, number?, article?, transitivity?, position?, agreement?, patterns?, prepositions? }` | Jev, then LLM |
 | `morphology`    | entry   | one         | `{ parts: [{ form, role, meaning?, lemma? }], shortened?: { type, of } }` | Jev, then LLM |
 | `collocation`   | sense   | many (≤ 5)  | `{ text, pattern }`                                      | LLM |
@@ -631,16 +631,25 @@ follow:
 
 ### Topics
 
-Learners find words by topic: the scene they need them in ("words I need at
-the hospital") or the subject area they belong to ("emotions"). The server keeps a two-level controlled taxonomy in the `topics`
-table (`id`, `parent_id`, `name_en`, `name_zh`, `position`, `image_id`): 16 categories
-(`parent_id` null), such as `body-health` "Body and health", over 147 leaf
-topics, such as `hospital-doctor` "At the doctor and hospital". Ids are stable;
-names are display labels; `position` orders siblings. The owner curates it, so
-its rows change only by migration (`topics_seed` inserted the approved taxonomy);
-agents cannot create topics.
+Learners find words by topic: the subject a sense's meaning belongs to
+("Healthcare", "Feelings"), never a scene it can turn up in. Scenes ("at the
+airport") draw on many subjects at once and are not topics. The server keeps a
+two-level controlled taxonomy in the `topics` table (`id`, `parent_id`,
+`name_en`, `name_zh`, `position`, `image_id`), built on the learner's
+dictionary topics of the Oxford Learner's Dictionaries
+(`docs/plans/2026-11-22-topics-and-scenes.md`): 19 categories (`parent_id`
+null), such as `health` "Health", over 89 topics, such as `healthcare`
+"Healthcare". It keeps Oxford's categories and their topics, except that
+Education is a category of its own and Sport's mixed "other sports" is split,
+and adds the topics general vocabulary had no place in (`speaking`,
+`thinking-and-memory`, `describing-things`, `senses-and-sounds`,
+`position-and-direction`, `towns-and-cities`, `tools-and-repairs`). Oxford's
+third level is not built. Ids are stable; names are display labels;
+`position` orders siblings. The owner curates it, so its rows change only by
+migration (`topic_taxonomy` replaced the first, scene-mixed taxonomy and sent
+every tag back to review under the rubric below); agents cannot create topics.
 
-A category or leaf topic shows a picture, which a curator sets with `PUT
+A category or topic shows a picture, which a curator sets with `PUT
 /manage/v1/topics/{id}/image`: the body is the picture itself, a 1024×1024 WebP
 of at most 300 KB, as every picture is (see Pictures); a producer agent is
 `403`, an unknown topic `404`. The picture is stored before `image_id`
@@ -649,15 +658,17 @@ picture again changes nothing. The pictures are generated outside the server
 and checked before they are set; a picture is a curator's choice, not a
 reviewed fact.
 
-A `topic` fact tags one sense with one leaf topic. Topics are tags, not
-relations between words: a relation to an "anchor word" would need an anchor
-that is itself ambiguous, a fuzzy "related to" type that review cannot judge,
-and would fill a relation slot; a tag points into a fixed hierarchy
-the server owns. The registry gives the kind three more properties, each
-enforced by the submission use case and never by name:
+A `topic` fact tags one sense with one topic, or with a category when the
+meaning belongs to the category and none of its topics holds it (`travel` in
+"Travel and transport"). Topics are tags, not relations between words: a
+relation to an "anchor word" would need an anchor that is itself ambiguous, a
+fuzzy "related to" type that review cannot judge, and would fill a relation
+slot; a tag points into a fixed hierarchy the server owns. The registry gives
+the kind three more properties, each enforced by the submission use case and
+never by name:
 
-- `topic`: the payload's `topic_id` must name an existing **leaf** topic. An
-  unknown id or a category id is `422 invalid_reference`.
+- `topic`: the payload's `topic_id` must name a topic or category of the
+  taxonomy. An unknown id is `422 invalid_reference`.
 - `subjectPos`: the sense must be a noun, verb, adjective, or adverb; a
   function-word sense is `422 invalid_reference`. Function words belong to no
   topic.
@@ -673,50 +684,60 @@ enforced by the submission use case and never by name:
   fact lifecycle), so a correction and its original never both publish.
 
 The content key is the topic id, so resubmitting a tag returns the live fact.
-A tag means "a learner meets or needs this sense mainly in this topic", not
-"the sense can turn up there". Jev and luna are asked the same question, with
-the rule written into it, and their mean score against the mean threshold
-settles a pass: each missed a few loose tags the other caught ("full" in
-hotels, "stop" in driving), and their mean passed none. Otherwise the LLM
-decides. The rubric passes only when the topic is
-where a learner characteristically meets or needs the sense: the sense is
-typical vocabulary of that scene or subject area, a word a learner studying the topic should learn,
-whether the topic is a scene (at the hospital) or a subject area (emotions,
-colours and shapes). It fails a general-purpose sense usable in many scenes
-that merely can appear in this one, a loose association, or a topic that fits
-a different sense of the word. It lists audited passes ("oven" in household
-appliances, "credit" in banking, "angry" in emotions) and fails ("full" in
-hotels, "stop" in driving, "event" in news) as examples. A sense may be
-core to several topics ("ticket" in trains and in buses); each tag is judged
-on its own. The rubric keeps uncertain for a sense or topic it cannot judge at
-all and says to fail when it doubts the sense is typical vocabulary of the
-topic; an uncertain verdict still publishes, as in every chain. It sees the
-entry's other senses.
+A tag means "the meaning of this sense belongs to this subject": the sense
+names a thing, action, quality, or idea of it. Jev and luna are asked the same
+question, with the rule written into it, and their mean score against the mean
+threshold settles a pass. Otherwise the LLM decides. The rubric passes a
+specialized sense of a general word in the subject it is specialized for
+(`first` meaning the lowest gear in "Cars and roads"), and a category only when
+none of its topics holds the sense; a reviewer of a category tag reads the
+category's topics. It fails a general-purpose sense, a scene the sense can turn
+up in ("full" in "Holidays and accommodation"), a loose association, a topic
+another topic holds more precisely ("poor" in "Shopping", which "Describing
+things" holds), and a topic that fits a different sense of the word. It lists
+such passes and fails as examples. A sense may belong to several subjects
+("ticket" in buses and trains and in air travel); each tag is judged on its
+own. The rubric keeps uncertain for a sense or topic it cannot judge at all and
+says to fail when it doubts the meaning belongs to the subject; an uncertain
+verdict still publishes, as in every chain. It sees the entry's other senses.
+
+A listing gives a topic's core vocabulary before the specialized senses of
+other words. A tag is **specialized** when its sense is not the entry's main
+sense (its inventory's first) and the main sense has no tag in the same
+category: the word is general or belongs to another subject, and only this
+sense belongs here. The public view stores the flag per tag (`specialized` in
+`public_sense_topics`), judged by category so a sense under a category and one
+of its topics is alike in both rows. A sense labelled `taboo` or `offensive`
+keeps its tags in its entry but is in no topic listing.
 
 `GET /v1/topics` returns `{ categories: [{ id, name: { en, zh }, image_url, sense_count,
 entry_count, topics: [{ id, name: { en, zh }, image_url, sense_count, entry_count }] }] }`
 in display order, the names keyed by language as a sense's topic tags name
 them, and `image_url` the URL of the topic's picture (`${MEDIA_BASE_URL}/{id}`), null
 until a curator sets one. `sense_count` is how many public senses `GET /v1/topics/{id}/senses`
-lists for the topic, a category counting each sense of its leaves once;
-`entry_count` is how many public entries `GET /v1/entries?topic=` lists, those
-with a common sense tagged with it. Both are counted from `public_sense_topics`
-on read, and the response is a list, cached for five seconds.
+lists for the topic, a category counting each sense tagged with it or any of
+its topics once; `entry_count` is how many public entries `GET
+/v1/entries?topic=` lists, those with a common sense tagged with it. Both are
+counted from `public_sense_topics` on read, and the response is a list, cached
+for five seconds.
 `GET /v1/topics/{id}/senses`
 returns a keyset page `{ lang, items, next_cursor }` of sense summaries (see
-Public API), each with `rare` (the entry's inventory ranks the sense extra), of the senses that published topic facts tag with that leaf, or
-with any leaf of that category, each sense once, in lemma then sense-id order. A sense appears
-only while its topic fact is published and a published inventory of its live entry lists it. An unknown
-id is `404 not_found`, without a fuzzy fallback. The listing reads the public
-view's `public_sense_topics` rows, one per topic tag of a public sense, keyed
-`(topic_id, lemma, sense_id)`, so a leaf is one index range in page order.
-The public entry lists each sense's `topics` as `{ id, name, category: { id,
-name } }`, each name in English and the requested language. The category is
-the topic's parent in the taxonomy as it is when the entry is read: the stored
-document holds the tag and the read joins the category, so it is never stale
-and the taxonomy is part of the document's ETag. A tag whose topic is not a
-leaf of the taxonomy fails the read. Topic facts appear wherever the
-management API lists facts.
+Public API), each with `rare` (the entry's inventory ranks the sense extra) and
+`specialized`, of the senses that published topic facts tag with that topic,
+or with that category or any of its topics, each sense once: every core sense
+first, then the specialized ones, each group in lemma, frequency, or level
+order and then by lemma and sense id. A sense appears only while its topic
+fact is published and a published inventory of its live entry lists it. An
+unknown id is `404 not_found`, without a fuzzy fallback. The listing reads the
+public view's `public_sense_topics` rows, one per topic tag of a listed sense,
+with an index per order led by `(topic_id, specialized)`, so a topic is one
+index range in page order. The public entry lists each sense's `topics` as `{
+id, name, category: { id, name } }`, each name in English and the requested
+language. The category is the topic's parent in the taxonomy as it is when the
+entry is read, null for a tag naming a category: the stored document holds the
+tag and the read joins the category, so it is never stale and the taxonomy is
+part of the document's ETag. A tag whose topic the taxonomy lacks fails the
+read. Topic facts appear wherever the management API lists facts.
 
 ### Pictures
 
@@ -1160,7 +1181,7 @@ one does (translations); `mean`, the mean score reaches the mean threshold
 The plan gives a decision model the rules a pass needs in its question, the
 same rules the rubric holds, and the fact's data in its state, so the two
 judge one standard. A plan whose context leaves nothing to judge, a fact about a
-sense no live inventory lists or a topic that is no leaf, is `unreviewable` and
+sense no live inventory lists or a topic the taxonomy lacks, is `unreviewable` and
 rejected without asking anyone. The review stores the context it judged
 (lemmas and glosses of the referenced senses, the entry's senses) so a later
 reader knows what was approved. A fact never waits for another fact: a
@@ -1886,9 +1907,10 @@ a completed sign-in lands on `/console`, and signing out returns to `/`.
   `?sense={id}` and `?domain=`) that resolves the category word through its
   entry, takes the sense with the most kinds, and expands direct kinds level
   by level, each the depth-1 members of `GET /v1/senses/{id}/members`; and the
-  topics (`?view=topics`, `?topic={id}`): categories and their leaf topics from
+  topics (`?view=topics`, `?topic={id}`): categories and their topics from
   `GET /v1/topics`, a topic's senses from `GET /v1/topics/{id}/senses` most
-  frequent first, page by page.
+  frequent first, page by page, the specialized senses under a heading of
+  their own after the core vocabulary.
 - **Developers** (`/developers`): the guide to the public API in Chinese or
   English (the site language, switchable in place) with a table of contents:
   base URL, no key for reads, rate limits, `?lang=`, `?domain=`, cursor
@@ -2211,8 +2233,8 @@ one statement, takes one language (`lang=all` is `400`), and is cached for
 five seconds.
 
 **Lists.** `GET /v1/entries` takes `prefix`, `level` (CEFR levels, repeated
-`level=A1&level=A2` or comma-separated `level=A1,A2`), `pos`, `topic` (a leaf
-topic, or a category for any of its leaves), and `sort` (`lemma`, the default,
+`level=A1&level=A2` or comma-separated `level=A1,A2`), `pos`, `topic` (a
+topic, or a category for its own tags and any of its topics'), and `sort` (`lemma`, the default,
 or `frequency`: most frequent first by the entry's frequency rank, entries
 without one last, ties by lemma). `level` and `pos` hold for one meaning: an
 entry is listed when one of its meanings has that part of speech and one of
@@ -2330,8 +2352,8 @@ is `404`.
 | `GET /v1/senses/{id}`         | The same statement from `senses`; the sense is cut out of the document |
 | `GET /v1/forms/{form}`        | `public_forms` by spelling joined to `public_entries`, in lemma order |
 | `GET /v1/entries`             | `public_entries` summaries by lemma range or along `(frequency_order, lemma)`, each checked through the key of `public_meanings`, or with a topic the `(entry_id, topic_id)` index of `public_sense_topics` |
-| `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by leaf along the index of the sort |
-| `GET /v1/topics`              | `topics`, and two grouped counts over `public_sense_topics`: per leaf, and per category through `topics.parent_id` |
+| `GET /v1/topics/{id}/senses`  | `public_sense_topics` summaries by topic along the index of the sort, core before specialized |
+| `GET /v1/topics`              | `topics`, and two grouped counts over `public_sense_topics`: per topic, and per category over its own tags and its topics' through `topics.parent_id` |
 | `GET /v1/media/{id}`          | The `MEDIA` R2 bucket by key, streamed                         |
 | `GET /v1/overviews`           | `public_entries` documents by exact lemma, one statement for every lemma asked |
 | `GET /v1/senses/{id}/members` | One recursive walk down `public_hypernyms`, with each member's parents and the total from the same statement |

@@ -53,15 +53,11 @@ describe('topic facts', () => {
     expect(world.facts.find((candidate) => candidate.id === unsure.fact.id)?.status).toBe('published')
   })
 
-  it('refuses an unknown topic, a category, and a sense of a function word [spec: topics/invalid-reference]', async () => {
+  it('refuses an unknown topic and a sense of a function word, and takes a category [spec: topics/invalid-reference]', async () => {
     const { world, nurse, place } = await hospitalWorld()
     await expect(submitFact(world.deps, agentA, tag(nurse.id, 'no-such-topic'))).rejects.toMatchObject({
       code: 'invalid_reference',
       message: 'Topic no-such-topic does not exist; GET /v1/topics lists the taxonomy.',
-    })
-    await expect(submitFact(world.deps, agentA, tag(nurse.id, 'body-health'))).rejects.toMatchObject({
-      code: 'invalid_reference',
-      message: 'body-health is a topic category; tag the sense with one of its leaf topics.',
     })
     await expect(submitFact(world.deps, agentA, tag(place.id, 'hospital-doctor'))).rejects.toMatchObject({
       code: 'invalid_reference',
@@ -69,6 +65,8 @@ describe('topic facts', () => {
         'A topic fact is about a sense whose part of speech is noun, verb, adjective, adverb; this one is preposition.',
     })
     expect(world.queued).toEqual([])
+    const category = await submitFact(world.deps, agentA, tag(nurse.id, 'body-health'))
+    expect(category.fact).toMatchObject({ status: 'pending', contentKey: 'body-health' })
   })
 
   it('holds at most three live topics per sense, on submission and on re-review [spec: topics/limit]', async () => {
@@ -144,19 +142,17 @@ describe('topic facts', () => {
 })
 
 describe('topic review context', () => {
-  it('rejects a topic fact whose topic is no longer a leaf, and fails loudly on a broken taxonomy', async () => {
+  it('rejects a topic fact whose topic is gone, and fails loudly on a broken taxonomy', async () => {
     const { world, nurse, tend } = await hospitalWorld()
     const { fact } = await submitFact(world.deps, agentA, tag(nurse.id, 'dentist'))
     const replace = (id: string, node?: TopicNode) => {
       const index = world.topics.findIndex((candidate) => candidate.id === id)
       world.topics.splice(index, 1, ...(node ? [node] : []))
     }
-    const dentist = world.topics.find((node) => node.id === 'dentist')
-    if (!dentist) throw new Error('No dentist topic.')
-    replace('dentist', { ...dentist, parentId: null })
+    replace('dentist')
     expect(await reviewFact(world.deps, fact.id, 'trace')).toBe('rejected')
     expect(world.facts.find((candidate) => candidate.id === fact.id)?.review?.reason).toBe(
-      'The referenced topic is not a leaf topic of the taxonomy.',
+      'The referenced topic is not in the taxonomy.',
     )
 
     const orphan = await submitFact(world.deps, agentA, tag(tend.id, 'furniture'))
@@ -215,11 +211,12 @@ describe('topic listings', () => {
     expect(counts(home)).toEqual(['home', 0, 0])
   })
 
-  it('lists the senses of a leaf, rolls a category up over its leaves, and 404s an unknown id [spec: topics/senses]', async () => {
+  it('lists the senses of a topic, rolls a category up over its own tags and its topics, and 404s an unknown id [spec: topics/senses]', async () => {
     const { world, nurse, tend } = await hospitalWorld()
     await submitFact(world.deps, agentA, tag(nurse.id, 'hospital-doctor'))
     await submitFact(world.deps, agentA, tag(nurse.id, 'dentist'))
-    await submitFact(world.deps, agentA, tag(tend.id, 'body-parts'))
+    await submitFact(world.deps, agentA, tag(tend.id, 'body-health'))
+    await submitFact(world.deps, agentA, tag(tend.id, 'furniture'))
     await settle(world)
     const page = { limit: 10 }
     const none = { lang: null, review: false }
@@ -236,10 +233,14 @@ describe('topic listings', () => {
         gloss: 'A person trained to care for the sick.',
         image_url: null,
         rare: false,
+        specialized: false,
       },
     ])
     expect((await ids('body-health')).sort()).toEqual([nurse.id, tend.id].sort())
-    expect(await ids('furniture')).toEqual([])
+    // The main sense of "nurse" has no tag in Home, so the verb's tag there is a specialized one.
+    const home = await listTopicSenses(world.deps, 'home' as TopicId, 'lemma', page, none)
+    expect(home.items.map((item) => [item.sense_id, item.specialized])).toEqual([[tend.id, true]])
+    expect(await ids('kitchen')).toEqual([])
     await expect(listTopicSenses(world.deps, 'no-such-topic' as TopicId, 'lemma', page, none)).rejects.toMatchObject({
       code: 'not_found',
     })

@@ -5,17 +5,31 @@ import {
   type StoredEntry,
 } from '@server/domain/catalog-view'
 import type { EntryNode } from '@server/domain/nodes'
-import { publicViewRecord } from '@server/domain/public-view'
+import { publicViewRecord, type TopicCategoryIds } from '@server/domain/public-view'
+import { categoryIdOf, type TopicNode } from '@server/domain/topics'
 import type { TopicId } from '@shared/facts'
 import type { Deps } from './deps'
 import type { StaleView, StoredView, ViewLookup } from './ports'
 
 export type ViewDeps = Pick<Deps, 'publicViews' | 'nodes' | 'reference' | 'topics'>
 
+const namesOf = (topics: readonly TopicNode[]): ProjectionContext['topicNames'] =>
+  new Map<TopicId, ByLanguage<string>>(topics.map((topic) => [topic.id, { en: topic.nameEn, zh: topic.nameZh }]))
+
 /** Each topic's names by language tag, as public documents show them. */
 export async function topicNamesOf(deps: Pick<Deps, 'topics'>): Promise<ProjectionContext['topicNames']> {
+  return namesOf(await deps.topics.list())
+}
+
+/** What a rebuild reads of the taxonomy: each topic's names, and the category each belongs to. */
+interface ViewTaxonomy {
+  names: ProjectionContext['topicNames']
+  categories: TopicCategoryIds
+}
+
+async function viewTaxonomyOf(deps: Pick<Deps, 'topics'>): Promise<ViewTaxonomy> {
   const topics = await deps.topics.list()
-  return new Map<TopicId, ByLanguage<string>>(topics.map((topic) => [topic.id, { en: topic.nameEn, zh: topic.nameZh }]))
+  return { names: namesOf(topics), categories: new Map(topics.map((topic) => [topic.id, categoryIdOf(topic)])) }
 }
 
 /** The entry's public document as its facts, reference data, and topics make it now; null when it is not public. */
@@ -32,11 +46,11 @@ export async function projectEntry(
 }
 
 /** Projects the entry's public document as of the stale revision and stores it. */
-async function rebuild(deps: ViewDeps, stale: StaleView, topicNames: ProjectionContext['topicNames']): Promise<void> {
+async function rebuild(deps: ViewDeps, stale: StaleView, taxonomy: ViewTaxonomy): Promise<void> {
   const entry = await deps.nodes.findEntry(stale.entryId)
   if (!entry) throw new Error(`Public view entry ${stale.entryId} does not exist.`)
-  const document = await projectEntry(deps, entry, topicNames)
-  await deps.publicViews.save(stale, document && publicViewRecord(document))
+  const document = await projectEntry(deps, entry, taxonomy.names)
+  await deps.publicViews.save(stale, document && publicViewRecord(document, taxonomy.categories))
 }
 
 /**
@@ -46,8 +60,8 @@ async function rebuild(deps: ViewDeps, stale: StaleView, topicNames: ProjectionC
 export async function refreshPublicViews(deps: ViewDeps, nodeIds: string[]): Promise<void> {
   const stale = await deps.publicViews.listStale(nodeIds)
   if (stale.length === 0) return
-  const topicNames = await topicNamesOf(deps)
-  for (const view of stale) await rebuild(deps, view, topicNames)
+  const taxonomy = await viewTaxonomyOf(deps)
+  for (const view of stale) await rebuild(deps, view, taxonomy)
 }
 
 /**
@@ -60,9 +74,9 @@ export async function rebuildStalePublicViews(
   limit: number,
 ): Promise<{ rebuilt: number; remaining: number }> {
   const stale = await deps.publicViews.listAnyStale(limit)
-  const topicNames = await topicNamesOf(deps)
+  const taxonomy = await viewTaxonomyOf(deps)
   const failures: unknown[] = []
-  for (const view of stale) await rebuild(deps, view, topicNames).catch((error: unknown) => failures.push(error))
+  for (const view of stale) await rebuild(deps, view, taxonomy).catch((error: unknown) => failures.push(error))
   if (failures.length > 0) throw new AggregateError(failures, `${failures.length} public views failed to rebuild.`)
   return { rebuilt: stale.length, remaining: await deps.publicViews.countStale() }
 }
@@ -83,7 +97,7 @@ export async function readPublicView<T extends ViewLookup>(
 ): Promise<(T & { view: StoredView }) | null> {
   let found = await find()
   for (let attempt = 0; found?.stale && attempt < READ_REBUILD_ATTEMPTS; attempt += 1) {
-    await rebuild(deps, found.stale, await topicNamesOf(deps))
+    await rebuild(deps, found.stale, await viewTaxonomyOf(deps))
     found = await find()
     if (found?.view) break
   }

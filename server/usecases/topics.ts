@@ -1,5 +1,5 @@
 import { type ReadVariant, shapeSenseSummary } from '@server/domain/public-view'
-import { leavesUnder, topicTree } from '@server/domain/topics'
+import { topicsUnder, topicTree } from '@server/domain/topics'
 import type { SenseSort } from '@shared/catalog'
 import type { TopicId } from '@shared/facts'
 import type { TopicImageResult } from '@shared/media'
@@ -21,17 +21,18 @@ export async function getTopicTree(deps: Pick<Deps, 'topics' | 'publicViews' | '
   )
 }
 
-/** The leaf topics a topic id stands for: itself, or a category's leaves. An unknown id is not found. */
-export async function leavesOf(deps: Pick<Deps, 'topics'>, id: TopicId): Promise<TopicId[]> {
+/** The topic ids a listing by this id reads: a topic's own, a category's own and its topics'. An unknown id is not found. */
+export async function topicIdsOf(deps: Pick<Deps, 'topics'>, id: TopicId): Promise<TopicId[]> {
   const nodes = await deps.topics.list()
   const topic = nodes.find((node) => node.id === id)
   if (!topic) throw new NotFoundError(`No topic has the id ${id}.`)
-  return leavesUnder(topic, nodes)
+  return topicsUnder(topic, nodes)
 }
 
 /**
- * Published senses tagged with a leaf topic, or with any leaf of a category, by lemma, frequency,
- * or level. An id that names no topic is not found; there is no fuzzy fallback.
+ * Published senses tagged with a topic, or with a category or any of its topics, the topic's core
+ * vocabulary before its specialized senses, each by lemma, frequency, or level. An id that names no
+ * topic is not found; there is no fuzzy fallback.
  */
 export async function listTopicSenses(
   deps: Pick<Deps, 'topics' | 'publicViews' | 'mediaBaseUrl'>,
@@ -40,12 +41,13 @@ export async function listTopicSenses(
   page: PageRequest,
   variant: ReadVariant,
 ): Promise<Page<TopicSense>> {
-  const found = await deps.publicViews.listTaggedSenses(await leavesOf(deps, id), sort, page)
+  const found = await deps.publicViews.listTaggedSenses(await topicIdsOf(deps, id), sort, page)
   return {
     ...found,
-    items: found.items.map(({ summary, rare }) => ({
+    items: found.items.map(({ summary, rare, specialized }) => ({
       ...shapeSenseSummary(summary, deps.mediaBaseUrl, variant),
       rare,
+      specialized,
     })),
   }
 }

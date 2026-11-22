@@ -232,7 +232,11 @@ export const senseTopicSchema = z
     }),
     category: z
       .object({ id: topicIdSchema, name: byLanguage(z.string()) })
-      .meta({ description: 'The category of GET /v1/topics the topic belongs to, named as the topic is.' }),
+      .nullable()
+      .meta({
+        description:
+          'The category of GET /v1/topics the topic belongs to, named as the topic is; null when the tag names a category itself.',
+      }),
     ...review,
   })
   .meta({ id: 'SenseTopic' })

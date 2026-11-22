@@ -16,7 +16,7 @@ const getTopics = createRoute({
   tags,
   summary: 'List the topic taxonomy',
   description:
-    'Every category with its leaf topics, in display order, each with its names and how many public senses and entries it lists. Only leaf topics tag senses. Carries an ETag; send it as If-None-Match to get 304 while the taxonomy and its counts are unchanged.',
+    'Every category with its topics, in display order, each with its names and how many public senses and entries it lists. A topic tags a sense whose meaning belongs to it; a category tags one none of its topics holds. Carries an ETag; send it as If-None-Match to get 304 while the taxonomy and its counts are unchanged.',
   responses: { 200: json(topicTreeSchema, 'The taxonomy.'), 304: notModifiedResponse },
 })
 
@@ -26,7 +26,7 @@ const getTopicSenses = createRoute({
   tags,
   summary: 'List the published senses tagged with a topic',
   description:
-    'A leaf topic lists the senses tagged with it; a category lists the senses tagged with any of its topics, each once, as sense summaries marked rare when the entry ranks the sense extra, by lemma, frequency, or level. A sense appears when its topic fact, its gloss, and its entry are published. An unknown id is 404. Translations are in the language of ?lang=, else of Accept-Language.',
+    'A topic lists the senses tagged with it; a category lists the senses tagged with it or any of its topics, each once, as sense summaries marked rare when the entry ranks the sense extra and specialized when it is a specialized sense of a word whose main sense lies elsewhere. Core senses come first, then specialized ones, each by lemma, frequency, or level. A sense appears when its topic fact, its gloss, and its entry are published. An unknown id is 404. Translations are in the language of ?lang=, else of Accept-Language.',
   request: {
     params: z.object({ id: topicIdSchema }),
     query: pageQuery.extend({ sort: senseSortSchema, lang: listLangQuerySchema }),
