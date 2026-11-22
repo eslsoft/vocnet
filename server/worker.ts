@@ -8,6 +8,7 @@ import { createDeps } from './composition'
 import { secureBrowserResponse } from './http/browser-security'
 import type { AppVariables } from './http/context'
 import { onError } from './http/errors'
+import { absoluteMediaBase } from './http/media-base'
 import { auditBoundary, requestBoundary } from './http/observability'
 import { publicReadBoundary } from './http/public-reads'
 import { classifyWork } from './usecases/classify'
@@ -31,7 +32,8 @@ export const worker = new Hono<{ Bindings: Env; Variables: AppVariables }>()
   .use('*', requestBoundary)
   .use('*', auditBoundary)
   .use('*', async (c, next) => {
-    c.set('deps', createDeps(c.env))
+    const deps = createDeps(c.env)
+    c.set('deps', { ...deps, mediaBaseUrl: absoluteMediaBase(deps.mediaBaseUrl, c.req.url) })
     await next()
   })
   .use('/v1/*', publicReadBoundary)
