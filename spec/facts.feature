@@ -764,7 +764,7 @@ Feature: Facts and review
   Scenario: A picture's URL is composed from the configured base, never stored
     Given a sense with a published image fact and a published topic tag, and a topic with a picture
     When the entry, the topic's senses, and the taxonomy are read
-    Then each picture's url or image_url is `${MEDIA_BASE_URL}/<id>`
+    Then each picture's url or image_url is `${MEDIA_BASE_URL}/<id>`, an absolute URL
     And the stored views and their summaries name the picture by id alone, with no path and no host
 
   @media/base-url-shape @domain
@@ -772,6 +772,12 @@ Feature: Facts and review
     Given stored entries and summaries that hold picture ids or none
     When they are shaped for a read with a media base
     Then each picture has `url` and each summary `image_url` under that base, and none when there is no picture
+
+  @media/absolute-base @domain
+  Scenario: A media base that is a path resolves against the request's origin
+    Given a media base that is an absolute URL, and one that is a path
+    When a request composes picture URLs under it
+    Then the absolute base is kept as it is and the path is resolved against the request's origin
 
   @facts/cefr-review @domain
   Scenario: A level is estimated and judged by the same rule

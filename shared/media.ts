@@ -9,7 +9,7 @@ export const mediaIdSchema = z
   .meta({ description: 'The lowercase hex SHA-256 of the file.' })
 export type MediaId = z.infer<typeof mediaIdSchema>
 
-/** Where a media file is read publicly: its id under the configured base (`MEDIA_BASE_URL`). */
+/** Where a media file is read publicly: its id under the media base. */
 export const mediaUrl = (base: string, id: MediaId) => `${base}/${id}`
 
 export const pictureUploadResultSchema = z

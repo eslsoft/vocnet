@@ -765,12 +765,14 @@ summary the entry's, a sense summary the sense's.
 The stored views hold a picture's media id, never a host or a path: `image_id` in
 the document's pictures and in every summary. A read composes `url` and
 `image_url` as `${MEDIA_BASE_URL}/<id>`, so where pictures are served is
-configuration, not data. `MEDIA_BASE_URL` has no trailing slash and no default; a
+configuration, not data. Every picture URL a response gives is absolute: a base
+that is a path is resolved against the request's origin, so local development
+gives `http://localhost:5173/v1/media/<id>` and a preview its own host's. `MEDIA_BASE_URL` has no trailing slash and no default; a
 Worker without it fails to build its dependencies. Production's is
 `https://vocnet-images.tftt.cc`, the custom domain of the `vocnet-media` bucket,
 whose object keys are the ids, so a picture loads from R2 without invoking the
 Worker. Previews and local development use `/v1/media`, which this Worker serves
-from their own bucket. A response whose body names pictures (an entry, a sense,
+from their own bucket, under each request's origin. A response whose body names pictures (an entry, a sense,
 a form lookup) takes the base into its ETag, so a client revalidates when the base
 changes; the topic taxonomy's ETag covers its body, URLs included.
 
